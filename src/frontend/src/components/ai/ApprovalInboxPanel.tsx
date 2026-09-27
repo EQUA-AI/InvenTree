@@ -53,6 +53,11 @@ export function ApprovalInboxPanel({
   const sessionId = useVoiceDecisionState((state) => state.sessionId);
   const [selected, setSelected] = useState<string | null>(null);
   const statusKey = statuses.join(',');
+  // A filter switch must show the new section's list, never a detail left
+  // selected under the previous statuses. Ordinary refreshes keep it.
+  useEffect(() => {
+    setSelected(null);
+  }, [statusKey]);
   const list = useQuery({
     queryKey: ['approval-inbox', statusKey],
     queryFn: async () => {
@@ -148,7 +153,7 @@ export function ApprovalInboxPanel({
         !review.isError &&
         review.data &&
         (matching ? (
-          <Alert data-testid='approval-shared-focus'>{t`This request is focused in the shared decision card above. Use its controls so voice and touch keep the same confirmation.`}</Alert>
+          <Alert data-testid='approval-shared-focus'>{t`This request is focused in the shared decision card. Use its controls so voice and touch keep the same confirmation.`}</Alert>
         ) : review.data.action_type === 'email' &&
           review.data.payload._mailbox ? (
           <MailboxApprovalReview approvalId={selected} />

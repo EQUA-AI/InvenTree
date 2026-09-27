@@ -11,7 +11,7 @@ vi.mock('../functions/chatThreadCache', () => ({
   clearChatIndices: mocks.clearIndices
 }));
 
-import { useAIChatState } from './AIChatState';
+import { openGlobalAIChat, useAIChatState } from './AIChatState';
 
 describe('chat session boundary', () => {
   beforeEach(() => {
@@ -20,7 +20,8 @@ describe('chat session boundary', () => {
       isOpen: false,
       sessionGeneration: 0,
       routingHint: undefined,
-      hintThreadId: null
+      hintThreadId: null,
+      chatOpenIntent: null
     });
   });
 
@@ -66,5 +67,33 @@ describe('chat session boundary', () => {
       expect(predicate({ queryKey: [key, 'old-account'] })).toBe(true);
     }
     expect(predicate({ queryKey: ['unrelated-theme'] })).toBe(false);
+  });
+
+  it('consumes a transient Chat-tab intent exactly once on machine Ask', () => {
+    openGlobalAIChat({ machineId: 7, machineName: 'Fixture pump' });
+    expect(useAIChatState.getState().chatOpenIntent).toBe('chat');
+    useAIChatState.getState().consumeChatOpenIntent();
+    expect(useAIChatState.getState().chatOpenIntent).toBeNull();
+    // Consumed once: later renders must not keep forcing the Chat tab.
+    useAIChatState.getState().consumeChatOpenIntent();
+    expect(useAIChatState.getState().chatOpenIntent).toBeNull();
+  });
+
+  it('plain open keeps the persisted tab and close discards any intent', () => {
+    useAIChatState.getState().open();
+    expect(useAIChatState.getState().chatOpenIntent).toBeNull();
+    useAIChatState
+      .getState()
+      .openWithHint({ machineId: 7, machineName: 'Fixture pump' });
+    useAIChatState.getState().close();
+    expect(useAIChatState.getState().chatOpenIntent).toBeNull();
+  });
+
+  it('resetting the session discards a stale open intent', () => {
+    useAIChatState
+      .getState()
+      .openWithHint({ machineId: 7, machineName: 'Fixture pump' });
+    useAIChatState.getState().resetSession(false);
+    expect(useAIChatState.getState().chatOpenIntent).toBeNull();
   });
 });

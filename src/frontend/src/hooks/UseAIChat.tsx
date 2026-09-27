@@ -2317,7 +2317,7 @@ export function useAIChat(config: AIChatConfig = {}) {
       // S1: every send clears a standing conflict and becomes the turn a
       // later conflict would offer to resend.
       setScopeConflict(false);
-      lastTurnRef.current = { content: userContent.trim(), fileIds };
+      lastTurnRef.current = { content: userContent, fileIds };
       // S22: any send disarms the card — the server slot is consume-on-read,
       // so whatever this message is, the question cannot be answered later.
       // Remember which card this send answered so its frozen state reads
@@ -2367,7 +2367,7 @@ export function useAIChat(config: AIChatConfig = {}) {
         // workflow hints are not authority. The mounted Django boundary
         // derives all trusted turn context from the authenticated session.
         const payload = {
-          message: userContent.trim(),
+          message: userContent,
           thread_id: activeThreadId,
           file_ids: fileIds && fileIds.length > 0 ? fileIds : undefined,
           idempotency_key: idempotencyKey,
@@ -2409,7 +2409,7 @@ export function useAIChat(config: AIChatConfig = {}) {
                   await runAguiTurn({
                     url: `${aiHost}/agui`,
                     threadId: activeThreadId ?? undefined,
-                    message: userContent.trim(),
+                    message: userContent,
                     fileIds:
                       fileIds && fileIds.length > 0 ? fileIds : undefined,
                     idempotencyKey,

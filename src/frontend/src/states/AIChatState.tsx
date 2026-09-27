@@ -29,6 +29,13 @@ interface AIChatStateProps {
   openWithHint: (hint: AIChatRoutingHint) => void;
   close: () => void;
   clearHint: () => void;
+  /**
+   * Transient "open the Chat tab" intent set by machine Ask/scan. The drawer
+   * consumes it exactly once (select Chat + focus the composer); it must not
+   * keep forcing the tab after the user switches away.
+   */
+  chatOpenIntent: 'chat' | null;
+  consumeChatOpenIntent: () => void;
 }
 
 export const useAIChatState = create<AIChatStateProps>()((set) => ({
@@ -63,7 +70,8 @@ export const useAIChatState = create<AIChatStateProps>()((set) => ({
       sessionGeneration: state.sessionGeneration + 1,
       isOpen: false,
       routingHint: undefined,
-      hintThreadId: null
+      hintThreadId: null,
+      chatOpenIntent: null
     }));
   },
   routingHint: undefined,
@@ -76,10 +84,22 @@ export const useAIChatState = create<AIChatStateProps>()((set) => ({
     ),
   open: () => set({ isOpen: true }),
   openWithHint: (hint: AIChatRoutingHint) =>
-    set({ isOpen: true, routingHint: hint, hintThreadId: null }),
+    set({
+      isOpen: true,
+      routingHint: hint,
+      hintThreadId: null,
+      chatOpenIntent: 'chat'
+    }),
   close: () =>
-    set({ isOpen: false, routingHint: undefined, hintThreadId: null }),
-  clearHint: () => set({ routingHint: undefined, hintThreadId: null })
+    set({
+      isOpen: false,
+      routingHint: undefined,
+      hintThreadId: null,
+      chatOpenIntent: null
+    }),
+  clearHint: () => set({ routingHint: undefined, hintThreadId: null }),
+  chatOpenIntent: null,
+  consumeChatOpenIntent: () => set({ chatOpenIntent: null })
 }));
 
 export function openGlobalAIChat(hint?: AIChatRoutingHint) {

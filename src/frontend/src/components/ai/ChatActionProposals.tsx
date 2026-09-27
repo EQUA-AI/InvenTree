@@ -230,7 +230,7 @@ export function ProposalCard({
   if (decision?.source_id === proposal.id && decision.state === 'presented') {
     return (
       <Alert color='blue' data-testid='proposal-delegated-to-decision'>
-        {t`Review this action in the shared voice decision card above.`}{' '}
+        {t`This action is focused in the shared decision card. Review it there so voice and touch keep the same confirmation.`}{' '}
         {decision.target_label}
       </Alert>
     );
@@ -355,7 +355,7 @@ export function ChatActionProposalList({
   return (
     <Stack gap='xs' data-testid='chat-action-proposals'>
       <Text size='sm' fw={600}>
-        Action proposals
+        {t`Recent action proposals`}
       </Text>
       {proposals.map((proposal) => (
         <ProposalCard

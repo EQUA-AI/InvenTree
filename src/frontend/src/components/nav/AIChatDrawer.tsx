@@ -19,11 +19,13 @@ import {
   Tooltip,
   Transition,
   UnstyledButton,
+  useComputedColorScheme,
   useMantineTheme
 } from '@mantine/core';
 import { useLocalStorage, useMediaQuery } from '@mantine/hooks';
 import { showNotification } from '@mantine/notifications';
 import {
+  IconArrowDown,
   IconBrain,
   IconCheck,
   IconChevronDown,
@@ -89,16 +91,38 @@ import {
   useVoiceSurfaceState,
   voiceController
 } from '../../states/VoiceSessionState';
+import {
+  type PageContextKind,
+  isNearBottom,
+  pageContextKind,
+  shouldFollowNewContent,
+  shouldSendOnEnter,
+  suggestionKinds
+} from './chatComposer';
+
+/**
+ * Test marker for the real scroll viewport. Spread into `viewportProps`
+ * (the spread bypasses excess-attribute typing; `style` anchors the
+ * weak-type check).
+ */
+const VIEWPORT_MARKERS = {
+  'data-testid': 'ai-chat-messages-viewport',
+  style: {}
+};
 import { ApprovalInboxPanel } from '../ai/ApprovalInboxPanel';
 import { ChatActionProposalList } from '../ai/ChatActionProposals';
 import { MailboxPanel } from '../ai/MailboxPanel';
 import { QuestionCard } from '../ai/QuestionCard';
 import { VoiceDecisionCard } from '../ai/VoiceDecisionCard';
-import { VoiceSessionControl } from '../ai/VoiceSessionControl';
 import { VoiceTranscript } from '../ai/VoiceTranscript';
+import {
+  VoiceActiveStrip,
+  VoiceComposerControl
+} from '../ai/voice/VoiceComposerControl';
 import { VoiceExperienceControls } from '../ai/voice/VoiceExperienceControls';
 import { VOICE_SHORTCUT } from '../ai/voice/voiceShortcuts';
-import { ActiveScopeBanner } from '../aichat/ActiveScopeBanner';
+import { voiceStartBlockReason } from '../ai/voice/voiceStartEligibility';
+import { AnalysisContextLine } from '../aichat/ActiveScopeBanner';
 import { AssistantSurface } from '../aichat/AssistantSurface';
 import { CitationList } from '../aichat/CitationList';
 import { ClaimEvidence } from '../aichat/ClaimEvidence';
@@ -117,6 +141,7 @@ import {
 import { ThreadMemoryModal } from '../aichat/ThreadMemoryModal';
 import type { EvidenceAnalysisAttachment } from '../aichat/evidenceAnalysis';
 import { composeAnswerMarkdown } from '../aichat/evidenceFormat';
+import { hintIsRedundant } from '../aichat/scopeContext';
 import type { ThreadDeleteResult } from '../aichat/threadDeletion';
 import RiskRadarDrawerBadge from '../riskradar/RiskRadarDrawerBadge';
 
@@ -378,7 +403,13 @@ function ThreadSelector({
 
   return (
     <>
-      <Menu shadow='md' width={280} position='bottom-start'>
+      {/* Keep the menu inside the mobile dialog's non-inert subtree. */}
+      <Menu
+        shadow='md'
+        width={280}
+        position='bottom-start'
+        withinPortal={false}
+      >
         <Menu.Target>
           <UnstyledButton
             aria-label='select-ai-chat-thread'
@@ -444,10 +475,35 @@ function ThreadSelector({
           {/* Thread list */}
           <ScrollArea.Autosize mah={300}>
             {threads.map((thread) => (
-              <Menu.Item
+              <Box
                 key={thread.id}
-                onClick={() => onSelectThread(thread.id)}
-                rightSection={
+                px='sm'
+                py={6}
+                style={{
+                  backgroundColor:
+                    thread.id === activeThreadId
+                      ? theme.colors.blue[0]
+                      : undefined
+                }}
+              >
+                <Group justify='space-between' wrap='nowrap' gap={8}>
+                  <Menu.Item
+                    onClick={() => onSelectThread(thread.id)}
+                    style={{ flex: 1, minWidth: 0, textAlign: 'left' }}
+                  >
+                    <Box>
+                      <Text
+                        size='sm'
+                        truncate
+                        fw={thread.id === activeThreadId ? 600 : 400}
+                      >
+                        {thread.title}
+                      </Text>
+                      <Text size='xs' c='dimmed'>
+                        {formatTime(thread.updatedAt)}
+                      </Text>
+                    </Box>
+                  </Menu.Item>
                   <Group gap={2} wrap='nowrap'>
                     <ActionIcon
                       aria-label={`rename-ai-chat-thread-${thread.id}`}
@@ -455,10 +511,7 @@ function ThreadSelector({
                       variant='subtle'
                       color='gray'
                       disabled={disabled}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setAction({ kind: 'rename', thread });
-                      }}
+                      onClick={() => setAction({ kind: 'rename', thread })}
                     >
                       <IconPencil size={12} />
                     </ActionIcon>
@@ -472,10 +525,7 @@ function ThreadSelector({
                           variant='subtle'
                           color='gray'
                           disabled={disabled}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onInspectMemory(thread.id);
-                          }}
+                          onClick={() => onInspectMemory(thread.id)}
                         >
                           <IconBrain size={12} />
                         </ActionIcon>
@@ -487,10 +537,7 @@ function ThreadSelector({
                         variant='subtle'
                         color='gray'
                         disabled={disabled}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setAction({ kind: 'share', thread });
-                        }}
+                        onClick={() => setAction({ kind: 'share', thread })}
                       >
                         <IconShare2 size={12} />
                       </ActionIcon>
@@ -501,35 +548,13 @@ function ThreadSelector({
                       variant='subtle'
                       color='red'
                       disabled={disabled}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setAction({ kind: 'delete', thread });
-                      }}
+                      onClick={() => setAction({ kind: 'delete', thread })}
                     >
                       <IconTrash size={12} />
                     </ActionIcon>
                   </Group>
-                }
-                style={{
-                  backgroundColor:
-                    thread.id === activeThreadId
-                      ? theme.colors.blue[0]
-                      : undefined
-                }}
-              >
-                <Box>
-                  <Text
-                    size='sm'
-                    truncate
-                    fw={thread.id === activeThreadId ? 600 : 400}
-                  >
-                    {thread.title}
-                  </Text>
-                  <Text size='xs' c='dimmed'>
-                    {formatTime(thread.updatedAt)}
-                  </Text>
-                </Box>
-              </Menu.Item>
+                </Group>
+              </Box>
             ))}
           </ScrollArea.Autosize>
 
@@ -911,6 +936,7 @@ function ChatMessageItem({
   onRegenerate?: () => void;
 }>) {
   const theme = useMantineTheme();
+  const colorScheme = useComputedColorScheme('light');
   const isUser = message.role === 'user';
 
   return (
@@ -947,15 +973,18 @@ function ChatMessageItem({
             </Group>
           )}
 
-          {/* Message bubble */}
+          {/* Message bubble (U1: theme-aware colors — no hardcoded
+            light-only grays; user bubbles keep WCAG-safe white on blue) */}
           <Paper
             p='sm'
             radius='lg'
             style={{
               backgroundColor: isUser
                 ? theme.colors.blue[6]
-                : theme.colors.gray[0],
-              color: isUser ? 'white' : theme.colors.dark[7],
+                : colorScheme === 'dark'
+                  ? theme.colors.dark[6]
+                  : theme.colors.gray[0],
+              color: isUser ? 'white' : undefined,
               maxWidth: '85%',
               borderTopRightRadius: isUser ? 4 : undefined,
               borderTopLeftRadius: !isUser ? 4 : undefined,
@@ -1291,6 +1320,8 @@ function AIChatSessionDrawer({
       ? pendingRoutingHint
       : undefined;
   const clearRoutingHint = useAIChatState((state) => state.clearHint);
+  // U1: machine Ask/scan carries a one-shot "open the Chat tab" intent.
+  const chatOpenIntent = useAIChatState((state) => state.chatOpenIntent);
 
   // S22: resolutions live on the answering turn's assistant message; the
   // asking card looks its own outcome up by interrupt_id when frozen.
@@ -1375,6 +1406,27 @@ function AIChatSessionDrawer({
   const pendingApprovalCount = approvalCount.isError
     ? 0
     : (approvalCount.data ?? 0);
+  // C1: one truthful "needs attention" signal — an actionable proposal, a
+  // presented focused decision, or inbox items awaiting review. Never a
+  // numeric aggregate (the count is known-partial and can be unavailable).
+  const needsAttention =
+    proposals.proposals.some((proposal) => proposal.state === 'proposed') ||
+    voiceDecision?.state === 'presented' ||
+    pendingApprovalCount > 0;
+  // C2: the routing hint collapses once the server-confirmed scope already
+  // covers it (display decision only; authorization stays server-side).
+  const hintRedundant = hintIsRedundant(activeScope, routingHint ?? undefined);
+  const [approvalView, setApprovalView] = useState<'open' | 'resolved'>('open');
+  // U1: friendly page labels for the drawer's context line (never raw path).
+  const pageContextLabels: Record<PageContextKind, string> = {
+    home: t`Current page: Home`,
+    machines: t`Current page: Machines`,
+    maintenance: t`Current page: Maintenance`,
+    parts: t`Current page: Parts`,
+    stock: t`Current page: Stock`,
+    orders: t`Current page: Orders`,
+    other: t`Current page`
+  };
 
   const [inputValue, setInputValue] = useState('');
   const [attachedFiles, setAttachedFiles] = useState<UploadedFile[]>([]);
@@ -1417,6 +1469,15 @@ function AIChatSessionDrawer({
   const isResizing = useRef(false);
   const resizeStartX = useRef(0);
   const resizeStartWidth = useRef(DEFAULT_WIDTH);
+  // U1: never let the panel exceed the viewport.
+  const clampDrawerWidth = useCallback(
+    (width: number) =>
+      Math.min(
+        Math.max(MIN_WIDTH, width),
+        Math.max(MIN_WIDTH, window.innerWidth - 32)
+      ),
+    []
+  );
 
   // Mouse handlers for resize drag
   const handleResizeMouseDown = useCallback(
@@ -1437,11 +1498,7 @@ function AIChatSessionDrawer({
       if (!isResizing.current) return;
       // Dragging left = wider (since panel is on the right)
       const delta = resizeStartX.current - e.clientX;
-      const newWidth = Math.min(
-        MAX_WIDTH,
-        Math.max(MIN_WIDTH, resizeStartWidth.current + delta)
-      );
-      setDrawerWidth(newWidth);
+      setDrawerWidth(clampDrawerWidth(resizeStartWidth.current + delta));
     };
 
     const handleMouseUp = () => {
@@ -1458,17 +1515,95 @@ function AIChatSessionDrawer({
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [setDrawerWidth]);
+  }, [setDrawerWidth, clampDrawerWidth]);
 
-  // Suggestion chips
-  const suggestions = [
-    { label: t`Search parts`, message: 'Search for parts in inventory' },
-    { label: t`Create order`, message: 'Help me create a purchase order' },
-    { label: t`Low stock`, message: 'Show me low stock items' }
-  ];
+  // U1: keyboard resizing alternative to the mouse-only drag handle.
+  const handleResizeKeyDown = useCallback(
+    (event: React.KeyboardEvent) => {
+      const step = 24;
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        setDrawerWidth((width) => clampDrawerWidth(width + step));
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        setDrawerWidth((width) => clampDrawerWidth(width - step));
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        setDrawerWidth(clampDrawerWidth(MIN_WIDTH));
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        setDrawerWidth(clampDrawerWidth(MAX_WIDTH));
+      }
+    },
+    [setDrawerWidth, clampDrawerWidth]
+  );
+
+  // Empty-state suggestion prompts (U1): real buttons, translated label AND
+  // message text, machine-relevant prompts while a machine hint is active.
+  const suggestionPrompts = suggestionKinds(routingHint?.machineName).map(
+    (kind) => {
+      switch (kind) {
+        case 'machine-status':
+          return {
+            kind,
+            label: t`Machine status`,
+            message: t`What is the status of ${routingHint?.machineName ?? ''}?`
+          };
+        case 'machine-maintenance':
+          return {
+            kind,
+            label: t`Maintenance history`,
+            message: t`Show the maintenance history for ${routingHint?.machineName ?? ''}.`
+          };
+        case 'search-parts':
+          return {
+            kind,
+            label: t`Search parts`,
+            message: t`Search for parts in inventory`
+          };
+        case 'create-order':
+          return {
+            kind,
+            label: t`Create order`,
+            message: t`Help me create a purchase order`
+          };
+        case 'low-stock':
+          return {
+            kind,
+            label: t`Low stock`,
+            message: t`Show me low stock items`
+          };
+      }
+    }
+  );
+
+  // U1: reading-position awareness — follow new content only when the
+  // reader was already near the bottom; otherwise offer "Jump to latest".
+  // Mantine exposes the actual viewport via its ref.
+  const nearBottomRef = useRef(true);
+  const followThreadRef = useRef(activeThreadId);
+  const [showJumpLatest, setShowJumpLatest] = useState(false);
+
+  useEffect(() => {
+    const viewport = scrollAreaRef.current;
+    if (!viewport) return;
+    const onScroll = () => {
+      nearBottomRef.current = isNearBottom(viewport);
+      if (nearBottomRef.current) setShowJumpLatest(false);
+    };
+    viewport.addEventListener('scroll', onScroll);
+    return () => viewport.removeEventListener('scroll', onScroll);
+  }, [activeTab, activeThreadId, opened]);
+
+  const jumpToLatest = useCallback(() => {
+    const viewport = scrollAreaRef.current;
+    if (viewport) viewport.scrollTop = viewport.scrollHeight;
+    nearBottomRef.current = true;
+    setShowJumpLatest(false);
+  }, []);
 
   // Keep the visible position while prepending history; new replies follow
-  // the bottom as before. Mantine exposes the actual viewport via its ref.
+  // only a reader who was already at the bottom (thread switches always do).
   useLayoutEffect(() => {
     const viewport = scrollAreaRef.current;
     if (!viewport) return;
@@ -1481,7 +1616,24 @@ function AIChatSessionDrawer({
       return;
     }
     earlierScrollRef.current = null;
-    viewport.scrollTop = viewport.scrollHeight;
+    const threadChanged = followThreadRef.current !== activeThreadId;
+    if (threadChanged) {
+      followThreadRef.current = activeThreadId;
+      nearBottomRef.current = true;
+      setShowJumpLatest(false);
+    }
+    const follow = shouldFollowNewContent({
+      threadChanged,
+      anchoredPrepend: false,
+      nearBottom: nearBottomRef.current
+    });
+    if (follow) {
+      viewport.scrollTop = viewport.scrollHeight;
+      nearBottomRef.current = true;
+      setShowJumpLatest(false);
+    } else {
+      setShowJumpLatest(true);
+    }
   }, [messages, activeThreadId, loadingEarlier]);
 
   // Focus input when drawer opens
@@ -1490,6 +1642,16 @@ function AIChatSessionDrawer({
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [opened]);
+
+  // U1: consume the Ask/scan intent ONCE — select Chat and focus the
+  // composer. Never an effect that keeps forcing the tab.
+  useEffect(() => {
+    if (opened && chatOpenIntent === 'chat') {
+      useAIChatState.getState().consumeChatOpenIntent();
+      setActiveTab('chat');
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }
+  }, [opened, chatOpenIntent, setActiveTab]);
 
   // S2: a scope PUT seeded by the routing hint is in flight before a send.
   const [isApplyingScope, setIsApplyingScope] = useState(false);
@@ -1638,16 +1800,59 @@ function AIChatSessionDrawer({
     [deleteThread, memoryThreadId]
   );
 
-  // Handle Enter key to send message
+  // U1: Enter sends (Shift+Enter = newline) — never mid-IME-composition.
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
-      if (event.key === 'Enter' && !event.shiftKey) {
+      if (
+        shouldSendOnEnter({
+          key: event.key,
+          shiftKey: event.shiftKey,
+          isComposing: (event.nativeEvent as KeyboardEvent).isComposing,
+          keyCode: event.keyCode
+        })
+      ) {
         event.preventDefault();
         handleSendMessage();
       }
     },
     [handleSendMessage]
   );
+
+  // C3: one start-eligibility definition shared by the composer mic and the
+  // keyboard shortcut (via useVoiceSurfaceState.requestStart). Ending or
+  // muting an existing session is never blocked by this.
+  const startBlockedReason = voiceStartBlockReason({
+    sharedThread: activeThreadShared,
+    deletionPending: activeThreadDeletionPending,
+    applyingScope: isApplyingScope,
+    turnInFlight: isLoading,
+    syncing: isSyncing
+  });
+  useEffect(() => {
+    useVoiceSurfaceState.getState().setStartBlockedReason(startBlockedReason);
+  }, [startBlockedReason]);
+  useEffect(
+    () => () => {
+      useVoiceSurfaceState.getState().setStartBlockedReason(null);
+    },
+    []
+  );
+
+  const voiceActive = !['unavailable', 'ready', 'error'].includes(voice.state);
+  const voiceControlProps = {
+    state: voice.state,
+    error: voice.error,
+    muted: voice.muted,
+    webrtcPreview: voice.session?.webrtc_preview ?? true,
+    startBlockedReason,
+    // The single voice.start() entry path (requestStart → consent).
+    onStart: () => void voice.start(),
+    onEnd: () => void voice.end(),
+    onCancel: () => void voice.cancel(),
+    onToggleMute: voice.toggleMute,
+    onConfirmTranscript: () => void voice.confirmPending(),
+    onDiscardTranscript: voice.discardPending
+  };
 
   const hasMessages = messages.length > 0;
 
@@ -1666,9 +1871,18 @@ function AIChatSessionDrawer({
         title={t`AI Assistant`}
         onClose={handleClose}
       >
-        {/* Resize handle on the left edge */}
+        {/* Resize handle on the left edge (mouse drag + keyboard, U1) */}
         <Box
+          // biome-ignore lint/a11y/useSemanticElements: focusable window splitter — a real <hr> can't be dragged or keyboard-resized; this keeps the geometry and the ARIA separator values
           onMouseDown={handleResizeMouseDown}
+          role='separator'
+          aria-orientation='vertical'
+          aria-label={t`Resize chat panel`}
+          aria-valuenow={drawerWidth}
+          aria-valuemin={MIN_WIDTH}
+          aria-valuemax={MAX_WIDTH}
+          tabIndex={0}
+          onKeyDown={handleResizeKeyDown}
           style={{
             position: 'absolute',
             top: 0,
@@ -1804,9 +2018,18 @@ function AIChatSessionDrawer({
                     <Tabs.Tab value='approvals'>
                       <Group gap={6} wrap='nowrap'>
                         <Text size='sm'>{t`Approvals`}</Text>
-                        {pendingApprovalCount > 0 && (
-                          <Badge size='xs' variant='filled' color='red'>
-                            {pendingApprovalCount}
+                        {/* C1: an attention DOT — never a numeric aggregate
+                          (the server count is partial and can be
+                          unavailable). */}
+                        {needsAttention && (
+                          <Badge
+                            size='xs'
+                            variant='filled'
+                            color='red'
+                            aria-label={t`Actions need review`}
+                            data-testid='approvals-attention-indicator'
+                          >
+                            {'\u2022'}
                           </Badge>
                         )}
                       </Group>
@@ -1866,69 +2089,11 @@ function AIChatSessionDrawer({
             onClose={() => setMemoryThreadId(null)}
           />
 
-          {activeTab === 'chat' && (
-            <Box px='md' py='xs' data-voice-surface>
-              <Group
-                gap='xs'
-                mb={6}
-                align='flex-start'
-                data-testid='assistant-toolbar'
-              >
-                {scopeCapable && (
-                  <ActiveScopeBanner
-                    scope={activeScope}
-                    readOnly={
-                      activeThreadShared ||
-                      activeThreadDeletionPending ||
-                      activeScope?.editable === false
-                    }
-                    busy={isApplyingScope}
-                    hint={routingHint ?? undefined}
-                    onSelectFleet={() => {
-                      void setThreadScope({ mode: 'all_authorized_assets' });
-                    }}
-                    onSelectHintMachine={
-                      routingHint
-                        ? () => {
-                            void setThreadScope({
-                              mode: 'explicit_assets',
-                              machine_ids: [routingHint.machineId],
-                              display_label: routingHint.machineName.slice(
-                                0,
-                                120
-                              )
-                            });
-                          }
-                        : undefined
-                    }
-                  />
-                )}
-                <VoiceSessionControl
-                  state={voice.state}
-                  error={voice.error}
-                  muted={voice.muted}
-                  webrtcPreview={voice.session?.webrtc_preview ?? true}
-                  onStart={() => void voice.start()}
-                  onEnd={() => void voice.end()}
-                  onCancel={() => void voice.cancel()}
-                  onToggleMute={voice.toggleMute}
-                  onConfirmTranscript={() => void voice.confirmPending()}
-                  onDiscardTranscript={voice.discardPending}
-                />
-              </Group>
-              <VoiceTranscript
-                partial={voice.partial}
-                listening={voice.state === 'listening'}
-                pendingConfirm={voice.pendingConfirm}
-                holdPrompt={voice.holdPrompt}
-              />
-              {!voiceFullscreen && (
-                <VoiceDecisionCard key={voiceDecision?.decision_id ?? 'none'} />
-              )}
-              {voice.session && !voiceFullscreen && <VoiceExperienceControls />}
-              <Text size='xs' c='dimmed' data-testid='assistant-page-context'>
-                {t`Current page`}: {location.pathname}
-              </Text>
+          {/* C3: the active-session safety strip stays reachable on every
+            drawer tab; on Chat it renders near the composer instead. */}
+          {!voiceFullscreen && voiceActive && activeTab !== 'chat' && (
+            <Box px='md' py='xs'>
+              <VoiceActiveStrip {...voiceControlProps} />
             </Box>
           )}
           {/* Main content area */}
@@ -1937,10 +2102,23 @@ function AIChatSessionDrawer({
             offsetScrollbars
             scrollbarSize={6}
             viewportRef={scrollAreaRef}
+            data-testid='ai-chat-messages'
+            viewportProps={{ ...VIEWPORT_MARKERS }}
           >
             {activeTab === 'chat' && (
               <Box p='md'>
                 <LegacyChatStorageNotice />
+                {/* C1: at most one unobtrusive navigation affordance — it
+                  switches tabs and never acts on anything. */}
+                {needsAttention && (
+                  <Button
+                    size='compact-sm'
+                    variant='light'
+                    mb='xs'
+                    onClick={() => setActiveTab('approvals')}
+                    data-testid='review-in-approvals'
+                  >{t`Review in Approvals`}</Button>
+                )}
                 {hasEarlierMessages && (
                   <Button
                     variant='subtle'
@@ -1984,40 +2162,22 @@ function AIChatSessionDrawer({
                       {t`I can help you search for parts, create orders, and automate tasks in AIMMS.`}
                     </Text>
 
-                    {/* Suggestion chips */}
+                    {/* U1: semantic suggestion buttons (translated label AND
+                      message; machine prompts while a machine hint exists). */}
                     <Group gap='xs' justify='center'>
-                      {suggestions.map((suggestion, index) => (
-                        <Paper
-                          key={index}
-                          px='sm'
-                          py='xs'
+                      {suggestionPrompts.map((suggestion) => (
+                        <Button
+                          key={suggestion.kind}
+                          size='compact-sm'
+                          variant='light'
                           radius='xl'
-                          withBorder
-                          style={{
-                            cursor: isSyncing ? 'not-allowed' : 'pointer',
-                            pointerEvents: isSyncing ? 'none' : undefined,
-                            opacity: isSyncing ? 0.6 : 1,
-                            transition: 'all 0.2s ease',
-                            borderColor: 'var(--mantine-color-gray-3)'
-                          }}
+                          data-testid='ai-chat-suggestion'
                           aria-disabled={isSyncing}
+                          disabled={isSyncing}
                           onClick={() => handleSendMessage(suggestion.message)}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.borderColor =
-                              theme.colors.blue[4];
-                            e.currentTarget.style.backgroundColor =
-                              theme.colors.blue[0];
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.borderColor =
-                              'var(--mantine-color-gray-3)';
-                            e.currentTarget.style.backgroundColor = '';
-                          }}
                         >
-                          <Text size='xs' fw={500}>
-                            {suggestion.label}
-                          </Text>
-                        </Paper>
+                          {suggestion.label}
+                        </Button>
                       ))}
                     </Group>
                   </Box>
@@ -2054,10 +2214,8 @@ function AIChatSessionDrawer({
                   />
                 ))}
 
-                {/* Voice-UX plan A7: durable action proposals replace the
-                  retired approval card on the chat tab (renders nothing
-                  when there is nothing to decide). */}
-                <ChatActionProposalList {...proposals} />
+                {/* C1: action proposals and the review inbox live in
+                  Approvals — never on the transcript tabs. */}
 
                 {/* Error message */}
                 {error && (
@@ -2088,49 +2246,76 @@ function AIChatSessionDrawer({
               <MailboxPanel onDraft={() => setActiveTab('approvals')} />
             )}
             {activeTab === 'approvals' && (
-              <>
+              <Box p='md'>
+                {/* C1: the single focused decision card lives here (and in
+                  the hands-free surface — never two at once). */}
+                {!voiceFullscreen && (
+                  <VoiceDecisionCard
+                    key={voiceDecision?.decision_id ?? 'none'}
+                  />
+                )}
                 <ChatActionProposalList {...proposals} />
-                <ApprovalInboxPanel
-                  statuses={[
-                    'pending',
-                    'in_review',
-                    'changes_requested',
-                    'approved',
-                    'executing'
-                  ]}
-                  emptyText={t`No actions waiting for review`}
-                />
-              </>
+                {/* C1: resolved actions moved here from History behind a
+                  truthful local filter. */}
+                <Text
+                  size='sm'
+                  fw={600}
+                  mb={4}
+                  data-testid='approval-review-inbox-heading'
+                >{t`Review inbox`}</Text>
+                <Group gap='xs' mb='md'>
+                  <Button
+                    size='compact-sm'
+                    variant={approvalView === 'open' ? 'light' : 'subtle'}
+                    onClick={() => setApprovalView('open')}
+                    data-testid='approvals-filter-needs-review'
+                  >{t`Needs review`}</Button>
+                  <Button
+                    size='compact-sm'
+                    variant={approvalView === 'resolved' ? 'light' : 'subtle'}
+                    onClick={() => setApprovalView('resolved')}
+                    data-testid='approvals-filter-resolved'
+                  >{t`Resolved`}</Button>
+                </Group>
+                {approvalView === 'open' ? (
+                  <ApprovalInboxPanel
+                    statuses={[
+                      'pending',
+                      'in_review',
+                      'changes_requested',
+                      'approved',
+                      'executing'
+                    ]}
+                    emptyText={t`No approval requests waiting for review`}
+                  />
+                ) : (
+                  <ApprovalInboxPanel
+                    statuses={[
+                      'succeeded',
+                      'denied',
+                      'failed',
+                      'expired',
+                      'canceled'
+                    ]}
+                    emptyText={t`No resolved approval requests yet`}
+                  />
+                )}
+              </Box>
             )}
 
             {activeTab === 'history' && (
-              <>
-                <ThreadHistoryPanel
-                  threads={threads}
-                  activeThreadId={activeThreadId}
-                  searchThreads={searchThreads}
-                  hasMoreThreads={hasMoreThreads}
-                  loadingMoreThreads={loadingMoreThreads || isSyncing}
-                  onLoadMore={() => void loadMoreThreads()}
-                  onResume={(threadId) => {
-                    switchThread(threadId);
-                    setActiveTab('chat');
-                  }}
-                />
-                <Text size='xs' fw={600} c='dimmed' mt='md'>
-                  {t`Resolved actions`}
-                </Text>
-                <ApprovalInboxPanel
-                  statuses={[
-                    'succeeded',
-                    'denied',
-                    'failed',
-                    'expired',
-                    'canceled'
-                  ]}
-                  emptyText={t`No resolved actions yet`}
-                />
-              </>
+              <ThreadHistoryPanel
+                threads={threads}
+                activeThreadId={activeThreadId}
+                searchThreads={searchThreads}
+                hasMoreThreads={hasMoreThreads}
+                loadingMoreThreads={loadingMoreThreads || isSyncing}
+                onLoadMore={() => void loadMoreThreads()}
+                onResume={(threadId) => {
+                  switchThread(threadId);
+                  setActiveTab('chat');
+                }}
+              />
             )}
           </ScrollArea>
 
@@ -2143,6 +2328,20 @@ function AIChatSessionDrawer({
                 background: 'var(--mantine-color-body)'
               }}
             >
+              {/* U1: explicit jump control while the reader is scrolled
+                away from the live edge. */}
+              {showJumpLatest && (
+                <Button
+                  size='compact-sm'
+                  variant='light'
+                  radius='xl'
+                  mb='xs'
+                  leftSection={<IconArrowDown size={14} />}
+                  onClick={jumpToLatest}
+                  data-testid='ai-chat-jump-latest'
+                >{t`Jump to latest`}</Button>
+              )}
+
               {/* Attached file chips */}
               {attachedFiles.length > 0 && (
                 <Group gap='xs' mb='xs' wrap='wrap'>
@@ -2182,7 +2381,7 @@ function AIChatSessionDrawer({
                 onChange={handleFileSelect}
               />
 
-              {routingHint && (
+              {routingHint && !hintRedundant && (
                 <Group gap='xs' mb={4} data-testid='ai-chat-routing-hint'>
                   <Badge
                     variant='light'
@@ -2203,14 +2402,16 @@ function AIChatSessionDrawer({
                   </Badge>
                 </Group>
               )}
-              {/* S2: the server-confirmed analysis scope, always visible
-                above the composer when the backend advertises the
-                capability. */}
+              {/* C2: the truthful, read-only analysis context — reports
+                server-confirmed scope only, with no menu attached. */}
+              <AnalysisContextLine scope={activeScope} />
 
               <Paper
                 radius='xl'
                 p='xs'
                 withBorder
+                data-testid='ai-chat-composer'
+                data-voice-surface
                 style={{
                   borderColor: 'var(--mantine-color-gray-3)',
                   transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
@@ -2239,6 +2440,7 @@ function AIChatSessionDrawer({
                   </Tooltip>
                   <Textarea
                     ref={inputRef}
+                    aria-label={t`Message`}
                     placeholder={
                       activeThreadShared
                         ? t`Shared conversation — read-only`
@@ -2276,12 +2478,15 @@ function AIChatSessionDrawer({
                     }}
                     style={{ flex: 1 }}
                   />
+                  {/* C3: the mic START action sits inside the composer,
+                    adjacent to text entry — one shared eligibility path. */}
+                  <VoiceComposerControl {...voiceControlProps} />
                   <Group gap={4}>
                     {isLoading ? (
                       <Tooltip label={t`Stop generating`} withArrow>
                         <ActionIcon
                           aria-label='cancel-ai-chat-turn'
-                          size='lg'
+                          size={44}
                           radius='xl'
                           variant='filled'
                           color='red'
@@ -2294,7 +2499,7 @@ function AIChatSessionDrawer({
                       <Tooltip label={t`Send message`} withArrow>
                         <ActionIcon
                           aria-label='send-ai-chat-message'
-                          size='lg'
+                          size={44}
                           radius='xl'
                           variant='filled'
                           color='blue'
@@ -2320,6 +2525,27 @@ function AIChatSessionDrawer({
                   </Group>
                 </Group>
               </Paper>
+
+              {/* C3: transcript review stays visible outside the one-line
+                input row. */}
+              <VoiceTranscript
+                partial={voice.partial}
+                listening={voice.state === 'listening'}
+                pendingConfirm={voice.pendingConfirm}
+                holdPrompt={voice.holdPrompt}
+              />
+              {/* C3: the active-session strip, next to the composer on Chat
+                (other tabs get it below the header). */}
+              {voiceActive && !voiceFullscreen && (
+                <Box mt='xs'>
+                  <VoiceActiveStrip {...voiceControlProps} />
+                </Box>
+              )}
+              {voice.session && !voiceFullscreen && <VoiceExperienceControls />}
+              {/* U1: a friendly page label — never the raw URL path. */}
+              <Text size='xs' c='dimmed' data-testid='assistant-page-context'>
+                {pageContextLabels[pageContextKind(location.pathname)]}
+              </Text>
 
               {/* Footer text */}
               <Text size='xs' c='dimmed' ta='center' mt='xs'>
