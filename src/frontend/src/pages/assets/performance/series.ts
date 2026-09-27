@@ -383,15 +383,21 @@ export function limitState(
   if (!configured) {
     return 'unconfigured';
   }
+  // Strictly outside, matching MachineSignalBinding.classify on the server. A
+  // limit is the last acceptable reading, not the first unacceptable one - the
+  // winding figure of 125 degC is "the highest reading the machine is designed
+  // to produce" - and drawing a tile yellow at exactly the setpoint while the
+  // detector calls the same reading normal is a disagreement an operator has
+  // no way to resolve.
   if (
-    (limits.critical_max !== null && value >= limits.critical_max) ||
-    (limits.critical_min !== null && value <= limits.critical_min)
+    (limits.critical_max !== null && value > limits.critical_max) ||
+    (limits.critical_min !== null && value < limits.critical_min)
   ) {
     return 'critical';
   }
   if (
-    (limits.warn_max !== null && value >= limits.warn_max) ||
-    (limits.warn_min !== null && value <= limits.warn_min) ||
+    (limits.warn_max !== null && value > limits.warn_max) ||
+    (limits.warn_min !== null && value < limits.warn_min) ||
     (limits.normal_max !== null && value > limits.normal_max) ||
     (limits.normal_min !== null && value < limits.normal_min)
   ) {

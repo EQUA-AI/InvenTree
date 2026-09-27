@@ -1,0 +1,76 @@
+{
+ "schema_version": 1,
+ "reviewer": "aniketdev2018",
+ "provenance": "The alarm limits applied to this estate, one entry per parameter family, each carrying the standard it comes from and the assumption it rests on. Recorded as a file rather than a script because activation clears every bound on a binding whose dictionary point changes meaning (assets/activation.py _refresh_binding), so limits must be re-appliable after any re-review - and because a number that decides when an operator is woken up should be reviewable in a diff.",
+ "policy": "A limit is only as good as its citation. Every entry must name a standard, an edition and a clause or table item, and must say what it assumes. An entry whose unit does not match the binding's reviewed unit is refused rather than coerced: a figure derived for degC must never land on a signal measured in something else. See contrib/cosmos/THRESHOLDS.md for the families deliberately left without a limit, and why.",
+ "limits": [
+  {
+   "family": "Stator winding ETDs",
+   "match": "^/dex/PUMP\\d+_PUMP_MOTOR_WINDING_TEMP(ERATURED)?\\d+$",
+   "unit": "degC",
+   "warn_max": 125,
+   "critical_max": 145,
+   "citation": "IS/IEC 60034-1 Table 7 item 1a (85 K rise by embedded detector, thermal class 130(B), 40 degC reference coolant of cl. 6.1); trip from IEEE Std 3004.8-2016 cl. 8.5.2.1 (\"5 degC to 10 degC below the insulation class maximum\", 155 - 10).",
+   "reasoning": "125 degC is the highest reading the machine is designed to produce at rated load, so it is the ceiling rather than an operating band; normal_max is deliberately unset because nothing in this estate establishes where a healthy loaded machine sits - every bay in the recorded window is stopped.",
+   "assumption": "Thermal class 155(F) with rise limited to class 130(B). The nameplate is unconfirmed and is the first question in THRESHOLDS.md. The assumption is not symmetric, which is why it was acceptable to proceed: full class F rise would put the true limits at 150/155, so these warn about 25 K early. Class B insulation would put them near 110/125 and these would warn late.",
+   "exclude": [
+    {
+     "key": "/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED1",
+     "reason": "Pegged at the source over-range marker 3276.7 and ingested as bad quality. The channel reports nothing, so it cannot carry a temperature limit.",
+     "station": "PH_2"
+    },
+    {
+     "key": "/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED4",
+     "reason": "Pegged at the source over-range marker 3276.7 and ingested as bad quality. The channel reports nothing, so it cannot carry a temperature limit.",
+     "station": "PH_2"
+    },
+    {
+     "key": "/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED10",
+     "reason": "Pegged at the source over-range marker 3276.7 and ingested as bad quality. The channel reports nothing, so it cannot carry a temperature limit.",
+     "station": "PH_2"
+    },
+    {
+     "key": "/dex/PUMP6_PUMP_MOTOR_WINDING_TEMPERATURED1",
+     "reason": "Pegged at the source over-range marker 3276.7 and ingested as bad quality. The channel reports nothing, so it cannot carry a temperature limit.",
+     "station": "PH_2"
+    },
+    {
+     "key": "/dex/PUMP9_PUMP_MOTOR_WINDING_TEMPERATURED6",
+     "reason": "Pegged at the source over-range marker 3276.7 and ingested as bad quality. The channel reports nothing, so it cannot carry a temperature limit.",
+     "station": "PH_2"
+    },
+    {
+     "key": "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMPERATURED2",
+     "reason": "Reads a physically impossible negative on a plant standing in a warm hall; the channel is faulty, not cold. Observed -157.0 degC.",
+     "station": "PH_2"
+    },
+    {
+     "key": "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMPERATURED10",
+     "reason": "Reads a physically impossible negative on a plant standing in a warm hall; the channel is faulty, not cold. Observed -184.7 degC.",
+     "station": "PH_2"
+    },
+    {
+     "key": "/dex/PUMP7_PUMP_MOTOR_WINDING_TEMPERATURED10",
+     "reason": "Reads a physically impossible negative on a plant standing in a warm hall; the channel is faulty, not cold. Observed -65.0 degC.",
+     "station": "PH_2"
+    },
+    {
+     "key": "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMPERATURED1",
+     "reason": "Already at or above the setpoint with every bay stopped, so arming the limit would raise a permanent alarm about a stationary machine. Observed 135.3 degC.",
+     "station": "PH_2"
+    },
+    {
+     "key": "/dex/PUMP6_PUMP_MOTOR_WINDING_TEMPERATURED3",
+     "reason": "Already at or above the setpoint with every bay stopped, so arming the limit would raise a permanent alarm about a stationary machine. Observed 128.3 degC.",
+     "station": "PH_2"
+    },
+    {
+     "key": "/dex/PUMP6_PUMP_MOTOR_WINDING_TEMPERATURED2",
+     "reason": "Breaches in the sampled window even though its newest reading looks ordinary; the original probe of the recorded window excluded it on that basis. Observed 30.2 degC now.",
+     "station": "PH_2"
+    }
+   ],
+   "exclusion_note": "All eleven are at Millbrook (Saraswati). THRESHOLDS.md records that applying this row to all 318 channels left 41 of 7,573 sampled readings breaching - 12 above 145 and 29 between 125 and 145 - on a plant whose every bay is stopped, and that six Millbrook channels produced every one of them. These are the channels whose own data cannot carry the limit. Removing an entry from this list arms that channel; do it only with a reading that justifies it."
+  }
+ ]
+}

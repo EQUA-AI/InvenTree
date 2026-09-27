@@ -143,3 +143,31 @@ test('dragging across a chart offers a zoom, and taking it narrows the window', 
   // Zooming pauses live: a fixed span cannot follow the clock.
   await expect(page.getByText('Paused', { exact: true })).toBeVisible();
 });
+
+test('a reading exactly on its limit is within limits, as the server classifies it', async ({
+  page
+}) => {
+  // MachineSignalBinding.classify uses strict inequalities: warn_max is the
+  // last acceptable reading, not the first unacceptable one - the winding
+  // figure of 125 degC is "the highest reading the machine is designed to
+  // produce". The page used `>=` on the same bounds, so a sensor sitting
+  // exactly on its setpoint was counted over a limit here while the detector
+  // called it normal, a disagreement an operator cannot resolve on screen.
+  // Ten of the eleven windings count: the eleventh is pegged and bad quality.
+  await mount(page, {
+    signalOverrides: { '/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED1': 125 }
+  });
+
+  const winding = page.locator('[data-section="Motor winding temperature"]');
+  await expect(winding.getByText('10 within limits')).toBeVisible();
+  await expect(winding.getByText(/over a limit/)).toHaveCount(0);
+});
+
+test('a reading past its limit is counted over it', async ({ page }) => {
+  await mount(page, {
+    signalOverrides: { '/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED1': 125.1 }
+  });
+
+  const winding = page.locator('[data-section="Motor winding temperature"]');
+  await expect(winding.getByText('1 of 10 over a limit')).toBeVisible();
+});
