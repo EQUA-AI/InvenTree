@@ -45,7 +45,7 @@ msgid "Error Details"
 msgstr "Error Details"
 
 #: lib/components/CopyButton.tsx:49
-#: src/components/nav/AIChatDrawer.tsx:784
+#: src/components/nav/AIChatDrawer.tsx:809
 msgid "Copy"
 msgstr "Copy"
 
@@ -151,7 +151,7 @@ msgstr "Fail"
 #: src/components/tables/Filter.tsx:41
 #: src/components/tables/Filter.tsx:77
 #: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:775
-#: src/pages/assets/locations/LocationWorkspace.tsx:393
+#: src/pages/assets/locations/LocationWorkspace.tsx:277
 #: src/tables/assets/AssetMachineTable.tsx:49
 msgid "Yes"
 msgstr "Yes"
@@ -160,7 +160,7 @@ msgstr "Yes"
 #: src/components/tables/Filter.tsx:41
 #: src/components/tables/Filter.tsx:78
 #: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:775
-#: src/pages/assets/locations/LocationWorkspace.tsx:393
+#: src/pages/assets/locations/LocationWorkspace.tsx:277
 #: src/tables/assets/AssetMachineTable.tsx:49
 msgid "No"
 msgstr "No"
@@ -692,7 +692,7 @@ msgstr "Work Orders"
 #: src/components/dashboard/widgets/MaintenanceWidget.tsx:330
 #: src/components/riskradar/RiskFindingDetailModal.tsx:280
 #: src/components/tasks/TaskGantt.tsx:165
-#: src/pages/assets/locations/LocationWorkspace.tsx:331
+#: src/pages/assets/locations/LocationWorkspace.tsx:215
 #: src/pages/maintenance/MaintenanceBoard.tsx:1657
 #: src/pages/maintenance/MaintenanceBoard.tsx:1874
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:380
@@ -706,8 +706,8 @@ msgstr "Machine"
 #: src/defaults/links.tsx:59
 #: src/pages/Index/Settings/AdminCenter/Index.tsx:276
 #: src/pages/Index/Settings/AdminCenter/MachineManagementPanel.tsx:52
-#: src/pages/assets/MachineDetail.tsx:190
-#: src/pages/assets/MachineIndex.tsx:45
+#: src/pages/assets/MachineDetail.tsx:206
+#: src/pages/assets/MachineIndex.tsx:49
 #: src/tables/machine/MachineTypeTable.tsx:326
 msgid "Machines"
 msgstr "Machines"
@@ -849,7 +849,7 @@ msgid "Process completed successfully"
 msgstr "Process completed successfully"
 
 #: src/components/ai/ApprovalDecisionControls.tsx:20
-#: src/components/ai/ApprovalInboxPanel.tsx:188
+#: src/components/ai/ApprovalInboxPanel.tsx:193
 msgid "Enter a reason of up to 400 characters."
 msgstr "Enter a reason of up to 400 characters."
 
@@ -868,119 +868,131 @@ msgid "Skip request"
 msgstr "Skip request"
 
 #: src/components/ai/ApprovalDecisionControls.tsx:65
-#: src/components/ai/ApprovalInboxPanel.tsx:305
+#: src/components/ai/ApprovalInboxPanel.tsx:310
 msgid "I have reviewed every required section of this request."
 msgstr "I have reviewed every required section of this request."
 
 #: src/components/ai/ApprovalDecisionControls.tsx:70
-#: src/components/ai/ApprovalInboxPanel.tsx:310
+#: src/components/ai/ApprovalInboxPanel.tsx:315
 msgid "Confirm reviewed"
 msgstr "Confirm reviewed"
 
 #: src/components/ai/ApprovalDecisionControls.tsx:76
-#: src/components/ai/ApprovalInboxPanel.tsx:321
+#: src/components/ai/ApprovalInboxPanel.tsx:326
 msgid "Prepare approval"
 msgstr "Prepare approval"
 
 #: src/components/ai/ApprovalDecisionControls.tsx:78
-#: src/components/ai/ApprovalInboxPanel.tsx:312
+#: src/components/ai/ApprovalInboxPanel.tsx:317
 msgid "Reason or requested changes"
 msgstr "Reason or requested changes"
 
 #: src/components/ai/ApprovalDecisionControls.tsx:86
-#: src/components/ai/ApprovalInboxPanel.tsx:326
+#: src/components/ai/ApprovalInboxPanel.tsx:331
 msgid "Prepare rejection"
 msgstr "Prepare rejection"
 
 #: src/components/ai/ApprovalDecisionControls.tsx:91
-#: src/components/ai/ApprovalInboxPanel.tsx:333
+#: src/components/ai/ApprovalInboxPanel.tsx:338
 msgid "Request changes"
 msgstr "Request changes"
 
 #: src/components/ai/ApprovalDecisionControls.tsx:96
-#: src/components/ai/ApprovalInboxPanel.tsx:341
+#: src/components/ai/ApprovalInboxPanel.tsx:346
 msgid "Prepare cancellation"
 msgstr "Prepare cancellation"
 
-#: src/components/ai/ApprovalInboxPanel.tsx:100
-#: src/components/nav/AIChatDrawer.tsx:1806
+#: src/components/ai/ApprovalInboxPanel.tsx:105
+#: src/components/nav/AIChatDrawer.tsx:2020
 #: src/pages/repair/RepairPacketDetail.tsx:256
 msgid "Approvals"
 msgstr "Approvals"
 
-#: src/components/ai/ApprovalInboxPanel.tsx:105
+#: src/components/ai/ApprovalInboxPanel.tsx:110
 #: src/pages/assets/locations/LocationDialogs.tsx:353
 msgid "Back"
 msgstr "Back"
 
-#: src/components/ai/ApprovalInboxPanel.tsx:113
+#: src/components/ai/ApprovalInboxPanel.tsx:118
 #: src/components/riskradar/RiskRadarPanel.tsx:356
 #: src/pages/Memory/MemoryPage.tsx:431
 #: src/pages/assets/health/MachineHealthPanel.tsx:190
-#: src/pages/assets/locations/LocationWorkspace.tsx:500
+#: src/pages/assets/locations/LocationWorkspace.tsx:528
 #: src/pages/part/pricing/PricingOverviewPanel.tsx:306
 #: src/pages/repair/components/safety/SafetyPanel.tsx:110
 msgid "Refresh"
 msgstr "Refresh"
 
-#: src/components/ai/ApprovalInboxPanel.tsx:116
+#: src/components/ai/ApprovalInboxPanel.tsx:121
 msgid "This approval is unavailable or your access changed. Refresh the inbox."
 msgstr "This approval is unavailable or your access changed. Refresh the inbox."
 
-#: src/components/ai/ApprovalInboxPanel.tsx:119
+#: src/components/ai/ApprovalInboxPanel.tsx:124
 #: src/components/ai/MailboxApprovalReview.tsx:113
 msgid "Loading review…"
 msgstr "Loading review…"
 
-#: src/components/ai/ApprovalInboxPanel.tsx:143
+#: src/components/ai/ApprovalInboxPanel.tsx:148
 msgid "Focused in the shared decision card"
 msgstr "Focused in the shared decision card"
 
 #: src/components/ai/ApprovalInboxPanel.tsx:151
-msgid "This request is focused in the shared decision card above. Use its controls so voice and touch keep the same confirmation."
-msgstr "This request is focused in the shared decision card above. Use its controls so voice and touch keep the same confirmation."
+#~ msgid "This request is focused in the shared decision card above. Use its controls so voice and touch keep the same confirmation."
+#~ msgstr "This request is focused in the shared decision card above. Use its controls so voice and touch keep the same confirmation."
 
-#: src/components/ai/ApprovalInboxPanel.tsx:261
+#: src/components/ai/ApprovalInboxPanel.tsx:156
+msgid "This request is focused in the shared decision card. Use its controls so voice and touch keep the same confirmation."
+msgstr "This request is focused in the shared decision card. Use its controls so voice and touch keep the same confirmation."
+
+#: src/components/ai/ApprovalInboxPanel.tsx:266
 msgid "The action is recorded as succeeded."
 msgstr "The action is recorded as succeeded."
 
-#: src/components/ai/ApprovalInboxPanel.tsx:262
+#: src/components/ai/ApprovalInboxPanel.tsx:267
 msgid "Current recorded status:"
 msgstr "Current recorded status:"
 
-#: src/components/ai/ApprovalInboxPanel.tsx:274
+#: src/components/ai/ApprovalInboxPanel.tsx:279
 msgid "Do not retry an unverified action. Refresh to check its recorded result."
 msgstr "Do not retry an unverified action. Refresh to check its recorded result."
 
-#: src/components/ai/ApprovalInboxPanel.tsx:290
+#: src/components/ai/ApprovalInboxPanel.tsx:295
 msgid "The decision was not verified. Refresh and review the current request before trying again."
 msgstr "The decision was not verified. Refresh and review the current request before trying again."
 
-#: src/components/ai/ApprovalInboxPanel.tsx:298
+#: src/components/ai/ApprovalInboxPanel.tsx:303
 msgid "Open for review"
 msgstr "Open for review"
 
-#: src/components/ai/ApprovalInboxPanel.tsx:350
+#: src/components/ai/ApprovalInboxPanel.tsx:355
 #: src/components/ai/VoiceDecisionCard.tsx:146
 msgid "Type the required confirmation phrase"
 msgstr "Type the required confirmation phrase"
 
-#: src/components/ai/ApprovalInboxPanel.tsx:359
+#: src/components/ai/ApprovalInboxPanel.tsx:364
 msgid "Confirm decision"
 msgstr "Confirm decision"
 
-#: src/components/ai/ApprovalInboxPanel.tsx:363
+#: src/components/ai/ApprovalInboxPanel.tsx:368
 #: src/components/ai/VoiceDecisionCard.tsx:193
 msgid "Set aside"
 msgstr "Set aside"
 
 #: src/components/ai/ChatActionProposals.tsx:233
-msgid "Review this action in the shared voice decision card above."
-msgstr "Review this action in the shared voice decision card above."
+msgid "This action is focused in the shared decision card. Review it there so voice and touch keep the same confirmation."
+msgstr "This action is focused in the shared decision card. Review it there so voice and touch keep the same confirmation."
+
+#: src/components/ai/ChatActionProposals.tsx:233
+#~ msgid "Review this action in the shared voice decision card above."
+#~ msgstr "Review this action in the shared voice decision card above."
 
 #: src/components/ai/ChatActionProposals.tsx:350
 msgid "Loading action proposals"
 msgstr "Loading action proposals"
+
+#: src/components/ai/ChatActionProposals.tsx:358
+msgid "Recent action proposals"
+msgstr "Recent action proposals"
 
 #: src/components/ai/MailboxApprovalReview.tsx:90
 msgid "Canceled by reviewer"
@@ -1093,6 +1105,7 @@ msgid "From"
 msgstr "From"
 
 #: src/components/ai/MailboxPanel.tsx:117
+#: src/components/nav/AIChatDrawer.tsx:2443
 #: src/tables/notifications/NotificationTable.tsx:41
 #: src/tables/plugin/PluginErrorTable.tsx:39
 #: src/tables/settings/ErrorTable.tsx:50
@@ -1292,7 +1305,7 @@ msgstr "Add agent mailbox"
 #: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:670
 #: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:741
 #: src/pages/Index/Settings/AdminCenter/UnitManagementPanel.tsx:19
-#: src/pages/assets/MachineDetail.tsx:60
+#: src/pages/assets/MachineDetail.tsx:75
 #: src/pages/assets/locations/LocationDialogs.tsx:157
 #: src/pages/maintenance/MaintenanceBoard.tsx:2097
 #: src/pages/part/PartCategoryDetailsPanel.tsx:22
@@ -1523,18 +1536,22 @@ msgid "Start voice"
 msgstr "Start voice"
 
 #: src/components/ai/VoiceSessionControl.tsx:34
+#: src/components/ai/voice/VoiceComposerControl.tsx:85
 msgid "Voice is unavailable. An administrator needs to check AI startup."
 msgstr "Voice is unavailable. An administrator needs to check AI startup."
 
 #: src/components/ai/VoiceSessionControl.tsx:35
+#: src/components/ai/voice/VoiceComposerControl.tsx:86
 msgid "Voice is temporarily unavailable while AI starts or recovers. Please wait."
 msgstr "Voice is temporarily unavailable while AI starts or recovers. Please wait."
 
 #: src/components/ai/VoiceSessionControl.tsx:41
+#: src/components/ai/voice/VoiceComposerControl.tsx:131
 msgid "Voice unavailable"
 msgstr "Voice unavailable"
 
 #: src/components/ai/VoiceSessionControl.tsx:42
+#: src/components/ai/voice/VoiceComposerControl.tsx:132
 msgid "Voice ready"
 msgstr "Voice ready"
 
@@ -1544,83 +1561,107 @@ msgstr "Voice ready"
 #~ msgstr "Voice"
 
 #: src/components/ai/VoiceSessionControl.tsx:43
+#: src/components/ai/voice/VoiceComposerControl.tsx:133
 msgid "Connecting…"
 msgstr "Connecting…"
 
 #: src/components/ai/VoiceSessionControl.tsx:44
+#: src/components/ai/voice/VoiceComposerControl.tsx:134
 msgid "Listening"
 msgstr "Listening"
 
 #: src/components/ai/VoiceSessionControl.tsx:45
 #: src/components/ai/VoiceSessionControl.tsx:96
+#: src/components/ai/voice/VoiceComposerControl.tsx:135
+#: src/components/ai/voice/VoiceComposerControl.tsx:180
 msgid "Confirm transcript"
 msgstr "Confirm transcript"
 
 #: src/components/ai/VoiceSessionControl.tsx:46
+#: src/components/ai/voice/VoiceComposerControl.tsx:136
 msgid "Reviewing…"
 msgstr "Reviewing…"
 
 #: src/components/ai/VoiceSessionControl.tsx:47
+#: src/components/ai/voice/VoiceComposerControl.tsx:137
 msgid "Speaking"
 msgstr "Speaking"
 
 #: src/components/ai/VoiceSessionControl.tsx:48
+#: src/components/ai/voice/VoiceComposerControl.tsx:138
 msgid "Voice error"
 msgstr "Voice error"
 
 #: src/components/ai/VoiceSessionControl.tsx:58
+#: src/components/ai/voice/VoiceComposerControl.tsx:69
+#: src/components/ai/voice/VoiceComposerControl.tsx:77
+#: src/components/ai/voice/VoiceComposerControl.tsx:95
+#: src/components/ai/voice/VoiceComposerControl.tsx:107
 msgid "Start voice session"
 msgstr "Start voice session"
 
 #: src/components/ai/VoiceSessionControl.tsx:66
+#: src/components/ai/voice/VoiceComposerControl.tsx:150
 msgid "Microphone listening"
 msgstr "Microphone listening"
 
 #: src/components/ai/VoiceSessionControl.tsx:68
+#: src/components/ai/voice/VoiceComposerControl.tsx:152
 msgid "Microphone muted"
 msgstr "Microphone muted"
 
 #: src/components/ai/VoiceSessionControl.tsx:70
+#: src/components/ai/voice/VoiceComposerControl.tsx:154
 msgid "Microphone waiting for push to talk"
 msgstr "Microphone waiting for push to talk"
 
 #: src/components/ai/VoiceSessionControl.tsx:71
+#: src/components/ai/voice/VoiceComposerControl.tsx:155
 msgid "Microphone paused"
 msgstr "Microphone paused"
 
 #: src/components/ai/VoiceSessionControl.tsx:75
+#: src/components/ai/voice/VoiceComposerControl.tsx:159
 msgid "Audio playing"
 msgstr "Audio playing"
 
 #: src/components/ai/VoiceSessionControl.tsx:77
+#: src/components/ai/voice/VoiceComposerControl.tsx:161
 msgid "Waiting for audio"
 msgstr "Waiting for audio"
 
 #: src/components/ai/VoiceSessionControl.tsx:78
+#: src/components/ai/voice/VoiceComposerControl.tsx:162
 msgid "Audio stopped"
 msgstr "Audio stopped"
 
 #: src/components/ai/VoiceSessionControl.tsx:85
+#: src/components/ai/voice/VoiceComposerControl.tsx:169
 msgid "Unmute microphone"
 msgstr "Unmute microphone"
 
 #: src/components/ai/VoiceSessionControl.tsx:85
+#: src/components/ai/voice/VoiceComposerControl.tsx:169
 msgid "Mute microphone"
 msgstr "Mute microphone"
 
 #: src/components/ai/VoiceSessionControl.tsx:87
+#: src/components/ai/voice/VoiceComposerControl.tsx:171
 msgid "Unmute"
 msgstr "Unmute"
 
 #: src/components/ai/VoiceSessionControl.tsx:87
+#: src/components/ai/voice/VoiceComposerControl.tsx:171
 msgid "Mute"
 msgstr "Mute"
 
 #: src/components/ai/VoiceSessionControl.tsx:102
+#: src/components/ai/voice/VoiceComposerControl.tsx:186
 msgid "Discard transcript"
 msgstr "Discard transcript"
 
 #: src/components/ai/VoiceSessionControl.tsx:110
+#: src/components/ai/voice/VoiceComposerControl.tsx:194
 msgid "Stop speaking"
 msgstr "Stop speaking"
 
@@ -1629,6 +1670,7 @@ msgid "Stop voice"
 msgstr "Stop voice"
 
 #: src/components/ai/VoiceSessionControl.tsx:121
+#: src/components/ai/voice/VoiceComposerControl.tsx:202
 msgid "Preview"
 msgstr "Preview"
 
@@ -1674,6 +1716,31 @@ msgstr "Listening — release to finish"
 #: src/components/ai/voice/PushToTalkButton.tsx:66
 msgid "Hold to talk"
 msgstr "Hold to talk"
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:40
+msgid "Voice cannot start in a read-only conversation."
+msgstr "Voice cannot start in a read-only conversation."
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:42
+msgid "Voice cannot start while this conversation is being deleted."
+msgstr "Voice cannot start while this conversation is being deleted."
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:44
+msgid "Voice cannot start while the analysis scope is being applied."
+msgstr "Voice cannot start while the analysis scope is being applied."
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:46
+msgid "Voice cannot start while a message is being processed."
+msgstr "Voice cannot start while a message is being processed."
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:48
+msgid "Voice cannot start while conversations are syncing."
+msgstr "Voice cannot start while conversations are syncing."
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:201
+#: src/components/ai/voice/VoiceGlobalIndicator.tsx:100
+msgid "End voice"
+msgstr "End voice"
 
 #: src/components/ai/voice/VoiceConsentDialog.tsx:27
 msgid "Starting voice sends your speech to the speech service for live transcription. AIMMS keeps only the text transcript, stored with your chat history; it never keeps a recording of your voice."
@@ -1922,10 +1989,6 @@ msgstr "Voice paused"
 msgid " — confirmation waiting"
 msgstr " — confirmation waiting"
 
-#: src/components/ai/voice/VoiceGlobalIndicator.tsx:100
-msgid "End voice"
-msgstr "End voice"
-
 #: src/components/ai/voice/VoiceGlobalIndicator.tsx:103
 #~ msgid "Open hands-free voice"
 #~ msgstr "Open hands-free voice"
@@ -2001,36 +2064,51 @@ msgstr "This only requests a read-back. Confirm the shared decision separately."
 
 #: src/components/aichat/ActiveScopeBanner.tsx:21
 #: src/components/aichat/ActiveScopeBanner.tsx:34
-msgid "Scope unconfirmed"
-msgstr "Scope unconfirmed"
+#~ msgid "Scope unconfirmed"
+#~ msgstr "Scope unconfirmed"
+
+#: src/components/aichat/ActiveScopeBanner.tsx:24
+msgid "Analysis context not confirmed"
+msgstr "Analysis context not confirmed"
 
 #: src/components/aichat/ActiveScopeBanner.tsx:24
 #: src/components/aichat/ActiveScopeBanner.tsx:88
-msgid "Authorized fleet"
-msgstr "Authorized fleet"
+#~ msgid "Authorized fleet"
+#~ msgstr "Authorized fleet"
+
+#: src/components/aichat/ActiveScopeBanner.tsx:26
+msgid "Analyzing: authorized machines"
+msgstr "Analyzing: authorized machines"
+
+#. placeholder {0}: context.label
+#: src/components/aichat/ActiveScopeBanner.tsx:28
+msgid "Analyzing: {0}"
+msgstr "Analyzing: {0}"
+
+#: src/components/aichat/ActiveScopeBanner.tsx:30
+msgid "Analyzing: 1 selected asset"
+msgstr "Analyzing: 1 selected asset"
+
+#. placeholder {0}: context.machineCount ?? 0
+#: src/components/aichat/ActiveScopeBanner.tsx:31
+msgid "Analyzing: {0} selected assets"
+msgstr "Analyzing: {0} selected assets"
 
 #: src/components/aichat/ActiveScopeBanner.tsx:31
-msgid "1 selected asset"
-msgstr "1 selected asset"
+#~ msgid "1 selected asset"
+#~ msgstr "1 selected asset"
 
 #: src/components/aichat/ActiveScopeBanner.tsx:31
-msgid "{count} selected assets"
-msgstr "{count} selected assets"
-
-#: src/components/aichat/ActiveScopeBanner.tsx:58
-#: src/components/aichat/evidenceFormat.ts:109
-#: src/pages/repair/components/InvestigationPanel.tsx:207
-msgid "Scope"
-msgstr "Scope"
+#~ msgid "{count} selected assets"
+#~ msgstr "{count} selected assets"
 
 #: src/components/aichat/ActiveScopeBanner.tsx:74
-msgid "Change the analysis scope"
-msgstr "Change the analysis scope"
+#~ msgid "Change the analysis scope"
+#~ msgstr "Change the analysis scope"
 
-#. placeholder {0}: hint.machineName
 #: src/components/aichat/ActiveScopeBanner.tsx:95
-msgid "This machine: {0}"
-msgstr "This machine: {0}"
+#~ msgid "This machine: {0}"
+#~ msgstr "This machine: {0}"
 
 #. placeholder {0}: locator.page
 #: src/components/aichat/CitationList.tsx:48
@@ -2291,7 +2369,7 @@ msgstr "Closing keeps deletions already made but discards this retry selection. 
 #: src/components/importer/ImporterDrawer.tsx:119
 #: src/components/modals/AboutInvenTreeModal.tsx:206
 #: src/components/modals/ServerInfoModal.tsx:134
-#: src/components/nav/AIChatDrawer.tsx:1771
+#: src/components/nav/AIChatDrawer.tsx:1985
 #: src/components/wizards/ImportPartWizard.tsx:773
 #: src/forms/BomForms.tsx:150
 #: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:687
@@ -2312,7 +2390,7 @@ msgid "Retry cleanup"
 msgstr "Retry cleanup"
 
 #: src/components/aichat/DeleteOwnedThreadsModal.tsx:121
-#: src/components/nav/AIChatDrawer.tsx:440
+#: src/components/nav/AIChatDrawer.tsx:471
 msgid "Delete my saved conversations"
 msgstr "Delete my saved conversations"
 
@@ -2325,7 +2403,7 @@ msgid "The export could not finish. No download was started. Please try again."
 msgstr "The export could not finish. No download was started. Please try again."
 
 #: src/components/aichat/ExportThreadsModal.tsx:58
-#: src/components/nav/AIChatDrawer.tsx:433
+#: src/components/nav/AIChatDrawer.tsx:464
 msgid "Export my saved conversations"
 msgstr "Export my saved conversations"
 
@@ -2645,7 +2723,7 @@ msgid "{forgotten} forgotten"
 msgstr "{forgotten} forgotten"
 
 #: src/components/aichat/ThreadMemoryModal.tsx:271
-#: src/components/nav/AIChatDrawer.tsx:470
+#: src/components/nav/AIChatDrawer.tsx:523
 msgid "What this chat remembers"
 msgstr "What this chat remembers"
 
@@ -2715,6 +2793,11 @@ msgstr "rev {0}"
 #: src/components/aichat/evidenceFormat.ts:91
 msgid "uncontrolled attachment"
 msgstr "uncontrolled attachment"
+
+#: src/components/aichat/evidenceFormat.ts:109
+#: src/pages/repair/components/InvestigationPanel.tsx:207
+msgid "Scope"
+msgstr "Scope"
 
 #: src/components/aichat/evidenceFormat.ts:117
 #: src/components/dashboard/widgets/MaintenanceWidget.tsx:523
@@ -3103,7 +3186,9 @@ msgstr "Unable to load this information. Please retry."
 #: src/components/common/ReadErrorNotice.tsx:35
 #: src/components/dashboard/widgets/MaintenanceWidget.tsx:422
 #: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:104
-#: src/pages/assets/locations/LocationWorkspace.tsx:306
+#: src/pages/assets/locations/LocationBrowser.tsx:541
+#: src/pages/assets/locations/LocationWorkspace.tsx:190
+#: src/pages/assets/locations/LocationWorkspace.tsx:391
 msgid "Retry"
 msgstr "Retry"
 
@@ -3676,7 +3761,7 @@ msgstr "Unavailable"
 
 #: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:156
 #: src/pages/assets/health/SignalTable.tsx:117
-#: src/pages/assets/locations/LocationWorkspace.tsx:589
+#: src/pages/assets/locations/LocationWorkspace.tsx:646
 msgid "Not configured"
 msgstr "Not configured"
 
@@ -3921,6 +4006,7 @@ msgid "Calibration"
 msgstr "Calibration"
 
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:120
+#: src/pages/assets/locations/LocationBrowser.tsx:92
 #: src/pages/assets/locations/LocationDialogs.tsx:116
 #: src/pages/repair/components/InvestigationPanel.tsx:33
 #: src/pages/repair/components/safety/safetyApi.ts:87
@@ -3978,10 +4064,9 @@ msgid "Upcoming"
 msgstr "Upcoming"
 
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:129
-#: src/pages/assets/MachineIndex.tsx:36
+#: src/pages/assets/MachineIndex.tsx:40
 #: src/pages/assets/locations/LocationDialogs.tsx:308
-#: src/pages/assets/locations/LocationWorkspace.tsx:380
-#: src/pages/assets/locations/MachineLocationCard.tsx:60
+#: src/pages/assets/locations/LocationWorkspace.tsx:264
 msgid "Unassigned"
 msgstr "Unassigned"
 
@@ -3998,7 +4083,7 @@ msgid "Unfinished"
 msgstr "Unfinished"
 
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:134
-#: src/components/nav/AIChatDrawer.tsx:135
+#: src/components/nav/AIChatDrawer.tsx:160
 #: src/pages/assets/health/AnomalyList.tsx:165
 #: src/pages/assets/health/common.tsx:67
 #: src/pages/assets/health/common.tsx:133
@@ -4908,10 +4993,12 @@ msgid "Loading..."
 msgstr "Loading..."
 
 #: src/components/forms/fields/TreeField.tsx:440
+#: src/pages/assets/locations/LocationBrowser.tsx:414
 msgid "Collapse"
 msgstr "Collapse"
 
 #: src/components/forms/fields/TreeField.tsx:440
+#: src/pages/assets/locations/LocationBrowser.tsx:414
 msgid "Expand"
 msgstr "Expand"
 
@@ -5534,56 +5621,56 @@ msgstr "Email Settings"
 msgid "Email settings not configured."
 msgstr "Email settings not configured."
 
-#: src/components/nav/AIChatDrawer.tsx:144
-#: src/components/nav/AIChatDrawer.tsx:373
+#: src/components/nav/AIChatDrawer.tsx:169
+#: src/components/nav/AIChatDrawer.tsx:398
 msgid "Just now"
 msgstr "Just now"
 
-#: src/components/nav/AIChatDrawer.tsx:145
-#: src/components/nav/AIChatDrawer.tsx:374
+#: src/components/nav/AIChatDrawer.tsx:170
+#: src/components/nav/AIChatDrawer.tsx:399
 msgid "{minutes}m ago"
 msgstr "{minutes}m ago"
 
-#: src/components/nav/AIChatDrawer.tsx:146
-#: src/components/nav/AIChatDrawer.tsx:375
+#: src/components/nav/AIChatDrawer.tsx:171
+#: src/components/nav/AIChatDrawer.tsx:400
 msgid "{hours}h ago"
 msgstr "{hours}h ago"
 
-#: src/components/nav/AIChatDrawer.tsx:147
-#: src/components/nav/AIChatDrawer.tsx:376
+#: src/components/nav/AIChatDrawer.tsx:172
+#: src/components/nav/AIChatDrawer.tsx:401
 msgid "{days}d ago"
 msgstr "{days}d ago"
 
-#: src/components/nav/AIChatDrawer.tsx:251
+#: src/components/nav/AIChatDrawer.tsx:276
 msgid "Search conversations..."
 msgstr "Search conversations..."
-
-#: src/components/nav/AIChatDrawer.tsx:259
-msgid "Conversation search failed. Edit the search or retry loading more results."
-msgstr "Conversation search failed. Edit the search or retry loading more results."
-
-#: src/components/nav/AIChatDrawer.tsx:264
-msgid "No conversations match"
-msgstr "No conversations match"
-
-#: src/components/nav/AIChatDrawer.tsx:265
-msgid "No conversations yet"
-msgstr "No conversations yet"
 
 #: src/components/nav/AIChatDrawer.tsx:281
 #~ msgid "Failed to load approvals"
 #~ msgstr "Failed to load approvals"
 
-#: src/components/nav/AIChatDrawer.tsx:287
-#: src/components/nav/AIChatDrawer.tsx:1803
-msgid "Chat"
-msgstr "Chat"
+#: src/components/nav/AIChatDrawer.tsx:284
+msgid "Conversation search failed. Edit the search or retry loading more results."
+msgstr "Conversation search failed. Edit the search or retry loading more results."
+
+#: src/components/nav/AIChatDrawer.tsx:289
+msgid "No conversations match"
+msgstr "No conversations match"
+
+#: src/components/nav/AIChatDrawer.tsx:290
+msgid "No conversations yet"
+msgstr "No conversations yet"
 
 #: src/components/nav/AIChatDrawer.tsx:295
 #~ msgid "Failed to load approval detail"
 #~ msgstr "Failed to load approval detail"
 
-#: src/components/nav/AIChatDrawer.tsx:306
+#: src/components/nav/AIChatDrawer.tsx:312
+#: src/components/nav/AIChatDrawer.tsx:2017
+msgid "Chat"
+msgstr "Chat"
+
+#: src/components/nav/AIChatDrawer.tsx:331
 msgid "Load more conversations"
 msgstr "Load more conversations"
 
@@ -5604,129 +5691,129 @@ msgstr "Load more conversations"
 #~ msgid "(complex value)"
 #~ msgstr "(complex value)"
 
-#: src/components/nav/AIChatDrawer.tsx:401
-msgid "New Chat"
-msgstr "New Chat"
-
-#: src/components/nav/AIChatDrawer.tsx:411
-msgid "Conversations"
-msgstr "Conversations"
-
-#: src/components/nav/AIChatDrawer.tsx:416
-#: src/pages/Memory/MemoryPage.tsx:321
-msgid "What AIMMS remembers"
-msgstr "What AIMMS remembers"
-
 #: src/components/nav/AIChatDrawer.tsx:424
 #~ msgid "Developer details"
 #~ msgstr "Developer details"
 
-#: src/components/nav/AIChatDrawer.tsx:425
-#: src/components/nav/AIChatDrawer.tsx:1758
+#: src/components/nav/AIChatDrawer.tsx:432
+msgid "New Chat"
+msgstr "New Chat"
+
+#: src/components/nav/AIChatDrawer.tsx:442
+msgid "Conversations"
+msgstr "Conversations"
+
+#: src/components/nav/AIChatDrawer.tsx:447
+#: src/pages/Memory/MemoryPage.tsx:321
+msgid "What AIMMS remembers"
+msgstr "What AIMMS remembers"
+
+#: src/components/nav/AIChatDrawer.tsx:456
+#: src/components/nav/AIChatDrawer.tsx:1972
 msgid "New conversation"
 msgstr "New conversation"
 
-#: src/components/nav/AIChatDrawer.tsx:539
+#: src/components/nav/AIChatDrawer.tsx:564
 msgid "Shared with me"
 msgstr "Shared with me"
 
-#: src/components/nav/AIChatDrawer.tsx:565
+#: src/components/nav/AIChatDrawer.tsx:590
 msgid "Read-only"
 msgstr "Read-only"
 
-#: src/components/nav/AIChatDrawer.tsx:576
+#: src/components/nav/AIChatDrawer.tsx:601
 msgid "No previous conversations"
 msgstr "No previous conversations"
 
 #. placeholder {0}: VOICE_SHORTCUT.label
-#: src/components/nav/AIChatDrawer.tsx:643
+#: src/components/nav/AIChatDrawer.tsx:668
 msgid "AI Assistant · Voice: {0}"
 msgstr "AI Assistant · Voice: {0}"
 
-#: src/components/nav/AIChatDrawer.tsx:784
+#: src/components/nav/AIChatDrawer.tsx:809
 msgid "Copied!"
 msgstr "Copied!"
 
-#: src/components/nav/AIChatDrawer.tsx:797
+#: src/components/nav/AIChatDrawer.tsx:822
 msgid "Good response"
 msgstr "Good response"
 
-#: src/components/nav/AIChatDrawer.tsx:808
+#: src/components/nav/AIChatDrawer.tsx:833
 msgid "Bad response"
 msgstr "Bad response"
 
-#: src/components/nav/AIChatDrawer.tsx:820
+#: src/components/nav/AIChatDrawer.tsx:845
 msgid "Export as Markdown"
 msgstr "Export as Markdown"
 
-#: src/components/nav/AIChatDrawer.tsx:833
+#: src/components/nav/AIChatDrawer.tsx:858
 msgid "Regenerate"
 msgstr "Regenerate"
 
-#: src/components/nav/AIChatDrawer.tsx:864
+#: src/components/nav/AIChatDrawer.tsx:889
 msgid "No matching records among the {populationCount} evaluated."
 msgstr "No matching records among the {populationCount} evaluated."
 
-#: src/components/nav/AIChatDrawer.tsx:865
+#: src/components/nav/AIChatDrawer.tsx:890
 msgid "No matching records in the fully evaluated population."
 msgstr "No matching records in the fully evaluated population."
 
-#: src/components/nav/AIChatDrawer.tsx:867
+#: src/components/nav/AIChatDrawer.tsx:892
 msgid "This falls outside the active scope selection."
 msgstr "This falls outside the active scope selection."
 
-#: src/components/nav/AIChatDrawer.tsx:869
+#: src/components/nav/AIChatDrawer.tsx:894
 msgid "Source not available."
 msgstr "Source not available."
 
-#: src/components/nav/AIChatDrawer.tsx:871
+#: src/components/nav/AIChatDrawer.tsx:896
 msgid "The search could not be completed."
 msgstr "The search could not be completed."
 
-#: src/components/nav/AIChatDrawer.tsx:873
+#: src/components/nav/AIChatDrawer.tsx:898
 msgid "Could not determine which documents apply."
 msgstr "Could not determine which documents apply."
 
-#: src/components/nav/AIChatDrawer.tsx:875
+#: src/components/nav/AIChatDrawer.tsx:900
 msgid "Coverage was incomplete; no conclusion was drawn."
 msgstr "Coverage was incomplete; no conclusion was drawn."
 
-#: src/components/nav/AIChatDrawer.tsx:884
+#: src/components/nav/AIChatDrawer.tsx:909
 msgid "Confirming scope"
 msgstr "Confirming scope"
 
-#: src/components/nav/AIChatDrawer.tsx:886
+#: src/components/nav/AIChatDrawer.tsx:911
 msgid "Reviewing records"
 msgstr "Reviewing records"
 
-#: src/components/nav/AIChatDrawer.tsx:888
+#: src/components/nav/AIChatDrawer.tsx:913
 msgid "Validating evidence"
 msgstr "Validating evidence"
 
-#: src/components/nav/AIChatDrawer.tsx:890
+#: src/components/nav/AIChatDrawer.tsx:915
 msgid "Working"
 msgstr "Working"
 
-#: src/components/nav/AIChatDrawer.tsx:945
-#: src/components/nav/AIChatDrawer.tsx:1666
-#: src/components/nav/AIChatDrawer.tsx:1725
+#: src/components/nav/AIChatDrawer.tsx:971
+#: src/components/nav/AIChatDrawer.tsx:1871
+#: src/components/nav/AIChatDrawer.tsx:1939
 msgid "AI Assistant"
 msgstr "AI Assistant"
 
-#: src/components/nav/AIChatDrawer.tsx:1077
+#: src/components/nav/AIChatDrawer.tsx:1106
 msgid "Partial answer — some checks did not finish."
 msgstr "Partial answer — some checks did not finish."
 
 #. placeholder {0}: message.confidence
-#: src/components/nav/AIChatDrawer.tsx:1129
+#: src/components/nav/AIChatDrawer.tsx:1158
 msgid "Declared confidence: {0}"
 msgstr "Declared confidence: {0}"
 
-#: src/components/nav/AIChatDrawer.tsx:1148
+#: src/components/nav/AIChatDrawer.tsx:1177
 msgid "No cited sources — not grounded in machine data."
 msgstr "No cited sources — not grounded in machine data."
 
-#: src/components/nav/AIChatDrawer.tsx:1172
+#: src/components/nav/AIChatDrawer.tsx:1201
 msgid "You"
 msgstr "You"
 
@@ -5734,117 +5821,208 @@ msgstr "You"
 #~ msgid "Voice session"
 #~ msgstr "Voice session"
 
-#: src/components/nav/AIChatDrawer.tsx:1465
-msgid "Search parts"
-msgstr "Search parts"
+#: src/components/nav/AIChatDrawer.tsx:1422
+msgid "Current page: Home"
+msgstr "Current page: Home"
 
-#: src/components/nav/AIChatDrawer.tsx:1466
-msgid "Create order"
-msgstr "Create order"
+#: src/components/nav/AIChatDrawer.tsx:1423
+msgid "Current page: Machines"
+msgstr "Current page: Machines"
 
-#: src/components/nav/AIChatDrawer.tsx:1467
-msgid "Low stock"
-msgstr "Low stock"
+#: src/components/nav/AIChatDrawer.tsx:1424
+msgid "Current page: Maintenance"
+msgstr "Current page: Maintenance"
 
-#: src/components/nav/AIChatDrawer.tsx:1520
-msgid "Could not set the machine scope — sending without it."
-msgstr "Could not set the machine scope — sending without it."
+#: src/components/nav/AIChatDrawer.tsx:1425
+msgid "Current page: Parts"
+msgstr "Current page: Parts"
+
+#: src/components/nav/AIChatDrawer.tsx:1426
+msgid "Current page: Stock"
+msgstr "Current page: Stock"
+
+#: src/components/nav/AIChatDrawer.tsx:1427
+msgid "Current page: Orders"
+msgstr "Current page: Orders"
+
+#: src/components/nav/AIChatDrawer.tsx:1428
+msgid "Current page"
+msgstr "Current page"
+
+#: src/components/nav/AIChatDrawer.tsx:1549
+msgid "Machine status"
+msgstr "Machine status"
+
+#. placeholder {0}: routingHint?.machineName ?? ''
+#: src/components/nav/AIChatDrawer.tsx:1550
+msgid "What is the status of {0}?"
+msgstr "What is the status of {0}?"
+
+#: src/components/nav/AIChatDrawer.tsx:1555
+msgid "Maintenance history"
+msgstr "Maintenance history"
+
+#. placeholder {0}: routingHint?.machineName ?? ''
+#: src/components/nav/AIChatDrawer.tsx:1556
+msgid "Show the maintenance history for {0}."
+msgstr "Show the maintenance history for {0}."
 
 #: src/components/nav/AIChatDrawer.tsx:1556
 #~ msgid "Sharing failed"
 #~ msgstr "Sharing failed"
 
-#: src/components/nav/AIChatDrawer.tsx:1728
+#: src/components/nav/AIChatDrawer.tsx:1561
+msgid "Search parts"
+msgstr "Search parts"
+
+#: src/components/nav/AIChatDrawer.tsx:1562
+msgid "Search for parts in inventory"
+msgstr "Search for parts in inventory"
+
+#: src/components/nav/AIChatDrawer.tsx:1567
+msgid "Create order"
+msgstr "Create order"
+
+#: src/components/nav/AIChatDrawer.tsx:1568
+msgid "Help me create a purchase order"
+msgstr "Help me create a purchase order"
+
+#: src/components/nav/AIChatDrawer.tsx:1573
+msgid "Low stock"
+msgstr "Low stock"
+
+#: src/components/nav/AIChatDrawer.tsx:1574
+msgid "Show me low stock items"
+msgstr "Show me low stock items"
+
+#: src/components/nav/AIChatDrawer.tsx:1682
+msgid "Could not set the machine scope — sending without it."
+msgstr "Could not set the machine scope — sending without it."
+
+#: src/components/nav/AIChatDrawer.tsx:1880
+msgid "Resize chat panel"
+msgstr "Resize chat panel"
+
+#: src/components/nav/AIChatDrawer.tsx:1942
 msgid "Powered by AIMMS AI"
 msgstr "Powered by AIMMS AI"
 
-#: src/components/nav/AIChatDrawer.tsx:1735
+#: src/components/nav/AIChatDrawer.tsx:1949
 msgid "Syncing..."
 msgstr "Syncing..."
 
-#: src/components/nav/AIChatDrawer.tsx:1735
+#: src/components/nav/AIChatDrawer.tsx:1949
 msgid "Sync conversations"
 msgstr "Sync conversations"
 
-#: src/components/nav/AIChatDrawer.tsx:1788
+#: src/components/nav/AIChatDrawer.tsx:2002
 msgid "Syncing conversations with server..."
 msgstr "Syncing conversations with server..."
 
-#: src/components/nav/AIChatDrawer.tsx:1814
+#: src/components/nav/AIChatDrawer.tsx:2029
+msgid "Actions need review"
+msgstr "Actions need review"
+
+#: src/components/nav/AIChatDrawer.tsx:2037
 #: src/pages/Notifications.tsx:83
 #: src/pages/repair/RepairPacketDetail.tsx:285
 msgid "History"
 msgstr "History"
 
-#: src/components/nav/AIChatDrawer.tsx:1815
+#: src/components/nav/AIChatDrawer.tsx:2038
 msgid "Mail"
 msgstr "Mail"
 
-#: src/components/nav/AIChatDrawer.tsx:1930
-msgid "Current page"
-msgstr "Current page"
+#: src/components/nav/AIChatDrawer.tsx:2101
+#~ msgid "No actions waiting for review"
+#~ msgstr "No actions waiting for review"
 
-#: src/components/nav/AIChatDrawer.tsx:1960
+#: src/components/nav/AIChatDrawer.tsx:2120
+msgid "Review in Approvals"
+msgstr "Review in Approvals"
+
+#: src/components/nav/AIChatDrawer.tsx:2121
+#~ msgid "Resolved actions"
+#~ msgstr "Resolved actions"
+
+#: src/components/nav/AIChatDrawer.tsx:2131
+#~ msgid "No resolved actions yet"
+#~ msgstr "No resolved actions yet"
+
+#: src/components/nav/AIChatDrawer.tsx:2138
 msgid "Load earlier messages"
 msgstr "Load earlier messages"
 
-#: src/components/nav/AIChatDrawer.tsx:1981
+#: src/components/nav/AIChatDrawer.tsx:2159
 msgid "Hi! 👋 How can I help?"
 msgstr "Hi! 👋 How can I help?"
 
-#: src/components/nav/AIChatDrawer.tsx:1984
+#: src/components/nav/AIChatDrawer.tsx:2162
 msgid "I can help you search for parts, create orders, and automate tasks in AIMMS."
 msgstr "I can help you search for parts, create orders, and automate tasks in AIMMS."
 
-#: src/components/nav/AIChatDrawer.tsx:2079
+#: src/components/nav/AIChatDrawer.tsx:2237
 msgid "Send again"
 msgstr "Send again"
 
-#: src/components/nav/AIChatDrawer.tsx:2101
-msgid "No actions waiting for review"
-msgstr "No actions waiting for review"
+#: src/components/nav/AIChatDrawer.tsx:2265
+msgid "Review inbox"
+msgstr "Review inbox"
 
-#: src/components/nav/AIChatDrawer.tsx:2121
-msgid "Resolved actions"
-msgstr "Resolved actions"
+#: src/components/nav/AIChatDrawer.tsx:2272
+msgid "Needs review"
+msgstr "Needs review"
 
-#: src/components/nav/AIChatDrawer.tsx:2131
-msgid "No resolved actions yet"
-msgstr "No resolved actions yet"
+#: src/components/nav/AIChatDrawer.tsx:2278
+#: src/pages/assets/health/AnomalyList.tsx:36
+msgid "Resolved"
+msgstr "Resolved"
 
-#: src/components/nav/AIChatDrawer.tsx:2202
+#: src/components/nav/AIChatDrawer.tsx:2289
+msgid "No approval requests waiting for review"
+msgstr "No approval requests waiting for review"
+
+#: src/components/nav/AIChatDrawer.tsx:2300
+msgid "No resolved approval requests yet"
+msgstr "No resolved approval requests yet"
+
+#: src/components/nav/AIChatDrawer.tsx:2342
+msgid "Jump to latest"
+msgstr "Jump to latest"
+
+#: src/components/nav/AIChatDrawer.tsx:2401
 msgid "Asking about"
 msgstr "Asking about"
 
-#: src/components/nav/AIChatDrawer.tsx:2220
+#: src/components/nav/AIChatDrawer.tsx:2421
 msgid "Attach file"
 msgstr "Attach file"
 
-#: src/components/nav/AIChatDrawer.tsx:2244
+#: src/components/nav/AIChatDrawer.tsx:2446
 msgid "Shared conversation — read-only"
 msgstr "Shared conversation — read-only"
 
-#: src/components/nav/AIChatDrawer.tsx:2246
+#: src/components/nav/AIChatDrawer.tsx:2448
 msgid "Answer the question above, or ask something else..."
 msgstr "Answer the question above, or ask something else..."
 
-#: src/components/nav/AIChatDrawer.tsx:2248
+#: src/components/nav/AIChatDrawer.tsx:2450
 msgid "Add a message about attached files..."
 msgstr "Add a message about attached files..."
 
-#: src/components/nav/AIChatDrawer.tsx:2249
+#: src/components/nav/AIChatDrawer.tsx:2451
 msgid "Type a message..."
 msgstr "Type a message..."
 
-#: src/components/nav/AIChatDrawer.tsx:2281
+#: src/components/nav/AIChatDrawer.tsx:2486
 msgid "Stop generating"
 msgstr "Stop generating"
 
-#: src/components/nav/AIChatDrawer.tsx:2294
+#: src/components/nav/AIChatDrawer.tsx:2499
 msgid "Send message"
 msgstr "Send message"
 
-#: src/components/nav/AIChatDrawer.tsx:2326
+#: src/components/nav/AIChatDrawer.tsx:2552
 msgid "AI may make mistakes. Verify important information."
 msgstr "AI may make mistakes. Verify important information."
 
@@ -6037,7 +6215,7 @@ msgstr "Sales"
 
 #: src/components/nav/NavigationDrawer.tsx:105
 #: src/defaults/links.tsx:85
-#: src/pages/assets/MachineDetail.tsx:164
+#: src/pages/assets/MachineDetail.tsx:180
 #: src/pages/maintenance/MaintenanceIndex.tsx:73
 msgid "Maintenance"
 msgstr "Maintenance"
@@ -6051,6 +6229,7 @@ msgid "About"
 msgstr "About"
 
 #: src/components/nav/NavigationTree.tsx:388
+#: src/pages/assets/locations/LocationWorkspace.tsx:293
 msgid "Clear search"
 msgstr "Clear search"
 
@@ -6213,7 +6392,7 @@ msgstr "Plugin Information"
 
 #: src/components/plugins/PluginDrawer.tsx:88
 #: src/components/tables/ColumnRenderers.tsx:495
-#: src/pages/assets/MachineDetail.tsx:105
+#: src/pages/assets/MachineDetail.tsx:120
 #: src/pages/assets/locations/LocationDialogs.tsx:199
 #: src/pages/build/BuildOrderDetailsPanel.tsx:96
 #: src/pages/company/CompanyDetailsPanel.tsx:29
@@ -6250,8 +6429,6 @@ msgstr "Date"
 
 #: src/components/plugins/PluginDrawer.tsx:108
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:68
-#: src/pages/assets/MachineDetail.tsx:65
-#: src/pages/assets/locations/LocationWorkspace.tsx:334
 #: src/pages/core/UserDetail.tsx:76
 #: src/pages/core/UserDetail.tsx:206
 #: src/pages/part/PartDetailsPanel.tsx:244
@@ -6405,7 +6582,7 @@ msgstr "In Production"
 
 #: src/components/render/Part.tsx:78
 #: src/components/riskradar/RiskRadarPanel.tsx:446
-#: src/pages/assets/MachineDetail.tsx:127
+#: src/pages/assets/MachineDetail.tsx:142
 #: src/tables/assets/MaintenanceRecordTable.tsx:174
 #: src/tables/stock/StockTrackingTable.tsx:273
 msgid "Details"
@@ -6452,7 +6629,7 @@ msgstr "Location"
 
 #: src/components/render/Stock.tsx:95
 #: src/forms/StockForms.tsx:719
-#: src/pages/assets/MachineDetail.tsx:92
+#: src/pages/assets/MachineDetail.tsx:107
 #: src/pages/stock/StockDetail.tsx:667
 #: src/pages/stock/StockDetailsPanel.tsx:135
 #: src/tables/build/BuildOutputTable.tsx:110
@@ -7346,7 +7523,7 @@ msgid "Filter by user"
 msgstr "Filter by user"
 
 #: src/components/tables/Filter.tsx:454
-#: src/pages/assets/MachineDetail.tsx:82
+#: src/pages/assets/MachineDetail.tsx:97
 #: src/pages/company/CompanyDetailsPanel.tsx:78
 #: src/pages/company/ManufacturerDetail.tsx:8
 #: src/pages/company/ManufacturerPartDetail.tsx:197
@@ -7575,6 +7752,7 @@ msgid "Maximum stock"
 msgstr "Maximum stock"
 
 #: src/components/tables/PartStockCell.tsx:62
+#: src/pages/assets/locations/LocationBrowser.tsx:82
 #: src/pages/assets/locations/LocationDialogs.tsx:111
 #: src/tables/bom/BomTable.tsx:390
 msgid "Building"
@@ -10742,43 +10920,48 @@ msgstr "Verified causes"
 msgid "From verified closeouts"
 msgstr "From verified closeouts"
 
-#: src/pages/assets/MachineDetail.tsx:70
+#: src/pages/assets/MachineDetail.tsx:80
+#: src/pages/assets/locations/LocationWorkspace.tsx:218
+msgid "Active record"
+msgstr "Active record"
+
+#: src/pages/assets/MachineDetail.tsx:85
 msgid "Legacy location label"
 msgstr "Legacy location label"
 
-#: src/pages/assets/MachineDetail.tsx:87
+#: src/pages/assets/MachineDetail.tsx:102
 #: src/tables/assets/AssetMachineTable.tsx:37
 #: src/tables/general/BarcodeScanTable.tsx:52
 msgid "Model"
 msgstr "Model"
 
-#: src/pages/assets/MachineDetail.tsx:148
+#: src/pages/assets/MachineDetail.tsx:164
 msgid "Health"
 msgstr "Health"
 
-#: src/pages/assets/MachineDetail.tsx:156
+#: src/pages/assets/MachineDetail.tsx:172
 msgid "Installed Parts"
 msgstr "Installed Parts"
 
-#: src/pages/assets/MachineDetail.tsx:172
+#: src/pages/assets/MachineDetail.tsx:188
 msgid "Fault History"
 msgstr "Fault History"
 
-#: src/pages/assets/MachineDetail.tsx:189
+#: src/pages/assets/MachineDetail.tsx:205
 #: src/tables/machine/MachineListTable.tsx:766
 msgid "Machine Detail"
 msgstr "Machine Detail"
 
-#: src/pages/assets/MachineDetail.tsx:217
+#: src/pages/assets/MachineDetail.tsx:233
 msgid "Ask about this machine"
 msgstr "Ask about this machine"
 
-#: src/pages/assets/MachineDetail.tsx:227
+#: src/pages/assets/MachineDetail.tsx:243
 #: src/pages/assets/health/AnomalyList.tsx:140
 msgid "Create repair"
 msgstr "Create repair"
 
-#: src/pages/assets/MachineDetail.tsx:238
+#: src/pages/assets/MachineDetail.tsx:254
 #: src/pages/assets/StartRepairModal.tsx:131
 #: src/pages/assets/StartRepairModal.tsx:203
 msgid "Start repair"
@@ -10786,11 +10969,16 @@ msgstr "Start repair"
 
 #: src/pages/assets/MachineIndex.tsx:24
 #: src/pages/assets/locations/LocationWorkspace.tsx:483
-msgid "Sites & Facilities"
-msgstr "Sites & Facilities"
+#~ msgid "Sites & Facilities"
+#~ msgstr "Sites & Facilities"
 
-#: src/pages/assets/MachineIndex.tsx:30
-#: src/pages/assets/locations/LocationWorkspace.tsx:485
+#: src/pages/assets/MachineIndex.tsx:26
+#: src/pages/assets/locations/LocationWorkspace.tsx:511
+msgid "By location"
+msgstr "By location"
+
+#: src/pages/assets/MachineIndex.tsx:33
+#: src/pages/assets/locations/LocationWorkspace.tsx:513
 msgid "All Machines"
 msgstr "All Machines"
 
@@ -10827,10 +11015,6 @@ msgstr "Review blockers"
 #: src/pages/assets/health/AnomalyList.tsx:34
 msgid "Acknowledged"
 msgstr "Acknowledged"
-
-#: src/pages/assets/health/AnomalyList.tsx:36
-msgid "Resolved"
-msgstr "Resolved"
 
 #: src/pages/assets/health/AnomalyList.tsx:38
 msgid "Suppressed"
@@ -11255,6 +11439,101 @@ msgstr "No reading"
 msgid "Stale"
 msgstr "Stale"
 
+#: src/pages/assets/locations/LocationBrowser.tsx:78
+#: src/pages/assets/locations/LocationDialogs.tsx:109
+msgid "Site"
+msgstr "Site"
+
+#: src/pages/assets/locations/LocationBrowser.tsx:80
+#: src/pages/assets/locations/LocationDialogs.tsx:110
+msgid "Facility"
+msgstr "Facility"
+
+#: src/pages/assets/locations/LocationBrowser.tsx:84
+#: src/pages/assets/locations/LocationDialogs.tsx:112
+msgid "Area"
+msgstr "Area"
+
+#: src/pages/assets/locations/LocationBrowser.tsx:86
+msgid "Line"
+msgstr "Line"
+
+#: src/pages/assets/locations/LocationBrowser.tsx:88
+#: src/pages/assets/locations/LocationDialogs.tsx:114
+msgid "Cell"
+msgstr "Cell"
+
+#: src/pages/assets/locations/LocationBrowser.tsx:90
+#: src/pages/assets/locations/LocationDialogs.tsx:115
+msgid "Room"
+msgstr "Room"
+
+#: src/pages/assets/locations/LocationBrowser.tsx:439
+#: src/pages/assets/locations/LocationDialogs.tsx:205
+#: src/pages/assets/locations/LocationWorkspace.tsx:408
+#: src/pages/assets/locations/LocationWorkspace.tsx:619
+msgid "Archived"
+msgstr "Archived"
+
+#: src/pages/assets/locations/LocationBrowser.tsx:456
+msgid "Top-level locations"
+msgstr "Top-level locations"
+
+#: src/pages/assets/locations/LocationBrowser.tsx:467
+msgid "Locations"
+msgstr "Locations"
+
+#: src/pages/assets/locations/LocationBrowser.tsx:470
+msgid "Search locations"
+msgstr "Search locations"
+
+#: src/pages/assets/locations/LocationBrowser.tsx:471
+msgid "Search names or codes"
+msgstr "Search names or codes"
+
+#: src/pages/assets/locations/LocationBrowser.tsx:483
+msgid "Locations could not be loaded."
+msgstr "Locations could not be loaded."
+
+#: src/pages/assets/locations/LocationBrowser.tsx:500
+#: src/pages/assets/locations/LocationPicker.tsx:88
+msgid "No matching locations"
+msgstr "No matching locations"
+
+#: src/pages/assets/locations/LocationBrowser.tsx:517
+#: src/pages/assets/locations/LocationWorkspace.tsx:379
+msgid "Browse top-level locations"
+msgstr "Browse top-level locations"
+
+#: src/pages/assets/locations/LocationBrowser.tsx:525
+#: src/pages/assets/locations/LocationWorkspace.tsx:385
+msgid "Locations unavailable"
+msgstr "Locations unavailable"
+
+#: src/pages/assets/locations/LocationBrowser.tsx:527
+msgid "This branch could not be loaded."
+msgstr "This branch could not be loaded."
+
+#: src/pages/assets/locations/LocationBrowser.tsx:553
+msgid "Location tree"
+msgstr "Location tree"
+
+#: src/pages/assets/locations/LocationBrowser.tsx:571
+msgid "Load more locations"
+msgstr "Load more locations"
+
+#: src/pages/assets/locations/LocationBrowser.tsx:576
+msgid "This location is beyond the loaded tree pages. Use the search above to reach it."
+msgstr "This location is beyond the loaded tree pages. Use the search above to reach it."
+
+#: src/pages/assets/locations/LocationBrowser.tsx:581
+msgid "This location cannot be found in the tree. Use the search above to look for it."
+msgstr "This location cannot be found in the tree. Use the search above to look for it."
+
+#: src/pages/assets/locations/LocationBrowser.tsx:590
+msgid "Create your first site to organize machines."
+msgstr "Create your first site to organize machines."
+
 #: src/pages/assets/locations/LocationDialogs.tsx:30
 msgid "This record changed. Close this dialog, refresh, and review before trying again."
 msgstr "This record changed. Close this dialog, refresh, and review before trying again."
@@ -11284,44 +11563,24 @@ msgstr "Choose a workspace"
 msgid "Enter a reason"
 msgstr "Enter a reason"
 
-#: src/pages/assets/locations/LocationDialogs.tsx:109
-msgid "Site"
-msgstr "Site"
-
-#: src/pages/assets/locations/LocationDialogs.tsx:110
-msgid "Facility"
-msgstr "Facility"
-
-#: src/pages/assets/locations/LocationDialogs.tsx:112
-msgid "Area"
-msgstr "Area"
-
 #: src/pages/assets/locations/LocationDialogs.tsx:113
 msgid "Production Line"
 msgstr "Production Line"
 
-#: src/pages/assets/locations/LocationDialogs.tsx:114
-msgid "Cell"
-msgstr "Cell"
-
-#: src/pages/assets/locations/LocationDialogs.tsx:115
-msgid "Room"
-msgstr "Room"
+#: src/pages/assets/locations/LocationDialogs.tsx:128
+#: src/pages/assets/locations/LocationWorkspace.tsx:533
+msgid "Add location"
+msgstr "Add location"
 
 #: src/pages/assets/locations/LocationDialogs.tsx:128
-#: src/pages/assets/locations/LocationWorkspace.tsx:580
-msgid "Edit location"
-msgstr "Edit location"
-
-#: src/pages/assets/locations/LocationDialogs.tsx:128
-#: src/pages/assets/locations/LocationWorkspace.tsx:573
+#: src/pages/assets/locations/LocationWorkspace.tsx:630
 msgid "Add sublocation"
 msgstr "Add sublocation"
 
 #: src/pages/assets/locations/LocationDialogs.tsx:128
-#: src/pages/assets/locations/LocationWorkspace.tsx:505
-msgid "Add location"
-msgstr "Add location"
+#: src/pages/assets/locations/LocationWorkspace.tsx:637
+msgid "Edit location"
+msgstr "Edit location"
 
 #: src/pages/assets/locations/LocationDialogs.tsx:143
 msgid "Workspace"
@@ -11332,7 +11591,7 @@ msgid "Parent location"
 msgstr "Parent location"
 
 #: src/pages/assets/locations/LocationDialogs.tsx:184
-#: src/pages/assets/locations/LocationWorkspace.tsx:588
+#: src/pages/assets/locations/LocationWorkspace.tsx:645
 msgid "Timezone"
 msgstr "Timezone"
 
@@ -11347,12 +11606,6 @@ msgstr "Required for a top-level location, for example Europe/London."
 #: src/pages/assets/locations/LocationDialogs.tsx:196
 msgid "Changing ancestry or timezone affects future reporting. Earlier history and existing maintenance schedules are preserved."
 msgstr "Changing ancestry or timezone affects future reporting. Earlier history and existing maintenance schedules are preserved."
-
-#: src/pages/assets/locations/LocationDialogs.tsx:205
-#: src/pages/assets/locations/LocationWorkspace.tsx:107
-#: src/pages/assets/locations/LocationWorkspace.tsx:564
-msgid "Archived"
-msgstr "Archived"
 
 #: src/pages/assets/locations/LocationDialogs.tsx:206
 msgid "Active machines and child locations must be moved or retired first."
@@ -11408,200 +11661,250 @@ msgstr "Confirm move"
 msgid "Review move"
 msgstr "Review move"
 
-#: src/pages/assets/locations/LocationPicker.tsx:62
+#: src/pages/assets/locations/LocationPicker.tsx:69
 msgid "Search by name or code. Any active level can hold machines."
 msgstr "Search by name or code. Any active level can hold machines."
 
-#: src/pages/assets/locations/LocationPicker.tsx:73
+#: src/pages/assets/locations/LocationPicker.tsx:85
 msgid "Locations could not be loaded"
 msgstr "Locations could not be loaded"
 
-#: src/pages/assets/locations/LocationPicker.tsx:75
+#: src/pages/assets/locations/LocationPicker.tsx:87
 msgid "Loading locations…"
 msgstr "Loading locations…"
 
-#: src/pages/assets/locations/LocationPicker.tsx:76
-#: src/pages/assets/locations/LocationWorkspace.tsx:167
-msgid "No matching locations"
-msgstr "No matching locations"
-
-#: src/pages/assets/locations/LocationPicker.tsx:81
+#: src/pages/assets/locations/LocationPicker.tsx:93
 msgid "Locations could not be loaded. Try again."
 msgstr "Locations could not be loaded. Try again."
 
 #: src/pages/assets/locations/LocationWorkspace.tsx:114
-msgid "Expand to load sublocations"
-msgstr "Expand to load sublocations"
+#~ msgid "Expand to load sublocations"
+#~ msgstr "Expand to load sublocations"
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:135
-msgid "Locations"
-msgstr "Locations"
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:138
-msgid "Search locations"
-msgstr "Search locations"
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:139
-msgid "Search names or codes"
-msgstr "Search names or codes"
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:151
-msgid "Locations could not be loaded."
-msgstr "Locations could not be loaded."
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:184
-msgid "All top-level locations"
-msgstr "All top-level locations"
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:187
-msgid "Some locations could not be loaded."
-msgstr "Some locations could not be loaded."
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:193
-msgid "Sites and facilities"
-msgstr "Sites and facilities"
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:199
-msgid "This branch shows its first 100 locations. Search by name or code to find more."
-msgstr "This branch shows its first 100 locations. Search by name or code to find more."
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:205
-msgid "Create your first site to organize machines."
-msgstr "Create your first site to organize machines."
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:272
-#: src/pages/assets/locations/LocationWorkspace.tsx:273
+#: src/pages/assets/locations/LocationWorkspace.tsx:155
+#: src/pages/assets/locations/LocationWorkspace.tsx:156
 msgid "Search machines"
 msgstr "Search machines"
 
 #. placeholder {0}: query.data.count
-#: src/pages/assets/locations/LocationWorkspace.tsx:284
+#: src/pages/assets/locations/LocationWorkspace.tsx:163
 msgid "{0} machines"
 msgstr "{0} machines"
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:293
+#: src/pages/assets/locations/LocationWorkspace.tsx:167
+msgid "Selected on this page"
+msgstr "Selected on this page"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:177
 msgid "Move selected"
 msgstr "Move selected"
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:301
+#: src/pages/assets/locations/LocationWorkspace.tsx:184
+#~ msgid "All top-level locations"
+#~ msgstr "All top-level locations"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:185
 msgid "Machines unavailable"
 msgstr "Machines unavailable"
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:302
+#: src/pages/assets/locations/LocationWorkspace.tsx:186
 msgid "Check your maintenance scope or try refreshing."
 msgstr "Check your maintenance scope or try refreshing."
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:318
+#: src/pages/assets/locations/LocationWorkspace.tsx:187
+#~ msgid "Some locations could not be loaded."
+#~ msgstr "Some locations could not be loaded."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:193
+#~ msgid "Sites and facilities"
+#~ msgstr "Sites and facilities"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:199
+#~ msgid "This branch shows its first 100 locations. Search by name or code to find more."
+#~ msgstr "This branch shows its first 100 locations. Search by name or code to find more."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:202
 msgid "Select machines on this page"
 msgstr "Select machines on this page"
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:332
-#: src/pages/assets/locations/MachineLocationCard.tsx:42
+#: src/pages/assets/locations/LocationWorkspace.tsx:216
+#: src/pages/assets/locations/MachineLocationCard.tsx:54
+#: src/pages/assets/locations/MachineLocationCard.tsx:76
 msgid "Physical location"
 msgstr "Physical location"
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:333
+#: src/pages/assets/locations/LocationWorkspace.tsx:217
 msgid "Manufacturer / model"
 msgstr "Manufacturer / model"
 
 #. placeholder {0}: machine.name
-#: src/pages/assets/locations/LocationWorkspace.tsx:343
+#: src/pages/assets/locations/LocationWorkspace.tsx:227
 msgid "Select {0}"
 msgstr "Select {0}"
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:384
+#: src/pages/assets/locations/LocationWorkspace.tsx:268
 msgid "Legacy label"
 msgstr "Legacy label"
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:403
+#: src/pages/assets/locations/LocationWorkspace.tsx:287
+msgid "No machines match your search."
+msgstr "No machines match your search."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:299
+msgid "No machines are placed directly at this location."
+msgstr "No machines are placed directly at this location."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:302
+msgid "Turn on Include sublocations to see machines placed in sublocations."
+msgstr "Turn on Include sublocations to see machines placed in sublocations."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:308
+msgid "No machines at this location or its sublocations."
+msgstr "No machines at this location or its sublocations."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:313
 msgid "No unassigned machines in your workspace."
 msgstr "No unassigned machines in your workspace."
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:404
-msgid "No machines match this view."
-msgstr "No machines match this view."
+#: src/pages/assets/locations/LocationWorkspace.tsx:319
+msgid "Machine results pagination"
+msgstr "Machine results pagination"
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:486
+#: src/pages/assets/locations/LocationWorkspace.tsx:381
+msgid "Select a top-level location to see its machines and current maintenance counts."
+msgstr "Select a top-level location to see its machines and current maintenance counts."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:386
+msgid "Top-level locations could not be loaded."
+msgstr "Top-level locations could not be loaded."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:404
+#~ msgid "No machines match this view."
+#~ msgstr "No machines match this view."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:420
+msgid "Location overview pagination"
+msgstr "Location overview pagination"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:434
+msgid "View unassigned machines"
+msgstr "View unassigned machines"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:514
 msgid "Unassigned machines"
 msgstr "Unassigned machines"
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:490
+#: src/pages/assets/locations/LocationWorkspace.tsx:518
 msgid "Organize physical locations and see where maintenance is needed."
 msgstr "Organize physical locations and see where maintenance is needed."
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:491
+#: src/pages/assets/locations/LocationWorkspace.tsx:519
 msgid "Physical placement is separate from the legacy location label."
 msgstr "Physical placement is separate from the legacy location label."
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:513
+#: src/pages/assets/locations/LocationWorkspace.tsx:541
 msgid "Location workspace unavailable"
 msgstr "Location workspace unavailable"
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:514
+#: src/pages/assets/locations/LocationWorkspace.tsx:542
 msgid "Your role or maintenance scope could not be resolved. Refresh or ask your administrator to check access."
 msgstr "Your role or maintenance scope could not be resolved. Refresh or ask your administrator to check access."
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:535
+#: src/pages/assets/locations/LocationWorkspace.tsx:566
+msgid "Choose location"
+msgstr "Choose location"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:585
 msgid "The location link is invalid."
 msgstr "The location link is invalid."
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:539
+#: src/pages/assets/locations/LocationWorkspace.tsx:589
 msgid "This location is unavailable or you no longer have access."
 msgstr "This location is unavailable or you no longer have access."
 
 #: src/pages/assets/locations/LocationWorkspace.tsx:592
-msgid "Location scope"
-msgstr "Location scope"
+#~ msgid "Location scope"
+#~ msgstr "Location scope"
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:604
+#: src/pages/assets/locations/LocationWorkspace.tsx:593
+msgid "Location path"
+msgstr "Location path"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:606
+#~ msgid "Direct only"
+#~ msgstr "Direct only"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:613
+#~ msgid "Machines now"
+#~ msgstr "Machines now"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:649
+msgid "Include sublocations"
+msgstr "Include sublocations"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:657
+#~ msgid "Choose a location"
+#~ msgstr "Choose a location"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:661
+#~ msgid "Select a site or sublocation to see its machines and current maintenance counts."
+#~ msgstr "Select a site or sublocation to see its machines and current maintenance counts."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:663
+msgid "Includes only machines placed directly at this location."
+msgstr "Includes only machines placed directly at this location."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:664
+msgid "Includes machines placed at this location and all of its sublocations."
+msgstr "Includes machines placed at this location and all of its sublocations."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:671
+msgid "Machines in this view"
+msgstr "Machines in this view"
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:682
 msgid "Including sublocations"
 msgstr "Including sublocations"
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:606
-msgid "Direct only"
-msgstr "Direct only"
+#: src/pages/assets/locations/LocationWorkspace.tsx:683
+#: src/pages/assets/locations/LocationWorkspace.tsx:699
+msgid "Direct here"
+msgstr "Direct here"
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:613
-msgid "Machines now"
-msgstr "Machines now"
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:622
+#: src/pages/assets/locations/LocationWorkspace.tsx:689
 msgid "Direct at this location"
 msgstr "Direct at this location"
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:631
+#: src/pages/assets/locations/LocationWorkspace.tsx:705
 msgid "Open work orders now"
 msgstr "Open work orders now"
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:638
+#: src/pages/assets/locations/LocationWorkspace.tsx:711
 msgid "Drafts excluded; work orders counted once."
 msgstr "Drafts excluded; work orders counted once."
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:650
+#: src/pages/assets/locations/LocationWorkspace.tsx:721
+msgid "Location totals — the machine table search does not change these counts."
+msgstr "Location totals — the machine table search does not change these counts."
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:736
 msgid "Historical performance will appear when validated event and placement history is available. Current placement does not establish past downtime."
 msgstr "Historical performance will appear when validated event and placement history is available. Current placement does not establish past downtime."
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:657
-msgid "Choose a location"
-msgstr "Choose a location"
+#: src/pages/assets/locations/MachineLocationCard.tsx:41
+#: src/pages/assets/locations/MachineLocationCard.tsx:94
+msgid "No physical location assigned"
+msgstr "No physical location assigned"
 
-#: src/pages/assets/locations/LocationWorkspace.tsx:661
-msgid "Select a site or sublocation to see its machines and current maintenance counts."
-msgstr "Select a site or sublocation to see its machines and current maintenance counts."
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:666
-msgid "View unassigned machines"
-msgstr "View unassigned machines"
-
-#: src/pages/assets/locations/MachineLocationCard.tsx:48
+#: src/pages/assets/locations/MachineLocationCard.tsx:82
 msgid "Move machine"
 msgstr "Move machine"
 
-#: src/pages/assets/locations/MachineLocationCard.tsx:65
+#: src/pages/assets/locations/MachineLocationCard.tsx:99
 msgid "Loading location…"
 msgstr "Loading location…"
 
-#: src/pages/assets/locations/MachineLocationCard.tsx:66
+#: src/pages/assets/locations/MachineLocationCard.tsx:100
 msgid "Location is unavailable for your current scope."
 msgstr "Location is unavailable for your current scope."
 
