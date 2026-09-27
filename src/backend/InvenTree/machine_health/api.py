@@ -14,11 +14,13 @@ import json
 
 from django.shortcuts import get_object_or_404
 from django.urls import include, path
+from django.utils import timezone
 
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 import InvenTree.permissions
+from assets.activation import live_status
 from assets.health_models import (
     ACTIVE_ANOMALY_STATUSES,
     AnomalyStatus,
@@ -41,10 +43,12 @@ from .serializers import (
 )
 from .services import anomalies as anomaly_services
 from .services import snapshots as snapshot_services
+from .services.display_time import display_shift, to_display
 from .services.ingestion import IngestionError, coerce_datetime, ingest_readings
 from .services.preliminary import analyze_anomaly
+from .services.series import MAX_SERIES_TARGETS, SeriesError, read_series
 from .services.summary import health_summary, signal_rows
-from .services.trends import TrendError, read_trend
+from .services.trends import TrendError, read_trend, read_trends
 
 #: Anomaly lists are bounded; the blade shows the active set, not a history dump.
 MAX_ANOMALY_PAGE = 200
@@ -180,6 +184,202 @@ class MachineHealthTrend(_MachineHealthView):
             )
 
         return Response(result)
+
+
+class MachineHealthTrends(_MachineHealthView):
+    """Bounded historical windows for several of a machine's signals at once.
+
+    The signal table draws a sparkline per bound parameter, which on a pump is
+    thirty to seventy of them. Asking per binding made that many federated reads
+    of the same window; this asks once. Bindings are still resolved against the
+    machine, so an id belonging to another asset is simply absent from the reply.
+    """
+
+    #: A page of sparklines, not an export route.
+    MAX_BINDINGS = 200
+
+    def get(self, request, pk):
+        """Read trends for the named bindings, or say why each is unavailable."""
+        machine = _machine(pk)
+
+        raw = request.query_params.get('bindings', '')
+        parts = [part for part in raw.replace(' ', '').split(',') if part]
+        if not parts or not all(part.isdigit() for part in parts):
+            return Response(
+                {
+                    'code': 'BINDINGS_REQUIRED',
+                    'detail': 'A comma-separated list of numeric binding ids is required.',
+                },
+                status=400,
+            )
+        if len(parts) > self.MAX_BINDINGS:
+            return Response(
+                {
+                    'code': 'TOO_MANY_BINDINGS',
+                    'detail': f'At most {self.MAX_BINDINGS} bindings per request.',
+                },
+                status=400,
+            )
+
+        try:
+            start = (
+                coerce_datetime(request.query_params['from'])
+                if request.query_params.get('from')
+                else None
+            )
+            end = (
+                coerce_datetime(request.query_params['to'])
+                if request.query_params.get('to')
+                else None
+            )
+        except IngestionError as exc:
+            return Response({'code': 'INVALID_WINDOW', 'detail': str(exc)}, status=400)
+
+        max_samples = request.query_params.get('max_samples')
+        try:
+            results = read_trends(
+                machine,
+                binding_ids=[int(part) for part in parts],
+                start=start,
+                end=end,
+                max_samples=int(max_samples) if max_samples else None,
+            )
+        except (TrendError, ValueError) as exc:
+            return Response(
+                {'code': getattr(exc, 'code', 'TREND_INVALID'), 'detail': str(exc)},
+                status=400,
+            )
+
+        return Response({'results': results})
+
+
+class MachineHealthSeries(_MachineHealthView):
+    """Sampled or complete history for several signals, sized for a chart.
+
+    The Performance blade's read. Where ``trends/`` returns every snapshot in a
+    window and so stops at six hours, this returns a fixed number of points
+    across a window of up to a day, each one a real snapshot. Targets are named
+    as binding ids or as mapped keys; both are resolved within the machine's
+    station before any source is asked, so a client cannot read another
+    station's telemetry by naming its tag.
+    """
+
+    def get(self, request, pk):
+        """Read the requested series, or say why the request is invalid."""
+        machine = _machine(pk)
+
+        raw_ids = request.query_params.get('bindings', '')
+        raw_keys = request.query_params.get('keys', '')
+        ids = [part for part in raw_ids.replace(' ', '').split(',') if part]
+        keys = [part.strip() for part in raw_keys.split(',') if part.strip()]
+        if not ids and not keys:
+            return Response(
+                {
+                    'code': 'TARGETS_REQUIRED',
+                    'detail': 'Name at least one binding id or mapped key.',
+                },
+                status=400,
+            )
+        if not all(part.isdigit() for part in ids):
+            return Response(
+                {'code': 'BINDINGS_INVALID', 'detail': 'Binding ids must be numeric.'},
+                status=400,
+            )
+        if len(ids) + len(keys) > MAX_SERIES_TARGETS:
+            return Response(
+                {
+                    'code': 'TOO_MANY_TARGETS',
+                    'detail': f'At most {MAX_SERIES_TARGETS} signals per request.',
+                },
+                status=400,
+            )
+
+        try:
+            start = (
+                coerce_datetime(request.query_params['from'])
+                if request.query_params.get('from')
+                else None
+            )
+            end = (
+                coerce_datetime(request.query_params['to'])
+                if request.query_params.get('to')
+                else None
+            )
+        except IngestionError as exc:
+            return Response({'code': 'INVALID_WINDOW', 'detail': str(exc)}, status=400)
+
+        try:
+            result = read_series(
+                machine,
+                binding_ids=[int(part) for part in ids],
+                keys=keys,
+                start=start,
+                end=end,
+                points=request.query_params.get('points'),
+            )
+        except SeriesError as exc:
+            return Response({'code': exc.code, 'detail': str(exc)}, status=400)
+
+        return Response(result)
+
+
+class MachineHealthDataRange(_MachineHealthView):
+    """The span of history the machine's source actually holds.
+
+    A range picker offering dates nobody recorded produces an empty chart and no
+    explanation for it. This is what bounds the picker, and what the chart
+    anchors its default window to - the source stores history at its own
+    observation times, which are not "now" and need not be near it.
+
+    Recorded ahead of time by ``discover_data_range``: the container is
+    partitioned per station-hour with cross-partition queries disabled, so the
+    edges can only be found by probing buckets, which is far too slow to do on a
+    page load.
+    """
+
+    def get(self, request, pk):
+        """Return the station's recorded data range, or say there is none."""
+        machine = _machine(pk)
+        station = machine if machine.asset_type == 'pumphouse' else machine.parent
+        status = live_status(station) if station is not None else None
+        source_id = (status or {}).get('source', {}) or {}
+
+        if station is None or not source_id.get('pk'):
+            return Response({'available': False, 'reason': 'NO_SOURCE'})
+
+        source = HealthSource.objects.filter(pk=source_id['pk']).first()
+        recorded = ((source.config or {}).get('data_ranges') or {}).get(
+            str(station.source_entity_uuid)
+        )
+        if not recorded:
+            return Response({
+                'available': False,
+                'reason': 'NOT_DISCOVERED',
+                'detail': 'The span of history for this station has not been recorded yet.',
+            })
+
+        # Offered in the clock the dashboard shows, so the picker spans the last
+        # ten days rather than a fortnight in 2025 that a user has no reason to
+        # guess at. The plant's own edges are returned alongside, because an
+        # engineer matching a trace to a logbook needs the real ones.
+        shift = display_shift(station, source)
+        start = timezone.datetime.fromisoformat(recorded['from'])
+        end = timezone.datetime.fromisoformat(recorded['to'])
+
+        return Response({
+            'available': True,
+            'from': to_display(start, shift).isoformat(),
+            'to': to_display(end, shift).isoformat(),
+            'source_from': recorded['from'],
+            'source_to': recorded['to'],
+            'display_shifted': bool(shift),
+            'display_shift_seconds': int(shift.total_seconds()),
+            'hours_with_data': recorded.get('hours_with_data'),
+            'hours_probed': recorded.get('hours_probed'),
+            'discovered_at': recorded.get('discovered_at'),
+            'source_id': source.pk,
+            'source_name': source.name,
+        })
 
 
 class MachineHealthSnapshots(_MachineHealthView):
@@ -432,7 +632,18 @@ machine_health_api_urls = [
                 MachineAnomalyPreliminaryAnalysis.as_view(),
                 name='machine-health-anomaly-preliminary-analysis',
             ),
+            path(
+                'data-range/',
+                MachineHealthDataRange.as_view(),
+                name='machine-health-data-range',
+            ),
             path('trend/', MachineHealthTrend.as_view(), name='machine-health-trend'),
+            path(
+                'trends/', MachineHealthTrends.as_view(), name='machine-health-trends'
+            ),
+            path(
+                'series/', MachineHealthSeries.as_view(), name='machine-health-series'
+            ),
             path(
                 'snapshots/',
                 MachineHealthSnapshots.as_view(),

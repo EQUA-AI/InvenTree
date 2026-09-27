@@ -7,6 +7,6 @@
   <path d="m490 240 20 15-20 15zM530 240l-20 15 20 15z"/>
   <path stroke-dasharray="5 5" d="M210 110h-50v145h65"/>
   <g id="pump-status" data-point="/pd/{pump}/st"/>
-  <g id="pump-power" data-point="/pd/{pump}/pmw"/>
+  <g id="pump-power" data-point="/dex/PUMP{pump_number}_ACTIVE_POWER"/>
   <g id="pump-flow" data-point="/pd/{pump}/dv"/>
 </svg>

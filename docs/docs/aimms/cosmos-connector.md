@@ -127,6 +127,12 @@ Cosmos. `benchmark_pumphouse_reads --source <pk>` measures bounded read duration
 without writing samples or checkpoints. These reports do not establish production acceptance.
 See `contrib/cosmos/HANDOFF.md` and its example manifest for the complete developer procedure.
 
+The [Performance tab](performance-tab.md) reads the same activated station
+through the series endpoint - a fixed number of real snapshots across a window
+of up to a day, one small query per slot - so its cost is its point count, not
+its length. Both the mimic and the Performance tab draw only bound, reviewed
+points; a tag without a confirmed unit reaches neither.
+
 ## Trust boundaries
 
 This follows InvenTree's [threat model](../concepts/threat_model.md): deployment

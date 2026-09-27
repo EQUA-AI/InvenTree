@@ -14,7 +14,40 @@ from assets.ingestion_models import IngestionCheckpoint
 from assets.models import AssetMachine, DictionaryPoint
 from InvenTree.conversion import convert_physical_value
 from InvenTree.validators import validate_physical_units
+from machine_health.connectors.base import PUMPHOUSE_CONNECTOR_TYPES
 from machine_health.connectors.cosmos_pumphouse import bucket_of, to_epoch_ms
+from machine_health.services.display_time import MINIMUM_SHIFT, recorded_range
+
+
+def _initial_cursor(station, source, now):
+    """Where a newly activated station starts reading.
+
+    A live source is entered at its five-minute validity window: older history
+    belongs to the offline importer rather than to live state.
+
+    A station whose history is a *recorded window* has nothing after that
+    window's end. Entered five minutes ago it would sit beyond every document
+    the connector will ever return - ``read_ceiling`` clamps reads to the
+    recorded end - and because a cursor only moves forward it could never come
+    back. The poller would then read nothing for ever and report nothing,
+    since finding no documents is not an error, and the tiles would stay empty
+    while the charts worked. So a recorded window is entered five minutes
+    before its end: the same five minutes of validity, measured against the
+    clock the data actually has.
+
+    The condition mirrors ``read_ceiling`` exactly, so the cursor and the
+    horizon cannot disagree about which windows are recorded.
+    """
+    now_ms = to_epoch_ms(now)
+    window = recorded_range(station, source)
+    if window is not None:
+        # Compared in milliseconds, as read_ceiling compares them: to_epoch_ms
+        # reads a naive instant as UTC, so the two agree whatever awareness
+        # the stored range happens to carry.
+        recorded_ms = to_epoch_ms(window[1])
+        if now_ms - recorded_ms >= MINIMUM_SHIFT.total_seconds() * 1000:
+            return recorded_ms - 300_000 - 1
+    return now_ms - 300_000 - 1
 
 
 def _digest(value):
@@ -52,7 +85,9 @@ def source_choices(station):
     return [
         source
         for source in HealthSource.objects.filter(
-            client_id=station.client_id, active=True, connector_type='cosmos_pumphouse'
+            client_id=station.client_id,
+            active=True,
+            connector_type__in=PUMPHOUSE_CONNECTOR_TYPES,
         ).order_by('name')
         if str(station.source_entity_uuid) in configured_stations(source)
     ]
@@ -63,7 +98,7 @@ def _validate_source(station, source):
         station.asset_type != 'pumphouse'
         or not station.client.active
         or source.client_id != station.client_id
-        or source.connector_type != 'cosmos_pumphouse'
+        or source.connector_type not in PUMPHOUSE_CONNECTOR_TYPES
     ):
         raise ValidationError('Source is not configured for this station and Client.')
 
@@ -290,9 +325,7 @@ def activate_station(station, source, *, expected_hash, deactivate=False, now=No
     for point in points:
         _refresh_binding(point, source)
     if checkpoint is None:
-        # Start with the source's five-minute validity window; older history is
-        # available through the offline importer without rewinding live state.
-        initial = to_epoch_ms(now) - 300_000 - 1
+        initial = _initial_cursor(station, source, now)
         IngestionCheckpoint.objects.create(
             source=source,
             station=station,

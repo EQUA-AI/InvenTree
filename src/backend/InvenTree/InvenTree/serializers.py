@@ -942,6 +942,44 @@ class InvenTreeDecimalField(serializers.FloatField):
             raise serializers.ValidationError(_('Invalid value'))
 
 
+class InvenTreeIsoDateTimeField(serializers.DateTimeField):
+    """A datetime a browser can read without guessing which zone it is in.
+
+    The API-wide ``DATETIME_FORMAT`` renders ``2026-09-25 21:31`` - no offset,
+    and no seconds. ``new Date()`` and ``dayjs()`` both read a string of that
+    shape as *local* time, so a client outside UTC misplaces every instant by
+    its own offset. It is worst where the difference is stated in words: an
+    observation taken a moment ago is captioned "3 hours ago" on a UTC+3
+    machine, and a live feed reads as stale. On a UTC client the bug is
+    invisible, which is why it survives.
+
+    Serialising ISO-8601 carries the offset and removes the guess. How the
+    instant is *displayed* is then the caller's business, which is where that
+    decision belongs.
+    """
+
+    def __init__(self, *args, **kwargs):
+        """Default to ISO-8601, leaving an explicitly chosen format alone."""
+        kwargs.setdefault('format', 'iso-8601')
+        super().__init__(*args, **kwargs)
+
+
+class InvenTreeIsoDateTimeModelSerializerMixin:
+    """Serialise every model ``DateTimeField`` as ISO-8601.
+
+    Fields a ``ModelSerializer`` builds from the model are never declared by
+    hand, so they cannot carry a format of their own and fall back to the
+    API-wide one. This maps them onto :class:`InvenTreeIsoDateTimeField` so a
+    generated timestamp is as unambiguous as a declared one - and stays that way
+    when a new datetime field is added to the model.
+    """
+
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.DateTimeField: InvenTreeIsoDateTimeField,
+    }
+
+
 class CustomStatusSerializerMixin(serializers.Serializer):
     """Serializer mixin for models that support custom status values.
 

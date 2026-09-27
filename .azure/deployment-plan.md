@@ -432,3 +432,272 @@ az containerapp ingress traffic set \
 ```
 
 Keep `aimms-experimental--0000016` active at 0% through at least `2026-07-25T05:16:22Z`.
+
+---
+
+## 13. Prepared Rollout — 2026-09-26 (Performance tab, sampled series read, pumphouse fixes)
+
+> **Status:** Built and verified locally; **Azure rollout blocked on RBAC** — the
+> signed-in account `Aniket@equa.work` holds only `Cosmos DB Operator` on
+> `epconchatcosmos9d6b` and is denied `Microsoft.App/containerApps/read` on
+> `EpconChat`, so nothing below has been run against Azure.
+
+| Attribute | Value |
+|-----------|-------|
+| Git commit | `37e31e8e9877f45d45bab16cad6c985c7a8f5d81` on `origin/inventTree-aniket` (pushed 2026-09-26) |
+| Change | Performance tab for pumps and stations; `series/` sampled history endpoint; winding-limit sampler; ISO timestamps on repair APIs; cached over-range readings marked bad (`assets.0017`) |
+| Migrations to apply | `assets.0015_cusec_unit`, `assets.0016_opc_tag_bay_ownership`, `assets.0017_pegged_state_quality` (data, irreversible), `part.0155_discharge_rate_note` |
+| Target web app | `aimms-dev` in `EpconChat` (currently on mutable tag `aimms-dev:latest`) |
+| Target worker | the Container App built from `worker-revision.yaml` (currently on `inventree:kanban-board`, an older image — it must move to the same image as the web app: the poller and ingestion code changed) |
+| Registry | `aimms-hjcxb6epgvhgbyge.azurecr.io` |
+| Image | `aimms-dev:inventree-aniket-37e31e8e9877` (immutable) |
+
+Local verification before this rollout: backend suites `machine_health` (278), `repair` (313), `assets` (212) green; frontend `tsc`, biome and the Performance harness (6 Playwright checks) green; every station and pump's Health and Mimic driven in a real browser against the live source, all rendering; the Performance tab rendered at `:8000/web` from the built bundle.
+
+### 13.1 Rights the operator needs
+
+`Contributor` (or `Container Apps Contributor`) on the two Container Apps, and `AcrPush` on registry `aimms-hjcxb6epgvhgbyge`, or run as the identity that performed sections 1–12.
+
+### 13.2 Commands (commit-pinned, same recipe as sections 4 and 11)
+
+```bash
+SHA=37e31e8e9877f45d45bab16cad6c985c7a8f5d81
+TAG=inventree-aniket-${SHA:0:12}
+ACR=aimms-hjcxb6epgvhgbyge
+IMAGE="$ACR.azurecr.io/aimms-dev:$TAG"
+
+# Build in ACR from the exact GitHub commit (the production stage does not
+# forward the commit ARGs into ENV - see section 12 - so they are also set on
+# the revision below).
+az acr build --registry "$ACR" --image "aimms-dev:$TAG" \
+  --file contrib/container/Dockerfile --target production \
+  --build-arg commit_hash="$SHA" --build-arg commit_date=2026-09-26T17:02:28+03:00 \
+  --build-arg commit_tag=inventree-aniket \
+  "https://github.com/EQUA-AI/InvenTree.git#$SHA"
+
+# Record the current revisions as rollback targets first.
+az containerapp revision list -n aimms-dev -g EpconChat \
+  --query "[?properties.active].{name:name, traffic:properties.trafficWeight, image:properties.template.containers[0].image}" -o table
+
+# Web app: new revision on the immutable image.
+az containerapp update -n aimms-dev -g EpconChat --image "$IMAGE" \
+  --set-env-vars INVENTREE_COMMIT_HASH="$SHA" INVENTREE_COMMIT_DATE=2026-09-26T17:02:28+03:00
+
+# The container does not migrate at start (contrib/container/init.sh only
+# collects static files), so apply the migrations once the revision is ready.
+az containerapp exec -n aimms-dev -g EpconChat --command "python src/backend/InvenTree/manage.py migrate --noinput"
+
+# Worker: same image, so the poller ingests with the same rules as the web app.
+az containerapp update -n <worker-app-name> -g EpconChat --image "$IMAGE"
+```
+
+### 13.3 Verification
+
+- `GET https://aimms-dev.kindpebble-bfe407e4.eastus2.azurecontainerapps.io/api/` → 200
+- `/` → redirects to `/web`, 200; sign in; a pump page shows **Performance** beside Health.
+- Authenticated `GET /api/machine-health/machines/<pump>/health/series/?keys=/pc&from=<now-15m>&to=<now>&points=60` → 200 with `mode` and `series`.
+- The Health tab of a pump with pegged winding channels (Millbrook Pump 01) shows those rows as quality **Bad**, not Good.
+- Worker replica logs show `poll_cosmos_pumphouse_sources` running from the new image.
+
+### 13.4 Rollback
+
+`az containerapp update -n aimms-dev -g EpconChat --image <previous image from 13.2>`; the migrations are additive apart from `assets.0017`, which corrects cached quality values and needs no reversal.
+
+## 14. Pump-station data bootstrap — local Postgres to Azure Postgres
+
+> **Status:** Verified end to end in a clean-room Django `TestCase` against a
+> throwaway database (no Azure contact), and guarded by
+> `machine_health.tests.test_estate_bootstrap` /
+> `test_bootstrap_replay` so the committed artefacts cannot drift out of
+> working order, and by `test_activation_cursor`. **No blockers remain**; see
+> 14.5 for what each of the three was, since each failed silently.
+
+The code in sections 12 and 13 deploys an application that can read the plant's
+telemetry and draws nothing with it. What turns a reading into a tile — which
+source tag is which catalogue parameter, its unit, its display name, its limits
+— is **data**, and it lives in a database until it is exported. Production has
+users, parts and stock; it has none of this.
+
+| What | Rows locally | Travels with the image? |
+|---|---:|---|
+| Catalogue parts and parameter templates | 20 / 153 | No — rebuilt by `load_pump_catalogue` |
+| Stations and pump bays | 3 / 30 | No — created by `onboard_pumphouse_estate` |
+| Equipment components | 451 | No — created by the same command |
+| Dictionary points | 2195 | No — **and no shipped path creates them (14.5.1)** |
+| Bindings (approved points) | 1452 | No — created by `apply_dictionary_review` |
+| Cached current values | 1452 | No — **no shipped path creates them (14.5.3)** |
+| `HealthSource` and its `data_ranges` | 1 | No — hand-created, see 14.2 |
+| Ingestion checkpoints | 3 | No — created by `--activate` |
+
+Nothing here is telemetry. The readings stay in Cosmos and are read per request.
+
+### 14.1 Prerequisites
+
+The rights in 13.1, plus an image built from **`55a1823fd` or later** — that
+commit adds `COPY contrib/cosmos/review` to the production stage of
+`contrib/container/Dockerfile`. Earlier images do not contain the packs and
+every command below fails on a missing file. Migrations must already be applied
+(13.2); the container does not migrate at boot.
+
+A `Client` is **not** needed: `assets.0009_default_client_backfill` creates an
+active `internal` client on every migrated deployment, and `onboard_estate`
+only requires that one exist and be active.
+
+### 14.2 Create the source (admin or shell — nothing creates it for you)
+
+`grep` over the backend finds no management command, fixture or API that
+creates a `HealthSource`; the only routes are the Django admin
+(`assets/admin.py`) and `manage.py shell`. It must carry:
+
+| Field | Value | Why |
+|---|---|---|
+| `connector_type` | `cosmos_pumphouse` | exact string; `cosmos_pumphouse_replay` is rejected by `onboard_estate` |
+| `config.endpoint` | the account URI | connector refuses without it |
+| `config.database` / `config.readings_container` | `aimms` / `pumphouse_readings` | same |
+| `secret_ref` | **empty** | a key is accepted only against an emulator host; against Azure the connector raises `CosmosConfigError` and authenticates via `DefaultAzureCredential` |
+| `client` | the active `internal` client | `onboard_estate` refuses without it |
+| `freshness_threshold_seconds` | **300** | see the trap below |
+
+The identity `DefaultAzureCredential` resolves to needs **Cosmos DB Data
+Reader** on the database. Do not grant it write.
+
+**Freshness trap.** The 300-second default applies only when `connector_type`
+is passed as a constructor keyword. A source created through the admin takes
+the model default of **900**, so stale readings would go unflagged for fifteen
+minutes against a five-minute validity window. Set it explicitly.
+
+All four of `onboard_estate`'s refusal conditions — inactive source, wrong
+connector type, no client, inactive client — produce the **same** message,
+`Select an active Cosmos source with an explicitly assigned active Client`, so
+it does not tell you which one is wrong. Check all four.
+
+### 14.3 Sequence
+
+```bash
+EXEC="az containerapp exec -n aimms-dev -g EpconChat --command"
+SRC=<health-source-pk>
+
+# 14.3.1  Catalogue the review packs map onto, by IPN and parameter name.
+$EXEC "python src/backend/InvenTree/manage.py load_pump_catalogue"
+
+# 14.3.2  Read throughput, BEFORE data_ranges exists (see 14.4).
+$EXEC "python src/backend/InvenTree/manage.py benchmark_pumphouse_reads --source $SRC"
+
+# 14.3.3  Record the window. MUST precede --activate: activation reads it to
+#         decide where each cursor starts, and a cursor only moves forward.
+$EXEC "python src/backend/InvenTree/manage.py discover_data_range --source $SRC \
+    --from 2025-07-01 --to 2025-07-13"
+
+# 14.3.4  The whole estate, previewed. One transaction; writes nothing.
+$EXEC "python src/backend/InvenTree/manage.py onboard_pumphouse_estate \
+    contrib/cosmos/review/estate.manifest.json --source $SRC --dry-run"
+
+# 14.3.5  The same command for real: registers 3 stations and 30 bays, imports
+#         each station's dictionary from the tag file the manifest names,
+#         applies its review, then binds and opens an ingestion checkpoint at
+#         the recorded window's end. The next poll fills the tiles.
+$EXEC "python src/backend/InvenTree/manage.py onboard_pumphouse_estate \
+    contrib/cosmos/review/estate.manifest.json --source $SRC --activate"
+```
+
+Expected after 14.3.4, asserted by the tests:
+
+| Station | Bays | Approved (= bindings) | Withheld with a reason |
+|---|---:|---:|---:|
+| Cedar Creek `PH_3` | 14 | 802 | 103 |
+| Millbrook `PH_2` | 12 | 452 | 467 |
+| Maple Grove `PH_7` | 4 | 198 | 173 |
+
+`estate.manifest.json` is the manifest — **not**
+`contrib/pump-cassandra/estate.json`, which carries commentary keys the
+onboarder rejects outright (`Manifest requires version 1 and stations only`;
+the top level may hold `version` and `stations` and nothing else). Each station
+record names a `snapshot` and a `review`, resolved relative to the manifest, so
+the dictionary import and the review application happen inside the one command.
+
+The manifest deliberately omits `source_context`. `read_manifest` decodes
+numbers as `Decimal` to avoid losing precision, and `AssetMachine.source_context`
+is a `JSONField` whose `full_clean()` rejects a `Decimal` with `Value must be
+valid JSON` — so a station carrying a coordinate or a lift head cannot be
+onboarded while that field is populated. It is descriptive metadata (real plant
+name, coordinates, rated power) and none of it is needed to register a station
+or draw a reading, but it is a latent bug in the shipped code worth knowing.
+
+`register_station` is idempotent: a second run returns the existing
+registration rather than duplicating it, and refuses loudly if a station
+already exists under a different client or public UUID. Re-running the whole
+command is how an interrupted rollout is resumed; the tests assert it.
+
+### 14.4 Verification
+
+`check_pumphouse_readiness --source $SRC [--probe]` is the readiness audit, and
+**it can never report `ready: true` for this estate** — `pumphouse.layout.json`
+ships with `review_status: provisional`, and the 743 deliberately withheld
+points keep `pending_points` above zero. Read its issues; do not gate on its
+exit code. `station_checkpoint_allowlist_mismatch` is expected and benign
+between the dry run and 14.3.5 — onboarding adds the station UUIDs to the
+allowlist but creates no checkpoints until `--activate` — as is any pending
+count.
+
+`benchmark_pumphouse_reads` must run **before** `discover_data_range`: once
+`data_ranges` is recorded it always exits non-zero with `documents: 0` and
+`window_complete: false`, which is the clamp working, not a connectivity fault.
+
+`deploy_preflight --json` audits migrations and role coverage only. It is
+unrelated to this bootstrap and always exits 0, so it cannot gate anything.
+
+### 14.5 Closed blockers
+
+All three are closed. They are kept here because each was a way the bootstrap
+failed silently, and the tests that now hold them shut are named.
+
+**Dictionary creation.** The review packs update points and do not create them,
+and nothing in the image created them. The manifest now names a `snapshot` per
+station: a tag-shape file listing exactly the tags that station reports, with
+placeholder values. The dictionary is built from the *shape* of a snapshot, not
+from what it measured, and the review sets every data type and unit afterwards
+— so no plant telemetry is committed, and the tag names were already in the
+review packs. Coverage is exact: 905, 919 and 371 paths, none missing and none
+spurious.
+
+**The packs would have been refused.** Each exported pack pinned a
+`dictionary_hash` taken *after* review, covering every point's `status`,
+`review_note`, `unit`, `component` and `template`. A freshly imported
+dictionary is unreviewed, so the hash could never match and
+`apply_dictionary_review` raised `Dictionary changed; export a fresh review
+pack.` The committed packs carry none, and
+`test_bootstrap_replay.test_the_pack_carries_no_post_review_hash` fails if a
+re-export puts one back.
+
+**The tiles would have stayed empty for ever.** `activate_station` opened every
+checkpoint five minutes before the wall clock. For a station whose history is a
+recorded window that is ~442 days *past* `read_ceiling`, and a cursor only
+moves forward, so it could never come back: the poller would read zero
+documents for ever and report nothing, because finding no documents is not an
+error — `last_poll_at` advancing, `last_error_code` empty, `last_success_at`
+set, and blank tiles beside working charts. Activation now enters a recorded
+window five minutes before *its own* end, which is the same five minutes of
+validity measured against the clock the data actually has. The condition
+mirrors `read_ceiling` exactly, in milliseconds, so the cursor and the horizon
+cannot disagree about which windows are recorded.
+
+This is why 14.3.3 must precede 14.3.5. Activate before the window is
+recorded and the cursor is placed at the wall clock, which is the bug this
+closed — and it is not repairable afterwards, because the cursor is
+forward-only. `test_activation_cursor` asserts the cursor lands below the
+ceiling; `test_estate_bootstrap` asserts it for the real estate.
+
+### 14.6 Rollback
+
+`apply_dictionary_review` is one transaction per file: a failure writes
+nothing, and `--dry-run` rolls back after reporting counts. Re-running the same
+file is safe and duplicates nothing.
+
+There is **no command that undoes an approval.** The only inverse is a
+hand-written corrective review file with a `withhold` section, and it is a
+partial undo: it returns the point to `draft` and records a reason, but leaves
+the component and template assignment in place. Treat 14.3.6 as one-way and
+dry-run it first.
+
+`onboard_pumphouse_estate` is idempotent and safe to re-run. There is no
+command that deactivates a station or removes a checkpoint.

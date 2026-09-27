@@ -1,0 +1,25 @@
+# Dependencies for the Cassandra -> Cosmos backfill only.
+#
+# Deliberately NOT in src/backend/requirements.in, and so deliberately not in
+# the production image:
+#
+# - `cassandra-driver` builds native extensions. plan.md weighed the Cassandra
+#   API for the connector and counted "heavy native deps, licence/CI friction"
+#   against it; a one-directional backfill does not earn that cost in the
+#   image that serves the application.
+# - The application has no reason to reach Cassandra at all. The connector
+#   reads Cosmos, and this migration is what puts data there. Installing a
+#   Cassandra driver into the server would create a capability nothing should
+#   use.
+# - src/backend/requirements.txt is hash-pinned and compiled. Adding a native
+#   package there means recompiling the whole lock file for a tool that runs
+#   from a shell.
+#
+# Install where the migration runs, not in the server:
+#
+#   python3 -m pip install -r contrib/cosmos/requirements-migrate.txt
+#
+# `azure-cosmos` is already an application dependency, so it is not repeated
+# here; run the migration somewhere that has it, or install it alongside.
+
+cassandra-driver>=3.29.1

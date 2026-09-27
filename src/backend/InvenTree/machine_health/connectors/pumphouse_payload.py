@@ -59,6 +59,34 @@ def _pointer(segment: str) -> str:
     return segment.replace('~', '~0').replace('/', '~1')
 
 
+#: The source's over-range marker: the signed 16-bit maximum at 0.1 resolution,
+#: 32767/10. It is a statement that a channel is pegged, not a measurement, and
+#: it reaches 3.3% of readings on approved temperature points - one in thirty.
+#:
+#: Matched with a tolerance rather than by equality, because it arrives in two
+#: float32 encodings one ULP apart (3276.699951171875 and 3276.7001953125)
+#: carried by disjoint tag populations; an equality test sees one and misses the
+#: other.
+#:
+#: Applied to every numeric reading rather than to temperatures alone. It shows
+#: up in 20 of the 73 tag families observed, every one of them an RTD or similar
+#: analogue channel, and never on a valve position, power, speed or status tag -
+#: and at 0.1 scaling no real channel reaches exactly the 16-bit ceiling.
+#:
+#: The deep negatives in this payload (-118.5, -59.3, -592.6, -853.3) are NOT
+#: handled here and must not be: each is the exact negative of a value the plant
+#: also reports positive, so they are a sign fault on real channels rather than
+#: a marker, and suppressing them here would hide the fault instead of showing
+#: it. See BLOCKERS.md.
+OVER_RANGE = 3276.7
+OVER_RANGE_TOLERANCE = 0.001
+
+
+def _pegged(number: float) -> bool:
+    """Whether a parsed number is the source's over-range marker."""
+    return abs(number - OVER_RANGE) <= OVER_RANGE_TOLERANCE
+
+
 def _coerce(value):
     """Return ``(value, quality)`` for one measurement.
 
@@ -66,6 +94,10 @@ def _coerce(value):
     value that will not parse is kept as the original string and marked
     uncertain, never dropped and never replaced with zero: "unparsable" and
     "zero" are different facts about a plant.
+
+    The same applies to :data:`OVER_RANGE`, which is marked bad rather than
+    removed. A pegged channel is a fact worth showing; what it must not do is
+    reach the threshold classifier and be read as a temperature.
     """
     if value is None:
         return None, SignalQuality.BAD
@@ -78,6 +110,11 @@ def _coerce(value):
     if isinstance(value, (int, float)):
         if isinstance(value, float) and not math.isfinite(value):
             return None, SignalQuality.BAD
+        if _pegged(value):
+            # Kept, not dropped and not zeroed, for the reason the docstring
+            # gives: "pegged" and "zero" are different facts about a plant. Bad
+            # quality is what stops it reaching classify().
+            return value, SignalQuality.BAD
         return value, SignalQuality.GOOD
 
     if isinstance(value, str):
@@ -90,6 +127,8 @@ def _coerce(value):
             return value, SignalQuality.UNCERTAIN
         if not math.isfinite(number):
             return None, SignalQuality.BAD
+        if _pegged(number):
+            return number, SignalQuality.BAD
         return number, SignalQuality.GOOD
 
     return None, SignalQuality.BAD

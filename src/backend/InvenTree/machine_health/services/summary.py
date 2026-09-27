@@ -25,6 +25,7 @@ from assets.health_models import (
     MachineSignalBinding,
     SignalQuality,
 )
+from machine_health.services.display_time import display_shift, to_display
 
 #: Anomaly severity mapped onto the machine's overall condition.
 _SEVERITY_STATE = {
@@ -43,38 +44,75 @@ _STATE_RANK = {
 
 
 def signal_rows(machine, *, now=None):
-    """Return each active binding with its current state and freshness."""
+    """Return each active binding with its current state and freshness.
+
+    Observation times are presented in the clock the dashboard shows, and
+    freshness is judged after that move. Judging it before would mark every row
+    stale on the same reading the chart beside it draws happily - the signal
+    table and the trend panel would be describing one value in two different
+    times, which reads as a fault rather than as the design.
+    """
     now = now or timezone.now()
     rows = []
 
-    bindings = (
+    bindings = list(
         MachineSignalBinding.objects
         .select_related('source', 'state')
         .filter(machine=machine, active=True)
         .order_by('display_name')
     )
 
+    station = machine if machine.asset_type == 'pumphouse' else machine.parent
+    shift = (
+        display_shift(station, bindings[0].source, now=now)
+        if bindings
+        else timezone.timedelta(0)
+    )
+
     for binding in bindings:
         state = getattr(binding, 'state', None)
         threshold = binding.source.freshness_threshold_seconds
-        stale = state is None or state.is_stale(threshold, now=now)
+        observed_at = to_display(state.observed_at, shift) if state else None
+        # Too old and dated-in-the-future are both "not a current reading". A
+        # future observation means the stored value sits outside the span this
+        # station is presenting - a leftover from an earlier load, say - and
+        # showing it as live would put a reading on screen that has not
+        # happened yet.
+        age = (now - observed_at).total_seconds() if observed_at else None
+        stale = age is None or age > threshold or age < 0
         value = (state.value or {}).get('value') if state else None
+        quality = state.quality if state else SignalQuality.UNKNOWN
+        # Unusable is as disqualifying as old. The mimic has always refused to
+        # classify a reading whose quality is not good; this row did not, so a
+        # pegged channel could drive a machine's condition on the Health blade
+        # while the same row displayed "Unusable or unknown" beside it.
+        usable = not stale and quality == SignalQuality.GOOD
 
         rows.append({
             'binding_id': binding.pk,
             'source_id': binding.source_id,
             'source_name': binding.source.name,
             'source_type': binding.source.source_type,
+            # The mapped pointer, as the mimic already shows it. A page that
+            # groups a pump's sixty signals into electrical, thermal and
+            # mechanical needs the tag's own name; display names differ from
+            # one station's dictionary to the next.
+            'external_key': binding.external_key,
             'display_name': binding.display_name,
             'signal_kind': binding.signal_kind,
             'unit': binding.unit,
             'value': value,
-            'observed_at': state.observed_at if state else None,
+            'observed_at': observed_at,
+            # Not shifted, unlike observed_at. The shift exists to move a
+            # *source* clock up to the present; received_at is already the
+            # present - the wall-clock instant this deployment accepted the
+            # value - so adding the offset would date the arrival of a reading
+            # over a year after the reading itself.
             'received_at': state.received_at if state else None,
-            'quality': state.quality if state else SignalQuality.UNKNOWN,
+            'quality': quality,
             'stale': stale,
             'freshness_threshold_seconds': threshold,
-            'state': binding.classify(value) if not stale else HealthState.UNKNOWN,
+            'state': binding.classify(value) if usable else HealthState.UNKNOWN,
             'limits': {
                 'normal_min': binding.normal_min,
                 'normal_max': binding.normal_max,

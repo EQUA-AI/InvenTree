@@ -11,12 +11,16 @@ from django.utils import timezone
 from assets.ingestion_models import IngestionCheckpoint
 from assets.models import AssetMachine
 from InvenTree.tasks import ScheduledTask, scheduled_task
-from machine_health.connectors.cosmos_pumphouse import (
-    CosmosConfigError,
-    CosmosPumphouseConnector,
-    _classify,
+from machine_health.connectors.base import (
+    PUMPHOUSE_CONNECTOR_TYPES,
+    pumphouse_connector_class,
 )
+from machine_health.connectors.cosmos_pumphouse import CosmosConfigError, _classify
 from machine_health.services.ingestion import record_source_error
+
+#: How often the sweep below runs. Named so a page can say how live "live"
+#: is: the plant writes every five seconds, this reads it once a minute.
+POLL_INTERVAL_SECONDS = 60
 
 STATION_BUDGET_SECONDS = 20
 RUN_BUDGET_SECONDS = 50
@@ -24,7 +28,21 @@ MAX_DOCUMENTS_PER_STATION = 200
 LEASE_SECONDS = 120
 
 
-@scheduled_task(ScheduledTask.MINUTES, 1)
+def connector_for(source, **kwargs):
+    """Build the adapter a source declares, resolved from the registry.
+
+    Resolved rather than named: a station may be served by the live Cosmos
+    adapter or by the replay one, and the sweep has to drive whichever its own
+    source says. Naming one class here would quietly skip every station
+    configured for the other.
+    """
+    connector_class = pumphouse_connector_class(source.connector_type)
+    if connector_class is None:
+        raise CosmosConfigError('Source names a connector that is not registered.')
+    return connector_class(source, **kwargs)
+
+
+@scheduled_task(ScheduledTask.MINUTES, POLL_INTERVAL_SECONDS // 60)
 def poll_cosmos_pumphouse_sources():
     """Visit least-recently attempted stations first, isolating their failures.
 
@@ -40,7 +58,9 @@ def poll_cosmos_pumphouse_sources():
         IngestionCheckpoint.objects
         .select_related('source', 'station')
         .filter(
-            active=True, source__active=True, source__connector_type='cosmos_pumphouse'
+            active=True,
+            source__active=True,
+            source__connector_type__in=PUMPHOUSE_CONNECTOR_TYPES,
         )
         .order_by(F('last_poll_at').asc(nulls_first=True), 'pk')
     )
@@ -71,7 +91,7 @@ def poll_cosmos_pumphouse_sources():
         code = ''
         connector = None
         try:
-            connector = CosmosPumphouseConnector(
+            connector = connector_for(
                 checkpoint.source,
                 station_uuid=checkpoint.station_uuid,
                 deadline=min(deadline, time.monotonic() + STATION_BUDGET_SECONDS),

@@ -10,6 +10,7 @@ from assets.health_models import MachineSignalBinding
 from assets.models import DictionaryPoint
 from InvenTree.conversion import convert_physical_value
 from machine_health.mimic_layout import expand_pointer, load_layout, station_pumps
+from machine_health.services.display_time import display_shift, to_display
 
 STATUS_POINTER = '/pd/{pump}/st'
 
@@ -40,8 +41,15 @@ def empty_point(pointer, reason, *, unit='', label='', group=''):
     }
 
 
-def project_point(point, binding, enabled, now):
-    """Expose a value only while its ownership, approval, quality and age remain valid."""
+def project_point(point, binding, enabled, now, shift=None):
+    """Expose a value only while its ownership, approval, quality and age remain valid.
+
+    ``shift`` moves an observation into the clock the dashboard shows. Freshness
+    is judged after the move, deliberately: a station whose history is presented
+    as the last ten days would otherwise have every tile marked stale on the
+    same reading the chart draws happily, which tells an operator nothing except
+    that the two disagree.
+    """
     result = empty_point(
         point.path,
         'not_bound',
@@ -73,9 +81,10 @@ def project_point(point, binding, enabled, now):
     if state is None:
         result['reason'] = 'no_data'
         return result
-    age = (now - state.observed_at).total_seconds()
+    observed_at = to_display(state.observed_at, shift) if shift else state.observed_at
+    age = (now - observed_at).total_seconds()
     result.update(
-        observed_at=state.observed_at, age_seconds=round(age, 3), quality=state.quality
+        observed_at=observed_at, age_seconds=round(age, 3), quality=state.quality
     )
     if age < 0:
         result['reason'] = 'clock_skew'
@@ -187,8 +196,15 @@ def station_mimic(station, *, unit=None, now=None):
         if binding.dictionary_point_id in bindings:
             raise ValidationError('Ambiguous live binding for a dictionary point.')
         bindings[binding.dictionary_point_id] = binding
+
+    # One offset for the whole payload, so tiles, totals and the chart beside
+    # them cannot disagree about when a reading happened. Read off a binding
+    # rather than fetched: they already carry their source, and this projection
+    # is deliberately bounded in the number of queries it makes.
+    any_binding = next(iter(bindings.values()), None)
+    shift = display_shift(station, any_binding.source if any_binding else None, now=now)
     points = {
-        point.path: project_point(point, bindings.get(point.pk), enabled, now)
+        point.path: project_point(point, bindings.get(point.pk), enabled, now, shift)
         for point in dictionary
     }
     base_reason = 'not_bound' if enabled else 'disabled'

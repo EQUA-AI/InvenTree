@@ -23,6 +23,44 @@ from .models import AssetComponent, AssetMachine, DictionaryPoint
 MAX_BYTES = 8 * 1024 * 1024
 MAX_POINTS = 25000
 PUMP = re.compile(r'^PUMP([1-9][0-9]{0,3})_')
+#: The same bay, named inside an OPC-UA node id rather than as a tag prefix.
+#:
+#: The source carries two spellings for bay-scoped measurements. Most arrive as
+#: ``PUMP5_...``; a second set arrives as
+#: ``NS=1;S=T|PS1_PROG_19_4_2019_OS(2)::P5_...``, which is the raw node id of an
+#: OPC-UA subscription. Only the first was recognised, so the second was filed
+#: against the *station* - putting 120 bay-scoped tags into the station's own
+#: readings, where an operator looking at one pump saw another pump's tags and
+#: no pump saw its own.
+#:
+#: The ``::`` is what makes this safe to match on. A bare ``P5_`` occurs inside
+#: the program name (``PS1_PROG_...``); only the node id's own separator
+#: introduces the bay.
+OPC_PUMP = re.compile(r'::P([1-9][0-9]{0,3})_')
+#: pd-block tags the matcher may resolve against the catalogue.
+#:
+#: The pd block is a per-bay *summary* of measurements the dex block also carries
+#: in full, so resolving it wholesale would give one catalogue parameter two
+#: dictionary points and make approval ambiguous: `pmw` duplicates ACTIVE_POWER
+#: and `pmvar` duplicates REACTIVE_POWER, and the clash guard in review would
+#: reject whichever was approved second.
+#:
+#: `st` and `dv` are the exceptions. Neither has a dex counterpart, so each is the
+#: only source for its measurement - equipment status and per-bay discharge rate -
+#: and leaving `dv` out is why the station flow total had no contributor it could
+#: ever bind.
+PD_MAPPABLE_TAGS = frozenset({'st', 'dv'})
+
+#: Station-level payload fields the matcher may resolve, on the same rule.
+#:
+#: `st` is the station's own status. `pc` is the count of bays reporting running,
+#: and it is the only station field with no counterpart anywhere else in the
+#: payload: `pmw` and `pmvar` restate the summed dex power tags, `dv` is the exact
+#: sum of the per-bay discharge, and `sl` has no catalogue parameter to resolve
+#: to. So `pc` is the only one whose resolution cannot create a second
+#: dictionary point for a measurement the review already handles.
+TOP_LEVEL_MAPPABLE_TAGS = frozenset({'st', 'pc'})
+
 ALIASES = [
     (r'MOTOR_CORE_RTD([1-6])_PROCESS_VALUE', r'MOTOR_CORE_RTD\1'),
     (r'THRST_BRG_THRST_PD_RTD([1-3])_PROCESS_VALUE', r'THRST_BRG_THRST_PD_RTD\1'),
@@ -397,7 +435,14 @@ def plan_dictionary(station, raw):
             )
         for key, value in payload.items():
             if key not in {'pd', 'dex', 'sr', 'egt', 'ext', 'dsc'}:
-                add('/' + pointer(key), key, value, '', key, allow_match=key == 'st')
+                add(
+                    '/' + pointer(key),
+                    key,
+                    value,
+                    '',
+                    key,
+                    allow_match=key in TOP_LEVEL_MAPPABLE_TAGS,
+                )
         for key, summary in payload['pd'].items():
             if not re.fullmatch(r'P[1-9][0-9]{0,3}', key) or not isinstance(
                 summary, dict
@@ -413,13 +458,20 @@ def plan_dictionary(station, raw):
                     value,
                     key,
                     tag,
-                    allow_match=tag == 'st',
+                    allow_match=tag in PD_MAPPABLE_TAGS,
                 )
         for tag, value in payload['dex'].items():
             if tag in {'ID', 'TIMESTAMP'}:
                 continue
             match = PUMP.match(tag)
-            owner_key = f'P{match[1]}' if match else ''
+            # Ownership only. The node id is still offered to the matcher as a
+            # whole, because the catalogue keys on the short spelling's local
+            # tag and nothing states that the two names mean the same sensor -
+            # where both exist they disagree, one reading 0 against the other's
+            # 59.257. Knowing which bay a tag belongs to needs no such claim:
+            # the tag says so.
+            opc = None if match else OPC_PUMP.search(tag)
+            owner_key = f'P{match[1]}' if match else (f'P{opc[1]}' if opc else '')
             if owner_key:
                 pumps.add(owner_key)
             local = tag[match.end() :] if match else tag

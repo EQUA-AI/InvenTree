@@ -88,10 +88,7 @@ class CosmosPollerTests(TestCase):
     @override_settings(AIMMS_COSMOS_PUMPHOUSE_ENABLED=False)
     def test_disabled_performs_no_database_or_network_work(self):
         """A disabled scheduled task never even constructs a credential or client."""
-        with (
-            patch('assets.tasks.CosmosPumphouseConnector') as connector,
-            self.assertNumQueries(0),
-        ):
+        with patch('assets.tasks.connector_for') as connector, self.assertNumQueries(0):
             self.assertEqual(poll_cosmos_pumphouse_sources(), 0)
         connector.assert_not_called()
 
@@ -106,7 +103,7 @@ class CosmosPollerTests(TestCase):
             connector._container = FakeContainer(self.documents, error=error)
             return connector
 
-        with patch('assets.tasks.CosmosPumphouseConnector', side_effect=factory):
+        with patch('assets.tasks.connector_for', side_effect=factory):
             self.assertEqual(poll_cosmos_pumphouse_sources(), 12)
 
         for number, (checkpoint, binding) in enumerate(entries):
@@ -140,7 +137,7 @@ class CosmosPollerTests(TestCase):
 
         connector = Mock(ingest=Mock(side_effect=ingest), last_error_code='')
         with (
-            patch('assets.tasks.CosmosPumphouseConnector', return_value=connector),
+            patch('assets.tasks.connector_for', return_value=connector),
             patch('assets.tasks.time.monotonic', side_effect=lambda: clock[0]),
         ):
             for _ in range(3):
@@ -153,7 +150,7 @@ class CosmosPollerTests(TestCase):
         checkpoint, _ = self.station(1)
         checkpoint.lease_until = timezone.now() + timedelta(seconds=120)
         checkpoint.save()
-        with patch('assets.tasks.CosmosPumphouseConnector') as factory:
+        with patch('assets.tasks.connector_for') as factory:
             self.assertEqual(poll_cosmos_pumphouse_sources(), 0)
             factory.assert_not_called()
             checkpoint.lease_until = timezone.now() - timedelta(seconds=1)
@@ -350,7 +347,7 @@ class CosmosPollerTests(TestCase):
             self.assertEqual(poll_cosmos_pumphouse_sources(), 0)
 
         connector = Mock(last_error_code='', ingest=Mock(side_effect=ingest))
-        with patch('assets.tasks.CosmosPumphouseConnector', return_value=connector):
+        with patch('assets.tasks.connector_for', return_value=connector):
             self.assertEqual(poll_cosmos_pumphouse_sources(), 1)
         connector.ingest.assert_called_once()
 
@@ -359,7 +356,7 @@ class CosmosPollerTests(TestCase):
         self.station(1)
         self.source.active = False
         self.source.save()
-        with patch('assets.tasks.CosmosPumphouseConnector') as connector:
+        with patch('assets.tasks.connector_for') as connector:
             self.assertEqual(poll_cosmos_pumphouse_sources(), 0)
         connector.assert_not_called()
 
@@ -367,7 +364,7 @@ class CosmosPollerTests(TestCase):
         """A configured cap is honoured below, and clamped above, the worker cap."""
         checkpoint, _ = self.station(1)
         connector = Mock(last_error_code='')
-        with patch('assets.tasks.CosmosPumphouseConnector', return_value=connector):
+        with patch('assets.tasks.connector_for', return_value=connector):
             for configured, expected in [(2, 2), (10000, 200)]:
                 self.source.config['max_docs_per_poll'] = configured
                 self.source.save()

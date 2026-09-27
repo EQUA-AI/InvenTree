@@ -8,9 +8,27 @@ import { apiUrl } from '@lib/functions/Api';
 import type { SignalTrend } from '@lib/types/MachineHealth';
 
 import { useApi } from '../../../contexts/ApiContext';
+import { numericValue } from './common';
 
 const WIDTH = 120;
 const HEIGHT = 28;
+
+/**
+ * Look-back for a sparkline, in seconds.
+ *
+ * Asked for explicitly rather than left to the server's default. A sparkline is
+ * 120px wide, so it cannot render more than ~120 distinct points, and every
+ * sample behind it costs the connector a whole-station snapshot fetched and
+ * parsed to extract one tag. Several of these render per machine page.
+ *
+ * The *window* is what gets shortened, never `max_samples`. Capping the sample
+ * count would look equivalent and is not: `read_window` fills from the oldest
+ * bucket forward and stops, so a cap drops the *newest* readings. A sparkline
+ * trimmed that way would show the oldest ten minutes of its window and hide the
+ * most recent - precisely backwards for a "recent trend". Ten minutes at the
+ * five-second source cadence is ~120 samples, which is the width of the line.
+ */
+const SPARKLINE_WINDOW_SECONDS = 10 * 60;
 
 /**
  * A sparkline for one mapped signal — but only when the source can actually
@@ -27,36 +45,89 @@ const HEIGHT = 28;
 export function SignalTrendSparkline({
   machineId,
   bindingId,
-  enabled = true
-}: Readonly<{ machineId: number; bindingId: number; enabled?: boolean }>) {
+  enabled = true,
+  trend: supplied,
+  supplierPending = false
+}: Readonly<{
+  machineId: number;
+  bindingId: number;
+  enabled?: boolean;
+  /**
+   * A trend already fetched for this binding, normally by the signal table
+   * reading the whole page in one request. When a supplier owns this binding no
+   * request is made here: a table of thirty sparklines each fetching its own
+   * window makes the source read and parse the same documents thirty times
+   * over.
+   *
+   * `null` means a supplier owns the binding but has nothing for it - because
+   * its batch is still in flight, or because it came back without this one.
+   * That is still a supplier, so it must suppress the local fetch exactly like
+   * a delivered trend does. Only `undefined` - nobody is supplying - lets this
+   * sparkline read for itself.
+   */
+  trend?: SignalTrend | null;
+  /**
+   * The supplier's batched request is still in flight, so show a loader rather
+   * than the "no trend" it would otherwise be indistinguishable from.
+   */
+  supplierPending?: boolean;
+}>) {
   const api = useApi();
+
+  // `undefined` is the only value that means nobody is supplying a trend.
+  // Testing for it directly here is what went wrong before: the table hands
+  // every row `map.get(id)`, which is `undefined` for all of them until the
+  // batch resolves, so every sparkline fired its own request first and the
+  // batch saved nothing.
+  const managed = supplied !== undefined;
 
   const trendQuery = useQuery<SignalTrend>({
     queryKey: ['machine-health-trend', machineId, bindingId],
-    enabled,
+    // Only when nobody is supplying one; a lone sparkline outside the table
+    // still works on its own.
+    enabled: enabled && !managed,
     // Trends are a federated read against the historian; don't re-fetch them on
     // every focus change.
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
+      const end = new Date();
+      const start = new Date(end.getTime() - SPARKLINE_WINDOW_SECONDS * 1000);
       const response = await api.get(
         apiUrl(ApiEndpoints.machine_health_trend, machineId),
-        { params: { binding: bindingId } }
+        {
+          params: {
+            binding: bindingId,
+            from: start.toISOString(),
+            to: end.toISOString()
+          },
+          // A historian read does not fit the global 5s default.
+          timeout: 30 * 1000
+        }
       );
       return response.data;
     }
   });
 
+  // One source of truth for the rest of the component: whatever the table
+  // supplied, or this sparkline's own fetch when it is standing alone.
+  const trend = supplied ?? trendQuery.data;
+
   const path = useMemo(() => {
-    const samples = (trendQuery.data?.samples ?? [])
-      .map((sample) => Number(sample.value))
-      .filter((value) => Number.isFinite(value));
+    // Via the shared reader, so a status trace ("R"/"I") draws here exactly as
+    // it does in the full chart. Reading `sample.value` directly is what made
+    // every status sparkline report "Too few samples".
+    const samples = (trend?.samples ?? [])
+      .map((sample) => numericValue(sample))
+      .filter((value): value is number => value !== null);
 
     if (samples.length < 2) {
       return null;
     }
 
-    // Samples arrive newest-first from the historian; draw them left-to-right.
-    const ordered = [...samples].reverse();
+    // Samples arrive oldest-first: `read_window` walks hour buckets forwards and
+    // queries each with ORDER BY sub_time_period ASC. Verified against the
+    // emulator. Draw them in the order given - reversing runs time backwards.
+    const ordered = samples;
     const min = Math.min(...ordered);
     const max = Math.max(...ordered);
     const span = max - min || 1;
@@ -69,17 +140,15 @@ export function SignalTrendSparkline({
         return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
       })
       .join(' ');
-  }, [trendQuery.data]);
+  }, [trend]);
 
   if (!enabled) {
     return null;
   }
 
-  if (trendQuery.isLoading) {
+  if (managed ? supplierPending : trendQuery.isLoading) {
     return <Loader size='xs' />;
   }
-
-  const trend = trendQuery.data;
 
   if (!trend?.available) {
     return (

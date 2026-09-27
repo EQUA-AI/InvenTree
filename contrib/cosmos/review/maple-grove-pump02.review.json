@@ -1,0 +1,113 @@
+{
+ "schema_version": 1,
+ "station_source_uuid": "776913b4-d26f-4294-bf58-647ac401bae5",
+ "reviewer": "aniketdev2018",
+ "provenance": "Investigation of the Maple Grove (Ranganayaka Sagar) Pump 02 dictionary gap: 10 of 89 points approved against 55-71 on its sibling pumps. The gap is not an unreviewed backlog. Every one of these 63 tags already carries a component and a catalogue parameter, and every one reports a constant zero across the whole recorded window. This file records that finding against the points it concerns, so they are not repeatedly re-reviewed in the hope that a unit was simply missed.",
+ "policy": "A channel that reports one value for ten days carries no evidence of its own unit, and a unit borrowed from a sibling would be published as a measurement this instrument never made. Withheld with the sibling decision recorded, so the moment the channel reports again the unit is one lookup away.",
+ "approve": [],
+ "withhold": [
+  {
+   "paths": [
+    "/dex/PUMP2_PUMP_GUIDE_BEARING_OIL_TEMP1",
+    "/dex/PUMP2_PUMP_GUIDE_BEARING_OIL_TEMP2",
+    "/dex/PUMP2_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP1",
+    "/dex/PUMP2_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP2",
+    "/dex/PUMP2_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP3",
+    "/dex/PUMP2_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP4",
+    "/dex/PUMP2_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP5",
+    "/dex/PUMP2_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP6",
+    "/dex/PUMP2_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP7",
+    "/dex/PUMP2_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP8",
+    "/dex/PUMP2_PUMP_UPPER_GUIDE_BEARING_PAD_TEMP1",
+    "/dex/PUMP2_PUMP_UPPER_GUIDE_BEARING_PAD_TEMP2",
+    "/dex/PUMP2_PUMP_UPPER_GUIDE_BEARING_PAD_TEMP3",
+    "/dex/PUMP2_PUMP_UPPER_GUIDE_BEARING_PAD_TEMP4",
+    "/dex/PUMP2_PUMP_UPPER_GUIDE_BEARING_PAD_TEMP5",
+    "/dex/PUMP2_PUMP_UPPER_GUIDE_BEARING_PAD_TEMP6",
+    "/dex/PUMP2_PUMP_UPPER_GUIDE_BEARING_PAD_TEMP7",
+    "/dex/PUMP2_PUMP_UPPER_GUIDE_BEARING_PAD_TEMP8"
+   ],
+   "reason": "Maple Grove Pump 02 guide bearing: Dead channel on this pump. Sampled across the whole recorded window (2025-07-02 01:01 to 2025-07-11 23:59, 46 snapshots spread evenly over the ten days), this tag holds exactly 0 in every one of them - one distinct value. The same tag on the sibling pumps at this station varies normally over the same snapshots, and 64 of Pump 01's 87 numeric tags vary while only 13 of Pump 02's 85 ever leave zero; bay status reads Idle for every sampled snapshot on both. So this is not a pump that was merely stopped - a stopped pump still reports ambient temperatures, as Pump 01 does - it is instrumentation that reports nothing. The unit is therefore not settled by this pump's own data, and it cannot be inherited from the sibling that does report: a constant zero is equally consistent with degC, degF or an unwired input, and approving it would put a reading of \"0 degC\" on a machine page as though it were a measurement of a freezing machine. Withheld rather than approved for that reason, not for lack of a catalogue mapping - component and parameter are already assigned and are correct. Recommended: confirm with the plant whether Pump 02's guide bearing RTD loop was wired and scanning during this period; if it was not, these tags should stay withheld for this dataset. Sibling decision for the same tag family, for when this pump reports again: 'degC' (verified), data type number, settled on /dex/PUMP1_PUMP_GUIDE_BEARING_OIL_TEMP1."
+  },
+  {
+   "paths": [
+    "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMP1",
+    "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMP10",
+    "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMP11",
+    "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMP12",
+    "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMP2",
+    "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMP3",
+    "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMP4",
+    "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMP5",
+    "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMP6",
+    "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMP7",
+    "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMP8",
+    "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMP9"
+   ],
+   "reason": "Maple Grove Pump 02 stator winding RTDs: Dead channel on this pump. Sampled across the whole recorded window (2025-07-02 01:01 to 2025-07-11 23:59, 46 snapshots spread evenly over the ten days), this tag holds exactly 0 in every one of them - one distinct value. The same tag on the sibling pumps at this station varies normally over the same snapshots, and 64 of Pump 01's 87 numeric tags vary while only 13 of Pump 02's 85 ever leave zero; bay status reads Idle for every sampled snapshot on both. So this is not a pump that was merely stopped - a stopped pump still reports ambient temperatures, as Pump 01 does - it is instrumentation that reports nothing. The unit is therefore not settled by this pump's own data, and it cannot be inherited from the sibling that does report: a constant zero is equally consistent with degC, degF or an unwired input, and approving it would put a reading of \"0 degC\" on a machine page as though it were a measurement of a freezing machine. Withheld rather than approved for that reason, not for lack of a catalogue mapping - component and parameter are already assigned and are correct. Recommended: confirm with the plant whether Pump 02's winding RTD loop was wired and scanning during this period; if it was not, these tags should stay withheld for this dataset. Sibling decision for the same tag family, for when this pump reports again: 'degC' (verified), data type number, settled on /dex/PUMP1_PUMP_MOTOR_WINDING_TEMP1."
+  },
+  {
+   "paths": [
+    "/dex/PUMP2_PUMP_THRUST_BEARING_PAD_TEMP1",
+    "/dex/PUMP2_PUMP_THRUST_BEARING_PAD_TEMP10",
+    "/dex/PUMP2_PUMP_THRUST_BEARING_PAD_TEMP2",
+    "/dex/PUMP2_PUMP_THRUST_BEARING_PAD_TEMP3",
+    "/dex/PUMP2_PUMP_THRUST_BEARING_PAD_TEMP4",
+    "/dex/PUMP2_PUMP_THRUST_BEARING_PAD_TEMP5",
+    "/dex/PUMP2_PUMP_THRUST_BEARING_PAD_TEMP6",
+    "/dex/PUMP2_PUMP_THRUST_BEARING_PAD_TEMP7",
+    "/dex/PUMP2_PUMP_THRUST_BEARING_PAD_TEMP8",
+    "/dex/PUMP2_PUMP_THRUST_BEARING_PAD_TEMP9"
+   ],
+   "reason": "Maple Grove Pump 02 thrust bearing: Dead channel on this pump. Sampled across the whole recorded window (2025-07-02 01:01 to 2025-07-11 23:59, 46 snapshots spread evenly over the ten days), this tag holds exactly 0 in every one of them - one distinct value. The same tag on the sibling pumps at this station varies normally over the same snapshots, and 64 of Pump 01's 87 numeric tags vary while only 13 of Pump 02's 85 ever leave zero; bay status reads Idle for every sampled snapshot on both. So this is not a pump that was merely stopped - a stopped pump still reports ambient temperatures, as Pump 01 does - it is instrumentation that reports nothing. The unit is therefore not settled by this pump's own data, and it cannot be inherited from the sibling that does report: a constant zero is equally consistent with degC, degF or an unwired input, and approving it would put a reading of \"0 degC\" on a machine page as though it were a measurement of a freezing machine. Withheld rather than approved for that reason, not for lack of a catalogue mapping - component and parameter are already assigned and are correct. Recommended: confirm with the plant whether Pump 02's thrust bearing RTD loop was wired and scanning during this period; if it was not, these tags should stay withheld for this dataset. Sibling decision for the same tag family, for when this pump reports again: 'degC' (verified), data type number, settled on /dex/PUMP1_PUMP_THRUST_BEARING_PAD_TEMP1."
+  },
+  {
+   "paths": [
+    "/dex/PUMP2_MOTOR_STATOR_CORE_RTD1",
+    "/dex/PUMP2_MOTOR_STATOR_CORE_RTD2",
+    "/dex/PUMP2_MOTOR_STATOR_CORE_RTD3",
+    "/dex/PUMP2_MOTOR_STATOR_CORE_RTD4",
+    "/dex/PUMP2_MOTOR_STATOR_CORE_RTD5",
+    "/dex/PUMP2_MOTOR_STATOR_CORE_RTD6",
+    "/dex/PUMP2_MOTOR_STATOR_CORE_RTD7",
+    "/dex/PUMP2_MOTOR_STATOR_CORE_RTD8"
+   ],
+   "reason": "Maple Grove Pump 02 stator core RTDs: Dead channel on this pump. Sampled across the whole recorded window (2025-07-02 01:01 to 2025-07-11 23:59, 46 snapshots spread evenly over the ten days), this tag holds exactly 0 in every one of them - one distinct value. The same tag on the sibling pumps at this station varies normally over the same snapshots, and 64 of Pump 01's 87 numeric tags vary while only 13 of Pump 02's 85 ever leave zero; bay status reads Idle for every sampled snapshot on both. So this is not a pump that was merely stopped - a stopped pump still reports ambient temperatures, as Pump 01 does - it is instrumentation that reports nothing. The unit is therefore not settled by this pump's own data, and it cannot be inherited from the sibling that does report: a constant zero is equally consistent with degC, degF or an unwired input, and approving it would put a reading of \"0 degC\" on a machine page as though it were a measurement of a freezing machine. Withheld rather than approved for that reason, not for lack of a catalogue mapping - component and parameter are already assigned and are correct. Recommended: confirm with the plant whether Pump 02's stator core RTD loop was wired and scanning during this period; if it was not, these tags should stay withheld for this dataset. Sibling decision for the same tag family, for when this pump reports again: 'degC' (verified), data type number, settled on /dex/PUMP1_MOTOR_STATOR_CORE_RTD1."
+  },
+  {
+   "paths": [
+    "/dex/PUMP2_COLD_AIR_RTD1",
+    "/dex/PUMP2_COLD_AIR_RTD2",
+    "/dex/PUMP2_COLD_AIR_RTD3",
+    "/dex/PUMP2_COLD_AIR_RTD4"
+   ],
+   "reason": "Maple Grove Pump 02 cooling air, cold side: Dead channel on this pump. Sampled across the whole recorded window (2025-07-02 01:01 to 2025-07-11 23:59, 46 snapshots spread evenly over the ten days), this tag holds exactly 0 in every one of them - one distinct value. The same tag on the sibling pumps at this station varies normally over the same snapshots, and 64 of Pump 01's 87 numeric tags vary while only 13 of Pump 02's 85 ever leave zero; bay status reads Idle for every sampled snapshot on both. So this is not a pump that was merely stopped - a stopped pump still reports ambient temperatures, as Pump 01 does - it is instrumentation that reports nothing. The unit is therefore not settled by this pump's own data, and it cannot be inherited from the sibling that does report: a constant zero is equally consistent with degC, degF or an unwired input, and approving it would put a reading of \"0 degC\" on a machine page as though it were a measurement of a freezing machine. Withheld rather than approved for that reason, not for lack of a catalogue mapping - component and parameter are already assigned and are correct. Recommended: confirm with the plant whether Pump 02's cold-side air RTDs were wired and scanning during this period; if they were not, these tags should stay withheld for this dataset. Sibling decision for the same tag family, for when this pump reports again: 'degC' (verified), data type number, settled on /dex/PUMP1_COLD_AIR_RTD1."
+  },
+  {
+   "paths": [
+    "/dex/PUMP2_HOT_AIR_RTD1",
+    "/dex/PUMP2_HOT_AIR_RTD2",
+    "/dex/PUMP2_HOT_AIR_RTD3",
+    "/dex/PUMP2_HOT_AIR_RTD4"
+   ],
+   "reason": "Maple Grove Pump 02 cooling air, hot side: Dead channel on this pump. Sampled across the whole recorded window (2025-07-02 01:01 to 2025-07-11 23:59, 46 snapshots spread evenly over the ten days), this tag holds exactly 0 in every one of them - one distinct value. The same tag on the sibling pumps at this station varies normally over the same snapshots, and 64 of Pump 01's 87 numeric tags vary while only 13 of Pump 02's 85 ever leave zero; bay status reads Idle for every sampled snapshot on both. So this is not a pump that was merely stopped - a stopped pump still reports ambient temperatures, as Pump 01 does - it is instrumentation that reports nothing. The unit is therefore not settled by this pump's own data, and it cannot be inherited from the sibling that does report: a constant zero is equally consistent with degC, degF or an unwired input, and approving it would put a reading of \"0 degC\" on a machine page as though it were a measurement of a freezing machine. Withheld rather than approved for that reason, not for lack of a catalogue mapping - component and parameter are already assigned and are correct. Recommended: confirm with the plant whether Pump 02's hot-side air RTDs were wired and scanning during this period; if they were not, these tags should stay withheld for this dataset. Sibling decision for the same tag family, for when this pump reports again: 'degC' (verified), data type number, settled on /dex/PUMP1_HOT_AIR_RTD1."
+  },
+  {
+   "paths": [
+    "/dex/PUMP2_PUMP_BOTTOM_OIL_RESERVOR_TEMP1",
+    "/dex/PUMP2_PUMP_BOTTOM_OIL_RESERVOR_TEMP2",
+    "/dex/PUMP2_PUMP_UPPER_OIL_RESERVOR_TEMP1",
+    "/dex/PUMP2_PUMP_UPPER_OIL_RESERVOR_TEMP2"
+   ],
+   "reason": "Maple Grove Pump 02 oil: Dead channel on this pump. Sampled across the whole recorded window (2025-07-02 01:01 to 2025-07-11 23:59, 46 snapshots spread evenly over the ten days), this tag holds exactly 0 in every one of them - one distinct value. The same tag on the sibling pumps at this station varies normally over the same snapshots, and 64 of Pump 01's 87 numeric tags vary while only 13 of Pump 02's 85 ever leave zero; bay status reads Idle for every sampled snapshot on both. So this is not a pump that was merely stopped - a stopped pump still reports ambient temperatures, as Pump 01 does - it is instrumentation that reports nothing. The unit is therefore not settled by this pump's own data, and it cannot be inherited from the sibling that does report: a constant zero is equally consistent with degC, degF or an unwired input, and approving it would put a reading of \"0 degC\" on a machine page as though it were a measurement of a freezing machine. Withheld rather than approved for that reason, not for lack of a catalogue mapping - component and parameter are already assigned and are correct. Recommended: confirm with the plant whether Pump 02's oil temperature transmitters were wired and scanning during this period; if they were not, these tags should stay withheld for this dataset. Sibling decision for the same tag family, for when this pump reports again: 'degC' (verified), data type number, settled on /dex/PUMP1_PUMP_BOTTOM_OIL_RESERVOR_TEMP1."
+  },
+  {
+   "paths": [
+    "/dex/PUMP2_COOLING_WATER_RTD1",
+    "/dex/PUMP2_COOLING_WATER_RTD3",
+    "/dex/PUMP2_COOLING_WATER_RTD4"
+   ],
+   "reason": "Maple Grove Pump 02 cooling water RTDs: Dead channel on this pump. Sampled across the whole recorded window (2025-07-02 01:01 to 2025-07-11 23:59, 46 snapshots spread evenly over the ten days), this tag holds exactly 0 in every one of them - one distinct value. The same tag on the sibling pumps at this station varies normally over the same snapshots, and 64 of Pump 01's 87 numeric tags vary while only 13 of Pump 02's 85 ever leave zero; bay status reads Idle for every sampled snapshot on both. So this is not a pump that was merely stopped - a stopped pump still reports ambient temperatures, as Pump 01 does - it is instrumentation that reports nothing. The unit is therefore not settled by this pump's own data, and it cannot be inherited from the sibling that does report: a constant zero is equally consistent with degC, degF or an unwired input, and approving it would put a reading of \"0 degC\" on a machine page as though it were a measurement of a freezing machine. Withheld rather than approved for that reason, not for lack of a catalogue mapping - component and parameter are already assigned and are correct. Recommended: confirm with the plant whether Pump 02's cooling water RTDs were wired and scanning during this period; if they were not, these tags should stay withheld for this dataset. Sibling decision for the same tag family, for when this pump reports again: 'degC' (verified), data type number, settled on /dex/PUMP1_COOLING_WATER_RTD1."
+  }
+ ]
+}

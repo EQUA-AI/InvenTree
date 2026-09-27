@@ -16,14 +16,14 @@ from django.test.utils import CaptureQueriesContext
 from InvenTree.unit_test import InvenTreeAPITestCase
 from part.models import Part
 
-from .models import (
+from assets.models import (
     AssetComponent,
     AssetMachine,
     Client,
     DictionaryPoint,
     MachineSignalState,
 )
-from .registry import (
+from assets.registry import (
     decode_upload,
     ensure_pump,
     import_dictionary,
@@ -98,6 +98,104 @@ class RegistryTests(InvenTreeAPITestCase):
             data=data,
             format='multipart',
         )
+
+    def test_pd_block_resolves_only_the_tags_with_no_dex_counterpart(self):
+        """The per-bay summary must not shadow the dex block it duplicates.
+
+        `pmw` and `pmvar` restate ACTIVE_POWER and REACTIVE_POWER, so resolving
+        them would give one catalogue parameter two dictionary points and the
+        approval clash guard would reject whichever came second. `dv` has no dex
+        counterpart, so it is the only source for discharge rate and must
+        resolve - otherwise the station flow total has nothing it can ever bind.
+        """
+        raw = json.dumps({
+            'st': 'I',
+            'pd': {'P1': {'st': 'I', 'dv': 2931.0, 'pmw': 24.5, 'pmvar': 1.0}},
+            'dex': {
+                'ID': 'PH_3',
+                'TIMESTAMP': '1.752854398616E9',
+                'COMMAN_FORBAY_LEVEL': '132.45',
+            },
+        }).encode()
+        points = {p['path']: p for p in plan_dictionary(self.station, raw)['points']}
+
+        self.assertEqual(points['/pd/P1/dv']['match_method'], 'exact')
+        self.assertTrue(points['/pd/P1/dv']['template'])
+        self.assertEqual(points['/pd/P1/st']['match_method'], 'exact')
+        for tag in ('pmw', 'pmvar'):
+            self.assertEqual(points[f'/pd/P1/{tag}']['match_method'], 'unresolved')
+            self.assertIsNone(points[f'/pd/P1/{tag}']['template'])
+
+    def test_an_opc_node_id_belongs_to_the_bay_it_names(self):
+        """A bay-scoped tag must not land on the station just for being spelled oddly.
+
+        The source names a bay two ways: as a `PUMP5_` prefix, and inside the
+        raw node id of an OPC-UA subscription. Only the first was recognised, so
+        120 bay-scoped tags were filed against the station - an operator opening
+        a pump saw none of them, and the station's own readings were filled with
+        other bays' tags.
+
+        Matching is deliberately not asserted here. Where both spellings exist
+        they disagree, so nothing yet says they are the same sensor; which bay a
+        tag belongs to needs no such claim.
+        """
+        node = 'NS=1;S=T|PS1_PROG_19_4_2019_OS(2)::P7_OL_SMP_BRG_LT.PROCESS_VALUE'
+        raw = json.dumps({
+            'st': 'I',
+            'pd': {'P1': {'st': 'I'}},
+            'dex': {
+                'ID': 'PH_3',
+                'TIMESTAMP': '1.752854398616E9',
+                'COMMAN_FORBAY_LEVEL': '132.45',
+                node: '35.2',
+            },
+        }).encode()
+
+        plan = plan_dictionary(self.station, raw)
+        point = next(p for p in plan['points'] if node in p['path'])
+
+        self.assertEqual(point['owner_key'], 'P7')
+        self.assertIn('P7', plan['pumps'])
+
+    def test_a_program_name_is_not_mistaken_for_a_bay(self):
+        """`PS1_PROG_...` contains `P1_`; only the node id's own `::` introduces a bay."""
+        raw = json.dumps({
+            'st': 'I',
+            'pd': {'P1': {'st': 'I'}},
+            'dex': {
+                'ID': 'PH_3',
+                'TIMESTAMP': '1.752854398616E9',
+                'COMMAN_FORBAY_LEVEL': '132.45',
+                'PS1_PROG_19_4_2019_OS_HEARTBEAT': '1',
+            },
+        }).encode()
+
+        point = next(
+            p
+            for p in plan_dictionary(self.station, raw)['points']
+            if 'HEARTBEAT' in p['path']
+        )
+
+        self.assertEqual(point['owner_key'], '')
+
+    def test_a_resolved_discharge_rate_carries_no_unit(self):
+        """`dv` maps to a parameter whose unit is deliberately unresolved."""
+        raw = json.dumps({
+            'st': 'I',
+            'pd': {'P1': {'st': 'I', 'dv': 2931.0}},
+            'dex': {
+                'ID': 'PH_3',
+                'TIMESTAMP': '1.752854398616E9',
+                'COMMAN_FORBAY_LEVEL': '132.45',
+            },
+        }).encode()
+        point = next(
+            p
+            for p in plan_dictionary(self.station, raw)['points']
+            if p['path'] == '/pd/P1/dv'
+        )
+        self.assertEqual(point['unit'], '')
+        self.assertEqual(point['unit_status'], 'unresolved')
 
     def imported(self):
         """Import a tiny dictionary and return its motor-temperature point."""

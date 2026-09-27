@@ -195,3 +195,33 @@ export function ObservedAt({
     </Group>
   );
 }
+
+/**
+ * What to draw for one sample, or null when it cannot be drawn.
+ *
+ * The server sends `plot_value` for samples whose raw value is not a number but
+ * still means something on an axis - a status code like "R" or "I", which it
+ * maps from the plant's own status vocabulary so the two cannot drift apart.
+ * Everything else non-numeric is left off rather than coerced: inventing a
+ * number for a value nobody defined is worse than a gap in the line.
+ *
+ * Shared, and deliberately so. The chart and the sparkline each had their own
+ * reading of a sample, and only the chart was taught about `plot_value`: a
+ * status trace drew correctly in the chart while the sparkline beside it
+ * filtered every sample out and reported "Too few samples" about data it had
+ * been given in full.
+ */
+export function numericValue(sample: {
+  value: unknown;
+  plot_value?: number | null;
+}): number | null {
+  if (typeof sample.plot_value === 'number') {
+    return sample.plot_value;
+  }
+  const { value } = sample;
+  if (value === null || value === undefined || typeof value === 'boolean') {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}

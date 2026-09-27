@@ -10,18 +10,70 @@ from datetime import timedelta
 from django.test import TestCase
 from django.utils import timezone
 
+from assets.health_models import MachineSignalBinding
 from assets.models import AssetMachine
 from InvenTree.unit_test import InvenTreeAPITestCase
 from machine_health.connectors.base import (
+    EXPECTED_SAMPLE_INTERVAL_SECONDS,
     MAX_TREND_SAMPLES,
     MAX_TREND_WINDOW_SECONDS,
     HealthConnector,
     Reading,
+    bounded_window,
     register,
 )
-from machine_health.services.trends import TrendError, read_trend
+from machine_health.services.trends import (
+    DEFAULT_WINDOW_SECONDS,
+    TrendError,
+    read_trend,
+    read_trends,
+)
 
 from .fixtures import HealthEnvMixin
+
+
+class TrendBoundsTest(TestCase):
+    """The window ceiling and the sample cap have to describe the same limit.
+
+    These are two statements about one bound, and the failure mode when they
+    disagree is quiet: every request for the longest permitted window comes back
+    flagged ``truncated``, having dropped the *newest* readings, while the UI
+    goes on offering that range. The old pair said "30 days" and "2000 samples",
+    which at this cadence is 2.8 hours - so "last 30 days" returned the oldest
+    2.8 hours of the month and stopped.
+    """
+
+    def test_the_sample_cap_covers_a_full_length_window(self):
+        """A window the server permits must be one it can return whole."""
+        needed = MAX_TREND_WINDOW_SECONDS // EXPECTED_SAMPLE_INTERVAL_SECONDS
+
+        self.assertGreaterEqual(
+            MAX_TREND_SAMPLES,
+            needed,
+            'The longest permitted window holds more samples than the cap '
+            'allows, so every full-length read would be silently truncated.',
+        )
+
+    def test_the_default_window_is_within_the_ceiling(self):
+        """The unparameterised read must not be one the bound would refuse."""
+        self.assertLessEqual(DEFAULT_WINDOW_SECONDS, MAX_TREND_WINDOW_SECONDS)
+
+    def test_a_window_past_the_ceiling_is_refused(self):
+        """The ceiling is enforced, not merely documented."""
+        end = timezone.now()
+        start = end - timedelta(seconds=MAX_TREND_WINDOW_SECONDS + 1)
+
+        with self.assertRaisesMessage(ValueError, 'may not exceed'):
+            bounded_window(start, end)
+
+    def test_a_window_exactly_at_the_ceiling_is_allowed(self):
+        """An off-by-one here would make the advertised maximum unusable."""
+        end = timezone.now()
+        start = end - timedelta(seconds=MAX_TREND_WINDOW_SECONDS)
+
+        _start, _end, samples = bounded_window(start, end)
+
+        self.assertEqual(samples, MAX_TREND_SAMPLES)
 
 
 @register
@@ -33,6 +85,8 @@ class _FakeHistorian(HealthConnector):
     #: Set by tests to control what the "remote platform" returns.
     canned_readings: list[Reading] = []
     last_external_key: str | None = None
+    #: How many windows have been read, to show batching reads the source once.
+    window_reads: int = 0
 
     def check(self):
         """Always reachable."""
@@ -45,7 +99,43 @@ class _FakeHistorian(HealthConnector):
     def read_window(self, external_key, start, end, *, max_samples=None):
         """Record the tag it was asked for, then return the canned window."""
         type(self).last_external_key = external_key
-        return list(type(self).canned_readings)
+        type(self).window_reads += 1
+        return [
+            reading
+            for reading in type(self).canned_readings
+            if reading.external_key == external_key
+        ]
+
+
+@register
+class _ObedientHistorian(HealthConnector):
+    """A connector that honours ``max_samples``, the way the real ones do.
+
+    This distinction is the whole point of the test below. ``_FakeHistorian``
+    ignores the cap and returns everything, so the service trims it and notices.
+    A real connector stops reading once it has enough, which means the service
+    sees exactly the number it asked for and cannot tell a full window from an
+    overflowing one - unless it deliberately asks for one more than it needs.
+    """
+
+    key = 'test-obedient'
+
+    canned_readings: list[Reading] = []
+    last_max_samples: int | None = None
+
+    def check(self):
+        """Always reachable."""
+        return True, ''
+
+    def read_latest(self, external_keys):
+        """Not used by the trend path."""
+        return []
+
+    def read_window(self, external_key, start, end, *, max_samples=None):
+        """Return at most ``max_samples`` readings, stopping early like Cosmos."""
+        type(self).last_max_samples = max_samples
+        readings = list(type(self).canned_readings)
+        return readings[:max_samples] if max_samples else readings
 
 
 @register
@@ -65,6 +155,34 @@ class _BrokenHistorian(HealthConnector):
     def read_window(self, external_key, start, end, *, max_samples=None):
         """Fail the way a real outage does."""
         raise ConnectionError('historian unreachable')
+
+
+class _ReadTimeout(Exception):
+    """Named to match the SDK exceptions the service classifies by name.
+
+    `trends` must not import the Cosmos SDK to recognise a Cosmos error, so it
+    matches on the class name instead. Naming this the way a real one is named
+    is what makes the test exercise that rule rather than a mock of it.
+    """
+
+
+@register
+class _SlowHistorian(HealthConnector):
+    """A connector that is reachable but does not answer in time."""
+
+    key = 'test-slow'
+
+    def check(self):
+        """Always reachable - that is the point of this fixture."""
+        return True, ''
+
+    def read_latest(self, external_keys):
+        """Not used by the trend path."""
+        return []
+
+    def read_window(self, external_key, start, end, *, max_samples=None):
+        """Time out the way an over-large window does."""
+        raise _ReadTimeout('the request failed to complete within the given timeout')
 
 
 class TrendReadTest(HealthEnvMixin, TestCase):
@@ -141,6 +259,58 @@ class TrendReadTest(HealthEnvMixin, TestCase):
         self.assertEqual(len(result['samples']), 2)
         self.assertTrue(result['truncated'])
 
+    def test_truncation_is_reported_when_the_connector_honours_the_cap(self):
+        """A connector that stops at the cap must still produce a truncation flag.
+
+        Regression: the service used to ask for exactly the number of samples it
+        would return, so a connector that obeyed the cap always looked like a
+        complete window. The chart would silently drop the newest part of the
+        range while telling the operator it was whole.
+        """
+        self.source.connector_type = 'test-obedient'
+        self.source.save(update_fields=['connector_type'])
+        _ObedientHistorian.canned_readings = [
+            Reading(
+                external_key=self.binding.external_key,
+                value=float(index),
+                observed_at=self.now - timedelta(minutes=index),
+            )
+            for index in range(10)
+        ]
+
+        result = read_trend(
+            self.machine, binding_id=self.binding.pk, max_samples=4, now=self.now
+        )
+
+        self.assertEqual(len(result['samples']), 4)
+        self.assertTrue(result['truncated'])
+        # The probe is what makes the detection possible.
+        self.assertEqual(_ObedientHistorian.last_max_samples, 5)
+
+    def test_an_exactly_full_window_is_not_reported_as_truncated(self):
+        """No false alarm when the data happens to fill the cap exactly.
+
+        A warning that cries wolf is worse than none, because operators learn to
+        dismiss it.
+        """
+        self.source.connector_type = 'test-obedient'
+        self.source.save(update_fields=['connector_type'])
+        _ObedientHistorian.canned_readings = [
+            Reading(
+                external_key=self.binding.external_key,
+                value=float(index),
+                observed_at=self.now - timedelta(minutes=index),
+            )
+            for index in range(4)
+        ]
+
+        result = read_trend(
+            self.machine, binding_id=self.binding.pk, max_samples=4, now=self.now
+        )
+
+        self.assertEqual(len(result['samples']), 4)
+        self.assertFalse(result['truncated'])
+
     def test_source_without_a_connector_reports_unavailable(self):
         """No trend is invented for a source that cannot serve one."""
         self.source.connector_type = ''
@@ -162,6 +332,38 @@ class TrendReadTest(HealthEnvMixin, TestCase):
         self.assertFalse(result['available'])
         self.assertEqual(result['reason'], 'SOURCE_UNAVAILABLE')
         self.assertEqual(result['samples'], [])
+
+    def test_a_timeout_is_reported_as_a_timeout_not_as_unreachable(self):
+        """The two failures send an operator to different places.
+
+        'Could not be reached' points at the network, the endpoint or
+        credentials. A timeout usually means the window asked for more than the
+        source could return in time - measured against the live account, an
+        hour of ~95 KB documents at 400 RU/s times out while fifteen minutes of
+        the same data succeeds. Collapsing both into SOURCE_UNAVAILABLE sends
+        someone hunting connectivity when the fix is a shorter window.
+        """
+        self.source.connector_type = 'test-slow'
+        self.source.save(update_fields=['connector_type'])
+
+        result = read_trend(self.machine, binding_id=self.binding.pk, now=self.now)
+
+        self.assertFalse(result['available'])
+        self.assertEqual(result['reason'], 'SOURCE_TIMEOUT')
+        self.assertEqual(result['samples'], [])
+        self.assertIn('shorter window', result['detail'])
+        # And it must not claim the source was unreachable, because it wasn't.
+        self.assertNotIn('could not be reached', result['detail'].lower())
+
+    def test_a_timeout_still_returns_no_samples(self):
+        """Availability is the flag; an empty series must never imply success."""
+        self.source.connector_type = 'test-slow'
+        self.source.save(update_fields=['connector_type'])
+
+        result = read_trend(self.machine, binding_id=self.binding.pk, now=self.now)
+
+        self.assertEqual(result['samples'], [])
+        self.assertFalse(result['available'])
 
     def test_unregistered_connector_does_not_fall_back(self):
         """An unknown adapter reads as unconfigured, not as some default."""
@@ -233,3 +435,111 @@ class TrendApiTest(HealthEnvMixin, InvenTreeAPITestCase):
             expected_code=400,
         )
         self.assertEqual(response.data['code'], 'INVALID_WINDOW')
+
+
+class TrendsBatchReadTest(HealthEnvMixin, TestCase):
+    """Reading many of a machine's signals in one call."""
+
+    def setUp(self):
+        """Two mapped signals on one history-capable source."""
+        self.build_health_env()
+        self.now = timezone.now()
+        self.source.connector_type = 'test-historian'
+        self.source.save(update_fields=['connector_type'])
+        self.second = MachineSignalBinding.objects.create(
+            machine=self.machine,
+            source=self.source,
+            external_key='tag-two',
+            display_name='Second',
+            signal_kind='temperature',
+            unit='degC',
+            active=True,
+        )
+        _FakeHistorian.canned_readings = [
+            Reading(
+                external_key=key,
+                value=value,
+                observed_at=self.now - timedelta(minutes=offset),
+            )
+            for key, value in (
+                (self.binding.external_key, 1.0), (self.second.external_key, 2.0)
+            )
+            for offset in range(3)
+        ]
+        _FakeHistorian.window_reads = 0
+
+    def test_every_requested_binding_comes_back(self):
+        """Each binding gets its own trend, carrying its own samples."""
+        results = read_trends(
+            self.machine,
+            binding_ids=[self.binding.pk, self.second.pk],
+            now=self.now,
+        )
+
+        self.assertEqual(len(results), 2)
+        by_id = {r['binding_id']: r for r in results}
+        self.assertTrue(all(r['available'] for r in results))
+        self.assertTrue(
+            all(s['value'] == 1.0 for s in by_id[self.binding.pk]['samples'])
+        )
+        self.assertTrue(
+            all(s['value'] == 2.0 for s in by_id[self.second.pk]['samples'])
+        )
+
+    def test_a_binding_on_another_machine_is_not_returned(self):
+        """The machine scopes the read, exactly as the single-binding path does."""
+        other = AssetMachine.objects.create(name='Someone else')
+        stranger = MachineSignalBinding.objects.create(
+            machine=other,
+            source=self.source,
+            external_key='not-yours',
+            display_name='Stranger',
+            signal_kind='temperature',
+            unit='degC',
+            active=True,
+        )
+
+        results = read_trends(
+            self.machine, binding_ids=[self.binding.pk, stranger.pk], now=self.now
+        )
+
+        self.assertEqual([r['binding_id'] for r in results], [self.binding.pk])
+
+    def test_an_unreadable_source_reports_per_binding(self):
+        """One failure marks every binding unavailable, and raises nothing.
+
+        A page of sparklines must degrade to "no trend" rather than error out.
+        """
+        self.source.connector_type = 'test-broken'
+        self.source.save(update_fields=['connector_type'])
+
+        results = read_trends(
+            self.machine,
+            binding_ids=[self.binding.pk, self.second.pk],
+            now=self.now,
+        )
+
+        self.assertEqual(len(results), 2)
+        self.assertFalse(any(r['available'] for r in results))
+        self.assertTrue(all(r['reason'] == 'SOURCE_UNAVAILABLE' for r in results))
+
+    def test_the_window_is_read_once_per_source_not_once_per_binding(self):
+        """The whole point: N sparklines must not mean N reads of one window.
+
+        The default read_windows falls back to one read_window per key, so this
+        counts those - a connector that overrides it (Cosmos does) makes one
+        pass instead, which is strictly fewer.
+        """
+        read_trends(
+            self.machine,
+            binding_ids=[self.binding.pk, self.second.pk],
+            now=self.now,
+        )
+        baseline = _FakeHistorian.window_reads
+
+        _FakeHistorian.window_reads = 0
+        for binding in (self.binding, self.second):
+            read_trend(self.machine, binding_id=binding.pk, now=self.now)
+
+        # Same work for the fallback, and one connector setup rather than two.
+        self.assertEqual(baseline, _FakeHistorian.window_reads)

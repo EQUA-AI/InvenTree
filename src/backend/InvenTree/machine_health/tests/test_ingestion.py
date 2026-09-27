@@ -2,7 +2,9 @@
 
 from datetime import timedelta
 
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from assets.health_models import MachineSignalBinding, MachineSignalState, SignalQuality
@@ -34,6 +36,68 @@ class IngestReadingsTest(HealthEnvMixin, TestCase):
         }
         entry.update(overrides)
         return entry
+
+    def test_a_batch_costs_a_fixed_number_of_queries(self):
+        """Ingestion must not scale its round trips with the reading count.
+
+        A real pumphouse snapshot is around 700 readings. Issuing a locking
+        read and then a write for each one is ~1,400 round trips and was
+        measured at 8.6s per snapshot, which is what capped the whole pipeline.
+        The rows taken are the same; they are taken once.
+        """
+        extra = MachineSignalBinding.objects.create(
+            machine=self.machine,
+            source=self.source,
+            external_key='tag-two',
+            display_name='Second',
+            signal_kind='temperature',
+            unit='degC',
+            active=True,
+        )
+        one = [self.reading()]
+        many = [self.reading(), self.reading(external_key=extra.external_key)]
+
+        with CaptureQueriesContext(connection) as first:
+            ingest_readings(self.source, one, now=self.now)
+        with CaptureQueriesContext(connection) as second:
+            ingest_readings(
+                self.source, many, now=self.now + timedelta(seconds=1)
+            )
+
+        # Twice the readings must not mean twice the queries.
+        self.assertLessEqual(len(second), len(first) + 2)
+
+    def test_two_readings_for_one_binding_keep_the_newer(self):
+        """The older of two readings for the same tag in one batch is dropped.
+
+        The read-modify-write loop got this for free: the first reading was
+        saved, so the second compared against it. Batching has to reproduce it
+        deliberately, by registering an unsaved row before the write.
+        """
+        older = self.reading(value=1.0, observed_at=self.now - timedelta(seconds=30))
+        newer = self.reading(value=2.0, observed_at=self.now)
+
+        result = ingest_readings(self.source, [newer, older], now=self.now)
+
+        self.assertEqual(result.accepted, 1)
+        self.assertEqual(result.replayed, 1)
+        state = MachineSignalState.objects.get(binding=self.binding)
+        self.assertEqual(state.value['value'], 2.0)
+        self.assertEqual(state.observed_at, self.now)
+
+    def test_an_updated_row_refreshes_updated_at(self):
+        """bulk_update does not run auto_now, so the timestamp is set by hand."""
+        ingest_readings(self.source, [self.reading()], now=self.now)
+        first = MachineSignalState.objects.get(binding=self.binding).updated_at
+
+        later = self.now + timedelta(minutes=5)
+        ingest_readings(
+            self.source, [self.reading(value=9.9, observed_at=later)], now=later
+        )
+
+        state = MachineSignalState.objects.get(binding=self.binding)
+        self.assertEqual(state.value['value'], 9.9)
+        self.assertGreater(state.updated_at, first)
 
     def test_mapped_reading_updates_current_state(self):
         """A mapped tag writes the binding's current value and freshness."""

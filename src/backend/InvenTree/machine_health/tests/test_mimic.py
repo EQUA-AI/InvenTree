@@ -11,9 +11,9 @@ from assets.health_models import HealthSource, MachineSignalBinding, MachineSign
 from assets.ingestion_models import IngestionCheckpoint
 from assets.models import Client, DictionaryPoint
 from assets.registry import ensure_pump, register_station
-from assets.test_registry import test_scope
+from assets.tests.test_registry import test_scope
 from InvenTree.unit_test import InvenTreeAPITestCase
-from machine_health.mimic_layout import layout_coverage
+from machine_health.mimic_layout import expand_pointer, layout_coverage, load_layout
 from machine_health.services.mimic import station_mimic
 
 
@@ -144,12 +144,47 @@ class MimicTests(InvenTreeAPITestCase):
         self.assertEqual(result['points']['/pd/P1/pmw']['reason'], 'disabled')
         self.assertEqual(result['alarms'], [])
 
+    def test_the_bay_power_tile_points_at_a_tag_review_can_approve(self):
+        """Asserted through the layout, because the layout is what was wrong.
+
+        The tile used to point at ``/pd/<bay>/pmw``, which the same review
+        deliberately never maps - see the total's test below - so it could only
+        ever render "Unavailable", beside a station total that was summing the
+        very quantity the bay claimed not to have. Resolving the element's own
+        pointer is the only assertion that would have caught that; checking the
+        ACTIVE_POWER point directly passes either way, since it is in the
+        payload as a dictionary point regardless of what the layout references.
+        """
+        self.add_point('/dex/PUMP1_ACTIVE_POWER', 24.5)
+        element = next(
+            e
+            for e in load_layout()['elements']
+            if e['id'] == 'pump-power' and e['view'] == 'unit'
+        )
+
+        pointer = expand_pointer(element['pointer'], 'P1')
+        tile = self.get_mimic(unit='P1').data['points'][pointer]
+
+        self.assertEqual(tile['value'], 24.5)
+        self.assertEqual(tile['unit'], 'MW')
+        self.assertIsNone(tile['reason'])
+
     def test_totals_require_every_bay_and_convert_reviewed_units(self):
-        """Incomplete bay data cannot silently become a low plant total."""
-        self.add_point('/pd/P1/pmw', 1)
+        """Incomplete bay data cannot silently become a low plant total.
+
+        The per-bay contributor is the reviewed ``ACTIVE_POWER`` tag, not the
+        snapshot's ``/pd/<bay>/pmw`` field: review found no catalogue target for
+        the latter, so it is never approved, never bound, and a total summed from
+        it could only ever report "incomplete".
+
+        The numbered template it uses can always be expanded: ``ensure_pump`` is
+        the only way a bay is registered and it rejects any key outside
+        ``P1``-``P9999``, which is a subset of what the pointer accepts.
+        """
+        self.add_point('/dex/PUMP1_ACTIVE_POWER', 1)
         self.assertIsNone(self.get_mimic().data['totals']['power']['value'])
         _, binding = self.add_point(
-            '/pd/P17/pmw', 2000, machine=self.other_pump, unit='kW'
+            '/dex/PUMP17_ACTIVE_POWER', 2000, machine=self.other_pump, unit='kW'
         )
         total = self.get_mimic().data['totals']['power']
         self.assertEqual(total['value'], 3)

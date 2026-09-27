@@ -56,8 +56,25 @@ def month_of(hour_bucket: str) -> str:
     return moment.strftime('%Y%m')
 
 
-def build_document(snapshot: dict, station_uuid: str, selectors: dict) -> dict:
-    """Turn one snapshot into the document the connector expects to read back."""
+def build_document(
+    snapshot: dict, station_uuid: str, selectors: dict, *, inline_extension: bool = True
+) -> dict:
+    """Turn one snapshot into the document the connector expects to read back.
+
+    `inline_extension=False` omits the parsed `dex` tag map, roughly halving
+    the document. It is safe because the reader does not use it:
+    `flatten_snapshot` re-parses `data1_raw` whenever that field is present
+    (`pumphouse_payload.py`), so the parsed copy is a duplicate of bytes it
+    already has. The indexing policy excludes `/*` as well, so `dex` is not
+    queryable and nothing else reads it.
+
+    That duplication is the dominant cost of a backfill. A full document is
+    ~95 KB, of which `data1_raw` is ~50 KB and the parsed `dex` ~45 KB - the
+    same payload twice. Writes are the migration bottleneck, so halving the
+    document roughly doubles the rate and halves the storage bill.
+
+    The default stays True so seeded documents keep their existing shape.
+    """
     try:
         bucket = int(snapshot['time_period'])
         sample = int(snapshot['sub_time_period'])
@@ -90,8 +107,13 @@ def build_document(snapshot: dict, station_uuid: str, selectors: dict) -> dict:
         'entity_uuid': station_uuid,
         **selectors,
         **{key: value for key, value in payload.items() if key not in {'pd', 'dex'}},
+        # `pd` is kept either way: it is ~1 KB of bay status, not the bulk.
         'pd': payload.get('pd', {}),
-        'dex': payload.get('dex', {}),
+        # `dex` is the ~45 KB half. Omitted entirely rather than emptied - an
+        # empty map would contradict `data1_raw` and fail verification, which
+        # is the correct outcome for a document claiming to hold tags it does
+        # not.
+        **({'dex': payload.get('dex', {})} if inline_extension else {}),
         'data2': None,
         'data1_raw': raw,
         'payload_hash': 'sha256:' + hashlib.sha256(raw.encode('utf-8')).hexdigest(),
@@ -111,9 +133,15 @@ def verify(document: dict) -> None:
     if document['month'] != month_of(document['hour_bucket']):
         raise SeedError('Built document month does not match its bucket in UTC.')
 
+    # Cross-check only the fields the document actually duplicates, which is
+    # the rule the reader already applies (`_verify_against_raw` guards with
+    # `if key in document`). The invariant being protected is "a duplicated
+    # field must agree with the raw payload", not "every field must be
+    # duplicated" - `data1_raw` is authoritative and complete on its own, so a
+    # document that omits a parsed copy is smaller, not less truthful.
     reparsed = json.loads(document['data1_raw'])
     for key, value in reparsed.items():
-        if document.get(key) != value:
+        if key in document and document[key] != value:
             raise SeedError(
                 f'Parsed field {key!r} disagrees with data1_raw. The raw payload '
                 'is authoritative, so this document would misrepresent it.'

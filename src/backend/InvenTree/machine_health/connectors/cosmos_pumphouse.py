@@ -30,28 +30,38 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 from django.db import transaction
 
 from machine_health.connectors.base import (
+    MAX_TREND_SAMPLES,
     HealthConnector,
     Reading,
+    SampledWindow,
     bounded_window,
     register,
+    slot_edges,
 )
 from machine_health.connectors.pumphouse_payload import (
     SnapshotError,
     flatten_snapshot,
     in_batches,
 )
+from machine_health.services.display_time import MINIMUM_SHIFT
 
 logger = logging.getLogger('inventree')
 
 #: One hour of source samples, in milliseconds. Buckets are half-open:
 #: ``hour_bucket <= sub_time_period < hour_bucket + HOUR_MS``.
 HOUR_MS = 3_600_000
+
+#: Per-request ceiling when a source does not configure one. Unchanged from the
+#: value this connector has always used, so nothing moves without being asked.
+DEFAULT_REQUEST_SECONDS = 5.0
 
 #: The whole vocabulary a failure may be reported as. Anything the provider says
 #: is collapsed into one of these before it can reach a log line or a database
@@ -74,9 +84,9 @@ ERROR_CODES = frozenset({
 PAGE_SIZE = 100
 
 #: Hour buckets a single window read may walk. The trend window is already capped
-#: at 30 days by ``bounded_window``; this bounds the number of round trips that
-#: window can turn into.
-MAX_BUCKETS_PER_READ = 24 * 31
+#: at six hours by ``bounded_window``, which can straddle at most seven hour
+#: boundaries; this bounds the number of round trips that window can turn into.
+MAX_BUCKETS_PER_READ = 7
 
 #: Hour buckets one poll may walk. A poller that has fallen days behind catches
 #: up over several runs rather than issuing hundreds of queries in one tick and
@@ -103,6 +113,87 @@ QUERY_SLICE = (
     'AND c.sub_time_period >= @from_ts AND c.sub_time_period < @to_ts '
     'ORDER BY c.sub_time_period ASC'
 )
+
+#: The oldest snapshot in a range: what a sampled read asks for, once per slot.
+#: ``TOP 1`` is what makes sampling cheap - the account returns one 50 KB
+#: document per slot instead of the seven hundred an hour of them holds.
+QUERY_FIRST_IN_RANGE = (
+    'SELECT TOP 1 * FROM c '
+    'WHERE c.station_uuid = @station AND c.hour_bucket = @bucket '
+    'AND c.sub_time_period >= @from_ts AND c.sub_time_period < @to_ts '
+    'ORDER BY c.sub_time_period ASC'
+)
+
+#: How long the shared credential may spend obtaining a token, and how many
+#: times it may retry.
+#:
+#: Deliberately separate from :data:`DEFAULT_REQUEST_SECONDS`: that budget
+#: bounds a query to the Cosmos account, while this one bounds a round trip to
+#: the identity provider, which is a different host at a different distance.
+#: Five seconds - the query budget - is what a service principal's token
+#: request was being given, and across the internet it was not enough: the
+#: reads that failed under load failed on the token, not on the data. Because
+#: the credential below is now built once per process rather than once per
+#: request, a more forgiving budget is paid once rather than on every read.
+IDENTITY_TIMEOUT_SECONDS = 10
+IDENTITY_RETRIES = 2
+
+#: Retries for one request to the account, for transient faults only.
+#:
+#: Previously zero, which made a single dropped connection an outage on the
+#: page: "the source could not be reached" where a second attempt would have
+#: succeeded. Retries stay inside the per-request timeout, so this widens what
+#: a request survives without widening how long it may take. Throttling has
+#: its own policy in the SDK and honours the server's retry-after; this covers
+#: connection and read failures.
+REQUEST_RETRIES = 2
+
+#: One credential for this process, and the lock that builds it once.
+#:
+#: ``DefaultAzureCredential`` walks a chain of sources - environment, managed
+#: identity, the Azure CLI - and every walk that reaches the network costs a
+#: round trip to the identity provider. Built per connector, that walk ran
+#: again for every API request the page made, and a page that reads a dozen
+#: series ran a dozen of them at once, each against a five second budget.
+#: Sharing one credential shares the SDK's own token cache with it, so the
+#: chain is walked once per process and the token is reused until it expires.
+#:
+#: It is a module global rather than an attribute of the source, because a
+#: source row says where to read and must never say how to authenticate.
+_IDENTITY_LOCK = threading.Lock()
+_IDENTITY = None
+
+
+def _shared_identity():
+    """Return the process-wide Entra ID credential, building it at most once."""
+    global _IDENTITY
+
+    if _IDENTITY is not None:
+        return _IDENTITY
+    with _IDENTITY_LOCK:
+        if _IDENTITY is None:
+            from azure.identity import DefaultAzureCredential
+
+            # A credential that fails is still worth keeping: it caches which
+            # link of the chain answered, and the next call retries the
+            # network rather than the whole chain.
+            _IDENTITY = DefaultAzureCredential(
+                process_timeout=IDENTITY_TIMEOUT_SECONDS,
+                connection_timeout=IDENTITY_TIMEOUT_SECONDS,
+                read_timeout=IDENTITY_TIMEOUT_SECONDS,
+                retry_total=IDENTITY_RETRIES,
+            )
+    return _IDENTITY
+
+
+#: Concurrent slot reads in one sampled window. Each is a single-document
+#: query costing about 4 RU, so throughput is never the limit - 240 of them
+#: spend ~60 RU/s against a 400 RU/s account. What bounds the read is moving
+#: 50 KB of snapshot per point: from a developer machine 240 points is ~12 MB
+#: and takes ~15 s whether eight or sixteen run at once. The pool exists so the
+#: round trips overlap that transfer, and is bounded so a page cannot open
+#: hundreds of connections to the account.
+SAMPLE_WORKERS = 16
 
 
 class CosmosConfigError(Exception):
@@ -176,12 +267,14 @@ class CosmosPumphouseConnector(HealthConnector):
         super().__init__(source)
         self._container = None
         self._client = None
-        self._identity = None
         self._station_uuid = station_uuid
         self.deadline = deadline
         self.last_error_code = ''
         self.request_charge: float | None = None
         self._charge_missing = False
+        # Sampled reads run several queries at once; the RU tally they share
+        # must not lose increments to a race.
+        self._charge_lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # Configuration
@@ -269,15 +362,16 @@ class CosmosPumphouseConnector(HealthConnector):
         against the local emulator, and only from the environment variable named
         by ``secret_ref`` - so a key can never be read out of the database, an API
         response or a log.
+
+        The Entra credential is shared by the whole process (see
+        :func:`_shared_identity`) so that its token cache is shared too. The
+        emulator key is not: it is named per source and read from the
+        environment on every call, so that changing it takes effect at once and
+        so that one source's key can never answer for another's.
         """
         ref = (self.source.secret_ref or '').strip()
         if not ref:
-            from azure.identity import DefaultAzureCredential
-
-            self._identity = DefaultAzureCredential(
-                process_timeout=5, connection_timeout=5, read_timeout=5, retry_total=0
-            )
-            return self._identity
+            return _shared_identity()
 
         if not self._is_emulator():
             raise CosmosConfigError(
@@ -327,9 +421,9 @@ class CosmosPumphouseConnector(HealthConnector):
             endpoint,
             credential=self._credential(),
             timeout=self.request_timeout(),
-            connection_timeout=5,
-            read_timeout=5,
-            retry_total=0,
+            connection_timeout=self.request_seconds,
+            read_timeout=self.request_seconds,
+            retry_total=REQUEST_RETRIES,
         )
         self._client = client
         self._container = client.get_database_client(database).get_container_client(
@@ -338,13 +432,19 @@ class CosmosPumphouseConnector(HealthConnector):
         return self._container
 
     def close(self):
-        """Release HTTP sessions and credential transports after a scheduled poll."""
-        try:
-            if self._client is not None:
-                self._client.close()
-        finally:
-            if self._identity is not None:
-                self._identity.close()
+        """Release this connector's HTTP session after a read.
+
+        The credential is deliberately left open: it belongs to the process,
+        not to this connector, and closing it would throw away the token cache
+        that every other reader is sharing - which is the cost this connector
+        was paying per request before the credential was shared.
+        """
+        if self._client is not None:
+            self._client.close()
+        # A closed client cannot serve another query, so forget it; the next
+        # caller builds a fresh one rather than failing on a dead session.
+        self._client = None
+        self._container = None
 
     # ------------------------------------------------------------------
     # Reading
@@ -404,14 +504,38 @@ class CosmosPumphouseConnector(HealthConnector):
             self._charge_missing = True
             self.request_charge = None
             return
-        self.request_charge = (self.request_charge or 0.0) + charge
+        with self._charge_lock:
+            self.request_charge = (self.request_charge or 0.0) + charge
+
+    @property
+    def request_seconds(self) -> float:
+        """How long one request to the account may take.
+
+        Five seconds suits an application deployed beside its Cosmos account,
+        and is wrong for one reaching it across the internet: measured from a
+        developer machine a single partition query to a remote account takes
+        three to nine seconds, so a five second cap fails about half of them -
+        not on volume, since the same queries are charged only ten to thirteen
+        RU, but on round-trip latency alone. Configurable so a distant
+        deployment can say so, and defaulted to the original value so a nearby
+        one is unaffected.
+        """
+        configured = (self.config or {}).get('request_timeout_seconds')
+        try:
+            seconds = float(configured)
+        except (TypeError, ValueError):
+            return DEFAULT_REQUEST_SECONDS
+        return seconds if seconds > 0 else DEFAULT_REQUEST_SECONDS
 
     def request_timeout(self):
         """Bound each request by the remaining station and sweep budget."""
-        remaining = 5.0 if self.deadline is None else self.deadline - time.monotonic()
+        allowed = self.request_seconds
+        remaining = (
+            allowed if self.deadline is None else self.deadline - time.monotonic()
+        )
         if remaining <= 0:
             raise PollBudgetError
-        return min(5.0, remaining)
+        return min(allowed, remaining)
 
     def latest_document(self, station: str, hour_bucket) -> dict | None:
         """Newest snapshot in one station-hour, or None when the hour is empty."""
@@ -441,6 +565,91 @@ class CosmosPumphouseConnector(HealthConnector):
             station,
             hour_bucket,
         )
+
+    def first_document_in_range(
+        self, station: str, hour_bucket, from_ts, to_ts
+    ) -> dict | None:
+        """Oldest snapshot in one bucket within ``[from_ts, to_ts)``, or None."""
+        rows = self._query(
+            QUERY_FIRST_IN_RANGE,
+            [
+                {'name': '@station', 'value': station},
+                {'name': '@bucket', 'value': str(hour_bucket)},
+                {'name': '@from_ts', 'value': int(from_ts)},
+                {'name': '@to_ts', 'value': int(to_ts)},
+            ],
+            station,
+            hour_bucket,
+        )
+        for row in rows:
+            return row
+        return None
+
+    def sample_windows(self, external_keys, start, end, *, slots: int) -> SampledWindow:
+        """Return one snapshot per slot, fetched as one document each.
+
+        A full read of a window costs every snapshot in it - seven hundred
+        documents an hour, fifty kilobytes each - which is why trends stop at six
+        hours and pages wait tens of seconds for one. This asks the account for
+        the first snapshot in each of ``slots`` equal parts of the window, and
+        nothing else, so a day costs a few hundred small queries whatever its
+        length. The queries run concurrently because each one is mostly a round
+        trip.
+
+        Every reading returned is a snapshot the plant actually wrote, carrying
+        its own timestamp; nothing is averaged. A slot with no snapshot in it is
+        simply absent, so the chart shows the gap. Since every key in a snapshot
+        shares its instant, the readings for different keys line up slot for
+        slot, which is what lets one chart draw several of them on one axis.
+        """
+        keys = {str(key) for key in external_keys}
+        if not keys or slots < 1:
+            return SampledWindow({key: [] for key in keys}, documents_read=0, slots=0)
+        if end <= start:
+            raise ValueError('Trend window end must not precede its start')
+
+        station = self.station
+        edges = [
+            (to_epoch_ms(slot_start), to_epoch_ms(slot_end))
+            for slot_start, slot_end in slot_edges(start, end, slots)
+        ]
+        # Build the client on this thread, before any worker needs it, so the
+        # credential and connection setup happen once and not eight times.
+        self.container()
+
+        def fetch(edge):
+            from_ms, to_ms = edge
+            # A slot that straddles an hour boundary spans two partitions. The
+            # earlier one is asked first; only if it holds nothing is the later
+            # one asked, so the reading is still the first in the slot.
+            bucket = bucket_of(from_ms)
+            while bucket < to_ms:
+                document = self.first_document_in_range(
+                    station, bucket, max(from_ms, bucket), min(to_ms, bucket + HOUR_MS)
+                )
+                if document is not None:
+                    return document
+                bucket += HOUR_MS
+            return None
+
+        workers = min(SAMPLE_WORKERS, len(edges))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            documents = list(pool.map(fetch, edges))
+
+        # Slots are half-open and disjoint, and each query is bounded by its
+        # own slot, so no snapshot can be picked twice; the documents come back
+        # in slot order, which is time order.
+        collected: dict[str, list[Reading]] = {key: [] for key in keys}
+        fetched = 0
+        for document in documents:
+            if document is None:
+                continue
+            fetched += 1
+            for reading in flatten_snapshot(document):
+                if reading.external_key in keys:
+                    collected[reading.external_key].append(reading)
+
+        return SampledWindow(collected, documents_read=fetched, slots=len(edges))
 
     def read_latest(self, external_keys=None) -> list[Reading]:
         """Return the current value for each requested key.
@@ -476,7 +685,9 @@ class CosmosPumphouseConnector(HealthConnector):
         Timestamps are never rounded to a display interval and gaps are never
         filled: a trend drawn from this shows where the source actually had data.
         """
-        start, end, samples = bounded_window(start, end, max_samples=max_samples)
+        start, end, samples = bounded_window(
+            start, end, max_samples=max_samples, ceiling=MAX_TREND_SAMPLES + 1
+        )
         station = self.station
         start_ms, end_ms = to_epoch_ms(start), to_epoch_ms(end)
 
@@ -495,6 +706,52 @@ class CosmosPumphouseConnector(HealthConnector):
                         return collected
         return collected
 
+    def read_windows(self, external_keys, start, end, *, max_samples=None):
+        """Return samples for many tags from a single pass over the documents.
+
+        A snapshot is a whole-station document holding every tag, and
+        ``flatten_snapshot`` parses all of them. Reading one tag at a time means
+        fetching and parsing each document once per tag - for a pump page of
+        thirty-odd sparklines that is thirty identical scans, and it is the
+        largest avoidable cost this adapter has. Here every requested key is
+        collected as each document goes past, so the window is read once.
+
+        Returns:
+            A mapping of external key to its readings, oldest first; a key with
+            no data in the window maps to an empty list.
+        """
+        wanted = {str(key) for key in external_keys}
+        if not wanted:
+            return {}
+
+        start, end, samples = bounded_window(
+            start, end, max_samples=max_samples, ceiling=MAX_TREND_SAMPLES + 1
+        )
+        station = self.station
+        start_ms, end_ms = to_epoch_ms(start), to_epoch_ms(end)
+
+        collected: dict[str, list[Reading]] = {key: [] for key in wanted}
+        # Stop only when *every* key has filled, not when the first one has:
+        # tags do not all report at the same cadence.
+        outstanding = set(wanted)
+
+        for bucket in self._buckets(start_ms, end_ms, MAX_BUCKETS_PER_READ):
+            window_from = max(start_ms, bucket)
+            window_to = min(end_ms, bucket + HOUR_MS)
+            for document in self.documents_in_bucket(
+                station, bucket, window_from, window_to
+            ):
+                for reading in flatten_snapshot(document):
+                    key = reading.external_key
+                    if key not in outstanding:
+                        continue
+                    collected[key].append(reading)
+                    if len(collected[key]) >= samples:
+                        outstanding.discard(key)
+                if not outstanding:
+                    return collected
+        return collected
+
     @staticmethod
     def _buckets(start_ms: int, end_ms: int, limit: int):
         """Yield each hour bucket touched by ``[start_ms, end_ms)``, bounded."""
@@ -509,6 +766,37 @@ class CosmosPumphouseConnector(HealthConnector):
     # Polling
     # ------------------------------------------------------------------
 
+    def read_ceiling(self, station: str, now_ms: int) -> int:
+        """The newest instant this station may be read up to.
+
+        Normally the wall clock. For a station whose history is a *recorded
+        window* - one ``discover_data_range`` has probed, and old enough that the
+        dashboard is shifting its times forward to read as live - it is the end
+        of that window instead.
+
+        The two must agree. The display offset is derived from the recorded end,
+        so a document later than that end is dated *past* the present the moment
+        it is shown. Worse, it then wins permanently: ingestion drops an older
+        observation as a replay, so nothing that follows can replace it, and the
+        station's tiles stay in the future until someone deletes the rows by
+        hand. Stations nobody has probed, and windows recent enough that no shift
+        is applied, keep reading to the wall clock as before.
+        """
+        entry = (self.config.get('data_ranges') or {}).get(str(station)) or {}
+        stamp = entry.get('to')
+        if not stamp:
+            return now_ms
+        try:
+            recorded = datetime.fromisoformat(str(stamp))
+        except (TypeError, ValueError):
+            return now_ms
+        if recorded.tzinfo is None:
+            recorded = recorded.replace(tzinfo=timezone.utc)
+        recorded_ms = to_epoch_ms(recorded)
+        if now_ms - recorded_ms < MINIMUM_SHIFT.total_seconds() * 1000:
+            return now_ms
+        return min(now_ms, recorded_ms)
+
     def poll(self, checkpoint, *, now=None, max_documents=None, on_scanned=None):
         """Yield ``(document, readings)`` from just after the checkpoint onward.
 
@@ -516,9 +804,13 @@ class CosmosPumphouseConnector(HealthConnector):
         so re-reading it would re-present data the application has taken. This
         reads only - the caller decides what to do with a failure, which is what
         lets :meth:`ingest` keep the checkpoint honest.
+
+        Reading stops at :meth:`read_ceiling`, not at the wall clock, so the
+        poller cannot outrun the window the dashboard anchors to.
         """
         station = checkpoint.station_uuid
         now_ms = to_epoch_ms(now or datetime.now(tz=timezone.utc))
+        ceiling_ms = self.read_ceiling(station, now_ms)
         from_ts = max(
             int(checkpoint.sub_time_period) + 1,
             (getattr(checkpoint, 'scan_until', None) or 0) - POLL_LOOKBACK_MS,
@@ -526,10 +818,10 @@ class CosmosPumphouseConnector(HealthConnector):
         cap = int(max_documents or self.config.get('max_docs_per_poll') or 200)
         produced = 0
 
-        for bucket in self._buckets(from_ts, now_ms + 1, MAX_BUCKETS_PER_POLL):
+        for bucket in self._buckets(from_ts, ceiling_ms + 1, MAX_BUCKETS_PER_POLL):
             self.request_timeout()
             window_from = max(from_ts, bucket)
-            window_to = min(now_ms + 1, bucket + HOUR_MS)
+            window_to = min(ceiling_ms + 1, bucket + HOUR_MS)
             for document in self.documents_in_bucket(
                 station, bucket, window_from, window_to
             ):
