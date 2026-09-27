@@ -1,0 +1,2984 @@
+{
+ "station_uuid": "2b02a3f5-27cd-40a1-a197-08905a37d9f4",
+ "station_source_uuid": "776913b4-d26f-4294-bf58-647ac401bae5",
+ "source_namespace": "klsw",
+ "dictionary_hash": "69934cdd6e1bbb9fd62892468312d5cfca38a34d4f47bbefc983012d144ceff4",
+ "observation_hash": "390f674c2a070e97c80f40129eb503432ed14ee6b8962f794852e3dd47575447",
+ "approve": [
+  {
+   "paths": [
+    "/dex/PUMP1_ACTIVE_POWER"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "MW",
+   "unit_status": "verified",
+   "note": "MW, not the proposed kW. Corrected 2026-09-25. The catalogue's own Active Power parameter is MW and the 29 sibling points approved earlier on this estate are MW; these were the only points left proposing kW. At Saraswati the running bay's ACTIVE_POWER, its /pd/P5/pmw and the station /pmw all read 24.5 in the same snapshots with exactly one bay running, so the three are one quantity in one unit, and pmw is documented MW. The published rating for these machines is 40 MW each, against which 24.5 is 61% load; as kW it would be 0.06% of rating. This station was idle for the whole migrated window, so the magnitude evidence above is from Saraswati; the unit is inherited as the same field of the same SCADA document schema across the estate, not re-measured here.",
+   "mapping": {
+    "part_ipn": "PS-ELECTRICAL",
+    "component_code": "PS-ELECTRICAL:1",
+    "parameter": "PUMP | ELECTRICAL | Active Power"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_COLD_AIR_RTD1"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 33.3 to 33.4, median 33.3, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-AIR-COOLING",
+    "component_code": "PS-AIR-COOLING:1",
+    "parameter": "PUMP | AIR-COOLING | Cold Air RTD 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_COLD_AIR_RTD2"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 35 to 35.1, median 35.1, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-AIR-COOLING",
+    "component_code": "PS-AIR-COOLING:1",
+    "parameter": "PUMP | AIR-COOLING | Cold Air RTD 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_COLD_AIR_RTD3"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 31.7 to 31.8, median 31.8, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-AIR-COOLING",
+    "component_code": "PS-AIR-COOLING:1",
+    "parameter": "PUMP | AIR-COOLING | Cold Air RTD 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_COLD_AIR_RTD4"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 20.6 to 20.7, median 20.6, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-AIR-COOLING",
+    "component_code": "PS-AIR-COOLING:1",
+    "parameter": "PUMP | AIR-COOLING | Cold Air RTD 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_COOLING_WATER_RTD1"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 31.9 to 32, median 31.9, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-WATER-COOLING",
+    "component_code": "PS-WATER-COOLING:1",
+    "parameter": "PUMP | WATER-COOLING | Cooling Water RTD 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_COOLING_WATER_RTD3"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 27 to 27.3, median 27.1, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-WATER-COOLING",
+    "component_code": "PS-WATER-COOLING:1",
+    "parameter": "PUMP | WATER-COOLING | Cooling Water RTD 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_COOLING_WATER_RTD4"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 27.3 to 27.6, median 27.4, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-WATER-COOLING",
+    "component_code": "PS-WATER-COOLING:1",
+    "parameter": "PUMP | WATER-COOLING | Cooling Water RTD 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_DISCHARGE_PRESSURE"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "mH2O",
+   "unit_status": "verified",
+   "note": "Metres of water column - NOT the proposed bar. Corrected 2026-09-25. The only running observation anywhere in the migrated estate is Saraswati bay P5 at 18.962, constant across 105 of 105 sampled snapshots. That station's forebay reads 115.2 m and it lifts to Sundilla's published 130.0 m pond level, so its static lift at the observed levels is 14.9 m, and 18.96 m is that plus about 4 m of friction and velocity head - what a discharge transmitter should read. Under the proposed bar the same reading is 193 m of head on a 15 m lift, and under kg/cm2 186 m; both are impossible, so bar is excluded rather than merely unconfirmed. Converts to the catalogue unit at 1.86 bar. This also resolves the contradiction BLOCKERS.md recorded against a stated 34 m lift head - the published pond levels show 34 m is not this lift's head. This station was idle for the whole migrated window, so the magnitude evidence above is from Saraswati; the unit is inherited as the same field of the same SCADA document schema across the estate, not re-measured here.",
+   "mapping": {
+    "part_ipn": "PS-DISCHARGE",
+    "component_code": "PS-DISCHARGE:1",
+    "parameter": "PUMP | DISCHARGE | Discharge Pressure"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_EXCITATION_FLD_VLTG_PROCESS_VALUE"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "V",
+   "unit_status": "verified",
+   "note": "Catalogue unit V, corroborated under load at Saraswati PH. Reads -1 to 0.1 here with the plant idle, consistent with a de-excited field. Note this station does NOT show the ~1048 sentinel its sister stations show on the paired field-current channel.",
+   "mapping": {
+    "part_ipn": "PS-EXCITATION",
+    "component_code": "PS-EXCITATION:1",
+    "parameter": "PUMP | EXCITATION | Excitation Field Voltage"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_HOT_AIR_RTD1"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 32.5 to 32.6, median 32.6, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-AIR-COOLING",
+    "component_code": "PS-AIR-COOLING:1",
+    "parameter": "PUMP | AIR-COOLING | Hot Air RTD 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_HOT_AIR_RTD2"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 33.4 to 33.5, median 33.4, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-AIR-COOLING",
+    "component_code": "PS-AIR-COOLING:1",
+    "parameter": "PUMP | AIR-COOLING | Hot Air RTD 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_HOT_AIR_RTD3"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 31.8 to 31.9, median 31.8, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-AIR-COOLING",
+    "component_code": "PS-AIR-COOLING:1",
+    "parameter": "PUMP | AIR-COOLING | Hot Air RTD 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_HOT_AIR_RTD4"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 31.3 to 31.4, median 31.4, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-AIR-COOLING",
+    "component_code": "PS-AIR-COOLING:1",
+    "parameter": "PUMP | AIR-COOLING | Hot Air RTD 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_MOTOR_OFF_STATUS"
+   ],
+   "owner_key": "P1",
+   "data_type": "status",
+   "unit": "",
+   "unit_status": "unitless",
+   "note": "Status code, dimensionless. Independent of load, so the idle window does not weaken it: observed values are the documented I/R set.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR-CONTROL",
+    "component_code": "PS-MOTOR-CONTROL:1",
+    "parameter": "PUMP | MOTOR-CONTROL | Motor OFF Status"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_MOTOR_ON_STATUS"
+   ],
+   "owner_key": "P1",
+   "data_type": "status",
+   "unit": "",
+   "unit_status": "unitless",
+   "note": "Status code, dimensionless. Independent of load, so the idle window does not weaken it: observed values are the documented I/R set.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR-CONTROL",
+    "component_code": "PS-MOTOR-CONTROL:1",
+    "parameter": "PUMP | MOTOR-CONTROL | Motor ON Status"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_MOTOR_STATOR_CORE_RTD1"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 33.5 to 33.6, median 33.5, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Stator Core RTD 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_MOTOR_STATOR_CORE_RTD2"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 31.9 to 32, median 31.9, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Stator Core RTD 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_MOTOR_STATOR_CORE_RTD3"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 17.1 to 17.2, median 17.2, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Stator Core RTD 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_MOTOR_STATOR_CORE_RTD4"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 32.7 to 32.8, median 32.7, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Stator Core RTD 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_MOTOR_STATOR_CORE_RTD5"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 33.4 to 33.5, median 33.5, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Stator Core RTD 5"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_MOTOR_STATOR_CORE_RTD6"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 31.9 to 32, median 32, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Stator Core RTD 6"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_MOTOR_STATOR_CORE_RTD7"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 32.8 to 32.9, median 32.9, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Stator Core RTD 7"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_MOTOR_STATOR_CORE_RTD8"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 35.1 to 35.2, median 35.1, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Stator Core RTD 8"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_BEARING_TEMP1"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 27.4 to 27.4, median 27.4, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Bearing Temperature 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_BEARING_TEMP2"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28 to 28.1, median 28, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Bearing Temperature 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_BEARING_TEMP3"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 25.5 to 25.5, median 25.5, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Bearing Temperature 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_BEARING_TEMP4"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 27.8 to 27.9, median 27.9, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Bearing Temperature 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_BOTTOM_OIL_RESERVOR_TEMP1"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 32.2 to 32.2, median 32.2, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Bottom Oil Reservoir Temperature 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_BOTTOM_OIL_RESERVOR_TEMP2"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 30.8 to 30.9, median 30.9, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Bottom Oil Reservoir Temperature 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_GUIDE_BEARING_OIL_TEMP1"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 27.7 to 27.8, median 27.8, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Guide Bearing Oil Temperature 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP1"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 11.2 to 11.4, median 11.4, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Lower Guide Bearing Pad Temperature 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP2"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 11.2 to 11.4, median 11.4, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Lower Guide Bearing Pad Temperature 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP3"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 31.3 to 31.4, median 31.3, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Lower Guide Bearing Pad Temperature 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP4"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 31.8 to 31.9, median 31.9, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Lower Guide Bearing Pad Temperature 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP5"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 32 to 32.1, median 32, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Lower Guide Bearing Pad Temperature 5"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP6"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 31.5 to 31.6, median 31.5, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Lower Guide Bearing Pad Temperature 6"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP7"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 31.7 to 31.8, median 31.7, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Lower Guide Bearing Pad Temperature 7"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP8"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 31.6 to 31.7, median 31.7, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Lower Guide Bearing Pad Temperature 8"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_MOTOR_WINDING_TEMP1"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 33.3 to 33.4, median 33.3, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_MOTOR_WINDING_TEMP10"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 14.4 to 14.5, median 14.4, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 10"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_MOTOR_WINDING_TEMP11"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 32.4 to 32.5, median 32.5, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 11"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_MOTOR_WINDING_TEMP12"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 35.6 to 35.7, median 35.7, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 12"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_MOTOR_WINDING_TEMP2"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 34.1 to 34.2, median 34.2, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_MOTOR_WINDING_TEMP3"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 31.4 to 31.5, median 31.5, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_MOTOR_WINDING_TEMP4"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 32.1 to 32.2, median 32.1, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_MOTOR_WINDING_TEMP5"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 32.2 to 32.3, median 32.2, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 5"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_MOTOR_WINDING_TEMP6"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 31.7 to 31.8, median 31.7, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 6"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_MOTOR_WINDING_TEMP8"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 33.3 to 33.4, median 33.4, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 8"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_MOTOR_WINDING_TEMP9"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 31.5 to 31.6, median 31.5, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 9"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_THRUST_BEARING_PAD_TEMP1"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 32.3 to 32.4, median 32.4, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_THRUST_BEARING_PAD_TEMP10"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 31.1 to 31.1, median 31.1, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 10"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_THRUST_BEARING_PAD_TEMP2"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 33.8 to 33.9, median 33.8, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_THRUST_BEARING_PAD_TEMP3"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 31.9 to 31.9, median 31.9, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_THRUST_BEARING_PAD_TEMP4"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 33.1 to 33.1, median 33.1, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_THRUST_BEARING_PAD_TEMP5"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 31.8 to 31.9, median 31.8, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 5"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_THRUST_BEARING_PAD_TEMP6"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 31.9 to 31.9, median 31.9, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 6"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_THRUST_BEARING_PAD_TEMP7"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 32 to 32, median 32, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 7"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_THRUST_BEARING_PAD_TEMP8"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 31.1 to 31.2, median 31.2, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 8"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_THRUST_BEARING_PAD_TEMP9"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 31.2 to 31.3, median 31.3, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 9"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_UPPER_GUIDE_BEARING_PAD_TEMP1"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 31.3 to 31.4, median 31.3, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Upper Guide Bearing Pad Temperature 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_UPPER_GUIDE_BEARING_PAD_TEMP2"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 32.3 to 32.4, median 32.4, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Upper Guide Bearing Pad Temperature 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_UPPER_GUIDE_BEARING_PAD_TEMP3"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 34.1 to 34.2, median 34.2, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Upper Guide Bearing Pad Temperature 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_UPPER_GUIDE_BEARING_PAD_TEMP4"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 31.7 to 31.8, median 31.8, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Upper Guide Bearing Pad Temperature 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_UPPER_GUIDE_BEARING_PAD_TEMP6"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 32 to 32, median 32, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Upper Guide Bearing Pad Temperature 6"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_UPPER_GUIDE_BEARING_PAD_TEMP8"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 32 to 32.1, median 32.1, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Upper Guide Bearing Pad Temperature 8"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_UPPER_OIL_RESERVOR_TEMP1"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 32 to 32.1, median 32.1, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Upper Oil Reservoir Temperature 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_PUMP_UPPER_OIL_RESERVOR_TEMP2"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 32.3 to 32.4, median 32.4, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Upper Oil Reservoir Temperature 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP1_SPEED"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "rpm",
+   "unit_status": "verified",
+   "note": "Catalogue unit rpm, corroborated under load at Saraswati PH (474 rpm). Ranganayaka never ran in the migrated window - zero running bays in 13,492 per-bay samples - and reads 0 with a 6.3 maximum, consistent with a stopped shaft and contradicting nothing.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Shaft Speed"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP2_ACTIVE_POWER"
+   ],
+   "owner_key": "P2",
+   "data_type": "number",
+   "unit": "MW",
+   "unit_status": "verified",
+   "note": "MW, not the proposed kW. Corrected 2026-09-25. The catalogue's own Active Power parameter is MW and the 29 sibling points approved earlier on this estate are MW; these were the only points left proposing kW. At Saraswati the running bay's ACTIVE_POWER, its /pd/P5/pmw and the station /pmw all read 24.5 in the same snapshots with exactly one bay running, so the three are one quantity in one unit, and pmw is documented MW. The published rating for these machines is 40 MW each, against which 24.5 is 61% load; as kW it would be 0.06% of rating. This station was idle for the whole migrated window, so the magnitude evidence above is from Saraswati; the unit is inherited as the same field of the same SCADA document schema across the estate, not re-measured here.",
+   "mapping": {
+    "part_ipn": "PS-ELECTRICAL",
+    "component_code": "PS-ELECTRICAL:1",
+    "parameter": "PUMP | ELECTRICAL | Active Power"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP2_DISCHARGE_PRESSURE"
+   ],
+   "owner_key": "P2",
+   "data_type": "number",
+   "unit": "mH2O",
+   "unit_status": "verified",
+   "note": "Metres of water column - NOT the proposed bar. Corrected 2026-09-25. The only running observation anywhere in the migrated estate is Saraswati bay P5 at 18.962, constant across 105 of 105 sampled snapshots. That station's forebay reads 115.2 m and it lifts to Sundilla's published 130.0 m pond level, so its static lift at the observed levels is 14.9 m, and 18.96 m is that plus about 4 m of friction and velocity head - what a discharge transmitter should read. Under the proposed bar the same reading is 193 m of head on a 15 m lift, and under kg/cm2 186 m; both are impossible, so bar is excluded rather than merely unconfirmed. Converts to the catalogue unit at 1.86 bar. This also resolves the contradiction BLOCKERS.md recorded against a stated 34 m lift head - the published pond levels show 34 m is not this lift's head. This station was idle for the whole migrated window, so the magnitude evidence above is from Saraswati; the unit is inherited as the same field of the same SCADA document schema across the estate, not re-measured here.",
+   "mapping": {
+    "part_ipn": "PS-DISCHARGE",
+    "component_code": "PS-DISCHARGE:1",
+    "parameter": "PUMP | DISCHARGE | Discharge Pressure"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP2_EXCITATION_FLD_VLTG_PROCESS_VALUE"
+   ],
+   "owner_key": "P2",
+   "data_type": "number",
+   "unit": "V",
+   "unit_status": "verified",
+   "note": "Catalogue unit V, corroborated under load at Saraswati PH. Reads -1 to 0.1 here with the plant idle, consistent with a de-excited field. Note this station does NOT show the ~1048 sentinel its sister stations show on the paired field-current channel.",
+   "mapping": {
+    "part_ipn": "PS-EXCITATION",
+    "component_code": "PS-EXCITATION:1",
+    "parameter": "PUMP | EXCITATION | Excitation Field Voltage"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP2_MOTOR_OFF_STATUS"
+   ],
+   "owner_key": "P2",
+   "data_type": "status",
+   "unit": "",
+   "unit_status": "unitless",
+   "note": "Status code, dimensionless. Independent of load, so the idle window does not weaken it: observed values are the documented I/R set.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR-CONTROL",
+    "component_code": "PS-MOTOR-CONTROL:1",
+    "parameter": "PUMP | MOTOR-CONTROL | Motor OFF Status"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP2_MOTOR_ON_STATUS"
+   ],
+   "owner_key": "P2",
+   "data_type": "status",
+   "unit": "",
+   "unit_status": "unitless",
+   "note": "Status code, dimensionless. Independent of load, so the idle window does not weaken it: observed values are the documented I/R set.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR-CONTROL",
+    "component_code": "PS-MOTOR-CONTROL:1",
+    "parameter": "PUMP | MOTOR-CONTROL | Motor ON Status"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP2_PUMP_BEARING_TEMP2"
+   ],
+   "owner_key": "P2",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 27.4 to 27.4, median 27.4, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Bearing Temperature 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP2_PUMP_BEARING_TEMP4"
+   ],
+   "owner_key": "P2",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 27.1 to 27.2, median 27.2, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Bearing Temperature 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP2_SPEED"
+   ],
+   "owner_key": "P2",
+   "data_type": "number",
+   "unit": "rpm",
+   "unit_status": "verified",
+   "note": "Catalogue unit rpm, corroborated under load at Saraswati PH (474 rpm). Ranganayaka never ran in the migrated window - zero running bays in 13,492 per-bay samples - and reads 0 with a 6.3 maximum, consistent with a stopped shaft and contradicting nothing.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Shaft Speed"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_ACTIVE_POWER"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "MW",
+   "unit_status": "verified",
+   "note": "MW, not the proposed kW. Corrected 2026-09-25. The catalogue's own Active Power parameter is MW and the 29 sibling points approved earlier on this estate are MW; these were the only points left proposing kW. At Saraswati the running bay's ACTIVE_POWER, its /pd/P5/pmw and the station /pmw all read 24.5 in the same snapshots with exactly one bay running, so the three are one quantity in one unit, and pmw is documented MW. The published rating for these machines is 40 MW each, against which 24.5 is 61% load; as kW it would be 0.06% of rating. This station was idle for the whole migrated window, so the magnitude evidence above is from Saraswati; the unit is inherited as the same field of the same SCADA document schema across the estate, not re-measured here.",
+   "mapping": {
+    "part_ipn": "PS-ELECTRICAL",
+    "component_code": "PS-ELECTRICAL:1",
+    "parameter": "PUMP | ELECTRICAL | Active Power"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_COLD_AIR_RTD1"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.1 to 28.3, median 28.2, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-AIR-COOLING",
+    "component_code": "PS-AIR-COOLING:1",
+    "parameter": "PUMP | AIR-COOLING | Cold Air RTD 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_COLD_AIR_RTD2"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.1 to 28.4, median 28.2, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-AIR-COOLING",
+    "component_code": "PS-AIR-COOLING:1",
+    "parameter": "PUMP | AIR-COOLING | Cold Air RTD 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_COLD_AIR_RTD3"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28 to 28.2, median 28.1, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-AIR-COOLING",
+    "component_code": "PS-AIR-COOLING:1",
+    "parameter": "PUMP | AIR-COOLING | Cold Air RTD 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_DISCHARGE_PRESSURE"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "mH2O",
+   "unit_status": "verified",
+   "note": "Metres of water column - NOT the proposed bar. Corrected 2026-09-25. The only running observation anywhere in the migrated estate is Saraswati bay P5 at 18.962, constant across 105 of 105 sampled snapshots. That station's forebay reads 115.2 m and it lifts to Sundilla's published 130.0 m pond level, so its static lift at the observed levels is 14.9 m, and 18.96 m is that plus about 4 m of friction and velocity head - what a discharge transmitter should read. Under the proposed bar the same reading is 193 m of head on a 15 m lift, and under kg/cm2 186 m; both are impossible, so bar is excluded rather than merely unconfirmed. Converts to the catalogue unit at 1.86 bar. This also resolves the contradiction BLOCKERS.md recorded against a stated 34 m lift head - the published pond levels show 34 m is not this lift's head. This station was idle for the whole migrated window, so the magnitude evidence above is from Saraswati; the unit is inherited as the same field of the same SCADA document schema across the estate, not re-measured here.",
+   "mapping": {
+    "part_ipn": "PS-DISCHARGE",
+    "component_code": "PS-DISCHARGE:1",
+    "parameter": "PUMP | DISCHARGE | Discharge Pressure"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_EXCITATION_FLD_VLTG_PROCESS_VALUE"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "V",
+   "unit_status": "verified",
+   "note": "Catalogue unit V, corroborated under load at Saraswati PH. Reads -1 to 0.1 here with the plant idle, consistent with a de-excited field. Note this station does NOT show the ~1048 sentinel its sister stations show on the paired field-current channel.",
+   "mapping": {
+    "part_ipn": "PS-EXCITATION",
+    "component_code": "PS-EXCITATION:1",
+    "parameter": "PUMP | EXCITATION | Excitation Field Voltage"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_HOT_AIR_RTD1"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.5 to 28.8, median 28.6, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-AIR-COOLING",
+    "component_code": "PS-AIR-COOLING:1",
+    "parameter": "PUMP | AIR-COOLING | Hot Air RTD 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_HOT_AIR_RTD2"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.5 to 28.8, median 28.6, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-AIR-COOLING",
+    "component_code": "PS-AIR-COOLING:1",
+    "parameter": "PUMP | AIR-COOLING | Hot Air RTD 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_HOT_AIR_RTD3"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.8 to 29.1, median 29, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-AIR-COOLING",
+    "component_code": "PS-AIR-COOLING:1",
+    "parameter": "PUMP | AIR-COOLING | Hot Air RTD 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_HOT_AIR_RTD4"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.4 to 28.7, median 28.6, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-AIR-COOLING",
+    "component_code": "PS-AIR-COOLING:1",
+    "parameter": "PUMP | AIR-COOLING | Hot Air RTD 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_MOTOR_OFF_STATUS"
+   ],
+   "owner_key": "P3",
+   "data_type": "status",
+   "unit": "",
+   "unit_status": "unitless",
+   "note": "Status code, dimensionless. Independent of load, so the idle window does not weaken it: observed values are the documented I/R set.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR-CONTROL",
+    "component_code": "PS-MOTOR-CONTROL:1",
+    "parameter": "PUMP | MOTOR-CONTROL | Motor OFF Status"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_MOTOR_ON_STATUS"
+   ],
+   "owner_key": "P3",
+   "data_type": "status",
+   "unit": "",
+   "unit_status": "unitless",
+   "note": "Status code, dimensionless. Independent of load, so the idle window does not weaken it: observed values are the documented I/R set.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR-CONTROL",
+    "component_code": "PS-MOTOR-CONTROL:1",
+    "parameter": "PUMP | MOTOR-CONTROL | Motor ON Status"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_MOTOR_STATOR_CORE_RTD1"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 0 to 29.4, median 29.2, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Stator Core RTD 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_MOTOR_STATOR_CORE_RTD2"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 0 to 29.7, median 29.5, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Stator Core RTD 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_MOTOR_STATOR_CORE_RTD3"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 0 to 29.3, median 29.2, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Stator Core RTD 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_MOTOR_STATOR_CORE_RTD4"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 0 to 29.7, median 29.6, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Stator Core RTD 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_MOTOR_STATOR_CORE_RTD5"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 0 to 29.5, median 29.3, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Stator Core RTD 5"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_MOTOR_STATOR_CORE_RTD6"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 0 to 29.9, median 29.7, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Stator Core RTD 6"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_MOTOR_STATOR_CORE_RTD7"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 0 to 30, median 29.8, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Stator Core RTD 7"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_MOTOR_STATOR_CORE_RTD8"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 0 to 30, median 29.8, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Stator Core RTD 8"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_BEARING_TEMP1"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 26.9 to 26.9, median 26.9, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Bearing Temperature 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_BEARING_TEMP2"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 27.2 to 27.2, median 27.2, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Bearing Temperature 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_BEARING_TEMP3"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 26.9 to 26.9, median 26.9, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Bearing Temperature 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_BEARING_TEMP4"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 27.5 to 27.6, median 27.5, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Bearing Temperature 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_GUIDE_BEARING_OIL_TEMP1"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 27.2 to 27.3, median 27.3, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Guide Bearing Oil Temperature 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_GUIDE_BEARING_OIL_TEMP2"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 27.7 to 27.7, median 27.7, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Guide Bearing Oil Temperature 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP3"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 29.1 to 29.4, median 29.3, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Lower Guide Bearing Pad Temperature 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP4"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 29.1 to 29.4, median 29.3, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Lower Guide Bearing Pad Temperature 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP5"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 29 to 29.2, median 29.1, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Lower Guide Bearing Pad Temperature 5"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP6"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 29.1 to 29.3, median 29.2, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Lower Guide Bearing Pad Temperature 6"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP7"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 29 to 29.3, median 29.1, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Lower Guide Bearing Pad Temperature 7"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP8"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 29 to 29.3, median 29.1, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Lower Guide Bearing Pad Temperature 8"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_MOTOR_WINDING_TEMP1"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 0 to 29.1, median 29, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_MOTOR_WINDING_TEMP10"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 0 to 29, median 28.9, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 10"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_MOTOR_WINDING_TEMP11"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 0 to 28.9, median 28.7, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 11"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_MOTOR_WINDING_TEMP12"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 0 to 29.2, median 29.1, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 12"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_MOTOR_WINDING_TEMP3"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 0 to 28.9, median 28.7, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_MOTOR_WINDING_TEMP4"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 0 to 29.1, median 28.9, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_MOTOR_WINDING_TEMP5"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 0 to 22.9, median 22.7, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 5"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_MOTOR_WINDING_TEMP6"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 0 to 29.1, median 28.9, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 6"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_MOTOR_WINDING_TEMP7"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 0 to 28.9, median 28.8, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 7"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_MOTOR_WINDING_TEMP8"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 0 to 28.8, median 28.7, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 8"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_MOTOR_WINDING_TEMP9"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 0 to 28.9, median 28.7, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 9"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_THRUST_BEARING_PAD_TEMP1"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 29.2 to 29.4, median 29.3, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_THRUST_BEARING_PAD_TEMP10"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 29 to 29.3, median 29.1, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 10"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_THRUST_BEARING_PAD_TEMP2"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 29.2 to 29.4, median 29.3, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_THRUST_BEARING_PAD_TEMP3"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 29.1 to 29.3, median 29.2, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_THRUST_BEARING_PAD_TEMP4"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 29.2 to 29.5, median 29.4, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_THRUST_BEARING_PAD_TEMP6"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 29.1 to 29.3, median 29.2, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 6"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_THRUST_BEARING_PAD_TEMP7"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.8 to 29, median 28.9, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 7"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_THRUST_BEARING_PAD_TEMP8"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 29.1 to 29.3, median 29.2, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 8"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_PUMP_THRUST_BEARING_PAD_TEMP9"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 29.6 to 29.8, median 29.7, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 9"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP3_SPEED"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "rpm",
+   "unit_status": "verified",
+   "note": "Catalogue unit rpm, corroborated under load at Saraswati PH (474 rpm). Ranganayaka never ran in the migrated window - zero running bays in 13,492 per-bay samples - and reads 0 with a 6.3 maximum, consistent with a stopped shaft and contradicting nothing.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Shaft Speed"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_ACTIVE_POWER"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "MW",
+   "unit_status": "verified",
+   "note": "MW, not the proposed kW. Corrected 2026-09-25. The catalogue's own Active Power parameter is MW and the 29 sibling points approved earlier on this estate are MW; these were the only points left proposing kW. At Saraswati the running bay's ACTIVE_POWER, its /pd/P5/pmw and the station /pmw all read 24.5 in the same snapshots with exactly one bay running, so the three are one quantity in one unit, and pmw is documented MW. The published rating for these machines is 40 MW each, against which 24.5 is 61% load; as kW it would be 0.06% of rating. This station was idle for the whole migrated window, so the magnitude evidence above is from Saraswati; the unit is inherited as the same field of the same SCADA document schema across the estate, not re-measured here.",
+   "mapping": {
+    "part_ipn": "PS-ELECTRICAL",
+    "component_code": "PS-ELECTRICAL:1",
+    "parameter": "PUMP | ELECTRICAL | Active Power"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_COLD_AIR_RTD1"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 27.6 to 27.7, median 27.6, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-AIR-COOLING",
+    "component_code": "PS-AIR-COOLING:1",
+    "parameter": "PUMP | AIR-COOLING | Cold Air RTD 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_COLD_AIR_RTD2"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 27 to 27.2, median 27.1, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-AIR-COOLING",
+    "component_code": "PS-AIR-COOLING:1",
+    "parameter": "PUMP | AIR-COOLING | Cold Air RTD 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_COLD_AIR_RTD4"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 27.8 to 27.9, median 27.8, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-AIR-COOLING",
+    "component_code": "PS-AIR-COOLING:1",
+    "parameter": "PUMP | AIR-COOLING | Cold Air RTD 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_COOLING_WATER_RTD3"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 25.5 to 25.7, median 25.6, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-WATER-COOLING",
+    "component_code": "PS-WATER-COOLING:1",
+    "parameter": "PUMP | WATER-COOLING | Cooling Water RTD 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_DISCHARGE_PRESSURE"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "mH2O",
+   "unit_status": "verified",
+   "note": "Metres of water column - NOT the proposed bar. Corrected 2026-09-25. The only running observation anywhere in the migrated estate is Saraswati bay P5 at 18.962, constant across 105 of 105 sampled snapshots. That station's forebay reads 115.2 m and it lifts to Sundilla's published 130.0 m pond level, so its static lift at the observed levels is 14.9 m, and 18.96 m is that plus about 4 m of friction and velocity head - what a discharge transmitter should read. Under the proposed bar the same reading is 193 m of head on a 15 m lift, and under kg/cm2 186 m; both are impossible, so bar is excluded rather than merely unconfirmed. Converts to the catalogue unit at 1.86 bar. This also resolves the contradiction BLOCKERS.md recorded against a stated 34 m lift head - the published pond levels show 34 m is not this lift's head. This station was idle for the whole migrated window, so the magnitude evidence above is from Saraswati; the unit is inherited as the same field of the same SCADA document schema across the estate, not re-measured here.",
+   "mapping": {
+    "part_ipn": "PS-DISCHARGE",
+    "component_code": "PS-DISCHARGE:1",
+    "parameter": "PUMP | DISCHARGE | Discharge Pressure"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_EXCITATION_FLD_VLTG_PROCESS_VALUE"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "V",
+   "unit_status": "verified",
+   "note": "Catalogue unit V, corroborated under load at Saraswati PH. Reads -1 to 0.1 here with the plant idle, consistent with a de-excited field. Note this station does NOT show the ~1048 sentinel its sister stations show on the paired field-current channel.",
+   "mapping": {
+    "part_ipn": "PS-EXCITATION",
+    "component_code": "PS-EXCITATION:1",
+    "parameter": "PUMP | EXCITATION | Excitation Field Voltage"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_HOT_AIR_RTD1"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.5 to 28.6, median 28.5, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-AIR-COOLING",
+    "component_code": "PS-AIR-COOLING:1",
+    "parameter": "PUMP | AIR-COOLING | Hot Air RTD 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_HOT_AIR_RTD2"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.1 to 28.3, median 28.2, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-AIR-COOLING",
+    "component_code": "PS-AIR-COOLING:1",
+    "parameter": "PUMP | AIR-COOLING | Hot Air RTD 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_HOT_AIR_RTD3"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 27.9 to 28.1, median 28, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-AIR-COOLING",
+    "component_code": "PS-AIR-COOLING:1",
+    "parameter": "PUMP | AIR-COOLING | Hot Air RTD 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_HOT_AIR_RTD4"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 24.2 to 24.4, median 24.3, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-AIR-COOLING",
+    "component_code": "PS-AIR-COOLING:1",
+    "parameter": "PUMP | AIR-COOLING | Hot Air RTD 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_MOTOR_OFF_STATUS"
+   ],
+   "owner_key": "P4",
+   "data_type": "status",
+   "unit": "",
+   "unit_status": "unitless",
+   "note": "Status code, dimensionless. Independent of load, so the idle window does not weaken it: observed values are the documented I/R set.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR-CONTROL",
+    "component_code": "PS-MOTOR-CONTROL:1",
+    "parameter": "PUMP | MOTOR-CONTROL | Motor OFF Status"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_MOTOR_ON_STATUS"
+   ],
+   "owner_key": "P4",
+   "data_type": "status",
+   "unit": "",
+   "unit_status": "unitless",
+   "note": "Status code, dimensionless. Independent of load, so the idle window does not weaken it: observed values are the documented I/R set.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR-CONTROL",
+    "component_code": "PS-MOTOR-CONTROL:1",
+    "parameter": "PUMP | MOTOR-CONTROL | Motor ON Status"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_MOTOR_STATOR_CORE_RTD2"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 29.2 to 29.4, median 29.3, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Stator Core RTD 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_MOTOR_STATOR_CORE_RTD3"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.2 to 28.4, median 28.3, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Stator Core RTD 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_MOTOR_STATOR_CORE_RTD4"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 25.5 to 25.7, median 25.6, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Stator Core RTD 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_MOTOR_STATOR_CORE_RTD6"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 12.9 to 13.1, median 13, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Stator Core RTD 6"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_MOTOR_STATOR_CORE_RTD7"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.6 to 28.8, median 28.7, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Stator Core RTD 7"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_MOTOR_STATOR_CORE_RTD8"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 25.4 to 25.6, median 25.5, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Stator Core RTD 8"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_BEARING_TEMP1"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 26.7 to 26.7, median 26.7, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Bearing Temperature 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_BEARING_TEMP2"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 26.9 to 27, median 27, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Bearing Temperature 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_BOTTOM_OIL_RESERVOR_TEMP2"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 29.1 to 29.2, median 29.1, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Bottom Oil Reservoir Temperature 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_GUIDE_BEARING_OIL_TEMP1"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 26.9 to 26.9, median 26.9, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Guide Bearing Oil Temperature 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP3"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.3 to 28.5, median 28.4, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Lower Guide Bearing Pad Temperature 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP4"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.4 to 28.6, median 28.5, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Lower Guide Bearing Pad Temperature 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP5"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.3 to 28.5, median 28.4, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Lower Guide Bearing Pad Temperature 5"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP6"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.4 to 28.5, median 28.5, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Lower Guide Bearing Pad Temperature 6"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP7"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.8 to 28.9, median 28.9, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Lower Guide Bearing Pad Temperature 7"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_LOWER_GUIDE_BEARING_PAD_TEMP8"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.3 to 28.5, median 28.4, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Lower Guide Bearing Pad Temperature 8"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_MOTOR_WINDING_TEMP1"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 27.9 to 28.1, median 28, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_MOTOR_WINDING_TEMP10"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 27.9 to 28.1, median 28, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 10"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_MOTOR_WINDING_TEMP2"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 27.6 to 27.8, median 27.7, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_MOTOR_WINDING_TEMP3"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.8 to 29, median 28.9, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_MOTOR_WINDING_TEMP4"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 27.9 to 28.1, median 28, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_MOTOR_WINDING_TEMP5"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 27.8 to 28, median 27.9, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 5"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_MOTOR_WINDING_TEMP6"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.1 to 28.3, median 28.2, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 6"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_MOTOR_WINDING_TEMP7"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 23.2 to 23.4, median 23.3, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 7"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_MOTOR_WINDING_TEMP8"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.2 to 28.4, median 28.3, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 8"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_MOTOR_WINDING_TEMP9"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.1 to 28.3, median 28.2, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Winding RTD 9"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_THRUST_BEARING_PAD_TEMP1"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.4 to 28.5, median 28.5, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_THRUST_BEARING_PAD_TEMP10"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.2 to 28.4, median 28.3, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 10"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_THRUST_BEARING_PAD_TEMP2"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.4 to 28.6, median 28.5, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_THRUST_BEARING_PAD_TEMP3"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.2 to 28.4, median 28.3, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_THRUST_BEARING_PAD_TEMP4"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.3 to 28.5, median 28.4, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_THRUST_BEARING_PAD_TEMP5"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.1 to 28.2, median 28.2, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 5"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_THRUST_BEARING_PAD_TEMP6"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.5 to 28.6, median 28.6, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 6"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_THRUST_BEARING_PAD_TEMP7"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.4 to 28.5, median 28.4, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 7"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_THRUST_BEARING_PAD_TEMP8"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28 to 28.2, median 28.1, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 8"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_THRUST_BEARING_PAD_TEMP9"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.3 to 28.5, median 28.4, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-THRUST-BRG",
+    "component_code": "PS-THRUST-BRG:1",
+    "parameter": "PUMP | THRUST-BRG | Thrust Bearing Pad Temperature 9"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_UPPER_GUIDE_BEARING_PAD_TEMP1"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 27.9 to 28.1, median 28, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Upper Guide Bearing Pad Temperature 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_UPPER_GUIDE_BEARING_PAD_TEMP2"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.6 to 28.8, median 28.7, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Upper Guide Bearing Pad Temperature 2"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_UPPER_GUIDE_BEARING_PAD_TEMP3"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.7 to 28.9, median 28.8, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Upper Guide Bearing Pad Temperature 3"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_UPPER_GUIDE_BEARING_PAD_TEMP4"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.5 to 28.7, median 28.6, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Upper Guide Bearing Pad Temperature 4"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_UPPER_GUIDE_BEARING_PAD_TEMP5"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.4 to 28.6, median 28.5, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Upper Guide Bearing Pad Temperature 5"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_UPPER_GUIDE_BEARING_PAD_TEMP7"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.1 to 28.2, median 28.1, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Upper Guide Bearing Pad Temperature 7"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_UPPER_GUIDE_BEARING_PAD_TEMP8"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.1 to 28.3, median 28.2, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Upper Guide Bearing Pad Temperature 8"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_PUMP_UPPER_OIL_RESERVOR_TEMP1"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "degC",
+   "unit_status": "verified",
+   "note": "degC from ambient soak: 3373 samples read 28.4 to 28.6, median 28.5, with the plant idle for the whole window (zero running bays in 13,492 per-bay samples). That band is ambient for July and excludes degF, which would be below freezing, and K, which would be cryogenic.",
+   "mapping": {
+    "part_ipn": "PS-GUIDE-BRG",
+    "component_code": "PS-GUIDE-BRG:1",
+    "parameter": "PUMP | GUIDE-BRG | Upper Oil Reservoir Temperature 1"
+   }
+  },
+  {
+   "paths": [
+    "/dex/PUMP4_SPEED"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "rpm",
+   "unit_status": "verified",
+   "note": "Catalogue unit rpm, corroborated under load at Saraswati PH (474 rpm). Ranganayaka never ran in the migrated window - zero running bays in 13,492 per-bay samples - and reads 0 with a 6.3 maximum, consistent with a stopped shaft and contradicting nothing.",
+   "mapping": {
+    "part_ipn": "PS-MOTOR",
+    "component_code": "PS-MOTOR:1",
+    "parameter": "PUMP | MOTOR | Motor Shaft Speed"
+   }
+  },
+  {
+   "paths": [
+    "/pc"
+   ],
+   "owner_key": "PH_7",
+   "data_type": "number",
+   "unit": "",
+   "unit_status": "unitless",
+   "note": "Unitless count of bays reporting running. Identified from the payload alone, with no appeal to the tag name: /pc equals the number of pd entries with st=R in 72 of 72 sampled snapshots across all three stations, and Saraswati supplies the discriminating case - 1 while one bay runs, 0 while none do - so it tracks the count rather than sitting on a constant. A count has no unit to confirm, which is why this one could be settled while its neighbours could not. Approved 2026-09-26.",
+   "mapping": {
+    "part_ipn": "PS-STATUS",
+    "component_code": "PS-STATUS:1",
+    "parameter": "PUMP | STATUS | Running Pump Count"
+   }
+  },
+  {
+   "paths": [
+    "/pd/P1/dv"
+   ],
+   "owner_key": "P1",
+   "data_type": "number",
+   "unit": "cusec",
+   "unit_status": "verified",
+   "note": "Cusecs (ft3/s), settled 2026-09-25 against the plant operator's own published operating figures. A published report for the Annaram pumphouse gives four pumps yielding 11,724 cusecs - 2,931 each - and this tag reads exactly 2931 while its bay runs, in 105 of 105 sampled snapshots, with one distinct value. The sibling figure for Medigadda (12,708 over six pumps = 2,118) does not match, so the match identifies the station as well as the unit. 2,931 ft3/s = 83.0 m3/s; against the 18.96 m discharge head and 24.5 MW input measured on the same bay that is 63% wire-to-water, and it is the only candidate that lands anywhere plausible - m3/s implies 22,000% efficiency, m3/min 37%, L/s 2%. This supersedes the earlier note excluding cusec: that derivation used a stated 34 m lift head, and the published pond levels (Annaram 120.0 m, Sundilla 130.0 m) show this lift is about 15 m, which is the contradiction BLOCKERS.md had already recorded against that figure. Caveat kept deliberately: the tag holds one value for a whole run, so it reports a steady design discharge rather than a live meter. This station was idle for the whole migrated window, so the magnitude evidence above is from Saraswati; the unit is inherited as the same field of the same SCADA document schema across the estate, not re-measured here.",
+   "mapping": {
+    "part_ipn": "PS-DISCHARGE",
+    "component_code": "PS-DISCHARGE:1",
+    "parameter": "PUMP | DISCHARGE | Discharge Rate"
+   }
+  },
+  {
+   "paths": [
+    "/pd/P1/st"
+   ],
+   "owner_key": "P1",
+   "data_type": "status",
+   "unit": "",
+   "unit_status": "unitless",
+   "note": "Status code, dimensionless. Independent of load, so the idle window does not weaken it: observed values are the documented I/R set.",
+   "mapping": {
+    "part_ipn": "PS-STATUS",
+    "component_code": "PS-STATUS:1",
+    "parameter": "PUMP | STATUS | Equipment Status"
+   }
+  },
+  {
+   "paths": [
+    "/pd/P2/dv"
+   ],
+   "owner_key": "P2",
+   "data_type": "number",
+   "unit": "cusec",
+   "unit_status": "verified",
+   "note": "Cusecs (ft3/s), settled 2026-09-25 against the plant operator's own published operating figures. A published report for the Annaram pumphouse gives four pumps yielding 11,724 cusecs - 2,931 each - and this tag reads exactly 2931 while its bay runs, in 105 of 105 sampled snapshots, with one distinct value. The sibling figure for Medigadda (12,708 over six pumps = 2,118) does not match, so the match identifies the station as well as the unit. 2,931 ft3/s = 83.0 m3/s; against the 18.96 m discharge head and 24.5 MW input measured on the same bay that is 63% wire-to-water, and it is the only candidate that lands anywhere plausible - m3/s implies 22,000% efficiency, m3/min 37%, L/s 2%. This supersedes the earlier note excluding cusec: that derivation used a stated 34 m lift head, and the published pond levels (Annaram 120.0 m, Sundilla 130.0 m) show this lift is about 15 m, which is the contradiction BLOCKERS.md had already recorded against that figure. Caveat kept deliberately: the tag holds one value for a whole run, so it reports a steady design discharge rather than a live meter. This station was idle for the whole migrated window, so the magnitude evidence above is from Saraswati; the unit is inherited as the same field of the same SCADA document schema across the estate, not re-measured here.",
+   "mapping": {
+    "part_ipn": "PS-DISCHARGE",
+    "component_code": "PS-DISCHARGE:1",
+    "parameter": "PUMP | DISCHARGE | Discharge Rate"
+   }
+  },
+  {
+   "paths": [
+    "/pd/P2/st"
+   ],
+   "owner_key": "P2",
+   "data_type": "status",
+   "unit": "",
+   "unit_status": "unitless",
+   "note": "Status code, dimensionless. Independent of load, so the idle window does not weaken it: observed values are the documented I/R set.",
+   "mapping": {
+    "part_ipn": "PS-STATUS",
+    "component_code": "PS-STATUS:1",
+    "parameter": "PUMP | STATUS | Equipment Status"
+   }
+  },
+  {
+   "paths": [
+    "/pd/P3/dv"
+   ],
+   "owner_key": "P3",
+   "data_type": "number",
+   "unit": "cusec",
+   "unit_status": "verified",
+   "note": "Cusecs (ft3/s), settled 2026-09-25 against the plant operator's own published operating figures. A published report for the Annaram pumphouse gives four pumps yielding 11,724 cusecs - 2,931 each - and this tag reads exactly 2931 while its bay runs, in 105 of 105 sampled snapshots, with one distinct value. The sibling figure for Medigadda (12,708 over six pumps = 2,118) does not match, so the match identifies the station as well as the unit. 2,931 ft3/s = 83.0 m3/s; against the 18.96 m discharge head and 24.5 MW input measured on the same bay that is 63% wire-to-water, and it is the only candidate that lands anywhere plausible - m3/s implies 22,000% efficiency, m3/min 37%, L/s 2%. This supersedes the earlier note excluding cusec: that derivation used a stated 34 m lift head, and the published pond levels (Annaram 120.0 m, Sundilla 130.0 m) show this lift is about 15 m, which is the contradiction BLOCKERS.md had already recorded against that figure. Caveat kept deliberately: the tag holds one value for a whole run, so it reports a steady design discharge rather than a live meter. This station was idle for the whole migrated window, so the magnitude evidence above is from Saraswati; the unit is inherited as the same field of the same SCADA document schema across the estate, not re-measured here.",
+   "mapping": {
+    "part_ipn": "PS-DISCHARGE",
+    "component_code": "PS-DISCHARGE:1",
+    "parameter": "PUMP | DISCHARGE | Discharge Rate"
+   }
+  },
+  {
+   "paths": [
+    "/pd/P3/st"
+   ],
+   "owner_key": "P3",
+   "data_type": "status",
+   "unit": "",
+   "unit_status": "unitless",
+   "note": "Status code, dimensionless. Independent of load, so the idle window does not weaken it: observed values are the documented I/R set.",
+   "mapping": {
+    "part_ipn": "PS-STATUS",
+    "component_code": "PS-STATUS:1",
+    "parameter": "PUMP | STATUS | Equipment Status"
+   }
+  },
+  {
+   "paths": [
+    "/pd/P4/dv"
+   ],
+   "owner_key": "P4",
+   "data_type": "number",
+   "unit": "cusec",
+   "unit_status": "verified",
+   "note": "Cusecs (ft3/s), settled 2026-09-25 against the plant operator's own published operating figures. A published report for the Annaram pumphouse gives four pumps yielding 11,724 cusecs - 2,931 each - and this tag reads exactly 2931 while its bay runs, in 105 of 105 sampled snapshots, with one distinct value. The sibling figure for Medigadda (12,708 over six pumps = 2,118) does not match, so the match identifies the station as well as the unit. 2,931 ft3/s = 83.0 m3/s; against the 18.96 m discharge head and 24.5 MW input measured on the same bay that is 63% wire-to-water, and it is the only candidate that lands anywhere plausible - m3/s implies 22,000% efficiency, m3/min 37%, L/s 2%. This supersedes the earlier note excluding cusec: that derivation used a stated 34 m lift head, and the published pond levels (Annaram 120.0 m, Sundilla 130.0 m) show this lift is about 15 m, which is the contradiction BLOCKERS.md had already recorded against that figure. Caveat kept deliberately: the tag holds one value for a whole run, so it reports a steady design discharge rather than a live meter. This station was idle for the whole migrated window, so the magnitude evidence above is from Saraswati; the unit is inherited as the same field of the same SCADA document schema across the estate, not re-measured here.",
+   "mapping": {
+    "part_ipn": "PS-DISCHARGE",
+    "component_code": "PS-DISCHARGE:1",
+    "parameter": "PUMP | DISCHARGE | Discharge Rate"
+   }
+  },
+  {
+   "paths": [
+    "/pd/P4/st"
+   ],
+   "owner_key": "P4",
+   "data_type": "status",
+   "unit": "",
+   "unit_status": "unitless",
+   "note": "Status code, dimensionless. Independent of load, so the idle window does not weaken it: observed values are the documented I/R set.",
+   "mapping": {
+    "part_ipn": "PS-STATUS",
+    "component_code": "PS-STATUS:1",
+    "parameter": "PUMP | STATUS | Equipment Status"
+   }
+  },
+  {
+   "paths": [
+    "/st"
+   ],
+   "owner_key": "PH_7",
+   "data_type": "status",
+   "unit": "",
+   "unit_status": "unitless",
+   "note": "Status code, dimensionless. Independent of load, so the idle window does not weaken it: observed values are the documented I/R set.",
+   "mapping": {
+    "part_ipn": "PS-STATUS",
+    "component_code": "PS-STATUS:1",
+    "parameter": "PUMP | STATUS | Equipment Status"
+   }
+  }
+ ],
+ "withhold": [],
+ "schema_version": 1,
+ "reviewer": "aniketdev2018",
+ "provenance": "Full export of the reviewed dictionary for Maple Grove Lift Station (source key PH_7), taken from the local development database on 2026-09-27 so the review can be replayed onto another deployment instead of copying database rows. Every entry carries the decision that was made locally: the catalogue crosswalk (part IPN, component code, parameter), the data type, the unit and its status, and the note recording why. Identities resolve by source_entity_uuid and source_key, never by primary key, so this applies cleanly to a database that already holds other assets.",
+ "policy": "Replaying this file approves exactly what is approved here and nothing else. It does not create the station, its bays or its components - run onboard_pumphouse_estate first - and it carries no connection credentials."
+}
