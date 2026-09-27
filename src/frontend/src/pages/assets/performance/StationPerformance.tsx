@@ -10,11 +10,11 @@ import {
   Loader,
   LoadingOverlay,
   Paper,
-  SimpleGrid,
   Stack,
   Table,
   Text,
-  useComputedColorScheme
+  useComputedColorScheme,
+  useMantineTheme
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
@@ -29,7 +29,7 @@ import { LiveIndicator, TimeRangeControl } from './TimeRangeControl';
 import { TrendChart, type TrendSeries, familyColors } from './TrendChart';
 import { formatAge, formatAt, formatDuration, precisionFor } from './format';
 import { resolveParameters, withRole } from './resolve';
-import { ChartCard } from './sections/common';
+import { CardGrid, ChartCard } from './sections/common';
 import {
   alignRows,
   gapThresholdMs,
@@ -103,6 +103,7 @@ export function StationPerformance({
   station
 }: Readonly<{ station: PerformanceMachine }>) {
   const api = useApi();
+  const theme = useMantineTheme();
   const scheme = useComputedColorScheme('light');
   const now = useClock();
   const range = useWindowState();
@@ -257,9 +258,13 @@ export function StationPerformance({
     // Fourteen bays need fourteen legible colours, and each scheme has only a
     // few shades that clear 3:1; the variety comes from more hues rather than
     // from shades that vanish into the card.
+    // Bays are separate machines, not one sensor family, so each wants its
+    // own colour. Warm and cyan hues keep only three legible shades on a
+    // white card, so fourteen distinct colours need more hues than four.
     const colors = familyColors(
       bays.length,
-      [hue, 'cyan', 'grape', 'orange'],
+      [hue, 'cyan', 'grape', 'orange', 'blue', 'violet', 'red'],
+      theme,
       scheme
     );
     const items = bays.map((bay, i) => ({
@@ -286,29 +291,33 @@ export function StationPerformance({
 
   const power = useMemo(
     () => bayLines((k) => k.power, 'blue'),
-    [bays, byKey, window.resolutionSeconds, scheme]
+    [bays, byKey, window.resolutionSeconds, theme, scheme]
   );
   const flow = useMemo(
     () => bayLines((k) => k.flow, 'teal'),
-    [bays, byKey, window.resolutionSeconds, scheme]
+    [bays, byKey, window.resolutionSeconds, theme, scheme]
   );
 
   const stationLines = useMemo(() => {
     const forebay = withRole(parameters, 'forebay')[0];
     const surge = withRole(parameters, 'surge_pool')[0];
     const count = withRole(parameters, 'pump_count')[0];
+    // The two levels are one cyan family, not two hand-picked shades: a pair
+    // picked by hand can land on the same legible shade against the card and
+    // draw both levels in one colour.
+    const levels = familyColors(2, ['cyan'], theme, scheme);
     const items = [
       forebay && {
         key: 'forebay',
         p: forebay,
-        color: 'cyan.7',
+        color: levels[0],
         axis: 'left' as const,
         stepped: false
       },
       surge && {
         key: 'surge',
         p: surge,
-        color: 'cyan.4',
+        color: levels[1],
         axis: 'left' as const,
         stepped: false
       },
@@ -347,7 +356,7 @@ export function StationPerformance({
       rows,
       unit: forebay?.signal.unit ?? surge?.signal.unit ?? ''
     };
-  }, [parameters, series, window.resolutionSeconds]);
+  }, [parameters, series, window.resolutionSeconds, theme, scheme]);
 
   // The table's own rows: one lookup per bay, and one precision and one unit
   // per column. Power and its window peak share a precision so the two can be
@@ -479,7 +488,7 @@ export function StationPerformance({
           overlayProps={{ blur: 1 }}
         />
         <Stack gap='md'>
-          <SimpleGrid cols={{ base: 1, lg: 2 }} spacing='md'>
+          <CardGrid>
             {stationLines.lines.length > 0 && (
               <ChartCard
                 title={t`Forebay level and pumps running`}
@@ -499,7 +508,6 @@ export function StationPerformance({
                   unit={stationLines.unit}
                   rightUnit=''
                   syncId={syncId}
-                  title={t`Forebay level and pumps running`}
                   onZoom={range.onZoom}
                 />
               </ChartCard>
@@ -514,7 +522,6 @@ export function StationPerformance({
                   windowSeconds={window.seconds}
                   unit={power.unit}
                   syncId={syncId}
-                  title={t`Active power by bay`}
                   toggleable
                   onZoom={range.onZoom}
                 />
@@ -530,13 +537,12 @@ export function StationPerformance({
                   windowSeconds={window.seconds}
                   unit={flow.unit}
                   syncId={syncId}
-                  title={t`Discharge flow by bay`}
                   toggleable
                   onZoom={range.onZoom}
                 />
               </ChartCard>
             )}
-          </SimpleGrid>
+          </CardGrid>
 
           {bays.length > 0 && (
             <Paper withBorder radius='md' p={0} style={{ overflowX: 'auto' }}>

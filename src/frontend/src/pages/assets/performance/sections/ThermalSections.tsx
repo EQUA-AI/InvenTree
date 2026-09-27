@@ -6,7 +6,8 @@ import {
   SimpleGrid,
   Stack,
   Text,
-  useComputedColorScheme
+  useComputedColorScheme,
+  useMantineTheme
 } from '@mantine/core';
 import { IconInfoCircle } from '@tabler/icons-react';
 import { useMemo } from 'react';
@@ -24,7 +25,7 @@ import {
   seriesStats,
   syntheticEntry
 } from '../series';
-import { ChartCard, type SectionProps } from './common';
+import { CardGrid, ChartCard, type SectionProps } from './common';
 
 /**
  * Motor winding temperature: the stator RTDs as one family, the core RTDs as
@@ -232,10 +233,11 @@ function DifferenceCard({
   syncId: string;
   hue: string;
 }>) {
+  const theme = useMantineTheme();
   const scheme = useComputedColorScheme('light');
   const unit = pairs[0]?.a.signal.unit ?? '';
   const decimals = pairs[0]?.a.definition.decimals ?? 1;
-  const colors = familyColors(pairs.length, [hue], scheme);
+  const colors = familyColors(pairs.length, [hue], theme, scheme);
 
   const computed = useMemo(
     () =>
@@ -339,7 +341,6 @@ function DifferenceCard({
         windowSeconds={window.seconds}
         unit={unit}
         syncId={syncId}
-        title={title}
         toggleable={lines.length > 2}
         height={200}
       />
@@ -377,10 +378,7 @@ export function CoolingSection({
   return (
     <Stack gap='md'>
       {(inlet.length > 0 || outlet.length > 0) && (
-        <SimpleGrid
-          cols={{ base: 1, lg: waterPairs.length > 0 ? 3 : 2 }}
-          spacing='md'
-        >
+        <CardGrid cols={waterPairs.length > 0 ? 3 : 2}>
           {inlet.length > 0 && (
             <SensorGroupCard
               title={t`Cooling water inlet`}
@@ -416,7 +414,7 @@ export function CoolingSection({
               hue='grape'
             />
           )}
-        </SimpleGrid>
+        </CardGrid>
       )}
       {water.length > 0 && (
         <SensorGroupCard
@@ -432,10 +430,7 @@ export function CoolingSection({
         />
       )}
       {(cold.length > 0 || hot.length > 0) && (
-        <SimpleGrid
-          cols={{ base: 1, lg: airPairs.length > 0 ? 3 : 2 }}
-          spacing='md'
-        >
+        <CardGrid cols={airPairs.length > 0 ? 3 : 2}>
           {cold.length > 0 && (
             <SensorGroupCard
               title={t`Cooling air, cold side`}
@@ -471,7 +466,7 @@ export function CoolingSection({
               hue='grape'
             />
           )}
-        </SimpleGrid>
+        </CardGrid>
       )}
     </Stack>
   );

@@ -1,5 +1,11 @@
 import { t } from '@lingui/core/macro';
-import { SimpleGrid, Stack, Text } from '@mantine/core';
+import {
+  SimpleGrid,
+  Stack,
+  Text,
+  useComputedColorScheme,
+  useMantineTheme
+} from '@mantine/core';
 import { useMemo } from 'react';
 
 import { RelationChart } from '../RelationChart';
@@ -8,6 +14,7 @@ import { familyColors } from '../TrendChart';
 import { withRole } from '../resolve';
 import { relationPoints, usable } from '../series';
 import {
+  CardGrid,
   ChartCard,
   ParameterTrend,
   type SectionProps,
@@ -29,6 +36,8 @@ export function OperationSection({
   syncId,
   onZoom
 }: Readonly<SectionProps>) {
+  const theme = useMantineTheme();
+  const scheme = useComputedColorScheme('light');
   const speed = withRole(parameters, 'speed');
   const status = withRole(parameters, 'status');
   const motorStatus = withRole(parameters, 'motor_status');
@@ -100,11 +109,16 @@ export function OperationSection({
     return null;
   }
 
-  const valveColors = familyColors(valves.length, ['teal']);
+  const valveColors = familyColors(valves.length, ['teal'], theme, scheme);
+  // Two shades of one hue, asked for as a family rather than hand-picked: a
+  // hand-picked pair can land on the same legible shade and draw two lines in
+  // one colour. The same goes for the level pair below.
+  const motorColors = familyColors(motorStatus.length, ['gray'], theme, scheme);
+  const levelColors = familyColors(2, ['cyan'], theme, scheme);
 
   return (
     <Stack gap='md'>
-      <SimpleGrid cols={{ base: 1, lg: 2 }} spacing='md'>
+      <CardGrid>
         {(speed.length > 0 || status.length > 0) && (
           <ChartCard
             title={t`Shaft speed and status`}
@@ -122,7 +136,7 @@ export function OperationSection({
                 ...speed.map((p) => lineFor(p, 'blue.7')),
                 ...status.map((p) => lineFor(p, 'green.7', 'right', true)),
                 ...motorStatus.map((p, i) =>
-                  lineFor(p, i === 0 ? 'gray.6' : 'gray.4', 'right', true)
+                  lineFor(p, motorColors[i], 'right', true)
                 )
               ]}
               series={series}
@@ -175,8 +189,8 @@ export function OperationSection({
             <ParameterTrend
               parameters={[...forebay, ...surge, ...flow]}
               lines={[
-                ...forebay.map((p) => lineFor(p, 'cyan.7')),
-                ...surge.map((p) => lineFor(p, 'cyan.4')),
+                ...forebay.map((p) => lineFor(p, levelColors[0])),
+                ...surge.map((p) => lineFor(p, levelColors[1])),
                 ...flow.map((p) =>
                   lineFor(
                     p,
@@ -213,7 +227,7 @@ export function OperationSection({
             />
           ) : null;
         })}
-      </SimpleGrid>
+      </CardGrid>
 
       {(speedVsPressure.length > 0 ||
         powerVsPressure.length > 0 ||

@@ -6,15 +6,24 @@ import {
   Button,
   Chip,
   Group,
+  type MantineTheme,
   Modal,
   Paper,
   Stack,
   Text,
-  Tooltip
+  Tooltip,
+  useComputedColorScheme,
+  useMantineTheme
 } from '@mantine/core';
 import { useElementSize } from '@mantine/hooks';
 import { IconMaximize, IconZoomIn } from '@tabler/icons-react';
-import { useMemo, useState } from 'react';
+import {
+  type ReactNode,
+  createContext,
+  useContext,
+  useMemo,
+  useState
+} from 'react';
 import { ReferenceArea } from 'recharts';
 
 import {
@@ -71,6 +80,27 @@ export interface TrendChartProps {
 }
 
 /**
+ * The name of the card a chart is drawn in.
+ *
+ * The maximised view replaces that card, so it is the one place that has to say
+ * what it is showing. It asks the card rather than being handed the same string
+ * a second time: two copies drift apart, and six of them were never written at
+ * all.
+ */
+const ChartTitleContext = createContext<string | undefined>(undefined);
+
+export function ChartTitleProvider({
+  title,
+  children
+}: Readonly<{ title?: string; children: ReactNode }>) {
+  return (
+    <ChartTitleContext.Provider value={title}>
+      {children}
+    </ChartTitleContext.Provider>
+  );
+}
+
+/**
  * Shared time-series chart for the Performance tab.
  *
  * Every trend on the page is this component, so every trend behaves the same
@@ -91,9 +121,34 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
   const [fullscreen, setFullscreen] = useState(false);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
 
+  // A chart given no title of its own is named by the card it sits in.
+  const cardTitle = useContext(ChartTitleContext);
+
+  // Every colour the chart draws passes through here, so a caller cannot hand
+  // it a shade that vanishes into the card - and the chips, which are the key
+  // to those colours, carry the same shade the line does.
+  const theme = useMantineTheme();
+  const scheme = useComputedColorScheme('light');
+  const series = useMemo(
+    () =>
+      props.series.map((s) => ({
+        ...s,
+        color: legibleColor(s.color, theme, scheme)
+      })),
+    [props.series, theme, scheme]
+  );
+  const referenceLines = useMemo(
+    () =>
+      props.referenceLines?.map((line) => ({
+        ...line,
+        color: legibleColor(line.color, theme, scheme)
+      })),
+    [props.referenceLines, theme, scheme]
+  );
+
   const visible = useMemo(
-    () => props.series.filter((s) => !hidden.has(s.key)),
-    [props.series, hidden]
+    () => series.filter((s) => !hidden.has(s.key)),
+    [series, hidden]
   );
 
   const toggle = (key: string) =>
@@ -101,7 +156,7 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
       const next = new Set(current);
       if (next.has(key)) {
         next.delete(key);
-      } else if (next.size < props.series.length - 1) {
+      } else if (next.size < series.length - 1) {
         // Never hide the last line: an empty chart says nothing.
         next.add(key);
       }
@@ -112,9 +167,9 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
   // the maximised view gets them too - the same node, and the same state,
   // because `hidden` lives here.
   const chips =
-    props.toggleable && props.series.length > 1 ? (
+    props.toggleable && series.length > 1 ? (
       <Group gap={4} wrap='wrap'>
-        {props.series.map((s) => (
+        {series.map((s) => (
           <Chip
             key={s.key}
             size='xs'
@@ -153,18 +208,19 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
   return (
     <Stack gap={6}>
       {header}
-      <ChartBody {...props} series={visible} />
+      <ChartBody {...props} series={visible} referenceLines={referenceLines} />
       <Modal
         opened={fullscreen}
         onClose={() => setFullscreen(false)}
         fullScreen
-        title={props.title ?? t`Trend`}
+        title={props.title ?? cardTitle ?? t`Trend`}
       >
         <Stack gap={6}>
           {chips}
           <ChartBody
             {...props}
             series={visible}
+            referenceLines={referenceLines}
             height={Math.max(420, window.innerHeight - 200)}
           />
         </Stack>
@@ -598,37 +654,217 @@ function TrendTooltip({
   );
 }
 
+/** WCAG's floor for a non-text graphic: a drawn line, a chip's outline. */
+const MIN_CONTRAST = 3;
+
 /**
- * Colours for a family of lines. One hue family, cycled through shades so a
- * dozen winding sensors read as one family rather than a rainbow, with a
- * second hue interleaved once the first runs out of distinguishable shades.
- *
- * Which shades are distinguishable depends on what they are drawn on: a fixed
- * ladder put two of the fourteen bay lines below 3:1 against the dark card and
- * three below it against the white one, where a chip's outline all but
- * disappeared. Hence a ladder per scheme, and a caller that says which; a
- * caller that does not gets the shades that clear 3:1 on either card, which is
- * fewer of them and so repeats a hue sooner.
+ * The ladder that shipped, in the order it shipped: a middling shade first,
+ * then far ones, so a two-line chart gets two shades that cannot be confused.
+ * Which of them a hue can actually use is decided against the card below.
  */
+const PREFERRED_SHADES: Record<'light' | 'dark', number[]> = {
+  light: [6, 9, 7, 8],
+  dark: [5, 3, 7, 4, 6, 2, 8]
+};
+
+function parseHex(color: string): [number, number, number] | null {
+  const match = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color.trim());
+  if (!match) return null;
+  const digits =
+    match[1].length === 3 ? match[1].replace(/./g, (d) => d + d) : match[1];
+  const channel = (i: number) => Number.parseInt(digits.slice(i, i + 2), 16);
+  return [channel(0), channel(2), channel(4)];
+}
+
+function luminance([r, g, b]: [number, number, number]): number {
+  const channel = (value: number) => {
+    const v = value / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
+/** WCAG contrast, or null when either colour is not a hex the theme gave us. */
+function contrastRatio(a: string, b: string): number | null {
+  const first = parseHex(a);
+  const second = parseHex(b);
+  if (!first || !second) return null;
+  const one = luminance(first);
+  const two = luminance(second);
+  return (Math.max(one, two) + 0.05) / (Math.min(one, two) + 0.05);
+}
+
+/**
+ * What the charts are drawn on: the card's own background, which is
+ * `--mantine-color-body` - the theme's white on the light card, dark.7 on the
+ * dark one (measured #fff and #242424). Read from the theme rather than
+ * assumed, because a user's theme can set its own white.
+ */
+function cardBackground(theme: MantineTheme, scheme: 'light' | 'dark'): string {
+  return scheme === 'dark' ? theme.colors.dark[7] : theme.white;
+}
+
+const legibleCache = new Map<string, number[]>();
+
+/** The shades of one hue that clear 3:1 on that card, in palette order. */
+function legibleShades(
+  theme: MantineTheme,
+  hue: string,
+  scheme: 'light' | 'dark'
+): number[] {
+  const background = cardBackground(theme, scheme);
+  const key = `${hue}:${background}`;
+  const cached = legibleCache.get(key);
+  if (cached) return cached;
+  const shades = (theme.colors[hue] ?? [])
+    .map((color, shade) => ({ shade, ratio: contrastRatio(color, background) }))
+    .filter((s) => s.ratio !== null && s.ratio >= MIN_CONTRAST)
+    .map((s) => s.shade);
+  legibleCache.set(key, shades);
+  return shades;
+}
+
+/**
+ * Colours for a family of lines. One hue family, cycled through the shades of
+ * that hue that are legible on the card, with a second hue interleaved once the
+ * first runs out - so a dozen winding sensors read as one family rather than a
+ * rainbow.
+ *
+ * The ladder cannot be fixed per scheme: shade 6 clears 3:1 on white for blue
+ * but not for orange, teal or cyan, and shade 8 clears it on the dark card for
+ * blue but not for indigo, grape or violet. So the ladder that shipped is
+ * filtered against the theme's own palette and the card it is drawn on, then
+ * topped back up - furthest from what is already chosen first - out of whatever
+ * else that hue can spare. A hue with nothing legible at all keeps the shipped
+ * ladder rather than collapsing to one colour.
+ */
+/**
+ * The next hue round the wheel, for a family that outgrows its own shades.
+ *
+ * Eleven winding sensors against the three shades of orange a white card can
+ * show would otherwise draw four of them the same colour. Continuing into the
+ * neighbouring hue keeps the card reading as one warm family while letting
+ * each sensor keep its own line.
+ */
+const RELATED_HUES: Record<string, string> = {
+  orange: 'red',
+  red: 'pink',
+  pink: 'grape',
+  grape: 'violet',
+  violet: 'indigo',
+  indigo: 'blue',
+  blue: 'cyan',
+  cyan: 'teal',
+  teal: 'green',
+  green: 'lime',
+  lime: 'yellow',
+  yellow: 'orange',
+  gray: 'dark'
+};
+
+function hueSequence(hues: string[]): string[] {
+  const order = [...hues];
+  const seen = new Set(order);
+  for (let i = 0; i < order.length; i++) {
+    const next = RELATED_HUES[order[i]];
+    if (next && !seen.has(next)) {
+      seen.add(next);
+      order.push(next);
+    }
+  }
+  return order;
+}
+
 export function familyColors(
   count: number,
-  hues: string[] = ['blue'],
-  scheme?: 'light' | 'dark'
+  hues: string[],
+  theme: MantineTheme,
+  scheme: 'light' | 'dark'
 ): string[] {
-  // Shades clearing 3:1 against the card they are drawn on: 6-9 on white,
-  // 2-8 on the dark card, 6-8 on both.
-  const shades =
-    scheme === 'dark'
-      ? [5, 3, 7, 4, 6, 2, 8]
-      : scheme === 'light'
-        ? [6, 9, 7, 8]
-        : [6, 8, 7];
+  const preferred = PREFERRED_SHADES[scheme];
+  const ladderOf = (hue: string) => {
+    const legible = legibleShades(theme, hue, scheme);
+    if (legible.length === 0) return preferred;
+    const ladder = preferred.filter((shade) => legible.includes(shade));
+    const spare = legible.filter((shade) => !ladder.includes(shade));
+    while (ladder.length < preferred.length && spare.length > 0) {
+      let best = 0;
+      let widest = -1;
+      spare.forEach((shade, i) => {
+        const gap = Math.min(...ladder.map((s) => Math.abs(s - shade)));
+        if (gap > widest) {
+          widest = gap;
+          best = i;
+        }
+      });
+      ladder.push(spare.splice(best, 1)[0]);
+    }
+    return ladder.length > 0 ? ladder : preferred;
+  };
   const colors: string[] = [];
-  for (let i = 0; i < count; i++) {
-    const hue = hues[Math.floor(i / shades.length) % hues.length];
-    colors.push(`${hue}.${shades[i % shades.length]}`);
+  const used = new Set<string>();
+  for (const hue of hueSequence(hues.length > 0 ? hues : ['blue'])) {
+    if (colors.length >= count) break;
+    for (const shade of ladderOf(hue)) {
+      const color = `${hue}.${shade}`;
+      // Cycling the hue list used to restart its first ladder, so a
+      // fourteenth bay was drawn in the same teal as the first. A colour is
+      // only reused once the palette has nothing else to offer.
+      if (used.has(color)) continue;
+      used.add(color);
+      colors.push(color);
+      if (colors.length === count) break;
+    }
+  }
+  // More members than the hues can distinguish: repeat in order, so the
+  // repetition at least reads as a second pass rather than as a clash.
+  for (let i = 0; colors.length < count && colors.length > 0; i++) {
+    colors.push(colors[i % used.size]);
   }
   return colors;
+}
+
+/**
+ * A fixed colour moved to the nearest shade of its own hue that clears 3:1 on
+ * the card: shade 6 of a warm hue vanishes on white, shade 7 of gray vanishes
+ * on the dark card. The hue is what the caller meant; the shade is what the
+ * card allows. A hue with nothing that clears the floor - yellow reaches only
+ * 2.99 on white - gets its most legible shade instead of its worst.
+ */
+export function legibleColor(
+  color: string,
+  theme: MantineTheme,
+  scheme: 'light' | 'dark'
+): string {
+  const [hue, raw] = color.split('.');
+  const shade = Number(raw);
+  if (!theme.colors[hue] || !Number.isInteger(shade)) return color;
+  const legible = legibleShades(theme, hue, scheme);
+  const nearest = (shades: number[]) =>
+    shades.reduce((a, b) =>
+      Math.abs(a - shade) <= Math.abs(b - shade) ? a : b
+    );
+  if (legible.length === 0) {
+    // Nothing clears it: the furthest from the card is the best on offer.
+    const background = cardBackground(theme, scheme);
+    let best = shade;
+    let bestRatio = -1;
+    theme.colors[hue].forEach((value, i) => {
+      const ratio = contrastRatio(value, background) ?? -1;
+      if (ratio > bestRatio) {
+        bestRatio = ratio;
+        best = i;
+      }
+    });
+    return `${hue}.${best}`;
+  }
+  if (legible.includes(shade)) return color;
+  // Away from the card - darker on white, lighter on the dark card - so the
+  // colour keeps as much of its own chroma as it can.
+  const away = legible.filter((s) =>
+    scheme === 'dark' ? s < shade : s > shade
+  );
+  return `${hue}.${nearest(away.length > 0 ? away : legible)}`;
 }
 
 export default TrendChart;

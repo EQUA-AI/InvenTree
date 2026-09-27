@@ -7,7 +7,8 @@ import {
   SimpleGrid,
   Stack,
   Text,
-  useComputedColorScheme
+  useComputedColorScheme,
+  useMantineTheme
 } from '@mantine/core';
 import { useMemo } from 'react';
 
@@ -75,12 +76,13 @@ export function SensorGroupCard({
   onZoom,
   description
 }: Readonly<SensorGroupCardProps>) {
+  const theme = useMantineTheme();
   const scheme = useComputedColorScheme('light');
   const unit = parameters[0]?.signal.unit ?? '';
   const decimals = parameters[0]?.definition.decimals ?? 1;
   const colors = useMemo(
-    () => familyColors(parameters.length, [hue], scheme),
-    [parameters.length, hue, scheme]
+    () => familyColors(parameters.length, [hue], theme, scheme),
+    [parameters.length, hue, theme, scheme]
   );
 
   const lines: TrendSeries[] = useMemo(

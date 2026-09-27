@@ -1,43 +1,18 @@
 import { t } from '@lingui/core/macro';
-import { Box, SimpleGrid, Stack } from '@mantine/core';
-import { Children, type ReactNode, useMemo } from 'react';
+import { Stack, useComputedColorScheme, useMantineTheme } from '@mantine/core';
+import { useMemo } from 'react';
 
 import { RelationChart } from '../RelationChart';
 import { familyColors } from '../TrendChart';
 import { withRole } from '../resolve';
 import { relationPoints } from '../series';
 import {
+  CardGrid,
   ChartCard,
   ParameterTrend,
   type SectionProps,
   lineFor
 } from './common';
-
-/**
- * The section's two-column grid, where an odd last card fills the row.
- *
- * Which cards exist depends on the tags a machine carries, so an odd count is
- * normal; without this the final chart is squeezed into half a page of blank.
- * At base the grid is one column and the span is already a no-op.
- */
-function CardGrid({ children }: Readonly<{ children: ReactNode }>) {
-  // toArray drops the `false` that an absent card's guard leaves behind.
-  const cards = Children.toArray(children);
-  const spanLast = cards.length % 2 === 1;
-  return (
-    <SimpleGrid cols={{ base: 1, lg: 2 }} spacing='md'>
-      {cards.map((card, index) =>
-        spanLast && index === cards.length - 1 ? (
-          <Box key={index} style={{ gridColumn: '1 / -1' }}>
-            {card}
-          </Box>
-        ) : (
-          card
-        )
-      )}
-    </SimpleGrid>
-  );
-}
 
 /**
  * Electrical performance: what the machine draws and how cleanly.
@@ -53,6 +28,8 @@ export function ElectricalSection({
   syncId,
   onZoom
 }: Readonly<SectionProps>) {
+  const theme = useMantineTheme();
+  const scheme = useComputedColorScheme('light');
   const power = withRole(parameters, 'active_power');
   const reactive = withRole(parameters, 'reactive_power');
   const factor = withRole(parameters, 'power_factor');
@@ -92,8 +69,8 @@ export function ElectricalSection({
     return null;
   }
 
-  const currentColors = familyColors(currents.length, ['blue']);
-  const voltageColors = familyColors(voltages.length, ['teal']);
+  const currentColors = familyColors(currents.length, ['blue'], theme, scheme);
+  const voltageColors = familyColors(voltages.length, ['teal'], theme, scheme);
 
   return (
     <Stack gap='md'>
