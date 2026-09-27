@@ -26,17 +26,27 @@ export const useVoiceSurfaceState = create<{
   closeFullscreen: () => void;
   requestStart: () => void;
   closeConsent: () => void;
-}>((set) => ({
+  /**
+   * Shared start eligibility (plan C3): while set, neither the composer mic
+   * nor the keyboard shortcut may start a session (ending/muting an
+   * existing session is never blocked).
+   */
+  startBlockedReason: string | null;
+  setStartBlockedReason: (reason: string | null) => void;
+}>((set, get) => ({
   fullscreen: false,
   consent: false,
   openFullscreen: () => set({ fullscreen: true }),
   closeFullscreen: () => set({ fullscreen: false }),
   requestStart: () => {
+    if (get().startBlockedReason) return;
     const capability = useVoiceSessionState.getState().capability;
     if (capability?.enabled && capability.runtime?.available !== false)
       set({ consent: true });
   },
-  closeConsent: () => set({ consent: false })
+  closeConsent: () => set({ consent: false }),
+  startBlockedReason: null,
+  setStartBlockedReason: (reason) => set({ startBlockedReason: reason })
 }));
 // Account boundaries, unlike component unmounts, always release media.
 function clearVoiceBoundary() {
