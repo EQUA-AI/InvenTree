@@ -149,6 +149,13 @@ COPY src/backend/InvenTree ${INVENTREE_BACKEND_DIR}/InvenTree
 COPY src/backend/tasks ${INVENTREE_BACKEND_DIR}/tasks
 COPY src/backend/requirements.txt ${INVENTREE_BACKEND_DIR}/requirements.txt
 
+# The station estate manifest and its reviewed dictionary. A deployment given
+# only the code and the telemetry draws nothing: the mapping between them is
+# data, and lives in a database until it is exported. Shipping the packs means
+# the bootstrap is `manage.py apply_dictionary_review --review <path>` inside
+# the running container, rather than copying a file into it first.
+COPY contrib/cosmos/review ${INVENTREE_HOME}/contrib/cosmos/review
+
 # Copy compiled dependencies from prebuild image
 ENV PATH=/root/.local/bin:$PATH
 

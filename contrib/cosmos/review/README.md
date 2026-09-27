@@ -20,13 +20,26 @@ its own machines, parts and users without touching any of them.
 ## Order of operations on a fresh deployment
 
     python manage.py load_pump_catalogue
-    python manage.py onboard_pumphouse_estate contrib/pump-cassandra/estate.json --source <pk> --dry-run
+    python manage.py onboard_pumphouse_estate contrib/cosmos/review/estate.manifest.json --source <pk> --dry-run
     python manage.py apply_dictionary_review --review contrib/cosmos/review/<station>.approvals.review.json --dry-run
     python manage.py apply_dictionary_review --review contrib/cosmos/review/<station>.withheld.review.json --dry-run
 
 Drop `--dry-run` once the counts match the table below. The approvals pack must
 go first: it is what creates the bindings, and applying the withheld pack alone
 would leave a station looking reviewed but drawing nothing.
+
+`estate.manifest.json` is the manifest `onboard_pumphouse_estate` accepts, and
+it is not `contrib/pump-cassandra/estate.json` - that file carries commentary
+keys the onboarder rejects outright ("Manifest requires version 1 and stations
+only"), and it is documentation of the estate rather than an input to it. This
+one is generated from the registered stations' own identities and pins their
+public UUIDs, so a station keeps the same identity across deployments;
+`register_station` is idempotent and will return an existing registration
+rather than duplicate it.
+
+These files ship inside the production image (see `contrib/container/
+Dockerfile`, production stage), so the commands above run as-is in a deployed
+container - there is nothing to copy in first.
 
 Neither pack carries a credential. Create the `HealthSource` on the target with
 its own Entra identity, then run `discover_data_range` so `read_ceiling` has a

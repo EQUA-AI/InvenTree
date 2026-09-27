@@ -1,0 +1,106 @@
+{
+ "version": 1,
+ "stations": [
+  {
+   "name": "Cedar Creek Effluent Pump Station",
+   "source_namespace": "klsw",
+   "source_uuid": "bafc976f-1ccc-4a91-aaa6-c3eac2470d36",
+   "source_key": "PH_3",
+   "uuid": "ce0a411f-d016-4817-ba00-3830ede25ce1",
+   "pumps": [
+    "P1",
+    "P2",
+    "P3",
+    "P4",
+    "P5",
+    "P6",
+    "P7",
+    "P8",
+    "P9",
+    "P10",
+    "P11",
+    "P12",
+    "P13",
+    "P14"
+   ],
+   "source_context": {
+    "feeds": [
+     3,
+     13,
+     41,
+     104
+    ],
+    "lift_head": 40.0,
+    "source_name": "Parvathi PH",
+    "display_name": "Cedar Creek Effluent Pump Station",
+    "pumps_stated": 14,
+    "location_type": "PUMP_HOUSE",
+    "component_type": 65,
+    "rated_power_mw": 40.0,
+    "source_latitude": 18.839,
+    "total_discharge": 37982.0,
+    "display_latitude": null,
+    "event_value_type": 41,
+    "source_longitude": 79.41,
+    "display_longitude": null,
+    "observed_power_mw": 24.5,
+    "discharge_per_pump": 2713.0
+   }
+  },
+  {
+   "name": "Millbrook Influent Pump Station",
+   "source_namespace": "klsw",
+   "source_uuid": "9c09411d-ab94-44b8-a398-8768f58c223e",
+   "source_key": "PH_2",
+   "uuid": "e6857415-da15-452c-a970-c5a227fee7ae",
+   "pumps": [
+    "P1",
+    "P2",
+    "P3",
+    "P4",
+    "P5",
+    "P6",
+    "P7",
+    "P8",
+    "P9",
+    "P10",
+    "P11",
+    "P12"
+   ],
+   "source_context": {
+    "feeds": [
+     3,
+     13,
+     41,
+     104
+    ],
+    "lift_head": 34.0,
+    "source_name": "Saraswati PH",
+    "display_name": "Millbrook Influent Pump Station",
+    "pumps_stated": 12,
+    "rated_power_mw": 40.0,
+    "source_latitude": 18.72,
+    "total_discharge": 35172.0,
+    "display_latitude": null,
+    "source_longitude": 79.61,
+    "display_longitude": null,
+    "observed_power_mw": 24.5,
+    "discharge_per_pump": 2931.0
+   }
+  },
+  {
+   "name": "Maple Grove Lift Station",
+   "source_namespace": "klsw",
+   "source_uuid": "776913b4-d26f-4294-bf58-647ac401bae5",
+   "source_key": "PH_7",
+   "uuid": "2b02a3f5-27cd-40a1-a197-08905a37d9f4",
+   "pumps": [
+    "P1",
+    "P2",
+    "P3",
+    "P4"
+   ],
+   "source_context": {}
+  }
+ ]
+}
