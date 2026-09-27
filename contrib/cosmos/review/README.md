@@ -41,6 +41,26 @@ These files ship inside the production image (see `contrib/container/
 Dockerfile`, production stage), so the commands above run as-is in a deployed
 container - there is nothing to copy in first.
 
+## What does not work yet on a fresh deployment
+
+Read `.azure/deployment-plan.md` section 14 before relying on the sequence
+above. Verified in a clean-room test database, two of its steps are blocked as
+shipped:
+
+- The review packs *update* dictionary points; nothing in the production image
+  *creates* them. `import_dictionary` needs a parsed snapshot payload per
+  station, the manifest supports referencing one through a `snapshot` key, and
+  `estate.manifest.json` does not carry it.
+- The approvals packs pin a `dictionary_hash` taken after review, and that hash
+  covers each point's status, note, unit and mapping. A freshly imported
+  dictionary is unreviewed, so it cannot match and the apply is refused with
+  "Dictionary changed; export a fresh review pack." The withheld packs carry no
+  hash and are unaffected.
+
+Both are recorded with their remedies in section 14.5. The packs are correct
+for the database they were taken from - they replay cleanly against it - so
+nothing here needs re-deciding, only re-packaging.
+
 Neither pack carries a credential. Create the `HealthSource` on the target with
 its own Entra identity, then run `discover_data_range` so `read_ceiling` has a
 window to clamp to - without it the connector reads to the wall clock.

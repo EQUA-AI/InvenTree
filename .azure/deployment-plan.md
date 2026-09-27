@@ -502,3 +502,173 @@ az containerapp update -n <worker-app-name> -g EpconChat --image "$IMAGE"
 ### 13.4 Rollback
 
 `az containerapp update -n aimms-dev -g EpconChat --image <previous image from 13.2>`; the migrations are additive apart from `assets.0017`, which corrects cached quality values and needs no reversal.
+
+## 14. Pump-station data bootstrap — local Postgres to Azure Postgres
+
+> **Status:** Sequence verified end to end in a clean-room Django `TestCase`
+> against a throwaway database (no Azure contact). **Three blockers stop it
+> completing as shipped** — see 14.5. Steps 14.3.1 to 14.3.4 work today; the
+> dictionary and the cached values do not.
+
+The code in sections 12 and 13 deploys an application that can read the plant's
+telemetry and draws nothing with it. What turns a reading into a tile — which
+source tag is which catalogue parameter, its unit, its display name, its limits
+— is **data**, and it lives in a database until it is exported. Production has
+users, parts and stock; it has none of this.
+
+| What | Rows locally | Travels with the image? |
+|---|---:|---|
+| Catalogue parts and parameter templates | 20 / 153 | No — rebuilt by `load_pump_catalogue` |
+| Stations and pump bays | 3 / 30 | No — created by `onboard_pumphouse_estate` |
+| Equipment components | 451 | No — created by the same command |
+| Dictionary points | 2195 | No — **and no shipped path creates them (14.5.1)** |
+| Bindings (approved points) | 1452 | No — created by `apply_dictionary_review` |
+| Cached current values | 1452 | No — **no shipped path creates them (14.5.3)** |
+| `HealthSource` and its `data_ranges` | 1 | No — hand-created, see 14.2 |
+| Ingestion checkpoints | 3 | No — created by `--activate` |
+
+Nothing here is telemetry. The readings stay in Cosmos and are read per request.
+
+### 14.1 Prerequisites
+
+The rights in 13.1, plus an image built from **`55a1823fd` or later** — that
+commit adds `COPY contrib/cosmos/review` to the production stage of
+`contrib/container/Dockerfile`. Earlier images do not contain the packs and
+every command below fails on a missing file. Migrations must already be applied
+(13.2); the container does not migrate at boot.
+
+A `Client` is **not** needed: `assets.0009_default_client_backfill` creates an
+active `internal` client on every migrated deployment, and `onboard_estate`
+only requires that one exist and be active.
+
+### 14.2 Create the source (admin or shell — nothing creates it for you)
+
+`grep` over the backend finds no management command, fixture or API that
+creates a `HealthSource`; the only routes are the Django admin
+(`assets/admin.py`) and `manage.py shell`. It must carry:
+
+| Field | Value | Why |
+|---|---|---|
+| `connector_type` | `cosmos_pumphouse` | exact string; `cosmos_pumphouse_replay` is rejected by `onboard_estate` |
+| `config.endpoint` | the account URI | connector refuses without it |
+| `config.database` / `config.readings_container` | `aimms` / `pumphouse_readings` | same |
+| `secret_ref` | **empty** | a key is accepted only against an emulator host; against Azure the connector raises `CosmosConfigError` and authenticates via `DefaultAzureCredential` |
+| `client` | the active `internal` client | `onboard_estate` refuses without it |
+| `freshness_threshold_seconds` | **300** | see the trap below |
+
+The identity `DefaultAzureCredential` resolves to needs **Cosmos DB Data
+Reader** on the database. Do not grant it write.
+
+**Freshness trap.** The 300-second default applies only when `connector_type`
+is passed as a constructor keyword. A source created through the admin takes
+the model default of **900**, so stale readings would go unflagged for fifteen
+minutes against a five-minute validity window. Set it explicitly.
+
+All four of `onboard_estate`'s refusal conditions — inactive source, wrong
+connector type, no client, inactive client — produce the **same** message,
+`Select an active Cosmos source with an explicitly assigned active Client`, so
+it does not tell you which one is wrong. Check all four.
+
+### 14.3 Sequence (each step dry-run first)
+
+```bash
+EXEC="az containerapp exec -n aimms-dev -g EpconChat --command"
+SRC=<health-source-pk>
+
+# 14.3.1  Catalogue the review packs map onto, by IPN and parameter name.
+$EXEC "python src/backend/InvenTree/manage.py load_pump_catalogue"
+
+# 14.3.2  Read throughput, BEFORE data_ranges exists (see 14.4).
+$EXEC "python src/backend/InvenTree/manage.py benchmark_pumphouse_reads --source $SRC"
+
+# 14.3.3  Register 3 stations and 30 bays. One transaction for the whole manifest.
+$EXEC "python src/backend/InvenTree/manage.py onboard_pumphouse_estate \
+    contrib/cosmos/review/estate.manifest.json --source $SRC --dry-run"
+
+# 14.3.4  The window the display shift and the chart date picker read.
+$EXEC "python src/backend/InvenTree/manage.py discover_data_range --source $SRC \
+    --from 2025-07-01 --to 2025-07-13"
+
+# 14.3.5  BLOCKED (14.5.1): the dictionary points the packs need do not exist.
+# 14.3.6  BLOCKED (14.5.2): approvals then withheld, per station.
+# 14.3.7  BLOCKED (14.5.3): cached values for the tiles.
+
+# 14.3.8  Activation, last. Creates one IngestionCheckpoint per station and
+#         computes its own expected_hash; idempotent on a second run.
+$EXEC "python src/backend/InvenTree/manage.py onboard_pumphouse_estate \
+    contrib/cosmos/review/estate.manifest.json --source $SRC --activate"
+```
+
+`estate.manifest.json` is the manifest — **not**
+`contrib/pump-cassandra/estate.json`, which carries commentary keys the
+onboarder rejects outright (`Manifest requires version 1 and stations only`).
+It pins each station's public UUID, and `register_station` is idempotent: a
+second run returns the existing registration rather than duplicating it. It
+refuses loudly if a station already exists under a different client or UUID.
+
+### 14.4 Verification
+
+`check_pumphouse_readiness --source $SRC [--probe]` is the readiness audit, and
+**it can never report `ready: true` for this estate** — `pumphouse.layout.json`
+ships with `review_status: provisional`, and the 743 deliberately withheld
+points keep `pending_points` above zero. Read its issues; do not gate on its
+exit code. Two issues are expected and benign between 14.3.3 and 14.3.8:
+`station_checkpoint_allowlist_mismatch` (onboarding adds the station UUIDs to
+the allowlist but creates no checkpoints until `--activate`), and any pending
+count.
+
+`benchmark_pumphouse_reads` must run **before** `discover_data_range`: once
+`data_ranges` is recorded it always exits non-zero with `documents: 0` and
+`window_complete: false`, which is the clamp working, not a connectivity fault.
+
+`deploy_preflight --json` audits migrations and role coverage only. It is
+unrelated to this bootstrap and always exits 0, so it cannot gate anything.
+
+### 14.5 Blockers
+
+**14.5.1 Nothing in the image creates the dictionary points.** The review packs
+*update* points; they do not create them. The only creator is
+`import_dictionary`, which needs a parsed snapshot payload (`dex` and `pd`
+objects) plus its sha256. The manifest schema supports this — `snapshot` and
+`review` keys per station, resolved relative to the manifest — but
+`estate.manifest.json` carries neither, and the repository holds a usable
+snapshot for **one** of the three stations. Closing this means exporting one
+snapshot per station from the live container into the repo, which puts real
+plant telemetry under version control and is a decision for the estate owner,
+not a mechanical fix.
+
+**14.5.2 The approvals packs would be refused.** Each pins a `dictionary_hash`
+taken *after* review, and that hash covers `status`, `review_note`, `unit`,
+`component` and `template`. A freshly imported dictionary is unreviewed, so the
+hash cannot match and `apply_dictionary_review` raises `Dictionary changed;
+export a fresh review pack.` The three `.withheld.review.json` packs are
+unaffected — they were written by hand and carry no hash. Fix: re-export the
+approvals packs without `dictionary_hash`; the per-path lookup still fails
+loudly if a tag is absent, so the guard is not the only protection.
+
+**14.5.3 No shipped path fills the tiles, and the poller will not.**
+`activate_station` opens each checkpoint at wall-clock now minus five minutes.
+For a recorded window that is ~442 days **ahead** of `read_ceiling`, and
+advancement is forward-only, so the poller reads zero documents for ever —
+silently: `last_poll_at` advances every 60 s, `last_error_code` stays empty,
+`last_success_at` is set. Health blades and Mimic tiles would stay blank while
+the Performance charts work, because charts read Cosmos per request and tiles
+read the cache. Locally the cache was filled by
+`contrib/cosmos/devtools/seed_bindings_from_latest.py`, and **devtools are not
+in the production image** — only `contrib/cosmos/review` is. Closing this means
+either shipping a seeding management command or widening the `COPY`.
+
+### 14.6 Rollback
+
+`apply_dictionary_review` is one transaction per file: a failure writes
+nothing, and `--dry-run` rolls back after reporting counts. Re-running the same
+file is safe and duplicates nothing.
+
+There is **no command that undoes an approval.** The only inverse is a
+hand-written corrective review file with a `withhold` section, and it is a
+partial undo: it returns the point to `draft` and records a reason, but leaves
+the component and template assignment in place. Treat 14.3.6 as one-way and
+dry-run it first.
+
+`onboard_pumphouse_estate` is idempotent and safe to re-run. There is no
+command that deactivates a station or removes a checkpoint.
