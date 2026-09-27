@@ -505,10 +505,12 @@ az containerapp update -n <worker-app-name> -g EpconChat --image "$IMAGE"
 
 ## 14. Pump-station data bootstrap — local Postgres to Azure Postgres
 
-> **Status:** Sequence verified end to end in a clean-room Django `TestCase`
-> against a throwaway database (no Azure contact). **Three blockers stop it
-> completing as shipped** — see 14.5. Steps 14.3.1 to 14.3.4 work today; the
-> dictionary and the cached values do not.
+> **Status:** Verified end to end in a clean-room Django `TestCase` against a
+> throwaway database (no Azure contact), and guarded by
+> `machine_health.tests.test_estate_bootstrap` /
+> `test_bootstrap_replay` so the committed artefacts cannot drift out of
+> working order. **One blocker remains** — the tiles have no values until
+> something seeds them (14.5.1).
 
 The code in sections 12 and 13 deploys an application that can read the plant's
 telemetry and draws nothing with it. What turns a reading into a tile — which
@@ -569,7 +571,7 @@ connector type, no client, inactive client — produce the **same** message,
 `Select an active Cosmos source with an explicitly assigned active Client`, so
 it does not tell you which one is wrong. Check all four.
 
-### 14.3 Sequence (each step dry-run first)
+### 14.3 Sequence
 
 ```bash
 EXEC="az containerapp exec -n aimms-dev -g EpconChat --command"
@@ -581,30 +583,50 @@ $EXEC "python src/backend/InvenTree/manage.py load_pump_catalogue"
 # 14.3.2  Read throughput, BEFORE data_ranges exists (see 14.4).
 $EXEC "python src/backend/InvenTree/manage.py benchmark_pumphouse_reads --source $SRC"
 
-# 14.3.3  Register 3 stations and 30 bays. One transaction for the whole manifest.
+# 14.3.3  The whole estate, previewed. One transaction; writes nothing.
 $EXEC "python src/backend/InvenTree/manage.py onboard_pumphouse_estate \
     contrib/cosmos/review/estate.manifest.json --source $SRC --dry-run"
 
-# 14.3.4  The window the display shift and the chart date picker read.
+# 14.3.4  The same command for real: registers 3 stations and 30 bays, imports
+#         each station's dictionary from the tag file the manifest names,
+#         applies its review, then binds and opens an ingestion checkpoint.
+$EXEC "python src/backend/InvenTree/manage.py onboard_pumphouse_estate \
+    contrib/cosmos/review/estate.manifest.json --source $SRC --activate"
+
+# 14.3.5  The window the display shift and the chart date picker read.
 $EXEC "python src/backend/InvenTree/manage.py discover_data_range --source $SRC \
     --from 2025-07-01 --to 2025-07-13"
 
-# 14.3.5  BLOCKED (14.5.1): the dictionary points the packs need do not exist.
-# 14.3.6  BLOCKED (14.5.2): approvals then withheld, per station.
-# 14.3.7  BLOCKED (14.5.3): cached values for the tiles.
-
-# 14.3.8  Activation, last. Creates one IngestionCheckpoint per station and
-#         computes its own expected_hash; idempotent on a second run.
-$EXEC "python src/backend/InvenTree/manage.py onboard_pumphouse_estate \
-    contrib/cosmos/review/estate.manifest.json --source $SRC --activate"
+# 14.3.6  BLOCKED (14.5.1): current values for the tiles.
 ```
+
+Expected after 14.3.4, asserted by the tests:
+
+| Station | Bays | Approved (= bindings) | Withheld with a reason |
+|---|---:|---:|---:|
+| Cedar Creek `PH_3` | 14 | 802 | 103 |
+| Millbrook `PH_2` | 12 | 452 | 467 |
+| Maple Grove `PH_7` | 4 | 198 | 173 |
 
 `estate.manifest.json` is the manifest — **not**
 `contrib/pump-cassandra/estate.json`, which carries commentary keys the
-onboarder rejects outright (`Manifest requires version 1 and stations only`).
-It pins each station's public UUID, and `register_station` is idempotent: a
-second run returns the existing registration rather than duplicating it. It
-refuses loudly if a station already exists under a different client or UUID.
+onboarder rejects outright (`Manifest requires version 1 and stations only`;
+the top level may hold `version` and `stations` and nothing else). Each station
+record names a `snapshot` and a `review`, resolved relative to the manifest, so
+the dictionary import and the review application happen inside the one command.
+
+The manifest deliberately omits `source_context`. `read_manifest` decodes
+numbers as `Decimal` to avoid losing precision, and `AssetMachine.source_context`
+is a `JSONField` whose `full_clean()` rejects a `Decimal` with `Value must be
+valid JSON` — so a station carrying a coordinate or a lift head cannot be
+onboarded while that field is populated. It is descriptive metadata (real plant
+name, coordinates, rated power) and none of it is needed to register a station
+or draw a reading, but it is a latent bug in the shipped code worth knowing.
+
+`register_station` is idempotent: a second run returns the existing
+registration rather than duplicating it, and refuses loudly if a station
+already exists under a different client or public UUID. Re-running the whole
+command is how an interrupted rollout is resumed; the tests assert it.
 
 ### 14.4 Verification
 
@@ -626,37 +648,36 @@ unrelated to this bootstrap and always exits 0, so it cannot gate anything.
 
 ### 14.5 Blockers
 
-**14.5.1 Nothing in the image creates the dictionary points.** The review packs
-*update* points; they do not create them. The only creator is
-`import_dictionary`, which needs a parsed snapshot payload (`dex` and `pd`
-objects) plus its sha256. The manifest schema supports this — `snapshot` and
-`review` keys per station, resolved relative to the manifest — but
-`estate.manifest.json` carries neither, and the repository holds a usable
-snapshot for **one** of the three stations. Closing this means exporting one
-snapshot per station from the live container into the repo, which puts real
-plant telemetry under version control and is a decision for the estate owner,
-not a mechanical fix.
-
-**14.5.2 The approvals packs would be refused.** Each pins a `dictionary_hash`
-taken *after* review, and that hash covers `status`, `review_note`, `unit`,
-`component` and `template`. A freshly imported dictionary is unreviewed, so the
-hash cannot match and `apply_dictionary_review` raises `Dictionary changed;
-export a fresh review pack.` The three `.withheld.review.json` packs are
-unaffected — they were written by hand and carry no hash. Fix: re-export the
-approvals packs without `dictionary_hash`; the per-path lookup still fails
-loudly if a tag is absent, so the guard is not the only protection.
-
-**14.5.3 No shipped path fills the tiles, and the poller will not.**
+**14.5.1 No shipped path fills the tiles, and the poller will not.**
 `activate_station` opens each checkpoint at wall-clock now minus five minutes.
 For a recorded window that is ~442 days **ahead** of `read_ceiling`, and
 advancement is forward-only, so the poller reads zero documents for ever —
 silently: `last_poll_at` advances every 60 s, `last_error_code` stays empty,
-`last_success_at` is set. Health blades and Mimic tiles would stay blank while
-the Performance charts work, because charts read Cosmos per request and tiles
-read the cache. Locally the cache was filled by
-`contrib/cosmos/devtools/seed_bindings_from_latest.py`, and **devtools are not
-in the production image** — only `contrib/cosmos/review` is. Closing this means
-either shipping a seeding management command or widening the `COPY`.
+`last_success_at` is set. Health blades and Mimic tiles stay blank while the
+Performance charts work, because charts read Cosmos per request and tiles read
+`MachineSignalState`. Locally the cache was filled by
+`contrib/cosmos/devtools/seed_bindings_from_latest.py`, and devtools are not in
+the production image — only `contrib/cosmos/review` is. Closing this means
+shipping a seeding management command, or widening the `COPY`.
+
+**Closed 2026-09-27 — dictionary creation.** The review packs update points and
+do not create them, and nothing in the image created them. The manifest now
+names a `snapshot` per station: a tag-shape file listing exactly the tags that
+station reports, with placeholder values. The dictionary is built from the
+*shape* of a snapshot, not from what it measured, and the review sets every
+data type and unit afterwards — so no plant telemetry is committed, and the tag
+names were already in the review packs. Coverage is exact: 905, 919 and 371
+paths, no tag missing and none spurious.
+
+**Closed 2026-09-27 — the packs would have been refused.** Each exported pack
+pinned a `dictionary_hash` taken *after* review, covering every point's
+`status`, `review_note`, `unit`, `component` and `template`. A freshly imported
+dictionary is unreviewed, so the hash could never match and
+`apply_dictionary_review` raised `Dictionary changed; export a fresh review
+pack.` The committed packs carry no such hash, and
+`test_bootstrap_replay.test_the_pack_carries_no_post_review_hash` fails if a
+re-export puts one back. The per-path lookup still refuses loudly if the target
+dictionary lacks a tag the pack names, which is the guard that matters here.
 
 ### 14.6 Rollback
 
