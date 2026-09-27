@@ -691,3 +691,51 @@ these colliding with the catalogued short-form tags.
 
 The reason recorded on each of the 84 points names its own tag and repeats this
 ask, so nobody has to find this file first.
+
+## Maple Grove Pump 02: dead instrumentation, not an unreviewed backlog
+
+Pump 02 at Maple Grove (Ranganayaka Sagar) showed 10 of 89 dictionary points
+approved where its siblings showed 55, 60 and 71. That reads as a review that
+was never finished, and it is not.
+
+Every one of the 63 tags in question already carries a component and a
+catalogue parameter - the crosswalk was done - and every one of them reports
+**exactly 0 in all 46 snapshots sampled evenly across the whole recorded
+window** (2025-07-02 01:01 to 2025-07-11 23:59). Over the same snapshots the
+identical tags on the sibling pumps vary normally: 64 of Pump 01's 87 numeric
+tags move, against 13 of Pump 02's 85. Bay status reads `I` for both pumps
+throughout, so this is not a pump that happened to be stopped - a stopped pump
+still reports ambient temperatures, as Pump 01 does. It is instrumentation
+that reports nothing.
+
+The ten points that *are* approved on Pump 02 are exactly the ones carrying
+live data: bearing temperatures 2 and 4 (27-29 degC, varying), shaft speed,
+discharge pressure, and the motor on/off pair. Whoever reviewed this station
+approved what could be seen and left the rest, which was right.
+
+### Why they are not approved from the sibling's unit
+
+A channel holding one value for ten days is equally consistent with degC, degF
+or an unwired input, so its own data settles nothing. Inheriting `degC` from the
+sibling that does report would put "0 degC" on a machine page as a measurement -
+a freezing pump - which is the fabrication the Performance tab's contract exists
+to prevent. `contrib/cosmos/review/maple-grove-pump02.review.json` therefore
+records the finding against each point rather than approving it, and carries the
+sibling's settled decision in the note so that the unit is one lookup away the
+moment the channel reports again.
+
+### What to ask for
+
+Whether Pump 02's RTD loops - guide bearing (18 tags), stator winding (12),
+thrust bearing (10), stator core (8), cooling air (8), oil (4) and cooling
+water (3) - were wired and scanning during July 2025. If they were not, these
+stay withheld for this dataset and the question is closed. If they were, the
+tags are a commissioning fault worth raising with the plant on its own merits.
+
+Not covered here: eight further Pump 02 tags are draft on **all four** pumps
+(`PUMP_CURRENT_AVG`, `PUMP_FREQUENCY`, `PUMP_POWERFATCOR`,
+`PUMP_REACTIVE_POWER`, `PUMP_LINE_TO_LINE_VOLTAGE`,
+`EXCITATION_FLD_CURR_PROCESS_VALUE`, `HOPD_VALVE_POS_PROCESS_VALUE`,
+`COOLING_WATER_RTD2`). Those are a station-wide question, not a Pump 02 one,
+and already carry their own recorded reasons. `PUMP2_PUMP_CURRENT_AVG` is the
+only one of them that is alive on this pump (25 distinct values, 3.34-3.40 A).
