@@ -22,9 +22,15 @@ its own machines, parts and users without touching any of them.
 One command, run inside the deployed container:
 
     python manage.py load_pump_catalogue
+    python manage.py discover_data_range --source <pk> --from 2025-07-01 --to 2025-07-13
     python manage.py onboard_pumphouse_estate contrib/cosmos/review/estate.manifest.json --source <pk> --dry-run
     python manage.py onboard_pumphouse_estate contrib/cosmos/review/estate.manifest.json --source <pk> --activate
-    python manage.py discover_data_range --source <pk> --from 2025-07-01 --to 2025-07-13
+
+`discover_data_range` must come before `--activate`. Activation reads the
+recorded window to decide where each ingestion cursor starts, and a cursor only
+moves forward: activate first and it is placed at the wall clock, which for a
+recorded window is past every document the source will return, and no later run
+can bring it back.
 
 The manifest names, per station, a `snapshot` and a `review`. Onboarding
 registers the station and its bays, imports the dictionary from the snapshot,

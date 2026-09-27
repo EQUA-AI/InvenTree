@@ -509,8 +509,8 @@ az containerapp update -n <worker-app-name> -g EpconChat --image "$IMAGE"
 > throwaway database (no Azure contact), and guarded by
 > `machine_health.tests.test_estate_bootstrap` /
 > `test_bootstrap_replay` so the committed artefacts cannot drift out of
-> working order. **One blocker remains** — the tiles have no values until
-> something seeds them (14.5.1).
+> working order, and by `test_activation_cursor`. **No blockers remain**; see
+> 14.5 for what each of the three was, since each failed silently.
 
 The code in sections 12 and 13 deploys an application that can read the plant's
 telemetry and draws nothing with it. What turns a reading into a tile — which
@@ -583,21 +583,21 @@ $EXEC "python src/backend/InvenTree/manage.py load_pump_catalogue"
 # 14.3.2  Read throughput, BEFORE data_ranges exists (see 14.4).
 $EXEC "python src/backend/InvenTree/manage.py benchmark_pumphouse_reads --source $SRC"
 
-# 14.3.3  The whole estate, previewed. One transaction; writes nothing.
-$EXEC "python src/backend/InvenTree/manage.py onboard_pumphouse_estate \
-    contrib/cosmos/review/estate.manifest.json --source $SRC --dry-run"
-
-# 14.3.4  The same command for real: registers 3 stations and 30 bays, imports
-#         each station's dictionary from the tag file the manifest names,
-#         applies its review, then binds and opens an ingestion checkpoint.
-$EXEC "python src/backend/InvenTree/manage.py onboard_pumphouse_estate \
-    contrib/cosmos/review/estate.manifest.json --source $SRC --activate"
-
-# 14.3.5  The window the display shift and the chart date picker read.
+# 14.3.3  Record the window. MUST precede --activate: activation reads it to
+#         decide where each cursor starts, and a cursor only moves forward.
 $EXEC "python src/backend/InvenTree/manage.py discover_data_range --source $SRC \
     --from 2025-07-01 --to 2025-07-13"
 
-# 14.3.6  BLOCKED (14.5.1): current values for the tiles.
+# 14.3.4  The whole estate, previewed. One transaction; writes nothing.
+$EXEC "python src/backend/InvenTree/manage.py onboard_pumphouse_estate \
+    contrib/cosmos/review/estate.manifest.json --source $SRC --dry-run"
+
+# 14.3.5  The same command for real: registers 3 stations and 30 bays, imports
+#         each station's dictionary from the tag file the manifest names,
+#         applies its review, then binds and opens an ingestion checkpoint at
+#         the recorded window's end. The next poll fills the tiles.
+$EXEC "python src/backend/InvenTree/manage.py onboard_pumphouse_estate \
+    contrib/cosmos/review/estate.manifest.json --source $SRC --activate"
 ```
 
 Expected after 14.3.4, asserted by the tests:
@@ -634,9 +634,9 @@ command is how an interrupted rollout is resumed; the tests assert it.
 **it can never report `ready: true` for this estate** — `pumphouse.layout.json`
 ships with `review_status: provisional`, and the 743 deliberately withheld
 points keep `pending_points` above zero. Read its issues; do not gate on its
-exit code. Two issues are expected and benign between 14.3.3 and 14.3.8:
-`station_checkpoint_allowlist_mismatch` (onboarding adds the station UUIDs to
-the allowlist but creates no checkpoints until `--activate`), and any pending
+exit code. `station_checkpoint_allowlist_mismatch` is expected and benign
+between the dry run and 14.3.5 — onboarding adds the station UUIDs to the
+allowlist but creates no checkpoints until `--activate` — as is any pending
 count.
 
 `benchmark_pumphouse_reads` must run **before** `discover_data_range`: once
@@ -646,38 +646,46 @@ count.
 `deploy_preflight --json` audits migrations and role coverage only. It is
 unrelated to this bootstrap and always exits 0, so it cannot gate anything.
 
-### 14.5 Blockers
+### 14.5 Closed blockers
 
-**14.5.1 No shipped path fills the tiles, and the poller will not.**
-`activate_station` opens each checkpoint at wall-clock now minus five minutes.
-For a recorded window that is ~442 days **ahead** of `read_ceiling`, and
-advancement is forward-only, so the poller reads zero documents for ever —
-silently: `last_poll_at` advances every 60 s, `last_error_code` stays empty,
-`last_success_at` is set. Health blades and Mimic tiles stay blank while the
-Performance charts work, because charts read Cosmos per request and tiles read
-`MachineSignalState`. Locally the cache was filled by
-`contrib/cosmos/devtools/seed_bindings_from_latest.py`, and devtools are not in
-the production image — only `contrib/cosmos/review` is. Closing this means
-shipping a seeding management command, or widening the `COPY`.
+All three are closed. They are kept here because each was a way the bootstrap
+failed silently, and the tests that now hold them shut are named.
 
-**Closed 2026-09-27 — dictionary creation.** The review packs update points and
-do not create them, and nothing in the image created them. The manifest now
-names a `snapshot` per station: a tag-shape file listing exactly the tags that
-station reports, with placeholder values. The dictionary is built from the
-*shape* of a snapshot, not from what it measured, and the review sets every
-data type and unit afterwards — so no plant telemetry is committed, and the tag
-names were already in the review packs. Coverage is exact: 905, 919 and 371
-paths, no tag missing and none spurious.
+**Dictionary creation.** The review packs update points and do not create them,
+and nothing in the image created them. The manifest now names a `snapshot` per
+station: a tag-shape file listing exactly the tags that station reports, with
+placeholder values. The dictionary is built from the *shape* of a snapshot, not
+from what it measured, and the review sets every data type and unit afterwards
+— so no plant telemetry is committed, and the tag names were already in the
+review packs. Coverage is exact: 905, 919 and 371 paths, none missing and none
+spurious.
 
-**Closed 2026-09-27 — the packs would have been refused.** Each exported pack
-pinned a `dictionary_hash` taken *after* review, covering every point's
-`status`, `review_note`, `unit`, `component` and `template`. A freshly imported
+**The packs would have been refused.** Each exported pack pinned a
+`dictionary_hash` taken *after* review, covering every point's `status`,
+`review_note`, `unit`, `component` and `template`. A freshly imported
 dictionary is unreviewed, so the hash could never match and
 `apply_dictionary_review` raised `Dictionary changed; export a fresh review
-pack.` The committed packs carry no such hash, and
+pack.` The committed packs carry none, and
 `test_bootstrap_replay.test_the_pack_carries_no_post_review_hash` fails if a
-re-export puts one back. The per-path lookup still refuses loudly if the target
-dictionary lacks a tag the pack names, which is the guard that matters here.
+re-export puts one back.
+
+**The tiles would have stayed empty for ever.** `activate_station` opened every
+checkpoint five minutes before the wall clock. For a station whose history is a
+recorded window that is ~442 days *past* `read_ceiling`, and a cursor only
+moves forward, so it could never come back: the poller would read zero
+documents for ever and report nothing, because finding no documents is not an
+error — `last_poll_at` advancing, `last_error_code` empty, `last_success_at`
+set, and blank tiles beside working charts. Activation now enters a recorded
+window five minutes before *its own* end, which is the same five minutes of
+validity measured against the clock the data actually has. The condition
+mirrors `read_ceiling` exactly, in milliseconds, so the cursor and the horizon
+cannot disagree about which windows are recorded.
+
+This is why 14.3.3 must precede 14.3.5. Activate before the window is
+recorded and the cursor is placed at the wall clock, which is the bug this
+closed — and it is not repairable afterwards, because the cursor is
+forward-only. `test_activation_cursor` asserts the cursor lands below the
+ceiling; `test_estate_bootstrap` asserts it for the real estate.
 
 ### 14.6 Rollback
 

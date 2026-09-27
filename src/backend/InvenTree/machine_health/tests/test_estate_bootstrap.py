@@ -16,11 +16,14 @@ from io import StringIO
 from pathlib import Path
 
 from django.core.management import call_command
+from django.utils import timezone
 from django.test import TestCase
 
 from assets.health_models import HealthSource, MachineSignalBinding
+from assets.ingestion_models import IngestionCheckpoint
 from assets.models import AssetMachine, Client
 from assets.registry_models import DictionaryPoint
+from machine_health.connectors.cosmos_pumphouse import to_epoch_ms
 
 REVIEW_DIR = Path(__file__).resolve().parents[5] / 'contrib/cosmos/review'
 MANIFEST = REVIEW_DIR / 'estate.manifest.json'
@@ -31,6 +34,11 @@ EXPECTED = {
     'PH_2': {'approved': 452, 'withheld': 467, 'pumps': 12},
     'PH_7': {'approved': 198, 'withheld': 173, 'pumps': 4},
 }
+
+#: What `discover_data_range` records for this estate. Activation reads it to
+#: decide where a cursor starts, so the runbook must record it *before*
+#: activating - a cursor placed at the wall clock can never come back.
+RECORDED_END = '2025-07-11T23:59:59.999000+00:00'
 
 
 class EstateBootstrapTests(TestCase):
@@ -49,6 +57,13 @@ class EstateBootstrapTests(TestCase):
                 'endpoint': 'https://example.documents.azure.com:443/',
                 'database': 'aimms',
                 'readings_container': 'pumphouse_readings',
+                'data_ranges': {
+                    station['source_uuid']: {
+                        'from': '2025-07-02T01:01:11.976000+00:00',
+                        'to': RECORDED_END,
+                    }
+                    for station in json.loads(MANIFEST.read_text())['stations']
+                },
             },
         )
 
@@ -98,6 +113,32 @@ class EstateBootstrapTests(TestCase):
                     expected['approved'],
                     'activation turns every approved point into a signal',
                 )
+
+    def test_activation_enters_the_recorded_window_not_the_wall_clock(self):
+        """The cursor only moves forward, so its opening position is final.
+
+        Placed five minutes before *now*, a recorded window's cursor sits 442
+        days past anything the connector will return, and the station polls
+        successfully for ever while ingesting nothing.
+        """
+        self.onboard(activate=True)
+
+        expected = to_epoch_ms(timezone.datetime.fromisoformat(RECORDED_END)) - 300_001
+        checkpoints = IngestionCheckpoint.objects.filter(
+            source=self.source, active=True
+        )
+
+        self.assertEqual(checkpoints.count(), 3, 'one checkpoint per station')
+        # All three stations share one recorded end, so one cursor value is
+        # the right answer here, not three.
+        self.assertEqual(
+            set(checkpoints.values_list('sub_time_period', flat=True)), {expected}
+        )
+        self.assertLess(
+            expected,
+            to_epoch_ms(timezone.now()),
+            'the cursor must sit in the recorded past, not at the wall clock',
+        )
 
     def test_a_dry_run_writes_nothing(self):
         """The runbook tells an operator to preview first; it must mean it."""
