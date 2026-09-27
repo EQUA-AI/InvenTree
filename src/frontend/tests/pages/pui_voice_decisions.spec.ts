@@ -1,24 +1,28 @@
 import type { VoicePendingDecision } from '../../lib/types/Voice';
 import { expect, test } from '../baseFixtures.js';
-import { doCachedLogin } from '../login.js';
 import {
-  goldenEvents,
-  mockChatFoundation,
-  openChat,
-  sseBody,
-  threadId
-} from './aichat_harness.js';
-import { startVoice } from './voice_harness';
+  loadDrawerFixture,
+  prepareDrawerFixture
+} from './ai_drawer_harness.js';
+import { goldenEvents, sseBody, threadId } from './aichat_harness.js';
 import {
   emitTranscript,
-  installVoiceMocks,
   mockSessionId,
-  mockThreadId
+  mockThreadId,
+  startVoice
 } from './voice_harness.js';
 
 /**
  * Decision-safety browser coverage (voice-UX plan Phase A/B). Grows per phase;
  * every scenario here must stay green (task A10 suite).
+ *
+ * These scenarios run on the wholly mocked-auth drawer fixture (real drawer
+ * and voice components, route-mocked API — no credentials), matching the
+ * approved C1 contracts: the single focused decision card lives in Approvals
+ * (mutually exclusive with the hands-free surface), active voice controls
+ * stay available on every tab, and closing the drawer performs voice
+ * cleanup. The decision-safety assertions (hash, revision, phrase, unknown
+ * result, read-back binding) are unchanged in strength.
  */
 
 function holdDecision(
@@ -56,71 +60,79 @@ function holdDecision(
   };
 }
 
-test('one decision card and voice controls remain available across all tabs and minimized state', async ({
-  browser
+test('one focused decision card is owned by Approvals and voice controls stay available across all tabs', async ({
+  page
 }) => {
-  const page = await doCachedLogin(browser, { url: 'home' });
-  await mockChatFoundation(page);
   const decision = holdDecision();
-  const voice = await installVoiceMocks(page, {
-    onDecisionRead: () => ({ pending_decision: decision })
+  const fixture = await prepareDrawerFixture(page, {
+    tab: 'chat',
+    voice: { onDecisionRead: () => ({ pending_decision: decision }) }
   });
-  await page.reload();
-  await openChat(page);
+  const voice = fixture.voice!;
+  await loadDrawerFixture(page);
   await startVoice(page);
-  for (const tab of ['Chat', 'Approvals', 'History']) {
-    await page.getByRole('tab', { name: tab, exact: true }).click();
-    await expect(page.getByTestId('voice-decision-card')).toHaveCount(1);
-    await expect(page.getByTestId('voice-decision-card')).toContainText(
-      decision.target_label
-    );
-    await expect(page.getByTestId('voice-end')).toBeVisible();
-  }
+  await expect.poll(() => voice.decisionReads.length).toBeGreaterThan(0);
+
+  // Approvals holds the single focused decision card (plan C1).
+  await page.getByRole('tab', { name: 'Approvals' }).click();
+  const card = page.getByTestId('voice-decision-card');
+  await expect(card).toHaveCount(1);
+  await expect(card).toContainText(decision.target_label);
   await expect(page.getByTestId('voice-decision-spoken-summary')).toHaveText(
     decision.spoken_summary
   );
+
+  // Chat, History and Mail contain no decision card while one is presented,
+  // and the active voice controls (mute/end) stay available on every tab.
+  for (const tab of ['Chat', 'History', 'Mail']) {
+    await page.getByRole('tab', { name: tab, exact: true }).click();
+    await expect(page.getByTestId('voice-decision-card')).toHaveCount(0);
+    await expect(page.getByTestId('voice-end')).toBeVisible();
+    await expect(page.getByTestId('voice-mute')).toBeVisible();
+  }
+
+  // Close cleanup (retained policy): closing the drawer ends the session
+  // and leaves no minimized indicator behind.
   await page.getByLabel('close-ai-chat').click();
-  await expect(page.getByTestId('voice-minimized-indicator')).toContainText(
-    decision.target_label
-  );
-  expect(voice.sessionEnded).toBe(false);
-  await page
-    .getByTestId('voice-minimized-indicator')
-    .getByRole('button', { name: 'End voice' })
-    .click();
   await expect.poll(() => voice.sessionEnded).toBe(true);
+  await expect(page.getByTestId('voice-minimized-indicator')).toHaveCount(0);
 });
 
 test('turns carry decision_context and correction re-presents a fresh target', async ({
-  browser
+  page
 }) => {
-  const page = await doCachedLogin(browser, { url: 'home' });
-  await mockChatFoundation(page);
   let decision = holdDecision();
   const first = { ...decision };
-  const voice = await installVoiceMocks(page, {
-    onDecisionRead: () => ({ pending_decision: decision }),
-    onTurn: () => {
-      decision = holdDecision('decision-two', 'WO-000140 Pump service');
-      return {
-        session_id: mockSessionId,
-        thread_id: mockThreadId,
-        turn_id: 'turn-correction',
-        message: decision.spoken_summary,
-        response_state: 'complete',
-        workflow_used: 'voice_decision',
-        replayed: false,
-        spoken: null,
-        pending_question: null,
-        pending_decision: decision,
-        decision_event: null
-      };
+  const fixture = await prepareDrawerFixture(page, {
+    tab: 'chat',
+    voice: {
+      onDecisionRead: () => ({ pending_decision: decision }),
+      onTurn: () => {
+        decision = holdDecision('decision-two', 'WO-000140 Pump service');
+        return {
+          session_id: mockSessionId,
+          thread_id: mockThreadId,
+          turn_id: 'turn-correction',
+          message: decision.spoken_summary,
+          response_state: 'complete',
+          workflow_used: 'voice_decision',
+          replayed: false,
+          spoken: null,
+          pending_question: null,
+          pending_decision: decision,
+          decision_event: null
+        };
+      }
     }
   });
-  await page.reload();
-  await openChat(page);
+  const voice = fixture.voice!;
+  await loadDrawerFixture(page);
   await startVoice(page);
+  await expect.poll(() => voice.decisionReads.length).toBeGreaterThan(0);
+  await page.getByRole('tab', { name: 'Approvals' }).click();
   await expect(page.getByTestId('voice-decision-card')).toBeVisible();
+  // Wait until the session actually accepts speech before emitting.
+  await expect(page.getByTestId('voice-state-badge')).toHaveText('Listening');
   await emitTranscript(page, {
     text: 'no, I meant one hundred forty',
     itemId: 'correct-140'
@@ -135,30 +147,35 @@ test('turns carry decision_context and correction re-presents a fresh target', a
   await expect(page.getByTestId('voice-decision-card')).toContainText(
     'WO-000140'
   );
+  // The consuming turn leaves no pending transcript behind (asserted with
+  // the Chat-mounted transcript surface).
+  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
   await expect(page.getByTestId('voice-pending-transcript')).toHaveCount(0);
 });
 
 test('touch confirmation sends hash and revision and unknown result stays unverified', async ({
-  browser
+  page
 }) => {
-  const page = await doCachedLogin(browser, { url: 'home' });
-  await mockChatFoundation(page);
   let decision = holdDecision();
-  const voice = await installVoiceMocks(page, {
-    onDecisionRead: () => ({ pending_decision: decision }),
-    onDecisionAction: () => {
-      decision = {
-        ...decision,
-        sequence: 2,
-        state: 'resolved',
-        execution_state: 'unknown'
-      };
-      return { pending_decision: decision };
+  const fixture = await prepareDrawerFixture(page, {
+    tab: 'chat',
+    voice: {
+      onDecisionRead: () => ({ pending_decision: decision }),
+      onDecisionAction: () => {
+        decision = {
+          ...decision,
+          sequence: 2,
+          state: 'resolved',
+          execution_state: 'unknown'
+        };
+        return { pending_decision: decision };
+      }
     }
   });
-  await page.reload();
-  await openChat(page);
+  const voice = fixture.voice!;
+  await loadDrawerFixture(page);
   await startVoice(page);
+  await page.getByRole('tab', { name: 'Approvals' }).click();
   await page.getByTestId('voice-decision-confirm').click();
   await expect.poll(() => voice.decisionActions.length).toBe(1);
   expect(voice.decisionActions[0].body).toMatchObject({
@@ -178,56 +195,61 @@ test('touch confirmation sends hash and revision and unknown result stays unveri
 });
 
 test('metadata-free Azure read-back reports bound delivery without confirming an action', async ({
-  browser
+  page
 }) => {
-  const page = await doCachedLogin(browser, { url: 'home' });
-  await mockChatFoundation(page);
   let decision: VoicePendingDecision | null = null;
-  const voice = await installVoiceMocks(page, {
-    onDecisionRead: () => ({ pending_decision: decision }),
-    onTurn: () => {
-      decision = {
-        ...holdDecision(),
-        spoken_summary: 'Confirm hold.',
-        utterance_id: 'exact-utterance',
-        spoken_summary_hash: 's'.repeat(64),
-        delivery_state: 'requested'
-      };
-      return {
-        session_id: mockSessionId,
-        thread_id: mockThreadId,
-        turn_id: 'turn-exact',
-        message: decision.spoken_summary,
-        response_state: 'complete',
-        workflow_used: 'voice_decision',
-        replayed: false,
-        pending_question: null,
-        pending_decision: decision,
-        decision_event: null,
-        spoken: {
-          utterance_id: decision.utterance_id,
-          spoken_summary: decision.spoken_summary,
-          spoken_summary_hash: decision.spoken_summary_hash,
-          playback_state: 'requested'
-        }
-      };
-    },
-    onDecisionAction: (action) => {
-      decision = {
-        ...decision!,
-        sequence: decision!.sequence + 1,
-        delivery_state: action === 'playback-started' ? 'playing' : 'done'
-      };
-      return { pending_decision: decision };
+  const fixture = await prepareDrawerFixture(page, {
+    tab: 'chat',
+    voice: {
+      onDecisionRead: () => ({ pending_decision: decision }),
+      onTurn: () => {
+        decision = {
+          ...holdDecision(),
+          spoken_summary: 'Confirm hold.',
+          utterance_id: 'exact-utterance',
+          spoken_summary_hash: 's'.repeat(64),
+          delivery_state: 'requested'
+        };
+        return {
+          session_id: mockSessionId,
+          thread_id: mockThreadId,
+          turn_id: 'turn-exact',
+          message: decision.spoken_summary,
+          response_state: 'complete',
+          workflow_used: 'voice_decision',
+          replayed: false,
+          pending_question: null,
+          pending_decision: decision,
+          decision_event: null,
+          spoken: {
+            utterance_id: decision.utterance_id,
+            spoken_summary: decision.spoken_summary,
+            spoken_summary_hash: decision.spoken_summary_hash,
+            playback_state: 'requested'
+          }
+        };
+      },
+      onDecisionAction: (action) => {
+        decision = {
+          ...decision!,
+          sequence: decision!.sequence + 1,
+          delivery_state: action === 'playback-started' ? 'playing' : 'done'
+        };
+        return { pending_decision: decision };
+      }
     }
   });
-  await page.reload();
-  await openChat(page);
+  const voice = fixture.voice!;
+  await loadDrawerFixture(page);
   await startVoice(page);
+  // Wait until the session actually accepts speech before emitting.
+  await expect(page.getByTestId('voice-state-badge')).toHaveText('Listening');
   await emitTranscript(page, {
     text: 'Put the work order on hold',
     itemId: 'proposal'
   });
+  await expect.poll(() => voice.turns.length).toBe(1);
+  await page.getByRole('tab', { name: 'Approvals' }).click();
   await expect(page.getByTestId('voice-decision-card')).toBeVisible();
   await page.evaluate(() => {
     const mock = (window as any).__voiceMock;
@@ -266,10 +288,9 @@ test('metadata-free Azure read-back reports bound delivery without confirming an
 });
 
 test('retired HITL event never renders an approvable card', async ({
-  browser
+  page
 }) => {
-  const page = await doCachedLogin(browser, { url: 'home' });
-  await mockChatFoundation(page);
+  await prepareDrawerFixture(page, { voice: false });
   // A stray legacy HITL_REQUIRED on the stream (nothing emits it today) must
   // be ignored: no approval card, no "waiting for approval" text, and the
   // answer itself still renders.
@@ -293,8 +314,7 @@ test('retired HITL event never renders an approvable card', async ({
     });
   });
 
-  await page.reload();
-  await openChat(page);
+  await loadDrawerFixture(page);
   await page.getByLabel('select-ai-chat-thread').click();
   await page.getByPlaceholder('Type a message...').fill('Delete the pump seal');
   await page.getByLabel('send-ai-chat-message').click();
@@ -307,9 +327,7 @@ test('retired HITL event never renders an approvable card', async ({
   await expect(page.getByText('Permanently delete')).toHaveCount(0);
 });
 
-test('HTTP 200 with business failure shows no success', async ({ browser }) => {
-  const page = await doCachedLogin(browser, { url: 'home' });
-  await mockChatFoundation(page);
+test('HTTP 200 with business failure shows no success', async ({ page }) => {
   let confirmed = false;
   let proposalReads = 0;
   const proposal = {
@@ -332,6 +350,7 @@ test('HTTP 200 with business failure shows no success', async ({ browser }) => {
     receipt: null,
     failure_code: null
   };
+  await prepareDrawerFixture(page, { voice: false });
   await page.route('**/api/aichat/proposals/**', async (route) => {
     if (route.request().method() !== 'GET') {
       await route.fallback();
@@ -366,12 +385,10 @@ test('HTTP 200 with business failure shows no success', async ({ browser }) => {
     });
   });
 
-  await page.reload();
-  await openChat(page);
-  // The proposals list lives on the chat tab since A7 (and on the approvals
-  // tab); select the chat tab explicitly -- the cached login may restore
-  // another tab -- and wait for the list to have fetched.
-  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+  await loadDrawerFixture(page);
+  // Plan C1: action proposals live on the Approvals tab only. Select it
+  // explicitly and wait for the list to have fetched.
+  await page.getByRole('tab', { name: 'Approvals' }).click();
   await expect.poll(() => proposalReads).toBeGreaterThanOrEqual(1);
   const card = page.getByTestId('chat-action-proposal').first();
   await expect(card).toBeVisible();
