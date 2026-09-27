@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom';
 import { useApi } from '../../../contexts/ApiContext';
 import { useUserState } from '../../../states/UserState';
 import { MachineMoveDialog } from './LocationDialogs';
+
 import {
   type LocatedMachine,
   type LocationContext,
@@ -14,17 +15,14 @@ import {
   locationPath
 } from './locationTypes';
 
-/** Current physical placement beside the preserved legacy machine details. */
-export function MachineLocationCard({ machineId }: { machineId: number }) {
+/**
+ * Cached authorized placement read, shared by the details card and the
+ * compact placement line above the machine panels: one query key, one fetch.
+ */
+function useMachinePlacement(machineId: number) {
   const api = useApi();
   const identity = useUserState((s) => s.authGeneration);
-  const [moving, setMoving] = useState(false);
-  const context = useQuery<LocationContext>({
-    queryKey: ['asset-locations', identity, 'context'],
-    queryFn: async ({ signal }) =>
-      (await api.get(`${locationApi}context/`, { signal })).data
-  });
-  const machine = useQuery<PageResult<LocatedMachine>>({
+  return useQuery<PageResult<LocatedMachine>>({
     queryKey: ['asset-locations', identity, 'machine-placement', machineId],
     queryFn: async ({ signal }) =>
       (
@@ -34,6 +32,42 @@ export function MachineLocationCard({ machineId }: { machineId: number }) {
         })
       ).data
   });
+}
+
+/** The machine's real placement; a demo filter never replaces it. */
+function placementText(row: LocatedMachine | undefined) {
+  return row?.physical_location
+    ? locationPath(row.physical_location)
+    : t`No physical location assigned`;
+}
+
+/**
+ * Compact placement context for every machine panel (U2): where the machine
+ * physically is, outside the Details tab, without a second detail fetch.
+ */
+export function MachinePlacementPath({ machineId }: { machineId: number }) {
+  const machine = useMachinePlacement(machineId);
+  const row = machine.isError ? undefined : machine.data?.results[0];
+  if (!row) return null;
+  return (
+    <Text size='sm' c='dimmed'>
+      {t`Physical location`}: {placementText(row)}
+    </Text>
+  );
+}
+
+/** Current physical placement beside the preserved legacy machine details. */
+export function MachineLocationCard({ machineId }: { machineId: number }) {
+  const api = useApi();
+  const identity = useUserState((s) => s.authGeneration);
+  const [moving, setMoving] = useState(false);
+
+  const context = useQuery<LocationContext>({
+    queryKey: ['asset-locations', identity, 'context'],
+    queryFn: async ({ signal }) =>
+      (await api.get(`${locationApi}context/`, { signal })).data
+  });
+  const machine = useMachinePlacement(machineId);
   const row = machine.isError ? undefined : machine.data?.results[0];
   return (
     <Paper withBorder p='md'>
@@ -57,7 +91,7 @@ export function MachineLocationCard({ machineId }: { machineId: number }) {
               {locationPath(row.physical_location)}
             </Anchor>
           ) : (
-            <Text c='dimmed'>{t`Unassigned`}</Text>
+            <Text c='dimmed'>{t`No physical location assigned`}</Text>
           )
         ) : (
           <Text c='dimmed'>

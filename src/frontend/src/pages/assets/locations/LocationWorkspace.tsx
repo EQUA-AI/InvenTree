@@ -12,30 +12,32 @@ import {
   Loader,
   Pagination,
   Paper,
-  SegmentedControl,
   SimpleGrid,
   Stack,
+  Switch,
   Table,
   Text,
   TextInput,
-  Title,
-  Tree,
-  type TreeNodeData,
-  useTree
+  Title
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
-import {
-  IconBuildingFactory2,
-  IconMapPin,
-  IconPlus,
-  IconSearch
-} from '@tabler/icons-react';
-import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { IconMapPin, IconPlus, IconSearch } from '@tabler/icons-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useApi } from '../../../contexts/ApiContext';
 import { useUserState } from '../../../states/UserState';
+
+import { LocationBrowser, locationKindLabel } from './LocationBrowser';
 import { LocationEditDialog, MachineMoveDialog } from './LocationDialogs';
+import {
+  type MachineSourceView,
+  countSummary,
+  locationKind,
+  machineDetailHref,
+  machineEmptyKind,
+  workspaceLabel
+} from './locationTree';
 import {
   type LocatedMachine,
   type LocationContext,
@@ -44,200 +46,52 @@ import {
   locationApi,
   locationPath
 } from './locationTypes';
+import classes from './locations.module.css';
 
-function LocationBrowser({
-  selected,
-  onSelect,
-  identity
-}: {
-  selected?: LocationNode;
-  onSelect: (id: number | null) => void;
-  identity: number;
-}) {
-  const api = useApi();
-  const [search, setSearch] = useState('');
-  const [debounced] = useDebouncedValue(search, 200);
-  const [searchPage, setSearchPage] = useState(1);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  useEffect(() => {
-    if (selected)
-      setExpanded((previous) => ({
-        ...previous,
-        ...Object.fromEntries(
-          selected.path.map((node) => [String(node.pk), true])
-        )
-      }));
-  }, [selected?.path.map((node) => node.pk).join(',')]);
-  const parents = [
-    'root',
-    ...Object.keys(expanded).filter((id) => expanded[id])
-  ];
-  const branches = useQueries({
-    queries: parents.map((parent) => ({
-      queryKey: ['asset-locations', identity, 'branch', parent],
-      queryFn: async ({ signal }: { signal: AbortSignal }) =>
-        (await api.get(locationApi, { signal, params: { parent, limit: 100 } }))
-          .data as PageResult<LocationNode>
-    }))
-  });
-  const searchQuery = useQuery<PageResult<LocationNode>>({
-    queryKey: ['asset-locations', identity, 'search', debounced, searchPage],
-    queryFn: async ({ signal }) =>
-      (
-        await api.get(locationApi, {
-          signal,
-          params: {
-            search: debounced,
-            limit: 10,
-            offset: (searchPage - 1) * 10
-          }
-        })
-      ).data,
-    enabled: !!debounced
-  });
-  const data: TreeNodeData[] = useMemo(() => {
-    const byParent = new Map(
-      parents.map((parent, i) => [
-        parent,
-        branches[i].isError ? undefined : branches[i].data
-      ])
-    );
-    const build = (parent: string, depth = 0): TreeNodeData[] => {
-      if (depth > 32) return [];
-      const branch = byParent.get(parent);
-      return (branch?.results ?? []).map((node) => ({
-        value: String(node.pk),
-        label: node.archived ? `${node.name} (${t`Archived`})` : node.name,
-        children: node.has_children
-          ? byParent.has(String(node.pk)) && byParent.get(String(node.pk))
-            ? build(String(node.pk), depth + 1)
-            : [
-                {
-                  value: `pending-${node.pk}`,
-                  label: t`Expand to load sublocations`
-                }
-              ]
-          : undefined
-      }));
-    };
-    return build('root');
-  }, [
-    branches.map((b) => `${b.dataUpdatedAt}-${b.isError}`).join(','),
-    parents.join(',')
-  ]);
-  const tree = useTree({
-    expandedState: expanded,
-    onExpandedStateChange: setExpanded,
-    selectedState: selected ? [String(selected.pk)] : [],
-    onSelectedStateChange: (ids) => {
-      if (/^\d+$/.test(ids[0] ?? '')) onSelect(Number(ids[0]));
-    }
-  });
-  return (
-    <Paper withBorder p='md'>
-      <Stack gap='sm'>
-        <Group gap='xs'>
-          <IconBuildingFactory2 size={20} />
-          <Text fw={600}>{t`Locations`}</Text>
-        </Group>
-        <TextInput
-          aria-label={t`Search locations`}
-          placeholder={t`Search names or codes`}
-          leftSection={<IconSearch size={16} />}
-          value={search}
-          onChange={(event) => {
-            setSearch(event.currentTarget.value);
-            setSearchPage(1);
-          }}
-        />
-        {debounced ? (
-          <>
-            {searchQuery.isFetching && <Loader size='sm' />}
-            {searchQuery.isError && (
-              <Alert color='red'>{t`Locations could not be loaded.`}</Alert>
-            )}
-            {!searchQuery.isError &&
-              searchQuery.data?.results.map((node) => (
-                <Anchor
-                  key={node.pk}
-                  component='button'
-                  ta='left'
-                  onClick={() => {
-                    onSelect(node.pk);
-                    setSearch('');
-                  }}
-                >
-                  {locationPath(node)}
-                </Anchor>
-              ))}
-            {searchQuery.data?.count === 0 && (
-              <Text c='dimmed' size='sm'>{t`No matching locations`}</Text>
-            )}
-            {(searchQuery.data?.count ?? 0) > 10 && (
-              <Pagination
-                total={Math.ceil((searchQuery.data?.count ?? 0) / 10)}
-                value={searchPage}
-                onChange={setSearchPage}
-                size='xs'
-              />
-            )}
-          </>
-        ) : (
-          <>
-            <Anchor
-              component='button'
-              ta='left'
-              onClick={() => onSelect(null)}
-            >{t`All top-level locations`}</Anchor>
-            {branches[0].isPending && <Loader size='sm' />}
-            {branches.some((b) => b.isError) && (
-              <Alert color='red'>{t`Some locations could not be loaded.`}</Alert>
-            )}
-            <Tree
-              data={data}
-              tree={tree}
-              selectOnClick
-              aria-label={t`Sites and facilities`}
-            />
-            {branches.some((b) => !!b.data?.next) && (
-              <Text
-                size='xs'
-                c='dimmed'
-              >{t`This branch shows its first 100 locations. Search by name or code to find more.`}</Text>
-            )}
-            {branches[0].data?.count === 0 && (
-              <Text
-                c='dimmed'
-                size='sm'
-              >{t`Create your first site to organize machines.`}</Text>
-            )}
-          </>
-        )}
-      </Stack>
-    </Paper>
-  );
-}
+const ROOT_PAGE_SIZE = 10;
 
 export function ScopedMachineList({
   location,
   includeDescendants = true,
   unassigned = false,
   machineId,
-  canChange
+  canChange,
+  demoSession,
+  search,
+  onSearchChange,
+  source
 }: {
   location?: number;
   includeDescendants?: boolean;
   unassigned?: boolean;
   machineId?: number;
   canChange: boolean;
+  demoSession?: string | null;
+  search: string;
+  onSearchChange: (value: string) => void;
+  source: MachineSourceView;
 }) {
   const api = useApi();
   const identity = useUserState((s) => s.authGeneration);
-  const [search, setSearch] = useState('');
   const [debounced] = useDebouncedValue(search, 200);
   const [page, setPage] = useState(1);
   const [selection, setSelection] = useState<number[]>([]);
   const [moving, setMoving] = useState<LocatedMachine[] | null>(null);
+
+  // A different machine population (location, scope, cohort, search) must
+  // never keep stale paging or row selection (plan M3/U2).
+  useEffect(() => {
+    setPage(1);
+    setSelection([]);
+  }, [
+    search,
+    location,
+    includeDescendants,
+    unassigned,
+    demoSession,
+    machineId
+  ]);
+
   const query = useQuery<PageResult<LocatedMachine>>({
     queryKey: [
       'asset-locations',
@@ -247,6 +101,7 @@ export function ScopedMachineList({
       includeDescendants,
       unassigned,
       machineId,
+      demoSession ?? null,
       debounced,
       page
     ],
@@ -259,6 +114,7 @@ export function ScopedMachineList({
             include_descendants: includeDescendants,
             unassigned,
             machine: machineId,
+            demo_session: demoSession ?? undefined,
             search: debounced,
             limit: 25,
             offset: (page - 1) * 25
@@ -272,6 +128,26 @@ export function ScopedMachineList({
   const allSelected =
     !!query.data?.results.length &&
     selected.length === query.data.results.length;
+  // Row links hand the active cohort filters AND the source view to the
+  // machine page, which returns to this exact list (U2).
+  const rowScope = {
+    session: demoSession ?? null,
+    location: location ?? null,
+    direct: !includeDescendants,
+    source
+  };
+  const placementHref = (locationPk: number) => {
+    const linkParams = new URLSearchParams({ location: String(locationPk) });
+    if (demoSession) linkParams.set('demo_session', demoSession);
+    if (!includeDescendants) linkParams.set('scope', 'direct');
+    return `/machines/index/sites/?${linkParams.toString()}`;
+  };
+  const emptyKind = machineEmptyKind({
+    searched: !!debounced,
+    unassigned,
+    locationSelected: location != null,
+    includeDescendants
+  });
   return (
     <Stack>
       <Group justify='space-between'>
@@ -280,16 +156,17 @@ export function ScopedMachineList({
           placeholder={t`Search machines`}
           leftSection={<IconSearch size={16} />}
           value={search}
-          onChange={(event) => {
-            setSearch(event.currentTarget.value);
-            setPage(1);
-            setSelection([]);
-          }}
+          onChange={(event) => onSearchChange(event.currentTarget.value)}
         />
         <Group>
           <Text size='sm' c='dimmed'>
             {query.data ? t`${query.data.count} machines` : ''}
           </Text>
+          {selection.length > 0 && (
+            <Text size='sm' c='dimmed'>
+              {t`Selected on this page`} ({selection.length})
+            </Text>
+          )}
           {canChange && (
             <Button
               variant='light'
@@ -338,7 +215,7 @@ export function ScopedMachineList({
                   <Table.Th>{t`Machine`}</Table.Th>
                   <Table.Th>{t`Physical location`}</Table.Th>
                   <Table.Th>{t`Manufacturer / model`}</Table.Th>
-                  <Table.Th>{t`Active`}</Table.Th>
+                  <Table.Th>{t`Active record`}</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -362,7 +239,7 @@ export function ScopedMachineList({
                     <Table.Td>
                       <Anchor
                         component={Link}
-                        to={`/machines/machine/${machine.pk}/`}
+                        to={machineDetailHref(machine.pk, rowScope)}
                       >
                         {machine.name}
                       </Anchor>
@@ -376,7 +253,7 @@ export function ScopedMachineList({
                       {machine.physical_location ? (
                         <Anchor
                           component={Link}
-                          to={`/machines/index/sites/?location=${machine.physical_location.pk}`}
+                          to={placementHref(machine.physical_location.pk)}
                         >
                           {locationPath(machine.physical_location)}
                         </Anchor>
@@ -405,22 +282,50 @@ export function ScopedMachineList({
           </Table.ScrollContainer>
           {!query.data.results.length && (
             <Paper withBorder p='lg'>
-              <Text c='dimmed'>
-                {unassigned
-                  ? t`No unassigned machines in your workspace.`
-                  : t`No machines match this view.`}
-              </Text>
+              {emptyKind === 'no-search-matches' && (
+                <Stack gap='xs'>
+                  <Text c='dimmed'>{t`No machines match your search.`}</Text>
+                  <Button
+                    variant='light'
+                    size='xs'
+                    w='fit-content'
+                    onClick={() => onSearchChange('')}
+                  >{t`Clear search`}</Button>
+                </Stack>
+              )}
+              {emptyKind === 'no-direct-machines' && (
+                <Stack gap='xs'>
+                  <Text c='dimmed'>
+                    {t`No machines are placed directly at this location.`}
+                  </Text>
+                  <Text size='sm' c='dimmed'>
+                    {t`Turn on Include sublocations to see machines placed in sublocations.`}
+                  </Text>
+                </Stack>
+              )}
+              {emptyKind === 'no-machines-here' && (
+                <Text c='dimmed'>
+                  {t`No machines at this location or its sublocations.`}
+                </Text>
+              )}
+              {emptyKind === 'no-unassigned-machines' && (
+                <Text c='dimmed'>
+                  {t`No unassigned machines in your workspace.`}
+                </Text>
+              )}
             </Paper>
           )}
           {query.data.count > 25 && (
-            <Pagination
-              total={Math.ceil(query.data.count / 25)}
-              value={page}
-              onChange={(value) => {
-                setPage(value);
-                setSelection([]);
-              }}
-            />
+            <nav aria-label={t`Machine results pagination`}>
+              <Pagination
+                total={Math.ceil(query.data.count / 25)}
+                value={page}
+                onChange={(value) => {
+                  setPage(value);
+                  setSelection([]);
+                }}
+              />
+            </nav>
           )}
         </>
       )}
@@ -438,6 +343,100 @@ export function ScopedMachineList({
   );
 }
 
+/** Paginated root-location overview for the unselected main pane (M1). */
+function RootOverview({
+  identity,
+  workspaces
+}: {
+  identity: number;
+  workspaces: { pk: number; name: string }[];
+}) {
+  const api = useApi();
+  const [params] = useSearchParams();
+  const [rootPage, setRootPage] = useState(1);
+  const rootQuery = useQuery<PageResult<LocationNode>>({
+    queryKey: ['asset-locations', identity, 'root-overview', rootPage],
+    queryFn: async ({ signal }) =>
+      (
+        await api.get(locationApi, {
+          signal,
+          params: {
+            parent: 'root',
+            limit: ROOT_PAGE_SIZE,
+            offset: (rootPage - 1) * ROOT_PAGE_SIZE
+          }
+        })
+      ).data
+  });
+  const locationHref = (pk: number) => {
+    const next = new URLSearchParams(params);
+    next.set('location', String(pk));
+    return `?${next.toString()}`;
+  };
+  return (
+    <Paper withBorder p='xl'>
+      <Stack>
+        <Title order={4}>{t`Browse top-level locations`}</Title>
+        <Text c='dimmed'>
+          {t`Select a top-level location to see its machines and current maintenance counts.`}
+        </Text>
+        {rootQuery.isPending && <Loader size='sm' />}
+        {rootQuery.isError && (
+          <Alert color='red' title={t`Locations unavailable`}>
+            {t`Top-level locations could not be loaded.`}
+            <Button
+              variant='light'
+              size='xs'
+              onClick={() => rootQuery.refetch()}
+            >{t`Retry`}</Button>
+          </Alert>
+        )}
+        {rootQuery.data?.results.map((node) => (
+          <Group key={node.pk} justify='space-between' gap='xs'>
+            <Anchor component={Link} to={locationHref(node.pk)}>
+              {node.name}
+            </Anchor>
+            <Group gap='xs'>
+              <Badge variant='light'>
+                {locationKindLabel(locationKind(node.kind))}
+              </Badge>
+              <Text size='xs' c='dimmed'>
+                {node.code}
+              </Text>
+              {node.archived && (
+                <Badge size='xs' color='gray' variant='light'>
+                  {t`Archived`}
+                </Badge>
+              )}
+              {workspaces.length > 1 && (
+                <Text size='xs' c='dimmed'>
+                  {workspaceLabel(node.client, workspaces)}
+                </Text>
+              )}
+            </Group>
+          </Group>
+        ))}
+        {(rootQuery.data?.count ?? 0) > ROOT_PAGE_SIZE && (
+          <nav aria-label={t`Location overview pagination`}>
+            <Pagination
+              total={Math.ceil((rootQuery.data?.count ?? 0) / ROOT_PAGE_SIZE)}
+              value={rootPage}
+              onChange={setRootPage}
+              size='sm'
+            />
+          </nav>
+        )}
+        <Button
+          component={Link}
+          to='/machines/index/unassigned/'
+          variant='light'
+          w='fit-content'
+        >{t`View unassigned machines`}</Button>
+      </Stack>
+    </Paper>
+  );
+}
+
 export function LocationWorkspace({
   view = 'sites'
 }: { view?: 'sites' | 'all' | 'unassigned' }) {
@@ -451,19 +450,39 @@ export function LocationWorkspace({
       ? Number(rawLocation)
       : undefined;
   const direct = params.get('scope') === 'direct';
+  // Explicit synthetic-demo opt-in; absent means the full live scope, which
+  // stays the default. The value rides the URL so navigation keeps filters.
+  const rawDemo = params.get('demo_session');
+  const demoSession =
+    rawDemo && /^[0-9a-f-]{36}$/i.test(rawDemo) ? rawDemo : null;
+
   const [editing, setEditing] = useState<{
     node?: LocationNode;
     parent?: LocationNode;
   } | null>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [machineSearch, setMachineSearch] = useState('');
+  useEffect(() => {
+    // A new location/view is a new machine population: start unsearched.
+    setMachineSearch('');
+  }, [locationId, view]);
+
   const context = useQuery<LocationContext>({
     queryKey: ['asset-locations', identity, 'context'],
     queryFn: async ({ signal }) =>
       (await api.get(`${locationApi}context/`, { signal })).data
   });
+  // Cohort-aware summary (M3): the demo session belongs in both the cache key
+  // and the request so cards and rows always describe the same population.
   const detail = useQuery<LocationNode>({
-    queryKey: ['asset-locations', identity, 'detail', locationId],
+    queryKey: ['asset-locations', identity, 'detail', locationId, demoSession],
     queryFn: async ({ signal }) =>
-      (await api.get(`${locationApi}${locationId}/`, { signal })).data,
+      (
+        await api.get(`${locationApi}${locationId}/`, {
+          signal,
+          params: demoSession ? { demo_session: demoSession } : undefined
+        })
+      ).data,
     enabled: view === 'sites' && !!locationId
   });
   const selected = detail.isError ? undefined : detail.data;
@@ -475,19 +494,21 @@ export function LocationWorkspace({
       return next;
     });
   const counts = selected?.counts;
-  const countMachines = direct
-    ? counts?.direct_machines
-    : counts?.total_machines;
+  const summary = countSummary(counts, {
+    direct,
+    searched: !!machineSearch.trim()
+  });
   const countOrders = direct
     ? counts?.direct_open_work_orders
     : counts?.total_open_work_orders;
+  const workspaces = context.data?.workspaces ?? [];
   return (
     <Stack>
       <Group justify='space-between'>
         <Box>
           <Title order={3}>
             {view === 'sites'
-              ? t`Sites & Facilities`
+              ? t`By location`
               : view === 'all'
                 ? t`All Machines`
                 : t`Unassigned machines`}
@@ -527,158 +548,205 @@ export function LocationWorkspace({
             key={view}
             unassigned={view === 'unassigned'}
             canChange={context.data.can_change}
+            demoSession={demoSession}
+            search={machineSearch}
+            onSearchChange={setMachineSearch}
+            source={view === 'all' ? 'machines' : 'unassigned'}
           />
         ) : (
-          <Grid>
-            <Grid.Col span={{ base: 12, md: 3 }}>
-              <LocationBrowser
-                selected={selected}
-                onSelect={select}
-                identity={identity}
-              />
-            </Grid.Col>
-            <Grid.Col span={{ base: 12, md: 9 }}>
-              <Stack>
-                {rawLocation && !locationId && (
-                  <Alert color='red'>{t`The location link is invalid.`}</Alert>
-                )}
-                {detail.isFetching && locationId && <Loader size='sm' />}
-                {detail.isError && (
-                  <Alert color='red'>{t`This location is unavailable or you no longer have access.`}</Alert>
-                )}
-                {selected && !detail.isError ? (
-                  <>
-                    <Breadcrumbs>
-                      {selected.path.map((node) => (
-                        <Anchor
-                          key={node.pk}
-                          component={Link}
-                          to={`?location=${node.pk}${direct ? '&scope=direct' : ''}`}
-                          aria-current={
-                            node.pk === selected.pk ? 'page' : undefined
-                          }
-                        >
-                          {node.name}
-                        </Anchor>
-                      ))}
-                    </Breadcrumbs>
-                    <Paper withBorder p='md'>
-                      <Stack gap='sm'>
-                        <Group justify='space-between'>
-                          <Group>
-                            <Title order={3}>{selected.name}</Title>
-                            <Badge variant='light'>{selected.code}</Badge>
-                            {selected.archived && (
-                              <Badge color='gray'>{t`Archived`}</Badge>
-                            )}
+          <>
+            <Button
+              className={classes.chooseLocation}
+              variant='default'
+              leftSection={<IconMapPin size={16} />}
+              aria-expanded={mobileOpen}
+              aria-controls='machine-location-browser'
+              onClick={() => setMobileOpen((open) => !open)}
+            >
+              {t`Choose location`}
+            </Button>
+            <Grid>
+              <Grid.Col
+                id='machine-location-browser'
+                className={classes.browser}
+                data-mobile-open={mobileOpen ? 'true' : 'false'}
+                span={{ base: 12, md: 3 }}
+              >
+                <LocationBrowser
+                  selected={selected}
+                  onSelect={select}
+                  identity={identity}
+                  workspaces={workspaces}
+                />
+              </Grid.Col>
+              <Grid.Col span={{ base: 12, md: 9 }}>
+                <Stack>
+                  {rawLocation && !locationId && (
+                    <Alert color='red'>{t`The location link is invalid.`}</Alert>
+                  )}
+                  {detail.isFetching && locationId && <Loader size='sm' />}
+                  {detail.isError && (
+                    <Alert color='red'>{t`This location is unavailable or you no longer have access.`}</Alert>
+                  )}
+                  {selected && !detail.isError ? (
+                    <>
+                      <nav aria-label={t`Location path`}>
+                        <Breadcrumbs>
+                          {selected.path.map((node) => (
+                            <Anchor
+                              key={node.pk}
+                              component={Link}
+                              to={`?location=${node.pk}${direct ? '&scope=direct' : ''}${demoSession ? `&demo_session=${demoSession}` : ''}`}
+                              aria-current={
+                                node.pk === selected.pk ? 'page' : undefined
+                              }
+                            >
+                              {node.name}
+                            </Anchor>
+                          ))}
+                        </Breadcrumbs>
+                      </nav>
+                      <Paper withBorder p='md'>
+                        <Stack gap='sm'>
+                          <Group justify='space-between'>
+                            <Group>
+                              <Title order={3}>{selected.name}</Title>
+                              <Badge variant='light'>
+                                {locationKindLabel(locationKind(selected.kind))}
+                              </Badge>
+                              <Badge variant='outline'>{selected.code}</Badge>
+                              {selected.archived && (
+                                <Badge color='gray'>{t`Archived`}</Badge>
+                              )}
+                            </Group>
+                            <Group>
+                              {context.data.can_add && !selected.archived && (
+                                <Button
+                                  variant='light'
+                                  size='xs'
+                                  onClick={() =>
+                                    setEditing({ parent: selected })
+                                  }
+                                >{t`Add sublocation`}</Button>
+                              )}
+                              {context.data.can_change && (
+                                <Button
+                                  variant='default'
+                                  size='xs'
+                                  onClick={() => setEditing({ node: selected })}
+                                >{t`Edit location`}</Button>
+                              )}
+                            </Group>
                           </Group>
-                          <Group>
-                            {context.data.can_add && !selected.archived && (
-                              <Button
-                                variant='light'
-                                size='xs'
-                                onClick={() => setEditing({ parent: selected })}
-                              >{t`Add sublocation`}</Button>
-                            )}
-                            {context.data.can_change && (
-                              <Button
-                                variant='default'
-                                size='xs'
-                                onClick={() => setEditing({ node: selected })}
-                              >{t`Edit location`}</Button>
-                            )}
-                          </Group>
-                        </Group>
-                        {selected.description && (
-                          <Text>{selected.description}</Text>
+                          {selected.description && (
+                            <Text>{selected.description}</Text>
+                          )}
+                          <Text size='sm' c='dimmed'>
+                            {t`Timezone`}:{' '}
+                            {selected.effective_timezone ?? t`Not configured`}
+                          </Text>
+                          <Switch
+                            label={t`Include sublocations`}
+                            checked={!direct}
+                            onChange={(event) =>
+                              setParams((previous) => {
+                                const next = new URLSearchParams(previous);
+                                if (event.currentTarget.checked)
+                                  next.delete('scope');
+                                else next.set('scope', 'direct');
+                                return next;
+                              })
+                            }
+                          />
+                          <Text size='sm' c='dimmed'>
+                            {direct
+                              ? t`Includes only machines placed directly at this location.`
+                              : t`Includes machines placed at this location and all of its sublocations.`}
+                          </Text>
+                        </Stack>
+                      </Paper>
+                      <SimpleGrid cols={{ base: 1, sm: 3 }}>
+                        <Paper withBorder p='md'>
+                          <Text size='sm' c='dimmed'>
+                            {t`Machines in this view`}
+                          </Text>
+                          <Text
+                            size='xl'
+                            fw={700}
+                            data-testid='machine-count-view'
+                          >
+                            {summary.view ?? '—'}
+                          </Text>
+                          <Text size='xs' c='dimmed'>
+                            {summary.showDirectBreakdown
+                              ? t`Including sublocations`
+                              : t`Direct here`}
+                          </Text>
+                        </Paper>
+                        {summary.showDirectBreakdown && (
+                          <Paper withBorder p='md'>
+                            <Text size='sm' c='dimmed'>
+                              {t`Direct at this location`}
+                            </Text>
+                            <Text
+                              size='xl'
+                              fw={700}
+                              data-testid='machine-count-direct'
+                            >
+                              {summary.direct ?? '—'}
+                            </Text>
+                            <Text size='xs' c='dimmed'>
+                              {t`Direct here`}
+                            </Text>
+                          </Paper>
                         )}
-                        <Text size='sm' c='dimmed'>
-                          {t`Timezone`}:{' '}
-                          {selected.effective_timezone ?? t`Not configured`}
-                        </Text>
-                        <SegmentedControl
-                          aria-label={t`Location scope`}
-                          value={direct ? 'direct' : 'descendants'}
-                          onChange={(value) =>
-                            setParams((previous) => {
-                              const next = new URLSearchParams(previous);
-                              next.set('scope', value);
-                              return next;
-                            })
-                          }
-                          data={[
-                            {
-                              value: 'descendants',
-                              label: t`Including sublocations`
-                            },
-                            { value: 'direct', label: t`Direct only` }
-                          ]}
-                        />
-                      </Stack>
-                    </Paper>
-                    <SimpleGrid cols={{ base: 1, sm: 3 }}>
-                      <Paper withBorder p='md'>
-                        <Text size='sm' c='dimmed'>{t`Machines now`}</Text>
-                        <Text size='xl' fw={700}>
-                          {countMachines ?? '—'}
-                        </Text>
-                      </Paper>
-                      <Paper withBorder p='md'>
-                        <Text
-                          size='sm'
-                          c='dimmed'
-                        >{t`Direct at this location`}</Text>
-                        <Text size='xl' fw={700}>
-                          {counts?.direct_machines ?? '—'}
-                        </Text>
-                      </Paper>
-                      <Paper withBorder p='md'>
-                        <Text
-                          size='sm'
-                          c='dimmed'
-                        >{t`Open work orders now`}</Text>
-                        <Text size='xl' fw={700}>
-                          {countOrders ?? '—'}
-                        </Text>
+                        <Paper withBorder p='md'>
+                          <Text size='sm' c='dimmed'>
+                            {t`Open work orders now`}
+                          </Text>
+                          <Text size='xl' fw={700}>
+                            {countOrders ?? '—'}
+                          </Text>
+                          <Text size='xs' c='dimmed'>
+                            {t`Drafts excluded; work orders counted once.`}
+                          </Text>
+                        </Paper>
+                      </SimpleGrid>
+                      {summary.locationTotalsOnly && (
                         <Text
                           size='xs'
                           c='dimmed'
-                        >{t`Drafts excluded; work orders counted once.`}</Text>
-                      </Paper>
-                    </SimpleGrid>
-                    <ScopedMachineList
-                      key={`${selected.pk}-${direct}`}
-                      location={selected.pk}
-                      includeDescendants={!direct}
-                      canChange={context.data.can_change}
-                    />
-                    <Text
-                      size='sm'
-                      c='dimmed'
-                    >{t`Historical performance will appear when validated event and placement history is available. Current placement does not establish past downtime.`}</Text>
-                  </>
-                ) : (
-                  !locationId && (
-                    <Paper withBorder p='xl'>
-                      <Stack align='center'>
-                        <IconBuildingFactory2 size={38} />
-                        <Title order={4}>{t`Choose a location`}</Title>
-                        <Text
-                          c='dimmed'
-                          ta='center'
-                        >{t`Select a site or sublocation to see its machines and current maintenance counts.`}</Text>
-                        <Button
-                          component={Link}
-                          to='/machines/index/unassigned/'
-                          variant='light'
-                        >{t`View unassigned machines`}</Button>
-                      </Stack>
-                    </Paper>
-                  )
-                )}
-              </Stack>
-            </Grid.Col>
-          </Grid>
+                          data-testid='location-totals-note'
+                        >
+                          {t`Location totals — the machine table search does not change these counts.`}
+                        </Text>
+                      )}
+                      <ScopedMachineList
+                        location={selected.pk}
+                        includeDescendants={!direct}
+                        canChange={context.data.can_change}
+                        demoSession={demoSession}
+                        search={machineSearch}
+                        onSearchChange={setMachineSearch}
+                        source='sites'
+                      />
+                      <Text
+                        size='sm'
+                        c='dimmed'
+                      >{t`Historical performance will appear when validated event and placement history is available. Current placement does not establish past downtime.`}</Text>
+                    </>
+                  ) : (
+                    !locationId && (
+                      <RootOverview
+                        identity={identity}
+                        workspaces={workspaces}
+                      />
+                    )
+                  )}
+                </Stack>
+              </Grid.Col>
+            </Grid>
+          </>
         ))}
       {editing && context.data && !context.isError && (
         <LocationEditDialog

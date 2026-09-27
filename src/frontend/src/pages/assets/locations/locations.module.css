@@ -1,0 +1,56 @@
+/*
+ * Location workspace styles (M1/M2): custom tree row presentation and the
+ * narrow-screen "Choose location" collapse. Breakpoints mirror Mantine's
+ * md (62em) since the browser/results Grid splits at md.
+ */
+
+/* Mobile-only disclosure control for the location browser (M2). */
+.chooseLocation {
+	display: none;
+}
+
+@media (max-width: 61.99em) {
+	.chooseLocation {
+		display: inline-flex;
+	}
+
+	.browser[data-mobile-open='false'] {
+		display: none;
+	}
+}
+
+/* Tree row: chevron + selectable label + type/code cues (M1). */
+.nodeLabel {
+	cursor: pointer;
+	border-radius: var(--mantine-radius-sm);
+	min-height: 28px;
+	flex-wrap: nowrap;
+}
+
+.nodeLabel[data-selected] {
+	background: var(--mantine-primary-color-light);
+}
+
+.nodeName {
+	appearance: none;
+	background: none;
+	border: 0;
+	padding: 0;
+	margin: 0;
+	font: inherit;
+	color: inherit;
+	cursor: pointer;
+	text-align: left;
+}
+
+.nodeName:hover {
+	text-decoration: underline;
+}
+
+.chevron svg {
+	transition: transform 150ms ease;
+}
+
+.chevron[data-expanded='true'] svg {
+	transform: rotate(90deg);
+}

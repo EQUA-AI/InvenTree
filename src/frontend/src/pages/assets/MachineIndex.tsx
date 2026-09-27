@@ -23,7 +23,7 @@ export default function MachineIndex() {
       {
         name: 'sites',
         showHeadline: false,
-        label: t`Sites & Facilities`,
+        label: t`By location`,
         content: <LocationWorkspace />,
         icon: <IconBuildingFactory2 />
       },

@@ -10,7 +10,7 @@ import {
   IconTool
 } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import AttachmentPanel from '../../components/panels/AttachmentPanel';
 
 import { UserRoles } from '@lib/enums/Roles';
@@ -36,14 +36,29 @@ import { WorkOrderCreateModal } from '../maintenance/components/WorkOrderCreateM
 import FaultHistoryPanel from './FaultHistoryPanel';
 import { StartRepairModal } from './StartRepairModal';
 import { MachineHealthPanel } from './health/MachineHealthPanel';
-import { MachineLocationCard } from './locations/MachineLocationCard';
+
+import {
+  MachineLocationCard,
+  MachinePlacementPath
+} from './locations/MachineLocationCard';
+import { machinesReturnHref } from './locations/locationTree';
 
 export default function MachineDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const user = useUserState();
+  const [searchParams] = useSearchParams();
   const [createRepairOpen, setCreateRepairOpen] = useState(false);
   const [startRepairOpen, setStartRepairOpen] = useState(false);
+
+  // Keep the source list's scope filters in its return URL.
+  // The return route is explicit (U2): a `from` parameter names the source
+  // list (sites/all machines/unassigned) so its panel and filters are
+  // preserved; without one the legacy breadcrumb contract is kept.
+  const machinesUrl = useMemo(
+    () => machinesReturnHref(searchParams),
+    [searchParams]
+  );
 
   const { instance: machine, instanceQuery } = useInstance({
     endpoint: ApiEndpoints.asset_machine_list,
@@ -62,7 +77,7 @@ export default function MachineDetail() {
       {
         name: 'active',
         type: 'boolean',
-        label: t`Active`
+        label: t`Active record`
       },
       {
         name: 'location',
@@ -187,7 +202,7 @@ export default function MachineDetail() {
       <Stack>
         <PageDetail
           title={machine?.name ?? t`Machine Detail`}
-          breadcrumbs={[{ name: t`Machines`, url: '/machines/index/' }]}
+          breadcrumbs={[{ name: t`Machines`, url: machinesUrl }]}
           actions={[
             // S32a: view the machine QR, or link/unlink a third-party tag.
             <BarcodeActionDropdown
@@ -239,6 +254,7 @@ export default function MachineDetail() {
             </Button>
           ]}
         />
+        {machine?.pk && <MachinePlacementPath machineId={machine.pk} />}
         <PanelGroup
           pageKey='asset-machine-detail'
           panels={machinePanels}
