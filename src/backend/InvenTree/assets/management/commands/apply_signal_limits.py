@@ -21,6 +21,20 @@ citation and a reason, the same way a point may be approved only with a note.
 The unit check is the one that matters most - a figure derived in degrees
 Celsius landing on a signal measured in metres of water would be silently
 wrong in the direction that raises alarms nobody can explain.
+
+Arming a limit also *evaluates* it, against every machine the family matched.
+Without that the command is inert on a station whose history is a recorded
+window: the poller evaluates the machines a poll wrote to, and a fully consumed
+window has no further documents to write, so a limit armed after the readings
+landed would never be judged at all. Evaluation covers every matched binding,
+not only the ones whose bounds moved - re-running the command on an
+already-armed estate must still answer "does anything breach this", which is the
+question an operator is actually asking when they run it again.
+
+It runs inside the same transaction, so ``--dry-run`` reports how many alarms
+the file would raise and then throws them away along with the limits. That
+number is the point of the preview: a limit is a decision about waking somebody
+up, and the count of people woken is the thing worth seeing before committing.
 """
 
 import json
@@ -31,6 +45,8 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from assets.health_models import MachineSignalBinding
+from assets.models import AssetMachine
+from machine_health.services import anomalies as anomaly_services
 
 #: The six bounds a family entry may carry.
 BOUNDS = (
@@ -133,6 +149,7 @@ class Command(BaseCommand):
         families = self.load(options['limits'])
         applied = skipped = unchanged = 0
         report = []
+        armed_machine_ids = set()
 
         with transaction.atomic():
             for entry in families:
@@ -165,6 +182,9 @@ class Command(BaseCommand):
                 for binding in matched:
                     if binding in wrong_unit or binding in hit:
                         continue
+                    # Collected before the unchanged short-circuit below, so a
+                    # re-run on an already-armed estate still evaluates.
+                    armed_machine_ids.add(binding.machine_id)
                     current = {name: getattr(binding, name) for name in BOUNDS}
                     wanted = {name: bounds.get(name) for name in BOUNDS}
                     if current == wanted:
@@ -191,11 +211,22 @@ class Command(BaseCommand):
                     f'{len(hit)} excluded by name'
                 )
 
+            # Inside the transaction, so a preview reports the one number an
+            # operator actually needs before arming anything - how many alarms
+            # this file raises on the estate as it stands - and then discards
+            # them with the limits that produced them.
+            raised = 0
+            for machine in AssetMachine.objects.filter(pk__in=armed_machine_ids):
+                raised += len(anomaly_services.evaluate_thresholds(machine))
+
             for line in report:
                 self.stdout.write(line)
             self.stdout.write(f'applied   : {applied}')
             self.stdout.write(f'unchanged : {unchanged}')
             self.stdout.write(f'skipped   : {skipped}')
+            self.stdout.write(
+                f'evaluated : {len(armed_machine_ids)} machines, {raised} breaching'
+            )
 
             if options['dry_run']:
                 transaction.set_rollback(True)

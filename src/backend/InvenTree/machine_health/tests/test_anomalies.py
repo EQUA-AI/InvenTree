@@ -11,9 +11,12 @@ from assets.health_models import (
     AnomalyStatus,
     HealthState,
     MachineAnomaly,
+    MachineSignalState,
     SignalQuality,
 )
 from machine_health.services.anomalies import (
+    RESOLUTION_IN_LIMITS,
+    RESOLUTION_UNASSESSABLE,
     AnomalyError,
     acknowledge_anomaly,
     evaluate_thresholds,
@@ -284,3 +287,98 @@ class UnusableReadingTest(HealthEnvMixin, TestCase):
 
         raised.refresh_from_db()
         self.assertEqual(raised.status, AnomalyStatus.RESOLVED)
+
+
+class ThresholdResolutionNoteTest(HealthEnvMixin, TestCase):
+    """A threshold anomaly is closed with a note that is true.
+
+    ``_auto_resolve_threshold_anomalies`` is the only code in the backend that
+    writes ``RESOLVED``, so it has to close everything it stops matching - and
+    "the reading came back inside its limits" is only one of the reasons it can
+    stop matching. Writing that sentence about a rule somebody deleted is how a
+    condition nobody looked at reads as a condition that ended.
+    """
+
+    def setUp(self):
+        """One bounded signal, breaching."""
+        self.build_health_env()
+        self.now = timezone.now()
+
+    def _open_one(self):
+        self.set_signal(10.0, observed_at=self.now)
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+        self.assertEqual(raised.status, AnomalyStatus.OPEN)
+        return raised
+
+    def test_a_clearing_reading_says_the_signal_returned(self):
+        """The affirmative case keeps the affirmative note."""
+        raised = self._open_one()
+
+        self.set_signal(3.0, observed_at=self.now)
+        evaluate_thresholds(self.machine, now=self.now)
+
+        raised.refresh_from_db()
+        self.assertEqual(raised.status, AnomalyStatus.RESOLVED)
+        self.assertEqual(raised.resolution_note, RESOLUTION_IN_LIMITS)
+
+    def test_removing_the_limits_does_not_claim_the_signal_returned(self):
+        """Activation wipes all six bounds when a point's meaning changes.
+
+        The binding then classifies UNKNOWN on a perfectly good reading. Before
+        this, that closed the anomaly with the recovery note - asserting a
+        recovery on a channel still reading 10.0 against limits of 6 and 9.
+        """
+        raised = self._open_one()
+
+        for bound in ('normal_max', 'warn_max', 'critical_max'):
+            setattr(self.binding, bound, None)
+        self.binding.save()
+        evaluate_thresholds(self.machine, now=self.now)
+
+        raised.refresh_from_db()
+        self.assertEqual(raised.status, AnomalyStatus.RESOLVED)
+        self.assertEqual(raised.resolution_note, RESOLUTION_UNASSESSABLE)
+
+    def test_a_vanished_state_row_does_not_claim_the_signal_returned(self):
+        """Activation deletes the cached state along with the bounds."""
+        raised = self._open_one()
+
+        MachineSignalState.objects.filter(binding=self.binding).delete()
+        evaluate_thresholds(self.machine, now=self.now)
+
+        raised.refresh_from_db()
+        self.assertEqual(raised.status, AnomalyStatus.RESOLVED)
+        self.assertEqual(raised.resolution_note, RESOLUTION_UNASSESSABLE)
+
+    def test_nothing_is_left_in_a_state_no_code_can_close(self):
+        """Refusing to close would hold the machine's one open slot for ever.
+
+        ``machine_health_anomaly_open_unique`` is partial on active statuses, and
+        acknowledgement only moves OPEN to ACKNOWLEDGED. So an anomaly this
+        function declines to resolve can never be resolved by anything.
+        """
+        raised = self._open_one()
+
+        MachineSignalState.objects.filter(binding=self.binding).delete()
+        self.binding.active = False
+        self.binding.save(update_fields=['active'])
+        evaluate_thresholds(self.machine, now=self.now)
+
+        raised.refresh_from_db()
+        self.assertEqual(raised.status, AnomalyStatus.RESOLVED)
+        self.assertIsNotNone(raised.resolved_at)
+
+    def test_a_bad_reading_still_holds_the_condition_open(self):
+        """The one case that must NOT be closed, re-pinned against the rewrite.
+
+        A sensor going bad is not evidence either way. Closing it with either
+        note would be wrong, so it stays open.
+        """
+        raised = self._open_one()
+
+        self.set_signal(3276.7, observed_at=self.now, quality=SignalQuality.BAD)
+        evaluate_thresholds(self.machine, now=self.now)
+
+        raised.refresh_from_db()
+        self.assertEqual(raised.status, AnomalyStatus.OPEN)
+        self.assertEqual(raised.resolution_note, '')

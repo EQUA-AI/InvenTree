@@ -17,8 +17,16 @@ from pathlib import Path
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
+from django.utils import timezone
 
-from assets.health_models import HealthSource, MachineSignalBinding
+from assets.health_models import (
+    AnomalySeverity,
+    HealthSource,
+    MachineAnomaly,
+    MachineSignalBinding,
+    MachineSignalState,
+    SignalQuality,
+)
 from assets.models import AssetMachine, Client, DictionaryPoint
 
 LIMITS_FILE = (
@@ -54,8 +62,8 @@ class LimitsFileTests(TestCase):
                     )
 
 
-class ApplyLimitsTests(TestCase):
-    """What the command does to bindings."""
+class ApplyLimitsEnv:
+    """One station, one bay, two winding channels and one pressure."""
 
     def setUp(self):
         """One station, one bay, two winding channels and one pressure."""
@@ -110,6 +118,10 @@ class ApplyLimitsTests(TestCase):
                 stdout=out, **options
             )
         return out.getvalue()
+
+
+class ApplyLimitsTests(ApplyLimitsEnv, TestCase):
+    """What the command does to bindings."""
 
     def test_limits_land_only_on_the_unit_they_were_derived_for(self):
         """A degC ceiling on a pressure signal would be silently wrong."""
@@ -176,3 +188,91 @@ class ApplyLimitsTests(TestCase):
         """It could never be reached, so it is a typo, not a policy."""
         with self.assertRaises(CommandError):
             self.run_command(self.document(warn_max=150))
+
+
+class ApplyLimitsEvaluationTests(ApplyLimitsEnv, TestCase):
+    """Arming a limit also judges it, and says how many alarms it raises.
+
+    Without this the command is inert on exactly this estate. The poller
+    evaluates the machines a poll wrote state for, and every station here is
+    parked at the end of a fully consumed recorded window, so no poll ever
+    applies another document. A limit armed after the readings landed would
+    therefore never be judged at all.
+    """
+
+    def set_reading(self, key, value, quality=SignalQuality.GOOD):
+        """Give one of the fixture's bindings a current reading."""
+        MachineSignalState.objects.update_or_create(
+            binding=self.bindings[key],
+            defaults={
+                'value': {'value': value},
+                'observed_at': timezone.now(),
+                'quality': quality,
+            },
+        )
+
+    def test_a_preview_reports_how_many_alarms_the_file_would_raise(self):
+        """The count of people woken is the thing worth seeing before committing."""
+        self.set_reading('/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED1', 191.0)
+
+        output = self.run_command(self.document(), dry_run=True)
+
+        self.assertIn('evaluated : 1 machines, 1 breaching', output)
+        # A preview must leave nothing behind, verdicts included.
+        self.assertFalse(MachineAnomaly.objects.exists())
+        self.assertIsNone(
+            MachineSignalBinding.objects.get(
+                external_key='/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED1'
+            ).critical_max
+        )
+
+    def test_applying_raises_the_anomaly_the_preview_predicted(self):
+        """Same estate, same file, without --dry-run."""
+        self.set_reading('/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED1', 191.0)
+
+        output = self.run_command(self.document())
+
+        self.assertIn('evaluated : 1 machines, 1 breaching', output)
+        anomaly = MachineAnomaly.objects.get(machine=self.station)
+        self.assertEqual(anomaly.severity, AnomalySeverity.CRITICAL)
+        self.assertEqual(anomaly.detector, 'threshold')
+
+    def test_a_reading_inside_the_limit_raises_nothing(self):
+        """The evaluation is the limit's, not the command's."""
+        self.set_reading('/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED1', 83.9)
+
+        output = self.run_command(self.document())
+
+        self.assertIn('0 breaching', output)
+        self.assertFalse(MachineAnomaly.objects.exists())
+
+    def test_a_re_run_on_an_already_armed_estate_still_evaluates(self):
+        """The count must come from every matched binding, not the changed ones.
+
+        On a re-run every binding takes the "unchanged" branch, so collecting
+        machines after the save would evaluate nothing - and the 307 points
+        already armed on this estate would stay unjudged for ever.
+        """
+        self.set_reading('/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED1', 191.0)
+        self.run_command(self.document())
+        MachineAnomaly.objects.all().delete()
+
+        output = self.run_command(self.document())
+
+        self.assertIn('applied   : 0', output)
+        self.assertIn('unchanged : 2', output)
+        self.assertIn('evaluated : 1 machines, 1 breaching', output)
+        self.assertTrue(MachineAnomaly.objects.exists())
+
+    def test_an_unusable_reading_is_not_a_breach(self):
+        """The over-range sentinel must not become an alarm about a measurement."""
+        self.set_reading(
+            '/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED1',
+            3276.7,
+            quality=SignalQuality.BAD,
+        )
+
+        output = self.run_command(self.document())
+
+        self.assertIn('0 breaching', output)
+        self.assertFalse(MachineAnomaly.objects.exists())

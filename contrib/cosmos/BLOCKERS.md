@@ -666,6 +666,56 @@ would require. **The hypothesis is not supported**; the coincidences are what yo
 get when many channels share a small pool of sentinel values. Recorded so nobody
 re-derives it and stops at the appealing half.
 
+**2026-09-27: the pattern has a name, and rejecting aliasing was right for the
+wrong reason.** A "perfectly symmetric range, one value while running, near zero
+while idle" is the signature of a channel *railing at its own full scale*. It is
+not aliasing because each channel rails at a different engineering value - its
+own converter range - which is exactly why the shared-value rate came back at
+8-30% rather than ~100%.
+
+Verified for `59.26`, on the bound vibration family only. Every one of those 158
+cached readings lies exactly on a raw-count lattice of `0.003616898087784648/20`,
+and the two extremes are `-59.25925827026367` = `-32768 x 10` counts and
+`+59.25745391845703` = `+32767 x 10` counts: a two's-complement rail pair one
+count apart. Not a symmetric range - it only looks symmetric at four significant
+figures. `VS_NDE_BG2_M`'s "exactly -59.26..59.26" is the same pair, which is
+what makes the identification worth writing down: this is a *vibration* channel
+and the constant is the vibration converter's full scale.
+
+**`118.5` is confirmed, and two more besides.** The full-precision values were
+in the state cache all along, on *bound* tags - the first pass of this note
+looked only at the vibration family and wrongly reported them as untestable.
+Swept properly, `abs(value) / LSB = counts x 10 x scalar` for `counts` in
+{32767, 32768} over every integer scalar to 100,000 finds **21 rows and exactly
+four scalars, no others**:
+
+| scalar | value | counts | unit | rows | tag |
+|---:|---|---|---|---:|---|
+| x1 | `-59.25925827026367` | 32768 | - | 10 | vibration, 7 stopped Millbrook bays |
+| x1 | `+59.25745391845703` | 32767 | - | 5 | vibration, Millbrook **Pump 05** |
+| x2 | `-118.51851654052734` | 32768 | percent | 1 | `PUMP9_EOPD_VALVE_POS_PROCESS_VALUE` |
+| x8 | `+474.05963134765625` | 32767 | rpm | 1 | `PUMP5_SPEED` |
+| x10 | `-592.5925903320312` | 32768 | V | 3 | `EXCITATION_FLD_VLTG`, P3/P6/P12 |
+| x10 | `+592.5745239257812` | 32767 | V | 1 | `PUMP5_EXCITATION_FLD_VLTG` |
+
+All 21 carry quality `good` today. Two of them are self-evidently not
+measurements - a valve position of **-118.5%** and a field voltage of
+**-592.6 V**. And the one that matters most: **`PUMP5_SPEED` = 474.06 rpm is a
+rail, not a speed.** Pump 05 is the estate's only running bay, so its speed, all
+five of its vibration channels and its field voltage are one railed acquisition
+presented as a running machine. BLOCKERS.md:143's "474 rpm is plausible for a
+vertical pump" was reading a pegged converter.
+
+Still unexplained: `18.96` (discharge pressure, full precision
+`18.962385177612305`) and `7.111` are **not** on this lattice. Their implied
+scalars land within 6e-5 of `0.32` and `0.12`, which is suggestive of the same
+mechanism on a *different* conversion constant - the lattice above is one
+acquisition card's, not the plant's - but 6e-5 is 150x the float32 tolerance, so
+it is not proof. Settling it needs several samples from those two channels, not
+one. `853.3` and `242.1` fit nothing.
+
+See `THRESHOLDS.md`, "The second pass", finding 2.
+
 ### What to ask for
 
 The OPC-UA tag list for `PS1_PROG_19_4_2019` - an address-space export, a point

@@ -1,8 +1,13 @@
-# Alarm thresholds: a draft, and why none of it is switched on
+# Alarm thresholds: one row applied, and why the rest are not
 
 **Status: the stator-winding row is applied; everything else is still a draft.**
-307 of 1,294 active bindings now carry limits. The rest remain unbounded, so
-`classify()` still returns `unknown` for them.
+**307 of 1,452** active bindings carry limits. The rest remain unbounded, so
+`classify()` still returns `unknown` for them. (The earlier figure here, 1,294,
+predated the last activation; re-counted 2026-09-27.)
+
+A second research pass over the remaining four families closed on 2026-09-27 and
+**added no rows** - see "The second pass" below for the four verdicts, the six
+findings that came out of it, and the six new questions for the plant.
 
 This file records what was applied and why, what is still only drafted, and the
 questions that would let the rest follow.
@@ -42,11 +47,16 @@ Dropping it would let auto-resolution close an open condition with the note
 "Signal returned inside its configured limits" - a different and untrue claim
 from "the sensor stopped reporting".
 
-**Not fixed, deliberately:** the deep negatives (-118.5, -59.3, -592.6, -853.3,
--242.1). Each of the first four is the exact negative of a value the plant also
-reports positive, so they are a sign fault on real channels rather than a
-marker. Suppressing them at coercion would hide the fault instead of showing it.
-They belong to Ask 1.
+**This paragraph used to be wrong, and the correction is instructive.** It said
+the deep negatives (-118.5, -59.3, -592.6, -853.3, -242.1) were each "the exact
+negative of a value the plant also reports positive, so they are a sign fault on
+real channels rather than a marker", and left them at `GOOD` on that reasoning.
+
+For `-59.3` it is false. Its positive counterpart is **32767** counts and it is
+itself **32768** - one raw count apart, which is a two's-complement rail pair,
+not a sign flip. It is the same class of object as `3276.7` above, one range
+scalar away. Finding 2 below has the lattice arithmetic. `-853.3` and `-242.1`
+fit nothing and are still unexplained; those two remain with Ask 1.
 
 ---
 
@@ -146,6 +156,287 @@ warrant different bands).
 
 ---
 
+---
+
+## The second pass: the other four families, and why the table did not grow
+
+A second research pass, 2026-09-27, covered every remaining bound family -
+**852 points** in four groups - looking for the same thing the winding row
+found: a published figure that is the *same physical quantity*, at the *same
+measurement location*, serving the *same purpose* as an alarm.
+
+**It did not grow the table. Not one new row.** Each family was then challenged
+by independent reviewers working a different angle - one on the citations, one
+on the estate data. Every challenger agreed the verdict. Three of the four
+proposals nevertheless failed their challenge on the *reasoning*, and those
+corrections are recorded here, because on this table the reasoning is what gets
+reused.
+
+| family | pts | verdict | why, in one line |
+|---|---:|---|---|
+| Vibration | 158 | needs-plant-input | ISO 20816-3 cl. 1 excludes these machines twice over, and the channel carries raw converter counts rather than any engineering quantity. |
+| Electrical | 88 bound | needs-plant-input | The one defensible figure is blocked by the run-state gap below, not by the standards. 132 further points are not bound at all, so there is no field to write into. |
+| Bearing temperatures | 203 | needs-plant-input | Five primary standards were read in full and **all five route the number to the machinery vendor**. The path that produced 125/145 for windings does not exist for bearings. |
+| Cooling + hydraulics | 403 | no-defensible-figure | The standard's cooling figures are rating-validity boundaries, not protection limits - and the winding row already prices coolant temperature in. |
+
+Six findings from the pass change what happens next.
+
+### 1. The winding row already covers the cooling families
+
+IS/IEC 60034-1 Table 9 item 2 does not annunciate a hot coolant; it *reduces the
+permitted winding rise*. Work the arithmetic through and the permitted rise
+above water inlet is `85 + 15 - (θw - 25)`, so the absolute ceiling is
+`θw + (125 - θw)` = **125 °C for every θw**, and the 5-25 °C branch gives the
+same answer.
+
+Two consequences. A separate cooling-water alarm would not add protection this
+estate lacks - it would duplicate, less reliably and with far more false
+positives, a limit that is already live and already accounts for coolant
+temperature by construction. And **question 2 below can be dropped**: whether
+the rated rise is referred to the primary or the secondary coolant does not move
+the applied 125/145 band. That is one ask retired by arithmetic rather than by a
+document request.
+
+### 2. The vibration channel is unscaled converter counts
+
+All 158 vibration readings sit exactly on a raw-count lattice of
+`0.003616898087784648 / 20` = `1.8084490438923239e-4` per count. **Reproduced
+independently against the cache**: 158 of 158 on-lattice, no exceptions.
+
+The extremes are the two's-complement rails, not measurements:
+
+| reading | counts | meaning | points | where |
+|---|---:|---|---:|---|
+| `-59.25925827026367` | `-32768 x 10` | negative rail | 10 | Millbrook, 7 stopped bays |
+| `+59.25745391845703` | `+32767 x 10` | positive rail | 5 | Millbrook **Pump 05 only** |
+
+They differ by **exactly one raw count**, which is the defining signature of a
+rail pair. All 15 currently carry quality `good`.
+
+Pump 05 is the one bay in the whole estate that is running. **Every one of its
+vibration channels is at positive full scale.** So the "frozen P5 block" that
+BLOCKERS.md records is, at least on these channels, a railed acquisition rather
+than stale data - and the estate's only loaded vibration sample is not weak
+evidence, it is no evidence.
+
+This **refutes the "not fixed, deliberately" paragraph above** as it stood, and
+the same claim in the coercion source. `-59.3` is not "the exact negative of a
+value the plant also reports positive": its positive counterpart is 32767
+counts, not 32768. It is the converter's negative rail - the same class of
+object as `3276.7`, which is `32767/10`, the same rail at a different range
+scalar.
+
+**And it is not only vibration.** Swept properly - `abs(value)/LSB = counts x 10
+x scalar`, `counts` in {32767, 32768}, every integer scalar to 100,000 - the
+cache holds **21 railed readings at exactly four scalars and no others**:
+
+| scalar | value | counts | unit | rows |
+|---:|---|---:|---|---:|
+| x1 | `-59.25925827026367` / `+59.25745391845703` | 32768 / 32767 | - | 10 / 5 |
+| x2 | `-118.51851654052734` | 32768 | percent | 1 |
+| x8 | `+474.05963134765625` | 32767 | rpm | 1 |
+| x10 | `-592.5925903320312` / `+592.5745239257812` | 32768 / 32767 | V | 3 / 1 |
+
+Two are self-evidently not measurements: a valve position of **-118.5%** and a
+field voltage of **-592.6 V**. And the one that matters: **`PUMP5_SPEED` =
+474.06 rpm is a rail, not a speed.** So Pump 05's speed, all five of its
+vibration channels and its field voltage are one railed acquisition being
+presented as a running machine - and BLOCKERS.md's "474 rpm is plausible for a
+vertical pump" was reading a pegged converter.
+
+`18.96` and `7.111` are *not* on this lattice. Their implied scalars land within
+6e-5 of `0.32` and `0.12`, suggestive of the same mechanism on a different
+conversion constant, but 6e-5 is 150x the float32 tolerance, so it is not proof.
+`853.3` and `242.1` fit nothing.
+
+It also dissolves the family's stated clincher. The pass argued vibration is
+unboundable *by construction*, because a one-sided ceiling would flip the ten
+`-59.2593` points from an honest UNKNOWN to a false NORMAL. True of `classify()`
+- but those readings must never reach it. Coerce the rails and the objection
+becomes a sequencing problem, not a structural one: unboundable **until the
+rails are coerced and the channel scaling is answered**.
+
+What remains genuinely blocking: ISO 20816-3:2022 cl. 1 excludes these machines
+by two separate items - (m) "machine sets in hydraulic power generating and
+pumping plants" and (o) rotordynamic pumps with directly-mounted impellers - and
+cl. 6.2.3 and 6.5.2 require an alarm to be set relative to a **per-machine
+baseline**, not to a zone boundary. With the one loaded bay railed on every
+channel, the estate holds **zero usable loaded readings** to baseline against.
+Not "one frozen bay to discount" - none.
+
+### 3. `classify()` has no run-state input, and it gates almost everything
+
+Every electrical and hydraulic quantity here is meaningful only while the machine
+is energised. 29 of 30 bays are stopped. `classify()` is an unconditional
+per-binding scalar comparison, and none of its three call sites passes machine
+state.
+
+So a max-only band - the only shape rule 5 above permits - converts a stopped
+bay's `0.0` from an honest UNKNOWN into a false NORMAL. This is the mirror image
+of the `normal_min` floors this table already removed: **a threshold field cannot
+express "this reading is meaningless because the machine is off", in either
+direction.**
+
+The research offered one row as held back purely by this - IEC 60034-1 cl. 7.4
+Zone A, `warn_max 51.0 / critical_max 51.5 Hz` on the 14 `PUMP_FREQUENCY` points,
+clearing the highest live reading of 50.0737 Hz by 0.93 Hz. **That example does
+not survive checking, and the correction is worth more than the row was.** All 14
+bound points are at Cedar Creek, where `MOTOR_ON_STATUS` reads 0 on all fourteen
+bays; the two stations that *do* have a running bay have their frequency points
+**withheld** in the dictionary review ("Reads 0 on a loaded pump; a running
+machine cannot be at 0 Hz"). So a run-state gate would arm this row on **0 of 14
+points**. The reviewer's own approved note says what the tag is: six bays sense
+50.0 Hz at the breaker while stopped. It is a *supply-present* measurement, not a
+machine frequency - a dictionary question, not a threshold one.
+
+The gap is still real; the frequency row was simply the wrong illustration of it.
+
+The same gate blocks discharge pressure and flow outright: the operationally
+interesting alarm - *running but not making head or flow* - cannot be expressed
+at any value until classification can be conditioned on state. A `warn_min` there
+would be the rule-5 error in a new costume, firing on all 29 stopped bays.
+
+IEGC Reg 30(1)'s 49.900-50.050 Hz band was examined and **rejected**: it is a
+system-operation band owned by the Load Despatch Centres, a drawal consumer
+neither causes nor can act on a frequency excursion, and Grid-India's own
+published data has frequency above 50.05 Hz for 26-38% of the day - the alarm
+would stand about a third of the time on a healthy machine.
+
+### 4. Bearings: five standards, five deferrals
+
+Read directly, not via summaries: IEEE Std 3004.8-2016 cl. 8.5.4.2 (wholly
+qualitative - sensor type, placement, trip-vs-alarm, voting, no number
+anywhere); API Std 670 §8.2.2 item 8 (setpoints "as recommended by the machinery
+vendor"); IS 5120:1977 cl. 13.2(b) ("shall not exceed the limits specified by the
+manufacturer", and note it is a *pump-test observation*, the same trap the API
+610 row fell into); IS/IEC 60034-1 cl. 8.9 and Table 6 (specifies only *how* to
+measure - there is no bearing row in the Table 7 the winding row depends on);
+and USBR FIST 2-7, which prescribes a documented heat run instead of a figure.
+
+The asymmetry is the finding: **the same IEEE standard that ties a winding
+setpoint to a nameplate quantity ties the bearing setpoint to nothing.** That is
+why this is needs-plant-input rather than no-defensible-figure - the BHEL O&M
+manual and the pad OEM data almost certainly carry one.
+
+Two data findings sharpen the bearing ask:
+
+- At Parvathi, **two independent tag families claim the same bay's thrust
+  bearing and disagree by a mean of +11.2 K at standstill** (spread +4.4 to
+  +21.2 K across all 14 bays). It cannot be the Table 6 measuring-location
+  effect, because that difference is driven by heat flowing through the bearing
+  and at standstill there is none. The `THRST_PD_RTD` group tracks its bay's
+  cooling-water band rather than the hall. One band cannot legitimately span both
+  families.
+- Those same 42 `THRST_PD_RTD` points are **withheld at Saraswati** because 100%
+  of 2,501 running samples read the over-range sentinel while the cooling-water
+  control read a steady 29.3. The instrument fails exactly when the pump runs.
+  Parvathi's 42 are approved on unit only, at rest. A limit written on them would
+  be guaranteed inert under load: it would present as protection and deliver
+  none.
+
+### 5. Voting is now required, not merely recommended
+
+API Std 670 cl. 5.4.6.4: "Dual voting logic shall be standard when two sensors
+are installed in the load zone of the bearing." IEEE 3004.8 cl. 8.5.4.2 e)
+recommends more than one sensor per bearing on critical machines to avoid
+nuisance tripping and to provide sensor-failure backup. The detectors exist
+everywhere - 3 `THRST_PD_RTD` + 2 axial + 2 radial per bay at Parvathi, up to 10
+thrust pads per bay at Ranganayaka. This is the same mitigation already noted for
+the winding row, and for bearings a standard requires it.
+
+### 6. Oil is corroboration, never the primary alarm
+
+IEEE 3004.8 cl. 8.5.4.2 f)1) NOTE is explicit that oil temperature responds more
+slowly than embedded metal measurement and "should only be used as a secondary
+measurement to corroborate machinery problems when timeliness is not a concern".
+The 10 oil points sit at Ranganayaka beside 62 pad detectors on the same 4 bays.
+So the first draft's 70/80 was the tightest number in the whole table attached to
+its least timely measurement.
+
+### What was done about the six findings
+
+Each of the three code changes the pass implied was designed and then attacked by
+two independent reviewers. **All three designs were refuted**, which is the useful
+part: one was corrected and shipped, two were stopped.
+
+**Shipped: the limits now actually alarm.** Findings 1-6 are all about *which*
+number to write. None of them mattered, because nothing on this estate could
+raise an alarm at all. `evaluate_thresholds` had exactly one caller - the webhook
+ingest view - and that view is unreachable for a Cosmos source, because
+`ingest_readings` refuses a Cosmos batch without an explicit station. So the 307
+armed winding points had been inert since the day they were set: a reading could
+have landed above 145 degC every minute for a year and `MachineAnomaly` would
+still have held nothing.
+
+The live poll path now evaluates the machines whose state it wrote, after the
+ingest verdict is taken and inside a helper that cannot raise - the sweep's own
+handler feeds `_classify`, which has no branch for a detector error and would
+have filed one as `NETWORK` while suppressing `last_success_at`, telling an
+operator a poll that succeeded could not reach Cosmos. Three further paths came
+with it:
+
+- `apply_signal_limits` evaluates every binding a family matched, not only the
+  ones whose bounds moved, and reports the count. Without that the command is
+  inert *here specifically*: every station is parked at the end of a fully
+  consumed recorded window, so no poll will ever apply another document, and a
+  limit armed after the readings landed would never be judged. `--dry-run` now
+  answers the question actually worth asking before arming anything - **how many
+  alarms does this file raise on the estate as it stands**. For the committed
+  file: `evaluated : 28 machines, 0 breaching`.
+- `import_pumphouse_dump` does the same. It is the path that really loads a
+  station from a recorded window, so wiring only the poller would have closed the
+  gap on the path that reads nothing and left it open on the one an operator uses.
+- Auto-resolution stopped lying. `_auto_resolve_threshold_anomalies` is the only
+  code in the backend that writes `RESOLVED`, and it closed *everything* it
+  stopped matching with the note "Signal returned inside its configured limits" -
+  including the case where activation had wiped all six bounds because a point's
+  meaning changed. It asserted a recovery on a channel still reading 191 degC.
+  There are now two notes, and the honest one says the condition was not observed
+  to end. A bad-quality reading still holds its condition open, unchanged: a
+  sensor going bad is not evidence either way.
+
+Anomaly observation times are now presented in the same clock as the rest of the
+blade. Nothing had ever needed this, because no anomaly had ever existed; the
+first one the estate raised would have been dated 442 days before the signal row
+that produced it, on the same screen.
+
+**Stopped: the run-state gate.** Recorded, not built, and the research's own
+example for it was wrong - see the correction in finding 3. Two further reasons
+came out of review. The quality-side variant would **disarm 295 of the 307 armed
+winding points**, because a stopped machine's winding temperature would be marked
+unusable; that is a bigger hole than the one it closes. And a `/pd/Pn/st` run-state
+reference does exist, agrees on all 30 bays and arrives in the same snapshot, so
+if this is ever built the mechanism is available - it is not blocked on the plant.
+
+**Stopped pending a decision: coercing the converter rails.** The finding is
+solid and the fix is not obviously safe, which is a combination worth stating
+rather than resolving quietly. Both reviewers would ship it; both attached
+conditions that are somebody's call, not a reviewer's:
+
+- It needs a companion data migration. `assets/migrations/0017_pegged_state_quality.py`
+  exists for precisely this reason and says so: the window is exhausted, a
+  checkpoint cannot rewind, and `_is_replay` drops a re-read, so a coercion rule
+  alone changes nothing already cached - which is all of it.
+- The "no real reading can reach this value" argument that justifies `3276.7` is
+  **not available** here. This repo's own recorded decision of 2026-09-26
+  approved the vibration channels as "raw, unitless source values... may be
+  signed", *because* 10-34% of readings are negative. So the rule rests on the
+  lattice and the one-count rail pair, not on impossibility - a closed list a
+  human agrees to, not a test.
+- It blanks Millbrook Pump 05. All five of its vibration channels are railed, it
+  is the estate's only running bay, and the Performance panel's family tile and
+  sensor-group summary both drop non-good readings - so that group goes empty on
+  the one machine anybody is watching. Coercing `PUMP5_SPEED` too (the x8 scalar)
+  makes it worse before it makes it better: the bay would show
+  `MOTOR_ON_STATUS = 1` beside a blank speed.
+
+The honest reading is that the whole P5 block is one railed acquisition, and the
+right fix is probably to say *that* - a whole-block sentinel, annunciated once -
+rather than to mark seven channels bad and leave `MOTOR_ON_STATUS` asserting a
+running machine.
+
+---
+
 ## The one to send first
 
 Question 1 below is the only item on this whole list that costs five minutes
@@ -220,6 +511,62 @@ Ordered by how much each one moves. The first alone swings the winding band by
     its sisters.
 16. Do the winding points number at least six per machine everywhere (cl. 8.6.2),
     confirming they are embedded detectors and licensing Table 7's ETD column?
+
+### Added by the second pass
+
+17. **What does the vibration channel actually carry?** The 158 points are
+    unscaled converter counts (finding 2 above), so the reviewed unit is
+    `unitless` and nothing can be set on them. Needed: the measured quantity
+    (velocity mm/s r.m.s.? displacement µm peak-to-peak?), the converter's
+    engineering range and range scalar, whether the zero offset is trimmed -
+    29 of 158 sit a few counts either side of zero - and the transducer type
+    and mounting. Without the quantity, ISO 20816 cannot be entered at all;
+    with it, the part still has to be settled (Part 5 for pumping plants, or
+    Part 7 for rotordynamic pumps - cl. 1 routes these machines to both).
+18. **Why is every vibration channel on the one running bay railed?** All five
+    of Millbrook/Saraswati Pump 05's vibration points sit exactly on the
+    positive rail. That is the only loaded data the estate has, so this single
+    question decides whether a baseline is obtainable from the historian at all
+    or whether question 15 needs a fresh capture.
+19. **Which of the two Parvathi thrust families is on the pad?** They disagree
+    by +11.2 K at standstill (finding 4). `THRST_BRG_..._PROCESS_VALUE` looks
+    like a separate condition-monitoring rack; `PUMP_THRUST_AXIAL_PAD_*` looks
+    DCS-side. One band cannot span both.
+20. **Forebay level: datum and civil limits, per station.** (a) Is the value
+    metres above MSL or a local gauge zero - Cedar Creek reads 132.55 m against
+    a published FRL of 130 m for Sundilla/Parvathi, so either the barrage runs
+    above FRL post-monsoon or the datum differs. (b) MDDL and the minimum
+    forebay level at which the pumps retain submergence/NPSH, per bay if it
+    differs. (c) The high level at which pumping must stop. (d) Maple Grove /
+    Ranganayaka has no forebay tag bound at all - is one available? This is the
+    **only** hydraulic quantity where an unconditional threshold is physically
+    sound, because a barrage pond has a level whether or not a bay runs.
+21. **Is Parvathi's cooling circuit hot, or scaled differently?** At the window
+    end, 13 stopped Parvathi bays read cooling-water inlet 38-48 °C while the
+    one loaded Saraswati bay (24.5 MW) read 29.3 °C, and Saraswati's stopped
+    bays read ~31 °C on water but ~41 °C on cold air. Was Parvathi shut down
+    within hours of this window - a genuine hot soak - or do its cooling
+    channels carry a different scale, offset or datum? Until this is answered no
+    cooling baseline is trustworthy enough to place a limit against, which is a
+    stronger reason to hold than the first pass's "it would fire today".
+22. **Is Ranganayaka's cooling circuit instrumented differently?** Its four
+    `COOLING_WATER_RTD` points are the station's only cooling-water tags - it has
+    no inlet or outlet tags bound at all. So question 13 widens: not just
+    "upstream or downstream of the cooler" but "are this station's inlet/outlet
+    tags missing from the dictionary?" Consistent with it being the different
+    134 MW machine.
+
+**Question 2 is withdrawn.** Table 9 item 2's arithmetic makes the applied
+winding ceiling 125 °C for every coolant temperature, so the "P" or "S" marking
+does not move the band. Question 1 still swings it by 25-30 K.
+
+**Question 15 is now the highest-value item after question 1.** Three separate
+families - vibration, bearings, and every `normal_max` in the table - are blocked
+on the same thing: one clean loaded window. CIGRE 558 §A4 describes exactly what
+it would buy, and warns why the vendor's own figures are not a substitute:
+"These prescribed alarm levels are in most cases much higher than the maximum
+that the motor temperature ever reaches when in service. Once alarm levels are
+reached, significant damage was already caused to the motor."
 
 ---
 

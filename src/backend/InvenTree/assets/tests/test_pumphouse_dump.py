@@ -11,14 +11,20 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
 
-from assets.health_models import HealthSource, MachineSignalBinding, MachineSignalState
+from assets.health_models import (
+    AnomalySeverity,
+    HealthSource,
+    MachineAnomaly,
+    MachineSignalBinding,
+    MachineSignalState,
+)
 from assets.models import AssetMachine, Client
 from machine_health.services.ingestion import IngestionError, ingest_readings
 from machine_health.tests.test_cosmos_pumphouse import snapshot
 
 
-class PumphouseDumpTests(TestCase):
-    """Exercise the actual management command against a temporary local file."""
+class PumphouseDumpEnv:
+    """Two stations sharing one source and one pointer, plus a dump file."""
 
     def setUp(self):
         """Create two stations with the same source and pointer."""
@@ -77,6 +83,10 @@ class PumphouseDumpTests(TestCase):
             )
         client.assert_not_called()
         return json.loads(output.getvalue())
+
+
+class PumphouseDumpTests(PumphouseDumpEnv, TestCase):
+    """Exercise the actual management command against a temporary local file."""
 
     def test_repeat_import_preserves_state_and_source_timestamps(self):
         """A pure replay changes neither the cache nor source bookkeeping."""
@@ -174,3 +184,57 @@ class PumphouseDumpTests(TestCase):
                 station=self.station.pk,
                 source=self.source.pk,
             )
+
+
+class PumphouseDumpThresholdTests(PumphouseDumpEnv, TestCase):
+    """The importer judges what it loads, like the poller does.
+
+    This is the path that actually populates a station from a recorded window.
+    Wiring only the live poller would have closed the gap on the path that reads
+    nothing on this estate and left it open on the one an operator uses.
+    """
+
+    def arm(self, *, warn_max, critical_max):
+        """Put limits on the station's level binding."""
+        MachineSignalBinding.objects.filter(machine=self.station).update(
+            warn_max=warn_max, critical_max=critical_max
+        )
+
+    def test_an_imported_breach_raises_an_anomaly(self):
+        """A dump whose reading is over the limit opens a condition."""
+        self.arm(warn_max=5.0, critical_max=10.0)
+
+        result = self.run_import([self.document])
+
+        self.assertEqual(result['accepted'], 1)
+        self.assertEqual(result['breaching'], 1)
+        anomaly = MachineAnomaly.objects.get(machine=self.station)
+        self.assertEqual(anomaly.severity, AnomalySeverity.CRITICAL)
+        self.assertEqual(anomaly.detector, 'threshold')
+
+    def test_an_imported_reading_inside_its_limits_raises_nothing(self):
+        """The verdict comes from the limit, not from the import."""
+        self.arm(warn_max=50.0, critical_max=100.0)
+
+        result = self.run_import([self.document])
+
+        self.assertEqual(result['breaching'], 0)
+        self.assertFalse(MachineAnomaly.objects.exists())
+
+    def test_a_dry_run_counts_the_breach_and_keeps_none_of_it(self):
+        """A preview must report what it would raise and then discard it."""
+        self.arm(warn_max=5.0, critical_max=10.0)
+
+        result = self.run_import([self.document], dry_run=True)
+
+        self.assertEqual(result['breaching'], 1)
+        self.assertFalse(MachineAnomaly.objects.exists())
+        self.assertFalse(MachineSignalState.objects.exists())
+
+    def test_an_unbounded_binding_is_never_judged(self):
+        """An unbounded signal has no opinion; the importer must not invent one."""
+        result = self.run_import([self.document])
+
+        self.assertEqual(result['accepted'], 1)
+        self.assertEqual(result['breaching'], 0)
+        self.assertFalse(MachineAnomaly.objects.exists())

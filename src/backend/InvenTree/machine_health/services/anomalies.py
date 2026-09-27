@@ -36,6 +36,18 @@ THRESHOLD_DETECTOR = 'threshold'
 THRESHOLD_DETECTOR_VERSION = '1'
 SOURCE_ALARM_DETECTOR = 'source_alarm'
 
+#: Why a threshold anomaly was closed. The two are kept apart deliberately.
+#: "The reading came back inside its limits" is an observation; "we stopped being
+#: able to tell" is an admission. Printing the first when the second happened is
+#: how a real condition gets forgotten, and it is the failure this detector is
+#: most likely to produce, because losing a rule and losing a breach look
+#: identical from here - both simply stop matching.
+RESOLUTION_IN_LIMITS = 'Signal returned inside its configured limits'
+RESOLUTION_UNASSESSABLE = (
+    'Closed without a clearing reading: this binding no longer carries a '
+    'threshold, or it stopped reporting. The condition was not observed to end.'
+)
+
 #: Board severity for each threshold classification.
 _STATE_SEVERITY = {
     HealthState.WARNING: AnomalySeverity.WARNING,
@@ -158,7 +170,10 @@ def evaluate_thresholds(machine, *, now=None) -> list[MachineAnomaly]:
         binding__machine=machine, binding__active=True
     )
 
-    seen_fingerprints = set()
+    # Three outcomes, not two. ``holding`` is never resolved; ``cleared`` earned
+    # the recovery note; anything open and in neither gets the honest one.
+    holding = set()
+    cleared = set()
 
     for state in states:
         binding = state.binding
@@ -177,15 +192,24 @@ def evaluate_thresholds(machine, *, now=None) -> list[MachineAnomaly]:
             # "Signal returned inside its configured limits", which is a
             # different and untrue claim from "the sensor stopped reporting".
             # Holding the fingerprint leaves an open condition open.
-            seen_fingerprints.add(fingerprint)
+            holding.add(fingerprint)
             continue
 
         classification = binding.classify(value)
 
         if classification not in _STATE_SEVERITY:
+            # NORMAL is an affirmative verdict and earns the recovery note:
+            # classify() only reaches it when a bound is actually configured.
+            # UNKNOWN is not. It means this reading cannot be judged - the value
+            # is not a number, or activation wiped the bounds when the point's
+            # meaning changed (assets.activation._refresh_binding). Treating the
+            # two alike is what let "Signal returned inside its configured
+            # limits" be written about a rule that had been deleted.
+            if classification == HealthState.NORMAL:
+                cleared.add(fingerprint)
             continue
 
-        seen_fingerprints.add(fingerprint)
+        holding.add(fingerprint)
         anomaly, _created = record_anomaly(
             machine=machine,
             fingerprint=fingerprint,
@@ -210,26 +234,41 @@ def evaluate_thresholds(machine, *, now=None) -> list[MachineAnomaly]:
         )
         raised.append(anomaly)
 
-    _auto_resolve_threshold_anomalies(machine, seen_fingerprints, now=now)
+    _auto_resolve_threshold_anomalies(machine, holding, cleared, now=now)
 
     return raised
 
 
-def _auto_resolve_threshold_anomalies(machine, still_breaching, *, now):
-    """Resolve threshold anomalies whose signal has returned inside its limits.
+def _auto_resolve_threshold_anomalies(machine, holding, cleared, *, now):
+    """Close threshold anomalies that are no longer held open, saying why.
+
+    ``holding`` is every condition that must stay open: still breaching, or
+    reading badly enough that there is no evidence either way. ``cleared`` is
+    every one that produced an affirmative in-limits reading.
 
     Only anomalies this detector raised are auto-resolved. A source-declared
     alarm is the source's to clear, and an operator-acknowledged condition is
     never closed on their behalf.
+
+    Everything else is closed, including the cases no clearing reading was seen
+    for. That is deliberate: this function is the only thing in the backend that
+    writes ``RESOLVED``, so an anomaly it declines to close can never be closed
+    at all, and it would hold its machine's unique open slot for ever. The
+    protection is the note, not the refusal - the operator is told whether the
+    condition was observed to end.
     """
     stale = MachineAnomaly.objects.filter(
         machine=machine, detector=THRESHOLD_DETECTOR, status=AnomalyStatus.OPEN
-    ).exclude(fingerprint__in=still_breaching)
+    ).exclude(fingerprint__in=holding)
 
     for anomaly in stale:
         anomaly.status = AnomalyStatus.RESOLVED
         anomaly.resolved_at = now
-        anomaly.resolution_note = 'Signal returned inside its configured limits'
+        anomaly.resolution_note = (
+            RESOLUTION_IN_LIMITS
+            if anomaly.fingerprint in cleared
+            else RESOLUTION_UNASSESSABLE
+        )
         anomaly.save(
             update_fields=['status', 'resolved_at', 'resolution_note', 'updated_at']
         )
