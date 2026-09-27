@@ -523,11 +523,12 @@ users, parts and stock; it has none of this.
 | Catalogue parts and parameter templates | 20 / 153 | No — rebuilt by `load_pump_catalogue` |
 | Stations and pump bays | 3 / 30 | No — created by `onboard_pumphouse_estate` |
 | Equipment components | 451 | No — created by the same command |
-| Dictionary points | 2195 | No — **and no shipped path creates them (14.5.1)** |
+| Dictionary points | 2195 | No — created by `onboard_pumphouse_estate` from each station's `snapshot` (14.5) |
 | Bindings (approved points) | 1452 | No — created by `apply_dictionary_review` |
-| Cached current values | 1452 | No — **no shipped path creates them (14.5.3)** |
+| Cached current values | 1452 | No — written by the poller after `--activate`, or by `import_pumphouse_dump` (14.5) |
 | `HealthSource` and its `data_ranges` | 1 | No — hand-created, see 14.2 |
 | Ingestion checkpoints | 3 | No — created by `--activate` |
+| Signal limits (armed bounds) | 307 | No — applied by `apply_signal_limits` (14.3.6) |
 
 Nothing here is telemetry. The readings stay in Cosmos and are read per request.
 
@@ -536,7 +537,14 @@ Nothing here is telemetry. The readings stay in Cosmos and are read per request.
 The rights in 13.1, plus an image built from **`55a1823fd` or later** — that
 commit adds `COPY contrib/cosmos/review` to the production stage of
 `contrib/container/Dockerfile`. Earlier images do not contain the packs and
-every command below fails on a missing file. Migrations must already be applied
+every command below fails on a missing file.
+
+**14.3.6 needs a newer image still.** `COPY contrib/cosmos/limits` was added
+separately; before it, `apply_signal_limits` fails on a missing file, which
+means a deployment can complete every step here, draw every tile correctly and
+still be unable to raise a single alarm — because with no limits `classify()`
+returns `unknown` for all 1,452 bindings. Check `ls contrib/cosmos/limits`
+inside the container before running 14.3.6. Migrations must already be applied
 (13.2); the container does not migrate at boot.
 
 A `Client` is **not** needed: `assets.0009_default_client_backfill` creates an
@@ -598,6 +606,18 @@ $EXEC "python src/backend/InvenTree/manage.py onboard_pumphouse_estate \
 #         the recorded window's end. The next poll fills the tiles.
 $EXEC "python src/backend/InvenTree/manage.py onboard_pumphouse_estate \
     contrib/cosmos/review/estate.manifest.json --source $SRC --activate"
+
+# 14.3.6  Arm the reviewed limits. Until this runs there are no bounds, so
+#         classify() returns `unknown` everywhere and nothing can alarm.
+#         Preview first: the dry run reports how many alarms the file raises on
+#         the estate as it stands and then discards them, which is the number
+#         worth seeing before arming anything. Locally: 28 machines, 0
+#         breaching. Applying also evaluates, so a breach present at arming
+#         time opens its anomaly immediately rather than waiting for a poll.
+$EXEC "python src/backend/InvenTree/manage.py apply_signal_limits \
+    --limits contrib/cosmos/limits/pumphouse.limits.json --dry-run"
+$EXEC "python src/backend/InvenTree/manage.py apply_signal_limits \
+    --limits contrib/cosmos/limits/pumphouse.limits.json"
 ```
 
 Expected after 14.3.4, asserted by the tests:
@@ -696,8 +716,14 @@ file is safe and duplicates nothing.
 There is **no command that undoes an approval.** The only inverse is a
 hand-written corrective review file with a `withhold` section, and it is a
 partial undo: it returns the point to `draft` and records a reason, but leaves
-the component and template assignment in place. Treat 14.3.6 as one-way and
-dry-run it first.
+the component and template assignment in place. The review is applied inside
+14.3.5, so treat that step as one-way and dry-run it first (14.3.4).
+
+`apply_signal_limits` is re-runnable and is the only way to change a limit: a
+bound edited by hand is erased the next time activation decides a point's
+meaning changed. Re-running it on an already-armed estate reports
+`applied : 0` and still evaluates, so it is also the way to ask "does anything
+breach these limits right now".
 
 `onboard_pumphouse_estate` is idempotent and safe to re-run. There is no
 command that deactivates a station or removes a checkpoint.

@@ -156,6 +156,12 @@ COPY src/backend/requirements.txt ${INVENTREE_BACKEND_DIR}/requirements.txt
 # the running container, rather than copying a file into it first.
 COPY contrib/cosmos/review ${INVENTREE_HOME}/contrib/cosmos/review
 
+# The reviewed alarm limits, for the same reason and one more: a deployment
+# without this file has no limits, so `classify()` returns `unknown` for every
+# signal and no anomaly can ever be raised. The dashboard would draw correctly
+# and annunciate nothing, which is the failure mode hardest to notice.
+COPY contrib/cosmos/limits ${INVENTREE_HOME}/contrib/cosmos/limits
+
 # Copy compiled dependencies from prebuild image
 ENV PATH=/root/.local/bin:$PATH
 
