@@ -73,6 +73,31 @@
      "key": "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMPERATURED9",
      "station": "PH_2",
      "reason": "Reports the 3276.7 over-range marker in 63 of 75 samples across the recorded span - 84% of the time the channel is not measuring. The 12 usable readings are plausible, which is exactly why the original screen cleared it: apply_winding_thresholds counts usable samples and never asks what fraction of the total they are. A limit here is inert for five readings in six."
+    },
+    {
+     "key": "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMPERATURED7",
+     "station": "PH_3",
+     "reason": "Frozen: one distinct value across 232 hourly documents spanning the whole recorded window AND across 2,149 snapshots at 5-second cadence, while detectors 1-6 on the same bay move across 7-9 distinct values in the same documents. Control bay Pump 01 at the same station has 0 of 17 channels frozen in these two families. The frozen set is a contiguous high-index block - core RTD 5-6 and winding 7-11 - which points at one acquisition module rather than seven independent detector failures. A limit here would present as protection and deliver none; the bay keeps 6 working winding detectors, still at the six cl. 8.6.2 requires."
+    },
+    {
+     "key": "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMPERATURED8",
+     "station": "PH_3",
+     "reason": "Frozen: one distinct value across 232 hourly documents spanning the whole recorded window AND across 2,149 snapshots at 5-second cadence, while detectors 1-6 on the same bay move across 7-9 distinct values in the same documents. Control bay Pump 01 at the same station has 0 of 17 channels frozen in these two families. The frozen set is a contiguous high-index block - core RTD 5-6 and winding 7-11 - which points at one acquisition module rather than seven independent detector failures. A limit here would present as protection and deliver none; the bay keeps 6 working winding detectors, still at the six cl. 8.6.2 requires."
+    },
+    {
+     "key": "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMPERATURED9",
+     "station": "PH_3",
+     "reason": "Frozen: one distinct value across 232 hourly documents spanning the whole recorded window AND across 2,149 snapshots at 5-second cadence, while detectors 1-6 on the same bay move across 7-9 distinct values in the same documents. Control bay Pump 01 at the same station has 0 of 17 channels frozen in these two families. The frozen set is a contiguous high-index block - core RTD 5-6 and winding 7-11 - which points at one acquisition module rather than seven independent detector failures. A limit here would present as protection and deliver none; the bay keeps 6 working winding detectors, still at the six cl. 8.6.2 requires."
+    },
+    {
+     "key": "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMPERATURED10",
+     "station": "PH_3",
+     "reason": "Frozen: one distinct value across 232 hourly documents spanning the whole recorded window AND across 2,149 snapshots at 5-second cadence, while detectors 1-6 on the same bay move across 7-9 distinct values in the same documents. Control bay Pump 01 at the same station has 0 of 17 channels frozen in these two families. The frozen set is a contiguous high-index block - core RTD 5-6 and winding 7-11 - which points at one acquisition module rather than seven independent detector failures. A limit here would present as protection and deliver none; the bay keeps 6 working winding detectors, still at the six cl. 8.6.2 requires."
+    },
+    {
+     "key": "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMPERATURED11",
+     "station": "PH_3",
+     "reason": "Frozen: one distinct value across 232 hourly documents spanning the whole recorded window AND across 2,149 snapshots at 5-second cadence, while detectors 1-6 on the same bay move across 7-9 distinct values in the same documents. Control bay Pump 01 at the same station has 0 of 17 channels frozen in these two families. The frozen set is a contiguous high-index block - core RTD 5-6 and winding 7-11 - which points at one acquisition module rather than seven independent detector failures. A limit here would present as protection and deliver none; the bay keeps 6 working winding detectors, still at the six cl. 8.6.2 requires."
     }
    ],
    "exclusion_note": "All eleven are at Millbrook (Saraswati). THRESHOLDS.md records that applying this row to all 318 channels left 41 of 7,573 sampled readings breaching - 12 above 145 and 29 between 125 and 145 - on a plant whose every bay is stopped, and that six Millbrook channels produced every one of them. These are the channels whose own data cannot carry the limit. Removing an entry from this list arms that channel; do it only with a reading that justifies it."
@@ -91,6 +116,16 @@
      "key": "/dex/PUMP4_MOTOR_CORE_RTD2_PROCESS_VALUE",
      "station": "PH_3",
      "reason": "Reads exactly -242.1 in 75 of 75 samples across the recorded span, while its five sibling detectors on the same bay read 36.6-43.4 degC throughout. A constant impossible value is a dead channel, not a temperature, so a limit on it would present as protection and deliver none. This also identifies the -242.1 that BLOCKERS.md carried as an unexplained deep negative; it is not on the converter rail lattice."
+    },
+    {
+     "key": "/dex/PUMP2_MOTOR_CORE_RTD5_PROCESS_VALUE",
+     "station": "PH_3",
+     "reason": "Frozen: one distinct value across 232 hourly documents spanning the whole recorded window AND across 2,149 snapshots at 5-second cadence, while detectors 1-4 on the same bay move across 7-9 distinct values in the same documents. Control bay Pump 01 at the same station has 0 of 17 channels frozen in these two families. The frozen set is a contiguous high-index block - core RTD 5-6 and winding 7-11 - which points at one acquisition module rather than seven independent detector failures. A limit here would present as protection and deliver none; the bay keeps 6 working winding detectors, still at the six cl. 8.6.2 requires."
+    },
+    {
+     "key": "/dex/PUMP2_MOTOR_CORE_RTD6_PROCESS_VALUE",
+     "station": "PH_3",
+     "reason": "Frozen: one distinct value across 232 hourly documents spanning the whole recorded window AND across 2,149 snapshots at 5-second cadence, while detectors 1-4 on the same bay move across 7-9 distinct values in the same documents. Control bay Pump 01 at the same station has 0 of 17 channels frozen in these two families. The frozen set is a contiguous high-index block - core RTD 5-6 and winding 7-11 - which points at one acquisition module rather than seven independent detector failures. A limit here would present as protection and deliver none; the bay keeps 6 working winding detectors, still at the six cl. 8.6.2 requires."
     }
    ]
   }

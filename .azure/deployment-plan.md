@@ -528,7 +528,7 @@ users, parts and stock; it has none of this.
 | Cached current values | 1452 | No — written by the poller after `--activate`, or by `import_pumphouse_dump` (14.5) |
 | `HealthSource` and its `data_ranges` | 1 | No — hand-created, see 14.2 |
 | Ingestion checkpoints | 3 | No — created by `--activate` |
-| Signal limits (armed bounds) | 411 | No — applied by `apply_signal_limits` (14.3.6) |
+| Signal limits (armed bounds) | 404 | No — applied by `apply_signal_limits` (14.3.6) |
 
 Nothing here is telemetry. The readings stay in Cosmos and are read per request.
 

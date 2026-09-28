@@ -1,7 +1,7 @@
 # Alarm thresholds: one row applied, and why the rest are not
 
 **Status: the stator-winding row and the core backstop are applied; everything
-else is still a draft.** **411 of 1,452** active bindings carry limits. The rest remain unbounded, so
+else is still a draft.** **404 of 1,452** active bindings carry limits. The rest remain unbounded, so
 `classify()` still returns `unknown` for them. (The earlier figure here, 1,294,
 predated the last activation; re-counted 2026-09-27.)
 
@@ -69,8 +69,8 @@ because the objections are the useful part.
 
 | family | pts | warn | crit | standing |
 |---|---:|---:|---:|---|
-| Stator winding ETDs | 318 | 125 | 145 | **APPLIED to 307 of them, 2026-09-26.** IS/IEC 60034-1 Table 7 item 1a: 85 K rise by embedded detector for thermal class 130(B) on the 40 degC reference coolant, so 125 is the highest reading the machine is designed to produce. Trip from IEEE Std 3004.8-2016 cl. 8.5.2.1, "5 degC to 10 degC below the insulation class maximum" (155 - 10). |
-| Motor / stator core RTDs | 106 | 125 | 145 | **APPLIED to 105 of them, 2026-09-28.** Backstop only. No standard gives a core figure - cl. 8.10.4 is qualitative and there is no core row in Table 7 - so these carry the winding numbers unchanged. A plausible lower number was deliberately *not* invented: it would be the first thing to fire on a hot day. |
+| Stator winding ETDs | 318 | 125 | 145 | **APPLIED to 301 of them, 2026-09-26; six later disarmed.** IS/IEC 60034-1 Table 7 item 1a: 85 K rise by embedded detector for thermal class 130(B) on the 40 degC reference coolant, so 125 is the highest reading the machine is designed to produce. Trip from IEEE Std 3004.8-2016 cl. 8.5.2.1, "5 degC to 10 degC below the insulation class maximum" (155 - 10). |
+| Motor / stator core RTDs | 106 | 125 | 145 | **APPLIED to 103 of them, 2026-09-28.** Backstop only. No standard gives a core figure - cl. 8.10.4 is qualitative and there is no core row in Table 7 - so these carry the winding numbers unchanged. A plausible lower number was deliberately *not* invented: it would be the first thing to fire on a hot day. |
 | Thrust + guide bearing pads | 181 | 80 | 90 | **Challenged.** 80 is a comparable plant's *trip* value (its alarm is 77), from a single low-profile paper on a 200 rpm Kaplan machine. 90 traces to API 610 cl. 6.10.2.4, which is a shop-test acceptance criterion for bearing metal, not an alarm setpoint. |
 | Bearing oil / reservoir | 10 | 70 | 80 | **Challenged hardest.** The only row the draft marked "no plant confirmation needed", and the one whose warning point is within reach of normal running: the reference band for a large vertical oil bath is 50-60 degC. The 70 is cited from API 610's *pressurized-system* oil outlet; these are ring-oiled sumps. |
 | Cooling water inlet | 108 | 50 | - | **Would fire today.** Against a cold-plant baseline of p95 48.8 and max 70.2, a warning at 50 sits *inside* the top 5% of the soak distribution, across 108 points. |
@@ -665,6 +665,26 @@ That is a **defect in the screening rule, not just one bad channel.**
 those are. A channel that is pegged 84% of the time and plausible the rest
 therefore passes as clean. Any future family screened the same way inherits this.
 
+**Now fixed.** The sampler counts what a channel *offered* alongside what was
+usable, and a channel is clean only if it reported on at least
+`MIN_REPORTING_FRACTION` of the samples taken. The floor is **0.5**, and it is
+not a fitted number: across all 424 winding and core channels the distribution
+is bimodal with nothing in the middle -
+
+| reporting fraction | channels |
+|---|---:|
+| 1.00 | 416 |
+| 0.95-1.00 | 1 |
+| 0.80-0.95 | 0 |
+| 0.50-0.80 | 0 |
+| below 0.50 | 7 |
+
+- so any floor between 0.2 and 0.95 separates them identically, and the one
+chosen is the one that can be said in words: a channel must report more often
+than not. Applied to the existing estate the rule reproduces the committed
+exclusion list exactly - the five channels that returned nothing, the two at
+16% - which is the check that it neither over- nor under-fires.
+
 **Ten channels report impossible temperatures**, none of them currently armed,
 all of them future exclusions for whichever family arms them:
 
@@ -699,15 +719,36 @@ family. Five winding detectors, nine cooling-water channels, four cold-air
 channels and two thrust-pad RTDs are likewise frozen while their siblings drift.
 That is individual stuck detectors, not one failed card.
 
-**Nineteen armed channels are among the frozen**, twelve of them on Millbrook
-Pump 05 and seven on Cedar Creek Pump 02. They are **deliberately left armed**,
-and the reasoning is worth stating because it is not obvious. A frozen detector
-under-reports, so the risk it carries is a *missed* alarm rather than a nuisance
-one - and excluding it does not restore protection, it only records that there is
-none. Since the hall drifts by less than a kelvin over ten days, "stuck" and
-"genuinely stable" cannot be separated from a 3-hour stride with certainty. The
-honest position is that these are flagged and not yet settled; a denser walk over
-one bay would settle it cheaply, and the plant can settle it instantly.
+**Nineteen armed channels were among the frozen** - twelve on Millbrook Pump 05
+and seven on Cedar Creek Pump 02 - and a 3-hour stride could not separate "stuck"
+from "genuinely stable" in a hall that drifts less than a kelvin in ten days. So
+the bay was walked densely: **232 hourly documents across the whole span, plus
+2,149 snapshots at the 5-second cadence inside three buckets**, with Pump 01 read
+from the same documents as a control.
+
+It settled cleanly, and the pattern is the finding:
+
+| family | moves | frozen in both probes |
+|---|---|---|
+| `MOTOR_CORE_RTD` | 1-4, seven to eight distinct values | **5, 6** |
+| `PUMP_MOTOR_WINDING_TEMPERATURED` | 1-6, seven to nine distinct | **7, 8, 9, 10, 11** |
+
+Control Pump 01, same station, same documents: **0 of 17 frozen**, every channel
+six to nine distinct. One distinct value across 2,381 readings while siblings on
+the same bay move in the same documents is not a stable detector.
+
+The frozen set is a **contiguous high-index block**, which points at one
+acquisition module rather than seven independent failures - a far cheaper thing
+for the plant to find. All seven are now excluded and disarmed. The bay keeps six
+working winding detectors, still at the six cl. 8.6.2 requires, so excluding them
+costs no coverage that was real.
+
+**Millbrook Pump 05's twelve are deliberately left armed**, because they are a
+different problem wearing the same clothes. That bay is 95% constant *including*
+`MOTOR_ON_STATUS`, `ACTIVE_POWER` and its flow - the whole block is stale, not
+twelve dead detectors - so excluding them would record twelve instrument faults
+where the evidence says one stale acquisition. That stays with the frozen-block
+question in BLOCKERS.md.
 
 ### And a defect the survey exposed in the limits file itself
 

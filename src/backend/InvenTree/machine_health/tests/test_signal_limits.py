@@ -370,12 +370,33 @@ class BackstopRowTests(TestCase):
         self.assertTrue(core.match('/dex/PUMP12_MOTOR_STATOR_CORE_RTD6'))
 
     def test_the_dead_channel_is_excluded_with_what_it_actually_reads(self):
-        """A channel constant at an impossible value cannot carry a limit."""
-        [excluded] = self.core['exclude']
-        self.assertEqual(excluded['key'], '/dex/PUMP4_MOTOR_CORE_RTD2_PROCESS_VALUE')
-        self.assertEqual(excluded['station'], 'PH_3')
-        self.assertIn('-242.1', excluded['reason'])
-        self.assertIn('75 of 75', excluded['reason'])
+        """A channel constant at an impossible value cannot carry a limit.
+
+        Looked up by key rather than unpacked: the exclusion list grows as
+        channels are found, and a test that assumes its length fails on the next
+        discovery rather than on a defect.
+        """
+        excluded = {
+            (x['station'], x['key']): x['reason'] for x in self.core['exclude']
+        }
+        reason = excluded[('PH_3', '/dex/PUMP4_MOTOR_CORE_RTD2_PROCESS_VALUE')]
+        self.assertIn('-242.1', reason)
+        self.assertIn('75 of 75', reason)
+
+    def test_every_exclusion_says_what_the_channel_actually_does(self):
+        """A reason that does not cite a reading is an opinion, not evidence.
+
+        Each one has to carry a number from the channel's own history - a count,
+        a fraction or a value - because the next person deciding whether to
+        re-arm it has only this sentence to go on.
+        """
+        for entry in (self.core, self.winding):
+            for item in entry['exclude']:
+                with self.subTest(station=item['station'], key=item['key']):
+                    self.assertTrue(
+                        any(character.isdigit() for character in item['reason']),
+                        'the reason cites no reading',
+                    )
 
 
 class ExclusionDisarmsTests(ApplyLimitsEnv, TestCase):

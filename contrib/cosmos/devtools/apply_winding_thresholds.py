@@ -70,13 +70,33 @@ PLAUSIBLE = (0.0, 125.0)
 #: as evidence of health rather than absence of data.
 MIN_SAMPLES = 20
 
+#: And it must actually be reporting most of the time. Counting usable samples
+#: alone is not enough: pegged readings are skipped before the count, so a
+#: channel that sits at the over-range marker five readings in six still reaches
+#: MIN_SAMPLES on the sixth and passes as clean. One did.
+#: PUMP2_PUMP_MOTOR_WINDING_TEMPERATURED9 at Saraswati was armed on 12 plausible
+#: readings out of 75, and a limit on it was inert 84% of the time - protection
+#: on the blade and none in the plant.
+#:
+#: Half is not a fitted figure. Measured across all 424 winding and core
+#: channels, the distribution is bimodal with nothing in the middle: 416 report
+#: on every sample, one on 73 of 74, and seven on 16% or less. Any floor between
+#: 0.2 and 0.95 separates them identically, so the number chosen is the one that
+#: can be said in words - a channel must report more often than not.
+MIN_REPORTING_FRACTION = 0.5
+
 #: Buckets to probe on the first pass over a station's span. Enough to catch an
 #: intermittent fault anywhere in it without reading all 288 hours.
 FIRST_PASS_PROBES = 70
 
 
-def _sample(connector, uuid, moment, paths, station_id, seen, bad):
-    """Fold one bucket's winding readings into the ``seen`` and ``bad`` counts."""
+def _sample(connector, uuid, moment, paths, station_id, seen, bad, offered):
+    """Fold one bucket's winding readings into the per-channel counters.
+
+    ``offered`` counts every numeric reading the channel produced, pegged or not;
+    ``seen`` counts only the usable ones. The ratio is what tells a working
+    channel from one that is mostly not there.
+    """
     document = connector.latest_document(uuid, bucket_of(to_epoch_ms(moment)))
     if not document:
         return
@@ -89,6 +109,7 @@ def _sample(connector, uuid, moment, paths, station_id, seen, bad):
             value = float(raw)
         except (TypeError, ValueError):
             continue
+        offered[station_id, path] += 1
         if _pegged(value):
             continue  # already bad quality; not the channel's fault
         seen[station_id, path] += 1
@@ -96,7 +117,9 @@ def _sample(connector, uuid, moment, paths, station_id, seen, bad):
             bad[station_id, path] += 1
 
 
-def _probe_station(connector, uuid, start, hours, paths, station_id, seen, bad):
+def _probe_station(
+    connector, uuid, start, hours, paths, station_id, seen, bad, offered
+):
     """Probe a station's span, spread wide first and densified only if needed.
 
     The stride is what a station's *span* divides into, but the samples come
@@ -130,6 +153,7 @@ def _probe_station(connector, uuid, start, hours, paths, station_id, seen, bad):
                 station_id,
                 seen,
                 bad,
+                offered,
             )
         if stride == 1:
             return
@@ -154,7 +178,7 @@ def classify_channels():
     source = HealthSource.objects.filter(connector_type='cosmos_pumphouse').first()
     connector_class = pumphouse_connector_class(source.connector_type)
     ranges = (source.config or {}).get('data_ranges') or {}
-    seen, bad = Counter(), Counter()
+    seen, bad, offered = Counter(), Counter(), Counter()
 
     for station in AssetMachine.objects.filter(
         source_entity_uuid__isnull=False
@@ -176,13 +200,24 @@ def classify_channels():
                 station.pk,
                 seen,
                 bad,
+                offered,
             )
         finally:
             connector.close()
 
     keys = {(point.station_id, point.path) for point in points}
     faulty = {key for key in keys if bad[key]}
-    clean = {key for key in keys if seen[key] >= MIN_SAMPLES and not bad[key]}
+
+    def reporting(key):
+        """Whether the channel was there for most of the samples taken."""
+        total = offered[key]
+        return bool(total) and seen[key] / total >= MIN_REPORTING_FRACTION
+
+    clean = {
+        key
+        for key in keys
+        if seen[key] >= MIN_SAMPLES and not bad[key] and reporting(key)
+    }
     return clean, faulty, keys - clean - faulty, seen
 
 
