@@ -47,9 +47,34 @@ def isWaitingForDatabase():
     return 'wait_for_db' in sys.argv
 
 
+def isSyntheticDemoImport() -> bool:
+    """Return True inside a context-local synthetic demo seed window.
+
+    The EQUA synthetic demo seed is a data import: its effect window
+    (``assets.demo_metrics.effects.synthetic_effects``) is classified here so
+    the existing ``loaddata``/``flush`` import suppression paths (notification
+    and email dispatch) apply unchanged. The predicate is strictly
+    context-local (a ``contextvars`` window) — it never inspects or spoofs
+    ``sys.argv``.
+    """
+    try:
+        from assets.demo_metrics.effects import is_synthetic_context
+    except ImportError:  # pragma: no cover
+        return False
+
+    return is_synthetic_context()
+
+
 def isImportingData():
-    """Returns True if the database is currently importing (or exporting) data, e.g. 'loaddata' command is performed."""
-    return any(x in sys.argv for x in ['flush', 'loaddata', 'bulkloaddata', 'dumpdata'])
+    """Returns True if the database is currently importing (or exporting) data, e.g. 'loaddata' command is performed.
+
+    Also True for the context-local synthetic demo seed window (see
+    :func:`isSyntheticDemoImport`), which is a data import like any other.
+    """
+    return (
+        any(x in sys.argv for x in ['flush', 'loaddata', 'bulkloaddata', 'dumpdata'])
+        or isSyntheticDemoImport()
+    )
 
 
 def isRunningMigrations():
@@ -91,6 +116,47 @@ def isRunningBackup():
 def isCollectingPlugins():
     """Return True if the 'collectplugins' command is being executed."""
     return 'collectplugins' in sys.argv
+
+
+#: Demo metrics commands (EQUA synthetic demo). Split by bootstrap behavior:
+#: the read-only ones must never trigger startup writes, and the mutating ones
+#: perform only their own explicit approved writes — Django startup runs before
+#: ``BaseCommand.handle()``, so classification here is a prerequisite, not a
+#: dry-run detail.
+DEMO_METRICS_COMMANDS = (
+    'plan_demo_metrics',
+    'apply_demo_metrics',
+    'verify_demo_metrics',
+    'replay_demo_metrics',
+    'stop_demo_metrics',
+    'cleanup_demo_metrics',
+)
+
+DEMO_METRICS_READ_ONLY = (
+    'plan_demo_metrics',
+    'verify_demo_metrics',
+    'cleanup_demo_metrics',
+)
+
+
+def isDemoMetricsCommand() -> bool:
+    """Return True if a demo metrics management command is being executed."""
+    return any(command in sys.argv for command in DEMO_METRICS_COMMANDS)
+
+
+def isReadOnlyDemoMetricsCommand() -> bool:
+    """Return True for demo metrics commands that must perform no writes.
+
+    ``cleanup_demo_metrics`` is read-only by default and mutating only with an
+    explicit ``--apply`` flag; the flag is part of the same argv, so the
+    classification is exact rather than a fake dry-run with rollback.
+    """
+    for command in DEMO_METRICS_READ_ONLY:
+        if command in sys.argv:
+            if command == 'cleanup_demo_metrics' and '--apply' in sys.argv:
+                continue
+            return True
+    return False
 
 
 # This variable is used to cache the result of the isGeneratingSchema function, to prevent multiple executions of the same checks
@@ -234,6 +300,11 @@ def isReadOnlyCommand():
     ):
         return True
 
+    # Demo metrics plan/verify/cleanup-plan are read-only for the whole
+    # process: startup must skip every write path for them.
+    if isReadOnlyDemoMetricsCommand():
+        return True
+
     return any(cmd in sys.argv for cmd in readOnlyCommands())
 
 
@@ -278,6 +349,12 @@ def canAppAccessDatabase(
         'wait_for_db',
         'check',
     ]
+
+    # Demo metrics commands skip ALL unrelated startup work (migration,
+    # schedule, user initialization, task enqueue). The mutating commands
+    # perform only their own explicit approved writes inside handle(); startup
+    # side effects are never theirs to trigger.
+    excluded_commands.extend(DEMO_METRICS_COMMANDS)
 
     if not allow_shell:
         excluded_commands.append('shell')

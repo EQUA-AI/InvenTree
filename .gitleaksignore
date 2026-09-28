@@ -1,0 +1,30 @@
+# .gitleaksignore - scoped, verified NON-SECRET findings only (reviewed by supervisor).
+#
+# Each entry below is an EXACT gitleaks global fingerprint (path:rule-id:start-line) for a
+# SYNTHETIC test/demo correlation identifier - never a credential, key, token, or secret:
+#  * src/backend/InvenTree/assets/demo_metrics/resources/demo_fixture.json - values under
+#    history.downtime_intervals[*].failure_key in a fixture whose root declares
+#    "synthetic": true. failure_key is a CharField(max_length=128) event-correlation
+#    identifier (demo_metrics_models.py) consumed via history.py event ingest; the
+#    flagged strings are synthetic downtime-event names, not API keys.
+#  * src/backend/InvenTree/assets/test_demo_metrics_cohort_api.py - legacy.session_key,
+#    a test-local synthetic session identifier for the membership-less legacy-session
+#    SCOPE_DENIED test. No credential semantics.
+#
+# Entries are per-line, not per-file: any other secret at these paths (including a canary
+# at a different line of the same file) is still reported. No rule or file exclusions are
+# configured anywhere; only these verified non-secret findings are accepted.
+#
+src/backend/InvenTree/assets/demo_metrics/resources/demo_fixture.json:generic-api-key:741
+src/backend/InvenTree/assets/demo_metrics/resources/demo_fixture.json:generic-api-key:751
+src/backend/InvenTree/assets/demo_metrics/resources/demo_fixture.json:generic-api-key:761
+src/backend/InvenTree/assets/demo_metrics/resources/demo_fixture.json:generic-api-key:771
+src/backend/InvenTree/assets/demo_metrics/resources/demo_fixture.json:generic-api-key:781
+src/backend/InvenTree/assets/demo_metrics/resources/demo_fixture.json:generic-api-key:791
+src/backend/InvenTree/assets/demo_metrics/resources/demo_fixture.json:generic-api-key:801
+src/backend/InvenTree/assets/demo_metrics/resources/demo_fixture.json:generic-api-key:811
+src/backend/InvenTree/assets/demo_metrics/resources/demo_fixture.json:generic-api-key:821
+src/backend/InvenTree/assets/demo_metrics/resources/demo_fixture.json:generic-api-key:831
+src/backend/InvenTree/assets/demo_metrics/resources/demo_fixture.json:generic-api-key:841
+src/backend/InvenTree/assets/demo_metrics/resources/demo_fixture.json:generic-api-key:861
+src/backend/InvenTree/assets/test_demo_metrics_cohort_api.py:generic-api-key:651

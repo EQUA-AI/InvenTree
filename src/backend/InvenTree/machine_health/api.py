@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import json
 
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.urls import include, path
 
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from tasks.scope import ScopeError, enforce_machine_scope
 
 import InvenTree.permissions
 from assets.health_models import (
@@ -49,9 +51,22 @@ from .services.trends import TrendError, read_trend
 MAX_ANOMALY_PAGE = 200
 
 
-def _machine(pk):
-    """Resolve the machine before anything else is read."""
-    return get_object_or_404(AssetMachine, pk=pk)
+def _machine(request, pk):
+    """Resolve the machine before anything else is read.
+
+    The parent lookup is explicitly client-scoped (``tasks.scope.
+    enforce_machine_scope``) and fails closed: a machine without a client, an
+    actor whose scope cannot be resolved, or a scope that does not cover the
+    machine all get a 404, so an arbitrary id is never authority and role
+    grants alone never substitute for client scope. Denial is a 404 (not 403)
+    so the response never discloses whether the machine exists.
+    """
+    machine = get_object_or_404(AssetMachine, pk=pk)
+    try:
+        enforce_machine_scope(request.user, machine)
+    except ScopeError:
+        raise Http404
+    return machine
 
 
 class _MachineHealthView(APIView):
@@ -69,7 +84,7 @@ class MachineHealthSummary(_MachineHealthView):
 
     def get(self, request, pk):
         """Return the machine's health summary."""
-        machine = _machine(pk)
+        machine = _machine(request, pk)
         data = health_summary(machine)
         return Response(MachineHealthSummarySerializer(data).data)
 
@@ -79,7 +94,7 @@ class MachineHealthSignals(_MachineHealthView):
 
     def get(self, request, pk):
         """Return every active binding for the machine."""
-        machine = _machine(pk)
+        machine = _machine(request, pk)
         rows = signal_rows(machine)
         return Response({
             'count': len(rows),
@@ -92,7 +107,7 @@ class MachineHealthAnomalies(_MachineHealthView):
 
     def get(self, request, pk):
         """Return the machine's anomalies, filtered by status and severity."""
-        machine = _machine(pk)
+        machine = _machine(request, pk)
 
         queryset = (
             MachineAnomaly.objects
@@ -137,7 +152,7 @@ class MachineHealthTrend(_MachineHealthView):
 
     def get(self, request, pk):
         """Read a bounded trend, or say plainly why one is unavailable."""
-        machine = _machine(pk)
+        machine = _machine(request, pk)
 
         binding_id = request.query_params.get('binding')
         if not binding_id or not str(binding_id).isdigit():
@@ -186,7 +201,7 @@ class MachineHealthSnapshots(_MachineHealthView):
 
     def get(self, request, pk):
         """Return the machine's most recent evidence snapshots."""
-        machine = _machine(pk)
+        machine = _machine(request, pk)
         snapshots = snapshot_services.snapshots_for_machine(machine)
         return Response({
             'count': len(snapshots),
@@ -209,7 +224,7 @@ class MachineAnomalyAcknowledge(APIView):
 
     def post(self, request, pk, anomaly_pk):
         """Acknowledge one anomaly belonging to this machine."""
-        machine = _machine(pk)
+        machine = _machine(request, pk)
         anomaly = get_object_or_404(MachineAnomaly, pk=anomaly_pk, machine=machine)
 
         try:
@@ -233,7 +248,7 @@ class MachineAnomalyEvidence(APIView):
 
     def post(self, request, pk, anomaly_pk):
         """Snapshot each implicated signal and return the citations."""
-        machine = _machine(pk)
+        machine = _machine(request, pk)
         anomaly = get_object_or_404(MachineAnomaly, pk=anomaly_pk, machine=machine)
 
         reason = request.data.get('reason') or SnapshotReason.ANOMALY_REPAIR
@@ -270,7 +285,7 @@ class MachineAnomalyPreliminaryAnalysis(APIView):
 
     def post(self, request, pk, anomaly_pk):
         """Analyze the anomaly's current evidence and return the result."""
-        machine = _machine(pk)
+        machine = _machine(request, pk)
         anomaly = get_object_or_404(MachineAnomaly, pk=anomaly_pk, machine=machine)
 
         result = analyze_anomaly(anomaly, actor=request.user)

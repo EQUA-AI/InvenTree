@@ -44,6 +44,45 @@ class RollbackFloorCheckTests(TestCase):
         """Today's dark deployment stays inert."""
         self.assertEqual(_aimms_errors(), [])
 
+    def test_missing_marker_read_is_read_only(self):
+        """Looking up an absent marker must never write it into existence.
+
+        Read-only commands (demo-metrics bootstrap) run these checks; a
+        default-creating lookup turns a read into a refused INSERT per
+        process. With cold caches and the marker absent, the check must
+        leave no row behind and issue no write SQL.
+        """
+        from django.core.cache import cache
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from common.models import InvenTreeSetting
+
+        # Cold caches plus a guaranteed-absent marker force the lookup to
+        # hit the database instead of a stale cached setting object.
+        cache.clear()
+        InvenTreeSetting.objects.filter(key__iexact=ROLLBACK_FLOOR_SETTING).delete()
+
+        with CaptureQueriesContext(connection) as context:
+            self.assertEqual(_aimms_errors(), [])
+
+        self.assertFalse(
+            InvenTreeSetting.objects.filter(
+                key__iexact=ROLLBACK_FLOOR_SETTING
+            ).exists(),
+            'reading a missing rollback-floor marker must not create its row',
+        )
+        writes = [
+            query['sql']
+            for query in context.captured_queries
+            if query['sql'].lstrip().upper().startswith(('INSERT', 'UPDATE', 'DELETE'))
+        ]
+        self.assertEqual(
+            writes,
+            [],
+            'checking with a missing rollback-floor marker must issue no write SQL',
+        )
+
     def test_armed_floor_fails_loudly_below_the_floor(self):
         """Arming binds the floor legs in every configuration."""
         _arm_floor()

@@ -229,6 +229,9 @@ class TaskBatch:
         timeout: int | None = None,
     ) -> None:
         """Record a single offload_task() call against this batch."""
+        from assets.demo_metrics.effects import guard_task_dispatch
+
+        guard_task_dispatch(taskname, group)
         self.entries[taskname, group, force_async, timeout].append((args, kwargs))
 
     def flush(self) -> None:
@@ -324,6 +327,13 @@ def offload_task(
     """
     # Extract group information from kwargs
     group = kwargs.pop('group', 'inventree')
+
+    # Synthetic demo sessions must not dispatch work to the shared worker or
+    # run it inline; this covers both the queued and the synchronous paths
+    # (assets.demo_metrics.effects is import-light and context-local).
+    from assets.demo_metrics.effects import guard_task_dispatch
+
+    guard_task_dispatch(taskname, group)
 
     if not force_sync and (batch := _task_batch.get()) is not None:
         # A batch_offload_tasks() context is active - queue this task rather than
@@ -461,6 +471,10 @@ def bulk_offload_task(
     Returns:
         bool: True if the tasks were queued (or run synchronously), False otherwise
     """
+    from assets.demo_metrics.effects import guard_task_dispatch
+
+    guard_task_dispatch(taskname, group)
+
     if not entries:
         return False
 

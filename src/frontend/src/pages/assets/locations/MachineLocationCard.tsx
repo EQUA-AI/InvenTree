@@ -1,12 +1,12 @@
 import { t } from '@lingui/core/macro';
 import { Anchor, Button, Group, Paper, Stack, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useApi } from '../../../contexts/ApiContext';
 import { useUserState } from '../../../states/UserState';
 import { MachineMoveDialog } from './LocationDialogs';
-
+import { parseDemoScope } from './demoMetrics';
 import {
   type LocatedMachine,
   type LocationContext,
@@ -61,7 +61,16 @@ export function MachineLocationCard({ machineId }: { machineId: number }) {
   const api = useApi();
   const identity = useUserState((s) => s.authGeneration);
   const [moving, setMoving] = useState(false);
-
+  const [searchParams] = useSearchParams();
+  const demoScope = useMemo(() => parseDemoScope(searchParams), [searchParams]);
+  // The location link hands the demo filters to the workspace (which applies
+  // them); `location` stays the machine's own placement, not the URL scope.
+  const locationHref = (locationPk: number) => {
+    const params = new URLSearchParams({ location: String(locationPk) });
+    if (demoScope.session) params.set('demo_session', demoScope.session);
+    if (demoScope.direct) params.set('scope', 'direct');
+    return `/machines/index/sites/?${params.toString()}`;
+  };
   const context = useQuery<LocationContext>({
     queryKey: ['asset-locations', identity, 'context'],
     queryFn: async ({ signal }) =>
@@ -86,7 +95,7 @@ export function MachineLocationCard({ machineId }: { machineId: number }) {
           row.physical_location ? (
             <Anchor
               component={Link}
-              to={`/machines/index/sites/?location=${row.physical_location.pk}`}
+              to={locationHref(row.physical_location.pk)}
             >
               {locationPath(row.physical_location)}
             </Anchor>

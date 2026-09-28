@@ -11443,6 +11443,65 @@ msgstr ""
 msgid "Stale"
 msgstr "Obsolète"
 
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:49
+msgid "Fresh (all signals)"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:50
+msgid "Partial (some signals missing)"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:51
+msgid "Stale (no fresh signal)"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:52
+msgid "Waiting for first reading"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:69
+msgid "all locations"
+msgstr ""
+
+#. placeholder {0}: scope.location
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:69
+msgid "location {0}"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:71
+msgid "direct machines only"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:72
+msgid "machines including descendants"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:211
+msgid "Synthetic demo session"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:212
+msgid "Live data (no synthetic demo)"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:226
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:544
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:625
+msgid "Synthetic demo"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:240
+msgid "View in Maintenance"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:244
+msgid "Demo sessions unavailable"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:245
+msgid "The synthetic demo session list could not be loaded. Live data is unaffected."
+msgstr ""
+
 #: src/pages/assets/locations/LocationBrowser.tsx:78
 #: src/pages/assets/locations/LocationDialogs.tsx:109
 msgid "Site"
@@ -11893,6 +11952,133 @@ msgstr ""
 
 #: src/pages/assets/locations/LocationWorkspace.tsx:736
 msgid "Historical performance will appear when validated event and placement history is available. Current placement does not establish past downtime."
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:256
+msgid "Demo metrics unavailable"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:268
+msgid "All figures are synthetic demo data generated for this session."
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:273
+msgid "Observation coverage"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:288
+msgid "Condition (fresh signals only)"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:301
+msgid "Coverage is tracked separately; a machine without fresh, good-quality signals has no condition."
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:306
+msgid "Session machines"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:312
+msgid "In scope for the current filters"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:322
+msgid "Machines with open work"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:326
+msgid "Overdue open work orders"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:333
+msgid "Contributing work list unavailable"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:341
+msgid "Contributing session work"
+msgstr ""
+
+#. placeholder {0}: work.data.open_count
+#. placeholder {1}: work.data.count
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:343
+msgid "{0} open of {1}"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:349
+msgid "Contributing list truncated"
+msgstr ""
+
+#. placeholder {0}: truncation.shown
+#. placeholder {1}: truncation.total
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:352
+msgid "Showing the first {0} of {1} contributing rows. The counts above are full totals for the current filters."
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:357
+msgid "No contributing session work for the current filters."
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:414
+msgid "Scoped history"
+msgstr ""
+
+#. placeholder {0}: history.data.measured_machines
+#. placeholder {1}: history.data.selected_machines
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:417
+msgid "Measured {0} of {1} machines"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:423
+msgid "Not authorized"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:424
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:510
+msgid "Your maintenance scope does not cover this demo session."
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:428
+msgid "History request failed"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:429
+msgid "The history data could not be loaded. No synthetic fallback is shown."
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:437
+msgid "History unavailable"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:438
+msgid "This session has no imported historical coverage, so no chart is shown."
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:445
+msgid "No planned coverage falls inside the selected window for the current filters."
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:460
+msgid "Planned machine-minutes"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:465
+msgid "Downtime machine-minutes"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:469
+msgid "Synthetic history chart"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:472
+msgid "Days without observation coverage are gaps (null), not zero downtime."
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:476
+msgid "Synthetic scenario attribution"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:479
+msgid "Not placement-at-event: current placement does not establish past location."
 msgstr ""
 
 #: src/pages/assets/locations/MachineLocationCard.tsx:41
@@ -15134,6 +15320,52 @@ msgstr ""
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:546
 #: src/tables/assets/MaintenanceRecordTable.tsx:126
 msgid "Downtime"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:491
+msgid "Measured-cohort availability"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:511
+msgid "The demo metrics could not be loaded. No fixture fallback is shown."
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:541
+msgid "Synthetic demo session filter"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:553
+msgid "Applying the synthetic demo session filter…"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:558
+msgid "Board cards stay hidden until the session scope resolves."
+msgstr ""
+
+#. placeholder {0}: truncation.shown
+#. placeholder {1}: truncation.total
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:563
+msgid "This filter covers the first {0} of {1} contributing orders."
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:635
+msgid "Checking synthetic demo session scope…"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:643
+msgid "In this session's filtered cohort:"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:648
+msgid "no fresh condition"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:653
+msgid "This machine is not in the synthetic demo session cohort for the current filters."
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:665
+msgid "View session work in Maintenance"
 msgstr ""
 
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:561

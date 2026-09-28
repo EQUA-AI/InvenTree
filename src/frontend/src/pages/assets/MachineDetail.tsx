@@ -36,7 +36,7 @@ import { WorkOrderCreateModal } from '../maintenance/components/WorkOrderCreateM
 import FaultHistoryPanel from './FaultHistoryPanel';
 import { StartRepairModal } from './StartRepairModal';
 import { MachineHealthPanel } from './health/MachineHealthPanel';
-
+import { MachineDemoScopeNotice } from './locations/DemoMetricsPanel';
 import {
   MachineLocationCard,
   MachinePlacementPath
@@ -51,7 +51,8 @@ export default function MachineDetail() {
   const [createRepairOpen, setCreateRepairOpen] = useState(false);
   const [startRepairOpen, setStartRepairOpen] = useState(false);
 
-  // Keep the source list's scope filters in its return URL.
+  // Demo-scope filters ride the URL; this page applies them (the scope
+  // notice below) and hands them on to destinations that apply them too.
   // The return route is explicit (U2): a `from` parameter names the source
   // list (sites/all machines/unassigned) so its panel and filters are
   // preserved; without one the legacy breadcrumb contract is kept.
@@ -143,6 +144,7 @@ export default function MachineDetail() {
         icon: <IconInfoCircle />,
         content: machine?.pk ? (
           <Stack>
+            <MachineDemoScopeNotice machineId={machine.pk} />
             <MachineLocationCard machineId={machine.pk} />
             <ItemDetailsGrid>
               <DetailsTable fields={detailsLeft} item={machine} />

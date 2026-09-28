@@ -20,7 +20,7 @@ from assets.health_models import (
 )
 from machine_health.services.anomalies import fingerprint_for, record_anomaly
 
-from assets.models import AssetMachine
+from assets.models import AssetMachine, Client
 from InvenTree.unit_test import InvenTreeAPITestCase
 
 from .fixtures import HealthEnvMixin
@@ -55,7 +55,9 @@ class MachineHealthReadApiTest(HealthEnvMixin, InvenTreeAPITestCase):
 
     def test_unconfigured_machine_returns_an_explicit_empty_state(self):
         """A machine with no source is unknown, not an error."""
-        bare = AssetMachine.objects.create(name=f'Bare {uuid.uuid4().hex[:6]}')
+        bare = AssetMachine.objects.create(
+            name=f'Bare {uuid.uuid4().hex[:6]}', client=self.client_tenant
+        )
 
         response = self.get(
             f'/api/machine-health/machines/{bare.pk}/health/', expected_code=200
@@ -106,7 +108,7 @@ class MachineHealthReadApiTest(HealthEnvMixin, InvenTreeAPITestCase):
     def test_another_machines_anomaly_is_not_reachable(self):
         """Scope is applied before lookup; ids from elsewhere resolve to 404."""
         other_machine = AssetMachine.objects.create(
-            name=f'Other {uuid.uuid4().hex[:6]}'
+            name=f'Other {uuid.uuid4().hex[:6]}', client=self.client_tenant
         )
         foreign, _ = record_anomaly(
             machine=other_machine,
@@ -187,6 +189,50 @@ class HealthReadPermissionTest(HealthEnvMixin, InvenTreeAPITestCase):
         )
         self.anomaly.refresh_from_db()
         self.assertEqual(self.anomaly.status, AnomalyStatus.OPEN)
+
+class MachineHealthScopeDenialTest(HealthEnvMixin, InvenTreeAPITestCase):
+    """The parent machine lookup fails closed on every unresolved boundary.
+
+    Role grants alone are not client-scope authority: an actor holding
+    ``work_order.view`` is still denied when its maintenance scope cannot be
+    resolved, when the machine has no client, or when the machine belongs to
+    another client. Denial is a 404, so the response never discloses whether
+    the machine exists.
+    """
+
+    roles = ['work_order.view']
+
+    def setUp(self):
+        """Build the scoped environment the denials are measured against."""
+        super().setUp()
+        self.build_health_env()
+
+    def test_role_grant_alone_does_not_authorize(self):
+        """An unresolvable actor scope denies even a role-holding actor."""
+        with override_settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=None):
+            self.get(
+                f'/api/machine-health/machines/{self.machine.pk}/health/',
+                expected_code=404,
+            )
+
+    def test_machine_without_a_client_is_denied(self):
+        """A machine with no client is unreachable, by design."""
+        bare = AssetMachine.objects.create(name=f'Bare {uuid.uuid4().hex[:6]}')
+        self.get(
+            f'/api/machine-health/machines/{bare.pk}/health/', expected_code=404
+        )
+
+    def test_foreign_client_machine_is_denied(self):
+        """Another client's machine is never reachable by guessing its id."""
+        foreign = Client.objects.create(
+            name=f'Foreign {uuid.uuid4().hex[:6]}', code=f'foreign-{uuid.uuid4().hex[:6]}'
+        )
+        other = AssetMachine.objects.create(
+            name=f'Other {uuid.uuid4().hex[:6]}', client=foreign
+        )
+        self.get(
+            f'/api/machine-health/machines/{other.pk}/health/', expected_code=404
+        )
 
 
 @override_settings(

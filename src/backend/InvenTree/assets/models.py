@@ -341,3 +341,17 @@ from .location_models import AssetLocation as AssetLocation
 from .location_models import LocationParentHistory as LocationParentHistory
 from .location_models import MachineLocationTransfer as MachineLocationTransfer
 from .location_models import MachinePlacementHistory as MachinePlacementHistory
+
+# Demo metrics ledger models live in their own module for readability but
+# belong to this app; importing them here is what registers them. This block
+# intentionally stays the LAST registration import: model registration order is
+# initialization behavior, so isort:skip pins this placement instead of letting
+# isort move the block ahead of health/location models.
+from .demo_metrics_models import (  # noqa: F401  # isort:skip
+    DemoMetricsCoverageInterval,
+    DemoMetricsDowntimeInterval,
+    DemoMetricsMachine,
+    DemoMetricsObject,
+    DemoMetricsReceipt,
+    DemoMetricsSession,
+)

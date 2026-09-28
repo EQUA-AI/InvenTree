@@ -2,7 +2,10 @@
 
 import uuid
 
+from django.test import override_settings
 from django.utils import timezone
+
+from tasks.scope import MaintenanceScope
 
 from assets.models import AssetMachine, Client
 from assets.health_models import (
@@ -12,6 +15,21 @@ from assets.health_models import (
     SignalQuality,
     SourceType,
 )
+
+#: Client ids currently authorized for the test actor. The machine-health
+#: parent lookup is fail-closed (``tasks.scope.enforce_machine_scope``): a
+#: role grant alone is not client-scope authority, so the suites resolve the
+#: actor's scope explicitly through a real resolver instead of relying on
+#: legacy pass-through.
+_GRANTED_CLIENT_IDS: list[int] = []
+
+
+def _health_scopes(actor):
+    """Scope resolver for the health suites: the env's client tenant."""
+    return {
+        MaintenanceScope(customer_id=None, site_key=None, client_id=client_id)
+        for client_id in _GRANTED_CLIENT_IDS
+    }
 
 
 class HealthEnvMixin:
@@ -24,6 +42,15 @@ class HealthEnvMixin:
         self.client_tenant = Client.objects.create(
             name=f'Health {suffix}', code=f'health-{suffix}'
         )
+        _GRANTED_CLIENT_IDS.append(self.client_tenant.pk)
+        self.addCleanup(_GRANTED_CLIENT_IDS.clear)
+        override = override_settings(
+            AIMMS_MAINTENANCE_SCOPE_RESOLVER=(
+                'machine_health.tests.fixtures._health_scopes'
+            )
+        )
+        override.enable()
+        self.addCleanup(override.disable)
         self.machine = AssetMachine.objects.create(
             name=f'Pump {suffix}', client=self.client_tenant
         )

@@ -44,7 +44,7 @@ import {
   useMemo,
   useState
 } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
@@ -60,6 +60,15 @@ import type {
 
 import { useApi } from '../../contexts/ApiContext';
 import { showApiErrorMessage } from '../../functions/notifications';
+import { useUserState } from '../../states/UserState';
+import { DemoScopeBanner } from '../assets/locations/DemoMetricsPanel';
+import {
+  type DemoWorkList,
+  demoMetricsApi,
+  demoQueryKeys,
+  historyWindow,
+  parseDemoScope
+} from '../assets/locations/demoMetrics';
 import {
   WorkOrderCreateModal,
   type WorkPackageResult
@@ -271,6 +280,44 @@ export default function MaintenanceBoard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  // Explicit synthetic-demo filter arriving from a drill-down link. The URL
+  // filters are applied to the rendered cards through the authorized
+  // contributing-work endpoint (same cohort intersection as the location
+  // workspace); without the parameter the board behaves exactly as before.
+  const [searchParams] = useSearchParams();
+  const demoScope = useMemo(() => parseDemoScope(searchParams), [searchParams]);
+  const identity = useUserState((s) => s.authGeneration);
+  const demoEnabled = !!demoScope.session;
+  const demoRange = useMemo(() => historyWindow(14), [demoScope.session]);
+  const demoWork = useQuery<DemoWorkList>({
+    queryKey: demoQueryKeys({
+      identity,
+      session: demoScope.session,
+      location: demoScope.location,
+      descendants: !demoScope.direct,
+      window: demoRange
+    }).work,
+    queryFn: async ({ signal }) =>
+      (
+        await api.get(
+          `${demoMetricsApi}sessions/${demoScope.session}/work-orders/`,
+          {
+            signal,
+            params: {
+              location: demoScope.location ?? undefined,
+              include_descendants: !demoScope.direct
+            }
+          }
+        )
+      ).data,
+    enabled: demoEnabled,
+    retry: false
+  });
+  const demoWorkIds = useMemo(
+    () => new Set((demoWork.data?.results ?? []).map((row) => row.id)),
+    [demoWork.data]
+  );
+
   // Below Mantine's `sm` breakpoint the size='lg' modals are unusable; go
   // full-screen so forms are reachable on a phone. HTML5 drag between columns
   // does not fire on touch anyway, so the per-card status Select remains the
@@ -435,12 +482,30 @@ export default function MaintenanceBoard() {
     const workOrders = new Map(
       (cardsQuery.data ?? []).map((workOrder) => [workOrder.id, workOrder])
     );
+    let boardCards = boardCardsQuery.data ?? [];
+    if (demoEnabled) {
+      if (!demoWork.data) {
+        // The demo filter is not resolved yet (loading or failed): never
+        // flash the unfiltered board under a demo-scope URL.
+        setTasks([]);
+        return;
+      }
+      boardCards = boardCards.filter((card) =>
+        demoWorkIds.has(card.work_order)
+      );
+    }
     setTasks(
-      (boardCardsQuery.data ?? []).map((card) =>
+      boardCards.map((card) =>
         convertCardToTask(card, workOrders.get(card.work_order))
       )
     );
-  }, [boardCardsQuery.data, cardsQuery.data]);
+  }, [
+    boardCardsQuery.data,
+    cardsQuery.data,
+    demoEnabled,
+    demoWork.data,
+    demoWorkIds
+  ]);
 
   // Board columns are persisted server-side (kanban/columns/). Previously they
   // lived only in useState, so add/reorder/delete never survived a refresh and a
@@ -1264,6 +1329,7 @@ export default function MaintenanceBoard() {
 
   return (
     <Stack gap='lg'>
+      <DemoScopeBanner scope={demoScope} work={demoWork} />
       <Text>{t`Track maintenance work by stage, keep ownership visible, and open any work order for its full detail.`}</Text>
       <Group justify='space-between' align='flex-start'>
         <Group gap='sm'>

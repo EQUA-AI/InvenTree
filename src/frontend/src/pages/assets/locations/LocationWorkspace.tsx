@@ -27,7 +27,7 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useApi } from '../../../contexts/ApiContext';
 import { useUserState } from '../../../states/UserState';
-
+import { DemoMetricsPanel } from './DemoMetricsPanel';
 import { LocationBrowser, locationKindLabel } from './LocationBrowser';
 import { LocationEditDialog, MachineMoveDialog } from './LocationDialogs';
 import {
@@ -455,7 +455,13 @@ export function LocationWorkspace({
   const rawDemo = params.get('demo_session');
   const demoSession =
     rawDemo && /^[0-9a-f-]{36}$/i.test(rawDemo) ? rawDemo : null;
-
+  const setDemoSession = (value: string | null) =>
+    setParams((previous) => {
+      const next = new URLSearchParams(previous);
+      if (value) next.set('demo_session', value);
+      else next.delete('demo_session');
+      return next;
+    });
   const [editing, setEditing] = useState<{
     node?: LocationNode;
     parent?: LocationNode;
@@ -730,10 +736,12 @@ export function LocationWorkspace({
                         onSearchChange={setMachineSearch}
                         source='sites'
                       />
-                      <Text
-                        size='sm'
-                        c='dimmed'
-                      >{t`Historical performance will appear when validated event and placement history is available. Current placement does not establish past downtime.`}</Text>
+                      <DemoMetricsPanel
+                        session={demoSession}
+                        onSessionChange={setDemoSession}
+                        locationId={selected.pk}
+                        descendants={!direct}
+                      />
                     </>
                   ) : (
                     !locationId && (

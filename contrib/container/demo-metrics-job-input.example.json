@@ -1,0 +1,30 @@
+{
+  "job_name": "aimms-demo-metrics",
+  "resource_group": "REPLACE_WITH_RESOURCE_GROUP",
+  "location": "eastus2",
+  "environment_resource_id": "/subscriptions/REPLACE_WITH_SUBSCRIPTION_ID/resourceGroups/REPLACE_WITH_RESOURCE_GROUP/providers/Microsoft.App/managedEnvironments/epcon-ai-env",
+  "git_commit": "REPLACE_WITH_40_CHAR_COMMIT_SHA",
+  "image_reference": "REPLACE_WITH_REGISTRY/repository@sha256:REPLACE_WITH_DIGEST",
+  "expected_image_digest": "sha256:REPLACE_WITH_DIGEST",
+  "web_image_reference": "REPLACE_WITH_REGISTRY/repository@sha256:REPLACE_WITH_DIGEST",
+  "worker_image_reference": "REPLACE_WITH_REGISTRY/repository@sha256:REPLACE_WITH_DIGEST",
+  "python_interpreter": "REPLACE_WITH_VERIFIED_PYTHON3_PATH",
+  "working_directory": "/home/inventree/src/backend/InvenTree",
+  "command": "plan_demo_metrics",
+  "command_args": [
+    "--fixture", "REPLACE_WITH_FIXTURE_PATH",
+    "--mapping", "REPLACE_WITH_RESOLVED_MAPPING_PATH",
+    "--out", "REPLACE_WITH_PLAN_OUTPUT_PATH",
+    "--actor", "REPLACE_WITH_OPERATOR_USERNAME"
+  ],
+  "replica_timeout_seconds": 600,
+  "environment": [
+    {"name": "INVENTREE_AUTO_UPDATE", "value": "False"},
+    {"name": "AIMMS_APPROVED_COMMIT_SHA", "value": "REPLACE_WITH_40_CHAR_COMMIT_SHA"},
+    {"name": "AIMMS_APPROVED_IMAGE_DIGEST", "value": "sha256:REPLACE_WITH_DIGEST"}
+  ],
+  "secret_references": [
+    {"name": "INVENTREE_DB_PASSWORD", "secret_ref": "REPLACE_WITH_APPROVED_SECRET_REFERENCE_NAME"},
+    {"name": "INVENTREE_SECRET_KEY", "secret_ref": "REPLACE_WITH_APPROVED_SECRET_REFERENCE_NAME"}
+  ]
+}

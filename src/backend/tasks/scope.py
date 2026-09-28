@@ -150,6 +150,31 @@ def require_machine_scope(actor, machine) -> MaintenanceScope:
     return scope
 
 
+def enforce_machine_scope(actor, machine) -> None:
+    """Explicit machine scope check; fails closed on every unresolved boundary.
+
+    This is the per-record gate behind the machine-scoped health reads (see
+    ``machine_health.api._machine``). It shares :func:`require_machine_scope`'s
+    fail-closed semantics exactly:
+
+    * a machine without a client is **denied** — an empty identity must never
+      read as "everyone's" (see the module docstring);
+    * an actor whose scope cannot be resolved is **denied** — role grants
+      alone (``work_order.view`` etc.) are not client-scope authority;
+    * a resolved actor scope that does not contain the machine's client is
+      **denied**.
+
+    Compatibility impact (deliberate, replaces the former "safe legacy"
+    pass-through): deployments reading machine health with role grants only —
+    no ``AIMMS_MAINTENANCE_SCOPE_RESOLVER`` configured and no per-actor
+    ``maintenance_scopes`` — now receive 404 for those reads instead of
+    unrestricted access. Configure a resolver (``single_site_scope_resolver``
+    or ``granted_client_scope_resolver``) or explicit actor scopes, and give
+    machines a client, to restore access under an authorized boundary.
+    """
+    require_machine_scope(actor, machine)
+
+
 def scope_for_maintenance_record(record) -> MaintenanceScope:
     """Resolve one maintenance record's boundary: its machine's client.
 
