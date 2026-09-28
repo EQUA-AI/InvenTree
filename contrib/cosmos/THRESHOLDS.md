@@ -476,52 +476,82 @@ running machine.
 
 ## The one to send first
 
-Question 1 below is the only item on this whole list that costs five minutes
-instead of a document request, and it is the one that decides whether the 307
+Three photographs, one per pump house. It is the only item on this list that
+costs minutes rather than a document request, and it decides whether the 404
 limits now live are right. Ready to forward as-is:
 
-> **Subject: One photo needed - motor rating plate, Saraswati or Parvathi**
+> **Subject: Three photographs needed - motor rating plates, one per pump house**
 >
-> Could someone photograph the rating plate on any one of the 40 MW pump motors?
-> Any machine will do - they are identical, so whichever is easiest to reach.
+> Could someone photograph the motor rating plate on one machine at each of the
+> three pump houses - Parvathi, Saraswati and Ranganayaka? Three photographs in
+> total, one per house.
 >
-> The whole plate please, straight on and in focus, rather than a typed extract.
-> It carries several things we need and we would rather read them than retype
-> them.
+> **Please do not substitute one plate for all three.** We had assumed the
+> machines were identical and they are not: the Ranganayaka sets are a different
+> rating from the other two, and the three houses were contracted separately, so
+> a plate from one house tells us nothing reliable about another.
 >
-> Why: the condition-monitoring dashboard now raises a winding-temperature alarm
-> at 125 degC and a critical at 145 degC. Those came from the standard using an
-> *assumed* insulation class F with temperature rise limited to class B. If the
-> plate says otherwise the alarm points move by up to 25 degC - in one direction
-> we get nuisance alarms, in the other a hot machine stays quiet - so we would
-> rather read the plate than keep the assumption.
+> **The whole plate, straight on and in focus** - not a typed extract. Plates
+> carry more than people expect and we would rather read it than have it
+> retyped. If the plate is hard to reach or badly weathered, the same rows from
+> the machine's own O&M manual data sheet would do: the page BHEL (or the
+> supplier) issues per machine, headed something like Technical Particulars or
+> Motor Data Sheet.
+>
+> What we are reading off it, in order of importance:
+>
+> 1. **Insulation class** (thermal class - 155(F)? 130(B)? something else?)
+> 2. **Rated temperature rise**, *and how it is measured* - "by resistance" and
+>    "by embedded temperature detector" are different numbers and we must not mix
+>    them up. If the plate gives a rise lower than the insulation class allows,
+>    that lower figure is the one we need.
+> 3. **Rated output, voltage and current** - so we can confirm which machine the
+>    plate belongs to.
+> 4. **Duty type**, and the **maximum ambient or coolant temperature** if the
+>    plate states one.
+>
+> Items 1 and 2 are required to be on the plate by the standard the machines were
+> built to (IS/IEC 60034-1, marking clause), so they should be there.
+>
+> **Why we are asking.** The condition-monitoring dashboard raises a winding
+> temperature warning at 125 degC and a critical at 145 degC, on 404 detectors
+> across the three houses. Those numbers were *derived* from the standard on an
+> assumption nobody has confirmed - insulation class F with the temperature rise
+> held to class B, which is the usual Indian practice for machines of this class
+> but is not the same as reading your plate.
+>
+> If the assumption is wrong the alarm points move by 25 to 30 degC. One
+> direction gives nuisance alarms. The other is worse: a genuinely hot machine
+> stays quiet. We would rather read the plate than keep guessing.
 
-**Ask for the whole plate, not the two lines.** A rating plate normally carries
-insulation class, temperature rise, rated voltage, rated current, duty and
-design ambient - and IS/IEC 60034-1:2004 cl. 10.2 item 8 *requires* it to state
-the thermal class and, printed separately, the rise limit when that is lower.
-The information is on the plate by law, not by luck.
+**Why three and not one.** An earlier version of this request asked for a single
+plate on the grounds that the machines are identical. The public procurement
+record says otherwise: BHEL supplied Packages 6, 8, 10 and 11, while the
+Medigadda, Annaram and Sundilla lifts were let as separate contracts - so the
+OEM for Parvathi and Saraswati is not established in either direction, and those
+two carry **301 of the 404 armed points**. Treat each plate as covering only its
+own station.
 
-**But ask each pump house separately: three plates, not one.** An earlier
-version of this line said one photograph answers questions 1, 2 and 3. It does
-not. CAG's audit places BHEL as the pump and motor supplier for Packages 6, 8,
-10 and 11, while Medigadda, Annaram and Sundilla were let as separate contracts,
-so the OEM for Parvathi and Saraswati is unestablished - and those two carry
-**275 of the 307 armed winding points**. Treat each plate as covering only its
-own station. See "Searched the public record" below.
+**Ask for the measurement method, not just the number.** BHEL's own published
+specifications state temperature rise *by resistance*; the 125 degC here rests on
+the *embedded detector* column of IS/IEC 60034-1 Table 7. Those are different
+quantities - a mean winding temperature and a hot-spot reading - and a plate
+figure adopted without its method would move the band in an unknown direction.
 
-**Photograph the measurement method too.** BHEL's own specifications state rise
-*by resistance*; the 125 here rests on the *embedded detector* column of Table 7.
-Those are different quantities, and a plate figure read without its method could
-move the band in the wrong direction.
+**Two questions already withdrawn, so they are not in the message.** Whether the
+rise is referred to the primary or secondary coolant does not move the ceiling
+(Table 9 item 2), and neither does the design ambient (Table 9 item 1c). Both
+were on this list until the arithmetic retired them. Asking for them anyway would
+spend the plant's goodwill on numbers we have proved we do not need.
 
-**Ranganayaka Sagar needs its own plate.** Those are a different machine - the
-catalogue records 134 MW with a different detector layout - and all 32 of their
-winding points now carry the same 125/145 band, which was derived from the
-*Annaram* assumption. That makes the second photograph worth more than it was
-when the points were simply unlimited: the band is now live on a machine nobody
-has checked the class of. Still not urgent, because the assumption errs early
-rather than late, but it is no longer free.
+**Ranganayaka's is the one that is furthest from its evidence.** Those are a
+different machine - 134 MW against 40, with a different detector layout - yet all
+32 of their winding points carry the same 125/145 band, derived from an
+assumption about the *Annaram* machines. It is also the only one of the three
+that the procurement record does place with BHEL, so it is the station where the
+house practice cited above has the best claim to apply. Both of those cut the
+same way: it is the plate whose figure is least likely to be a surprise, and the
+machine currently running on the most borrowed reasoning.
 
 ## What the plant could answer
 
