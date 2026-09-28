@@ -498,9 +498,22 @@ limits now live are right. Ready to forward as-is:
 
 **Ask for the whole plate, not the two lines.** A rating plate normally carries
 insulation class, temperature rise, rated voltage, rated current, duty and
-design ambient. One photograph therefore answers questions 1, 2 and 3 below, and
-part of 8, for the same five minutes - whereas asking for "the insulation class"
-gets exactly one of them.
+design ambient - and IS/IEC 60034-1:2004 cl. 10.2 item 8 *requires* it to state
+the thermal class and, printed separately, the rise limit when that is lower.
+The information is on the plate by law, not by luck.
+
+**But ask each pump house separately: three plates, not one.** An earlier
+version of this line said one photograph answers questions 1, 2 and 3. It does
+not. CAG's audit places BHEL as the pump and motor supplier for Packages 6, 8,
+10 and 11, while Medigadda, Annaram and Sundilla were let as separate contracts,
+so the OEM for Parvathi and Saraswati is unestablished - and those two carry
+**275 of the 307 armed winding points**. Treat each plate as covering only its
+own station. See "Searched the public record" below.
+
+**Photograph the measurement method too.** BHEL's own specifications state rise
+*by resistance*; the 125 here rests on the *embedded detector* column of Table 7.
+Those are different quantities, and a plate figure read without its method could
+move the band in the wrong direction.
 
 **Ranganayaka Sagar needs its own plate.** Those are a different machine - the
 catalogue records 134 MW with a different detector layout - and all 32 of their
@@ -529,10 +542,17 @@ Ordered by how much each one moves. The first alone swings the winding band by
 6. Does BHEL's type-test or heat-run report give measured winding and core rise at
    rated load? The only route to a real core band.
 7. Cage induction or synchronous - which decides whether the brush gear is
-   slip-ring or a shaft-grounding brush.
+   slip-ring or a shaft-grounding brush. (Likely **synchronous**: CAG records SFC
+   starting equipment at Annaram and Sundilla, and BHEL's lift-irrigation line
+   above 25 MW is salient-pole vertical synchronous. Neither is conclusive - an
+   SFC can start a large induction machine too - so the question stands, but it
+   is now a confirmation rather than an open choice.)
 8. Four motor data-sheet rows would replace most of the judgement in the cooling
    families: max permissible cooling water inlet and outlet, cold air entering,
-   hot air leaving.
+   hot air leaving. (The *design ambient* half of this question is withdrawn:
+   IS/IEC 60034-1 Table 9 item 1c reduces the permitted rise by any excess above
+   40 degC, so the absolute ceiling is the same whether the machine was designed
+   to 40 or to BHEL's usual 50.)
 9. Is cooling water drawn from the barrage pool or the discharge column, and what
    inlet temperature was contracted?
 10. Bearing pad RTD location - 75/75 on the shoe face, or behind the bond line -
@@ -604,6 +624,120 @@ it would buy, and warns why the vendor's own figures are not a substitute:
 "These prescribed alarm levels are in most cases much higher than the maximum
 that the motor temperature ever reaches when in service. Once alarm levels are
 reached, significant damage was already caused to the motor."
+
+---
+
+## Searched the public record, 2026-09-28
+
+Four independent source classes - the OEM, project and regulatory documents,
+technical literature, and the standards themselves - each searched and then
+re-checked by a second pass that re-downloaded every cited document and
+confirmed every quote in place. **No angle produced a figure. All four
+"constrain".**
+
+**The decisive negative.** CAG's Kaleshwaram audit is public, detailed, and
+quotes contract terms verbatim, so it was the best candidate. It contains
+**zero** occurrences of *insulation*, *temperature rise*, *class F*, *class B*,
+*CACW*, *CACA*, *IS 325*, *60034*, *IS 5120*, *winding*, *stator* - or even the
+bare word *temperature*. Twelve greps, 0/0 across both chapters, re-run by the
+checker. Nothing in the regulatory record establishes the thermal class of these
+machines, and **125/145 remains derived rather than read.**
+
+### What the search did establish
+
+**The assumption is the standard Indian convention, and it now has a statutory
+citation.** CEA (Technical Standards for Construction of Electrical Plants and
+Electric Lines) Regulations - r.37(2) in the 2010 edition, r.40(2)(a)(ii) in
+2022 - require class F insulation with temperature rise limited to class B for
+large vertical machines in a water powerhouse. The Government of Maharashtra's
+Water Resources Department specifies the same pairing for a vertical
+lift-irrigation pump motor, and BHEL's own HT-motor specification states it as a
+blanket house rule: *"HV/MV/LT motors shall have class F insulation. The
+temperature rise of all motors shall be limited to the limits applicable to
+Class 'B' insulation."*
+
+Read that for what it is. Three *organisations*, not three independent
+derivations - it is one long-standing Indian specification convention, quoted
+three times. And the CEA regulations' own applicability clause covers generating
+companies, transmission licensees and distribution licensees, so their reach to
+a lift-irrigation pumping station is arguable rather than settled. What this
+changes is the *status* of the assumption: it was a guess, and it is now the
+documented norm for this duty in this country. It is still not this machine's
+plate.
+
+**The dangerous branch is weakened, not closed.** BHEL's product literature
+gives *"Insulation System Class F/ H"* and never mentions class B. That is an
+argument from silence in a four-page marketing flyer whose own published range -
+synchronous to 25,000 kW, vertical lift-irrigation "upto 15 MW" - excludes both
+the 40 MW and the 134 MW machines, and which post-dates the KLIS supply. It is
+context, not proof. **Class B insulation, the case in which 125/145 warns late,
+is made unlikely by convention and is not ruled out by evidence.**
+
+### Two questions retired, by arithmetic rather than by a document
+
+**The design ambient does not move the alarm point.** IS/IEC 60034-1 Table 9
+item 1c: where a maximum ambient above 40 degC is specified, the permitted rise
+is *reduced by the excess*. So a machine designed to BHEL's usual 50 degC
+ambient has the same absolute ceiling as one designed to 40. This is the same
+structure as the Table 9 item 2 result that retired question 2, and it removes
+the design-ambient half of question 8.
+
+**The coolant datum does not move it either**, for the same reason: Table 9 item
+1d increases the limit by 15 K and then adds or subtracts the difference from
+25 degC, so the ceiling is invariant in the water inlet temperature.
+
+### One trap this search found, worth more than a citation
+
+**BHEL states temperature rise *by resistance*; the 125 comes from an *embedded
+detector* limit.** BHEL's general motor specification fixes "70 deg. C by
+resistance method for both thermal class 130(B) & 155(F) insulation", and 80 K
+by resistance over inlet cooling water for water-cooled machines. Those are mean
+winding temperatures. The 85 K of IS/IEC 60034-1 Table 7 item 1a that this
+table's 125 rests on is the **ETD** column - the hottest spot a detector sees.
+The two are different quantities and must never be compared directly, and a
+plate photograph must therefore be read for the *measurement method* alongside
+the number. IS 12802:1989 cl. 5.3 makes the ETD method mandatory by default for
+AC stator windings, which is what licenses Table 7's ETD column here.
+
+Useful consequence: **the plate is legally required to carry the answer.**
+IS/IEC 60034-1:2004 cl. 10.2 item 8 requires the rating plate to state the
+thermal class and, printed separately, the limit of temperature rise when it is
+lower than that class. So the photograph is not a hopeful request - the
+information is required to be on the plate by the standard the machines were
+built to.
+
+### And one correction to the ask itself
+
+**"One photograph answers four questions" was wrong, and the procurement record
+is why.** CAG places BHEL as the pump and motor supplier for Packages 6, 8, 10
+and 11. The Medigadda, Annaram and Sundilla lifts were let as separate contracts
+- CAG: *"in the three LS contracts relating to..."* - so **the OEM for Parvathi
+(Sundilla) and Saraswati (Annaram) is not established**, in either direction.
+News reporting says BHEL designed those motors too; that is press-release
+material and does not meet this table's evidence bar, and the argument that they
+are *not* BHEL is equally an argument from silence. Either way, the BHEL house
+practice cited above cannot be assumed to reach the **275 of 307 armed winding
+points that sit at Parvathi and Saraswati**.
+
+So the ask is **one plate per pump house, three in total**, each treated as
+covering only its own station. Note also that CAG never names a "Ranganayaka
+pump house": the Package-11 134.44 MW x 4 to Ranganayaka mapping comes from
+elsewhere and is not corroborated by the audit.
+
+### Dead ends, recorded so nobody repeats them
+
+- `cwc.gov.in/en/tac-meeting-minutes` - HTTP 401, confirmed twice.
+- `bpl.bhel.com` - the BHEL Bhopal hydro pages are gone; HTTPS returns 403,
+  plain HTTP 503. Reachable only through the Wayback Machine.
+- `tgpcb.cgg.gov.in` - TCP timeout at 40 s.
+- CBIP ICOLD 2021 proceedings - HTTP 404 on every paper path tried.
+- Kaleshwaram's own Engineer-in-Chief published an ICOLD symposium paper on the
+  project; it contains no electrical machine data at all.
+- Academic indexes return two records for the barrage pump houses, and they are
+  duplicates of one water-policy report with no electromechanical content.
+- Every apparently independent "43 machines / 40 MW" report - PRNewswire,
+  Business Standard, Siasat, Hans India and others - traces to a single MEIL
+  press release. One source, many mirrors.
 
 ---
 
