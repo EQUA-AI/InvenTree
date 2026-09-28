@@ -16,6 +16,11 @@ a permanent alarm about a machine that is standing still, which is the fastest
 way to teach an operator to ignore the system. An exclusion without a reason is
 refused, because a channel nobody can explain is not excluded, it is forgotten.
 
+An exclusion also *disarms*. Adding one used to be inert against a channel that
+had already been armed - the file would say disarmed and the database would say
+125/145 - so the one artefact that is supposed to be the authority on limits was
+authoritative in only one direction.
+
 The validation mirrors the dictionary review's: a bound may be set only with a
 citation and a reason, the same way a point may be approved only with a note.
 The unit check is the one that matters most - a figure derived in degrees
@@ -147,7 +152,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         """Apply every family, or preview and roll the whole thing back."""
         families = self.load(options['limits'])
-        applied = skipped = unchanged = 0
+        applied = skipped = unchanged = disarmed = 0
         report = []
         armed_machine_ids = set()
 
@@ -178,6 +183,22 @@ class Command(BaseCommand):
                     b for b in matched if (station_of(b), b.external_key) in excluded
                 ]
                 skipped += len(hit)
+
+                # An exclusion has to work in both directions. A channel armed
+                # before its exclusion existed would otherwise keep the limit
+                # for ever - the file would say the channel is disarmed and the
+                # database would disagree, which is the failure this file exists
+                # to prevent. Clearing is safe because two families may not
+                # claim the same tag; the committed file's own test pins that.
+                for binding in hit:
+                    if any(getattr(binding, name) is not None for name in BOUNDS):
+                        for name in BOUNDS:
+                            setattr(binding, name, None)
+                        binding.save(update_fields=list(BOUNDS))
+                        disarmed += 1
+                        report.append(
+                            f'  disarmed {binding.external_key}: now excluded'
+                        )
 
                 for binding in matched:
                     if binding in wrong_unit or binding in hit:
@@ -224,6 +245,7 @@ class Command(BaseCommand):
             self.stdout.write(f'applied   : {applied}')
             self.stdout.write(f'unchanged : {unchanged}')
             self.stdout.write(f'skipped   : {skipped}')
+            self.stdout.write(f'disarmed  : {disarmed}')
             self.stdout.write(
                 f'evaluated : {len(armed_machine_ids)} machines, {raised} breaching'
             )

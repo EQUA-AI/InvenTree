@@ -68,6 +68,11 @@
      "key": "/dex/PUMP6_PUMP_MOTOR_WINDING_TEMPERATURED2",
      "reason": "Breaches in the sampled window even though its newest reading looks ordinary; the original probe of the recorded window excluded it on that basis. Observed 30.2 degC now.",
      "station": "PH_2"
+    },
+    {
+     "key": "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMPERATURED9",
+     "station": "PH_2",
+     "reason": "Reports the 3276.7 over-range marker in 63 of 75 samples across the recorded span - 84% of the time the channel is not measuring. The 12 usable readings are plausible, which is exactly why the original screen cleared it: apply_winding_thresholds counts usable samples and never asks what fraction of the total they are. A limit here is inert for five readings in six."
     }
    ],
    "exclusion_note": "All eleven are at Millbrook (Saraswati). THRESHOLDS.md records that applying this row to all 318 channels left 41 of 7,573 sampled readings breaching - 12 above 145 and 29 between 125 and 145 - on a plant whose every bay is stopped, and that six Millbrook channels produced every one of them. These are the channels whose own data cannot carry the limit. Removing an entry from this list arms that channel; do it only with a reading that justifies it."

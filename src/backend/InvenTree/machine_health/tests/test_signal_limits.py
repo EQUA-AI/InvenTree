@@ -376,3 +376,81 @@ class BackstopRowTests(TestCase):
         self.assertEqual(excluded['station'], 'PH_3')
         self.assertIn('-242.1', excluded['reason'])
         self.assertIn('75 of 75', excluded['reason'])
+
+
+class ExclusionDisarmsTests(ApplyLimitsEnv, TestCase):
+    """An exclusion has to work in both directions.
+
+    The file is the authority on limits - that is the whole reason limits live
+    in a reviewed document rather than in a database. Adding an exclusion used
+    to be inert against a channel that had already been armed, so the file could
+    say a channel was disarmed while the database still carried 125/145. A
+    reviewer reading the file would have been wrong about the plant.
+    """
+
+    def excluding(self, key):
+        """A document that arms the winding family but excludes one channel."""
+        return self.document(
+            exclude=[
+                {
+                    'key': key,
+                    'station': 'PH_9',
+                    'reason': 'reports the over-range marker five readings in six',
+                }
+            ]
+        )
+
+    def test_excluding_an_armed_channel_clears_its_bounds(self):
+        """The case that was silently broken."""
+        key = '/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED1'
+        self.run_command(self.document())
+        self.assertEqual(
+            MachineSignalBinding.objects.get(external_key=key).critical_max, 145
+        )
+
+        output = self.run_command(self.excluding(key))
+
+        self.assertIn('disarmed  : 1', output)
+        binding = MachineSignalBinding.objects.get(external_key=key)
+        for bound in ('normal_min', 'normal_max', 'warn_min', 'warn_max',
+                      'critical_min', 'critical_max'):
+            self.assertIsNone(getattr(binding, bound), bound)
+
+    def test_the_sibling_channel_keeps_its_limit(self):
+        """Disarming one channel must not disarm the family."""
+        self.run_command(self.excluding('/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED1'))
+
+        kept = MachineSignalBinding.objects.get(
+            external_key='/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED2'
+        )
+        self.assertEqual(kept.critical_max, 145)
+
+    def test_excluding_a_channel_that_was_never_armed_disarms_nothing(self):
+        """The common case must stay quiet rather than reporting phantom work.
+
+        Every exclusion in the committed file is of this kind - the channel was
+        excluded before it was ever armed - so this is the path that runs on
+        nearly every invocation, and it has to report zero rather than churn.
+        """
+        key = '/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED1'
+
+        first = self.run_command(self.excluding(key))
+        self.assertIn('disarmed  : 0', first)
+
+        again = self.run_command(self.excluding(key))
+        self.assertIn('disarmed  : 0', again)
+        self.assertIsNone(
+            MachineSignalBinding.objects.get(external_key=key).critical_max
+        )
+
+    def test_a_dry_run_does_not_disarm(self):
+        """A preview that silently removed protection would be the worst kind."""
+        key = '/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED1'
+        self.run_command(self.document())
+
+        output = self.run_command(self.excluding(key), dry_run=True)
+
+        self.assertIn('disarmed  : 1', output)
+        self.assertEqual(
+            MachineSignalBinding.objects.get(external_key=key).critical_max, 145
+        )

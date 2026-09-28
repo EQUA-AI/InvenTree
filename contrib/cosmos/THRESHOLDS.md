@@ -1,7 +1,7 @@
 # Alarm thresholds: one row applied, and why the rest are not
 
 **Status: the stator-winding row and the core backstop are applied; everything
-else is still a draft.** **412 of 1,452** active bindings carry limits. The rest remain unbounded, so
+else is still a draft.** **411 of 1,452** active bindings carry limits. The rest remain unbounded, so
 `classify()` still returns `unknown` for them. (The earlier figure here, 1,294,
 predated the last activation; re-counted 2026-09-27.)
 
@@ -624,6 +624,99 @@ it would buy, and warns why the vendor's own figures are not a substitute:
 "These prescribed alarm levels are in most cases much higher than the maximum
 that the motor temperature ever reaches when in service. Once alarm levels are
 reached, significant damage was already caused to the motor."
+
+---
+
+## Every bound channel's observed range, 2026-09-28
+
+The winding and core screens each read whole documents and discarded every tag
+but one family. Each document carries all ~900 tags, so surveying **every** bound
+channel costs the same reads. 1,386 of 1,452 bound channels, 78 / 77 / 17
+documents across the three stations at a 3-hour stride over the 238-hour span.
+(The missing 66 are `/pd/` tags that do not live in the `dex` extension.)
+
+| verdict | channels | meaning |
+|---|---:|---|
+| varies | 1,116 | a moving measurement |
+| constant | 174 | one distinct value across 238 hours |
+| signed | 57 | negative on a unit that cannot be negative |
+| railed | 21 | on a converter full-scale rail |
+| pegged | 18 | the 3276.7 over-range marker dominates |
+
+**Read the first two carefully; a naive reading of them is wrong.** 58 of the
+174 "constant" channels are `MOTOR_ON_STATUS` and `MOTOR_OFF_STATUS`, and 28
+more are `ACTIVE_POWER` at 0.0. Those are *correct*: the bays are stopped for the
+whole window, so a status bit that never changes is reporting accurately.
+Likewise 85 of the "signed" channels read between -5 and 0 - speed at -1.69 rpm,
+discharge pressure at -0.03 mH2O - which is transducer offset near zero on a
+stopped machine, not a fault. Counting either as broken would have overstated the
+problem by a factor of three.
+
+### What is actually wrong
+
+**One armed channel reports the over-range marker five readings in six.**
+`PH_2 /dex/PUMP2_PUMP_MOTOR_WINDING_TEMPERATURED9`: 63 of 75 samples at 3276.7,
+and it carried a live 125/145. It is now excluded.
+
+That is a **defect in the screening rule, not just one bad channel.**
+`apply_winding_thresholds` skips pegged samples before counting
+(`if _pegged(value): continue`) and then asks only whether at least
+`MIN_SAMPLES` usable readings remain. It never asks what *fraction* of the total
+those are. A channel that is pegged 84% of the time and plausible the rest
+therefore passes as clean. Any future family screened the same way inherits this.
+
+**Ten channels report impossible temperatures**, none of them currently armed,
+all of them future exclusions for whichever family arms them:
+
+| station | channel | observed |
+|---|---|---|
+| PH_2 | `PUMP2_..._TEMPERATURED2` | -188.90 .. -81.60 |
+| PH_2 | `PUMP7_..._TEMPERATURED10` | -161.60 .. -64.90 |
+| PH_3 | `PUMP6_PUMP_COOLING_WATER_INLET_TEMP2` | -140.20 .. 3276.70 |
+| PH_3 | `PUMP4_MOTOR_CORE_RTD2_PROCESS_VALUE` | -242.10, constant |
+| PH_3 | `PUMP10_PUMP_COOLING_WATER_OUTLET_TEMP4` | -43.00 .. -6.20 |
+| PH_2 | `PUMP2_PUMP_COOLING_AIR_ND_END_RIGHT_COLDD14` | -30.30 .. 3276.70 |
+| PH_2 | `PUMP6_PUMP_COOLING_WATER_OUTLET_TEMP1` | -13.90 .. -12.20 |
+
+Seventeen further channels are pegged outright - 3276.7 on every sample taken -
+across cooling water inlet, outlet, inlet-water and cold air. None is armed yet;
+all of them would need excluding the day a cooling family is.
+
+### Two bays that do not behave like their neighbours
+
+Constant-channel fraction, same station, same 75 samples, same hall:
+
+| bay | constant / total | |
+|---|---|---|
+| PH_2 Pump 05 | **35 / 37 = 95%** | the known frozen block, confirmed from a second angle |
+| PH_3 Pump 02 | **29 / 56 = 52%** | **new** |
+| PH_3 Pump 01 | 4 / 56 = 7% | a healthy sibling, for comparison |
+
+Pump 02 at Cedar Creek is not a whole-bay freeze. It is a *subset*, and the
+subset is informative: `MOTOR_CORE_RTD1` through `RTD4` move across 7-8 distinct
+values while `RTD5` and `RTD6` sit dead still, on the same bay, in the same
+family. Five winding detectors, nine cooling-water channels, four cold-air
+channels and two thrust-pad RTDs are likewise frozen while their siblings drift.
+That is individual stuck detectors, not one failed card.
+
+**Nineteen armed channels are among the frozen**, twelve of them on Millbrook
+Pump 05 and seven on Cedar Creek Pump 02. They are **deliberately left armed**,
+and the reasoning is worth stating because it is not obvious. A frozen detector
+under-reports, so the risk it carries is a *missed* alarm rather than a nuisance
+one - and excluding it does not restore protection, it only records that there is
+none. Since the hall drifts by less than a kelvin over ten days, "stuck" and
+"genuinely stable" cannot be separated from a 3-hour stride with certainty. The
+honest position is that these are flagged and not yet settled; a denser walk over
+one bay would settle it cheaply, and the plant can settle it instantly.
+
+### And a defect the survey exposed in the limits file itself
+
+**An exclusion did not disarm.** Adding a channel to an `exclude` list skipped it,
+leaving whatever bounds it already carried - so the file could say a channel was
+disarmed while the database still held 125/145. The one artefact that is supposed
+to be the authority on limits was authoritative in only one direction. Excluding
+now clears all six bounds and reports `disarmed`, and four tests pin it,
+including that a `--dry-run` reports the disarm without performing it.
 
 ---
 
