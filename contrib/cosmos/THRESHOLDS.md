@@ -1,7 +1,7 @@
 # Alarm thresholds: one row applied, and why the rest are not
 
-**Status: the stator-winding row is applied; everything else is still a draft.**
-**307 of 1,452** active bindings carry limits. The rest remain unbounded, so
+**Status: the stator-winding row and the core backstop are applied; everything
+else is still a draft.** **412 of 1,452** active bindings carry limits. The rest remain unbounded, so
 `classify()` still returns `unknown` for them. (The earlier figure here, 1,294,
 predated the last activation; re-counted 2026-09-27.)
 
@@ -55,8 +55,9 @@ real channels rather than a marker", and left them at `GOOD` on that reasoning.
 For `-59.3` it is false. Its positive counterpart is **32767** counts and it is
 itself **32768** - one raw count apart, which is a two's-complement rail pair,
 not a sign flip. It is the same class of object as `3276.7` above, one range
-scalar away. Finding 2 below has the lattice arithmetic. `-853.3` and `-242.1`
-fit nothing and are still unexplained; those two remain with Ask 1.
+scalar away. Finding 2 below has the lattice arithmetic. `-853.3` still fits
+nothing and remains with Ask 1. `-242.1` is settled - see "What applying the
+core backstop took": one dead channel, constant across the span.
 
 ---
 
@@ -69,7 +70,7 @@ because the objections are the useful part.
 | family | pts | warn | crit | standing |
 |---|---:|---:|---:|---|
 | Stator winding ETDs | 318 | 125 | 145 | **APPLIED to 307 of them, 2026-09-26.** IS/IEC 60034-1 Table 7 item 1a: 85 K rise by embedded detector for thermal class 130(B) on the 40 degC reference coolant, so 125 is the highest reading the machine is designed to produce. Trip from IEEE Std 3004.8-2016 cl. 8.5.2.1, "5 degC to 10 degC below the insulation class maximum" (155 - 10). |
-| Motor / stator core RTDs | 106 | 125 | 145 | **Backstop only.** No standard gives a core figure - cl. 8.10.4 is qualitative and there is no core row in Table 7 - so these carry the winding numbers unchanged. A plausible lower number was deliberately *not* invented: it would be the first thing to fire on a hot day. |
+| Motor / stator core RTDs | 106 | 125 | 145 | **APPLIED to 105 of them, 2026-09-28.** Backstop only. No standard gives a core figure - cl. 8.10.4 is qualitative and there is no core row in Table 7 - so these carry the winding numbers unchanged. A plausible lower number was deliberately *not* invented: it would be the first thing to fire on a hot day. |
 | Thrust + guide bearing pads | 181 | 80 | 90 | **Challenged.** 80 is a comparable plant's *trip* value (its alarm is 77), from a single low-profile paper on a 200 rpm Kaplan machine. 90 traces to API 610 cl. 6.10.2.4, which is a shop-test acceptance criterion for bearing metal, not an alarm setpoint. |
 | Bearing oil / reservoir | 10 | 70 | 80 | **Challenged hardest.** The only row the draft marked "no plant confirmation needed", and the one whose warning point is within reach of normal running: the reference band for a large vertical oil bath is 50-60 degC. The 70 is cited from API 610's *pressurized-system* oil outlet; these are ring-oiled sumps. |
 | Cooling water inlet | 108 | 50 | - | **Would fire today.** Against a cold-plant baseline of p95 48.8 and max 70.2, a warning at 50 sits *inside* the top 5% of the soak distribution, across 108 points. |
@@ -145,6 +146,27 @@ exists at more than one station. Any per-channel analysis has to key on
 (station, path) or it will clear a point at one station because its namesake
 elsewhere is clean.
 
+### What applying the core backstop took
+
+Applied 2026-09-28 to **105 of 106** points, screened per `(station, path)` over
+the recorded span with the same sampler and the same rules as the winding row -
+`PLAUSIBLE = (0, 125)`, `MIN_SAMPLES = 20`, densifying while any channel is
+short. 75 samples per channel, 105 clean, **0** too sparse to judge.
+
+One exclusion, and it closes an open question rather than opening one.
+`PUMP4_MOTOR_CORE_RTD2_PROCESS_VALUE` at Cedar Creek reads **exactly -242.1 in
+75 of 75 samples**, while its five sibling detectors on the same bay read
+36.6-43.4 degC throughout. A constant impossible value is a dead channel, so it
+is excluded with that reason rather than armed. It also **identifies the -242.1**
+that this file and BLOCKERS.md carried as an unexplained deep negative: it is one
+channel, it is not on the converter rail lattice, and it is not a sign fault.
+
+Nothing fires. Hottest core reading anywhere on the estate is 67.7 degC against a
+125 degC warning, and `apply_signal_limits` reports `evaluated : 29 machines, 0
+breaching` on application. The row will only ever fire on a genuine excursion or
+an instrument fault - which is what a backstop is for, and also why it is not a
+substitute for question 6.
+
 ### Undeterminable, honestly
 
 No defensible limit was found for: **hot air** (26 points - no standard fixes
@@ -214,10 +236,21 @@ They differ by **exactly one raw count**, which is the defining signature of a
 rail pair. All 15 currently carry quality `good`.
 
 Pump 05 is the one bay in the whole estate that is running. **Every one of its
-vibration channels is at positive full scale.** So the "frozen P5 block" that
-BLOCKERS.md records is, at least on these channels, a railed acquisition rather
-than stale data - and the estate's only loaded vibration sample is not weak
-evidence, it is no evidence.
+vibration channels is at positive full scale.**
+
+It is also frozen, and the two facts are separate. Measured against the local
+emulator over 539 consecutive snapshots spanning an hour, **all 66 of Pump 05's
+tags are `distinct=1`** - not only the rails but `ACTIVE_POWER` 24.5,
+`DISCHARGE_PRESSURE` 18.962385, every winding RTD. The control settles that this
+is not how the data normally behaves: stopped Pump 04, same station, same 539
+snapshots, varies on **45 of its 66**. So the "frozen P5 block" BLOCKERS.md
+records is real *and* its monitoring channels are additionally railed. An
+earlier draft of this section said the bay's other readings were "plausible and
+varied"; they are varied across channels and frozen in time, which is not the
+same thing, and the mistake was not checking the time axis.
+
+Either way the estate's only loaded vibration sample is not weak evidence, it is
+no evidence.
 
 This **refutes the "not fixed, deliberately" paragraph above** as it stood, and
 the same claim in the coercion source. `-59.3` is not "the exact negative of a
@@ -238,16 +271,20 @@ cache holds **21 railed readings at exactly four scalars and no others**:
 | x10 | `-592.5925903320312` / `+592.5745239257812` | 32768 / 32767 | V | 3 / 1 |
 
 Two are self-evidently not measurements: a valve position of **-118.5%** and a
-field voltage of **-592.6 V**. And the one that matters: **`PUMP5_SPEED` =
-474.06 rpm is a rail, not a speed.** So Pump 05's speed, all five of its
-vibration channels and its field voltage are one railed acquisition being
-presented as a running machine - and BLOCKERS.md's "474 rpm is plausible for a
-vertical pump" was reading a pegged converter.
+field voltage of **-592.6 V**.
+
+`PUMP5_SPEED` is the one to be careful about, and an earlier draft of this
+section overstated it. 474.06 rpm is exactly 32767 counts at scalar 80, with a
+relative error identical to the confirmed positive vibration rail - but 474.06
+rpm is also a plausible instrument range for this machine, so "the converter
+saturated" and "the machine is at the top of its range" cannot be told apart
+from the value. Provable: the reading sits exactly on the 32767 boundary. Not
+provable: which of the two that means. See BLOCKERS.md.
 
 `18.96` and `7.111` are *not* on this lattice. Their implied scalars land within
 6e-5 of `0.32` and `0.12`, suggestive of the same mechanism on a different
 conversion constant, but 6e-5 is 150x the float32 tolerance, so it is not proof.
-`853.3` and `242.1` fit nothing.
+`853.3` fits nothing. `242.1` is not a rail either, but it is no longer a mystery: it is one dead core detector, identified below.
 
 It also dissolves the family's stated clincher. The pass argued vibration is
 unboundable *by construction*, because a one-sided ceiling would flip the ten

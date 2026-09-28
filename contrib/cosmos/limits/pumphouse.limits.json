@@ -71,6 +71,23 @@
     }
    ],
    "exclusion_note": "All eleven are at Millbrook (Saraswati). THRESHOLDS.md records that applying this row to all 318 channels left 41 of 7,573 sampled readings breaching - 12 above 145 and 29 between 125 and 145 - on a plant whose every bay is stopped, and that six Millbrook channels produced every one of them. These are the channels whose own data cannot carry the limit. Removing an entry from this list arms that channel; do it only with a reading that justifies it."
+  },
+  {
+   "family": "Motor / stator core RTDs (backstop)",
+   "match": "^/dex/PUMP\\d+_(MOTOR_STATOR_CORE_RTD\\d+|MOTOR_CORE_RTD\\d+_PROCESS_VALUE)$",
+   "unit": "degC",
+   "warn_max": 125,
+   "critical_max": 145,
+   "citation": "IS/IEC 60034-1 Table 7 item 1a (85 K rise by embedded detector, thermal class 130(B), 40 degC reference coolant of cl. 6.1) and IEEE Std 3004.8-2016 cl. 8.5.2.1 (\"5 degC to 10 degC below the insulation class maximum temperature rating\"), carried unchanged from the stator-winding row. NO STANDARD FIXES A CORE TEMPERATURE: IS/IEC 60034-1 has no core row in Table 7 and cl. 8.10.4 is qualitative. This row cites the winding figures and claims nothing about cores.",
+   "reasoning": "A backstop, not a core limit, and that distinction is the whole of its justification. A core detector reading above the winding's own design ceiling is abnormal whatever the true core figure turns out to be, so 125/145 is a valid upper bound even though it is not the right one. A lower and more useful number was deliberately not invented: it would be the first thing to fire on a hot day, and nothing in this estate establishes where a healthy loaded core sits - every bay is stopped, and the one that runs is frozen on all 66 of its tags. Hottest core reading observed is 67.7 degC, so this fires on nothing today and will only ever fire on a genuine excursion or an instrument fault. Replace it when THRESHOLDS.md question 6 is answered: a BHEL type-test or heat-run report giving measured core rise at rated load is the only route to a real core band. Channels are screened per (station, path) over the recorded span the same way the winding row was; those reading outside 0-125 degC on a stopped plant, or too sparsely sampled to tell silence from absence, are excluded below rather than armed.",
+   "assumption": "That the stator-winding ceiling is a valid UPPER bound for a core detector. It is not the right number and this row does not claim to be one: a real core band needs a measured core rise at rated load (THRESHOLDS.md question 6). What makes it safe is the direction of the error - a core runs cooler than the winding it sits around, so 125/145 warns late rather than early, and a core reading above the winding's own design ceiling is abnormal whatever the true core figure is. The cost of that safety is sensitivity: this row will not catch a core drifting warm.",
+   "exclude": [
+    {
+     "key": "/dex/PUMP4_MOTOR_CORE_RTD2_PROCESS_VALUE",
+     "station": "PH_3",
+     "reason": "Reads exactly -242.1 in 75 of 75 samples across the recorded span, while its five sibling detectors on the same bay read 36.6-43.4 degC throughout. A constant impossible value is a dead channel, not a temperature, so a limit on it would present as protection and deliver none. This also identifies the -242.1 that BLOCKERS.md carried as an unexplained deep negative; it is not on the converter rail lattice."
+    }
+   ]
   }
  ]
 }

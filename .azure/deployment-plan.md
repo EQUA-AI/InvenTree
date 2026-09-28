@@ -528,7 +528,7 @@ users, parts and stock; it has none of this.
 | Cached current values | 1452 | No — written by the poller after `--activate`, or by `import_pumphouse_dump` (14.5) |
 | `HealthSource` and its `data_ranges` | 1 | No — hand-created, see 14.2 |
 | Ingestion checkpoints | 3 | No — created by `--activate` |
-| Signal limits (armed bounds) | 307 | No — applied by `apply_signal_limits` (14.3.6) |
+| Signal limits (armed bounds) | 412 | No — applied by `apply_signal_limits` (14.3.6) |
 
 Nothing here is telemetry. The readings stay in Cosmos and are read per request.
 
@@ -611,7 +611,7 @@ $EXEC "python src/backend/InvenTree/manage.py onboard_pumphouse_estate \
 #         classify() returns `unknown` everywhere and nothing can alarm.
 #         Preview first: the dry run reports how many alarms the file raises on
 #         the estate as it stands and then discards them, which is the number
-#         worth seeing before arming anything. Locally: 28 machines, 0
+#         worth seeing before arming anything. Locally: 29 machines, 0
 #         breaching. Applying also evaluates, so a breach present at arming
 #         time opens its anomaly immediately rather than waiting for a poll.
 $EXEC "python src/backend/InvenTree/manage.py apply_signal_limits \

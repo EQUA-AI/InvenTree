@@ -10,6 +10,7 @@ recorded rather than quietly armed.
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 from io import StringIO
 from pathlib import Path
@@ -57,8 +58,7 @@ class LimitsFileTests(TestCase):
                 for item in entry.get('exclude', []):
                     self.assertTrue(item['reason'].strip())
                     self.assertTrue(
-                        item['station'].strip(),
-                        'bay numbering repeats across stations',
+                        item['station'].strip(), 'bay numbering repeats across stations'
                     )
 
 
@@ -69,14 +69,23 @@ class ApplyLimitsEnv:
         """One station, one bay, two winding channels and one pressure."""
         client = Client.objects.create(name='Estate', code='estate')
         self.source = HealthSource.objects.create(
-            name='probe', source_type='iot', connector_type='cosmos_pumphouse',
-            client=client, active=True,
-            config={'endpoint': 'https://x.documents.azure.com:443/',
-                    'database': 'aimms', 'readings_container': 'r'},
+            name='probe',
+            source_type='iot',
+            connector_type='cosmos_pumphouse',
+            client=client,
+            active=True,
+            config={
+                'endpoint': 'https://x.documents.azure.com:443/',
+                'database': 'aimms',
+                'readings_container': 'r',
+            },
         )
         self.station = AssetMachine.objects.create(
-            name='Station', asset_type='pumphouse', client=client,
-            source_namespace='klsw', source_key='PH_9',
+            name='Station',
+            asset_type='pumphouse',
+            client=client,
+            source_namespace='klsw',
+            source_key='PH_9',
             source_entity_uuid='11111111-1111-4111-8111-111111111111',
         )
         self.bindings = {}
@@ -86,12 +95,21 @@ class ApplyLimitsEnv:
             ('/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED3', 'mH2O'),
         ):
             point = DictionaryPoint.objects.create(
-                station=self.station, machine=self.station, path=key,
-                raw_tag=key, status='approved', data_type='number', unit=unit,
+                station=self.station,
+                machine=self.station,
+                path=key,
+                raw_tag=key,
+                status='approved',
+                data_type='number',
+                unit=unit,
             )
             self.bindings[key] = MachineSignalBinding.objects.create(
-                source=self.source, machine=self.station, dictionary_point=point,
-                external_key=key, unit=unit, active=True,
+                source=self.source,
+                machine=self.station,
+                dictionary_point=point,
+                external_key=key,
+                unit=unit,
+                active=True,
                 display_name=key.rsplit('_', 1)[-1],
             )
 
@@ -114,8 +132,10 @@ class ApplyLimitsEnv:
         out = StringIO()
         with tempfile.TemporaryDirectory() as tmp:
             call_command(
-                'apply_signal_limits', limits=write(tmp, document),
-                stdout=out, **options
+                'apply_signal_limits',
+                limits=write(tmp, document),
+                stdout=out,
+                **options,
             )
         return out.getvalue()
 
@@ -141,11 +161,17 @@ class ApplyLimitsTests(ApplyLimitsEnv, TestCase):
 
     def test_an_excluded_channel_is_left_disarmed(self):
         """A channel whose own data breaches the limit raises a false alarm."""
-        self.run_command(self.document(exclude=[{
-            'station': 'PH_9',
-            'key': '/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED2',
-            'reason': 'pegged at the over-range marker',
-        }]))
+        self.run_command(
+            self.document(
+                exclude=[
+                    {
+                        'station': 'PH_9',
+                        'key': '/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED2',
+                        'reason': 'pegged at the over-range marker',
+                    }
+                ]
+            )
+        )
 
         kept = self.bindings['/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED1']
         skipped = self.bindings['/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED2']
@@ -179,10 +205,16 @@ class ApplyLimitsTests(ApplyLimitsEnv, TestCase):
     def test_an_exclusion_without_a_reason_is_refused(self):
         """A channel nobody can explain is forgotten, not excluded."""
         with self.assertRaises(CommandError):
-            self.run_command(self.document(exclude=[{
-                'station': 'PH_9',
-                'key': '/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED2',
-            }]))
+            self.run_command(
+                self.document(
+                    exclude=[
+                        {
+                            'station': 'PH_9',
+                            'key': '/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED2',
+                        }
+                    ]
+                )
+            )
 
     def test_a_warning_above_its_critical_is_refused(self):
         """It could never be reached, so it is a typo, not a policy."""
@@ -276,3 +308,71 @@ class ApplyLimitsEvaluationTests(ApplyLimitsEnv, TestCase):
 
         self.assertIn('0 breaching', output)
         self.assertFalse(MachineAnomaly.objects.exists())
+
+
+class BackstopRowTests(TestCase):
+    """The core row is a backstop, and the file has to keep saying so.
+
+    It carries the stator-winding figures onto motor and stator core detectors
+    because no standard publishes a core temperature at all. That is defensible
+    only as an upper bound - a core above the winding's own design ceiling is
+    abnormal whatever the true core figure is - and it stops being defensible
+    the moment someone reads the row as a core limit. So the things that make it
+    honest are pinned here rather than left to a reviewer's memory.
+    """
+
+    def setUp(self):
+        """Load the committed file and find the two families."""
+        document = json.loads(LIMITS_FILE.read_text(encoding='utf-8'))
+        self.families = {entry['family']: entry for entry in document['limits']}
+        self.core = next(
+            entry
+            for name, entry in self.families.items()
+            if name.startswith('Motor / stator core')
+        )
+        self.winding = self.families['Stator winding ETDs']
+
+    def test_the_backstop_says_no_standard_fixes_a_core_temperature(self):
+        """Its citation must disclaim itself, or the next reader will trust it."""
+        citation = self.core['citation'].lower()
+        self.assertIn('no standard fixes a core temperature', citation)
+        self.assertIn('claims nothing about cores', citation)
+
+    def test_the_backstop_carries_the_winding_figures_unchanged(self):
+        """A different number here would be an invented core limit."""
+        for bound in ('warn_max', 'critical_max'):
+            self.assertEqual(self.core[bound], self.winding[bound])
+        # And nothing else: a minimum would be a dead-channel gate in disguise.
+        for bound in ('normal_min', 'normal_max', 'warn_min', 'critical_min'):
+            self.assertIsNone(self.core.get(bound))
+
+    def test_the_two_families_cannot_both_match_a_tag(self):
+        """Overlap would make which limit a point gets depend on file order."""
+        core = re.compile(self.core['match'])
+        winding = re.compile(self.winding['match'])
+        for path in (
+            '/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED1',
+            '/dex/PUMP1_PUMP_MOTOR_WINDING_TEMP1',
+            '/dex/PUMP4_MOTOR_CORE_RTD2_PROCESS_VALUE',
+            '/dex/PUMP1_MOTOR_STATOR_CORE_RTD3',
+        ):
+            with self.subTest(path=path):
+                self.assertFalse(
+                    bool(core.match(path)) and bool(winding.match(path)),
+                    'a tag matched by both families gets its limit by file order',
+                )
+
+    def test_the_backstop_does_not_reach_the_stator_winding_tags(self):
+        """The winding row is screened per channel; the backstop must not widen it."""
+        core = re.compile(self.core['match'])
+        self.assertFalse(core.match('/dex/PUMP2_PUMP_MOTOR_WINDING_TEMPERATURED1'))
+        self.assertTrue(core.match('/dex/PUMP4_MOTOR_CORE_RTD2_PROCESS_VALUE'))
+        self.assertTrue(core.match('/dex/PUMP12_MOTOR_STATOR_CORE_RTD6'))
+
+    def test_the_dead_channel_is_excluded_with_what_it_actually_reads(self):
+        """A channel constant at an impossible value cannot carry a limit."""
+        [excluded] = self.core['exclude']
+        self.assertEqual(excluded['key'], '/dex/PUMP4_MOTOR_CORE_RTD2_PROCESS_VALUE')
+        self.assertEqual(excluded['station'], 'PH_3')
+        self.assertIn('-242.1', excluded['reason'])
+        self.assertIn('75 of 75', excluded['reason'])

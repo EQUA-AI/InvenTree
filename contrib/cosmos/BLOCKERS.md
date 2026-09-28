@@ -700,11 +700,19 @@ four scalars, no others**:
 
 All 21 carry quality `good` today. Two of them are self-evidently not
 measurements - a valve position of **-118.5%** and a field voltage of
-**-592.6 V**. And the one that matters most: **`PUMP5_SPEED` = 474.06 rpm is a
-rail, not a speed.** Pump 05 is the estate's only running bay, so its speed, all
-five of its vibration channels and its field voltage are one railed acquisition
-presented as a running machine. BLOCKERS.md:143's "474 rpm is plausible for a
-vertical pump" was reading a pegged converter.
+**-592.6 V**.
+
+**`PUMP5_SPEED` = 474.06 rpm is at converter full scale, which is not the same
+claim as "it is a rail", and an earlier draft of this note overstated it.** The
+arithmetic is as good as it gets - 32767 counts at scalar 80, relative error
+6.9e-8, *identical* to the confirmed positive vibration rail, which shares the
+same float32 rounding. But a full scale of 474.06 rpm is also a sensible
+instrument range for a machine of this class, so "the converter saturated" and
+"the machine is at the top of its range" are not distinguishable from this
+value. What is provable is that the reading sits exactly on the 32767 boundary.
+Which of the two it means is a question for the plant, and it is worth asking:
+every other bay's `SPEED` reads sub-rpm noise (-1.50, -0.67, -0.59), so this is
+the only bay where the distinction arises.
 
 Still unexplained: `18.96` (discharge pressure, full precision
 `18.962385177612305`) and `7.111` are **not** on this lattice. Their implied
@@ -712,7 +720,7 @@ scalars land within 6e-5 of `0.32` and `0.12`, which is suggestive of the same
 mechanism on a *different* conversion constant - the lattice above is one
 acquisition card's, not the plant's - but 6e-5 is 150x the float32 tolerance, so
 it is not proof. Settling it needs several samples from those two channels, not
-one. `853.3` and `242.1` fit nothing.
+one. `853.3` fits nothing. **`242.1` is now identified**: it is `PUMP4_MOTOR_CORE_RTD2_PROCESS_VALUE` at Cedar Creek, constant at -242.1 across 75 of 75 samples of the recorded span while its five sibling core detectors on the same bay read 36.6-43.4 degC. A dead channel, not a rail and not a sign fault. It is excluded by name in `contrib/cosmos/limits/pumphouse.limits.json`.
 
 See `THRESHOLDS.md`, "The second pass", finding 2.
 
