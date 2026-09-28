@@ -289,9 +289,40 @@ conversion constant, but 6e-5 is 150x the float32 tolerance, so it is not proof.
 It also dissolves the family's stated clincher. The pass argued vibration is
 unboundable *by construction*, because a one-sided ceiling would flip the ten
 `-59.2593` points from an honest UNKNOWN to a false NORMAL. True of `classify()`
-- but those readings must never reach it. Coerce the rails and the objection
-becomes a sequencing problem, not a structural one: unboundable **until the
-rails are coerced and the channel scaling is answered**.
+- but those readings must never reach it.
+
+**They no longer do.** `_coerce` now marks a converter rail BAD exactly as it
+marks `3276.7`, and migration `0018_railed_state_quality` applied the same rule
+to the 20 rows already cached - necessary because a fully consumed recorded
+window is never re-ingested, so a coercion rule alone would have changed nothing
+at all.
+
+The justification is deliberately *not* the one `OVER_RANGE` uses. That marker
+argues no real channel reaches it; here that is unavailable, because this repo
+approved the vibration channels as raw signed values precisely because a third
+of their readings are negative. What is defended instead is arithmetic, measured
+rather than assumed: across all 1,305 numeric cached readings exactly 20 sit
+within **6.9e-8** relative of a rail, and the nearest reading that does not is
+**9.7e-4** away - a margin of about 14,000x. The tolerance sits two orders of
+magnitude above the worst true hit and two below the nearest miss.
+
+The scalar list is closed on purpose. With a free scalar the predicate is
+satisfiable by almost any number - the negative anchor is within 1.7e-8 of
+1600/27, so an open rule would match every multiple of 1600 and mark real
+readings bad. **x8 is deliberately excluded**: `PUMP5_SPEED` sits at exactly
++32767 counts there with a residual as small as any confirmed rail, but 474 rpm
+is also a plausible instrument range, so saturation and a machine at the top of
+its range cannot be told apart from the value - and it is the only speed reading
+on the estate's only running bay.
+
+Cost, measured: **0 armed bindings** lose a reading, so no limit is affected, and
+exactly **one** group empties - Millbrook Pump 05's five vibration channels, on
+the bay whose entire block is frozen anyway. That was the consequence this change
+was declined for once; it is now paid knowingly, against 20 readings that were
+being presented as measurements.
+
+So the family is unboundable **until the channel scaling is answered** - the
+rails are no longer part of the reason.
 
 What remains genuinely blocking: ISO 20816-3:2022 cl. 1 excludes these machines
 by two separate items - (m) "machine sets in hydraulic power generating and

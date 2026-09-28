@@ -698,7 +698,7 @@ four scalars, no others**:
 | x10 | `-592.5925903320312` | 32768 | V | 3 | `EXCITATION_FLD_VLTG`, P3/P6/P12 |
 | x10 | `+592.5745239257812` | 32767 | V | 1 | `PUMP5_EXCITATION_FLD_VLTG` |
 
-All 21 carry quality `good` today. Two of them are self-evidently not
+All 21 carried quality `good` until 2026-09-28; **20 of them are now coerced to `bad`** by `_coerce` plus migration `0018_railed_state_quality`, at the enumerated scalars x1, x2 and x10. The x8 entry - `PUMP5_SPEED` - is deliberately left alone, because 474 rpm is a plausible instrument range and saturation cannot be told from a machine at the top of its range. See THRESHOLDS.md. Two of them are self-evidently not
 measurements - a valve position of **-118.5%** and a field voltage of
 **-592.6 V**.
 
