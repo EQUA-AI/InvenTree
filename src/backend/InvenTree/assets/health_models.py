@@ -253,6 +253,38 @@ class MachineSignalBinding(models.Model):
 
     unit = models.CharField(max_length=32, blank=True, verbose_name=_('Unit'))
 
+    #: Which detectors corroborate each other. Two standards say a single
+    #: detector is not an alarm: IEEE Std 3004.8-2016 cl. 8.5.2.2 recommends RTD
+    #: voting so damaged and open-circuit inputs are ignored, and API Std 670
+    #: cl. 5.4.6.4 makes dual voting standard where two sensors sit in a
+    #: bearing's load zone - while explicitly keeping single-violation OR logic
+    #: for every other configuration, which is why an unset ``vote_minimum``
+    #: means no voting rather than a default of two.
+    #:
+    #: The grouping cannot be derived from anything already stored. Every
+    #: detector carries its own ParameterTemplate ("Motor Winding RTD 7"), so
+    #: templates give 404 groups of one; ``signal_kind`` is empty on every
+    #: binding; and a component mixes winding with core detectors on 16 of 29
+    #: machines, which would vote across two different measurements. So the
+    #: group is written here from the reviewed limits file, which already names
+    #: exactly these families and is where the decision belongs.
+    vote_group = models.CharField(
+        max_length=128,
+        blank=True,
+        db_index=True,
+        help_text=_('Detectors that corroborate one another, from the limits file'),
+        verbose_name=_('Vote Group'),
+    )
+
+    #: How many detectors in the group must breach before the condition is the
+    #: machine's rather than one detector's. Null means single-violation logic.
+    vote_minimum = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text=_('Detectors required to confirm a critical condition'),
+        verbose_name=_('Vote Minimum'),
+    )
+
     normal_min = models.FloatField(null=True, blank=True)
     normal_max = models.FloatField(null=True, blank=True)
     warn_min = models.FloatField(null=True, blank=True)

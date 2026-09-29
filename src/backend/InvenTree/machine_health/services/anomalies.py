@@ -17,6 +17,7 @@ resends an alarm every minute updates one row rather than flooding the blade.
 from __future__ import annotations
 
 import hashlib
+from collections import Counter
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -162,6 +163,21 @@ def evaluate_thresholds(machine, *, now=None) -> list[MachineAnomaly]:
 
     Only bindings with configured bounds participate. A signal with no bounds has
     no opinion about health and must not manufacture one.
+
+    A critical condition is confirmed by corroborating detectors where the
+    reviewed limits file asked for it. Two standards require this - IEEE Std
+    3004.8-2016 cl. 8.5.2.2 and API Std 670 cl. 5.4.6.4 - and with eleven or
+    twelve winding detectors on one band per machine, a single failed input
+    would otherwise open a critical alarm about a machine that is fine.
+
+    A lone breach is **de-escalated, never suppressed**. That distinction is the
+    whole of the design. A stator hot spot in one slot is real and is exactly
+    what a detector array exists to catch, so silencing a single detector to
+    avoid nuisance trips would discard the signal the standards are protecting.
+    One detector past critical raises a warning saying it is unconfirmed; two
+    raise the critical. Escalation is left to ``record_anomaly``, which never
+    silently de-escalates an already-open condition - so a condition that was
+    confirmed stays confirmed even if a corroborating detector later fails.
     """
     now = now or timezone.now()
     raised: list[MachineAnomaly] = []
@@ -174,6 +190,7 @@ def evaluate_thresholds(machine, *, now=None) -> list[MachineAnomaly]:
     # the recovery note; anything open and in neither gets the honest one.
     holding = set()
     cleared = set()
+    breaching = []
 
     for state in states:
         binding = state.binding
@@ -210,19 +227,47 @@ def evaluate_thresholds(machine, *, now=None) -> list[MachineAnomaly]:
             continue
 
         holding.add(fingerprint)
+        breaching.append((state, binding, value, fingerprint, classification))
+
+    # Counted across the whole pass, before any severity is written: the vote is
+    # a property of the group, so it cannot be decided one detector at a time.
+    confirmed = Counter(
+        binding.vote_group
+        for _state, binding, _value, _fp, classification in breaching
+        if binding.vote_group and classification == HealthState.CRITICAL
+    )
+
+    for state, binding, value, fingerprint, classification in breaching:
+        severity = _STATE_SEVERITY[classification]
+        unconfirmed = (
+            classification == HealthState.CRITICAL
+            and binding.vote_minimum
+            and binding.vote_group
+            and confirmed[binding.vote_group] < binding.vote_minimum
+        )
+        if unconfirmed:
+            severity = AnomalySeverity.WARNING
+
+        summary = f'{binding.display_name} read {value} {binding.unit}'.strip()
+        if unconfirmed:
+            summary += (
+                f' - past its critical limit, but alone: {confirmed[binding.vote_group]}'
+                f' of the {binding.vote_minimum} detectors this group needs to'
+                f' confirm a machine condition. Treat as a possible sensor fault'
+                f' until a second detector agrees.'
+            )
+
         anomaly, _created = record_anomaly(
             machine=machine,
             fingerprint=fingerprint,
             title=f'{binding.display_name} outside configured limits',
-            severity=_STATE_SEVERITY[classification],
+            severity=severity,
             observed_at=state.observed_at,
             source=binding.source,
             bindings=[binding],
             detector=THRESHOLD_DETECTOR,
             detector_version=THRESHOLD_DETECTOR_VERSION,
-            evidence_summary=(
-                f'{binding.display_name} read {value} {binding.unit}'.strip()
-            ),
+            evidence_summary=summary,
             metrics={
                 'value': value,
                 'unit': binding.unit,
@@ -230,6 +275,11 @@ def evaluate_thresholds(machine, *, now=None) -> list[MachineAnomaly]:
                 'warn_max': binding.warn_max,
                 'critical_min': binding.critical_min,
                 'critical_max': binding.critical_max,
+                'vote_group': binding.vote_group or None,
+                'vote_minimum': binding.vote_minimum,
+                'vote_confirmed': confirmed[binding.vote_group]
+                if binding.vote_group
+                else None,
             },
         )
         raised.append(anomaly)

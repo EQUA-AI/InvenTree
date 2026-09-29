@@ -44,6 +44,7 @@ up, and the count of people woken is the thing worth seeing before committing.
 
 import json
 import re
+from collections import Counter
 from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
@@ -52,6 +53,12 @@ from django.db import transaction
 from assets.health_models import MachineSignalBinding
 from assets.models import AssetMachine
 from machine_health.services import anomalies as anomaly_services
+
+#: Written alongside the bounds so the detector can count corroborating
+#: readings. Kept here rather than derived, because nothing already stored
+#: groups detectors correctly: each carries its own ParameterTemplate,
+#: ``signal_kind`` is empty estate-wide, and a component mixes winding with core.
+VOTE_FIELDS = ('vote_group', 'vote_minimum')
 
 #: The six bounds a family entry may carry.
 BOUNDS = (
@@ -124,6 +131,15 @@ class Command(BaseCommand):
                 f'{entry["family"]}: warn_min is below critical_min, so the '
                 'warning could never be reached before the critical.'
             )
+        minimum = entry.get('vote_minimum')
+        if minimum is not None and (
+            not isinstance(minimum, int) or isinstance(minimum, bool) or minimum < 2
+        ):
+            raise CommandError(
+                f'{entry["family"]}: vote_minimum must be an integer of at least '
+                '2, or absent. A minimum of one is what no voting already means, '
+                'and writing it would hide the choice rather than record it.'
+            )
         try:
             pattern = re.compile(entry['match'])
         except re.error as exc:
@@ -147,7 +163,7 @@ class Command(BaseCommand):
                     'it is forgotten.'
                 )
             excluded[item['station'], item['key']] = item['reason']
-        return pattern, bounds, excluded
+        return pattern, bounds, excluded, minimum
 
     def handle(self, *args, **options):
         """Apply every family, or preview and roll the whole thing back."""
@@ -158,7 +174,7 @@ class Command(BaseCommand):
 
         with transaction.atomic():
             for entry in families:
-                pattern, bounds, excluded = self.validated(entry)
+                pattern, bounds, excluded, minimum = self.validated(entry)
                 bindings = MachineSignalBinding.objects.filter(
                     active=True
                 ).select_related('dictionary_point__station')
@@ -194,7 +210,11 @@ class Command(BaseCommand):
                     if any(getattr(binding, name) is not None for name in BOUNDS):
                         for name in BOUNDS:
                             setattr(binding, name, None)
-                        binding.save(update_fields=list(BOUNDS))
+                        # The vote group goes with the limit. A disarmed binding
+                        # left in a group would still be counted as a detector
+                        # that could have corroborated, and never can.
+                        binding.vote_group, binding.vote_minimum = '', None
+                        binding.save(update_fields=[*BOUNDS, *VOTE_FIELDS])
                         disarmed += 1
                         report.append(
                             f'  disarmed {binding.external_key}: now excluded'
@@ -207,7 +227,12 @@ class Command(BaseCommand):
                     # re-run on an already-armed estate still evaluates.
                     armed_machine_ids.add(binding.machine_id)
                     current = {name: getattr(binding, name) for name in BOUNDS}
+                    current.update({
+                        name: getattr(binding, name) for name in VOTE_FIELDS
+                    })
                     wanted = {name: bounds.get(name) for name in BOUNDS}
+                    wanted['vote_group'] = entry['family'] if minimum else ''
+                    wanted['vote_minimum'] = minimum
                     if current == wanted:
                         unchanged += 1
                         continue
@@ -220,10 +245,10 @@ class Command(BaseCommand):
                         exclude=[
                             field.name
                             for field in binding._meta.fields
-                            if field.name not in BOUNDS
+                            if field.name not in (*BOUNDS, *VOTE_FIELDS)
                         ]
                     )
-                    binding.save(update_fields=list(BOUNDS))
+                    binding.save(update_fields=[*BOUNDS, *VOTE_FIELDS])
                     applied += 1
 
                 report.append(
@@ -231,6 +256,25 @@ class Command(BaseCommand):
                     f'{len(wrong_unit)} skipped on unit, '
                     f'{len(hit)} excluded by name'
                 )
+
+                if minimum:
+                    # A vote minimum larger than the group makes CRITICAL
+                    # unreachable on that machine: the detectors can never
+                    # corroborate because there are not enough of them. Silence
+                    # here would be a limit that looks armed and cannot fire.
+                    armed_now = [
+                        b for b in matched if b not in wrong_unit and b not in hit
+                    ]
+                    per_machine = Counter(b.machine_id for b in armed_now)
+                    short = sorted(
+                        machine for machine, n in per_machine.items() if n < minimum
+                    )
+                    for machine in short:
+                        report.append(
+                            f'  WARNING machine {machine} has {per_machine[machine]} '
+                            f'armed detector(s) in this family but needs {minimum} '
+                            f'to confirm a critical - it can only ever warn'
+                        )
 
             # Inside the transaction, so a preview reports the one number an
             # operator actually needs before arming anything - how many alarms

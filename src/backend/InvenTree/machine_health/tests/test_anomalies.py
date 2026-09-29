@@ -11,6 +11,7 @@ from assets.health_models import (
     AnomalyStatus,
     HealthState,
     MachineAnomaly,
+    MachineSignalBinding,
     MachineSignalState,
     SignalQuality,
 )
@@ -382,3 +383,149 @@ class ThresholdResolutionNoteTest(HealthEnvMixin, TestCase):
         raised.refresh_from_db()
         self.assertEqual(raised.status, AnomalyStatus.OPEN)
         self.assertEqual(raised.resolution_note, '')
+
+
+class DetectorVotingTest(HealthEnvMixin, TestCase):
+    """A single detector is not an alarm, and is not nothing either.
+
+    IEEE Std 3004.8-2016 cl. 8.5.2.2 recommends RTD voting so damaged and
+    open-circuit inputs are ignored; API Std 670 cl. 5.4.6.4 makes dual voting
+    standard where two sensors share a bearing's load zone, while keeping
+    single-violation logic everywhere else - which is why an unset vote_minimum
+    must mean no voting rather than a default of two.
+
+    The rule de-escalates rather than suppresses. A stator hot spot in one slot
+    is real, and silencing it to avoid nuisance trips would discard exactly the
+    signal a detector array exists to catch.
+    """
+
+    def setUp(self):
+        """Three detectors on one machine, voting as one group."""
+        self.build_health_env()
+        self.now = timezone.now()
+        self.detectors = [self.binding]
+        for index in (2, 3):
+            self.detectors.append(
+                MachineSignalBinding.objects.create(
+                    machine=self.machine,
+                    source=self.source,
+                    external_key=f'{self.binding.external_key}-{index}',
+                    display_name=f'Winding detector {index}',
+                    unit='mm/s',
+                    warn_max=6.0,
+                    critical_max=9.0,
+                )
+            )
+        for binding in self.detectors:
+            binding.vote_group = 'Stator winding ETDs'
+            binding.vote_minimum = 2
+            binding.save(update_fields=['vote_group', 'vote_minimum'])
+
+    def read(self, binding, value):
+        """Give one detector a current reading."""
+        MachineSignalState.objects.update_or_create(
+            binding=binding,
+            defaults={
+                'value': {'value': value},
+                'observed_at': self.now,
+                'quality': SignalQuality.GOOD,
+            },
+        )
+
+    def test_one_detector_past_critical_warns_instead(self):
+        """Unconfirmed, so it is not yet the machine's condition."""
+        self.read(self.detectors[0], 10.0)
+        self.read(self.detectors[1], 3.0)
+        self.read(self.detectors[2], 3.0)
+
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        self.assertEqual(raised.severity, AnomalySeverity.WARNING)
+        self.assertIn('alone', raised.evidence_summary)
+        self.assertEqual(raised.metrics['vote_confirmed'], 1)
+        self.assertEqual(raised.metrics['vote_minimum'], 2)
+
+    def test_two_detectors_past_critical_confirm_it(self):
+        """The corroborated case is the machine's condition."""
+        self.read(self.detectors[0], 10.0)
+        self.read(self.detectors[1], 11.0)
+        self.read(self.detectors[2], 3.0)
+
+        raised = evaluate_thresholds(self.machine, now=self.now)
+
+        self.assertEqual(len(raised), 2)
+        for anomaly in raised:
+            self.assertEqual(anomaly.severity, AnomalySeverity.CRITICAL)
+            self.assertNotIn('alone', anomaly.evidence_summary)
+
+    def test_a_lone_breach_is_still_raised(self):
+        """De-escalated, never suppressed - the distinction is the design."""
+        self.read(self.detectors[0], 10.0)
+        self.read(self.detectors[1], 3.0)
+        self.read(self.detectors[2], 3.0)
+
+        evaluate_thresholds(self.machine, now=self.now)
+
+        self.assertTrue(
+            MachineAnomaly.objects.filter(machine=self.machine).exists(),
+            'a single hot detector must still reach somebody',
+        )
+
+    def test_without_a_vote_minimum_one_detector_is_critical(self):
+        """API 670 keeps single-violation logic wherever voting is not asked for."""
+        for binding in self.detectors:
+            binding.vote_group, binding.vote_minimum = '', None
+            binding.save(update_fields=['vote_group', 'vote_minimum'])
+        self.read(self.detectors[0], 10.0)
+
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        self.assertEqual(raised.severity, AnomalySeverity.CRITICAL)
+
+    def test_a_warning_level_breach_is_untouched_by_voting(self):
+        """Voting gates the critical only; a warning is already the lower call."""
+        self.read(self.detectors[0], 7.0)
+
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        self.assertEqual(raised.severity, AnomalySeverity.WARNING)
+        self.assertNotIn('alone', raised.evidence_summary)
+
+    def test_a_confirmed_condition_is_not_de_escalated_when_a_detector_fails(self):
+        """record_anomaly never silently de-escalates, and that matters here.
+
+        Two detectors confirm a critical; one then goes bad-quality. The vote can
+        no longer be met, but the machine did not get better - and a sensor
+        dropping out must not quietly downgrade a standing critical.
+        """
+        self.read(self.detectors[0], 10.0)
+        self.read(self.detectors[1], 11.0)
+        first = evaluate_thresholds(self.machine, now=self.now)
+        self.assertTrue(all(a.severity == AnomalySeverity.CRITICAL for a in first))
+
+        MachineSignalState.objects.filter(binding=self.detectors[1]).update(
+            quality=SignalQuality.BAD
+        )
+        evaluate_thresholds(self.machine, now=self.now)
+
+        standing = MachineAnomaly.objects.get(
+            machine=self.machine, bindings=self.detectors[0]
+        )
+        self.assertEqual(standing.severity, AnomalySeverity.CRITICAL)
+
+    def test_a_detector_in_another_group_does_not_corroborate(self):
+        """Winding and core measure different things and must not vote together."""
+        self.detectors[1].vote_group = 'Motor / stator core RTDs (backstop)'
+        self.detectors[1].save(update_fields=['vote_group'])
+        self.read(self.detectors[0], 10.0)
+        self.read(self.detectors[1], 11.0)
+
+        raised = evaluate_thresholds(self.machine, now=self.now)
+
+        self.assertEqual(len(raised), 2)
+        for anomaly in raised:
+            self.assertEqual(
+                anomaly.severity,
+                AnomalySeverity.WARNING,
+                'each is alone in its own group',
+            )

@@ -10,9 +10,11 @@
    "unit": "degC",
    "warn_max": 125,
    "critical_max": 145,
+   "vote_minimum": 2,
    "citation": "IS/IEC 60034-1 Table 7 item 1a (85 K rise by embedded detector, thermal class 130(B), 40 degC reference coolant of cl. 6.1); trip from IEEE Std 3004.8-2016 cl. 8.5.2.1 (\"5 degC to 10 degC below the insulation class maximum\", 155 - 10).",
    "reasoning": "125 degC is the highest reading the machine is designed to produce at rated load, so it is the ceiling rather than an operating band; normal_max is deliberately unset because nothing in this estate establishes where a healthy loaded machine sits - every bay in the recorded window is stopped.",
    "assumption": "Thermal class 155(F) with rise limited to class 130(B). The nameplate is unconfirmed and is the first question in THRESHOLDS.md. The assumption is not symmetric, which is why it was acceptable to proceed: full class F rise would put the true limits at 150/155, so these warn about 25 K early. Class B insulation would put them near 110/125 and these would warn late.",
+   "vote_note": "IEEE Std 3004.8-2016 cl. 8.5.2.2 recommends RTD voting so damaged and open-circuit inputs are ignored, and API Std 670 cl. 5.4.6.4 makes dual voting standard where two sensors sit in a bearing's load zone. This estate carries 11-12 winding detectors per bay at two stations and 8 at the third, comfortably above the six cl. 8.6.2 requires, so a single failed input would otherwise open a critical alarm about a healthy machine. A lone breach is de-escalated to a warning that says it is unconfirmed - never suppressed, because a hot spot in one slot is exactly what a detector array exists to catch.",
    "exclude": [
     {
      "key": "/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED1",
@@ -108,9 +110,11 @@
    "unit": "degC",
    "warn_max": 125,
    "critical_max": 145,
+   "vote_minimum": 2,
    "citation": "IS/IEC 60034-1 Table 7 item 1a (85 K rise by embedded detector, thermal class 130(B), 40 degC reference coolant of cl. 6.1) and IEEE Std 3004.8-2016 cl. 8.5.2.1 (\"5 degC to 10 degC below the insulation class maximum temperature rating\"), carried unchanged from the stator-winding row. NO STANDARD FIXES A CORE TEMPERATURE: IS/IEC 60034-1 has no core row in Table 7 and cl. 8.10.4 is qualitative. This row cites the winding figures and claims nothing about cores.",
    "reasoning": "A backstop, not a core limit, and that distinction is the whole of its justification. A core detector reading above the winding's own design ceiling is abnormal whatever the true core figure turns out to be, so 125/145 is a valid upper bound even though it is not the right one. A lower and more useful number was deliberately not invented: it would be the first thing to fire on a hot day, and nothing in this estate establishes where a healthy loaded core sits - every bay is stopped, and the one that runs is frozen on all 66 of its tags. Hottest core reading observed is 67.7 degC, so this fires on nothing today and will only ever fire on a genuine excursion or an instrument fault. Replace it when THRESHOLDS.md question 6 is answered: a BHEL type-test or heat-run report giving measured core rise at rated load is the only route to a real core band. Channels are screened per (station, path) over the recorded span the same way the winding row was; those reading outside 0-125 degC on a stopped plant, or too sparsely sampled to tell silence from absence, are excluded below rather than armed.",
    "assumption": "That the stator-winding ceiling is a valid UPPER bound for a core detector. It is not the right number and this row does not claim to be one: a real core band needs a measured core rise at rated load (THRESHOLDS.md question 6). What makes it safe is the direction of the error - a core runs cooler than the winding it sits around, so 125/145 warns late rather than early, and a core reading above the winding's own design ceiling is abnormal whatever the true core figure is. The cost of that safety is sensitivity: this row will not catch a core drifting warm.",
+   "vote_note": "IEEE Std 3004.8-2016 cl. 8.5.2.2 recommends RTD voting so damaged and open-circuit inputs are ignored, and API Std 670 cl. 5.4.6.4 makes dual voting standard where two sensors sit in a bearing's load zone. This estate carries 11-12 winding detectors per bay at two stations and 8 at the third, comfortably above the six cl. 8.6.2 requires, so a single failed input would otherwise open a critical alarm about a healthy machine. A lone breach is de-escalated to a warning that says it is unconfirmed - never suppressed, because a hot spot in one slot is exactly what a detector array exists to catch.",
    "exclude": [
     {
      "key": "/dex/PUMP4_MOTOR_CORE_RTD2_PROCESS_VALUE",

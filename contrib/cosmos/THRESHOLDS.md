@@ -944,9 +944,42 @@ elsewhere and is not corroborated by the audit.
    that it cannot fire spuriously.
 3. Everything else waits on the data sheet or on one clean loaded window.
 
-One further mitigation is free and worth taking when the winding row lands.
-IEEE Std 3004.8-2016 cl. 8.5.2.2 recommends RTD voting so that damaged and
-open-circuit inputs are ignored. With 11-12 winding detectors per machine at
-Parvathi and Saraswati and 8 at Ranganayaka - comfortably above the six required
-by cl. 8.6.2 - a machine should read CRITICAL only on **two or more** detectors
-above the limit, a single one being annunciated as a sensor fault.
+### Detector voting - implemented 2026-09-29
+
+This was recorded here as a free mitigation worth taking once the winding row
+landed. It is now in the detector. IEEE Std 3004.8-2016 cl. 8.5.2.2 recommends
+RTD voting so damaged and open-circuit inputs are ignored, and API Std 670
+cl. 5.4.6.4 makes dual voting standard where two sensors share a bearing's load
+zone - while keeping single-violation logic everywhere else, which is why an
+unset minimum means *no* voting rather than a default of two.
+
+**It de-escalates; it does not suppress.** The earlier note here said a lone
+detector should be "annunciated as a sensor fault". That is one reading too
+confident: a stator hot spot in a single slot is real, and it is precisely what
+an eleven-detector array exists to catch. So a lone breach raises a WARNING
+saying it is unconfirmed and may be a sensor fault, rather than being silenced or
+being asserted to be one.
+
+| detectors past critical | result |
+|---|---|
+| two or more | CRITICAL - the machine's condition |
+| exactly one | WARNING, evidence names the count and the minimum |
+| any, with no minimum set | CRITICAL - single-violation logic, per API 670 |
+
+A confirmed condition cannot be downgraded by a detector later failing:
+`record_anomaly` never silently de-escalates, and a test pins it.
+
+**The grouping needed a new field, and that is worth explaining because the
+obvious candidates all fail.** Each detector carries its *own* ParameterTemplate
+("Motor Winding RTD 7"), so templates give 404 groups of one. `signal_kind` is
+empty on every binding in the estate. And a component mixes winding with core
+detectors on **16 of 29** machines, so voting by component would pool two
+different measurements. The group is therefore written onto the binding from the
+limits file - which already names exactly these families and is where a reviewed
+decision belongs - and is cleared both when a channel is disarmed and when
+activation changes a point's meaning.
+
+One hazard closed on the way: a minimum larger than the group makes CRITICAL
+*unreachable*, which is a limit that looks armed and can never fire.
+`apply_signal_limits` now warns per machine. This estate is clean - every group
+holds at least four detectors - but that was luck, not design.
