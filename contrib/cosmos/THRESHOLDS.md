@@ -958,6 +958,39 @@ elsewhere and is not corroborated by the audit.
    that it cannot fire spuriously.
 3. Everything else waits on the data sheet or on one clean loaded window.
 
+### A condition closes on sustained recovery - implemented 2026-09-29
+
+Raising and clearing are not symmetric, and the detector treated them as if they
+were. A breach that turns out to be transient costs somebody a look; a clear that
+turns out to be transient closes a real condition and nobody looks again. So the
+clear side now has hysteresis: a signal must read inside its limits for five
+minutes of **plant** time before the condition closes.
+
+The plant clock is the whole of the fix, and the reason is the catch-up poll.
+`MachineSignalState` holds one row per binding, so a poll applying up to 200
+snapshots five seconds apart - about seventeen minutes of plant time - evaluates
+exactly **once**, against the last of them. A winding above its critical limit
+for 199 of those 200 samples that dips below on the last one would close a
+standing critical, while the poller still held the 199 contrary samples in
+memory. A delay measured on the server clock would not help: one evaluation is
+one evaluation however long the poll took. Measured on `observed_at`, the
+clearing reading is five seconds newer than the last breach, the gate holds, and
+the condition survives its own catch-up.
+
+Five minutes because that is already this estate's validity window - the same
+figure `assets.activation._initial_cursor` enters a live source at.
+
+A condition with no clearing reading at all - binding gone, threshold removed,
+signal stopped - still closes immediately with the honest note. The gate needs a
+reading to measure from, and holding those open would make them unclosable,
+which is the failure the two resolution notes exist to avoid.
+
+**Three existing tests changed**, and they are worth naming rather than
+quietly editing: each asserted that a recovery resolves its anomaly while writing
+the breach and the clear at the *same* plant instant. That is a zero-second
+recovery, which is precisely what this gate refuses. They now carry a clearing
+timestamp past the window, which is what a recovery actually looks like.
+
 ### Detector voting - implemented 2026-09-29
 
 This was recorded here as a free mitigation worth taking once the winding row

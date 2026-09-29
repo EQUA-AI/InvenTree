@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 from collections import Counter
+from datetime import timedelta
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -48,6 +49,29 @@ RESOLUTION_UNASSESSABLE = (
     'Closed without a clearing reading: this binding no longer carries a '
     'threshold, or it stopped reporting. The condition was not observed to end.'
 )
+
+#: How long a signal must read inside its limits before the condition closes,
+#: measured on the PLANT's clock rather than the server's.
+#:
+#: Raising and clearing are not symmetric. A breach that turns out to be
+#: transient costs somebody a look; a clear that turns out to be transient
+#: closes a real condition and nobody looks again. So the clear side gets the
+#: hysteresis.
+#:
+#: The plant clock is the whole of the fix. ``MachineSignalState`` holds one row
+#: per binding, so a poll that applies up to ``MAX_DOCUMENTS_PER_STATION`` = 200
+#: snapshots five seconds apart - about seventeen minutes of plant time -
+#: evaluates exactly once, against the last of them. A winding above its critical
+#: limit for 199 of those 200 samples that dips below on the last one would close
+#: a standing critical, while the poller still held the 199 contrary samples in
+#: memory. Measured on the server clock a delay would not help: one evaluation is
+#: one evaluation however long it took. Measured on ``observed_at``, the clearing
+#: reading is five seconds newer than the last breach, the gate holds, and the
+#: condition survives its own catch-up.
+#:
+#: Five minutes because that is already this estate's validity window - the same
+#: figure ``assets.activation._initial_cursor`` enters a live source at.
+RESOLVE_AFTER = timedelta(minutes=5)
 
 #: Board severity for each threshold classification.
 _STATE_SEVERITY = {
@@ -164,6 +188,10 @@ def evaluate_thresholds(machine, *, now=None) -> list[MachineAnomaly]:
     Only bindings with configured bounds participate. A signal with no bounds has
     no opinion about health and must not manufacture one.
 
+    A condition closes only after reading inside its limits for
+    :data:`RESOLVE_AFTER` of plant time. See that constant for why the plant's
+    clock rather than the server's is what makes the rule work.
+
     A critical condition is confirmed by corroborating detectors where the
     reviewed limits file asked for it. Two standards require this - IEEE Std
     3004.8-2016 cl. 8.5.2.2 and API Std 670 cl. 5.4.6.4 - and with eleven or
@@ -191,6 +219,16 @@ def evaluate_thresholds(machine, *, now=None) -> list[MachineAnomaly]:
     holding = set()
     cleared = set()
     breaching = []
+
+    # Read up front so a clearing reading can be measured against when the
+    # condition was last seen. The same rows are re-read by the resolver below;
+    # one extra query per machine buys the only evidence that distinguishes a
+    # recovery from a dip.
+    last_seen = dict(
+        MachineAnomaly.objects.filter(
+            machine=machine, detector=THRESHOLD_DETECTOR, status=AnomalyStatus.OPEN
+        ).values_list('fingerprint', 'last_observed_at')
+    )
 
     for state in states:
         binding = state.binding
@@ -223,7 +261,18 @@ def evaluate_thresholds(machine, *, now=None) -> list[MachineAnomaly]:
             # two alike is what let "Signal returned inside its configured
             # limits" be written about a rule that had been deleted.
             if classification == HealthState.NORMAL:
-                cleared.add(fingerprint)
+                breached_at = last_seen.get(fingerprint)
+                if (
+                    breached_at is not None
+                    and state.observed_at - breached_at < RESOLVE_AFTER
+                ):
+                    # Inside its limits, but not for long enough to call it over.
+                    # Held rather than cleared, so the condition stays open and
+                    # keeps its own note if it later closes for a different
+                    # reason.
+                    holding.add(fingerprint)
+                else:
+                    cleared.add(fingerprint)
             continue
 
         holding.add(fingerprint)

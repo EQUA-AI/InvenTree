@@ -18,6 +18,7 @@ from assets.health_models import (
 from machine_health.services.anomalies import (
     RESOLUTION_IN_LIMITS,
     RESOLUTION_UNASSESSABLE,
+    RESOLVE_AFTER,
     AnomalyError,
     acknowledge_anomaly,
     evaluate_thresholds,
@@ -74,11 +75,18 @@ class ThresholdDetectionTest(HealthEnvMixin, TestCase):
         self.assertEqual(MachineAnomaly.objects.count(), 1)
 
     def test_signal_returning_to_normal_resolves_its_own_anomaly(self):
-        """A threshold anomaly clears when the value comes back inside limits."""
-        self.set_signal(7.0)
+        """A threshold anomaly clears when the value comes back inside limits.
+
+        The clearing reading carries a plant timestamp past RESOLVE_AFTER,
+        because a recovery is something that lasts. Written at the same instant
+        as the breach it would be a zero-second dip, which is exactly what the
+        clear-duration gate exists to refuse.
+        """
+        breached_at = timezone.now()
+        self.set_signal(7.0, observed_at=breached_at)
         [anomaly] = evaluate_thresholds(self.machine)
 
-        self.set_signal(3.0)
+        self.set_signal(3.0, observed_at=breached_at + RESOLVE_AFTER + timedelta(seconds=1))
         evaluate_thresholds(self.machine)
 
         anomaly.refresh_from_db()
@@ -279,11 +287,17 @@ class UnusableReadingTest(HealthEnvMixin, TestCase):
         self.assertEqual(raised.resolution_note, '')
 
     def test_a_good_reading_inside_limits_still_resolves(self):
-        """The guard must not break recovery for readings that are usable."""
+        """The guard must not break recovery for readings that are usable.
+
+        Sustained past RESOLVE_AFTER, since the quality guard and the
+        clear-duration gate are separate rules and this one is about quality.
+        """
         self.set_signal(10.0, observed_at=self.now)
         [raised] = evaluate_thresholds(self.machine, now=self.now)
 
-        self.set_signal(3.0, observed_at=self.now)
+        self.set_signal(
+            3.0, observed_at=self.now + RESOLVE_AFTER + timedelta(seconds=1)
+        )
         evaluate_thresholds(self.machine, now=self.now)
 
         raised.refresh_from_db()
@@ -312,10 +326,16 @@ class ThresholdResolutionNoteTest(HealthEnvMixin, TestCase):
         return raised
 
     def test_a_clearing_reading_says_the_signal_returned(self):
-        """The affirmative case keeps the affirmative note."""
+        """The affirmative case keeps the affirmative note.
+
+        Past RESOLVE_AFTER on the plant clock: a recovery has to last before it
+        earns the recovery note.
+        """
         raised = self._open_one()
 
-        self.set_signal(3.0, observed_at=self.now)
+        self.set_signal(
+            3.0, observed_at=self.now + RESOLVE_AFTER + timedelta(seconds=1)
+        )
         evaluate_thresholds(self.machine, now=self.now)
 
         raised.refresh_from_db()
@@ -529,3 +549,117 @@ class DetectorVotingTest(HealthEnvMixin, TestCase):
                 AnomalySeverity.WARNING,
                 'each is alone in its own group',
             )
+
+
+class ClearDurationTest(HealthEnvMixin, TestCase):
+    """A condition closes on sustained recovery, not on one clear reading.
+
+    Raising and clearing are not symmetric. A breach that turns out to be
+    transient costs somebody a look; a clear that turns out to be transient
+    closes a real condition and nobody looks again.
+
+    The gate is measured on the plant's clock, and that is the whole of it.
+    ``MachineSignalState`` holds one row per binding, so a poll applying 200
+    snapshots five seconds apart evaluates once, against the last of them - a
+    winding hot for 199 of 200 samples that dips on the last would otherwise
+    close a standing critical while the poller still held the contrary samples.
+    """
+
+    def setUp(self):
+        """One bounded signal, breaching at a known plant instant."""
+        self.build_health_env()
+        self.now = timezone.now()
+
+    def observe(self, value, *, at):
+        """Write a reading carrying its own plant timestamp."""
+        MachineSignalState.objects.update_or_create(
+            binding=self.binding,
+            defaults={
+                'value': {'value': value},
+                'observed_at': at,
+                'quality': SignalQuality.GOOD,
+            },
+        )
+
+    def test_a_single_clear_reading_does_not_close_the_condition(self):
+        """The catch-up case: 199 breaches then one dip, five seconds later."""
+        self.observe(10.0, at=self.now)
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        self.observe(3.0, at=self.now + timedelta(seconds=5))
+        evaluate_thresholds(self.machine, now=self.now)
+
+        raised.refresh_from_db()
+        self.assertEqual(raised.status, AnomalyStatus.OPEN)
+        self.assertEqual(raised.resolution_note, '')
+
+    def test_a_sustained_recovery_closes_it(self):
+        """Past the window, the recovery is real enough to act on."""
+        self.observe(10.0, at=self.now)
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        self.observe(3.0, at=self.now + RESOLVE_AFTER + timedelta(seconds=1))
+        evaluate_thresholds(self.machine, now=self.now)
+
+        raised.refresh_from_db()
+        self.assertEqual(raised.status, AnomalyStatus.RESOLVED)
+        self.assertEqual(raised.resolution_note, RESOLUTION_IN_LIMITS)
+
+    def test_the_gate_is_the_plant_clock_not_the_server_clock(self):
+        """Waiting longer in wall time must not close a condition on its own.
+
+        One evaluation is one evaluation however long the poll took, so a
+        server-clock gate would let a catch-up run close exactly the condition
+        this rule exists to protect.
+        """
+        self.observe(10.0, at=self.now)
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        # An hour passes on the server; the plant has moved five seconds.
+        self.observe(3.0, at=self.now + timedelta(seconds=5))
+        evaluate_thresholds(self.machine, now=self.now + timedelta(hours=1))
+
+        raised.refresh_from_db()
+        self.assertEqual(raised.status, AnomalyStatus.OPEN)
+
+    def test_a_renewed_breach_restarts_the_window(self):
+        """A condition that flickers must not accumulate credit toward closing."""
+        self.observe(10.0, at=self.now)
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        self.observe(3.0, at=self.now + timedelta(minutes=4))
+        evaluate_thresholds(self.machine, now=self.now)
+        self.observe(10.0, at=self.now + timedelta(minutes=4, seconds=30))
+        evaluate_thresholds(self.machine, now=self.now)
+        self.observe(3.0, at=self.now + timedelta(minutes=6))
+        evaluate_thresholds(self.machine, now=self.now)
+
+        raised.refresh_from_db()
+        self.assertEqual(
+            raised.status,
+            AnomalyStatus.OPEN,
+            'the clear window restarts from the most recent breach',
+        )
+
+    def test_a_condition_that_never_opened_is_unaffected(self):
+        """A healthy signal must not be delayed into existence by the gate."""
+        self.observe(3.0, at=self.now)
+
+        self.assertEqual(evaluate_thresholds(self.machine, now=self.now), [])
+        self.assertFalse(MachineAnomaly.objects.exists())
+
+    def test_a_vanished_signal_still_closes_immediately(self):
+        """The gate needs a clearing reading to measure; this path has none.
+
+        Holding these open would make them unclosable, which is the failure the
+        two resolution notes exist to avoid.
+        """
+        self.observe(10.0, at=self.now)
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        MachineSignalState.objects.filter(binding=self.binding).delete()
+        evaluate_thresholds(self.machine, now=self.now)
+
+        raised.refresh_from_db()
+        self.assertEqual(raised.status, AnomalyStatus.RESOLVED)
+        self.assertEqual(raised.resolution_note, RESOLUTION_UNASSESSABLE)
