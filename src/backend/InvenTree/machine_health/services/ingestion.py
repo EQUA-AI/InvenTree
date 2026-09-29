@@ -273,14 +273,21 @@ def ingest_readings(
             result.replayed += 1
             continue
 
+        payload_hash = _payload_hash(item['value'])
         values = {
             'value': _normalize_value(item['value'], binding),
             'observed_at': item['observed_at'],
             'received_at': now,
             'quality': item['quality'],
             'source_sequence': item['sequence'],
-            'payload_hash': _payload_hash(item['value']),
+            'payload_hash': payload_hash,
         }
+        # Free, because the hash is computed anyway. A reading that repeats keeps
+        # the instant it last differed, so the span is measured on the plant's
+        # clock and survives a catch-up applying two hundred identical snapshots
+        # in one call.
+        if state is None or state.payload_hash != payload_hash:
+            values['value_changed_at'] = item['observed_at']
 
         if state is None:
             state = MachineSignalState(binding=binding, **values)
@@ -310,6 +317,7 @@ def ingest_readings(
             list(changed.values()),
             [
                 'value',
+                'value_changed_at',
                 'observed_at',
                 'received_at',
                 'quality',

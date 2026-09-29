@@ -28,6 +28,7 @@ export type MimicPoint = {
   quality: string;
   observed_at: string | null;
   age_seconds: number | null;
+  unchanged_for_seconds: number | null;
   reason: string | null;
   condition: string;
   thresholds_configured: boolean;
@@ -74,6 +75,23 @@ export type MimicData = {
   alarms: MimicPoint[];
   unconfigured_thresholds: number;
 };
+
+/** A span in the largest unit that still reads honestly, for the mimic. */
+export function unchangedLabel(seconds: number): string {
+  const days = Math.floor(seconds / 86400);
+  if (days >= 1) {
+    return days === 1 ? t`1 day` : t`${days} days`;
+  }
+  const hours = Math.floor(seconds / 3600);
+  if (hours >= 1) {
+    return hours === 1 ? t`1 hour` : t`${hours} hours`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  if (minutes >= 1) {
+    return minutes === 1 ? t`1 minute` : t`${minutes} minutes`;
+  }
+  return t`${Math.round(seconds)} seconds`;
+}
 
 export function reasonLabel(reason: string | null): string {
   const labels: Record<string, string> = {
@@ -235,6 +253,18 @@ function PointTable({ points }: { points: MimicPoint[] }) {
                     {t`seconds`}
                   </Text>
                 )}
+                {/* How long the reading has held the same number. Shown as a
+                    fact rather than a verdict: a stopped bay's run status is
+                    correctly constant for ever, while a winding temperature
+                    that has not moved in days is an acquisition nobody is
+                    watching. Only the person reading it can tell which. */}
+                {point.unchanged_for_seconds !== null &&
+                  point.unchanged_for_seconds > 0 && (
+                    <Text size='xs' c='dimmed'>
+                      {t`Unchanged for`}:{' '}
+                      {unchangedLabel(point.unchanged_for_seconds)}
+                    </Text>
+                  )}
               </Table.Td>
               <Table.Td>
                 {!point.thresholds_configured

@@ -958,6 +958,51 @@ elsewhere and is not corroborated by the audit.
    that it cannot fire spuriously.
 3. Everything else waits on the data sheet or on one clean loaded window.
 
+### How long a reading has been the same number - implemented 2026-09-29
+
+Freshness cannot see a frozen acquisition. Timestamps advance on every poll
+whether or not the value moves, so a channel reporting punctually and saying the
+same thing for ever reads as perfectly current. Millbrook Pump 05 holds one value
+on 35 of its 37 channels across the whole recorded window - including its run
+status and its 24.5 MW - and nothing on the blade said so.
+
+`MachineSignalState.value_changed_at` now records when a signal last reported a
+*different* number, maintained at ingest for free off the `payload_hash` that was
+already being computed. The mimic shows it as "Unchanged for: 10 days" beside the
+reading.
+
+**A measurement, not a verdict, and the distinction is deliberate.** "Constant"
+is correct for a great many channels: a stopped bay reports `MOTOR_ON_STATUS` 0
+for ever and is right to. A per-channel rule calling every unchanging channel
+faulty would have fired on 58 status bits on its first run - the same error the
+range survey's first classifier made. The evidence that a bay is frozen is
+*aggregate*, and choosing that aggregate rule is what the rack-sentinel designs
+were refuted for twice. So the field reports the span and leaves the reading of
+it to somebody who knows the machine.
+
+Which turns out to be enough. Backfilled across the estate, the field separates
+the bays on its own, with no threshold from anybody:
+
+| bay | channels | median unchanged | over 5 days |
+|---|---:|---:|---:|
+| Millbrook Pump 05 | 37 | **9.92 d** | 35 |
+| Cedar Creek Pump 02 | 56 | **9.92 d** | 29 |
+| Maple Grove Pump 02 | 8 | **9.92 d** | 4 |
+| *every healthy bay* | 56-58 | **0.04 d** | 4-11 |
+
+A 250x separation on the median, and it surfaced a **third** bay - Maple Grove
+Pump 02 - which the range survey had recorded at 4 of 8 constant but never
+singled out because the bay carries so few channels.
+
+**No backfill in the migration**, deliberately. The honest value for a row cached
+before the field existed is *unknown*: the cache holds one reading, so nothing in
+the database says when it last differed. Writing `observed_at` would assert it
+changed on the most recent poll, which is false for precisely the frozen channels
+this exists to expose. `backfill_value_changed --source <pk>` walks the recorded
+window and sets it from the source instead - a command rather than a data
+migration because it needs the network, and a migration that cannot run offline
+blocks a deployment. It wrote 1,386 rows here.
+
 ### A condition closes on sustained recovery - implemented 2026-09-29
 
 Raising and clearing are not symmetric, and the detector treated them as if they

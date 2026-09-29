@@ -192,3 +192,103 @@ class IngestReadingsTest(HealthEnvMixin, TestCase):
         self.assertEqual(self.source.last_error_code, 'TIMEOUT')
         self.assertEqual(self.source.last_error_at, self.now)
         self.assertFalse(self.source.connection_healthy)
+
+
+class ValueChangedAtTest(HealthEnvMixin, TestCase):
+    """How long a reading has been the same number.
+
+    Freshness cannot answer this. Timestamps advance on every poll whether or
+    not the value moves, so a channel reporting punctually and saying the same
+    thing for ever reads as perfectly current - which is exactly what an
+    acquisition frozen at its last good sample looks like. Millbrook Pump 05
+    holds one value on 35 of its 37 channels across the whole recorded window,
+    including its run status and its active power.
+
+    Recorded as a measurement rather than a verdict: a stopped bay reports
+    MOTOR_ON_STATUS 0 for ever and is right to, so nothing here decides what an
+    unchanging channel means.
+    """
+
+    def setUp(self):
+        """One mapped signal and a plant clock to advance.
+
+        The window runs backwards from the present. Ingestion rejects a reading
+        dated in the future - correctly, since a snapshot that has not happened
+        cannot be current state - so a test that advances past ``now`` is not
+        testing the span, it is testing the skew guard.
+        """
+        self.build_health_env()
+        self.now = timezone.now()
+        self.started = self.now - timedelta(hours=12)
+
+    def send(self, value, *, at):
+        """Ingest one reading carrying its own plant timestamp."""
+        ingest_readings(
+            self.source,
+            [
+                {
+                    'external_key': self.binding.external_key,
+                    'value': value,
+                    'observed_at': at,
+                    'quality': SignalQuality.GOOD,
+                }
+            ],
+        )
+        return MachineSignalState.objects.get(binding=self.binding)
+
+    def test_the_first_reading_sets_the_instant(self):
+        """A channel seen once has changed once, as far as anyone can tell."""
+        state = self.send(3.2, at=self.started)
+
+        self.assertEqual(state.value_changed_at, self.started)
+
+    def test_a_repeated_value_keeps_the_earlier_instant(self):
+        """The span is what matters, so the start of it must not move."""
+        self.send(3.2, at=self.started)
+
+        state = self.send(3.2, at=self.started + timedelta(hours=6))
+
+        self.assertEqual(state.value_changed_at, self.started)
+        self.assertEqual(state.observed_at, self.started + timedelta(hours=6))
+        self.assertEqual(
+            (state.observed_at - state.value_changed_at), timedelta(hours=6)
+        )
+
+    def test_a_different_value_moves_it(self):
+        """A genuine change restarts the span from the change."""
+        self.send(3.2, at=self.started)
+        moved_at = self.started + timedelta(hours=6)
+
+        state = self.send(4.8, at=moved_at)
+
+        self.assertEqual(state.value_changed_at, moved_at)
+
+    def test_a_catch_up_of_identical_snapshots_does_not_reset_the_span(self):
+        """The case the field exists for.
+
+        A poll applying two hundred identical snapshots must leave the span
+        measured from the last genuine change, not from the newest arrival -
+        otherwise a frozen channel looks freshly changed after every poll.
+        """
+        self.send(3.2, at=self.started)
+        for minute in range(1, 20):
+            state = self.send(3.2, at=self.started + timedelta(minutes=minute))
+
+        self.assertEqual(state.value_changed_at, self.started)
+        self.assertEqual(
+            (state.observed_at - state.value_changed_at), timedelta(minutes=19)
+        )
+
+    def test_returning_to_an_earlier_value_counts_as_a_change(self):
+        """Compared against what was stored, not against everything ever seen.
+
+        A channel that oscillates is moving, which is the opposite of the fault
+        this measures, so each transition restarts the span.
+        """
+        self.send(3.2, at=self.started)
+        self.send(4.8, at=self.started + timedelta(hours=1))
+        back_at = self.started + timedelta(hours=2)
+
+        state = self.send(3.2, at=back_at)
+
+        self.assertEqual(state.value_changed_at, back_at)

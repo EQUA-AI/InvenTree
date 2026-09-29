@@ -393,6 +393,28 @@ class MachineSignalState(models.Model):
     #: Hash of the source payload, not the payload itself.
     payload_hash = models.CharField(max_length=64, blank=True)
 
+    #: When this signal last reported a *different* number. Timestamps advance
+    #: on every poll whether or not the reading moves, so freshness cannot see a
+    #: channel that is reporting punctually and saying the same thing for ever -
+    #: which is what an acquisition frozen at its last good sample looks like.
+    #:
+    #: Recorded as a measurement, not as a verdict. "Constant" is correct for a
+    #: great many channels: a stopped bay's MOTOR_ON_STATUS reads 0 for ever and
+    #: is right to. So this field answers "how long has this been the same
+    #: number" and leaves what that means to whoever is looking. A rule that
+    #: called every unchanging channel faulty would fire on 58 status bits
+    #: across this estate on its first run.
+    #:
+    #: Null means it has not been seen to change since the field existed, which
+    #: is different from "changed just now" and must not be presented as it.
+    value_changed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text=_('When this signal last reported a different value'),
+        verbose_name=_('Value Changed At'),
+    )
+
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

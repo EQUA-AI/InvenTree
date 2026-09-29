@@ -87,6 +87,17 @@ def project_point(point, binding, enabled, now, shift=None):
     result.update(
         observed_at=observed_at, age_seconds=round(age, 3), quality=state.quality
     )
+    # How long this reading has been the same number, on the plant's clock.
+    # Reported rather than judged: constant is correct for a stopped bay's run
+    # status and wrong for its winding temperature, and the screen is where that
+    # distinction can actually be made by somebody who knows the machine. Null
+    # while the signal has not been seen to change, which is not the same as
+    # "changed just now" and must not be rendered as it.
+    result['unchanged_for_seconds'] = (
+        round((state.observed_at - state.value_changed_at).total_seconds(), 3)
+        if state.value_changed_at
+        else None
+    )
     if age < 0:
         result['reason'] = 'clock_skew'
     elif age > binding.source.freshness_threshold_seconds:
