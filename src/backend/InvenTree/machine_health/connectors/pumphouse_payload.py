@@ -145,6 +145,33 @@ def _railed(number: float) -> bool:
     return False
 
 
+#: Why a numeric reading cannot be trusted, in the words the mimic shows. Public
+#: because the projection needs the same answer the coercion reached, and the
+#: only way to guarantee that is to ask the same function rather than to
+#: re-implement the predicate at the far end or to store a verdict that was
+#: computed under an older version of the rule.
+UNUSABLE_NOT_FINITE = 'not_finite'
+UNUSABLE_OVER_RANGE = 'over_range'
+UNUSABLE_RAILED = 'railed'
+
+
+def unusable_reason(value) -> str | None:
+    """Return why a reading is not a measurement, or ``None`` if it is one.
+
+    Only numbers are judged here. A string, a bool or a missing value is somebody
+    else's question - the caller knows whether it expected a number.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if not math.isfinite(value):
+        return UNUSABLE_NOT_FINITE
+    if _pegged(value):
+        return UNUSABLE_OVER_RANGE
+    if _railed(value):
+        return UNUSABLE_RAILED
+    return None
+
+
 def _coerce(value):
     """Return ``(value, quality)`` for one measurement.
 
@@ -167,9 +194,10 @@ def _coerce(value):
         return value, SignalQuality.GOOD
 
     if isinstance(value, (int, float)):
-        if isinstance(value, float) and not math.isfinite(value):
+        reason = unusable_reason(value)
+        if reason == UNUSABLE_NOT_FINITE:
             return None, SignalQuality.BAD
-        if _pegged(value) or _railed(value):
+        if reason:
             # Kept, not dropped and not zeroed, for the reason the docstring
             # gives: "pegged" and "zero" are different facts about a plant. Bad
             # quality is what stops it reaching classify().

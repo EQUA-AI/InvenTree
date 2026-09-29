@@ -9,6 +9,7 @@ from assets.activation import live_status, point_hash
 from assets.health_models import MachineSignalBinding
 from assets.models import DictionaryPoint
 from InvenTree.conversion import convert_physical_value
+from machine_health.connectors.pumphouse_payload import unusable_reason
 from machine_health.mimic_layout import expand_pointer, load_layout, station_pumps
 from machine_health.services.display_time import display_shift, to_display
 
@@ -91,13 +92,20 @@ def project_point(point, binding, enabled, now, shift=None):
     elif age > binding.source.freshness_threshold_seconds:
         result['reason'] = 'stale'
     elif state.quality != 'good':
-        result['reason'] = 'bad_quality'
+        # "Unusable" is not one fact. A channel pegged at the over-range marker,
+        # one sitting on a converter rail and one whose reading would not parse
+        # are three different things to go and look at, and collapsing them cost
+        # an operator the only clue on the screen. Asked of the module that owns
+        # the rule, so the answer here cannot drift from the one coercion gave.
+        result['reason'] = (
+            unusable_reason((state.value or {}).get('value')) or 'bad_quality'
+        )
     else:
         value = (state.value or {}).get('value')
         if value is None or not isinstance(value, (str, int, float, bool)):
             result['reason'] = 'no_data'
         elif isinstance(value, (int, float)) and not math.isfinite(value):
-            result['reason'] = 'bad_quality'
+            result['reason'] = 'not_finite'
         elif point.data_type == 'number' and (
             isinstance(value, bool) or not isinstance(value, (int, float))
         ):

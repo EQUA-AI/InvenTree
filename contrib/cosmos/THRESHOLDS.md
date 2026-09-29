@@ -297,6 +297,20 @@ to the 20 rows already cached - necessary because a fully consumed recorded
 window is never re-ingested, so a coercion rule alone would have changed nothing
 at all.
 
+**An operator can now tell the three apart.** The mimic collapsed every unusable
+reading into one `bad_quality` label, so a channel pegged at the over-range
+marker, one sitting on a converter rail and one whose reading would not parse all
+read the same on screen - three different things to go and look at, reduced to
+one. The projection now asks `pumphouse_payload.unusable_reason`, the same
+function the coercion asks, so the screen cannot drift from what the system
+believes. Millbrook Pump 09 shows it: two railed vibration channels and one
+over-range winding detector, where there were previously three identical labels.
+
+Derived at projection rather than stored on the state row, deliberately. A stored
+verdict records whichever version of the rule was running at ingest; a derived
+one is always the current rule's answer, which is what somebody reading the
+screen needs.
+
 The justification is deliberately *not* the one `OVER_RANGE` uses. That marker
 argues no real channel reaches it; here that is unavailable, because this repo
 approved the vibration channels as raw signed values precisely because a third

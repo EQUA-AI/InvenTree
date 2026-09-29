@@ -13,6 +13,7 @@ from assets.models import Client, DictionaryPoint
 from assets.registry import ensure_pump, register_station
 from assets.tests.test_registry import test_scope
 from InvenTree.unit_test import InvenTreeAPITestCase
+from machine_health.connectors.pumphouse_payload import unusable_reason
 from machine_health.mimic_layout import expand_pointer, layout_coverage, load_layout
 from machine_health.services.mimic import station_mimic
 
@@ -227,3 +228,66 @@ class MimicTests(InvenTreeAPITestCase):
         with self.assertNumQueries(8):
             result = station_mimic(self.station, unit='P1')
         self.assertEqual(len(result['points']), 23)
+
+
+class UnusableReasonTests(MimicTests):
+    """"Unusable" is not one fact, and the mimic is where an operator reads it.
+
+    A channel pegged at the source's over-range marker, one sitting on a
+    converter rail and one whose reading will not parse are three different
+    things to go and look at. Collapsing them into ``bad_quality`` cost the
+    operator the only clue on the screen - and it did so most on the readings
+    this branch had just spent a day identifying.
+    """
+
+    def test_the_over_range_marker_says_so(self):
+        """3276.7 is the source declaring it stopped measuring."""
+        self.add_point('/pegged', 3276.7, quality='bad')
+
+        points = self.get_mimic(unit='P1').data['points']
+
+        self.assertEqual(points['/pegged']['reason'], 'over_range')
+        self.assertIsNone(points['/pegged']['value'])
+
+    def test_a_converter_rail_says_so(self):
+        """Full scale is a saturated input, not a reading in the same sense."""
+        self.add_point('/railed', -118.51851654052734, quality='bad')
+
+        points = self.get_mimic(unit='P1').data['points']
+
+        self.assertEqual(points['/railed']['reason'], 'railed')
+
+    def test_anything_else_unusable_keeps_the_general_reason(self):
+        """A bad reading with no known signature must not be mislabelled."""
+        self.add_point('/odd', 42.0, quality='bad')
+
+        points = self.get_mimic(unit='P1').data['points']
+
+        self.assertEqual(points['/odd']['reason'], 'bad_quality')
+
+    def test_the_reason_cannot_drift_from_the_coercion_rule(self):
+        """Derived through the module that owns the rule, not re-implemented.
+
+        A reason stored at ingest would record the verdict of whichever version
+        of the rule was running then; asking the same function keeps the screen
+        consistent with what the system believes today.
+        """
+        for value, expected in (
+            (3276.7, 'over_range'),
+            (-59.25925827026367, 'railed'),
+            (59.25745391845703, 'railed'),
+            (-592.5925903320312, 'railed'),
+            (42.0, None),
+            (0.0, None),
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(unusable_reason(value), expected)
+
+    def test_a_good_reading_still_has_no_reason(self):
+        """The change must not put a reason on a healthy point."""
+        self.add_point('/fine', 42.0)
+
+        points = self.get_mimic(unit='P1').data['points']
+
+        self.assertIsNone(points['/fine']['reason'])
+        self.assertEqual(points['/fine']['value'], 42.0)
