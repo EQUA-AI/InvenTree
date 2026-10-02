@@ -1,7 +1,12 @@
 import { ModelType } from '@lib/enums/ModelType';
 import type { TableFilter } from '@lib/types/Filters';
 import { t } from '@lingui/core/macro';
-import { TagsFilter } from '../../components/tables/Filter';
+import {
+  CreatedAfterFilter,
+  CreatedBeforeFilter,
+  PartCategoryFilter,
+  TagsFilter
+} from '../../components/tables/Filter';
 
 /**
  * Construct a set of filters for the part table
@@ -156,6 +161,15 @@ export function PartTableFilters(): TableFilter[] {
       description: t`Filter by parts to which the user is subscribed`,
       type: 'boolean'
     },
+    PartCategoryFilter(),
+    {
+      name: 'group',
+      label: t`Group`,
+      description: t`Filter by part group`,
+      type: 'text'
+    },
+    CreatedAfterFilter(),
+    CreatedBeforeFilter(),
     TagsFilter({
       modelType: ModelType.part
     })

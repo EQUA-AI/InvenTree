@@ -35,7 +35,9 @@ given site runs.
 
 ## Connectors
 
-There are no bundled connectors, and that is a decision rather than a gap.
+The [Cosmos pumphouse connector](cosmos-connector.md) reads reviewed station
+telemetry from Cosmos DB's NoSQL API. It includes explicit station activation,
+bounded scheduled polling and federated history reads.
 
 Every plant runs a different stack — SCADA, PLC, DCS, MES, BAS/BMS, EMS, IIoT
 platforms, historians — and the useful integration is the one that speaks to

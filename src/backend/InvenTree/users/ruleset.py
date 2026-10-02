@@ -155,6 +155,8 @@ def get_ruleset_models() -> dict:
             'flags_flagstate',
             'machine_machineconfig',
             'machine_machinesetting',
+            # Poll cursors and leases are administrative state, not equipment CRUD.
+            'assets_ingestioncheckpoint',
             # common / comms
             'common_emailmessage',
             'common_emailthread',
@@ -249,6 +251,8 @@ def get_ruleset_models() -> dict:
             'assets_assetmaintenancerecord',
             'assets_machinepart',
             'assets_assetlocation',
+            'assets_assetcomponent',
+            'assets_dictionarypoint',
         ],
     }
 

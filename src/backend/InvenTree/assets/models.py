@@ -1,6 +1,9 @@
 """Database models for the assets (equipment machines) application."""
 
+import uuid as uuid_module
+
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -94,6 +97,25 @@ class AssetMachine(
     rail, and scanning one in the field opens the AI drawer with the
     machine as a visible routing hint.
     """
+
+    uuid = models.UUIDField(default=uuid_module.uuid4, unique=True, editable=False)
+    asset_type = models.CharField(
+        max_length=16,
+        default='equipment',
+        db_index=True,
+        choices=[
+            ('equipment', 'Equipment'),
+            ('pumphouse', 'Pump station'),
+            ('pump', 'Pump'),
+        ],
+    )
+    parent = models.ForeignKey(
+        'self', null=True, blank=True, on_delete=models.PROTECT, related_name='children'
+    )
+    source_namespace = models.SlugField(max_length=64, blank=True)
+    source_entity_uuid = models.UUIDField(null=True, blank=True)
+    source_key = models.CharField(max_length=64, blank=True)
+    source_context = models.JSONField(default=dict, blank=True)
 
     @classmethod
     def barcode_model_type_code(cls):
@@ -191,6 +213,65 @@ class AssetMachine(
         ordering = ['name']
         verbose_name = _('Asset Machine')
         verbose_name_plural = _('Asset Machines')
+        constraints = [
+            models.UniqueConstraint(
+                fields=['source_namespace', 'source_entity_uuid'],
+                condition=models.Q(asset_type='pumphouse'),
+                name='registry_source_station_unique',
+            ),
+            models.UniqueConstraint(
+                fields=['parent', 'source_key'],
+                condition=models.Q(asset_type='pump'),
+                name='registry_pump_slot_unique',
+            ),
+        ]
+
+    def clean(self):
+        """Validate registered hierarchy and prevent identity changes after import."""
+        super().clean()
+        if self.asset_type == 'pumphouse':
+            if self.parent_id or not self.client_id:
+                raise ValidationError('A pump station requires a Client and no parent.')
+            if not self.source_namespace or not self.source_entity_uuid:
+                raise ValidationError(
+                    'A station requires source namespace and entity UUID.'
+                )
+        elif self.asset_type == 'pump':
+            if not self.parent_id or self.parent_id == self.pk:
+                raise ValidationError('A pump requires a different parent station.')
+            if (
+                self.parent.asset_type != 'pumphouse'
+                or self.client_id != self.parent.client_id
+            ):
+                raise ValidationError(
+                    'Pump and parent station must belong to the same Client.'
+                )
+            if not self.source_key:
+                raise ValidationError('A pump requires a stable source key.')
+        elif self.parent_id:
+            raise ValidationError('Only registered pumps can have a parent station.')
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).first()
+            if previous and previous.uuid != self.uuid:
+                raise ValidationError('Public equipment UUID is immutable.')
+            if previous and previous.asset_type != 'equipment':
+                for field in [
+                    'asset_type',
+                    'parent_id',
+                    'client_id',
+                    'source_namespace',
+                    'source_entity_uuid',
+                    'source_key',
+                ]:
+                    if getattr(previous, field) != getattr(self, field):
+                        raise ValidationError(
+                            'Registered equipment identity cannot be reassigned.'
+                        )
+
+    def save(self, *args, **kwargs):
+        """Keep hierarchy invariants even through legacy equipment editors."""
+        self.clean()
+        return super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         """Readable identity for admin and logs."""
@@ -337,10 +418,12 @@ from .health_models import (  # noqa: F401
     SnapshotReason,
     SourceType,
 )
+from .ingestion_models import HOUR_MS, IngestionCheckpoint  # noqa: F401
 from .location_models import AssetLocation as AssetLocation
 from .location_models import LocationParentHistory as LocationParentHistory
 from .location_models import MachineLocationTransfer as MachineLocationTransfer
 from .location_models import MachinePlacementHistory as MachinePlacementHistory
+from .registry_models import AssetComponent, DictionaryPoint  # noqa: F401
 
 # Demo metrics ledger models live in their own module for readability but
 # belong to this app; importing them here is what registers them. This block

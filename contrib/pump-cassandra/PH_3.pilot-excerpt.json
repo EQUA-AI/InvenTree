@@ -1,0 +1,39 @@
+{
+  "parent_entity_uuid": "dd4b923d-945d-47b3-aff3-de032d15f864",
+  "location_type": "PUMP_HOUSE",
+  "component_type": 65,
+  "event_value_type": 41,
+  "entity_uuid": "bafc976f-1ccc-4a91-aaa6-c3eac2470d36",
+  "time_period": 1752850800000,
+  "sub_time_period": 1752854398616,
+  "data1": {
+    "sr": "SCADA", "st": "I", "sl": 132.45159912109375,
+    "egt": 1752854398616, "ext": 1752854698616, "dsc": 24,
+    "pd": {
+      "P1": {"st": "I"}, "P2": {"st": "I"}, "P3": {"st": "I"},
+      "P4": {"st": "I"}, "P5": {"st": "I"}, "P6": {"st": "I"},
+      "P7": {"st": "I"}, "P8": {"st": "I"}, "P9": {"st": "I"},
+      "P10": {"st": "I"}, "P11": {"st": "I"}, "P12": {"st": "I"},
+      "P13": {"st": "I"}, "P14": {"st": "I"}
+    },
+    "dex": {
+      "ID": "PH_3", "TIMESTAMP": "1.752854398616E9",
+      "COMMAN_FORBAY_LEVEL": "132.45159912109375",
+      "PUMP2_MOTOR_CORE_RTD1_PROCESS_VALUE": "39.20000076293945",
+      "PUMP4_MOTOR_CORE_RTD2_PROCESS_VALUE": "-242.09999084472656",
+      "PUMP3_THRST_BRG_THRST_PD_RTD3_PROCESS_VALUE": "41.5",
+      "PUMP12_MTR_NDE_BRG_VBRTN2_PROCESS_VALUE": "0.12659142911434174",
+      "PUMP4_PMP_THRST_BRG_VBRTN2_PROCESS_VALUE": "0.09403935074806213",
+      "PUMP9_EXCITATION_FLD_CURR_PROCESS_VALUE": "1.0127314329147339",
+      "PUMP3_EXCITATION_FLD_VLTG_PROCESS_VALUE": "1.2442129850387573",
+      "PUMP3_PUMP_MOTOR_DE_VIBRATION2": "0.11754919588565826",
+      "PUMP5_PUMP_REACTIVE_POWER": "0",
+      "PUMP4_HOPD_VALVE_POS_PROCESS_VALUE": "1.1067707538604736",
+      "PUMP12_EOPD_VALVE_POS_PROCESS_VALUE": "100.18807983398438",
+      "PUMP12_PUMP_PUMP_INLET_COOLING_WATER_TEMPERATURED3": "42.599998474121094",
+      "PUMP6_PUMP_MOTOR_HOT_AIR TEMP2": "37.29999923706055",
+      "PUMP14_PUMP_THRUST_AXIAL_PAD_1D5": "28.900001525878906"
+    }
+  },
+  "data2": null
+}

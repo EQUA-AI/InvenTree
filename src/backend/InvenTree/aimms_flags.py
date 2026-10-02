@@ -249,6 +249,18 @@ REGISTRY: tuple[FlagEntry, ...] = (
         description='Comma-separated rule codes; empty enables nothing',
     ),
     FlagEntry(
+        'AIMMS_COSMOS_PUMPHOUSE_ENABLED',
+        'bool',
+        False,
+        'django',
+        config_key='aimms_cosmos_pumphouse_enabled',
+        description=(
+            'IoT: scheduled read-only Cosmos pumphouse station polling '
+            '(assets.tasks.poll_cosmos_pumphouse_sources); off until estate '
+            'onboarding, activation and identity gates pass'
+        ),
+    ),
+    FlagEntry(
         'AIMMS_ATTACHMENT_RAG_ENABLED',
         'bool',
         True,

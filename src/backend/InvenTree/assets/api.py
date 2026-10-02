@@ -2,21 +2,23 @@
 
 from __future__ import annotations
 
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.urls import include, path
 
 from django_filters.rest_framework import FilterSet, filters
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from tasks.closeout_models import CloseoutAmendment, CloseoutAmendmentStatus
+from tasks.scope import ScopeError
 
 import InvenTree.permissions
-from InvenTree.filters import SEARCH_ORDER_FILTER
+from InvenTree.filters import SEARCH_ORDER_FILTER, InvenTreeDateFilter
 from InvenTree.mixins import ListCreateAPI, RetrieveUpdateDestroyAPI
 
 from .demo_metrics_api import demo_metrics_api_urls
 from .location_api import location_api_urls
 from .models import AssetMachine, AssetMaintenanceRecord, Client, MachinePart
+from .registry_api import authorized_client_ids, registry_urls
 from .serializers import (
     AssetMachineSerializer,
     AssetMaintenanceRecordSerializer,
@@ -42,11 +44,29 @@ class AssetMachineFilter(FilterSet):
 class MachinePartFilter(FilterSet):
     """Filter set for MachinePart."""
 
+    category = filters.NumberFilter(field_name='part__category')
+    group = filters.CharFilter(
+        field_name='part__category__name', lookup_expr='icontains'
+    )
+    created_before = InvenTreeDateFilter(
+        field_name='part__creation_date', lookup_expr='lt'
+    )
+    created_after = InvenTreeDateFilter(
+        field_name='part__creation_date', lookup_expr='gt'
+    )
+
     class Meta:
         """Filter configuration for MachinePart."""
 
         model = MachinePart
-        fields = ('machine', 'part')
+        fields = (
+            'machine',
+            'part',
+            'category',
+            'group',
+            'created_before',
+            'created_after',
+        )
 
 
 class AssetMaintenanceRecordFilter(FilterSet):
@@ -60,6 +80,18 @@ class AssetMaintenanceRecordFilter(FilterSet):
 
 
 # ---- Views -------------------------------------------------------------------
+
+
+def registry_visibility(queryset, actor, prefix=''):
+    """Retain legacy generic equipment behavior but scope registered equipment."""
+    try:
+        clients = authorized_client_ids(actor)
+    except ScopeError:
+        clients = set()
+    return queryset.filter(
+        Q(**{prefix + 'asset_type': 'equipment'})
+        | Q(**{prefix + 'client_id__in': clients, prefix + 'client__active': True})
+    )
 
 
 class ClientList(ListCreateAPI):
@@ -117,6 +149,10 @@ class AssetMachineList(ListCreateAPI):
     ordering_fields = ['name', 'location', 'manufacturer', 'created_at', 'updated_at']
     ordering = 'name'
 
+    def get_queryset(self):
+        """Apply registry scope to station/pump records."""
+        return registry_visibility(super().get_queryset(), self.request.user)
+
 
 class AssetMachineDetail(RetrieveUpdateDestroyAPI):
     """Retrieve, update, or delete an asset machine."""
@@ -128,6 +164,10 @@ class AssetMachineDetail(RetrieveUpdateDestroyAPI):
         InvenTree.permissions.RolePermission,
     ]
     role_required = 'work_order'
+
+    def get_queryset(self):
+        """Apply registry scope to station/pump records."""
+        return registry_visibility(super().get_queryset(), self.request.user)
 
 
 class AssetMachineFaultHistory(APIView):
@@ -166,7 +206,7 @@ class AssetMachineFaultHistory(APIView):
 class MachinePartList(ListCreateAPI):
     """List and create machine-part relationships."""
 
-    queryset = MachinePart.objects.select_related('part').all()
+    queryset = MachinePart.objects.select_related('part', 'part__category').all()
     serializer_class = MachinePartSerializer
     permission_classes = [
         InvenTree.permissions.IsAuthenticatedOrReadScope,
@@ -247,6 +287,7 @@ class AssetMaintenanceRecordDetail(RetrieveUpdateDestroyAPI):
 assets_api_urls = [
     path('locations/', include(location_api_urls)),
     path('demo-metrics/', include(demo_metrics_api_urls)),
+    path('registry/', include(registry_urls)),
     path(
         'clients/',
         include([

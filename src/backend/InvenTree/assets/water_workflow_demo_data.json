@@ -270,6 +270,47 @@
       "default_sequence": 10
     },
     {
+      "name": "Rotating Equipment Isolation",
+      "managed": false,
+      "gate_type": "isolation",
+      "instructions": "Confirm rotating equipment is isolated and all stored mechanical energy is controlled.",
+      "applies_to": {
+        "fault_keywords": [
+          "bearing",
+          "pump",
+          "fan",
+          "shaft",
+          "gearbox",
+          "coupling",
+          "vibration"
+        ]
+      },
+      "requires_photo": false,
+      "requires_second_person": false,
+      "is_blocking": true,
+      "is_mandatory": true,
+      "risk_tier": 2,
+      "default_sequence": 20
+    },
+    {
+      "name": "PPE Check",
+      "managed": false,
+      "gate_type": "ppe",
+      "instructions": "Confirm required PPE is available, appropriate, and worn before work begins.",
+      "applies_to": {
+        "criticality_in": [
+          "high",
+          "critical"
+        ]
+      },
+      "requires_photo": false,
+      "requires_second_person": false,
+      "is_blocking": true,
+      "is_mandatory": true,
+      "risk_tier": 1,
+      "default_sequence": 40
+    },
+    {
       "name": "WW Demo - Process/Basin Isolation",
       "managed": true,
       "gate_type": "isolation",

@@ -36,6 +36,7 @@ import { WorkOrderCreateModal } from '../maintenance/components/WorkOrderCreateM
 import FaultHistoryPanel from './FaultHistoryPanel';
 import { StartRepairModal } from './StartRepairModal';
 import { MachineHealthPanel } from './health/MachineHealthPanel';
+import PumphouseMimic from './health/PumphouseMimic';
 import { MachineDemoScopeNotice } from './locations/DemoMetricsPanel';
 import {
   MachineLocationCard,
@@ -158,6 +159,18 @@ export default function MachineDetail() {
           </Stack>
         ) : null
       },
+      ...(machine?.asset_type === 'pumphouse'
+        ? [
+            {
+              name: 'mimic',
+              label: t`Pumphouse mimic`,
+              icon: <IconActivityHeartbeat />,
+              content: (
+                <PumphouseMimic key={machine.pk} stationId={machine.pk} />
+              )
+            }
+          ]
+        : []),
       {
         // Health sits immediately after Details: an operator opening a machine
         // asks how it is doing before asking what it is made of.

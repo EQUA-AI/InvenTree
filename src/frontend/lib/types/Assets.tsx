@@ -25,6 +25,7 @@ export interface MachinePart {
   machine: number;
   part: number;
   part_name: string;
+  part_group: string;
   quantity: number;
   notes: string;
 }

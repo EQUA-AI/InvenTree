@@ -1,0 +1,353 @@
+# Task list: Azure Cosmos DB schema + read-only pumphouse connector
+
+Companion to `plan.md`. Current implementation branch: local `IoT`, based on remote
+`IOT` at `9576f17f39`. The original sprint ran on `inventTree-aniket`. Human review is
+required before any PR; see `AGENTS.md`.
+
+**Definition of done, every ticket**: unit tests for the new behaviour; `prek run --files <changed>`
+clean; `ty` clean on touched files; no credential in code, config, fixture or log; commit on
+`IoT` with a message that says *why*, not just *what*.
+
+| Status | Meaning |
+|---|---|
+| ✅ | implemented and committed locally on `IoT` (production acceptance tracked separately) |
+| 🔵 | ready to start (no blocker) |
+| ⏸ | blocked, blocker named |
+
+---
+
+## Week 0 — carried over from the registry sprint
+
+### ✅ T0 — Register PH_3 and import the pilot dictionary · 2 h · done 2026-09-12
+The registry shipped and merged, but nothing had ever been put through it. Now it has.
+- [x] Registered PH_3 (`pk 17`, uuid `ce0a411f-…`, namespace `klsw`, entity
+      `bafc976f-1ccc-4a91-aaa6-c3eac2470d36`, selectors `PUMP_HOUSE` / `65` / `41`) against the
+      `Internal` client
+- [x] Previewed `PH_3.pilot-excerpt.json`: 1 row, 1 matched, 14 pump slots, 31 points
+- [x] Imported at the previewed hash
+- [x] **Idempotency confirmed**: re-import reports `new: 0, preserved: 31` and creates nothing
+
+Resulting state: **14 pump slots, 30 components, 31 dictionary points** — 21 `exact`, 9 `alias`,
+1 `unresolved`, 0 `conflict`.
+
+Review is deliberately **not** done here: approving a mapping is a human judgement about which tag
+means which measurement, and mass-approving 30 points to unblock a later ticket would put unreviewed
+mappings behind an "approved" label. T11 binds only approved points, so someone reviews them in the
+Dictionary tab first.
+
+---
+
+## Week 1 — schema, dependency, seed, normalisation
+
+### ✅ T1 — Accept the real Cassandra hour-bucket types · 4 h · commit `e60b696ba`
+Fix the bug the confirmed DDL exposed, and record the schema.
+- [x] `epoch_ms()` in `assets/registry.py` parses `time_period` as `text` or bigint; rejects bool and
+      non-numeric strings instead of coercing
+- [x] Multi-station hour slice: skip other stations' rows, fail only when none match; expose
+      `rows_matched` in the preview
+- [x] Tests `test_text_hour_bucket`, `test_multi_station_hour_slice`
+- [x] `contrib/pump-cassandra/README.md`: confirmed `CREATE TABLE` + four consequences; gates 1–4
+      closed, gate 5 redirected to this spec
+- [x] `PH_3.mapping.draft.json` basic-params block + offline tests
+
+### ✅ T2 — Add the `azure-cosmos` dependency · 2 h · commit `0ad1308df`
+- [x] `azure-cosmos>=4.9.0` in `src/backend/requirements.in`
+- [x] Raised `azure-identity` floor `>=1.15.0` → `>=1.16.1`: the old floor permitted
+      **CVE-2024-35255** (elevation of privilege) and the connector puts `DefaultAzureCredential`
+      on a data path. The lock already resolved to 1.25.3, but a floor should not allow a
+      vulnerable resolution.
+- [x] pip-compile: adds `azure-cosmos==4.17.0` and nothing else — no version churn
+- [x] CVE check on 4.17.0: clean
+- [x] Verified in `inventree-dev-server`: imports fine, `manage.py check` clean
+
+### ✅ T3 — Cosmos schema artefacts and verifier · 6 h · commits `744250a4b`, `2b089fff3`
+- [x] `contrib/cosmos/schema/pumphouse_readings.container.json` — hierarchical PK `/station_uuid` +
+      `/hour_bucket`, `defaultTtl: -1`, indexing excluding the payload. No database id in the file
+- [x] `schema/pumphouse_readings.indexing.json` — the policy alone for `az ... --idx @file`, kept
+      identical to the definition by a test
+- [x] `provision.py` — verifies offline from `az` output (no credentials, runs in CI), live, or against
+      the emulator; `--create` refuses anything but the emulator; never grants a role or writes a document
+- [x] `contrib/cosmos/README.md` — runbook, throughput/cost decision, troubleshooting
+- [x] 11 offline tests
+- [x] **Container created and verified live**: `aimms/pumphouse_readings` matches the definition
+- [x] Indexing policy applied through the control plane after Data Explorer refused it (the
+      `Cosmos DB Operator` role cannot read account keys, so its data-plane save had no credential)
+- [ ] `schema/pumphouse_latest.container.json` — deferred with §3.2, nothing would maintain it yet
+
+### ✅ T4 — Cosmos emulator in the dev stack · 3 h · *done — 11 tests; the connector now runs against a real Cosmos service offline*
+- [x] `cosmos` profile in `contrib/container/dev-docker-compose.yml`, pinned to the multi-arch
+      vNext image and gated on the image's own `/ready` probe
+- [x] Certificate/TLS handling documented — **there is none**: vNext serves plain HTTP on 8081
+- [x] `provision.py --emulator --create` brings up an empty, correctly-shaped container
+- [x] `INVENTREE_COSMOS_*` and `COSMOS_EMULATOR_KEY` set on the dev server and worker, all
+      overridable, so the scripts need no flags beyond `--emulator`
+**Acceptance**: met — CI and offline work never need the real Azure account.
+
+**Verified end to end, not just configured.** Created the container, seeded the three pilot
+documents, and read them back through the T8 connector: `check()` returned `(True, 'OK')`, a window
+read crossed the hour boundary and returned the `I → R` transition at both station and pump level,
+and `poll()` produced 95/69/72 readings across the three snapshots. That is T8's hierarchical
+partition key, parameterised queries and single-partition scoping proved against a genuine Cosmos
+implementation rather than the mock.
+
+**Two things corrected**
+- The classic emulator image is **amd64 only** and serves self-signed HTTPS; this machine is arm64,
+  so it would have run under emulation *and* needed a root CA installed. The vNext image is
+  multi-arch and plain HTTP, which removes the whole "certificate/TLS handling" line item.
+- `provision.py` and `seed.py` defaulted to `https://localhost:8081`, which this image does not
+  serve. Both now default to `http://`, with a comment saying why so it does not get "fixed" back.
+
+### ✅ T5 — Manual seeder + pilot documents · 6 h · commit `4520ea38c` · *seeded to the real account 2026-09-12*
+This is the sprint's data source (migration is deferred, D2).
+- [x] `contrib/cosmos/seed.py`: validates the §3.1 invariants (half-open bucket, UTC `month`,
+      `data1_raw` round-trip), computes `month`/`payload_hash`/`data1_raw`, upserts
+- [x] Flags: `--station-uuid`, `--from`/`--count`/`--every-ms` timestamp ladder, `--dry-run`
+- [x] `contrib/cosmos/samples/ph3_snapshots.json`: 3 documents across **two hour buckets**,
+      station- and pump-level values, `dex` tags (D8), a `pd.P<n>.st` `I → R` transition
+- [x] 28 offline tests for the validator (rejects out-of-bucket samples, wrong `month`, mismatched
+      `data1_raw`)
+- [x] **D7 closed by a real snapshot**: `dv`/`pmw`/`pmvar` exist at *both* levels; `pc` is a float
+- [x] **D13 corrected**: `parent_entity_uuid` is a shared parent, *not* the station uuid; a supplied
+      parent is preserved
+- [x] **Seeded into the real account** once D16 was granted: 3 documents across buckets
+      `1752850800000` (2) and `1752854400000` (1), read back with the connector's query shape
+**Acceptance**: met, on the emulator *and* on `epconchatcosmos9d6b/aimms/pumphouse_readings`.
+
+
+### ✅ T6 — `flatten_snapshot()` normalisation · 7 h · commit `e0321ce3b`
+`machine_health/connectors/pumphouse_payload.py`, pure function, no I/O, shared by the connector and
+the dump importer.
+- [x] JSON-pointer `external_key` derived from position, so station and pump levels fall out of one
+      walk (`/sl`, `/pd/P3/st`, `/dex/PUMP3_…`) — matches `DictionaryPoint.path`
+- [x] Re-parses `data1_raw` and **fails the snapshot** when parsed fields disagree (D5)
+- [x] `observed_at` from `sub_time_period` (fallback `egt`), UTC; `sequence = sub_time_period`
+- [x] Quality rules: unparsable `dex` string → `uncertain`; empty/non-finite → `bad` with value
+      `None`; unknown `st` code → `uncertain`, never mapped to a guess (D10: `I` idle, `R` running)
+- [x] Skips `dex.ID`, `dex.TIMESTAMP` and envelope keys unless explicitly bound
+- [x] Respects `MAX_VALUE_BYTES` (2048)
+- [x] **`in_batches()`** — a real snapshot flattens to ~762 readings against a 500-reading batch
+      limit, so `ingest_readings` would *raise* on a whole snapshot. Paging lives beside the
+      function that creates the oversized list rather than being rediscovered in T8.
+- [x] RFC 6901 escaping, so a tag containing `/` or `~` stays unambiguous
+**Acceptance**: met — 30 tests, no Azure and no database.
+
+**Found while building it**: the batch limit. The first version of the sample-file test asserted a
+snapshot fits one batch; it passed only because the checked-in samples are abridged. Against a
+realistic 700-tag payload the assertion is false, so the test was replaced with one that states the
+real constraint and proves `in_batches` satisfies it.
+
+
+### ✅ T7 — `IngestionCheckpoint` model · 3 h · commit `1a4403760`
+- [x] `assets/ingestion_models.py`: `IngestionCheckpoint(source FK, station_uuid, hour_bucket str,
+      sub_time_period bigint, continuation_token, updated_at)`, unique `(source, station_uuid)`
+- [x] Forward-only `advance_to()`: an equal or earlier position is refused and reported, and the
+      candidate is validated *before* assignment so a refused advance leaves the instance untouched
+      in memory as well as in the database
+- [x] Half-open bucket validation (`hour_bucket <= sample < hour_bucket + 3_600_000`), text bucket
+      parsed like the source stores it
+- [x] Migration `0012_ingestioncheckpoint`, applied
+- [x] Admin: read-only, no add permission — a hand-edited position would skip or replay samples
+- [x] 7 tests incl. bucket edges, cross-bucket advance, uniqueness, and "stores no measurement"
+
+---
+
+## Week 2 — connector, poller, bridge, UI
+
+### ✅ T8 — `CosmosPumphouseConnector` · 10 h · *done — 53 tests, SDK mocked; runnable against Azure once D16 is granted*
+`machine_health/connectors/cosmos_pumphouse.py`, registered as `cosmos_pumphouse`.
+- [x] `check()` → `(ok, code)` from a **fixed vocabulary** `AUTH|NOT_FOUND|THROTTLED|NETWORK|OK`, plus
+      `CONFIG` for a source that cannot be used as configured; no endpoint, tag or provider message
+      ever persisted or logged
+- [x] `read_latest()` — query A on the current hour bucket, falling back to the previous one
+- [x] `read_window()` — `bounded_window()`, enumerate buckets, `max_item_count=100`, stop at
+      `max_samples`, never round a timestamp
+- [x] `poll(checkpoint)` — query B **strictly after** the checkpoint; change feed deferred
+- [x] Entra ID via `DefaultAzureCredential` + **Cosmos DB Data Reader** (D6); an account key is
+      refused outright against a real endpoint and read from an env var for the emulator only
+- [x] All queries parameterised and single-partition; cross-partition explicitly disabled; a partial
+      partition key raises before any request is built
+- [x] **Ingests through `in_batches()`** (T6); the checkpoint advances per *snapshot*, only after
+      every batch of it is accepted
+**Acceptance**: met — tests assert no query is issued without both PK components, and that a
+snapshot whose second batch fails leaves the checkpoint untouched.
+
+**Two things found while building it**
+- `CONFIG` was added to the error vocabulary. A missing endpoint is not a `NETWORK` fault, and
+  reporting it as one sends an operator to look at a firewall for a blank config field.
+- **Bug fixed in the ingest path**: the connector was forwarding its `now` (the *source-clock*
+  horizon for how far forward to read) into `ingest_readings(now=...)` (the *server clock* that skew
+  is measured against). The project runs with `USE_TZ` off, so this raised
+  `can't subtract offset-naive and offset-aware datetimes` on every batch — and `_classify` would
+  have reported it in production as `NETWORK`. Two tests now pin the behaviour.
+
+
+### ✅ T9 — Scheduled poller · 6 h original estimate · implemented
+- [x] Minute scheduler and default-off kill-switch; disabled task makes zero queries/calls
+- [x] Explicit checkpoint → registered station ownership; ingestion and history isolate shared pointers
+- [x] Per-station status, 120-second lease, least-recently attempted first (including failures)
+- [x] 20-second station / 50-second sweep budgets and at most 200 documents per station
+- [x] Separate empty-range scan cursor, five-minute overlap, bounded source-time horizon
+- [x] Atomic snapshot batches plus checkpoint; failed snapshots cannot partially update state
+- [x] New Cosmos sources default to 300-second freshness; explicit/existing values preserved
+- [x] Regression coverage for twelve stations, failures, overlap, budgets and scan recovery
+
+Migration `0013_station_poll_progress` leaves existing station links null. T11 must link
+checkpoints explicitly and create them at a defined initial position. See the continuation
+at the top of `HANDOVER.md` for lifecycle rules and budget limitations. The global flag
+remains off; this ticket does not enable live ingestion or apply production migrations.
+
+### ✅ T10 — `import_pumphouse_dump` command · 3 h · completed
+- [x] Bounded JSON/Cassandra rows and seed-file envelopes → `flatten_snapshot` → `in_batches` → `ingest_readings`
+- [x] Explicit source and registered station; mixed-station files fail before writes
+- [x] Whole-file transaction, `--dry-run`, pure replays preserve state/source timestamps
+- [x] 37 importer/normalizer tests passed; no Azure calls or polling checkpoint changes
+
+### ✅ T11 — Registry → live bridge · 5 h · completed
+- [x] Scoped GET status/preview and hash-locked POST/DELETE activation API
+- [x] Explicit administrator-assigned `HealthSource.client`; configuration stays private
+- [x] Bind only approved points with reviewed units and catalogue ownership; unset thresholds remain unknown
+- [x] Create/link station checkpoints; start new cursors five minutes back, preserve existing progress
+- [x] Idempotent refresh; deactivation pauses polling and removes only managed station/source bindings
+- [x] Revoked/remapped reviews invalidate cached state and require reactivation
+- [x] 253 backend tests; type checks and generated migration consistency passed
+
+### ✅ T12 — Live-source UI · 5 h · completed
+- [x] Live-source card: authorized source selection, activation/deactivation, counts and poll/error status
+- [x] Conditional banner requires station bindings; activation and enabled polling are distinct
+- [x] Refresh/status polling and role-based controls; Client reassignment hides prior source details
+- [x] TypeScript/Biome checks; Lingui extraction/compilation; Chromium activation/deactivation/view-only smoke checks
+
+### ✅ T13 — End-to-end integration test · 4 h · completed locally; CI workflow added
+- [x] Real SDK + schema-defined emulator container → capped connector ingest → scheduled poll → latest state
+- [x] Bounded history crosses two hours and excludes another station's identical document ID
+- [x] Checkpoint advances; second scheduled poll leaves latest state unchanged
+- [x] Opt-in test creates/removes its own loopback-only database; pinned emulator CI job needs no Azure account
+- [x] Local integration test passed; GitHub workflow execution awaits a future push
+
+### ✅ T15 — Shared mimic layout and SVG assets · implementation complete
+- [x] Generic overview and unit SVGs with a shared versioned layout contract
+- [x] Sparse pump keys; escaped `{pump}` and numeric `{pump_number}` pointer substitution
+- [x] Per-station coverage validator rejects SVG/contract drift and missing approved points
+- [x] Approved points outside the drawing explicitly listed with a reason and available in tables
+- [x] Asset validation and regression checks
+- [ ] Receiving developer replaces provisional geometry/pointers against reference images and approves the layout
+
+### ✅ T16 — Station mimic state API · implementation complete
+- [x] Client-scoped `GET /api/machine-health/station/<pk>/mimic/?unit=<pump key>`
+- [x] Sparse bay summaries, selected-unit points, reviewed groups, source/poll status and threshold alarms
+- [x] Server-side age; explicit null reasons for missing, unbound, stale, bad, disabled and revoked values
+- [x] Reviewed station totals or labelled derived sums with unit conversion; every bay must contribute valid data
+- [x] Empty stations return HTTP 200; no Cosmos calls during API reads; bounded eager queries
+- [x] Ownership, total completeness, freshness, revocation and query-count regression checks
+
+### ✅ T17 — Pumphouse mimic dashboard · implementation complete
+- [x] Station tab with overview, selected-unit geometry, dynamic sparse bays and grouped point tables
+- [x] Status text/symbols alongside colour; timestamps, units and unavailable reasons
+- [x] Actual configured-threshold alarms and explicit missing-threshold count
+- [x] Visible-only interval polling; errors hide cached readings; disabled/stale banners
+- [x] Lingui extraction/compilation, TypeScript, Biome and three isolated browser tests; CI job added
+- [ ] Receiving developer verifies real poll-to-screen transitions and reference-image fidelity with plant data
+
+### ✅ T18 — Full dictionary review tooling · implementation complete; plant review pending
+- [x] Bounded full dictionary export including unresolved points (700-tag regression fixture)
+- [x] Exact source-spelling crosswalks to catalogue part/component/parameter without inferred semantic aliases
+- [x] Hash-checked bulk approvals and withholding; revocation disables live bindings and removes cached state
+- [x] Completed packs replay safely; changed source observations invalidate stale packs
+- [ ] Import untrimmed snapshots per station and approve physical units/mappings with the plant developer
+- [ ] Confirm real instrument-family coverage, including source spellings and cooling/bearing/valve/electrical tags
+
+### ✅ T19 — Estate onboarding and readiness tooling · implementation complete; deployment pending
+- [x] Atomic manifest onboarding with dry run, snapshot import, review application and optional activation
+- [x] Durable UUID crosswalk and repeatable registration for twelve-station/sparse-pump fixtures
+- [x] One account source with separate station checkpoints; replay preserves cursors
+- [x] Source allowlist merged under a lock; any station failure rolls back the batch
+- [x] Local readiness report plus explicit connectivity probe; production acceptance remains separate
+- [x] Read-only bounded query-duration/RU benchmark without ingestion or checkpoint writes
+- [x] Station isolation, multi-station failure and replay regression coverage
+- [ ] Supply real inventory, confirm common container/parent identity and onboard the actual estate
+- [ ] Verify production identity/role and representative full-sweep RU, latency and capacity before enabling polling
+
+### 🟡 T14 — Docs and PR · 3 h · documentation completed; PR pending human review
+- [x] `docs/docs/aimms/cosmos-connector.md`: setup, RBAC role, kill-switch, failure codes
+- [x] Threat-model note: read-only data-plane role, no credential in DB or API response,
+      connector cannot write to a control system
+- [ ] PR to `IOT` — **human review required before opening** (`AGENTS.md`)
+
+---
+
+## Current completion and handoff
+
+T0–T19 software and documentation are implemented locally. T15 drawings are provisional;
+T18 production dictionary review and T19 real deployment remain plant/platform acceptance.
+The user authorized this split because the receiving developer has the missing source data.
+Use [`contrib/cosmos/HANDOFF.md`](../../contrib/cosmos/HANDOFF.md) for the procedure and
+[`HANDOVER.md`](./HANDOVER.md) for the validation record. Original time estimates are historical;
+no estimate is assigned to unavailable plant inputs. T14's PR still requires human review.
+
+### What is actually blocking
+- **D16 — RESOLVED 2026-09-12.** A data-plane role assignment now exists on the account. Verified by
+  reading container properties over the data plane (`provision.py --live` →
+  *matches the expected definition*) and by seeding the three pilot documents into
+  `aimms/pumphouse_readings` and querying them back with the connector's own query shape
+  (hierarchical partition key, parameterised, cross-partition disabled). **T5's acceptance is now
+  fully met against the real account.**
+- **D17 is now the live question, and it is not the same ask.** What was granted is
+  `00000000-...-000000000002` = **Data Contributor** (read *and* write), scoped to the **whole
+  account**, on the developer's own principal `f024cd79-…`. That is correct for a human who has to
+  seed documents — seeding writes, so Data Reader could not have done it. It is *not* what the
+  application should run as. If AIMMS authenticates as an identity holding Data Contributor, the
+  property the design relies on — that read-only is enforced by Azure rather than by our own code —
+  is lost, and a bug in the connector could delete plant history. Before go-live the app's managed
+  identity needs its own assignment: role `…000000000001` (**Data Reader**), scoped to
+  `/dbs/aimms/colls/pumphouse_readings` rather than the account.
+- **Pilot review completed:** 25 points approved, six withheld; T11 may bind only approved points.
+- **D18 — RESOLVED 2026-09-13** by reading the two reference images against the payload. Findings,
+  all verified against `samples/ph3_snapshots.json` and `PH_3.pilot-excerpt.json`:
+  - **The mimic is a `dex` view.** Every entry in image 1's "Example Parameter Mapping" table is a
+    `dex` tag: `PUMP4_DISCHARGE_PRESSURE`, `PUMP4_MOTOR_CORE_RTD3`, `PUMP4_PMP_THRST_BRG_VBRTN2`,
+    `PUMP4_GUIDED_RADIAL_PAD_1D6`, `PUMP4_HOPD_VALVE_POS_PROCESS_VALUE`, `PUMP4_POWERFATCOR`,
+    `PUMP4_spiral_case1`. All present in the real snapshot. `flatten_snapshot` already emits these
+    as `/dex/<TAG>` and `plan_dictionary` already attributes them to a pump by prefix — **the
+    pipeline supports the mimic with no change**. The gap is dictionary coverage, hence T18.
+  - **`/sl` is the common forebay level — the surge-pool question is closed.** `/sl` equals
+    `dex.COMMAN_FORBAY_LEVEL` bit-for-bit in all four available samples (132.0436248779297,
+    132.0512237548828, 132.1136245727539, 132.45159912109375). Image 2 shows a single forebay drawn
+    off the river feeding all bays. `/sl` may be approved as a level in metres. It is a *duplicate*
+    of the `dex` tag; bind one, and draw one.
+  - **Vibration is mm/s, closing half of D9.** Image 2's "Motor Vibration 2.1 mm/s" settles casing
+    velocity over shaft displacement for the motor DE/NDE points. **Bearing pad** vibration
+    (`PMP_THRST_BRG_VBRTN*`) is still unconfirmed and stays withheld.
+  - **Reactive power is MVAR**, as suspected. The unit registry rejects `MVar`/`Mvar`/`var`, so this
+    stays withheld until `var` is added to the custom registry — the blocker is ours, not the
+    plant's. Image 2 confirms the quantity is genuinely reactive power, so recording it under `MVA`
+    would have been a false statement.
+- **D19 — RESOLVED 2026-09-13.** The estate is **10–12 pumphouses**. *Lakshmi Pump House*
+  (17 pumps, Kaleshwaram KLIP, Godavari) in image 2 is **one of them, and is not the station we
+  built against**; our registered station is `PH_3` / *Effluent Pump Station 03*. So the 14 slots
+  and the 17 in the picture were never in conflict — they are different pumphouses. The station
+  **name remains provisional and is not blocking**; `rename_station` changes a label safely by
+  source identity whenever the plant supplies real names.
+  What this *does* change is scope: **nothing may assume one station or a fixed pump count.**
+  The original assessment missed source-wide binding resolution and single-station history
+  reads. T9 now adds explicit checkpoint ownership and station-scoped ingestion/history.
+  Estate activation and rollout still belong to T11/T19.
+  For the mimic: the bay row is rendered from `pd`, **never from a constant** — Lakshmi's 17 with
+  gaps at 07/08/11/12 shows the numbering is sparse, so bays are *keyed* by pump key, not indexed.
+
+Resolved since the last revision: **D14** (account `epconchatcosmos9d6b`, RG `EpconChat`, database
+`aimms`, container `pumphouse_readings` created and verified) and **D7** (a real snapshot confirmed
+`dv`/`pmw`/`pmvar`/`pc`, at both station and pump level).
+
+### Production acceptance sequence
+Supply inventory/full snapshots → import and review exact mappings/units → update and approve
+layout coverage → activate registered stations → verify read-only identity, connectivity and
+representative sweep load → enable polling and validate actual screen transitions.
+
+## Out of scope this sprint
+Cassandra → Cosmos migration/CDC job · `pumphouse_latest` maintenance · change-feed polling ·
+retention/TTL policy values · writing to any control system (never in scope)
+
+## Open decisions
+`D7b` `dsc` code set · `D9` units and alarm bounds (Annex A is a proposal, not plant authority) ·
+`D11` freshness threshold · `D17` application identity and Data Reader role. Defaults for each are recorded in
+`plan.md` §8.

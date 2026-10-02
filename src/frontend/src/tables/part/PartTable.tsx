@@ -19,6 +19,7 @@ import { PartCreationMenu } from '../../components/items/PartCreationMenu';
 import {
   BooleanColumn,
   CategoryColumn,
+  CreationDateColumn,
   DecimalColumn,
   DefaultLocationColumn,
   DescriptionColumn,
@@ -69,6 +70,7 @@ function partTableColumns(): TableColumn[] {
     CategoryColumn({
       accessor: 'category_detail'
     }),
+    CreationDateColumn({}),
     DefaultLocationColumn({
       accessor: 'default_location_detail'
     }),

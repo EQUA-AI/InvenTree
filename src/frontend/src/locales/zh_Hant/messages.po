@@ -98,10 +98,10 @@ msgstr "刪除"
 #: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:414
 #: src/pages/assets/locations/LocationDialogs.tsx:221
 #: src/pages/assets/locations/LocationDialogs.tsx:353
-#: src/pages/maintenance/MaintenanceBoard.tsx:1302
-#: src/pages/maintenance/MaintenanceBoard.tsx:1781
-#: src/pages/maintenance/MaintenanceBoard.tsx:2077
-#: src/pages/maintenance/MaintenanceBoard.tsx:2116
+#: src/pages/maintenance/MaintenanceBoard.tsx:1368
+#: src/pages/maintenance/MaintenanceBoard.tsx:1847
+#: src/pages/maintenance/MaintenanceBoard.tsx:2143
+#: src/pages/maintenance/MaintenanceBoard.tsx:2182
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:602
 #: src/pages/repair/RepairPacketDetail.tsx:170
 #: src/pages/repair/components/PacketCloseoutModal.tsx:190
@@ -125,6 +125,8 @@ msgstr "取消"
 #: src/forms/StockForms.tsx:1722
 #: src/forms/StockForms.tsx:1840
 #: src/pages/Index/Settings/AccountSettings/MFASettings.tsx:976
+#: src/pages/assets/EquipmentRegistry.tsx:513
+#: src/pages/assets/EquipmentRegistry.tsx:644
 msgid "Actions"
 msgstr "操作"
 
@@ -134,7 +136,7 @@ msgstr "操作"
 #: src/components/wizards/ImportPartWizard.tsx:200
 #: src/components/wizards/ImportPartWizard.tsx:233
 #: src/pages/Index/Settings/UserSettings.tsx:78
-#: src/pages/maintenance/MaintenanceBoard.tsx:1321
+#: src/pages/maintenance/MaintenanceBoard.tsx:1387
 #: src/pages/part/PartDetail.tsx:767
 msgid "Search"
 msgstr "搜尋"
@@ -156,6 +158,7 @@ msgstr "失效"
 #: src/components/tables/Filter.tsx:41
 #: src/components/tables/Filter.tsx:77
 #: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:775
+#: src/pages/assets/health/PumphouseMimic.tsx:109
 #: src/pages/assets/locations/LocationWorkspace.tsx:277
 #: src/tables/assets/AssetMachineTable.tsx:49
 msgid "Yes"
@@ -165,6 +168,7 @@ msgstr "是"
 #: src/components/tables/Filter.tsx:41
 #: src/components/tables/Filter.tsx:78
 #: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:775
+#: src/pages/assets/health/PumphouseMimic.tsx:109
 #: src/pages/assets/locations/LocationWorkspace.tsx:277
 #: src/tables/assets/AssetMachineTable.tsx:49
 msgid "No"
@@ -198,7 +202,7 @@ msgstr "否"
 #: src/pages/part/bom/BomCompare.tsx:203
 #: src/pages/repair/RepairPacketDetail.tsx:235
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:374
-#: src/tables/assets/MachinePartTable.tsx:23
+#: src/tables/assets/MachinePartTable.tsx:44
 #: src/tables/build/BuildOrderParametricTable.tsx:29
 #: src/tables/part/PartTestResultTable.tsx:251
 #: src/tables/part/RelatedPartTable.tsx:53
@@ -212,7 +216,7 @@ msgstr "零件"
 #: src/components/nav/NavigationDrawer.tsx:70
 #: src/defaults/links.tsx:41
 #: src/pages/Index/Settings/SystemSettings.tsx:218
-#: src/pages/maintenance/MaintenanceBoard.tsx:1689
+#: src/pages/maintenance/MaintenanceBoard.tsx:1755
 #: src/pages/part/CategoryDetail.tsx:218
 #: src/pages/part/CategoryDetail.tsx:279
 #: src/pages/part/CategoryDetail.tsx:323
@@ -224,6 +228,7 @@ msgid "Parts"
 msgstr "零件"
 
 #: lib/enums/ModelInformation.tsx:71
+#: src/pages/assets/EquipmentRegistry.tsx:641
 msgid "Parameter"
 msgstr "參數"
 
@@ -399,8 +404,8 @@ msgstr "構建多個項目"
 #: lib/enums/ModelInformation.tsx:184
 #: src/components/previews/models/CompanyPreview.tsx:15
 #: src/pages/company/CompanyDetail.tsx:288
-#: src/pages/maintenance/MaintenanceBoard.tsx:1662
-#: src/pages/maintenance/MaintenanceBoard.tsx:1924
+#: src/pages/maintenance/MaintenanceBoard.tsx:1728
+#: src/pages/maintenance/MaintenanceBoard.tsx:1990
 #: src/tables/company/CompanyTable.tsx:65
 #: src/tables/company/ContactTable.tsx:67
 #: src/tables/company/ParametricCompanyTable.tsx:32
@@ -559,7 +564,7 @@ msgstr "地址"
 #: lib/enums/ModelInformation.tsx:278
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:89
 #: src/pages/core/UserDetail.tsx:130
-#: src/pages/maintenance/MaintenanceBoard.tsx:1667
+#: src/pages/maintenance/MaintenanceBoard.tsx:1733
 #: src/pages/purchasing/PurchaseOrderDetailsPanel.tsx:133
 #: src/pages/sales/ReturnOrderDetailsPanel.tsx:145
 #: src/pages/sales/SalesOrderDetailsPanel.tsx:147
@@ -574,6 +579,9 @@ msgstr "聯繫人"
 
 #: lib/enums/ModelInformation.tsx:285
 #: src/components/tables/ColumnRenderers.tsx:687
+#: src/pages/assets/EquipmentRegistry.tsx:509
+#: src/pages/assets/EquipmentRegistry.tsx:602
+#: src/pages/assets/EquipmentRegistry.tsx:754
 msgid "Owner"
 msgstr "所有者"
 
@@ -607,6 +615,9 @@ msgstr "用户"
 
 #: lib/enums/ModelInformation.tsx:299
 #: src/pages/core/GroupDetail.tsx:76
+#: src/tables/assets/MachinePartTable.tsx:30
+#: src/tables/assets/MachinePartTable.tsx:54
+#: src/tables/part/PartTableFilters.tsx:167
 msgid "Group"
 msgstr "羣組"
 
@@ -697,9 +708,10 @@ msgstr ""
 #: src/components/dashboard/widgets/MaintenanceWidget.tsx:330
 #: src/components/riskradar/RiskFindingDetailModal.tsx:280
 #: src/components/tasks/TaskGantt.tsx:165
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:367
 #: src/pages/assets/locations/LocationWorkspace.tsx:215
-#: src/pages/maintenance/MaintenanceBoard.tsx:1657
-#: src/pages/maintenance/MaintenanceBoard.tsx:1874
+#: src/pages/maintenance/MaintenanceBoard.tsx:1723
+#: src/pages/maintenance/MaintenanceBoard.tsx:1940
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:380
 #: src/tables/machine/MachineListTable.tsx:286
 msgid "Machine"
@@ -711,8 +723,9 @@ msgstr "機器"
 #: src/defaults/links.tsx:59
 #: src/pages/Index/Settings/AdminCenter/Index.tsx:276
 #: src/pages/Index/Settings/AdminCenter/MachineManagementPanel.tsx:52
-#: src/pages/assets/MachineDetail.tsx:206
-#: src/pages/assets/MachineIndex.tsx:49
+#: src/pages/assets/EquipmentRegistry.tsx:368
+#: src/pages/assets/MachineDetail.tsx:220
+#: src/pages/assets/MachineIndex.tsx:50
 #: src/tables/machine/MachineTypeTable.tsx:326
 msgid "Machines"
 msgstr "設備"
@@ -791,8 +804,8 @@ msgstr ""
 #: lib/enums/ModelInformation.tsx:399
 #: src/components/tables/Filter.tsx:412
 #: src/forms/CommonFields.tsx:36
-#: src/pages/maintenance/MaintenanceBoard.tsx:1360
-#: src/pages/maintenance/MaintenanceBoard.tsx:2053
+#: src/pages/maintenance/MaintenanceBoard.tsx:1426
+#: src/pages/maintenance/MaintenanceBoard.tsx:2119
 msgid "Tags"
 msgstr ""
 
@@ -921,8 +934,10 @@ msgstr ""
 #: src/components/ai/ApprovalInboxPanel.tsx:118
 #: src/components/riskradar/RiskRadarPanel.tsx:356
 #: src/pages/Memory/MemoryPage.tsx:431
+#: src/pages/assets/StationLiveSource.tsx:116
 #: src/pages/assets/health/MachineHealthPanel.tsx:190
-#: src/pages/assets/locations/LocationWorkspace.tsx:528
+#: src/pages/assets/health/PumphouseMimic.tsx:289
+#: src/pages/assets/locations/LocationWorkspace.tsx:534
 #: src/pages/part/pricing/PricingOverviewPanel.tsx:306
 #: src/pages/repair/components/safety/SafetyPanel.tsx:110
 msgid "Refresh"
@@ -940,10 +955,6 @@ msgstr ""
 #: src/components/ai/ApprovalInboxPanel.tsx:148
 msgid "Focused in the shared decision card"
 msgstr ""
-
-#: src/components/ai/ApprovalInboxPanel.tsx:151
-#~ msgid "This request is focused in the shared decision card above. Use its controls so voice and touch keep the same confirmation."
-#~ msgstr ""
 
 #: src/components/ai/ApprovalInboxPanel.tsx:156
 msgid "This request is focused in the shared decision card. Use its controls so voice and touch keep the same confirmation."
@@ -987,10 +998,6 @@ msgstr ""
 msgid "This action is focused in the shared decision card. Review it there so voice and touch keep the same confirmation."
 msgstr ""
 
-#: src/components/ai/ChatActionProposals.tsx:233
-#~ msgid "Review this action in the shared voice decision card above."
-#~ msgstr ""
-
 #: src/components/ai/ChatActionProposals.tsx:350
 msgid "Loading action proposals"
 msgstr ""
@@ -998,6 +1005,62 @@ msgstr ""
 #: src/components/ai/ChatActionProposals.tsx:358
 msgid "Recent action proposals"
 msgstr ""
+
+#: src/components/ai/HITLApprovalModal.tsx:122
+#~ msgid "Low Risk"
+#~ msgstr ""
+
+#: src/components/ai/HITLApprovalModal.tsx:124
+#~ msgid "Medium Risk"
+#~ msgstr ""
+
+#: src/components/ai/HITLApprovalModal.tsx:126
+#~ msgid "High Risk"
+#~ msgstr ""
+
+#: src/components/ai/HITLApprovalModal.tsx:348
+#~ msgid "Approval request timed out"
+#~ msgstr ""
+
+#: src/components/ai/HITLApprovalModal.tsx:397
+#~ msgid "Approval Required"
+#~ msgstr ""
+
+#: src/components/ai/HITLApprovalModal.tsx:462
+#~ msgid "Hide details"
+#~ msgstr ""
+
+#: src/components/ai/HITLApprovalModal.tsx:462
+#~ msgid "Show details"
+#~ msgstr ""
+
+#: src/components/ai/HITLApprovalModal.tsx:485
+#~ msgid "Why are you rejecting this? (optional)"
+#~ msgstr ""
+
+#: src/components/ai/HITLApprovalModal.tsx:NaN
+#~ msgid "Approve"
+#~ msgstr ""
+
+#: src/components/ai/HITLApprovalModal.tsx:525
+#~ msgid "Confirm Reject"
+#~ msgstr ""
+
+#: src/components/ai/HITLApprovalModal.tsx:NaN
+#~ msgid "Reject"
+#~ msgstr ""
+
+#: src/components/ai/HITLApprovalModal.tsx:533
+#~ msgid "This action requires your approval before proceeding"
+#~ msgstr ""
+
+#: src/components/ai/HITLApprovalModal.tsx:664
+#~ msgid "Approved: {action}"
+#~ msgstr ""
+
+#: src/components/ai/HITLApprovalModal.tsx:664
+#~ msgid "Rejected: {action}"
+#~ msgstr ""
 
 #: src/components/ai/MailboxApprovalReview.tsx:90
 msgid "Canceled by reviewer"
@@ -1283,6 +1346,14 @@ msgid "Mailbox access saved."
 msgstr ""
 
 #: src/components/ai/MailboxPanel.tsx:494
+#: src/pages/assets/EquipmentRegistry.tsx:200
+#: src/pages/assets/EquipmentRegistry.tsx:201
+#: src/pages/assets/EquipmentRegistry.tsx:202
+#: src/pages/assets/EquipmentRegistry.tsx:203
+#: src/pages/assets/EquipmentRegistry.tsx:204
+#: src/pages/assets/EquipmentRegistry.tsx:210
+#: src/pages/assets/EquipmentRegistry.tsx:211
+#: src/pages/assets/EquipmentRegistry.tsx:212
 #: src/pages/part/PartDetail.tsx:605
 #: src/pages/repair/RepairPacketDetail.tsx:236
 #: src/pages/tasks/workorders/CloseoutPanel.tsx:833
@@ -1310,9 +1381,9 @@ msgstr ""
 #: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:670
 #: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:741
 #: src/pages/Index/Settings/AdminCenter/UnitManagementPanel.tsx:19
-#: src/pages/assets/MachineDetail.tsx:75
+#: src/pages/assets/MachineDetail.tsx:77
 #: src/pages/assets/locations/LocationDialogs.tsx:157
-#: src/pages/maintenance/MaintenanceBoard.tsx:2097
+#: src/pages/maintenance/MaintenanceBoard.tsx:2163
 #: src/pages/part/PartCategoryDetailsPanel.tsx:22
 #: src/pages/part/PartDetailsPanel.tsx:79
 #: src/pages/stock/StockLocationDetailsPanel.tsx:20
@@ -1559,11 +1630,6 @@ msgstr ""
 #: src/components/ai/voice/VoiceComposerControl.tsx:132
 msgid "Voice ready"
 msgstr ""
-
-#: src/components/ai/VoiceSessionControl.tsx:42
-#: src/views/VoiceMobileAppView.tsx:24
-#~ msgid "Voice"
-#~ msgstr ""
 
 #: src/components/ai/VoiceSessionControl.tsx:43
 #: src/components/ai/voice/VoiceComposerControl.tsx:133
@@ -1821,10 +1887,6 @@ msgstr ""
 msgid "Voice reconnected. No request was resubmitted. Review the last action status, then unmute to resume listening."
 msgstr ""
 
-#: src/components/ai/voice/VoiceExperienceControls.tsx:31
-#~ msgid "Voice reconnected. No request was resubmitted. Review the last action status before continuing."
-#~ msgstr ""
-
 #: src/components/ai/voice/VoiceExperienceControls.tsx:33
 msgid "Voice could not reconnect. The last action may still be unconfirmed; check its receipt before repeating it."
 msgstr ""
@@ -1971,11 +2033,6 @@ msgstr ""
 msgid "Voice ended"
 msgstr ""
 
-#: src/components/ai/voice/VoiceGlobalIndicator.tsx:82
-#: src/components/ai/voice/VoiceGlobalIndicator.tsx:89
-#~ msgid "Back to voice"
-#~ msgstr ""
-
 #: src/components/ai/voice/VoiceGlobalIndicator.tsx:86
 #: src/views/MobileAppView.tsx:38
 msgid "Open AI Assistant"
@@ -1992,14 +2049,6 @@ msgstr ""
 #: src/components/ai/voice/VoiceGlobalIndicator.tsx:90
 msgid " — confirmation waiting"
 msgstr ""
-
-#: src/components/ai/voice/VoiceGlobalIndicator.tsx:103
-#~ msgid "Open hands-free voice"
-#~ msgstr ""
-
-#: src/components/ai/voice/VoiceGlobalIndicator.tsx:120
-#~ msgid "Voice: Ctrl/⌘+Shift+V · Chat: Ctrl/⌘+K"
-#~ msgstr ""
 
 #: src/components/ai/voice/VoiceHandsFreeSurface.tsx:22
 msgid "Hands-free voice"
@@ -2066,19 +2115,9 @@ msgstr ""
 msgid "This only requests a read-back. Confirm the shared decision separately."
 msgstr ""
 
-#: src/components/aichat/ActiveScopeBanner.tsx:21
-#: src/components/aichat/ActiveScopeBanner.tsx:34
-#~ msgid "Scope unconfirmed"
-#~ msgstr ""
-
 #: src/components/aichat/ActiveScopeBanner.tsx:24
 msgid "Analysis context not confirmed"
 msgstr ""
-
-#: src/components/aichat/ActiveScopeBanner.tsx:24
-#: src/components/aichat/ActiveScopeBanner.tsx:88
-#~ msgid "Authorized fleet"
-#~ msgstr ""
 
 #: src/components/aichat/ActiveScopeBanner.tsx:26
 msgid "Analyzing: authorized machines"
@@ -2097,22 +2136,6 @@ msgstr ""
 #: src/components/aichat/ActiveScopeBanner.tsx:31
 msgid "Analyzing: {0} selected assets"
 msgstr ""
-
-#: src/components/aichat/ActiveScopeBanner.tsx:31
-#~ msgid "1 selected asset"
-#~ msgstr ""
-
-#: src/components/aichat/ActiveScopeBanner.tsx:31
-#~ msgid "{count} selected assets"
-#~ msgstr ""
-
-#: src/components/aichat/ActiveScopeBanner.tsx:74
-#~ msgid "Change the analysis scope"
-#~ msgstr ""
-
-#: src/components/aichat/ActiveScopeBanner.tsx:95
-#~ msgid "This machine: {0}"
-#~ msgstr ""
 
 #. placeholder {0}: locator.page
 #: src/components/aichat/CitationList.tsx:48
@@ -2477,14 +2500,6 @@ msgstr ""
 #: src/components/aichat/LegacyChatStorageNotice.tsx:114
 msgid "Remove older browser history"
 msgstr ""
-
-#: src/components/aichat/MediaEvidenceModal.tsx:80
-#~ msgid "Evidence file is unavailable"
-#~ msgstr ""
-
-#: src/components/aichat/MediaEvidenceModal.tsx:119
-#~ msgid "Open machine"
-#~ msgstr ""
 
 #. placeholder {0}: item.source_revision
 #: src/components/aichat/MediaEvidenceModal.tsx:145
@@ -3121,6 +3136,7 @@ msgstr "更新訂單時發生錯誤"
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:126
 #: src/components/riskradar/RiskRadarPanel.tsx:421
 #: src/components/tables/Filter.tsx:194
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:400
 msgid "Overdue"
 msgstr "逾期"
 
@@ -3190,6 +3206,9 @@ msgstr ""
 #: src/components/common/ReadErrorNotice.tsx:35
 #: src/components/dashboard/widgets/MaintenanceWidget.tsx:422
 #: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:104
+#: src/pages/assets/EquipmentRegistry.tsx:400
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:261
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:433
 #: src/pages/assets/locations/LocationBrowser.tsx:541
 #: src/pages/assets/locations/LocationWorkspace.tsx:190
 #: src/pages/assets/locations/LocationWorkspace.tsx:391
@@ -3291,7 +3310,7 @@ msgid "Latest parts"
 msgstr ""
 
 #: src/components/dashboard/DashboardWidgetLibrary.tsx:69
-#: src/tables/part/PartTableFilters.tsx:79
+#: src/tables/part/PartTableFilters.tsx:84
 msgid "Low Stock"
 msgstr "低庫存"
 
@@ -3300,7 +3319,7 @@ msgid "Show the number of parts which are low on stock"
 msgstr "顯示庫存不足的零件"
 
 #: src/components/dashboard/DashboardWidgetLibrary.tsx:80
-#: src/tables/part/PartTableFilters.tsx:85
+#: src/tables/part/PartTableFilters.tsx:90
 msgid "High Stock"
 msgstr ""
 
@@ -3595,8 +3614,8 @@ msgid "Assigned user"
 msgstr ""
 
 #: src/components/dashboard/widgets/MaintenanceWidget.tsx:355
-#: src/pages/maintenance/MaintenanceBoard.tsx:1347
-#: src/pages/maintenance/MaintenanceBoard.tsx:1897
+#: src/pages/maintenance/MaintenanceBoard.tsx:1413
+#: src/pages/maintenance/MaintenanceBoard.tsx:1963
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:409
 msgid "Priority"
 msgstr "Priority"
@@ -3687,6 +3706,7 @@ msgid "Assigned to"
 msgstr ""
 
 #: src/components/dashboard/widgets/MaintenanceWidget.tsx:611
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:369
 msgid "Due"
 msgstr ""
 
@@ -3759,13 +3779,17 @@ msgid "Missing dates"
 msgstr ""
 
 #: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:150
+#: src/pages/assets/health/PumphouseMimic.tsx:92
+#: src/pages/assets/health/PumphouseMimic.tsx:108
+#: src/pages/assets/health/PumphouseMimic.tsx:343
 #: src/pages/stock/StockDetail.tsx:716
 msgid "Unavailable"
 msgstr "無法使用"
 
 #: src/components/dashboard/widgets/ManagementAttentionWidget.tsx:156
 #: src/pages/assets/health/SignalTable.tsx:117
-#: src/pages/assets/locations/LocationWorkspace.tsx:646
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:53
+#: src/pages/assets/locations/LocationWorkspace.tsx:652
 msgid "Not configured"
 msgstr "Not configured"
 
@@ -3848,6 +3872,7 @@ msgid "Generate a new stocktake report"
 msgstr "產生新的盤點報告"
 
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:8
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:318
 msgid "Open work orders"
 msgstr ""
 
@@ -3968,6 +3993,7 @@ msgid "Active machines grouped by mapping, signal freshness and quality. Current
 msgstr ""
 
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:110
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:484
 #: src/pages/tasks/workorders/CloseoutPanel.tsx:666
 msgid "Planned"
 msgstr ""
@@ -4021,9 +4047,9 @@ msgstr ""
 
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:121
 #: src/components/riskradar/RiskRadarCommon.tsx:357
-#: src/pages/maintenance/MaintenanceBoard.tsx:606
-#: src/pages/maintenance/MaintenanceBoard.tsx:1221
-#: src/pages/maintenance/MaintenanceBoard.tsx:1901
+#: src/pages/maintenance/MaintenanceBoard.tsx:671
+#: src/pages/maintenance/MaintenanceBoard.tsx:1286
+#: src/pages/maintenance/MaintenanceBoard.tsx:1967
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:413
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:437
 msgid "High"
@@ -4031,9 +4057,9 @@ msgstr ""
 
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:122
 #: src/components/riskradar/RiskRadarCommon.tsx:359
-#: src/pages/maintenance/MaintenanceBoard.tsx:605
-#: src/pages/maintenance/MaintenanceBoard.tsx:1224
-#: src/pages/maintenance/MaintenanceBoard.tsx:1900
+#: src/pages/maintenance/MaintenanceBoard.tsx:670
+#: src/pages/maintenance/MaintenanceBoard.tsx:1289
+#: src/pages/maintenance/MaintenanceBoard.tsx:1966
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:412
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:436
 msgid "Medium"
@@ -4041,9 +4067,9 @@ msgstr ""
 
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:123
 #: src/components/riskradar/RiskRadarCommon.tsx:361
-#: src/pages/maintenance/MaintenanceBoard.tsx:604
-#: src/pages/maintenance/MaintenanceBoard.tsx:1217
-#: src/pages/maintenance/MaintenanceBoard.tsx:1899
+#: src/pages/maintenance/MaintenanceBoard.tsx:669
+#: src/pages/maintenance/MaintenanceBoard.tsx:1282
+#: src/pages/maintenance/MaintenanceBoard.tsx:1965
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:411
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:435
 msgid "Low"
@@ -4051,15 +4077,19 @@ msgstr ""
 
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:124
 #: src/components/riskradar/RiskRadarCommon.tsx:355
+#: src/pages/assets/health/PumphouseMimic.tsx:234
 #: src/pages/assets/health/common.tsx:55
 #: src/pages/assets/health/common.tsx:78
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:62
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:438
 msgid "Critical"
 msgstr ""
 
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:125
+#: src/pages/assets/health/PumphouseMimic.tsx:236
 #: src/pages/assets/health/common.tsx:49
 #: src/pages/assets/health/common.tsx:84
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:61
 msgid "Warning"
 msgstr "Warning"
 
@@ -4068,7 +4098,7 @@ msgid "Upcoming"
 msgstr ""
 
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:129
-#: src/pages/assets/MachineIndex.tsx:40
+#: src/pages/assets/MachineIndex.tsx:41
 #: src/pages/assets/locations/LocationDialogs.tsx:308
 #: src/pages/assets/locations/LocationWorkspace.tsx:264
 msgid "Unassigned"
@@ -4089,6 +4119,10 @@ msgstr ""
 #: src/components/dashboard/widgets/maintenanceMetrics.ts:134
 #: src/components/nav/AIChatDrawer.tsx:160
 #: src/pages/assets/health/AnomalyList.tsx:165
+#: src/pages/assets/health/PumphouseMimic.tsx:102
+#: src/pages/assets/health/PumphouseMimic.tsx:104
+#: src/pages/assets/health/PumphouseMimic.tsx:232
+#: src/pages/assets/health/PumphouseMimic.tsx:239
 #: src/pages/assets/health/common.tsx:67
 #: src/pages/assets/health/common.tsx:133
 msgid "Unknown"
@@ -4355,6 +4389,10 @@ msgstr "上傳圖片"
 msgid "Delete image"
 msgstr "刪除圖片"
 
+#: src/components/editors/NotesEditor.tsx:82
+#~ msgid "Image upload failed"
+#~ msgstr "圖片上傳失敗"
+
 #: src/components/editors/NotesEditor.tsx:89
 #: src/components/items/RoleTable.tsx:355
 #: src/components/settings/ConfigValueList.tsx:42
@@ -4365,9 +4403,37 @@ msgstr "刪除圖片"
 msgid "Updated"
 msgstr "已更新"
 
+#: src/components/editors/NotesEditor.tsx:92
+#~ msgid "Image uploaded successfully"
+#~ msgstr "圖片已經上傳成功"
+
 #: src/components/editors/NotesEditor.tsx:97
 msgid "Updated by"
 msgstr ""
+
+#: src/components/editors/NotesEditor.tsx:126
+#~ msgid "Notes saved successfully"
+#~ msgstr "備註保存成功"
+
+#: src/components/editors/NotesEditor.tsx:138
+#~ msgid "Failed to save notes"
+#~ msgstr "保存記事失敗"
+
+#: src/components/editors/NotesEditor.tsx:141
+#~ msgid "Error Saving Notes"
+#~ msgstr "儲存備註時發生錯誤"
+
+#: src/components/editors/NotesEditor.tsx:161
+#~ msgid "Save Notes"
+#~ msgstr "保存備註"
+
+#: src/components/editors/NotesEditor.tsx:180
+#~ msgid "Close Editor"
+#~ msgstr "關閉編輯器"
+
+#: src/components/editors/NotesEditor.tsx:187
+#~ msgid "Enable Editing"
+#~ msgstr "啓用編輯"
 
 #: src/components/editors/NotesEditor.tsx:317
 #: src/components/editors/NotesEditor.tsx:720
@@ -4450,9 +4516,9 @@ msgstr ""
 
 #: src/components/editors/NotesEditor.tsx:636
 #: src/components/editors/NotesEditor.tsx:637
-#: src/pages/maintenance/MaintenanceBoard.tsx:1518
-#: src/pages/maintenance/MaintenanceBoard.tsx:1766
-#: src/pages/maintenance/MaintenanceBoard.tsx:1790
+#: src/pages/maintenance/MaintenanceBoard.tsx:1584
+#: src/pages/maintenance/MaintenanceBoard.tsx:1832
+#: src/pages/maintenance/MaintenanceBoard.tsx:1856
 msgid "Delete column"
 msgstr ""
 
@@ -4485,7 +4551,7 @@ msgstr ""
 #: src/components/panels/NotesPanel.tsx:24
 #: src/forms/StockForms.tsx:1585
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:378
-#: src/tables/assets/MachinePartTable.tsx:33
+#: src/tables/assets/MachinePartTable.tsx:59
 #: src/tables/part/PartTestResultTable.tsx:218
 #: src/tables/stock/StockTrackingTable.tsx:279
 msgid "Notes"
@@ -4877,6 +4943,7 @@ msgid "Stopped"
 msgstr "已停止"
 
 #: src/components/forms/InstanceOptions.tsx:151
+#: src/pages/assets/health/PumphouseMimic.tsx:97
 msgid "Running"
 msgstr "執行中"
 
@@ -5242,7 +5309,7 @@ msgstr "匯入零件"
 
 #: src/components/items/PartCreationMenu.tsx:62
 #: src/pages/part/PartDetail.tsx:670
-#: src/tables/part/PartTable.tsx:199
+#: src/tables/part/PartTable.tsx:201
 msgid "Add Part"
 msgstr "添加零件"
 
@@ -5645,13 +5712,17 @@ msgstr ""
 msgid "{days}d ago"
 msgstr ""
 
+#: src/components/nav/AIChatDrawer.tsx:253
+#~ msgid "Failed to load approvals"
+#~ msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:267
+#~ msgid "Failed to load approval detail"
+#~ msgstr ""
+
 #: src/components/nav/AIChatDrawer.tsx:276
 msgid "Search conversations..."
 msgstr ""
-
-#: src/components/nav/AIChatDrawer.tsx:281
-#~ msgid "Failed to load approvals"
-#~ msgstr ""
 
 #: src/components/nav/AIChatDrawer.tsx:284
 msgid "Conversation search failed. Edit the search or retry loading more results."
@@ -5665,10 +5736,6 @@ msgstr ""
 msgid "No conversations yet"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:295
-#~ msgid "Failed to load approval detail"
-#~ msgstr ""
-
 #: src/components/nav/AIChatDrawer.tsx:312
 #: src/components/nav/AIChatDrawer.tsx:2017
 msgid "Chat"
@@ -5678,24 +5745,19 @@ msgstr ""
 msgid "Load more conversations"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:350
-#: src/components/nav/AIChatDrawer.tsx:494
+#: src/components/nav/AIChatDrawer.tsx:NaN
 #~ msgid "Tier"
 #~ msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:360
-#~ msgid "Share read-only with username (prefix with - to revoke)"
-#~ msgstr ""
-
-#: src/components/nav/AIChatDrawer.tsx:367
+#: src/components/nav/AIChatDrawer.tsx:335
 #~ msgid "No details available"
 #~ msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:382
+#: src/components/nav/AIChatDrawer.tsx:349
 #~ msgid "(complex value)"
 #~ msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:424
+#: src/components/nav/AIChatDrawer.tsx:382
 #~ msgid "Developer details"
 #~ msgstr ""
 
@@ -5821,10 +5883,6 @@ msgstr ""
 msgid "You"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1364
-#~ msgid "Voice session"
-#~ msgstr ""
-
 #: src/components/nav/AIChatDrawer.tsx:1422
 msgid "Current page: Home"
 msgstr ""
@@ -5871,8 +5929,8 @@ msgstr ""
 msgid "Show the maintenance history for {0}."
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:1556
-#~ msgid "Sharing failed"
+#: src/components/nav/AIChatDrawer.tsx:1560
+#~ msgid "No actions waiting for review"
 #~ msgstr ""
 
 #: src/components/nav/AIChatDrawer.tsx:1561
@@ -5898,6 +5956,14 @@ msgstr ""
 #: src/components/nav/AIChatDrawer.tsx:1574
 msgid "Show me low stock items"
 msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:1577
+#~ msgid "Resolved actions"
+#~ msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:1587
+#~ msgid "No resolved actions yet"
+#~ msgstr ""
 
 #: src/components/nav/AIChatDrawer.tsx:1682
 msgid "Could not set the machine scope — sending without it."
@@ -5937,21 +6003,9 @@ msgstr "歷史記錄"
 msgid "Mail"
 msgstr ""
 
-#: src/components/nav/AIChatDrawer.tsx:2101
-#~ msgid "No actions waiting for review"
-#~ msgstr ""
-
 #: src/components/nav/AIChatDrawer.tsx:2120
 msgid "Review in Approvals"
 msgstr ""
-
-#: src/components/nav/AIChatDrawer.tsx:2121
-#~ msgid "Resolved actions"
-#~ msgstr ""
-
-#: src/components/nav/AIChatDrawer.tsx:2131
-#~ msgid "No resolved actions yet"
-#~ msgstr ""
 
 #: src/components/nav/AIChatDrawer.tsx:2138
 msgid "Load earlier messages"
@@ -6219,7 +6273,7 @@ msgstr "銷售"
 
 #: src/components/nav/NavigationDrawer.tsx:105
 #: src/defaults/links.tsx:85
-#: src/pages/assets/MachineDetail.tsx:180
+#: src/pages/assets/MachineDetail.tsx:194
 #: src/pages/maintenance/MaintenanceIndex.tsx:73
 msgid "Maintenance"
 msgstr ""
@@ -6348,6 +6402,10 @@ msgstr "附件"
 msgid "Plugin Provided"
 msgstr "外掛程式提供"
 
+#: src/components/panels/PanelGroup.tsx:299
+#~ msgid "You have unsaved changes, are you sure you want to navigate away from this panel?"
+#~ msgstr "您有未儲存的變更，確定要離開此面板嗎？"
+
 #: src/components/panels/PanelGroup.tsx:348
 msgid "You have unsaved changes. Are you sure you want to leave this panel?"
 msgstr ""
@@ -6396,14 +6454,14 @@ msgstr "外掛程式資訊"
 
 #: src/components/plugins/PluginDrawer.tsx:88
 #: src/components/tables/ColumnRenderers.tsx:495
-#: src/pages/assets/MachineDetail.tsx:120
+#: src/pages/assets/MachineDetail.tsx:122
 #: src/pages/assets/locations/LocationDialogs.tsx:199
 #: src/pages/build/BuildOrderDetailsPanel.tsx:96
 #: src/pages/company/CompanyDetailsPanel.tsx:29
 #: src/pages/company/ManufacturerPartDetailsPanel.tsx:46
 #: src/pages/company/ManufacturerPartDetailsPanel.tsx:73
 #: src/pages/company/SupplierPartDetailsPanel.tsx:99
-#: src/pages/maintenance/MaintenanceBoard.tsx:1868
+#: src/pages/maintenance/MaintenanceBoard.tsx:1934
 #: src/pages/part/PartCategoryDetailsPanel.tsx:42
 #: src/pages/part/PartDetailsPanel.tsx:87
 #: src/pages/purchasing/PurchaseOrderDetailsPanel.tsx:65
@@ -6443,7 +6501,7 @@ msgstr "日期"
 #: src/tables/company/ParametricCompanyTable.tsx:22
 #: src/tables/machine/MachineListTable.tsx:385
 #: src/tables/machine/MachineListTable.tsx:800
-#: src/tables/part/PartTableFilters.tsx:13
+#: src/tables/part/PartTableFilters.tsx:18
 #: src/tables/part/PartVariantTable.tsx:15
 #: src/tables/plugin/PluginListTable.tsx:101
 #: src/tables/plugin/PluginListTable.tsx:431
@@ -6549,7 +6607,7 @@ msgstr "未激活"
 
 #: src/components/render/Part.tsx:31
 #: src/pages/part/PartDetail.tsx:635
-#: src/tables/part/PartTableFilters.tsx:103
+#: src/tables/part/PartTableFilters.tsx:108
 #: src/tables/part/PartVariantTable.tsx:25
 msgid "Virtual"
 msgstr "虛擬"
@@ -6569,8 +6627,8 @@ msgstr "無庫存"
 #: src/pages/part/PartDetailsPanel.tsx:174
 #: src/tables/bom/BomTable.tsx:491
 #: src/tables/build/BuildLineTable.tsx:241
-#: src/tables/part/PartTable.tsx:83
-#: src/tables/part/PartTableFilters.tsx:149
+#: src/tables/part/PartTable.tsx:85
+#: src/tables/part/PartTableFilters.tsx:154
 msgid "On Order"
 msgstr "訂購中"
 
@@ -6586,7 +6644,7 @@ msgstr "生產中"
 
 #: src/components/render/Part.tsx:78
 #: src/components/riskradar/RiskRadarPanel.tsx:446
-#: src/pages/assets/MachineDetail.tsx:142
+#: src/pages/assets/MachineDetail.tsx:144
 #: src/tables/assets/MaintenanceRecordTable.tsx:174
 #: src/tables/stock/StockTrackingTable.tsx:273
 msgid "Details"
@@ -6633,7 +6691,7 @@ msgstr "位置"
 
 #: src/components/render/Stock.tsx:95
 #: src/forms/StockForms.tsx:719
-#: src/pages/assets/MachineDetail.tsx:107
+#: src/pages/assets/MachineDetail.tsx:109
 #: src/pages/stock/StockDetail.tsx:667
 #: src/pages/stock/StockDetailsPanel.tsx:135
 #: src/tables/build/BuildOutputTable.tsx:110
@@ -6667,7 +6725,7 @@ msgstr "序列號"
 #: src/pages/part/pricing/PriceBreakPanel.tsx:173
 #: src/pages/stock/StockDetail.tsx:673
 #: src/pages/stock/StockDetailsPanel.tsx:197
-#: src/tables/assets/MachinePartTable.tsx:28
+#: src/tables/assets/MachinePartTable.tsx:49
 #: src/tables/build/BuildLineTable.tsx:99
 #: src/tables/part/PartPurchaseOrdersTable.tsx:103
 #: src/tables/part/PartTestResultTable.tsx:282
@@ -6757,7 +6815,8 @@ msgid "Repair work package draft"
 msgstr ""
 
 #: src/components/riskradar/RiskFindingDetailModal.tsx:283
-#: src/pages/maintenance/MaintenanceBoard.tsx:1862
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:366
+#: src/pages/maintenance/MaintenanceBoard.tsx:1928
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:396
 msgid "Title"
 msgstr "Title"
@@ -6772,7 +6831,7 @@ msgstr ""
 
 #: src/components/riskradar/RiskFindingDetailModal.tsx:322
 #: src/pages/assets/health/AnomalyList.tsx:131
-#: src/pages/maintenance/MaintenanceBoard.tsx:1845
+#: src/pages/maintenance/MaintenanceBoard.tsx:1911
 msgid "Open work order"
 msgstr ""
 
@@ -6836,6 +6895,7 @@ msgstr ""
 
 #: src/components/riskradar/RiskRadarPanel.tsx:385
 #: src/pages/assets/health/SignalTable.tsx:63
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:368
 #: src/pages/tasks/workorders/CloseoutPanel.tsx:669
 msgid "State"
 msgstr ""
@@ -6891,7 +6951,9 @@ msgid "Setting"
 msgstr "設定"
 
 #: src/components/settings/ConfigValueList.tsx:39
+#: src/pages/assets/StationLiveSource.tsx:133
 #: src/pages/assets/health/HealthSourceStatus.tsx:33
+#: src/pages/assets/health/PumphouseMimic.tsx:318
 #: src/pages/assets/health/SignalTable.tsx:67
 #: src/pages/maintenance/workorders/components/InvestigationSection.tsx:78
 #: src/pages/repair/components/InvestigationPanel.tsx:95
@@ -7132,6 +7194,7 @@ msgid "Default Location"
 msgstr "默認位置"
 
 #: src/components/tables/ColumnRenderers.tsx:541
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:365
 #: src/pages/build/BuildOrderDetailsPanel.tsx:90
 #: src/pages/part/bom/BomCompare.tsx:34
 #: src/pages/purchasing/PurchaseOrderDetailsPanel.tsx:44
@@ -7462,10 +7525,12 @@ msgstr "包含零件變體的結果"
 #: src/forms/StockForms.tsx:1427
 #: src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:87
 #: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:104
+#: src/pages/assets/EquipmentRegistry.tsx:512
+#: src/pages/assets/EquipmentRegistry.tsx:643
 #: src/pages/build/BuildOrderDetailsPanel.tsx:67
 #: src/pages/core/UserDetail.tsx:146
-#: src/pages/maintenance/MaintenanceBoard.tsx:1733
-#: src/pages/maintenance/MaintenanceBoard.tsx:1889
+#: src/pages/maintenance/MaintenanceBoard.tsx:1799
+#: src/pages/maintenance/MaintenanceBoard.tsx:1955
 #: src/pages/maintenance/workorders/components/WorkOrderSafetyReadiness.tsx:83
 #: src/pages/purchasing/PurchaseOrderDetailsPanel.tsx:71
 #: src/pages/repair/RepairPacketDetail.tsx:69
@@ -7511,7 +7576,7 @@ msgid "Filter by responsible owner"
 msgstr "根據負責人進行篩選"
 
 #: src/components/tables/Filter.tsx:413
-#: src/pages/maintenance/MaintenanceBoard.tsx:1361
+#: src/pages/maintenance/MaintenanceBoard.tsx:1427
 msgid "Filter by tags"
 msgstr ""
 
@@ -7527,7 +7592,7 @@ msgid "Filter by user"
 msgstr "按用户篩選"
 
 #: src/components/tables/Filter.tsx:454
-#: src/pages/assets/MachineDetail.tsx:97
+#: src/pages/assets/MachineDetail.tsx:99
 #: src/pages/company/CompanyDetailsPanel.tsx:78
 #: src/pages/company/ManufacturerDetail.tsx:8
 #: src/pages/company/ManufacturerPartDetail.tsx:197
@@ -7594,6 +7659,7 @@ msgstr "移除過濾器"
 #: src/components/tables/FilterSelectDrawer.tsx:276
 #: src/components/tables/FilterSelectDrawer.tsx:290
 #: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:624
+#: src/pages/assets/health/PumphouseMimic.tsx:193
 #: src/pages/assets/health/SignalTable.tsx:62
 #: src/pages/maintenance/workorders/components/InvestigationSection.tsx:77
 #: src/pages/part/PartStockHistoryDetail.tsx:67
@@ -7802,7 +7868,7 @@ msgid "Stage"
 msgstr "階段"
 
 #: src/components/tasks/TaskGantt.tsx:166
-#: src/pages/maintenance/MaintenanceBoard.tsx:1909
+#: src/pages/maintenance/MaintenanceBoard.tsx:1975
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:452
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:174
 msgid "Assignee"
@@ -7841,23 +7907,23 @@ msgid "Month"
 msgstr ""
 
 #: src/components/tasks/TaskGantt.tsx:261
-#: src/pages/maintenance/MaintenanceBoard.tsx:282
+#: src/pages/maintenance/MaintenanceBoard.tsx:329
 msgid "Backlog"
 msgstr ""
 
 #: src/components/tasks/TaskGantt.tsx:262
-#: src/pages/maintenance/MaintenanceBoard.tsx:283
+#: src/pages/maintenance/MaintenanceBoard.tsx:330
 msgid "In Progress"
 msgstr ""
 
 #: src/components/tasks/TaskGantt.tsx:263
-#: src/pages/maintenance/MaintenanceBoard.tsx:284
+#: src/pages/maintenance/MaintenanceBoard.tsx:331
 msgid "In Review"
 msgstr ""
 
 #: src/components/tasks/TaskGantt.tsx:264
 #: src/components/wizards/ImportPartWizard.tsx:809
-#: src/pages/maintenance/MaintenanceBoard.tsx:285
+#: src/pages/maintenance/MaintenanceBoard.tsx:332
 msgid "Done"
 msgstr "完成"
 
@@ -7948,7 +8014,7 @@ msgstr "為匯入的零件建立初始庫存。"
 
 #: src/components/wizards/ImportPartWizard.tsx:540
 #: src/pages/part/PartDetail.tsx:657
-#: src/tables/part/PartTable.tsx:161
+#: src/tables/part/PartTable.tsx:163
 msgid "Edit Part"
 msgstr "編輯零件"
 
@@ -8115,7 +8181,7 @@ msgstr "請修正選定零件中的錯誤"
 
 #: src/components/wizards/OrderPartsWizard.tsx:629
 #: src/tables/build/BuildLineTable.tsx:913
-#: src/tables/part/PartTable.tsx:267
+#: src/tables/part/PartTable.tsx:269
 #: src/tables/sales/SalesOrderLineItemTable.tsx:459
 #: src/tables/stock/TransferOrderLineItemTable.tsx:333
 msgid "Order Parts"
@@ -8471,7 +8537,7 @@ msgstr ""
 #: src/pages/part/PartCategoryDetailsPanel.tsx:58
 #: src/pages/part/PartDetailsPanel.tsx:269
 #: src/tables/part/PartCategoryTable.tsx:95
-#: src/tables/part/PartTableFilters.tsx:155
+#: src/tables/part/PartTableFilters.tsx:160
 msgid "Subscribed"
 msgstr "已訂閲"
 
@@ -8736,10 +8802,12 @@ msgid "The following items are installed within this stock item, but do not matc
 msgstr ""
 
 #: src/forms/StockForms.tsx:946
+#: src/pages/assets/EquipmentRegistry.tsx:510
+#: src/pages/assets/EquipmentRegistry.tsx:616
 #: src/pages/part/pricing/BomPricingPanel.tsx:81
 #: src/pages/part/pricing/BomPricingPanel.tsx:105
 #: src/tables/bom/UsedInTable.tsx:66
-#: src/tables/part/PartTableFilters.tsx:43
+#: src/tables/part/PartTableFilters.tsx:48
 msgid "Component"
 msgstr "組件"
 
@@ -8993,7 +9061,7 @@ msgstr ""
 msgid "Could not prepare a secure login. Check your connection and allow cookies for this site, then try again."
 msgstr ""
 
-#: src/functions/auth.tsx:126
+#: src/functions/auth.tsx:125
 #~ msgid "There was a conflicting session for this browser, which has been logged out."
 #~ msgstr "此瀏覽器存在衝突的工作階段，已登出。"
 
@@ -9987,9 +10055,25 @@ msgstr "電子郵件訊息"
 msgid "System Status"
 msgstr "系統狀態"
 
+#: src/pages/Index/Settings/AdminCenter/HomePanel.tsx:47
+#~ msgid "Admin Center Information"
+#~ msgstr "管理中心資訊"
+
 #: src/pages/Index/Settings/AdminCenter/HomePanel.tsx:51
 msgid "Quick Actions"
 msgstr "快速動作"
+
+#: src/pages/Index/Settings/AdminCenter/HomePanel.tsx:53
+#~ msgid "The home panel (and the whole Admin Center) is a new feature starting with the new UI and was previously (before 1.0) not available."
+#~ msgstr "主面板 (以及整個管理中心) 是從新 UI 開始的一項新功能，在此之前 (1.0 版之前) 不可用。"
+
+#: src/pages/Index/Settings/AdminCenter/HomePanel.tsx:60
+#~ msgid "The admin center provides a centralized location for all administration functionality and is meant to replace all interaction with the (django) backend admin interface."
+#~ msgstr "管理中心為所有管理功能提供一個集中的位置，旨在取代與 (django) 後端管理介面的所有互動。"
+
+#: src/pages/Index/Settings/AdminCenter/HomePanel.tsx:67
+#~ msgid "Please open feature requests (after checking the tracker) for any existing backend admin functionality you are missing in this UI. The backend admin interface should be used carefully and seldom."
+#~ msgstr "如果您在此 UI 中遺失任何現有的後端管理功能，請在檢查追蹤器後開啟功能請求。應謹慎且較少地使用後端管理介面。"
 
 #: src/pages/Index/Settings/AdminCenter/IdentityManagementPanel.tsx:75
 msgid "SCIM enabled"
@@ -10871,6 +10955,324 @@ msgstr ""
 msgid "Mark as unread"
 msgstr "標記為未讀"
 
+#: src/pages/assets/EquipmentRegistry.tsx:279
+msgid "Saved successfully"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:282
+msgid "Registry update failed"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:308
+msgid "JSON files must be no larger than 8 MiB"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:319
+msgid "Preview failed"
+msgstr ""
+
+#. placeholder {0}: result.created
+#. placeholder {1}: result.preserved
+#: src/pages/assets/EquipmentRegistry.tsx:333
+msgid "Created {0} points; preserved {1} existing points"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:362
+#: src/pages/assets/MachineIndex.tsx:52
+msgid "Equipment Registry"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:372
+#: src/pages/assets/EquipmentRegistry.tsx:849
+msgid "Register station"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:376
+msgid "Select a station to review its mappings and live source."
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:378
+msgid "Live source status is unavailable. Refresh the live source card to retry."
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:384
+msgid "This station is activated for live polling. Unbound points have no live values."
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:385
+msgid "This station has live bindings, but polling is paused. Ask your administrator to enable polling."
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:388
+msgid "This station is not activated for live polling. Approve mappings, then activate a configured live source."
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:393
+msgid "Inferred components are drafts, not verified installations. Registry uploads review mappings; uploaded readings are not stored as live values."
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:396
+msgid "Registry could not be loaded. Check your work-order permissions and configured Client scope, then retry."
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:406
+msgid "Pump station"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:415
+#: src/pages/assets/EquipmentRegistry.tsx:958
+msgid "Equipment owner"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:418
+msgid "Station and all pumps"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:428
+msgid "Station UUID"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:431
+#: src/pages/assets/EquipmentRegistry.tsx:841
+msgid "Source entity UUID"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:436
+#: src/pages/assets/EquipmentRegistry.tsx:466
+msgid "Equipment"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:437
+msgid "Components"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:438
+msgid "Dictionary and review"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:439
+msgid "Preview and import"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:445
+msgid "New pump source key"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:460
+msgid "Register pump slot"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:467
+msgid "Source key"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:468
+msgid "UUID"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:497
+msgid "Identifiable component occurrences"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:501
+#: src/pages/assets/EquipmentRegistry.tsx:856
+msgid "Add component occurrence"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:503
+msgid "Choose an equipment owner above before adding a component. Leaving it empty assigns the component to the station."
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:511
+#: src/pages/assets/EquipmentRegistry.tsx:872
+msgid "Catalogue part"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:530
+msgid "Logical group"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:550
+#: src/pages/tasks/workorders/CloseoutPanel.tsx:408
+msgid "Review"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:558
+msgid "Select a pump to narrow the component list. Showing the first 500 occurrences."
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:573
+msgid "Search tags"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:581
+#: src/pages/assets/EquipmentRegistry.tsx:1015
+msgid "Mapping status"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:591
+msgid "Match method"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:632
+msgid "Dictionary points"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:639
+msgid "Source tag / path"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:640
+msgid "Owner / component"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:642
+#: src/pages/part/PartDetailsPanel.tsx:134
+msgid "Units"
+msgstr "單位"
+
+#: src/pages/assets/EquipmentRegistry.tsx:667
+#: src/pages/assets/EquipmentRegistry.tsx:771
+msgid "Station"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:668
+msgid "Pump"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:674
+msgid "Unresolved"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:695
+msgid "Review mapping"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:711
+msgid "Select the authoritative station before uploading. Accepts a pd/dex payload, a Cassandra row with data1, or up to 100 rows. Maximum 8 MiB and 25,000 distinct points. Preview performs no equipment/dictionary writes. Existing mappings are preserved during import."
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:713
+msgid "Pumphouse JSON file"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:728
+msgid "Preview dictionary"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:734
+msgid "Import draft mappings"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:746
+msgid "Pump slots"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:753
+msgid "Raw tag"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:755
+msgid "Proposed part / parameter"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:756
+#: src/pages/repair/components/PacketCloseoutModal.tsx:156
+#: src/pages/tasks/workorders/CloseoutPanel.tsx:976
+#: src/pages/tasks/workorders/WorkOrderDetail.tsx:540
+#: src/tables/settings/BarcodeScanHistoryTable.tsx:89
+#: src/tables/settings/BarcodeScanHistoryTable.tsx:208
+#: src/tables/stock/StockItemTestResultTable.tsx:189
+msgid "Result"
+msgstr "結果"
+
+#: src/pages/assets/EquipmentRegistry.tsx:778
+msgid "Preserved"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:805
+msgid "Select or register a station to manage pump slots and review its dictionary."
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:810
+msgid "Register pump station"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:827
+#: src/pages/assets/EquipmentRegistry.tsx:886
+#: src/pages/assets/EquipmentRegistry.tsx:994
+msgid "Display name"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:831
+msgid "Authorized Client"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:836
+msgid "Source namespace"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:845
+msgid "Source code"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:881
+msgid "Occurrence code"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:892
+msgid "Create draft occurrence"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:899
+msgid "Review component assignment"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:907
+#: src/pages/assets/EquipmentRegistry.tsx:1021
+msgid "Review note"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:926
+msgid "Verify assignment"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:926
+msgid "Keep draft"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:935
+msgid "Review dictionary mapping"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:970
+msgid "Component occurrence"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:985
+msgid "Parameter definition"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:999
+msgid "Data type"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:1004
+msgid "Source unit"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:1010
+msgid "Unit review"
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:1024
+msgid "Approval requires a mapped component and parameter, confirmed units/type and a review note. Confirm engineering information; do not infer it from sample values."
+msgstr ""
+
+#: src/pages/assets/EquipmentRegistry.tsx:1025
+msgid "Save review"
+msgstr ""
+
 #: src/pages/assets/FaultHistoryPanel.tsx:68
 msgid "No records"
 msgstr ""
@@ -10924,65 +11326,64 @@ msgstr ""
 msgid "From verified closeouts"
 msgstr ""
 
-#: src/pages/assets/MachineDetail.tsx:80
+#: src/pages/assets/MachineDetail.tsx:82
 #: src/pages/assets/locations/LocationWorkspace.tsx:218
 msgid "Active record"
 msgstr ""
 
-#: src/pages/assets/MachineDetail.tsx:85
+#: src/pages/assets/MachineDetail.tsx:87
 msgid "Legacy location label"
 msgstr ""
 
-#: src/pages/assets/MachineDetail.tsx:102
+#: src/pages/assets/MachineDetail.tsx:104
 #: src/tables/assets/AssetMachineTable.tsx:37
 #: src/tables/general/BarcodeScanTable.tsx:52
 msgid "Model"
 msgstr "型號"
 
-#: src/pages/assets/MachineDetail.tsx:164
+#: src/pages/assets/MachineDetail.tsx:166
+msgid "Pumphouse mimic"
+msgstr ""
+
+#: src/pages/assets/MachineDetail.tsx:178
 msgid "Health"
 msgstr ""
 
-#: src/pages/assets/MachineDetail.tsx:172
+#: src/pages/assets/MachineDetail.tsx:186
 msgid "Installed Parts"
 msgstr ""
 
-#: src/pages/assets/MachineDetail.tsx:188
+#: src/pages/assets/MachineDetail.tsx:202
 msgid "Fault History"
 msgstr ""
 
-#: src/pages/assets/MachineDetail.tsx:205
+#: src/pages/assets/MachineDetail.tsx:219
 #: src/tables/machine/MachineListTable.tsx:766
 msgid "Machine Detail"
 msgstr "機器詳細資訊"
 
-#: src/pages/assets/MachineDetail.tsx:233
+#: src/pages/assets/MachineDetail.tsx:247
 msgid "Ask about this machine"
 msgstr ""
 
-#: src/pages/assets/MachineDetail.tsx:243
+#: src/pages/assets/MachineDetail.tsx:257
 #: src/pages/assets/health/AnomalyList.tsx:140
 msgid "Create repair"
 msgstr ""
 
-#: src/pages/assets/MachineDetail.tsx:254
+#: src/pages/assets/MachineDetail.tsx:268
 #: src/pages/assets/StartRepairModal.tsx:131
 #: src/pages/assets/StartRepairModal.tsx:203
 msgid "Start repair"
 msgstr ""
 
-#: src/pages/assets/MachineIndex.tsx:24
-#: src/pages/assets/locations/LocationWorkspace.tsx:483
-#~ msgid "Sites & Facilities"
-#~ msgstr ""
-
-#: src/pages/assets/MachineIndex.tsx:26
-#: src/pages/assets/locations/LocationWorkspace.tsx:511
+#: src/pages/assets/MachineIndex.tsx:27
+#: src/pages/assets/locations/LocationWorkspace.tsx:517
 msgid "By location"
 msgstr ""
 
-#: src/pages/assets/MachineIndex.tsx:33
-#: src/pages/assets/locations/LocationWorkspace.tsx:513
+#: src/pages/assets/MachineIndex.tsx:34
+#: src/pages/assets/locations/LocationWorkspace.tsx:519
 msgid "All Machines"
 msgstr ""
 
@@ -11014,6 +11415,100 @@ msgstr ""
 
 #: src/pages/assets/StartRepairModal.tsx:218
 msgid "Review blockers"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:79
+msgid "Refresh the source preview before continuing."
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:90
+msgid "Station deactivated"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:91
+msgid "Station mappings activated"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:95
+msgid "Live source update failed"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:110
+msgid "Live source"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:120
+msgid "Live source status could not be loaded. Refresh to retry."
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:126
+msgid "Activated"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:126
+msgid "Not activated"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:129
+msgid "Polling enabled"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:129
+msgid "Polling paused"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:141
+msgid "Select a configured source"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:144
+msgid "No source is configured for this station. Ask your administrator to assign one."
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:148
+msgid "Approved"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:151
+msgid "Bound"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:154
+msgid "Unbound"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:158
+#: src/pages/assets/health/PumphouseMimic.tsx:321
+msgid "Last poll"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:161
+#: src/pages/assets/health/PumphouseMimic.tsx:324
+msgid "Not polled yet"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:165
+msgid "Last poll error"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:169
+msgid "Source preview could not be loaded. Refresh before trying again."
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:172
+msgid "Activation binds approved mappings. Polling must also be enabled by your administrator. Deactivation stops this station and clears its managed live values."
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:187
+msgid "Refresh approved bindings"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:188
+msgid "Activate station"
+msgstr ""
+
+#: src/pages/assets/StationLiveSource.tsx:201
+msgid "Deactivate station"
 msgstr ""
 
 #: src/pages/assets/health/AnomalyList.tsx:34
@@ -11093,6 +11588,7 @@ msgid "{0} min"
 msgstr ""
 
 #: src/pages/assets/health/HealthSummary.tsx:39
+#: src/pages/assets/health/PumphouseMimic.tsx:196
 msgid "Condition"
 msgstr ""
 
@@ -11304,6 +11800,232 @@ msgstr ""
 msgid "{0} signal(s) of poor quality"
 msgstr ""
 
+#: src/pages/assets/health/PumphouseMimic.tsx:78
+msgid "Polling disabled"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:79
+#: src/pages/assets/health/PumphouseMimic.tsx:101
+#: src/pages/assets/health/PumphouseMimic.tsx:318
+msgid "Not bound"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:80
+msgid "Not approved"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:81
+#: src/pages/assets/health/PumphouseMimic.tsx:220
+#: src/pages/assets/health/common.tsx:184
+msgid "No reading"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:82
+#: src/pages/assets/health/PumphouseMimic.tsx:100
+#: src/pages/assets/health/common.tsx:193
+#: src/pages/stock/StockDetail.tsx:704
+#: src/tables/stock/StockItemTable.tsx:279
+msgid "Stale"
+msgstr "陳舊"
+
+#: src/pages/assets/health/PumphouseMimic.tsx:83
+msgid "Unusable quality"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:84
+msgid "Source clock is ahead"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:85
+msgid "Mapping changed"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:86
+msgid "Unexpected value type"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:87
+#: src/pages/assets/health/PumphouseMimic.tsx:391
+msgid "Inactive equipment"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:88
+msgid "Missing contributors"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:89
+msgid "Unit needs review"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:90
+msgid "Incompatible units"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:98
+msgid "Idle"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:99
+#: src/pages/maintenance/workorders/components/WorkOrderProblemPanel.tsx:64
+#: src/pages/repair/RepairPacketDetail.tsx:184
+#: src/pages/tasks/workorders/WorkOrderDetail.tsx:481
+msgid "Fault"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:115
+msgid "Forebay level"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:116
+msgid "Station status"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:117
+msgid "Pump status"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:118
+msgid "Input power"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:119
+msgid "Discharge flow"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:132
+msgid "Pump unit schematic"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:132
+msgid "Station schematic"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:192
+#: src/pages/assets/health/SignalTable.tsx:61
+msgid "Signal"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:194
+#: src/pages/assets/health/SignalTable.tsx:66
+msgid "Quality"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:195
+msgid "Observed at"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:215
+#: src/pages/assets/health/common.tsx:127
+msgid "Good"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:215
+msgid "Unusable or unknown"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:223
+msgid "Age at response"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:224
+msgid "seconds"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:230
+msgid "No threshold configured"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:238
+#: src/pages/assets/health/common.tsx:43
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:60
+msgid "Normal"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:277
+msgid "Other reviewed points"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:284
+msgid "Pumphouse overview"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:293
+msgid "Live readings are unavailable. Refresh to retry; cached values are hidden."
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:298
+#: src/pages/assets/health/PumphouseMimic.tsx:411
+msgid "Overview only"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:306
+msgid "This schematic awaits plant review. Missing mappings are shown as unavailable."
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:309
+msgid "Polling is disabled for this station. Live values are unavailable."
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:313
+msgid "Last station polling error"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:327
+msgid "Response time"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:336
+msgid "Plant power"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:338
+msgid "Plant flow"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:347
+msgid "Derived total"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:347
+msgid "Source measurement"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:398
+msgid "No pump slots are registered for this station."
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:400
+msgid "Station readings"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:406
+msgid "Pump unit"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:415
+msgid "Filter unit readings"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:426
+msgid "No matching readings."
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:430
+msgid "Select a pump bay to view its instruments and readings."
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:432
+msgid "Threshold alarms"
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:436
+msgid "No active alarms from configured thresholds."
+msgstr ""
+
+#: src/pages/assets/health/PumphouseMimic.tsx:440
+msgid "Points without configured thresholds"
+msgstr ""
+
 #. placeholder {0}: warn_min ?? '−∞'
 #. placeholder {1}: warn_max ?? '∞'
 #: src/pages/assets/health/SignalTable.tsx:29
@@ -11320,10 +12042,6 @@ msgstr ""
 msgid "No signals are mapped for this machine."
 msgstr ""
 
-#: src/pages/assets/health/SignalTable.tsx:61
-msgid "Signal"
-msgstr ""
-
 #: src/pages/assets/health/SignalTable.tsx:64
 #: src/pages/maintenance/workorders/components/InvestigationSection.tsx:79
 #: src/pages/repair/components/InvestigationPanel.tsx:96
@@ -11332,10 +12050,6 @@ msgstr ""
 
 #: src/pages/assets/health/SignalTable.tsx:65
 msgid "Trend"
-msgstr ""
-
-#: src/pages/assets/health/SignalTable.tsx:66
-msgid "Quality"
 msgstr ""
 
 #: src/pages/assets/health/SignalTable.tsx:68
@@ -11369,16 +12083,8 @@ msgstr ""
 msgid "(trimmed)"
 msgstr ""
 
-#: src/pages/assets/health/common.tsx:43
-msgid "Normal"
-msgstr ""
-
 #: src/pages/assets/health/common.tsx:61
 msgid "Offline"
-msgstr ""
-
-#: src/pages/assets/health/common.tsx:127
-msgid "Good"
 msgstr ""
 
 #: src/pages/assets/health/common.tsx:129
@@ -11432,16 +12138,6 @@ msgstr ""
 #: src/pages/assets/health/common.tsx:148
 msgid "Manual"
 msgstr ""
-
-#: src/pages/assets/health/common.tsx:184
-msgid "No reading"
-msgstr ""
-
-#: src/pages/assets/health/common.tsx:193
-#: src/pages/stock/StockDetail.tsx:704
-#: src/tables/stock/StockItemTable.tsx:279
-msgid "Stale"
-msgstr "陳舊"
 
 #: src/pages/assets/locations/DemoMetricsPanel.tsx:49
 msgid "Fresh (all signals)"
@@ -11502,455 +12198,7 @@ msgstr ""
 msgid "The synthetic demo session list could not be loaded. Live data is unaffected."
 msgstr ""
 
-#: src/pages/assets/locations/LocationBrowser.tsx:78
-#: src/pages/assets/locations/LocationDialogs.tsx:109
-msgid "Site"
-msgstr ""
-
-#: src/pages/assets/locations/LocationBrowser.tsx:80
-#: src/pages/assets/locations/LocationDialogs.tsx:110
-msgid "Facility"
-msgstr ""
-
-#: src/pages/assets/locations/LocationBrowser.tsx:84
-#: src/pages/assets/locations/LocationDialogs.tsx:112
-msgid "Area"
-msgstr ""
-
-#: src/pages/assets/locations/LocationBrowser.tsx:86
-msgid "Line"
-msgstr ""
-
-#: src/pages/assets/locations/LocationBrowser.tsx:88
-#: src/pages/assets/locations/LocationDialogs.tsx:114
-msgid "Cell"
-msgstr ""
-
-#: src/pages/assets/locations/LocationBrowser.tsx:90
-#: src/pages/assets/locations/LocationDialogs.tsx:115
-msgid "Room"
-msgstr ""
-
-#: src/pages/assets/locations/LocationBrowser.tsx:439
-#: src/pages/assets/locations/LocationDialogs.tsx:205
-#: src/pages/assets/locations/LocationWorkspace.tsx:408
-#: src/pages/assets/locations/LocationWorkspace.tsx:619
-msgid "Archived"
-msgstr ""
-
-#: src/pages/assets/locations/LocationBrowser.tsx:456
-msgid "Top-level locations"
-msgstr ""
-
-#: src/pages/assets/locations/LocationBrowser.tsx:467
-msgid "Locations"
-msgstr ""
-
-#: src/pages/assets/locations/LocationBrowser.tsx:470
-msgid "Search locations"
-msgstr ""
-
-#: src/pages/assets/locations/LocationBrowser.tsx:471
-msgid "Search names or codes"
-msgstr ""
-
-#: src/pages/assets/locations/LocationBrowser.tsx:483
-msgid "Locations could not be loaded."
-msgstr ""
-
-#: src/pages/assets/locations/LocationBrowser.tsx:500
-#: src/pages/assets/locations/LocationPicker.tsx:88
-msgid "No matching locations"
-msgstr ""
-
-#: src/pages/assets/locations/LocationBrowser.tsx:517
-#: src/pages/assets/locations/LocationWorkspace.tsx:379
-msgid "Browse top-level locations"
-msgstr ""
-
-#: src/pages/assets/locations/LocationBrowser.tsx:525
-#: src/pages/assets/locations/LocationWorkspace.tsx:385
-msgid "Locations unavailable"
-msgstr ""
-
-#: src/pages/assets/locations/LocationBrowser.tsx:527
-msgid "This branch could not be loaded."
-msgstr ""
-
-#: src/pages/assets/locations/LocationBrowser.tsx:553
-msgid "Location tree"
-msgstr ""
-
-#: src/pages/assets/locations/LocationBrowser.tsx:571
-msgid "Load more locations"
-msgstr ""
-
-#: src/pages/assets/locations/LocationBrowser.tsx:576
-msgid "This location is beyond the loaded tree pages. Use the search above to reach it."
-msgstr ""
-
-#: src/pages/assets/locations/LocationBrowser.tsx:581
-msgid "This location cannot be found in the tree. Use the search above to look for it."
-msgstr ""
-
-#: src/pages/assets/locations/LocationBrowser.tsx:590
-msgid "Create your first site to organize machines."
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:30
-msgid "This record changed. Close this dialog, refresh, and review before trying again."
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:32
-msgid "You no longer have permission to make this change."
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:40
-msgid "The change could not be saved. Your inputs have been kept."
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:80
-msgid "Enter a name"
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:84
-msgid "Use letters, numbers, hyphens or underscores"
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:85
-msgid "Choose a workspace"
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:86
-#: src/pages/assets/locations/LocationDialogs.tsx:250
-msgid "Enter a reason"
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:113
-msgid "Production Line"
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:128
-#: src/pages/assets/locations/LocationWorkspace.tsx:533
-msgid "Add location"
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:128
-#: src/pages/assets/locations/LocationWorkspace.tsx:630
-msgid "Add sublocation"
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:128
-#: src/pages/assets/locations/LocationWorkspace.tsx:637
-msgid "Edit location"
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:143
-msgid "Workspace"
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:177
-msgid "Parent location"
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:184
-#: src/pages/assets/locations/LocationWorkspace.tsx:645
-msgid "Timezone"
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:187
-msgid "Leave blank to inherit the parent timezone."
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:188
-msgid "Required for a top-level location, for example Europe/London."
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:196
-msgid "Changing ancestry or timezone affects future reporting. Earlier history and existing maintenance schedules are preserved."
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:206
-msgid "Active machines and child locations must be moved or retired first."
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:211
-msgid "Reason for change"
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:225
-msgid "Save location"
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:280
-msgid "Move machines"
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:297
-msgid "Select machines from one workspace for each move."
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:300
-msgid "Selected machines"
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:313
-#: src/pages/purchasing/PurchaseOrderDetailsPanel.tsx:100
-#: src/tables/purchasing/PurchaseOrderLineItemTable.tsx:285
-msgid "Destination"
-msgstr "目的地"
-
-#: src/pages/assets/locations/LocationDialogs.tsx:324
-msgid "Reason for move"
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:331
-msgid "These machines will become unassigned. Their previous placement history will be retained."
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:336
-msgid "The move takes effect now. Existing work-order instructions and planned service venues are not changed."
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:338
-msgid "Review the selected machines and destination. Confirming moves the entire selection together."
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:356
-msgid "Confirm move"
-msgstr ""
-
-#: src/pages/assets/locations/LocationDialogs.tsx:356
-msgid "Review move"
-msgstr ""
-
-#: src/pages/assets/locations/LocationPicker.tsx:69
-msgid "Search by name or code. Any active level can hold machines."
-msgstr ""
-
-#: src/pages/assets/locations/LocationPicker.tsx:85
-msgid "Locations could not be loaded"
-msgstr ""
-
-#: src/pages/assets/locations/LocationPicker.tsx:87
-msgid "Loading locations…"
-msgstr ""
-
-#: src/pages/assets/locations/LocationPicker.tsx:93
-msgid "Locations could not be loaded. Try again."
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:114
-#~ msgid "Expand to load sublocations"
-#~ msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:155
-#: src/pages/assets/locations/LocationWorkspace.tsx:156
-msgid "Search machines"
-msgstr ""
-
-#. placeholder {0}: query.data.count
-#: src/pages/assets/locations/LocationWorkspace.tsx:163
-msgid "{0} machines"
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:167
-msgid "Selected on this page"
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:177
-msgid "Move selected"
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:184
-#~ msgid "All top-level locations"
-#~ msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:185
-msgid "Machines unavailable"
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:186
-msgid "Check your maintenance scope or try refreshing."
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:187
-#~ msgid "Some locations could not be loaded."
-#~ msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:193
-#~ msgid "Sites and facilities"
-#~ msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:199
-#~ msgid "This branch shows its first 100 locations. Search by name or code to find more."
-#~ msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:202
-msgid "Select machines on this page"
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:216
-#: src/pages/assets/locations/MachineLocationCard.tsx:54
-#: src/pages/assets/locations/MachineLocationCard.tsx:76
-msgid "Physical location"
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:217
-msgid "Manufacturer / model"
-msgstr ""
-
-#. placeholder {0}: machine.name
-#: src/pages/assets/locations/LocationWorkspace.tsx:227
-msgid "Select {0}"
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:268
-msgid "Legacy label"
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:287
-msgid "No machines match your search."
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:299
-msgid "No machines are placed directly at this location."
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:302
-msgid "Turn on Include sublocations to see machines placed in sublocations."
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:308
-msgid "No machines at this location or its sublocations."
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:313
-msgid "No unassigned machines in your workspace."
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:319
-msgid "Machine results pagination"
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:381
-msgid "Select a top-level location to see its machines and current maintenance counts."
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:386
-msgid "Top-level locations could not be loaded."
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:404
-#~ msgid "No machines match this view."
-#~ msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:420
-msgid "Location overview pagination"
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:434
-msgid "View unassigned machines"
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:514
-msgid "Unassigned machines"
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:518
-msgid "Organize physical locations and see where maintenance is needed."
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:519
-msgid "Physical placement is separate from the legacy location label."
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:541
-msgid "Location workspace unavailable"
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:542
-msgid "Your role or maintenance scope could not be resolved. Refresh or ask your administrator to check access."
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:566
-msgid "Choose location"
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:585
-msgid "The location link is invalid."
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:589
-msgid "This location is unavailable or you no longer have access."
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:592
-#~ msgid "Location scope"
-#~ msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:593
-msgid "Location path"
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:606
-#~ msgid "Direct only"
-#~ msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:613
-#~ msgid "Machines now"
-#~ msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:649
-msgid "Include sublocations"
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:657
-#~ msgid "Choose a location"
-#~ msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:661
-#~ msgid "Select a site or sublocation to see its machines and current maintenance counts."
-#~ msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:663
-msgid "Includes only machines placed directly at this location."
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:664
-msgid "Includes machines placed at this location and all of its sublocations."
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:671
-msgid "Machines in this view"
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:682
-msgid "Including sublocations"
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:683
-#: src/pages/assets/locations/LocationWorkspace.tsx:699
-msgid "Direct here"
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:689
-msgid "Direct at this location"
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:705
-msgid "Open work orders now"
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:711
-msgid "Drafts excluded; work orders counted once."
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:721
-msgid "Location totals — the machine table search does not change these counts."
-msgstr ""
-
-#: src/pages/assets/locations/LocationWorkspace.tsx:736
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:250
 msgid "Historical performance will appear when validated event and placement history is available. Current placement does not establish past downtime."
 msgstr ""
 
@@ -12081,20 +12329,476 @@ msgstr ""
 msgid "Not placement-at-event: current placement does not establish past location."
 msgstr ""
 
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:487
+#: src/pages/tasks/workorders/WorkOrderDetail.tsx:546
+#: src/tables/assets/MaintenanceRecordTable.tsx:126
+msgid "Downtime"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:491
+msgid "Measured-cohort availability"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:511
+msgid "The demo metrics could not be loaded. No fixture fallback is shown."
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:541
+msgid "Synthetic demo session filter"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:553
+msgid "Applying the synthetic demo session filter…"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:558
+msgid "Board cards stay hidden until the session scope resolves."
+msgstr ""
+
+#. placeholder {0}: truncation.shown
+#. placeholder {1}: truncation.total
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:563
+msgid "This filter covers the first {0} of {1} contributing orders."
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:635
+msgid "Checking synthetic demo session scope…"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:643
+msgid "In this session's filtered cohort:"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:648
+msgid "no fresh condition"
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:653
+msgid "This machine is not in the synthetic demo session cohort for the current filters."
+msgstr ""
+
+#: src/pages/assets/locations/DemoMetricsPanel.tsx:665
+msgid "View session work in Maintenance"
+msgstr ""
+
+#: src/pages/assets/locations/LocationBrowser.tsx:78
+#: src/pages/assets/locations/LocationDialogs.tsx:109
+msgid "Site"
+msgstr ""
+
+#: src/pages/assets/locations/LocationBrowser.tsx:80
+#: src/pages/assets/locations/LocationDialogs.tsx:110
+msgid "Facility"
+msgstr ""
+
+#: src/pages/assets/locations/LocationBrowser.tsx:84
+#: src/pages/assets/locations/LocationDialogs.tsx:112
+msgid "Area"
+msgstr ""
+
+#: src/pages/assets/locations/LocationBrowser.tsx:86
+msgid "Line"
+msgstr ""
+
+#: src/pages/assets/locations/LocationBrowser.tsx:88
+#: src/pages/assets/locations/LocationDialogs.tsx:114
+msgid "Cell"
+msgstr ""
+
+#: src/pages/assets/locations/LocationBrowser.tsx:90
+#: src/pages/assets/locations/LocationDialogs.tsx:115
+msgid "Room"
+msgstr ""
+
+#: src/pages/assets/locations/LocationBrowser.tsx:439
+#: src/pages/assets/locations/LocationDialogs.tsx:205
+#: src/pages/assets/locations/LocationWorkspace.tsx:408
+#: src/pages/assets/locations/LocationWorkspace.tsx:625
+msgid "Archived"
+msgstr ""
+
+#: src/pages/assets/locations/LocationBrowser.tsx:456
+msgid "Top-level locations"
+msgstr ""
+
+#: src/pages/assets/locations/LocationBrowser.tsx:467
+msgid "Locations"
+msgstr ""
+
+#: src/pages/assets/locations/LocationBrowser.tsx:470
+msgid "Search locations"
+msgstr ""
+
+#: src/pages/assets/locations/LocationBrowser.tsx:471
+msgid "Search names or codes"
+msgstr ""
+
+#: src/pages/assets/locations/LocationBrowser.tsx:483
+msgid "Locations could not be loaded."
+msgstr ""
+
+#: src/pages/assets/locations/LocationBrowser.tsx:500
+#: src/pages/assets/locations/LocationPicker.tsx:88
+msgid "No matching locations"
+msgstr ""
+
+#: src/pages/assets/locations/LocationBrowser.tsx:517
+#: src/pages/assets/locations/LocationWorkspace.tsx:379
+msgid "Browse top-level locations"
+msgstr ""
+
+#: src/pages/assets/locations/LocationBrowser.tsx:525
+#: src/pages/assets/locations/LocationWorkspace.tsx:385
+msgid "Locations unavailable"
+msgstr ""
+
+#: src/pages/assets/locations/LocationBrowser.tsx:527
+msgid "This branch could not be loaded."
+msgstr ""
+
+#: src/pages/assets/locations/LocationBrowser.tsx:553
+msgid "Location tree"
+msgstr ""
+
+#: src/pages/assets/locations/LocationBrowser.tsx:571
+msgid "Load more locations"
+msgstr ""
+
+#: src/pages/assets/locations/LocationBrowser.tsx:576
+msgid "This location is beyond the loaded tree pages. Use the search above to reach it."
+msgstr ""
+
+#: src/pages/assets/locations/LocationBrowser.tsx:581
+msgid "This location cannot be found in the tree. Use the search above to look for it."
+msgstr ""
+
+#: src/pages/assets/locations/LocationBrowser.tsx:590
+msgid "Create your first site to organize machines."
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:30
+msgid "This record changed. Close this dialog, refresh, and review before trying again."
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:32
+msgid "You no longer have permission to make this change."
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:40
+msgid "The change could not be saved. Your inputs have been kept."
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:80
+msgid "Enter a name"
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:84
+msgid "Use letters, numbers, hyphens or underscores"
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:85
+msgid "Choose a workspace"
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:86
+#: src/pages/assets/locations/LocationDialogs.tsx:250
+msgid "Enter a reason"
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:113
+msgid "Production Line"
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:128
+#: src/pages/assets/locations/LocationWorkspace.tsx:643
+msgid "Edit location"
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:128
+#: src/pages/assets/locations/LocationWorkspace.tsx:636
+msgid "Add sublocation"
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:128
+#: src/pages/assets/locations/LocationWorkspace.tsx:539
+msgid "Add location"
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:143
+msgid "Workspace"
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:177
+msgid "Parent location"
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:184
+#: src/pages/assets/locations/LocationWorkspace.tsx:651
+msgid "Timezone"
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:187
+msgid "Leave blank to inherit the parent timezone."
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:188
+msgid "Required for a top-level location, for example Europe/London."
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:196
+msgid "Changing ancestry or timezone affects future reporting. Earlier history and existing maintenance schedules are preserved."
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:206
+msgid "Active machines and child locations must be moved or retired first."
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:211
+msgid "Reason for change"
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:225
+msgid "Save location"
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:280
+msgid "Move machines"
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:297
+msgid "Select machines from one workspace for each move."
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:300
+msgid "Selected machines"
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:313
+#: src/pages/purchasing/PurchaseOrderDetailsPanel.tsx:100
+#: src/tables/purchasing/PurchaseOrderLineItemTable.tsx:285
+msgid "Destination"
+msgstr "目的地"
+
+#: src/pages/assets/locations/LocationDialogs.tsx:324
+msgid "Reason for move"
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:331
+msgid "These machines will become unassigned. Their previous placement history will be retained."
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:336
+msgid "The move takes effect now. Existing work-order instructions and planned service venues are not changed."
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:338
+msgid "Review the selected machines and destination. Confirming moves the entire selection together."
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:356
+msgid "Confirm move"
+msgstr ""
+
+#: src/pages/assets/locations/LocationDialogs.tsx:356
+msgid "Review move"
+msgstr ""
+
+#: src/pages/assets/locations/LocationPicker.tsx:69
+msgid "Search by name or code. Any active level can hold machines."
+msgstr ""
+
+#: src/pages/assets/locations/LocationPicker.tsx:85
+msgid "Locations could not be loaded"
+msgstr ""
+
+#: src/pages/assets/locations/LocationPicker.tsx:87
+msgid "Loading locations…"
+msgstr ""
+
+#: src/pages/assets/locations/LocationPicker.tsx:93
+msgid "Locations could not be loaded. Try again."
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:155
+#: src/pages/assets/locations/LocationWorkspace.tsx:156
+msgid "Search machines"
+msgstr ""
+
+#. placeholder {0}: query.data.count
+#: src/pages/assets/locations/LocationWorkspace.tsx:163
+msgid "{0} machines"
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:167
+msgid "Selected on this page"
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:177
+msgid "Move selected"
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:185
+msgid "Machines unavailable"
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:186
+msgid "Check your maintenance scope or try refreshing."
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:202
+msgid "Select machines on this page"
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:216
+#: src/pages/assets/locations/MachineLocationCard.tsx:54
+#: src/pages/assets/locations/MachineLocationCard.tsx:85
+msgid "Physical location"
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:217
+msgid "Manufacturer / model"
+msgstr ""
+
+#. placeholder {0}: machine.name
+#: src/pages/assets/locations/LocationWorkspace.tsx:227
+msgid "Select {0}"
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:268
+msgid "Legacy label"
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:287
+msgid "No machines match your search."
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:299
+msgid "No machines are placed directly at this location."
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:302
+msgid "Turn on Include sublocations to see machines placed in sublocations."
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:308
+msgid "No machines at this location or its sublocations."
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:313
+msgid "No unassigned machines in your workspace."
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:319
+msgid "Machine results pagination"
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:381
+msgid "Select a top-level location to see its machines and current maintenance counts."
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:386
+msgid "Top-level locations could not be loaded."
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:420
+msgid "Location overview pagination"
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:434
+msgid "View unassigned machines"
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:520
+msgid "Unassigned machines"
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:524
+msgid "Organize physical locations and see where maintenance is needed."
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:525
+msgid "Physical placement is separate from the legacy location label."
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:547
+msgid "Location workspace unavailable"
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:548
+msgid "Your role or maintenance scope could not be resolved. Refresh or ask your administrator to check access."
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:572
+msgid "Choose location"
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:591
+msgid "The location link is invalid."
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:595
+msgid "This location is unavailable or you no longer have access."
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:599
+msgid "Location path"
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:655
+msgid "Include sublocations"
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:669
+msgid "Includes only machines placed directly at this location."
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:670
+msgid "Includes machines placed at this location and all of its sublocations."
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:677
+msgid "Machines in this view"
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:688
+msgid "Including sublocations"
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:689
+#: src/pages/assets/locations/LocationWorkspace.tsx:705
+msgid "Direct here"
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:695
+msgid "Direct at this location"
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:711
+msgid "Open work orders now"
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:717
+msgid "Drafts excluded; work orders counted once."
+msgstr ""
+
+#: src/pages/assets/locations/LocationWorkspace.tsx:727
+msgid "Location totals — the machine table search does not change these counts."
+msgstr ""
+
 #: src/pages/assets/locations/MachineLocationCard.tsx:41
-#: src/pages/assets/locations/MachineLocationCard.tsx:94
+#: src/pages/assets/locations/MachineLocationCard.tsx:103
 msgid "No physical location assigned"
 msgstr ""
 
-#: src/pages/assets/locations/MachineLocationCard.tsx:82
+#: src/pages/assets/locations/MachineLocationCard.tsx:91
 msgid "Move machine"
 msgstr ""
 
-#: src/pages/assets/locations/MachineLocationCard.tsx:99
+#: src/pages/assets/locations/MachineLocationCard.tsx:108
 msgid "Loading location…"
 msgstr ""
 
-#: src/pages/assets/locations/MachineLocationCard.tsx:100
+#: src/pages/assets/locations/MachineLocationCard.tsx:109
 msgid "Location is unavailable for your current scope."
 msgstr ""
 
@@ -12610,364 +13314,364 @@ msgstr "用户詳情"
 msgid "Normal user"
 msgstr "一般使用者"
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:401
+#: src/pages/maintenance/MaintenanceBoard.tsx:448
 msgid "Could not load Kanban cards"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:427
+#: src/pages/maintenance/MaintenanceBoard.tsx:474
 msgid "Could not load board cards"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:465
+#: src/pages/maintenance/MaintenanceBoard.tsx:530
 msgid "Could not load board columns"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:568
+#: src/pages/maintenance/MaintenanceBoard.tsx:633
 msgid "Give the work order a descriptive title."
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:571
+#: src/pages/maintenance/MaintenanceBoard.tsx:636
 msgid "Choose a column for this work order."
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:573
+#: src/pages/maintenance/MaintenanceBoard.tsx:638
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:185
 msgid "Select the machine for this work."
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:584
+#: src/pages/maintenance/MaintenanceBoard.tsx:649
 msgid "Name cannot be empty."
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:598
+#: src/pages/maintenance/MaintenanceBoard.tsx:663
 msgid "All columns"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:603
+#: src/pages/maintenance/MaintenanceBoard.tsx:668
 msgid "All priorities"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:619
+#: src/pages/maintenance/MaintenanceBoard.tsx:684
 msgid "All jobs"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:634
+#: src/pages/maintenance/MaintenanceBoard.tsx:699
 msgid "All employees"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:649
+#: src/pages/maintenance/MaintenanceBoard.tsx:714
 msgid "All service quotes"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:796
-#: src/pages/maintenance/MaintenanceBoard.tsx:1807
+#: src/pages/maintenance/MaintenanceBoard.tsx:861
+#: src/pages/maintenance/MaintenanceBoard.tsx:1873
 msgid "Work order created"
 msgstr ""
 
 #. placeholder {0}: result.work_order_reference
 #. placeholder {1}: result.repair_packet_reference
-#: src/pages/maintenance/MaintenanceBoard.tsx:798
+#: src/pages/maintenance/MaintenanceBoard.tsx:863
 msgid "{0} was created with repair packet {1}."
 msgstr ""
 
 #. placeholder {0}: result.work_order_reference
-#: src/pages/maintenance/MaintenanceBoard.tsx:799
+#: src/pages/maintenance/MaintenanceBoard.tsx:864
 msgid "{0} was created."
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:884
+#: src/pages/maintenance/MaintenanceBoard.tsx:949
 msgid "Work order updated"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:885
+#: src/pages/maintenance/MaintenanceBoard.tsx:950
 msgid "Changes saved successfully."
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:903
+#: src/pages/maintenance/MaintenanceBoard.tsx:968
 msgid "Stock warning"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:910
+#: src/pages/maintenance/MaintenanceBoard.tsx:975
 msgid "Stock allocated"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:911
+#: src/pages/maintenance/MaintenanceBoard.tsx:976
 msgid "All required parts have sufficient stock."
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:919
+#: src/pages/maintenance/MaintenanceBoard.tsx:984
 msgid "Could not save the parts for this work order"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:926
+#: src/pages/maintenance/MaintenanceBoard.tsx:991
 msgid "Could not update work order"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:960
+#: src/pages/maintenance/MaintenanceBoard.tsx:1025
 msgid "Could not update status"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:999
+#: src/pages/maintenance/MaintenanceBoard.tsx:1064
 msgid "Card archived"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1000
+#: src/pages/maintenance/MaintenanceBoard.tsx:1065
 msgid "Work order archived"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1001
+#: src/pages/maintenance/MaintenanceBoard.tsx:1066
 msgid "The card is no longer visible on the board."
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1013
+#: src/pages/maintenance/MaintenanceBoard.tsx:1078
 msgid "Could not delete work order"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1141
+#: src/pages/maintenance/MaintenanceBoard.tsx:1206
 msgid "Default columns cannot be deleted."
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1142
-#: src/pages/maintenance/MaintenanceBoard.tsx:1174
+#: src/pages/maintenance/MaintenanceBoard.tsx:1207
+#: src/pages/maintenance/MaintenanceBoard.tsx:1239
 msgid "Could not delete column"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1197
+#: src/pages/maintenance/MaintenanceBoard.tsx:1262
 msgid "Choose a unique name."
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1211
+#: src/pages/maintenance/MaintenanceBoard.tsx:1276
 msgid "Could not create column"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1247
+#: src/pages/maintenance/MaintenanceBoard.tsx:1312
 msgid "Could not save column order"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1267
+#: src/pages/maintenance/MaintenanceBoard.tsx:1333
 msgid "Track maintenance work by stage, keep ownership visible, and open any work order for its full detail."
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1274
+#: src/pages/maintenance/MaintenanceBoard.tsx:1340
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:372
 msgid "New work order"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1282
-#: src/pages/maintenance/MaintenanceBoard.tsx:2090
+#: src/pages/maintenance/MaintenanceBoard.tsx:1348
+#: src/pages/maintenance/MaintenanceBoard.tsx:2156
 msgid "Add column"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1293
+#: src/pages/maintenance/MaintenanceBoard.tsx:1359
 msgid "Edit column order"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1309
+#: src/pages/maintenance/MaintenanceBoard.tsx:1375
 msgid "Save order"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1322
+#: src/pages/maintenance/MaintenanceBoard.tsx:1388
 msgid "Title, description, or owner"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1334
+#: src/pages/maintenance/MaintenanceBoard.tsx:1400
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:333
 msgid "Column"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1372
+#: src/pages/maintenance/MaintenanceBoard.tsx:1438
 msgid "Employee"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1386
-#: src/pages/maintenance/MaintenanceBoard.tsx:1930
+#: src/pages/maintenance/MaintenanceBoard.tsx:1452
+#: src/pages/maintenance/MaintenanceBoard.tsx:1996
 msgid "Job number"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1400
-#: src/pages/maintenance/MaintenanceBoard.tsx:1680
+#: src/pages/maintenance/MaintenanceBoard.tsx:1466
+#: src/pages/maintenance/MaintenanceBoard.tsx:1746
 msgid "Service quote"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1419
+#: src/pages/maintenance/MaintenanceBoard.tsx:1485
 msgid "Reset filters"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1433
+#: src/pages/maintenance/MaintenanceBoard.tsx:1499
 msgid "No columns match the current filters."
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1496
+#: src/pages/maintenance/MaintenanceBoard.tsx:1562
 msgid "Move column left"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1505
+#: src/pages/maintenance/MaintenanceBoard.tsx:1571
 msgid "Move column right"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1529
+#: src/pages/maintenance/MaintenanceBoard.tsx:1595
 msgid "No work in this column yet."
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1582
+#: src/pages/maintenance/MaintenanceBoard.tsx:1648
 msgid "Open work order detail"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1595
-#: src/pages/maintenance/MaintenanceBoard.tsx:1855
+#: src/pages/maintenance/MaintenanceBoard.tsx:1661
+#: src/pages/maintenance/MaintenanceBoard.tsx:1921
 msgid "Edit work order"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1605
+#: src/pages/maintenance/MaintenanceBoard.tsx:1671
 msgid "Delete work order"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1675
+#: src/pages/maintenance/MaintenanceBoard.tsx:1741
 #: src/tables/assets/MaintenanceRecordTable.tsx:88
 msgid "Job"
 msgstr ""
 
 #. placeholder {0}: columnDeletionContext.column.label
 #. placeholder {1}: columnDeletionContext.fallbackColumn.label
-#: src/pages/maintenance/MaintenanceBoard.tsx:1773
+#: src/pages/maintenance/MaintenanceBoard.tsx:1839
 msgid "Deleting {0} moves all of its tasks to {1}. Continue?"
 msgstr ""
 
 #. placeholder {0}: createdWorkPackage.work_order_reference
-#: src/pages/maintenance/MaintenanceBoard.tsx:1814
+#: src/pages/maintenance/MaintenanceBoard.tsx:1880
 msgid "Created {0}. It is planned, not started."
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1822
+#: src/pages/maintenance/MaintenanceBoard.tsx:1888
 msgid "Stay on the board"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1834
+#: src/pages/maintenance/MaintenanceBoard.tsx:1900
 msgid "Open repair packet"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1863
+#: src/pages/maintenance/MaintenanceBoard.tsx:1929
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:397
 msgid "Summarize the work in one line"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1869
+#: src/pages/maintenance/MaintenanceBoard.tsx:1935
 msgid "What needs to get done?"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1877
+#: src/pages/maintenance/MaintenanceBoard.tsx:1943
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:383
 msgid "Loading machines…"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1878
+#: src/pages/maintenance/MaintenanceBoard.tsx:1944
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:384
 msgid "Select the machine this work is for"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1883
+#: src/pages/maintenance/MaintenanceBoard.tsx:1949
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:389
 msgid "No machines found"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1891
+#: src/pages/maintenance/MaintenanceBoard.tsx:1957
 msgid "Select column"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1910
+#: src/pages/maintenance/MaintenanceBoard.tsx:1976
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:453
 msgid "Who owns this work?"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1915
+#: src/pages/maintenance/MaintenanceBoard.tsx:1981
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:457
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:188
 msgid "Due date"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1916
+#: src/pages/maintenance/MaintenanceBoard.tsx:1982
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:458
 msgid "Pick a date"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1925
+#: src/pages/maintenance/MaintenanceBoard.tsx:1991
 msgid "Customer or organization"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1931
+#: src/pages/maintenance/MaintenanceBoard.tsx:1997
 msgid "Link work to a job or project"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1938
+#: src/pages/maintenance/MaintenanceBoard.tsx:2004
 msgid "Company contact name"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1939
+#: src/pages/maintenance/MaintenanceBoard.tsx:2005
 msgid "Primary point of contact"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1944
+#: src/pages/maintenance/MaintenanceBoard.tsx:2010
 msgid "Company contact phone"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1945
+#: src/pages/maintenance/MaintenanceBoard.tsx:2011
 msgid "Phone number"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1951
+#: src/pages/maintenance/MaintenanceBoard.tsx:2017
 msgid "Associated service quote"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1952
+#: src/pages/maintenance/MaintenanceBoard.tsx:2018
 msgid "Reference quote or agreement"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1958
+#: src/pages/maintenance/MaintenanceBoard.tsx:2024
 msgid "Parts needed"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:1961
+#: src/pages/maintenance/MaintenanceBoard.tsx:2027
 msgid "Search parts by name or IPN..."
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:2022
+#: src/pages/maintenance/MaintenanceBoard.tsx:2088
 msgid "Qty"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:2044
+#: src/pages/maintenance/MaintenanceBoard.tsx:2110
 #: src/pages/maintenance/components/WorkOrderCreateModal.tsx:541
 msgid "Remove part"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:2054
+#: src/pages/maintenance/MaintenanceBoard.tsx:2120
 msgid "Add labels to group related work"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:2061
+#: src/pages/maintenance/MaintenanceBoard.tsx:2127
 msgid "New tag"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:2062
+#: src/pages/maintenance/MaintenanceBoard.tsx:2128
 msgid "Add another tag option"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:2072
+#: src/pages/maintenance/MaintenanceBoard.tsx:2138
 msgid "Add tag"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:2080
+#: src/pages/maintenance/MaintenanceBoard.tsx:2146
 msgid "Save changes"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:2098
+#: src/pages/maintenance/MaintenanceBoard.tsx:2164
 msgid "How should this stage be called?"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:2103
+#: src/pages/maintenance/MaintenanceBoard.tsx:2169
 msgid "Color"
 msgstr ""
 
-#: src/pages/maintenance/MaintenanceBoard.tsx:2118
+#: src/pages/maintenance/MaintenanceBoard.tsx:2184
 msgid "Create column"
 msgstr ""
 
@@ -13200,12 +13904,6 @@ msgstr ""
 msgid "Criticality: {0}"
 msgstr ""
 
-#: src/pages/maintenance/workorders/components/WorkOrderProblemPanel.tsx:64
-#: src/pages/repair/RepairPacketDetail.tsx:184
-#: src/pages/tasks/workorders/WorkOrderDetail.tsx:481
-msgid "Fault"
-msgstr ""
-
 #: src/pages/maintenance/workorders/components/WorkOrderProblemPanel.tsx:83
 msgid "Verified diagnosis"
 msgstr ""
@@ -13385,7 +14083,7 @@ msgstr "短缺"
 #: src/pages/part/bom/BomCompare.tsx:38
 #: src/tables/bom/BomTable.tsx:516
 #: src/tables/build/BuildLineTable.tsx:216
-#: src/tables/part/PartTableFilters.tsx:109
+#: src/tables/part/PartTableFilters.tsx:114
 msgid "Consumable"
 msgstr "消耗品"
 
@@ -13413,7 +14111,7 @@ msgid "Search by serial number"
 msgstr "依序號搜尋"
 
 #: src/pages/part/PartDetail.tsx:776
-#: src/tables/part/PartTable.tsx:251
+#: src/tables/part/PartTable.tsx:253
 msgid "Part Actions"
 msgstr "零件選項"
 
@@ -13437,10 +14135,6 @@ msgstr "修訂"
 msgid "Category Default Location"
 msgstr "類別默認位置"
 
-#: src/pages/part/PartDetailsPanel.tsx:134
-msgid "Units"
-msgstr "單位"
-
 #: src/pages/part/PartDetailsPanel.tsx:141
 #: src/tables/settings/PendingTasksTable.tsx:51
 msgid "Keywords"
@@ -13449,7 +14143,7 @@ msgstr "關鍵詞"
 #: src/pages/part/PartDetailsPanel.tsx:168
 #: src/tables/bom/BomTable.tsx:486
 #: src/tables/build/BuildLineTable.tsx:325
-#: src/tables/part/PartTableFilters.tsx:143
+#: src/tables/part/PartTableFilters.tsx:148
 #: src/tables/sales/SalesOrderLineItemTable.tsx:176
 #: src/tables/stock/TransferOrderLineItemTable.tsx:121
 msgid "Available Stock"
@@ -13478,7 +14172,7 @@ msgstr ""
 #: src/pages/part/PartDetailsPanel.tsx:245
 #: src/pages/repair/components/safety/safetyApi.ts:143
 #: src/tables/bom/UsedInTable.tsx:97
-#: src/tables/part/PartTableFilters.tsx:19
+#: src/tables/part/PartTableFilters.tsx:24
 #: src/tables/settings/SelectionListDrawer.tsx:174
 msgid "Locked"
 msgstr "已鎖定"
@@ -13521,7 +14215,7 @@ msgstr "預設過期時間"
 #: src/pages/part/PartDetailsPanel.tsx:308
 #: src/pages/part/pricing/BomPricingPanel.tsx:82
 #: src/pages/part/pricing/VariantPricingPanel.tsx:98
-#: src/tables/part/PartTable.tsx:90
+#: src/tables/part/PartTable.tsx:92
 msgid "Price Range"
 msgstr "價格範圍"
 
@@ -14152,15 +14846,6 @@ msgstr ""
 #: src/pages/repair/components/PacketCloseoutModal.tsx:150
 msgid "What was repaired or replaced?"
 msgstr ""
-
-#: src/pages/repair/components/PacketCloseoutModal.tsx:156
-#: src/pages/tasks/workorders/CloseoutPanel.tsx:976
-#: src/pages/tasks/workorders/WorkOrderDetail.tsx:540
-#: src/tables/settings/BarcodeScanHistoryTable.tsx:89
-#: src/tables/settings/BarcodeScanHistoryTable.tsx:208
-#: src/tables/stock/StockItemTestResultTable.tsx:189
-msgid "Result"
-msgstr "結果"
 
 #: src/pages/repair/components/PacketCloseoutModal.tsx:157
 msgid "What is the equipment doing now?"
@@ -15005,10 +15690,6 @@ msgstr ""
 msgid "Work order completed"
 msgstr ""
 
-#: src/pages/tasks/workorders/CloseoutPanel.tsx:408
-msgid "Review"
-msgstr ""
-
 #: src/pages/tasks/workorders/CloseoutPanel.tsx:428
 msgid "Readings"
 msgstr ""
@@ -15317,57 +15998,6 @@ msgstr ""
 msgid "Completion"
 msgstr ""
 
-#: src/pages/tasks/workorders/WorkOrderDetail.tsx:546
-#: src/tables/assets/MaintenanceRecordTable.tsx:126
-msgid "Downtime"
-msgstr ""
-
-#: src/pages/assets/locations/DemoMetricsPanel.tsx:491
-msgid "Measured-cohort availability"
-msgstr ""
-
-#: src/pages/assets/locations/DemoMetricsPanel.tsx:511
-msgid "The demo metrics could not be loaded. No fixture fallback is shown."
-msgstr ""
-
-#: src/pages/assets/locations/DemoMetricsPanel.tsx:541
-msgid "Synthetic demo session filter"
-msgstr ""
-
-#: src/pages/assets/locations/DemoMetricsPanel.tsx:553
-msgid "Applying the synthetic demo session filter…"
-msgstr ""
-
-#: src/pages/assets/locations/DemoMetricsPanel.tsx:558
-msgid "Board cards stay hidden until the session scope resolves."
-msgstr ""
-
-#. placeholder {0}: truncation.shown
-#. placeholder {1}: truncation.total
-#: src/pages/assets/locations/DemoMetricsPanel.tsx:563
-msgid "This filter covers the first {0} of {1} contributing orders."
-msgstr ""
-
-#: src/pages/assets/locations/DemoMetricsPanel.tsx:635
-msgid "Checking synthetic demo session scope…"
-msgstr ""
-
-#: src/pages/assets/locations/DemoMetricsPanel.tsx:643
-msgid "In this session's filtered cohort:"
-msgstr ""
-
-#: src/pages/assets/locations/DemoMetricsPanel.tsx:648
-msgid "no fresh condition"
-msgstr ""
-
-#: src/pages/assets/locations/DemoMetricsPanel.tsx:653
-msgid "This machine is not in the synthetic demo session cohort for the current filters."
-msgstr ""
-
-#: src/pages/assets/locations/DemoMetricsPanel.tsx:665
-msgid "View session work in Maintenance"
-msgstr ""
-
 #: src/pages/tasks/workorders/WorkOrderDetail.tsx:561
 msgid "No audit events yet."
 msgstr ""
@@ -15376,6 +16006,11 @@ msgstr ""
 #: src/states/IconState.tsx:77
 msgid "Error loading icon package from server"
 msgstr "從伺服器載入圖示套件時發生錯誤"
+
+#: src/tables/assets/MachinePartTable.tsx:31
+#: src/tables/part/PartTableFilters.tsx:168
+msgid "Filter by part group"
+msgstr ""
 
 #: src/tables/assets/MaintenanceRecordTable.tsx:27
 msgid "{minutes} min"
@@ -15512,7 +16147,7 @@ msgid "Show consumable items"
 msgstr "顯示可消耗項目"
 
 #: src/tables/bom/BomTable.tsx:521
-#: src/tables/part/PartTableFilters.tsx:137
+#: src/tables/part/PartTableFilters.tsx:142
 msgid "Has Pricing"
 msgstr "是否有價格"
 
@@ -15598,7 +16233,7 @@ msgstr "無法編輯材料清單，因為零件已鎖定"
 #: src/tables/bom/UsedInTable.tsx:47
 #: src/tables/build/BuildLineTable.tsx:226
 #: src/tables/part/PartBuildAllocationsTable.tsx:61
-#: src/tables/part/PartTableFilters.tsx:25
+#: src/tables/part/PartTableFilters.tsx:30
 #: src/tables/stock/StockItemTable.tsx:208
 msgid "Assembly"
 msgstr "裝配"
@@ -15612,7 +16247,7 @@ msgid "Show active assemblies"
 msgstr "顯示活動裝配體"
 
 #: src/tables/bom/UsedInTable.tsx:112
-#: src/tables/part/PartTableFilters.tsx:55
+#: src/tables/part/PartTableFilters.tsx:60
 #: src/tables/part/PartVariantTable.tsx:30
 msgid "Trackable"
 msgstr "可追蹤"
@@ -15731,7 +16366,7 @@ msgid "Show optional lines"
 msgstr "顯示可選項目"
 
 #: src/tables/build/BuildLineTable.tsx:231
-#: src/tables/part/PartTableFilters.tsx:49
+#: src/tables/part/PartTableFilters.tsx:54
 msgid "Testable"
 msgstr "可測試"
 
@@ -16261,7 +16896,7 @@ msgid "Show templates with choices"
 msgstr "顯示有選項的模板"
 
 #: src/tables/general/ParameterTemplateTable.tsx:143
-#: src/tables/part/PartTableFilters.tsx:61
+#: src/tables/part/PartTableFilters.tsx:66
 msgid "Has Units"
 msgstr "有單位"
 
@@ -16488,7 +17123,7 @@ msgid "You are subscribed to notifications for this category"
 msgstr "您已訂閱此類別的通知"
 
 #: src/tables/part/PartCategoryTable.tsx:85
-#: src/tables/part/PartTableFilters.tsx:37
+#: src/tables/part/PartTableFilters.tsx:42
 msgid "Include Subcategories"
 msgstr "包含子類別"
 
@@ -16572,152 +17207,152 @@ msgstr ""
 msgid "Show completed line items"
 msgstr ""
 
-#: src/tables/part/PartTable.tsx:214
-#: src/tables/part/PartTable.tsx:257
+#: src/tables/part/PartTable.tsx:216
+#: src/tables/part/PartTable.tsx:259
 msgid "Set Category"
 msgstr "設定類別"
 
-#: src/tables/part/PartTable.tsx:259
+#: src/tables/part/PartTable.tsx:261
 msgid "Set category for selected parts"
 msgstr "設定選定零件的類別"
 
-#: src/tables/part/PartTable.tsx:269
+#: src/tables/part/PartTable.tsx:271
 msgid "Order selected parts"
 msgstr "訂購選定的零件"
 
-#: src/tables/part/PartTableFilters.tsx:14
+#: src/tables/part/PartTableFilters.tsx:19
 msgid "Filter by part active status"
 msgstr "按零件活動狀態篩選"
 
-#: src/tables/part/PartTableFilters.tsx:20
+#: src/tables/part/PartTableFilters.tsx:25
 msgid "Filter by part locked status"
 msgstr "按零件鎖定狀態篩選"
 
-#: src/tables/part/PartTableFilters.tsx:26
+#: src/tables/part/PartTableFilters.tsx:31
 msgid "Filter by assembly attribute"
 msgstr "按裝配屬性篩選"
 
-#: src/tables/part/PartTableFilters.tsx:31
+#: src/tables/part/PartTableFilters.tsx:36
 msgid "BOM Valid"
 msgstr "BOM 有效"
 
-#: src/tables/part/PartTableFilters.tsx:32
+#: src/tables/part/PartTableFilters.tsx:37
 msgid "Filter by parts with a valid BOM"
 msgstr "依具有有效 BOM 的零件過濾"
 
-#: src/tables/part/PartTableFilters.tsx:38
+#: src/tables/part/PartTableFilters.tsx:43
 msgid "Include parts in subcategories"
 msgstr "包括子類別中的零件"
 
-#: src/tables/part/PartTableFilters.tsx:44
+#: src/tables/part/PartTableFilters.tsx:49
 msgid "Filter by component attribute"
 msgstr "按組件屬性篩選"
 
-#: src/tables/part/PartTableFilters.tsx:50
+#: src/tables/part/PartTableFilters.tsx:55
 msgid "Filter by testable attribute"
 msgstr "按可跟蹤屬性篩選"
 
-#: src/tables/part/PartTableFilters.tsx:56
+#: src/tables/part/PartTableFilters.tsx:61
 msgid "Filter by trackable attribute"
 msgstr "按可跟蹤屬性篩選"
 
-#: src/tables/part/PartTableFilters.tsx:62
+#: src/tables/part/PartTableFilters.tsx:67
 msgid "Filter by parts which have units"
 msgstr "按擁有單位的零件篩選"
 
-#: src/tables/part/PartTableFilters.tsx:67
+#: src/tables/part/PartTableFilters.tsx:72
 msgid "Has IPN"
 msgstr "有內部零件編碼"
 
-#: src/tables/part/PartTableFilters.tsx:68
+#: src/tables/part/PartTableFilters.tsx:73
 msgid "Filter by parts which have an internal part number"
 msgstr "按具有內部零件編號的零件篩選"
 
-#: src/tables/part/PartTableFilters.tsx:73
+#: src/tables/part/PartTableFilters.tsx:78
 msgid "Has Stock"
 msgstr "有庫存"
 
-#: src/tables/part/PartTableFilters.tsx:74
+#: src/tables/part/PartTableFilters.tsx:79
 msgid "Filter by parts which have stock"
 msgstr "按有庫存的零件篩選"
 
-#: src/tables/part/PartTableFilters.tsx:80
+#: src/tables/part/PartTableFilters.tsx:85
 msgid "Filter by parts which have low stock"
 msgstr "按庫存少的零件篩選"
 
-#: src/tables/part/PartTableFilters.tsx:86
+#: src/tables/part/PartTableFilters.tsx:91
 msgid "Filter by parts which have high stock"
 msgstr ""
 
-#: src/tables/part/PartTableFilters.tsx:91
+#: src/tables/part/PartTableFilters.tsx:96
 msgid "Purchaseable"
 msgstr "可購買"
 
-#: src/tables/part/PartTableFilters.tsx:92
+#: src/tables/part/PartTableFilters.tsx:97
 msgid "Filter by parts which are purchaseable"
 msgstr "按可購買的零件篩選"
 
-#: src/tables/part/PartTableFilters.tsx:97
+#: src/tables/part/PartTableFilters.tsx:102
 msgid "Salable"
 msgstr "可銷售"
 
-#: src/tables/part/PartTableFilters.tsx:98
+#: src/tables/part/PartTableFilters.tsx:103
 msgid "Filter by parts which are salable"
 msgstr "按可出售的零件篩選"
 
-#: src/tables/part/PartTableFilters.tsx:104
+#: src/tables/part/PartTableFilters.tsx:109
 msgid "Filter by parts which are virtual"
 msgstr "按虛擬零件篩選"
 
-#: src/tables/part/PartTableFilters.tsx:110
+#: src/tables/part/PartTableFilters.tsx:115
 msgid "Filter by parts which are consumable"
 msgstr ""
 
-#: src/tables/part/PartTableFilters.tsx:115
+#: src/tables/part/PartTableFilters.tsx:120
 msgid "Is Template"
 msgstr "是模板"
 
-#: src/tables/part/PartTableFilters.tsx:116
+#: src/tables/part/PartTableFilters.tsx:121
 msgid "Filter by parts which are templates"
 msgstr "按模板部分篩選零件"
 
-#: src/tables/part/PartTableFilters.tsx:121
+#: src/tables/part/PartTableFilters.tsx:126
 msgid "Is Variant"
 msgstr "是變體"
 
-#: src/tables/part/PartTableFilters.tsx:122
+#: src/tables/part/PartTableFilters.tsx:127
 msgid "Filter by parts which are variants"
 msgstr "依屬於變體的零件過濾"
 
-#: src/tables/part/PartTableFilters.tsx:127
+#: src/tables/part/PartTableFilters.tsx:132
 msgid "Is Revision"
 msgstr "是否修訂"
 
-#: src/tables/part/PartTableFilters.tsx:128
+#: src/tables/part/PartTableFilters.tsx:133
 msgid "Filter by parts which are revisions"
 msgstr "按修訂零件篩選"
 
-#: src/tables/part/PartTableFilters.tsx:132
+#: src/tables/part/PartTableFilters.tsx:137
 msgid "Has Revisions"
 msgstr "有修訂"
 
-#: src/tables/part/PartTableFilters.tsx:133
+#: src/tables/part/PartTableFilters.tsx:138
 msgid "Filter by parts which have revisions"
 msgstr "按有修訂的零件篩選"
 
-#: src/tables/part/PartTableFilters.tsx:138
+#: src/tables/part/PartTableFilters.tsx:143
 msgid "Filter by parts which have pricing information"
 msgstr "按有定價信息的零件篩選"
 
-#: src/tables/part/PartTableFilters.tsx:144
+#: src/tables/part/PartTableFilters.tsx:149
 msgid "Filter by parts which have available stock"
 msgstr "按有可用庫存的零件篩選"
 
-#: src/tables/part/PartTableFilters.tsx:150
+#: src/tables/part/PartTableFilters.tsx:155
 msgid "Filter by parts which are on order"
 msgstr ""
 
-#: src/tables/part/PartTableFilters.tsx:156
+#: src/tables/part/PartTableFilters.tsx:161
 msgid "Filter by parts to which the user is subscribed"
 msgstr "按用户訂閲的零件篩選"
 
@@ -18172,10 +18807,6 @@ msgstr ""
 #~ msgid "Read the docs"
 #~ msgstr "閲讀文檔"
 
-#: src/views/MobileAppView.tsx:36
-#~ msgid "Open voice"
-#~ msgstr ""
-
 #: src/views/MobileAppView.tsx:42
 #~ msgid "Ignore and continue to Desktop view"
 #~ msgstr "忽略並繼續到桌面視圖"
@@ -18183,11 +18814,3 @@ msgstr ""
 #: src/views/MobileAppView.tsx:46
 msgid "Open full app (not optimized for phones)"
 msgstr ""
-
-#: src/views/VoiceMobileAppView.tsx:34
-#~ msgid "Log out"
-#~ msgstr ""
-
-#: src/views/VoiceMobileAppView.tsx:43
-#~ msgid "Voice is unavailable. You can continue in the full app."
-#~ msgstr ""

@@ -96,6 +96,16 @@ class SnapshotReason(models.TextChoices):
     CONFIRMATION_TEST = 'confirmation_test', _('Confirmation test')
 
 
+#: Model default for the freshness threshold. Left untouched on non-Cosmos
+#: sources and on existing rows.
+FRESHNESS_DEFAULT_SECONDS = 900
+
+#: Decision D11: a new Cosmos source defaults to the source's five-minute
+#: real-time validity window (``ext = egt + 300 000``). Showing data as fresh
+#: for longer would present readings the source itself considers expired.
+COSMOS_FRESHNESS_DEFAULT_SECONDS = 300
+
+
 class HealthSource(models.Model):
     """A configured, read-only connection to an industrial data platform.
 
@@ -105,7 +115,56 @@ class HealthSource(models.Model):
     approval context or a browser.
     """
 
+    def __init__(self, *args, **kwargs):
+        """Default new Cosmos sources to the source's five-minute validity.
+
+        Explicit thresholds and positional database hydration are preserved.
+        Other connector types retain their existing default. Whether a threshold
+        was configured explicitly is remembered so :meth:`save` can extend the
+        same default to form/admin construction (see there).
+        """
+        self._freshness_explicit = bool(args) or 'freshness_threshold_seconds' in kwargs
+        if (
+            not args
+            and not self._freshness_explicit
+            and kwargs.get('connector_type') == 'cosmos_pumphouse'
+        ):
+            kwargs['freshness_threshold_seconds'] = COSMOS_FRESHNESS_DEFAULT_SECONDS
+        super().__init__(*args, **kwargs)
+
+    def save(self, *args, **kwargs):
+        """Give form/admin construction the same Cosmos default as ``__init__``.
+
+        A Django ModelForm builds the instance without constructor kwargs and
+        assigns the form values afterwards, so the constructor default never
+        fires for an admin-created source. A submitted value identical to the
+        model field default is therefore treated as unconfigured; only a value
+        differing from it is an explicit choice. Existing rows are never
+        touched.
+        """
+        if (
+            self._state.adding
+            and self.connector_type == 'cosmos_pumphouse'
+            and not getattr(self, '_freshness_explicit', False)
+            and self.freshness_threshold_seconds == FRESHNESS_DEFAULT_SECONDS
+        ):
+            self.freshness_threshold_seconds = COSMOS_FRESHNESS_DEFAULT_SECONDS
+            if kwargs.get('update_fields') is not None:
+                kwargs['update_fields'] = set(kwargs['update_fields']) | {
+                    'freshness_threshold_seconds'
+                }
+        super().save(*args, **kwargs)
+
     name = models.CharField(max_length=200, unique=True, verbose_name=_('Name'))
+
+    client = models.ForeignKey(
+        'assets.Client',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='health_sources',
+        help_text=_('Client authorized to activate stations on this source'),
+    )
 
     source_type = models.CharField(
         max_length=16,
@@ -149,7 +208,7 @@ class HealthSource(models.Model):
     )
 
     freshness_threshold_seconds = models.PositiveIntegerField(
-        default=900,
+        default=FRESHNESS_DEFAULT_SECONDS,
         validators=[MinValueValidator(1)],
         help_text=_('Signals older than this are shown as stale'),
         verbose_name=_('Freshness Threshold'),
@@ -204,14 +263,23 @@ class MachineSignalBinding(models.Model):
     )
 
     #: Opaque to AIMMS. Never interpolated into a query built from client input.
+    dictionary_point = models.ForeignKey(
+        'assets.DictionaryPoint',
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='signal_bindings',
+    )
+    dictionary_hash = models.CharField(max_length=64, blank=True)
+
     external_key = models.CharField(
-        max_length=255,
+        max_length=500,
         db_index=True,
         help_text=_('Tag / point identifier in the source system'),
         verbose_name=_('External Key'),
     )
 
-    display_name = models.CharField(max_length=200, verbose_name=_('Display Name'))
+    display_name = models.CharField(max_length=255, verbose_name=_('Display Name'))
 
     signal_kind = models.CharField(
         max_length=64,

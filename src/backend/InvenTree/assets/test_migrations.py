@@ -4,9 +4,21 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TransactionTestCase, tag
 
+from InvenTree.migration_rewind import migrate_for_rehearsal
+
+
+class RestoringMigrationTestCase(TransactionTestCase):
+    """Keep merged-history rehearsals isolated from the next test's schema."""
+
+    def setUp(self):
+        """Restore all leaves before Django flushes the current-model tables."""
+        super().setUp()
+        latest = MigrationExecutor(connection).loader.graph.leaf_nodes()
+        self.addCleanup(lambda: MigrationExecutor(connection).migrate(latest))
+
 
 @tag('migration_test')
-class ClientBackfillMigrationTests(TransactionTestCase):
+class ClientBackfillMigrationTests(RestoringMigrationTestCase):
     """Prove 0009 adopts clientless machines and 0010 drops the column."""
 
     migrate_from = [('assets', '0008_machineanomaly_repair_packet')]
@@ -22,7 +34,7 @@ class ClientBackfillMigrationTests(TransactionTestCase):
     def test_backfill_assigns_the_internal_client_and_drops_customer(self) -> None:
         """A pre-existing machine gains the internal client; the column dies."""
         executor = MigrationExecutor(connection)
-        executor.migrate(self.migrate_from)
+        migrate_for_rehearsal(connection, self.migrate_from)
         old_apps = executor.loader.project_state(self.migrate_from).apps
 
         OldMachine = old_apps.get_model('assets', 'AssetMachine')
@@ -53,7 +65,7 @@ class ClientBackfillMigrationTests(TransactionTestCase):
         # removed, releasing only the machines it had adopted.
         executor = MigrationExecutor(connection)
         executor.loader.build_graph()
-        executor.migrate(self.migrate_from)
+        migrate_for_rehearsal(connection, self.migrate_from)
 
         self.assertIn('customer_id', self._machine_columns())
         rollback_apps = executor.loader.project_state(self.migrate_from).apps
@@ -69,7 +81,7 @@ class ClientBackfillMigrationTests(TransactionTestCase):
 
 
 @tag('migration_test')
-class ProfileFieldMigrationTests(TransactionTestCase):
+class ProfileFieldMigrationTests(RestoringMigrationTestCase):
     """Prove 0011 adds the profile column additively and reverses cleanly."""
 
     migrate_from = [('assets', '0010_remove_assetmachine_customer')]
@@ -85,7 +97,7 @@ class ProfileFieldMigrationTests(TransactionTestCase):
     def test_profile_column_round_trips(self) -> None:
         """Existing rows survive forward and backward with data intact."""
         executor = MigrationExecutor(connection)
-        executor.migrate(self.migrate_from)
+        migrate_for_rehearsal(connection, self.migrate_from)
         old_apps = executor.loader.project_state(self.migrate_from).apps
         OldMachine = old_apps.get_model('assets', 'AssetMachine')
         machine = OldMachine.objects.create(name='Profile migration pump')
@@ -103,14 +115,14 @@ class ProfileFieldMigrationTests(TransactionTestCase):
 
         executor = MigrationExecutor(connection)
         executor.loader.build_graph()
-        executor.migrate(self.migrate_from)
+        migrate_for_rehearsal(connection, self.migrate_from)
         self.assertNotIn('profile', self._machine_columns())
 
         MigrationExecutor(connection).migrate(self.migrate_to)
 
 
 @tag('migration_test')
-class BarcodeFieldMigrationTests(TransactionTestCase):
+class BarcodeFieldMigrationTests(RestoringMigrationTestCase):
     """Prove 0012 adds the barcode columns additively and reverses cleanly."""
 
     migrate_from = [('assets', '0011_assetmachine_profile')]
@@ -128,7 +140,7 @@ class BarcodeFieldMigrationTests(TransactionTestCase):
     def test_barcode_columns_round_trip(self) -> None:
         """Existing rows survive forward and backward with data intact."""
         executor = MigrationExecutor(connection)
-        executor.migrate(self.migrate_from)
+        migrate_for_rehearsal(connection, self.migrate_from)
         old_apps = executor.loader.project_state(self.migrate_from).apps
         OldMachine = old_apps.get_model('assets', 'AssetMachine')
         machine = OldMachine.objects.create(name='Barcode migration pump')
@@ -147,7 +159,7 @@ class BarcodeFieldMigrationTests(TransactionTestCase):
 
         executor = MigrationExecutor(connection)
         executor.loader.build_graph()
-        executor.migrate(self.migrate_from)
+        migrate_for_rehearsal(connection, self.migrate_from)
         self.assertNotIn('barcode_data', self._machine_columns())
 
         MigrationExecutor(connection).migrate(self.migrate_to)

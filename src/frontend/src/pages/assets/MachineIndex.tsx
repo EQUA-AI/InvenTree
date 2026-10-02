@@ -1,11 +1,12 @@
 import { t } from '@lingui/core/macro';
-import { Stack } from '@mantine/core';
+import { Button, Stack } from '@mantine/core';
 import {
   IconBuildingFactory2,
   IconMapPinOff,
   IconTools
 } from '@tabler/icons-react';
 import { useMemo } from 'react';
+import { Link } from 'react-router-dom';
 
 import { ModelType } from '@lib/enums/ModelType';
 import type { PanelType } from '@lib/types/Panel';
@@ -47,6 +48,9 @@ export default function MachineIndex() {
   return (
     <Stack className={classes.workspace}>
       <PageDetail title={t`Machines`} actions={[]} />
+      <Button component={Link} to='/machines/registry/' w='fit-content'>
+        {t`Equipment Registry`}
+      </Button>
       <PanelGroup
         pageKey='asset-machine-index'
         panels={panels}

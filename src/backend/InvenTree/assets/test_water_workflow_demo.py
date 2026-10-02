@@ -388,6 +388,21 @@ class WaterWorkflowDemoTest(WaterWorkflowFixture):
         )
         self.assertEqual(LockoutPoint.objects.count(), 6)
 
+    def test_is_self_contained_without_ambient_template_seeds(self):
+        """Every packet receives gates without any pre-existing templates.
+
+        A kept test database loses data-migration seeds to TransactionTestCase
+        flushes, so the dataset must declare every safety template its
+        scenarios rely on rather than inheriting seeded ones.
+        """
+        SafetyGateTemplate.objects.all().delete()
+
+        self.load_workflow()
+
+        packets = RepairPacket.objects.all()
+        self.assertEqual(packets.count(), 10)
+        self.assertTrue(all(packet.gates.exists() for packet in packets))
+
     def test_adopts_existing_default_calendar_without_modifying_it(self):
         """A populated site calendar governs unscoped demo work without takeover."""
         windows = {

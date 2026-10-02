@@ -32,6 +32,7 @@ class AssetMachineSerializer(serializers.ModelSerializer):
             'name',
             'description',
             'active',
+            'asset_type',
             'location',
             'client',
             'manufacturer',
@@ -42,7 +43,13 @@ class AssetMachineSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         )
-        read_only_fields = ('pk', 'barcode_hash', 'created_at', 'updated_at')
+        read_only_fields = (
+            'pk',
+            'barcode_hash',
+            'created_at',
+            'updated_at',
+            'asset_type',
+        )
 
     def validate_profile(self, value):
         """Enforce the machine_profile.v1 schema at the only write surface.
@@ -98,12 +105,26 @@ class MachinePartSerializer(serializers.ModelSerializer):
     """Serializer for MachinePart instances."""
 
     part_name = serializers.CharField(source='part.name', read_only=True)
+    part_group = serializers.SerializerMethodField()
+
+    def get_part_group(self, instance):
+        """Return category name used as the pump-house group label."""
+        category = getattr(instance.part, 'category', None)
+        return category.name if category else ''
 
     class Meta:
         """Metaclass defining serializer fields."""
 
         model = MachinePart
-        fields = ('pk', 'machine', 'part', 'part_name', 'quantity', 'notes')
+        fields = (
+            'pk',
+            'machine',
+            'part',
+            'part_name',
+            'part_group',
+            'quantity',
+            'notes',
+        )
         read_only_fields = ('pk',)
 
 

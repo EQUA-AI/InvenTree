@@ -33,6 +33,7 @@ from assets.models import AssetMachine
 from InvenTree.mixins import ListAPI
 
 from .connectors.webhook import WebhookAuthError, verify_delivery
+from .mimic_api import StationMimic
 from .serializers import (
     HealthEvidenceSnapshotSerializer,
     MachineAnomalySerializer,
@@ -416,6 +417,7 @@ class HealthWebhookIngest(APIView):
 
 
 machine_health_api_urls = [
+    path('station/<int:pk>/mimic/', StationMimic.as_view(), name='station-mimic'),
     path(
         'machines/<int:pk>/health/',
         include([
