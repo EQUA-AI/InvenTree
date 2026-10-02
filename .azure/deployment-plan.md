@@ -435,73 +435,416 @@ Keep `aimms-experimental--0000016` active at 0% through at least `2026-07-25T05:
 
 ---
 
-## 13. Prepared Rollout — 2026-09-26 (Performance tab, sampled series read, pumphouse fixes)
+## 13. Prepared Rollout — 2026-10-02 (pump-station monitoring: Performance tab, limits, alarms, data-quality rules)
 
-> **Status:** Built and verified locally; **Azure rollout blocked on RBAC** — the
-> signed-in account `Aniket@equa.work` holds only `Cosmos DB Operator` on
-> `epconchatcosmos9d6b` and is denied `Microsoft.App/containerApps/read` on
-> `EpconChat`, so nothing below has been run against Azure.
+> **Status:** built and rehearsed locally; **nothing below has been run against
+> Azure.** Re-checked 2026-10-02: the signed-in account `Aniket@equa.work` is
+> still denied `Microsoft.App/containerApps/read` on `EpconChat` and cannot see
+> the registry. This section replaces the 2026-09-26 preparation, which was
+> pinned to `37e31e8e9877` and carried four errors that would have stopped it
+> or misdirected it; they are listed in 13.5 so nobody restores them.
+
+### 13.0 Where this image may go — read this before anything else
+
+**Not onto a database that `equa/customizations` has migrated.** The two lines
+split at `c54dfbdef` on 2026-08-07 and have not been merged since:
+
+| | this line (`inventTree-aniket`, `IOT`) | `equa/customizations` |
+|---|---|---|
+| Commits since the split | 132 | 484 |
+| Migration files the other line does not have | 11 — `assets` 10, `part` 1 | 91 across 13 apps — 78 new, and 13 squashes of older history that came in with the upstream merge its `merge_upstream_20260912` migrations record |
+| `assets` history from 0011 | `0011_equipment_registry` … `0020_state_value_changed_at` | `0011_assetmachine_profile` … `0016_assetmachine_placement_version_and_more` |
+| Pumphouse connector | yes | **no** — `machine_health/connectors/` holds `base.py` and `webhook.py` only |
+
+Seven migration numbers collide — `assets` 0011 through 0016 and `part` 0155 —
+the same number naming a different migration on each side. An image built from
+this line and pointed at a database on the other would run code that knows
+nothing of those migrations, and `migrate` would apply its own `assets`
+0011–0020 beside a different 0011–0016: Django records migrations by name and
+does not object to names it has never heard of. It would also take 484 commits
+of other people's work out of whatever it replaced.
+
+The start script now refuses to do that (13.2), and the refusal was rehearsed
+against a database carrying the other line's 91 names. That is a backstop for a
+mistake, not a route. Reaching the environment that serves
+`equa/customizations` is a **merge, not a deploy**: the two branches
+reconciled, a merge migration for `assets` and `part`, and a rehearsal against
+a copy of that database. None of that is prepared here, and nothing in this
+section should be read as doing it.
+
+**Pre-flight, on the target app, before any other command.** Read the table,
+not `showmigrations`: that command lists the migrations the *running image* has
+files for, so it cannot show a row its own code has never heard of.
+
+```bash
+az containerapp exec -n "$APP" -g "$RG" --command /bin/bash
+# then, inside the container:
+python src/backend/InvenTree/manage.py dbshell
+select name from django_migrations where app = 'assets' order by id;
+```
+
+| The list | Meaning |
+|---|---|
+| reaches `0011_equipment_registry` or beyond | this line — proceed |
+| contains `0011_assetmachine_profile` | the other line — **stop** |
+| ends at `0010_remove_assetmachine_customer` | predates the split — proceed; the rollout takes it forward on this line, and the database is then committed to it |
+
+An app scaled to zero has no replica to open a shell in; load its URL once
+first.
+
+**Which Container App.** The repository describes two, and the earlier
+preparation chose between them without saying why:
+
+| | `aimms-dev` | `aimms-experimental` |
+|---|---|---|
+| Recorded in | `app.yaml`, exported 2026-07-10 | sections 1–12 |
+| Database | `inventree` on `epconchat-pg-dev.postgres.database.azure.com` | not recorded in this repository |
+| `INVENTREE_DEBUG` | `True` | — |
+| Revision mode | Single | Multiple, with the gated rollout of 12.5–12.7 |
+| Size and scale, as exported | 0.25 vCPU, 0.5 GiB, 0 to 2 replicas | — |
+| Probes, as exported | none defined; Microsoft documents defaults for an app with ingress (13.2) | — |
+| Registry repository | `aimms-dev`, on the mutable tag `latest` in July | `experimental`, immutable tags |
+| Built from | not recorded | `equa/customizations` |
+| Cosmos data-plane grant on its identity, 2026-10-02 | **none** | Data Reader on `/dbs/aimms` |
+
+`aimms-experimental` is what sections 1–12 call production, and it is built from
+the other line: **it is not a target for this image.** `aimms-dev` is the
+candidate, subject to the pre-flight above — its database's history is not
+recorded anywhere in this repository and has to be read from the running app.
+
+`worker-revision.yaml` is **not** `aimms-dev`'s worker. It points at database
+`postgres` on `machine-ai-chat.postgres.database.azure.com` with site URL
+`https://aimms.equa.work/` — a different database from the one in `app.yaml`.
+Identify the worker that shares the target's database before updating anything
+(13.2 step 0). If the environment has no worker, nothing polls:
+`poll_cosmos_pumphouse_sources` is a scheduled task and runs only under
+`invoke worker`, so the bootstrap in section 14 would complete and every tile
+would stay empty.
 
 | Attribute | Value |
 |-----------|-------|
-| Git commit | `37e31e8e9877f45d45bab16cad6c985c7a8f5d81` on `origin/inventTree-aniket` (pushed 2026-09-26) |
-| Change | Performance tab for pumps and stations; `series/` sampled history endpoint; winding-limit sampler; ISO timestamps on repair APIs; cached over-range readings marked bad (`assets.0017`) |
-| Migrations to apply | `assets.0015_cusec_unit`, `assets.0016_opc_tag_bay_ownership`, `assets.0017_pegged_state_quality` (data, irreversible), `part.0155_discharge_rate_note` |
-| Target web app | `aimms-dev` in `EpconChat` (currently on mutable tag `aimms-dev:latest`) |
-| Target worker | the Container App built from `worker-revision.yaml` (currently on `inventree:kanban-board`, an older image — it must move to the same image as the web app: the poller and ingestion code changed) |
-| Registry | `aimms-hjcxb6epgvhgbyge.azurecr.io` |
-| Image | `aimms-dev:inventree-aniket-37e31e8e9877` (immutable) |
+| Git commit | `11cec10e58c04d4eea065b6bcb7a414a130d4f9c` on `origin/inventTree-aniket`. The commit that follows it on the branch changes only this file. |
+| Change since the September pin | poller evaluates thresholds; limits applied from a reviewed file with detector voting; a condition closes on sustained recovery; converter rails and over-range readings marked unusable and named on the mimic; time-since-last-change recorded per reading; migrations applied by the start script, behind a lineage check |
+| Migrations on this line | `assets.0011` … `assets.0020` and `part.0155_discharge_rate_note`. `0011`–`0014`, `0019` and `0020` change the schema. `0015` registers one unit, `cusec`. `0016`–`0018` and `part.0155` correct pump-station records, which a database not yet bootstrapped does not hold, so they change nothing there. The rollout prints what it is about to apply before it applies it (13.2 step 2). |
+| Registry | `aimms` — login server `aimms-hjcxb6epgvhgbyge.azurecr.io` |
+| Image | `aimms-dev:inventree-aniket-11cec10e58c0`, deployed by digest |
 
-Local verification before this rollout: backend suites `machine_health` (278), `repair` (313), `assets` (212) green; frontend `tsc`, biome and the Performance harness (6 Playwright checks) green; every station and pump's Health and Mimic driven in a real browser against the live source, all rendering; the Performance tab rendered at `:8000/web` from the built bundle.
+**Rehearsed before this rollout, locally.** Backend suites `assets` and
+`machine_health` green at 592 tests. The three frontend steps the image runs —
+`lingui extract`, `lingui compile`, `tsc && vite build` — all exit 0.
+The production image was built locally from the pinned commit with the same
+Dockerfile, target and build arguments ACR will be given — on `arm64`, where
+ACR builds `amd64` — and holds nine files under `contrib/cosmos/review`, one
+under `contrib/cosmos/limits`, the frontend bundle, `psql`, and an importable
+`azure-cosmos` 4.17.0. `/api/` and `/` both answer 200 from it.
+
+The database step was rehearsed through the real start script against a
+throwaway copy of the local database, never the database itself:
+
+| Copy prepared as | Result |
+|---|---|
+| two migrations behind, variable unset | the container exits 1 within ten seconds, five runs of five — three of the server command against the development tree, two of the built image; no worker boots and the port never opens |
+| two migrations behind, variable set | `lineage ok: 2 migration(s) to apply`; both applied; `GET /api/` 200 after 15 s. In the built image held to 0.25 CPU and 512 MiB: 74 s |
+| rolled back to before the split (`assets` at 0010) | all eleven applied; 200 after 27 s; the 49 machines already there kept their rows and gained a UUID |
+| carrying the other line's 91 migration names | `STOP`, exit 1, `migrate` never started, `django_migrations` at 946 rows before and after |
+| one release *ahead* of the image, as after a rollback | starts normally, with a note |
+
+The check on its own was also measured to write nothing: the database's
+insert, update and delete counters were identical before and after it with
+nothing pending, with migrations pending and allowed, and with them refused.
+
+**Not verified:** no command below has been run against Azure, the image has
+not been built by ACR for `linux/amd64`, and how long the start script takes at
+`aimms-dev`'s size is an estimate (13.2).
 
 ### 13.1 Rights the operator needs
 
-`Contributor` (or `Container Apps Contributor`) on the two Container Apps, and `AcrPush` on registry `aimms-hjcxb6epgvhgbyge`, or run as the identity that performed sections 1–12.
+| To do | Needs | Why not something smaller |
+|---|---|---|
+| Queue the build | `Container Registry Tasks Contributor` on registry `aimms` | `az acr build` is an ACR Task. `AcrPush` is data-plane only and cannot queue one. |
+| Read the built digest | `AcrPull` on the registry | — |
+| Read and update the apps, follow their logs, `exec` into them | `Container Apps Contributor` on the web and worker apps | — |
+| Let an app's identity read Cosmos | Owner, Contributor or `DocumentDB Account Contributor` on `epconchatcosmos9d6b` | `Cosmos DB Operator` lists `sqlRoleAssignments/write` under `notActions`, by design |
 
-### 13.2 Commands (commit-pinned, same recipe as sections 4 and 11)
+### 13.2 Commands
+
+**How migration works here, because it decides the order.** The image does not
+migrate at start, and it will not serve with migrations pending:
+`InvenTree.apps` logs `INVE-W8: Database Migrations required` and exits.
+`gunicorn.conf.py` sets `preload_app = True`, so the application is loaded in
+the gunicorn master and that exit is the master's. The container ends, is
+restarted, and ends again. There is never a running container to `exec` into
+and the revision never becomes ready; on Microsoft's description of single
+revision mode the previous revision keeps all the traffic meanwhile — safe,
+and stuck.
+
+So the migration is applied by the container's own start script, before the
+server is started, when `AIMMS_MIGRATE_ON_START=True` is set on the web app
+(`contrib/container/init.sh`):
+
+1. **the lineage check** — refuses if this code has migrations to apply and the
+   database already holds migrations it has no file for (13.0). It writes
+   nothing. A refusal exits non-zero, the script stops there, and the previous
+   revision carries on serving;
+2. **`migrate --noinput`** — each migration in its own transaction, so a
+   failure leaves the earlier ones applied, the script stopped, and the server
+   not started;
+3. the server.
+
+`INVENTREE_AUTO_UPDATE` is not used for this. It would also migrate at start,
+but it never asks whose database it is, it switches maintenance mode on *in
+that database* before migrating, and it starts the server even when a
+migration has failed.
+
+The July rollout in section 12 had no migrations, so this path has never been
+exercised against Azure.
+
+**Three things about `aimms-dev` the commands allow for.** All three come from
+the July export and are re-read in step 0.
+
+- *Memory.* The built image's server, idle, holds 546 MiB when it is given
+  room. Held to the export's 512 MiB it starts and answers, at 460 MiB — 90% of
+  the limit before a request has arrived. A management command is a second
+  copy of the application, 330–350 MiB at peak, and the bootstrap in section 14
+  runs nine of them through `exec`. Tried at 512 MiB, one `showmigrations`
+  had not finished after five minutes, during which gunicorn logged six workers
+  killed for memory. At 2 GiB the same command took 7 seconds.
+- *Scale to zero.* With no HTTP request for 300 seconds the app scales to no
+  replicas, and an `exec` session does not come in through the app's ingress —
+  a long command can lose its container under it.
+- *Start-up time.* The export defines no probes. Microsoft's documentation
+  gives the default for an app with ingress as a TCP start-up probe on the
+  ingress port, once a second for 240 failures, and says a single-mode app's
+  previous revision keeps all traffic until the new one is ready. On that
+  reading a container has four minutes to open its port. The start script
+  boots the application three times before it does (check, migrate, server).
+  Held to a quarter of a CPU the built image took 74 seconds to answer, on this
+  machine's cores; a quarter of an Azure core will be slower by a factor this
+  repository cannot measure, so the margin is not a comfortable one. At 1 CPU
+  it took 20. Neither the default probe nor the timing has been observed on
+  this app. If the default does *not* apply, nothing restarts the container,
+  but traffic moves to the new revision at once and the site is unavailable
+  for as long as the start takes.
+
+Step 2 therefore raises the app to 1 vCPU and 2 GiB and holds one replica up.
+Step 7 brings it down again — but to 1 GiB, not to the 0.5 GiB of the export,
+which this image no longer fits in.
 
 ```bash
-SHA=37e31e8e9877f45d45bab16cad6c985c7a8f5d81
-TAG=inventree-aniket-${SHA:0:12}
-ACR=aimms-hjcxb6epgvhgbyge
-IMAGE="$ACR.azurecr.io/aimms-dev:$TAG"
+az account set --subscription 5b75a75a-fff3-4d72-a3e9-5e16cb6a8687
+RG=EpconChat
+ACR=aimms                                 # the registry's NAME, as 12.4 used
+LOGIN=aimms-hjcxb6epgvhgbyge.azurecr.io   # the login server; not a registry name
+APP=aimms-dev                             # the app that passed 13.0
+REPO=aimms-dev
+SHA=11cec10e58c04d4eea065b6bcb7a414a130d4f9c
+DATE=2026-10-02T14:28:46+03:00
+TAG="inventree-aniket-${SHA:0:12}"
 
-# Build in ACR from the exact GitHub commit (the production stage does not
-# forward the commit ARGs into ENV - see section 12 - so they are also set on
-# the revision below).
-az acr build --registry "$ACR" --image "aimms-dev:$TAG" \
-  --file contrib/container/Dockerfile --target production \
-  --build-arg commit_hash="$SHA" --build-arg commit_date=2026-09-26T17:02:28+03:00 \
-  --build-arg commit_tag=inventree-aniket \
+# 0. Look before touching, and keep the output: step 7 and 13.4 need it.
+az containerapp show -n "$APP" -g "$RG" -o json --query "{image: properties.template.containers[0].image, revision: properties.latestReadyRevisionName, mode: properties.configuration.activeRevisionsMode, resources: properties.template.containers[0].resources, scale: properties.template.scale, probes: properties.template.containers[0].probes}"
+PREVIOUS_REV=$(az containerapp show -n "$APP" -g "$RG" --query properties.latestReadyRevisionName -o tsv)
+
+#    Every app in the group, with the database it points at. The worker for
+#    this rollout is the one whose command is `invoke worker` AND whose
+#    database is the same as $APP's. A null database means the value is held as
+#    a secret; compare those in the portal.
+az containerapp list -g "$RG" -o json --query "[].{name: name, image: properties.template.containers[0].image, command: properties.template.containers[0].command, args: properties.template.containers[0].args, db_host: properties.template.containers[0].env[?name=='INVENTREE_DB_HOST'].value | [0], db_name: properties.template.containers[0].env[?name=='INVENTREE_DB_NAME'].value | [0], auto_update: properties.template.containers[0].env[?name=='INVENTREE_AUTO_UPDATE'].value | [0], min_replicas: properties.template.scale.minReplicas}"
+
+#    Then the pre-flight in 13.0. Do not go on until it says "proceed".
+
+# 1. Build in ACR from the exact public commit. Section 12 found that an image
+#    built there did not carry the commit ARGs into ENV; the local BuildKit
+#    build of this commit did. Step 2 sets them on the revision either way.
+az acr build --resource-group "$RG" --registry "$ACR" \
+  --image "$REPO:$TAG" \
+  --file contrib/container/Dockerfile --target production --platform linux/amd64 \
+  --build-arg commit_hash="$SHA" --build-arg commit_date="$DATE" \
+  --build-arg commit_tag="$TAG" \
   "https://github.com/EQUA-AI/InvenTree.git#$SHA"
 
-# Record the current revisions as rollback targets first.
-az containerapp revision list -n aimms-dev -g EpconChat \
-  --query "[?properties.active].{name:name, traffic:properties.trafficWeight, image:properties.template.containers[0].image}" -o table
+DIGEST=$(az acr repository show --name "$ACR" --image "$REPO:$TAG" --query digest -o tsv)
+IMAGE="$LOGIN/$REPO@$DIGEST"
 
-# Web app: new revision on the immutable image.
-az containerapp update -n aimms-dev -g EpconChat --image "$IMAGE" \
-  --set-env-vars INVENTREE_COMMIT_HASH="$SHA" INVENTREE_COMMIT_DATE=2026-09-26T17:02:28+03:00
+# 2. Web app: the new image, telemetry switched on, migrations applied by the
+#    start script. A named revision, so it can be followed without guessing.
+SUFFIX="r${SHA:0:8}"
+NEW_REV="$APP--$SUFFIX"
+az containerapp update -n "$APP" -g "$RG" --image "$IMAGE" \
+  --revision-suffix "$SUFFIX" --no-wait \
+  --cpu 1.0 --memory 2.0Gi --min-replicas 1 \
+  --set-env-vars INVENTREE_COMMIT_HASH="$SHA" INVENTREE_COMMIT_DATE="$DATE" \
+                 AIMMS_COSMOS_PUMPHOUSE_ENABLED=True AIMMS_MIGRATE_ON_START=True
 
-# The container does not migrate at start (contrib/container/init.sh only
-# collects static files), so apply the migrations once the revision is ready.
-az containerapp exec -n aimms-dev -g EpconChat --command "python src/backend/InvenTree/manage.py migrate --noinput"
-
-# Worker: same image, so the poller ingests with the same rules as the web app.
-az containerapp update -n <worker-app-name> -g EpconChat --image "$IMAGE"
+#    Follow it. Repeat the command if it says there is no replica yet; if the
+#    revision never appears, `az containerapp revision show` (step 3) says why.
+#    If step 2 itself has to be repeated, change SUFFIX: a suffix is used once.
+az containerapp logs show -n "$APP" -g "$RG" --revision "$NEW_REV" --follow --tail 200
 ```
+
+What the log says decides what happens next:
+
+| The log shows | It means | Do |
+|---|---|---|
+| `lineage ok: N migration(s) to apply (…)`, then an `Applying … OK` line for each, then `Migration step finished - starting the server` | migrated, and the server is starting | step 3 |
+| `STOP: this code has … to apply, and this database already holds … it has never seen` | another line migrated this database; nothing was changed. The container restarts and prints the same refusal each time | 13.4, and do not work around it |
+| a traceback under an `Applying …` line | that migration failed and was undone; the ones before it stay applied; the server was not started and the previous revision is still serving | read the error; 13.4 if it cannot be fixed forward |
+| the `Applying … OK` lines, and then the container restarting without ever reaching the server | the start-up window, not the migration: the migrations are in | `az containerapp update -n "$APP" -g "$RG" --remove-env-vars AIMMS_MIGRATE_ON_START` — the start is then one boot instead of three, at the size step 2 set |
+
+```bash
+# 3. Confirm the revision took the traffic, and that the schema is where the
+#    image expects it. `exec` works now: nothing is pending, so every
+#    management command runs.
+az containerapp revision show -n "$APP" -g "$RG" --revision "$NEW_REV" -o table \
+  --query "{health: properties.healthState, state: properties.runningState, traffic: properties.trafficWeight, replicas: properties.replicas}"
+az containerapp exec -n "$APP" -g "$RG" \
+  --command "python src/backend/InvenTree/manage.py showmigrations assets"
+
+# 4. Worker - after the migration, never before. It runs the same gate, so on
+#    the new image it cannot start until the migration is in; and a worker with
+#    INVENTREE_AUTO_UPDATE on would migrate by itself, without the check. Leave
+#    AIMMS_MIGRATE_ON_START off here, so that exactly one container migrates.
+WORKER=<the worker found in step 0>
+WORKER_PREVIOUS_REV=$(az containerapp show -n "$WORKER" -g "$RG" --query properties.latestReadyRevisionName -o tsv)
+az containerapp update -n "$WORKER" -g "$RG" --image "$IMAGE" \
+  --set-env-vars INVENTREE_COMMIT_HASH="$SHA" INVENTREE_COMMIT_DATE="$DATE" \
+                 AIMMS_COSMOS_PUMPHOUSE_ENABLED=True
+
+# 5. Let both identities read the telemetry container, and nothing else. The
+#    web app reads history per request; the worker polls. With no worker, drop
+#    "$WORKER" from the list.
+for A in "$APP" "$WORKER"; do
+  az containerapp identity assign -n "$A" -g "$RG" --system-assigned --output none
+  PRINCIPAL=$(az containerapp identity show -n "$A" -g "$RG" --query principalId -o tsv)
+  az cosmosdb sql role assignment create \
+    --account-name epconchatcosmos9d6b --resource-group "$RG" \
+    --role-definition-id 00000000-0000-0000-0000-000000000001 \
+    --principal-id "$PRINCIPAL" \
+    --scope "/dbs/aimms/colls/pumphouse_readings"
+done
+
+# 6. The data bootstrap: section 14, start to finish, while the app is still at
+#    the size step 2 gave it.
+
+# 7. Settle. Take the variable off - left on, every start pays for two extra
+#    application boots - and bring the size down. Not to step 0's 0.5 GiB: the
+#    server alone wants 546 MiB. --min-replicas is whatever step 0 printed.
+az containerapp update -n "$APP" -g "$RG" \
+  --remove-env-vars AIMMS_MIGRATE_ON_START \
+  --cpu 0.5 --memory 1.0Gi --min-replicas 0
+```
+
+What `aimms-dev` should cost to run is its owner's decision, and going back to
+0.25 vCPU and 0.5 GiB is theirs to make — but on the measurements above that
+size leaves the server at 90% of its memory while idle, and any `exec` into it
+takes workers down. If the settled revision does not become ready, the revision
+from step 2 goes on serving while the size is reconsidered.
+
+**If step 0 finds no worker for this database.** Nothing polls, so no tile
+fills and no limit is evaluated on a schedule. The recorded data is a closed
+window, so the sweep can be run by hand from a shell in the web app once
+section 14 has activated the stations — `python
+src/backend/InvenTree/manage.py shell`, then
+`from assets.tasks import poll_cosmos_pumphouse_sources as poll; poll()`. It
+returns the number of stations it visited (3, tried locally); repeat it until
+the mimic's tiles are filled. Live polling needs a worker: a second Container
+App on the same image, database and secrets, with `invoke worker` as its
+command, no ingress and one replica held up. Creating one is a decision for
+whoever owns the environment and is not prepared here.
+
+Step 5 is scoped to the one container on purpose: the `aimms` database also
+holds `telemetry` and `conversations`, and `…0001` is Data **Reader**. If nobody
+with the right to make that assignment is available, the fallback needs no
+Cosmos rights at all: `aimms-pumphouse-connector` already holds Data Reader on
+that container and its owner can issue a second client secret (BLOCKERS.md,
+Ask 2), supplied to both apps as a Container App secret behind
+`AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_CLIENT_SECRET`. A managed
+identity is the better of the two because there is no secret to rotate; the
+existing one expires 2027-09-19.
 
 ### 13.3 Verification
 
-- `GET https://aimms-dev.kindpebble-bfe407e4.eastus2.azurecontainerapps.io/api/` → 200
-- `/` → redirects to `/web`, 200; sign in; a pump page shows **Performance** beside Health.
-- Authenticated `GET /api/machine-health/machines/<pump>/health/series/?keys=/pc&from=<now-15m>&to=<now>&points=60` → 200 with `mode` and `series`.
-- The Health tab of a pump with pegged winding channels (Millbrook Pump 01) shows those rows as quality **Bad**, not Good.
-- Worker replica logs show `poll_cosmos_pumphouse_sources` running from the new image.
+- `GET https://<app fqdn>/api/` → 200; `/` redirects to `/web`, 200; sign in.
+- Inside the container, `ls contrib/cosmos/review contrib/cosmos/limits` lists
+  nine files and one. If either is missing the image predates its `COPY` line
+  and section 14 will fail on a missing file.
+- `showmigrations assets` shows `[X]` through `0020_state_value_changed_at`.
+- A pump page shows **Performance** beside Health.
+- Worker replica logs show `poll_cosmos_pumphouse_sources` running from the new
+  image, and no `AUTH` error code on the checkpoints once section 14 has run.
 
 ### 13.4 Rollback
 
-`az containerapp update -n aimms-dev -g EpconChat --image <previous image from 13.2>`; the migrations are additive apart from `assets.0017`, which corrects cached quality values and needs no reversal.
+```bash
+az containerapp revision copy -n "$APP" -g "$RG" --from-revision "$PREVIOUS_REV"
+```
+
+That makes a new revision from the old one's template — its image, its
+environment, its size — and is the same command whichever way the rollout
+stopped. The worker goes back the same way, from `$WORKER_PREVIOUS_REV`.
+
+**Before the migration ran** (a `STOP`, a failed build, a start that never
+reached `Applying`), nothing in the database has changed and that is the whole
+of it.
+
+**After it ran**, the schema stays where the rollout left it, and an older
+image is not fully at home there. It starts, it reads, and it updates rows that
+exist. What it cannot do is *create* a machine or a signal binding: this line
+added seven columns that are `NOT NULL` with no database default, and an image
+that has never heard of them leaves them out of its `INSERT`.
+
+| Table | Columns | Added by |
+|---|---|---|
+| `assets_assetmachine` | `asset_type`, `source_context`, `source_key`, `source_namespace`, `uuid` | `assets.0011` |
+| `assets_machinesignalbinding` | `dictionary_hash`; `vote_group` | `assets.0014`; `assets.0019` |
+
+Giving them defaults closes that, changes no row, and is harmless to the new
+image, which always supplies its own values. From a shell in the rolled-back
+app, `python src/backend/InvenTree/manage.py dbshell`, then:
+
+```sql
+alter table assets_assetmachine
+  alter column asset_type set default 'equipment',
+  alter column source_context set default '{}'::jsonb,
+  alter column source_key set default '',
+  alter column source_namespace set default '',
+  alter column uuid set default gen_random_uuid();
+alter table assets_machinesignalbinding
+  alter column dictionary_hash set default '',
+  alter column vote_group set default '';
+```
+
+Both halves were tried on the copy: the two `INSERT`s fail without the
+defaults and succeed with them. Rolling forward again needs nothing undone.
+
+The migrations do reverse — `migrate assets 0010` and `migrate part 0154`, run
+from the *new* image, undid all eleven cleanly on the copy — but that drops the
+equipment registry and every pump-station record with it. It is a way to
+abandon the rollout, not to roll it back.
+
+### 13.5 What the 2026-09-26 preparation got wrong
+
+Recorded because all four were written with confidence and none had been run:
+
+1. **The registry name.** It passed `aimms-hjcxb6epgvhgbyge` to `--registry`.
+   That is the login server's prefix; `az` refuses it outright (`Registry names
+   may contain only alpha numeric characters`). The registry is `aimms`, as 12.4
+   used when a build actually ran.
+2. **The build right.** It asked for `AcrPush`, which cannot queue an ACR Task.
+3. **The worker.** It named `worker-revision.yaml` as the target's worker; that
+   manifest belongs to a different database.
+4. **The migration.** It said to update the app and then run `migrate` through
+   `exec` once the revision was ready. With migrations pending the revision is
+   never ready and there is no container to `exec` into (13.2). Reasoning from
+   gunicorn's usual behaviour gets this wrong too: without `preload_app` a
+   worker that exits at load is respawned and the master stays up, which looks
+   like a container one could migrate from. This image preloads, and the only
+   way to know was to start the server the way the image does.
+
+And it never said which databases the image is compatible with, which is the
+omission that matters most (13.0). Nor that a rollback after the migration
+leaves an older image unable to create machines or bindings (13.4), having
+called the migrations "additive" as though that settled it.
 
 ## 14. Pump-station data bootstrap — local Postgres to Azure Postgres
 
@@ -509,14 +852,21 @@ az containerapp update -n <worker-app-name> -g EpconChat --image "$IMAGE"
 > throwaway database (no Azure contact), and guarded by
 > `machine_health.tests.test_estate_bootstrap` /
 > `test_bootstrap_replay` so the committed artefacts cannot drift out of
-> working order, and by `test_activation_cursor`. **No blockers remain**; see
-> 14.5 for what each of the three was, since each failed silently.
+> working order, and by `test_activation_cursor`. **No blockers remain in the
+> bootstrap itself**; see 14.5 for what each of the three was, since each failed
+> silently.
+>
+> **It is not a route to the `equa/customizations` environment.** Every command
+> here assumes a database on *this* line - `assets` at `0011_equipment_registry`
+> and onward - running the image from 13.2. Run the pre-flight in 13.0 first. On
+> a database the other line has migrated, the commands either fail on a missing
+> column or, worse, succeed against a schema this code does not describe.
 
 The code in sections 12 and 13 deploys an application that can read the plant's
 telemetry and draws nothing with it. What turns a reading into a tile — which
 source tag is which catalogue parameter, its unit, its display name, its limits
-— is **data**, and it lives in a database until it is exported. Production has
-users, parts and stock; it has none of this.
+— is **data**, and it lives in a database until it is exported. A deployed
+database has users, parts and stock; it has none of this.
 
 | What | Rows locally | Travels with the image? |
 |---|---:|---|
@@ -546,26 +896,29 @@ in the repository and copied into the production image:
 What is **not** in the repository, and has to be supplied to the deployment:
 
 - the `HealthSource` row itself - endpoint, database, container (14.2);
-- the managed identity's read access to Cosmos (13.1);
-- the `AIMMS_COSMOS_PUMPHOUSE_ENABLED` setting;
+- read access to Cosmos for the web app's and the worker's identity (13.2 step 5);
+- the `AIMMS_COSMOS_PUMPHOUSE_ENABLED` setting, on both (13.2 steps 2 and 4);
+- a worker that shares the database - the poller runs nowhere else (13.0);
 - a **new image build**. The files being in git is not the same as their being in
   the running container: an image built before the two `COPY` lines has neither
   directory, and the commands fail on a missing file.
 
 ### 14.1 Prerequisites
 
-The rights in 13.1, plus an image built from **`55a1823fd` or later** — that
-commit adds `COPY contrib/cosmos/review` to the production stage of
-`contrib/container/Dockerfile`. Earlier images do not contain the packs and
-every command below fails on a missing file.
+The rights in 13.1, a database that passed the pre-flight in 13.0, and the
+image from 13.2. That image carries both directories the commands read. One
+built before **`55a1823fd`** has neither and every command below fails on a
+missing file.
 
-**14.3.6 needs a newer image still.** `COPY contrib/cosmos/limits` was added
-separately; before it, `apply_signal_limits` fails on a missing file, which
+**An image between `55a1823fd` and `9e5f45fb6` is the dangerous one.** It has
+`contrib/cosmos/review` and lacks `contrib/cosmos/limits`, so the bootstrap
+succeeds and `apply_signal_limits` then fails on a missing file, which
 means a deployment can complete every step here, draw every tile correctly and
 still be unable to raise a single alarm — because with no limits `classify()`
 returns `unknown` for all 1,452 bindings. Check `ls contrib/cosmos/limits`
-inside the container before running 14.3.6. Migrations must already be applied
-(13.2); the container does not migrate at boot.
+inside the container before running 14.3.6. Migrations are applied by the
+rollout itself (13.2 step 2); step 3 there confirms it, and nothing below runs
+until it has — a management command exits with `INVE-W8` while any is pending.
 
 A `Client` is **not** needed: `assets.0009_default_client_backfill` creates an
 active `internal` client on every migrated deployment, and `onboard_estate`
@@ -586,8 +939,10 @@ creates a `HealthSource`; the only routes are the Django admin
 | `client` | the active `internal` client | `onboard_estate` refuses without it |
 | `freshness_threshold_seconds` | **300** | see the trap below |
 
-The identity `DefaultAzureCredential` resolves to needs **Cosmos DB Data
-Reader** on the database. Do not grant it write.
+The identity `DefaultAzureCredential` resolves to needs **Cosmos DB Built-in
+Data Reader** on the `pumphouse_readings` container - 13.2 step 5 makes that
+grant for the web app and the worker. Do not grant it write, and do not widen it
+to the database: `aimms` also holds `telemetry` and `conversations`.
 
 **Freshness trap.** The 300-second default applies only when `connector_type`
 is passed as a constructor keyword. A source created through the admin takes
@@ -601,8 +956,16 @@ it does not tell you which one is wrong. Check all four.
 
 ### 14.3 Sequence
 
+Run these while the app is still at the size 13.2 step 2 gave it. Each one is a
+second copy of the application beside the server: at the 0.5 GiB of the July
+export a single `showmigrations` had not finished after five minutes and took
+six of the server's workers with it (13.2). If `exec` will not take a command
+with arguments, open a shell with `--command /bin/bash` and run the same lines
+there without the `$EXEC` prefix.
+
 ```bash
-EXEC="az containerapp exec -n aimms-dev -g EpconChat --command"
+# APP and RG as set in 13.2 - the app that passed the pre-flight in 13.0.
+EXEC="az containerapp exec -n $APP -g $RG --command"
 SRC=<health-source-pk>
 
 # 14.3.1  Catalogue the review packs map onto, by IPN and parameter name.
