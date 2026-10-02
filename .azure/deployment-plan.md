@@ -532,6 +532,26 @@ users, parts and stock; it has none of this.
 
 Nothing here is telemetry. The readings stay in Cosmos and are read per request.
 
+**There is no dump file to move.** Every input the commands below read is tracked
+in the repository and copied into the production image:
+
+| Input | Path | How it reaches production |
+|---|---|---|
+| Pump catalogue | `src/backend/InvenTree/part/catalogues/pump_systems.json` | inside the backend tree |
+| Mimic layout | `src/backend/InvenTree/machine_health/layouts/pumphouse.layout.json` | inside the backend tree |
+| Estate manifest, tag shapes, review packs | `contrib/cosmos/review/` (9 files) | `COPY contrib/cosmos/review` |
+| Alarm limits | `contrib/cosmos/limits/pumphouse.limits.json` | `COPY contrib/cosmos/limits` |
+| The commands themselves | `src/backend/InvenTree/**/management/commands/` | inside the backend tree |
+
+What is **not** in the repository, and has to be supplied to the deployment:
+
+- the `HealthSource` row itself - endpoint, database, container (14.2);
+- the managed identity's read access to Cosmos (13.1);
+- the `AIMMS_COSMOS_PUMPHOUSE_ENABLED` setting;
+- a **new image build**. The files being in git is not the same as their being in
+  the running container: an image built before the two `COPY` lines has neither
+  directory, and the commands fail on a missing file.
+
 ### 14.1 Prerequisites
 
 The rights in 13.1, plus an image built from **`55a1823fd` or later** — that
@@ -618,6 +638,16 @@ $EXEC "python src/backend/InvenTree/manage.py apply_signal_limits \
     --limits contrib/cosmos/limits/pumphouse.limits.json --dry-run"
 $EXEC "python src/backend/InvenTree/manage.py apply_signal_limits \
     --limits contrib/cosmos/limits/pumphouse.limits.json"
+
+# 14.3.7  Record how long each reading has held its value. Activation enters
+#         the window five minutes before its end, so without this the
+#         "Unchanged for" figure on the mimic covers only that last slice and a
+#         bay frozen for ten days reads as frozen for five minutes. Walks the
+#         recorded window read-only; writes one field. Wait for the first poll
+#         after 14.3.5 so the cached states exist to be written to.
+$EXEC "python src/backend/InvenTree/manage.py backfill_value_changed \
+    --source $SRC --dry-run"
+$EXEC "python src/backend/InvenTree/manage.py backfill_value_changed --source $SRC"
 ```
 
 Expected after 14.3.4, asserted by the tests:
