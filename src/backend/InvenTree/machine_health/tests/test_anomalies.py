@@ -93,20 +93,39 @@ class ThresholdDetectionTest(HealthEnvMixin, TestCase):
         self.assertEqual(anomaly.status, AnomalyStatus.RESOLVED)
         self.assertIsNotNone(anomaly.resolved_at)
 
-    def test_acknowledged_anomaly_is_not_auto_resolved(self):
-        """An operator's acknowledgement is not closed on their behalf."""
-        self.set_signal(7.0)
+    def test_acknowledged_anomaly_closes_on_recovery_and_keeps_its_record(self):
+        """Seen by somebody, then over: both facts stay on the row.
+
+        It used to stay acknowledged for ever, and because a signal has one
+        active anomaly, the next real breach refreshed the old row instead of
+        raising a new open alarm - a second event nobody was shown.
+        """
+        now = timezone.now()
+        self.set_signal(7.0, observed_at=now)
         [anomaly] = evaluate_thresholds(self.machine)
         actor = get_user_model().objects.create_user(
             username='ack-user', email='ack@example.com', password='pw'
         )
-        acknowledge_anomaly(anomaly.pk, actor=actor)
+        acknowledge_anomaly(anomaly.pk, actor=actor, note='Route tech notified')
 
-        self.set_signal(3.0)
+        # A dip inside its limits is not yet a recovery, acknowledged or not.
+        self.set_signal(3.0, observed_at=now + timedelta(minutes=1))
         evaluate_thresholds(self.machine)
-
         anomaly.refresh_from_db()
         self.assertEqual(anomaly.status, AnomalyStatus.ACKNOWLEDGED)
+
+        self.set_signal(3.0, observed_at=now + timedelta(minutes=6))
+        evaluate_thresholds(self.machine)
+        anomaly.refresh_from_db()
+        self.assertEqual(anomaly.status, AnomalyStatus.RESOLVED)
+        self.assertEqual(anomaly.acknowledged_by, actor)
+        self.assertEqual(anomaly.acknowledgement_note, 'Route tech notified')
+
+        # And the next breach is a new alarm, open, for somebody to see.
+        self.set_signal(7.0, observed_at=now + timedelta(minutes=7))
+        [again] = evaluate_thresholds(self.machine)
+        self.assertNotEqual(again.pk, anomaly.pk)
+        self.assertEqual(again.status, AnomalyStatus.OPEN)
 
     def test_unbounded_signal_has_no_opinion(self):
         """A binding with no limits never manufactures a health verdict."""

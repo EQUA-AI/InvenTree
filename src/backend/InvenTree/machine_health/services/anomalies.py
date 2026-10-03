@@ -239,7 +239,9 @@ def evaluate_thresholds(machine, *, now=None) -> list[MachineAnomaly]:
     # recovery from a dip.
     last_seen = dict(
         MachineAnomaly.objects.filter(
-            machine=machine, detector=THRESHOLD_DETECTOR, status=AnomalyStatus.OPEN
+            machine=machine,
+            detector=THRESHOLD_DETECTOR,
+            status__in=ACTIVE_ANOMALY_STATUSES,
         ).values_list('fingerprint', 'last_observed_at')
     )
 
@@ -393,8 +395,15 @@ def _auto_resolve_threshold_anomalies(machine, holding, cleared, *, now):
     every one that produced an affirmative in-limits reading.
 
     Only anomalies this detector raised are auto-resolved. A source-declared
-    alarm is the source's to clear, and an operator-acknowledged condition is
-    never closed on their behalf.
+    alarm is the source's to clear.
+
+    An acknowledged condition closes by the same rule as an open one. The
+    acknowledgement is a record that somebody saw it, and it stays on the row -
+    who, when, and what they wrote - but it is not a claim that the condition
+    is still there, and the detector is the only thing that knows whether it
+    is. Holding it open instead left it in the machine's one active slot for
+    ever: the next real breach on that signal refreshed the old acknowledged
+    row rather than raising an open alarm, and so was never seen as new.
 
     Everything else is closed, including the cases no clearing reading was seen
     for. That is deliberate: this function is the only thing in the backend that
@@ -404,7 +413,7 @@ def _auto_resolve_threshold_anomalies(machine, holding, cleared, *, now):
     condition was observed to end.
     """
     stale = MachineAnomaly.objects.filter(
-        machine=machine, detector=THRESHOLD_DETECTOR, status=AnomalyStatus.OPEN
+        machine=machine, detector=THRESHOLD_DETECTOR, status__in=ACTIVE_ANOMALY_STATUSES
     ).exclude(fingerprint__in=holding)
 
     for anomaly in stale:
