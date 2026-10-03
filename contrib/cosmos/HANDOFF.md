@@ -279,6 +279,21 @@ Django-Q2 worker. Verify fresh readings and timestamps against the source. The *
 mimic** tab is on registered station machine pages. Check stale, disabled and network-failure
 behaviour; verify approved thresholds before interpreting any alarm as a plant limit.
 
+To see the alarm chain work before the plant provides a breach - limit, vote, anomaly, the
+mimic's **Threshold alarms** table with its Acknowledge button, the Health tab - raise one on
+a **development database**:
+
+```bash
+python src/backend/InvenTree/manage.py test_alarm --machine PUMP_PK --yes
+python src/backend/InvenTree/manage.py test_alarm --machine PUMP_PK --clear --yes
+```
+
+It writes a reading at the critical limit plus ten per cent, through the ordinary ingestion,
+on as many detectors as the vote group needs, and the detector raises what it raises. The
+anomaly is marked `test_alarm` in its metrics. `--clear` lets the detector close it by its
+own recovery rule and then restores the displaced readings exactly. An alarm acknowledged
+during the test closes the same way, keeping who acknowledged it and what they wrote.
+
 ## 5a. Trends: federated reads, and the chart over them
 
 The backend side of trends is complete. AIMMS stores no time series - `MachineSignalState`

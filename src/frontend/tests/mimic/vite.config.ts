@@ -8,7 +8,11 @@ export default defineConfig({
   cacheDir: resolve(tmpdir(), 'inventree-mimic-vite'),
   plugins: [react({ babel: { plugins: ['macros'] } })],
   resolve: {
-    alias: { '../../../App': resolve(__dirname, 'api.ts') },
+    alias: {
+      '../../../App': resolve(__dirname, 'api.ts'),
+      '../../../../App': resolve(__dirname, 'api.ts'),
+      '@lib': resolve(__dirname, '../../lib')
+    },
     dedupe: [
       'react',
       'react-dom',

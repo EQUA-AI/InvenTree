@@ -11,7 +11,7 @@ import {
 } from '@mantine/core';
 import { Link } from 'react-router-dom';
 
-import { PointTable } from './mimic/MimicReadings';
+import { AlarmTable } from './mimic/AlarmTable';
 import { UnitMimic } from './mimic/UnitMimic';
 import { displayFor } from './mimic/format';
 import { useStationMimic } from './useStationMimic';
@@ -33,7 +33,7 @@ export default function PumpMimic({
   const bay = data?.bays.find((b) => b.key === unit);
   // The station reports every pump's alarms; this page is about one of them.
   const alarms = (data?.alarms ?? []).filter(
-    (alarm) => (alarm as { machine?: number }).machine === bay?.machine
+    (alarm) => alarm.machine === bay?.machine
   );
 
   return (
@@ -97,7 +97,11 @@ export default function PumpMimic({
           />
           <Title order={4}>{t`Threshold alarms`}</Title>
           {alarms.length ? (
-            <PointTable points={alarms} display={displayFor(data, unit)} />
+            <AlarmTable
+              alarms={alarms}
+              display={displayFor(data, unit)}
+              onAcknowledged={() => query.refetch()}
+            />
           ) : (
             <Text>{t`No active alarms from configured thresholds.`}</Text>
           )}

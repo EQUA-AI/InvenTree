@@ -574,3 +574,125 @@ test('a station shows the same pump view for the bay chosen on it', async ({
     page.getByRole('button', { name: '1. Drive motor', exact: true })
   ).toContainText('3 readings: 58 – 61 degC');
 });
+
+/** A station with one alarm raised on pump 1 and one breach not yet raised. */
+function alarmed(unit: string | null, status: 'open' | 'acknowledged') {
+  const alarm = (
+    pointer: string,
+    machine: number,
+    anomaly: number | null,
+    value: number
+  ) => ({
+    pointer,
+    label: pointer,
+    group: 'Electric Motor',
+    value,
+    unit: 'degC',
+    quality: 'good',
+    observed_at: '2026-09-13T12:00:00Z',
+    age_seconds: 2,
+    unchanged_for_seconds: null,
+    reason: null,
+    condition: 'critical',
+    thresholds_configured: true,
+    machine,
+    anomaly,
+    anomaly_status: anomaly === null ? null : status,
+    severity: anomaly === null ? null : 'critical'
+  });
+  return {
+    ...numbered(unit),
+    alarms: [alarm('/w1', 1, 44, 159.5), alarm('/w9', 10, null, 101)]
+  };
+}
+
+test('an alarm is acknowledged with a note where it is seen, and leads to Health', async ({
+  page
+}) => {
+  let status: 'open' | 'acknowledged' = 'open';
+  const posted: { url: string; body: any }[] = [];
+  await page.route('**/api/machine-health/station/17/mimic/**', (route) =>
+    route.fulfill({
+      json: alarmed(
+        new URL(route.request().url()).searchParams.get('unit'),
+        status
+      )
+    })
+  );
+  await page.route('**/api/machine-health/machines/**', (route) => {
+    posted.push({
+      url: route.request().url(),
+      body: route.request().postDataJSON()
+    });
+    status = 'acknowledged';
+    return route.fulfill({ json: { pk: 44, status } });
+  });
+  await page.goto('/');
+
+  // Two readings outside their limits; only one is an alarm yet.
+  const raised = page.locator('tr[data-point="/w1"]');
+  const pending = page.locator('tr[data-point="/w9"]');
+  await expect(raised).toContainText('Open · critical');
+  await expect(
+    raised.getByRole('link', { name: 'Open in Health' })
+  ).toHaveAttribute('href', '/machines/machine/1/health');
+  await expect(pending).toContainText('Not raised yet');
+  await expect(
+    pending.getByRole('button', { name: 'Acknowledge' })
+  ).toHaveCount(0);
+
+  await raised.getByRole('button', { name: 'Acknowledge' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('/w1: 159.5 degC');
+  await dialog.getByLabel('Note').fill('Seen; winding fan checked.');
+  await dialog.getByRole('button', { name: 'Acknowledge' }).click();
+
+  await expect(dialog).toHaveCount(0);
+  expect(posted).toEqual([
+    {
+      url: expect.stringContaining(
+        '/api/machine-health/machines/1/health/anomalies/44/acknowledge/'
+      ),
+      body: { note: 'Seen; winding fan checked.' }
+    }
+  ]);
+  // The page re-reads, and the alarm is shown as acknowledged with nothing
+  // left to press.
+  await expect(raised).toContainText('Acknowledged · critical');
+  await expect(raised.getByRole('button', { name: 'Acknowledge' })).toHaveCount(
+    0
+  );
+});
+
+test('a refused acknowledgement keeps the note and says why', async ({
+  page
+}) => {
+  await page.route('**/api/machine-health/station/17/mimic/**', (route) =>
+    route.fulfill({
+      json: alarmed(
+        new URL(route.request().url()).searchParams.get('unit'),
+        'open'
+      )
+    })
+  );
+  await page.route('**/api/machine-health/machines/**', (route) =>
+    route.fulfill({
+      status: 403,
+      json: { detail: 'You do not have permission to perform this action.' }
+    })
+  );
+  await page.goto('/?pump=P1');
+
+  // The pump page lists only its own alarms.
+  await expect(page.locator('tr[data-point="/w1"]')).toHaveCount(1);
+  await expect(page.locator('tr[data-point="/w9"]')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Acknowledge' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Note').fill('Trying anyway');
+  await dialog.getByRole('button', { name: 'Acknowledge' }).click();
+  await expect(dialog).toContainText(
+    'You do not have permission to perform this action.'
+  );
+  await expect(dialog.getByLabel('Note')).toHaveValue('Trying anyway');
+});

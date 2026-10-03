@@ -15,7 +15,8 @@ import {
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { PointTable, ReadingSections } from './mimic/MimicReadings';
+import { AlarmTable } from './mimic/AlarmTable';
+import { ReadingSections } from './mimic/MimicReadings';
 import { MimicSchematic, stateStyle } from './mimic/MimicSchematic';
 import { PANEL, UnitMimic } from './mimic/UnitMimic';
 import {
@@ -225,7 +226,11 @@ export default function PumphouseMimic({ stationId }: { stationId: number }) {
           )}
           <Title order={4}>{t`Threshold alarms`}</Title>
           {data.alarms.length ? (
-            <PointTable points={data.alarms} display={display} />
+            <AlarmTable
+              alarms={data.alarms}
+              display={display}
+              onAcknowledged={() => query.refetch()}
+            />
           ) : (
             <Text>{t`No active alarms from configured thresholds.`}</Text>
           )}

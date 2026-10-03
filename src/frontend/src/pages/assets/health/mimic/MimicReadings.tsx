@@ -100,6 +100,21 @@ function VerdictBadge({ verdict }: Readonly<{ verdict: Verdict }>) {
   );
 }
 
+/** A reading's verdict against its limits, in words. */
+export function conditionText(point: MimicPoint): string {
+  return !point.thresholds_configured
+    ? t`No threshold configured`
+    : point.reason
+      ? t`Unknown`
+      : point.condition === 'critical'
+        ? t`Critical`
+        : point.condition === 'warning'
+          ? t`Warning`
+          : point.condition === 'normal'
+            ? t`Normal`
+            : t`Unknown`;
+}
+
 export function PointTable({
   points,
   display = valueText
@@ -166,19 +181,7 @@ export function PointTable({
                     </Text>
                   )}
               </Table.Td>
-              <Table.Td>
-                {!point.thresholds_configured
-                  ? t`No threshold configured`
-                  : point.reason
-                    ? t`Unknown`
-                    : point.condition === 'critical'
-                      ? t`Critical`
-                      : point.condition === 'warning'
-                        ? t`Warning`
-                        : point.condition === 'normal'
-                          ? t`Normal`
-                          : t`Unknown`}
-              </Table.Td>
+              <Table.Td>{conditionText(point)}</Table.Td>
             </Table.Tr>
           ))}
         </Table.Tbody>

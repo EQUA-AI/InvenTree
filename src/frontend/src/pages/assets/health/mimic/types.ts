@@ -16,6 +16,20 @@ export type MimicPoint = {
   thresholds_configured: boolean;
 };
 
+/**
+ * A reading outside its limits, and the alarm the detector raised from it.
+ *
+ * `anomaly` is null while the reading breaches but no alarm stands yet - the
+ * poller has not evaluated it, or its vote group has not agreed. `machine` is
+ * the pump or station the reading belongs to, where the alarm lives.
+ */
+export type MimicAlarm = MimicPoint & {
+  machine?: number;
+  anomaly: number | null;
+  anomaly_status: 'open' | 'acknowledged' | null;
+  severity: string | null;
+};
+
 export type LayoutElement = {
   id: string;
   pointer: string;
@@ -89,6 +103,6 @@ export type MimicData = {
   selected_unit: string | null;
   points: Record<string, MimicPoint>;
   totals: Record<string, Total>;
-  alarms: MimicPoint[];
+  alarms: MimicAlarm[];
   unconfigured_thresholds: number;
 };

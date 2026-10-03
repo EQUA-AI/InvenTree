@@ -15,6 +15,7 @@ from assets.tests.test_registry import test_scope
 from InvenTree.unit_test import InvenTreeAPITestCase
 from machine_health.connectors.pumphouse_payload import unusable_reason
 from machine_health.mimic_layout import expand_pointer, layout_coverage, load_layout
+from machine_health.services.anomalies import evaluate_thresholds
 from machine_health.services.mimic import station_mimic
 from part.models import Part
 
@@ -171,6 +172,23 @@ class MimicTests(InvenTreeAPITestCase):
         # And a reading with no state at all still carries the field.
         self.assertIsNone(points['/pd/P1/st']['unchanged_for_seconds'])
 
+    def test_an_alarm_names_the_anomaly_the_detector_holds_for_it(self):
+        """So the page can acknowledge an alarm where it is seen."""
+        _, binding = self.add_point('/dex/HOT', 45, unit='degC')
+        binding.critical_max = 40
+        binding.save()
+
+        [alarm] = self.get_mimic(unit='P1').data['alarms']
+        # Breaching, but the poller has not evaluated it yet: no anomaly.
+        self.assertEqual(alarm['condition'], 'critical')
+        self.assertIsNone(alarm['anomaly'])
+
+        [anomaly] = evaluate_thresholds(self.pump)
+        [alarm] = self.get_mimic(unit='P1').data['alarms']
+        self.assertEqual(alarm['anomaly'], anomaly.pk)
+        self.assertEqual(alarm['anomaly_status'], 'open')
+        self.assertEqual(alarm['severity'], 'critical')
+
     def test_stale_bad_and_future_readings_are_null(self):
         """Server time and source quality control what may be presented as current."""
         self.add_point('/old', 9, age=301)
@@ -281,7 +299,9 @@ class MimicTests(InvenTreeAPITestCase):
         """Station requests fetch readings in batches, not one query per point."""
         for number in range(20):
             self.add_point(f'/value{number}', number)
-        with self.assertNumQueries(8):
+        # Eight for the station and its readings, one for every open alarm on
+        # it and its pumps together - not one per alarm.
+        with self.assertNumQueries(9):
             result = station_mimic(self.station, unit='P1')
         # The twenty points above, and one for each reading the layout draws on
         # a pump - present whether or not the dictionary holds it.
