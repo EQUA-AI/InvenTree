@@ -174,6 +174,37 @@ class IngestReadingsTest(HealthEnvMixin, TestCase):
         state = MachineSignalState.objects.get(binding=self.binding)
         self.assertEqual(state.value['value'], 7.0)
 
+    def test_a_webhook_cannot_call_an_over_range_marker_good(self):
+        """The Cosmos path marks 3276.7 bad before it reaches a limit; this path did not.
+
+        A sender says what quality it likes and said "good" of everything by
+        default, so the over-range marker arriving this way would have been
+        classified as a reading and tripped a critical alarm. The same rule,
+        from the same function, now applies on the way in.
+        """
+        for value in (3276.7, -59.25925827026367, float('inf')):
+            with self.subTest(value=value):
+                MachineSignalState.objects.filter(binding=self.binding).delete()
+                ingest_readings(self.source, [self.reading(value=value)], now=self.now)
+                state = MachineSignalState.objects.get(binding=self.binding)
+                self.assertEqual(state.quality, SignalQuality.BAD)
+
+        # An ordinary number is as good as the sender said.
+        MachineSignalState.objects.filter(binding=self.binding).delete()
+        ingest_readings(self.source, [self.reading(value=42.0)], now=self.now)
+        state = MachineSignalState.objects.get(binding=self.binding)
+        self.assertEqual(state.quality, SignalQuality.GOOD)
+
+        # And a sender's own doubt is kept, never upgraded.
+        MachineSignalState.objects.filter(binding=self.binding).delete()
+        ingest_readings(
+            self.source,
+            [self.reading(value=42.0, quality=SignalQuality.UNCERTAIN)],
+            now=self.now,
+        )
+        state = MachineSignalState.objects.get(binding=self.binding)
+        self.assertEqual(state.quality, SignalQuality.UNCERTAIN)
+
     def test_malformed_reading_rejects_the_whole_batch(self):
         """A bad entry fails the request rather than writing a partial batch."""
         with self.assertRaises(IngestionError):

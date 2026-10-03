@@ -210,8 +210,21 @@ def evaluate_thresholds(machine, *, now=None) -> list[MachineAnomaly]:
     now = now or timezone.now()
     raised: list[MachineAnomaly] = []
 
-    states = MachineSignalState.objects.select_related('binding').filter(
-        binding__machine=machine, binding__active=True
+    states = list(
+        MachineSignalState.objects.select_related('binding', 'binding__source').filter(
+            binding__machine=machine, binding__active=True
+        )
+    )
+
+    # The plant's "now": the newest usable reading this machine has. A channel
+    # whose last reading is older than that by more than its source's freshness
+    # window has stopped reporting, and the number it left behind is not a
+    # measurement of the machine as it is. Judged on the plant clock, like the
+    # clearing gate, so a recorded window presented 442 days late is not stale
+    # from end to end.
+    newest = max(
+        (state.observed_at for state in states if state.quality == SignalQuality.GOOD),
+        default=None,
     )
 
     # Three outcomes, not two. ``holding`` is never resolved; ``cleared`` earned
@@ -247,6 +260,14 @@ def evaluate_thresholds(machine, *, now=None) -> list[MachineAnomaly]:
             # "Signal returned inside its configured limits", which is a
             # different and untrue claim from "the sensor stopped reporting".
             # Holding the fingerprint leaves an open condition open.
+            holding.add(fingerprint)
+            continue
+
+        window = timedelta(seconds=binding.source.freshness_threshold_seconds)
+        if newest is not None and newest - state.observed_at > window:
+            # Stale is handled as unusable is, and for the same reason: a
+            # reading nobody has refreshed can neither open a condition nor
+            # close one. Holding keeps an open condition open and silent.
             holding.add(fingerprint)
             continue
 
@@ -298,6 +319,22 @@ def evaluate_thresholds(machine, *, now=None) -> list[MachineAnomaly]:
             severity = AnomalySeverity.WARNING
 
         summary = f'{binding.display_name} read {value} {binding.unit}'.strip()
+        # A reading refreshed on time but holding the same number past the
+        # freshness window is a different doubt from a stale one: the channel
+        # reports, the acquisition behind it may not. Said on the alarm rather
+        # than used to suppress it - a stopped bay's status is rightly constant,
+        # and only the reader can tell a frozen winding from a cool one.
+        window_seconds = binding.source.freshness_threshold_seconds
+        unchanged = (
+            (state.observed_at - state.value_changed_at).total_seconds()
+            if state.value_changed_at
+            else None
+        )
+        if unchanged is not None and unchanged > window_seconds:
+            summary += (
+                f' - and has read exactly that for {_span(unchanged)}, which may'
+                ' be a frozen acquisition rather than a steady machine.'
+            )
         if unconfirmed:
             summary += (
                 f' - past its critical limit, but alone: {confirmed[binding.vote_group]}'
@@ -329,6 +366,7 @@ def evaluate_thresholds(machine, *, now=None) -> list[MachineAnomaly]:
                 'vote_confirmed': confirmed[binding.vote_group]
                 if binding.vote_group
                 else None,
+                'unchanged_for_seconds': unchanged,
             },
         )
         raised.append(anomaly)
@@ -336,6 +374,15 @@ def evaluate_thresholds(machine, *, now=None) -> list[MachineAnomaly]:
     _auto_resolve_threshold_anomalies(machine, holding, cleared, now=now)
 
     return raised
+
+
+def _span(seconds: float) -> str:
+    """A duration in the largest unit that still reads honestly."""
+    for size, name in ((86400, 'day'), (3600, 'hour'), (60, 'minute')):
+        if seconds >= size:
+            count = int(seconds // size)
+            return f'{count} {name}{"s" if count != 1 else ""}'
+    return f'{int(seconds)} seconds'
 
 
 def _auto_resolve_threshold_anomalies(machine, holding, cleared, *, now):

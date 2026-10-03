@@ -663,3 +663,101 @@ class ClearDurationTest(HealthEnvMixin, TestCase):
         raised.refresh_from_db()
         self.assertEqual(raised.status, AnomalyStatus.RESOLVED)
         self.assertEqual(raised.resolution_note, RESOLUTION_UNASSESSABLE)
+
+
+class StaleReadingTest(HealthEnvMixin, TestCase):
+    """A channel that stopped reporting is not evidence, in either direction."""
+
+    def setUp(self):
+        """Two bounded channels on one machine, a five-minute freshness window."""
+        super().setUp()
+        self.build_health_env(freshness=300)
+        self.now = timezone.now()
+        self.other = MachineSignalBinding.objects.create(
+            machine=self.machine,
+            source=self.source,
+            external_key=f'{self.binding.external_key}.NDE',
+            display_name='Pump 2 non-drive-end vibration',
+            signal_kind='vibration',
+            unit='mm/s',
+            warn_max=6.0,
+            critical_max=9.0,
+        )
+
+    def report(self, binding, value, observed_at):
+        """Write one channel's current reading."""
+        MachineSignalState.objects.update_or_create(
+            binding=binding,
+            defaults={
+                'value': {'value': value, 'unit': 'mm/s'},
+                'observed_at': observed_at,
+                'received_at': observed_at,
+                'quality': SignalQuality.GOOD,
+            },
+        )
+
+    def test_a_breach_older_than_the_window_raises_nothing(self):
+        """The number a dead channel left behind is not the machine now.
+
+        Judged against the plant's newest reading, not the server clock: a
+        recorded window shown long after the fact is not stale end to end.
+        """
+        self.report(self.binding, 12.0, self.now - timedelta(minutes=20))
+        self.report(self.other, 3.0, self.now)
+
+        self.assertEqual(evaluate_thresholds(self.machine, now=self.now), [])
+        self.assertFalse(MachineAnomaly.objects.filter(machine=self.machine).exists())
+
+    def test_a_stale_reading_inside_its_limits_does_not_clear_a_condition(self):
+        """Nobody observed the recovery the note would claim."""
+        self.report(self.binding, 12.0, self.now)
+        self.report(self.other, 3.0, self.now)
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        # The channel stops; its last reading is a calm one from before the
+        # breach was even seen... but a dead channel clears nothing.
+        self.report(self.binding, 3.0, self.now - timedelta(minutes=20))
+        self.report(self.other, 3.0, self.now + timedelta(minutes=1))
+        evaluate_thresholds(self.machine, now=self.now)
+
+        raised.refresh_from_db()
+        self.assertEqual(raised.status, AnomalyStatus.OPEN)
+        self.assertEqual(raised.resolution_note, '')
+
+    def test_the_machine_going_quiet_altogether_changes_nothing(self):
+        """When every channel is old there is no newer one to be stale against."""
+        self.report(self.binding, 12.0, self.now - timedelta(days=400))
+        self.report(self.other, 3.0, self.now - timedelta(days=400))
+
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        self.assertEqual(raised.status, AnomalyStatus.OPEN)
+
+    def test_a_frozen_breach_is_raised_and_says_it_may_be_frozen(self):
+        """Constant is not suppressed - it is named, on the alarm itself."""
+        state = self.report(self.binding, 12.0, self.now)
+        state = MachineSignalState.objects.get(binding=self.binding)
+        state.value_changed_at = self.now - timedelta(days=9, hours=22)
+        state.save()
+        self.report(self.other, 3.0, self.now)
+
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        self.assertIn('has read exactly that for 9 days', raised.evidence_summary)
+        self.assertIn('frozen acquisition', raised.evidence_summary)
+        self.assertEqual(
+            raised.metrics['unchanged_for_seconds'],
+            timedelta(days=9, hours=22).total_seconds(),
+        )
+
+    def test_a_reading_that_changed_recently_is_not_called_frozen(self):
+        """The note is for a span past the window, not for any repeat."""
+        self.report(self.binding, 12.0, self.now)
+        state = MachineSignalState.objects.get(binding=self.binding)
+        state.value_changed_at = self.now - timedelta(minutes=2)
+        state.save()
+
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        self.assertNotIn('frozen', raised.evidence_summary)
+        self.assertEqual(raised.metrics['unchanged_for_seconds'], 120.0)
