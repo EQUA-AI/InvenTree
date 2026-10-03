@@ -1,330 +1,149 @@
 import { t } from '@lingui/core/macro';
 import {
   Alert,
+  Anchor,
   Badge,
+  Box,
   Button,
   Group,
   Loader,
   Paper,
   Stack,
-  Table,
   Text,
-  TextInput,
   Title
 } from '@mantine/core';
-import { useDocumentVisibility, useInViewport } from '@mantine/hooks';
-import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { api } from '../../../App';
-import pumpUnit from '../../../assets/mimic/pump-unit.svg';
-import overview from '../../../assets/mimic/pumphouse-overview.svg';
+import { Link } from 'react-router-dom';
 
-export type MimicPoint = {
-  pointer: string;
-  label: string;
-  group: string;
-  value: string | number | boolean | null;
-  unit: string;
-  quality: string;
-  observed_at: string | null;
-  age_seconds: number | null;
-  unchanged_for_seconds: number | null;
-  reason: string | null;
-  condition: string;
-  thresholds_configured: boolean;
-};
-type LayoutElement = {
-  id: string;
-  pointer: string;
-  view: string;
-  label: string;
-  role: string;
-  x: number;
-  y: number;
-};
-type Bay = {
-  key: string;
-  /** The pump slot's own machine, for linking to its pages. */
-  machine: number;
-  name: string;
-  active: boolean;
-  state: string;
-  points: Record<string, MimicPoint>;
-};
-type Total = {
-  value: number | null;
-  unit: string;
-  derived: boolean;
-  reason: string | null;
-  contributors: string[];
-};
-export type MimicData = {
-  station: number;
-  name: string;
-  generated_at: string;
-  enabled: boolean;
-  source: { pk: number; name: string } | null;
-  last_poll_at: string | null;
-  last_error_code: string;
-  layout: { version: number; review_status: string; elements: LayoutElement[] };
-  station_points: Record<string, MimicPoint>;
-  bays: Bay[];
-  selected_unit: string | null;
-  points: Record<string, MimicPoint>;
-  totals: Record<string, Total>;
-  alarms: MimicPoint[];
-  unconfigured_thresholds: number;
-};
+import { PointTable, ReadingSections } from './mimic/MimicReadings';
+import { MimicSchematic, stateStyle } from './mimic/MimicSchematic';
+import { PANEL, UnitMimic } from './mimic/UnitMimic';
+import {
+  displayFor,
+  numberText,
+  reasonLabel,
+  stateLabel
+} from './mimic/format';
+import type { MimicData, Total } from './mimic/types';
+import { useStationMimic } from './useStationMimic';
 
-/** A span in the largest unit that still reads honestly, for the mimic. */
-export function unchangedLabel(seconds: number): string {
-  const days = Math.floor(seconds / 86400);
-  if (days >= 1) {
-    return days === 1 ? t`1 day` : t`${days} days`;
+export { reasonLabel, unchangedLabel } from './mimic/format';
+export type { MimicData, MimicPoint } from './mimic/types';
+
+/** The states a bay can be drawn in, in the order the legend lists them. */
+const LEGEND = ['running', 'idle', 'fault', 'stale', 'unknown'];
+
+/**
+ * How many bays are in each state, as a key to the drawing above it.
+ *
+ * Counts what is drawn, nothing more: a bay whose status cannot be read is
+ * counted as unknown, not as idle, and the source's own count of running
+ * pumps is a separate reading on the drawing that this does not replace.
+ */
+function Legend({ data }: Readonly<{ data: MimicData }>) {
+  const counts: Record<string, number> = {};
+  for (const bay of data.bays) {
+    const key = LEGEND.includes(bay.state) ? bay.state : 'unknown';
+    counts[key] = (counts[key] ?? 0) + 1;
   }
-  const hours = Math.floor(seconds / 3600);
-  if (hours >= 1) {
-    return hours === 1 ? t`1 hour` : t`${hours} hours`;
-  }
-  const minutes = Math.floor(seconds / 60);
-  if (minutes >= 1) {
-    return minutes === 1 ? t`1 minute` : t`${minutes} minutes`;
-  }
-  return t`${Math.round(seconds)} seconds`;
-}
+  const shown = LEGEND.filter(
+    (state) => counts[state] || state === 'running' || state === 'idle'
+  );
 
-export function reasonLabel(reason: string | null): string {
-  const labels: Record<string, string> = {
-    disabled: t`Polling disabled`,
-    not_bound: t`Not bound`,
-    not_approved: t`Not approved`,
-    no_data: t`No reading`,
-    stale: t`Stale`,
-    bad_quality: t`Unusable quality`,
-    over_range: t`Sensor over range`,
-    railed: t`Sensor at full scale`,
-    not_finite: t`Not a finite number`,
-    clock_skew: t`Source clock is ahead`,
-    mapping_changed: t`Mapping changed`,
-    type_mismatch: t`Unexpected value type`,
-    inactive_equipment: t`Inactive equipment`,
-    incomplete: t`Missing contributors`,
-    unconfirmed_unit: t`Unit needs review`,
-    incompatible_unit: t`Incompatible units`
-  };
-  return reason ? (labels[reason] ?? t`Unavailable`) : '';
-}
-
-function stateLabel(state: string) {
-  const labels: Record<string, string> = {
-    running: t`Running`,
-    idle: t`Idle`,
-    fault: t`Fault`,
-    stale: t`Stale`,
-    not_bound: t`Not bound`,
-    unknown: t`Unknown`
-  };
-  return labels[state] ?? t`Unknown`;
-}
-
-function valueText(point?: MimicPoint) {
-  if (!point || point.value === null || point.reason) return t`Unavailable`;
-  if (typeof point.value === 'boolean') return point.value ? t`Yes` : t`No`;
-  return `${typeof point.value === 'number' ? point.value.toLocaleString(undefined, { maximumFractionDigits: 3 }) : point.value}${point.unit ? ` ${point.unit}` : ''}`;
-}
-
-function elementLabel(element: LayoutElement) {
-  const labels: Record<string, string> = {
-    forebay: t`Forebay level`,
-    'station-status': t`Station status`,
-    'pumps-running': t`Pumps running`,
-    'pump-status': t`Pump status`,
-    'pump-power': t`Input power`,
-    'pump-flow': t`Discharge flow`
-  };
-  return labels[element.id] ?? element.label;
-}
-
-function Diagram({ data, unit }: { data: MimicData; unit?: string }) {
-  const points = unit ? data.points : data.station_points;
-  const view = unit ? 'unit' : 'station';
-  const height = unit ? 330 : 180;
   return (
-    <svg
-      viewBox={`0 0 600 ${height}`}
-      role='img'
-      aria-label={unit ? t`Pump unit schematic` : t`Station schematic`}
-      style={{ width: '100%', maxHeight: unit ? 380 : 220 }}
-    >
-      <rect width={600} height={height} fill='#f1f3f5' rx={8} />
-      <image href={unit ? pumpUnit : overview} width={600} height={height} />
-      {data.layout.elements
-        .filter((e) => e.view === view)
-        .map((element) => {
-          const pointer = element.pointer
-            .replaceAll('{pump_number}', (unit ?? '').replace(/^P/, ''))
-            .replaceAll(
-              '{pump}',
-              (unit ?? '').replaceAll('~', '~0').replaceAll('/', '~1')
-            );
-          const point = points[pointer];
-          return (
-            <g key={element.id} data-point={pointer}>
-              <title>
-                {elementLabel(element)}: {valueText(point)}{' '}
-                {/* `point.reason` is null for a healthy point, so `??` fell
-                    through to "not bound" and labelled every live tile as
-                    unbound - contradicting the value drawn in the same tile.
-                    Only a *missing* point is unbound; a present one states its
-                    own reason, and `reasonLabel(null)` is deliberately "". */}
-                {point ? reasonLabel(point.reason) : reasonLabel('not_bound')}
-              </title>
-              <rect
-                x={element.x - 60}
-                y={element.y - 22}
-                width={180}
-                height={42}
-                rx={4}
-                fill='white'
-                stroke={point?.reason ? '#868e96' : '#495057'}
-                strokeDasharray={point?.reason ? '4 3' : undefined}
-              />
-              <text
-                x={element.x - 55}
-                y={element.y - 7}
-                fontSize={11}
-                fill='#495057'
-              >
-                {elementLabel(element)}
-              </text>
-              <text
-                x={element.x - 55}
-                y={element.y + 10}
-                fontSize={12}
-                fill='#212529'
-              >
-                {valueText(point)}
-              </text>
-            </g>
-          );
-        })}
-    </svg>
+    <Group gap='lg' justify='center' mt='xs'>
+      {shown.map((state) => {
+        const style = stateStyle(state);
+        return (
+          <Group key={state} gap={6} wrap='nowrap' data-legend={state}>
+            <Box
+              w={12}
+              h={12}
+              style={{
+                borderRadius: '50%',
+                background: style.fill,
+                border: `1.6px ${style.dashed ? 'dashed' : 'solid'} ${style.line}`
+              }}
+            />
+            <Text size='xs' c='dimmed'>
+              {stateLabel(state)} {counts[state] ?? 0}
+            </Text>
+          </Group>
+        );
+      })}
+    </Group>
   );
 }
 
-function PointTable({ points }: { points: MimicPoint[] }) {
+function TotalCard({ name, total }: Readonly<{ name: string; total: Total }>) {
   return (
-    <Table.ScrollContainer minWidth={650}>
-      <Table striped>
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>{t`Signal`}</Table.Th>
-            <Table.Th>{t`Value`}</Table.Th>
-            <Table.Th>{t`Quality`}</Table.Th>
-            <Table.Th>{t`Observed at`}</Table.Th>
-            <Table.Th>{t`Condition`}</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {points.map((point) => (
-            <Table.Tr key={point.pointer} data-point={point.pointer}>
-              <Table.Td>
-                {point.label}
-                <Text size='xs' c='dimmed'>
-                  {point.pointer}
-                </Text>
-              </Table.Td>
-              <Table.Td>
-                {valueText(point)}
-                {point.reason && (
-                  <Text size='xs'>{reasonLabel(point.reason)}</Text>
-                )}
-              </Table.Td>
-              <Table.Td>
-                {point.quality === 'good' ? t`Good` : t`Unusable or unknown`}
-              </Table.Td>
-              <Table.Td>
-                {point.observed_at
-                  ? new Date(point.observed_at).toLocaleString()
-                  : t`No reading`}
-                {point.age_seconds !== null && (
-                  <Text size='xs'>
-                    {t`Age at response`}: {Math.round(point.age_seconds)}{' '}
-                    {t`seconds`}
-                  </Text>
-                )}
-                {/* How long the reading has held the same number. Shown as a
-                    fact rather than a verdict: a stopped bay's run status is
-                    correctly constant for ever, while a winding temperature
-                    that has not moved in days is an acquisition nobody is
-                    watching. Only the person reading it can tell which. */}
-                {point.unchanged_for_seconds !== null &&
-                  point.unchanged_for_seconds > 0 && (
-                    <Text size='xs' c='dimmed'>
-                      {t`Unchanged for`}:{' '}
-                      {unchangedLabel(point.unchanged_for_seconds)}
-                    </Text>
-                  )}
-              </Table.Td>
-              <Table.Td>
-                {!point.thresholds_configured
-                  ? t`No threshold configured`
-                  : point.reason
-                    ? t`Unknown`
-                    : point.condition === 'critical'
-                      ? t`Critical`
-                      : point.condition === 'warning'
-                        ? t`Warning`
-                        : point.condition === 'normal'
-                          ? t`Normal`
-                          : t`Unknown`}
-              </Table.Td>
-            </Table.Tr>
-          ))}
-        </Table.Tbody>
-      </Table>
-    </Table.ScrollContainer>
+    <Paper withBorder p='sm' radius='md' miw={170}>
+      <Text size='xs' c='dimmed' tt='uppercase' fw={600}>
+        {name === 'power'
+          ? t`Plant power`
+          : name === 'flow'
+            ? t`Plant flow`
+            : name}
+      </Text>
+      <Text size='xl' fw={700} lh={1.3}>
+        {total.value === null ? (
+          <Text span c='dimmed' fs='italic' size='md' fw={400}>
+            {t`Unavailable`}
+          </Text>
+        ) : (
+          <>
+            {numberText(total.value)}{' '}
+            <Text span size='sm' c='dimmed' fw={500}>
+              {total.unit}
+            </Text>
+          </>
+        )}
+      </Text>
+      <Group gap='xs' mt={4}>
+        <Badge variant='outline' size='sm' color='gray'>
+          {total.derived ? t`Derived total` : t`Source measurement`}
+        </Badge>
+        {total.reason && <Text size='xs'>{reasonLabel(total.reason)}</Text>}
+      </Group>
+    </Paper>
   );
 }
 
 export default function PumphouseMimic({ stationId }: { stationId: number }) {
   const [unit, setUnit] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const visibility = useDocumentVisibility();
-  const { ref, inViewport } = useInViewport<HTMLDivElement>();
-  const query = useQuery({
-    queryKey: ['station-mimic', stationId, unit],
-    enabled: inViewport && visibility === 'visible',
-    refetchInterval: 5000,
-    refetchIntervalInBackground: false,
-    retry: false,
-    queryFn: async () =>
-      (
-        await api.get<MimicData>(
-          `/api/machine-health/station/${stationId}/mimic/`,
-          { params: unit ? { unit } : {}, timeout: 10000 }
-        )
-      ).data
-  });
+  const { ref, query } = useStationMimic(stationId, unit);
   const data = query.data;
-  const groups: Record<string, MimicPoint[]> = {};
-  for (const point of Object.values(data?.points ?? {})) {
-    if (
-      !`${point.label} ${point.pointer}`
-        .toLowerCase()
-        .includes(search.toLowerCase())
-    )
-      continue;
-    const group = point.group || t`Other reviewed points`;
-    groups[group] ??= [];
-    groups[group].push(point);
-  }
+  const display = displayFor(data, unit);
+  const stationPoints = Object.values(data?.station_points ?? {});
+  const bay = data?.bays.find((b) => b.key === unit);
+  const select = (key: string) =>
+    setUnit((current) => (current === key ? null : key));
+
   return (
     <Stack ref={ref} gap='md' mih={160}>
-      <Group justify='space-between'>
-        <Title order={3}>{t`Pumphouse overview`}</Title>
+      <Group justify='space-between' align='center'>
+        <Group gap='lg'>
+          {data && (
+            <>
+              <Text size='xs' c='dimmed'>
+                {t`Source`}: {data.source?.name ?? t`Not bound`}
+              </Text>
+              <Text size='xs' c='dimmed'>
+                {t`Last poll`}:{' '}
+                {data.last_poll_at
+                  ? new Date(data.last_poll_at).toLocaleString()
+                  : t`Not polled yet`}
+              </Text>
+              <Text size='xs' c='dimmed'>
+                {t`Response time`}:{' '}
+                {new Date(data.generated_at).toLocaleString()}
+              </Text>
+            </>
+          )}
+        </Group>
         <Button
           variant='default'
+          size='xs'
           loading={query.isFetching}
           onClick={() => query.refetch()}
         >{t`Refresh`}</Button>
@@ -354,130 +173,64 @@ export default function PumphouseMimic({ stationId }: { stationId: number }) {
               {t`Last station polling error`}: {data.last_error_code}
             </Alert>
           )}
-          <Group>
-            <Text size='sm'>
-              {t`Source`}: {data.source?.name ?? t`Not bound`}
-            </Text>
-            <Text size='sm'>
-              {t`Last poll`}:{' '}
-              {data.last_poll_at
-                ? new Date(data.last_poll_at).toLocaleString()
-                : t`Not polled yet`}
-            </Text>
-            <Text size='sm'>
-              {t`Response time`}: {new Date(data.generated_at).toLocaleString()}
-            </Text>
-          </Group>
-          <Diagram data={data} />
-          <Group>
-            {Object.entries(data.totals).map(([name, total]) => (
-              <Paper key={name} withBorder p='sm'>
-                <Text fw={600}>
-                  {name === 'power'
-                    ? t`Plant power`
-                    : name === 'flow'
-                      ? t`Plant flow`
-                      : name}
-                </Text>
-                <Text>
-                  {total.value === null
-                    ? t`Unavailable`
-                    : `${total.value.toLocaleString()} ${total.unit}`}
-                </Text>
-                <Badge variant='outline'>
-                  {total.derived ? t`Derived total` : t`Source measurement`}
-                </Badge>
-                {total.reason && (
-                  <Text size='xs'>{reasonLabel(total.reason)}</Text>
-                )}
-              </Paper>
-            ))}
-          </Group>
-          <Group align='stretch'>
-            {data.bays.map((bay) => (
-              <Button
-                key={bay.key}
-                variant={unit === bay.key ? 'filled' : 'outline'}
-                color={
-                  bay.state === 'running'
-                    ? 'green'
-                    : bay.state === 'fault'
-                      ? 'red'
-                      : bay.state === 'idle'
-                        ? 'yellow'
-                        : 'gray'
-                }
-                onClick={() => {
-                  setUnit(bay.key);
-                  setSearch('');
-                }}
-                aria-pressed={unit === bay.key}
-                aria-label={`${bay.key}: ${stateLabel(bay.state)}`}
-                h='auto'
-                py='sm'
-              >
-                <Stack gap={2}>
-                  <Text>
-                    {bay.key}{' '}
-                    {bay.state === 'running'
-                      ? '▶'
-                      : bay.state === 'idle'
-                        ? 'Ⅱ'
-                        : bay.state === 'fault'
-                          ? '!'
-                          : '?'}
-                  </Text>
-                  <Text size='xs'>{stateLabel(bay.state)}</Text>
-                  {!bay.active && (
-                    <Text size='xs'>{t`Inactive equipment`}</Text>
-                  )}
-                </Stack>
-              </Button>
-            ))}
-          </Group>
+          <Paper withBorder radius='md' p='sm' bg={PANEL}>
+            <MimicSchematic data={data} selected={unit} onSelect={select} />
+            {!!data.bays.length && <Legend data={data} />}
+          </Paper>
           {!data.bays.length && (
             <Alert>{t`No pump slots are registered for this station.`}</Alert>
           )}
-          <Title order={4}>{t`Station readings`}</Title>
-          <PointTable points={Object.values(data.station_points)} />
+          <Group align='stretch'>
+            {Object.entries(data.totals).map(([name, total]) => (
+              <TotalCard key={name} name={name} total={total} />
+            ))}
+          </Group>
+          {!!stationPoints.length && (
+            <ReadingSections
+              display={display}
+              sections={[
+                {
+                  key: 'station',
+                  title: t`Station readings`,
+                  points: stationPoints
+                }
+              ]}
+            />
+          )}
           {unit && data.selected_unit === unit ? (
-            <>
-              <Group>
-                <Title order={4}>
-                  {t`Pump unit`}: {unit}
-                </Title>
-                <Button
-                  variant='subtle'
-                  onClick={() => setUnit(null)}
-                >{t`Overview only`}</Button>
-              </Group>
-              <Diagram data={data} unit={unit} />
-              <TextInput
-                label={t`Filter unit readings`}
-                value={search}
-                onChange={(event) => setSearch(event.currentTarget.value)}
-              />
-              {Object.entries(groups).map(([name, points]) => (
-                <Stack key={name} gap='xs'>
-                  <Title order={5}>{name}</Title>
-                  <PointTable points={points} />
-                </Stack>
-              ))}
-              {!Object.keys(groups).length && (
-                <Text>{t`No matching readings.`}</Text>
-              )}
-            </>
+            <UnitMimic
+              key={unit}
+              data={data}
+              unit={unit}
+              actions={
+                <>
+                  {bay?.machine && (
+                    <Anchor
+                      component={Link}
+                      to={`/machines/machine/${bay.machine}/performance`}
+                      size='sm'
+                    >
+                      {t`Open pump page`}
+                    </Anchor>
+                  )}
+                  <Button
+                    variant='subtle'
+                    onClick={() => setUnit(null)}
+                  >{t`Overview only`}</Button>
+                </>
+              }
+            />
           ) : (
-            <Text>{t`Select a pump bay to view its instruments and readings.`}</Text>
+            <Text c='dimmed'>{t`Select a pump bay to view its instruments and readings.`}</Text>
           )}
           <Title order={4}>{t`Threshold alarms`}</Title>
           {data.alarms.length ? (
-            <PointTable points={data.alarms} />
+            <PointTable points={data.alarms} display={display} />
           ) : (
             <Text>{t`No active alarms from configured thresholds.`}</Text>
           )}
           {!!data.unconfigured_thresholds && (
-            <Text c='dimmed'>
+            <Text c='dimmed' size='sm'>
               {t`Points without configured thresholds`}:{' '}
               {data.unconfigured_thresholds}
             </Text>

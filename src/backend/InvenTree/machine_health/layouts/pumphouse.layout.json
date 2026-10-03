@@ -3,13 +3,31 @@
   "review_status": "provisional",
   "not_drawn_reason": "Available in the selected equipment's reviewed-point table; diagram placement awaits plant review.",
   "status_values": {"running": ["R"], "idle": ["I"], "fault": []},
+  "bays": {"x": 240, "y": 70, "width": 590, "height": 134},
   "elements": [
-    {"id": "forebay", "view": "station", "pointer": "/dex/COMMAN_FORBAY_LEVEL", "role": "level", "label": "Forebay level", "x": 70, "y": 95},
-    {"id": "station-status", "view": "station", "pointer": "/st", "role": "status", "label": "Station status", "x": 420, "y": 45},
-    {"id": "pumps-running", "view": "station", "pointer": "/pc", "role": "value", "label": "Pumps running", "x": 420, "y": 155},
-    {"id": "pump-status", "view": "unit", "pointer": "/pd/{pump}/st", "role": "status", "label": "Pump status", "x": 260, "y": 50},
-    {"id": "pump-power", "view": "unit", "pointer": "/dex/PUMP{pump_number}_ACTIVE_POWER", "role": "value", "label": "Input power", "x": 370, "y": 120},
-    {"id": "pump-flow", "view": "unit", "pointer": "/pd/{pump}/dv", "role": "value", "label": "Discharge flow", "x": 390, "y": 255}
+    {"id": "forebay", "view": "station", "pointer": "/dex/COMMAN_FORBAY_LEVEL", "role": "level", "label": "Forebay level", "x": 38, "y": 150},
+    {"id": "station-status", "view": "station", "pointer": "/st", "role": "status", "label": "Station status", "x": 842, "y": 96},
+    {"id": "pumps-running", "view": "station", "pointer": "/pc", "role": "value", "label": "Pumps running", "x": 842, "y": 146},
+    {"id": "pump-status", "view": "unit", "pointer": "/pd/{pump}/st", "role": "status", "label": "Pump status", "x": 640, "y": 16, "ax": 622, "ay": 96},
+    {"id": "pump-power", "view": "unit", "pointer": "/dex/PUMP{pump_number}_ACTIVE_POWER", "role": "value", "label": "Input power", "x": 286, "y": 96, "ax": 372, "ay": 150},
+    {"id": "pump-speed", "view": "unit", "pointer": "/dex/PUMP{pump_number}_SPEED", "role": "value", "label": "Shaft speed", "x": 322, "y": 338, "ax": 543, "ay": 392},
+    {"id": "pump-pressure", "view": "unit", "pointer": "/dex/PUMP{pump_number}_DISCHARGE_PRESSURE", "role": "value", "label": "Discharge pressure", "x": 606, "y": 470, "ax": 660, "ay": 442},
+    {"id": "pump-flow", "view": "unit", "pointer": "/pd/{pump}/dv", "role": "value", "label": "Discharge flow", "x": 606, "y": 518, "ax": 826, "ay": 442}
+  ],
+  "parts": [
+    {"id": "part-motor-nde-bearing", "code": "PS-MOTOR-NDE-BRG", "label": "Motor non-drive-end bearing", "x": 508, "y": 81},
+    {"id": "part-air-cooling", "code": "PS-AIR-COOLING", "label": "Motor ventilation and cooling", "x": 680, "y": 162},
+    {"id": "part-motor", "code": "PS-MOTOR", "label": "Electric motor", "x": 464, "y": 206},
+    {"id": "part-motor-de-bearing", "code": "PS-MOTOR-DE-BRG", "label": "Motor drive-end bearing", "x": 592, "y": 242},
+    {"id": "part-thrust-bearing", "code": "PS-THRUST-BRG", "label": "Thrust bearing", "x": 512, "y": 270},
+    {"id": "part-thrust-pad", "code": "PS-AXIAL-PAD", "label": "Thrust axial pad", "x": 584, "y": 296},
+    {"id": "part-water-cooling", "code": "PS-WATER-COOLING", "label": "Pump cooling water", "x": 708, "y": 271},
+    {"id": "part-guide-bearing", "code": "PS-GUIDE-BRG", "label": "Guide radial bearing", "x": 582, "y": 349},
+    {"id": "part-guide-pad", "code": "PS-RADIAL-PAD", "label": "Guide radial pad", "x": 504, "y": 349},
+    {"id": "part-casing", "code": "PS-CASING", "label": "Pump casing", "x": 516, "y": 488},
+    {"id": "part-discharge", "code": "PS-DISCHARGE", "label": "Discharge line", "x": 636, "y": 412},
+    {"id": "part-eopd-valve", "code": "PS-EOPD-VALVE", "label": "EOPD valve", "x": 708, "y": 372},
+    {"id": "part-hopd-valve", "code": "PS-HOPD-VALVE", "label": "HOPD valve", "x": 786, "y": 368}
   ],
   "totals": [
     {"id": "power", "direct": "/pmw", "per_pump": "/dex/PUMP{pump_number}_ACTIVE_POWER", "unit": "MW"},

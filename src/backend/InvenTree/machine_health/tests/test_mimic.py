@@ -9,13 +9,14 @@ from django.utils import timezone
 from assets.activation import point_hash
 from assets.health_models import HealthSource, MachineSignalBinding, MachineSignalState
 from assets.ingestion_models import IngestionCheckpoint
-from assets.models import Client, DictionaryPoint
+from assets.models import AssetComponent, Client, DictionaryPoint
 from assets.registry import ensure_pump, register_station
 from assets.tests.test_registry import test_scope
 from InvenTree.unit_test import InvenTreeAPITestCase
 from machine_health.connectors.pumphouse_payload import unusable_reason
 from machine_health.mimic_layout import expand_pointer, layout_coverage, load_layout
 from machine_health.services.mimic import station_mimic
+from part.models import Part
 
 
 @override_settings(
@@ -119,6 +120,56 @@ class MimicTests(InvenTreeAPITestCase):
         self.assertEqual(
             self.get_mimic(unit='P1').data['alarms'][0]['condition'], 'critical'
         )
+
+    def test_a_reading_says_which_catalogue_part_it_belongs_to(self):
+        """The drawing is keyed on the part's code, not on what a review named it.
+
+        A component's name is this pump's own wording and may be changed in
+        review; the catalogue code behind it is what every station shares.
+        """
+        motor = Part.objects.create(
+            name='Electric Motor', IPN='PS-MOTOR', description='Catalogue motor'
+        )
+        component = AssetComponent.objects.create(
+            machine=self.pump, part=motor, code='PS-MOTOR:1', name='Drive motor'
+        )
+        point, _ = self.add_point('/dex/WINDING1', 61.5, unit='degC')
+        point.component = component
+        point.save()
+        self.add_point('/dex/LOOSE', 1.0)
+
+        points = self.get_mimic(unit='P1').data['points']
+
+        self.assertEqual(points['/dex/WINDING1']['part_code'], 'PS-MOTOR')
+        self.assertEqual(points['/dex/WINDING1']['group'], 'Drive motor')
+        self.assertEqual(points['/dex/LOOSE']['part_code'], '')
+        # A reading the layout draws but the dictionary lacks belongs to none.
+        self.assertEqual(points['/pd/P1/st']['part_code'], '')
+
+    def test_how_long_a_reading_has_held_its_value_reaches_the_page(self):
+        """Asserted through the endpoint, because the endpoint is what lost it.
+
+        The projection worked this out and the response serializer, which lists
+        its fields, did not list this one - so the figure was computed on every
+        request and shown on none. A test of the projection alone passes either
+        way; only the response can show whether a reader ever sees it.
+        """
+        _, frozen = self.add_point('/dex/FROZEN', 47.0, unit='degC')
+        state = frozen.state
+        state.value_changed_at = state.observed_at - timedelta(days=9, hours=22)
+        state.save()
+        self.add_point('/dex/UNSEEN', 12.0, unit='degC')
+
+        points = self.get_mimic(unit='P1').data['points']
+
+        self.assertEqual(
+            points['/dex/FROZEN']['unchanged_for_seconds'],
+            timedelta(days=9, hours=22).total_seconds(),
+        )
+        # Not yet seen to change is not the same as changed just now.
+        self.assertIsNone(points['/dex/UNSEEN']['unchanged_for_seconds'])
+        # And a reading with no state at all still carries the field.
+        self.assertIsNone(points['/pd/P1/st']['unchanged_for_seconds'])
 
     def test_stale_bad_and_future_readings_are_null(self):
         """Server time and source quality control what may be presented as current."""
@@ -227,7 +278,10 @@ class MimicTests(InvenTreeAPITestCase):
             self.add_point(f'/value{number}', number)
         with self.assertNumQueries(8):
             result = station_mimic(self.station, unit='P1')
-        self.assertEqual(len(result['points']), 23)
+        # The twenty points above, and one for each reading the layout draws on
+        # a pump - present whether or not the dictionary holds it.
+        drawn = sum(e['view'] == 'unit' for e in load_layout()['elements'])
+        self.assertEqual(len(result['points']), 20 + drawn)
 
 
 class UnusableReasonTests(MimicTests):

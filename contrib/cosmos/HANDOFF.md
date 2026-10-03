@@ -171,13 +171,40 @@ correct; it must not become zero, and it is not by itself a fault.
 ## 4. Finish the schematic contract against the references
 
 Edit `src/backend/InvenTree/machine_health/layouts/pumphouse.layout.json` and the two SVGs
-in `src/frontend/src/assets/mimic/`. The current drawing is a generic intake/header and
-pump/motor arrangement, not a reproduction of the missing installation drawings.
+in `src/frontend/src/assets/mimic/`. The drawings were redrawn on 2026-10-02 as schematics -
+a station as forebay, suction header and discharge header; a pump unit as motor, stool and
+bearing, shaft, casing and discharge valve. They are still generic, not a reproduction of the
+missing installation drawings, and the layout stays `provisional`.
 
-- Add the real pressure, RTD, winding, vibration, bearing, cooling, valve, speed, frequency
-  and electrical fields from the approved full dictionary. Confirm HOPD/EOPD interpretation.
+- Shaft speed and discharge pressure are now drawn on the pump unit beside status, power and
+  flow. Cedar Creek's pump 7 has no pressure transmitter, so the coverage report lists it as
+  missing and the page draws it as unavailable; that is correct and must not become zero.
+- The RTD, winding, vibration, bearing, cooling and valve fields are not placed one by one:
+  one pointer template cannot place them, because only seven per-pump tags are approved
+  under the same name at every bay of all three stations. They are drawn by **part**
+  instead. `parts` lists the thirteen physical parts of a pump, each with the catalogue
+  code of the part (`PS-MOTOR`), the id of its region in `pump-unit.svg` (which must carry
+  the same code as `data-part`), and where its number goes. The page numbers each part on
+  the drawing, summarises the readings whose component is that catalogue part, and outlines
+  the region when one is past a limit. Under the summary, one bar per sensor in the part's
+  main unit, its height the reading against the others, so an odd sensor shows before its
+  number is read. A part a pump has no readings for is still drawn, and says so. The four logical systems (electrical, excitation, control, status) are
+  listed under the drawing without a number. Confirm HOPD/EOPD interpretation and the
+  order of the two valves, which the drawing guesses.
+- A pump's own page shows the same view under its Mimic tab, asking its station for the
+  one bay; the machine endpoint returns `parent` and `source_key` for that.
 - An element defines its unique id, view (`station` or `unit`), pointer, role, label and
-  coordinates. Its SVG element must carry the identical id and `data-point` template.
+  coordinates. `x`,`y` is the top-left corner of the reading's tag, in the drawing's own
+  units; an optional `ax`,`ay` is the point on the drawing the tag is tied to by a leader.
+  Its SVG element must carry the identical id and `data-point` template.
+- `bays` is the box on the station drawing between its two headers. The page draws one pump
+  per registered slot inside it, in number order and in the colour of its state, which is
+  what lets one drawing serve a station of four bays and a station of fourteen.
+- The SVGs hold geometry only - the validator refuses text, images, scripts and links - and
+  name their colours as CSS variables with a fallback, `var(--mimic-line, #495057)`. The
+  page sets the variables from its theme, so the drawing follows light and dark; the fallback
+  is what a reviewer sees on opening the file by itself. `--mimic-state` and
+  `--mimic-state-line` are the selected bay's state, and colour its motor and pump.
 - `{pump}` substitutes the exact bay key (`P17`). `{pump_number}` substitutes its numeric
   suffix (`17`), so `/dex/PUMP{pump_number}_...` resolves without positional indexing.
 - The API returns every selected equipment dictionary point in the detail table. Approved

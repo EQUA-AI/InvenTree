@@ -25,17 +25,22 @@ LIMITS = (
 )
 
 
-def empty_point(pointer, reason, *, unit='', label='', group=''):
+def empty_point(pointer, reason, *, unit='', label='', group='', part_code=''):
     """Keep unknowns explicit and uniform for both expected and discovered points."""
     return {
         'pointer': pointer,
         'label': label or pointer,
         'group': group,
+        # The catalogue code of the part the reading belongs to. The group is
+        # that part's name on this pump, which a review may reword; the code is
+        # what a drawing can be keyed on.
+        'part_code': part_code,
         'value': None,
         'unit': unit,
         'quality': 'unknown',
         'observed_at': None,
         'age_seconds': None,
+        'unchanged_for_seconds': None,
         'reason': reason,
         'condition': 'unknown',
         'thresholds_configured': False,
@@ -57,6 +62,7 @@ def project_point(point, binding, enabled, now, shift=None):
         unit=point.unit,
         label=point.display_name,
         group=point.component.name if point.component_id else '',
+        part_code=(point.component.part.IPN or '') if point.component_id else '',
     )
     if not enabled:
         result['reason'] = 'disabled'
@@ -202,7 +208,7 @@ def station_mimic(station, *, unit=None, now=None):
     dictionary = list(
         DictionaryPoint.objects
         .filter(station=station)
-        .select_related('machine', 'component')
+        .select_related('machine', 'component', 'component__part')
         .order_by('path')[:20001]
     )
     if len(dictionary) > 20000:

@@ -31,6 +31,33 @@ def load_layout(path=None):
         if element['role'] not in {'value', 'level', 'valve', 'status'}:
             raise ValidationError('Invalid layout role.')
         expand_pointer(element['pointer'], 'P1')
+    # Where the station drawing leaves room for its bays. The page draws one per
+    # registered slot inside it, which is what lets one drawing serve a station
+    # of four pumps and a station of fourteen.
+    bays = layout.get('bays')
+    if bays is not None:
+        sizes = [bays.get(key) for key in ('x', 'y', 'width', 'height')]
+        if (
+            any(isinstance(n, bool) or not isinstance(n, (int, float)) for n in sizes)
+            or min(sizes[:2]) < 0
+            or min(sizes[2:]) <= 0
+        ):
+            raise ValidationError('The bay area needs a position and a positive size.')
+    # The parts a pump is drawn with. Each is a region of the unit drawing keyed
+    # by the catalogue code of the part, so that part's readings can be attached
+    # to it whatever a station happens to call its tags - which is the one thing
+    # the stations do not have in common.
+    codes = set()
+    for part in layout.get('parts', []):
+        if part['id'] in ids or part['code'] in codes or not part['code']:
+            raise ValidationError('Duplicate or unnamed layout part.')
+        ids.add(part['id'])
+        codes.add(part['code'])
+        if any(
+            isinstance(n, bool) or not isinstance(n, (int, float))
+            for n in (part.get('x'), part.get('y'))
+        ):
+            raise ValidationError('A layout part needs a position on the drawing.')
     for total in layout['totals']:
         expand_pointer(total['direct'], 'P1')
         expand_pointer(total['per_pump'], 'P1')
@@ -108,6 +135,7 @@ def validate_assets(layout, directory):
     ]:
         root = ElementTree.parse(Path(directory) / filename).getroot()
         actual = {}
+        regions = {}
         for node in root.iter():
             if node.tag.split('}')[-1] in {'script', 'foreignObject', 'image', 'text'}:
                 raise ValidationError(
@@ -125,6 +153,11 @@ def validate_assets(layout, directory):
                 if key in actual:
                     raise ValidationError('Duplicate SVG point element.')
                 actual[key] = node.attrib['data-point']
+            if 'data-part' in node.attrib:
+                key = node.attrib.get('id')
+                if key in regions:
+                    raise ValidationError('Duplicate SVG part region.')
+                regions[key] = node.attrib['data-part']
         expected = {
             element['id']: element['pointer']
             for element in layout['elements']
@@ -133,4 +166,14 @@ def validate_assets(layout, directory):
         if actual != expected:
             raise ValidationError(
                 f'{filename}: SVG data-point annotations differ from the layout: {actual} != {expected}'
+            )
+        # Parts are drawn on a pump, not on a station.
+        parts = (
+            {part['id']: part['code'] for part in layout.get('parts', [])}
+            if view == 'unit'
+            else {}
+        )
+        if regions != parts:
+            raise ValidationError(
+                f'{filename}: SVG data-part regions differ from the layout: {regions} != {parts}'
             )
