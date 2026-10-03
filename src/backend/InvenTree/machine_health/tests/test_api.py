@@ -159,6 +159,27 @@ class MachineHealthReadApiTest(HealthEnvMixin, InvenTreeAPITestCase):
         self.assertIsNotNone(response.data['acknowledged_at'])
         self.assertIsNone(response.data['resolved_at'])
 
+    def test_dismiss_needs_a_reason_and_leaves_the_active_list(self):
+        """Dismissed with a reason; refused without one."""
+        anomaly, _ = record_anomaly(
+            machine=self.machine,
+            fingerprint=fingerprint_for('api', 'dismiss'),
+            title='Bearing temperature rising',
+            severity=AnomalySeverity.WARNING,
+        )
+        url = self.url(f'anomalies/{anomaly.pk}/dismiss/')
+
+        refused = self.post(url, {'note': ''}, expected_code=400)
+        self.assertIn('reason', refused.data['detail'])
+
+        response = self.post(url, {'note': 'Limit set too tight'}, expected_code=200)
+        self.assertEqual(response.data['status'], AnomalyStatus.SUPPRESSED)
+        self.assertEqual(
+            response.data['metrics']['dismissed']['note'], 'Limit set too tight'
+        )
+        active = self.get(self.url('anomalies/'), expected_code=200).data['results']
+        self.assertNotIn(anomaly.pk, [row['pk'] for row in active])
+
     def test_evidence_capture_returns_citable_snapshots(self):
         """Capturing evidence returns immutable snapshot ids for citation."""
         anomaly, _ = record_anomaly(
@@ -204,6 +225,12 @@ class HealthReadPermissionTest(HealthEnvMixin, InvenTreeAPITestCase):
             f'/api/machine-health/machines/{self.machine.pk}/health/anomalies/'
             f'{self.anomaly.pk}/acknowledge/',
             {},
+            expected_code=403,
+        )
+        self.post(
+            f'/api/machine-health/machines/{self.machine.pk}/health/anomalies/'
+            f'{self.anomaly.pk}/dismiss/',
+            {'note': 'not mine to wave away'},
             expected_code=403,
         )
         self.anomaly.refresh_from_db()

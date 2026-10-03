@@ -283,6 +283,14 @@ USER_SETTINGS: dict[str, InvenTreeSettingsKeyType] = {
         'default': True,
         'validator': bool,
     },
+    'NOTIFY_MACHINE_ALARMS': {
+        'name': _('Machine alarm notifications'),
+        'description': _(
+            'Be told when a critical alarm opens on a machine you can view'
+        ),
+        'default': True,
+        'validator': bool,
+    },
     'LAST_USED_PRINTING_MACHINES': {
         'name': _('Last used printing machines'),
         'description': _('Save the last used printing machines for a user'),

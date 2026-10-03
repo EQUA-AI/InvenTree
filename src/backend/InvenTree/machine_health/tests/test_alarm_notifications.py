@@ -1,10 +1,13 @@
 """A critical alarm reaches the people who could act on it, and only them."""
 
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
+from django.core import mail
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from common.models import NotificationMessage
+from common.models import InvenTreeUserSetting, NotificationMessage
 from machine_health.services.alarm_notifications import CATEGORY, recipients_for
 from machine_health.services.anomalies import evaluate_thresholds
 
@@ -89,3 +92,57 @@ class AlarmNotificationTest(HealthEnvMixin, TestCase):
         self.set_signal(10.0, observed_at=self.now)
         evaluate_thresholds(self.machine)
         self.assertEqual(self.messages(), ['operator'])
+
+    def test_a_signal_that_cannot_make_up_its_mind_is_announced_once_an_hour(self):
+        """Each re-raise is a new condition; the signal is the same signal."""
+        self.set_signal(10.0, observed_at=self.now)
+        evaluate_thresholds(self.machine)
+        self.set_signal(3.0, observed_at=self.now + timedelta(minutes=6))
+        evaluate_thresholds(self.machine)
+        self.set_signal(10.0, observed_at=self.now + timedelta(minutes=7))
+        [again] = evaluate_thresholds(self.machine)
+
+        # A second condition stands, and the page shows it; the bell rang once.
+        self.assertEqual(again.status, 'open')
+        self.assertEqual(self.messages(), ['operator'])
+
+    def test_a_user_can_switch_them_off(self):
+        """The page still shows everything; the bell stays quiet."""
+        InvenTreeUserSetting.set_setting(
+            'NOTIFY_MACHINE_ALARMS', False, self.operator, user=self.operator
+        )
+        self.assertEqual(recipients_for(self.machine), [])
+        self.set_signal(10.0, observed_at=self.now)
+        evaluate_thresholds(self.machine)
+        self.assertEqual(self.messages(), [])
+
+    def test_a_dismissed_condition_confirmed_critical_tells_nobody(self):
+        """Dismissing is saying: do not tell me about this one."""
+        from machine_health.services.anomalies import dismiss_anomaly
+
+        self.set_signal(7.0, observed_at=self.now)
+        [warning] = evaluate_thresholds(self.machine)
+        dismiss_anomaly(warning.pk, actor=self.operator, note='Limit under review')
+
+        self.set_signal(10.0, observed_at=self.now + timedelta(minutes=1))
+        evaluate_thresholds(self.machine)
+        self.assertEqual(self.messages(), [])
+
+    def test_the_email_carries_the_machine_and_the_evidence(self):
+        """Rendered and sent through the ordinary mail backend."""
+        from allauth.account.models import EmailAddress
+
+        EmailAddress.objects.create(
+            user=self.operator, email='operator@example.com', primary=True, verified=True
+        )
+        mail.outbox.clear()
+        self.set_signal(10.0, observed_at=self.now)
+        evaluate_thresholds(self.machine)
+
+        [message] = mail.outbox
+        self.assertEqual(message.to, ['operator@example.com'])
+        self.assertIn('Critical alarm', message.subject)
+        self.assertIn(self.machine.name, message.subject)
+        [(html, _)] = message.alternatives
+        self.assertIn('read 10.0 mm/s', html)
+        self.assertIn(f'/machines/machine/{self.machine.pk}/health', html)

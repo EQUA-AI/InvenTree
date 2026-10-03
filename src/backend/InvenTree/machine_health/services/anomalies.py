@@ -37,6 +37,15 @@ from machine_health.services.alarm_notifications import notify_critical
 
 THRESHOLD_DETECTOR = 'threshold'
 THRESHOLD_DETECTOR_VERSION = '1'
+
+#: The statuses in which a condition is still being observed: the two active
+#: ones, and dismissed, which is observed quietly until it clears.
+STANDING_STATUSES = (*ACTIVE_ANOMALY_STATUSES, AnomalyStatus.SUPPRESSED)
+
+#: Marks on an anomaly's metrics that a refresh must carry over: who dismissed
+#: it and why, and the readings a test alarm displaced, which ``--clear`` needs
+#: to put back.
+KEPT_METRICS = frozenset({'dismissed', 'test_alarm'})
 SOURCE_ALARM_DETECTOR = 'source_alarm'
 
 #: Why a threshold anomaly was closed. The two are kept apart deliberately.
@@ -120,12 +129,16 @@ def record_anomaly(
         raise AnomalyError(f'Unknown anomaly severity {severity!r}.')
 
     observed_at = observed_at or timezone.now()
-    active_values = [status.value for status in ACTIVE_ANOMALY_STATUSES]
 
+    # A dismissed condition is refreshed like an active one, so that a reading
+    # still breaching a limit somebody has said is wrong does not open a second
+    # alarm about it. It is not active - it holds no slot, counts nowhere and
+    # tells nobody - and it closes when the reading recovers, like the rest.
     existing = (
         MachineAnomaly.objects
         .select_for_update()
-        .filter(machine=machine, fingerprint=fingerprint, status__in=active_values)
+        .filter(machine=machine, fingerprint=fingerprint, status__in=STANDING_STATUSES)
+        .order_by('-last_observed_at')
         .first()
     )
 
@@ -136,13 +149,24 @@ def record_anomaly(
         if evidence_summary:
             updates['evidence_summary'] = evidence_summary
         if metrics:
-            updates['metrics'] = metrics
+            # The detector's figures are replaced by the newer ones; what
+            # people and tools wrote on the row is not the detector's to drop.
+            kept = {
+                key: value
+                for key, value in (existing.metrics or {}).items()
+                if key in KEPT_METRICS
+            }
+            updates['metrics'] = {**kept, **metrics}
         for name, value in updates.items():
             setattr(existing, name, value)
         existing.save(update_fields=[*updates, 'updated_at'])
         if bindings:
             existing.bindings.add(*bindings)
-        if 'severity' in updates and severity == AnomalySeverity.CRITICAL:
+        if (
+            'severity' in updates
+            and severity == AnomalySeverity.CRITICAL
+            and existing.status != AnomalyStatus.SUPPRESSED
+        ):
             # A warning confirmed up to a critical is the moment to tell
             # somebody, as much as a critical that opened as one.
             notify_critical(existing)
@@ -245,9 +269,7 @@ def evaluate_thresholds(machine, *, now=None) -> list[MachineAnomaly]:
     # recovery from a dip.
     last_seen = dict(
         MachineAnomaly.objects.filter(
-            machine=machine,
-            detector=THRESHOLD_DETECTOR,
-            status__in=ACTIVE_ANOMALY_STATUSES,
+            machine=machine, detector=THRESHOLD_DETECTOR, status__in=STANDING_STATUSES
         ).values_list('fingerprint', 'last_observed_at')
     )
 
@@ -403,7 +425,8 @@ def _auto_resolve_threshold_anomalies(machine, holding, cleared, *, now):
     Only anomalies this detector raised are auto-resolved. A source-declared
     alarm is the source's to clear.
 
-    An acknowledged condition closes by the same rule as an open one. The
+    An acknowledged condition closes by the same rule as an open one, and so
+    does a dismissed one, keeping on its row who dismissed it and why. The
     acknowledgement is a record that somebody saw it, and it stays on the row -
     who, when, and what they wrote - but it is not a claim that the condition
     is still there, and the detector is the only thing that knows whether it
@@ -419,7 +442,7 @@ def _auto_resolve_threshold_anomalies(machine, holding, cleared, *, now):
     condition was observed to end.
     """
     stale = MachineAnomaly.objects.filter(
-        machine=machine, detector=THRESHOLD_DETECTOR, status__in=ACTIVE_ANOMALY_STATUSES
+        machine=machine, detector=THRESHOLD_DETECTOR, status__in=STANDING_STATUSES
     ).exclude(fingerprint__in=holding)
 
     for anomaly in stale:
@@ -433,6 +456,44 @@ def _auto_resolve_threshold_anomalies(machine, holding, cleared, *, now):
         anomaly.save(
             update_fields=['status', 'resolved_at', 'resolution_note', 'updated_at']
         )
+
+
+@transaction.atomic
+def dismiss_anomaly(anomaly_id: int, *, actor, note: str) -> MachineAnomaly:
+    """Dismiss an open or acknowledged anomaly as not worth acting on.
+
+    For the alarm that is wrong rather than the machine: a limit set too tight,
+    a channel known to misread. It leaves the active list, counts nowhere and
+    tells nobody, and while the reading goes on breaching no second alarm is
+    opened about it. It closes when the reading recovers, by the detector's
+    own rule, so that a dismissal is never a permanent silence on a signal.
+
+    A reason is required: the next person to read the history has to be able
+    to tell a wrong limit from a condition somebody chose to ignore.
+    """
+    note = (note or '').strip()
+    if not note:
+        raise AnomalyError('A reason is required to dismiss an alarm.')
+    anomaly = MachineAnomaly.objects.select_for_update().get(pk=anomaly_id)
+    if anomaly.status == AnomalyStatus.SUPPRESSED:
+        return anomaly
+    if anomaly.status not in ACTIVE_ANOMALY_STATUSES:
+        raise AnomalyError(
+            f'Only an open or acknowledged anomaly can be dismissed; this one is '
+            f'{anomaly.get_status_display().lower()}.'
+        )
+    now = timezone.now()
+    anomaly.status = AnomalyStatus.SUPPRESSED
+    anomaly.metrics = {
+        **(anomaly.metrics or {}),
+        'dismissed': {
+            'by': getattr(actor, 'username', '') or '',
+            'at': now.isoformat(),
+            'note': note[:2000],
+        },
+    }
+    anomaly.save(update_fields=['status', 'metrics', 'updated_at'])
+    return anomaly
 
 
 @transaction.atomic

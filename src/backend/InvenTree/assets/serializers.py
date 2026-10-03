@@ -38,18 +38,13 @@ class AssetMachineSerializer(serializers.ModelSerializer):
     open_alarms = serializers.SerializerMethodField()
     open_critical_alarms = serializers.SerializerMethodField()
 
-    def _counted(self, machine, *names):
-        if not hasattr(machine, names[0]):
-            return None
-        return sum(getattr(machine, name) or 0 for name in names)
-
     def get_open_alarms(self, machine) -> int | None:
         """Open or acknowledged alarms here and one level below."""
-        return self._counted(machine, 'own_alarms', 'child_alarms')
+        return getattr(machine, 'open_alarms', None)
 
     def get_open_critical_alarms(self, machine) -> int | None:
         """Of those, the criticals."""
-        return self._counted(machine, 'own_critical', 'child_critical')
+        return getattr(machine, 'open_critical_alarms', None)
 
     class Meta:
         """Metaclass defining serializer fields."""

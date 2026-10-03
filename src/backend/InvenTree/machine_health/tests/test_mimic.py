@@ -189,6 +189,30 @@ class MimicTests(InvenTreeAPITestCase):
         self.assertEqual(alarm['anomaly_status'], 'open')
         self.assertEqual(alarm['severity'], 'critical')
 
+    def test_a_bay_with_an_alarm_is_drawn_as_one(self):
+        """The drawing carries the alarm; a dismissed one does not light it."""
+        from machine_health.services.anomalies import dismiss_anomaly
+
+        _, binding = self.add_point('/dex/HOT', 45, unit='degC')
+        binding.critical_max = 40
+        binding.save()
+        result = self.get_mimic().data
+        self.assertEqual({bay['alarm'] for bay in result['bays']}, {None})
+        self.assertIsNone(result['alarm'])
+
+        [anomaly] = evaluate_thresholds(self.pump)
+        result = self.get_mimic().data
+        bays = {bay['key']: bay['alarm'] for bay in result['bays']}
+        self.assertEqual(bays['P1'], 'critical')
+        self.assertEqual({v for k, v in bays.items() if k != 'P1'}, {None})
+
+        dismiss_anomaly(anomaly.pk, actor=self.user, note='Limit set too tight')
+        result = self.get_mimic(unit='P1').data
+        self.assertEqual({bay['alarm'] for bay in result['bays']}, {None})
+        # Still listed, as what it is: a breach somebody has dismissed.
+        [alarm] = result['alarms']
+        self.assertEqual(alarm['anomaly_status'], 'suppressed')
+
     def test_stale_bad_and_future_readings_are_null(self):
         """Server time and source quality control what may be presented as current."""
         self.add_point('/old', 9, age=301)

@@ -39,6 +39,7 @@ class MimicSerializer(serializers.Serializer):
 
     station = serializers.IntegerField()
     name = serializers.CharField()
+    alarm = serializers.CharField(allow_null=True)
     generated_at = InvenTreeIsoDateTimeField()
     source = LiveSourceSerializer(allow_null=True)
     last_poll_at = InvenTreeIsoDateTimeField(allow_null=True)

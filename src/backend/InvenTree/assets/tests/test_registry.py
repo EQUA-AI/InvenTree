@@ -329,6 +329,14 @@ class RegistryTests(InvenTreeAPITestCase):
         self.assertEqual(rows[self.station.pk]['open_alarms'], 3)
         self.assertEqual(rows[self.station.pk]['open_critical_alarms'], 1)
 
+        # The morning check: the machines with something on them, worst first.
+        listed = self.client.get(
+            '/api/assets/machines/', {'has_alarms': 'true', 'ordering': '-open_alarms'}
+        ).data
+        self.assertEqual([row['pk'] for row in listed], [self.station.pk, pump.pk])
+        quiet = self.client.get('/api/assets/machines/', {'has_alarms': 'false'}).data
+        self.assertEqual([row['pk'] for row in quiet], [other.pk])
+
     def test_listing_pumps_does_not_look_up_each_station(self):
         """One more pump is one more row, not one more query."""
         url = '/api/assets/machines/'

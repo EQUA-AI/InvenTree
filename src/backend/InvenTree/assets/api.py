@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from django.db.models import Count, Q
+from django.db.models import Count, F, Q
 from django.urls import include, path
 
 from django_filters.rest_framework import FilterSet, filters
@@ -28,6 +28,13 @@ class AssetMachineFilter(FilterSet):
     """Filter set for AssetMachine."""
 
     active = filters.BooleanFilter()
+    has_alarms = filters.BooleanFilter(method='filter_has_alarms')
+
+    def filter_has_alarms(self, queryset, name, value):
+        """Machines with an active alarm on them or on a pump under them."""
+        if value:
+            return queryset.filter(open_alarms__gt=0)
+        return queryset.filter(open_alarms=0)
 
     class Meta:
         """Filter configuration for AssetMachine."""
@@ -145,6 +152,9 @@ def with_open_alarms(queryset):
             filter=below & Q(children__anomalies__severity='critical'),
             distinct=True,
         ),
+    ).annotate(
+        open_alarms=F('own_alarms') + F('child_alarms'),
+        open_critical_alarms=F('own_critical') + F('child_critical'),
     )
 
 
@@ -168,7 +178,15 @@ class AssetMachineList(ListCreateAPI):
         'model',
         'serial',
     ]
-    ordering_fields = ['name', 'location', 'manufacturer', 'created_at', 'updated_at']
+    ordering_fields = [
+        'name',
+        'location',
+        'manufacturer',
+        'created_at',
+        'updated_at',
+        'open_alarms',
+        'open_critical_alarms',
+    ]
     ordering = 'name'
 
     def get_queryset(self):

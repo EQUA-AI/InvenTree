@@ -298,9 +298,22 @@ When a critical opens - or a warning is confirmed up to one - every active user 
 the `work_order` role **and** a scope grant on the machine's client is told: a bell
 notification in the web app, and an email if the app has a mail host configured
 (`INVENTREE_EMAIL_HOST` and friends) and the user has not switched email off. Warnings are
-not sent. The machine list carries each station's open alarm count, its pumps' included,
-and a machine's Health tab lists its past alarms with how each ended and who acknowledged
-it.
+not sent, one signal is announced at most once an hour however often it re-opens, and a
+user can switch the whole thing off under Settings > Notifications
+(`NOTIFY_MACHINE_ALARMS`).
+
+An alarm can be acknowledged (somebody has seen it), have a repair raised against it, or be
+**dismissed** with a required reason - for the alarm that is wrong rather than the machine,
+a limit set too tight. A dismissed alarm leaves the active list, lights nothing and tells
+nobody while the reading goes on breaching, and closes like any other when the reading
+recovers; it is not a permanent silence on the signal. Until the plant's limits are
+reviewed this is the tool for a false alarm - the fix is still the limit.
+
+Where alarms show: the bay on the station drawing is ringed and marked, whatever its status
+code says; the Machines list has an Alarms column, sortable and filterable, in which a
+station's count includes its pumps'; the dashboard has a Machine Alarms widget to add; and
+a machine's Health tab lists its past alarms with how each ended and who acknowledged or
+dismissed it.
 
 ## 5a. Trends: federated reads, and the chart over them
 

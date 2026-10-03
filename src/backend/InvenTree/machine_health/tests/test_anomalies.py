@@ -21,6 +21,7 @@ from machine_health.services.anomalies import (
     RESOLVE_AFTER,
     AnomalyError,
     acknowledge_anomaly,
+    dismiss_anomaly,
     evaluate_thresholds,
     fingerprint_for,
     ingest_source_alarm,
@@ -262,6 +263,61 @@ class AcknowledgementTest(HealthEnvMixin, TestCase):
                 title='x',
                 severity='catastrophic',
             )
+
+
+class DismissalTest(HealthEnvMixin, TestCase):
+    """The alarm that is wrong rather than the machine."""
+
+    def setUp(self):
+        """One bounded signal, breaching, and somebody to dismiss it."""
+        self.build_health_env()
+        self.now = timezone.now()
+        self.actor = get_user_model().objects.create_user(
+            username='dismisser', email='d@example.com', password='pw'
+        )
+        self.set_signal(10.0, observed_at=self.now)
+        [self.anomaly] = evaluate_thresholds(self.machine)
+
+    def test_a_reason_is_required(self):
+        """The history has to tell a wrong limit from a condition ignored."""
+        with self.assertRaises(AnomalyError):
+            dismiss_anomaly(self.anomaly.pk, actor=self.actor, note='   ')
+        self.anomaly.refresh_from_db()
+        self.assertEqual(self.anomaly.status, AnomalyStatus.OPEN)
+
+    def test_a_dismissed_condition_is_quiet_while_it_goes_on_breaching(self):
+        """No second alarm about a limit somebody has said is wrong."""
+        dismiss_anomaly(self.anomaly.pk, actor=self.actor, note='Limit set too tight')
+
+        self.set_signal(10.5, observed_at=self.now + timedelta(minutes=1))
+        evaluate_thresholds(self.machine)
+
+        [only] = MachineAnomaly.objects.all()
+        self.assertEqual(only.status, AnomalyStatus.SUPPRESSED)
+        self.assertEqual(only.metrics['dismissed']['by'], 'dismisser')
+        self.assertEqual(only.metrics['dismissed']['note'], 'Limit set too tight')
+
+    def test_it_closes_on_recovery_and_the_next_breach_is_a_new_alarm(self):
+        """A dismissal is never a permanent silence on a signal."""
+        dismiss_anomaly(self.anomaly.pk, actor=self.actor, note='Limit set too tight')
+
+        self.set_signal(3.0, observed_at=self.now + timedelta(minutes=6))
+        evaluate_thresholds(self.machine)
+        self.anomaly.refresh_from_db()
+        self.assertEqual(self.anomaly.status, AnomalyStatus.RESOLVED)
+        self.assertEqual(self.anomaly.metrics['dismissed']['by'], 'dismisser')
+
+        self.set_signal(10.0, observed_at=self.now + timedelta(minutes=7))
+        [again] = evaluate_thresholds(self.machine)
+        self.assertNotEqual(again.pk, self.anomaly.pk)
+        self.assertEqual(again.status, AnomalyStatus.OPEN)
+
+    def test_a_closed_alarm_cannot_be_dismissed(self):
+        """Only something still standing can be waved away."""
+        self.set_signal(3.0, observed_at=self.now + timedelta(minutes=6))
+        evaluate_thresholds(self.machine)
+        with self.assertRaises(AnomalyError):
+            dismiss_anomaly(self.anomaly.pk, actor=self.actor, note='late')
 
 
 class UnusableReadingTest(HealthEnvMixin, TestCase):

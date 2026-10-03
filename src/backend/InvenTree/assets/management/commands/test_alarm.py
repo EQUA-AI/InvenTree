@@ -30,7 +30,6 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from assets.health_models import (
-    AnomalyStatus,
     MachineAnomaly,
     MachineSignalBinding,
     MachineSignalState,
@@ -39,6 +38,7 @@ from assets.health_models import (
 from assets.models import AssetMachine
 from machine_health.services.anomalies import (
     RESOLVE_AFTER,
+    STANDING_STATUSES,
     THRESHOLD_DETECTOR,
     evaluate_thresholds,
 )
@@ -171,7 +171,8 @@ class Command(BaseCommand):
             MachineAnomaly.objects.filter(
                 machine=machine,
                 detector=THRESHOLD_DETECTOR,
-                status__in=[AnomalyStatus.OPEN, AnomalyStatus.ACKNOWLEDGED],
+                # Dismissed during the test counts too: it is still standing.
+                status__in=STANDING_STATUSES,
                 metrics__has_key=MARK,
             )
         )

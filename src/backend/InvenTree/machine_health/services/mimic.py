@@ -11,7 +11,11 @@ from assets.models import DictionaryPoint
 from InvenTree.conversion import convert_physical_value
 from machine_health.connectors.pumphouse_payload import unusable_reason
 from machine_health.mimic_layout import expand_pointer, load_layout, station_pumps
-from machine_health.services.anomalies import THRESHOLD_DETECTOR, fingerprint_for
+from machine_health.services.anomalies import (
+    STANDING_STATUSES,
+    THRESHOLD_DETECTOR,
+    fingerprint_for,
+)
 from machine_health.services.display_time import display_shift, to_display
 from machine_health.services.ingestion import MAX_CLOCK_SKEW_SECONDS
 
@@ -308,9 +312,22 @@ def station_mimic(station, *, unit=None, now=None):
         for row in MachineAnomaly.objects.filter(
             machine__in=[station.pk, *(pump.pk for pump in pumps)],
             detector=THRESHOLD_DETECTOR,
-            status__in=[AnomalyStatus.OPEN, AnomalyStatus.ACKNOWLEDGED],
-        ).values('fingerprint', 'pk', 'status', 'severity')
+            status__in=STANDING_STATUSES,
+        ).values('fingerprint', 'pk', 'status', 'severity', 'machine_id')
     }
+    # The worst active alarm on each machine, for the drawing: a bay with a
+    # critical on it is drawn as one, whatever its status code says. Dismissed
+    # ones do not light it; that is what dismissing is for.
+    worst = {}
+    for row in tracked.values():
+        if row['status'] == AnomalyStatus.SUPPRESSED:
+            continue
+        if worst.get(row['machine_id']) != 'critical':
+            worst[row['machine_id']] = (
+                'critical' if row['severity'] == 'critical' else 'warning'
+            )
+    for bay in bays:
+        bay['alarm'] = worst.get(bay['machine'])
     alarms = []
     for item in dictionary:
         point = points[item.path]
@@ -334,6 +351,7 @@ def station_mimic(station, *, unit=None, now=None):
     return {
         'station': station.pk,
         'name': station.name,
+        'alarm': worst.get(station.pk),
         'generated_at': now,
         'source': status['source'],
         'last_poll_at': status['last_poll_at'],
