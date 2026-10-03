@@ -696,3 +696,56 @@ test('a refused acknowledgement keeps the note and says why', async ({
   );
   await expect(dialog.getByLabel('Note')).toHaveValue('Trying anyway');
 });
+
+test('a repair is raised from the alarm row, against the anomaly', async ({
+  page
+}) => {
+  const posted: any[] = [];
+  await page.route('**/api/machine-health/station/17/mimic/**', (route) =>
+    route.fulfill({
+      json: alarmed(
+        new URL(route.request().url()).searchParams.get('unit'),
+        'open'
+      )
+    })
+  );
+  await page.route('**/api/assets/machines/**', (route) =>
+    route.fulfill({ json: [{ pk: 1, name: 'Fixture station / Pump 1' }] })
+  );
+  await page.route('**/api/part/**', (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/maintenance/work-packages/create/', (route) => {
+    posted.push(route.request().postDataJSON());
+    return route.fulfill({
+      json: {
+        work_order_id: 7,
+        work_order_reference: 'WO-7',
+        repair_packet_id: null,
+        repair_packet_reference: '',
+        replayed: false,
+        warnings: []
+      }
+    });
+  });
+  await page.goto('/?pump=P1');
+
+  await page
+    .locator('tr[data-point="/w1"]')
+    .getByRole('button', { name: 'Create repair' })
+    .click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('New work order');
+  await expect(dialog.getByLabel('Title')).toHaveValue(
+    '/w1 outside configured limits'
+  );
+  await dialog
+    .getByRole('button', { name: /^Create/ })
+    .last()
+    .click();
+
+  await expect(dialog).toHaveCount(0);
+  expect(posted).toHaveLength(1);
+  expect(posted[0]).toMatchObject({
+    origin: 'anomaly',
+    source: { anomaly_id: 44 }
+  });
+});

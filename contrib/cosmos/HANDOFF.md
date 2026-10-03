@@ -294,6 +294,14 @@ anomaly is marked `test_alarm` in its metrics. `--clear` lets the detector close
 own recovery rule and then restores the displaced readings exactly. An alarm acknowledged
 during the test closes the same way, keeping who acknowledged it and what they wrote.
 
+When a critical opens - or a warning is confirmed up to one - every active user who holds
+the `work_order` role **and** a scope grant on the machine's client is told: a bell
+notification in the web app, and an email if the app has a mail host configured
+(`INVENTREE_EMAIL_HOST` and friends) and the user has not switched email off. Warnings are
+not sent. The machine list carries each station's open alarm count, its pumps' included,
+and a machine's Health tab lists its past alarms with how each ended and who acknowledged
+it.
+
 ## 5a. Trends: federated reads, and the chart over them
 
 The backend side of trends is complete. AIMMS stores no time series - `MachineSignalState`

@@ -17,6 +17,7 @@ import { Link } from 'react-router-dom';
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import { api } from '../../../../App';
+import { WorkOrderCreateModal } from '../../../maintenance/components/WorkOrderCreateModal';
 import { type Display, conditionText } from './MimicReadings';
 import { reasonLabel, valueText } from './format';
 import type { MimicAlarm } from './types';
@@ -45,10 +46,11 @@ export function AlarmTable({
   onAcknowledged?: () => void;
 }>) {
   const [acknowledging, setAcknowledging] = useState<MimicAlarm | null>(null);
+  const [repairing, setRepairing] = useState<MimicAlarm | null>(null);
 
   return (
     <>
-      <Table.ScrollContainer minWidth={760}>
+      <Table.ScrollContainer minWidth={1040}>
         <Table striped>
           <Table.Thead>
             <Table.Tr>
@@ -56,8 +58,8 @@ export function AlarmTable({
               <Table.Th>{t`Value`}</Table.Th>
               <Table.Th>{t`Observed at`}</Table.Th>
               <Table.Th>{t`Condition`}</Table.Th>
-              <Table.Th>{t`Alarm`}</Table.Th>
-              <Table.Th />
+              <Table.Th w={170}>{t`Alarm`}</Table.Th>
+              <Table.Th w={320} />
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -79,7 +81,7 @@ export function AlarmTable({
                     <Text size='xs'>{reasonLabel(alarm.reason)}</Text>
                   )}
                 </Table.Td>
-                <Table.Td>
+                <Table.Td style={{ whiteSpace: 'nowrap' }}>
                   {alarm.observed_at
                     ? new Date(alarm.observed_at).toLocaleString()
                     : t`No reading`}
@@ -88,8 +90,13 @@ export function AlarmTable({
                 <Table.Td>
                   <AlarmStatus alarm={alarm} />
                 </Table.Td>
-                <Table.Td>
-                  <Group gap='sm' wrap='nowrap' justify='flex-end'>
+                <Table.Td style={{ whiteSpace: 'nowrap' }}>
+                  <Group
+                    gap='sm'
+                    wrap='nowrap'
+                    justify='flex-end'
+                    preventGrowOverflow={false}
+                  >
                     {alarm.anomaly !== null && alarm.machine && (
                       <Anchor
                         component={Link}
@@ -109,6 +116,16 @@ export function AlarmTable({
                           {t`Acknowledge`}
                         </Button>
                       )}
+                    {alarm.anomaly !== null && alarm.machine && (
+                      <Button
+                        size='compact-sm'
+                        variant='light'
+                        color='orange'
+                        onClick={() => setRepairing(alarm)}
+                      >
+                        {t`Create repair`}
+                      </Button>
+                    )}
                   </Group>
                 </Table.Td>
               </Table.Tr>
@@ -124,6 +141,27 @@ export function AlarmTable({
           onAcknowledged?.();
         }}
       />
+      {/* The same intake the Health tab offers, from the row the alarm is
+          seen on: the work order is raised against the anomaly, so the two
+          stay linked. Planned, not started. */}
+      {repairing && repairing.anomaly !== null && repairing.machine && (
+        <WorkOrderCreateModal
+          opened
+          onClose={() => setRepairing(null)}
+          machineId={repairing.machine}
+          origin='anomaly'
+          anomalyId={repairing.anomaly}
+          initialTitle={`${repairing.label} outside configured limits`}
+          initialFaultSummary={`${repairing.label} read ${valueText(repairing)}`}
+          initialCriticality={
+            repairing.severity === 'critical' ? 'critical' : 'high'
+          }
+          onCreated={() => {
+            setRepairing(null);
+            onAcknowledged?.();
+          }}
+        />
+      )}
     </>
   );
 }

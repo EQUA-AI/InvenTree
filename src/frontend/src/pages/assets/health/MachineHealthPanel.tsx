@@ -26,6 +26,7 @@ import type {
 import { useApi } from '../../../contexts/ApiContext';
 import { showApiErrorMessage } from '../../../functions/notifications';
 import { WorkOrderCreateModal } from '../../maintenance/components/WorkOrderCreateModal';
+import { AlarmHistory } from './AlarmHistory';
 import { AnomalyList } from './AnomalyList';
 import { HealthSourceStatusTable } from './HealthSourceStatus';
 import { HealthSummaryPanel } from './HealthSummary';
@@ -223,6 +224,11 @@ export function MachineHealthPanel({
           onCreateRepair={setRepairAnomaly}
           onAnalyze={handleAnalyze}
         />
+      </Stack>
+
+      <Stack gap='sm'>
+        <Title order={4}>{t`Past alarms`}</Title>
+        <AlarmHistory machineId={machineId} />
       </Stack>
 
       <Stack gap='sm'>

@@ -25,6 +25,9 @@ export interface AssetMachine {
   serial: string;
   created_at: string;
   updated_at: string;
+  /** Active alarms here and on the pumps below, when the list counted them. */
+  open_alarms?: number | null;
+  open_critical_alarms?: number | null;
 }
 
 export interface MachinePart {
