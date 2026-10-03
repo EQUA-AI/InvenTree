@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.urls import include, path
 
 from django_filters.rest_framework import FilterSet, filters
@@ -121,6 +121,33 @@ class ClientDetail(RetrieveUpdateDestroyAPI):
     role_required = 'admin'
 
 
+def with_open_alarms(queryset):
+    """Count the active alarms on each machine, and on the pumps under it.
+
+    What the morning check wants from the machine list is which stations have
+    something to look at. A station's own alarms are few; its pumps' are where
+    the trouble is, so the station's count carries both. Counted distinct,
+    because the two joins multiply each other's rows.
+    """
+    from assets.health_models import ACTIVE_ANOMALY_STATUSES
+
+    active = [status.value for status in ACTIVE_ANOMALY_STATUSES]
+    own = Q(anomalies__status__in=active)
+    below = Q(children__anomalies__status__in=active)
+    return queryset.annotate(
+        own_alarms=Count('anomalies', filter=own, distinct=True),
+        child_alarms=Count('children__anomalies', filter=below, distinct=True),
+        own_critical=Count(
+            'anomalies', filter=own & Q(anomalies__severity='critical'), distinct=True
+        ),
+        child_critical=Count(
+            'children__anomalies',
+            filter=below & Q(children__anomalies__severity='critical'),
+            distinct=True,
+        ),
+    )
+
+
 class AssetMachineList(ListCreateAPI):
     """List and create asset machines."""
 
@@ -146,7 +173,9 @@ class AssetMachineList(ListCreateAPI):
 
     def get_queryset(self):
         """Apply registry scope to station/pump records."""
-        return registry_visibility(super().get_queryset(), self.request.user)
+        return with_open_alarms(
+            registry_visibility(super().get_queryset(), self.request.user)
+        )
 
 
 class AssetMachineDetail(RetrieveUpdateDestroyAPI):
@@ -162,7 +191,9 @@ class AssetMachineDetail(RetrieveUpdateDestroyAPI):
 
     def get_queryset(self):
         """Apply registry scope to station/pump records."""
-        return registry_visibility(super().get_queryset(), self.request.user)
+        return with_open_alarms(
+            registry_visibility(super().get_queryset(), self.request.user)
+        )
 
 
 class MachinePartList(ListCreateAPI):

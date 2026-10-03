@@ -12,6 +12,7 @@ from django.core.management import call_command
 from django.db import connection
 from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 
 from InvenTree.unit_test import InvenTreeAPITestCase
 from part.models import Part
@@ -289,6 +290,44 @@ class RegistryTests(InvenTreeAPITestCase):
         pump.refresh_from_db()
         self.assertEqual(pump.parent_id, self.station.pk)
         self.assertEqual(pump.location, 'Bay 1')
+
+    def test_a_station_counts_the_alarms_on_its_pumps(self):
+        """The machine list says where there is something to look at.
+
+        A station's own alarms are few; its pumps' are where the trouble is,
+        so the station carries both, and a resolved one is not counted.
+        """
+        from assets.health_models import MachineAnomaly
+
+        pump = ensure_pump(self.station, 'P1')
+        other = ensure_pump(self.station, 'P2')
+        now = timezone.now()
+
+        def anomaly(machine, severity, status='open'):
+            return MachineAnomaly.objects.create(
+                machine=machine,
+                fingerprint=f'{machine.pk}-{severity}-{status}',
+                title='t',
+                severity=severity,
+                status=status,
+                detector='threshold',
+                first_observed_at=now,
+                last_observed_at=now,
+            )
+
+        anomaly(pump, 'critical')
+        anomaly(pump, 'warning', status='acknowledged')
+        anomaly(other, 'critical', status='resolved')
+        anomaly(self.station, 'warning')
+
+        rows = {
+            row['pk']: row for row in self.client.get('/api/assets/machines/').data
+        }
+        self.assertEqual(rows[pump.pk]['open_alarms'], 2)
+        self.assertEqual(rows[pump.pk]['open_critical_alarms'], 1)
+        self.assertEqual(rows[other.pk]['open_alarms'], 0)
+        self.assertEqual(rows[self.station.pk]['open_alarms'], 3)
+        self.assertEqual(rows[self.station.pk]['open_critical_alarms'], 1)
 
     def test_listing_pumps_does_not_look_up_each_station(self):
         """One more pump is one more row, not one more query."""

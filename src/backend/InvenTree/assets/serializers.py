@@ -32,6 +32,24 @@ class AssetMachineSerializer(serializers.ModelSerializer):
     parent_name = serializers.CharField(
         source='parent.name', read_only=True, default=None
     )
+    # Active alarms on the machine and on the pumps under it, when the view
+    # counted them (assets.api.with_open_alarms); absent otherwise rather than
+    # a zero that would read as "none".
+    open_alarms = serializers.SerializerMethodField()
+    open_critical_alarms = serializers.SerializerMethodField()
+
+    def _counted(self, machine, *names):
+        if not hasattr(machine, names[0]):
+            return None
+        return sum(getattr(machine, name) or 0 for name in names)
+
+    def get_open_alarms(self, machine) -> int | None:
+        """Open or acknowledged alarms here and one level below."""
+        return self._counted(machine, 'own_alarms', 'child_alarms')
+
+    def get_open_critical_alarms(self, machine) -> int | None:
+        """Of those, the criticals."""
+        return self._counted(machine, 'own_critical', 'child_critical')
 
     class Meta:
         """Metaclass defining serializer fields."""
@@ -46,6 +64,8 @@ class AssetMachineSerializer(serializers.ModelSerializer):
             'parent',
             'parent_name',
             'source_key',
+            'open_alarms',
+            'open_critical_alarms',
             'location',
             'client',
             'manufacturer',
