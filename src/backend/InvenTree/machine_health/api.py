@@ -423,6 +423,35 @@ class MachineAnomalyAcknowledge(APIView):
         return Response(MachineAnomalySerializer(anomaly).data)
 
 
+class MachineAnomalyDismiss(APIView):
+    """Dismiss an anomaly as not worth acting on, with a reason.
+
+    For the alarm that is wrong rather than the machine. It leaves the active
+    list and closes by itself when the reading recovers; it is not a permanent
+    silence, and it satisfies no safety gate.
+    """
+
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order.change'
+
+    def post(self, request, pk, anomaly_pk):
+        """Dismiss one anomaly belonging to this machine."""
+        machine = _machine(pk)
+        anomaly = get_object_or_404(MachineAnomaly, pk=anomaly_pk, machine=machine)
+
+        try:
+            anomaly = anomaly_services.dismiss_anomaly(
+                anomaly.pk, actor=request.user, note=request.data.get('note', '')
+            )
+        except anomaly_services.AnomalyError as exc:
+            return Response({'code': exc.code, 'detail': str(exc)}, status=400)
+
+        return Response(MachineAnomalySerializer(anomaly).data)
+
+
 class MachineAnomalyEvidence(APIView):
     """Capture immutable evidence for the signals behind an anomaly."""
 
@@ -621,6 +650,11 @@ machine_health_api_urls = [
                 'anomalies/<int:anomaly_pk>/acknowledge/',
                 MachineAnomalyAcknowledge.as_view(),
                 name='machine-health-anomaly-acknowledge',
+            ),
+            path(
+                'anomalies/<int:anomaly_pk>/dismiss/',
+                MachineAnomalyDismiss.as_view(),
+                name='machine-health-anomaly-dismiss',
             ),
             path(
                 'anomalies/<int:anomaly_pk>/evidence/',

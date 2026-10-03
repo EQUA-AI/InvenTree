@@ -9,12 +9,15 @@ from django.utils import timezone
 from assets.activation import point_hash
 from assets.health_models import HealthSource, MachineSignalBinding, MachineSignalState
 from assets.ingestion_models import IngestionCheckpoint
-from assets.models import Client, DictionaryPoint
+from assets.models import AssetComponent, Client, DictionaryPoint
 from assets.registry import ensure_pump, register_station
 from assets.tests.test_registry import test_scope
 from InvenTree.unit_test import InvenTreeAPITestCase
+from machine_health.connectors.pumphouse_payload import unusable_reason
 from machine_health.mimic_layout import expand_pointer, layout_coverage, load_layout
+from machine_health.services.anomalies import evaluate_thresholds
 from machine_health.services.mimic import station_mimic
+from part.models import Part
 
 
 @override_settings(
@@ -119,11 +122,105 @@ class MimicTests(InvenTreeAPITestCase):
             self.get_mimic(unit='P1').data['alarms'][0]['condition'], 'critical'
         )
 
+    def test_a_reading_says_which_catalogue_part_it_belongs_to(self):
+        """The drawing is keyed on the part's code, not on what a review named it.
+
+        A component's name is this pump's own wording and may be changed in
+        review; the catalogue code behind it is what every station shares.
+        """
+        motor = Part.objects.create(
+            name='Electric Motor', IPN='PS-MOTOR', description='Catalogue motor'
+        )
+        component = AssetComponent.objects.create(
+            machine=self.pump, part=motor, code='PS-MOTOR:1', name='Drive motor'
+        )
+        point, _ = self.add_point('/dex/WINDING1', 61.5, unit='degC')
+        point.component = component
+        point.save()
+        self.add_point('/dex/LOOSE', 1.0)
+
+        points = self.get_mimic(unit='P1').data['points']
+
+        self.assertEqual(points['/dex/WINDING1']['part_code'], 'PS-MOTOR')
+        self.assertEqual(points['/dex/WINDING1']['group'], 'Drive motor')
+        self.assertEqual(points['/dex/LOOSE']['part_code'], '')
+        # A reading the layout draws but the dictionary lacks belongs to none.
+        self.assertEqual(points['/pd/P1/st']['part_code'], '')
+
+    def test_how_long_a_reading_has_held_its_value_reaches_the_page(self):
+        """Asserted through the endpoint, because the endpoint is what lost it.
+
+        The projection worked this out and the response serializer, which lists
+        its fields, did not list this one - so the figure was computed on every
+        request and shown on none. A test of the projection alone passes either
+        way; only the response can show whether a reader ever sees it.
+        """
+        _, frozen = self.add_point('/dex/FROZEN', 47.0, unit='degC')
+        state = frozen.state
+        state.value_changed_at = state.observed_at - timedelta(days=9, hours=22)
+        state.save()
+        self.add_point('/dex/UNSEEN', 12.0, unit='degC')
+
+        points = self.get_mimic(unit='P1').data['points']
+
+        self.assertEqual(
+            points['/dex/FROZEN']['unchanged_for_seconds'],
+            timedelta(days=9, hours=22).total_seconds(),
+        )
+        # Not yet seen to change is not the same as changed just now.
+        self.assertIsNone(points['/dex/UNSEEN']['unchanged_for_seconds'])
+        # And a reading with no state at all still carries the field.
+        self.assertIsNone(points['/pd/P1/st']['unchanged_for_seconds'])
+
+    def test_an_alarm_names_the_anomaly_the_detector_holds_for_it(self):
+        """So the page can acknowledge an alarm where it is seen."""
+        _, binding = self.add_point('/dex/HOT', 45, unit='degC')
+        binding.critical_max = 40
+        binding.save()
+
+        [alarm] = self.get_mimic(unit='P1').data['alarms']
+        # Breaching, but the poller has not evaluated it yet: no anomaly.
+        self.assertEqual(alarm['condition'], 'critical')
+        self.assertIsNone(alarm['anomaly'])
+
+        [anomaly] = evaluate_thresholds(self.pump)
+        [alarm] = self.get_mimic(unit='P1').data['alarms']
+        self.assertEqual(alarm['anomaly'], anomaly.pk)
+        self.assertEqual(alarm['anomaly_status'], 'open')
+        self.assertEqual(alarm['severity'], 'critical')
+
+    def test_a_bay_with_an_alarm_is_drawn_as_one(self):
+        """The drawing carries the alarm; a dismissed one does not light it."""
+        from machine_health.services.anomalies import dismiss_anomaly
+
+        _, binding = self.add_point('/dex/HOT', 45, unit='degC')
+        binding.critical_max = 40
+        binding.save()
+        result = self.get_mimic().data
+        self.assertEqual({bay['alarm'] for bay in result['bays']}, {None})
+        self.assertIsNone(result['alarm'])
+
+        [anomaly] = evaluate_thresholds(self.pump)
+        result = self.get_mimic().data
+        bays = {bay['key']: bay['alarm'] for bay in result['bays']}
+        self.assertEqual(bays['P1'], 'critical')
+        self.assertEqual({v for k, v in bays.items() if k != 'P1'}, {None})
+
+        dismiss_anomaly(anomaly.pk, actor=self.user, note='Limit set too tight')
+        result = self.get_mimic(unit='P1').data
+        self.assertEqual({bay['alarm'] for bay in result['bays']}, {None})
+        # Still listed, as what it is: a breach somebody has dismissed.
+        [alarm] = result['alarms']
+        self.assertEqual(alarm['anomaly_status'], 'suppressed')
+
     def test_stale_bad_and_future_readings_are_null(self):
         """Server time and source quality control what may be presented as current."""
         self.add_point('/old', 9, age=301)
         self.add_point('/bad', 9, quality='bad')
-        self.add_point('/future', 9, age=-10)
+        self.add_point('/future', 9, age=-301)
+        # A plant clock a few seconds ahead of ours is a clock, not a fault: the
+        # reading is as current as a reading gets, and is shown.
+        self.add_point('/slightly_ahead', 9, age=-10)
         points = self.get_mimic(unit='P1').data['points']
         for pointer, reason in [
             ('/old', 'stale'),
@@ -133,6 +230,8 @@ class MimicTests(InvenTreeAPITestCase):
             self.assertIsNone(points[pointer]['value'])
             self.assertEqual(points[pointer]['reason'], reason)
         self.assertGreater(points['/old']['age_seconds'], 300)
+        self.assertEqual(points['/slightly_ahead']['value'], 9)
+        self.assertIsNone(points['/slightly_ahead']['reason'])
 
     @override_settings(AIMMS_COSMOS_PUMPHOUSE_ENABLED=False)
     def test_kill_switch_removes_values_and_alarms(self):
@@ -224,6 +323,74 @@ class MimicTests(InvenTreeAPITestCase):
         """Station requests fetch readings in batches, not one query per point."""
         for number in range(20):
             self.add_point(f'/value{number}', number)
-        with self.assertNumQueries(8):
+        # Eight for the station and its readings, one for every open alarm on
+        # it and its pumps together - not one per alarm.
+        with self.assertNumQueries(9):
             result = station_mimic(self.station, unit='P1')
-        self.assertEqual(len(result['points']), 23)
+        # The twenty points above, and one for each reading the layout draws on
+        # a pump - present whether or not the dictionary holds it.
+        drawn = sum(e['view'] == 'unit' for e in load_layout()['elements'])
+        self.assertEqual(len(result['points']), 20 + drawn)
+
+
+class UnusableReasonTests(MimicTests):
+    """"Unusable" is not one fact, and the mimic is where an operator reads it.
+
+    A channel pegged at the source's over-range marker, one sitting on a
+    converter rail and one whose reading will not parse are three different
+    things to go and look at. Collapsing them into ``bad_quality`` cost the
+    operator the only clue on the screen - and it did so most on the readings
+    this branch had just spent a day identifying.
+    """
+
+    def test_the_over_range_marker_says_so(self):
+        """3276.7 is the source declaring it stopped measuring."""
+        self.add_point('/pegged', 3276.7, quality='bad')
+
+        points = self.get_mimic(unit='P1').data['points']
+
+        self.assertEqual(points['/pegged']['reason'], 'over_range')
+        self.assertIsNone(points['/pegged']['value'])
+
+    def test_a_converter_rail_says_so(self):
+        """Full scale is a saturated input, not a reading in the same sense."""
+        self.add_point('/railed', -118.51851654052734, quality='bad')
+
+        points = self.get_mimic(unit='P1').data['points']
+
+        self.assertEqual(points['/railed']['reason'], 'railed')
+
+    def test_anything_else_unusable_keeps_the_general_reason(self):
+        """A bad reading with no known signature must not be mislabelled."""
+        self.add_point('/odd', 42.0, quality='bad')
+
+        points = self.get_mimic(unit='P1').data['points']
+
+        self.assertEqual(points['/odd']['reason'], 'bad_quality')
+
+    def test_the_reason_cannot_drift_from_the_coercion_rule(self):
+        """Derived through the module that owns the rule, not re-implemented.
+
+        A reason stored at ingest would record the verdict of whichever version
+        of the rule was running then; asking the same function keeps the screen
+        consistent with what the system believes today.
+        """
+        for value, expected in (
+            (3276.7, 'over_range'),
+            (-59.25925827026367, 'railed'),
+            (59.25745391845703, 'railed'),
+            (-592.5925903320312, 'railed'),
+            (42.0, None),
+            (0.0, None),
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(unusable_reason(value), expected)
+
+    def test_a_good_reading_still_has_no_reason(self):
+        """The change must not put a reason on a healthy point."""
+        self.add_point('/fine', 42.0)
+
+        points = self.get_mimic(unit='P1').data['points']
+
+        self.assertIsNone(points['/fine']['reason'])
+        self.assertEqual(points['/fine']['value'], 42.0)

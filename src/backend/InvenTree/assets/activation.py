@@ -258,8 +258,13 @@ def _refresh_binding(point, source):
             'warn_max',
             'critical_min',
             'critical_max',
+            'vote_minimum',
         ):
             setattr(binding, name, None)
+        # The vote group is a property of the limit, so it goes when the limit
+        # does: a point whose meaning changed must not keep corroborating the
+        # family it used to belong to.
+        binding.vote_group = ''
         binding.transform = {}
     binding.machine, binding.external_key = point.machine, point.path
     binding.display_name, binding.unit = point.display_name, point.unit

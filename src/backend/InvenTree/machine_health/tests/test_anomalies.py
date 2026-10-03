@@ -11,11 +11,17 @@ from assets.health_models import (
     AnomalyStatus,
     HealthState,
     MachineAnomaly,
+    MachineSignalBinding,
+    MachineSignalState,
     SignalQuality,
 )
 from machine_health.services.anomalies import (
+    RESOLUTION_IN_LIMITS,
+    RESOLUTION_UNASSESSABLE,
+    RESOLVE_AFTER,
     AnomalyError,
     acknowledge_anomaly,
+    dismiss_anomaly,
     evaluate_thresholds,
     fingerprint_for,
     ingest_source_alarm,
@@ -70,31 +76,57 @@ class ThresholdDetectionTest(HealthEnvMixin, TestCase):
         self.assertEqual(MachineAnomaly.objects.count(), 1)
 
     def test_signal_returning_to_normal_resolves_its_own_anomaly(self):
-        """A threshold anomaly clears when the value comes back inside limits."""
-        self.set_signal(7.0)
+        """A threshold anomaly clears when the value comes back inside limits.
+
+        The clearing reading carries a plant timestamp past RESOLVE_AFTER,
+        because a recovery is something that lasts. Written at the same instant
+        as the breach it would be a zero-second dip, which is exactly what the
+        clear-duration gate exists to refuse.
+        """
+        breached_at = timezone.now()
+        self.set_signal(7.0, observed_at=breached_at)
         [anomaly] = evaluate_thresholds(self.machine)
 
-        self.set_signal(3.0)
+        self.set_signal(3.0, observed_at=breached_at + RESOLVE_AFTER + timedelta(seconds=1))
         evaluate_thresholds(self.machine)
 
         anomaly.refresh_from_db()
         self.assertEqual(anomaly.status, AnomalyStatus.RESOLVED)
         self.assertIsNotNone(anomaly.resolved_at)
 
-    def test_acknowledged_anomaly_is_not_auto_resolved(self):
-        """An operator's acknowledgement is not closed on their behalf."""
-        self.set_signal(7.0)
+    def test_acknowledged_anomaly_closes_on_recovery_and_keeps_its_record(self):
+        """Seen by somebody, then over: both facts stay on the row.
+
+        It used to stay acknowledged for ever, and because a signal has one
+        active anomaly, the next real breach refreshed the old row instead of
+        raising a new open alarm - a second event nobody was shown.
+        """
+        now = timezone.now()
+        self.set_signal(7.0, observed_at=now)
         [anomaly] = evaluate_thresholds(self.machine)
         actor = get_user_model().objects.create_user(
             username='ack-user', email='ack@example.com', password='pw'
         )
-        acknowledge_anomaly(anomaly.pk, actor=actor)
+        acknowledge_anomaly(anomaly.pk, actor=actor, note='Route tech notified')
 
-        self.set_signal(3.0)
+        # A dip inside its limits is not yet a recovery, acknowledged or not.
+        self.set_signal(3.0, observed_at=now + timedelta(minutes=1))
         evaluate_thresholds(self.machine)
-
         anomaly.refresh_from_db()
         self.assertEqual(anomaly.status, AnomalyStatus.ACKNOWLEDGED)
+
+        self.set_signal(3.0, observed_at=now + timedelta(minutes=6))
+        evaluate_thresholds(self.machine)
+        anomaly.refresh_from_db()
+        self.assertEqual(anomaly.status, AnomalyStatus.RESOLVED)
+        self.assertEqual(anomaly.acknowledged_by, actor)
+        self.assertEqual(anomaly.acknowledgement_note, 'Route tech notified')
+
+        # And the next breach is a new alarm, open, for somebody to see.
+        self.set_signal(7.0, observed_at=now + timedelta(minutes=7))
+        [again] = evaluate_thresholds(self.machine)
+        self.assertNotEqual(again.pk, anomaly.pk)
+        self.assertEqual(again.status, AnomalyStatus.OPEN)
 
     def test_unbounded_signal_has_no_opinion(self):
         """A binding with no limits never manufactures a health verdict."""
@@ -233,6 +265,61 @@ class AcknowledgementTest(HealthEnvMixin, TestCase):
             )
 
 
+class DismissalTest(HealthEnvMixin, TestCase):
+    """The alarm that is wrong rather than the machine."""
+
+    def setUp(self):
+        """One bounded signal, breaching, and somebody to dismiss it."""
+        self.build_health_env()
+        self.now = timezone.now()
+        self.actor = get_user_model().objects.create_user(
+            username='dismisser', email='d@example.com', password='pw'
+        )
+        self.set_signal(10.0, observed_at=self.now)
+        [self.anomaly] = evaluate_thresholds(self.machine)
+
+    def test_a_reason_is_required(self):
+        """The history has to tell a wrong limit from a condition ignored."""
+        with self.assertRaises(AnomalyError):
+            dismiss_anomaly(self.anomaly.pk, actor=self.actor, note='   ')
+        self.anomaly.refresh_from_db()
+        self.assertEqual(self.anomaly.status, AnomalyStatus.OPEN)
+
+    def test_a_dismissed_condition_is_quiet_while_it_goes_on_breaching(self):
+        """No second alarm about a limit somebody has said is wrong."""
+        dismiss_anomaly(self.anomaly.pk, actor=self.actor, note='Limit set too tight')
+
+        self.set_signal(10.5, observed_at=self.now + timedelta(minutes=1))
+        evaluate_thresholds(self.machine)
+
+        [only] = MachineAnomaly.objects.all()
+        self.assertEqual(only.status, AnomalyStatus.SUPPRESSED)
+        self.assertEqual(only.metrics['dismissed']['by'], 'dismisser')
+        self.assertEqual(only.metrics['dismissed']['note'], 'Limit set too tight')
+
+    def test_it_closes_on_recovery_and_the_next_breach_is_a_new_alarm(self):
+        """A dismissal is never a permanent silence on a signal."""
+        dismiss_anomaly(self.anomaly.pk, actor=self.actor, note='Limit set too tight')
+
+        self.set_signal(3.0, observed_at=self.now + timedelta(minutes=6))
+        evaluate_thresholds(self.machine)
+        self.anomaly.refresh_from_db()
+        self.assertEqual(self.anomaly.status, AnomalyStatus.RESOLVED)
+        self.assertEqual(self.anomaly.metrics['dismissed']['by'], 'dismisser')
+
+        self.set_signal(10.0, observed_at=self.now + timedelta(minutes=7))
+        [again] = evaluate_thresholds(self.machine)
+        self.assertNotEqual(again.pk, self.anomaly.pk)
+        self.assertEqual(again.status, AnomalyStatus.OPEN)
+
+    def test_a_closed_alarm_cannot_be_dismissed(self):
+        """Only something still standing can be waved away."""
+        self.set_signal(3.0, observed_at=self.now + timedelta(minutes=6))
+        evaluate_thresholds(self.machine)
+        with self.assertRaises(AnomalyError):
+            dismiss_anomaly(self.anomaly.pk, actor=self.actor, note='late')
+
+
 class UnusableReadingTest(HealthEnvMixin, TestCase):
     """A pegged channel is not evidence, in either direction."""
 
@@ -275,12 +362,477 @@ class UnusableReadingTest(HealthEnvMixin, TestCase):
         self.assertEqual(raised.resolution_note, '')
 
     def test_a_good_reading_inside_limits_still_resolves(self):
-        """The guard must not break recovery for readings that are usable."""
+        """The guard must not break recovery for readings that are usable.
+
+        Sustained past RESOLVE_AFTER, since the quality guard and the
+        clear-duration gate are separate rules and this one is about quality.
+        """
         self.set_signal(10.0, observed_at=self.now)
         [raised] = evaluate_thresholds(self.machine, now=self.now)
 
-        self.set_signal(3.0, observed_at=self.now)
+        self.set_signal(
+            3.0, observed_at=self.now + RESOLVE_AFTER + timedelta(seconds=1)
+        )
         evaluate_thresholds(self.machine, now=self.now)
 
         raised.refresh_from_db()
         self.assertEqual(raised.status, AnomalyStatus.RESOLVED)
+
+
+class ThresholdResolutionNoteTest(HealthEnvMixin, TestCase):
+    """A threshold anomaly is closed with a note that is true.
+
+    ``_auto_resolve_threshold_anomalies`` is the only code in the backend that
+    writes ``RESOLVED``, so it has to close everything it stops matching - and
+    "the reading came back inside its limits" is only one of the reasons it can
+    stop matching. Writing that sentence about a rule somebody deleted is how a
+    condition nobody looked at reads as a condition that ended.
+    """
+
+    def setUp(self):
+        """One bounded signal, breaching."""
+        self.build_health_env()
+        self.now = timezone.now()
+
+    def _open_one(self):
+        self.set_signal(10.0, observed_at=self.now)
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+        self.assertEqual(raised.status, AnomalyStatus.OPEN)
+        return raised
+
+    def test_a_clearing_reading_says_the_signal_returned(self):
+        """The affirmative case keeps the affirmative note.
+
+        Past RESOLVE_AFTER on the plant clock: a recovery has to last before it
+        earns the recovery note.
+        """
+        raised = self._open_one()
+
+        self.set_signal(
+            3.0, observed_at=self.now + RESOLVE_AFTER + timedelta(seconds=1)
+        )
+        evaluate_thresholds(self.machine, now=self.now)
+
+        raised.refresh_from_db()
+        self.assertEqual(raised.status, AnomalyStatus.RESOLVED)
+        self.assertEqual(raised.resolution_note, RESOLUTION_IN_LIMITS)
+
+    def test_removing_the_limits_does_not_claim_the_signal_returned(self):
+        """Activation wipes all six bounds when a point's meaning changes.
+
+        The binding then classifies UNKNOWN on a perfectly good reading. Before
+        this, that closed the anomaly with the recovery note - asserting a
+        recovery on a channel still reading 10.0 against limits of 6 and 9.
+        """
+        raised = self._open_one()
+
+        for bound in ('normal_max', 'warn_max', 'critical_max'):
+            setattr(self.binding, bound, None)
+        self.binding.save()
+        evaluate_thresholds(self.machine, now=self.now)
+
+        raised.refresh_from_db()
+        self.assertEqual(raised.status, AnomalyStatus.RESOLVED)
+        self.assertEqual(raised.resolution_note, RESOLUTION_UNASSESSABLE)
+
+    def test_a_vanished_state_row_does_not_claim_the_signal_returned(self):
+        """Activation deletes the cached state along with the bounds."""
+        raised = self._open_one()
+
+        MachineSignalState.objects.filter(binding=self.binding).delete()
+        evaluate_thresholds(self.machine, now=self.now)
+
+        raised.refresh_from_db()
+        self.assertEqual(raised.status, AnomalyStatus.RESOLVED)
+        self.assertEqual(raised.resolution_note, RESOLUTION_UNASSESSABLE)
+
+    def test_nothing_is_left_in_a_state_no_code_can_close(self):
+        """Refusing to close would hold the machine's one open slot for ever.
+
+        ``machine_health_anomaly_open_unique`` is partial on active statuses, and
+        acknowledgement only moves OPEN to ACKNOWLEDGED. So an anomaly this
+        function declines to resolve can never be resolved by anything.
+        """
+        raised = self._open_one()
+
+        MachineSignalState.objects.filter(binding=self.binding).delete()
+        self.binding.active = False
+        self.binding.save(update_fields=['active'])
+        evaluate_thresholds(self.machine, now=self.now)
+
+        raised.refresh_from_db()
+        self.assertEqual(raised.status, AnomalyStatus.RESOLVED)
+        self.assertIsNotNone(raised.resolved_at)
+
+    def test_a_bad_reading_still_holds_the_condition_open(self):
+        """The one case that must NOT be closed, re-pinned against the rewrite.
+
+        A sensor going bad is not evidence either way. Closing it with either
+        note would be wrong, so it stays open.
+        """
+        raised = self._open_one()
+
+        self.set_signal(3276.7, observed_at=self.now, quality=SignalQuality.BAD)
+        evaluate_thresholds(self.machine, now=self.now)
+
+        raised.refresh_from_db()
+        self.assertEqual(raised.status, AnomalyStatus.OPEN)
+        self.assertEqual(raised.resolution_note, '')
+
+
+class DetectorVotingTest(HealthEnvMixin, TestCase):
+    """A single detector is not an alarm, and is not nothing either.
+
+    IEEE Std 3004.8-2016 cl. 8.5.2.2 recommends RTD voting so damaged and
+    open-circuit inputs are ignored; API Std 670 cl. 5.4.6.4 makes dual voting
+    standard where two sensors share a bearing's load zone, while keeping
+    single-violation logic everywhere else - which is why an unset vote_minimum
+    must mean no voting rather than a default of two.
+
+    The rule de-escalates rather than suppresses. A stator hot spot in one slot
+    is real, and silencing it to avoid nuisance trips would discard exactly the
+    signal a detector array exists to catch.
+    """
+
+    def setUp(self):
+        """Three detectors on one machine, voting as one group."""
+        self.build_health_env()
+        self.now = timezone.now()
+        self.detectors = [self.binding]
+        for index in (2, 3):
+            self.detectors.append(
+                MachineSignalBinding.objects.create(
+                    machine=self.machine,
+                    source=self.source,
+                    external_key=f'{self.binding.external_key}-{index}',
+                    display_name=f'Winding detector {index}',
+                    unit='mm/s',
+                    warn_max=6.0,
+                    critical_max=9.0,
+                )
+            )
+        for binding in self.detectors:
+            binding.vote_group = 'Stator winding ETDs'
+            binding.vote_minimum = 2
+            binding.save(update_fields=['vote_group', 'vote_minimum'])
+
+    def read(self, binding, value):
+        """Give one detector a current reading."""
+        MachineSignalState.objects.update_or_create(
+            binding=binding,
+            defaults={
+                'value': {'value': value},
+                'observed_at': self.now,
+                'quality': SignalQuality.GOOD,
+            },
+        )
+
+    def test_one_detector_past_critical_warns_instead(self):
+        """Unconfirmed, so it is not yet the machine's condition."""
+        self.read(self.detectors[0], 10.0)
+        self.read(self.detectors[1], 3.0)
+        self.read(self.detectors[2], 3.0)
+
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        self.assertEqual(raised.severity, AnomalySeverity.WARNING)
+        self.assertIn('alone', raised.evidence_summary)
+        self.assertEqual(raised.metrics['vote_confirmed'], 1)
+        self.assertEqual(raised.metrics['vote_minimum'], 2)
+
+    def test_two_detectors_past_critical_confirm_it(self):
+        """The corroborated case is the machine's condition."""
+        self.read(self.detectors[0], 10.0)
+        self.read(self.detectors[1], 11.0)
+        self.read(self.detectors[2], 3.0)
+
+        raised = evaluate_thresholds(self.machine, now=self.now)
+
+        self.assertEqual(len(raised), 2)
+        for anomaly in raised:
+            self.assertEqual(anomaly.severity, AnomalySeverity.CRITICAL)
+            self.assertNotIn('alone', anomaly.evidence_summary)
+
+    def test_a_lone_breach_is_still_raised(self):
+        """De-escalated, never suppressed - the distinction is the design."""
+        self.read(self.detectors[0], 10.0)
+        self.read(self.detectors[1], 3.0)
+        self.read(self.detectors[2], 3.0)
+
+        evaluate_thresholds(self.machine, now=self.now)
+
+        self.assertTrue(
+            MachineAnomaly.objects.filter(machine=self.machine).exists(),
+            'a single hot detector must still reach somebody',
+        )
+
+    def test_without_a_vote_minimum_one_detector_is_critical(self):
+        """API 670 keeps single-violation logic wherever voting is not asked for."""
+        for binding in self.detectors:
+            binding.vote_group, binding.vote_minimum = '', None
+            binding.save(update_fields=['vote_group', 'vote_minimum'])
+        self.read(self.detectors[0], 10.0)
+
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        self.assertEqual(raised.severity, AnomalySeverity.CRITICAL)
+
+    def test_a_warning_level_breach_is_untouched_by_voting(self):
+        """Voting gates the critical only; a warning is already the lower call."""
+        self.read(self.detectors[0], 7.0)
+
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        self.assertEqual(raised.severity, AnomalySeverity.WARNING)
+        self.assertNotIn('alone', raised.evidence_summary)
+
+    def test_a_confirmed_condition_is_not_de_escalated_when_a_detector_fails(self):
+        """record_anomaly never silently de-escalates, and that matters here.
+
+        Two detectors confirm a critical; one then goes bad-quality. The vote can
+        no longer be met, but the machine did not get better - and a sensor
+        dropping out must not quietly downgrade a standing critical.
+        """
+        self.read(self.detectors[0], 10.0)
+        self.read(self.detectors[1], 11.0)
+        first = evaluate_thresholds(self.machine, now=self.now)
+        self.assertTrue(all(a.severity == AnomalySeverity.CRITICAL for a in first))
+
+        MachineSignalState.objects.filter(binding=self.detectors[1]).update(
+            quality=SignalQuality.BAD
+        )
+        evaluate_thresholds(self.machine, now=self.now)
+
+        standing = MachineAnomaly.objects.get(
+            machine=self.machine, bindings=self.detectors[0]
+        )
+        self.assertEqual(standing.severity, AnomalySeverity.CRITICAL)
+
+    def test_a_detector_in_another_group_does_not_corroborate(self):
+        """Winding and core measure different things and must not vote together."""
+        self.detectors[1].vote_group = 'Motor / stator core RTDs (backstop)'
+        self.detectors[1].save(update_fields=['vote_group'])
+        self.read(self.detectors[0], 10.0)
+        self.read(self.detectors[1], 11.0)
+
+        raised = evaluate_thresholds(self.machine, now=self.now)
+
+        self.assertEqual(len(raised), 2)
+        for anomaly in raised:
+            self.assertEqual(
+                anomaly.severity,
+                AnomalySeverity.WARNING,
+                'each is alone in its own group',
+            )
+
+
+class ClearDurationTest(HealthEnvMixin, TestCase):
+    """A condition closes on sustained recovery, not on one clear reading.
+
+    Raising and clearing are not symmetric. A breach that turns out to be
+    transient costs somebody a look; a clear that turns out to be transient
+    closes a real condition and nobody looks again.
+
+    The gate is measured on the plant's clock, and that is the whole of it.
+    ``MachineSignalState`` holds one row per binding, so a poll applying 200
+    snapshots five seconds apart evaluates once, against the last of them - a
+    winding hot for 199 of 200 samples that dips on the last would otherwise
+    close a standing critical while the poller still held the contrary samples.
+    """
+
+    def setUp(self):
+        """One bounded signal, breaching at a known plant instant."""
+        self.build_health_env()
+        self.now = timezone.now()
+
+    def observe(self, value, *, at):
+        """Write a reading carrying its own plant timestamp."""
+        MachineSignalState.objects.update_or_create(
+            binding=self.binding,
+            defaults={
+                'value': {'value': value},
+                'observed_at': at,
+                'quality': SignalQuality.GOOD,
+            },
+        )
+
+    def test_a_single_clear_reading_does_not_close_the_condition(self):
+        """The catch-up case: 199 breaches then one dip, five seconds later."""
+        self.observe(10.0, at=self.now)
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        self.observe(3.0, at=self.now + timedelta(seconds=5))
+        evaluate_thresholds(self.machine, now=self.now)
+
+        raised.refresh_from_db()
+        self.assertEqual(raised.status, AnomalyStatus.OPEN)
+        self.assertEqual(raised.resolution_note, '')
+
+    def test_a_sustained_recovery_closes_it(self):
+        """Past the window, the recovery is real enough to act on."""
+        self.observe(10.0, at=self.now)
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        self.observe(3.0, at=self.now + RESOLVE_AFTER + timedelta(seconds=1))
+        evaluate_thresholds(self.machine, now=self.now)
+
+        raised.refresh_from_db()
+        self.assertEqual(raised.status, AnomalyStatus.RESOLVED)
+        self.assertEqual(raised.resolution_note, RESOLUTION_IN_LIMITS)
+
+    def test_the_gate_is_the_plant_clock_not_the_server_clock(self):
+        """Waiting longer in wall time must not close a condition on its own.
+
+        One evaluation is one evaluation however long the poll took, so a
+        server-clock gate would let a catch-up run close exactly the condition
+        this rule exists to protect.
+        """
+        self.observe(10.0, at=self.now)
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        # An hour passes on the server; the plant has moved five seconds.
+        self.observe(3.0, at=self.now + timedelta(seconds=5))
+        evaluate_thresholds(self.machine, now=self.now + timedelta(hours=1))
+
+        raised.refresh_from_db()
+        self.assertEqual(raised.status, AnomalyStatus.OPEN)
+
+    def test_a_renewed_breach_restarts_the_window(self):
+        """A condition that flickers must not accumulate credit toward closing."""
+        self.observe(10.0, at=self.now)
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        self.observe(3.0, at=self.now + timedelta(minutes=4))
+        evaluate_thresholds(self.machine, now=self.now)
+        self.observe(10.0, at=self.now + timedelta(minutes=4, seconds=30))
+        evaluate_thresholds(self.machine, now=self.now)
+        self.observe(3.0, at=self.now + timedelta(minutes=6))
+        evaluate_thresholds(self.machine, now=self.now)
+
+        raised.refresh_from_db()
+        self.assertEqual(
+            raised.status,
+            AnomalyStatus.OPEN,
+            'the clear window restarts from the most recent breach',
+        )
+
+    def test_a_condition_that_never_opened_is_unaffected(self):
+        """A healthy signal must not be delayed into existence by the gate."""
+        self.observe(3.0, at=self.now)
+
+        self.assertEqual(evaluate_thresholds(self.machine, now=self.now), [])
+        self.assertFalse(MachineAnomaly.objects.exists())
+
+    def test_a_vanished_signal_still_closes_immediately(self):
+        """The gate needs a clearing reading to measure; this path has none.
+
+        Holding these open would make them unclosable, which is the failure the
+        two resolution notes exist to avoid.
+        """
+        self.observe(10.0, at=self.now)
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        MachineSignalState.objects.filter(binding=self.binding).delete()
+        evaluate_thresholds(self.machine, now=self.now)
+
+        raised.refresh_from_db()
+        self.assertEqual(raised.status, AnomalyStatus.RESOLVED)
+        self.assertEqual(raised.resolution_note, RESOLUTION_UNASSESSABLE)
+
+
+class StaleReadingTest(HealthEnvMixin, TestCase):
+    """A channel that stopped reporting is not evidence, in either direction."""
+
+    def setUp(self):
+        """Two bounded channels on one machine, a five-minute freshness window."""
+        super().setUp()
+        self.build_health_env(freshness=300)
+        self.now = timezone.now()
+        self.other = MachineSignalBinding.objects.create(
+            machine=self.machine,
+            source=self.source,
+            external_key=f'{self.binding.external_key}.NDE',
+            display_name='Pump 2 non-drive-end vibration',
+            signal_kind='vibration',
+            unit='mm/s',
+            warn_max=6.0,
+            critical_max=9.0,
+        )
+
+    def report(self, binding, value, observed_at):
+        """Write one channel's current reading."""
+        MachineSignalState.objects.update_or_create(
+            binding=binding,
+            defaults={
+                'value': {'value': value, 'unit': 'mm/s'},
+                'observed_at': observed_at,
+                'received_at': observed_at,
+                'quality': SignalQuality.GOOD,
+            },
+        )
+
+    def test_a_breach_older_than_the_window_raises_nothing(self):
+        """The number a dead channel left behind is not the machine now.
+
+        Judged against the plant's newest reading, not the server clock: a
+        recorded window shown long after the fact is not stale end to end.
+        """
+        self.report(self.binding, 12.0, self.now - timedelta(minutes=20))
+        self.report(self.other, 3.0, self.now)
+
+        self.assertEqual(evaluate_thresholds(self.machine, now=self.now), [])
+        self.assertFalse(MachineAnomaly.objects.filter(machine=self.machine).exists())
+
+    def test_a_stale_reading_inside_its_limits_does_not_clear_a_condition(self):
+        """Nobody observed the recovery the note would claim."""
+        self.report(self.binding, 12.0, self.now)
+        self.report(self.other, 3.0, self.now)
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        # The channel stops; its last reading is a calm one from before the
+        # breach was even seen... but a dead channel clears nothing.
+        self.report(self.binding, 3.0, self.now - timedelta(minutes=20))
+        self.report(self.other, 3.0, self.now + timedelta(minutes=1))
+        evaluate_thresholds(self.machine, now=self.now)
+
+        raised.refresh_from_db()
+        self.assertEqual(raised.status, AnomalyStatus.OPEN)
+        self.assertEqual(raised.resolution_note, '')
+
+    def test_the_machine_going_quiet_altogether_changes_nothing(self):
+        """When every channel is old there is no newer one to be stale against."""
+        self.report(self.binding, 12.0, self.now - timedelta(days=400))
+        self.report(self.other, 3.0, self.now - timedelta(days=400))
+
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        self.assertEqual(raised.status, AnomalyStatus.OPEN)
+
+    def test_a_frozen_breach_is_raised_and_says_it_may_be_frozen(self):
+        """Constant is not suppressed - it is named, on the alarm itself."""
+        state = self.report(self.binding, 12.0, self.now)
+        state = MachineSignalState.objects.get(binding=self.binding)
+        state.value_changed_at = self.now - timedelta(days=9, hours=22)
+        state.save()
+        self.report(self.other, 3.0, self.now)
+
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        self.assertIn('has read exactly that for 9 days', raised.evidence_summary)
+        self.assertIn('frozen acquisition', raised.evidence_summary)
+        self.assertEqual(
+            raised.metrics['unchanged_for_seconds'],
+            timedelta(days=9, hours=22).total_seconds(),
+        )
+
+    def test_a_reading_that_changed_recently_is_not_called_frozen(self):
+        """The note is for a span past the window, not for any repeat."""
+        self.report(self.binding, 12.0, self.now)
+        state = MachineSignalState.objects.get(binding=self.binding)
+        state.value_changed_at = self.now - timedelta(minutes=2)
+        state.save()
+
+        [raised] = evaluate_thresholds(self.machine, now=self.now)
+
+        self.assertNotIn('frozen', raised.evidence_summary)
+        self.assertEqual(raised.metrics['unchanged_for_seconds'], 120.0)

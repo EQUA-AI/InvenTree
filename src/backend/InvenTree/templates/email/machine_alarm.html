@@ -1,0 +1,30 @@
+{% extends "email/email.html" %}
+
+{% load i18n %}
+
+{% block title %}
+{{ message }}
+{% if link %}
+<p>{% trans "Open the machine's Health tab" %}: <a href="{{ link }}">{{ link }}</a></p>
+{% endif %}
+{% endblock title %}
+
+{% block body %}
+<tr style="height: 3rem; border-bottom: 1px solid">
+    <th>{% trans "Machine" %}</th>
+    <th>{% trans "Severity" %}</th>
+    <th>{% trans "Evidence" %}</th>
+    <th>{% trans "First observed" %}</th>
+</tr>
+
+<tr style="height: 3rem">
+    <td style="text-align: center;">{{ machine.name }}</td>
+    <td style="text-align: center;">{{ anomaly.get_severity_display }}</td>
+    <td style="text-align: center;">{{ anomaly.evidence_summary }}</td>
+    <td style="text-align: center;">{{ anomaly.first_observed_at }}</td>
+</tr>
+{% endblock body %}
+
+{% block footer_prefix %}
+<p><em>{% trans "You are receiving this email because you can view this machine's health and hold the work order role." %}</em></p>
+{% endblock footer_prefix %}

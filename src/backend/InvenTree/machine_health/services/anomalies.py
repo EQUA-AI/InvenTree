@@ -17,6 +17,8 @@ resends an alarm every minute updates one row rather than flooding the blade.
 from __future__ import annotations
 
 import hashlib
+from collections import Counter
+from datetime import timedelta
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -31,10 +33,55 @@ from assets.health_models import (
     MachineSignalState,
     SignalQuality,
 )
+from machine_health.services.alarm_notifications import notify_critical
 
 THRESHOLD_DETECTOR = 'threshold'
 THRESHOLD_DETECTOR_VERSION = '1'
+
+#: The statuses in which a condition is still being observed: the two active
+#: ones, and dismissed, which is observed quietly until it clears.
+STANDING_STATUSES = (*ACTIVE_ANOMALY_STATUSES, AnomalyStatus.SUPPRESSED)
+
+#: Marks on an anomaly's metrics that a refresh must carry over: who dismissed
+#: it and why, and the readings a test alarm displaced, which ``--clear`` needs
+#: to put back.
+KEPT_METRICS = frozenset({'dismissed', 'test_alarm'})
 SOURCE_ALARM_DETECTOR = 'source_alarm'
+
+#: Why a threshold anomaly was closed. The two are kept apart deliberately.
+#: "The reading came back inside its limits" is an observation; "we stopped being
+#: able to tell" is an admission. Printing the first when the second happened is
+#: how a real condition gets forgotten, and it is the failure this detector is
+#: most likely to produce, because losing a rule and losing a breach look
+#: identical from here - both simply stop matching.
+RESOLUTION_IN_LIMITS = 'Signal returned inside its configured limits'
+RESOLUTION_UNASSESSABLE = (
+    'Closed without a clearing reading: this binding no longer carries a '
+    'threshold, or it stopped reporting. The condition was not observed to end.'
+)
+
+#: How long a signal must read inside its limits before the condition closes,
+#: measured on the PLANT's clock rather than the server's.
+#:
+#: Raising and clearing are not symmetric. A breach that turns out to be
+#: transient costs somebody a look; a clear that turns out to be transient
+#: closes a real condition and nobody looks again. So the clear side gets the
+#: hysteresis.
+#:
+#: The plant clock is the whole of the fix. ``MachineSignalState`` holds one row
+#: per binding, so a poll that applies up to ``MAX_DOCUMENTS_PER_STATION`` = 200
+#: snapshots five seconds apart - about seventeen minutes of plant time -
+#: evaluates exactly once, against the last of them. A winding above its critical
+#: limit for 199 of those 200 samples that dips below on the last one would close
+#: a standing critical, while the poller still held the 199 contrary samples in
+#: memory. Measured on the server clock a delay would not help: one evaluation is
+#: one evaluation however long it took. Measured on ``observed_at``, the clearing
+#: reading is five seconds newer than the last breach, the gate holds, and the
+#: condition survives its own catch-up.
+#:
+#: Five minutes because that is already this estate's validity window - the same
+#: figure ``assets.activation._initial_cursor`` enters a live source at.
+RESOLVE_AFTER = timedelta(minutes=5)
 
 #: Board severity for each threshold classification.
 _STATE_SEVERITY = {
@@ -82,12 +129,16 @@ def record_anomaly(
         raise AnomalyError(f'Unknown anomaly severity {severity!r}.')
 
     observed_at = observed_at or timezone.now()
-    active_values = [status.value for status in ACTIVE_ANOMALY_STATUSES]
 
+    # A dismissed condition is refreshed like an active one, so that a reading
+    # still breaching a limit somebody has said is wrong does not open a second
+    # alarm about it. It is not active - it holds no slot, counts nowhere and
+    # tells nobody - and it closes when the reading recovers, like the rest.
     existing = (
         MachineAnomaly.objects
         .select_for_update()
-        .filter(machine=machine, fingerprint=fingerprint, status__in=active_values)
+        .filter(machine=machine, fingerprint=fingerprint, status__in=STANDING_STATUSES)
+        .order_by('-last_observed_at')
         .first()
     )
 
@@ -98,12 +149,27 @@ def record_anomaly(
         if evidence_summary:
             updates['evidence_summary'] = evidence_summary
         if metrics:
-            updates['metrics'] = metrics
+            # The detector's figures are replaced by the newer ones; what
+            # people and tools wrote on the row is not the detector's to drop.
+            kept = {
+                key: value
+                for key, value in (existing.metrics or {}).items()
+                if key in KEPT_METRICS
+            }
+            updates['metrics'] = {**kept, **metrics}
         for name, value in updates.items():
             setattr(existing, name, value)
         existing.save(update_fields=[*updates, 'updated_at'])
         if bindings:
             existing.bindings.add(*bindings)
+        if (
+            'severity' in updates
+            and severity == AnomalySeverity.CRITICAL
+            and existing.status != AnomalyStatus.SUPPRESSED
+        ):
+            # A warning confirmed up to a critical is the moment to tell
+            # somebody, as much as a critical that opened as one.
+            notify_critical(existing)
         return existing, False
 
     try:
@@ -133,6 +199,7 @@ def record_anomaly(
     if bindings:
         anomaly.bindings.add(*bindings)
 
+    notify_critical(anomaly)
     return anomaly, True
 
 
@@ -150,15 +217,61 @@ def evaluate_thresholds(machine, *, now=None) -> list[MachineAnomaly]:
 
     Only bindings with configured bounds participate. A signal with no bounds has
     no opinion about health and must not manufacture one.
+
+    A condition closes only after reading inside its limits for
+    :data:`RESOLVE_AFTER` of plant time. See that constant for why the plant's
+    clock rather than the server's is what makes the rule work.
+
+    A critical condition is confirmed by corroborating detectors where the
+    reviewed limits file asked for it. Two standards require this - IEEE Std
+    3004.8-2016 cl. 8.5.2.2 and API Std 670 cl. 5.4.6.4 - and with eleven or
+    twelve winding detectors on one band per machine, a single failed input
+    would otherwise open a critical alarm about a machine that is fine.
+
+    A lone breach is **de-escalated, never suppressed**. That distinction is the
+    whole of the design. A stator hot spot in one slot is real and is exactly
+    what a detector array exists to catch, so silencing a single detector to
+    avoid nuisance trips would discard the signal the standards are protecting.
+    One detector past critical raises a warning saying it is unconfirmed; two
+    raise the critical. Escalation is left to ``record_anomaly``, which never
+    silently de-escalates an already-open condition - so a condition that was
+    confirmed stays confirmed even if a corroborating detector later fails.
     """
     now = now or timezone.now()
     raised: list[MachineAnomaly] = []
 
-    states = MachineSignalState.objects.select_related('binding').filter(
-        binding__machine=machine, binding__active=True
+    states = list(
+        MachineSignalState.objects.select_related('binding', 'binding__source').filter(
+            binding__machine=machine, binding__active=True
+        )
     )
 
-    seen_fingerprints = set()
+    # The plant's "now": the newest usable reading this machine has. A channel
+    # whose last reading is older than that by more than its source's freshness
+    # window has stopped reporting, and the number it left behind is not a
+    # measurement of the machine as it is. Judged on the plant clock, like the
+    # clearing gate, so a recorded window presented 442 days late is not stale
+    # from end to end.
+    newest = max(
+        (state.observed_at for state in states if state.quality == SignalQuality.GOOD),
+        default=None,
+    )
+
+    # Three outcomes, not two. ``holding`` is never resolved; ``cleared`` earned
+    # the recovery note; anything open and in neither gets the honest one.
+    holding = set()
+    cleared = set()
+    breaching = []
+
+    # Read up front so a clearing reading can be measured against when the
+    # condition was last seen. The same rows are re-read by the resolver below;
+    # one extra query per machine buys the only evidence that distinguishes a
+    # recovery from a dip.
+    last_seen = dict(
+        MachineAnomaly.objects.filter(
+            machine=machine, detector=THRESHOLD_DETECTOR, status__in=STANDING_STATUSES
+        ).values_list('fingerprint', 'last_observed_at')
+    )
 
     for state in states:
         binding = state.binding
@@ -177,28 +290,100 @@ def evaluate_thresholds(machine, *, now=None) -> list[MachineAnomaly]:
             # "Signal returned inside its configured limits", which is a
             # different and untrue claim from "the sensor stopped reporting".
             # Holding the fingerprint leaves an open condition open.
-            seen_fingerprints.add(fingerprint)
+            holding.add(fingerprint)
+            continue
+
+        window = timedelta(seconds=binding.source.freshness_threshold_seconds)
+        if newest is not None and newest - state.observed_at > window:
+            # Stale is handled as unusable is, and for the same reason: a
+            # reading nobody has refreshed can neither open a condition nor
+            # close one. Holding keeps an open condition open and silent.
+            holding.add(fingerprint)
             continue
 
         classification = binding.classify(value)
 
         if classification not in _STATE_SEVERITY:
+            # NORMAL is an affirmative verdict and earns the recovery note:
+            # classify() only reaches it when a bound is actually configured.
+            # UNKNOWN is not. It means this reading cannot be judged - the value
+            # is not a number, or activation wiped the bounds when the point's
+            # meaning changed (assets.activation._refresh_binding). Treating the
+            # two alike is what let "Signal returned inside its configured
+            # limits" be written about a rule that had been deleted.
+            if classification == HealthState.NORMAL:
+                breached_at = last_seen.get(fingerprint)
+                if (
+                    breached_at is not None
+                    and state.observed_at - breached_at < RESOLVE_AFTER
+                ):
+                    # Inside its limits, but not for long enough to call it over.
+                    # Held rather than cleared, so the condition stays open and
+                    # keeps its own note if it later closes for a different
+                    # reason.
+                    holding.add(fingerprint)
+                else:
+                    cleared.add(fingerprint)
             continue
 
-        seen_fingerprints.add(fingerprint)
+        holding.add(fingerprint)
+        breaching.append((state, binding, value, fingerprint, classification))
+
+    # Counted across the whole pass, before any severity is written: the vote is
+    # a property of the group, so it cannot be decided one detector at a time.
+    confirmed = Counter(
+        binding.vote_group
+        for _state, binding, _value, _fp, classification in breaching
+        if binding.vote_group and classification == HealthState.CRITICAL
+    )
+
+    for state, binding, value, fingerprint, classification in breaching:
+        severity = _STATE_SEVERITY[classification]
+        unconfirmed = (
+            classification == HealthState.CRITICAL
+            and binding.vote_minimum
+            and binding.vote_group
+            and confirmed[binding.vote_group] < binding.vote_minimum
+        )
+        if unconfirmed:
+            severity = AnomalySeverity.WARNING
+
+        summary = f'{binding.display_name} read {value} {binding.unit}'.strip()
+        # A reading refreshed on time but holding the same number past the
+        # freshness window is a different doubt from a stale one: the channel
+        # reports, the acquisition behind it may not. Said on the alarm rather
+        # than used to suppress it - a stopped bay's status is rightly constant,
+        # and only the reader can tell a frozen winding from a cool one.
+        window_seconds = binding.source.freshness_threshold_seconds
+        unchanged = (
+            (state.observed_at - state.value_changed_at).total_seconds()
+            if state.value_changed_at
+            else None
+        )
+        if unchanged is not None and unchanged > window_seconds:
+            summary += (
+                f' - and has read exactly that for {_span(unchanged)}, which may'
+                ' be a frozen acquisition rather than a steady machine.'
+            )
+        if unconfirmed:
+            summary += (
+                f' - past its critical limit, but alone: {confirmed[binding.vote_group]}'
+                f' of the {binding.vote_minimum} detectors this group needs to'
+                f' confirm a machine condition. Treat as a possible sensor fault'
+                f' until a second detector agrees.'
+            )
+
         anomaly, _created = record_anomaly(
             machine=machine,
             fingerprint=fingerprint,
             title=f'{binding.display_name} outside configured limits',
-            severity=_STATE_SEVERITY[classification],
+            severity=severity,
             observed_at=state.observed_at,
             source=binding.source,
             bindings=[binding],
             detector=THRESHOLD_DETECTOR,
             detector_version=THRESHOLD_DETECTOR_VERSION,
-            evidence_summary=(
-                f'{binding.display_name} read {value} {binding.unit}'.strip()
-            ),
+            evidence_summary=summary,
             metrics={
                 'value': value,
                 'unit': binding.unit,
@@ -206,33 +391,109 @@ def evaluate_thresholds(machine, *, now=None) -> list[MachineAnomaly]:
                 'warn_max': binding.warn_max,
                 'critical_min': binding.critical_min,
                 'critical_max': binding.critical_max,
+                'vote_group': binding.vote_group or None,
+                'vote_minimum': binding.vote_minimum,
+                'vote_confirmed': confirmed[binding.vote_group]
+                if binding.vote_group
+                else None,
+                'unchanged_for_seconds': unchanged,
             },
         )
         raised.append(anomaly)
 
-    _auto_resolve_threshold_anomalies(machine, seen_fingerprints, now=now)
+    _auto_resolve_threshold_anomalies(machine, holding, cleared, now=now)
 
     return raised
 
 
-def _auto_resolve_threshold_anomalies(machine, still_breaching, *, now):
-    """Resolve threshold anomalies whose signal has returned inside its limits.
+def _span(seconds: float) -> str:
+    """A duration in the largest unit that still reads honestly."""
+    for size, name in ((86400, 'day'), (3600, 'hour'), (60, 'minute')):
+        if seconds >= size:
+            count = int(seconds // size)
+            return f'{count} {name}{"s" if count != 1 else ""}'
+    return f'{int(seconds)} seconds'
+
+
+def _auto_resolve_threshold_anomalies(machine, holding, cleared, *, now):
+    """Close threshold anomalies that are no longer held open, saying why.
+
+    ``holding`` is every condition that must stay open: still breaching, or
+    reading badly enough that there is no evidence either way. ``cleared`` is
+    every one that produced an affirmative in-limits reading.
 
     Only anomalies this detector raised are auto-resolved. A source-declared
-    alarm is the source's to clear, and an operator-acknowledged condition is
-    never closed on their behalf.
+    alarm is the source's to clear.
+
+    An acknowledged condition closes by the same rule as an open one, and so
+    does a dismissed one, keeping on its row who dismissed it and why. The
+    acknowledgement is a record that somebody saw it, and it stays on the row -
+    who, when, and what they wrote - but it is not a claim that the condition
+    is still there, and the detector is the only thing that knows whether it
+    is. Holding it open instead left it in the machine's one active slot for
+    ever: the next real breach on that signal refreshed the old acknowledged
+    row rather than raising an open alarm, and so was never seen as new.
+
+    Everything else is closed, including the cases no clearing reading was seen
+    for. That is deliberate: this function is the only thing in the backend that
+    writes ``RESOLVED``, so an anomaly it declines to close can never be closed
+    at all, and it would hold its machine's unique open slot for ever. The
+    protection is the note, not the refusal - the operator is told whether the
+    condition was observed to end.
     """
     stale = MachineAnomaly.objects.filter(
-        machine=machine, detector=THRESHOLD_DETECTOR, status=AnomalyStatus.OPEN
-    ).exclude(fingerprint__in=still_breaching)
+        machine=machine, detector=THRESHOLD_DETECTOR, status__in=STANDING_STATUSES
+    ).exclude(fingerprint__in=holding)
 
     for anomaly in stale:
         anomaly.status = AnomalyStatus.RESOLVED
         anomaly.resolved_at = now
-        anomaly.resolution_note = 'Signal returned inside its configured limits'
+        anomaly.resolution_note = (
+            RESOLUTION_IN_LIMITS
+            if anomaly.fingerprint in cleared
+            else RESOLUTION_UNASSESSABLE
+        )
         anomaly.save(
             update_fields=['status', 'resolved_at', 'resolution_note', 'updated_at']
         )
+
+
+@transaction.atomic
+def dismiss_anomaly(anomaly_id: int, *, actor, note: str) -> MachineAnomaly:
+    """Dismiss an open or acknowledged anomaly as not worth acting on.
+
+    For the alarm that is wrong rather than the machine: a limit set too tight,
+    a channel known to misread. It leaves the active list, counts nowhere and
+    tells nobody, and while the reading goes on breaching no second alarm is
+    opened about it. It closes when the reading recovers, by the detector's
+    own rule, so that a dismissal is never a permanent silence on a signal.
+
+    A reason is required: the next person to read the history has to be able
+    to tell a wrong limit from a condition somebody chose to ignore.
+    """
+    note = (note or '').strip()
+    if not note:
+        raise AnomalyError('A reason is required to dismiss an alarm.')
+    anomaly = MachineAnomaly.objects.select_for_update().get(pk=anomaly_id)
+    if anomaly.status == AnomalyStatus.SUPPRESSED:
+        return anomaly
+    if anomaly.status not in ACTIVE_ANOMALY_STATUSES:
+        raise AnomalyError(
+            f'Only an open or acknowledged anomaly can be dismissed; this one is '
+            f'{anomaly.get_status_display().lower()}.'
+        )
+    now = timezone.now()
+    anomaly.status = AnomalyStatus.SUPPRESSED
+    anomaly.metrics = {
+        **(anomaly.metrics or {}),
+        'dismissed': {
+            'by': getattr(actor, 'username', '') or '',
+            'at': now.isoformat(),
+            'note': note[:2000],
+        },
+    }
+    anomaly.save(update_fields=['status', 'metrics', 'updated_at'])
+    return anomaly
 
 
 @transaction.atomic

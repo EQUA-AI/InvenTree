@@ -6,11 +6,18 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from assets.activation import live_status, point_hash
-from assets.health_models import MachineSignalBinding
+from assets.health_models import AnomalyStatus, MachineAnomaly, MachineSignalBinding
 from assets.models import DictionaryPoint
 from InvenTree.conversion import convert_physical_value
+from machine_health.connectors.pumphouse_payload import unusable_reason
 from machine_health.mimic_layout import expand_pointer, load_layout, station_pumps
+from machine_health.services.anomalies import (
+    STANDING_STATUSES,
+    THRESHOLD_DETECTOR,
+    fingerprint_for,
+)
 from machine_health.services.display_time import display_shift, to_display
+from machine_health.services.ingestion import MAX_CLOCK_SKEW_SECONDS
 
 STATUS_POINTER = '/pd/{pump}/st'
 
@@ -24,17 +31,22 @@ LIMITS = (
 )
 
 
-def empty_point(pointer, reason, *, unit='', label='', group=''):
+def empty_point(pointer, reason, *, unit='', label='', group='', part_code=''):
     """Keep unknowns explicit and uniform for both expected and discovered points."""
     return {
         'pointer': pointer,
         'label': label or pointer,
         'group': group,
+        # The catalogue code of the part the reading belongs to. The group is
+        # that part's name on this pump, which a review may reword; the code is
+        # what a drawing can be keyed on.
+        'part_code': part_code,
         'value': None,
         'unit': unit,
         'quality': 'unknown',
         'observed_at': None,
         'age_seconds': None,
+        'unchanged_for_seconds': None,
         'reason': reason,
         'condition': 'unknown',
         'thresholds_configured': False,
@@ -56,6 +68,7 @@ def project_point(point, binding, enabled, now, shift=None):
         unit=point.unit,
         label=point.display_name,
         group=point.component.name if point.component_id else '',
+        part_code=(point.component.part.IPN or '') if point.component_id else '',
     )
     if not enabled:
         result['reason'] = 'disabled'
@@ -86,18 +99,40 @@ def project_point(point, binding, enabled, now, shift=None):
     result.update(
         observed_at=observed_at, age_seconds=round(age, 3), quality=state.quality
     )
-    if age < 0:
+    # How long this reading has been the same number, on the plant's clock.
+    # Reported rather than judged: constant is correct for a stopped bay's run
+    # status and wrong for its winding temperature, and the screen is where that
+    # distinction can actually be made by somebody who knows the machine. Null
+    # while the signal has not been seen to change, which is not the same as
+    # "changed just now" and must not be rendered as it.
+    result['unchanged_for_seconds'] = (
+        round((state.observed_at - state.value_changed_at).total_seconds(), 3)
+        if state.value_changed_at
+        else None
+    )
+    # A reading a few seconds ahead of this server is current: plant clocks run
+    # a little fast or slow of ours, and ingestion accepted it on exactly that
+    # understanding. Only a reading from further ahead than ingestion itself
+    # would take is a clock that is wrong rather than merely different.
+    if age < -MAX_CLOCK_SKEW_SECONDS:
         result['reason'] = 'clock_skew'
     elif age > binding.source.freshness_threshold_seconds:
         result['reason'] = 'stale'
     elif state.quality != 'good':
-        result['reason'] = 'bad_quality'
+        # "Unusable" is not one fact. A channel pegged at the over-range marker,
+        # one sitting on a converter rail and one whose reading would not parse
+        # are three different things to go and look at, and collapsing them cost
+        # an operator the only clue on the screen. Asked of the module that owns
+        # the rule, so the answer here cannot drift from the one coercion gave.
+        result['reason'] = (
+            unusable_reason((state.value or {}).get('value')) or 'bad_quality'
+        )
     else:
         value = (state.value or {}).get('value')
         if value is None or not isinstance(value, (str, int, float, bool)):
             result['reason'] = 'no_data'
         elif isinstance(value, (int, float)) and not math.isfinite(value):
-            result['reason'] = 'bad_quality'
+            result['reason'] = 'not_finite'
         elif point.data_type == 'number' and (
             isinstance(value, bool) or not isinstance(value, (int, float))
         ):
@@ -183,7 +218,7 @@ def station_mimic(station, *, unit=None, now=None):
     dictionary = list(
         DictionaryPoint.objects
         .filter(station=station)
-        .select_related('machine', 'component')
+        .select_related('machine', 'component', 'component__part')
         .order_by('path')[:20001]
     )
     if len(dictionary) > 20000:
@@ -267,15 +302,56 @@ def station_mimic(station, *, unit=None, now=None):
             ].items()
             if key not in selected_points
         })
-    alarms = [
-        {**point, 'machine': item.machine_id}
-        for item in dictionary
-        if (point := points[item.path])['condition'] in {'warning', 'critical'}
-        and point['reason'] is None
-    ]
+    # Each alarm names the anomaly the threshold detector holds open for it,
+    # so the page can acknowledge it where it is seen. Matched on the
+    # detector's own fingerprint, from the same function that wrote it. An
+    # alarm with no anomaly behind it is a breach the poller has not evaluated
+    # yet, and says so with a null.
+    tracked = {
+        row['fingerprint']: row
+        for row in MachineAnomaly.objects.filter(
+            machine__in=[station.pk, *(pump.pk for pump in pumps)],
+            detector=THRESHOLD_DETECTOR,
+            status__in=STANDING_STATUSES,
+        ).values('fingerprint', 'pk', 'status', 'severity', 'machine_id')
+    }
+    # The worst active alarm on each machine, for the drawing: a bay with a
+    # critical on it is drawn as one, whatever its status code says. Dismissed
+    # ones do not light it; that is what dismissing is for.
+    worst = {}
+    for row in tracked.values():
+        if row['status'] == AnomalyStatus.SUPPRESSED:
+            continue
+        if worst.get(row['machine_id']) != 'critical':
+            worst[row['machine_id']] = (
+                'critical' if row['severity'] == 'critical' else 'warning'
+            )
+    for bay in bays:
+        bay['alarm'] = worst.get(bay['machine'])
+    alarms = []
+    for item in dictionary:
+        point = points[item.path]
+        if point['condition'] not in {'warning', 'critical'} or point['reason']:
+            continue
+        binding = bindings.get(item.pk)
+        anomaly = (
+            tracked.get(
+                fingerprint_for(THRESHOLD_DETECTOR, binding.pk, binding.external_key)
+            )
+            if binding
+            else None
+        )
+        alarms.append({
+            **point,
+            'machine': item.machine_id,
+            'anomaly': anomaly['pk'] if anomaly else None,
+            'anomaly_status': anomaly['status'] if anomaly else None,
+            'severity': anomaly['severity'] if anomaly else None,
+        })
     return {
         'station': station.pk,
         'name': station.name,
+        'alarm': worst.get(station.pk),
         'generated_at': now,
         'source': status['source'],
         'last_poll_at': status['last_poll_at'],

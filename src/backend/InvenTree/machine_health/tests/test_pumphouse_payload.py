@@ -11,6 +11,8 @@ from django.test import SimpleTestCase
 
 from assets.health_models import SignalQuality
 from machine_health.connectors.pumphouse_payload import (
+    RAIL_NEGATIVE,
+    RAIL_POSITIVE,
     SnapshotError,
     _coerce,
     flatten_snapshot,
@@ -360,3 +362,82 @@ class OverRangeSentinelTests(SimpleTestCase):
     def test_an_ordinary_temperature_is_unaffected(self):
         """The common case keeps its quality."""
         self.assertEqual(_coerce('29.3'), (29.3, SignalQuality.GOOD))
+
+
+class ConverterRailTests(SimpleTestCase):
+    """The same converter saturating at its other range settings.
+
+    ``3276.7`` is 32767 counts at 0.1 scaling and is already handled. These are
+    the signed-16-bit floor and ceiling at the three other scalings this estate
+    uses, and until they were recognised the Health blade showed a valve
+    position of -118.5% and a field voltage of -592.6 V as good measurements.
+
+    The justification is deliberately NOT the one ``OVER_RANGE`` uses. That
+    marker argues no real channel reaches it; here that argument is unavailable,
+    because this repo approved the vibration channels as raw signed values
+    precisely because a third of their readings are negative. What is defended
+    instead is arithmetic, and these tests pin the arithmetic.
+    """
+
+    def test_both_rails_at_every_admitted_scaling_are_bad(self):
+        """The twenty readings the estate actually holds."""
+        for value in (
+            -59.25925827026367, 59.25745391845703,      # x1, vibration
+            -118.51851654052734,                        # x2, valve position
+            -592.5925903320312, 592.5745239257812,      # x10, field voltage
+        ):
+            with self.subTest(value=value):
+                coerced, quality = _coerce(value)
+                self.assertEqual(quality, SignalQuality.BAD)
+                self.assertEqual(coerced, value, 'the value is kept, not zeroed')
+
+    def test_the_two_anchors_are_one_raw_count_apart(self):
+        """The signature that identifies a rail pair rather than two constants.
+
+        32768 and 32767 - the two's-complement floor and ceiling. If these ever
+        drift apart the constants have been mis-transcribed, and the rule would
+        be matching something that is not a converter limit.
+        """
+        lsb = 0.003616898087784648 / 20
+        negative, positive = RAIL_NEGATIVE / lsb, RAIL_POSITIVE / lsb
+
+        # Compared relatively: these are float32 values, so a count near 327,670
+        # carries about 0.02 of rounding. An absolute tolerance tight enough to
+        # be meaningful at 1 count is meaningless at 300,000.
+        self.assertAlmostEqual(negative / (32768 * 10), 1.0, places=6)
+        self.assertAlmostEqual(positive / (32767 * 10), 1.0, places=6)
+
+        # And the claim itself: exactly one raw count apart, which at this x10
+        # scaling is ten lattice steps.
+        self.assertAlmostEqual(negative - positive, 10, delta=0.05)
+
+    def test_a_near_miss_stays_good(self):
+        """The margin, measured rather than assumed.
+
+        Across all 1,305 numeric cached readings the nearest value that is NOT a
+        rail sits 9.7e-4 relative away, against a worst true residual of 6.9e-8.
+        A winding temperature of 59.2 degC must survive a rule aimed at 59.2593.
+        """
+        for value in (59.2, 59.4, 59.5, 58.9, 118.0, 592.0, -59.0):
+            with self.subTest(value=value):
+                self.assertEqual(_coerce(value)[1], SignalQuality.GOOD)
+
+    def test_the_speed_scaling_is_not_admitted(self):
+        """x8 is left alone, and that is a decision rather than an oversight.
+
+        PUMP5_SPEED reads exactly +32767 counts at x8, with a residual as small
+        as any confirmed rail. But 474 rpm is also a plausible instrument range,
+        so saturation and a machine at the top of its range cannot be told apart
+        from the value - and it is the only speed reading on the estate's only
+        running bay.
+        """
+        self.assertEqual(_coerce(474.05963134765625)[1], SignalQuality.GOOD)
+
+    def test_zero_is_not_a_rail(self):
+        """A stopped channel reads zero; the magnitude test must not catch it."""
+        self.assertEqual(_coerce(0.0)[1], SignalQuality.GOOD)
+
+    def test_a_rail_cannot_reach_the_classifier(self):
+        """The whole point: bad quality is what keeps it out of classify()."""
+        _value, quality = _coerce(-118.51851654052734)
+        self.assertNotEqual(quality, SignalQuality.GOOD)

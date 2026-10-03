@@ -1,0 +1,137 @@
+{
+ "schema_version": 1,
+ "reviewer": "aniketdev2018",
+ "provenance": "The alarm limits applied to this estate, one entry per parameter family, each carrying the standard it comes from and the assumption it rests on. Recorded as a file rather than a script because activation clears every bound on a binding whose dictionary point changes meaning (assets/activation.py _refresh_binding), so limits must be re-appliable after any re-review - and because a number that decides when an operator is woken up should be reviewable in a diff.",
+ "policy": "A limit is only as good as its citation. Every entry must name a standard, an edition and a clause or table item, and must say what it assumes. An entry whose unit does not match the binding's reviewed unit is refused rather than coerced: a figure derived for degC must never land on a signal measured in something else. See contrib/cosmos/THRESHOLDS.md for the families deliberately left without a limit, and why.",
+ "limits": [
+  {
+   "family": "Stator winding ETDs",
+   "match": "^/dex/PUMP\\d+_PUMP_MOTOR_WINDING_TEMP(ERATURED)?\\d+$",
+   "unit": "degC",
+   "warn_max": 125,
+   "critical_max": 145,
+   "vote_minimum": 2,
+   "citation": "IS/IEC 60034-1 Table 7 item 1a (85 K rise by embedded detector, thermal class 130(B), 40 degC reference coolant of cl. 6.1); trip from IEEE Std 3004.8-2016 cl. 8.5.2.1 (\"5 degC to 10 degC below the insulation class maximum\", 155 - 10).",
+   "reasoning": "125 degC is the highest reading the machine is designed to produce at rated load, so it is the ceiling rather than an operating band; normal_max is deliberately unset because nothing in this estate establishes where a healthy loaded machine sits - every bay in the recorded window is stopped.",
+   "assumption": "Thermal class 155(F) with rise limited to class 130(B). The nameplate is unconfirmed and is the first question in THRESHOLDS.md. The assumption is not symmetric, which is why it was acceptable to proceed: full class F rise would put the true limits at 150/155, so these warn about 25 K early. Class B insulation would put them near 110/125 and these would warn late.",
+   "vote_note": "IEEE Std 3004.8-2016 cl. 8.5.2.2 recommends RTD voting so damaged and open-circuit inputs are ignored, and API Std 670 cl. 5.4.6.4 makes dual voting standard where two sensors sit in a bearing's load zone. This estate carries 11-12 winding detectors per bay at two stations and 8 at the third, comfortably above the six cl. 8.6.2 requires, so a single failed input would otherwise open a critical alarm about a healthy machine. A lone breach is de-escalated to a warning that says it is unconfirmed - never suppressed, because a hot spot in one slot is exactly what a detector array exists to catch.",
+   "exclude": [
+    {
+     "key": "/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED1",
+     "reason": "Pegged at the source over-range marker 3276.7 and ingested as bad quality. The channel reports nothing, so it cannot carry a temperature limit.",
+     "station": "PH_2"
+    },
+    {
+     "key": "/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED4",
+     "reason": "Pegged at the source over-range marker 3276.7 and ingested as bad quality. The channel reports nothing, so it cannot carry a temperature limit.",
+     "station": "PH_2"
+    },
+    {
+     "key": "/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED10",
+     "reason": "Pegged at the source over-range marker 3276.7 and ingested as bad quality. The channel reports nothing, so it cannot carry a temperature limit.",
+     "station": "PH_2"
+    },
+    {
+     "key": "/dex/PUMP6_PUMP_MOTOR_WINDING_TEMPERATURED1",
+     "reason": "Pegged at the source over-range marker 3276.7 and ingested as bad quality. The channel reports nothing, so it cannot carry a temperature limit.",
+     "station": "PH_2"
+    },
+    {
+     "key": "/dex/PUMP9_PUMP_MOTOR_WINDING_TEMPERATURED6",
+     "reason": "Pegged at the source over-range marker 3276.7 and ingested as bad quality. The channel reports nothing, so it cannot carry a temperature limit.",
+     "station": "PH_2"
+    },
+    {
+     "key": "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMPERATURED2",
+     "reason": "Reads a physically impossible negative on a plant standing in a warm hall; the channel is faulty, not cold. Observed -157.0 degC.",
+     "station": "PH_2"
+    },
+    {
+     "key": "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMPERATURED10",
+     "reason": "Reads a physically impossible negative on a plant standing in a warm hall; the channel is faulty, not cold. Observed -184.7 degC.",
+     "station": "PH_2"
+    },
+    {
+     "key": "/dex/PUMP7_PUMP_MOTOR_WINDING_TEMPERATURED10",
+     "reason": "Reads a physically impossible negative on a plant standing in a warm hall; the channel is faulty, not cold. Observed -65.0 degC.",
+     "station": "PH_2"
+    },
+    {
+     "key": "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMPERATURED1",
+     "reason": "Already at or above the setpoint with every bay stopped, so arming the limit would raise a permanent alarm about a stationary machine. Observed 135.3 degC.",
+     "station": "PH_2"
+    },
+    {
+     "key": "/dex/PUMP6_PUMP_MOTOR_WINDING_TEMPERATURED3",
+     "reason": "Already at or above the setpoint with every bay stopped, so arming the limit would raise a permanent alarm about a stationary machine. Observed 128.3 degC.",
+     "station": "PH_2"
+    },
+    {
+     "key": "/dex/PUMP6_PUMP_MOTOR_WINDING_TEMPERATURED2",
+     "reason": "Breaches in the sampled window even though its newest reading looks ordinary; the original probe of the recorded window excluded it on that basis. Observed 30.2 degC now.",
+     "station": "PH_2"
+    },
+    {
+     "key": "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMPERATURED9",
+     "station": "PH_2",
+     "reason": "Reports the 3276.7 over-range marker in 63 of 75 samples across the recorded span - 84% of the time the channel is not measuring. The 12 usable readings are plausible, which is exactly why the original screen cleared it: apply_winding_thresholds counts usable samples and never asks what fraction of the total they are. A limit here is inert for five readings in six."
+    },
+    {
+     "key": "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMPERATURED7",
+     "station": "PH_3",
+     "reason": "Frozen: one distinct value across 232 hourly documents spanning the whole recorded window AND across 2,149 snapshots at 5-second cadence, while detectors 1-6 on the same bay move across 7-9 distinct values in the same documents. Control bay Pump 01 at the same station has 0 of 17 channels frozen in these two families. The frozen set is a contiguous high-index block - core RTD 5-6 and winding 7-11 - which points at one acquisition module rather than seven independent detector failures. A limit here would present as protection and deliver none; the bay keeps 6 working winding detectors, still at the six cl. 8.6.2 requires."
+    },
+    {
+     "key": "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMPERATURED8",
+     "station": "PH_3",
+     "reason": "Frozen: one distinct value across 232 hourly documents spanning the whole recorded window AND across 2,149 snapshots at 5-second cadence, while detectors 1-6 on the same bay move across 7-9 distinct values in the same documents. Control bay Pump 01 at the same station has 0 of 17 channels frozen in these two families. The frozen set is a contiguous high-index block - core RTD 5-6 and winding 7-11 - which points at one acquisition module rather than seven independent detector failures. A limit here would present as protection and deliver none; the bay keeps 6 working winding detectors, still at the six cl. 8.6.2 requires."
+    },
+    {
+     "key": "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMPERATURED9",
+     "station": "PH_3",
+     "reason": "Frozen: one distinct value across 232 hourly documents spanning the whole recorded window AND across 2,149 snapshots at 5-second cadence, while detectors 1-6 on the same bay move across 7-9 distinct values in the same documents. Control bay Pump 01 at the same station has 0 of 17 channels frozen in these two families. The frozen set is a contiguous high-index block - core RTD 5-6 and winding 7-11 - which points at one acquisition module rather than seven independent detector failures. A limit here would present as protection and deliver none; the bay keeps 6 working winding detectors, still at the six cl. 8.6.2 requires."
+    },
+    {
+     "key": "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMPERATURED10",
+     "station": "PH_3",
+     "reason": "Frozen: one distinct value across 232 hourly documents spanning the whole recorded window AND across 2,149 snapshots at 5-second cadence, while detectors 1-6 on the same bay move across 7-9 distinct values in the same documents. Control bay Pump 01 at the same station has 0 of 17 channels frozen in these two families. The frozen set is a contiguous high-index block - core RTD 5-6 and winding 7-11 - which points at one acquisition module rather than seven independent detector failures. A limit here would present as protection and deliver none; the bay keeps 6 working winding detectors, still at the six cl. 8.6.2 requires."
+    },
+    {
+     "key": "/dex/PUMP2_PUMP_MOTOR_WINDING_TEMPERATURED11",
+     "station": "PH_3",
+     "reason": "Frozen: one distinct value across 232 hourly documents spanning the whole recorded window AND across 2,149 snapshots at 5-second cadence, while detectors 1-6 on the same bay move across 7-9 distinct values in the same documents. Control bay Pump 01 at the same station has 0 of 17 channels frozen in these two families. The frozen set is a contiguous high-index block - core RTD 5-6 and winding 7-11 - which points at one acquisition module rather than seven independent detector failures. A limit here would present as protection and deliver none; the bay keeps 6 working winding detectors, still at the six cl. 8.6.2 requires."
+    }
+   ],
+   "exclusion_note": "All eleven are at Millbrook (Saraswati). THRESHOLDS.md records that applying this row to all 318 channels left 41 of 7,573 sampled readings breaching - 12 above 145 and 29 between 125 and 145 - on a plant whose every bay is stopped, and that six Millbrook channels produced every one of them. These are the channels whose own data cannot carry the limit. Removing an entry from this list arms that channel; do it only with a reading that justifies it."
+  },
+  {
+   "family": "Motor / stator core RTDs (backstop)",
+   "match": "^/dex/PUMP\\d+_(MOTOR_STATOR_CORE_RTD\\d+|MOTOR_CORE_RTD\\d+_PROCESS_VALUE)$",
+   "unit": "degC",
+   "warn_max": 125,
+   "critical_max": 145,
+   "vote_minimum": 2,
+   "citation": "IS/IEC 60034-1 Table 7 item 1a (85 K rise by embedded detector, thermal class 130(B), 40 degC reference coolant of cl. 6.1) and IEEE Std 3004.8-2016 cl. 8.5.2.1 (\"5 degC to 10 degC below the insulation class maximum temperature rating\"), carried unchanged from the stator-winding row. NO STANDARD FIXES A CORE TEMPERATURE: IS/IEC 60034-1 has no core row in Table 7 and cl. 8.10.4 is qualitative. This row cites the winding figures and claims nothing about cores.",
+   "reasoning": "A backstop, not a core limit, and that distinction is the whole of its justification. A core detector reading above the winding's own design ceiling is abnormal whatever the true core figure turns out to be, so 125/145 is a valid upper bound even though it is not the right one. A lower and more useful number was deliberately not invented: it would be the first thing to fire on a hot day, and nothing in this estate establishes where a healthy loaded core sits - every bay is stopped, and the one that runs is frozen on all 66 of its tags. Hottest core reading observed is 67.7 degC, so this fires on nothing today and will only ever fire on a genuine excursion or an instrument fault. Replace it when THRESHOLDS.md question 6 is answered: a BHEL type-test or heat-run report giving measured core rise at rated load is the only route to a real core band. Channels are screened per (station, path) over the recorded span the same way the winding row was; those reading outside 0-125 degC on a stopped plant, or too sparsely sampled to tell silence from absence, are excluded below rather than armed.",
+   "assumption": "That the stator-winding ceiling is a valid UPPER bound for a core detector. It is not the right number and this row does not claim to be one: a real core band needs a measured core rise at rated load (THRESHOLDS.md question 6). What makes it safe is the direction of the error - a core runs cooler than the winding it sits around, so 125/145 warns late rather than early, and a core reading above the winding's own design ceiling is abnormal whatever the true core figure is. The cost of that safety is sensitivity: this row will not catch a core drifting warm.",
+   "vote_note": "IEEE Std 3004.8-2016 cl. 8.5.2.2 recommends RTD voting so damaged and open-circuit inputs are ignored, and API Std 670 cl. 5.4.6.4 makes dual voting standard where two sensors sit in a bearing's load zone. This estate carries 11-12 winding detectors per bay at two stations and 8 at the third, comfortably above the six cl. 8.6.2 requires, so a single failed input would otherwise open a critical alarm about a healthy machine. A lone breach is de-escalated to a warning that says it is unconfirmed - never suppressed, because a hot spot in one slot is exactly what a detector array exists to catch.",
+   "exclude": [
+    {
+     "key": "/dex/PUMP4_MOTOR_CORE_RTD2_PROCESS_VALUE",
+     "station": "PH_3",
+     "reason": "Reads exactly -242.1 in 75 of 75 samples across the recorded span, while its five sibling detectors on the same bay read 36.6-43.4 degC throughout. A constant impossible value is a dead channel, not a temperature, so a limit on it would present as protection and deliver none. This also identifies the -242.1 that BLOCKERS.md carried as an unexplained deep negative; it is not on the converter rail lattice."
+    },
+    {
+     "key": "/dex/PUMP2_MOTOR_CORE_RTD5_PROCESS_VALUE",
+     "station": "PH_3",
+     "reason": "Frozen: one distinct value across 232 hourly documents spanning the whole recorded window AND across 2,149 snapshots at 5-second cadence, while detectors 1-4 on the same bay move across 7-9 distinct values in the same documents. Control bay Pump 01 at the same station has 0 of 17 channels frozen in these two families. The frozen set is a contiguous high-index block - core RTD 5-6 and winding 7-11 - which points at one acquisition module rather than seven independent detector failures. A limit here would present as protection and deliver none; the bay keeps 6 working winding detectors, still at the six cl. 8.6.2 requires."
+    },
+    {
+     "key": "/dex/PUMP2_MOTOR_CORE_RTD6_PROCESS_VALUE",
+     "station": "PH_3",
+     "reason": "Frozen: one distinct value across 232 hourly documents spanning the whole recorded window AND across 2,149 snapshots at 5-second cadence, while detectors 1-4 on the same bay move across 7-9 distinct values in the same documents. Control bay Pump 01 at the same station has 0 of 17 channels frozen in these two families. The frozen set is a contiguous high-index block - core RTD 5-6 and winding 7-11 - which points at one acquisition module rather than seven independent detector failures. A limit here would present as protection and deliver none; the bay keeps 6 working winding detectors, still at the six cl. 8.6.2 requires."
+    }
+   ]
+  }
+ ]
+}

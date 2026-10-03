@@ -171,13 +171,40 @@ correct; it must not become zero, and it is not by itself a fault.
 ## 4. Finish the schematic contract against the references
 
 Edit `src/backend/InvenTree/machine_health/layouts/pumphouse.layout.json` and the two SVGs
-in `src/frontend/src/assets/mimic/`. The current drawing is a generic intake/header and
-pump/motor arrangement, not a reproduction of the missing installation drawings.
+in `src/frontend/src/assets/mimic/`. The drawings were redrawn on 2026-10-02 as schematics -
+a station as forebay, suction header and discharge header; a pump unit as motor, stool and
+bearing, shaft, casing and discharge valve. They are still generic, not a reproduction of the
+missing installation drawings, and the layout stays `provisional`.
 
-- Add the real pressure, RTD, winding, vibration, bearing, cooling, valve, speed, frequency
-  and electrical fields from the approved full dictionary. Confirm HOPD/EOPD interpretation.
+- Shaft speed and discharge pressure are now drawn on the pump unit beside status, power and
+  flow. Cedar Creek's pump 7 has no pressure transmitter, so the coverage report lists it as
+  missing and the page draws it as unavailable; that is correct and must not become zero.
+- The RTD, winding, vibration, bearing, cooling and valve fields are not placed one by one:
+  one pointer template cannot place them, because only seven per-pump tags are approved
+  under the same name at every bay of all three stations. They are drawn by **part**
+  instead. `parts` lists the thirteen physical parts of a pump, each with the catalogue
+  code of the part (`PS-MOTOR`), the id of its region in `pump-unit.svg` (which must carry
+  the same code as `data-part`), and where its number goes. The page numbers each part on
+  the drawing, summarises the readings whose component is that catalogue part, and outlines
+  the region when one is past a limit. Under the summary, one bar per sensor in the part's
+  main unit, its height the reading against the others, so an odd sensor shows before its
+  number is read. A part a pump has no readings for is still drawn, and says so. The four logical systems (electrical, excitation, control, status) are
+  listed under the drawing without a number. Confirm HOPD/EOPD interpretation and the
+  order of the two valves, which the drawing guesses.
+- A pump's own page shows the same view under its Mimic tab, asking its station for the
+  one bay; the machine endpoint returns `parent` and `source_key` for that.
 - An element defines its unique id, view (`station` or `unit`), pointer, role, label and
-  coordinates. Its SVG element must carry the identical id and `data-point` template.
+  coordinates. `x`,`y` is the top-left corner of the reading's tag, in the drawing's own
+  units; an optional `ax`,`ay` is the point on the drawing the tag is tied to by a leader.
+  Its SVG element must carry the identical id and `data-point` template.
+- `bays` is the box on the station drawing between its two headers. The page draws one pump
+  per registered slot inside it, in number order and in the colour of its state, which is
+  what lets one drawing serve a station of four bays and a station of fourteen.
+- The SVGs hold geometry only - the validator refuses text, images, scripts and links - and
+  name their colours as CSS variables with a fallback, `var(--mimic-line, #495057)`. The
+  page sets the variables from its theme, so the drawing follows light and dark; the fallback
+  is what a reviewer sees on opening the file by itself. `--mimic-state` and
+  `--mimic-state-line` are the selected bay's state, and colour its motor and pump.
 - `{pump}` substitutes the exact bay key (`P17`). `{pump_number}` substitutes its numeric
   suffix (`17`), so `/dex/PUMP{pump_number}_...` resolves without positional indexing.
 - The API returns every selected equipment dictionary point in the detail table. Approved
@@ -251,6 +278,42 @@ After the platform and plant checks pass, enable the global flag and restart the
 Django-Q2 worker. Verify fresh readings and timestamps against the source. The **Pumphouse
 mimic** tab is on registered station machine pages. Check stale, disabled and network-failure
 behaviour; verify approved thresholds before interpreting any alarm as a plant limit.
+
+To see the alarm chain work before the plant provides a breach - limit, vote, anomaly, the
+mimic's **Threshold alarms** table with its Acknowledge button, the Health tab - raise one on
+a **development database**:
+
+```bash
+python src/backend/InvenTree/manage.py test_alarm --machine PUMP_PK --yes
+python src/backend/InvenTree/manage.py test_alarm --machine PUMP_PK --clear --yes
+```
+
+It writes a reading at the critical limit plus ten per cent, through the ordinary ingestion,
+on as many detectors as the vote group needs, and the detector raises what it raises. The
+anomaly is marked `test_alarm` in its metrics. `--clear` lets the detector close it by its
+own recovery rule and then restores the displaced readings exactly. An alarm acknowledged
+during the test closes the same way, keeping who acknowledged it and what they wrote.
+
+When a critical opens - or a warning is confirmed up to one - every active user who holds
+the `work_order` role **and** a scope grant on the machine's client is told: a bell
+notification in the web app, and an email if the app has a mail host configured
+(`INVENTREE_EMAIL_HOST` and friends) and the user has not switched email off. Warnings are
+not sent, one signal is announced at most once an hour however often it re-opens, and a
+user can switch the whole thing off under Settings > Notifications
+(`NOTIFY_MACHINE_ALARMS`).
+
+An alarm can be acknowledged (somebody has seen it), have a repair raised against it, or be
+**dismissed** with a required reason - for the alarm that is wrong rather than the machine,
+a limit set too tight. A dismissed alarm leaves the active list, lights nothing and tells
+nobody while the reading goes on breaching, and closes like any other when the reading
+recovers; it is not a permanent silence on the signal. Until the plant's limits are
+reviewed this is the tool for a false alarm - the fix is still the limit.
+
+Where alarms show: the bay on the station drawing is ringed and marked, whatever its status
+code says; the Machines list has an Alarms column, sortable and filterable, in which a
+station's count includes its pumps'; the dashboard has a Machine Alarms widget to add; and
+a machine's Health tab lists its past alarms with how each ended and who acknowledged or
+dismissed it.
 
 ## 5a. Trends: federated reads, and the chart over them
 

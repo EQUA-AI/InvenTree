@@ -185,6 +185,7 @@ export enum ApiEndpoints {
   machine_health_signals = 'machine-health/machines/:id/health/signals/',
   machine_health_anomalies = 'machine-health/machines/:id/health/anomalies/',
   machine_health_anomaly_acknowledge = 'machine-health/machines/:id/health/anomalies/:anomalyId/acknowledge/',
+  machine_health_anomaly_dismiss = 'machine-health/machines/:id/health/anomalies/:anomalyId/dismiss/',
   machine_health_anomaly_evidence = 'machine-health/machines/:id/health/anomalies/:anomalyId/evidence/',
   machine_health_anomaly_analysis = 'machine-health/machines/:id/health/anomalies/:anomalyId/preliminary-analysis/',
   machine_health_data_range = 'machine-health/machines/:id/health/data-range/',

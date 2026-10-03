@@ -5,10 +5,18 @@ from datetime import datetime, timedelta
 from datetime import timezone as utc_timezone
 from unittest.mock import Mock, patch
 
+from django.db.utils import OperationalError
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from assets.health_models import HealthSource, MachineSignalBinding, MachineSignalState
+from assets.health_models import (
+    AnomalySeverity,
+    AnomalyStatus,
+    HealthSource,
+    MachineAnomaly,
+    MachineSignalBinding,
+    MachineSignalState,
+)
 from assets.ingestion_models import IngestionCheckpoint
 from assets.models import AssetMachine, Client
 from assets.tasks import poll_cosmos_pumphouse_sources
@@ -18,6 +26,8 @@ from machine_health.connectors.cosmos_pumphouse import (
     CosmosConfigError,
     CosmosPumphouseConnector,
 )
+from machine_health.services import anomalies as anomaly_services
+from machine_health.services.anomalies import AnomalyError
 from machine_health.services.ingestion import IngestionError, ingest_readings
 from machine_health.services.trends import read_trend
 from machine_health.tests.test_cosmos_pumphouse import (
@@ -27,9 +37,8 @@ from machine_health.tests.test_cosmos_pumphouse import (
 )
 
 
-@override_settings(AIMMS_COSMOS_PUMPHOUSE_ENABLED=True)
-class CosmosPollerTests(TestCase):
-    """One source must safely serve stations that reuse every external tag."""
+class CosmosPollerEnv:
+    """Shared estate for the sweep suites: one account source, N stations."""
 
     def setUp(self):
         """Create an account source with explicitly registered local ownership."""
@@ -84,6 +93,17 @@ class CosmosPollerTests(TestCase):
             self.documents if documents is None else documents
         )
         return connector
+
+    def connector_factory(self, source, **kwargs):
+        """Build a real connector over fake transport, for patching the sweep."""
+        connector = CosmosPumphouseConnector(source, **kwargs)
+        connector._container = FakeContainer(self.documents)
+        return connector
+
+
+@override_settings(AIMMS_COSMOS_PUMPHOUSE_ENABLED=True)
+class CosmosPollerTests(CosmosPollerEnv, TestCase):
+    """One source must safely serve stations that reuse every external tag."""
 
     @override_settings(AIMMS_COSMOS_PUMPHOUSE_ENABLED=False)
     def test_disabled_performs_no_database_or_network_work(self):
@@ -374,3 +394,164 @@ class CosmosPollerTests(TestCase):
                 )
         checkpoint.refresh_from_db()
         self.assertEqual(checkpoint.last_error_code, '')
+
+
+@override_settings(AIMMS_COSMOS_PUMPHOUSE_ENABLED=True)
+class PollerThresholdEvaluationTests(CosmosPollerEnv, TestCase):
+    """The live poll path judges what it ingests.
+
+    Until this existed, ``evaluate_thresholds`` had exactly one caller - the
+    webhook ingest view - which is unreachable for a Cosmos source, because
+    ``ingest_readings`` refuses a Cosmos batch without an explicit station. So
+    every limit on the estate was armed and inert: a reading could land above its
+    critical bound every minute for a year and no anomaly would exist.
+    """
+
+    def bounded_station(self, number, *, warn_max, critical_max):
+        """A station whose level binding carries limits."""
+        checkpoint, binding = self.station(number)
+        binding.warn_max = warn_max
+        binding.critical_max = critical_max
+        binding.save(update_fields=['warn_max', 'critical_max'])
+        return checkpoint, binding
+
+    def test_a_breaching_reading_raises_an_anomaly_through_the_poller(self):
+        """The whole path: Cosmos document to open anomaly, with no webhook."""
+        checkpoint, binding = self.bounded_station(7, warn_max=3.0, critical_max=5.0)
+
+        with patch('assets.tasks.connector_for', side_effect=self.connector_factory):
+            self.assertEqual(poll_cosmos_pumphouse_sources(), 1)
+
+        checkpoint.refresh_from_db()
+        self.assertEqual(checkpoint.last_error_code, '')
+        state = MachineSignalState.objects.get(binding=binding)
+        self.assertEqual(state.value['value'], 7)
+        anomaly = MachineAnomaly.objects.get(machine=checkpoint.station)
+        self.assertEqual(anomaly.severity, AnomalySeverity.CRITICAL)
+        self.assertEqual(anomaly.detector, 'threshold')
+        self.assertEqual(anomaly.status, AnomalyStatus.OPEN)
+
+    def test_a_reading_inside_its_limits_raises_nothing(self):
+        """The same path, proving the anomaly above came from the limit."""
+        self.bounded_station(7, warn_max=30.0, critical_max=50.0)
+
+        with patch('assets.tasks.connector_for', side_effect=self.connector_factory):
+            poll_cosmos_pumphouse_sources()
+
+        self.assertFalse(MachineAnomaly.objects.exists())
+
+    def test_a_poll_that_applies_nothing_evaluates_nothing(self):
+        """A station parked at the end of its recorded window costs no queries.
+
+        Every station on this estate is in exactly that position: the window is
+        fully consumed, so the sweep runs every minute for ever and applies no
+        documents. Evaluating anyway would re-run auto-resolution against
+        evidence that had not moved, on every machine, permanently.
+        """
+        self.bounded_station(7, warn_max=3.0, critical_max=5.0)
+
+        def empty(source, **kwargs):
+            connector = CosmosPumphouseConnector(source, **kwargs)
+            connector._container = FakeContainer([])
+            return connector
+
+        with patch('assets.tasks.connector_for', side_effect=empty), patch(
+            'assets.tasks.anomaly_services.evaluate_thresholds'
+        ) as evaluate:
+            poll_cosmos_pumphouse_sources()
+
+        evaluate.assert_not_called()
+
+    def test_a_detector_failure_is_not_reported_as_a_network_error(self):
+        """The sweep's own handler would file a detector bug as a firewall problem.
+
+        ``_classify`` has no branch for an anomaly or database error and falls
+        through to ``NETWORK``, and a code also suppresses ``last_success_at``. So
+        an exception escaping evaluation would tell an operator that a poll which
+        actually succeeded could not reach Cosmos.
+
+        Patched at the queryset rather than at ``evaluate_thresholds``, because
+        the loop's SELECT runs outside the per-machine guard - that is the escape
+        route a narrower guard leaves open.
+        """
+        checkpoint, binding = self.bounded_station(7, warn_max=3.0, critical_max=5.0)
+
+        with patch('assets.tasks.connector_for', side_effect=self.connector_factory):
+            with patch.object(
+                AssetMachine.objects,
+                'filter',
+                side_effect=OperationalError('detector is broken'),
+            ):
+                with self.assertLogs('inventree', level='WARNING') as logs:
+                    self.assertEqual(poll_cosmos_pumphouse_sources(), 1)
+
+        self.assertTrue(
+            any('detector is broken' in line for line in logs.output),
+            f'the failure was not logged: {logs.output}',
+        )
+        checkpoint.refresh_from_db()
+        self.assertEqual(checkpoint.last_error_code, '')
+        self.assertIsNotNone(checkpoint.last_success_at)
+        # The readings still landed; only the verdict on them was lost.
+        self.assertTrue(MachineSignalState.objects.filter(binding=binding).exists())
+
+    def test_one_machine_failing_detection_does_not_stop_the_others(self):
+        """Per-machine isolation, matching what ingest already guarantees."""
+        first, first_binding = self.bounded_station(7, warn_max=3.0, critical_max=5.0)
+        second, second_binding = self.bounded_station(
+            8, warn_max=3.0, critical_max=5.0
+        )
+        calls = []
+        real = anomaly_services.evaluate_thresholds
+
+        def flaky(machine, **kwargs):
+            calls.append(machine.pk)
+            if machine.pk == first.station_id:
+                raise AnomalyError('lost the unique-index race')
+            return real(machine, **kwargs)
+
+        with patch('assets.tasks.connector_for', side_effect=self.connector_factory):
+            with patch(
+                'assets.tasks.anomaly_services.evaluate_thresholds', side_effect=flaky
+            ):
+                with self.assertLogs('inventree', level='WARNING') as logs:
+                    self.assertEqual(poll_cosmos_pumphouse_sources(), 2)
+
+        self.assertTrue(
+            any('lost the unique-index race' in line for line in logs.output),
+            f'the per-machine failure was not logged: {logs.output}',
+        )
+        self.assertEqual(sorted(calls), sorted([first.station_id, second.station_id]))
+        for checkpoint in (first, second):
+            checkpoint.refresh_from_db()
+            self.assertEqual(checkpoint.last_error_code, '')
+        self.assertEqual(
+            list(MachineAnomaly.objects.values_list('machine_id', flat=True)),
+            [second.station_id],
+        )
+        self.assertTrue(
+            MachineSignalState.objects.filter(binding=first_binding).exists()
+        )
+        self.assertTrue(
+            MachineSignalState.objects.filter(binding=second_binding).exists()
+        )
+
+    def test_a_rolled_back_snapshot_does_not_leave_a_machine_marked_applied(self):
+        """The set of machines to judge must not survive its own rollback.
+
+        ``_apply_snapshot`` is atomic, so a set mutated inside it would keep
+        entries describing rows the rollback discarded, and the poller would then
+        evaluate a machine nothing was written for - reading a stale cached value
+        as this poll's evidence.
+        """
+        checkpoint, binding = self.bounded_station(7, warn_max=3.0, critical_max=5.0)
+        connector = self.connector(checkpoint)
+
+        with patch(
+            'machine_health.services.ingestion.ingest_readings',
+            side_effect=IngestionError('refused'),
+        ):
+            connector.ingest(checkpoint)
+
+        self.assertEqual(connector.applied_machine_ids, set())
+        self.assertFalse(MachineSignalState.objects.filter(binding=binding).exists())

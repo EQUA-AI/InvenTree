@@ -26,16 +26,20 @@ import { PageDetail } from '../../components/nav/PageDetail';
 import { PanelGroup } from '../../components/panels/PanelGroup';
 import { useInstance } from '../../hooks/UseInstance';
 import { openGlobalAIChat } from '../../states/AIChatState';
-import { MachinePartTable } from '../../tables/assets/MachinePartTable';
 import { MaintenanceRecordTable } from '../../tables/assets/MaintenanceRecordTable';
 import { WorkOrderCreateModal } from '../maintenance/components/WorkOrderCreateModal';
+import { InstalledPartsPanel } from './InstalledPartsPanel';
 import { StartRepairModal } from './StartRepairModal';
 import { MachineHealthPanel } from './health/MachineHealthPanel';
+import PumpMimic from './health/PumpMimic';
 import PumphouseMimic from './health/PumphouseMimic';
+import { machineTrail } from './machineTrail';
 import { PerformancePanel } from './performance/PerformancePanel';
 
 export default function MachineDetail() {
-  const { id } = useParams();
+  // The route is `machine/:id/*`; what follows the id is the open tab.
+  const { id, '*': rest } = useParams();
+  const panel = rest?.split('/')[0];
   const navigate = useNavigate();
   const [createRepairOpen, setCreateRepairOpen] = useState(false);
   const [startRepairOpen, setStartRepairOpen] = useState(false);
@@ -45,6 +49,16 @@ export default function MachineDetail() {
     pk: id,
     params: {}
   });
+
+  // The way back up: a pump's trail runs through the station it belongs to.
+  const trail = useMemo(() => machineTrail(machine, panel), [machine, panel]);
+  const breadcrumbs = useMemo(
+    () => [
+      { name: t`Machines`, url: '/machines/index/' },
+      ...trail.breadcrumbs
+    ],
+    [trail]
+  );
 
   // Left-hand details fields
   const detailsLeft: DetailsField[] = useMemo(
@@ -145,6 +159,24 @@ export default function MachineDetail() {
             }
           ]
         : []),
+      // A pump's mimic is its station's, read for the one bay it occupies -
+      // so only a pump that names both has one.
+      ...(machine?.asset_type === 'pump' && machine.parent && machine.source_key
+        ? [
+            {
+              name: 'mimic',
+              label: t`Pump mimic`,
+              icon: <IconActivityHeartbeat />,
+              content: (
+                <PumpMimic
+                  key={machine.pk}
+                  stationId={machine.parent}
+                  unit={machine.source_key}
+                />
+              )
+            }
+          ]
+        : []),
       {
         // Health sits immediately after Details: an operator opening a machine
         // asks how it is doing before asking what it is made of.
@@ -152,7 +184,15 @@ export default function MachineDetail() {
         label: t`Health`,
         icon: <IconActivityHeartbeat />,
         content: machine?.pk ? (
-          <MachineHealthPanel machineId={machine.pk} />
+          <MachineHealthPanel
+            machineId={machine.pk}
+            mimic={
+              machine.asset_type === 'pumphouse' ||
+              (machine.asset_type === 'pump' &&
+                !!machine.parent &&
+                !!machine.source_key)
+            }
+          />
         ) : null
       },
       {
@@ -167,9 +207,7 @@ export default function MachineDetail() {
         name: 'parts',
         label: t`Installed Parts`,
         icon: <IconListCheck />,
-        content: machine?.pk ? (
-          <MachinePartTable machineId={machine.pk} />
-        ) : null
+        content: machine?.pk ? <InstalledPartsPanel machine={machine} /> : null
       },
       {
         name: 'maintenance',
@@ -191,7 +229,8 @@ export default function MachineDetail() {
       <Stack>
         <PageDetail
           title={machine?.name ?? t`Machine Detail`}
-          breadcrumbs={[{ name: t`Machines`, url: '/machines/index/' }]}
+          breadcrumbs={breadcrumbs}
+          lastCrumb={trail.lastCrumb}
           actions={[
             // S14 B5: opens the main chat drawer with this machine preloaded
             // as a VISIBLE routing hint — never authority. Every tool call

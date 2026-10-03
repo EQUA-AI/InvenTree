@@ -16,6 +16,7 @@ from machine_health.connectors.pumphouse_payload import (
     flatten_snapshot,
     in_batches,
 )
+from machine_health.services import anomalies as anomaly_services
 from machine_health.services.ingestion import IngestionError, ingest_readings
 
 
@@ -127,6 +128,7 @@ class Command(BaseCommand):
         ]
         documents.sort(key=lambda document: document['sub_time_period'])
         totals = {'accepted': 0, 'replayed': 0, 'unmapped': 0}
+        touched = set()
         with transaction.atomic():
             for document in documents:
                 for batch in in_batches(flatten_snapshot(document)):
@@ -141,8 +143,23 @@ class Command(BaseCommand):
                         )
                     for key in totals:
                         totals[key] += getattr(result, key)
+                    touched |= result.machine_ids
+            # Evaluated here, inside the transaction and before the rollback
+            # check, for the same reason the live poller evaluates after its
+            # ingest: a reading that lands without being judged is a limit that
+            # exists and does nothing. This is the path that actually loads a
+            # station from a dump, so leaving it out would close the gap only on
+            # the path that reads nothing. A dry run counts and discards.
+            breaching = 0
+            for machine in AssetMachine.objects.filter(pk__in=touched):
+                breaching += len(anomaly_services.evaluate_thresholds(machine))
             if dry_run or totals['accepted'] == 0:
                 transaction.set_rollback(True)
         self.stdout.write(
-            json.dumps({'dry_run': dry_run, 'snapshots': len(documents), **totals})
+            json.dumps({
+                'dry_run': dry_run,
+                'snapshots': len(documents),
+                **totals,
+                'breaching': breaching,
+            })
         )

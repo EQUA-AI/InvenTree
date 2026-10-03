@@ -81,10 +81,95 @@ def _pointer(segment: str) -> str:
 OVER_RANGE = 3276.7
 OVER_RANGE_TOLERANCE = 0.001
 
+#: The same converter saturating at its other range settings. ``OVER_RANGE`` is
+#: 32767 counts at 0.1 scaling; these are the signed-16-bit floor and ceiling at
+#: the three other scalings this estate actually uses. The pair is one raw count
+#: apart, which is what identifies it as a two's-complement rail rather than two
+#: unrelated constants.
+#:
+#: THE JUSTIFICATION IS NOT THE ONE ``OVER_RANGE`` USES, and the difference
+#: matters. That marker argues "at 0.1 scaling no real channel reaches exactly
+#: the 16-bit ceiling". That argument is unavailable here: this repo's own
+#: recorded decision of 2026-09-26 approved the vibration channels as "raw,
+#: unitless source values ... may be signed", precisely because 10-34% of their
+#: readings are negative. So negative is documented normal for that family and
+#: cannot be called impossible.
+#:
+#: What is defensible instead is arithmetic, and it was measured rather than
+#: assumed. Across all 1,305 numeric cached readings, exactly 20 sit within
+#: 6.9e-8 relative of a rail, and the nearest reading that does NOT is 9.7e-4
+#: away - a margin of about 14,000x. The tolerance below sits two orders of
+#: magnitude above the worst true hit and two below the nearest miss, so no
+#: plausible plant value is anywhere near the gate.
+#:
+#: The scalar list is closed on purpose. With a free scalar the predicate
+#: |v| = counts x scale is satisfiable by any number: the negative anchor is
+#: within 1.7e-8 of 1600/27, so an open rule with a generous cap would match
+#: every multiple of 1600 and mark real readings bad. A short enumerated list is
+#: the only form a human can agree to, and each entry is here because a reading
+#: was found on it.
+RAIL_NEGATIVE = 59.25925827026367  # -32768 counts
+RAIL_POSITIVE = 59.25745391845703  # +32767 counts
+RAIL_SCALARS = (1, 2, 10)
+RAIL_RELATIVE_TOLERANCE = 1e-5
+
+#: Deliberately NOT admitted: the x8 scaling, on which ``PUMP5_SPEED`` reads
+#: 474.05963134765625 - exactly +32767 counts, with a residual as small as any
+#: confirmed rail. It is left alone because 474 rpm is also a plausible
+#: instrument range for a machine of this class, so "the converter saturated"
+#: and "the machine sits at the top of its range" cannot be told apart from the
+#: value, and that bay is frozen on all 37 of its channels so its stillness
+#: discriminates nothing. Suppressing the only speed reading on the estate's only
+#: running bay needs better evidence than this. See THRESHOLDS.md.
+
 
 def _pegged(number: float) -> bool:
     """Whether a parsed number is the source's over-range marker."""
     return abs(number - OVER_RANGE) <= OVER_RANGE_TOLERANCE
+
+
+def _railed(number: float) -> bool:
+    """Whether a parsed number sits on a signed-16-bit converter rail.
+
+    Compared by magnitude: the floor and the ceiling are both saturation, and a
+    channel pinned at either is not reporting a measurement.
+    """
+    magnitude = abs(number)
+    if not magnitude:
+        return False
+    for scalar in RAIL_SCALARS:
+        for anchor in (RAIL_NEGATIVE, RAIL_POSITIVE):
+            rail = anchor * scalar
+            if abs(magnitude - rail) <= rail * RAIL_RELATIVE_TOLERANCE:
+                return True
+    return False
+
+
+#: Why a numeric reading cannot be trusted, in the words the mimic shows. Public
+#: because the projection needs the same answer the coercion reached, and the
+#: only way to guarantee that is to ask the same function rather than to
+#: re-implement the predicate at the far end or to store a verdict that was
+#: computed under an older version of the rule.
+UNUSABLE_NOT_FINITE = 'not_finite'
+UNUSABLE_OVER_RANGE = 'over_range'
+UNUSABLE_RAILED = 'railed'
+
+
+def unusable_reason(value) -> str | None:
+    """Return why a reading is not a measurement, or ``None`` if it is one.
+
+    Only numbers are judged here. A string, a bool or a missing value is somebody
+    else's question - the caller knows whether it expected a number.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if not math.isfinite(value):
+        return UNUSABLE_NOT_FINITE
+    if _pegged(value):
+        return UNUSABLE_OVER_RANGE
+    if _railed(value):
+        return UNUSABLE_RAILED
+    return None
 
 
 def _coerce(value):
@@ -95,9 +180,10 @@ def _coerce(value):
     uncertain, never dropped and never replaced with zero: "unparsable" and
     "zero" are different facts about a plant.
 
-    The same applies to :data:`OVER_RANGE`, which is marked bad rather than
-    removed. A pegged channel is a fact worth showing; what it must not do is
-    reach the threshold classifier and be read as a temperature.
+    The same applies to :data:`OVER_RANGE` and to a converter rail, both of
+    which are marked bad rather than removed. A saturated channel is a fact
+    worth showing; what it must not do is reach the threshold classifier and be
+    read as a temperature.
     """
     if value is None:
         return None, SignalQuality.BAD
@@ -108,9 +194,10 @@ def _coerce(value):
         return value, SignalQuality.GOOD
 
     if isinstance(value, (int, float)):
-        if isinstance(value, float) and not math.isfinite(value):
+        reason = unusable_reason(value)
+        if reason == UNUSABLE_NOT_FINITE:
             return None, SignalQuality.BAD
-        if _pegged(value):
+        if reason:
             # Kept, not dropped and not zeroed, for the reason the docstring
             # gives: "pegged" and "zero" are different facts about a plant. Bad
             # quality is what stops it reaching classify().

@@ -270,6 +270,10 @@ class CosmosPumphouseConnector(HealthConnector):
         self._station_uuid = station_uuid
         self.deadline = deadline
         self.last_error_code = ''
+        #: Machines whose current-state row this connector actually wrote, so a
+        #: caller can evaluate thresholds against fresh evidence rather than
+        #: against every machine under the station. Reset per ``ingest`` run.
+        self.applied_machine_ids: set[int] = set()
         self.request_charge: float | None = None
         self._charge_missing = False
         # Sampled reads run several queries at once; the RU tally they share
@@ -851,6 +855,7 @@ class CosmosPumphouseConnector(HealthConnector):
         Returns ``(documents_applied, readings_applied)``.
         """
         self.last_error_code = ''
+        self.applied_machine_ids = set()
         if (
             checkpoint.source_id != self.source.pk
             or not checkpoint.active
@@ -895,7 +900,7 @@ class CosmosPumphouseConnector(HealthConnector):
                 break
 
             try:
-                applied = self._apply_snapshot(checkpoint, document, readings)
+                applied, touched = self._apply_snapshot(checkpoint, document, readings)
             except PollBudgetError:
                 break
             except Exception as exc:
@@ -904,15 +909,29 @@ class CosmosPumphouseConnector(HealthConnector):
 
             documents += 1
             readings_applied += applied
+            # Merged only here, after the atomic snapshot committed.
+            self.applied_machine_ids |= touched
 
         return documents, readings_applied
 
     @transaction.atomic
     def _apply_snapshot(self, checkpoint, document, readings):
-        """Commit every batch and its accepted position together, or none of them."""
+        """Commit every batch and its accepted position together, or none of them.
+
+        Returns ``(readings_applied, machine_ids)``. The machine ids are returned
+        rather than accumulated on the connector because this method is atomic:
+        a set mutated in here would keep its entries through the rollback that
+        discarded the rows they describe, and the caller would then evaluate a
+        machine nothing was written for.
+
+        ``IngestResult.machine_ids`` counts accepted readings only, so a
+        replayed, unmapped or rejected tag contributes nothing - which is exactly
+        the "whose current state did this actually change" question a caller has.
+        """
         from machine_health.services.ingestion import ingest_readings
 
         applied = 0
+        touched = set()
         for batch in in_batches(readings):
             self.request_timeout()
             # The source read horizon is not the server clock for future skew.
@@ -924,10 +943,11 @@ class CosmosPumphouseConnector(HealthConnector):
             if result.rejected:
                 raise SnapshotError('Snapshot contains rejected readings.')
             applied += result.accepted
+            touched |= result.machine_ids
         checkpoint.advance_to(
             document.get('hour_bucket'), int(document['sub_time_period'])
         )
-        return applied
+        return applied, touched
 
     def _stopped(self, checkpoint, exc: Exception) -> None:
         """Log a halted run as a code, leaving the checkpoint untouched."""

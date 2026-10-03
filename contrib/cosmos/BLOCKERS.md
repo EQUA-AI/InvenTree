@@ -666,6 +666,64 @@ would require. **The hypothesis is not supported**; the coincidences are what yo
 get when many channels share a small pool of sentinel values. Recorded so nobody
 re-derives it and stops at the appealing half.
 
+**2026-09-27: the pattern has a name, and rejecting aliasing was right for the
+wrong reason.** A "perfectly symmetric range, one value while running, near zero
+while idle" is the signature of a channel *railing at its own full scale*. It is
+not aliasing because each channel rails at a different engineering value - its
+own converter range - which is exactly why the shared-value rate came back at
+8-30% rather than ~100%.
+
+Verified for `59.26`, on the bound vibration family only. Every one of those 158
+cached readings lies exactly on a raw-count lattice of `0.003616898087784648/20`,
+and the two extremes are `-59.25925827026367` = `-32768 x 10` counts and
+`+59.25745391845703` = `+32767 x 10` counts: a two's-complement rail pair one
+count apart. Not a symmetric range - it only looks symmetric at four significant
+figures. `VS_NDE_BG2_M`'s "exactly -59.26..59.26" is the same pair, which is
+what makes the identification worth writing down: this is a *vibration* channel
+and the constant is the vibration converter's full scale.
+
+**`118.5` is confirmed, and two more besides.** The full-precision values were
+in the state cache all along, on *bound* tags - the first pass of this note
+looked only at the vibration family and wrongly reported them as untestable.
+Swept properly, `abs(value) / LSB = counts x 10 x scalar` for `counts` in
+{32767, 32768} over every integer scalar to 100,000 finds **21 rows and exactly
+four scalars, no others**:
+
+| scalar | value | counts | unit | rows | tag |
+|---:|---|---|---|---:|---|
+| x1 | `-59.25925827026367` | 32768 | - | 10 | vibration, 7 stopped Millbrook bays |
+| x1 | `+59.25745391845703` | 32767 | - | 5 | vibration, Millbrook **Pump 05** |
+| x2 | `-118.51851654052734` | 32768 | percent | 1 | `PUMP9_EOPD_VALVE_POS_PROCESS_VALUE` |
+| x8 | `+474.05963134765625` | 32767 | rpm | 1 | `PUMP5_SPEED` |
+| x10 | `-592.5925903320312` | 32768 | V | 3 | `EXCITATION_FLD_VLTG`, P3/P6/P12 |
+| x10 | `+592.5745239257812` | 32767 | V | 1 | `PUMP5_EXCITATION_FLD_VLTG` |
+
+All 21 carried quality `good` until 2026-09-28; **20 of them are now coerced to `bad`** by `_coerce` plus migration `0018_railed_state_quality`, at the enumerated scalars x1, x2 and x10. The x8 entry - `PUMP5_SPEED` - is deliberately left alone, because 474 rpm is a plausible instrument range and saturation cannot be told from a machine at the top of its range. See THRESHOLDS.md. Two of them are self-evidently not
+measurements - a valve position of **-118.5%** and a field voltage of
+**-592.6 V**.
+
+**`PUMP5_SPEED` = 474.06 rpm is at converter full scale, which is not the same
+claim as "it is a rail", and an earlier draft of this note overstated it.** The
+arithmetic is as good as it gets - 32767 counts at scalar 80, relative error
+6.9e-8, *identical* to the confirmed positive vibration rail, which shares the
+same float32 rounding. But a full scale of 474.06 rpm is also a sensible
+instrument range for a machine of this class, so "the converter saturated" and
+"the machine is at the top of its range" are not distinguishable from this
+value. What is provable is that the reading sits exactly on the 32767 boundary.
+Which of the two it means is a question for the plant, and it is worth asking:
+every other bay's `SPEED` reads sub-rpm noise (-1.50, -0.67, -0.59), so this is
+the only bay where the distinction arises.
+
+Still unexplained: `18.96` (discharge pressure, full precision
+`18.962385177612305`) and `7.111` are **not** on this lattice. Their implied
+scalars land within 6e-5 of `0.32` and `0.12`, which is suggestive of the same
+mechanism on a *different* conversion constant - the lattice above is one
+acquisition card's, not the plant's - but 6e-5 is 150x the float32 tolerance, so
+it is not proof. Settling it needs several samples from those two channels, not
+one. `853.3` fits nothing. **`242.1` is now identified**: it is `PUMP4_MOTOR_CORE_RTD2_PROCESS_VALUE` at Cedar Creek, constant at -242.1 across 75 of 75 samples of the recorded span while its five sibling core detectors on the same bay read 36.6-43.4 degC. A dead channel, not a rail and not a sign fault. It is excluded by name in `contrib/cosmos/limits/pumphouse.limits.json`.
+
+See `THRESHOLDS.md`, "The second pass", finding 2.
+
 ### What to ask for
 
 The OPC-UA tag list for `PS1_PROG_19_4_2019` - an address-space export, a point

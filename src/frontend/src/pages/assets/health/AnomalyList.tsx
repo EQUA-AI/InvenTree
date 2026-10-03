@@ -10,6 +10,7 @@ import {
   Tooltip
 } from '@mantine/core';
 import {
+  IconBellOff,
   IconCheck,
   IconExternalLink,
   IconStethoscope,
@@ -52,6 +53,7 @@ export function AnomalyList({
   onAcknowledge,
   onCreateRepair,
   onAnalyze,
+  onDismiss,
   acknowledging,
   analyzing,
   results
@@ -60,6 +62,8 @@ export function AnomalyList({
   onAcknowledge: (anomaly: MachineAnomaly) => void;
   onCreateRepair: (anomaly: MachineAnomaly) => void;
   onAnalyze: (anomaly: MachineAnomaly) => void;
+  /** Dismiss an alarm as wrong, with a reason; omitted where not offered. */
+  onDismiss?: (anomaly: MachineAnomaly) => void;
   acknowledging: number | null;
   analyzing: number | null;
   results: Record<number, PreliminaryResults>;
@@ -138,6 +142,17 @@ export function AnomalyList({
                     onClick={() => onCreateRepair(anomaly)}
                   >
                     {t`Create repair`}
+                  </Button>
+                )}
+                {onDismiss && (
+                  <Button
+                    size='xs'
+                    variant='subtle'
+                    color='gray'
+                    leftSection={<IconBellOff size={14} />}
+                    onClick={() => onDismiss(anomaly)}
+                  >
+                    {t`Dismiss`}
                   </Button>
                 )}
               </Group>

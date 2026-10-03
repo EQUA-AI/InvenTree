@@ -108,11 +108,14 @@ export default function UserSettings() {
         label: t`Notifications`,
         icon: <IconBellCog />,
         content: (
-          <PluginSettingsGroup
-            mixin='notification'
-            global={false}
-            message={t`The settings below are specific to each available notification method`}
-          />
+          <Stack gap='md'>
+            <UserSettingList keys={['NOTIFY_MACHINE_ALARMS']} />
+            <PluginSettingsGroup
+              mixin='notification'
+              global={false}
+              message={t`The settings below are specific to each available notification method`}
+            />
+          </Stack>
         )
       },
       {

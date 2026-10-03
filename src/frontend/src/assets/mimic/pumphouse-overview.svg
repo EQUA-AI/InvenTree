@@ -1,7 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 180" fill="none" stroke="currentColor" stroke-width="3">
-  <path d="M20 30v115h120V30M25 115q15-10 30 0t30 0t30 0t20 0"/>
-  <path d="M140 125h95V70h330M235 125h330"/>
-  <path d="m550 60 15 10-15 10M300 70v55M420 70v55"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 32 1000 236" fill="none" stroke="var(--mimic-line, #495057)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+  <!-- Forebay: an open basin with water in it. -->
+  <path d="M32 118q10-7 20 0t20 0t20 0t20 0t20 0t20 0t20 0t20 0v116H32z" fill="var(--mimic-water, #d0ebff)" stroke="none"/>
+  <path d="M32 118q10-7 20 0t20 0t20 0t20 0t20 0t20 0t20 0t20 0" stroke-width="1.6"/>
+  <path d="M30 76v160h164V76" stroke-width="3"/>
+
+  <!-- Suction header, fed from the forebay; the pump bays stand on it. -->
+  <path d="M194 204h640v14H194z" fill="var(--mimic-water, #d0ebff)"/>
+  <path d="M834 198v26"/>
+
+  <!-- Discharge header, collecting every bay and leaving the station. -->
+  <path d="M236 56h660v14H236z" fill="var(--mimic-water, #d0ebff)"/>
+  <path d="M236 50v26"/>
+  <path d="M896 49l26 14l-26 14z" fill="var(--mimic-water, #d0ebff)"/>
+
   <g id="forebay" data-point="/dex/COMMAN_FORBAY_LEVEL"/>
   <g id="station-status" data-point="/st"/>
   <g id="pumps-running" data-point="/pc"/>

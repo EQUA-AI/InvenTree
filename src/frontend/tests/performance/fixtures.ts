@@ -246,12 +246,25 @@ export function seriesFor(url: URL, options: { fail?: boolean } = {}) {
   }
 }
 
-export async function mount(page: Page, options: { fail?: boolean } = {}) {
+export async function mount(
+  page: Page,
+  options: { fail?: boolean; signalOverrides?: Record<string, number> } = {}
+) {
   const requests: URL[] = [];
   await page.route(
     `**/api/machine-health/machines/${MACHINE}/health/signals/**`,
-    (route: Route) =>
-      route.fulfill({ json: { count: SIGNALS.length, results: signalRows() } })
+    (route: Route) => {
+      const rows = signalRows();
+      // Let a test place a reading exactly on a limit, which is the one value
+      // the server and the page have to agree about.
+      for (const [key, value] of Object.entries(
+        options.signalOverrides ?? {}
+      )) {
+        const row = rows.find((r) => r.external_key === key);
+        if (row) row.value = value;
+      }
+      return route.fulfill({ json: { count: rows.length, results: rows } });
+    }
   );
   await page.route(
     `**/api/machine-health/machines/${MACHINE}/health/data-range/**`,

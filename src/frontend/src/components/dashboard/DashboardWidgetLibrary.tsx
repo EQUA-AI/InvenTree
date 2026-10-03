@@ -8,6 +8,7 @@ import BlockedFlowWidget from './widgets/BlockedFlowWidget';
 import ColorToggleDashboardWidget from './widgets/ColorToggleWidget';
 import GetStartedWidget from './widgets/GetStartedWidget';
 import LanguageSelectDashboardWidget from './widgets/LanguageSelectWidget';
+import MachineAlarmsWidget from './widgets/MachineAlarmsWidget';
 import NewsWidget from './widgets/NewsWidget';
 import QueryCountDashboardWidget from './widgets/QueryCountDashboardWidget';
 import QueryDashboardWidget from './widgets/QueryDashboardWidget';
@@ -252,6 +253,15 @@ function BuiltinRiskWidgets(): DashboardWidgetProps[] {
       minHeight: 3,
       icon: 'exclamation',
       render: () => <RiskRadarWidget />
+    },
+    {
+      label: 'machine-alarms',
+      title: t`Machine Alarms`,
+      description: t`Machines with an active alarm, worst first`,
+      minWidth: 4,
+      minHeight: 3,
+      icon: 'exclamation',
+      render: () => <MachineAlarmsWidget />
     },
     {
       label: 'blocked-flow',

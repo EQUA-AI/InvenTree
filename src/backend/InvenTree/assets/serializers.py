@@ -19,7 +19,32 @@ class AssetMachineSerializer(serializers.ModelSerializer):
 
     The client is exposed as a bare id only: it is a system identity used for
     scope resolution, never rendered by the frontend.
+
+    A pump names its station, so that a page showing the pump can lead back to
+    the station it was reached from, and the bay of that station it occupies,
+    which is how the station's readings are asked for one pump at a time.
+    Read-only: the hierarchy is the registry's to assign, and a registered
+    identity cannot be reassigned. A pump and its station share a Client by the
+    model's own rule, so whoever may read the pump may read the station it
+    names.
     """
+
+    parent_name = serializers.CharField(
+        source='parent.name', read_only=True, default=None
+    )
+    # Active alarms on the machine and on the pumps under it, when the view
+    # counted them (assets.api.with_open_alarms); absent otherwise rather than
+    # a zero that would read as "none".
+    open_alarms = serializers.SerializerMethodField()
+    open_critical_alarms = serializers.SerializerMethodField()
+
+    def get_open_alarms(self, machine) -> int | None:
+        """Open or acknowledged alarms here and one level below."""
+        return getattr(machine, 'open_alarms', None)
+
+    def get_open_critical_alarms(self, machine) -> int | None:
+        """Of those, the criticals."""
+        return getattr(machine, 'open_critical_alarms', None)
 
     class Meta:
         """Metaclass defining serializer fields."""
@@ -31,6 +56,11 @@ class AssetMachineSerializer(serializers.ModelSerializer):
             'description',
             'active',
             'asset_type',
+            'parent',
+            'parent_name',
+            'source_key',
+            'open_alarms',
+            'open_critical_alarms',
             'location',
             'client',
             'manufacturer',
@@ -39,7 +69,14 @@ class AssetMachineSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         )
-        read_only_fields = ('pk', 'created_at', 'updated_at', 'asset_type')
+        read_only_fields = (
+            'pk',
+            'created_at',
+            'updated_at',
+            'asset_type',
+            'parent',
+            'source_key',
+        )
 
     def create(self, validated_data):
         """Ensure every machine created through the API carries a client."""

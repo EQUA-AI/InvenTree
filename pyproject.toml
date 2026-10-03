@@ -134,7 +134,9 @@ known_django="django"
 sections=["FUTURE","STDLIB","DJANGO","THIRDPARTY","FIRSTPARTY","LOCALFOLDER"]
 
 [tool.codespell]
-ignore-words-list = ["assertIn","SME","intoto","fitH"]
+# "despatch" is the official spelling in Indian grid regulation - the Regional
+# and National Load Despatch Centres, cited in the threshold record.
+ignore-words-list = ["assertIn","SME","intoto","fitH","despatch"]
 
 [tool.pytest]
 django_find_project = false

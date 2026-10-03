@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from django.db.models import Q
+from django.db.models import Count, F, Q
 from django.urls import include, path
 
 from django_filters.rest_framework import FilterSet, filters
@@ -28,6 +28,13 @@ class AssetMachineFilter(FilterSet):
     """Filter set for AssetMachine."""
 
     active = filters.BooleanFilter()
+    has_alarms = filters.BooleanFilter(method='filter_has_alarms')
+
+    def filter_has_alarms(self, queryset, name, value):
+        """Machines with an active alarm on them or on a pump under them."""
+        if value:
+            return queryset.filter(open_alarms__gt=0)
+        return queryset.filter(open_alarms=0)
 
     class Meta:
         """Filter configuration for AssetMachine."""
@@ -121,10 +128,40 @@ class ClientDetail(RetrieveUpdateDestroyAPI):
     role_required = 'admin'
 
 
+def with_open_alarms(queryset):
+    """Count the active alarms on each machine, and on the pumps under it.
+
+    What the morning check wants from the machine list is which stations have
+    something to look at. A station's own alarms are few; its pumps' are where
+    the trouble is, so the station's count carries both. Counted distinct,
+    because the two joins multiply each other's rows.
+    """
+    from assets.health_models import ACTIVE_ANOMALY_STATUSES
+
+    active = [status.value for status in ACTIVE_ANOMALY_STATUSES]
+    own = Q(anomalies__status__in=active)
+    below = Q(children__anomalies__status__in=active)
+    return queryset.annotate(
+        own_alarms=Count('anomalies', filter=own, distinct=True),
+        child_alarms=Count('children__anomalies', filter=below, distinct=True),
+        own_critical=Count(
+            'anomalies', filter=own & Q(anomalies__severity='critical'), distinct=True
+        ),
+        child_critical=Count(
+            'children__anomalies',
+            filter=below & Q(children__anomalies__severity='critical'),
+            distinct=True,
+        ),
+    ).annotate(
+        open_alarms=F('own_alarms') + F('child_alarms'),
+        open_critical_alarms=F('own_critical') + F('child_critical'),
+    )
+
+
 class AssetMachineList(ListCreateAPI):
     """List and create asset machines."""
 
-    queryset = AssetMachine.objects.select_related('client').all()
+    queryset = AssetMachine.objects.select_related('client', 'parent').all()
     serializer_class = AssetMachineSerializer
     permission_classes = [
         InvenTree.permissions.IsAuthenticatedOrReadScope,
@@ -141,18 +178,28 @@ class AssetMachineList(ListCreateAPI):
         'model',
         'serial',
     ]
-    ordering_fields = ['name', 'location', 'manufacturer', 'created_at', 'updated_at']
+    ordering_fields = [
+        'name',
+        'location',
+        'manufacturer',
+        'created_at',
+        'updated_at',
+        'open_alarms',
+        'open_critical_alarms',
+    ]
     ordering = 'name'
 
     def get_queryset(self):
         """Apply registry scope to station/pump records."""
-        return registry_visibility(super().get_queryset(), self.request.user)
+        return with_open_alarms(
+            registry_visibility(super().get_queryset(), self.request.user)
+        )
 
 
 class AssetMachineDetail(RetrieveUpdateDestroyAPI):
     """Retrieve, update, or delete an asset machine."""
 
-    queryset = AssetMachine.objects.all()
+    queryset = AssetMachine.objects.select_related('parent').all()
     serializer_class = AssetMachineSerializer
     permission_classes = [
         InvenTree.permissions.IsAuthenticatedOrReadScope,
@@ -162,7 +209,9 @@ class AssetMachineDetail(RetrieveUpdateDestroyAPI):
 
     def get_queryset(self):
         """Apply registry scope to station/pump records."""
-        return registry_visibility(super().get_queryset(), self.request.user)
+        return with_open_alarms(
+            registry_visibility(super().get_queryset(), self.request.user)
+        )
 
 
 class MachinePartList(ListCreateAPI):

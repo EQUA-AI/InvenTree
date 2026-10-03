@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -102,6 +103,24 @@ def _payload_hash(payload) -> str:
     ).hexdigest()
 
 
+def _quality(raw, claimed):
+    """The quality a reading is stored with, whatever the sender claimed.
+
+    The Cosmos path marks a converter rail or the over-range marker bad before
+    it reaches a limit. A webhook sender says what quality it likes, and said
+    "good" of everything by default - so 3276.7 from that route would have been
+    classified as a temperature and tripped a critical alarm. The rule is the
+    one the Cosmos path uses, asked of the same function, and it can only make
+    a reading worse: a sender's own "bad" is kept.
+    """
+    # Imported here: that module imports this one for its batch bounds.
+    from machine_health.connectors.pumphouse_payload import unusable_reason
+
+    if claimed != SignalQuality.GOOD:
+        return claimed
+    return SignalQuality.BAD if unusable_reason(raw) else SignalQuality.GOOD
+
+
 def _normalize_value(raw, binding: MachineSignalBinding):
     """Apply the binding transform and bound what will be stored."""
     value = raw
@@ -114,6 +133,11 @@ def _normalize_value(raw, binding: MachineSignalBinding):
             value = value * scale
         if isinstance(offset, (int, float)) and not isinstance(offset, bool):
             value = value + offset
+
+    if isinstance(value, float) and not math.isfinite(value):
+        # Not a number, and not one the database can hold either: stored as
+        # absent, as the Cosmos path stores it, with the quality already bad.
+        value = None
 
     stored = {'value': value, 'unit': binding.unit}
     encoded = json.dumps(stored, default=str)
@@ -273,14 +297,21 @@ def ingest_readings(
             result.replayed += 1
             continue
 
+        payload_hash = _payload_hash(item['value'])
         values = {
             'value': _normalize_value(item['value'], binding),
             'observed_at': item['observed_at'],
             'received_at': now,
-            'quality': item['quality'],
+            'quality': _quality(item['value'], item['quality']),
             'source_sequence': item['sequence'],
-            'payload_hash': _payload_hash(item['value']),
+            'payload_hash': payload_hash,
         }
+        # Free, because the hash is computed anyway. A reading that repeats keeps
+        # the instant it last differed, so the span is measured on the plant's
+        # clock and survives a catch-up applying two hundred identical snapshots
+        # in one call.
+        if state is None or state.payload_hash != payload_hash:
+            values['value_changed_at'] = item['observed_at']
 
         if state is None:
             state = MachineSignalState(binding=binding, **values)
@@ -310,6 +341,7 @@ def ingest_readings(
             list(changed.values()),
             [
                 'value',
+                'value_changed_at',
                 'observed_at',
                 'received_at',
                 'quality',
