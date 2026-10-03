@@ -1,23 +1,19 @@
 import { t } from '@lingui/core/macro';
 import {
-  Alert,
-  Anchor,
+  ActionIcon,
   Badge,
   Button,
   Group,
-  Modal,
-  Stack,
   Table,
   Text,
-  Textarea
+  Tooltip
 } from '@mantine/core';
+import { IconExternalLink } from '@tabler/icons-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
-import { apiUrl } from '@lib/functions/Api';
-import { api } from '../../../../App';
 import { WorkOrderCreateModal } from '../../../maintenance/components/WorkOrderCreateModal';
+import { type AlarmAction, AlarmNoteModal } from './AlarmNoteModal';
 import { type Display, conditionText } from './MimicReadings';
 import { reasonLabel, valueText } from './format';
 import type { MimicAlarm } from './types';
@@ -27,13 +23,13 @@ import type { MimicAlarm } from './types';
  *
  * A reading outside its limits and an alarm are two different things. The
  * reading is what the page shows; the alarm is what the detector raised from
- * it, once the vote it needs agreed, and it is the alarm that is acknowledged.
- * A row carrying no alarm yet says so rather than offering a button that
- * would have nothing to act on.
+ * it, once the vote it needs agreed, and it is the alarm that is acted on.
+ * A row carrying no alarm yet says so rather than offering buttons that would
+ * have nothing to act on.
  *
- * Acknowledging records that somebody has seen the condition. It does not
- * resolve it - only the reading coming back inside its limits does that - and
- * the note is the one thing the acknowledgement carries, so it is asked for.
+ * Three things can be done: acknowledge it (somebody has seen it), raise a
+ * repair against it, or dismiss it as wrong, with a reason. None of them
+ * clears it - only the reading coming back inside its limits does that.
  */
 export function AlarmTable({
   alarms,
@@ -42,15 +38,18 @@ export function AlarmTable({
 }: Readonly<{
   alarms: MimicAlarm[];
   display?: Display;
-  /** Called once an acknowledgement is stored, so the page re-reads. */
+  /** Called once an alarm's state has changed, so the page re-reads. */
   onAcknowledged?: () => void;
 }>) {
-  const [acknowledging, setAcknowledging] = useState<MimicAlarm | null>(null);
+  const [noting, setNoting] = useState<{
+    action: AlarmAction;
+    alarm: MimicAlarm;
+  } | null>(null);
   const [repairing, setRepairing] = useState<MimicAlarm | null>(null);
 
   return (
     <>
-      <Table.ScrollContainer minWidth={1040}>
+      <Table.ScrollContainer minWidth={960}>
         <Table striped>
           <Table.Thead>
             <Table.Tr>
@@ -58,86 +57,119 @@ export function AlarmTable({
               <Table.Th>{t`Value`}</Table.Th>
               <Table.Th>{t`Observed at`}</Table.Th>
               <Table.Th>{t`Condition`}</Table.Th>
-              <Table.Th w={170}>{t`Alarm`}</Table.Th>
-              <Table.Th w={320} />
+              <Table.Th>{t`Alarm`}</Table.Th>
+              <Table.Th />
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {alarms.map((alarm) => (
-              <Table.Tr
-                key={`${alarm.machine ?? ''}:${alarm.pointer}`}
-                data-point={alarm.pointer}
-                data-anomaly={alarm.anomaly ?? undefined}
-              >
-                <Table.Td>
-                  {alarm.label}
-                  <Text size='xs' c='dimmed'>
-                    {alarm.pointer}
-                  </Text>
-                </Table.Td>
-                <Table.Td>
-                  {display(alarm)}
-                  {alarm.reason && (
-                    <Text size='xs'>{reasonLabel(alarm.reason)}</Text>
-                  )}
-                </Table.Td>
-                <Table.Td style={{ whiteSpace: 'nowrap' }}>
-                  {alarm.observed_at
-                    ? new Date(alarm.observed_at).toLocaleString()
-                    : t`No reading`}
-                </Table.Td>
-                <Table.Td>{conditionText(alarm)}</Table.Td>
-                <Table.Td>
-                  <AlarmStatus alarm={alarm} />
-                </Table.Td>
-                <Table.Td style={{ whiteSpace: 'nowrap' }}>
-                  <Group
-                    gap='sm'
-                    wrap='nowrap'
-                    justify='flex-end'
-                    preventGrowOverflow={false}
-                  >
-                    {alarm.anomaly !== null && alarm.machine && (
-                      <Anchor
-                        component={Link}
-                        to={`/machines/machine/${alarm.machine}/health`}
-                        size='sm'
-                      >
-                        {t`Open in Health`}
-                      </Anchor>
+            {alarms.map((alarm) => {
+              const raised = alarm.anomaly !== null && !!alarm.machine;
+              const dismissed = alarm.anomaly_status === 'suppressed';
+              return (
+                <Table.Tr
+                  key={`${alarm.machine ?? ''}:${alarm.pointer}`}
+                  data-point={alarm.pointer}
+                  data-anomaly={alarm.anomaly ?? undefined}
+                >
+                  <Table.Td>
+                    {alarm.label}
+                    <Text
+                      size='xs'
+                      c='dimmed'
+                      style={{ wordBreak: 'break-all' }}
+                    >
+                      {alarm.pointer}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td>
+                    {display(alarm)}
+                    {alarm.reason && (
+                      <Text size='xs'>{reasonLabel(alarm.reason)}</Text>
                     )}
-                    {alarm.anomaly !== null &&
-                      alarm.anomaly_status === 'open' && (
+                  </Table.Td>
+                  <Table.Td style={{ whiteSpace: 'nowrap' }}>
+                    {alarm.observed_at
+                      ? new Date(alarm.observed_at).toLocaleString()
+                      : t`No reading`}
+                  </Table.Td>
+                  <Table.Td>{conditionText(alarm)}</Table.Td>
+                  <Table.Td>
+                    <AlarmStatus alarm={alarm} />
+                  </Table.Td>
+                  <Table.Td style={{ whiteSpace: 'nowrap' }}>
+                    <Group
+                      gap='sm'
+                      wrap='nowrap'
+                      justify='flex-end'
+                      preventGrowOverflow={false}
+                    >
+                      {raised && (
+                        <Tooltip label={t`Open in Health`}>
+                          <ActionIcon
+                            component={Link}
+                            to={`/machines/machine/${alarm.machine}/health`}
+                            variant='subtle'
+                            aria-label={t`Open in Health`}
+                          >
+                            <IconExternalLink size={16} />
+                          </ActionIcon>
+                        </Tooltip>
+                      )}
+                      {raised && alarm.anomaly_status === 'open' && (
                         <Button
                           size='compact-sm'
                           variant='light'
-                          onClick={() => setAcknowledging(alarm)}
+                          onClick={() =>
+                            setNoting({ action: 'acknowledge', alarm })
+                          }
                         >
                           {t`Acknowledge`}
                         </Button>
                       )}
-                    {alarm.anomaly !== null && alarm.machine && (
-                      <Button
-                        size='compact-sm'
-                        variant='light'
-                        color='orange'
-                        onClick={() => setRepairing(alarm)}
-                      >
-                        {t`Create repair`}
-                      </Button>
-                    )}
-                  </Group>
-                </Table.Td>
-              </Table.Tr>
-            ))}
+                      {raised && !dismissed && (
+                        <Button
+                          size='compact-sm'
+                          variant='light'
+                          color='orange'
+                          onClick={() => setRepairing(alarm)}
+                        >
+                          {t`Create repair`}
+                        </Button>
+                      )}
+                      {raised && !dismissed && (
+                        <Button
+                          size='compact-sm'
+                          variant='subtle'
+                          color='gray'
+                          onClick={() =>
+                            setNoting({ action: 'dismiss', alarm })
+                          }
+                        >
+                          {t`Dismiss`}
+                        </Button>
+                      )}
+                    </Group>
+                  </Table.Td>
+                </Table.Tr>
+              );
+            })}
           </Table.Tbody>
         </Table>
       </Table.ScrollContainer>
-      <AcknowledgeModal
-        alarm={acknowledging}
-        onClose={() => setAcknowledging(null)}
-        onAcknowledged={() => {
-          setAcknowledging(null);
+      <AlarmNoteModal
+        action={noting?.action ?? 'acknowledge'}
+        target={
+          noting && noting.alarm.anomaly !== null && noting.alarm.machine
+            ? {
+                machine: noting.alarm.machine,
+                anomaly: noting.alarm.anomaly,
+                summary: `${noting.alarm.label}: ${valueText(noting.alarm)}`
+              }
+            : null
+        }
+        onClose={() => setNoting(null)}
+        onDone={() => {
+          setNoting(null);
           onAcknowledged?.();
         }}
       />
@@ -184,102 +216,20 @@ function AlarmStatus({ alarm }: Readonly<{ alarm: MimicAlarm }>) {
       : alarm.severity === 'warning'
         ? t`warning`
         : alarm.severity;
+  if (alarm.anomaly_status === 'suppressed') {
+    return (
+      <Badge variant='outline' color='gray' miw='max-content'>
+        {t`Dismissed`}
+      </Badge>
+    );
+  }
   return alarm.anomaly_status === 'acknowledged' ? (
-    <Badge variant='light' color='gray'>
+    <Badge variant='light' color='gray' miw='max-content'>
       {t`Acknowledged`} · {severity}
     </Badge>
   ) : (
-    <Badge variant='light' color='red'>
+    <Badge variant='light' color='red' miw='max-content'>
       {t`Open`} · {severity}
     </Badge>
-  );
-}
-
-function AcknowledgeModal({
-  alarm,
-  onClose,
-  onAcknowledged
-}: Readonly<{
-  alarm: MimicAlarm | null;
-  onClose: () => void;
-  onAcknowledged: () => void;
-}>) {
-  const [note, setNote] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const close = () => {
-    setNote('');
-    setError(null);
-    onClose();
-  };
-
-  const submit = async () => {
-    if (!alarm || alarm.anomaly === null || !alarm.machine) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await api.post(
-        apiUrl(ApiEndpoints.machine_health_anomaly_acknowledge, alarm.machine, {
-          anomalyId: alarm.anomaly
-        }),
-        { note }
-      );
-      setNote('');
-      onAcknowledged();
-    } catch (failure: any) {
-      // The server's own words where it gave any: a permission refused, an
-      // alarm that closed while the note was being written.
-      setError(
-        failure?.response?.data?.detail ??
-          failure?.response?.data?.error ??
-          t`The acknowledgement was not stored.`
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Modal
-      opened={alarm !== null}
-      onClose={close}
-      title={t`Acknowledge alarm`}
-      centered
-    >
-      {alarm && (
-        <Stack gap='sm'>
-          <Text size='sm'>
-            {alarm.label}: {valueText(alarm)}
-          </Text>
-          <Text size='xs' c='dimmed'>
-            {t`Acknowledging records that you have seen this condition. It closes when the reading returns inside its limits, not before; acknowledging does not make a repair ready.`}
-          </Text>
-          <Textarea
-            label={t`Note`}
-            placeholder={t`What was seen, and what is being done`}
-            value={note}
-            onChange={(event) => setNote(event.currentTarget.value)}
-            autosize
-            minRows={3}
-            maxLength={2000}
-            data-autofocus
-          />
-          {error && (
-            <Alert color='red' variant='light'>
-              {error}
-            </Alert>
-          )}
-          <Group justify='flex-end'>
-            <Button variant='subtle' onClick={close} disabled={busy}>
-              {t`Cancel`}
-            </Button>
-            <Button onClick={submit} loading={busy}>
-              {t`Acknowledge`}
-            </Button>
-          </Group>
-        </Stack>
-      )}
-    </Modal>
   );
 }

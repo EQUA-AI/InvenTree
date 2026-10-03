@@ -7,6 +7,7 @@ import { ModelType } from '@lib/enums/ModelType';
 import { apiUrl } from '@lib/functions/Api';
 import useTable from '@lib/hooks/UseTable';
 import type { AssetMachine } from '@lib/types/Assets';
+import type { TableFilter } from '@lib/types/Filters';
 import type { TableColumn } from '@lib/types/Tables';
 import { InvenTreeTable } from '../../components/tables/InvenTreeTable';
 
@@ -54,7 +55,7 @@ export function AssetMachineTable() {
         // count carries its pumps', so the stations can be read on their own.
         accessor: 'open_alarms',
         title: t`Alarms`,
-        sortable: false,
+        sortable: true,
         render: (record: AssetMachine) => {
           const open = record.open_alarms ?? 0;
           const critical = record.open_critical_alarms ?? 0;
@@ -84,6 +85,21 @@ export function AssetMachineTable() {
     ];
   }, []);
 
+  const tableFilters: TableFilter[] = useMemo(() => {
+    return [
+      {
+        name: 'has_alarms',
+        label: t`Has alarms`,
+        description: t`Show machines with an active alarm on them or on a pump under them`
+      },
+      {
+        name: 'active',
+        label: t`Active`,
+        description: t`Show active machines`
+      }
+    ];
+  }, []);
+
   return (
     <InvenTreeTable<AssetMachine>
       url={apiUrl(ApiEndpoints.asset_machine_list)}
@@ -92,6 +108,7 @@ export function AssetMachineTable() {
       props={{
         modelType: ModelType.assetmachine,
         enableSearch: true,
+        tableFilters: tableFilters,
         enablePagination: true,
         enableRefresh: true,
         enableColumnSwitching: true

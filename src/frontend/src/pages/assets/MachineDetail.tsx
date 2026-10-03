@@ -184,7 +184,15 @@ export default function MachineDetail() {
         label: t`Health`,
         icon: <IconActivityHeartbeat />,
         content: machine?.pk ? (
-          <MachineHealthPanel machineId={machine.pk} />
+          <MachineHealthPanel
+            machineId={machine.pk}
+            mimic={
+              machine.asset_type === 'pumphouse' ||
+              (machine.asset_type === 'pump' &&
+                !!machine.parent &&
+                !!machine.source_key)
+            }
+          />
         ) : null
       },
       {

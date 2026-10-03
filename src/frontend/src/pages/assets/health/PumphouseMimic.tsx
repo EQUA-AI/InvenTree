@@ -17,7 +17,12 @@ import { Link } from 'react-router-dom';
 
 import { AlarmTable } from './mimic/AlarmTable';
 import { ReadingSections } from './mimic/MimicReadings';
-import { MimicSchematic, stateStyle } from './mimic/MimicSchematic';
+import {
+  MimicSchematic,
+  alarmColor,
+  alarmLabel,
+  stateStyle
+} from './mimic/MimicSchematic';
 import { PANEL, UnitMimic } from './mimic/UnitMimic';
 import {
   displayFor,
@@ -68,6 +73,32 @@ function Legend({ data }: Readonly<{ data: MimicData }>) {
             />
             <Text size='xs' c='dimmed'>
               {stateLabel(state)} {counts[state] ?? 0}
+            </Text>
+          </Group>
+        );
+      })}
+      {/* Alarms are counted beside the states, not among them: a bay is
+          running or idle, and has an alarm or has not. */}
+      {(['critical', 'warning'] as const).map((alarm) => {
+        const count = data.bays.filter((bay) => bay.alarm === alarm).length;
+        if (!count) return null;
+        return (
+          <Group
+            key={alarm}
+            gap={6}
+            wrap='nowrap'
+            data-legend={`alarm-${alarm}`}
+          >
+            <Box
+              w={12}
+              h={12}
+              style={{
+                borderRadius: '50%',
+                background: alarmColor(alarm) ?? undefined
+              }}
+            />
+            <Text size='xs' fw={600}>
+              {alarmLabel(alarm)} {count}
             </Text>
           </Group>
         );

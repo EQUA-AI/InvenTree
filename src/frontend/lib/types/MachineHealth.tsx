@@ -117,6 +117,8 @@ export interface MachineAnomaly {
   acknowledged_at: string | null;
   acknowledged_by_name: string | null;
   acknowledgement_note: string;
+  /** Whether the two observation times were moved onto the presented clock. */
+  display_shifted?: boolean;
   resolved_at: string | null;
   resolution_note: string;
   work_order: number | null;

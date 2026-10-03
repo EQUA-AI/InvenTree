@@ -749,3 +749,87 @@ test('a repair is raised from the alarm row, against the anomaly', async ({
     source: { anomaly_id: 44 }
   });
 });
+
+test('a bay with an alarm is marked on the drawing, and counted beside the states', async ({
+  page
+}) => {
+  await page.route('**/api/machine-health/station/17/mimic/**', (route) => {
+    const data = alarmed(
+      new URL(route.request().url()).searchParams.get('unit'),
+      'open'
+    );
+    return route.fulfill({
+      json: {
+        ...data,
+        bays: data.bays.map((bay) => ({
+          ...bay,
+          alarm: bay.key === 'P1' ? 'critical' : null
+        }))
+      }
+    });
+  });
+  await page.goto('/');
+
+  // Still running - that is what the pump is doing - and in alarm as well.
+  const bay = page.getByRole('button', {
+    name: 'P1: Running, Critical alarm',
+    exact: true
+  });
+  await expect(bay).toHaveAttribute('data-alarm', 'critical');
+  await expect(bay.locator('[data-alarm-marker="critical"]')).toBeVisible();
+  await expect(page.locator('g[data-bay="P10"]')).not.toHaveAttribute(
+    'data-alarm',
+    /.+/
+  );
+  await expect(page.locator('[data-legend="alarm-critical"]')).toContainText(
+    'Critical alarm 1'
+  );
+  await expect(page.locator('[data-legend="alarm-warning"]')).toHaveCount(0);
+});
+
+test('an alarm is dismissed only with a reason, and then offers nothing more', async ({
+  page
+}) => {
+  let status: 'open' | 'suppressed' = 'open';
+  const posted: { url: string; body: any }[] = [];
+  await page.route('**/api/machine-health/station/17/mimic/**', (route) => {
+    const data = alarmed(
+      new URL(route.request().url()).searchParams.get('unit'),
+      'open'
+    );
+    data.alarms[0].anomaly_status = status as any;
+    return route.fulfill({ json: data });
+  });
+  await page.route('**/api/machine-health/machines/**', (route) => {
+    posted.push({
+      url: route.request().url(),
+      body: route.request().postDataJSON()
+    });
+    status = 'suppressed';
+    return route.fulfill({ json: { pk: 44, status } });
+  });
+  await page.goto('/?pump=P1');
+
+  const row = page.locator('tr[data-point="/w1"]');
+  await row.getByRole('button', { name: 'Dismiss' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('Dismiss alarm');
+  const confirm = dialog.getByRole('button', { name: 'Dismiss' });
+  // Waving an alarm away has to say why.
+  await expect(confirm).toBeDisabled();
+  await dialog.getByLabel('Reason').fill('Limit set too tight');
+  await confirm.click();
+
+  await expect(dialog).toHaveCount(0);
+  expect(posted).toEqual([
+    {
+      url: expect.stringContaining(
+        '/api/machine-health/machines/1/health/anomalies/44/dismiss/'
+      ),
+      body: { note: 'Limit set too tight' }
+    }
+  ]);
+  await expect(row).toContainText('Dismissed');
+  await expect(row.getByRole('button')).toHaveCount(0);
+  await expect(row.getByRole('link', { name: 'Open in Health' })).toBeVisible();
+});

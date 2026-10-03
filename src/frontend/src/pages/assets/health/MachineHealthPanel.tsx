@@ -1,6 +1,7 @@
 import { t } from '@lingui/core/macro';
 import {
   Alert,
+  Anchor,
   Button,
   Center,
   Group,
@@ -13,6 +14,7 @@ import { notifications } from '@mantine/notifications';
 import { IconInfoCircle, IconRefresh } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
@@ -32,6 +34,7 @@ import { HealthSourceStatusTable } from './HealthSourceStatus';
 import { HealthSummaryPanel } from './HealthSummary';
 import { SignalTable } from './SignalTable';
 import { SignalTrendChart } from './SignalTrendChart';
+import { AlarmNoteModal } from './mimic/AlarmNoteModal';
 
 /**
  * Machine Health blade.
@@ -47,10 +50,16 @@ import { SignalTrendChart } from './SignalTrendChart';
  * creation stays available throughout.
  */
 export function MachineHealthPanel({
-  machineId
-}: Readonly<{ machineId: number }>) {
+  machineId,
+  mimic = false
+}: Readonly<{
+  machineId: number;
+  /** Whether this machine has a mimic tab to lead to. */
+  mimic?: boolean;
+}>) {
   const api = useApi();
   const queryClient = useQueryClient();
+  const [dismissing, setDismissing] = useState<MachineAnomaly | null>(null);
 
   const [acknowledging, setAcknowledging] = useState<number | null>(null);
   const [repairAnomaly, setRepairAnomaly] = useState<MachineAnomaly | null>(
@@ -214,7 +223,20 @@ export function MachineHealthPanel({
       )}
 
       <Stack gap='sm'>
-        <Title order={4}>{t`Active anomalies`}</Title>
+        <Group justify='space-between' align='center'>
+          <Title order={4}>{t`Active anomalies`}</Title>
+          {/* Where the reading behind an alarm is drawn, on the part it
+              belongs to. */}
+          {mimic && (
+            <Anchor
+              component={Link}
+              to={`/machines/machine/${machineId}/mimic`}
+              size='sm'
+            >
+              {t`See the readings on the mimic`}
+            </Anchor>
+          )}
+        </Group>
         <AnomalyList
           anomalies={anomalies}
           acknowledging={acknowledging}
@@ -223,6 +245,7 @@ export function MachineHealthPanel({
           onAcknowledge={handleAcknowledge}
           onCreateRepair={setRepairAnomaly}
           onAnalyze={handleAnalyze}
+          onDismiss={setDismissing}
         />
       </Stack>
 
@@ -245,6 +268,24 @@ export function MachineHealthPanel({
         <Title order={4}>{t`Source connections`}</Title>
         <HealthSourceStatusTable sources={summary.sources ?? []} />
       </Stack>
+
+      <AlarmNoteModal
+        action='dismiss'
+        target={
+          dismissing
+            ? {
+                machine: machineId,
+                anomaly: dismissing.pk,
+                summary: dismissing.evidence_summary || dismissing.title
+              }
+            : null
+        }
+        onClose={() => setDismissing(null)}
+        onDone={() => {
+          setDismissing(null);
+          refreshAll();
+        }}
+      />
 
       <WorkOrderCreateModal
         opened={repairAnomaly !== null}

@@ -26,7 +26,8 @@ export type MimicPoint = {
 export type MimicAlarm = MimicPoint & {
   machine?: number;
   anomaly: number | null;
-  anomaly_status: 'open' | 'acknowledged' | null;
+  /** `suppressed` is an alarm somebody dismissed as wrong, with a reason. */
+  anomaly_status: 'open' | 'acknowledged' | 'suppressed' | null;
   severity: string | null;
 };
 
@@ -68,6 +69,8 @@ export type Bay = {
   name: string;
   active: boolean;
   state: string;
+  /** The worst active alarm on this pump, whatever its status code says. */
+  alarm?: 'critical' | 'warning' | null;
   points: Record<string, MimicPoint>;
 };
 
@@ -92,6 +95,8 @@ export type MimicLayout = {
 export type MimicData = {
   station: number;
   name: string;
+  /** The worst active alarm on the station's own readings. */
+  alarm?: 'critical' | 'warning' | null;
   generated_at: string;
   enabled: boolean;
   source: { pk: number; name: string } | null;

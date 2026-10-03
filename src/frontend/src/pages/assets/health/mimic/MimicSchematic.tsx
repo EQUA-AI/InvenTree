@@ -71,6 +71,30 @@ export function stateStyle(state: string) {
   return STATE[state] ?? UNKNOWN;
 }
 
+/**
+ * The colour an alarm is marked in on the drawing.
+ *
+ * Kept apart from the bay's state on purpose. Running and idle are what the
+ * pump is doing; an alarm is what one of its readings is doing, and a running
+ * pump with a hot winding is still running. So the bay keeps the colour of
+ * its state and gains a marker and a ring in the colour of its alarm.
+ */
+export function alarmColor(alarm?: string | null) {
+  return alarm === 'critical'
+    ? 'var(--mantine-color-red-filled)'
+    : alarm === 'warning'
+      ? 'var(--mantine-color-yellow-filled)'
+      : null;
+}
+
+export function alarmLabel(alarm?: string | null) {
+  return alarm === 'critical'
+    ? t`Critical alarm`
+    : alarm === 'warning'
+      ? t`Warning alarm`
+      : '';
+}
+
 /** The drawings name their colours; this is what the page gives them. */
 const THEME = {
   '--mimic-line': 'var(--mantine-color-text)',
@@ -228,6 +252,7 @@ function Bays({
       {bays.map((bay: Bay, index) => {
         const centre = area.x + slot * (index + 0.5);
         const style = stateStyle(bay.state);
+        const alarm = alarmColor(bay.alarm);
         const chosen = selected === bay.key;
         const flowing = bay.state === 'running';
         const reading = power
@@ -247,7 +272,11 @@ function Bays({
             role='button'
             tabIndex={0}
             aria-pressed={chosen}
-            aria-label={`${bay.key}: ${stateLabel(bay.state)}`}
+            aria-label={
+              alarm
+                ? `${bay.key}: ${stateLabel(bay.state)}, ${alarmLabel(bay.alarm)}`
+                : `${bay.key}: ${stateLabel(bay.state)}`
+            }
             onClick={() => onSelect?.(bay.key)}
             onKeyDown={press}
             onFocus={() => setActive(bay.key)}
@@ -257,10 +286,12 @@ function Bays({
             style={{ cursor: 'pointer', outline: 'none' }}
             opacity={bay.active ? 1 : 0.45}
             data-bay={bay.key}
+            data-alarm={bay.alarm ?? undefined}
           >
             <title>
               {[
                 `${bay.name}: ${stateLabel(bay.state)}`,
+                ...(alarm ? [alarmLabel(bay.alarm)] : []),
                 ...(bay.active ? [] : [t`Inactive equipment`]),
                 ...drawn
                   .filter((e) => e.role !== 'status')
@@ -283,8 +314,11 @@ function Bays({
                     ? 'var(--mantine-color-gray-light)'
                     : 'transparent'
               }
-              stroke={chosen ? 'var(--mantine-primary-color-filled)' : 'none'}
-              strokeWidth={1.5}
+              stroke={
+                alarm ??
+                (chosen ? 'var(--mantine-primary-color-filled)' : 'none')
+              }
+              strokeWidth={alarm ? 2 : 1.5}
             />
             {/* Suction riser, and the discharge riser up to the header. */}
             <path
@@ -327,6 +361,23 @@ function Bays({
               strokeDasharray={style.dashed ? '4 3' : undefined}
             />
             <circle cx={centre} cy={pumpY} r={radius * 0.3} fill={style.line} />
+            {/* The alarm, over the motor: seen from across the room, which is
+                where a station drawing is read from. */}
+            {alarm && (
+              <g data-alarm-marker={bay.alarm}>
+                <circle cx={centre} cy={top + 20} r={8} fill={alarm} />
+                <text
+                  x={centre}
+                  y={top + 24}
+                  textAnchor='middle'
+                  fontSize={11}
+                  fontWeight={700}
+                  fill='var(--mantine-color-white)'
+                >
+                  !
+                </text>
+              </g>
+            )}
             {slot >= 26 && (
               <text
                 x={centre}
