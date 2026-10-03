@@ -146,8 +146,11 @@ export function PointTable({
                   : t`No reading`}
                 {point.age_seconds !== null && (
                   <Text size='xs'>
-                    {t`Age at response`}: {Math.round(point.age_seconds)}{' '}
-                    {t`seconds`}
+                    {/* A reading a few seconds ahead of the server is current,
+                        not from the future: a plant clock's small lead is
+                        shown as no age rather than a negative one. */}
+                    {t`Age at response`}:{' '}
+                    {Math.max(0, Math.round(point.age_seconds))} {t`seconds`}
                   </Text>
                 )}
                 {/* How long the reading has held the same number. Shown as a

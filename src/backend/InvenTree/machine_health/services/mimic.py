@@ -12,6 +12,7 @@ from InvenTree.conversion import convert_physical_value
 from machine_health.connectors.pumphouse_payload import unusable_reason
 from machine_health.mimic_layout import expand_pointer, load_layout, station_pumps
 from machine_health.services.display_time import display_shift, to_display
+from machine_health.services.ingestion import MAX_CLOCK_SKEW_SECONDS
 
 STATUS_POINTER = '/pd/{pump}/st'
 
@@ -104,7 +105,11 @@ def project_point(point, binding, enabled, now, shift=None):
         if state.value_changed_at
         else None
     )
-    if age < 0:
+    # A reading a few seconds ahead of this server is current: plant clocks run
+    # a little fast or slow of ours, and ingestion accepted it on exactly that
+    # understanding. Only a reading from further ahead than ingestion itself
+    # would take is a clock that is wrong rather than merely different.
+    if age < -MAX_CLOCK_SKEW_SECONDS:
         result['reason'] = 'clock_skew'
     elif age > binding.source.freshness_threshold_seconds:
         result['reason'] = 'stale'

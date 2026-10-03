@@ -175,7 +175,10 @@ class MimicTests(InvenTreeAPITestCase):
         """Server time and source quality control what may be presented as current."""
         self.add_point('/old', 9, age=301)
         self.add_point('/bad', 9, quality='bad')
-        self.add_point('/future', 9, age=-10)
+        self.add_point('/future', 9, age=-301)
+        # A plant clock a few seconds ahead of ours is a clock, not a fault: the
+        # reading is as current as a reading gets, and is shown.
+        self.add_point('/slightly_ahead', 9, age=-10)
         points = self.get_mimic(unit='P1').data['points']
         for pointer, reason in [
             ('/old', 'stale'),
@@ -185,6 +188,8 @@ class MimicTests(InvenTreeAPITestCase):
             self.assertIsNone(points[pointer]['value'])
             self.assertEqual(points[pointer]['reason'], reason)
         self.assertGreater(points['/old']['age_seconds'], 300)
+        self.assertEqual(points['/slightly_ahead']['value'], 9)
+        self.assertIsNone(points['/slightly_ahead']['reason'])
 
     @override_settings(AIMMS_COSMOS_PUMPHOUSE_ENABLED=False)
     def test_kill_switch_removes_values_and_alarms(self):
