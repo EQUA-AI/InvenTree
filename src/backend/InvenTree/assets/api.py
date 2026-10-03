@@ -124,7 +124,7 @@ class ClientDetail(RetrieveUpdateDestroyAPI):
 class AssetMachineList(ListCreateAPI):
     """List and create asset machines."""
 
-    queryset = AssetMachine.objects.select_related('client').all()
+    queryset = AssetMachine.objects.select_related('client', 'parent').all()
     serializer_class = AssetMachineSerializer
     permission_classes = [
         InvenTree.permissions.IsAuthenticatedOrReadScope,
@@ -152,7 +152,7 @@ class AssetMachineList(ListCreateAPI):
 class AssetMachineDetail(RetrieveUpdateDestroyAPI):
     """Retrieve, update, or delete an asset machine."""
 
-    queryset = AssetMachine.objects.all()
+    queryset = AssetMachine.objects.select_related('parent').all()
     serializer_class = AssetMachineSerializer
     permission_classes = [
         InvenTree.permissions.IsAuthenticatedOrReadScope,

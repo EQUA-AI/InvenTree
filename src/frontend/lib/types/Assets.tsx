@@ -7,6 +7,13 @@ export interface AssetMachine {
   name: string;
   description: string;
   active: boolean;
+  /** Plain equipment, or a registered pump station or one of its pumps. */
+  asset_type: 'equipment' | 'pumphouse' | 'pump';
+  /** A pump's station. Null for a station and for plain equipment. */
+  parent: number | null;
+  parent_name: string | null;
+  /** Which bay of its station a pump is, e.g. `P5`. Blank for equipment. */
+  source_key: string;
   location: string;
   /**
    * Tenant of this software; how a machine resolves its scope. System-only:
@@ -28,6 +35,32 @@ export interface MachinePart {
   part_group: string;
   quantity: number;
   notes: string;
+}
+
+/**
+ * One component the equipment registry holds for a pump or a station.
+ *
+ * Not the same record as a MachinePart. A MachinePart says a part is fitted,
+ * and how many; a component is a place in the machine that the registry has
+ * identified - from the station's source tags, until someone verifies it.
+ */
+export interface MachineComponent {
+  pk: number;
+  uuid: string;
+  /** The pump or station that owns the component. */
+  machine: number;
+  machine_name: string;
+  /** The catalogue part this component is an occurrence of. */
+  part: number;
+  part_name: string;
+  /** The catalogue part is a logical group rather than a physical item. */
+  virtual: boolean;
+  code: string;
+  name: string;
+  status: 'draft' | 'verified';
+  provenance: string;
+  review_note: string;
+  reviewed_at: string | null;
 }
 
 export interface AssetMaintenanceRecord {

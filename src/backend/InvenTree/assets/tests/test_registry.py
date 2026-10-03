@@ -226,6 +226,91 @@ class RegistryTests(InvenTreeAPITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['children']), 1)
 
+    def test_a_pump_names_its_station(self):
+        """The machine endpoint gives a pump's page the way back to its station."""
+        pump = ensure_pump(self.station, 'P1')
+
+        response = self.client.get(f'/api/assets/machines/{pump.pk}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['parent'], self.station.pk)
+        self.assertEqual(response.data['parent_name'], 'Test station')
+        # And which bay of it: the station's readings are asked for by bay.
+        self.assertEqual(response.data['source_key'], 'P1')
+
+        response = self.client.get(f'/api/assets/machines/{self.station.pk}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.data['parent'])
+        self.assertIsNone(response.data['parent_name'])
+
+    def test_the_station_a_pump_names_is_one_its_reader_may_read(self):
+        """Naming the station discloses nothing, because the two share a Client.
+
+        Whoever may read a pump may read anything the pump's Client owns. The
+        station's name is therefore safe to hand over with the pump only for as
+        long as a pump cannot sit under another Client's station.
+        """
+        other = Client.objects.create(code='registry-other', name='Other Client')
+        private = register_station(
+            client=other,
+            name='Private station',
+            source_namespace='private',
+            source_entity_uuid=uuid4(),
+            source_key='PH_3',
+        )
+        stray = AssetMachine(
+            asset_type='pump',
+            parent=private,
+            client=self.tenant,
+            source_key='P1',
+            name='Private station / Pump 01',
+        )
+        with self.assertRaises(ValidationError):
+            stray.save()
+
+    def test_a_pump_cannot_be_moved_through_the_machine_endpoint(self):
+        """The station link is read-only there: the registry assigns hierarchy."""
+        pump = ensure_pump(self.station, 'P1')
+        elsewhere = register_station(
+            client=self.tenant,
+            name='Second station',
+            source_namespace='test-source',
+            source_entity_uuid=uuid4(),
+            source_key='PH_4',
+        )
+
+        response = self.client.patch(
+            f'/api/assets/machines/{pump.pk}/',
+            {'parent': elsewhere.pk, 'location': 'Bay 1'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['parent'], self.station.pk)
+        pump.refresh_from_db()
+        self.assertEqual(pump.parent_id, self.station.pk)
+        self.assertEqual(pump.location, 'Bay 1')
+
+    def test_listing_pumps_does_not_look_up_each_station(self):
+        """One more pump is one more row, not one more query."""
+        url = '/api/assets/machines/'
+        ensure_pump(self.station, 'P1')
+        # The first request of a process also fills its role and setting
+        # caches; let it, so that both counts below are of the listing alone.
+        self.assertEqual(self.client.get(url).status_code, 200)
+        with CaptureQueriesContext(connection) as one_pump:
+            self.client.get(url)
+
+        for key in ('P2', 'P3', 'P4'):
+            ensure_pump(self.station, key)
+        with CaptureQueriesContext(connection) as four_pumps:
+            response = self.client.get(url)
+
+        self.assertEqual(
+            sorted(row['parent_name'] for row in response.data if row['parent']),
+            ['Test station'] * 4,
+        )
+        self.assertEqual(len(four_pumps), len(one_pump))
+
     def test_preview_is_read_only(self):
         """Planner has no writes and HTTP preview leaves domain rows unchanged."""
         counts = [
@@ -422,6 +507,52 @@ class RegistryTests(InvenTreeAPITestCase):
         other = ensure_pump(self.station, 'P2')
         body.update(machine=other.pk, unit='degC')
         self.assertEqual(self.client.patch(url, body, format='json').status_code, 404)
+
+    def test_a_pump_lists_its_components_and_a_station_lists_them_all(self):
+        """What a machine page's Installed Parts tab reads, for each kind of owner.
+
+        The tab pages through this endpoint as any table does, and for a station
+        relies on the order - the station's own components, then each pump's -
+        to keep one pump's rows together across pages.
+        """
+        motor = Part.objects.get(IPN='PS-MOTOR')
+        forebay = Part.objects.get(IPN='PS-FOREBAY')
+        one = ensure_pump(self.station, 'P1')
+        two = ensure_pump(self.station, 'P2')
+        for machine, part, code, name in [
+            (two, motor, 'PS-MOTOR:1', 'Motor two'),
+            (self.station, forebay, 'PS-FOREBAY:1', 'Forebay'),
+            (one, motor, 'PS-MOTOR:1', 'Motor one'),
+        ]:
+            AssetComponent.objects.create(
+                machine=machine, part=part, code=code, name=name
+            )
+
+        own = self.client.get(f'/api/assets/registry/{one.pk}/components/').data
+        self.assertEqual(own['count'], 1)
+        [row] = own['results']
+        self.assertEqual(row['name'], 'Motor one')
+        self.assertEqual(row['machine'], one.pk)
+        self.assertEqual(row['machine_name'], one.name)
+        self.assertEqual((row['part'], row['part_name']), (motor.pk, motor.name))
+        self.assertEqual((row['code'], row['status']), ('PS-MOTOR:1', 'draft'))
+        self.assertFalse(row['virtual'])
+
+        url = f'/api/assets/registry/{self.station.pk}/components/'
+        everything = self.client.get(url).data
+        self.assertEqual(everything['count'], 3)
+        self.assertEqual(
+            [row['name'] for row in everything['results']],
+            ['Forebay', 'Motor one', 'Motor two'],
+        )
+
+        second_page = self.client.get(url, {'limit': 2, 'offset': 2}).data
+        self.assertEqual(second_page['count'], 3)
+        self.assertEqual([row['name'] for row in second_page['results']], ['Motor two'])
+
+        AssetComponent.objects.filter(name='Motor two').update(status='verified')
+        verified = self.client.get(url, {'status': 'verified'}).data
+        self.assertEqual([row['name'] for row in verified['results']], ['Motor two'])
 
     def test_repeated_components_and_foreign_slot(self):
         """Support repeated Parts but reject incompatible existing inference slots."""
