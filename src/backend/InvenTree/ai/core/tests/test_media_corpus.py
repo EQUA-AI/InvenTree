@@ -687,6 +687,7 @@ def test_citation_shape_is_exact(retrieval_on):
         "access_class",
         "asset_id",
         "excerpt_hash",
+        "source_sha256",
     }
     # Uploader-authored citation fields arrive fenced (the same attacker-
     # writable tier as the pixels); server-stamped ones stay raw.
@@ -713,6 +714,7 @@ def test_citation_shape_is_exact(retrieval_on):
     assert citation["recorded_at"] == "2026-08-14T09:30:00Z"
     assert citation["access_class"] == "evidence_recording"
     assert citation["asset_id"] == "PVS351-UL-2012-0173"
+    assert citation["source_sha256"] == _row()["source_sha256"]
 
 
 def test_as_of_falls_back_to_indexed_at(retrieval_on):
@@ -748,7 +750,9 @@ def test_payload_never_leaks_client_codes_or_storage(retrieval_on):
     _search, _embed, result = _run()
     serialized = json.dumps(result)
     assert "acme" not in serialized
-    assert "source_sha256" not in serialized
+    # Authorized revision identity is public provenance, not a storage key.
+    assert result["chunks"][0]["citation"]["source_sha256"] == _row()["source_sha256"]
+    assert "thumbnail_path" not in serialized
     assert "client_codes" not in serialized
     assert "media_vector" not in serialized
     assert "scope_key" not in serialized
@@ -884,7 +888,7 @@ class _AdjacencySearchClient(_SearchClient):
 
 
 @pytest.fixture
-def adjacency_on(monkeypatch):
+def adjacency_on(retrieval_on, monkeypatch):
     """Retrieval on with the WP-F knobs present (they are AI-plane config)."""
     monkeypatch.setattr(
         config,

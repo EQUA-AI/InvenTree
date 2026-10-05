@@ -328,8 +328,14 @@ def test_contract_manifest_is_stable_and_complete():
 
     assert first == second
     assert manifest_json() == manifest_json()
-    # Matches the catalog pin above: 96 entries (wf8 60 + specialist writes).
-    assert len(first) == 96
+    # The existing screen-only memory proposal tool adds one reviewed entry.
+    assert len(first) == 97
+    memory = [record for record in first if record["name"] == "propose_memory_action"]
+    assert len(memory) == 1
+    assert memory[0]["module"] == "ai.core.integrations.memory_tools"
+    assert memory[0]["pack_id"] == "memory.proposals"
+    assert memory[0]["effect"] == "write"
+    assert memory[0]["authorization"] == "native_permission"
     assert all(record["module"] for record in first)
     assert all(record["qualname"] for record in first)
     assert all(len(record["contract_digest"]) == 64 for record in first)
@@ -358,6 +364,21 @@ def test_stock_superlative_selects_stock_and_analytics():
         "list_database_tables",
         "query_database",
     )
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Propose a memory correction",
+        "Could you propose a memory correction?",
+        "Which parts are low? propose a memory correction",
+        "Which parts are low, propose a memory correction",
+        "Show the parts then propose a memory correction",
+    ],
+)
+def test_memory_proposal_requests_route_to_specialist(query):
+    selected = select_capabilities(query, profile=ALL_VIEW_PROFILE, authenticated=True)
+    assert selected.requires_specialist is True
 
 
 def test_lookup_type_selects_primary_pack_without_an_extra_classifier():
@@ -1449,8 +1470,14 @@ async def test_wf8_agent_is_toolless_guarded_and_bounded(monkeypatch):
         include_detailed_errors=True,
     )
 
+    class FakeTransport:
+        def with_options(self, **kwargs):
+            captured["transport_options"] = kwargs
+            return self
+
     class FakeClient:
         function_invocation_config = invocation_config
+        client = FakeTransport()
 
     class FakeAgent:
         def __init__(self, **kwargs):

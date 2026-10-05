@@ -548,11 +548,11 @@ _SQL_HATCH_PACKS: frozenset[str] = frozenset({
 _WRITE_PATTERN = re.compile(
     r"\b(add|allocate|approve|archive|assign|attach|cancel|change|complete|convert|"
     r"count|create|deactivate|delete|email|generate|install|issue|mark|merge|move|"
-    r"order|purchase|receive|remove|restore|return|send|serialize|set|split|transfer|"
+    r"order|propose|purchase|receive|remove|restore|return|send|serialize|set|split|transfer|"
     r"uninstall|update|"
     r"adding|allocating|approving|archiving|assigning|attaching|cancelling|canceling|changing|"
     r"completing|converting|counting|creating|deactivating|deleting|emailing|"
-    r"generating|installing|issuing|marking|merging|moving|ordering|purchasing|"
+    r"generating|installing|issuing|marking|merging|moving|ordering|proposing|purchasing|"
     r"receiving|removing|restoring|returning|sending|serializing|setting|splitting|"
     r"transferring|uninstalling|updating)\b",
     re.IGNORECASE,
@@ -628,13 +628,13 @@ _CLAUSE_SPLIT_RE = re.compile(
     r"|,\s*(?=(?:and|then|but|so|also|please)\b)"
     r"|,\s*(?=(?:[\w']+\s+){0,2}(?:add|allocate|approve|archive|assign|attach|cancel|"
     r"change|complete|convert|count|create|deactivate|delete|email|generate|install|"
-    r"issue|mark|merge|move|order|purchase|receive|remove|restore|return|send|"
+    r"issue|mark|merge|move|order|propose|purchase|receive|remove|restore|return|send|"
     r"serialize|set|split|transfer|uninstall|update)\b)"
     # A bare 'and'/'then' directly before a write verb or verbal compound starts
     # a new clause ("check stock then return orders 4512 to acme").
     r"|\s+(?:and|then)\s+(?=(?:add|allocate|approve|archive|assign|attach|cancel|"
     r"change|complete|convert|create|deactivate|delete|email|generate|install|"
-    r"issue|mark|merge|move|order|purchase|receive|remove|restore|return|send|"
+    r"issue|mark|merge|move|order|propose|purchase|receive|remove|restore|return|send|"
     r"serialize|set|split|transfer|uninstall|update)\b)",
     re.IGNORECASE,
 )

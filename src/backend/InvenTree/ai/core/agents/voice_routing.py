@@ -271,7 +271,7 @@ class VoiceComplexityRouter:
     _EFFECT_VERB = (
         r"(?:add|allocate|approve|archive|assign|attach|build|cancel|change|close|"
         r"complete|consume|convert|count|create|deactivate|delete|dispatch|edit|email|"
-        r"generate|hold|install|issue|mark|merge|move|open|order|procure|publish|"
+        r"generate|hold|install|issue|mark|merge|move|open|order|procure|propose|publish|"
         r"purchase|receive|release|remove|reorder|reserve|restore|resume|return|schedule|"
         r"send|serialize|set|split|start|submit|transfer|unassign|uninstall|update|upload)"
     )

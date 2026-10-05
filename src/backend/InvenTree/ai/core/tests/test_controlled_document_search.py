@@ -84,7 +84,7 @@ def test_selected_search_drops_rows_rejected_by_final_authority(monkeypatch):
     monkeypatch.setattr(retrieval_authority, "controlled_rows", lambda _rows, **_kwargs: [])
     result = search_selected_document(
         document=_document(),
-        query="pump",
+        query="Why did Pump 2 trip?",
         search_client=_SearchClient(),
         embedding_client=_EmbeddingClient(),
     )

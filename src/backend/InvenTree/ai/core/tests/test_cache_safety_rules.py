@@ -38,7 +38,15 @@ def test_quarantined_persistence_plane_is_gone() -> None:
         "ai.core.infrastructure.checkpoints",
         "ai.core.integrations.search.azure_ai_search",
     ):
-        assert importlib.util.find_spec(module) is None, module
+        try:
+            spec = importlib.util.find_spec(module)
+        except ModuleNotFoundError as exc:
+            # A deleted parent also proves absence; an unrelated dependency
+            # failure must not conceal a broken module that still exists.
+            if not exc.name or not (module == exc.name or module.startswith(exc.name + ".")):
+                raise
+            spec = None
+        assert spec is None, module
 
 
 def test_memory_package_exports_no_cache() -> None:

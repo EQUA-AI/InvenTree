@@ -691,7 +691,7 @@ class ContextAssembler:
             reason=str(summary_reason),
             available=1 if window.summary.strip() else 0,
         )
-        sections.update(semantic_sections)
+        sections = {**sections, **semantic_sections}
         if window.memory_reason in {
             str(DegradeReason.BUDGET_TIMEOUT),
             str(DegradeReason.RECALL_ERROR),

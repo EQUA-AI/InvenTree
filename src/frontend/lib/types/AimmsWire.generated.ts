@@ -70,6 +70,10 @@ export type AimmsCustomChannel =
 // --- Proposal rail (aichat.models) ---
 
 export type ProposalActionType =
+  | 'memory.remember'
+  | 'memory.update'
+  | 'memory.forget'
+  | 'memory.forget_all'
   | 'work_order.hold'
   | 'work_order.resume'
   | 'work_order.schedule'
@@ -96,6 +100,10 @@ export type ProposalActionType =
   | 'closeout.handoff';
 
 export const PROPOSAL_ACTION_LABELS: Record<ProposalActionType, string> = {
+  'memory.remember': 'Remember a memory',
+  'memory.update': 'Correct a memory',
+  'memory.forget': 'Forget a memory',
+  'memory.forget_all': 'Forget all memories',
   'work_order.hold': 'Hold work order',
   'work_order.resume': 'Resume work order',
   'work_order.schedule': 'Schedule work order',

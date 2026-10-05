@@ -62,6 +62,20 @@ def test_every_policy_row_is_complete():
         assert len(policy.ineligible_reason) <= 80
 
 
+@pytest.mark.parametrize(
+    "action_type", ["memory.remember", "memory.update", "memory.forget", "memory.forget_all"]
+)
+def test_memory_actions_remain_screen_review_only(action_type: str) -> None:
+    policy = action_policy(action_type)
+    assert policy is not None
+    assert policy.name == action_type
+    assert policy.review == "full"
+    assert policy.voice_review_allowed is False
+    assert policy.voice_execution_allowed is False
+    assert policy.ineligible_reason
+    assert policy.follow_up, policy.name
+
+
 def test_external_and_irreversible_tools_require_full_review():
     for name, policy in tool_policies().items():
         if policy.severity is not WriteSeverity.REVERSIBLE:

@@ -31,6 +31,10 @@ Every business write requires a read-back and an explicit spoken confirmation (o
 | proposal | `work_order.cancel` | irreversible | `confirm cancel order` | is now cancelled | full | yes | yes | — |
 | proposal | `work_order.create` | reversible | short assent | has been created | brief | yes | no | creating work orders by voice needs a screen preview (F-WO-2) |
 | proposal | `schedule.optimize` | irreversible | `confirm optimize schedule` | schedule has been optimized | full | yes | no | batch scheduling must be reviewed on screen (F-WO-2) |
+| proposal | `memory.remember` | reversible | short assent | memory changes need on-screen review | full | no | no | memory changes need an on-screen review (memory-controls) |
+| proposal | `memory.update` | reversible | short assent | memory changes need on-screen review | full | no | no | memory changes need an on-screen review (memory-controls) |
+| proposal | `memory.forget` | reversible | short assent | memory changes need on-screen review | full | no | no | memory changes need an on-screen review (memory-controls) |
+| proposal | `memory.forget_all` | reversible | short assent | memory changes need on-screen review | full | no | no | memory changes need an on-screen review (memory-controls) |
 | tool | `add_bom_item` | reversible | short assent | now has the new bill-of-materials line | brief | yes | no | that change is not available by voice yet (F-OTHER) |
 | tool | `add_po_line_item` | reversible | short assent | now has the new order line | brief | yes | no | that action has no voice receipt yet (C7) |
 | tool | `add_so_line_item` | reversible | short assent | now has the new sales order line | brief | yes | no | that change is not available by voice yet (F-OTHER) |
@@ -58,6 +62,7 @@ Every business write requires a read-back and an explicit spoken confirmation (o
 | tool | `issue_purchase_order` | irreversible | `confirm issue order` | has been issued to the supplier | full | yes | no | that action has no voice receipt yet (C7) |
 | tool | `mark_email_processed` | external_effect | `confirm mark processed` | email is now marked processed | full | yes | no | that action has no voice receipt yet (C7) |
 | tool | `merge_stock` | irreversible | `confirm merge` | has been merged | full | yes | no | that stock action is not available by voice yet (E6) |
+| tool | `propose_memory_action` | reversible | short assent | proposal ready for review; no memory change applied | brief | yes | no | that change is not available by voice yet (F-OTHER) |
 | tool | `receive_po_items` | irreversible | `confirm receive` | has been received | full | yes | no | that action has no voice receipt yet (C7) |
 | tool | `remove_stock` | irreversible | `confirm remove` | has had the stock removed | full | yes | no | that action has no voice receipt yet (E5) |
 | tool | `return_stock` | irreversible | `confirm return` | has been returned | full | yes | no | that stock action is not available by voice yet (E6) |

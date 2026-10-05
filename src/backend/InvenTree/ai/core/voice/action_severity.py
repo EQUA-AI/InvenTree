@@ -126,7 +126,7 @@ DEFAULT_CONFIRM_PHRASE = "confirm action"
 #: server-authored like the confirm phrases. Exhaustiveness over every
 #: classified tool is asserted by test_voice_action_severity.
 _CHANGE_LABELS: dict[str, str] = {
-    "propose_memory_action": "proposal prepared for review; no memory change has been applied",
+    "propose_memory_action": "proposal ready for review; no memory change applied",
     "add_bom_item": "now has the new bill-of-materials line",
     "add_po_line_item": "now has the new order line",
     "add_so_line_item": "now has the new sales order line",

@@ -1039,7 +1039,16 @@ def test_semantic_fourth_statement_is_refused_and_no_fact_escapes(monkeypatch):
         raise AssertionError("The fourth statement must not execute")
 
     monkeypatch.setattr(memory_recall, "candidates", excessive)
-    with CaptureQueriesContext(connection) as captured:
+    executed = []
+
+    def record_sql(execute, sql, params, many, context):
+        result = execute(sql, params, many, context)
+        executed.append(sql)
+        return result
+
+    # Debug cursors and outer wrappers see the refused fourth attempt too.
+    # Count successful SELECT executions, not calls blocked by the budget.
+    with connection.execute_wrapper(record_sql):
         window = recall_with_facts(
             SimpleNamespace(recall=history),
             None,
@@ -1049,5 +1058,5 @@ def test_semantic_fourth_statement_is_refused_and_no_fact_escapes(monkeypatch):
             recall_filter=recall_filter.recall_filter_for("general"),
             timeout_s=10,
         )
-    assert len(captured) == 3
+    assert executed == ["SELECT 1"] * 3
     assert window.memory_facts == () and window.memory_reason == "budget_timeout"

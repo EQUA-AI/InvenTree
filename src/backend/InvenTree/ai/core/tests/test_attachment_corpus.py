@@ -523,6 +523,7 @@ def test_citation_shape_is_exact(retrieval_on):
         "access_class",
         "asset_id",
         "excerpt_hash",
+        "source_sha256",
     }
     # Document-authored citation fields arrive fenced (they are the same
     # attacker-writable tier as the excerpt); server-stamped ones stay raw.
@@ -536,6 +537,7 @@ def test_citation_shape_is_exact(retrieval_on):
     assert citation["access_class"] == "attachment_uploaded"
     assert citation["chunk_id"] == "att-2-461479ab8523-c7"
     assert citation["page_number"] == 60
+    assert citation["source_sha256"] == _row()["source_sha256"]
 
 
 def test_citation_metadata_cannot_forge_a_fence(retrieval_on):
@@ -593,7 +595,10 @@ def test_payload_never_leaks_client_codes_or_storage(retrieval_on):
     _search, _embed, result = _run()
     serialized = json.dumps(result)
     assert "acme" not in serialized
-    assert "source_sha256" not in serialized
+    # Preserve the authorized document revision used by evidence tracking.
+    assert result["chunks"][0]["citation"]["source_sha256"] == _row()["source_sha256"]
+    assert "scope_key" not in serialized
+    assert "text_vector" not in serialized
     assert "client_codes" not in serialized
 
 

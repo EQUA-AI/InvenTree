@@ -399,6 +399,14 @@ REGISTRY: tuple[FlagEntry, ...] = (
         'FEATURE_QUESTION_CARDS', 'bool', False, 'ai', ai_field='feature_question_cards'
     ),
     FlagEntry(
+        'FEATURE_RAG_PROJECTION_AUDIT',
+        'bool',
+        False,
+        'ai',
+        ai_field='feature_rag_projection_audit',
+        description='Disabled projection-readiness audit; never grants recall or access.',
+    ),
+    FlagEntry(
         'FEATURE_REFLECTION_MIDDLEWARE',
         'bool',
         True,

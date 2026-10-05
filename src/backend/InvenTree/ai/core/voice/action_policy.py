@@ -189,6 +189,10 @@ _LIFECYCLE_LABELS = {
     "dependency.create": "now has the new dependency",
     "dependency.delete": "no longer has that dependency",
     "schedule.optimize": "schedule has been optimized",
+    "memory.remember": "memory changes need on-screen review",
+    "memory.update": "memory changes need on-screen review",
+    "memory.forget": "memory changes need on-screen review",
+    "memory.forget_all": "memory changes need on-screen review",
 }
 
 
@@ -199,6 +203,7 @@ def _proposal(
     confirm_phrase: str = "",
     review: Review = "brief",
     allowed: bool = True,
+    voice_review_allowed: bool = True,
     reason: str = "",
     follow_up: str = "",
 ) -> ActionPolicy:
@@ -210,7 +215,7 @@ def _proposal(
         confirm_phrase=confirm_phrase,
         change_label=_LIFECYCLE_LABELS[name],
         review=review,
-        voice_review_allowed=True,
+        voice_review_allowed=voice_review_allowed,
         voice_execution_allowed=allowed,
         ineligible_reason=reason,
         follow_up=follow_up,
@@ -282,6 +287,17 @@ PROPOSAL_POLICIES: dict[str, ActionPolicy] = {
             allowed=False,
             reason=REASON_BATCH_SCREEN,
             follow_up="F-WO-2",
+        ),
+        *(
+            _proposal(
+                name,
+                review="full",
+                allowed=False,
+                voice_review_allowed=False,
+                reason="memory changes need an on-screen review",
+                follow_up="memory-controls",
+            )
+            for name in ("memory.remember", "memory.update", "memory.forget", "memory.forget_all")
         ),
     )
 }

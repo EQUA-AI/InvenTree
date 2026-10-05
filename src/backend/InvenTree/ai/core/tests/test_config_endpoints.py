@@ -79,7 +79,12 @@ def test_redact_config_masks_secret_shaped_values() -> None:
     )
 
 
-def test_effective_config_is_staff_gated_and_redacted() -> None:
+def test_effective_config_is_staff_gated_and_redacted(monkeypatch) -> None:
+    from ai.core import config
+
+    synthetic_secret = "synthetic-redaction-control-not-a-credential"
+    settings = config.Settings(_env_file=None, AZURE_OPENAI_API_KEY=synthetic_secret)
+    monkeypatch.setattr(config, "get_settings", lambda: settings)
     with (
         patch.object(ai_app, "_principal", return_value=SimpleNamespace(is_staff=False)),
         pytest.raises(HTTPException) as excinfo,
@@ -90,6 +95,8 @@ def test_effective_config_is_staff_gated_and_redacted() -> None:
     with patch.object(ai_app, "_principal", return_value=SimpleNamespace(is_staff=True)):
         payload = asyncio.run(ai_app.effective_config())
     assert "settings" in payload and "registry" in payload
+    assert payload["settings"]["azure_openai_api_key"] == "***"
+    assert synthetic_secret not in str(payload)
     # No secret material anywhere in the serialized settings.
     import json
 

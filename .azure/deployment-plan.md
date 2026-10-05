@@ -1,6 +1,10 @@
 # Azure Deployment Plan
 
-> **Status:** Deployed
+> **Status:** Approved
+
+**Active rollout:** Section 13 below is the October 5 AIMMS test-repair release.
+Sections 1–12 are preserved historical `aimms-experimental` records, not current
+approval or validation proof for `aimms-dev`.
 
 Generated: 2026-07-16T22:07:23Z
 
@@ -432,3 +436,147 @@ az containerapp ingress traffic set \
 ```
 
 Keep `aimms-experimental--0000016` active at 0% through at least `2026-07-25T05:16:22Z`.
+
+---
+
+## 13. AIMMS verified test-repair release — 2026-10-05
+
+### 13.1 Scope and source
+
+- User request: commit and push the isolated changes, deploy the Azure Container
+  App, then rerun failed or unavailable WP-00 checks and report actual results.
+- Branch: `feat/aimms-maf-harness`, exact approved base
+  `05d47269bdd58febafea6f91542ad37b54ed7fdc`.
+- Protected original checkout: `/home/lokesh/Documents/mbpro/InvenTree`; no WIP
+  import, reset, staging, account/RBAC change, PR or AI-generated issue.
+- Recipe: **AZCLI, existing-resource image update**. No AZD initialization,
+  Bicep/Terraform provisioning, new integration, SDK migration, flag activation,
+  demo-data loader or real outbound email/order test.
+- Build only the exact published full commit, using the repository Dockerfile's
+  explicit `production` target, `linux/amd64`, and actual commit hash/date.
+  Resolve its new unique ACR tag to a digest; never deploy a mutable tag or dirty
+  worktree. The new plan text is documentation, not additional runtime behavior.
+- Durable evidence:
+  `/home/lokesh/Documents/mbpro/aimms-maf-migration-evidence/publication-20261005/`.
+- User confirmed the existing subscription, East US 2 staging target and
+  conditional web/worker alignment, and required preservation of **all current
+  database data and every shared consumer**. This approves the scoped plan, not
+  an unqualified migration, data reset or feature/integration activation.
+- Publication allowlist: the 30 frozen repair/planning paths recorded in
+  `release-allowlist.json`, plus this deployment-plan update. Exact final
+  commit/index hashes and remote branch read-back are release gates.
+
+### 13.2 Existing Azure context and observed baseline
+
+| Attribute | Observed target |
+|---|---|
+| Classification | Existing development/staging deployment, not assumed disposable |
+| Subscription | Microsoft Azure Sponsorship, `5b75a75a-fff3-4d72-a3e9-5e16cb6a8687` |
+| Resource group / region | `EpconChat` / East US 2 |
+| Container Apps environment | `epcon-ai-env`, Consumption profile, Succeeded |
+| Web app / container | `aimms-dev` / `aimms-dev` |
+| Companion worker / container | `aimms-dev-worker` / `aimms-dev-worker`; conditional alignment confirmed by user |
+| Registry / repository | ACR `aimms`, `aimms-hjcxb6epgvhgbyge.azurecr.io`, repository `aimms-dev` |
+| Serving web revision | `aimms-dev--0000132`, Healthy / Running, 100% traffic |
+| Worker revision | `aimms-dev-worker--0000062`, Single revision mode |
+| Current immutable image | `aimms-hjcxb6epgvhgbyge.azurecr.io/aimms-dev@sha256:401114b23a56ca50ae8f7814bb76d68e9ff52a9d12e9012fd99b75ac1f5bac94` |
+| Public endpoint | `https://aimms-dev.kindpebble-bfe407e4.eastus2.azurecontainerapps.io` |
+| Migration-owner posture | Web `INVENTREE_AUTO_UPDATE=True`; worker `False` |
+| Worker startup | `invoke worker`; preserve existing queues, secrets, mounts and auto-update false |
+| Web image pull | Existing system identity has ACR-scoped `AcrPull`; do not create or change RBAC |
+| Worker image pull | Existing registry secret reference; do not read or replace its value |
+
+Read-only exec on the exact serving revision reported Python 3.14.7, Django
+5.2.17, OpenAI 3.14.1 and `agent-framework-core` 1.0.0b251120. Its commit value is
+`3417cf5a233c026abd2f71da0eea3d97d9ec5e85`, frontend build-info is absent, and
+candidate-era `aichat.0053` / `assets.0016` files are absent. The first exec attempt
+returned transport exit zero but a remote Python syntax error; it is failed
+evidence, not a successful attestation. The corrected no-whitespace command
+returned actual JSON metadata without application/provider initialization.
+
+### 13.3 Material deployment gate — not a minor image-only assumption
+
+Comparison of the observed commit value to the approved base finds **418 commits,
+2,012 changed paths and 601 migration-file changes** (82 added, 515 deleted, four
+modified). This includes upstream squashes and fork application/schema changes;
+it is not 601 pending SQL operations. Source hashes and actual applied migration
+history must establish the real gap before any new web image starts.
+
+Starting a zero-traffic revision is **not** harmless: current web auto-update may
+migrate the shared PostgreSQL database before traffic promotion. Traffic rollback
+alone cannot undo schema changes. Do not create a candidate revision until the
+upgrade/recovery and old/new-worker compatibility gates below pass and the exact
+operation scope is confirmed. No shared database backup, migration, data loader,
+maintenance-mode or queue change is authorized by this document alone.
+
+### 13.4 Resource inventory and capacity disposition
+
+| Resource type | New ARM resources | Total after rollout | Limit/capacity evidence | Disposition |
+|---|---:|---|---|---|
+| `Microsoft.App/managedEnvironments` | 0 | Existing `epcon-ai-env` unchanged | Existing environment Succeeded; quota CLI returned `MissingRegistrationForResourceProvider` for `Microsoft.Quota` | No provider registration or quota increase |
+| Container App `aimms-dev` | 0 | Existing app, scale remains min 1 / max 2, 1 CPU / 2 GiB per replica | Current ARM template captured; candidate revision temporarily adds replica consumption | Regional spare capacity not proven; candidate admission remains gated |
+| Container App `aimms-dev-worker` | 0 | Existing worker, scale remains min 1 / max 1, 2 CPU / 4 GiB | Current ARM template captured; Single mode affects rollback/replacement | Alignment scope confirmed; compatibility/recovery still gated |
+| ACR `aimms` | 0 | Existing Standard registry, one new immutable release artifact | Registry Succeeded, public access Enabled | Build/digest verification required; no mutable `latest` |
+| PostgreSQL / Redis / AzureFile / identities | 0 | Unchanged resource estate | Shared consumers/recovery still require qualification | No provisioning, credential extraction or presumed isolation |
+
+No quota/capacity success is inferred from unavailable quota data. Infrastructure
+compile/ARM what-if and static Bicep/Terraform role checks are not applicable to an
+existing image-only recipe; verify preserved existing resources/RBAC instead of
+inventing infrastructure to satisfy a template-oriented helper.
+
+### 13.5 Execution and validation checklist
+
+- [x] Verify isolated branch/base and absent remote harness branch; GitHub/Azure
+  authentication is available.
+- [x] Freeze and stage the exact 30 existing repair paths; hashes match accepted
+  closure bytes; complete configured hooks passed without changing source bytes.
+- [x] Rerun 102 tooling tests and five supervisor WP-00 regressions, exits zero.
+- [x] Capture read-only target, registry, identity, scale, traffic and runtime
+  metadata; disclose source/schema gap and quota-query failure.
+- [ ] Finish independent pre-commit runtime and tooling reviews.
+- [ ] Commit exact reviewed blobs plus this plan; verify commit paths/hashes,
+  push only `feat/aimms-maf-harness`, and read back its exact remote SHA.
+- [x] Confirm existing subscription/region, target, worker scope and conditional
+  deployment plan with the user. Preserve the original checkout.
+- [ ] Build exact published source, verify source labels/backend/frontend parity,
+  required imports/package consistency and offline application source hashes.
+- [ ] Qualify disposable PostgreSQL fresh/observed-source upgrade histories and
+  runtime/schema/queue compatibility. No fake migrations or weakened assertions.
+- [ ] Establish usable authenticated operator and least-privilege acceptance;
+  approval/effect tests use only named isolated reversible fixtures and mocked
+  outbound operations. Never extract credentials or invent actors.
+- [ ] Confirm existing shared consumers, safe backup/recovery and one migration
+  owner before any shared-schema operation; schema rollback needs a tested plan.
+- [ ] Run the Azure validation workflow with actual image/readiness/RBAC/policy
+  evidence; keep `Validated` unset while any required gate fails or is missing.
+- [ ] Deploy verified immutable digest only after all gates pass. Preserve
+  existing feature/model/auth/secret/storage/scaling/queue posture. Verify every
+  revision/template/traffic write by reading the exact target back.
+- [ ] Verify candidate release contracts before moving traffic; align the worker
+  only within confirmed scope. Promote with bounded health/auth/worker checks and
+  retained compatible rollback. Stop on authorization or schema incompatibility.
+- [ ] Rerun remaining WP-00/previous failure and unavailable checks, recording
+  exact source/image/config/command/exits/counts/skips and unresolved gates.
+
+### 13.6 Current validation proof (not `Validated`)
+
+| Check | Actual evidence | Result |
+|---|---|---|
+| Source freeze | Closure SHA-256 comparison, 3,840 recorded files | No drift before this documentation update |
+| Scoped local qualification | Accepted two frozen AI/core runs | Each 3,548 passed / 16 disclosed skips; not deployed acceptance |
+| Current local tooling | Publication preflight JSON | 102 tests and five supervisor regressions passed |
+| Full configured hooks | `prek run --files` on exact reviewed path allowlist | All applicable hooks passed; unmatched file-type hooks skipped |
+| Existing source gap | `template-source-gap.json`, scoped Git comparison | Material upgrade gap; deployment blocked pending qualification |
+| Existing runtime | Corrected exact-revision read-only exec | Actual package/hash metadata returned; frontend build-info missing |
+| Existing pull role | ACR-scoped assignment query for web principal | `AcrPull` observed; no RBAC write |
+| Quota CLI | `az quota list` for Microsoft.App / eastus2 | Missing Microsoft.Quota registration; no registration performed |
+
+### 13.7 Rollback and reporting contract
+
+Retain the current immutable digest and serving revision. Before a schema change,
+test the actual backup/restore or compatible forward-schema rollback strategy;
+never claim that reverting HTTP traffic restores database state. Do not disable
+or delete unrelated revisions, queues, records, storage or images. Report commit,
+ACR run/digest, actual web/worker revisions, traffic/readiness and each rerun result
+separately. If build/deployment/authentication is blocked, state that explicitly
+and complete only the safe independent publication/test work.
