@@ -231,24 +231,19 @@ export function machineSourceView(
   return raw && SOURCE_VIEWS.has(raw) ? (raw as MachineSourceView) : null;
 }
 
-function validSession(raw: string | null): string | null {
-  return raw && /^[0-9a-f-]{36}$/i.test(raw) ? raw : null;
-}
-
 function validLocation(raw: string | null): number | null {
   return raw && /^[0-9]+$/.test(raw) && Number(raw) > 0 ? Number(raw) : null;
 }
 
 export interface MachineLinkScope {
-  session: string | null;
   location: number | null;
   direct: boolean;
   source: MachineSourceView | null;
 }
 
 /**
- * Machine links carry the source view and the active cohort filters so the
- * detail page can return to the exact list the visit came from (U2). Without
+ * Machine links carry the source view and the physical-location filters so the
+ * detail page can return to the exact list the visit came from. Without
  * a source the link carries the filters only.
  */
 export function machineDetailHref(
@@ -257,7 +252,7 @@ export function machineDetailHref(
 ): string {
   const query = new URLSearchParams();
   if (scope.source) query.set('from', scope.source);
-  if (scope.session) query.set('demo_session', scope.session);
+
   if (scope.location != null) query.set('location', String(scope.location));
   if (scope.direct) query.set('scope', 'direct');
   const search = query.toString();
@@ -270,24 +265,22 @@ export function machineDetailHref(
  * Explicit machine→list return routes (U2): location-origin visits go back to
  * the sites panel with their filters; All Machines / Unassigned return to
  * their own panels instead of the remembered one. Without a valid source
- * parameter the legacy `/machines/index/?…` contract is preserved byte for
- * byte (existing demo link tests pin it).
+ * parameter the legacy `/machines/index/?…` route preserves location filters.
  */
 export function machinesReturnHref(params: URLSearchParams): string {
   const source = machineSourceView(params);
-  const session = validSession(params.get('demo_session'));
+
   const location = validLocation(params.get('location'));
   const direct = params.get('scope') === 'direct';
   const query = new URLSearchParams();
   if (source === 'sites' || source === null) {
-    if (session) query.set('demo_session', session);
     if (location != null) query.set('location', String(location));
     if (direct) query.set('scope', 'direct');
     const base =
       source === 'sites' ? '/machines/index/sites/' : '/machines/index/';
     return query.toString() ? `${base}?${query}` : base;
   }
-  if (session) query.set('demo_session', session);
+
   const base =
     source === 'machines'
       ? '/machines/index/machines/'

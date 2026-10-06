@@ -44,6 +44,10 @@ class InvenTreeConfig(AppConfig):
         - Collecting state transition methods
         - Adding users set in the current environment
         """
+        from InvenTree.retired_relations import bind_retired_relations
+
+        bind_retired_relations()
+
         # skip loading if plugin registry is not loaded or we run in a background thread
 
         if not InvenTree.ready.isPluginRegistryLoaded():

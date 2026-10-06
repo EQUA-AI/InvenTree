@@ -1056,17 +1056,6 @@ class Settings(BaseSettings):
         return v
 
     # -------------------------------------------------------------------------
-    # Demo Dataset Configuration (for testing)
-    # -------------------------------------------------------------------------
-    demo_dataset_path: Path = Field(
-        default=Path("./inventree-demo-dataset"), alias="DEMO_DATASET_PATH"
-    )
-    demo_dataset_json: Path = Field(
-        default=Path("./inventree-demo-dataset/inventree_data.json"), alias="DEMO_DATASET_JSON"
-    )
-    use_demo_dataset: bool = Field(default=False, alias="USE_DEMO_DATASET")
-
-    # -------------------------------------------------------------------------
     # Azure OpenAI (convenience accessors - reads from AZURE_OPENAI_* env vars)
     # -------------------------------------------------------------------------
     azure_openai_endpoint: str = Field(default="", alias="AZURE_OPENAI_ENDPOINT")

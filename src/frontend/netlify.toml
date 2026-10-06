@@ -6,7 +6,6 @@
   publish = "dist"
 
 [build.environment]
-  VITE_DEMO = "true"
   PYTHON_VERSION = "3.12"
 
 # Send requests to subpath

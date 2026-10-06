@@ -192,7 +192,7 @@ class FastPathRouter:
         self._data_provider = None
 
     async def _get_client(self):
-        """Get data provider lazily (respects USE_DEMO_DATASET)."""
+        """Get the live InvenTree data provider lazily."""
         if self._data_provider is None:
             self._data_provider = get_data_provider()
         return self._data_provider

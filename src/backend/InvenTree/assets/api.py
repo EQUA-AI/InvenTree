@@ -15,7 +15,6 @@ import InvenTree.permissions
 from InvenTree.filters import SEARCH_ORDER_FILTER, InvenTreeDateFilter
 from InvenTree.mixins import ListCreateAPI, RetrieveUpdateDestroyAPI
 
-from .demo_metrics_api import demo_metrics_api_urls
 from .location_api import location_api_urls
 from .models import AssetMachine, AssetMaintenanceRecord, Client, MachinePart
 from .registry_api import authorized_client_ids, registry_urls
@@ -286,7 +285,6 @@ class AssetMaintenanceRecordDetail(RetrieveUpdateDestroyAPI):
 
 assets_api_urls = [
     path('locations/', include(location_api_urls)),
-    path('demo-metrics/', include(demo_metrics_api_urls)),
     path('registry/', include(registry_urls)),
     path(
         'clients/',

@@ -4,8 +4,7 @@ import asyncio
 from unittest.mock import AsyncMock, call, patch
 
 import pytest
-from ai.core.integrations.data_provider import DemoDataProviderAsync, LiveDataProviderAsync
-from ai.core.integrations.demo_dataset import DemoDatasetProvider
+from ai.core.integrations.data_provider import LiveDataProviderAsync
 from ai.core.tests.test_api_endpoint_migration import _client
 from ai.core.tools.inventree.read import purchasing
 
@@ -36,31 +35,6 @@ def test_pricing_requests_suppliers_for_the_part():
     params = transport.requests[0]["params"]
     assert params["part"] == 1081
     assert "supplier" not in params
-
-
-@pytest.mark.parametrize(
-    "filters, expected",
-    [
-        ({"part_id": 7}, [1, 3]),
-        ({"supplier_id": 7}, [2, 3]),
-        ({"part_id": 7, "supplier_id": 7}, [3]),
-    ],
-)
-def test_demo_provider_matches_live_filter_semantics(filters, expected):
-    """Overlapping numeric IDs must not cross the part/supplier boundary."""
-    data = DemoDatasetProvider.__new__(DemoDatasetProvider)
-    data._loaded = True
-    data._data = {
-        "company_supplierpart": [
-            {"pk": 1, "part": 7, "supplier": 9},
-            {"pk": 2, "part": 9, "supplier": 7},
-            {"pk": 3, "part": 7, "supplier": 7},
-        ]
-    }
-    provider = DemoDataProviderAsync.__new__(DemoDataProviderAsync)
-    provider._provider = data
-    result = asyncio.run(provider.get_supplier_parts(**filters))
-    assert [row["pk"] for row in result] == expected
 
 
 def test_supplier_tool_preserves_both_filters_without_scanning_inventory():

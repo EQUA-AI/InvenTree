@@ -267,8 +267,6 @@ describe('countSummary', () => {
 });
 
 describe('machine return routes', () => {
-  const session = '123e4567-e89b-12d3-a456-426614174000';
-
   it('validates the source view parameter', () => {
     expect(machineSourceView(new URLSearchParams('from=sites'))).toBe('sites');
     expect(machineSourceView(new URLSearchParams('from=machines'))).toBe(
@@ -284,17 +282,13 @@ describe('machine return routes', () => {
   it('carries the source view and filters into the machine link', () => {
     expect(
       machineDetailHref(5, {
-        session,
         location: 12,
         direct: true,
         source: 'sites'
       })
-    ).toBe(
-      `/machines/machine/5/?from=sites&demo_session=${session}&location=12&scope=direct`
-    );
+    ).toBe('/machines/machine/5/?from=sites&location=12&scope=direct');
     expect(
       machineDetailHref(7, {
-        session: null,
         location: null,
         direct: false,
         source: 'machines'
@@ -303,38 +297,40 @@ describe('machine return routes', () => {
   });
 
   it('returns location-origin visits to the sites panel with filters', () => {
-    const params = new URLSearchParams(
-      `from=sites&demo_session=${session}&location=12&scope=direct`
-    );
+    const params = new URLSearchParams('from=sites&location=12&scope=direct');
     expect(machinesReturnHref(params)).toBe(
-      `/machines/index/sites/?demo_session=${session}&location=12&scope=direct`
+      '/machines/index/sites/?location=12&scope=direct'
     );
   });
 
   it('returns All Machines and Unassigned visits to their own panels', () => {
-    expect(
-      machinesReturnHref(
-        new URLSearchParams(`from=machines&demo_session=${session}`)
-      )
-    ).toBe(`/machines/index/machines/?demo_session=${session}`);
+    expect(machinesReturnHref(new URLSearchParams('from=machines'))).toBe(
+      '/machines/index/machines/'
+    );
     expect(machinesReturnHref(new URLSearchParams('from=unassigned'))).toBe(
       '/machines/index/unassigned/'
     );
   });
 
   it('preserves the legacy breadcrumb contract without a source view', () => {
-    // Byte-compatible with the pre-existing demo link tests.
     expect(
-      machinesReturnHref(
-        new URLSearchParams(`demo_session=${session}&location=12&scope=direct`)
-      )
-    ).toBe(`/machines/index/?demo_session=${session}&location=12&scope=direct`);
+      machinesReturnHref(new URLSearchParams('location=12&scope=direct'))
+    ).toBe('/machines/index/?location=12&scope=direct');
     expect(machinesReturnHref(new URLSearchParams(''))).toBe(
       '/machines/index/'
     );
     expect(
       machinesReturnHref(new URLSearchParams('from=bogus&location=12'))
     ).toBe('/machines/index/?location=12');
+  });
+
+  it('does not propagate a retired synthetic cohort from an old link', () => {
+    const params = new URLSearchParams(
+      'from=sites&location=12&scope=direct&demo_session=123e4567-e89b-12d3-a456-426614174000'
+    );
+    expect(machinesReturnHref(params)).toBe(
+      '/machines/index/sites/?location=12&scope=direct'
+    );
   });
 });
 

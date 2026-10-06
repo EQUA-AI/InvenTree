@@ -1,9 +1,7 @@
 """
 AIMMS Unified Inventory Tools
 
-AI-function tools that work with both demo dataset and live InvenTree API.
-These tools automatically use the configured data provider based on
-the USE_DEMO_DATASET environment variable.
+AI-function tools that use the live InvenTree API through the data provider.
 
 This module aggregates tools from the `ai.core.tools.inventree` package.
 

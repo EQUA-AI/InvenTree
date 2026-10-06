@@ -1847,11 +1847,7 @@ async def list_workflows() -> list[dict[str, Any]]:
 
 @app.get("/data/status")
 async def data_status() -> dict[str, Any]:
-    """
-    Get current data mode status.
-
-    Returns whether the system is using demo data or live InvenTree API.
-    """
+    """Report the configured inventory API."""
     from ai.core.integrations import get_mode_status
 
     return get_mode_status()
@@ -1859,19 +1855,10 @@ async def data_status() -> dict[str, Any]:
 
 @app.post("/data/switch")
 async def switch_data_mode() -> dict[str, Any]:
-    """Retired (S44): no runtime configuration writes.
-
-    This endpoint used to rewrite the ai plane's ``.env`` on disk — runtime
-    mutable config that survives nowhere sanely under container revisions.
-    ``USE_DEMO_DATASET`` is deploy-time-only now: set it on the container
-    app revision (or the local launch env) and restart.
-    """
+    """Retired: inventory access always uses the configured InvenTree API."""
     raise HTTPException(
         status_code=410,
-        detail=(
-            "Retired: runtime config writes are not supported. Set "
-            "USE_DEMO_DATASET in the deployment environment and restart."
-        ),
+        detail="Retired: data-source switching is not supported.",
     )
 
 

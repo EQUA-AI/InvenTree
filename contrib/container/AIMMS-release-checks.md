@@ -59,38 +59,6 @@ intended to run, verify its consumer and use
 directory. Image alignment alone does not enable or validate that cluster. Keep
 feature flags and schedule installation outside an image-only rollout.
 
-## Demo metrics one-shot Job (EQUA)
-
-The EQUA demo-metrics commands run as a manual, one-replica, zero-retry
-Container Apps Job on the existing deployment — never as web startup and never
-as a second migration owner. The Job execution spec must be rendered and
-validated offline with `contrib/container/demo-metrics-job-spec.py` (immutable
-digest, matched web/worker image, `INVENTREE_AUTO_UPDATE=False`, approved
-commands only with a strict per-command flag grammar, secret references and
-explicit environment allowlists only). The rendered envelope sets
-`command=[python]` and `args=[absolute manage.py, command, ...]` so both the
-image ENTRYPOINT (`init.sh`) and any inherited CMD are overridden; it is a
-review artifact, not an ARM/CLI document — the approved deployment step
-translates it field by field. The rendered Job environment always carries the
-two runtime attestation names the backend apply preflight requires
-(`AIMMS_APPROVED_COMMIT_SHA`, `AIMMS_APPROVED_IMAGE_DIGEST`), derived from the
-reviewed commit and the single digest shared by the Job/web/worker images and
-cross-checked against any explicit declaration (conflicting, blank or
-malformed attestations are refused). Those values are operator declarations of
-the running identity, not cryptographic proof of the image contents — the
-apply preflight compares them with the approved mapping identity and refuses
-an absent or different attestation, and that backend gate is never bypassed.
-`contrib/container/demo-metrics-runbook.md`
-holds the operator workflow, approval gates, and read-back steps (read-back
-shows `command`/`args` and environment names/secretRef metadata only, never
-values), and `python3 contrib/container/demo-metrics-job-spec-tests.py` runs
-the offline tests — which also pin the renderer's per-command flag tables and
-attestation names against the tracked backend declarations (stdlib parsing
-only; Django is never imported). Job provisioning and execution each need
-separate approval;
-the renderer never provisions or starts anything, and its offline checks prove
-no production behavior.
-
 ## Local development
 
 Use `invoke dev.asgi-server --no-reload` for the combined Django and AI service

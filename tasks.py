@@ -2028,10 +2028,6 @@ def setup_test(
         verbose=verbose,
     )
 
-    # Extend the upstream dataset with the equipment assets used by this fork.
-    info('Loading equipment-machine demo records ...')
-    manage(c, 'load_asset_demo_data --prune', verbose=verbose)
-
     # Copy media files
     src = template_dir.joinpath('media')
     dst = get_media_dir()

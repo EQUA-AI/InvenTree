@@ -1,7 +1,5 @@
 """Scoped APIs for physical locations and explicit machine transfers."""
 
-import uuid
-
 from django.db.models import Q
 from django.http import Http404
 from django.urls import path
@@ -109,46 +107,6 @@ def _boolean(value, field, default=False):
     return value == 'true'
 
 
-def _demo_membership(request):
-    """Resolve the optional explicit ``demo_session`` filter.
-
-    Returns ``(session, machine_ids, error_response)``. When the parameter is
-    absent the filter is ``None`` and the existing full-scope behavior is
-    preserved exactly. When present, it must name a real session the actor is
-    authorized for — an unknown session is a 404, an unauthorized one an
-    explicit 403 — and never silently widens or drops the filter.
-
-    The membership is the shared authorized intersection
-    (``demo_metrics.cohort.session_membership_ids``), so the location summary
-    and machine list see exactly the cohort the demo metrics endpoints use.
-    """
-    raw = request.query_params.get('demo_session')
-    if not raw:
-        return None, None, None
-    try:
-        pk = uuid.UUID(str(raw))
-    except ValueError as exc:
-        raise ValidationError({
-            'demo_session': 'Enter a valid demo session identifier.'
-        }) from exc
-    from .demo_metrics import cohort
-    from .demo_metrics_models import DemoMetricsSession
-
-    session = DemoMetricsSession.objects.filter(pk=pk).first()
-    if session is None:
-        raise Http404
-    try:
-        return session, cohort.session_membership_ids(session, request.user), None
-    except cohort.CohortError as exc:
-        return None, None, Response({'error': exc.code, 'detail': str(exc)}, status=403)
-    except ScopeError as exc:
-        return (
-            None,
-            None,
-            Response({'error': 'SCOPE_DENIED', 'detail': str(exc)}, status=403),
-        )
-
-
 class LocationContext(LocationView):
     """Only the workspaces this actor can use for a new physical location."""
 
@@ -222,15 +180,7 @@ class LocationDetail(LocationView):
 
     @extend_schema(responses={200: dict})
     def get(self, request, pk):
-        """Return current direct/descendant counts from authorized source rows.
-
-        With an explicit ``demo_session`` filter the counts narrow to the
-        session cohort (session-owned machines and session-member work
-        orders); without it the existing full-scope counts are unchanged.
-        """
-        demo_session, demo_ids, error = _demo_membership(request)
-        if error is not None:
-            return error
+        """Return current direct/descendant counts from authorized source rows."""
         graph = locations.graph_for(request.user)
         if pk not in graph:
             raise Http404
@@ -238,8 +188,6 @@ class LocationDetail(LocationView):
         machines = AssetMachine.objects.filter(
             client_id=graph[pk].client_id, physical_location_id__in=ids
         )
-        if demo_ids is not None:
-            machines = machines.filter(pk__in=demo_ids)
         direct = machines.filter(physical_location_id=pk).count()
         try:
             orders = WorkOrder.objects.filter(
@@ -248,10 +196,6 @@ class LocationDetail(LocationView):
                 is_active=True,
                 lifecycle_status__in=OPEN,
             )
-            if demo_session is not None:
-                from .demo_metrics import cohort
-
-                orders = orders.filter(pk__in=cohort._session_order_ids(demo_session))
             direct_orders = orders.filter(machine__physical_location_id=pk).count()
             total_orders = orders.count()
         except ScopeError:
@@ -286,21 +230,11 @@ class LocationMachines(LocationView):
 
     @extend_schema(responses={200: dict})
     def get(self, request):
-        """Filter before pagination; never compute totals from displayed rows.
-
-        With an explicit ``demo_session`` filter the population narrows to the
-        authorized session cohort (intersected with the location filters);
-        without it the existing full-scope list is unchanged.
-        """
-        _demo, demo_ids, error = _demo_membership(request)
-        if error is not None:
-            return error
+        """Filter before pagination; never compute totals from displayed rows."""
         graph = locations.graph_for(request.user)
         rows = AssetMachine.objects.filter(
             client_id__in=locations.client_ids(request.user)
         ).order_by('name', 'pk')
-        if demo_ids is not None:
-            rows = rows.filter(pk__in=demo_ids)
         location = request.query_params.get('location')
         unassigned = _boolean(request.query_params.get('unassigned'), 'unassigned')
         include = _boolean(

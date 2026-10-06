@@ -59,7 +59,7 @@ services:
         environment: &maintenance_scope
             AIMMS_MAINTENANCE_SCOPE_RESOLVER: ${AIMMS_MAINTENANCE_SCOPE_RESOLVER:-tasks.scope.single_site_scope_resolver}
             AIMMS_SINGLE_SITE_CLIENT_CODE: ${AIMMS_SINGLE_SITE_CLIENT_CODE:-internal}
-            # Where contrib/cosmos/{provision,seed}.py look by default: the
+            # Where contrib/cosmos/provision.py looks by default: the
             # emulator service below. Override to point at a real account.
             INVENTREE_COSMOS_ENDPOINT: ${INVENTREE_COSMOS_ENDPOINT:-http://cosmos-emulator:8081}
             INVENTREE_COSMOS_DATABASE: ${INVENTREE_COSMOS_DATABASE:-aimms}
@@ -116,9 +116,7 @@ services:
     # Pinned to a dated tag rather than the floating `vnext-preview`, which can
     # change under CI overnight and turn an unrelated pull request red.
     #
-    # Storage is deliberately ephemeral: every `up` starts empty, which is what
-    # makes a seeded test reproducible. `contrib/cosmos/seed.py` refills it in
-    # about a second.
+    # Storage is deliberately ephemeral: every `up` starts empty.
     cosmos-emulator:
         image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-EN20260907
         profiles:

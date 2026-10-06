@@ -6,7 +6,7 @@
  * MemoryRouter; every API response is supplied by Playwright route mocks from
  * tests/pages/pui_asset_locations.spec.ts. This is MOCKED BROWSER RENDERING —
  * not a real backend E2E run. Unique machine-* filenames keep this harness
- * independent of the chat worker's fixtures and of playwright/demo-metrics.*.
+ * independent of the chat worker's fixtures.
  * The provider follows the emulated system theme for visual QA.
  *
  * The Lingui bootstrap is shared with the chat fixture so

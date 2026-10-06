@@ -28,6 +28,23 @@ publication is authorized by this document. See [deployment checklist](DEPLOYMEN
   on `0014_station_activation` and
   `0018_alter_demometricsreceipt_operation_kind`.
 
+## Non-demo consolidation
+
+The accepted merge is preserved as history. The `equa/customizations`
+consolidation removes synthetic runtime models, services, APIs, UI, providers,
+loaders and their deployment harnesses. It keeps ordinary maintenance metrics,
+physical locations and native IoT workflows. Migration
+`assets.0020_retire_synthetic_ledger` changes model state only: existing synthetic
+ledger tables, rows and foreign keys remain. Applied migrations, including IoT
+`0011`, are not edited. Do not delete retained tables or content types as part of
+this step. Foreign-key references can still prevent deletion of referenced
+records; any archival or constraint retirement needs a separately reviewed change.
+
+Production-branch creation, push, deployment and shared-database operations are
+not authorized by local consolidation. Repeat fresh, exact-target and exact-IoT
+upgrade rehearsals and model-state checks for the final consolidated candidate;
+the historical acceptance below is not evidence for a later tree.
+
 ## Database verification
 
 Use a dependency-equipped interpreter and explicit disposable database,
@@ -108,7 +125,7 @@ PostgreSQL. **Deployment recovery is forward-fix only**: switching an applicatio
 image does not undo schema/data changes; a separately approved restore requires a
 verified backup and its own rehearsal.
 
-## External/demo release gates
+## External integration release gates
 
 Before any deployment or external connectivity, the deployment/client owners must
 record approval of:
@@ -123,10 +140,9 @@ record approval of:
   identity's effective data-plane permissions and allowed network path. A
   management-plane role or the existence of a read-only assignment alone does
   not prove the identity lacks other write roles. No write probe against plant data.
-- Demo-only synthetic/sanitized telemetry and a sensitivity/provenance review.
-  The owner confirmed `epconchatcosmos9d6b` is non-production; that alone does not
-  prove its contents are sanitized or authorize a connection. Do not substitute
-  a production account or real plant readings.
+- Approved telemetry provenance, sensitivity and account/container ownership.
+  A non-production account alone does not authorize external connectivity or
+  establish the sensitivity of its contents. Do not substitute another account.
 - Client/source/station ownership, reviewed dictionary and exact catalogue/unit
   mappings, config/dictionary owners and confirmed thresholds. Unavailable,
   stale, disabled and unreviewed readings must not become zero/healthy values.

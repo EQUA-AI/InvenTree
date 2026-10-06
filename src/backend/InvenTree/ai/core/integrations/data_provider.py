@@ -1,24 +1,10 @@
-"""
-AIMMS Unified Data Provider
-
-Provides a unified interface for inventory data access that can switch
-between live InvenTree API and demo dataset based on configuration.
-
-This module enables environment-based switching:
-- USE_DEMO_DATASET=true  -> Uses DemoDatasetProvider (static JSON data)
-- USE_DEMO_DATASET=false -> Uses InvenTreeClient (live API calls)
-
-The provider implements the same interface so workflows can work with
-either data source transparently.
-"""
+"""AIMMS inventory access through the configured InvenTree API."""
 
 from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Protocol
-
-from ai.core.config import get_settings
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -155,237 +141,14 @@ class InventoryProvider(Protocol):
         ...
 
 
-class DemoDataProviderAsync:
-    """
-    Async wrapper around DemoDatasetProvider.
-
-    Wraps the synchronous DemoDatasetProvider with async methods
-    to match the InvenTreeClient interface.
-    """
-
-    def __init__(self) -> None:
-        from ai.core.integrations.demo_dataset import DemoDatasetProvider
-
-        self._provider = DemoDatasetProvider()
-        self._is_demo = True
-        logger.info("🧪 Using DEMO dataset provider (static data)")
-
-    @property
-    def is_demo_mode(self) -> bool:
-        """Return True if using demo data."""
-        return True
-
-    def get_statistics(self) -> dict[str, int]:
-        """Get demo dataset statistics."""
-        return self._provider.get_statistics()
-
-    async def search_parts(
-        self,
-        query: str | None = None,
-        category: int | None = None,
-        limit: int = 50,
-        **kwargs: Any,
-    ) -> list[dict[str, Any]]:
-        """Search for parts."""
-        if query:
-            return self._provider.search_parts(query=query, limit=limit)
-        elif category:
-            return self._provider.get_parts_by_category(category)[:limit]
-        else:
-            return self._provider.get_parts()[:limit]
-
-    async def get_part(self, part_id: int) -> dict[str, Any] | None:
-        """Get a single part by ID."""
-        return self._provider.get_part(part_id)
-
-    async def get_stock_items(
-        self, part_id: int | None = None, limit: int | None = None
-    ) -> list[dict[str, Any]]:
-        """Get stock items."""
-        items = self._provider.get_stock_items(part_id=part_id)
-        return items[:limit] if limit is not None else items
-
-    async def get_stock_quantity(self, part_id: int) -> float:
-        """Get stock quantity for a part."""
-        return self._provider.get_stock_quantity(part_id)
-
-    async def get_bom_items(self, part_id: int) -> list[dict[str, Any]]:
-        """Get BOM items for a part."""
-        return self._provider.get_bom_items(part_id)
-
-    async def get_categories(self) -> list[dict[str, Any]]:
-        """Get all categories."""
-        return self._provider.get_categories()
-
-    async def get_suppliers(self) -> list[dict[str, Any]]:
-        """Get all suppliers."""
-        return self._provider.get_suppliers()
-
-    async def get_supplier_parts(
-        self, part_id: int | None = None, *, supplier_id: int | None = None
-    ) -> list[dict[str, Any]]:
-        """Get supplier parts."""
-        return self._provider.get_supplier_parts(part_id=part_id, supplier_id=supplier_id)
-
-    async def get_low_stock_parts(self, threshold: float | None = None) -> list[dict[str, Any]]:
-        """Get low stock parts."""
-        return self._provider.get_low_stock_parts(threshold)
-
-    async def get_locations(self) -> list[dict[str, Any]]:
-        """Get all locations."""
-        return self._provider.get_locations()
-
-    async def get_stock_at_location(self, location_id: int) -> list[dict[str, Any]]:
-        """Get stock at a location."""
-        return self._provider.get_stock_at_location(location_id)
-
-    async def get_where_used(self, part_id: int) -> list[dict[str, Any]]:
-        """Get where a part is used."""
-        return self._provider.get_where_used(part_id)
-
-    async def get_part_parameters(self, part_id: int) -> list[dict[str, Any]]:
-        """Get parameters for a part."""
-        # Demo dataset may not have parameters, return empty list
-        if hasattr(self._provider, "get_part_parameters"):
-            return self._provider.get_part_parameters(part_id)
-        return []
-
-    async def get_part_attachments(self, part_id: int) -> list[dict[str, Any]]:
-        """Get attachments for a part."""
-        # Demo dataset may not have attachments, return empty list
-        if hasattr(self._provider, "get_part_attachments"):
-            return self._provider.get_part_attachments(part_id)
-        return []
-
-    async def get_part_pricing(
-        self,
-        part_id: int,
-        include_supplier_prices: bool = True,
-        include_bom_cost: bool = True,
-    ) -> dict[str, Any]:
-        """Get pricing information for a part."""
-        # Build pricing info from available data
-        pricing: dict[str, Any] = {"part_id": part_id}
-
-        part = await self.get_part(part_id)
-        if part:
-            pricing["internal_price"] = part.get("pricing_data", {})
-
-        if include_supplier_prices:
-            supplier_parts = await self.get_supplier_parts(part_id)
-            pricing["supplier_prices"] = [
-                {
-                    "supplier": sp.get("supplier_name", "Unknown"),
-                    "sku": sp.get("SKU", ""),
-                    "price": sp.get("price", 0),
-                }
-                for sp in supplier_parts
-            ]
-
-        if include_bom_cost:
-            bom = await self.get_bom_items(part_id)
-            if bom:
-                total = sum(item.get("total_price", 0) or 0 for item in bom)
-                pricing["bom_cost"] = total
-
-        return pricing
-
-    async def list_purchase_orders(
-        self,
-        supplier_id: int | None = None,
-        status: int | None = None,
-        limit: int = 100,
-    ) -> list[dict[str, Any]]:
-        """List purchase orders (not supported in demo)."""
-        return []
-
-    async def get_purchase_order(self, po_id: int) -> dict[str, Any] | None:
-        """Get a single purchase order (not supported in demo)."""
-        return None
-
-    async def get_purchase_order_lines(self, po_id: int) -> list[dict[str, Any]]:
-        """Get purchase order lines (not supported in demo)."""
-        return []
-
-    async def list_sales_orders(
-        self,
-        customer_id: int | None = None,
-        status: int | None = None,
-        limit: int = 100,
-    ) -> list[dict[str, Any]]:
-        """List sales orders (not supported in demo)."""
-        return []
-
-    async def get_sales_order(self, so_id: int) -> dict[str, Any] | None:
-        """Get a single sales order (not supported in demo)."""
-        return None
-
-    async def get_sales_order_lines(self, so_id: int) -> list[dict[str, Any]]:
-        """Get sales order lines (not supported in demo)."""
-        return []
-
-    async def list_build_orders(
-        self,
-        part_id: int | None = None,
-        status: int | None = None,
-        limit: int = 100,
-    ) -> list[dict[str, Any]]:
-        """List build orders (not supported in demo)."""
-        return []
-
-    async def get_build_order(self, bo_id: int) -> dict[str, Any] | None:
-        """Get a single build order (not supported in demo)."""
-        return None
-
-    async def get_build_order_allocations(self, bo_id: int) -> list[dict[str, Any]]:
-        """Get build order allocations (not supported in demo)."""
-        return []
-
-    async def create_part(
-        self,
-        name: str,
-        category: int,
-        description: str | None = None,
-        ipn: str | None = None,
-        **kwargs: Any,
-    ) -> dict[str, Any]:
-        """Create a new part."""
-        from ai.core.tools.read_only import READ_ONLY_MESSAGE, read_only_tools_active
-
-        if read_only_tools_active():
-            raise PermissionError(READ_ONLY_MESSAGE)
-        return self._provider.create_part(
-            name=name,
-            category=category,
-            description=description,
-            ipn=ipn,
-            **kwargs,
-        )
-
-    async def close(self) -> None:
-        """Close the provider (no-op for demo)."""
-        pass
-
-
 class LiveDataProviderAsync:
-    """
-    Wrapper around InvenTreeClient.
-
-    Provides the same interface as DemoDataProviderAsync but using
-    the live InvenTree API.
-    """
+    """Async inventory operations backed by the configured InvenTree client."""
 
     def __init__(self) -> None:
         from ai.core.integrations.inventree import InvenTreeClient
 
         self._client = InvenTreeClient()
-        self._is_demo = False
         logger.info("🔴 Using LIVE InvenTree API")
-
-    @property
-    def is_demo_mode(self) -> bool:
-        """Return False for live mode."""
-        return False
 
     async def search_parts(
         self,
@@ -590,45 +353,27 @@ class LiveDataProviderAsync:
 # Factory Functions
 # -----------------------------------------------------------------------------
 
-_provider_instance: DemoDataProviderAsync | LiveDataProviderAsync | None = None
+_provider_instance: LiveDataProviderAsync | None = None
 
 
-def get_data_provider() -> DemoDataProviderAsync | LiveDataProviderAsync:
-    """
-    Get the appropriate data provider based on configuration.
-
-    Uses USE_DEMO_DATASET environment variable to determine which
-    provider to use.
-
-    Returns:
-        DemoDataProviderAsync if USE_DEMO_DATASET=true
-        LiveDataProviderAsync if USE_DEMO_DATASET=false
-    """
+def get_data_provider() -> LiveDataProviderAsync:
+    """Return the shared API-backed inventory provider."""
     global _provider_instance
 
     if _provider_instance is None:
-        settings = get_settings()
-
-        if settings.use_demo_dataset:
-            _provider_instance = DemoDataProviderAsync()
-            stats = _provider_instance.get_statistics()
-            logger.info(
-                f"Demo dataset loaded: {stats['parts']} parts, {stats['stock_items']} stock items"
-            )
-        else:
-            _provider_instance = LiveDataProviderAsync()
+        _provider_instance = LiveDataProviderAsync()
 
     return _provider_instance
 
 
 def reset_provider() -> None:
-    """Reset the provider instance (used when switching modes)."""
+    """Reset the shared provider instance."""
     global _provider_instance
     _provider_instance = None
 
 
 @asynccontextmanager
-async def data_provider() -> AsyncGenerator[DemoDataProviderAsync | LiveDataProviderAsync, None]:
+async def data_provider() -> AsyncGenerator[LiveDataProviderAsync, None]:
     """
     Context manager for data provider.
 
@@ -640,35 +385,9 @@ async def data_provider() -> AsyncGenerator[DemoDataProviderAsync | LiveDataProv
     yield get_data_provider()
 
 
-def is_demo_mode() -> bool:
-    """Check if demo mode is currently enabled."""
-    settings = get_settings()
-    return settings.use_demo_dataset
-
-
 def get_mode_status() -> dict[str, Any]:
-    """Get current mode status information."""
-    settings = get_settings()
+    """Report the configured inventory API without opening a connection."""
+    from ai.core.config import get_inventree_settings
 
-    status = {
-        "mode": "demo" if settings.use_demo_dataset else "live",
-        "demo_dataset_path": str(settings.demo_dataset_path),
-        "demo_dataset_json": str(settings.demo_dataset_json),
-    }
-
-    if settings.use_demo_dataset:
-        try:
-            provider = DemoDataProviderAsync()
-            status["statistics"] = provider.get_statistics()
-            status["status"] = "ready"
-        except Exception as e:
-            status["status"] = "error"
-            status["error"] = str(e)
-    else:
-        from ai.core.config import get_inventree_settings
-
-        inventree_config = get_inventree_settings()
-        status["inventree_url"] = inventree_config.url
-        status["status"] = "configured"
-
-    return status
+    inventree_config = get_inventree_settings()
+    return {"mode": "live", "inventree_url": inventree_config.url, "status": "configured"}

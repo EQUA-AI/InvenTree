@@ -14,7 +14,7 @@ permissions or live station activation.
 - Newer unreviewed IoT commits remain excluded.
 - Polling stays opt-in: `AIMMS_COSMOS_PUMPHOUSE_ENABLED=False`.
 
-## Local code gate
+## Historical accepted-merge code gate
 
 - [x] No unresolved Git conflicts; additive assets migration join retained.
 - [x] Historical migrations unchanged, including IoT `0011` and all 306 target files.
@@ -24,13 +24,10 @@ permissions or live station activation.
 - [x] Both assets-history upgrade directions pass on SQLite and PostgreSQL.
 - [x] Frontend unit tests, TypeScript/production build and mimic browser tests pass.
 - [x] All 39 translation catalogs preserve target translations.
-- [x] Offline demo Job-spec and release-guard tests pass.
 - [x] Full exact-original IoT PostgreSQL database upgrades, preserving original
       records/history (861 applied records before, 956 after).
 - [x] Full exact-original IoT SQLite database upgrades, preserving original
       records/history (861 applied records before, 956 after).
-- [x] PostgreSQL demo packet safety-gate failure resolved and verified: shared
-      templates declared explicitly; 17 module and 46 related PostgreSQL tests pass.
 - [x] Cosmos default/classification/import-retry findings resolved and verified;
       clientless ingestion fails closed. Focused 91-test and broader 252-test
       SQLite checks pass (39 expected skips in the broader lane).
@@ -54,6 +51,16 @@ Existing failed runs are preserved as failed. Accelerated completion reuses prio
 passing evidence for unchanged source and reruns affected seams; it does not
 silently claim every broad suite passed. Target-only permission-model omissions
 and unrelated target migration drift must remain explicitly documented.
+
+## Non-demo consolidation gate
+
+Synthetic runtime/tooling is retired on `equa/customizations`; the accepted
+merge and immutable historical migrations remain ancestors. The additive
+state-only retirement migration retains database data and foreign keys. The
+historical checks above describe the accepted merge, not automatic qualification
+of the consolidated tree. Its exact verification and preservation evidence is
+recorded in the consolidation handover. No production branch, push or deployment
+is part of that local update.
 
 ## Release preparation and rollout: flag off
 
@@ -84,7 +91,7 @@ restore requires its own approved rehearsal.
 ## Separate live-IoT activation gate
 
 - [ ] Obtain prior client approval for external integration.
-- [ ] Approve demo telemetry provenance/sensitivity and exact source configuration.
+- [ ] Approve telemetry provenance/sensitivity and exact source configuration.
 - [ ] Confirm effective read-only Cosmos identity/network access for both web and
       worker; the recorded web access check does not establish worker access.
 - [ ] Approve client/station crosswalk, catalogue, dictionary, units, thresholds

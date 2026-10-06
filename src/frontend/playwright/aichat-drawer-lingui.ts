@@ -1,6 +1,6 @@
 /**
- * Activate Lingui BEFORE any component module evaluates (same pattern as
- * demo-metrics-lingui.ts). Keep this import FIRST in aichat-drawer.tsx.
+ * Activate Lingui BEFORE any component module evaluates.
+ * Keep this import FIRST in aichat-drawer.tsx.
  */
 import { i18n } from '@lingui/core';
 

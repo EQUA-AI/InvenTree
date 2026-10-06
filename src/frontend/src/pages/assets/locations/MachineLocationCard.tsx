@@ -1,12 +1,12 @@
 import { t } from '@lingui/core/macro';
 import { Anchor, Button, Group, Paper, Stack, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useApi } from '../../../contexts/ApiContext';
 import { useUserState } from '../../../states/UserState';
 import { MachineMoveDialog } from './LocationDialogs';
-import { parseDemoScope } from './demoMetrics';
+
 import {
   type LocatedMachine,
   type LocationContext,
@@ -34,7 +34,7 @@ function useMachinePlacement(machineId: number) {
   });
 }
 
-/** The machine's real placement; a demo filter never replaces it. */
+/** The machine's real physical placement. */
 function placementText(row: LocatedMachine | undefined) {
   return row?.physical_location
     ? locationPath(row.physical_location)
@@ -62,13 +62,11 @@ export function MachineLocationCard({ machineId }: { machineId: number }) {
   const identity = useUserState((s) => s.authGeneration);
   const [moving, setMoving] = useState(false);
   const [searchParams] = useSearchParams();
-  const demoScope = useMemo(() => parseDemoScope(searchParams), [searchParams]);
-  // The location link hands the demo filters to the workspace (which applies
-  // them); `location` stays the machine's own placement, not the URL scope.
+  const direct = searchParams.get('scope') === 'direct';
+  // The location link preserves direct scope; location is the real placement.
   const locationHref = (locationPk: number) => {
     const params = new URLSearchParams({ location: String(locationPk) });
-    if (demoScope.session) params.set('demo_session', demoScope.session);
-    if (demoScope.direct) params.set('scope', 'direct');
+    if (direct) params.set('scope', 'direct');
     return `/machines/index/sites/?${params.toString()}`;
   };
   const context = useQuery<LocationContext>({

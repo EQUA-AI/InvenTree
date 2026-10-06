@@ -52,8 +52,6 @@ declare global {
 
 // Running in dev mode (i.e. vite)
 export const IS_DEV = import.meta.env.DEV;
-export const IS_DEMO = import.meta.env.VITE_DEMO === 'true';
-export const IS_DEV_OR_DEMO = IS_DEV || IS_DEMO;
 
 // Filter out any settings that are not defined
 const loaded_vals = (window.INVENTREE_SETTINGS || {}) as any;
@@ -78,25 +76,14 @@ window.INVENTREE_SETTINGS = {
           }
         }
       : {}),
-    ...(IS_DEV_OR_DEMO
-      ? {
-          'server-demo': {
-            host: 'https://demo.inventree.org/',
-            name: 'Equa AIMMS Demo'
-          }
-        }
-      : {}),
+
     'server-current': {
       host: `${window.location.origin}/`,
       name: 'Current Server'
     }
   },
-  default_server: IS_DEV
-    ? 'server-localhost'
-    : IS_DEMO
-      ? 'server-demo'
-      : 'server-current',
-  show_server_selector: IS_DEV_OR_DEMO,
+  default_server: IS_DEV ? 'server-localhost' : 'server-current',
+  show_server_selector: IS_DEV,
 
   // Merge in settings that are already set via django's spa_view or for development
   ...loaded_vals

@@ -1,4 +1,4 @@
-# Physical locations and demo placement
+# Physical locations and audited placement
 
 This release adds client-owned Sites & Facilities, nested locations, current
 machine placement and audited transfers. Machine `location` text is retained as
@@ -14,41 +14,23 @@ Apply migrations with the normal web deployment migration owner. The generic
 worker must not independently enable automatic migrations. There are no new
 background jobs in this release.
 
-## Demo initialization
+## Production placement
 
-The bundled `assets/demo_machine_data.json` declares 38 locations and explicit
-placement codes for 16 owned demo machines. Five roots represent Plant A, ACME,
-Tomahawk Creek WRF, Industrial Water Plant and Collection System. The illustrative
-site timezone is America/Chicago. These are demo declarations, not inferred
-production geography or authorization boundaries.
-
-After the base machine demo dataset exists, run from the backend directory:
-
-```sh
-python manage.py load_asset_location_demo --actor OPERATOR_USERNAME --dry-run
-python manage.py load_asset_location_demo --actor OPERATOR_USERNAME
-```
-
-The operator must already hold maintenance add/change authority and client scope.
-The loader does not create users or grants. It verifies machine ownership using
-the existing demo identity and managed-part checks. An unowned location collision
-fails the whole transaction. Reruns do not append duplicate histories or move
-machines that an operator has already assigned or unassigned. Existing edited
-location metadata causes a conflict for review instead of being reset.
-
-Placement starts at import time. Earlier placement remains unknown; historical
-maintenance cards, schedules and legacy location labels remain unchanged.
+Create physical locations through the authorized location workspace/API, then
+move machines through the audited transfer flow. Confirm client scope, location
+identity, timezone and actual placement; do not infer them from legacy labels.
+Synthetic machine/location loaders are not shipped in this consolidation.
+Existing records are retained and are not moved or rewritten by this change.
 
 ## Verification and release scope
 
 ```sh
-python manage.py test assets.test_locations assets.test_demo_data --keepdb --noinput
+python manage.py test assets.test_locations --keepdb --noinput
 ```
 
 The hierarchy suite includes permissions, client isolation, cycle prevention,
 archival rules, stale-version conflicts, atomic batches, idempotency and
-independent-connection PostgreSQL concurrency checks. Demo tests include rollback,
-ownership conflicts and preservation of later operator moves.
+independent-connection PostgreSQL concurrency checks.
 
 The frontend uses Mantine 9 Tree, Select, Modal and useForm APIs, checked against
 the installed 9.6.1 types and current documentation at

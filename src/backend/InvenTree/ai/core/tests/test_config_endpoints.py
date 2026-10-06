@@ -25,7 +25,7 @@ def test_data_switch_is_retired_with_410() -> None:
     with pytest.raises(HTTPException) as excinfo:
         asyncio.run(ai_app.switch_data_mode())
     assert excinfo.value.status_code == 410
-    assert "USE_DEMO_DATASET" in excinfo.value.detail
+    assert "data-source switching is not supported" in excinfo.value.detail
 
 
 def test_app_no_longer_imports_the_env_writer() -> None:

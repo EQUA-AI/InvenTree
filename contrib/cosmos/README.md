@@ -1,7 +1,7 @@
 # Cosmos DB container for pumphouse telemetry
 
 This folder holds the **definition** of the container that pumphouse snapshots are read from, plus the
-tools to verify and seed it. Creating the container is a deliberate, human act — nothing here creates or
+tools to verify it. Creating the container is a deliberate, human act — nothing here creates or
 modifies a live Azure resource unless you explicitly ask it to, and nothing here ever grants a role or
 stores a credential.
 
@@ -134,7 +134,7 @@ quicker route.
 
 ### Environment
 
-The provisioning/seeding utilities and development stack read these non-secret
+The provisioning utilities and development stack read these non-secret
 coordinates. They do **not** configure a live `HealthSource`:
 
 ```bash
@@ -150,7 +150,7 @@ Follow [the connector guide](../../docs/docs/aimms/cosmos-connector.md) for runt
 configuration. Do not substitute an external account without client/owner approval.
 
 For the reviewed EQUA integration, first follow
-[INTEGRATION_REHEARSAL.md](INTEGRATION_REHEARSAL.md). Its migration, demo-data and
+[INTEGRATION_REHEARSAL.md](INTEGRATION_REHEARSAL.md). Its migration and
 approval gates supersede source-branch migration-leaf examples below.
 
 ---
@@ -170,8 +170,8 @@ az cosmosdb sql role assignment create \
 
 Scoping to the container rather than `/` keeps the blast radius at one container.
 
-Seeding documents **writes**, so it cannot be done with that role — seeding is run by a human with their
-own credentials, deliberately.
+The application reads telemetry; any separate data import requires its own
+operator authorization. No synthetic telemetry seeder is shipped here.
 
 Never put an account key in this repository, in `data/config.yaml`, in a commit message or in chat.
 
@@ -196,14 +196,12 @@ docker compose --project-directory . -f contrib/container/dev-docker-compose.yml
 # ... Up 2 minutes (healthy)
 ```
 
-Then create the container and fill it. Both scripts pick up their coordinates from the environment
-already set on the dev containers, so there are no flags to remember beyond `--emulator`:
+Create the disposable container using coordinates already set on the dev
+containers. The isolated emulator integration tests create their own test data:
 
 ```bash
 docker compose --project-directory . -f contrib/container/dev-docker-compose.yml exec inventree-dev-server \
     python contrib/cosmos/provision.py --create --emulator
-docker compose --project-directory . -f contrib/container/dev-docker-compose.yml exec inventree-dev-server \
-    python contrib/cosmos/seed.py --emulator
 ```
 
 `--create` is refused against anything but an emulator. A partition key cannot be changed after
@@ -232,8 +230,8 @@ own code, the thing enforcing read-only.
 
 ### Starting over
 
-Storage is deliberately ephemeral, so every `up` starts empty. That is what makes a seeded test
-reproducible, and re-seeding takes about a second:
+Storage is deliberately ephemeral. Integration tests recreate their own
+fixtures, independently of production provisioning:
 
 ```bash
 docker compose --project-directory . -f contrib/container/dev-docker-compose.yml --profile cosmos down
@@ -293,9 +291,7 @@ while an administrator can manage the container and not read the data.
 | `schema/pumphouse_readings.indexing.json` | The indexing policy alone, for `az ... --idx @file`. Kept identical to the definition by a test |
 | `provision.py` | Verifies a live container against that definition; `--create` works only against the emulator |
 | `test_provision.py` | Offline tests for the comparison logic: `python3 -m unittest discover -s contrib/cosmos -p 'test_*.py'` |
-| `seed.py` | Validates the §3.1 invariants, then upserts the manual inserts; `--dry-run` writes nothing |
 | `samples/ph3_snapshots.json` | Three pilot documents across two hour buckets, including an `I → R` transition |
-| `test_seed.py` | Offline tests for the seeder's validation and derived fields |
 
 ## Scheduled polling (T9)
 

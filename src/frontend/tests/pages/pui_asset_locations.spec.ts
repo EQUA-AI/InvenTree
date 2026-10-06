@@ -15,8 +15,6 @@
  */
 import { type Page, expect, test } from '@playwright/test';
 
-const SESSION_ID = '123e4567-e89b-12d3-a456-426614174000';
-
 /*
  * Location fixture: 13 root rows (root overview paginates at 10), a deep
  * branch under Building B whose tail (Zenith Cell, pk 150) is only reachable
@@ -178,7 +176,7 @@ function machineRow(
     serial: `S-${pk}`,
     active: opts.active ?? true,
     manufacturer: 'EQUA',
-    model: 'Demo',
+    model: 'Test pump',
     location: opts.legacy ?? '',
     description: '',
     physical_location: loc ? locationRow(loc) : null,
@@ -186,36 +184,22 @@ function machineRow(
   };
 }
 
-/* Full-population and demo-cohort totals deliberately differ (plan §M3). */
-function countsFor(pk: number, session: string | null) {
+/* Summary counts describe the same authorized population as the table. */
+function countsFor(pk: number) {
   if (pk === 21) {
-    return session
-      ? {
-          direct_machines: 3,
-          total_machines: 3,
-          direct_open_work_orders: 0,
-          total_open_work_orders: 1
-        }
-      : {
-          direct_machines: 30,
-          total_machines: 30,
-          direct_open_work_orders: 1,
-          total_open_work_orders: 2
-        };
+    return {
+      direct_machines: 30,
+      total_machines: 30,
+      direct_open_work_orders: 1,
+      total_open_work_orders: 2
+    };
   }
-  return session
-    ? {
-        direct_machines: 2,
-        total_machines: 3,
-        direct_open_work_orders: 1,
-        total_open_work_orders: 2
-      }
-    : {
-        direct_machines: 5,
-        total_machines: 9,
-        direct_open_work_orders: 2,
-        total_open_work_orders: 4
-      };
+  return {
+    direct_machines: 5,
+    total_machines: 9,
+    direct_open_work_orders: 2,
+    total_open_work_orders: 4
+  };
 }
 
 interface RecordedRequest {
@@ -256,7 +240,7 @@ async function installMocks(page: Page) {
       if (!loc) return json({ detail: 'Not found' }, 404);
       return json({
         ...locationRow(loc),
-        counts: countsFor(loc.pk, params.get('demo_session'))
+        counts: countsFor(loc.pk)
       });
     }
 
@@ -265,7 +249,6 @@ async function installMocks(page: Page) {
       if (machinesError) return json({ error: 'SERVER_ERROR' }, 500);
 
       const search = params.get('search') ?? '';
-      const session = params.get('demo_session');
       const locationPk = params.get('location')
         ? Number(params.get('location'))
         : null;
@@ -305,13 +288,13 @@ async function installMocks(page: Page) {
       let rows: any[] = [];
       let count = 0;
       if (locationPk === 21) {
-        count = session ? 3 : 30;
+        count = 30;
         rows = Array.from({ length: count }, (_, i) =>
           machineRow(60 + i, `Fan ${i + 1}`, { locationPk: 21 })
         );
       } else if (locationPk) {
         // Reconciles with countsFor(): table count equals the summary card.
-        count = includeDescendants ? (session ? 3 : 9) : session ? 2 : 5;
+        count = includeDescendants ? 9 : 5;
         rows = [
           machineRow(5, 'Pump 1', { locationPk: 12 }),
           machineRow(6, 'Pump 2', {
@@ -386,103 +369,6 @@ async function installMocks(page: Page) {
         }),
         barcode_hash: ''
       });
-    }
-
-    if (path.includes('/demo-metrics/')) {
-      if (path.endsWith('/sessions/')) {
-        return json({
-          count: 1,
-          results: [
-            {
-              id: SESSION_ID,
-              dataset_key: 'equa-demo-metrics-v1',
-              session_key: 'equa-demo-1',
-              mode: 'bounded_current',
-              status: 'active',
-              synthetic: true,
-              anchor_at: null,
-              expires_at: null
-            }
-          ]
-        });
-      }
-      if (path.endsWith('/metrics/')) {
-        return json({
-          mode: 'bounded_current',
-          synthetic: true,
-          session: {
-            id: SESSION_ID,
-            dataset_key: 'equa-demo-metrics-v1',
-            session_key: 'equa-demo-1',
-            status: 'active',
-            anchor_at: null,
-            expires_at: null
-          },
-          generated_at: '2026-09-26T12:00:00Z',
-          filters: { location_id: 12, include_descendants: true },
-          cohort_size: 2,
-          machines: [
-            {
-              alias: 'pump-1',
-              machine_id: 5,
-              coverage_state: 'fresh',
-              condition: 'normal',
-              required_signals: ['temp'],
-              present_signals: ['temp'],
-              fresh_signals: ['temp'],
-              last_observed_at: '2026-09-26T11:00:00Z'
-            }
-          ],
-          observation_coverage: {
-            fresh: 1,
-            partial: 0,
-            stale: 0,
-            never_seen: 0,
-            not_configured: 0
-          },
-          fresh_condition: { normal: 1, warning: 0, critical: 0 },
-          open_work_orders: 1,
-          machines_with_open_work: 1,
-          overdue_open_work_orders: 0,
-          open_by_state: { backlog: 1 },
-          capabilities: {
-            history_available: true,
-            replay_available: false,
-            anomaly_creation: false,
-            oee: false
-          }
-        });
-      }
-      if (path.endsWith('/work-orders/')) {
-        return json({
-          count: 1,
-          open_count: 1,
-          results_returned: 0,
-          has_more: false,
-          filters: { location_id: 12, include_descendants: true },
-          session: {
-            id: SESSION_ID,
-            session_key: 'equa-demo-1',
-            synthetic: true
-          },
-          results: []
-        });
-      }
-      if (path.endsWith('/history/')) {
-        return json({
-          available: false,
-          synthetic: true,
-          reason: 'no_imported_history_for_session',
-          filters: { location_id: 12, include_descendants: true },
-          selected_machines: 0,
-          measured_machines: 0,
-          completeness: 'none',
-          daily: [],
-          planned_machine_minutes: 0,
-          downtime_machine_minutes: null,
-          measured_cohort_availability: null
-        });
-      }
     }
 
     return json({});
@@ -719,54 +605,34 @@ test('Include sublocations toggle drives table scope and wording', async ({
     .toBe('false');
 });
 
-test('demo cohort reconciles summary and rows; both requests carry the session', async ({
+test('native summary and machine rows remain aligned for an old cohort link', async ({
   page
 }) => {
   const { detailRequests, machineListRequests } = await installMocks(page);
   await page.goto(
-    '/playwright/machine-locations.html?mode=workspace&location=12'
+    '/playwright/machine-locations.html?mode=workspace&location=12&demo_session=123e4567-e89b-12d3-a456-426614174000'
   );
   await expect(page.getByTestId('machine-count-view')).toHaveText('9');
   await expect(page.getByText('9 machines')).toBeVisible();
   await expect(
     page.getByRole('columnheader', { name: 'Active record' })
   ).toBeVisible();
-  // No-demo default: nothing carries a demo session.
-  expect(machineListRequests.every((r) => !r.params.get('demo_session'))).toBe(
-    true
-  );
-
-  await page.evaluate(
-    (sessionId) =>
-      (window as any).__machineTest.setSearch('demo_session', sessionId),
-    SESSION_ID
-  );
-
-  // RED/GREEN contract: BOTH the detail summary and the machine list carry
-  // the active demo session, and the cards reconcile with the narrowed rows.
-  await expect
-    .poll(() =>
-      detailRequests.some((r) => r.params.get('demo_session') === SESSION_ID)
+  expect(machineListRequests.length).toBeGreaterThan(0);
+  expect(detailRequests.length).toBeGreaterThan(0);
+  expect(
+    [...machineListRequests, ...detailRequests].every(
+      (r) => !r.params.has('demo_session')
     )
-    .toBe(true);
-  await expect
-    .poll(() =>
-      machineListRequests.some(
-        (r) => r.params.get('demo_session') === SESSION_ID
-      )
-    )
-    .toBe(true);
-  await expect(page.getByTestId('machine-count-view')).toHaveText('3');
-  await expect(page.getByText('3 machines')).toBeVisible();
+  ).toBe(true);
+  await expect(page.getByText('Demo metrics', { exact: true })).toHaveCount(0);
 });
 
-test('cohort change resets table page and selection', async ({ page }) => {
+test('location change resets table page and selection', async ({ page }) => {
   const { machineListRequests } = await installMocks(page);
   await page.goto(
     '/playwright/machine-locations.html?mode=workspace&location=21'
   );
   await expect(page.getByText('30 machines')).toBeVisible();
-
   await page
     .getByRole('navigation', { name: /pagination/i })
     .getByRole('button', { name: '2' })
@@ -774,29 +640,24 @@ test('cohort change resets table page and selection', async ({ page }) => {
   await expect
     .poll(() => lastMachineRequest(machineListRequests)?.params.get('offset'))
     .toBe('25');
-
   await page.getByRole('checkbox', { name: 'Select Fan 26' }).check();
   await expect(page.getByText(/Selected on this page/)).toBeVisible();
-
-  await page.evaluate(
-    (sessionId) =>
-      (window as any).__machineTest.setSearch('demo_session', sessionId),
-    SESSION_ID
+  await page.evaluate(() =>
+    (window as any).__machineTest.setSearch('location', '12')
   );
-
+  await expect(page.getByText('9 machines')).toBeVisible();
   await expect
     .poll(() => {
       const req = machineListRequests
-        .filter((r) => r.params.get('demo_session') === SESSION_ID)
+        .filter((r) => r.params.get('location') === '12')
         .pop();
       return req?.params.get('offset');
     })
     .toBe('0');
   await expect(
-    page.getByRole('checkbox', { name: 'Select Fan 1' })
+    page.getByRole('checkbox', { name: 'Select Pump 1' })
   ).not.toBeChecked();
   await expect(page.getByText(/Selected on this page/)).toHaveCount(0);
-  await expect(page.getByText('3 machines')).toBeVisible();
 });
 
 test('search shows location-total labeling and a truthful empty state', async ({
@@ -897,29 +758,29 @@ test('machine return routes preserve the source view and filters', async ({
 }) => {
   await installMocks(page);
   await page.goto(
-    `/playwright/machine-locations.html?mode=workspace&location=12&scope=direct&demo_session=${SESSION_ID}`
+    '/playwright/machine-locations.html?mode=workspace&location=12&scope=direct'
   );
   await page.getByRole('link', { name: 'Pump 1' }).click();
   // The panel router appends the default `details` panel; the source view and
-  // cohort filters must survive that redirect.
+  // location filters must survive that redirect.
   await expect(page.getByTestId('destination')).toContainText(
-    `/machines/machine/5/details?from=sites&demo_session=${SESSION_ID}&location=12&scope=direct`
+    '/machines/machine/5/details?from=sites&location=12&scope=direct'
   );
   // Detail labels: the boolean is a record flag, not a run state.
   await expect(page.getByText('Active record')).toBeVisible();
   const breadcrumb = page.getByRole('link', { name: 'Machines' });
   await expect(breadcrumb).toHaveAttribute(
     'href',
-    /\/machines\/index\/sites\/\?demo_session=123e4567-e89b-12d3-a456-426614174000&location=12&scope=direct$/
+    /\/machines\/index\/sites\/\?location=12&scope=direct$/
   );
 
   // All Machines origin returns to its own panel, never the remembered one.
   await page.goto(
-    `/playwright/machine-locations.html?mode=machine&machine=6&from=machines&demo_session=${SESSION_ID}`
+    '/playwright/machine-locations.html?mode=machine&machine=6&from=machines'
   );
   await expect(page.getByRole('link', { name: 'Machines' })).toHaveAttribute(
     'href',
-    new RegExp(`/machines/index/machines/\\?demo_session=${SESSION_ID}$`)
+    /\/machines\/index\/machines\/$/
   );
   await expect(
     page.getByText('No physical location assigned', { exact: true })
@@ -997,12 +858,10 @@ test('machine breadcrumb without a source view keeps the legacy contract', async
 }) => {
   await installMocks(page);
   await page.goto(
-    `/playwright/machine-locations.html?mode=machine&machine=5&demo_session=${SESSION_ID}&location=12&scope=direct`
+    '/playwright/machine-locations.html?mode=machine&machine=5&location=12&scope=direct'
   );
   await expect(page.getByRole('link', { name: 'Machines' })).toHaveAttribute(
     'href',
-    new RegExp(
-      `/machines/index/\\?demo_session=${SESSION_ID}&location=12&scope=direct$`
-    )
+    /\/machines\/index\/\?location=12&scope=direct$/
   );
 });

@@ -73,7 +73,7 @@ def get_default_client() -> Client:
     """Return the deployment's default internal tenant, creating it if absent.
 
     Single definition of the fallback identity shared by the backfill
-    migration, the serializer default and the demo loader, so a machine
+    migration and the serializer default, so a machine
     created without an explicit client always lands in the same tenant.
     """
     client, _created = Client.objects.get_or_create(
@@ -424,17 +424,3 @@ from .location_models import LocationParentHistory as LocationParentHistory
 from .location_models import MachineLocationTransfer as MachineLocationTransfer
 from .location_models import MachinePlacementHistory as MachinePlacementHistory
 from .registry_models import AssetComponent, DictionaryPoint  # noqa: F401
-
-# Demo metrics ledger models live in their own module for readability but
-# belong to this app; importing them here is what registers them. This block
-# intentionally stays the LAST registration import: model registration order is
-# initialization behavior, so isort:skip pins this placement instead of letting
-# isort move the block ahead of health/location models.
-from .demo_metrics_models import (  # noqa: F401  # isort:skip
-    DemoMetricsCoverageInterval,
-    DemoMetricsDowntimeInterval,
-    DemoMetricsMachine,
-    DemoMetricsObject,
-    DemoMetricsReceipt,
-    DemoMetricsSession,
-)

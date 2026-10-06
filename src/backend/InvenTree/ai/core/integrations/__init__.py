@@ -5,17 +5,11 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ai.core.integrations.data_provider import (
-        DemoDataProviderAsync,
         LiveDataProviderAsync,
         data_provider,
         get_data_provider,
         get_mode_status,
-        is_demo_mode,
         reset_provider,
-    )
-    from ai.core.integrations.demo_dataset import (
-        DemoDatasetProvider,
-        get_demo_provider,
     )
     from ai.core.integrations.email import (
         EMAIL_TOOLS,
@@ -46,8 +40,6 @@ __all__ = [
     "INVENTORY_TOOLS",
     "INVENTREE_TOOLS",
     "BusinessRuleError",
-    "DemoDataProviderAsync",
-    "DemoDatasetProvider",
     "EmailAttachment",
     "EmailMessage",
     "EmailProvider",
@@ -61,25 +53,19 @@ __all__ = [
     "ValidationError",
     "data_provider",
     "get_data_provider",
-    "get_demo_provider",
     "get_gmail_client",
     "get_inventree_client",
     "get_mode_status",
     "inventree_client",
-    "is_demo_mode",
     "reset_provider",
 ]
 
 _EXPORTS = {  # noqa: RUF067 - Lazy re-export map keeps optional providers unloaded.
-    "DemoDataProviderAsync": ("ai.core.integrations.data_provider", "DemoDataProviderAsync"),
     "LiveDataProviderAsync": ("ai.core.integrations.data_provider", "LiveDataProviderAsync"),
     "data_provider": ("ai.core.integrations.data_provider", "data_provider"),
     "get_data_provider": ("ai.core.integrations.data_provider", "get_data_provider"),
     "get_mode_status": ("ai.core.integrations.data_provider", "get_mode_status"),
-    "is_demo_mode": ("ai.core.integrations.data_provider", "is_demo_mode"),
     "reset_provider": ("ai.core.integrations.data_provider", "reset_provider"),
-    "DemoDatasetProvider": ("ai.core.integrations.demo_dataset", "DemoDatasetProvider"),
-    "get_demo_provider": ("ai.core.integrations.demo_dataset", "get_demo_provider"),
     "EMAIL_TOOLS": ("ai.core.integrations.email", "EMAIL_TOOLS"),
     "EmailAttachment": ("ai.core.integrations.email", "EmailAttachment"),
     "EmailMessage": ("ai.core.integrations.email", "EmailMessage"),
