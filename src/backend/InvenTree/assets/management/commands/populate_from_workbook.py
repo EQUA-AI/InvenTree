@@ -145,7 +145,9 @@ class Command(BaseCommand):
         self.stdout.write(
             f'Workbook {summary["sha256"][:12]}: {summary["locations"]} locations, '
             f'station={summary["station"]!r}, {summary["pumps"]} pumps, '
-            f'{summary["equipment"]} equipment, {summary["profiles"]} profiles'
+            f'{summary["equipment"]} equipment, {summary["profiles"]} profiles, '
+            f'{summary["parts"]} parts, {summary["components"]} components, '
+            f'{summary["part_links"]} part links'
         )
         if payload['mode'] == 'plan':
             self.stdout.write(
@@ -185,6 +187,10 @@ class Command(BaseCommand):
         self.stdout.write(f'  equipment  {payload["equipment"]}')
         self.stdout.write(f'  details    {payload["details"]}')
         self.stdout.write(f'  placements {payload["placements"]}')
+        self.stdout.write(f'  categories {payload["categories"]}')
+        self.stdout.write(f'  parts      {payload["parts"]}')
+        self.stdout.write(f'  components {payload["components"]}')
+        self.stdout.write(f'  part_links {payload["part_links"]}')
         for warning in payload['warnings']:
             self.stdout.write(self.style.WARNING(f'  warn: {warning}'))
         if payload['blocked']:

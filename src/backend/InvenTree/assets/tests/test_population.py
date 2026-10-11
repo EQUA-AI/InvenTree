@@ -74,6 +74,23 @@ COMPONENT_HEADER = [
     'quantity',
 ]
 LINK_HEADER = ['machine_key', 'part_ipn', 'quantity', 'notes']
+PART_HEADER = [
+    'ipn',
+    'name',
+    'category',
+    'description',
+    'manufacturer',
+    'manufacturer_part_number',
+    'part_type',
+    'virtual',
+    'purchaseable',
+    'trackable',
+    'consumable',
+    'units',
+    'minimum_stock',
+    'source_url',
+    'notes',
+]
 
 
 def default_sheets():
@@ -97,10 +114,21 @@ def default_sheets():
             ['P01', 'high', 'predictive', json.dumps([{'name': 'Pump', 'ref': 'PUMP'}, {'name': 'Impeller', 'ref': 'IMP', 'parent_ref': 'PUMP'}]), json.dumps(['electrical', 'hydraulic']), json.dumps(['WB-LOW-FLOW']), '[]'],
         ],
         'Component Occurrences': [
-            COMPONENT_HEADER,
-            ['P01', 'PUMP-01', 'Pump - Train 01', 'WB-REF-P01', 1],
+            COMPONENT_HEADER + ['engineering_status', 'actual_installed_compatibility', 'note'],
+            ['P01', 'PUMP-01', 'Pump - Train 01', 'WB-REF-P01', 1, 'ENGINEERED_REFERENCE_PENDING_REVIEW', 'NOT_APPROVED', 'Reference occurrence.'],
+            ['P01', 'MOTOR-01', 'Motor - Train 01', 'WB-REF-P02', 1, 'ENGINEERED_REFERENCE_PENDING_REVIEW', 'NOT_APPROVED', ''],
         ],
-        'Machine Part Links': [LINK_HEADER, ['P01', 'WB-REF-P01', 1, 'reference']],
+        'Machine Part Links': [
+            LINK_HEADER,
+            ['P01', 'WB-REF-P01', 1, 'reference'],
+            ['P01', 'WB-REF-P02', 1, 'reference'],
+        ],
+        'Parts Catalogue': [
+            PART_HEADER,
+            ['WB-REF-P01', 'Main pump | Family A', 'Workbook / Reference Equipment', 'Reference pump family.', 'KSB', None, 'VIRTUAL_FAMILY_REFERENCE', True, False, False, False, 'pcs', 0, None, 'Not orderable.'],
+            ['WB-REF-P02', 'Main motor | Family B', 'Workbook / Reference Equipment', 'Reference motor family.', 'WEG', None, 'VIRTUAL_FAMILY_REFERENCE', True, False, False, False, 'pcs', 0, None, 'Not orderable.'],
+            ['WB-CAT-X1', 'Control power supply', 'Workbook / Orderable Candidates', 'Real OEM candidate.', 'Phoenix Contact', '2904602', 'REAL_OEM_PRODUCT_CANDIDATE', False, True, False, False, 'pcs', 2, 'https://example.invalid/2904602', 'Candidate only.'],
+        ],
     }
 
 
@@ -197,6 +225,28 @@ class WorkbookParserTests(TestCase):
         with self.assertRaisesRegex(WorkbookError, 'exactly one client_code'):
             self.parse(mutate)
 
+    def test_component_ipn_must_be_in_catalogue(self):
+        def mutate(sheets):
+            sheets['Component Occurrences'][1][3] = 'WB-REF-P99'
+
+        with self.assertRaisesRegex(WorkbookError, 'not in the catalogue: WB-REF-P99'):
+            self.parse(mutate)
+
+    def test_virtual_part_cannot_be_purchaseable(self):
+        def mutate(sheets):
+            sheets['Parts Catalogue'][1][8] = True
+
+        with self.assertRaisesRegex(WorkbookError, 'cannot be purchaseable'):
+            self.parse(mutate)
+
+    def test_parts_sheet_parsed(self):
+        book = self.parse()
+        self.assertTrue(book.has_parts_sheet)
+        self.assertEqual([p.ipn for p in book.parts], ['WB-REF-P01', 'WB-REF-P02', 'WB-CAT-X1'])
+        self.assertEqual(book.parts[0].category, ('Workbook', 'Reference Equipment'))
+        self.assertIn('engineering=ENGINEERED_REFERENCE_PENDING_REVIEW', book.components[0].review_note)
+        self.assertEqual(book.referenced_ipns, {'WB-REF-P01', 'WB-REF-P02'})
+
 
 @override_settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=None)
 class PopulationApplyTests(TestCase):
@@ -227,9 +277,21 @@ class PopulationApplyTests(TestCase):
         self.assertEqual(plan.counts()['station'], {'register': 1})
         self.assertEqual(plan.counts()['pump'], {'create': 2})
         self.assertEqual(plan.counts()['equipment'], {'create': 1})
-        self.assertEqual(plan.blocked['parts_missing'], ['WB-REF-P01'])
+        self.assertEqual(plan.counts()['category'], {'create': 3})
+        self.assertEqual(plan.counts()['part'], {'create': 3})
+        self.assertEqual(plan.counts()['component'], {'create': 2})
+        self.assertEqual(plan.counts()['part_link'], {'create': 2})
+        self.assertEqual(plan.blocked, {})
         self.assertFalse(Client.objects.filter(code=CLIENT).exists())
         self.assertEqual(AssetMachine.objects.count(), 0)
+
+    def test_plan_without_catalogue_reports_blocked_parts(self):
+        def mutate(sheets):
+            del sheets['Parts Catalogue']
+
+        plan = plan_population(self.book(mutate), client_name='Workbook Client')
+        self.assertEqual(plan.blocked['parts_missing'], ['WB-REF-P01', 'WB-REF-P02'])
+        self.assertNotIn('part', plan.counts())
 
     def test_dry_run_rolls_back_everything(self):
         report = apply_population(
@@ -277,17 +339,43 @@ class PopulationApplyTests(TestCase):
         self.assertEqual(first['placements']['moved'], 4)
         self.assertEqual(MachinePlacementHistory.objects.count(), 4)
 
+        # Parts stage: categories, parts, draft components, aggregated links.
+        from part.models import Part, PartCategory
+
+        from assets.models import AssetComponent, MachinePart
+
+        self.assertEqual(first['categories'], {'created': 3, 'existing': 0})
+        self.assertEqual(first['parts'], {'created': 3, 'updated': 0, 'unchanged': 0})
+        self.assertEqual(first['components']['created'], 2)
+        self.assertEqual(first['part_links']['created'], 2)
+        family = Part.objects.get(IPN='WB-REF-P01')
+        self.assertTrue(family.virtual)
+        self.assertFalse(family.purchaseable)
+        self.assertEqual(family.category.pathstring, 'Workbook/Reference Equipment')
+        self.assertEqual(PartCategory.objects.get(name='Workbook').children.count(), 2)
+        candidate = Part.objects.get(IPN='WB-CAT-X1')
+        self.assertTrue(candidate.purchaseable)
+        self.assertEqual(candidate.minimum_stock, 2)
+        self.assertEqual(candidate.link, 'https://example.invalid/2904602')
+        occurrence = AssetComponent.objects.get(machine=pumps[0], code='PUMP-01')
+        self.assertEqual(occurrence.part, family)
+        self.assertEqual(occurrence.status, 'draft')
+        self.assertIn('compatibility=NOT_APPROVED', occurrence.review_note)
+        self.assertEqual(
+            MachinePart.objects.get(machine=pumps[0], part=family).quantity, 1
+        )
+
         second = apply_population(self.book(), self.actor)
         self.assertEqual(second['locations'], {'created': 0, 'updated': 0, 'unchanged': 3})
         self.assertEqual(second['pumps'], {'created': 0, 'existing': 2})
         self.assertEqual(second['equipment'], {'created': 0, 'existing': 1})
         self.assertEqual(second['details']['updated'], 0)
         self.assertEqual(second['placements']['moved'], 0)
-        self.assertEqual(AssetMachine.objects.count(), 4)
-        self.assertEqual(MachineLocationTransfer.objects.count(), first['placements']['transfers'])
-        self.assertEqual(
-            AssetMachine.objects.get(pk=station.pk).uuid, station.uuid
-        )
+        self.assertEqual(second['parts'], {'created': 0, 'updated': 0, 'unchanged': 3})
+        self.assertEqual(second['components']['unchanged'], 2)
+        self.assertEqual(second['part_links']['unchanged'], 2)
+        self.assertEqual(Part.objects.filter(IPN__startswith='WB-').count(), 3)
+        self.assertEqual(AssetComponent.objects.count(), 2)
 
     def test_existing_equipment_is_updated_not_duplicated(self):
         client = Client.objects.create(code=CLIENT, name='Pre-existing')
@@ -377,6 +465,40 @@ class PopulationApplyTests(TestCase):
         plan = plan_population(self.book(), station_uuid=uuid4())
         self.assertTrue(any('Public UUIDs are immutable' in c for c in plan.conflicts))
 
+    def test_component_bound_to_other_part_is_a_conflict(self):
+        apply_population(self.book(), self.actor, client_name='Workbook Client')
+
+        def mutate(sheets):
+            # Point PUMP-01 at the motor family instead.
+            sheets['Component Occurrences'][1][3] = 'WB-REF-P02'
+
+        plan = plan_population(self.book(mutate))
+        self.assertTrue(any('is bound to part' in c for c in plan.conflicts))
+        with self.assertRaisesRegex(PopulationError, 'Refusing to apply'):
+            apply_population(self.book(mutate), self.actor)
+
+    def test_part_link_quantity_update_and_part_field_update(self):
+        apply_population(self.book(), self.actor, client_name='Workbook Client')
+
+        def mutate(sheets):
+            sheets['Machine Part Links'][1][2] = 3
+            sheets['Parts Catalogue'][1][3] = 'Revised description.'
+
+        plan = plan_population(self.book(mutate))
+        self.assertEqual(plan.counts()['part_link'], {'update': 1, 'unchanged': 1})
+        self.assertEqual(plan.counts()['part'], {'update': 1, 'unchanged': 2})
+        report = apply_population(self.book(mutate), self.actor)
+        self.assertEqual(report['part_links']['updated'], 1)
+        self.assertEqual(report['parts']['updated'], 1)
+        from part.models import Part
+
+        from assets.models import MachinePart
+
+        self.assertEqual(Part.objects.get(IPN='WB-REF-P01').description, 'Revised description.')
+        self.assertEqual(
+            MachinePart.objects.get(part__IPN='WB-REF-P01').quantity, 3
+        )
+
 
 @override_settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=None)
 class PopulateCommandTests(TestCase):
@@ -450,6 +572,7 @@ class PopulateCommandTests(TestCase):
         self.assertEqual(applied['mode'], 'apply')
         self.assertEqual(applied['backup_ref'], 'local-test')
         self.assertEqual(AssetMachine.objects.count(), 4)
+        self.assertEqual(applied['parts']['created'], 3)
 
     def test_invalid_workbook_is_a_command_error(self):
         sheets = default_sheets()

@@ -29,9 +29,10 @@ SHEET_MACHINES = 'Machine Records'
 SHEET_PROFILES = 'Machine Profiles'
 SHEET_COMPONENTS = 'Component Occurrences'
 SHEET_PART_LINKS = 'Machine Part Links'
+SHEET_PARTS = 'Parts Catalogue'
 
 REQUIRED_SHEETS = (SHEET_LOCATIONS, SHEET_MACHINES)
-OPTIONAL_SHEETS = (SHEET_PROFILES, SHEET_COMPONENTS, SHEET_PART_LINKS)
+OPTIONAL_SHEETS = (SHEET_PROFILES, SHEET_COMPONENTS, SHEET_PART_LINKS, SHEET_PARTS)
 
 LOCATION_COLUMNS = (
     'code',
@@ -81,6 +82,36 @@ COMPONENT_COLUMNS = (
 )
 PART_LINK_COLUMNS = ('machine_key', 'part_ipn', 'quantity', 'notes')
 MACHINE_OPTIONAL_COLUMNS = ('public_uuid',)
+COMPONENT_OPTIONAL_COLUMNS = (
+    'engineering_status',
+    'actual_installed_compatibility',
+    'note',
+)
+PART_COLUMNS = (
+    'ipn',
+    'name',
+    'category',
+    'description',
+    'virtual',
+    'purchaseable',
+    'trackable',
+    'consumable',
+    'units',
+    'minimum_stock',
+)
+PART_OPTIONAL_COLUMNS = (
+    'part_type',
+    'manufacturer',
+    'manufacturer_part_number',
+    'source_url',
+    'notes',
+)
+CATEGORY_SEPARATOR = ' / '
+MAX_PART_NAME = 100
+MAX_PART_DESCRIPTION = 250
+MAX_PART_IPN = 100
+MAX_PART_UNITS = 20
+MAX_CATEGORY_NAME = 100
 
 LOCATION_KINDS = frozenset({
     'site',
@@ -161,6 +192,7 @@ class ComponentRecord:
     name: str
     part_ipn: str
     quantity: int
+    review_note: str = ''
 
 
 @dataclass(frozen=True)
@@ -171,6 +203,28 @@ class PartLinkRecord:
     machine_key: str
     part_ipn: str
     quantity: int
+    notes: str
+
+
+@dataclass(frozen=True)
+class PartRecord:
+    """A reference or catalogue Part; ``category`` is a ``A / B / C`` path."""
+
+    row: int
+    ipn: str
+    name: str
+    category: tuple[str, ...]
+    description: str
+    virtual: bool
+    purchaseable: bool
+    trackable: bool
+    consumable: bool
+    units: str
+    minimum_stock: int
+    part_type: str
+    manufacturer: str
+    mpn: str
+    link: str
     notes: str
 
 
@@ -186,6 +240,8 @@ class PopulationWorkbook:
     profiles: dict[str, ProfileRecord] = field(default_factory=dict)
     components: list[ComponentRecord] = field(default_factory=list)
     part_links: list[PartLinkRecord] = field(default_factory=list)
+    parts: list[PartRecord] = field(default_factory=list)
+    has_parts_sheet: bool = False
 
     @property
     def station(self) -> MachineRecord | None:
@@ -216,8 +272,16 @@ class PopulationWorkbook:
             'pumps': len(self.pumps),
             'equipment': len(self.equipment),
             'profiles': len(self.profiles),
+            'parts': len(self.parts),
             'components': len(self.components),
             'part_links': len(self.part_links),
+        }
+
+    @property
+    def referenced_ipns(self) -> set[str]:
+        """Every IPN the component and part-link stages depend on."""
+        return {c.part_ipn for c in self.components} | {
+            link.part_ipn for link in self.part_links
         }
 
 
@@ -574,7 +638,9 @@ def _load_components(workbook, machine_keys: set[str]) -> list[ComponentRecord]:
         return []
     records: list[ComponentRecord] = []
     slots: dict[tuple[str, str], int] = {}
-    for row, cell in _rows(workbook, sheet, COMPONENT_COLUMNS):
+    for row, cell in _rows(
+        workbook, sheet, COMPONENT_COLUMNS, COMPONENT_OPTIONAL_COLUMNS
+    ):
         key = _text(cell['owner_machine_key'])
         if key not in machine_keys:
             raise WorkbookError(
@@ -592,6 +658,17 @@ def _load_components(workbook, machine_keys: set[str]) -> list[ComponentRecord]:
         ipn = _text(cell['catalogue_part_ipn'])
         if not ipn:
             raise WorkbookError(f'{sheet} row {row}: catalogue_part_ipn is required')
+        note_parts = [
+            _text(cell.get('note')),
+            ' '.join(
+                f'{label}={_text(cell.get(column))}'
+                for label, column in (
+                    ('engineering', 'engineering_status'),
+                    ('compatibility', 'actual_installed_compatibility'),
+                )
+                if _text(cell.get(column))
+            ),
+        ]
         records.append(
             ComponentRecord(
                 row=row,
@@ -602,6 +679,7 @@ def _load_components(workbook, machine_keys: set[str]) -> list[ComponentRecord]:
                 quantity=_int(
                     cell['quantity'], sheet=sheet, row=row, column='quantity', minimum=1
                 ),
+                review_note=' '.join(p for p in note_parts if p)[:4000],
             )
         )
     return records
@@ -641,6 +719,87 @@ def _load_part_links(workbook, machine_keys: set[str]) -> list[PartLinkRecord]:
     return records
 
 
+def _load_parts(workbook) -> list[PartRecord]:
+    sheet = SHEET_PARTS
+    if sheet not in workbook.sheetnames:
+        return []
+    records: list[PartRecord] = []
+    ipns: dict[str, int] = {}
+    for row, cell in _rows(workbook, sheet, PART_COLUMNS, PART_OPTIONAL_COLUMNS):
+        ipn = _text(cell['ipn'])
+        if not ipn or len(ipn) > MAX_PART_IPN:
+            raise WorkbookError(
+                f'{sheet} row {row}: ipn is required (<= {MAX_PART_IPN})'
+            )
+        if ipn.casefold() in ipns:
+            raise WorkbookError(
+                f'{sheet} row {row}: ipn {ipn} duplicates row {ipns[ipn.casefold()]}'
+            )
+        ipns[ipn.casefold()] = row
+        name = ' '.join(_text(cell['name']).split())
+        if not name or len(name) > MAX_PART_NAME:
+            raise WorkbookError(
+                f'{sheet} row {row}: name is required (<= {MAX_PART_NAME} chars)'
+            )
+        description = _text(cell['description'])
+        if len(description) > MAX_PART_DESCRIPTION:
+            raise WorkbookError(
+                f'{sheet} row {row}: description exceeds {MAX_PART_DESCRIPTION} chars'
+            )
+        raw_category = _text(cell['category'])
+        category = tuple(
+            ' '.join(segment.split())
+            for segment in raw_category.split(CATEGORY_SEPARATOR)
+            if segment.strip()
+        )
+        if not category:
+            raise WorkbookError(f'{sheet} row {row}: category is required')
+        if any(len(segment) > MAX_CATEGORY_NAME for segment in category):
+            raise WorkbookError(
+                f'{sheet} row {row}: category segment exceeds {MAX_CATEGORY_NAME} chars'
+            )
+        units = _text(cell['units'])
+        if len(units) > MAX_PART_UNITS:
+            raise WorkbookError(
+                f'{sheet} row {row}: units exceeds {MAX_PART_UNITS} chars'
+            )
+        virtual = _bool(cell['virtual'], sheet=sheet, row=row, column='virtual')
+        purchaseable = _bool(
+            cell['purchaseable'], sheet=sheet, row=row, column='purchaseable'
+        )
+        if virtual and purchaseable:
+            raise WorkbookError(
+                f'{sheet} row {row}: a virtual reference part cannot be purchaseable'
+            )
+        records.append(
+            PartRecord(
+                row=row,
+                ipn=ipn,
+                name=name,
+                category=category,
+                description=description,
+                virtual=virtual,
+                purchaseable=purchaseable,
+                trackable=_bool(
+                    cell['trackable'], sheet=sheet, row=row, column='trackable'
+                ),
+                consumable=_bool(
+                    cell['consumable'], sheet=sheet, row=row, column='consumable'
+                ),
+                units=units,
+                minimum_stock=_int(
+                    cell['minimum_stock'], sheet=sheet, row=row, column='minimum_stock'
+                ),
+                part_type=_text(cell.get('part_type')),
+                manufacturer=_text(cell.get('manufacturer'))[:250],
+                mpn=_text(cell.get('manufacturer_part_number'))[:100],
+                link=_text(cell.get('source_url'))[:2000],
+                notes=_text(cell.get('notes')),
+            )
+        )
+    return records
+
+
 def load_population_workbook(path) -> PopulationWorkbook:
     """Read and validate a population workbook from disk.
 
@@ -672,8 +831,24 @@ def load_population_workbook(path) -> PopulationWorkbook:
         profiles = _load_profiles(workbook, machine_keys)
         components = _load_components(workbook, machine_keys)
         part_links = _load_part_links(workbook, machine_keys)
+        has_parts_sheet = SHEET_PARTS in workbook.sheetnames
+        parts = _load_parts(workbook)
     finally:
         workbook.close()
+    if has_parts_sheet:
+        # With a catalogue present every referenced IPN must be defined by it;
+        # silently falling through to "whatever is in the database" would let a
+        # typo bind a component to an unrelated part.
+        catalogue = {record.ipn.casefold() for record in parts}
+        referenced = {c.part_ipn for c in components} | {
+            link.part_ipn for link in part_links
+        }
+        missing = sorted(ipn for ipn in referenced if ipn.casefold() not in catalogue)
+        if missing:
+            raise WorkbookError(
+                f'{SHEET_PARTS}: referenced IPNs are not in the catalogue: '
+                + ', '.join(missing[:20])
+            )
     clients = sorted(
         {record.client_code for record in locations}
         | {record.client_code for record in machines}
@@ -692,6 +867,8 @@ def load_population_workbook(path) -> PopulationWorkbook:
         profiles=profiles,
         components=components,
         part_links=part_links,
+        parts=parts,
+        has_parts_sheet=has_parts_sheet,
     )
 
 
@@ -700,6 +877,7 @@ __all__ = [
     'LocationRecord',
     'MachineRecord',
     'PartLinkRecord',
+    'PartRecord',
     'PopulationWorkbook',
     'ProfileRecord',
     'WorkbookError',

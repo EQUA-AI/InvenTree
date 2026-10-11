@@ -38,7 +38,7 @@ from users.permissions import check_user_role
 from .locations import MAX_TRANSFER, save_location, transfer_machines
 from .machine_profile import validate_machine_profile
 from .models import AssetLocation, AssetMachine, Client
-from .population_workbook import MachineRecord, PopulationWorkbook
+from .population_workbook import CATEGORY_SEPARATOR, MachineRecord, PopulationWorkbook
 from .registry import ensure_pump, pump_display_name, register_station, rename_station
 
 MACHINE_FIELDS = ('description', 'manufacturer', 'model', 'serial', 'active')
@@ -349,7 +349,7 @@ def plan_population(
             plan.add('placement', record.key, 'move', record.location_code)
 
     # Parts-dependent stages ------------------------------------------------------
-    _plan_blocked(plan, book)
+    _plan_parts(plan, book)
     return plan
 
 
@@ -385,11 +385,10 @@ def _resolve_existing(record: MachineRecord, station):
 
 
 def _plan_blocked(plan: Plan, book: PopulationWorkbook):
+    """Without a catalogue sheet, components can only use parts already present."""
     from part.models import Part
 
-    wanted = {c.part_ipn for c in book.components} | {
-        link.part_ipn for link in book.part_links
-    }
+    wanted = book.referenced_ipns
     if not wanted:
         return
     present = set(Part.objects.filter(IPN__in=wanted).values_list('IPN', flat=True))
@@ -402,10 +401,157 @@ def _plan_blocked(plan: Plan, book: PopulationWorkbook):
         'parts_missing': missing[:50],
         'parts_missing_count': len(missing),
         'note': (
-            'Component occurrences and installed-part links are applied in a later '
-            'stage once the referenced Parts exist.'
+            'No Parts Catalogue sheet; component occurrences and installed-part '
+            'links need the referenced Parts to exist first.'
         ),
     }
+
+
+PART_FIELDS = (
+    'name',
+    'description',
+    'virtual',
+    'purchaseable',
+    'trackable',
+    'consumable',
+    'units',
+    'minimum_stock',
+)
+
+
+def _existing_parts(ipns):
+    """Map IPN (case-folded) to its Part; more than one match is a conflict."""
+    from part.models import Part
+
+    found: dict[str, list] = {}
+    for part in Part.objects.filter(IPN__in=ipns).select_related('category'):
+        found.setdefault(part.IPN.casefold(), []).append(part)
+    return found
+
+
+def _pathstring(category: tuple[str, ...]) -> str:
+    """InvenTree's ``PathStringMixin`` joins tree names with a bare slash."""
+    return '/'.join(category)
+
+
+def _part_changes(part, record, category_path: str):
+    changes = {}
+    for name in PART_FIELDS:
+        wanted = getattr(record, name)
+        current = getattr(part, name)
+        if name == 'minimum_stock':
+            current = int(current or 0)
+        elif name == 'units':
+            current = current or ''
+        if current != wanted:
+            changes[name] = wanted
+    if (part.category.pathstring if part.category_id else '') != category_path:
+        changes['category'] = category_path
+    if record.link and (part.link or '') != record.link:
+        changes['link'] = record.link
+    if not part.active:
+        changes['active'] = True
+    return changes
+
+
+def _plan_parts(plan: Plan, book: PopulationWorkbook):
+    """Categories, parts, component occurrences and installed-part links."""
+    from part.models import PartCategory
+
+    from .models import AssetComponent, MachinePart
+
+    if not book.has_parts_sheet:
+        _plan_blocked(plan, book)
+        return
+
+    nodes = set()
+    for record in book.parts:
+        for depth in range(1, len(record.category) + 1):
+            nodes.add(record.category[:depth])
+    existing_paths = set(
+        PartCategory.objects.filter(
+            pathstring__in=[_pathstring(node) for node in nodes]
+        ).values_list('pathstring', flat=True)
+    )
+    for node in sorted(nodes):
+        path = _pathstring(node)
+        plan.add('category', path, 'exists' if path in existing_paths else 'create')
+
+    existing = _existing_parts([record.ipn for record in book.parts])
+    parts_by_ipn = {}
+    for record in book.parts:
+        matches = existing.get(record.ipn.casefold(), [])
+        if len(matches) > 1:
+            plan.conflicts.append(
+                f'IPN {record.ipn} matches {len(matches)} parts; resolve the duplicate.'
+            )
+            continue
+        if not matches:
+            plan.add('part', record.ipn, 'create', record.name)
+            continue
+        part = matches[0]
+        parts_by_ipn[record.ipn.casefold()] = part
+        if part.category_id and part.category.structural:
+            plan.conflicts.append(
+                f'Part {record.ipn} sits in structural category {part.category.pathstring}.'
+            )
+        changes = _part_changes(part, record, _pathstring(record.category))
+        if changes:
+            plan.add('part', record.ipn, 'update', ', '.join(sorted(changes)))
+        else:
+            plan.add('part', record.ipn, 'unchanged')
+
+    station = None
+    if book.station:
+        station = AssetMachine.objects.filter(
+            asset_type='pumphouse',
+            source_namespace=book.station.source_namespace,
+            source_entity_uuid=book.station.source_entity_uuid,
+        ).first()
+    machines = {
+        record.key: _resolve_existing(record, station) for record in book.machines
+    }
+    owner_pks = [m.pk for m in machines.values() if m is not None]
+    components = {
+        (c.machine_id, c.code): c
+        for c in AssetComponent.objects.filter(machine_id__in=owner_pks).select_related(
+            'part'
+        )
+    }
+    for record in book.components:
+        owner = machines.get(record.machine_key)
+        if owner is None:
+            plan.add('component', f'{record.machine_key}:{record.code}', 'create')
+            continue
+        current = components.get((owner.pk, record.code))
+        if current is None:
+            plan.add('component', f'{record.machine_key}:{record.code}', 'create')
+        elif (current.part.IPN or '').casefold() != record.part_ipn.casefold():
+            plan.conflicts.append(
+                f'Component {record.code} on {record.machine_key} is bound to part '
+                f'{current.part.IPN!r}, workbook says {record.part_ipn!r}; review it.'
+            )
+        elif current.name != record.name or current.review_note != record.review_note:
+            plan.add('component', f'{record.machine_key}:{record.code}', 'update')
+        else:
+            plan.add('component', f'{record.machine_key}:{record.code}', 'unchanged')
+
+    links = {
+        (link.machine_id, (link.part.IPN or '').casefold()): link
+        for link in MachinePart.objects.filter(machine_id__in=owner_pks).select_related(
+            'part'
+        )
+    }
+    for record in book.part_links:
+        owner = machines.get(record.machine_key)
+        current = links.get((owner.pk, record.part_ipn.casefold())) if owner else None
+        key = f'{record.machine_key}:{record.part_ipn}'
+        if current is None:
+            plan.add('part_link', key, 'create', f'x{record.quantity}')
+        elif current.quantity != record.quantity or current.notes != record.notes:
+            plan.add('part_link', key, 'update', f'x{record.quantity}')
+        else:
+            plan.add('part_link', key, 'unchanged')
 
 
 # -- applying ----------------------------------------------------------------
@@ -619,6 +765,9 @@ def apply_population(
             report['placements']['transfers'] += 1
             report['placements']['moved'] += len(result['machines'])
 
+    # Parts, components, installed-part links ---------------------------------------
+    report.update(_apply_parts(book, machines))
+
     report['machines'] = {
         key: {'pk': machine.pk, 'name': machine.name, 'asset_type': machine.asset_type}
         for key, machine in machines.items()
@@ -626,6 +775,158 @@ def apply_population(
     if dry_run:
         transaction.set_rollback(True)
     return report
+
+
+def _ensure_category(path: tuple[str, ...], cache: dict):
+    """Create the category chain for ``path``; cache by joined path."""
+    from part.models import PartCategory
+
+    parent = None
+    created = 0
+    for depth in range(1, len(path) + 1):
+        key = CATEGORY_SEPARATOR.join(path[:depth])
+        node = cache.get(key)
+        if node is None:
+            node = PartCategory.objects.filter(
+                name=path[depth - 1], parent=parent
+            ).first()
+            if node is None:
+                node = PartCategory(name=path[depth - 1], parent=parent)
+                node.full_clean()
+                node.save()
+                created += 1
+            cache[key] = node
+        parent = node
+    return parent, created
+
+
+def _apply_parts(book: PopulationWorkbook, machines: dict) -> dict:
+    """Upsert the catalogue, then bind components and installed-part links.
+
+    Component occurrences stay ``draft`` and carry the workbook's engineering
+    status in ``review_note``; nothing here marks a part as verified installed
+    or an approved spare (QA-14, QA-19).
+    """
+    from part.models import Part
+
+    from .models import AssetComponent, MachinePart
+
+    out = {
+        'categories': {'created': 0, 'existing': 0},
+        'parts': {'created': 0, 'updated': 0, 'unchanged': 0},
+        'components': {'created': 0, 'updated': 0, 'unchanged': 0, 'skipped': 0},
+        'part_links': {'created': 0, 'updated': 0, 'unchanged': 0, 'skipped': 0},
+    }
+    if not book.has_parts_sheet:
+        out['components']['skipped'] = len(book.components)
+        out['part_links']['skipped'] = len(book.part_links)
+        return out
+
+    categories: dict = {}
+    existing = _existing_parts([record.ipn for record in book.parts])
+    parts: dict[str, Part] = {}
+    for record in book.parts:
+        category, created = _ensure_category(record.category, categories)
+        out['categories']['created'] += created
+        matches = existing.get(record.ipn.casefold(), [])
+        if len(matches) > 1:
+            raise PopulationError(f'IPN {record.ipn} matches more than one part.')
+        path = _pathstring(record.category)
+        try:
+            if not matches:
+                part = Part(
+                    name=record.name,
+                    IPN=record.ipn,
+                    description=record.description,
+                    category=category,
+                    virtual=record.virtual,
+                    purchaseable=record.purchaseable,
+                    trackable=record.trackable,
+                    consumable=record.consumable,
+                    units=record.units,
+                    minimum_stock=record.minimum_stock,
+                    link=record.link or None,
+                    keywords=record.manufacturer[:250],
+                    component=True,
+                    active=True,
+                )
+                part.full_clean()
+                part.save()
+                out['parts']['created'] += 1
+            else:
+                part = matches[0]
+                changes = _part_changes(part, record, path)
+                if changes:
+                    if 'category' in changes:
+                        part.category = category
+                    for name, value in changes.items():
+                        if name != 'category':
+                            setattr(part, name, value)
+                    part.full_clean()
+                    part.save()
+                    out['parts']['updated'] += 1
+                else:
+                    out['parts']['unchanged'] += 1
+        except ValidationError as exc:
+            raise PopulationError(
+                f'Part {record.ipn} (row {record.row}): {"; ".join(exc.messages)}'
+            ) from exc
+        parts[record.ipn.casefold()] = part
+    out['categories']['existing'] = len(categories) - out['categories']['created']
+
+    provenance = f'Workbook population {book.sha256[:12]}'[:250]
+    for record in book.components:
+        owner = machines.get(record.machine_key)
+        part = parts.get(record.part_ipn.casefold())
+        if owner is None or part is None:
+            out['components']['skipped'] += 1
+            continue
+        component, created = AssetComponent.objects.get_or_create(
+            machine=owner,
+            code=record.code,
+            defaults={
+                'part': part,
+                'name': record.name,
+                'provenance': provenance,
+                'review_note': record.review_note,
+            },
+        )
+        if created:
+            out['components']['created'] += 1
+            continue
+        if component.part_id != part.pk:
+            raise PopulationError(
+                f'Component {record.code} on {record.machine_key} is bound to another part.'
+            )
+        if component.name != record.name or component.review_note != record.review_note:
+            component.name = record.name
+            component.review_note = record.review_note
+            component.save(update_fields=['name', 'review_note'])
+            out['components']['updated'] += 1
+        else:
+            out['components']['unchanged'] += 1
+
+    for record in book.part_links:
+        owner = machines.get(record.machine_key)
+        part = parts.get(record.part_ipn.casefold())
+        if owner is None or part is None:
+            out['part_links']['skipped'] += 1
+            continue
+        link, created = MachinePart.objects.get_or_create(
+            machine=owner,
+            part=part,
+            defaults={'quantity': record.quantity, 'notes': record.notes},
+        )
+        if created:
+            out['part_links']['created'] += 1
+        elif link.quantity != record.quantity or link.notes != record.notes:
+            link.quantity = record.quantity
+            link.notes = record.notes
+            link.save(update_fields=['quantity', 'notes'])
+            out['part_links']['updated'] += 1
+        else:
+            out['part_links']['unchanged'] += 1
+    return out
 
 
 __all__ = [
