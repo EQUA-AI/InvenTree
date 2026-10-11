@@ -298,8 +298,8 @@ query and every save fires the plugin/event hooks). Counts from the command's JS
 
 QA gates (step 17): the read-only checker is `contrib/cosmos/devtools/cedar_creek_qa_gates.py`.
 Against the sandbox population it reports 22 pass / 0 fail. The Azure run is
-**outstanding**: shortly after the apply committed, the server began rejecting the
-`pgadmin` password held by the local container (`password authentication failed`,
-from ~21:10 local). The password is static, so it was changed server-side; the owner
-has to supply the current one before the gates can be run there. See `HANDOVER.md`
-section 5a and open item 11.
+**outstanding**: new logins have been refused for the local container's `pgadmin`
+password since a server update by Lokesh@equa.work at 17:31 UTC, during the apply
+(which was already connected, so it still committed). That update fits a reset of the
+admin password; the current password is needed from him before the gates can be run
+there. See `HANDOVER.md` section 5a and open item 11.

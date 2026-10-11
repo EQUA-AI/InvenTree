@@ -220,12 +220,16 @@ been run against Azure**: see open item 11.
     components (bound to signal points) and the 17 `CC-REF` workbook
     components. Whether to retire one set is a data decision for the owner.
 11. The Azure database stopped accepting the `pgadmin` password held by the
-    local `aimms-azure-server` container at about 21:10 local on 2026-10-11
-    (`FATAL: password authentication failed`), shortly after the workbook
-    apply had committed (`APPLY_EXIT=0` at 20:54). The credential is a static
-    password, not a token, so it was changed on the server side. Until the
-    owner supplies the current one, nothing from this checkout can read
-    Azure, and the QA gates in section 5a have not been run there. Run them
+    local `aimms-azure-server` container on 2026-10-11
+    (`FATAL: password authentication failed`). Cause: the server's activity
+    log shows a `flexibleServers/write` by Lokesh@equa.work at 17:31 UTC
+    (20:31 local, +03:00), followed by a firewall-rule write at 17:34 UTC,
+    which fits a reset of the admin password. The workbook apply was already
+    connected, so it still committed (`APPLY_EXIT=0` at 20:54 local). The
+    password in the container is the one from before the change, and the
+    only Entra admin on the server is Lokesh, so there is no other way in.
+    Until he supplies the current password, nothing from this checkout can
+    read Azure, and the QA gates in section 5a have not been run there. Run them
     first thing once access is back (expected: QA-15 shows 33 components per
     pump, QA-08 shows the `klsw`/`PH_3` identity, QA-55 counts all three
     stations' machines).
