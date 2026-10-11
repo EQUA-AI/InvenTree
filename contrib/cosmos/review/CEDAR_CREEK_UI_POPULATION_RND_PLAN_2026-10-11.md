@@ -209,7 +209,9 @@ python manage.py populate_from_workbook /path/MASTER.xlsx --dry-run --actor <use
   --station-uuid d0b4aace-a6a7-555c-9fc6-e93089ba12c5
 ```
 
-Apply against Azure (Pass B; only after owner approval and a backup):
+Apply against Azure (Pass B; only after owner approval and a backup). *Superseded: the
+Azure run used `--client-code internal --station 93` instead of `--client-name` /
+`--station-uuid`, because the station already existed; see "Pass B" below.*
 
 ```bash
 invoke backup                                  # or: docker compose run --rm inventree-server invoke backup
@@ -229,3 +231,75 @@ is configured, grant scope first: `manage.py grant_client_scope <username> cedar
 2. Component occurrences (`AssetComponent`) and `MachinePart` aggregation once parts exist
    (step 9), through the registry component path (QA-59).
 3. Support equipment is already created in Pass A (step 10).
+
+## Pass A2: delivered (2026-10-11)
+
+Steps 5 and 9 run when the workbook carries `Parts Catalogue` (commit `cdf14e8eb`).
+The remaining sheets with a model behind them were added afterwards
+(`assets/population_operations.py`):
+
+| Import Sequence step | Sheet | Target | Rule |
+|---|---|---|---|
+| 4 Stock locations | Warehouse Locations | `StockLocation` | codes may not shadow facility codes (QA-05); matched by (parent, name) |
+| 12 Companies / offers / stock | Companies | `Company` | identity only; matched by name |
+| | Supplier Offers | `ManufacturerPart` | `SupplierPart` only with supplier **and** SKU (QA-23); otherwise reported |
+| | Stock Items | `StockItem` | never on a virtual part or a structural bin (QA-18, QA-22); illustrative cost goes to a note, not `purchase_price` (QA-58); quantities not re-synced on replay |
+| 13 History | Maintenance History | `AssetMaintenanceRecord` | a `work_order_reference` is rejected (QA-26) |
+| 14 Work orders | Work Orders | `tasks.WorkOrder` | created `draft`, planned via `transition_work_order`; `job_number` = `work_order_key`; existing jobs are never overwritten (QA-24) |
+
+Reported as `manual`, not written: Staff Roles (step 2), PM Plans (step 13; procedures
+are customer-scoped governed content), Attachment Plan (step 15; no files in the
+package), repair packets (step 14; raised from the staged jobs in the UI), Closeout Copy
+(QA-29), Tag Hints (step 11, blocked by the package), compliance UI (step 16, a feature).
+
+Two operator flags bind the workbook to a plant that already exists from its source:
+`--client-code` (populate an existing client) and `--station <id>` (adopt a registered
+station; identity immutable, name and pump labels follow the workbook).
+
+## Pass B: Azure (2026-10-11)
+
+Plan against Azure showed the workbook would have created a second client and a second
+Cedar Creek station beside the live one (id 93, client `internal`, `klsw` identity), and
+the deployed app runs `single_site_scope_resolver` on `internal`, so nothing under a new
+client would be visible. Applied instead with:
+
+```bash
+manage.py dbbackup --noinput --compress     # data/backup/InvenTree-db-2026-10-11-155535.psql.bin.gz
+manage.py populate_from_workbook MASTER.xlsx --apply --actor admin \
+  --client-code internal --station 93 \
+  --backup-ref InvenTree-db-2026-10-11-155535.psql.bin.gz --allow-remote
+```
+
+No `--station-uuid`: the public UUID of station 93 is `ce0a411f-…` and immutable; the
+package's reserved `d0b4aace-…` applies only to a fresh registration. Pre-flight
+(read-only) confirmed `USD` enabled, stock-item notes allowed, the actor's scope and
+`plan_workorder` permission, and no name collisions for the 30 companies.
+
+### Pass B result
+
+`APPLY_EXIT=0` after about 65 minutes in one transaction (the link is ~0.25 s per
+query and every save fires the plugin/event hooks). Counts from the command's JSON:
+
+| Stage | Result |
+|---|---|
+| Client | `internal` (pk 1) existed |
+| Locations | 45 created |
+| Station | 93 adopted; renamed `Cedar Creek Final Effluent Pump Station`; `klsw`/`PH_3` identity and UUID `ce0a411f-…` kept |
+| Pumps | 14 existing (labels follow the station name) |
+| Equipment | 48 created |
+| Profiles / placements | 63 updated / 63 moved (38 transfers) |
+| Part categories / parts | 4 / 304 created |
+| Components / part links | 238 (17 per pump, beside the 16 `PS-*`) / 224 created |
+| Warehouse locations | 8 created |
+| Companies / manufacturer parts | 30 / 6 created; 6 supplier offers blocked (no SKU) |
+| Stock items | 6 created |
+| History | 132 created |
+| Work orders | 18 created, 8 planned |
+
+QA gates (step 17): the read-only checker is `contrib/cosmos/devtools/cedar_creek_qa_gates.py`.
+Against the sandbox population it reports 22 pass / 0 fail. The Azure run is
+**outstanding**: shortly after the apply committed, the server began rejecting the
+`pgadmin` password held by the local container (`password authentication failed`,
+from ~21:10 local). The password is static, so it was changed server-side; the owner
+has to supply the current one before the gates can be run there. See `HANDOVER.md`
+section 5a and open item 11.

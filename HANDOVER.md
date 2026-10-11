@@ -1,6 +1,7 @@
 # Handover: pump-station monitoring
 
-State on 2026-10-11 at commit `4a92f54cc` (`inventTree-aniket` = `IOT-Merge`).
+State on 2026-10-11 at commit `921fa697f` (`inventTree-aniket`; `IOT-Merge` is
+still at `4a92f54cc`, before the workbook population commits).
 This is the short current-state page. The detail is in documents that already
 exist, listed in section 8; read this first and those when you need depth.
 
@@ -61,8 +62,8 @@ Frontend, under `src/frontend/src/`:
 
 | Branch | At | Role |
 |---|---|---|
-| `inventTree-aniket` | `4a92f54cc` | Working branch for this work |
-| `IOT-Merge` | `4a92f54cc` | Same commit; waiting for Lowkey-wizard's review |
+| `inventTree-aniket` | `921fa697f` | Working branch for this work (pump-station merge + workbook population) |
+| `IOT-Merge` | `4a92f54cc` | Waiting for Lowkey-wizard's review; behind `inventTree-aniket` by the population commits |
 | `equa/customizations` | `988ce86f8` | The deployable line; does not have the pump-station work yet |
 | `merge/iot-into-customizations` | `16c6cc511` | The merge commit itself; one commit behind |
 | `IOT` | `a362afc7f` | Older; to be moved forward after review |
@@ -78,7 +79,10 @@ deployment -> `IOT`.
   of the recorded window (2025-07-11): Millbrook (id 60), Cedar Creek (93),
   Maple Grove (94); 30 pumps, 1,452 signal bindings, 404 with reviewed limits.
   One older alarm stands on Electronics Test Bench 1; nothing from testing is
-  left raised.
+  left raised. Cedar Creek (93) has been populated from the UI population
+  workbook (section 5a): locations, placements, profiles, 48 support
+  equipment, CC-REF parts and components, warehouse, companies, stock,
+  history and staged work orders, all under client `internal`.
 - **Deployed dev app**: still runs older `equa/customizations` code against
   that database, with Cosmos polling switched off. Nothing new is visible
   there until it is redeployed from the merged code.
@@ -107,20 +111,37 @@ deployment -> `IOT`.
 ## 5a. Populating a plant from a workbook
 
 `manage.py populate_from_workbook <xlsx>` builds a plant from the UI
-population workbook (`assets/population.py`, `assets/population_workbook.py`).
+population workbook (`assets/population.py`, `assets/population_workbook.py`,
+`assets/population_operations.py`).
 It has three modes: `--plan` (read-only report, the default), `--dry-run`
 (applies inside a transaction and rolls back), and `--apply`, which requires
 `--backup-ref <reference>` and refuses a non-local database host unless
 `--allow-remote` is given. Every
 write goes through the existing services (`save_location`, `register_station`,
-`ensure_pump`, `validate_machine_profile`), so their invariants hold, and
-replaying the same workbook is a no-op.
+`ensure_pump`, `validate_machine_profile`, `transition_work_order`), so their
+invariants hold, and replaying the same workbook is a no-op.
 
 Stages, in order: physical locations, station and pumps, generic equipment,
 placements, then — only when the workbook has a Parts Catalogue sheet — part
-categories, parts, component occurrences and installed-part links. Without that
-sheet the parts-dependent stages are reported as blocked, listing the missing
-IPNs, rather than inventing parts.
+categories, parts, component occurrences and installed-part links; then
+warehouse locations (`StockLocation`), companies, manufacturer parts (and a
+supplier part only when the sheet names a supplier *and* a SKU), stock items,
+dated maintenance history (`AssetMaintenanceRecord`, never linked to a work
+order) and staged work orders (created `draft`, planned through the lifecycle
+service when the sheet asks). Without the catalogue sheet the parts-dependent
+stages are reported as blocked, listing the missing IPNs, rather than inventing
+parts. Staff accounts, PM plans (governed, customer-scoped procedures),
+attachments (no files ship with the package) and repair packets are reported
+under `manual` and not written.
+
+Two flags bind a workbook to a plant that was registered from its telemetry
+source first: `--client-code <code>` populates an existing client instead of
+the workbook's (needed on the single-site deployment, whose scope resolver only
+shows `internal`), and `--station <id>` adopts an already-registered station.
+The registered identity (`source_namespace`/`source_entity_uuid`/`source_key`,
+public UUID) is immutable and kept; the workbook's provisional identity is
+reported as a warning. The station is renamed to the workbook name and its
+pump labels follow.
 
 Local sandbox (nothing touches Azure): `contrib/cosmos/devtools/sandbox.sh
 up|down|status|shell|manage <args>`. It runs a throwaway pgvector Postgres
@@ -129,7 +150,24 @@ production scope mode (`granted_client_scope_resolver`). To see registered
 stations and pumps in the UI, grant the user the client:
 `sandbox.sh manage grant_client_scope <user> cedar-creek-regional-water`.
 Verified there with the Cedar Creek master workbook: 45 locations, station +
-14 pumps, 48 equipment, 63 machines visible, 17 draft components on each pump.
+14 pumps, 48 equipment, 63 machines visible, 17 draft components on each pump,
+8 warehouse locations, 30 companies, 6 manufacturer parts, 6 stock items, 132
+history rows, 18 work orders (8 planned); replay is a no-op.
+
+Azure (2026-10-11): applied with `--client-code internal --station 93` after
+`manage.py dbbackup` (`data/backup/InvenTree-db-2026-10-11-155535.psql.bin.gz`,
+sha256 `f47adfac…f08e`). Station 93 keeps its `klsw` identity and is now named
+`Cedar Creek Final Effluent Pump Station`; its pumps keep their 16 `PS-*`
+dictionary components alongside the 17 `CC-REF` ones from the workbook. The
+run is one transaction and takes about an hour over this link because every
+save also fires the plugin/event hooks; do not start a second one alongside.
+
+Read-only checks for the mechanically verifiable QA gates (Import Sequence
+step 17): `contrib/cosmos/devtools/cedar_creek_qa_gates.py`, run through the
+Django shell of the container that points at the database (usage in its
+docstring; defaults describe Azure station 93, environment variables select
+the sandbox). On the sandbox it reports 22 pass / 0 fail. It has **not yet
+been run against Azure**: see open item 11.
 
 ## 6. Rules to keep
 
@@ -150,6 +188,8 @@ Verified there with the Cedar Creek master workbook: 45 locations, station +
 - One backend test run at a time against a given test database.
 - Commits on this work have carried only the developer as author, with no AI
   co-author trailer.
+- Commit only on `inventTree-aniket`. Moving `IOT-Merge`, `equa/customizations`
+  or `IOT` forward is the owner's call, not part of routine work.
 
 ## 7. Open items
 
@@ -170,6 +210,25 @@ Verified there with the Cedar Creek master workbook: 45 locations, station +
    database cannot take the merged migrations until it is rebuilt.
 8. The data is a recorded window ending 2025-07-11, displayed as if current.
    Live plant data needs a live Cosmos source.
+9. Cedar Creek workbook items the import deliberately leaves to a person
+   (reported under `manual` by the command): 12 demo staff accounts, 94 PM
+   plans as governed procedures, 134 attachments from the archive, 10 repair
+   packets raised from the staged work orders, and 6 supplier offers once a
+   distributor SKU is verified. Work-order assignees are free text until the
+   accounts exist (QA-25).
+10. Cedar Creek pumps carry both the 16 `PS-*` dictionary-crosswalk
+    components (bound to signal points) and the 17 `CC-REF` workbook
+    components. Whether to retire one set is a data decision for the owner.
+11. The Azure database stopped accepting the `pgadmin` password held by the
+    local `aimms-azure-server` container at about 21:10 local on 2026-10-11
+    (`FATAL: password authentication failed`), shortly after the workbook
+    apply had committed (`APPLY_EXIT=0` at 20:54). The credential is a static
+    password, not a token, so it was changed on the server side. Until the
+    owner supplies the current one, nothing from this checkout can read
+    Azure, and the QA gates in section 5a have not been run there. Run them
+    first thing once access is back (expected: QA-15 shows 33 components per
+    pump, QA-08 shows the `klsw`/`PH_3` identity, QA-55 counts all three
+    stations' machines).
 
 ## 8. Further reading
 
