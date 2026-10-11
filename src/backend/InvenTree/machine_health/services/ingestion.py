@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -33,6 +34,7 @@ from assets.health_models import (
     SignalQuality,
 )
 from assets.models import AssetMachine
+from machine_health.connectors.base import PUMPHOUSE_CONNECTOR_TYPES
 
 logger = logging.getLogger('inventree')
 
@@ -101,6 +103,24 @@ def _payload_hash(payload) -> str:
     ).hexdigest()
 
 
+def _quality(raw, claimed):
+    """The quality a reading is stored with, whatever the sender claimed.
+
+    The Cosmos path marks a converter rail or the over-range marker bad before
+    it reaches a limit. A webhook sender says what quality it likes, and said
+    "good" of everything by default - so 3276.7 from that route would have been
+    classified as a temperature and tripped a critical alarm. The rule is the
+    one the Cosmos path uses, asked of the same function, and it can only make
+    a reading worse: a sender's own "bad" is kept.
+    """
+    # Imported here: that module imports this one for its batch bounds.
+    from machine_health.connectors.pumphouse_payload import unusable_reason
+
+    if claimed != SignalQuality.GOOD:
+        return claimed
+    return SignalQuality.BAD if unusable_reason(raw) else SignalQuality.GOOD
+
+
 def _normalize_value(raw, binding: MachineSignalBinding):
     """Apply the binding transform and bound what will be stored."""
     value = raw
@@ -113,6 +133,11 @@ def _normalize_value(raw, binding: MachineSignalBinding):
             value = value * scale
         if isinstance(offset, (int, float)) and not isinstance(offset, bool):
             value = value + offset
+
+    if isinstance(value, float) and not math.isfinite(value):
+        # Not a number, and not one the database can hold either: stored as
+        # absent, as the Cosmos path stores it, with the quality already bad.
+        value = None
 
     stored = {'value': value, 'unit': binding.unit}
     encoded = json.dumps(stored, default=str)
@@ -204,7 +229,7 @@ def ingest_readings(
         active=True,
         external_key__in=[item['external_key'] for item in parsed],
     )
-    if source.connector_type == 'cosmos_pumphouse' and station is None:
+    if source.connector_type in PUMPHOUSE_CONNECTOR_TYPES and station is None:
         raise IngestionError(
             'Cosmos ingestion requires an explicit registered station.'
         )
@@ -230,6 +255,28 @@ def ingest_readings(
             raise IngestionError('Ambiguous signal binding within ingestion scope.')
         bindings[binding.external_key] = binding
 
+    # One locking read for the whole batch, not one per reading.
+    #
+    # The per-reading version issued a SELECT ... FOR UPDATE and then an
+    # INSERT or UPDATE for every single reading: two round trips each, which on
+    # a real pumphouse snapshot of ~700 readings is ~1,400 of them and dominates
+    # ingestion entirely. The rows taken are exactly the same ones; they are
+    # simply taken once.
+    #
+    # Ordered by primary key so that concurrent batches acquire rows in the same
+    # order. Without that, two overlapping batches can each hold a row the other
+    # needs and deadlock - a risk the per-reading form did not have, because it
+    # only ever held one row at a time.
+    states = {
+        state.binding_id: state
+        for state in MachineSignalState.objects
+        .select_for_update()
+        .filter(binding__in=list(bindings.values()))
+        .order_by('pk')
+    }
+    fresh: dict[int, MachineSignalState] = {}
+    changed: dict[int, MachineSignalState] = {}
+
     for item in parsed:
         binding = bindings.get(item['external_key'])
         if binding is None:
@@ -244,35 +291,66 @@ def ingest_readings(
             )
             continue
 
-        state = (
-            MachineSignalState.objects
-            .select_for_update()
-            .filter(binding=binding)
-            .first()
-        )
+        state = states.get(binding.pk)
 
         if _is_replay(state, item['observed_at'], item['sequence']):
             result.replayed += 1
             continue
 
+        payload_hash = _payload_hash(item['value'])
         values = {
             'value': _normalize_value(item['value'], binding),
             'observed_at': item['observed_at'],
             'received_at': now,
-            'quality': item['quality'],
+            'quality': _quality(item['value'], item['quality']),
             'source_sequence': item['sequence'],
-            'payload_hash': _payload_hash(item['value']),
+            'payload_hash': payload_hash,
         }
+        # Free, because the hash is computed anyway. A reading that repeats keeps
+        # the instant it last differed, so the span is measured on the plant's
+        # clock and survives a catch-up applying two hundred identical snapshots
+        # in one call.
+        if state is None or state.payload_hash != payload_hash:
+            values['value_changed_at'] = item['observed_at']
 
         if state is None:
-            MachineSignalState.objects.create(binding=binding, **values)
+            state = MachineSignalState(binding=binding, **values)
+            # Registered before the write, so a second reading for the same
+            # binding later in this batch is compared against this one and is
+            # dropped as a replay if it is older - which is what the
+            # read-modify-write loop did when each reading saved immediately.
+            states[binding.pk] = state
+            fresh[binding.pk] = state
         else:
             for name, value in values.items():
                 setattr(state, name, value)
-            state.save(update_fields=[*values, 'updated_at'])
+            # bulk_update does not run pre_save, so auto_now never fires here.
+            state.updated_at = now
+            if binding.pk not in fresh:
+                changed[binding.pk] = state
 
         result.accepted += 1
         result.machine_ids.add(binding.machine_id)
+
+    if fresh:
+        MachineSignalState.objects.bulk_create(
+            list(fresh.values()), batch_size=MAX_READINGS_PER_BATCH
+        )
+    if changed:
+        MachineSignalState.objects.bulk_update(
+            list(changed.values()),
+            [
+                'value',
+                'value_changed_at',
+                'observed_at',
+                'received_at',
+                'quality',
+                'source_sequence',
+                'payload_hash',
+                'updated_at',
+            ],
+            batch_size=MAX_READINGS_PER_BATCH,
+        )
 
     source.last_success_at = now
     source.save(update_fields=['last_success_at', 'updated_at'])

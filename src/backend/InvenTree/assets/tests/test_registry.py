@@ -1,0 +1,630 @@
+"""Equipment registry regression tests; never use live Cassandra or demo resets."""
+
+import json
+from io import StringIO
+from typing import Any
+from uuid import uuid4
+
+from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
+from django.db import connection
+from django.test import override_settings
+from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
+
+from InvenTree.unit_test import InvenTreeAPITestCase
+from part.models import Part
+
+from assets.models import (
+    AssetComponent,
+    AssetMachine,
+    Client,
+    DictionaryPoint,
+    MachineSignalState,
+)
+from assets.registry import (
+    decode_upload,
+    ensure_pump,
+    import_dictionary,
+    plan_dictionary,
+    register_station,
+)
+
+
+def test_scope(actor):
+    """Explicit test-only Client grant, independent of actor staff flags."""
+    return [
+        {
+            'customer_id': None,
+            'site_key': None,
+            'client_id': Client.objects.get(code='registry-test').pk,
+        }
+    ]
+
+
+@override_settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=test_scope)
+class RegistryTests(InvenTreeAPITestCase):
+    """Exercise real registered URLs, roles, imports and review serializers."""
+
+    is_staff = False
+    roles = ['work_order.view', 'work_order.add', 'work_order.change']
+
+    @classmethod
+    def setUpTestData(cls):
+        """Load isolated catalogue data and a scoped station."""
+        ContentType.objects.clear_cache()
+        super().setUpTestData()
+        call_command('load_pump_catalogue', stdout=StringIO())
+        cls.tenant = Client.objects.create(code='registry-test', name='Registry Test')
+        cls.station = register_station(
+            client=cls.tenant,
+            name='Test station',
+            source_namespace='test-source',
+            source_entity_uuid=uuid4(),
+            source_key='PH_3',
+        )
+
+    def setUp(self):
+        """Reset content-type cache between rollback-based tests."""
+        ContentType.objects.clear_cache()
+        super().setUp()
+        self.addCleanup(ContentType.objects.clear_cache)
+
+    def raw(self, **extra):
+        """Small representative payload, not a fabricated full dictionary."""
+        return json.dumps({
+            'st': 'I',
+            'pd': {'P1': {'st': 'I'}, 'P2': {'st': 'I'}},
+            'dex': {
+                'ID': 'PH_3',
+                'TIMESTAMP': '1.752854398616E9',
+                'PUMP1_MOTOR_CORE_RTD1_PROCESS_VALUE': '39.2',
+                'COMMAN_FORBAY_LEVEL': '132.45',
+                **extra,
+            },
+        }).encode()
+
+    def upload(self, action, raw=None, **fields):
+        """Post a multipart file through the actual registry routes."""
+        data = {
+            'data_file': SimpleUploadedFile(
+                'sample.json', raw or self.raw(), content_type='application/json'
+            ),
+            **fields,
+        }
+        return self.client.post(
+            f'/api/assets/registry/{self.station.pk}/{action}/',
+            data=data,
+            format='multipart',
+        )
+
+    def test_pd_block_resolves_only_the_tags_with_no_dex_counterpart(self):
+        """The per-bay summary must not shadow the dex block it duplicates.
+
+        `pmw` and `pmvar` restate ACTIVE_POWER and REACTIVE_POWER, so resolving
+        them would give one catalogue parameter two dictionary points and the
+        approval clash guard would reject whichever came second. `dv` has no dex
+        counterpart, so it is the only source for discharge rate and must
+        resolve - otherwise the station flow total has nothing it can ever bind.
+        """
+        raw = json.dumps({
+            'st': 'I',
+            'pd': {'P1': {'st': 'I', 'dv': 2931.0, 'pmw': 24.5, 'pmvar': 1.0}},
+            'dex': {
+                'ID': 'PH_3',
+                'TIMESTAMP': '1.752854398616E9',
+                'COMMAN_FORBAY_LEVEL': '132.45',
+            },
+        }).encode()
+        points = {p['path']: p for p in plan_dictionary(self.station, raw)['points']}
+
+        self.assertEqual(points['/pd/P1/dv']['match_method'], 'exact')
+        self.assertTrue(points['/pd/P1/dv']['template'])
+        self.assertEqual(points['/pd/P1/st']['match_method'], 'exact')
+        for tag in ('pmw', 'pmvar'):
+            self.assertEqual(points[f'/pd/P1/{tag}']['match_method'], 'unresolved')
+            self.assertIsNone(points[f'/pd/P1/{tag}']['template'])
+
+    def test_an_opc_node_id_belongs_to_the_bay_it_names(self):
+        """A bay-scoped tag must not land on the station just for being spelled oddly.
+
+        The source names a bay two ways: as a `PUMP5_` prefix, and inside the
+        raw node id of an OPC-UA subscription. Only the first was recognised, so
+        120 bay-scoped tags were filed against the station - an operator opening
+        a pump saw none of them, and the station's own readings were filled with
+        other bays' tags.
+
+        Matching is deliberately not asserted here. Where both spellings exist
+        they disagree, so nothing yet says they are the same sensor; which bay a
+        tag belongs to needs no such claim.
+        """
+        node = 'NS=1;S=T|PS1_PROG_19_4_2019_OS(2)::P7_OL_SMP_BRG_LT.PROCESS_VALUE'
+        raw = json.dumps({
+            'st': 'I',
+            'pd': {'P1': {'st': 'I'}},
+            'dex': {
+                'ID': 'PH_3',
+                'TIMESTAMP': '1.752854398616E9',
+                'COMMAN_FORBAY_LEVEL': '132.45',
+                node: '35.2',
+            },
+        }).encode()
+
+        plan = plan_dictionary(self.station, raw)
+        point = next(p for p in plan['points'] if node in p['path'])
+
+        self.assertEqual(point['owner_key'], 'P7')
+        self.assertIn('P7', plan['pumps'])
+
+    def test_a_program_name_is_not_mistaken_for_a_bay(self):
+        """`PS1_PROG_...` contains `P1_`; only the node id's own `::` introduces a bay."""
+        raw = json.dumps({
+            'st': 'I',
+            'pd': {'P1': {'st': 'I'}},
+            'dex': {
+                'ID': 'PH_3',
+                'TIMESTAMP': '1.752854398616E9',
+                'COMMAN_FORBAY_LEVEL': '132.45',
+                'PS1_PROG_19_4_2019_OS_HEARTBEAT': '1',
+            },
+        }).encode()
+
+        point = next(
+            p
+            for p in plan_dictionary(self.station, raw)['points']
+            if 'HEARTBEAT' in p['path']
+        )
+
+        self.assertEqual(point['owner_key'], '')
+
+    def test_a_resolved_discharge_rate_carries_no_unit(self):
+        """`dv` maps to a parameter whose unit is deliberately unresolved."""
+        raw = json.dumps({
+            'st': 'I',
+            'pd': {'P1': {'st': 'I', 'dv': 2931.0}},
+            'dex': {
+                'ID': 'PH_3',
+                'TIMESTAMP': '1.752854398616E9',
+                'COMMAN_FORBAY_LEVEL': '132.45',
+            },
+        }).encode()
+        point = next(
+            p
+            for p in plan_dictionary(self.station, raw)['points']
+            if p['path'] == '/pd/P1/dv'
+        )
+        self.assertEqual(point['unit'], '')
+        self.assertEqual(point['unit_status'], 'unresolved')
+
+    def imported(self):
+        """Import a tiny dictionary and return its motor-temperature point."""
+        raw = self.raw()
+        plan = plan_dictionary(self.station, raw)
+        import_dictionary(self.station, raw, expected_hash=plan['source_hash'])
+        return DictionaryPoint.objects.get(
+            station=self.station, raw_tag='PUMP1_MOTOR_CORE_RTD1_PROCESS_VALUE'
+        )
+
+    def test_registration_and_hierarchy(self):
+        """Retain stable identities and reject a self-parent cycle."""
+        same = register_station(
+            client=self.tenant,
+            name='Do not rename',
+            source_namespace='test-source',
+            source_entity_uuid=self.station.source_entity_uuid,
+            source_key='PH_3',
+        )
+        self.assertEqual(same.pk, self.station.pk)
+        pump = ensure_pump(self.station, 'P1')
+        self.assertEqual(ensure_pump(self.station, 'P1').uuid, pump.uuid)
+        self.assertEqual(pump.client_id, self.tenant.pk)
+        pump.parent = pump
+        with self.assertRaises(ValidationError):
+            pump.save()
+        response = self.client.get(f'/api/assets/registry/{self.station.pk}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data['children']), 1)
+
+    def test_a_pump_names_its_station(self):
+        """The machine endpoint gives a pump's page the way back to its station."""
+        pump = ensure_pump(self.station, 'P1')
+
+        response = self.client.get(f'/api/assets/machines/{pump.pk}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['parent'], self.station.pk)
+        self.assertEqual(response.data['parent_name'], 'Test station')
+        # And which bay of it: the station's readings are asked for by bay.
+        self.assertEqual(response.data['source_key'], 'P1')
+
+        response = self.client.get(f'/api/assets/machines/{self.station.pk}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.data['parent'])
+        self.assertIsNone(response.data['parent_name'])
+
+    def test_the_station_a_pump_names_is_one_its_reader_may_read(self):
+        """Naming the station discloses nothing, because the two share a Client.
+
+        Whoever may read a pump may read anything the pump's Client owns. The
+        station's name is therefore safe to hand over with the pump only for as
+        long as a pump cannot sit under another Client's station.
+        """
+        other = Client.objects.create(code='registry-other', name='Other Client')
+        private = register_station(
+            client=other,
+            name='Private station',
+            source_namespace='private',
+            source_entity_uuid=uuid4(),
+            source_key='PH_3',
+        )
+        stray = AssetMachine(
+            asset_type='pump',
+            parent=private,
+            client=self.tenant,
+            source_key='P1',
+            name='Private station / Pump 01',
+        )
+        with self.assertRaises(ValidationError):
+            stray.save()
+
+    def test_a_pump_cannot_be_moved_through_the_machine_endpoint(self):
+        """The station link is read-only there: the registry assigns hierarchy."""
+        pump = ensure_pump(self.station, 'P1')
+        elsewhere = register_station(
+            client=self.tenant,
+            name='Second station',
+            source_namespace='test-source',
+            source_entity_uuid=uuid4(),
+            source_key='PH_4',
+        )
+
+        response = self.client.patch(
+            f'/api/assets/machines/{pump.pk}/',
+            {'parent': elsewhere.pk, 'location': 'Bay 1'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['parent'], self.station.pk)
+        pump.refresh_from_db()
+        self.assertEqual(pump.parent_id, self.station.pk)
+        self.assertEqual(pump.location, 'Bay 1')
+
+    def test_a_station_counts_the_alarms_on_its_pumps(self):
+        """The machine list says where there is something to look at.
+
+        A station's own alarms are few; its pumps' are where the trouble is,
+        so the station carries both, and a resolved one is not counted.
+        """
+        from assets.health_models import MachineAnomaly
+
+        pump = ensure_pump(self.station, 'P1')
+        other = ensure_pump(self.station, 'P2')
+        now = timezone.now()
+
+        def anomaly(machine, severity, status='open'):
+            return MachineAnomaly.objects.create(
+                machine=machine,
+                fingerprint=f'{machine.pk}-{severity}-{status}',
+                title='t',
+                severity=severity,
+                status=status,
+                detector='threshold',
+                first_observed_at=now,
+                last_observed_at=now,
+            )
+
+        anomaly(pump, 'critical')
+        anomaly(pump, 'warning', status='acknowledged')
+        anomaly(other, 'critical', status='resolved')
+        anomaly(self.station, 'warning')
+
+        rows = {
+            row['pk']: row for row in self.client.get('/api/assets/machines/').data
+        }
+        self.assertEqual(rows[pump.pk]['open_alarms'], 2)
+        self.assertEqual(rows[pump.pk]['open_critical_alarms'], 1)
+        self.assertEqual(rows[other.pk]['open_alarms'], 0)
+        self.assertEqual(rows[self.station.pk]['open_alarms'], 3)
+        self.assertEqual(rows[self.station.pk]['open_critical_alarms'], 1)
+
+        # The morning check: the machines with something on them, worst first.
+        listed = self.client.get(
+            '/api/assets/machines/', {'has_alarms': 'true', 'ordering': '-open_alarms'}
+        ).data
+        self.assertEqual([row['pk'] for row in listed], [self.station.pk, pump.pk])
+        quiet = self.client.get('/api/assets/machines/', {'has_alarms': 'false'}).data
+        self.assertEqual([row['pk'] for row in quiet], [other.pk])
+
+    def test_listing_pumps_does_not_look_up_each_station(self):
+        """One more pump is one more row, not one more query."""
+        url = '/api/assets/machines/'
+        ensure_pump(self.station, 'P1')
+        # The first request of a process also fills its role and setting
+        # caches; let it, so that both counts below are of the listing alone.
+        self.assertEqual(self.client.get(url).status_code, 200)
+        with CaptureQueriesContext(connection) as one_pump:
+            self.client.get(url)
+
+        for key in ('P2', 'P3', 'P4'):
+            ensure_pump(self.station, key)
+        with CaptureQueriesContext(connection) as four_pumps:
+            response = self.client.get(url)
+
+        self.assertEqual(
+            sorted(row['parent_name'] for row in response.data if row['parent']),
+            ['Test station'] * 4,
+        )
+        self.assertEqual(len(four_pumps), len(one_pump))
+
+    def test_preview_is_read_only(self):
+        """Planner has no writes and HTTP preview leaves domain rows unchanged."""
+        counts = [
+            m.objects.count()
+            for m in [AssetMachine, AssetComponent, DictionaryPoint, MachineSignalState]
+        ]
+        with CaptureQueriesContext(connection) as queries:
+            plan_dictionary(self.station, self.raw())
+        response = self.upload('preview')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['counts']['total'], 5)
+        self.assertEqual(response.data['pumps'], ['P1', 'P2'])
+        self.assertFalse(
+            any(
+                q['sql'].lstrip().upper().startswith(('INSERT', 'UPDATE', 'DELETE'))
+                for q in queries
+            )
+        )
+        self.assertEqual(
+            counts,
+            [
+                m.objects.count()
+                for m in [
+                    AssetMachine,
+                    AssetComponent,
+                    DictionaryPoint,
+                    MachineSignalState,
+                ]
+            ],
+        )
+
+    def test_import_is_additive_and_preserves_reviews(self):
+        """Repeated imports preserve point identities and human review decisions."""
+        point = self.imported()
+        point.review_note = 'Keep a human decision'
+        point.status = 'rejected'
+        point.save()
+        before = set(DictionaryPoint.objects.values_list('uuid', flat=True))
+        plan = plan_dictionary(self.station, self.raw())
+        result = self.upload('import', source_hash=plan['source_hash'])
+        self.assertEqual(result.status_code, 200, result.data)
+        self.assertEqual(result.data['created'], 0)
+        self.assertEqual(
+            before, set(DictionaryPoint.objects.values_list('uuid', flat=True))
+        )
+        point.refresh_from_db()
+        self.assertEqual(point.review_note, 'Keep a human decision')
+        self.assertEqual(point.status, 'rejected')
+        self.assertFalse(AssetComponent.objects.exclude(status='draft').exists())
+
+    def test_file_mismatch_rejected(self):
+        """A file must match the preview hash before import."""
+        response = self.upload('import', source_hash='not-previewed')
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(DictionaryPoint.objects.exists())
+
+    def test_duplicate_alias_import_is_unresolved(self):
+        """An alias competing with an existing point requires review."""
+        self.imported()
+        plan = plan_dictionary(self.station, self.raw(PUMP1_MOTOR_CORE_RTD1='39.2'))
+        alias = next(
+            p for p in plan['points'] if p['raw_tag'] == 'PUMP1_MOTOR_CORE_RTD1'
+        )
+        self.assertEqual(alias['match_method'], 'conflict')
+        self.assertTrue(alias['issue'])
+
+    def test_types_and_malformed_json(self):
+        """Detect type conflicts and reject duplicate/non-finite JSON literals."""
+        rows = []
+        for value in ['39.2', None, 'not numeric']:
+            payload = json.loads(self.raw())
+            payload['dex']['PUMP1_MOTOR_CORE_RTD1_PROCESS_VALUE'] = value
+            rows.append(payload)
+        plan = plan_dictionary(self.station, json.dumps(rows).encode())
+        self.assertEqual(
+            next(p for p in plan['points'] if p['match_method'] == 'conflict')[
+                'raw_tag'
+            ],
+            'PUMP1_MOTOR_CORE_RTD1_PROCESS_VALUE',
+        )
+        for raw in [b'{"x":1,"x":2}', b'{"x":NaN}', b'{"x":Infinity}', b'[]']:
+            with self.subTest(raw=raw), self.assertRaises(ValidationError):
+                plan_dictionary(self.station, raw)
+        self.assertTrue(decode_upload(b'{"x":1e999}')['x'].is_finite())
+
+    def test_source_identity_and_timestamp(self):
+        """Reject another station's row and timestamps outside their hour."""
+        row: dict[str, Any] = {
+            'entity_uuid': str(uuid4()),
+            'data1': json.loads(self.raw()),
+        }
+        with self.assertRaises(ValidationError):
+            plan_dictionary(self.station, json.dumps(row).encode())
+        row.update(
+            entity_uuid=str(self.station.source_entity_uuid),
+            time_period=1752850800000,
+            sub_time_period=1752854400000,
+        )
+        with self.assertRaises(ValidationError):
+            plan_dictionary(self.station, json.dumps(row).encode())
+        row['sub_time_period'] -= 1
+        self.assertEqual(
+            plan_dictionary(self.station, json.dumps(row).encode())['counts']['total'],
+            5,
+        )
+
+    def test_text_hour_bucket(self):
+        """Accept the text time_period Cassandra actually stores, not only bigint."""
+        row: dict[str, Any] = {
+            'entity_uuid': str(self.station.source_entity_uuid),
+            # time_period is a `text` column; an export carries it as a string
+            # while sub_time_period stays a bigint.
+            'time_period': '1752850800000',
+            'sub_time_period': 1752854398616,
+            'data1': json.loads(self.raw()),
+        }
+        self.assertEqual(
+            plan_dictionary(self.station, json.dumps(row).encode())['counts']['total'],
+            5,
+        )
+        for bad in ['', 'not a timestamp', '17528508000000000000000', True]:
+            row['time_period'] = bad
+            with self.subTest(time_period=bad), self.assertRaises(ValidationError):
+                plan_dictionary(self.station, json.dumps(row).encode())
+
+    def test_multi_station_hour_slice(self):
+        """Keep this station's rows from an hour slice that holds several stations."""
+        # entity_uuid clusters after sub_time_period, so a bounded read of one
+        # hour bucket returns every station in it. The other stations' rows are
+        # skipped; only their absence entirely is an error.
+        payload = json.loads(self.raw())
+        rows = [
+            {'entity_uuid': str(uuid4()), 'data1': payload},
+            {'entity_uuid': str(self.station.source_entity_uuid), 'data1': payload},
+            {'entity_uuid': str(uuid4()), 'data1': payload},
+        ]
+        plan = plan_dictionary(self.station, json.dumps(rows).encode())
+        self.assertEqual(plan['rows'], 3)
+        self.assertEqual(plan['rows_matched'], 1)
+        self.assertEqual(plan['counts']['total'], 5)
+
+    def test_foreign_client_and_unresolved_scope(self):
+        """Reject cross-Client, unresolved and mixed-identity grants."""
+        other = Client.objects.create(code='registry-other', name='Other Client')
+        station = register_station(
+            client=other,
+            name='Private station',
+            source_namespace='private',
+            source_entity_uuid=uuid4(),
+            source_key='PH_3',
+        )
+        for url in [
+            f'/api/assets/registry/{station.pk}/',
+            f'/api/assets/machines/{station.pk}/',
+        ]:
+            self.assertEqual(self.client.get(url).status_code, 404)
+        with self.settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=lambda actor: []):
+            self.assertEqual(self.client.get('/api/assets/registry/').status_code, 403)
+        mixed = lambda actor: [
+            {'client_id': self.tenant.pk, 'customer_id': 99, 'site_key': None}
+        ]
+        with self.settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=mixed):
+            self.assertEqual(self.client.get('/api/assets/registry/').data['count'], 0)
+
+    def test_view_only_cannot_import(self):
+        """Read authority permits preview, not import or anonymous access."""
+        self.clearRoles()
+        self.assignRole('work_order.view')
+        self.assertEqual(self.upload('preview').status_code, 200)
+        self.assertEqual(self.upload('import', source_hash='anything').status_code, 403)
+        self.logout()
+        self.assertIn(self.client.get('/api/assets/registry/').status_code, [401, 403])
+
+    def test_review_mapping(self):
+        """Approval validates component ownership and physical unit dimensions."""
+        point = self.imported()
+        body = {
+            'machine': point.machine_id,
+            'component': point.component_id,
+            'template': point.template_id,
+            'display_name': 'Core temperature',
+            'data_type': 'number',
+            'unit': 'degC',
+            'unit_status': 'verified',
+            'status': 'approved',
+            'review_note': 'Verified against the test fixture tag definition',
+        }
+        url = f'/api/assets/registry/{self.station.pk}/dictionary/{point.pk}/review/'
+        response = self.client.patch(url, body, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['status'], 'approved')
+        body['unit'] = 'm'
+        self.assertEqual(self.client.patch(url, body, format='json').status_code, 400)
+        other = ensure_pump(self.station, 'P2')
+        body.update(machine=other.pk, unit='degC')
+        self.assertEqual(self.client.patch(url, body, format='json').status_code, 404)
+
+    def test_a_pump_lists_its_components_and_a_station_lists_them_all(self):
+        """What a machine page's Installed Parts tab reads, for each kind of owner.
+
+        The tab pages through this endpoint as any table does, and for a station
+        relies on the order - the station's own components, then each pump's -
+        to keep one pump's rows together across pages.
+        """
+        motor = Part.objects.get(IPN='PS-MOTOR')
+        forebay = Part.objects.get(IPN='PS-FOREBAY')
+        one = ensure_pump(self.station, 'P1')
+        two = ensure_pump(self.station, 'P2')
+        for machine, part, code, name in [
+            (two, motor, 'PS-MOTOR:1', 'Motor two'),
+            (self.station, forebay, 'PS-FOREBAY:1', 'Forebay'),
+            (one, motor, 'PS-MOTOR:1', 'Motor one'),
+        ]:
+            AssetComponent.objects.create(
+                machine=machine, part=part, code=code, name=name
+            )
+
+        own = self.client.get(f'/api/assets/registry/{one.pk}/components/').data
+        self.assertEqual(own['count'], 1)
+        [row] = own['results']
+        self.assertEqual(row['name'], 'Motor one')
+        self.assertEqual(row['machine'], one.pk)
+        self.assertEqual(row['machine_name'], one.name)
+        self.assertEqual((row['part'], row['part_name']), (motor.pk, motor.name))
+        self.assertEqual((row['code'], row['status']), ('PS-MOTOR:1', 'draft'))
+        self.assertFalse(row['virtual'])
+
+        url = f'/api/assets/registry/{self.station.pk}/components/'
+        everything = self.client.get(url).data
+        self.assertEqual(everything['count'], 3)
+        self.assertEqual(
+            [row['name'] for row in everything['results']],
+            ['Forebay', 'Motor one', 'Motor two'],
+        )
+
+        second_page = self.client.get(url, {'limit': 2, 'offset': 2}).data
+        self.assertEqual(second_page['count'], 3)
+        self.assertEqual([row['name'] for row in second_page['results']], ['Motor two'])
+
+        AssetComponent.objects.filter(name='Motor two').update(status='verified')
+        verified = self.client.get(url, {'status': 'verified'}).data
+        self.assertEqual([row['name'] for row in verified['results']], ['Motor two'])
+
+    def test_repeated_components_and_foreign_slot(self):
+        """Support repeated Parts but reject incompatible existing inference slots."""
+        pump = ensure_pump(self.station, 'P1')
+        motor = Part.objects.get(IPN='PS-MOTOR')
+        for code in ['motor-a', 'motor-b']:
+            response = self.client.post(
+                f'/api/assets/registry/{pump.pk}/components/',
+                {'part': motor.pk, 'code': code, 'name': code},
+                format='json',
+            )
+            self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(
+            AssetComponent.objects.filter(machine=pump, part=motor).count(), 2
+        )
+        AssetComponent.objects.create(
+            machine=pump,
+            part=Part.objects.get(IPN='PS-FOREBAY'),
+            code='PS-MOTOR:1',
+            name='Wrong part',
+        )
+        with self.assertRaises(ValidationError):
+            import_dictionary(
+                self.station,
+                self.raw(),
+                expected_hash=plan_dictionary(self.station, self.raw())['source_hash'],
+            )
+        self.assertFalse(DictionaryPoint.objects.exists())

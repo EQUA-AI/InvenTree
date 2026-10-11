@@ -1,0 +1,68 @@
+{
+ "version": 1,
+ "stations": [
+  {
+   "name": "Cedar Creek Effluent Pump Station",
+   "source_namespace": "klsw",
+   "source_uuid": "bafc976f-1ccc-4a91-aaa6-c3eac2470d36",
+   "source_key": "PH_3",
+   "uuid": "ce0a411f-d016-4817-ba00-3830ede25ce1",
+   "pumps": [
+    "P1",
+    "P2",
+    "P3",
+    "P4",
+    "P5",
+    "P6",
+    "P7",
+    "P8",
+    "P9",
+    "P10",
+    "P11",
+    "P12",
+    "P13",
+    "P14"
+   ],
+   "snapshot": "cedar-creek.tags.json",
+   "review": "cedar-creek.review.json"
+  },
+  {
+   "name": "Millbrook Influent Pump Station",
+   "source_namespace": "klsw",
+   "source_uuid": "9c09411d-ab94-44b8-a398-8768f58c223e",
+   "source_key": "PH_2",
+   "uuid": "e6857415-da15-452c-a970-c5a227fee7ae",
+   "pumps": [
+    "P1",
+    "P2",
+    "P3",
+    "P4",
+    "P5",
+    "P6",
+    "P7",
+    "P8",
+    "P9",
+    "P10",
+    "P11",
+    "P12"
+   ],
+   "snapshot": "millbrook.tags.json",
+   "review": "millbrook.review.json"
+  },
+  {
+   "name": "Maple Grove Lift Station",
+   "source_namespace": "klsw",
+   "source_uuid": "776913b4-d26f-4294-bf58-647ac401bae5",
+   "source_key": "PH_7",
+   "uuid": "2b02a3f5-27cd-40a1-a197-08905a37d9f4",
+   "pumps": [
+    "P1",
+    "P2",
+    "P3",
+    "P4"
+   ],
+   "snapshot": "maple-grove.tags.json",
+   "review": "maple-grove.review.json"
+  }
+ ]
+}

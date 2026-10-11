@@ -3,7 +3,7 @@
 import json
 import time
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.core.cache import cache
 from django.test import override_settings
@@ -77,6 +77,27 @@ class MachineHealthReadApiTest(HealthEnvMixin, InvenTreeAPITestCase):
         self.assertFalse(row['stale'])
         self.assertEqual(row['limits']['critical_max'], 9.0)
 
+    def test_serialized_times_are_iso_8601(self):
+        """A timestamp the browser has to guess about is a timestamp it gets wrong.
+
+        The API-wide format renders ``2026-09-25 21:31``: space-separated, no
+        seconds and - where the project runs with time zones on - no offset.
+        ``Date`` and ``dayjs`` both read a string of that shape as *local* time,
+        so a client east or west of UTC misplaces every instant by its own
+        offset and a reading taken a moment ago is captioned hours old.
+
+        Asserted on the *wire* bytes rather than ``response.data``, because the
+        defect lives in rendering and never reaches the Python side.
+        """
+        payload = json.loads(self.get(self.url('signals/'), expected_code=200).content)
+
+        [row] = payload['results']
+        self.assertIn('T', row['observed_at'], 'not ISO-8601; a space separator')
+        # The old format truncated to the minute, so an exact match also proves
+        # the seconds survived.
+        self.assertEqual(datetime.fromisoformat(row['observed_at']), self.now)
+        self.assertEqual(datetime.fromisoformat(row['received_at']).date(), self.now.date())
+
     def test_anomaly_list_defaults_to_the_active_set(self):
         """The blade shows what still demands attention."""
         record_anomaly(
@@ -140,6 +161,27 @@ class MachineHealthReadApiTest(HealthEnvMixin, InvenTreeAPITestCase):
         self.assertIsNotNone(response.data['acknowledged_at'])
         self.assertIsNone(response.data['resolved_at'])
 
+    def test_dismiss_needs_a_reason_and_leaves_the_active_list(self):
+        """Dismissed with a reason; refused without one."""
+        anomaly, _ = record_anomaly(
+            machine=self.machine,
+            fingerprint=fingerprint_for('api', 'dismiss'),
+            title='Bearing temperature rising',
+            severity=AnomalySeverity.WARNING,
+        )
+        url = self.url(f'anomalies/{anomaly.pk}/dismiss/')
+
+        refused = self.post(url, {'note': ''}, expected_code=400)
+        self.assertIn('reason', refused.data['detail'])
+
+        response = self.post(url, {'note': 'Limit set too tight'}, expected_code=200)
+        self.assertEqual(response.data['status'], AnomalyStatus.SUPPRESSED)
+        self.assertEqual(
+            response.data['metrics']['dismissed']['note'], 'Limit set too tight'
+        )
+        active = self.get(self.url('anomalies/'), expected_code=200).data['results']
+        self.assertNotIn(anomaly.pk, [row['pk'] for row in active])
+
     def test_evidence_capture_returns_citable_snapshots(self):
         """Capturing evidence returns immutable snapshot ids for citation."""
         anomaly, _ = record_anomaly(
@@ -185,6 +227,12 @@ class HealthReadPermissionTest(HealthEnvMixin, InvenTreeAPITestCase):
             f'/api/machine-health/machines/{self.machine.pk}/health/anomalies/'
             f'{self.anomaly.pk}/acknowledge/',
             {},
+            expected_code=403,
+        )
+        self.post(
+            f'/api/machine-health/machines/{self.machine.pk}/health/anomalies/'
+            f'{self.anomaly.pk}/dismiss/',
+            {'note': 'not mine to wave away'},
             expected_code=403,
         )
         self.anomaly.refresh_from_db()

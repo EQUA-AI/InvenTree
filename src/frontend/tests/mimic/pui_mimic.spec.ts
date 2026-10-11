@@ -158,3 +158,678 @@ test('request failure hides cached readings and hidden views stop polling', asyn
   await page.waitForTimeout(5500);
   expect(requests).toBe(before);
 });
+
+/** A station whose bays come back in the server's text order. */
+function numbered(unit: string | null, stationStatus = 'R') {
+  const reading = (
+    pointer: string,
+    label: string,
+    group: string,
+    value: number | string,
+    unit_: string
+  ) => ({
+    pointer,
+    label,
+    group,
+    value,
+    unit: unit_,
+    quality: 'good',
+    observed_at: '2026-09-13T12:00:00Z',
+    age_seconds: 2,
+    unchanged_for_seconds: null,
+    reason: null,
+    condition: 'unknown',
+    thresholds_configured: false
+  });
+  const status = (key: string, code: string) =>
+    reading(
+      `/pd/${key}/st`,
+      'Equipment Status',
+      'Equipment Status Group',
+      code,
+      ''
+    );
+  const bays = [
+    { key: 'P1', state: 'running', code: 'R' },
+    { key: 'P10', state: 'idle', code: 'I' },
+    { key: 'P2', state: 'unknown', code: 'Z' }
+  ];
+  return {
+    ...fixture(unit),
+    layout: {
+      version: 1,
+      review_status: 'provisional',
+      status_values: { running: ['R'], idle: ['I'], fault: [] },
+      bays: { x: 240, y: 70, width: 590, height: 134 },
+      elements: [
+        {
+          id: 'station-status',
+          pointer: '/st',
+          view: 'station',
+          role: 'status',
+          label: 'Station status',
+          x: 842,
+          y: 96
+        },
+        {
+          id: 'pump-status',
+          pointer: '/pd/{pump}/st',
+          view: 'unit',
+          role: 'status',
+          label: 'Pump status',
+          x: 492,
+          y: 56
+        }
+      ]
+    },
+    station_points: {
+      '/st': reading(
+        '/st',
+        'Equipment Status',
+        'Equipment Status Group',
+        stationStatus,
+        ''
+      )
+    },
+    bays: bays.map(({ key, state, code }) => ({
+      key,
+      machine: Number(key.slice(1)),
+      name: `Fixture station / Pump ${key.slice(1)}`,
+      active: true,
+      state,
+      points: { [`/pd/${key}/st`]: status(key, code) }
+    })),
+    points: unit
+      ? {
+          [`/pd/${unit}/st`]: status(
+            unit,
+            bays.find((bay) => bay.key === unit)?.code ?? 'Z'
+          ),
+          '/w1': reading('/w1', 'Winding 1', 'Electric Motor', 30, 'degC'),
+          '/w2': reading('/w2', 'Winding 2', 'Electric Motor', 50.5, 'degC'),
+          '/w3': reading('/w3', 'Winding 3', 'Electric Motor', 41, 'degC'),
+          '/speed': reading(
+            '/speed',
+            'Shaft speed',
+            'Electric Motor',
+            745,
+            'rpm'
+          )
+        }
+      : {}
+  };
+}
+
+test('bays are drawn in the order they are numbered, each in its state', async ({
+  page
+}) => {
+  await page.route('**/api/machine-health/station/17/mimic/**', (route) =>
+    route.fulfill({
+      json: numbered(new URL(route.request().url()).searchParams.get('unit'))
+    })
+  );
+  await page.goto('/');
+  const bays = page.locator('g[data-bay]');
+  await expect(bays).toHaveCount(3);
+  // The server sorts the keys as text - P1, P10, P2. A row of pumps is not.
+  expect(
+    await bays.evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute('data-bay'))
+    )
+  ).toEqual(['P1', 'P2', 'P10']);
+
+  await expect(page.locator('[data-legend="running"]')).toHaveText('Running 1');
+  await expect(page.locator('[data-legend="idle"]')).toHaveText('Idle 1');
+  // A state nobody can read is counted as unknown, never as idle.
+  await expect(page.locator('[data-legend="unknown"]')).toHaveText('Unknown 1');
+
+  // Choosing a bay is done on the drawing, and undone the same way.
+  const second = page.getByRole('button', { name: 'P2: Unknown', exact: true });
+  await second.click();
+  await expect(second).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('Pump unit: P2')).toBeVisible();
+  await second.click();
+  await expect(second).toHaveAttribute('aria-pressed', 'false');
+  await expect(
+    page.getByText('Select a pump bay to view its instruments and readings.')
+  ).toBeVisible();
+});
+
+test('a status code is given in words, and an unknown code as it came', async ({
+  page
+}) => {
+  let code = 'R';
+  await page.route('**/api/machine-health/station/17/mimic/**', (route) =>
+    route.fulfill({
+      json: numbered(
+        new URL(route.request().url()).searchParams.get('unit'),
+        code
+      )
+    })
+  );
+  await page.goto('/');
+  const value = page.locator('g[data-point="/st"] text').last();
+  await expect(value).toHaveText('Running');
+
+  // Nothing guesses at a code the layout has not been told the meaning of.
+  code = 'Q';
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect(value).toHaveText('Q');
+
+  // The pump's own tag, its summary line and its table agree with the words.
+  await page.getByRole('button', { name: 'P10: Idle', exact: true }).click();
+  await expect(
+    page.locator('g[data-point="/pd/P10/st"] text').last()
+  ).toHaveText('Idle');
+  const group = page.getByRole('button', { name: 'Equipment Status Group' });
+  await expect(group).toContainText('Equipment Status: Idle');
+  await group.click();
+  const row = page.locator('tr[data-point="/pd/P10/st"]');
+  await expect(row).toContainText('Idle');
+  await expect(row).toContainText('Source code: I');
+});
+
+test('a system is one line until it is opened', async ({ page }) => {
+  await page.route('**/api/machine-health/station/17/mimic/**', (route) =>
+    route.fulfill({
+      json: numbered(new URL(route.request().url()).searchParams.get('unit'))
+    })
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'P1: Running', exact: true }).click();
+
+  const motor = page.getByRole('button', { name: 'Electric Motor' });
+  // A family is a span; a lone reading is named. Neither is ranked against
+  // the other, and nothing is called normal without a limit to be normal by.
+  await expect(motor).toContainText('3 readings: 30 – 50.5 degC');
+  await expect(motor).toContainText('Shaft speed: 745 rpm');
+  await expect(motor).toContainText('No threshold configured');
+  await expect(page.locator('tr[data-point="/w1"]')).toHaveCount(0);
+
+  await motor.click();
+  await expect(page.locator('tr[data-point="/w1"]')).toContainText('30 degC');
+  await expect(page.locator('tr[data-point="/w2"]')).toContainText('50.5 degC');
+});
+
+test('a reading that cannot be shown says why, on the drawing', async ({
+  page
+}) => {
+  await page.route('**/api/machine-health/station/17/mimic/**', (route) =>
+    route.fulfill({
+      json: fixture(
+        new URL(route.request().url()).searchParams.get('unit'),
+        true
+      )
+    })
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'P17: Stale', exact: true }).click();
+  const tag = page.locator('g[data-point="/dex/PUMP17_POWER"]');
+  await expect(tag.locator('text').last()).toHaveText('Stale');
+  await expect(tag.locator('rect')).toHaveAttribute('stroke-dasharray', '4 3');
+});
+
+/** A pump with parts: a motor with a limit, a bearing, and one it lacks. */
+function withParts(unit: string | null, winding = 61) {
+  const base = numbered(unit);
+  const reading = (
+    pointer: string,
+    label: string,
+    group: string,
+    part_code: string,
+    value: number,
+    unit_: string,
+    extra: object = {}
+  ) => ({
+    pointer,
+    label,
+    group,
+    part_code,
+    value,
+    unit: unit_,
+    quality: 'good',
+    observed_at: '2026-09-13T12:00:00Z',
+    age_seconds: 2,
+    unchanged_for_seconds: null,
+    reason: null,
+    condition: 'unknown',
+    thresholds_configured: false,
+    ...extra
+  });
+  return {
+    ...base,
+    layout: {
+      ...base.layout,
+      parts: [
+        {
+          id: 'part-motor',
+          code: 'PS-MOTOR',
+          label: 'Electric motor',
+          x: 464,
+          y: 206
+        },
+        {
+          id: 'part-thrust-bearing',
+          code: 'PS-THRUST-BRG',
+          label: 'Thrust bearing',
+          x: 512,
+          y: 270
+        },
+        {
+          id: 'part-guide-bearing',
+          code: 'PS-GUIDE-BRG',
+          label: 'Guide radial bearing',
+          x: 582,
+          y: 349
+        }
+      ]
+    },
+    points: unit
+      ? {
+          '/w1': reading(
+            '/w1',
+            'Winding 1',
+            'Drive motor',
+            'PS-MOTOR',
+            winding,
+            'degC',
+            {
+              thresholds_configured: true,
+              condition: winding > 100 ? 'critical' : 'normal'
+            }
+          ),
+          '/w2': reading(
+            '/w2',
+            'Winding 2',
+            'Drive motor',
+            'PS-MOTOR',
+            58,
+            'degC'
+          ),
+          '/w3': reading(
+            '/w3',
+            'Winding 3',
+            'Drive motor',
+            'PS-MOTOR',
+            60,
+            'degC'
+          ),
+          '/t1': reading(
+            '/t1',
+            'Thrust pad',
+            'Thrust Bearing',
+            'PS-THRUST-BRG',
+            42,
+            'degC'
+          ),
+          '/kw': reading(
+            '/kw',
+            'Active power',
+            'Motor Electrical System',
+            'PS-ELECTRICAL',
+            8.4,
+            'MW'
+          )
+        }
+      : {}
+  };
+}
+
+test('a pump page shows the pump with its parts numbered and summarised', async ({
+  page
+}) => {
+  let winding = 61;
+  await page.route('**/api/machine-health/station/17/mimic/**', (route) =>
+    route.fulfill({
+      json: withParts(
+        new URL(route.request().url()).searchParams.get('unit'),
+        winding
+      )
+    })
+  );
+  await page.goto('/?pump=P1');
+  await expect(page.getByText('Pump unit: P1')).toBeVisible();
+
+  // A part is known by its catalogue code, and named as this pump names it.
+  const motor = page.getByRole('button', {
+    name: '1. Drive motor',
+    exact: true
+  });
+  await expect(motor).toContainText('3 readings: 58 – 61 degC');
+  const bearing = page.getByRole('button', {
+    name: '2. Thrust Bearing',
+    exact: true
+  });
+  await expect(bearing).toContainText('Thrust pad: 42 degC');
+
+  // A part this pump reports nothing for is still drawn, and says so.
+  await expect(
+    page.getByRole('button', { name: '3. Guide radial bearing', exact: true })
+  ).toContainText('No readings on this pump');
+
+  // The list beneath carries the same numbers; a system that is not a part
+  // of the drawing carries none.
+  const drive = page.locator('[data-section="Drive motor"]');
+  await expect(drive.locator('[data-number]')).toHaveText('1');
+  const electrical = page.locator('[data-section="Motor Electrical System"]');
+  await expect(electrical).toContainText('Active power: 8.4 MW');
+  await expect(electrical.locator('[data-number]')).toHaveCount(0);
+
+  // Each winding is a bar, as tall as its reading against the others; the
+  // shaft speed is not among them, being in another unit.
+  const bars = motor.locator('rect[data-bar]');
+  await expect(bars).toHaveCount(3);
+  const heights = async () =>
+    bars.evaluateAll((nodes) =>
+      nodes.map((node) => [
+        node.getAttribute('data-bar'),
+        Number(node.getAttribute('height'))
+      ])
+    );
+  let [w1, w2, w3] = await heights();
+  expect(w1[1]).toBeGreaterThan(w3[1]);
+  expect(w3[1]).toBeGreaterThan(w2[1]);
+
+  // Choosing a part on the drawing opens its readings.
+  await expect(page.locator('tr[data-point="/w1"]')).toHaveCount(0);
+  await motor.click();
+  await expect(page.locator('tr[data-point="/w1"]')).toContainText('61 degC');
+
+  // Pointing at a part outlines it; take the pointer away to see its own colour.
+  await page.mouse.move(0, 0);
+  // Nothing is outlined while every reading is within its limit...
+  const drawing = page.getByRole('img', { name: 'Pump unit schematic' });
+  expect(
+    await drawing.evaluate((node) =>
+      (node as SVGElement).style.getPropertyValue('--mimic-part-motor')
+    )
+  ).toBe('');
+  // ...and the part is, in red, once one is past it.
+  winding = 140;
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect(motor).toContainText('3 readings: 58 – 140 degC');
+  // The one past its limit is the tallest bar, and red.
+  [w1, w2, w3] = await heights();
+  expect(w1[1]).toBeGreaterThan(w2[1]);
+  expect(w1[1]).toBeGreaterThan(w3[1]);
+  await expect(bars.first()).toHaveAttribute('fill', /red/);
+  expect(
+    await drawing.evaluate((node) =>
+      (node as SVGElement).style.getPropertyValue('--mimic-part-motor')
+    )
+  ).toContain('red');
+});
+
+test('a station shows the same pump view for the bay chosen on it', async ({
+  page
+}) => {
+  await page.route('**/api/machine-health/station/17/mimic/**', (route) =>
+    route.fulfill({
+      json: withParts(new URL(route.request().url()).searchParams.get('unit'))
+    })
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'P1: Running', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: '1. Drive motor', exact: true })
+  ).toContainText('3 readings: 58 – 61 degC');
+});
+
+/** A station with one alarm raised on pump 1 and one breach not yet raised. */
+function alarmed(unit: string | null, status: 'open' | 'acknowledged') {
+  const alarm = (
+    pointer: string,
+    machine: number,
+    anomaly: number | null,
+    value: number
+  ) => ({
+    pointer,
+    label: pointer,
+    group: 'Electric Motor',
+    value,
+    unit: 'degC',
+    quality: 'good',
+    observed_at: '2026-09-13T12:00:00Z',
+    age_seconds: 2,
+    unchanged_for_seconds: null,
+    reason: null,
+    condition: 'critical',
+    thresholds_configured: true,
+    machine,
+    anomaly,
+    anomaly_status: anomaly === null ? null : status,
+    severity: anomaly === null ? null : 'critical'
+  });
+  return {
+    ...numbered(unit),
+    alarms: [alarm('/w1', 1, 44, 159.5), alarm('/w9', 10, null, 101)]
+  };
+}
+
+test('an alarm is acknowledged with a note where it is seen, and leads to Health', async ({
+  page
+}) => {
+  let status: 'open' | 'acknowledged' = 'open';
+  const posted: { url: string; body: any }[] = [];
+  await page.route('**/api/machine-health/station/17/mimic/**', (route) =>
+    route.fulfill({
+      json: alarmed(
+        new URL(route.request().url()).searchParams.get('unit'),
+        status
+      )
+    })
+  );
+  await page.route('**/api/machine-health/machines/**', (route) => {
+    posted.push({
+      url: route.request().url(),
+      body: route.request().postDataJSON()
+    });
+    status = 'acknowledged';
+    return route.fulfill({ json: { pk: 44, status } });
+  });
+  await page.goto('/');
+
+  // Two readings outside their limits; only one is an alarm yet.
+  const raised = page.locator('tr[data-point="/w1"]');
+  const pending = page.locator('tr[data-point="/w9"]');
+  await expect(raised).toContainText('Open · critical');
+  await expect(
+    raised.getByRole('link', { name: 'Open in Health' })
+  ).toHaveAttribute('href', '/machines/machine/1/health');
+  await expect(pending).toContainText('Not raised yet');
+  await expect(
+    pending.getByRole('button', { name: 'Acknowledge' })
+  ).toHaveCount(0);
+
+  await raised.getByRole('button', { name: 'Acknowledge' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('/w1: 159.5 degC');
+  await dialog.getByLabel('Note').fill('Seen; winding fan checked.');
+  await dialog.getByRole('button', { name: 'Acknowledge' }).click();
+
+  await expect(dialog).toHaveCount(0);
+  expect(posted).toEqual([
+    {
+      url: expect.stringContaining(
+        '/api/machine-health/machines/1/health/anomalies/44/acknowledge/'
+      ),
+      body: { note: 'Seen; winding fan checked.' }
+    }
+  ]);
+  // The page re-reads, and the alarm is shown as acknowledged with nothing
+  // left to press.
+  await expect(raised).toContainText('Acknowledged · critical');
+  await expect(raised.getByRole('button', { name: 'Acknowledge' })).toHaveCount(
+    0
+  );
+});
+
+test('a refused acknowledgement keeps the note and says why', async ({
+  page
+}) => {
+  await page.route('**/api/machine-health/station/17/mimic/**', (route) =>
+    route.fulfill({
+      json: alarmed(
+        new URL(route.request().url()).searchParams.get('unit'),
+        'open'
+      )
+    })
+  );
+  await page.route('**/api/machine-health/machines/**', (route) =>
+    route.fulfill({
+      status: 403,
+      json: { detail: 'You do not have permission to perform this action.' }
+    })
+  );
+  await page.goto('/?pump=P1');
+
+  // The pump page lists only its own alarms.
+  await expect(page.locator('tr[data-point="/w1"]')).toHaveCount(1);
+  await expect(page.locator('tr[data-point="/w9"]')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Acknowledge' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Note').fill('Trying anyway');
+  await dialog.getByRole('button', { name: 'Acknowledge' }).click();
+  await expect(dialog).toContainText(
+    'You do not have permission to perform this action.'
+  );
+  await expect(dialog.getByLabel('Note')).toHaveValue('Trying anyway');
+});
+
+test('a repair is raised from the alarm row, against the anomaly', async ({
+  page
+}) => {
+  const posted: any[] = [];
+  await page.route('**/api/machine-health/station/17/mimic/**', (route) =>
+    route.fulfill({
+      json: alarmed(
+        new URL(route.request().url()).searchParams.get('unit'),
+        'open'
+      )
+    })
+  );
+  await page.route('**/api/assets/machines/**', (route) =>
+    route.fulfill({ json: [{ pk: 1, name: 'Fixture station / Pump 1' }] })
+  );
+  await page.route('**/api/part/**', (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/maintenance/work-packages/create/', (route) => {
+    posted.push(route.request().postDataJSON());
+    return route.fulfill({
+      json: {
+        work_order_id: 7,
+        work_order_reference: 'WO-7',
+        repair_packet_id: null,
+        repair_packet_reference: '',
+        replayed: false,
+        warnings: []
+      }
+    });
+  });
+  await page.goto('/?pump=P1');
+
+  await page
+    .locator('tr[data-point="/w1"]')
+    .getByRole('button', { name: 'Create repair' })
+    .click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('New work order');
+  await expect(dialog.getByLabel('Title')).toHaveValue(
+    '/w1 outside configured limits'
+  );
+  await dialog
+    .getByRole('button', { name: /^Create/ })
+    .last()
+    .click();
+
+  await expect(dialog).toHaveCount(0);
+  expect(posted).toHaveLength(1);
+  expect(posted[0]).toMatchObject({
+    origin: 'anomaly',
+    source: { anomaly_id: 44 }
+  });
+});
+
+test('a bay with an alarm is marked on the drawing, and counted beside the states', async ({
+  page
+}) => {
+  await page.route('**/api/machine-health/station/17/mimic/**', (route) => {
+    const data = alarmed(
+      new URL(route.request().url()).searchParams.get('unit'),
+      'open'
+    );
+    return route.fulfill({
+      json: {
+        ...data,
+        bays: data.bays.map((bay) => ({
+          ...bay,
+          alarm: bay.key === 'P1' ? 'critical' : null
+        }))
+      }
+    });
+  });
+  await page.goto('/');
+
+  // Still running - that is what the pump is doing - and in alarm as well.
+  const bay = page.getByRole('button', {
+    name: 'P1: Running, Critical alarm',
+    exact: true
+  });
+  await expect(bay).toHaveAttribute('data-alarm', 'critical');
+  await expect(bay.locator('[data-alarm-marker="critical"]')).toBeVisible();
+  await expect(page.locator('g[data-bay="P10"]')).not.toHaveAttribute(
+    'data-alarm',
+    /.+/
+  );
+  await expect(page.locator('[data-legend="alarm-critical"]')).toContainText(
+    'Critical alarm 1'
+  );
+  await expect(page.locator('[data-legend="alarm-warning"]')).toHaveCount(0);
+});
+
+test('an alarm is dismissed only with a reason, and then offers nothing more', async ({
+  page
+}) => {
+  let status: 'open' | 'suppressed' = 'open';
+  const posted: { url: string; body: any }[] = [];
+  await page.route('**/api/machine-health/station/17/mimic/**', (route) => {
+    const data = alarmed(
+      new URL(route.request().url()).searchParams.get('unit'),
+      'open'
+    );
+    data.alarms[0].anomaly_status = status as any;
+    return route.fulfill({ json: data });
+  });
+  await page.route('**/api/machine-health/machines/**', (route) => {
+    posted.push({
+      url: route.request().url(),
+      body: route.request().postDataJSON()
+    });
+    status = 'suppressed';
+    return route.fulfill({ json: { pk: 44, status } });
+  });
+  await page.goto('/?pump=P1');
+
+  const row = page.locator('tr[data-point="/w1"]');
+  await row.getByRole('button', { name: 'Dismiss' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('Dismiss alarm');
+  const confirm = dialog.getByRole('button', { name: 'Dismiss' });
+  // Waving an alarm away has to say why.
+  await expect(confirm).toBeDisabled();
+  await dialog.getByLabel('Reason').fill('Limit set too tight');
+  await confirm.click();
+
+  await expect(dialog).toHaveCount(0);
+  expect(posted).toEqual([
+    {
+      url: expect.stringContaining(
+        '/api/machine-health/machines/1/health/anomalies/44/dismiss/'
+      ),
+      body: { note: 'Limit set too tight' }
+    }
+  ]);
+  await expect(row).toContainText('Dismissed');
+  await expect(row.getByRole('button')).toHaveCount(0);
+  await expect(row.getByRole('link', { name: 'Open in Health' })).toBeVisible();
+});

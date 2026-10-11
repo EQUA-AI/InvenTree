@@ -134,8 +134,10 @@ known_django="django"
 sections=["FUTURE","STDLIB","DJANGO","THIRDPARTY","FIRSTPARTY","LOCALFOLDER"]
 
 [tool.codespell]
-# responde/momento/deine/ist/recommandation are es/de/fr words in the ai i18n templates
-ignore-words-list = ["assertIn","SME","intoto","fitH","responde","momento","deine","ist","recommandation","maschine"]
+# responde/momento/deine/ist/recommandation are es/de/fr words in the ai i18n templates.
+# "despatch" is the official spelling in Indian grid regulation - the Regional
+# and National Load Despatch Centres, cited in the threshold record.
+ignore-words-list = ["assertIn","SME","intoto","fitH","responde","momento","deine","ist","recommandation","maschine","despatch"]
 # Lockfile integrity hashes false-positive constantly.
 skip = "src/frontend/package-lock.json"
 

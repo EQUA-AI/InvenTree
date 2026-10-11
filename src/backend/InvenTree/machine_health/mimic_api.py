@@ -6,20 +6,29 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from assets.registry_api import LiveSourceSerializer, RegistryAPI
+from InvenTree.serializers import InvenTreeIsoDateTimeField
 from machine_health.services.mimic import station_mimic
 
 
 class MimicPointSerializer(serializers.Serializer):
-    """A current scalar or explicit unknown with server-computed age."""
+    """A current scalar or explicit unknown with server-computed age.
+
+    A field the projection computes reaches the page only if it is named here:
+    this serializer is what the selected pump's and the station's readings pass
+    through, and it drops whatever it does not list. ``unchanged_for_seconds``
+    was computed for a week before anyone could see it, because it was not.
+    """
 
     pointer = serializers.CharField()
     label = serializers.CharField()
     group = serializers.CharField(allow_blank=True)
+    part_code = serializers.CharField(allow_blank=True)
     value = serializers.JSONField(allow_null=True)
     unit = serializers.CharField(allow_blank=True)
     quality = serializers.CharField()
-    observed_at = serializers.DateTimeField(allow_null=True)
+    observed_at = InvenTreeIsoDateTimeField(allow_null=True)
     age_seconds = serializers.FloatField(allow_null=True)
+    unchanged_for_seconds = serializers.FloatField(allow_null=True)
     reason = serializers.CharField(allow_null=True)
     condition = serializers.CharField()
     thresholds_configured = serializers.BooleanField()
@@ -30,9 +39,10 @@ class MimicSerializer(serializers.Serializer):
 
     station = serializers.IntegerField()
     name = serializers.CharField()
-    generated_at = serializers.DateTimeField()
+    alarm = serializers.CharField(allow_null=True)
+    generated_at = InvenTreeIsoDateTimeField()
     source = LiveSourceSerializer(allow_null=True)
-    last_poll_at = serializers.DateTimeField(allow_null=True)
+    last_poll_at = InvenTreeIsoDateTimeField(allow_null=True)
     last_error_code = serializers.CharField(allow_blank=True)
     enabled = serializers.BooleanField()
     layout = serializers.JSONField()

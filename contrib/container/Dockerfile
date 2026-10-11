@@ -178,6 +178,18 @@ COPY src/backend/requirements.txt ${INVENTREE_BACKEND_DIR}/requirements.txt
 # so external_account JSONs point google-auth at this helper instead.
 COPY contrib/container/gcp-entra-token.sh /usr/local/bin/gcp-entra-token
 RUN chmod +x /usr/local/bin/gcp-entra-token
+# The station estate manifest and its reviewed dictionary. A deployment given
+# only the code and the telemetry draws nothing: the mapping between them is
+# data, and lives in a database until it is exported. Shipping the packs means
+# the bootstrap is `manage.py apply_dictionary_review --review <path>` inside
+# the running container, rather than copying a file into it first.
+COPY contrib/cosmos/review ${INVENTREE_HOME}/contrib/cosmos/review
+
+# The reviewed alarm limits, for the same reason and one more: a deployment
+# without this file has no limits, so `classify()` returns `unknown` for every
+# signal and no anomaly can ever be raised. The dashboard would draw correctly
+# and annunciate nothing, which is the failure mode hardest to notice.
+COPY contrib/cosmos/limits ${INVENTREE_HOME}/contrib/cosmos/limits
 
 # Copy compiled dependencies from prebuild image
 ENV PATH=/root/.local/bin:$PATH

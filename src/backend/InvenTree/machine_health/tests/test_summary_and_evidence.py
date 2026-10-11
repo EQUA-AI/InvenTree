@@ -52,6 +52,61 @@ class HealthSummaryTest(HealthEnvMixin, TestCase):
         self.assertFalse(summary['degraded_data'])
         self.assertEqual(summary['stale_signal_count'], 0)
 
+    def test_only_the_observation_time_is_moved_into_display_time(self):
+        """The shift presents a *source* clock as live; arrival is already live.
+
+        ``observed_at`` comes from the plant and is over a year behind, so it is
+        moved forward to read as current. ``received_at`` is this deployment's
+        own wall clock at ingest and is current already - shifting it too dated
+        the arrival of every reading more than a year after the reading itself,
+        and after "now".
+        """
+        import uuid as _uuid
+
+        self.machine.asset_type = 'pumphouse'
+        self.machine.source_namespace = 'summary'
+        self.machine.source_entity_uuid = _uuid.uuid4()
+        self.machine.save(
+            update_fields=['asset_type', 'source_namespace', 'source_entity_uuid']
+        )
+        recorded_end = self.now - timedelta(days=400)
+        self.source.config = {
+            'data_ranges': {
+                str(self.machine.source_entity_uuid): {
+                    'from': (recorded_end - timedelta(days=10)).isoformat(),
+                    'to': recorded_end.isoformat(),
+                }
+            }
+        }
+        self.source.save(update_fields=['config'])
+        self.set_signal(3.0, observed_at=recorded_end, received_at=self.now)
+
+        [row] = signal_rows(self.machine, now=self.now)
+
+        self.assertEqual(row['observed_at'], self.now)
+        self.assertEqual(row['received_at'], self.now)
+        self.assertLessEqual(row['received_at'], self.now)
+        self.assertFalse(row['stale'])
+
+    def test_an_unusable_reading_does_not_drive_the_condition(self):
+        """The Health blade refused stale data but classified pegged data.
+
+        The mimic has always declined to classify a reading whose quality is not
+        good. This row did not, so one channel stuck at the over-range marker
+        could make a whole machine read CRITICAL while the same row displayed
+        "Unusable or unknown" beside it.
+        """
+        self.set_signal(3276.7, observed_at=self.now, quality=SignalQuality.BAD)
+
+        [row] = signal_rows(self.machine, now=self.now)
+
+        self.assertEqual(row['quality'], SignalQuality.BAD)
+        self.assertFalse(row['stale'])
+        self.assertEqual(row['state'], HealthState.UNKNOWN)
+        self.assertNotEqual(
+            health_summary(self.machine, now=self.now)['state'], HealthState.CRITICAL
+        )
+
     def test_every_signal_stale_reads_offline(self):
         """A connector outage reads as an outage, not as a healthy machine."""
         self.set_signal(3.0, observed_at=self.now - timedelta(hours=2))

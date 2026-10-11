@@ -1472,6 +1472,19 @@ for _aimms_entry in _aimms_django_flags():
         )
     globals()[_aimms_entry.env_name] = _aimms_value
 
+# The maintenance scope resolver is never inherited from the environment under
+# test. tasks.scope.scope_for_actor prefers a configured resolver OVER an actor's
+# explicit maintenance_scopes, so an ambient resolver silently replaces the
+# scopes a test assigned with whatever the surrounding deployment authorizes.
+# The dev container sets one by default (contrib/container/dev-docker-compose.yml),
+# which is why the tasks/aichat/repair/approvals suites produce hundreds of
+# "Actor and work-order maintenance scopes do not match" errors when run there
+# and pass in CI, where the variable is absent. A test must assert its own
+# policy, not the host's. Suites that exercise a resolver still set one
+# explicitly with override_settings / self.settings(...).
+if TESTING:
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER = None
+
 # One boot-time line stating the effective AIMMS switchboard, so "which flags
 # does this revision actually run with" is answerable from container logs.
 # Registry-driven: every Django-plane flag, registry order, name=value.

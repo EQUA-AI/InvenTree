@@ -3,16 +3,19 @@
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from datetime import timezone as dt_timezone
 
 from django.contrib import admin
 from django.contrib.auth.models import User
+from django.test import SimpleTestCase, override_settings
 from django.urls import path, reverse
 
 from rest_framework.serializers import SerializerMethodField
 
 import InvenTree.serializers
 from InvenTree.mixins import ListCreateAPI, OutputOptionsMixin
-from InvenTree.serializers import OptionalField
+from InvenTree.serializers import InvenTreeIsoDateTimeField, OptionalField
 from InvenTree.unit_test import InvenTreeAPITestCase
 from InvenTree.urls import backendpatterns
 from part.models import Part
@@ -216,3 +219,26 @@ class ConcurrentOptionalFieldTests(InvenTreeAPITestCase):
             f'{len(errors)} / 2000 concurrently-built serializers had the wrong '
             f"'field_b' inclusion (expected, got) pairs shown above",
         )
+
+
+class IsoDateTimeFieldTests(SimpleTestCase):
+    """Timestamps a client can place on a clock without guessing."""
+
+    #: The project disables time zones under test (``USE_TZ = not TESTING``), and
+    #: DRF strips the offset from an aware value when they are off. Production
+    #: runs with them on, so that is the setting this contract is stated under.
+    AWARE = datetime(2026, 9, 25, 21, 31, 5, tzinfo=dt_timezone.utc)
+
+    @override_settings(USE_TZ=True)
+    def test_an_instant_is_rendered_with_its_offset(self):
+        """Without one, every browser outside UTC reads it as local time."""
+        rendered = InvenTreeIsoDateTimeField().to_representation(self.AWARE)
+
+        self.assertEqual(rendered, '2026-09-25T21:31:05Z')
+
+    @override_settings(USE_TZ=True)
+    def test_an_explicit_format_is_left_alone(self):
+        """ISO-8601 is the default, not an override of the caller's choice."""
+        field = InvenTreeIsoDateTimeField(format='%Y-%m-%d')
+
+        self.assertEqual(field.to_representation(self.AWARE), '2026-09-25')

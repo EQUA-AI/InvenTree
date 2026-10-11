@@ -55,6 +55,30 @@ fi
 
 cd ${INVENTREE_HOME}
 
+# Apply migrations before the server starts - opt-in, for the web app, for a
+# rollout that carries them.
+#
+# The server does not start with migrations pending: InvenTree.apps logs INVE-W8
+# and exits, and because gunicorn.conf.py preloads the app that exit is the
+# master's, so it ends the container. There is no running container left to
+# migrate from, and the migration has to happen here or not at all.
+#
+# The lineage check comes first and changes nothing. If it refuses, `set -e`
+# stops this script before `migrate` and before the server, the revision never
+# becomes ready, and whatever was serving carries on. INVENTREE_AUTO_UPDATE
+# would also migrate at start, but it does not ask whose database this is, and
+# it starts the server even when a migration has failed.
+#
+# Leave it unset on the worker, so that one container migrates, and take it off
+# again after the rollout: it costs two extra application boots on every start.
+if [[ "${AIMMS_MIGRATE_ON_START,,}" == "true" ]]; then
+    echo "AIMMS_MIGRATE_ON_START is enabled - checking lineage, then migrating"
+    python "${INVENTREE_BACKEND_DIR}/InvenTree/manage.py" shell -c \
+        "from assets.deploy_lineage import report; report()"
+    python "${INVENTREE_BACKEND_DIR}/InvenTree/manage.py" migrate --noinput
+    echo "Migration step finished - starting the server"
+fi
+
 sync_spa_bundle() {
     local src_dir="${INVENTREE_BACKEND_DIR}/InvenTree/web/static/web"
     local dest_dir="${INVENTREE_STATIC_ROOT}/web"

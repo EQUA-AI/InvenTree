@@ -1,5 +1,6 @@
 """Bounded, fair polling of registered pumphouses through read-only connectors."""
 
+import logging
 import time
 from datetime import timedelta
 
@@ -11,12 +12,19 @@ from django.utils import timezone
 from assets.ingestion_models import IngestionCheckpoint
 from assets.models import AssetMachine
 from InvenTree.tasks import ScheduledTask, scheduled_task
-from machine_health.connectors.cosmos_pumphouse import (
-    CosmosConfigError,
-    CosmosPumphouseConnector,
-    _classify,
+from machine_health.connectors.base import (
+    PUMPHOUSE_CONNECTOR_TYPES,
+    pumphouse_connector_class,
 )
+from machine_health.connectors.cosmos_pumphouse import CosmosConfigError, _classify
+from machine_health.services import anomalies as anomaly_services
 from machine_health.services.ingestion import record_source_error
+
+logger = logging.getLogger('inventree')
+
+#: How often the sweep below runs. Named so a page can say how live "live"
+#: is: the plant writes every five seconds, this reads it once a minute.
+POLL_INTERVAL_SECONDS = 60
 
 STATION_BUDGET_SECONDS = 20
 RUN_BUDGET_SECONDS = 50
@@ -24,7 +32,21 @@ MAX_DOCUMENTS_PER_STATION = 200
 LEASE_SECONDS = 120
 
 
-@scheduled_task(ScheduledTask.MINUTES, 1)
+def connector_for(source, **kwargs):
+    """Build the adapter a source declares, resolved from the registry.
+
+    Resolved rather than named: a station may be served by the live Cosmos
+    adapter or by the replay one, and the sweep has to drive whichever its own
+    source says. Naming one class here would quietly skip every station
+    configured for the other.
+    """
+    connector_class = pumphouse_connector_class(source.connector_type)
+    if connector_class is None:
+        raise CosmosConfigError('Source names a connector that is not registered.')
+    return connector_class(source, **kwargs)
+
+
+@scheduled_task(ScheduledTask.MINUTES, POLL_INTERVAL_SECONDS // 60)
 def poll_cosmos_pumphouse_sources():
     """Visit least-recently attempted stations first, isolating their failures.
 
@@ -40,7 +62,9 @@ def poll_cosmos_pumphouse_sources():
         IngestionCheckpoint.objects
         .select_related('source', 'station')
         .filter(
-            active=True, source__active=True, source__connector_type='cosmos_pumphouse'
+            active=True,
+            source__active=True,
+            source__connector_type__in=PUMPHOUSE_CONNECTOR_TYPES,
         )
         .order_by(F('last_poll_at').asc(nulls_first=True), 'pk')
     )
@@ -71,7 +95,7 @@ def poll_cosmos_pumphouse_sources():
         code = ''
         connector = None
         try:
-            connector = CosmosPumphouseConnector(
+            connector = connector_for(
                 checkpoint.source,
                 station_uuid=checkpoint.station_uuid,
                 deadline=min(deadline, time.monotonic() + STATION_BUDGET_SECONDS),
@@ -80,6 +104,14 @@ def poll_cosmos_pumphouse_sources():
                 checkpoint, max_documents=_document_limit(checkpoint.source)
             )
             code = connector.last_error_code
+            # After the ingest verdict is taken and before the handlers below,
+            # so a detector failure can never be reported as a transport one.
+            # Deliberately not conditioned on ``code``: a run that stopped part
+            # way still committed whole snapshots, and a limit those readings
+            # breached is not less true because the next read failed.
+            evaluate_station_thresholds(
+                checkpoint.station_id, connector.applied_machine_ids
+            )
         except Exception as exc:
             code = _classify(exc)
         finally:
@@ -106,6 +138,51 @@ def poll_cosmos_pumphouse_sources():
                     pk=checkpoint.pk, lease_until=lease_until
                 ).update(lease_until=None)
     return attempted
+
+
+def evaluate_station_thresholds(station_id, machine_ids):
+    """Raise or clear threshold anomalies for machines a poll actually wrote to.
+
+    Scoped to the machines whose current state this run changed, not to every
+    machine under the station. Evaluating the rest would re-run auto-resolution
+    against evidence that did not move, every minute, for ever.
+
+    Nothing here may raise. The caller sits inside the sweep's own
+    ``except Exception`` (whose handler feeds :func:`_classify`, which has no
+    branch for a detector error and would file it as ``NETWORK`` while
+    suppressing ``last_success_at``), so an exception escaping this function
+    would be reported to an operator as a firewall problem on a poll that
+    succeeded. The whole body is guarded, not only the per-machine call: the
+    queryset's SELECT runs when the loop first iterates.
+    """
+    if not station_id or not machine_ids:
+        return 0
+
+    evaluated = 0
+    try:
+        machines = AssetMachine.objects.filter(
+            Q(pk=station_id) | Q(parent_id=station_id), pk__in=machine_ids
+        )
+        for machine in machines:
+            try:
+                anomaly_services.evaluate_thresholds(machine)
+                evaluated += 1
+            except Exception:
+                # Per machine, because record_anomaly raises AnomalyError when it
+                # loses the unique-index race to a concurrent evaluation. That is
+                # one machine's problem, not the station's.
+                logger.warning(
+                    'machine_health.thresholds evaluation failed machine=%s',
+                    machine.pk,
+                    exc_info=True,
+                )
+    except Exception:
+        logger.warning(
+            'machine_health.thresholds evaluation failed station=%s',
+            station_id,
+            exc_info=True,
+        )
+    return evaluated
 
 
 def _document_limit(source):

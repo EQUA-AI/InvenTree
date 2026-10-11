@@ -4,6 +4,8 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from tasks.serializers import WorkOrderPartSerializer
 
+from InvenTree.serializers import InvenTreeIsoDateTimeModelSerializerMixin
+
 from .models import (
     ApprovedRepairScope,
     LockoutPoint,
@@ -18,7 +20,9 @@ from .models import (
 )
 
 
-class SafetyGateTemplateSerializer(serializers.ModelSerializer):
+class SafetyGateTemplateSerializer(
+    InvenTreeIsoDateTimeModelSerializerMixin, serializers.ModelSerializer
+):
     """Serializer for reusable safety gate templates."""
 
     class Meta:
@@ -45,7 +49,9 @@ class SafetyGateTemplateSerializer(serializers.ModelSerializer):
         read_only_fields = ('pk', 'created_at', 'updated_at')
 
 
-class LockoutPointSerializer(serializers.ModelSerializer):
+class LockoutPointSerializer(
+    InvenTreeIsoDateTimeModelSerializerMixin, serializers.ModelSerializer
+):
     """Serializer for LOTO energy-control points."""
 
     class Meta:
@@ -80,7 +86,9 @@ class LockoutPointSerializer(serializers.ModelSerializer):
         )
 
 
-class SafetyEvidenceProofSerializer(serializers.ModelSerializer):
+class SafetyEvidenceProofSerializer(
+    InvenTreeIsoDateTimeModelSerializerMixin, serializers.ModelSerializer
+):
     """Serializer for structured gate proof (photo/scan/reading/etc.)."""
 
     class Meta:
@@ -99,7 +107,9 @@ class SafetyEvidenceProofSerializer(serializers.ModelSerializer):
         read_only_fields = ('pk', 'gate', 'captured_by', 'captured_at')
 
 
-class RepairPacketGateSerializer(serializers.ModelSerializer):
+class RepairPacketGateSerializer(
+    InvenTreeIsoDateTimeModelSerializerMixin, serializers.ModelSerializer
+):
     """Serializer for safety gates attached to a packet."""
 
     lockout_points = LockoutPointSerializer(many=True, read_only=True)
@@ -152,7 +162,9 @@ class RepairPacketGateSerializer(serializers.ModelSerializer):
         return obj.unsatisfied_reason()
 
 
-class RepairPacketEvidenceSerializer(serializers.ModelSerializer):
+class RepairPacketEvidenceSerializer(
+    InvenTreeIsoDateTimeModelSerializerMixin, serializers.ModelSerializer
+):
     """Serializer for evidence items attached to a packet."""
 
     class Meta:
@@ -163,7 +175,9 @@ class RepairPacketEvidenceSerializer(serializers.ModelSerializer):
         read_only_fields = ('pk', 'created_at')
 
 
-class RepairPacketEventSerializer(serializers.ModelSerializer):
+class RepairPacketEventSerializer(
+    InvenTreeIsoDateTimeModelSerializerMixin, serializers.ModelSerializer
+):
     """Read-only serializer for the packet audit timeline."""
 
     class Meta:
@@ -183,7 +197,9 @@ class RepairPacketEventSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class RepairPacketGenerationRunSerializer(serializers.ModelSerializer):
+class RepairPacketGenerationRunSerializer(
+    InvenTreeIsoDateTimeModelSerializerMixin, serializers.ModelSerializer
+):
     """Read-only serializer for generation provenance runs."""
 
     class Meta:
@@ -203,7 +219,9 @@ class RepairPacketGenerationRunSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class RepairInvestigationFindingSerializer(serializers.ModelSerializer):
+class RepairInvestigationFindingSerializer(
+    InvenTreeIsoDateTimeModelSerializerMixin, serializers.ModelSerializer
+):
     """One typed observation from the investigation."""
 
     recorded_by_name = serializers.SerializerMethodField()
@@ -238,7 +256,9 @@ class RepairInvestigationFindingSerializer(serializers.ModelSerializer):
         return actor.get_full_name() or actor.get_username()
 
 
-class ApprovedRepairScopeSerializer(serializers.ModelSerializer):
+class ApprovedRepairScopeSerializer(
+    InvenTreeIsoDateTimeModelSerializerMixin, serializers.ModelSerializer
+):
     """A frozen, versioned record of what was approved."""
 
     approved_by_name = serializers.SerializerMethodField()
@@ -273,7 +293,9 @@ class ApprovedRepairScopeSerializer(serializers.ModelSerializer):
         return actor.get_full_name() or actor.get_username()
 
 
-class RepairPacketSerializer(serializers.ModelSerializer):
+class RepairPacketSerializer(
+    InvenTreeIsoDateTimeModelSerializerMixin, serializers.ModelSerializer
+):
     """Serializer for RepairPacket instances with nested read-only sections."""
 
     machine_name = serializers.CharField(

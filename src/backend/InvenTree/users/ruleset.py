@@ -329,6 +329,7 @@ def get_ruleset_ignore() -> list[str]:
         'assets_machineplacementhistory',
         'assets_healthevidencesnapshot',
         'assets_healthsource',
+        'assets_ingestioncheckpoint',
         'assets_machineanomaly',
         'assets_machinesignalbinding',
         'assets_machinesignalstate',

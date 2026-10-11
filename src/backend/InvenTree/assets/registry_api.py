@@ -17,6 +17,7 @@ from tasks.scope import ScopeError, require_machine_scope, scope_for_actor
 
 from common.models import ParameterTemplate
 from InvenTree.permissions import InvenTreeTokenMatchesOASRequirements, map_scope
+from InvenTree.serializers import InvenTreeIsoDateTimeField
 from part.models import Part, PartCategoryParameterTemplate
 from users.permissions import check_user_role
 
@@ -262,7 +263,7 @@ class LiveStatusSerializer(serializers.Serializer):
     bound = serializers.IntegerField()
     unbound = serializers.IntegerField()
     approved = serializers.IntegerField()
-    last_poll_at = serializers.DateTimeField(allow_null=True)
+    last_poll_at = InvenTreeIsoDateTimeField(allow_null=True)
     last_error_code = serializers.CharField(allow_blank=True)
     preview = ActivationPreviewSerializer(required=False)
 
