@@ -30,9 +30,116 @@ SHEET_PROFILES = 'Machine Profiles'
 SHEET_COMPONENTS = 'Component Occurrences'
 SHEET_PART_LINKS = 'Machine Part Links'
 SHEET_PARTS = 'Parts Catalogue'
+SHEET_STOCK_LOCATIONS = 'Warehouse Locations'
+SHEET_COMPANIES = 'Companies'
+SHEET_OFFERS = 'Supplier Offers'
+SHEET_STOCK_ITEMS = 'Stock Items'
+SHEET_HISTORY = 'Maintenance History'
+SHEET_WORK_ORDERS = 'Work Orders'
+# Read for their row counts only; they describe work the application cannot
+# take from a spreadsheet (accounts, governed procedures, files on disk).
+SHEET_STAFF = 'Staff Roles'
+SHEET_PM_PLANS = 'PM Plans'
+SHEET_ATTACHMENTS = 'Attachment Plan'
 
 REQUIRED_SHEETS = (SHEET_LOCATIONS, SHEET_MACHINES)
-OPTIONAL_SHEETS = (SHEET_PROFILES, SHEET_COMPONENTS, SHEET_PART_LINKS, SHEET_PARTS)
+OPTIONAL_SHEETS = (
+    SHEET_PROFILES,
+    SHEET_COMPONENTS,
+    SHEET_PART_LINKS,
+    SHEET_PARTS,
+    SHEET_STOCK_LOCATIONS,
+    SHEET_COMPANIES,
+    SHEET_OFFERS,
+    SHEET_STOCK_ITEMS,
+    SHEET_HISTORY,
+    SHEET_WORK_ORDERS,
+)
+MANUAL_SHEETS = (SHEET_STAFF, SHEET_PM_PLANS, SHEET_ATTACHMENTS)
+
+STOCK_LOCATION_COLUMNS = ('stock_code', 'name', 'parent_stock_code', 'structural')
+STOCK_LOCATION_OPTIONAL_COLUMNS = ('description',)
+COMPANY_COLUMNS = ('name', 'is_manufacturer', 'is_supplier')
+COMPANY_OPTIONAL_COLUMNS = (
+    'company_key',
+    'description',
+    'website',
+    'currency',
+    'phone',
+    'email',
+    'active',
+    'notes',
+)
+OFFER_COLUMNS = ('part_ipn', 'manufacturer', 'manufacturer_mpn')
+OFFER_OPTIONAL_COLUMNS = ('supplier', 'supplier_sku', 'source_url', 'status')
+STOCK_ITEM_COLUMNS = ('part_ipn', 'location_code', 'quantity_on_hand')
+STOCK_ITEM_OPTIONAL_COLUMNS = (
+    'stock_record_key',
+    'batch',
+    'status',
+    'illustrative_unit_cost_usd',
+    'currency',
+    'financial_basis',
+    'receipt_status',
+    'notes',
+)
+HISTORY_COLUMNS = ('machine_key', 'date', 'summary')
+HISTORY_OPTIONAL_COLUMNS = (
+    'history_id',
+    'details',
+    'performed_by',
+    'work_order_reference',
+    'import_state',
+)
+WORK_ORDER_COLUMNS = (
+    'work_order_key',
+    'machine_key',
+    'title',
+    'work_order_type',
+    'priority',
+    'proposed_status',
+)
+WORK_ORDER_OPTIONAL_COLUMNS = (
+    'fault_summary',
+    'symptom',
+    'criticality',
+    'production_impact',
+    'assignee',
+    'due_date',
+    'estimated_minutes',
+    'create_repair_packet',
+    'parts_list',
+    'scenario_id',
+    'notes',
+)
+MAX_STOCK_LOCATION_NAME = 100
+MAX_COMPANY_NAME = 100
+MAX_COMPANY_DESCRIPTION = 250
+MAX_MPN = 100
+MAX_BATCH = 100
+MAX_HISTORY_SUMMARY = 255
+MAX_HISTORY_PERFORMED_BY = 255
+MAX_WORK_ORDER_TITLE = 200
+MAX_WORK_ORDER_KEY = 64
+MAX_WORK_ORDER_ASSIGNEE = 120
+WORK_ORDER_TYPES = frozenset({
+    'corrective',
+    'preventive',
+    'inspection',
+    'calibration',
+    'other',
+})
+WORK_ORDER_PRIORITIES = frozenset({'low', 'medium', 'high'})
+# A workbook stages jobs; it does not execute them. Only states that precede
+# any work are accepted, spelled either as the lifecycle value or as the
+# package's "<STATE>_ENTRY_NOT_CREATED" marker.
+WORK_ORDER_TARGETS = {
+    'draft': 'draft',
+    'planned': 'planned',
+    'draft_entry_not_created': 'draft',
+    'planned_entry_not_created': 'planned',
+}
+STOCK_STATUSES = {'ok': 10, 'attention': 50, 'damaged': 55, 'quarantined': 75}
 
 LOCATION_COLUMNS = (
     'code',
@@ -228,6 +335,107 @@ class PartRecord:
     notes: str
 
 
+@dataclass(frozen=True)
+class StockLocationRecord:
+    """One warehouse node; a storage tree, never a machine's physical place."""
+
+    row: int
+    code: str
+    name: str
+    parent_code: str | None
+    structural: bool
+    description: str
+
+
+@dataclass(frozen=True)
+class CompanyRecord:
+    """A manufacturer or supplier identity; no offer or price is implied."""
+
+    row: int
+    key: str
+    name: str
+    description: str
+    website: str
+    currency: str
+    phone: str
+    email: str
+    is_manufacturer: bool
+    is_supplier: bool
+    active: bool
+    notes: str
+
+
+@dataclass(frozen=True)
+class OfferRecord:
+    """A manufacturer product identity for a catalogue part.
+
+    A supplier offer (SKU, price, lead time) is only staged when the sheet
+    names a supplier *and* a SKU; the Cedar Creek package leaves both blank
+    until a distributor listing is verified, so those rows yield only the
+    manufacturer part.
+    """
+
+    row: int
+    part_ipn: str
+    manufacturer: str
+    mpn: str
+    supplier: str
+    sku: str
+    link: str
+    status: str
+
+    @property
+    def has_supplier_offer(self) -> bool:
+        """True when a SupplierPart could be created from this row."""
+        return bool(self.sku) and bool(self.supplier)
+
+
+@dataclass(frozen=True)
+class StockItemRecord:
+    """Book inventory of a real catalogue part in a warehouse bin."""
+
+    row: int
+    key: str
+    part_ipn: str
+    location_code: str
+    quantity: int
+    batch: str
+    status: int
+    notes: str
+
+
+@dataclass(frozen=True)
+class HistoryRecord:
+    """A dated maintenance event; never linked to a work order by import."""
+
+    row: int
+    key: str
+    machine_key: str
+    date: object  # datetime.date
+    summary: str
+    details: str
+    performed_by: str
+
+
+@dataclass(frozen=True)
+class WorkOrderRecord:
+    """A staged job in a pre-work lifecycle state."""
+
+    row: int
+    key: str
+    machine_key: str
+    title: str
+    work_order_type: str
+    priority: str
+    description: str
+    assignee: str
+    due_date: object | None  # datetime.date
+    estimated_minutes: int | None
+    target_status: str
+    repair_packet: bool
+    scenario_id: str
+
+
 @dataclass
 class PopulationWorkbook:
     """Everything a population run needs, in dependency order."""
@@ -242,6 +450,13 @@ class PopulationWorkbook:
     part_links: list[PartLinkRecord] = field(default_factory=list)
     parts: list[PartRecord] = field(default_factory=list)
     has_parts_sheet: bool = False
+    stock_locations: list[StockLocationRecord] = field(default_factory=list)
+    companies: list[CompanyRecord] = field(default_factory=list)
+    offers: list[OfferRecord] = field(default_factory=list)
+    stock_items: list[StockItemRecord] = field(default_factory=list)
+    history: list[HistoryRecord] = field(default_factory=list)
+    work_orders: list[WorkOrderRecord] = field(default_factory=list)
+    manual: dict[str, int] = field(default_factory=dict)
 
     @property
     def station(self) -> MachineRecord | None:
@@ -275,6 +490,13 @@ class PopulationWorkbook:
             'parts': len(self.parts),
             'components': len(self.components),
             'part_links': len(self.part_links),
+            'stock_locations': len(self.stock_locations),
+            'companies': len(self.companies),
+            'offers': len(self.offers),
+            'stock_items': len(self.stock_items),
+            'history': len(self.history),
+            'work_orders': len(self.work_orders),
+            'manual': dict(self.manual),
         }
 
     @property
@@ -335,6 +557,27 @@ def _json_list(value, *, sheet: str, row: int, column: str) -> list:
     if not isinstance(decoded, list):
         raise WorkbookError(f'{sheet} row {row}: {column} must be a JSON list')
     return decoded
+
+
+def _date(value, *, sheet: str, row: int, column: str, required: bool = False):
+    """A calendar date from a date cell, a datetime cell or ISO text."""
+    import datetime
+
+    if isinstance(value, datetime.datetime):
+        return value.date()
+    if isinstance(value, datetime.date):
+        return value
+    text = _text(value)
+    if not text:
+        if required:
+            raise WorkbookError(f'{sheet} row {row}: {column} is required')
+        return None
+    try:
+        return datetime.date.fromisoformat(text[:10])
+    except ValueError as exc:
+        raise WorkbookError(
+            f'{sheet} row {row}: {column} must be a date (YYYY-MM-DD), got {value!r}'
+        ) from exc
 
 
 # -- sheet access ------------------------------------------------------------
@@ -800,6 +1043,372 @@ def _load_parts(workbook) -> list[PartRecord]:
     return records
 
 
+def _load_stock_locations(workbook) -> list[StockLocationRecord]:
+    sheet = SHEET_STOCK_LOCATIONS
+    if sheet not in workbook.sheetnames:
+        return []
+    records: list[StockLocationRecord] = []
+    codes: dict[str, int] = {}
+    for row, cell in _rows(
+        workbook, sheet, STOCK_LOCATION_COLUMNS, STOCK_LOCATION_OPTIONAL_COLUMNS
+    ):
+        code = _text(cell['stock_code']).lower()
+        if not code:
+            raise WorkbookError(f'{sheet} row {row}: stock_code is required')
+        if code in codes:
+            raise WorkbookError(
+                f'{sheet} row {row}: stock_code {code} duplicates row {codes[code]}'
+            )
+        codes[code] = row
+        name = ' '.join(_text(cell['name']).split())
+        if not name or len(name) > MAX_STOCK_LOCATION_NAME:
+            raise WorkbookError(
+                f'{sheet} row {row}: name is required (<= {MAX_STOCK_LOCATION_NAME})'
+            )
+        parent = _text(cell['parent_stock_code']).lower() or None
+        if parent == code:
+            raise WorkbookError(f'{sheet} row {row}: a location cannot parent itself')
+        records.append(
+            StockLocationRecord(
+                row=row,
+                code=code,
+                name=name,
+                parent_code=parent,
+                structural=_bool(
+                    cell['structural'], sheet=sheet, row=row, column='structural'
+                ),
+                description=_text(cell.get('description'))[:250],
+            )
+        )
+    # Parents must be defined, before their children, and acyclic.
+    seen: set[str] = set()
+    for record in records:
+        if record.parent_code is not None and record.parent_code not in seen:
+            if record.parent_code in codes:
+                raise WorkbookError(
+                    f'{sheet} row {record.row}: parent {record.parent_code} must '
+                    'appear before its children'
+                )
+            raise WorkbookError(
+                f'{sheet} row {record.row}: parent {record.parent_code} is not in the sheet'
+            )
+        seen.add(record.code)
+    return records
+
+
+def _load_companies(workbook) -> list[CompanyRecord]:
+    sheet = SHEET_COMPANIES
+    if sheet not in workbook.sheetnames:
+        return []
+    records: list[CompanyRecord] = []
+    names: dict[str, int] = {}
+    for row, cell in _rows(workbook, sheet, COMPANY_COLUMNS, COMPANY_OPTIONAL_COLUMNS):
+        name = ' '.join(_text(cell['name']).split())
+        if not name or len(name) > MAX_COMPANY_NAME:
+            raise WorkbookError(
+                f'{sheet} row {row}: name is required (<= {MAX_COMPANY_NAME})'
+            )
+        if name.casefold() in names:
+            raise WorkbookError(
+                f'{sheet} row {row}: name {name!r} duplicates row {names[name.casefold()]}'
+            )
+        names[name.casefold()] = row
+        description = _text(cell.get('description'))
+        if len(description) > MAX_COMPANY_DESCRIPTION:
+            raise WorkbookError(
+                f'{sheet} row {row}: description exceeds {MAX_COMPANY_DESCRIPTION} chars'
+            )
+        currency = _text(cell.get('currency')).upper()
+        if currency and len(currency) != 3:
+            raise WorkbookError(f'{sheet} row {row}: currency must be a 3-letter code')
+        is_manufacturer = _bool(
+            cell['is_manufacturer'], sheet=sheet, row=row, column='is_manufacturer'
+        )
+        is_supplier = _bool(
+            cell['is_supplier'], sheet=sheet, row=row, column='is_supplier'
+        )
+        if not is_manufacturer and not is_supplier:
+            raise WorkbookError(
+                f'{sheet} row {row}: a company must be a manufacturer or a supplier'
+            )
+        active_cell = cell.get('active')
+        records.append(
+            CompanyRecord(
+                row=row,
+                key=_text(cell.get('company_key')),
+                name=name,
+                description=description,
+                website=_text(cell.get('website'))[:200],
+                currency=currency,
+                phone=_text(cell.get('phone'))[:50],
+                email=_text(cell.get('email'))[:254],
+                is_manufacturer=is_manufacturer,
+                is_supplier=is_supplier,
+                active=(
+                    True
+                    if active_cell is None
+                    else _bool(active_cell, sheet=sheet, row=row, column='active')
+                ),
+                notes=_text(cell.get('notes')),
+            )
+        )
+    return records
+
+
+def _load_offers(workbook) -> list[OfferRecord]:
+    sheet = SHEET_OFFERS
+    if sheet not in workbook.sheetnames:
+        return []
+    records: list[OfferRecord] = []
+    seen: dict[tuple[str, str, str], int] = {}
+    for row, cell in _rows(workbook, sheet, OFFER_COLUMNS, OFFER_OPTIONAL_COLUMNS):
+        ipn = _text(cell['part_ipn'])
+        manufacturer = ' '.join(_text(cell['manufacturer']).split())
+        mpn = _text(cell['manufacturer_mpn'])
+        if not ipn or not manufacturer or not mpn:
+            raise WorkbookError(
+                f'{sheet} row {row}: part_ipn, manufacturer and manufacturer_mpn are required'
+            )
+        if len(mpn) > MAX_MPN:
+            raise WorkbookError(
+                f'{sheet} row {row}: manufacturer_mpn exceeds {MAX_MPN}'
+            )
+        identity = (ipn.casefold(), manufacturer.casefold(), mpn.casefold())
+        if identity in seen:
+            raise WorkbookError(
+                f'{sheet} row {row}: offer duplicates row {seen[identity]}'
+            )
+        seen[identity] = row
+        supplier = ' '.join(_text(cell.get('supplier')).split())
+        if supplier.upper() in ('', 'NOT_SELECTED', 'NONE', 'TBD'):
+            supplier = ''
+        records.append(
+            OfferRecord(
+                row=row,
+                part_ipn=ipn,
+                manufacturer=manufacturer,
+                mpn=mpn,
+                supplier=supplier,
+                sku=_text(cell.get('supplier_sku'))[:100],
+                link=_text(cell.get('source_url'))[:2000],
+                status=_text(cell.get('status')),
+            )
+        )
+    return records
+
+
+def _load_stock_items(workbook) -> list[StockItemRecord]:
+    sheet = SHEET_STOCK_ITEMS
+    if sheet not in workbook.sheetnames:
+        return []
+    records: list[StockItemRecord] = []
+    seen: dict[tuple[str, str, str], int] = {}
+    for row, cell in _rows(
+        workbook, sheet, STOCK_ITEM_COLUMNS, STOCK_ITEM_OPTIONAL_COLUMNS
+    ):
+        ipn = _text(cell['part_ipn'])
+        location = _text(cell['location_code']).lower()
+        if not ipn or not location:
+            raise WorkbookError(
+                f'{sheet} row {row}: part_ipn and location_code are required'
+            )
+        batch = _text(cell.get('batch'))[:MAX_BATCH]
+        identity = (ipn.casefold(), location, batch.casefold())
+        if identity in seen:
+            raise WorkbookError(
+                f'{sheet} row {row}: (part, location, batch) duplicates row {seen[identity]}'
+            )
+        seen[identity] = row
+        status_text = _text(cell.get('status')).lower() or 'ok'
+        if status_text not in STOCK_STATUSES:
+            raise WorkbookError(
+                f'{sheet} row {row}: status must be one of '
+                + ', '.join(sorted(STOCK_STATUSES))
+            )
+        # The illustrative cost is kept as text in the notes, never as a
+        # purchase price: the package marks it as an estimate, not an offer.
+        notes = []
+        cost = _text(cell.get('illustrative_unit_cost_usd'))
+        if cost:
+            notes.append(
+                f'Illustrative unit cost {cost} {_text(cell.get("currency")) or "USD"}'
+            )
+        for column in ('financial_basis', 'receipt_status'):
+            value = _text(cell.get(column))
+            if value:
+                notes.append(f'{column}={value}')
+        free = _text(cell.get('notes'))
+        if free:
+            notes.append(free)
+        records.append(
+            StockItemRecord(
+                row=row,
+                key=_text(cell.get('stock_record_key')),
+                part_ipn=ipn,
+                location_code=location,
+                quantity=_int(
+                    cell['quantity_on_hand'],
+                    sheet=sheet,
+                    row=row,
+                    column='quantity_on_hand',
+                ),
+                batch=batch,
+                status=STOCK_STATUSES[status_text],
+                notes='; '.join(notes),
+            )
+        )
+    return records
+
+
+def _load_history(workbook, machine_keys: set[str]) -> list[HistoryRecord]:
+    sheet = SHEET_HISTORY
+    if sheet not in workbook.sheetnames:
+        return []
+    records: list[HistoryRecord] = []
+    seen: dict[tuple[str, object, str], int] = {}
+    for row, cell in _rows(workbook, sheet, HISTORY_COLUMNS, HISTORY_OPTIONAL_COLUMNS):
+        key = _text(cell['machine_key'])
+        if key not in machine_keys:
+            raise WorkbookError(
+                f'{sheet} row {row}: machine_key {key} is not in {SHEET_MACHINES}'
+            )
+        if _text(cell.get('work_order_reference')):
+            raise WorkbookError(
+                f'{sheet} row {row}: history rows cannot reference a work order; '
+                'a closed job is recorded by closing it, not by import'
+            )
+        summary = ' '.join(_text(cell['summary']).split())
+        if not summary or len(summary) > MAX_HISTORY_SUMMARY:
+            raise WorkbookError(
+                f'{sheet} row {row}: summary is required (<= {MAX_HISTORY_SUMMARY})'
+            )
+        date = _date(cell['date'], sheet=sheet, row=row, column='date', required=True)
+        identity = (key, date, summary.casefold())
+        if identity in seen:
+            raise WorkbookError(
+                f'{sheet} row {row}: (machine, date, summary) duplicates row {seen[identity]}'
+            )
+        seen[identity] = row
+        records.append(
+            HistoryRecord(
+                row=row,
+                key=_text(cell.get('history_id')),
+                machine_key=key,
+                date=date,
+                summary=summary,
+                details=_text(cell.get('details')),
+                performed_by=_text(cell.get('performed_by'))[:MAX_HISTORY_PERFORMED_BY],
+            )
+        )
+    return records
+
+
+def _load_work_orders(workbook, machine_keys: set[str]) -> list[WorkOrderRecord]:
+    sheet = SHEET_WORK_ORDERS
+    if sheet not in workbook.sheetnames:
+        return []
+    records: list[WorkOrderRecord] = []
+    keys: dict[str, int] = {}
+    for row, cell in _rows(
+        workbook, sheet, WORK_ORDER_COLUMNS, WORK_ORDER_OPTIONAL_COLUMNS
+    ):
+        key = _text(cell['work_order_key'])
+        if not key or len(key) > MAX_WORK_ORDER_KEY:
+            raise WorkbookError(
+                f'{sheet} row {row}: work_order_key is required (<= {MAX_WORK_ORDER_KEY})'
+            )
+        if key in keys:
+            raise WorkbookError(
+                f'{sheet} row {row}: work_order_key {key} duplicates row {keys[key]}'
+            )
+        keys[key] = row
+        machine_key = _text(cell['machine_key'])
+        if machine_key not in machine_keys:
+            raise WorkbookError(
+                f'{sheet} row {row}: machine_key {machine_key} is not in {SHEET_MACHINES}'
+            )
+        title = ' '.join(_text(cell['title']).split())
+        if not title or len(title) > MAX_WORK_ORDER_TITLE:
+            raise WorkbookError(
+                f'{sheet} row {row}: title is required (<= {MAX_WORK_ORDER_TITLE})'
+            )
+        kind = _text(cell['work_order_type']).lower()
+        if kind not in WORK_ORDER_TYPES:
+            raise WorkbookError(
+                f'{sheet} row {row}: work_order_type must be one of '
+                + ', '.join(sorted(WORK_ORDER_TYPES))
+            )
+        priority = _text(cell['priority']).lower()
+        if priority not in WORK_ORDER_PRIORITIES:
+            raise WorkbookError(
+                f'{sheet} row {row}: priority must be one of '
+                + ', '.join(sorted(WORK_ORDER_PRIORITIES))
+            )
+        proposed = _text(cell['proposed_status']).lower()
+        if proposed not in WORK_ORDER_TARGETS:
+            raise WorkbookError(
+                f'{sheet} row {row}: proposed_status {proposed!r} is not a staging '
+                'state (draft or planned)'
+            )
+        lines = []
+        for column, label in (
+            ('fault_summary', 'Fault'),
+            ('symptom', 'Symptom'),
+            ('criticality', 'Criticality'),
+            ('production_impact', 'Production impact'),
+            ('parts_list', 'Parts'),
+            ('notes', 'Notes'),
+        ):
+            value = _text(cell.get(column))
+            if value:
+                lines.append(f'{label}: {value}')
+        minutes_cell = cell.get('estimated_minutes')
+        records.append(
+            WorkOrderRecord(
+                row=row,
+                key=key,
+                machine_key=machine_key,
+                title=title,
+                work_order_type=kind,
+                priority=priority,
+                description='\n'.join(lines),
+                assignee=_text(cell.get('assignee'))[:MAX_WORK_ORDER_ASSIGNEE],
+                due_date=_date(
+                    cell.get('due_date'), sheet=sheet, row=row, column='due_date'
+                ),
+                estimated_minutes=(
+                    None
+                    if _text(minutes_cell) == ''
+                    else _int(
+                        minutes_cell, sheet=sheet, row=row, column='estimated_minutes'
+                    )
+                ),
+                target_status=WORK_ORDER_TARGETS[proposed],
+                repair_packet=_bool(
+                    cell.get('create_repair_packet'),
+                    sheet=sheet,
+                    row=row,
+                    column='create_repair_packet',
+                ),
+                scenario_id=_text(cell.get('scenario_id'))[:50],
+            )
+        )
+    return records
+
+
+def _count_rows(workbook, sheet: str) -> int:
+    """Non-empty data rows of a sheet the run reports but never applies."""
+    if sheet not in workbook.sheetnames:
+        return 0
+    rows = workbook[sheet].iter_rows(values_only=True)
+    next(rows, None)
+    return sum(
+        1
+        for values in rows
+        if values is not None and any(v is not None and _text(v) != '' for v in values)
+    )
+
+
 def load_population_workbook(path) -> PopulationWorkbook:
     """Read and validate a population workbook from disk.
 
@@ -833,6 +1442,17 @@ def load_population_workbook(path) -> PopulationWorkbook:
         part_links = _load_part_links(workbook, machine_keys)
         has_parts_sheet = SHEET_PARTS in workbook.sheetnames
         parts = _load_parts(workbook)
+        stock_locations = _load_stock_locations(workbook)
+        companies = _load_companies(workbook)
+        offers = _load_offers(workbook)
+        stock_items = _load_stock_items(workbook)
+        history = _load_history(workbook, machine_keys)
+        work_orders = _load_work_orders(workbook, machine_keys)
+        manual = {
+            sheet: _count_rows(workbook, sheet)
+            for sheet in MANUAL_SHEETS
+            if sheet in workbook.sheetnames
+        }
     finally:
         workbook.close()
     if has_parts_sheet:
@@ -849,6 +1469,15 @@ def load_population_workbook(path) -> PopulationWorkbook:
                 f'{SHEET_PARTS}: referenced IPNs are not in the catalogue: '
                 + ', '.join(missing[:20])
             )
+    _check_operations(
+        locations=locations,
+        parts=parts,
+        has_parts_sheet=has_parts_sheet,
+        stock_locations=stock_locations,
+        companies=companies,
+        offers=offers,
+        stock_items=stock_items,
+    )
     clients = sorted(
         {record.client_code for record in locations}
         | {record.client_code for record in machines}
@@ -869,17 +1498,102 @@ def load_population_workbook(path) -> PopulationWorkbook:
         part_links=part_links,
         parts=parts,
         has_parts_sheet=has_parts_sheet,
+        stock_locations=stock_locations,
+        companies=companies,
+        offers=offers,
+        stock_items=stock_items,
+        history=history,
+        work_orders=work_orders,
+        manual=manual,
     )
 
 
+def _check_operations(
+    *,
+    locations,
+    parts,
+    has_parts_sheet,
+    stock_locations,
+    companies,
+    offers,
+    stock_items,
+):
+    """Cross-sheet rules for the inventory stages.
+
+    * Warehouse codes never collide with physical-location codes (QA-05).
+    * Stock is only booked against a real, non-virtual catalogue part in a
+      non-structural bin (QA-18, QA-22).
+    * A manufacturer named on an offer is a manufacturer in ``Companies``.
+    """
+    physical = {record.code for record in locations}
+    clash = sorted(r.code for r in stock_locations if r.code in physical)
+    if clash:
+        raise WorkbookError(
+            f'{SHEET_STOCK_LOCATIONS}: codes also used by {SHEET_LOCATIONS}: '
+            + ', '.join(clash[:10])
+        )
+    bins = {record.code: record for record in stock_locations}
+    catalogue = {record.ipn.casefold(): record for record in parts}
+    for item in stock_items:
+        location = bins.get(item.location_code)
+        if location is None:
+            raise WorkbookError(
+                f'{SHEET_STOCK_ITEMS} row {item.row}: location_code '
+                f'{item.location_code} is not in {SHEET_STOCK_LOCATIONS}'
+            )
+        if location.structural:
+            raise WorkbookError(
+                f'{SHEET_STOCK_ITEMS} row {item.row}: {item.location_code} is '
+                'structural and cannot hold stock'
+            )
+        if has_parts_sheet:
+            part = catalogue.get(item.part_ipn.casefold())
+            if part is None:
+                raise WorkbookError(
+                    f'{SHEET_STOCK_ITEMS} row {item.row}: part_ipn {item.part_ipn} '
+                    f'is not in {SHEET_PARTS}'
+                )
+            if part.virtual:
+                raise WorkbookError(
+                    f'{SHEET_STOCK_ITEMS} row {item.row}: {item.part_ipn} is a '
+                    'virtual reference part and cannot carry stock'
+                )
+    manufacturers = {
+        record.name.casefold() for record in companies if record.is_manufacturer
+    }
+    suppliers = {record.name.casefold() for record in companies if record.is_supplier}
+    for offer in offers:
+        if has_parts_sheet and offer.part_ipn.casefold() not in catalogue:
+            raise WorkbookError(
+                f'{SHEET_OFFERS} row {offer.row}: part_ipn {offer.part_ipn} is not '
+                f'in {SHEET_PARTS}'
+            )
+        if companies and offer.manufacturer.casefold() not in manufacturers:
+            raise WorkbookError(
+                f'{SHEET_OFFERS} row {offer.row}: manufacturer {offer.manufacturer!r} '
+                f'is not a manufacturer in {SHEET_COMPANIES}'
+            )
+        if offer.supplier and companies and offer.supplier.casefold() not in suppliers:
+            raise WorkbookError(
+                f'{SHEET_OFFERS} row {offer.row}: supplier {offer.supplier!r} is not '
+                f'a supplier in {SHEET_COMPANIES}'
+            )
+
+
 __all__ = [
+    'CompanyRecord',
     'ComponentRecord',
+    'HistoryRecord',
     'LocationRecord',
     'MachineRecord',
+    'OfferRecord',
     'PartLinkRecord',
     'PartRecord',
     'PopulationWorkbook',
     'ProfileRecord',
+    'StockItemRecord',
+    'StockLocationRecord',
+    'WorkOrderRecord',
     'WorkbookError',
     'load_population_workbook',
 ]

@@ -16,9 +16,11 @@ Every write goes through the existing service functions - ``save_location``,
 history rows, immutable identity, generated pump labels) hold for imported
 data exactly as they do for data entered through the UI.
 
-Components and installed-part links depend on ``Part`` rows that a later
-stage creates. This module reports which parts are missing; it does not
-invent them.
+Components and installed-part links depend on ``Part`` rows that the
+catalogue stage creates. Without a catalogue sheet this module reports which
+parts are missing; it does not invent them. The inventory and maintenance
+stages that follow the plant (warehouse bins, companies, offers, stock,
+history, staged work orders) live in ``population_operations``.
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ from users.permissions import check_user_role
 from .locations import MAX_TRANSFER, save_location, transfer_machines
 from .machine_profile import validate_machine_profile
 from .models import AssetLocation, AssetMachine, Client
+from .population_operations import OperationsError, apply_operations, plan_operations
 from .population_workbook import CATEGORY_SEPARATOR, MachineRecord, PopulationWorkbook
 from .registry import ensure_pump, pump_display_name, register_station, rename_station
 
@@ -70,6 +73,7 @@ class Plan:
     conflicts: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     blocked: dict = field(default_factory=dict)
+    manual: dict = field(default_factory=dict)
 
     def add(self, kind: str, key: str, action: str, detail: str = '') -> None:
         """Record one step."""
@@ -93,6 +97,7 @@ class Plan:
             'conflicts': list(self.conflicts),
             'warnings': list(self.warnings),
             'blocked': dict(self.blocked),
+            'manual': dict(self.manual),
         }
 
 
@@ -180,6 +185,65 @@ def ensure_actor(actor, client: Client) -> None:
     )
 
 
+def _identity(namespace, entity_uuid, source_key) -> str:
+    return f'{namespace}/{entity_uuid}/{source_key}'
+
+
+def _find_station(book: PopulationWorkbook, station_pk: int | None):
+    """The registered station this workbook describes, or ``None``.
+
+    By default the station is matched on its source identity. ``station_pk``
+    adopts an already-registered station instead - the case where the plant
+    was registered from its telemetry source before the workbook existed and
+    the workbook carries a provisional identity. The registered identity is
+    immutable and wins; the planner records the difference as a warning.
+    """
+    if station_pk is None:
+        if book.station is None:
+            return None
+        return AssetMachine.objects.filter(
+            asset_type='pumphouse',
+            source_namespace=book.station.source_namespace,
+            source_entity_uuid=book.station.source_entity_uuid,
+        ).first()
+    if book.station is None:
+        raise PopulationError('--station given but the workbook has no station row.')
+    station = AssetMachine.objects.filter(pk=station_pk).first()
+    if station is None:
+        raise PopulationError(f'No machine with id {station_pk}.')
+    if station.asset_type != 'pumphouse':
+        raise PopulationError(
+            f'Machine {station_pk} is a {station.asset_type}, not a registered station.'
+        )
+    return station
+
+
+def _resolve_client(code: str, client_code: str | None, client_name: str | None):
+    """The client to populate and the action the plan will take on it.
+
+    ``client_code`` names an existing client to populate instead of the one
+    in the workbook (for example a single-site deployment whose scope resolver
+    only shows one client). It is never created implicitly.
+    """
+    override = client_code is not None
+    code = client_code or code
+    client = Client.objects.filter(code=code).first()
+    if client is None:
+        if override:
+            raise PopulationError(
+                f'Client {code!r} does not exist; --client-code must name an '
+                'existing client.'
+            )
+        if not client_name:
+            raise PopulationError(
+                f'Client {code!r} does not exist; pass --client-name to create it.'
+            )
+        return None, code, 'create'
+    if not client.active:
+        raise PopulationError(f'Client {code!r} is inactive.')
+    return client, code, 'exists'
+
+
 # -- planning (read-only) ----------------------------------------------------
 
 
@@ -188,25 +252,21 @@ def plan_population(
     *,
     client_name: str | None = None,
     station_uuid: UUID | None = None,
+    client_code: str | None = None,
+    station_pk: int | None = None,
 ):
     """Diff the workbook against the database without writing anything.
 
     ``station_uuid`` reserves the station's public UUID (pump UUIDs derive
     from it). It overrides a ``public_uuid`` column and must agree with an
-    already-registered station.
+    already-registered station. ``client_code`` populates an existing client
+    other than the workbook's; ``station_pk`` adopts an already-registered
+    station (see ``_find_station``).
     """
-    code = book.client_codes[0]
-    client = Client.objects.filter(code=code).first()
-    if client is None:
-        if not client_name:
-            raise PopulationError(
-                f'Client {code!r} does not exist; pass --client-name to create it.'
-            )
-        plan = Plan(client_code=code, client_action='create')
-    elif not client.active:
-        raise PopulationError(f'Client {code!r} is inactive.')
-    else:
-        plan = Plan(client_code=code, client_action='exists')
+    client, code, client_action = _resolve_client(
+        book.client_codes[0], client_code, client_name
+    )
+    plan = Plan(client_code=code, client_action=client_action)
 
     # Locations ---------------------------------------------------------------
     existing_locations = (
@@ -237,14 +297,9 @@ def plan_population(
 
     # Station and pumps ---------------------------------------------------------
     station_record = book.station
-    station = None
+    station = _find_station(book, station_pk)
     if station_record is not None:
         reserved = station_uuid or station_record.public_uuid
-        station = AssetMachine.objects.filter(
-            asset_type='pumphouse',
-            source_namespace=station_record.source_namespace,
-            source_entity_uuid=station_record.source_entity_uuid,
-        ).first()
         if station is None:
             clash = AssetMachine.objects.filter(name=station_record.name).first()
             if clash is not None:
@@ -272,7 +327,22 @@ def plan_population(
                 plan.conflicts.append(
                     f'Station {station.pk} belongs to another client.'
                 )
-            if station.source_key != station_record.source_key:
+            registered = _identity(
+                station.source_namespace, station.source_entity_uuid, station.source_key
+            )
+            declared = _identity(
+                station_record.source_namespace,
+                station_record.source_entity_uuid,
+                station_record.source_key,
+            )
+            if station_pk is not None:
+                if registered != declared:
+                    plan.warnings.append(
+                        f'Station {station.pk} keeps its registered identity '
+                        f'{registered}; the workbook identity {declared} is not '
+                        'applied (identity is immutable).'
+                    )
+            elif station.source_key != station_record.source_key:
                 plan.conflicts.append(
                     f'Station {station.pk} source_key {station.source_key!r} differs '
                     f'from workbook {station_record.source_key!r}; identity is immutable.'
@@ -291,7 +361,11 @@ def plan_population(
                     )
                 plan.add('station', station_record.key, 'rename', station_record.name)
             else:
-                plan.add('station', station_record.key, 'exists')
+                plan.add(
+                    'station',
+                    station_record.key,
+                    'adopt' if station_pk is not None else 'exists',
+                )
         _plan_profile(plan, book, station_record, station)
 
     pumps_by_key = (
@@ -349,7 +423,11 @@ def plan_population(
             plan.add('placement', record.key, 'move', record.location_code)
 
     # Parts-dependent stages ------------------------------------------------------
-    _plan_parts(plan, book)
+    machines = {
+        record.key: _resolve_existing(record, station) for record in book.machines
+    }
+    _plan_parts(plan, book, machines)
+    plan_operations(plan, book, machines)
     return plan
 
 
@@ -454,7 +532,7 @@ def _part_changes(part, record, category_path: str):
     return changes
 
 
-def _plan_parts(plan: Plan, book: PopulationWorkbook):
+def _plan_parts(plan: Plan, book: PopulationWorkbook, machines: dict):
     """Categories, parts, component occurrences and installed-part links."""
     from part.models import PartCategory
 
@@ -501,16 +579,6 @@ def _plan_parts(plan: Plan, book: PopulationWorkbook):
         else:
             plan.add('part', record.ipn, 'unchanged')
 
-    station = None
-    if book.station:
-        station = AssetMachine.objects.filter(
-            asset_type='pumphouse',
-            source_namespace=book.station.source_namespace,
-            source_entity_uuid=book.station.source_entity_uuid,
-        ).first()
-    machines = {
-        record.key: _resolve_existing(record, station) for record in book.machines
-    }
     owner_pks = [m.pk for m in machines.values() if m is not None]
     components = {
         (c.machine_id, c.code): c
@@ -565,14 +633,22 @@ def apply_population(
     dry_run: bool = False,
     client_name: str | None = None,
     station_uuid: UUID | None = None,
+    client_code: str | None = None,
+    station_pk: int | None = None,
 ) -> dict:
     """Apply the workbook; roll everything back when ``dry_run`` is set."""
-    plan = plan_population(book, client_name=client_name, station_uuid=station_uuid)
+    plan = plan_population(
+        book,
+        client_name=client_name,
+        station_uuid=station_uuid,
+        client_code=client_code,
+        station_pk=station_pk,
+    )
     if plan.conflicts:
         raise PopulationError(
             'Refusing to apply with conflicts:\n  - ' + '\n  - '.join(plan.conflicts)
         )
-    code = book.client_codes[0]
+    code = plan.client_code
     if plan.client_action == 'create':
         client = Client.objects.create(code=code, name=client_name)
     else:
@@ -633,14 +709,18 @@ def apply_population(
     station_record = book.station
     if station_record is not None:
         try:
-            station = register_station(
-                client=client,
-                name=station_record.name,
-                source_namespace=station_record.source_namespace,
-                source_entity_uuid=station_record.source_entity_uuid,
-                source_key=station_record.source_key,
-                public_uuid=station_uuid or station_record.public_uuid,
-            )
+            if station_pk is not None:
+                # Planned and validated above; lock the row for this transaction.
+                station = AssetMachine.objects.select_for_update().get(pk=station_pk)
+            else:
+                station = register_station(
+                    client=client,
+                    name=station_record.name,
+                    source_namespace=station_record.source_namespace,
+                    source_entity_uuid=station_record.source_entity_uuid,
+                    source_key=station_record.source_key,
+                    public_uuid=station_uuid or station_record.public_uuid,
+                )
             if station.name != station_record.name:
                 rename_station(station, station_record.name)
                 station.refresh_from_db()
@@ -654,6 +734,7 @@ def apply_population(
             'uuid': str(station.uuid),
             'name': station.name,
             'source_key': station.source_key,
+            'adopted': station_pk is not None,
         }
         created_before = set(
             station.children.filter(asset_type='pump').values_list('pk', flat=True)
@@ -766,7 +847,18 @@ def apply_population(
             report['placements']['moved'] += len(result['machines'])
 
     # Parts, components, installed-part links ---------------------------------------
-    report.update(_apply_parts(book, machines))
+    parts_report, parts = _apply_parts(book, machines)
+    report.update(parts_report)
+
+    # Warehouse, companies, offers, stock, history, work orders ----------------------
+    try:
+        operations = apply_operations(
+            book, actor, machines, parts, f'Workbook population {book.sha256[:12]}'
+        )
+    except OperationsError as exc:
+        raise PopulationError(str(exc)) from exc
+    report['warnings'].extend(operations.pop('warnings'))
+    report.update(operations)
 
     report['machines'] = {
         key: {'pk': machine.pk, 'name': machine.name, 'asset_type': machine.asset_type}
@@ -800,12 +892,13 @@ def _ensure_category(path: tuple[str, ...], cache: dict):
     return parent, created
 
 
-def _apply_parts(book: PopulationWorkbook, machines: dict) -> dict:
+def _apply_parts(book: PopulationWorkbook, machines: dict) -> tuple[dict, dict]:
     """Upsert the catalogue, then bind components and installed-part links.
 
     Component occurrences stay ``draft`` and carry the workbook's engineering
     status in ``review_note``; nothing here marks a part as verified installed
-    or an approved spare (QA-14, QA-19).
+    or an approved spare (QA-14, QA-19). Returns the counts and the
+    case-folded IPN -> ``Part`` map for the stages that follow.
     """
     from part.models import Part
 
@@ -817,14 +910,14 @@ def _apply_parts(book: PopulationWorkbook, machines: dict) -> dict:
         'components': {'created': 0, 'updated': 0, 'unchanged': 0, 'skipped': 0},
         'part_links': {'created': 0, 'updated': 0, 'unchanged': 0, 'skipped': 0},
     }
+    parts: dict[str, Part] = {}
     if not book.has_parts_sheet:
         out['components']['skipped'] = len(book.components)
         out['part_links']['skipped'] = len(book.part_links)
-        return out
+        return out, parts
 
     categories: dict = {}
     existing = _existing_parts([record.ipn for record in book.parts])
-    parts: dict[str, Part] = {}
     for record in book.parts:
         category, created = _ensure_category(record.category, categories)
         out['categories']['created'] += created
@@ -926,7 +1019,7 @@ def _apply_parts(book: PopulationWorkbook, machines: dict) -> dict:
             out['part_links']['updated'] += 1
         else:
             out['part_links']['unchanged'] += 1
-    return out
+    return out, parts
 
 
 __all__ = [

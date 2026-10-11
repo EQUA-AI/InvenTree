@@ -129,6 +129,43 @@ def default_sheets():
             ['WB-REF-P02', 'Main motor | Family B', 'Workbook / Reference Equipment', 'Reference motor family.', 'WEG', None, 'VIRTUAL_FAMILY_REFERENCE', True, False, False, False, 'pcs', 0, None, 'Not orderable.'],
             ['WB-CAT-X1', 'Control power supply', 'Workbook / Orderable Candidates', 'Real OEM candidate.', 'Phoenix Contact', '2904602', 'REAL_OEM_PRODUCT_CANDIDATE', False, True, False, False, 'pcs', 2, 'https://example.invalid/2904602', 'Candidate only.'],
         ],
+        'Warehouse Locations': [
+            ['stock_code', 'name', 'parent_stock_code', 'structural', 'description', 'location_domain'],
+            ['WB-WH', 'Workbook Spares Warehouse', None, True, 'Main warehouse', 'STOCK'],
+            ['WB-WH-ELEC', 'Electrical Spares', 'WB-WH', True, '', 'STOCK'],
+            ['WB-WH-ELEC-B1', 'Electrical Bin B1', 'WB-WH-ELEC', False, 'Bin', 'STOCK'],
+        ],
+        'Companies': [
+            ['company_key', 'name', 'description', 'website', 'currency', 'phone', 'email', 'is_manufacturer', 'is_supplier', 'active', 'relationship_state', 'notes'],
+            ['WB-CO-1', 'Phoenix Contact', 'Manufacturer identity only.', '', 'USD', '', '', True, False, True, 'IDENTITY_ONLY', ''],
+            ['WB-CO-2', 'Workbook Distributor', 'Supplier identity only.', '', 'USD', '', '', False, True, True, 'IDENTITY_ONLY', ''],
+        ],
+        'Supplier Offers': [
+            ['part_ipn', 'manufacturer', 'manufacturer_mpn', 'supplier', 'supplier_sku', 'pack_quantity', 'lead_time_days', 'price_usd', 'currency', 'status', 'source_url', 'required_action'],
+            ['WB-CAT-X1', 'Phoenix Contact', '2904602', 'NOT_SELECTED', '', 1, '', '', 'USD', 'NO_VERIFIED_SUPPLIER_OFFER', 'https://example.invalid/2904602', 'Verify listing'],
+        ],
+        'Stock Items': [
+            ['stock_record_key', 'part_ipn', 'location_code', 'quantity_on_hand', 'quantity_reserved', 'minimum_stock', 'currency', 'illustrative_unit_cost_usd', 'batch', 'status', 'supplier_part_key', 'expiry_date', 'financial_basis', 'receipt_status', 'source_identity', 'notes'],
+            ['WB-STK-1', 'WB-CAT-X1', 'WB-WH-ELEC-B1', 3, 0, 2, 'USD', 650, 'WB-BATCH-1', 'OK', '', '', 'DEMO_ESTIMATE_NOT_VENDOR_QUOTE', 'PLANNED_SEED_NOT_POSTED', '2904602', ''],
+        ],
+        'Maintenance History': [
+            ['history_id', 'machine_key', 'date', 'summary', 'details', 'performed_by', 'work_order_reference', 'history_truth', 'import_state', 'notes'],
+            ['WB-MR-1', 'P01', '2025-01-18', 'Quarterly mechanical inspection', 'No abnormal noise.', 'Jordan Kim', '', 'INTERNAL_DEMO_DATA', 'STAGING_FOR_HISTORY_IMPORT', ''],
+        ],
+        'Work Orders': [
+            ['work_order_key', 'machine_key', 'title', 'work_order_type', 'priority', 'fault_summary', 'symptom', 'criticality', 'production_impact', 'assignee', 'due_date', 'estimated_minutes', 'proposed_status', 'create_repair_packet', 'parts_list', 'scenario_id', 'notes'],
+            ['WB-WO-1', 'P01', 'Pump 01 bearing vibration', 'corrective', 'high', 'Bearing wear', 'Vibration rising', 'high', 'Capacity', 'Jordan Kim', '2026-11-01', 120, 'DRAFT_ENTRY_NOT_CREATED', True, 'bearing', 'SC-01', ''],
+            ['WB-WO-2', 'GEN', 'Generator monthly load test', 'preventive', 'medium', '', '', 'medium', '', 'Avery Patel', '2026-11-15', 60, 'PLANNED_ENTRY_NOT_CREATED', False, '', '', ''],
+        ],
+        'Staff Roles': [
+            ['user_key', 'display_name', 'permission_state'],
+            ['WB-USR-1', 'Maya Torres', 'CREATE_SANDBOX_USERS_IF_NEEDED'],
+        ],
+        'PM Plans': [
+            ['plan_id', 'machine_key', 'task_title'],
+            ['WB-PM-1', 'P01', 'Operator round'],
+            ['WB-PM-2', 'P01', 'Bearing temperature review'],
+        ],
     }
 
 
@@ -246,6 +283,64 @@ class WorkbookParserTests(TestCase):
         self.assertEqual(book.parts[0].category, ('Workbook', 'Reference Equipment'))
         self.assertIn('engineering=ENGINEERED_REFERENCE_PENDING_REVIEW', book.components[0].review_note)
         self.assertEqual(book.referenced_ipns, {'WB-REF-P01', 'WB-REF-P02'})
+
+    def test_operations_sheets_parsed(self):
+        book = self.parse()
+        self.assertEqual([s.code for s in book.stock_locations], ['wb-wh', 'wb-wh-elec', 'wb-wh-elec-b1'])
+        self.assertEqual([c.name for c in book.companies], ['Phoenix Contact', 'Workbook Distributor'])
+        self.assertFalse(book.offers[0].has_supplier_offer)
+        self.assertEqual(book.stock_items[0].status, 10)
+        self.assertIn('Illustrative unit cost 650 USD', book.stock_items[0].notes)
+        self.assertEqual(str(book.history[0].date), '2025-01-18')
+        self.assertEqual(
+            [(w.key, w.target_status) for w in book.work_orders],
+            [('WB-WO-1', 'draft'), ('WB-WO-2', 'planned')],
+        )
+        self.assertIn('Fault: Bearing wear', book.work_orders[0].description)
+        self.assertEqual(book.manual, {'Staff Roles': 1, 'PM Plans': 2})
+
+    def test_warehouse_code_cannot_shadow_a_physical_location(self):
+        def mutate(sheets):
+            sheets['Warehouse Locations'][3][0] = 'WB-BAY-01'
+            sheets['Stock Items'][1][2] = 'WB-BAY-01'
+
+        with self.assertRaisesRegex(WorkbookError, 'codes also used by Facility Locations'):
+            self.parse(mutate)
+
+    def test_stock_on_virtual_part_rejected(self):
+        def mutate(sheets):
+            sheets['Stock Items'][1][1] = 'WB-REF-P01'
+
+        with self.assertRaisesRegex(WorkbookError, 'virtual reference part'):
+            self.parse(mutate)
+
+    def test_stock_in_structural_bin_rejected(self):
+        def mutate(sheets):
+            sheets['Stock Items'][1][2] = 'WB-WH-ELEC'
+
+        with self.assertRaisesRegex(WorkbookError, 'structural and cannot hold stock'):
+            self.parse(mutate)
+
+    def test_history_cannot_claim_a_work_order(self):
+        def mutate(sheets):
+            sheets['Maintenance History'][1][6] = 'WO-000001'
+
+        with self.assertRaisesRegex(WorkbookError, 'cannot reference a work order'):
+            self.parse(mutate)
+
+    def test_work_order_cannot_be_staged_past_planned(self):
+        def mutate(sheets):
+            sheets['Work Orders'][1][12] = 'completed'
+
+        with self.assertRaisesRegex(WorkbookError, 'not a staging state'):
+            self.parse(mutate)
+
+    def test_offer_manufacturer_must_be_a_company(self):
+        def mutate(sheets):
+            sheets['Supplier Offers'][1][1] = 'Unknown Maker'
+
+        with self.assertRaisesRegex(WorkbookError, 'is not a manufacturer in Companies'):
+            self.parse(mutate)
 
 
 @override_settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=None)
@@ -501,6 +596,305 @@ class PopulationApplyTests(TestCase):
 
 
 @override_settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=None)
+class AdoptExistingStationTests(TestCase):
+    """A plant registered from its source first can be enriched from a workbook.
+
+    The deployed case: the station and its pump slots were registered under
+    client ``internal`` with the telemetry source's identity, and the
+    workbook arrives later carrying a provisional identity and its own
+    client code. ``station_pk`` and ``client_code`` bind the workbook to the
+    live rows instead of creating a duplicate plant nobody can see.
+    """
+
+    def setUp(self):
+        from assets.registry import ensure_pump, register_station
+
+        self.actor = get_user_model().objects.create_superuser(
+            username='wb-adopter', password=None
+        )
+        self.directory = TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.client_row, _ = Client.objects.get_or_create(
+            code='internal', defaults={'name': 'Internal'}
+        )
+        self.station = register_station(
+            client=self.client_row,
+            name='Live Station',
+            source_namespace='klsw',
+            source_entity_uuid=uuid4(),
+            source_key='PH_9',
+        )
+        self.live_pumps = [ensure_pump(self.station, key) for key in ('P1', 'P2')]
+
+    def book(self, mutate=None):
+        sheets = default_sheets()
+        if mutate:
+            mutate(sheets)
+        return load_population_workbook(write_workbook(self.directory.name, sheets))
+
+    def test_without_adoption_plan_would_register_a_second_station(self):
+        plan = plan_population(self.book(), client_name='Workbook Client')
+        self.assertEqual(plan.client_action, 'create')
+        self.assertEqual(plan.counts()['station'], {'register': 1})
+
+    def test_client_code_must_name_an_existing_client(self):
+        with self.assertRaisesRegex(PopulationError, 'must name an existing client'):
+            plan_population(self.book(), client_code='nope', client_name='Nope')
+        self.assertFalse(Client.objects.filter(code='nope').exists())
+
+    def test_station_pk_must_be_a_registered_station(self):
+        with self.assertRaisesRegex(PopulationError, 'No machine with id'):
+            plan_population(self.book(), client_code='internal', station_pk=999999)
+        equipment = AssetMachine.objects.create(
+            name='Just Equipment', client=self.client_row, asset_type='equipment'
+        )
+        with self.assertRaisesRegex(PopulationError, 'not a registered station'):
+            plan_population(
+                self.book(), client_code='internal', station_pk=equipment.pk
+            )
+
+    def test_adopted_station_of_another_client_is_a_conflict(self):
+        other = Client.objects.create(code='other', name='Other')
+        plan = plan_population(self.book(), client_code='other', station_pk=self.station.pk)
+        self.assertTrue(any('belongs to another client' in c for c in plan.conflicts))
+        self.assertEqual(other.pk, Client.objects.get(code='other').pk)
+
+    def test_adopt_keeps_identity_renames_and_reuses_pumps(self):
+        plan = plan_population(
+            self.book(), client_code='internal', station_pk=self.station.pk
+        )
+        self.assertEqual(plan.conflicts, [])
+        self.assertEqual(plan.client_code, 'internal')
+        self.assertEqual(plan.client_action, 'exists')
+        self.assertEqual(plan.counts()['station'], {'rename': 1})
+        self.assertEqual(plan.counts()['pump'], {'exists': 2})
+        self.assertTrue(
+            any('keeps its registered identity' in w for w in plan.warnings)
+        )
+
+        report = apply_population(
+            self.book(), self.actor, client_code='internal', station_pk=self.station.pk
+        )
+        self.assertTrue(report['station']['adopted'])
+        self.assertEqual(report['client']['code'], 'internal')
+        self.assertEqual(report['pumps'], {'created': 0, 'existing': 2})
+        self.assertFalse(Client.objects.filter(code=CLIENT).exists())
+        self.assertEqual(AssetMachine.objects.filter(asset_type='pumphouse').count(), 1)
+
+        self.station.refresh_from_db()
+        self.assertEqual(self.station.name, 'Workbook Station')
+        self.assertEqual(self.station.source_namespace, 'klsw')
+        self.assertEqual(self.station.source_key, 'PH_9')
+        self.assertEqual(self.station.profile['criticality'], 'critical')
+        pumps = list(self.station.children.order_by('source_key'))
+        self.assertEqual([p.pk for p in pumps], [p.pk for p in self.live_pumps])
+        self.assertEqual(
+            [p.name for p in pumps],
+            ['Workbook Station / Pump 01', 'Workbook Station / Pump 02'],
+        )
+        self.assertEqual(pumps[0].description, 'Pump one')
+        self.assertEqual(pumps[0].physical_location.code, 'wb-bay-01')
+        self.assertEqual(pumps[0].physical_location.client, self.client_row)
+        generator = AssetMachine.objects.get(name='Workbook Standby Generator')
+        self.assertEqual(generator.client, self.client_row)
+
+        from assets.models import AssetComponent
+
+        self.assertEqual(AssetComponent.objects.filter(machine=pumps[0]).count(), 2)
+
+        replay = apply_population(
+            self.book(), self.actor, client_code='internal', station_pk=self.station.pk
+        )
+        self.assertEqual(replay['details']['updated'], 0)
+        self.assertEqual(replay['placements']['moved'], 0)
+        self.assertEqual(replay['components']['unchanged'], 2)
+
+    def test_adopt_leaves_prior_components_alone(self):
+        from part.models import Part
+
+        from assets.models import AssetComponent
+
+        crosswalk = Part.objects.create(name='PS Motor', IPN='PS-MOTOR', virtual=True)
+        prior = AssetComponent.objects.create(
+            machine=self.live_pumps[0],
+            part=crosswalk,
+            code='PS-MOTOR:1',
+            name='Electric Motor',
+            provenance='dictionary review',
+        )
+        apply_population(
+            self.book(), self.actor, client_code='internal', station_pk=self.station.pk
+        )
+        prior.refresh_from_db()
+        self.assertEqual(prior.part, crosswalk)
+        codes = set(
+            AssetComponent.objects.filter(machine=self.live_pumps[0]).values_list(
+                'code', flat=True
+            )
+        )
+        self.assertEqual(codes, {'PS-MOTOR:1', 'PUMP-01', 'MOTOR-01'})
+
+
+@override_settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=None)
+class OperationsStageTests(TestCase):
+    """Warehouse, companies, offers, stock, history and staged jobs follow the plant."""
+
+    def setUp(self):
+        self.actor = get_user_model().objects.create_superuser(
+            username='wb-ops', password=None
+        )
+        self.directory = TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+
+    def book(self, mutate=None):
+        sheets = default_sheets()
+        if mutate:
+            mutate(sheets)
+        return load_population_workbook(write_workbook(self.directory.name, sheets))
+
+    def test_plan_lists_operations_and_manual_work(self):
+        plan = plan_population(self.book(), client_name='Workbook Client')
+        counts = plan.counts()
+        self.assertEqual(counts['stock_location'], {'create': 3})
+        self.assertEqual(counts['company'], {'create': 2})
+        self.assertEqual(counts['manufacturer_part'], {'create': 1})
+        self.assertNotIn('supplier_part', counts)
+        self.assertEqual(counts['stock_item'], {'create': 1})
+        self.assertEqual(counts['history'], {'create': 1})
+        self.assertEqual(counts['work_order'], {'create': 2})
+        self.assertEqual(
+            set(plan.manual),
+            {'staff_roles', 'pm_plans', 'repair_packets', 'supplier_offers'},
+        )
+        self.assertEqual(plan.manual['pm_plans']['rows'], 2)
+        self.assertEqual(plan.manual['repair_packets']['rows'], 1)
+
+    def test_apply_creates_operations_and_replay_is_a_no_op(self):
+        from company.models import Company, ManufacturerPart, SupplierPart
+        from stock.models import StockItem, StockLocation
+        from tasks.models import WorkOrder
+
+        from assets.models import AssetMaintenanceRecord
+
+        first = apply_population(self.book(), self.actor, client_name='Workbook Client')
+        self.assertEqual(first['stock_locations'], {'created': 3, 'updated': 0, 'unchanged': 0})
+        self.assertEqual(first['companies'], {'created': 2, 'updated': 0, 'unchanged': 0})
+        self.assertEqual(first['manufacturer_parts'], {'created': 1, 'existing': 0, 'skipped': 0})
+        self.assertEqual(first['supplier_parts'], {'created': 0, 'existing': 0, 'blocked': 1})
+        self.assertEqual(first['stock_items'], {'created': 1, 'existing': 0, 'skipped': 0})
+        self.assertEqual(first['history'], {'created': 1, 'updated': 0, 'unchanged': 0, 'skipped': 0})
+        self.assertEqual(first['work_orders'], {'created': 2, 'planned': 1, 'existing': 0, 'skipped': 0})
+        self.assertEqual([w for w in first['warnings'] if 'left in draft' in w], [])
+
+        bin_ = StockLocation.objects.get(name='Electrical Bin B1')
+        self.assertEqual(bin_.parent.name, 'Electrical Spares')
+        self.assertTrue(bin_.parent.structural)
+        self.assertFalse(bin_.structural)
+        self.assertEqual(bin_.parent.parent.pathstring, 'Workbook Spares Warehouse')
+
+        maker = Company.objects.get(name='Phoenix Contact')
+        self.assertTrue(maker.is_manufacturer)
+        self.assertFalse(maker.is_supplier)
+        manufacturer_part = ManufacturerPart.objects.get(MPN='2904602')
+        self.assertEqual(manufacturer_part.manufacturer, maker)
+        self.assertEqual(manufacturer_part.part.IPN, 'WB-CAT-X1')
+        self.assertEqual(SupplierPart.objects.count(), 0)
+
+        stock = StockItem.objects.get(batch='WB-BATCH-1')
+        self.assertEqual(stock.location, bin_)
+        self.assertEqual(int(stock.quantity), 3)
+        self.assertEqual(stock.part.IPN, 'WB-CAT-X1')
+        self.assertIsNone(stock.purchase_price)
+        self.assertTrue(
+            stock.notes.filter(content__contains='DEMO_ESTIMATE_NOT_VENDOR_QUOTE').exists()
+        )
+        self.assertEqual(stock.tracking_info.count(), 1)
+
+        pump = AssetMachine.objects.get(source_key='P1')
+        entry = AssetMaintenanceRecord.objects.get(machine=pump)
+        self.assertEqual(str(entry.date), '2025-01-18')
+        self.assertEqual(entry.performed_by, 'Jordan Kim')
+        self.assertIsNone(entry.work_order)
+
+        draft = WorkOrder.objects.get(job_number='WB-WO-1')
+        self.assertEqual(draft.lifecycle_status, 'draft')
+        self.assertEqual(draft.machine, pump)
+        self.assertEqual(draft.work_order_type, 'corrective')
+        self.assertEqual(draft.priority, 'high')
+        self.assertEqual(draft.assignee, 'Jordan Kim')
+        self.assertIsNone(draft.assigned_to)
+        self.assertEqual(draft.requested_by, self.actor)
+        self.assertIn('SC-01', draft.tags)
+        self.assertTrue(draft.reference.startswith('WO-'))
+        self.assertIsNotNone(draft.primary_card)
+        planned = WorkOrder.objects.get(job_number='WB-WO-2')
+        self.assertEqual(planned.lifecycle_status, 'planned')
+        self.assertEqual(planned.lifecycle_version, 2)
+        self.assertEqual(planned.machine.name, 'Workbook Standby Generator')
+
+        second = apply_population(self.book(), self.actor)
+        self.assertEqual(second['stock_locations'], {'created': 0, 'updated': 0, 'unchanged': 3})
+        self.assertEqual(second['companies'], {'created': 0, 'updated': 0, 'unchanged': 2})
+        self.assertEqual(second['manufacturer_parts']['existing'], 1)
+        self.assertEqual(second['stock_items'], {'created': 0, 'existing': 1, 'skipped': 0})
+        self.assertEqual(second['history']['unchanged'], 1)
+        self.assertEqual(second['work_orders'], {'created': 0, 'planned': 0, 'existing': 2, 'skipped': 0})
+        self.assertEqual(StockLocation.objects.count(), 3)
+        self.assertEqual(Company.objects.filter(name='Phoenix Contact').count(), 1)
+        self.assertEqual(StockItem.objects.count(), 1)
+        self.assertEqual(AssetMaintenanceRecord.objects.count(), 1)
+        self.assertEqual(WorkOrder.objects.count(), 2)
+        self.assertEqual(int(StockItem.objects.get().quantity), 3)
+
+    def test_dry_run_leaves_no_operations_rows(self):
+        from company.models import Company
+        from stock.models import StockItem, StockLocation
+        from tasks.models import WorkOrder
+
+        report = apply_population(
+            self.book(), self.actor, dry_run=True, client_name='Workbook Client'
+        )
+        self.assertEqual(report['work_orders']['created'], 2)
+        self.assertEqual(StockLocation.objects.count(), 0)
+        self.assertEqual(Company.objects.filter(name='Phoenix Contact').count(), 0)
+        self.assertEqual(StockItem.objects.count(), 0)
+        self.assertEqual(WorkOrder.objects.count(), 0)
+
+    def test_existing_work_order_is_not_overwritten(self):
+        from tasks.models import WorkOrder
+
+        apply_population(self.book(), self.actor, client_name='Workbook Client')
+        work_order = WorkOrder.objects.get(job_number='WB-WO-1')
+        work_order.title = 'Operator edited title'
+        work_order.save(update_fields=['title'])
+
+        def mutate(sheets):
+            sheets['Work Orders'][1][2] = 'Workbook changed title'
+
+        plan = plan_population(self.book(mutate))
+        self.assertEqual(plan.counts()['work_order'], {'exists': 2})
+        apply_population(self.book(mutate), self.actor)
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.title, 'Operator edited title')
+
+    def test_supplier_offer_is_created_only_with_supplier_and_sku(self):
+        from company.models import SupplierPart
+
+        def mutate(sheets):
+            sheets['Supplier Offers'][1][3] = 'Workbook Distributor'
+            sheets['Supplier Offers'][1][4] = 'DIST-2904602'
+
+        plan = plan_population(self.book(mutate), client_name='Workbook Client')
+        self.assertEqual(plan.counts()['supplier_part'], {'create': 1})
+        self.assertNotIn('supplier_offers', plan.manual)
+        report = apply_population(self.book(mutate), self.actor, client_name='Workbook Client')
+        self.assertEqual(report['supplier_parts'], {'created': 1, 'existing': 0, 'blocked': 0})
+        offer = SupplierPart.objects.get(SKU='DIST-2904602')
+        self.assertEqual(offer.supplier.name, 'Workbook Distributor')
+        self.assertEqual(offer.manufacturer_part.MPN, '2904602')
+
+
+@override_settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=None)
 class PopulateCommandTests(TestCase):
     """The command defaults to plan and gates --apply behind a backup reference."""
 
@@ -580,3 +974,27 @@ class PopulateCommandTests(TestCase):
         path = write_workbook(self.directory.name, sheets)
         with self.assertRaisesRegex(CommandError, 'Workbook rejected'):
             call_command('populate_from_workbook', str(path), stdout=StringIO())
+
+    def test_adopt_flags_reach_the_planner(self):
+        from assets.registry import register_station
+
+        internal, _ = Client.objects.get_or_create(
+            code='internal', defaults={'name': 'Internal'}
+        )
+        station = register_station(
+            client=internal,
+            name='Live Station',
+            source_namespace='klsw',
+            source_entity_uuid=uuid4(),
+            source_key='PH_9',
+        )
+        payload = json.loads(
+            self.run_command(
+                '--client-code', 'internal', '--station', str(station.pk), '--json'
+            )
+        )
+        self.assertEqual(payload['client_code'], 'internal')
+        self.assertEqual(payload['client_action'], 'exists')
+        self.assertEqual(payload['counts']['station'], {'rename': 1})
+        self.assertEqual(payload['conflicts'], [])
+        self.assertEqual(AssetMachine.objects.filter(asset_type='pumphouse').count(), 1)

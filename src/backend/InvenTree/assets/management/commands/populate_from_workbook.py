@@ -63,6 +63,22 @@ class Command(BaseCommand):
             '--client-name', help='Create the workbook client with this name if absent'
         )
         parser.add_argument(
+            '--client-code',
+            help=(
+                'Populate this existing client instead of the workbook client_code '
+                '(for a single-site deployment); never created implicitly'
+            ),
+        )
+        parser.add_argument(
+            '--station',
+            type=int,
+            dest='station_pk',
+            help=(
+                'Adopt this already-registered station (machine id) instead of '
+                'matching the workbook source identity; the registered identity is kept'
+            ),
+        )
+        parser.add_argument(
             '--station-uuid',
             type=UUID,
             help='Reserve this public UUID for the station (pump UUIDs derive from it)',
@@ -106,6 +122,8 @@ class Command(BaseCommand):
                     book,
                     client_name=options['client_name'],
                     station_uuid=options['station_uuid'],
+                    client_code=options['client_code'],
+                    station_pk=options['station_pk'],
                 )
                 payload = {'mode': 'plan', 'workbook': book.summary(), **plan.as_dict()}
             else:
@@ -116,6 +134,8 @@ class Command(BaseCommand):
                     dry_run=dry_run,
                     client_name=options['client_name'],
                     station_uuid=options['station_uuid'],
+                    client_code=options['client_code'],
+                    station_pk=options['station_pk'],
                 )
                 payload = {
                     'mode': 'dry-run' if dry_run else 'apply',
@@ -149,6 +169,12 @@ class Command(BaseCommand):
             f'{summary["parts"]} parts, {summary["components"]} components, '
             f'{summary["part_links"]} part links'
         )
+        self.stdout.write(
+            f'  operations: {summary["stock_locations"]} warehouse locations, '
+            f'{summary["companies"]} companies, {summary["offers"]} offers, '
+            f'{summary["stock_items"]} stock items, {summary["history"]} history, '
+            f'{summary["work_orders"]} work orders'
+        )
         if payload['mode'] == 'plan':
             self.stdout.write(
                 f'Client {payload["client_code"]}: {payload["client_action"]}'
@@ -157,7 +183,7 @@ class Command(BaseCommand):
                 line = ', '.join(
                     f'{action}={n}' for action, n in sorted(actions.items())
                 )
-                self.stdout.write(f'  {kind:<10} {line}')
+                self.stdout.write(f'  {kind:<17} {line}')
             for warning in payload['warnings']:
                 self.stdout.write(self.style.WARNING(f'  warn: {warning}'))
             for conflict in payload['conflicts']:
@@ -170,6 +196,7 @@ class Command(BaseCommand):
                     f'parts_missing={blocked["parts_missing_count"]}/'
                     f'{blocked["parts_required"]}'
                 )
+            self._render_manual(payload.get('manual') or {})
             if payload['conflicts']:
                 raise CommandError(
                     f'{len(payload["conflicts"])} conflict(s); not applicable.'
@@ -180,20 +207,37 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(f'{label} against {payload["database_host"]!r}')
         )
-        self.stdout.write(f'  client     {payload["client"]}')
-        self.stdout.write(f'  locations  {payload["locations"]}')
-        self.stdout.write(f'  station    {payload["station"]}')
-        self.stdout.write(f'  pumps      {payload["pumps"]}')
-        self.stdout.write(f'  equipment  {payload["equipment"]}')
-        self.stdout.write(f'  details    {payload["details"]}')
-        self.stdout.write(f'  placements {payload["placements"]}')
-        self.stdout.write(f'  categories {payload["categories"]}')
-        self.stdout.write(f'  parts      {payload["parts"]}')
-        self.stdout.write(f'  components {payload["components"]}')
-        self.stdout.write(f'  part_links {payload["part_links"]}')
+        for key in (
+            'client',
+            'locations',
+            'station',
+            'pumps',
+            'equipment',
+            'details',
+            'placements',
+            'categories',
+            'parts',
+            'components',
+            'part_links',
+            'stock_locations',
+            'companies',
+            'manufacturer_parts',
+            'supplier_parts',
+            'stock_items',
+            'history',
+            'work_orders',
+        ):
+            self.stdout.write(f'  {key:<18} {payload.get(key)}')
         for warning in payload['warnings']:
             self.stdout.write(self.style.WARNING(f'  warn: {warning}'))
         if payload['blocked']:
             self.stdout.write(
                 f'  blocked    parts_missing={payload["blocked"]["parts_missing_count"]}'
+            )
+        self._render_manual(payload.get('manual') or {})
+
+    def _render_manual(self, manual):
+        for key, entry in manual.items():
+            self.stdout.write(
+                f'  manual     {key}: {entry["rows"]} rows - {entry["note"]}'
             )
