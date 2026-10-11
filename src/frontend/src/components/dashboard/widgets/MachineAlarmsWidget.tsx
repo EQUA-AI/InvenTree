@@ -1,13 +1,5 @@
 import { t } from '@lingui/core/macro';
-import {
-  Anchor,
-  Badge,
-  Group,
-  Loader,
-  Stack,
-  Table,
-  Text
-} from '@mantine/core';
+import { Anchor, Group, Loader, Stack, Table, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 
@@ -16,6 +8,7 @@ import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import type { AssetMachine } from '@lib/types/Assets';
 import { useApi } from '../../../contexts/ApiContext';
+import { MachineAlarmBadges } from '../../items/MachineAlarmBadges';
 
 const WIDGET_LIMIT = 8;
 
@@ -71,37 +64,26 @@ export default function MachineAlarmsWidget() {
       ) : (
         <Table>
           <Table.Tbody>
-            {machines.map((machine) => {
-              const open = machine.open_alarms ?? 0;
-              const critical = machine.open_critical_alarms ?? 0;
-              return (
-                <Table.Tr key={machine.pk} data-machine={machine.pk}>
-                  <Table.Td>
-                    <Anchor
-                      component={Link}
-                      to={`/machines/machine/${machine.pk}/health`}
-                      size='sm'
-                    >
-                      {machine.name}
-                    </Anchor>
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap={6} wrap='nowrap' justify='flex-end'>
-                      {critical > 0 && (
-                        <Badge color='red' variant='filled' size='sm'>
-                          {t`${critical} critical`}
-                        </Badge>
-                      )}
-                      {open > critical && (
-                        <Badge color='yellow' variant='light' size='sm'>
-                          {t`${open - critical} warning`}
-                        </Badge>
-                      )}
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              );
-            })}
+            {machines.map((machine) => (
+              <Table.Tr key={machine.pk} data-machine={machine.pk}>
+                <Table.Td>
+                  <Anchor
+                    component={Link}
+                    to={`/machines/machine/${machine.pk}/health`}
+                    size='sm'
+                  >
+                    {machine.name}
+                  </Anchor>
+                </Table.Td>
+                <Table.Td>
+                  <MachineAlarmBadges
+                    open={machine.open_alarms}
+                    critical={machine.open_critical_alarms}
+                    justify='flex-end'
+                  />
+                </Table.Td>
+              </Table.Tr>
+            ))}
           </Table.Tbody>
         </Table>
       )}

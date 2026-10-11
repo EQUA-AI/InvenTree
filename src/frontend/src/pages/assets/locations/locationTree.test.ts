@@ -377,6 +377,22 @@ describe('machineEmptyKind', () => {
       })
     ).toBe('no-machines-here');
   });
+
+  it('says nothing is in alarm when the list is narrowed to alarms', () => {
+    const narrowed = {
+      alarmsOnly: true,
+      unassigned: true,
+      locationSelected: true,
+      includeDescendants: false
+    };
+    expect(machineEmptyKind({ ...narrowed, searched: false })).toBe(
+      'no-machines-in-alarm'
+    );
+    // A search that finds nothing is still the search's doing.
+    expect(machineEmptyKind({ ...narrowed, searched: true })).toBe(
+      'no-search-matches'
+    );
+  });
 });
 
 describe('workspaceLabel', () => {

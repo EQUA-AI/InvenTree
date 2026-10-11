@@ -266,6 +266,14 @@ class LocationMachines(LocationView):
                 | Q(serial__icontains=search)
                 | Q(manufacturer__icontains=search)
             )
+        # The counts the machine list and the dashboard read, so that this
+        # list cannot disagree with them. Imported here because assets.api
+        # mounts this module's routes.
+        from .api import with_open_alarms
+
+        rows = with_open_alarms(rows)
+        if _boolean(request.query_params.get('has_alarms'), 'has_alarms'):
+            rows = rows.filter(open_alarms__gt=0)
         pagination = LocationPagination()
         page = pagination.paginate_queryset(rows, request, view=self)
         data = []

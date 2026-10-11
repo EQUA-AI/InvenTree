@@ -167,7 +167,12 @@ function locationRow(loc: Loc) {
 function machineRow(
   pk: number,
   name: string,
-  opts: { locationPk?: number | null; active?: boolean; legacy?: string } = {}
+  opts: {
+    locationPk?: number | null;
+    active?: boolean;
+    legacy?: string;
+    alarms?: { open: number; critical: number };
+  } = {}
 ) {
   const loc = opts.locationPk ? BY_PK.get(opts.locationPk) : undefined;
   return {
@@ -180,7 +185,9 @@ function machineRow(
     location: opts.legacy ?? '',
     description: '',
     physical_location: loc ? locationRow(loc) : null,
-    placement_version: 1
+    placement_version: 1,
+    open_alarms: opts.alarms?.open ?? 0,
+    open_critical_alarms: opts.alarms?.critical ?? 0
   };
 }
 
@@ -296,13 +303,19 @@ async function installMocks(page: Page) {
         // Reconciles with countsFor(): table count equals the summary card.
         count = includeDescendants ? 9 : 5;
         rows = [
-          machineRow(5, 'Pump 1', { locationPk: 12 }),
+          machineRow(5, 'Pump 1', {
+            locationPk: 12,
+            alarms: { open: 3, critical: 2 }
+          }),
           machineRow(6, 'Pump 2', {
             locationPk: null,
             active: false,
             legacy: 'Old line 3'
           }),
-          machineRow(7, 'Pump 3', { locationPk: 12 }),
+          machineRow(7, 'Pump 3', {
+            locationPk: 12,
+            alarms: { open: 1, critical: 0 }
+          }),
           ...Array.from({ length: 6 }, (_, i) =>
             machineRow(30 + i, `Compressor ${i + 1}`, { locationPk: 12 })
           )
@@ -320,6 +333,11 @@ async function installMocks(page: Page) {
             machineRow(40 + i, `Grinder ${i + 1}`, { locationPk: 12 })
           )
         ];
+      }
+      // Narrowed to its alarms, the total is of what is left, as the server's is.
+      if (params.get('has_alarms') === 'true') {
+        rows = rows.filter((row) => row.open_alarms > 0);
+        count = rows.length;
       }
       return json({
         count,
@@ -658,6 +676,49 @@ test('location change resets table page and selection', async ({ page }) => {
     page.getByRole('checkbox', { name: 'Select Pump 1' })
   ).not.toBeChecked();
   await expect(page.getByText(/Selected on this page/)).toHaveCount(0);
+});
+
+test('each machine shows its alarms and the list narrows to them', async ({
+  page
+}) => {
+  const { machineListRequests } = await installMocks(page);
+  await page.goto(
+    '/playwright/machine-locations.html?mode=workspace&location=12'
+  );
+  await expect(page.getByText('9 machines')).toBeVisible();
+  const row = (name: string) => page.getByRole('row').filter({ hasText: name });
+  await expect(row('Pump 1').getByText('2 critical')).toBeVisible();
+  await expect(row('Pump 1').getByText('1 warning')).toBeVisible();
+  await expect(row('Pump 3').getByText('1 warning')).toBeVisible();
+  await expect(row('Pump 3').getByText(/critical/)).toHaveCount(0);
+  await expect(row('Compressor 1').getByRole('cell').last()).toHaveText('—');
+
+  await page.getByRole('switch', { name: 'In alarm only' }).check();
+  await expect(page.getByText('2 machines')).toBeVisible();
+  await expect
+    .poll(() =>
+      lastMachineRequest(machineListRequests)?.params.get('has_alarms')
+    )
+    .toBe('true');
+  await expect(page.getByText('Compressor 1')).toHaveCount(0);
+
+  // Another location starts unnarrowed, as it starts with an empty search.
+  await page.evaluate(() =>
+    (window as any).__machineTest.setSearch('location', '21')
+  );
+  await expect(page.getByText('30 machines')).toBeVisible();
+  const narrow = page.getByRole('switch', { name: 'In alarm only' });
+  await expect(narrow).not.toBeChecked();
+
+  // Nothing is in alarm here: the list says so rather than looking empty,
+  // and the way back is on the page.
+  await narrow.check();
+  await expect(
+    page.getByText('No machine in this list has an active alarm.')
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Show all machines' }).click();
+  await expect(page.getByText('30 machines')).toBeVisible();
+  await expect(narrow).not.toBeChecked();
 });
 
 test('search shows location-total labeling and a truthful empty state', async ({

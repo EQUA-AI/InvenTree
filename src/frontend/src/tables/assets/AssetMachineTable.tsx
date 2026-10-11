@@ -1,5 +1,5 @@
 import { t } from '@lingui/core/macro';
-import { Badge, Group, Text } from '@mantine/core';
+import { Text } from '@mantine/core';
 import { useMemo } from 'react';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
@@ -9,6 +9,7 @@ import useTable from '@lib/hooks/UseTable';
 import type { AssetMachine } from '@lib/types/Assets';
 import type { TableFilter } from '@lib/types/Filters';
 import type { TableColumn } from '@lib/types/Tables';
+import { MachineAlarmBadges } from '../../components/items/MachineAlarmBadges';
 import { InvenTreeTable } from '../../components/tables/InvenTreeTable';
 
 /**
@@ -56,31 +57,17 @@ export function AssetMachineTable() {
         accessor: 'open_alarms',
         title: t`Alarms`,
         sortable: true,
-        render: (record: AssetMachine) => {
-          const open = record.open_alarms ?? 0;
-          const critical = record.open_critical_alarms ?? 0;
-          if (!open) {
-            return (
-              <Text size='sm' c='dimmed'>
-                —
-              </Text>
-            );
-          }
-          return (
-            <Group gap={6} wrap='nowrap'>
-              {critical > 0 && (
-                <Badge color='red' variant='filled' size='sm'>
-                  {t`${critical} critical`}
-                </Badge>
-              )}
-              {open > critical && (
-                <Badge color='yellow' variant='light' size='sm'>
-                  {t`${open - critical} warning`}
-                </Badge>
-              )}
-            </Group>
-          );
-        }
+        render: (record: AssetMachine) =>
+          record.open_alarms ? (
+            <MachineAlarmBadges
+              open={record.open_alarms}
+              critical={record.open_critical_alarms}
+            />
+          ) : (
+            <Text size='sm' c='dimmed'>
+              —
+            </Text>
+          )
       }
     ];
   }, []);

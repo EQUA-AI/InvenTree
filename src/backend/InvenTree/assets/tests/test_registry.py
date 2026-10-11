@@ -337,6 +337,55 @@ class RegistryTests(InvenTreeAPITestCase):
         quiet = self.client.get('/api/assets/machines/', {'has_alarms': 'false'}).data
         self.assertEqual([row['pk'] for row in quiet], [other.pk])
 
+    def test_the_machines_page_counts_alarms_as_the_machine_list_does(self):
+        """The Machines page reads the location list, which carries the counts.
+
+        It is a different endpoint from the machine list, with its own paging
+        and its own total, so the filter has to narrow both.
+        """
+        from assets.health_models import MachineAnomaly
+
+        pump = ensure_pump(self.station, 'P1')
+        quiet = ensure_pump(self.station, 'P2')
+        now = timezone.now()
+        for number, (machine, severity, status) in enumerate((
+            (pump, 'critical', 'open'),
+            (pump, 'warning', 'acknowledged'),
+            (quiet, 'critical', 'resolved'),
+        )):
+            MachineAnomaly.objects.create(
+                machine=machine,
+                fingerprint=f'location-list-{number}',
+                title='t',
+                severity=severity,
+                status=status,
+                detector='threshold',
+                first_observed_at=now,
+                last_observed_at=now,
+            )
+
+        url = '/api/assets/locations/machines/'
+        listed = self.client.get(url).data
+        rows = {row['pk']: row for row in listed['results']}
+        self.assertEqual(listed['count'], 3)
+        self.assertEqual(rows[pump.pk]['open_alarms'], 2)
+        self.assertEqual(rows[pump.pk]['open_critical_alarms'], 1)
+        self.assertEqual(rows[quiet.pk]['open_alarms'], 0)
+        self.assertEqual(rows[self.station.pk]['open_alarms'], 2)
+        self.assertEqual(rows[self.station.pk]['open_critical_alarms'], 1)
+
+        in_alarm = self.client.get(url, {'has_alarms': 'true'}).data
+        self.assertEqual(in_alarm['count'], 2)
+        self.assertEqual(
+            {row['pk'] for row in in_alarm['results']}, {self.station.pk, pump.pk}
+        )
+        # A search still narrows it, and anything but true or false is refused.
+        searched = self.client.get(
+            url, {'has_alarms': 'true', 'search': 'Pump 01'}
+        ).data
+        self.assertEqual([row['pk'] for row in searched['results']], [pump.pk])
+        self.assertEqual(self.client.get(url, {'has_alarms': '1'}).status_code, 400)
+
     def test_listing_pumps_does_not_look_up_each_station(self):
         """One more pump is one more row, not one more query."""
         url = '/api/assets/machines/'

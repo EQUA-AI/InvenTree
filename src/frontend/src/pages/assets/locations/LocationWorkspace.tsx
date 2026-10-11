@@ -25,6 +25,7 @@ import { IconMapPin, IconPlus, IconSearch } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { MachineAlarmBadges } from '../../../components/items/MachineAlarmBadges';
 import { useApi } from '../../../contexts/ApiContext';
 import { useUserState } from '../../../states/UserState';
 
@@ -76,13 +77,15 @@ export function ScopedMachineList({
   const [page, setPage] = useState(1);
   const [selection, setSelection] = useState<number[]>([]);
   const [moving, setMoving] = useState<LocatedMachine[] | null>(null);
+  // The morning question: which of these has something standing on it.
+  const [alarmsOnly, setAlarmsOnly] = useState(false);
 
   // A different machine population (location, scope, search) must
   // never keep stale paging or row selection (plan M3/U2).
   useEffect(() => {
     setPage(1);
     setSelection([]);
-  }, [search, location, includeDescendants, unassigned, machineId]);
+  }, [search, location, includeDescendants, unassigned, machineId, alarmsOnly]);
 
   const query = useQuery<PageResult<LocatedMachine>>({
     queryKey: [
@@ -93,6 +96,7 @@ export function ScopedMachineList({
       includeDescendants,
       unassigned,
       machineId,
+      alarmsOnly,
 
       debounced,
       page
@@ -106,6 +110,7 @@ export function ScopedMachineList({
             include_descendants: includeDescendants,
             unassigned,
             machine: machineId,
+            has_alarms: alarmsOnly || undefined,
 
             search: debounced,
             limit: 25,
@@ -135,6 +140,7 @@ export function ScopedMachineList({
   };
   const emptyKind = machineEmptyKind({
     searched: !!debounced,
+    alarmsOnly,
     unassigned,
     locationSelected: location != null,
     includeDescendants
@@ -142,13 +148,20 @@ export function ScopedMachineList({
   return (
     <Stack>
       <Group justify='space-between'>
-        <TextInput
-          aria-label={t`Search machines`}
-          placeholder={t`Search machines`}
-          leftSection={<IconSearch size={16} />}
-          value={search}
-          onChange={(event) => onSearchChange(event.currentTarget.value)}
-        />
+        <Group>
+          <TextInput
+            aria-label={t`Search machines`}
+            placeholder={t`Search machines`}
+            leftSection={<IconSearch size={16} />}
+            value={search}
+            onChange={(event) => onSearchChange(event.currentTarget.value)}
+          />
+          <Switch
+            label={t`In alarm only`}
+            checked={alarmsOnly}
+            onChange={(event) => setAlarmsOnly(event.currentTarget.checked)}
+          />
+        </Group>
         <Group>
           <Text size='sm' c='dimmed'>
             {query.data ? t`${query.data.count} machines` : ''}
@@ -183,7 +196,7 @@ export function ScopedMachineList({
       )}
       {query.data && !query.isError && (
         <>
-          <Table.ScrollContainer minWidth={650}>
+          <Table.ScrollContainer minWidth={720}>
             <Table striped highlightOnHover>
               <Table.Thead>
                 <Table.Tr>
@@ -207,6 +220,7 @@ export function ScopedMachineList({
                   <Table.Th>{t`Physical location`}</Table.Th>
                   <Table.Th>{t`Manufacturer / model`}</Table.Th>
                   <Table.Th>{t`Active record`}</Table.Th>
+                  <Table.Th>{t`Alarms`}</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -266,6 +280,16 @@ export function ScopedMachineList({
                         .join(' / ') || '—'}
                     </Table.Td>
                     <Table.Td>{machine.active ? t`Yes` : t`No`}</Table.Td>
+                    <Table.Td data-alarms={machine.open_alarms ?? undefined}>
+                      {machine.open_alarms ? (
+                        <MachineAlarmBadges
+                          open={machine.open_alarms}
+                          critical={machine.open_critical_alarms}
+                        />
+                      ) : (
+                        '—'
+                      )}
+                    </Table.Td>
                   </Table.Tr>
                 ))}
               </Table.Tbody>
@@ -282,6 +306,19 @@ export function ScopedMachineList({
                     w='fit-content'
                     onClick={() => onSearchChange('')}
                   >{t`Clear search`}</Button>
+                </Stack>
+              )}
+              {emptyKind === 'no-machines-in-alarm' && (
+                <Stack gap='xs'>
+                  <Text c='dimmed'>
+                    {t`No machine in this list has an active alarm.`}
+                  </Text>
+                  <Button
+                    variant='light'
+                    size='xs'
+                    w='fit-content'
+                    onClick={() => setAlarmsOnly(false)}
+                  >{t`Show all machines`}</Button>
                 </Stack>
               )}
               {emptyKind === 'no-direct-machines' && (

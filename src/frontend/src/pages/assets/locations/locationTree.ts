@@ -290,6 +290,7 @@ export function machinesReturnHref(params: URLSearchParams): string {
 
 export type MachineEmptyKind =
   | 'no-search-matches'
+  | 'no-machines-in-alarm'
   | 'no-direct-machines'
   | 'no-machines-here'
   | 'no-unassigned-machines';
@@ -297,11 +298,15 @@ export type MachineEmptyKind =
 /** Distinct honest empty states; failures never route through here. */
 export function machineEmptyKind(opts: {
   searched: boolean;
+  alarmsOnly?: boolean;
   unassigned: boolean;
   locationSelected: boolean;
   includeDescendants: boolean;
 }): MachineEmptyKind {
   if (opts.searched) return 'no-search-matches';
+  // A list narrowed to its alarms is empty because nothing is in alarm, not
+  // because nothing is placed here.
+  if (opts.alarmsOnly) return 'no-machines-in-alarm';
   if (opts.unassigned) return 'no-unassigned-machines';
   if (opts.locationSelected && !opts.includeDescendants)
     return 'no-direct-machines';
