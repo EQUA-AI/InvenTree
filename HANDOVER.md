@@ -167,6 +167,13 @@ of the pre-apply backup is exact. Placement history protects machines and
 locations from deletion, so a selective undo cancels, deactivates and archives
 rather than deletes.
 
+Portable demo dataset (Import Sequence step 18): `contrib/cosmos/demo/cedar-creek/`.
+`build.sh <workbook>` builds it from an empty database on its own containers
+(`demo-pg`, `demo-app`, network `demonet`; never `pop-test` or Azure), replays it,
+runs the QA gates and writes a `pg_dump` plus `build-report.json` to
+`data/demo/cedar-creek/<version>/`. Version `2026-10-12.1` built OK (22/22 gates,
+restore checked). Bump `version` in `manifest.json` for any change.
+
 Read-only checks for the mechanically verifiable QA gates (Import Sequence
 step 17): `contrib/cosmos/devtools/cedar_creek_qa_gates.py`, run through the
 Django shell of the container that points at the database (usage in its
