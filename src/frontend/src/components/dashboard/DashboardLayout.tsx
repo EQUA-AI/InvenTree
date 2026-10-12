@@ -22,6 +22,11 @@ import { useUserState } from '../../states/UserState';
 import DashboardMenu from './DashboardMenu';
 import DashboardWidget, { type DashboardWidgetProps } from './DashboardWidget';
 import DashboardWidgetDrawer from './DashboardWidgetDrawer';
+import {
+  DASHBOARD_BREAKPOINTS,
+  DASHBOARD_COLS,
+  addWidgetToLayouts
+} from './dashboardLayoutUtils';
 import { maintenanceMetrics } from './widgets/maintenanceMetrics';
 
 const ReactGridLayout = WidthProvider(Responsive);
@@ -106,13 +111,18 @@ export default function DashboardLayout() {
 
       // Update the layouts to include the new widget.
       // Pass overrideSize=false so existing widgets keep their user-set
-      // dimensions; only the newly added widget will receive default sizing
-      // via react-grid-layout's auto-placement.
-      const _layouts: any = { ...layouts };
+      // dimensions. The new widget gets an explicit entry with a usable
+      // default size; left to auto-placement it would arrive at 1x1 and only
+      // be raised to its minimum size.
+      let _layouts: any = { ...layouts };
 
       Object.keys(_layouts).forEach((key) => {
         _layouts[key] = updateLayoutForWidget(_layouts[key], widgets, false);
       });
+
+      if (newWidget) {
+        _layouts = addWidgetToLayouts(_layouts, newWidget);
+      }
 
       setLayouts(_layouts);
     },
@@ -402,8 +412,8 @@ function WidgetGrid(
   return (
     <ReactGridLayout
       className='dashboard-layout'
-      breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-      cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
+      breakpoints={DASHBOARD_BREAKPOINTS}
+      cols={DASHBOARD_COLS}
       rowHeight={64}
       layouts={layouts}
       onLayoutChange={onLayoutChange}

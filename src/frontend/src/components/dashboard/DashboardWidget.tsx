@@ -22,6 +22,9 @@ export interface DashboardWidgetProps {
   enabled?: boolean;
   minWidth?: number;
   minHeight?: number;
+  /** Size when first added to the dashboard (grid units); defaults to 6x4 */
+  defaultWidth?: number;
+  defaultHeight?: number;
   modelType?: ModelType;
   icon?: keyof InvenTreeIconType;
   render: () => JSX.Element;

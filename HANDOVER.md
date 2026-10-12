@@ -210,8 +210,12 @@ been run against Azure**: see open item 11.
 2. Switch Cosmos polling on in the deployed app: set
    `AIMMS_COSMOS_PUMPHOUSE_ENABLED` and give it Cosmos access.
 3. Email alerts need a mail host configured; only bell notifications go out now.
-4. A widget added to the dashboard comes in as a very small tile until it is
-   resized in Edit Layout. This affects every widget, not only Machine Alarms.
+4. Fixed 2026-10-12: a widget added to the dashboard used to arrive at its
+   minimum size (2x1 for the count widgets, a 108x64 px tile). It now gets
+   an explicit 6x4 entry below the existing widgets, never below its minimum
+   or wider than the grid (`dashboard/dashboardLayoutUtils.ts`; a widget can
+   declare `defaultWidth`/`defaultHeight`). Layouts already saved in a
+   browser keep their sizes.
 5. The `TransactionTestCase` tests in `assets/test_locations.py`
    (`ConcurrentLocationTests`) error on the test-database flush, because
    migration `assets.0020_retire_synthetic_ledger` is state-only and leaves
