@@ -103,7 +103,10 @@ for station in "$@"; do
 
         # `cat | grep -c` rather than `grep -c file...`: the latter prints
         # "file:count" per file, which is not a number and breaks the test.
-        left=$(cat "$SP/${slug}_"*.log 2>/dev/null | grep -c "Refusing" || true)
+        # A stream that crashed (Traceback: lost Cassandra, expired token)
+        # failed just as much as one that printed "Refusing"; count both, or
+        # the station is declared done with hours missing.
+        left=$(cat "$SP/${slug}_"*.log 2>/dev/null | grep -cE "Refusing|Traceback" || true)
         echo "--- $station attempt ${attempt}: ${left} stream(s) ended on an error ---"
         [ "${left:-0}" -eq 0 ] && break
         attempt=$((attempt + 1))
