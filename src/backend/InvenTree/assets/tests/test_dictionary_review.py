@@ -486,8 +486,10 @@ class ShippedReviewFileTests(TestCase):
         """MVA validates and MVar does not, which makes this an easy wrong turn.
 
         Recording reactive power under an apparent-power unit would be a false
-        statement about the measurement, so the tag stays withheld until the
-        unit registry can express var.
+        statement about the measurement. The registry can express it since
+        ``assets.0022`` (``Mvar``/``MVAr``), but the tag stays withheld for the
+        plant reasons recorded in the pack: it reads 0 under load, and the
+        catalogue has no parameter for it.
         """
         withheld = {p for e in self.review['withhold'] for p in e['paths']}
 

@@ -1,5 +1,6 @@
 """Migration tests for the client backfill, customer column and unit registry."""
 
+from django.core.exceptions import ValidationError
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TestCase, TransactionTestCase, tag
@@ -195,3 +196,45 @@ class CusecUnitMigrationTests(TestCase):
         unit = CustomUnit.objects.get(name='cusec')
 
         self.assertEqual(unit.definition, 'foot**3/second')
+
+
+class VarUnitMigrationTests(TestCase):
+    """Reactive power has a unit of its own on a database built by migrations."""
+
+    def setUp(self):
+        """Rebuild the registry from this database, for the reason in the cusec test."""
+        super().setUp()
+        reload_unit_registry()
+
+    def test_both_spellings_resolve_with_si_prefixes(self):
+        """The plant quotes MVAR; IEC writes Mvar, switchgear writes MVAr."""
+        for text, kvar in (
+            ('1 Mvar', 1000),
+            ('1 MVAr', 1000),
+            ('250 kvar', 250),
+            ('250 kVAr', 250),
+            ('500 var', 0.5),
+        ):
+            with self.subTest(text=text):
+                self.assertAlmostEqual(
+                    float(convert_physical_value(text, 'kvar')), kvar
+                )
+
+    def test_the_spellings_are_one_quantity(self):
+        """Two rows, one unit: a reading in one converts exactly to the other."""
+        self.assertAlmostEqual(float(convert_physical_value('3.2 MVAr', 'Mvar')), 3.2)
+
+    def test_ambiguous_case_variants_stay_undefined(self):
+        """MVar and MVAR are not guessed at; mvar would already mean milli-var."""
+        for text in ('1 MVar', '1 MVAR'):
+            with self.subTest(text=text):
+                with self.assertRaises(ValidationError):
+                    convert_physical_value(text, 'kvar')
+
+    def test_the_definition_is_a_volt_ampere(self):
+        """Both rows stand alone, so load order cannot drop one of them."""
+        for name in ('volt_ampere_reactive', 'VAr'):
+            with self.subTest(name=name):
+                self.assertEqual(
+                    CustomUnit.objects.get(name=name).definition, 'volt * ampere'
+                )
