@@ -210,7 +210,25 @@ been run against Azure**: see open item 11.
    migration `assets.0020_retire_synthetic_ledger` is state-only and leaves
    tables with foreign keys behind. Left to its author by agreement. Do not
    run them with `--keepdb`; the rows they leave make unrelated tests fail.
-6. The whole backend suite has not been run end to end on the merged code.
+6. The whole backend suite was run end to end on the merged code on
+   2026-10-12 (`invoke dev.test --fork`, PostgreSQL, CI-like env, local
+   sandbox only): 5,023 tests, 47 failures, 147 errors. None comes from the
+   pump-station or population work. By cause:
+   - 74 need `AIMMS_SINGLE_SITE_POLICY_KEY`. No CI workflow sets it and there
+     is no `ai/.env`; with a dummy key the voice/approval modules pass (43/43).
+   - ~70 are open item 5's flush failure plus the duplicate-key rows it leaves.
+   - 12 are dev-only packages missing from the image (`requests_mock`,
+     `django_test_migrations`, `pdfminer`, `scim2_client`).
+   - 50 are in `aichat` and persist with the key set (timezone/erasure
+     timestamps, thread boundaries); 42 more appear only with the key.
+   - Pre-existing, from before this work: `RuleSet` coverage (51 models not in
+     any ruleset, INVE-E5), `aichat` models with missing migrations,
+     `test_po_line_merge_pricing` (`None` to `Decimal`).
+   - Environment only: untranslated label (no `compilemessages`), report logo
+     (no static files).
+   The 4 lineage/preflight failures naming `assets.0022` were the migration
+   being added mid-run; they pass on a fresh database. The frontend is clean:
+   `tsc` 0 errors, 202/202 unit tests, mimic 14/14, machine locations 19/19.
 7. The plain local Postgres has no `vector` extension, so the old local dev
    database cannot take the merged migrations until it is rebuilt.
 8. The data is a recorded window ending 2025-07-11, displayed as if current.
