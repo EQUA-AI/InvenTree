@@ -240,8 +240,16 @@ been run against Azure**: see open item 11.
    The 4 lineage/preflight failures naming `assets.0022` were the migration
    being added mid-run; they pass on a fresh database. The frontend is clean:
    `tsc` 0 errors, 202/202 unit tests, mimic 14/14, machine locations 19/19.
-7. The plain local Postgres has no `vector` extension, so the old local dev
-   database cannot take the merged migrations until it is rebuilt.
+7. Fixed 2026-10-12: the local dev database was a PostgreSQL 17 data directory
+   without `vector`, which the pinned `pgvector/pgvector:pg15` image cannot
+   open. `contrib/container/rebuild-dev-db.sh` moved it aside
+   (`data/pgdb-pg17-20261012-130808`, kept), dumped it with postgres:17,
+   restored it into a fresh pg15 + `vector` 0.8.7 directory (49 machines,
+   535 parts, 8 users kept; dump in `data/backup/`), and the 88 merged
+   migrations then applied cleanly (`migrate --check`: none pending).
+   Still to do: the compose dev image `inventree-dev-image` predates the merge
+   (no `django_fsm`), so rebuild it before `docker compose up`:
+   `docker compose --project-directory . -f contrib/container/dev-docker-compose.yml build`.
 8. The data is a recorded window ending 2025-07-11, displayed as if current.
    Live plant data needs a live Cosmos source.
 9. Cedar Creek workbook items the import deliberately leaves to a person
