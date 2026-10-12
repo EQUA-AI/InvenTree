@@ -303,3 +303,14 @@ password since a server update by Lokesh@equa.work at 17:31 UTC, during the appl
 (which was already connected, so it still committed). That update fits a reset of the
 admin password; the current password is needed from him before the gates can be run
 there. See `HANDOVER.md` section 5a and open item 11.
+
+## Step 18: portable demo dataset (2026-10-12)
+
+`contrib/cosmos/demo/cedar-creek/`: `manifest.json` (version `2026-10-12.1`) pins the
+workbook sha256, the population arguments and every expected count; `build.sh` builds it
+from an empty database on its own containers (`demo-pg`, `demo-app`), replays it, runs the
+QA gates and writes a `pg_dump` to `data/demo/cedar-creek/<version>/` (git-ignored).
+First build: `BUILD OK`, 22/22 QA gates, replay created nothing, and the dump restored
+into a clean pg16 with the same counts. It is a fresh registration (station UUID
+`d0b4aace-…`, 17 `CC-REF` components per pump), not a copy of Azure. The QA script now
+accepts `QA_STATION_PK=uuid` to find the station by `QA_STATION_UUID`.

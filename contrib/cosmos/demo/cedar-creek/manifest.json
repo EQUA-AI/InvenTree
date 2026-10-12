@@ -1,0 +1,66 @@
+{
+  "dataset": "cedar-creek-ui-demo",
+  "version": "2026-10-12.1",
+  "purpose": "Import Sequence step 18: one versioned, reproducible Cedar Creek UI dataset built from the workbook alone.",
+  "source_package": {
+    "package_version": "2026-10-08",
+    "package_code_ref": "988ce86f80a989c0914fed61614657b3ec31b5cd",
+    "workbook": {
+      "file": "CEDAR_CREEK_AIMMS_UI_POPULATION_MASTER_2026-10-08.xlsx",
+      "sha256": "f9006a91f8a941d69f69a2d124058b8874047ff80d7dd51417212a786da7e7b5",
+      "bytes": 516722
+    },
+    "committed": false,
+    "note": "The workbook is customer package material and is not committed. The build refuses any file whose sha256 differs."
+  },
+  "runtime_dependencies": {
+    "database_image": "pgvector/pgvector:pg16",
+    "app_image": "aimms-merged-image",
+    "requires_migration": "assets.0022_var_unit",
+    "network": "none beyond the local Docker network; no Azure, Cosmos, download or deprecated cache"
+  },
+  "population": {
+    "command": "populate_from_workbook",
+    "client_name": "Cedar Creek Regional Water Authority",
+    "client_code": "cedar-creek-regional-water",
+    "station_uuid": "d0b4aace-a6a7-555c-9fc6-e93089ba12c5",
+    "station_source_namespace": "cedar-creek-demo",
+    "station_source_key": "CC_FEPS"
+  },
+  "expected": {
+    "locations": 45,
+    "pumps": 14,
+    "equipment": 48,
+    "profiles": 63,
+    "part_categories": 4,
+    "parts": 304,
+    "components": 238,
+    "components_per_pump": 17,
+    "part_links": 224,
+    "stock_locations": 8,
+    "companies": 30,
+    "manufacturer_parts": 6,
+    "supplier_parts": 0,
+    "stock_items": 6,
+    "history": 132,
+    "work_orders": 18,
+    "work_orders_planned": 8,
+    "qa_gates": {"script": "contrib/cosmos/devtools/cedar_creek_qa_gates.py", "pass": 22, "fail": 0},
+    "replay": "second apply creates nothing"
+  },
+  "not_in_dataset": {
+    "staff_roles": "step 2; fictional staff, no accounts created",
+    "source_tag_hints": "step 11; blocked by the package",
+    "pm_plans": "step 13; customer-scoped governed content",
+    "repair_packets": "step 14; raised from the staged work orders in the UI",
+    "attachments": "step 15; the package carries no files",
+    "compliance_ui": "step 16; a feature, not data",
+    "closeout_copy": "QA-29",
+    "supplier_offers": "6 rows blocked: no supplier SKU (QA-23)"
+  },
+  "artifact": {
+    "format": "pg_dump custom format (-Fc), restorable into PostgreSQL 16 or later",
+    "location": "data/demo/cedar-creek/<version>/ (git-ignored)",
+    "files": ["cedar-creek-demo.dump", "build-report.json", "apply.json", "replay.json", "qa-gates.txt", "SHA256SUMS"]
+  }
+}

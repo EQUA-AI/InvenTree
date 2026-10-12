@@ -40,7 +40,9 @@ from company.models import ManufacturerPart
 from part.models import Part
 from stock.models import StockItem, StockLocation
 
-STATION_PK = int(os.environ.get('QA_STATION_PK', '93'))
+# ``QA_STATION_PK=uuid`` finds the station by ``QA_STATION_UUID`` instead, for a
+# freshly built database where the primary key is not known in advance.
+STATION_PK = os.environ.get('QA_STATION_PK', '93')
 EXPECTED_UUID = os.environ.get(
     'QA_STATION_UUID', 'ce0a411f-d016-4817-ba00-3830ede25ce1'
 )
@@ -55,7 +57,11 @@ def gate(code, ok, detail=''):
     results.append((code, ok, detail))
 
 
-station = AssetMachine.objects.get(pk=STATION_PK)
+station = (
+    AssetMachine.objects.get(uuid=EXPECTED_UUID)
+    if STATION_PK == 'uuid'
+    else AssetMachine.objects.get(pk=int(STATION_PK))
+)
 pumps = list(station.children.filter(asset_type='pump').order_by('source_key'))
 cc_locations = AssetLocation.objects.filter(code__startswith='cc-')
 
