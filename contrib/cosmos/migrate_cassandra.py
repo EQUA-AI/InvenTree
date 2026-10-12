@@ -415,6 +415,47 @@ class CassandraReader:
         self.session = session
         self.table_prefix = table_prefix
         self._statements: dict[tuple[str, bool], object] = {}
+        self._known: set[str] | None = None
+
+    def _known_tables(self) -> set[str]:
+        """Tables in the session's keyspace, from the driver's schema metadata.
+
+        Empty when unknown (a test double, or no metadata): callers then use
+        the hour's own month table, exactly as before.
+        """
+        if self._known is None:
+            try:
+                keyspace = self.session.cluster.metadata.keyspaces[
+                    self.session.keyspace
+                ]
+                self._known = set(keyspace.tables)
+            except Exception:  # no driver metadata: behave as before
+                self._known = set()
+        return self._known
+
+    def table_for_hour(self, hour_bucket: int) -> str:
+        """The table to read an hour from.
+
+        Normally the hour's own UTC month. A monthly dump can also carry the
+        first hours of the next UTC month: the July 2025 dump ends at
+        2025-08-01 02:00 UTC inside `iwm_data_202507`, and `iwm_data_202508`
+        holds nothing for it. So when the hour's own table is known not to
+        exist, read the previous month's table instead; an hour beyond the
+        dump then reads as empty, which is what it is.
+        """
+        own = table_for(hour_bucket, self.table_prefix)
+        known = self._known_tables()
+        if not known or own in known:
+            return own
+        year, month = divmod(int(own[-6:]), 100)
+        year, month = (year - 1, 12) if month == 1 else (year, month - 1)
+        previous = f'{self.table_prefix}{year:04d}{month:02d}'
+        if previous in known:
+            return previous
+        raise MigrationError(
+            f'Neither {own} nor {previous} exists in keyspace '
+            f'{getattr(self.session, "keyspace", "?")}: no source for hour {hour_bucket}.'
+        )
 
     def _statement(self, table: str, resuming: bool):
         """Prepare per (table, shape) and cache it; preparing every hour is waste."""
@@ -447,7 +488,7 @@ class CassandraReader:
           object. A string raises `TypeError` at bind time, which at least
           fails loudly rather than silently.
         """
-        table = table_for(hour_bucket, self.table_prefix)
+        table = self.table_for_hour(hour_bucket)
         values = [
             _as_uuid(partition.parent_entity_uuid),
             partition.location_type,
@@ -1322,7 +1363,8 @@ def main(argv=None) -> int:
             event_value_type=selectors['event_value_type'],
         )
 
-        tables = sorted({table_for(hour, args.table_prefix) for hour in hours})
+        reader = CassandraReader(session_from_env(), args.table_prefix)
+        tables = sorted({reader.table_for_hour(hour) for hour in hours})
         if station:
             print(
                 f'station:         {station["source_name"]} '
@@ -1350,8 +1392,6 @@ def main(argv=None) -> int:
                 f'progress: {len(progress.completed_hours)} hour(s) already done, '
                 f'{len(progress.partial)} partial'
             )
-
-        reader = CassandraReader(session_from_env(), args.table_prefix)
 
         writer = None
         if args.confirm:

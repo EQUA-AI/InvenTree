@@ -288,6 +288,51 @@ class TableAndHourTests(unittest.TestCase):
         """The table is chosen in UTC; local time would cross months an hour late."""
         self.assertEqual(mc.table_for(HOUR), 'iwm_data_202507')
 
+    def _reader(self, tables, keyspace='ks'):
+        """A reader over a session whose driver metadata lists `tables`."""
+
+        class Meta:
+            def __init__(self, names):
+                self.keyspaces = {
+                    keyspace: type('K', (), {'tables': dict.fromkeys(names)})()
+                }
+
+        session = type('S', (), {})()
+        session.keyspace = keyspace
+        session.cluster = type('C', (), {'metadata': Meta(tables)})()
+        return mc.CassandraReader(session)
+
+    def test_reader_uses_the_hours_own_table_when_it_exists(self):
+        """Both months present: no fallback."""
+        reader = self._reader({'iwm_data_202507', 'iwm_data_202508'})
+        aug_1 = 1_754_006_400_000  # 2025-08-01 00:00 UTC
+        self.assertEqual(reader.table_for_hour(aug_1), 'iwm_data_202508')
+        self.assertEqual(reader.table_for_hour(HOUR), 'iwm_data_202507')
+
+    def test_reader_falls_back_to_the_previous_month_when_its_table_is_missing(self):
+        """The July 2025 dump holds 2025-08-01 00:00-02:00 UTC; there is no 202508."""
+        reader = self._reader({'iwm_data_202507', 'entity_uuid_lookup'})
+        aug_1 = 1_754_006_400_000
+        self.assertEqual(reader.table_for_hour(aug_1), 'iwm_data_202507')
+
+    def test_reader_fallback_crosses_a_year(self):
+        """January falls back to December of the previous year."""
+        reader = self._reader({'iwm_data_202512'})
+        jan_1_2026 = 1_767_225_600_000  # 2026-01-01 00:00 UTC
+        self.assertEqual(reader.table_for_hour(jan_1_2026), 'iwm_data_202512')
+
+    def test_reader_refuses_when_neither_table_exists(self):
+        """No silent empty read when the dump plainly does not cover the hour."""
+        reader = self._reader({'iwm_data_202507'})
+        oct_1 = 1_759_276_800_000  # 2025-10-01 00:00 UTC
+        with self.assertRaises(mc.MigrationError):
+            reader.table_for_hour(oct_1)
+
+    def test_reader_without_metadata_keeps_the_utc_month(self):
+        """Test doubles and sessions without metadata behave as before."""
+        reader = mc.CassandraReader(object())
+        self.assertEqual(reader.table_for_hour(HOUR), 'iwm_data_202507')
+
     def test_hours_are_aligned_down_and_one_partition_past_the_end(self):
         """Start floors to the hour; the end reads one partition beyond.
 
