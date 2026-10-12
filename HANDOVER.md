@@ -275,6 +275,7 @@ been run against Azure**: see open item 11.
 | `contrib/cosmos/HANDOFF.md` | Plant configuration step by step: source, dictionary review, schematic, activation |
 | `contrib/cosmos/POPULATION_ROLLBACK.md` | What a workbook population run changes and how to undo it |
 | `contrib/cosmos/demo/cedar-creek/README.md` | Portable Cedar Creek demo dataset: manifest, build, restore |
+| `contrib/cosmos/D17_IDENTITY.md` | Which identity reads Cosmos; read-only proof; asks for the Azure owner |
 | `contrib/cosmos/README.md` | The Cosmos container and its tools |
 | `contrib/cosmos/THRESHOLDS.md` | How limits were reviewed and what each means |
 | `contrib/cosmos/DEPLOYMENT_CHECKLIST.md`, `BLOCKERS.md` | Rollout steps and known blockers |

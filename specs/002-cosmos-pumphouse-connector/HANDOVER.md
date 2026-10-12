@@ -389,13 +389,20 @@ plant history.
 Reader**) to the application's managed identity, scoped to `/dbs/aimms/colls/pumphouse_readings`,
 not to the account. Then answer: which identity does AIMMS run as, per environment?
 
+**Update 2026-10-12:** done for the app registration `aimms-pumphouse-connector` and the managed
+identity `inventree-worker` (both Data Reader on `aimms/pumphouse_readings`).
+`contrib/cosmos/devtools/prove_read_only.py` showed the app registration reads, is refused writes
+with HTTP 403 and cannot read `telemetry` or `conversations`. What is left (confirm the deployed
+identity, narrow the developer's account-wide Contributor, `aimms-experimental`'s database-wide
+read, secret expiry 2027-09-19) is in `contrib/cosmos/D17_IDENTITY.md`.
+
 ---
 
 ## 4. Open decisions still needing a human
 
 | ID | Question | Default in force | Who can answer |
 |---|---|---|---|
-| **D17** | App identity + Data Reader role, container-scoped | none — dev's Data Contributor is being used | Azure/platform owner |
+| **D17** | App identity + Data Reader role, container-scoped | **Largely met 2026-10-12**: `aimms-pumphouse-connector` and `inventree-worker` hold Data Reader on `aimms/pumphouse_readings`; write refused (403) proven live. Open: confirm the deployed identity, narrow the dev's Contributor — see `contrib/cosmos/D17_IDENTITY.md` | Azure/platform owner |
 | **D18** | Mimic layout vs the reference images | **RESOLVED 2026-09-13** — see `tasks.md`; mimic is a `dex` view, `/sl` == forebay level, motor vibration is mm/s | — |
 | **D19** | Real plant names + station list for the estate (10–12 pumphouses): `entity_uuid`, SCADA code, name, pump count | **RESOLVED as a conflict** — Lakshmi is a *different* pumphouse, not PH_3. Names stay provisional; `rename_station` applies real ones safely. Blocks **T19** only | Plant / SCADA owner |
 | **D9** | Vibration units (µm vs mm/s) and alarm bounds | **Motor** DE/NDE settled as **mm/s** by image 2 ("Motor Vibration 2.1 mm/s"); **bearing pad** vibration still unconfirmed and withheld. Alarm bounds still need the plant's alarm/trip CSV — Annex A is a **proposal**, not plant authority | Plant engineering |
