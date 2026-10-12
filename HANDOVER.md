@@ -162,6 +162,11 @@ dictionary components alongside the 17 `CC-REF` ones from the workbook. The
 run is one transaction and takes about an hour over this link because every
 save also fires the plugin/event hooks; do not start a second one alongside.
 
+Undoing a run: `contrib/cosmos/POPULATION_ROLLBACK.md`. In short, only a restore
+of the pre-apply backup is exact. Placement history protects machines and
+locations from deletion, so a selective undo cancels, deactivates and archives
+rather than deletes.
+
 Read-only checks for the mechanically verifiable QA gates (Import Sequence
 step 17): `contrib/cosmos/devtools/cedar_creek_qa_gates.py`, run through the
 Django shell of the container that points at the database (usage in its
@@ -239,6 +244,7 @@ been run against Azure**: see open item 11.
 | Document | Covers |
 |---|---|
 | `contrib/cosmos/HANDOFF.md` | Plant configuration step by step: source, dictionary review, schematic, activation |
+| `contrib/cosmos/POPULATION_ROLLBACK.md` | What a workbook population run changes and how to undo it |
 | `contrib/cosmos/README.md` | The Cosmos container and its tools |
 | `contrib/cosmos/THRESHOLDS.md` | How limits were reviewed and what each means |
 | `contrib/cosmos/DEPLOYMENT_CHECKLIST.md`, `BLOCKERS.md` | Rollout steps and known blockers |
