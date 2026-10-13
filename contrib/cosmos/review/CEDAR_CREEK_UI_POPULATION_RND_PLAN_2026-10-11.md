@@ -304,6 +304,9 @@ password since a server update by Lokesh@equa.work at 17:31 UTC, during the appl
 admin password; the current password is needed from him before the gates can be run
 there. See `HANDOVER.md` section 5a and open item 11.
 
+**Update 2026-10-13:** the owner supplied the current password and the gates were run
+against Azure read-only: 22 pass / 0 fail (`HANDOVER.md` open item 11).
+
 ## Step 18: portable demo dataset (2026-10-12)
 
 `contrib/cosmos/demo/cedar-creek/`: `manifest.json` (version `2026-10-12.1`) pins the
