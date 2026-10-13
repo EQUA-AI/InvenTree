@@ -1,0 +1,19 @@
+{
+ "version": 1,
+ "stations": [
+  {
+   "name": "Pine Hollow Lift Station",
+   "source_namespace": "klsw",
+   "source_uuid": "4162f034-2b0a-44ca-bd10-a4f58d70236c",
+   "source_key": "PH_6",
+   "uuid": "56599263-27f9-4011-b4e4-6faebccc0dd2",
+   "pumps": [
+    "P1",
+    "P2",
+    "P3",
+    "P4"
+   ],
+   "snapshot": "pine-hollow.tags.json"
+  }
+ ]
+}

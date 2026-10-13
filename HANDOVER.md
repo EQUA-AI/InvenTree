@@ -86,8 +86,14 @@ deployment -> `IOT`.
   `contrib/cosmos/devtools/backfill_station.sh` and checked hour by hour
   against Cassandra's partition index: every hour with source data is present
   (384 / 449 / 418 hours in that part); the empty days are empty in Cassandra
-  too. Database throughput is back at 400 RU/s. Pine Hollow (Annapurna PH) is
-  being migrated next; the other stations have nothing in Cosmos.
+  too. Pine Hollow (Annapurna PH, `4162f034-…`) was migrated on 2026-10-13,
+  2025-07-01 03:00 to 2025-08-01 02:00 UTC: 270,760 documents in 674 hours,
+  matching Cassandra hour for hour. Its rows sit under its own uuid in
+  Cassandra, not the shared regional partition, so it needed
+  `PARENT=4162f034-…` (`--parent-entity-uuid`). Database throughput is back
+  at 400 RU/s. The other ten stations have nothing in Cosmos. The first
+  2025-07-01 03:00 to 07-02 01:00 (about 22 hours) of the three original
+  stations is in Cassandra but not yet in Cosmos.
   One older alarm stands on Electronics Test Bench 1; nothing from testing is
   left raised. Cedar Creek (93) has been populated from the UI population
   workbook (section 5a): locations, placements, profiles, 48 support
@@ -263,8 +269,20 @@ how it was run without writing.
    (no `django_fsm`), so rebuild it before `docker compose up`:
    `docker compose --project-directory . -f contrib/container/dev-docker-compose.yml build`.
 8. The data is a recorded window, displayed as if current. Cosmos holds it to
-   2025-08-01 02:00 UTC; the app database has been polled only to 2025-07-11.
-   Live plant data needs a live Cosmos source.
+   2025-08-01 02:00 UTC. On 2026-10-13 `discover_data_range` moved the
+   recorded end (`data_ranges.to`) of stations 60/93/94 to 2025-08-01 02:59,
+   but their checkpoints are only at 2025-07-12 00:01, so on merged code
+   their tiles read as about 20 days stale until polling catches up.
+   Catching up from this Mac is not practical: each poll pays ~230 ms per
+   Azure Postgres round trip, and a 5-minute run moved about one minute of
+   plant time (`data/devscratch/cedar-creek/azure_poll_catchup.py`, stopped).
+   The app keeps only the latest value per signal (`MachineSignalState`), and
+   trends are read from Cosmos directly, so replaying every snapshot buys
+   nothing except the historical alarm raise/clear events. Options for the
+   owner: run the catch-up next to the database (in Azure), or move the
+   three checkpoints to the last hour and poll from there (no command does
+   that yet; it would be a hand edit of `IngestionCheckpoint`). Live plant
+   data still needs a live Cosmos source.
 9. Cedar Creek workbook items the import deliberately leaves to a person
    (reported under `manual` by the command): 12 demo staff accounts, 94 PM
    plans as governed procedures, 134 attachments from the archive, 10 repair
@@ -302,6 +320,25 @@ how it was run without writing.
       plugin and write to the database**. The plugin-registry reload still
       tries to take a lease and log the failure; the read-only session
       refuses both (0 new `error_report_error` rows).
+12. Azure database changes made 2026-10-13 (owner-approved), after a backup
+    (`data/backup/InvenTree-db-2026-10-13-063634.psql.bin.gz`):
+    - Applied `assets.0022_var_unit`, the only migration pending (adds the
+      `var`/`VAr` units only). Lineage check: nothing applied that the code
+      does not know.
+    - Registered Pine Hollow Lift Station (`PH_6`): station 230, pumps
+      231-234, from `contrib/cosmos/review/pine-hollow.manifest.json` and
+      `pine-hollow.tags.json` (built from migrated Cosmos documents). It is
+      **not activated**: all 601 points are pending, 295 of them OPC-UA node
+      ids (`NS=4;S=…`). Next: a person fills
+      `contrib/cosmos/review/pine-hollow.review.pending.json`, then
+      `apply_dictionary_review`, then `onboard_pumphouse_estate … --activate`
+      (its data range is already recorded, as activation requires), then
+      reviewed limits via `apply_signal_limits`.
+    - Recorded data ranges for stations 60/93/94 and Pine Hollow
+      (`discover_data_range --from 2025-07-01 --to 2025-08-02`); see item 8.
+    - `data/plugins.txt` deduplicated (one `inventree-brother-plugin` line;
+      backup `data/plugins.txt.bak-20261013`). Its hash still differs from
+      Azure's, so item 11's warning stands.
 
 ## 8. Further reading
 
