@@ -188,8 +188,10 @@ Read-only checks for the mechanically verifiable QA gates (Import Sequence
 step 17): `contrib/cosmos/devtools/cedar_creek_qa_gates.py`, run through the
 Django shell of the container that points at the database (usage in its
 docstring; defaults describe Azure station 93, environment variables select
-the sandbox). On the sandbox it reports 22 pass / 0 fail. It has **not yet
-been run against Azure**: see open item 11.
+the sandbox). On the sandbox it reports 22 pass / 0 fail. Against Azure it
+reported **22 pass / 0 fail on 2026-10-13** (QA-08 `klsw`/`PH_3`, QA-15 33
+components on each of the 14 pumps, QA-55 113 machines); see open item 11 for
+how it was run without writing.
 
 ## 6. Rules to keep
 
@@ -281,11 +283,25 @@ been run against Azure**: see open item 11.
     connected, so it still committed (`APPLY_EXIT=0` at 20:54 local). The
     password in the container is the one from before the change, and the
     only Entra admin on the server is Lokesh, so there is no other way in.
-    Until he supplies the current password, nothing from this checkout can
-    read Azure, and the QA gates in section 5a have not been run there. Run them
-    first thing once access is back (expected: QA-15 shows 33 components per
-    pump, QA-08 shows the `klsw`/`PH_3` identity, QA-55 counts all three
-    stations' machines).
+    Resolved 2026-10-13: the owner supplied the current password. It is kept
+    in `data/azure-db.env` (mode 600, git-ignored, one line
+    `INVENTREE_DB_PASSWORD=...`) and passed per command with
+    `docker exec --env-file data/azure-db.env aimms-azure-server ...`; the
+    container's built-in value is still the old one. The QA gates were then
+    run read-only (22 pass / 0 fail), with two guards that are needed for any
+    read-only Django command against Azure from this container:
+    - `-e PGOPTIONS='-c default_transaction_read_only=on'` makes the server
+      refuse every write in the session.
+    - `-e INVENTREE_PLUGIN_FILE=<file holding the stock two-line plugins.txt>`.
+      Django startup is not read-only: when the plugins file's hash differs
+      from `_PLUGIN_FILE_HASH` in the database it installs plugins and saves
+      the new hash. Azure holds the hash of the stock empty file
+      (`dd72fc1e…`); the local `data/plugins.txt` lists
+      `inventree-brother-plugin` (six times) and hashes differently, so
+      **starting the app from this checkout against Azure would install that
+      plugin and write to the database**. The plugin-registry reload still
+      tries to take a lease and log the failure; the read-only session
+      refuses both (0 new `error_report_error` rows).
 
 ## 8. Further reading
 
