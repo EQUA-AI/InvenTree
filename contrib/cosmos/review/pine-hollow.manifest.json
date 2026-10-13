@@ -13,7 +13,8 @@
     "P3",
     "P4"
    ],
-   "snapshot": "pine-hollow.tags.json"
+   "snapshot": "pine-hollow.tags.json",
+   "review": "pine-hollow.review.json"
   }
  ]
 }

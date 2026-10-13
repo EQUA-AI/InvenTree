@@ -54,6 +54,11 @@ procedure, including what must exist first and what still does not work.
 | Maple Grove Lift Station | PH_7 | 198 | 173 | 371 |
 | **Total** | | **1452** | **743** | **2195** |
 
+Pine Hollow Lift Station (`PH_6`) is onboarded separately from its own
+manifest, `pine-hollow.manifest.json`, which names `pine-hollow.review.json`:
+191 approved, 410 withheld, 601 points. It is not part of
+`estate.manifest.json`, so the totals above and the bootstrap test exclude it.
+
 The approved count for each station is also its binding count, and therefore
 the number of signals a machine page can draw.
 

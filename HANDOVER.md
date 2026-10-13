@@ -329,13 +329,32 @@ how it was run without writing.
       does not know.
     - Registered Pine Hollow Lift Station (`PH_6`): station 230, pumps
       231-234, from `contrib/cosmos/review/pine-hollow.manifest.json` and
-      `pine-hollow.tags.json` (built from migrated Cosmos documents). It is
-      **not activated**: all 601 points are pending, 295 of them OPC-UA node
-      ids (`NS=4;S=…`). Next: a person fills
-      `contrib/cosmos/review/pine-hollow.review.pending.json`, then
-      `apply_dictionary_review`, then `onboard_pumphouse_estate … --activate`
-      (its data range is already recorded, as activation requires), then
-      reviewed limits via `apply_signal_limits`.
+      `pine-hollow.tags.json` (built from migrated Cosmos documents).
+    - Reviewed and **activated** Pine Hollow (review delegated by the owner,
+      prepared by Copilot): `contrib/cosmos/review/pine-hollow.review.json`
+      decides all 601 points, 191 approved / 410 withheld. Built by
+      `data/devscratch/cedar-creek/build_pine_review.py`, which applies
+      Maple Grove's rules (same 4-bay layout, same idle July window: 0 of
+      13,464 per-bay samples running) to a Cosmos sample of 3,366 documents
+      (5 per hour, all 674 hours). Approved: 169 temperatures in degC from
+      ambient soak, 14 status/count points, 4 speeds (rpm) and 4 per-bay
+      discharges (cusec) inherited estate-wide like Maple Grove. Withheld:
+      396 with no catalogue target (295 OPC-UA node ids; phase currents and
+      voltages; unprefixed `PUMP_GUIDE_BEARING_PAD_TEMP1-8`, probably upper
+      but unproven; winding RTD 13-18, past the catalogue's 12; barrel air),
+      8 average current / line-to-line voltage (unit unconfirmable while
+      idle), 6 RTDs that read only the -1 sentinel. Every importer mapping
+      approved is identical to Maple Grove's. Dry-run apply passed, backup
+      `InvenTree-db-2026-10-13-110421.psql.bin.gz`, then
+      `onboard_pumphouse_estate … --activate` (manifest now names the
+      review): 191 bindings, checkpoint opened at 08-01 02:54 and polled to
+      02:59:55; 191 signal states; alarm counts unchanged (3 / 1 / 1, 6
+      notifications). Still open: reviewed limits (`apply_signal_limits`),
+      alarm recipients for station 230, and the mimic layout, which lacks
+      forebay level, active power and discharge pressure because Pine Hollow
+      does not publish them. Re-review the withheld electrical and
+      `PUMP_GUIDE_BEARING_PAD` points when a loaded window or site P&ID is
+      available.
     - Recorded data ranges for stations 60/93/94 and Pine Hollow
       (`discover_data_range --from 2025-07-01 --to 2025-08-02`); see item 8.
       Re-run after the 22-hour backfill, so all four now start on 07-01:
