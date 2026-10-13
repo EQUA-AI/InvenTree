@@ -33,6 +33,10 @@ CAP=${CAP:-900}
 ATTEMPTS=${ATTEMPTS:-4}
 BACKOFF=${BACKOFF:-60}
 CASS_WAIT=${CASS_WAIT:-900}
+# Optional Cassandra partition override. Most stations' rows sit in the shared
+# regional partition the estate names; Annapurna PH (Pine Hollow) has none
+# there and is filed under its own uuid, so it needs PARENT=<its uuid>.
+PARENT=${PARENT:-}
 SP=${SP:?set SP to a scratch directory}
 PY="$SP/migvenv/bin/python"
 
@@ -102,6 +106,9 @@ for station in "$@"; do
 
     attempt=1
     while [ "$attempt" -le "$ATTEMPTS" ]; do
+        # Defined above but was never called; without it a dead node still
+        # spends the whole retry budget in seconds.
+        wait_cassandra || exit 1
         : > "$SP/${slug}_1.log"; : > "$SP/${slug}_2.log"; : > "$SP/${slug}_3.log"
         n=0
         while read -r a b; do
@@ -110,6 +117,7 @@ for station in "$@"; do
             CASSANDRA_CONTACT_POINTS=127.0.0.1 \
             "$PY" -u contrib/cosmos/migrate_cassandra.py \
                 --station "$station" --from "$a" --to "$b" \
+                ${PARENT:+--parent-entity-uuid "$PARENT"} \
                 --endpoint "https://${ACCOUNT}.documents.azure.com:443/" \
                 --progress "$SP/${slug}_$n.json" \
                 --write-concurrency 8 --ru-cap "$CAP" --confirm \
