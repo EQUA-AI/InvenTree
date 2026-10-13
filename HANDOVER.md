@@ -338,6 +338,9 @@ how it was run without writing.
       reviewed limits via `apply_signal_limits`.
     - Recorded data ranges for stations 60/93/94 and Pine Hollow
       (`discover_data_range --from 2025-07-01 --to 2025-08-02`); see item 8.
+      Re-run after the 22-hour backfill, so all four now start on 07-01:
+      93 07-01 03:00:02, 60 03:26:22, 94 03:00:02, 230 03:00:04; every one
+      ends 2025-08-01 02:59 as before, so checkpoints were untouched.
     - `data/plugins.txt` deduplicated (one `inventree-brother-plugin` line;
       backup `data/plugins.txt.bak-20261013`). Its hash still differs from
       Azure's, so item 11's warning stands.
