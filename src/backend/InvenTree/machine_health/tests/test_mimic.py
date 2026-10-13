@@ -319,6 +319,59 @@ class MimicTests(InvenTreeAPITestCase):
         )
         self.assertEqual(self.get_mimic().status_code, 404)
 
+    def test_unpublished_layout_readings_are_named_and_do_not_block(self):
+        """A reading the station never sends is not a reading awaiting review.
+
+        Pine Hollow publishes no forebay level, active power or discharge
+        pressure. Drawn as "not bound" those tiles would send somebody looking
+        for a binding that can never exist, and counted as missing they would
+        hold the station's readiness back on a review with nothing to review.
+        """
+        self.add_point('/pd/P1/st', 'I', unit='')
+        speed, _ = self.add_point('/dex/PUMP1_SPEED', 10, unit='rpm')
+        data = self.get_mimic(unit='P1').data
+        power = expand_pointer('/dex/PUMP{pump_number}_ACTIVE_POWER', 'P1')
+        self.assertEqual(data['points'][power]['reason'], 'not_published')
+        self.assertEqual(
+            data['station_points']['/dex/COMMAN_FORBAY_LEVEL']['reason'],
+            'not_published',
+        )
+        self.assertEqual(data['totals']['power']['reason'], 'not_published')
+        self.assertIsNone(data['totals']['power']['value'])
+
+        approved = {**load_layout(), 'review_status': 'approved'}
+        report = layout_coverage(self.station, approved)
+        unpublished = {entry['pointer'] for entry in report['not_published']}
+        self.assertIn('/dex/COMMAN_FORBAY_LEVEL', unpublished)
+        self.assertIn(power, unpublished)
+        self.assertNotIn('/pd/P1/st', unpublished)
+        self.assertTrue(report['ready'])
+        # Still provisional: the plant has not approved the drawing itself.
+        self.assertFalse(layout_coverage(self.station)['ready'])
+
+        # A point the station does send but nobody approved still blocks, and is
+        # not passed off as unpublished.
+        speed.status = 'draft'
+        speed.save()
+        report = layout_coverage(self.station, approved)
+        self.assertFalse(report['ready'])
+        self.assertIn('/dex/PUMP1_SPEED', {e['pointer'] for e in report['missing']})
+        self.assertNotIn(
+            '/dex/PUMP1_SPEED', {e['pointer'] for e in report['not_published']}
+        )
+
+    def test_absence_proves_nothing_before_a_dictionary_is_imported(self):
+        """With no dictionary, every drawn reading stays missing and unbound."""
+        approved = {**load_layout(), 'review_status': 'approved'}
+        report = layout_coverage(self.station, approved)
+        self.assertFalse(report['ready'])
+        self.assertEqual(report['not_published'], [])
+        self.assertTrue(report['missing'])
+        power = expand_pointer('/dex/PUMP{pump_number}_ACTIVE_POWER', 'P1')
+        self.assertEqual(
+            self.get_mimic(unit='P1').data['points'][power]['reason'], 'not_bound'
+        )
+
     def test_projection_has_bounded_database_work(self):
         """Station requests fetch readings in batches, not one query per point."""
         for number in range(20):

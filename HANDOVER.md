@@ -356,12 +356,41 @@ how it was run without writing.
       `onboard_pumphouse_estate … --activate` (manifest now names the
       review): 191 bindings, checkpoint opened at 08-01 02:54 and polled to
       02:59:55; 191 signal states; alarm counts unchanged (3 / 1 / 1, 6
-      notifications). Still open: reviewed limits (`apply_signal_limits`),
-      alarm recipients for station 230, and the mimic layout, which lacks
-      forebay level, active power and discharge pressure because Pine Hollow
-      does not publish them. Re-review the withheld electrical and
-      `PUMP_GUIDE_BEARING_PAD` points when a loaded window or site P&ID is
-      available.
+      notifications). Follow-ups done the same day:
+      - **Limits**: `apply_signal_limits --limits contrib/cosmos/limits/pumphouse.limits.json
+        --station 230` after a dry run (47 matched, 0 breaching) and a backup
+        (`InvenTree-db-2026-10-13-134437.psql.bin.gz`). All 47 winding
+        detectors fall in the estate "Stator winding ETDs" row (warn 125 /
+        critical 145 degC, vote 2) and screen clean the THRESHOLDS.md way
+        (0-43.2 degC, >= 3,190 samples and >= 44 distinct values each, none
+        frozen or breaching), so no `PH_6` exclusions were needed, as at
+        Maple Grove. No Pine Hollow tag matches the core-RTD row. Live: 47 of
+        191 bindings armed; anomalies unchanged (3 / 1 open).
+      - **Alarm recipients**: nothing to write. Recipients are resolved when
+        an alarm fires (`machine_health/services/alarm_notifications.py`
+        `recipients_for`: `work_order` view role + client scope + the
+        `NOTIFY_MACHINE_ALARMS` setting). Machines 230-234 are on client
+        `internal` like stations 60/93/94, so a critical there reaches the same
+        3 users (`LNaidu`, `admin`, `yesworkorders`). Adding someone is
+        `grant_client_scope <user> internal` plus the `work_order` role.
+      - **Mimic layout**: a drawn reading the station's dictionary has never
+        held is now reported as `not_published` (layout coverage) and drawn as
+        "Not published by this station" (mimic tiles, and the power total),
+        instead of "Not bound"; it no longer counts against readiness. A point
+        that exists but is unapproved still blocks, and before a dictionary is
+        imported nothing is called unpublished
+        (`machine_health/mimic_layout.py`, `services/mimic.py`, tests in
+        `test_mimic.py`). Azure coverage (read-only): 0 review gaps at all
+        four stations; unpublished are Pine Hollow forebay level and P1-P4
+        active power and discharge pressure (9), Maple Grove forebay level,
+        Cedar Creek P7 discharge pressure. Every station is ready once the
+        plant approves the layout itself (`review_status` is still
+        `provisional`).
+      - **Withheld electrical / `PUMP_GUIDE_BEARING_PAD`**: still open, and
+        cannot be closed from data. Every one of the 270,760 Pine Hollow
+        documents in Cosmos has `pc` 0.0 and no bay at `R`, so there is no
+        loaded window anywhere in the migrated span. Needs live data from a
+        running station, or the site P&ID for the bearing pads.
     - Recorded data ranges for stations 60/93/94 and Pine Hollow
       (`discover_data_range --from 2025-07-01 --to 2025-08-02`); see item 8.
       Re-run after the 22-hour backfill, so all four now start on 07-01:

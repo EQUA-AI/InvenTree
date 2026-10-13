@@ -168,6 +168,11 @@ def total_value(definition, points, pumps, enabled):
     values, observed = [], []
     for pointer in contributors:
         point = points.get(pointer)
+        if point is None and points:
+            # The station sends no such reading, so the total cannot be summed
+            # from it now or later - unlike a contributor that is merely stale.
+            result['reason'] = 'not_published'
+            return result
         if point is None or point['reason'] is not None:
             return result
         value = point['value']
@@ -243,6 +248,10 @@ def station_mimic(station, *, unit=None, now=None):
         for point in dictionary
     }
     base_reason = 'not_bound' if enabled else 'disabled'
+    # A drawn reading the station's dictionary has never held is not awaiting a
+    # binding: the source does not send it (see layout_coverage). Only claimed
+    # once a dictionary exists, since before import an absence proves nothing.
+    absent_reason = 'not_published' if enabled and dictionary else base_reason
     station_points = {
         point.path: points[point.path]
         for point in dictionary
@@ -252,7 +261,7 @@ def station_mimic(station, *, unit=None, now=None):
         if element['view'] == 'station':
             pointer = element['pointer']
             station_points.setdefault(
-                pointer, empty_point(pointer, base_reason, label=element['label'])
+                pointer, empty_point(pointer, absent_reason, label=element['label'])
             )
     bays = []
     for pump in pumps:
@@ -261,7 +270,7 @@ def station_mimic(station, *, unit=None, now=None):
             if element['view'] == 'unit':
                 pointer = expand_pointer(element['pointer'], pump.source_key)
                 rows[pointer] = points.get(
-                    pointer, empty_point(pointer, base_reason, label=element['label'])
+                    pointer, empty_point(pointer, absent_reason, label=element['label'])
                 )
         status_point = points.get(
             expand_pointer(STATUS_POINTER, pump.source_key),

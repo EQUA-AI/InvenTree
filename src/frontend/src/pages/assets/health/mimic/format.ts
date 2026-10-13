@@ -29,6 +29,7 @@ export function reasonLabel(reason: string | null): string {
   const labels: Record<string, string> = {
     disabled: t`Polling disabled`,
     not_bound: t`Not bound`,
+    not_published: t`Not published by this station`,
     not_approved: t`Not approved`,
     no_data: t`No reading`,
     stale: t`Stale`,

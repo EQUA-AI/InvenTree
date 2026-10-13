@@ -96,11 +96,10 @@ def station_pumps(station):
 def layout_coverage(station, layout=None):
     """Report every missing approval and every point displayed outside the diagram."""
     layout = layout or load_layout()
-    approved = set(
-        DictionaryPoint.objects.filter(station=station, status='approved').values_list(
-            'path', flat=True
-        )
+    statuses = dict(
+        DictionaryPoint.objects.filter(station=station).values_list('path', 'status')
     )
+    approved = {path for path, status in statuses.items() if status == 'approved'}
     wanted = {}
     pumps = station_pumps(station)
     for element in layout['elements']:
@@ -114,12 +113,25 @@ def layout_coverage(station, layout=None):
         for element, pointer in wanted.items()
         if pointer not in approved
     ]
+    # A pointer the station's imported dictionary does not hold at all is one
+    # its source has never sent - Pine Hollow has no forebay level, active power
+    # or discharge pressure tag. There is nothing there to review, so it cannot
+    # hold readiness back; the mimic draws it as "not published" rather than as
+    # a reading awaiting approval. A point that exists but is unapproved still
+    # blocks. With no dictionary at all nothing has been imported yet, so an
+    # absence proves nothing and every pointer stays missing.
+    not_published = [
+        entry for entry in missing if statuses and entry['pointer'] not in statuses
+    ]
     return {
         'station': station.pk,
         'layout_version': layout['version'],
         'review_status': layout['review_status'],
-        'ready': not missing and layout['review_status'] == 'approved',
+        'ready': len(missing) == len(not_published)
+        and bool(approved & set(wanted.values()))
+        and layout['review_status'] == 'approved',
         'missing': missing,
+        'not_published': not_published,
         'not_drawn': [
             {'pointer': pointer, 'reason': layout['not_drawn_reason']}
             for pointer in sorted(approved - set(wanted.values()))
