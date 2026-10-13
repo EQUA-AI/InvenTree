@@ -75,10 +75,11 @@ deployment -> `IOT`.
 ## 4. Environments
 
 - **Azure dev database (`inventree`)**: already on the merged schema (966
-  migrations). Three stations are registered, activated and polled up to
-  2025-07-11: Millbrook (id 60), Cedar Creek (93), Maple Grove (94); 30 pumps,
-  1,452 signal bindings, 404 with reviewed limits. Cosmos now holds more than
-  that (see the Cosmos bullet below), so polling has not caught up yet.
+  migrations). Three stations are registered, activated and polled to the
+  end of the recorded window, 2025-08-01 02:59 (see item 8): Millbrook
+  (id 60), Cedar Creek (93), Maple Grove (94); 30 pumps, 1,452 signal
+  bindings, 404 with reviewed limits. Pine Hollow (230) is registered but not
+  activated (item 12).
 - **Azure Cosmos (`aimms/pumphouse_readings`)**: the July 2025 dump is
   migrated for the same three stations, 2025-07-02 01:00 to 2025-08-01 02:00
   UTC: Cedar Creek 432,510 documents, Millbrook 325,564, Maple Grove 303,905.
@@ -269,20 +270,21 @@ how it was run without writing.
    (no `django_fsm`), so rebuild it before `docker compose up`:
    `docker compose --project-directory . -f contrib/container/dev-docker-compose.yml build`.
 8. The data is a recorded window, displayed as if current. Cosmos holds it to
-   2025-08-01 02:00 UTC. On 2026-10-13 `discover_data_range` moved the
-   recorded end (`data_ranges.to`) of stations 60/93/94 to 2025-08-01 02:59,
-   but their checkpoints are only at 2025-07-12 00:01, so on merged code
-   their tiles read as about 20 days stale until polling catches up.
-   Catching up from this Mac is not practical: each poll pays ~230 ms per
-   Azure Postgres round trip, and a 5-minute run moved about one minute of
-   plant time (`data/devscratch/cedar-creek/azure_poll_catchup.py`, stopped).
-   The app keeps only the latest value per signal (`MachineSignalState`), and
-   trends are read from Cosmos directly, so replaying every snapshot buys
-   nothing except the historical alarm raise/clear events. Options for the
-   owner: run the catch-up next to the database (in Azure), or move the
-   three checkpoints to the last hour and poll from there (no command does
-   that yet; it would be a hand edit of `IngestionCheckpoint`). Live plant
-   data still needs a live Cosmos source.
+   2025-08-01 02:00 UTC, and since 2026-10-13 the app is polled to the same
+   end. `discover_data_range` moved the recorded end (`data_ranges.to`) of
+   stations 60/93/94 to 2025-08-01 02:59. Replaying the 20 days in between
+   from this Mac was not practical (~230 ms per Azure Postgres round trip;
+   5 minutes moved about one minute of plant time). The app keeps only the
+   latest value per signal (`MachineSignalState`), and trends are read from
+   Cosmos directly, so with the owner's approval the three checkpoints were
+   moved forward with `IngestionCheckpoint.advance_to` to 2 minutes before
+   each end (`data/devscratch/cedar-creek/azure_skip_ahead.py`, dry run
+   first), then polled to the end with the real task
+   (`azure_poll_catchup.py`, 9.6 minutes, no errors). Skipped: alarm
+   raise/clear events between 2025-07-12 and 08-01. Anomalies and
+   critical-alarm notifications were unchanged (3 / 1 active critical;
+   6 notifications). The 2025-07-12 00:01 to 08-01 02:57 stretch was never
+   applied as state. Live plant data still needs a live Cosmos source.
 9. Cedar Creek workbook items the import deliberately leaves to a person
    (reported under `manual` by the command): 12 demo staff accounts, 94 PM
    plans as governed procedures, 134 attachments from the archive, 10 repair
