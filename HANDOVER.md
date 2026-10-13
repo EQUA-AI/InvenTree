@@ -306,8 +306,15 @@ how it was run without writing.
     Resolved 2026-10-13: the owner supplied the current password. It is kept
     in `data/azure-db.env` (mode 600, git-ignored, one line
     `INVENTREE_DB_PASSWORD=...`) and passed per command with
-    `docker exec --env-file data/azure-db.env aimms-azure-server ...`; the
-    container's built-in value is still the old one. The QA gates were then
+    `docker exec --env-file data/azure-db.env aimms-azure-server ...`. The
+    web server (gunicorn, port 8000) kept the old password until 2026-10-13,
+    so http://localhost:8000 hung or returned 500. It was recreated then
+    with the same image, mount, port and command, its old environment
+    (`data/devscratch/cedar-creek/aimms-azure-server.env`, git-ignored) plus
+    `--env-file data/azure-db.env`, and `INVENTREE_PLUGIN_FILE` pointing at
+    a stock copy (`data/devscratch/cedar-creek/plugins.stock.txt`, hash
+    `dd72fc1e…`, the same as Azure's) so startup writes nothing; the
+    previous container is kept stopped as `aimms-azure-server-old-pw`. The QA gates were then
     run read-only (22 pass / 0 fail), with two guards that are needed for any
     read-only Django command against Azure from this container:
     - `-e PGOPTIONS='-c default_transaction_read_only=on'` makes the server
