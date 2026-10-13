@@ -31,12 +31,29 @@ RAISED=${RAISED:-3000}
 FLOOR=${FLOOR:-400}
 CAP=${CAP:-900}
 ATTEMPTS=${ATTEMPTS:-4}
+BACKOFF=${BACKOFF:-60}
+CASS_WAIT=${CASS_WAIT:-900}
 SP=${SP:?set SP to a scratch directory}
 PY="$SP/migvenv/bin/python"
 
 FROM=$1; shift
 TO=$1; shift
 [ "$#" -ge 1 ] || { echo "give at least one station name" >&2; exit 2; }
+
+# Wait until Cassandra accepts connections on 9042, up to CASS_WAIT seconds.
+# Without this, a dead node makes every attempt fail within seconds and the
+# retry budget is spent before Docker has even restarted it (2026-10-12: all
+# 4 x 3 stations "finished" in under a minute after an OOM kill).
+wait_cassandra() {
+    waited=0
+    while ! "$PY" -c "import socket; socket.create_connection(('127.0.0.1', 9042), 3).close()" 2>/dev/null; do
+        [ "$waited" -ge "$CASS_WAIT" ] && { echo "--- cassandra unreachable for ${CASS_WAIT}s ---"; return 1; }
+        [ "$waited" -eq 0 ] && echo "--- waiting for cassandra on 127.0.0.1:9042 ---"
+        sleep 15; waited=$((waited + 15))
+    done
+    [ "$waited" -gt 0 ] && { echo "--- cassandra back after ~${waited}s, settling ---"; sleep 30; }
+    return 0
+}
 
 restore() {
     echo "--- restoring throughput to ${FLOOR} RU/s ---"
@@ -106,11 +123,23 @@ for station in "$@"; do
         # A stream that crashed (Traceback: lost Cassandra, expired token)
         # failed just as much as one that printed "Refusing"; count both, or
         # the station is declared done with hours missing.
-        left=$(cat "$SP/${slug}_"*.log 2>/dev/null | grep -cE "Refusing|Traceback" || true)
+        # Only the stream logs `_<digit>.log`: a broad `_*.log` also matched an
+        # archived manual-relaunch log and failed 20 attempts of a station that
+        # had in fact finished (2026-10-13).
+        left=$(cat "$SP/${slug}_"[0-9].log 2>/dev/null | grep -cE "Refusing|Traceback" || true)
         echo "--- $station attempt ${attempt}: ${left} stream(s) ended on an error ---"
         [ "${left:-0}" -eq 0 ] && break
         attempt=$((attempt + 1))
+        [ "$attempt" -le "$ATTEMPTS" ] && sleep "$BACKOFF"
     done
+    # Never move on to the next station with hours missing: a later "all
+    # stations processed" would then be a lie, which is how two runs were
+    # wrongly reported complete. Stop non-zero; the trap still restores RU/s,
+    # and a rerun resumes from the progress files.
+    if [ "${left:-0}" -ne 0 ]; then
+        echo "--- $station FAILED: streams still erroring after ${ATTEMPTS} attempt(s) ---"
+        exit 1
+    fi
     echo "--- $station done after ${attempt} attempt(s) ---"
 done
 

@@ -75,9 +75,19 @@ deployment -> `IOT`.
 ## 4. Environments
 
 - **Azure dev database (`inventree`)**: already on the merged schema (966
-  migrations). Three stations are registered, activated and polled to the end
-  of the recorded window (2025-07-11): Millbrook (id 60), Cedar Creek (93),
-  Maple Grove (94); 30 pumps, 1,452 signal bindings, 404 with reviewed limits.
+  migrations). Three stations are registered, activated and polled up to
+  2025-07-11: Millbrook (id 60), Cedar Creek (93), Maple Grove (94); 30 pumps,
+  1,452 signal bindings, 404 with reviewed limits. Cosmos now holds more than
+  that (see the Cosmos bullet below), so polling has not caught up yet.
+- **Azure Cosmos (`aimms/pumphouse_readings`)**: the July 2025 dump is
+  migrated for the same three stations, 2025-07-02 01:00 to 2025-08-01 02:00
+  UTC: Cedar Creek 432,510 documents, Millbrook 325,564, Maple Grove 303,905.
+  The 2025-07-12 onward part was backfilled on 2026-10-12/13 with
+  `contrib/cosmos/devtools/backfill_station.sh` and checked hour by hour
+  against Cassandra's partition index: every hour with source data is present
+  (384 / 449 / 418 hours in that part); the empty days are empty in Cassandra
+  too. Database throughput is back at 400 RU/s. Pine Hollow (Annapurna PH) is
+  being migrated next; the other stations have nothing in Cosmos.
   One older alarm stands on Electronics Test Bench 1; nothing from testing is
   left raised. Cedar Creek (93) has been populated from the UI population
   workbook (section 5a): locations, placements, profiles, 48 support
@@ -250,7 +260,8 @@ been run against Azure**: see open item 11.
    Still to do: the compose dev image `inventree-dev-image` predates the merge
    (no `django_fsm`), so rebuild it before `docker compose up`:
    `docker compose --project-directory . -f contrib/container/dev-docker-compose.yml build`.
-8. The data is a recorded window ending 2025-07-11, displayed as if current.
+8. The data is a recorded window, displayed as if current. Cosmos holds it to
+   2025-08-01 02:00 UTC; the app database has been polled only to 2025-07-11.
    Live plant data needs a live Cosmos source.
 9. Cedar Creek workbook items the import deliberately leaves to a person
    (reported under `manual` by the command): 12 demo staff accounts, 94 PM
