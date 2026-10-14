@@ -170,6 +170,9 @@ Verified there with the Cedar Creek master workbook: 45 locations, station +
 14 pumps, 48 equipment, 63 machines visible, 17 draft components on each pump,
 8 warehouse locations, 30 companies, 6 manufacturer parts, 6 stock items, 132
 history rows, 18 work orders (8 planned); replay is a no-op.
+Stopped on 2026-10-14 with `docker stop pop-test pop-pg`, not removed, so its
+database is kept. `docker start pop-pg pop-test` brings it back. `sandbox.sh
+down` would delete it.
 
 Azure (2026-10-11): applied with `--client-code internal --station 93` after
 `manage.py dbbackup` (`data/backup/InvenTree-db-2026-10-11-155535.psql.bin.gz`,

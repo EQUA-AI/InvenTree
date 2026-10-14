@@ -72,7 +72,10 @@ Fix the bug the confirmed DDL exposed, and record the schema.
 - [x] **Container created and verified live**: `aimms/pumphouse_readings` matches the definition
 - [x] Indexing policy applied through the control plane after Data Explorer refused it (the
       `Cosmos DB Operator` role cannot read account keys, so its data-plane save had no credential)
-- [ ] `schema/pumphouse_latest.container.json` — deferred with §3.2, nothing would maintain it yet
+- [x] ~~`schema/pumphouse_latest.container.json`~~ — **closed as out of scope (2026-10-14).**
+      `pumphouse_latest` is deferred by plan §3.2 and decision D2, and nothing would maintain it.
+      Latest reads use the `LIMIT 1` slice on `pumphouse_readings`, so `latest_container` stays
+      `null`. Reopen it as new work only if plan §3.2 is enabled.
 
 ### ✅ T4 — Cosmos emulator in the dev stack · 3 h · *done — 11 tests; the connector now runs against a real Cosmos service offline*
 - [x] `cosmos` profile in `contrib/container/dev-docker-compose.yml`, pinned to the multi-arch
