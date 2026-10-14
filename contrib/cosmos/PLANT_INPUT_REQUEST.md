@@ -28,8 +28,12 @@ bearing, shaft, casing, discharge valve). No reference image has ever been suppl
 - Placement of `PUMP_GUIDE_BEARING_PAD` and the HOPD/EOPD valve order.
 - Readings a station does not publish are shown as "Not published by this station":
   Pine Hollow - forebay level, active power and discharge pressure on all 4 pumps;
-  Maple Grove - forebay level; Cedar Creek - pump 7 discharge pressure. Confirm these
-  tags really do not exist at site.
+  Maple Grove - forebay level; Cedar Creek - pump 7 discharge pressure. These are missing
+  from the published data only. For each one, please tell us whether it is not installed,
+  not wired, not configured in the PLC, or not published on OPC UA.
+- For each forebay transmitter: the unit and datum (MSL or a local gauge zero), the minimum
+  drawdown level, the minimum level for safe pumping (from NPSH and submergence), and the
+  high level at which pumping stops.
 
 **On approval:** set `"review_status": "approved"` in the layout file (code change and
 redeploy). That is the only thing keeping all 4 stations from reading as ready.
@@ -103,8 +107,36 @@ with a band derived from the measured core rise, then re-run `apply_signal_limit
 
 ---
 
+## 5. Pump speed reading, Millbrook Pump 05 (`PUMP5_SPEED`, 474 rpm)
+
+**Status: unverified.** The value is exactly +32767 counts, the signed 16-bit maximum, so
+saturation, clipping or a scaling error has not been ruled out. Earlier review notes for Maple
+Grove and Cedar Creek called it "corroborated"; that is withdrawn. Please send:
+
+1. A PLC trace or raw historian export of the raw count, to show whether +32767 is the
+   converter's actual output or added by the PLC.
+2. The converter model, configuration, and input and output ranges, and what its maximum count
+   means (full scale, over-range or a fault code).
+3. The PLC scaling expression from counts to rpm.
+4. The motor nameplate (poles, frequency) or drive data for the expected speed range.
+5. Drive actual-speed feedback or a tachometer reading taken at the same time.
+6. If possible, raw counts at several operating speeds, to show whether the value moves or stays
+   at the maximum.
+
+We will mark the reading validated only when the scaling is confirmed and it agrees with the
+independent reference within an agreed tolerance (STANDARDS_BASELINE.md section 8a).
+
 ## Also helps every item above
 
 **Can one loaded bay be recorded cleanly for a few weeks?** (THRESHOLDS.md question 15.)
-All recorded data is from a stopped plant. One running window would confirm the
-electrical units, set normal operating bands, and make the bearing limits meaningful.
+All recorded data is from a stopped plant. One running window would give normal operating
+bands and make the bearing limits meaningful. On its own it cannot confirm the electrical
+units: please send the nameplate, CT/VT ratios, PLC scaling and one switchgear meter reading
+taken at the same time. Keep the raw values, OPC UA status and source timestamps.
+
+**Data freshness.** The newest record in Cosmos is 2025-08-01, which is 439 days old on
+2026-10-14. The app currently shows that recorded window as if it were current. For live
+monitoring, please confirm which layer stopped: PLC/OPC UA source, ingestion, storage, or the
+Cosmos feed. The quickest check is to follow one known pump tag through each layer.
+
+Engineering basis for each ask: `contrib/cosmos/STANDARDS_BASELINE.md`.

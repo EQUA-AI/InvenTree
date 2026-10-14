@@ -86,7 +86,8 @@ belongs here, not in a standards decision**: is the signal rectified or
 RMS-converted at all, or is this a raw signed analogue word? Choosing mm/s would
 put a velocity on an operator's screen that goes negative.
 
-The half that is real, kept so it is not re-derived: at 474 rpm the factor is
+The half that is real, kept so it is not re-derived: *if* the shaft turns at 474 rpm -
+unverified, see STANDARDS_BASELINE.md section 8a - the factor is
 2*pi*f = 49.6, so the same motion reads about 20x larger in um than in mm/s, and
 medians of 0.035-0.21 on stopped machines fit a velocity transducer's noise floor
 rather than a proximity probe's resolution. Nothing can be settled on that. The
@@ -712,7 +713,10 @@ instrument range for a machine of this class, so "the converter saturated" and
 value. What is provable is that the reading sits exactly on the 32767 boundary.
 Which of the two it means is a question for the plant, and it is worth asking:
 every other bay's `SPEED` reads sub-rpm noise (-1.50, -0.67, -0.59), so this is
-the only bay where the distinction arises.
+the only bay where the distinction arises. **Status: unverified, validation
+pending** - the six-step signal-path check and evidence list are in
+STANDARDS_BASELINE.md section 8a. Not excluding it from coercion is not
+validation, and 474 rpm must not be used as a reference for other readings.
 
 Still unexplained: `18.96` (discharge pressure, full precision
 `18.962385177612305`) and `7.111` are **not** on this lattice. Their implied

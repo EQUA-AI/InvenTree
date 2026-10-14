@@ -55,6 +55,11 @@ class LimitsFileTests(TestCase):
                 self.assertTrue(entry['citation'].strip())
                 self.assertTrue(entry['reasoning'].strip())
                 self.assertTrue(entry['unit'].strip())
+                # Until the OEM schedule is in hand, nothing here is approved.
+                self.assertEqual(entry.get('status'), 'provisional')
+                self.assertIn('approved_basis', entry)
+                self.assertIsNone(entry['approved_basis'])
+                self.assertTrue(entry['basis_required'].strip())
                 for item in entry.get('exclude', []):
                     self.assertTrue(item['reason'].strip())
                     self.assertTrue(
@@ -220,6 +225,81 @@ class ApplyLimitsTests(ApplyLimitsEnv, TestCase):
         """It could never be reached, so it is a typo, not a policy."""
         with self.assertRaises(CommandError):
             self.run_command(self.document(warn_max=150))
+
+    def test_a_family_without_status_is_reported_provisional(self):
+        """An insulation class is not a protection setting; say so every run."""
+        output = self.run_command(self.document())
+
+        self.assertIn('PROVISIONAL Stator winding ETDs', output)
+        self.assertIn('OEM alarm/trip schedule', output)
+
+    def test_a_provisional_family_names_what_would_replace_it(self):
+        """The operator sees which document closes the gap."""
+        output = self.run_command(
+            self.document(status='provisional', basis_required='the BHEL RTD schedule')
+        )
+
+        self.assertIn('replace with the BHEL RTD schedule', output)
+
+    def test_an_approved_family_is_not_flagged(self):
+        """Once the design basis is cited, the warning goes away."""
+        output = self.run_command(
+            self.document(
+                status='approved',
+                approved_basis={
+                    'document': 'OEM O&M manual MTR-001',
+                    'revision': 'Rev 3',
+                    'section': 'Table 4',
+                    'applies_to': 'Pump 01-04 stator winding RTDs',
+                },
+            )
+        )
+
+        self.assertNotIn('PROVISIONAL', output)
+
+    def test_an_approved_family_without_its_basis_is_refused(self):
+        """Approval without a motor-specific document is a relabelled guess."""
+        with self.assertRaises(CommandError):
+            self.run_command(self.document(status='approved'))
+
+    def test_an_approved_family_with_a_null_basis_is_refused(self):
+        """``null`` must not stringify into a citation."""
+        with self.assertRaises(CommandError):
+            self.run_command(self.document(status='approved', approved_basis=None))
+
+    def test_a_free_text_basis_is_refused(self):
+        """A sentence like 'class F' is not a document, revision and table."""
+        with self.assertRaises(CommandError):
+            self.run_command(
+                self.document(status='approved', approved_basis='Class F insulation')
+            )
+
+    def test_a_basis_without_applicability_is_refused(self):
+        """The document must be confirmed to cover these motors and sensors."""
+        with self.assertRaises(CommandError):
+            self.run_command(
+                self.document(
+                    status='approved',
+                    approved_basis={
+                        'document': 'OEM O&M manual MTR-001',
+                        'revision': 'Rev 3',
+                        'section': 'Table 4',
+                    },
+                )
+            )
+
+    def test_a_provisional_family_with_a_null_basis_is_accepted(self):
+        """The shipped file's form: provisional, nothing approved yet."""
+        output = self.run_command(
+            self.document(status='provisional', approved_basis=None)
+        )
+
+        self.assertIn('PROVISIONAL Stator winding ETDs', output)
+
+    def test_an_unknown_status_is_refused(self):
+        """A typo must not silently read as approved."""
+        with self.assertRaises(CommandError):
+            self.run_command(self.document(status='validated'))
 
 
 class ApplyLimitsEvaluationTests(ApplyLimitsEnv, TestCase):

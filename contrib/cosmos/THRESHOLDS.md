@@ -279,7 +279,9 @@ relative error identical to the confirmed positive vibration rail - but 474.06
 rpm is also a plausible instrument range for this machine, so "the converter
 saturated" and "the machine is at the top of its range" cannot be told apart
 from the value. Provable: the reading sits exactly on the 32767 boundary. Not
-provable: which of the two that means. See BLOCKERS.md.
+provable: which of the two that means. **Status: unverified, validation
+pending; not corroboration of the rpm unit anywhere.** See BLOCKERS.md and
+STANDARDS_BASELINE.md section 8a.
 
 `18.96` and `7.111` are *not* on this lattice. Their implied scalars land within
 6e-5 of `0.32` and `0.12`, suggestive of the same mechanism on a different
@@ -565,9 +567,10 @@ limits now live are right. Ready to forward as-is:
 > held to class B, which is the usual Indian practice for machines of this class
 > but is not the same as reading your plate.
 >
-> If the assumption is wrong the alarm points move by 25 to 30 degC. One
-> direction gives nuisance alarms. The other is worse: a genuinely hot machine
-> stays quiet. We would rather read the plate than keep guessing.
+> If the assumption is wrong, the alarm points have to move. One direction gives
+> nuisance alarms. The other is worse: a genuinely hot machine stays quiet. The
+> plate shows us whether that has happened. The O&M manual's own RTD alarm and
+> trip schedule, if there is one, is what we would set.
 
 **Why three and not one.** An earlier version of this request asked for a single
 plate on the grounds that the machines are identical. The public procurement
@@ -653,8 +656,11 @@ Ordered by how much each one moves. The first alone swings the winding band by
     engineering range and range scalar, whether the zero offset is trimmed -
     29 of 158 sit a few counts either side of zero - and the transducer type
     and mounting. Without the quantity, ISO 20816 cannot be entered at all;
-    with it, the part still has to be settled (Part 5 for pumping plants, or
-    Part 7 for rotordynamic pumps - cl. 1 routes these machines to both).
+    with it, the part still has to be settled. *(2026-10-14: ISO 20816-5:2018
+    excludes pumps in ordinary industrial installations, so ISO 10816-7:2009 -
+    velocity on non-rotating parts, still current - is the likelier reference.
+    Its >200 kW zone boundaries are in STANDARDS_BASELINE.md section 7, as
+    reference values only.)*
 18. **Why is every vibration channel on the one running bay railed?** All five
     of Millbrook/Saraswati Pump 05's vibration points sit exactly on the
     positive rail. That is the only loaded data the estate has, so this single

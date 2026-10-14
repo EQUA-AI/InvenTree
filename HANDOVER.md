@@ -350,7 +350,8 @@ how it was run without writing.
       voltages; unprefixed `PUMP_GUIDE_BEARING_PAD_TEMP1-8`, probably upper
       but unproven; winding RTD 13-18, past the catalogue's 12; barrel air),
       8 average current / line-to-line voltage (unit unconfirmable while
-      idle), 6 RTDs that read only the -1 sentinel. Every importer mapping
+      idle), 6 RTDs that read only -1 (with good quality; not a standard
+      OPC UA fault code, so whether they are wired is a plant question). Every importer mapping
       approved is identical to Maple Grove's. Dry-run apply passed, backup
       `InvenTree-db-2026-10-13-110421.psql.bin.gz`, then
       `onboard_pumphouse_estate … --activate` (manifest now names the
@@ -399,6 +400,34 @@ how it was run without writing.
     - `data/plugins.txt` deduplicated (one `inventree-brother-plugin` line;
       backup `data/plugins.txt.bak-20261013`). Its hash still differs from
       Azure's, so item 11's warning stands.
+13. Standards review, 2026-10-14 (`contrib/cosmos/STANDARDS_BASELINE.md`). Both
+    armed limit rows (winding 125/145, core backstop) are now marked
+    `"status": "provisional"` with `basis_required` in the limits file.
+    `apply_signal_limits` prints a `PROVISIONAL` line for them on every run and
+    refuses `"approved"` without an `approved_basis`. The numbers did not
+    change and the database was not touched; re-running the command is not
+    needed. THRESHOLDS.md and PLANT_INPUT_REQUEST.md no longer present
+    150/155, 110/125 or 120/145 °C as derived settings, or a 5 °C
+    guide/thrust offset as a rule. Both limit rows carry
+    `"approved_basis": null`; approval now requires a structured basis
+    (document, revision, section, applies_to) per STANDARDS_BASELINE.md
+    section 2. Do not raise, lower or disable 125/145 on insulation-class
+    assumptions; they stay armed pending the protection engineer's review.
+14. RPM validation - Maple Grove, Pine Hollow and Cedar Creek (status:
+    unverified, pending). The 474 rpm reading is not corroborated. The
+    reported raw value equals +32767 counts, the maximum positive value of a
+    signed 16-bit integer. Converter saturation, clipping and scaling errors
+    have not been ruled out. Validation remains pending review of the source
+    data, converter configuration, PLC scaling and an independent speed
+    reference. The reading must not be treated as a verified RPM value until
+    these checks are complete. The reading is Millbrook `PUMP5_SPEED`. The
+    "corroborated under load (474 rpm)" notes are in the Maple Grove (4) and
+    Cedar Creek (14) review packs; Pine Hollow has none, correcting the
+    earlier version of this item. The packs are applied and stay unedited for
+    audit; this item and STANDARDS_BASELINE.md section 8a carry the
+    correction. Do not use 474 rpm to calibrate other readings. The "unit V
+    corroborated" notes (4 + 13) rest on the same bay's railed field voltage
+    and are uncorroborated too.
 
 ## 8. Further reading
 
@@ -410,6 +439,8 @@ how it was run without writing.
 | `contrib/cosmos/D17_IDENTITY.md` | Which identity reads Cosmos; read-only proof; asks for the Azure owner |
 | `contrib/cosmos/README.md` | The Cosmos container and its tools |
 | `contrib/cosmos/THRESHOLDS.md` | How limits were reviewed and what each means |
+| `contrib/cosmos/STANDARDS_BASELINE.md` | What standards settle vs. what needs plant data; vibration/OPC UA/forebay baselines |
+| `contrib/cosmos/PLANT_INPUT_REQUEST.md` | The questions for the plant / MEIL |
 | `contrib/cosmos/DEPLOYMENT_CHECKLIST.md`, `BLOCKERS.md` | Rollout steps and known blockers |
 | `contrib/container/DEV_RUNBOOK.md` | Building and restarting the dev stack |
 | `contrib/container/asset-locations.md` | The physical-location workspace on the Machines page |

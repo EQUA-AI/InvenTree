@@ -60,6 +60,20 @@ from machine_health.services import anomalies as anomaly_services
 #: ``signal_kind`` is empty estate-wide, and a component mixes winding with core.
 VOTE_FIELDS = ('vote_group', 'vote_minimum')
 
+#: Whether a family's figures come from the motor-specific design basis (OEM
+#: alarm/trip schedule, nameplate, heat-run report) or are an interim setting.
+#: An insulation class alone is a thermal classification, not a protection
+#: setting, so a family derived from one must say it is provisional - and the
+#: command repeats that on every run, so nobody mistakes it for an OEM figure.
+LIMIT_STATUSES = ('provisional', 'approved')
+
+#: What an approval must point at. A free-text basis lets "class F" or "None"
+#: pass as a citation, so an approved family names the exact OEM or design
+#: document, its revision, the section or table that carries the figures, and
+#: the motors and sensors it was confirmed to apply to. Provisional families
+#: carry ``"approved_basis": null``.
+APPROVED_BASIS_FIELDS = ('document', 'revision', 'section', 'applies_to')
+
 #: The six bounds a family entry may carry.
 BOUNDS = (
     'normal_min',
@@ -106,6 +120,28 @@ class Command(BaseCommand):
             if not str(entry.get(field, '')).strip():
                 raise CommandError(
                     f'{entry.get("family", "<unnamed>")}: {field} is required.'
+                )
+        status = entry.get('status', 'provisional')
+        if status not in LIMIT_STATUSES:
+            raise CommandError(
+                f'{entry["family"]}: status must be one of {LIMIT_STATUSES}.'
+            )
+        if status == 'approved':
+            basis = entry.get('approved_basis')
+            missing = (
+                list(APPROVED_BASIS_FIELDS)
+                if not isinstance(basis, dict)
+                else [
+                    name
+                    for name in APPROVED_BASIS_FIELDS
+                    if basis.get(name) is None or not str(basis[name]).strip()
+                ]
+            )
+            if missing:
+                raise CommandError(
+                    f'{entry["family"]}: an approved family must cite the '
+                    'motor-specific design basis in approved_basis '
+                    f'(missing: {", ".join(missing)}).'
                 )
         bounds = {name: entry[name] for name in BOUNDS if entry.get(name) is not None}
         if not bounds:
@@ -256,6 +292,14 @@ class Command(BaseCommand):
                     f'{len(wrong_unit)} skipped on unit, '
                     f'{len(hit)} excluded by name'
                 )
+                if entry.get('status', 'provisional') == 'provisional':
+                    needed = str(entry.get('basis_required', '')).strip() or (
+                        'the OEM alarm/trip schedule for these machines'
+                    )
+                    report.append(
+                        f'  PROVISIONAL {entry["family"]}: not an OEM or '
+                        f'design-basis setting; replace with {needed}'
+                    )
 
                 if minimum:
                     # A vote minimum larger than the group makes CRITICAL
