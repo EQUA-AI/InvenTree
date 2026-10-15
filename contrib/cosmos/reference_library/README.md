@@ -30,7 +30,7 @@ real plant's RTD schedule.
 | Pack section | Destination in AIMMS | Status |
 |---|---|---|
 | `00_Start_Here` | Package index and integrity records. Keep with the pack. | Not uploaded |
-| `01_Equipment_Manuals_and_Drawings`: the 50 workbook-selected documents (Attachment Plan `CC-DOC-01..50`) | Link-only attachment, either on the family part `CC-REF-Pnn` (pump-train roles, linked to all 14 pumps through `MachinePart`) or on the support machine with serial `CC-REF-Pnn-01` | Command below. 22 linked on Azure (attachments 37-58), 28 held; files stored on the sandbox only |
+| `01_Equipment_Manuals_and_Drawings`: the 50 workbook-selected documents (Attachment Plan `CC-DOC-01..50`) | Link-only attachment, either on the family part `CC-REF-Pnn` (pump-train roles, linked to all 14 pumps through `MachinePart`) or on the support machine with serial `CC-REF-Pnn-01` | Command below. 22 linked on Azure (attachments 37-58), 28 held; files stored on the sandbox; Azure share pending |
 | `01_…`: the other ~2,300 OEM objects | The same targets, once someone picks which ones to add. `contrib/cosmos/devtools/build_reference_upload_plan.py` classifies every file (upload, hold, skip, non-English, superseded) | Not done; needs selection and a rights decision |
 | `01_…/90_Held_Originals_Format_Review`, Val-Matic files (373 `HOLD_PROTECTED…`) | Nowhere until the Val-Matic company-use basis is established (`EXT-RIGHTS-VALMATIC`) or the file is repaired | Held |
 | `02_Compliance_and_Reporting` | No compliance model yet (Import Sequence step 16). Never attach regulatory text to a machine | Held |
@@ -135,27 +135,89 @@ The Cedar Creek records sit under client `internal`, as the population left
 them. To undo the apply, delete those 22 attachment rows, which are
 identified by `metadata.aimms_reference_pack`, or restore the backup.
 
-## Why the files are not on Azure yet
+## Files on Azure: Azure Files share (pending the owner)
 
-The owner decided on 2026-10-15 to store the files. The only process with
-the merged code that writes to the Azure database is the local
-`aimms-azure-server` container. Its media root is `/home/inventree/data/media`
-on this Mac, and the repository configures no shared media store (no blob or
-S3 storage). The deployed dev app still runs the older code. Storing files
-from here would leave Azure rows pointing at files that exist only on one
-laptop, so the command refuses (`--shared-media` gate).
+The owner decided on 2026-10-15 to put the files on Azure. The chosen
+store is an **Azure Files share mounted as the app's media root**. Two
+other options were ruled out:
 
-To finish, configure the deployment's shared media storage (for example
-Azure Blob through django-storages). Then run, from a process that uses
-that storage:
+- Container-local disk is wiped on redeploy, and web and worker do not
+  share it.
+- This InvenTree build supports only local, S3 and SFTP storage, so Azure
+  Blob would need a code change.
+
+A share mounted at `/home/inventree/data/media` looks like a local folder.
+It needs no code change, it survives redeploys, and web and worker share it.
+
+Upload limit: Azure's `INVENTREE_UPLOAD_MAX_SIZE` was already **500 MB**,
+which covers the 43 MB largest manual. A change on 2026-10-15 briefly set it
+to 45 and was reverted to 500 straight away, so there is no net change. The
+nginx and Caddy configs allow 100 MB. The sandbox was raised from 10 to 45
+MB and now stores all 22 files (212.7 MB).
+
+### 1. Owner: create the share and grant access
+
+`Aniket@equa.work` only has roles on the Cosmos and Postgres resources, so it
+cannot create resources in `EpconChat`. Someone with Owner or Contributor on
+the group runs:
 
 ```
-attach_reference_library ... --with-files --dry-run
-attach_reference_library ... --with-files --apply --allow-remote --shared-media --backup-ref <backup>
+az storage account create -g EpconChat -n <account> -l <region of EpconChat> \
+  --sku Standard_LRS --kind StorageV2 --min-tls-version TLS1_2 \
+  --allow-blob-public-access false
+az storage share-rm create -g EpconChat --storage-account <account> \
+  -n aimms-media --quota 50
+az role assignment create --assignee Aniket@equa.work \
+  --role "Storage Account Contributor" \
+  --scope $(az storage account show -g EpconChat -n <account> --query id -o tsv)
 ```
 
-The 22 existing links will gain their files (add_file). The 7 large manuals
-need `INVENTREE_UPLOAD_MAX_SIZE` raised to at least 45 MB if they are to be
-stored too; that is an admin setting and was not changed. With files stored
-and the attachment-RAG flags on, the documents become searchable by the AI
-as `attachment_uploaded` sources, never as maintenance authority.
+### 2 and 3. Write the rows and copy the files (one command)
+
+```
+STORAGE_ACCOUNT=<account> BACKUP_REF=<fresh dbbackup file> \
+  contrib/cosmos/reference_library/publish_media_to_azure_files.sh plan
+STORAGE_ACCOUNT=<account> BACKUP_REF=<fresh dbbackup file> \
+  contrib/cosmos/reference_library/publish_media_to_azure_files.sh apply
+```
+
+The script does the following:
+
+- It checks that the share is reachable.
+- It runs `attach_reference_library --with-files --apply --allow-remote
+  --shared-media` in `aimms-azure-server`, so the 22 existing links gain
+  their files (add_file).
+- It stages exactly those files from `data/media` at the paths the rows
+  record, and re-verifies each SHA-256 against the attachment metadata.
+- It uploads them with `az storage file upload-batch`.
+- It confirms that every file is on the share with the database size.
+
+The storage key is read into the environment of the az calls and never
+printed. On 2026-10-15 it was tested end to end on the sandbox with
+`SKIP_UPLOAD=1`: 22 files staged and every SHA-256 verified.
+
+Take a fresh `dbbackup` first. The latest is
+`InvenTree-db-2026-10-15-081930.psql.bin.gz` (sha256
+`0391c02b832eea3ac469a0ad87e26c72ea3a2e367d84911a189f3db4dbbf8b30`).
+
+### 4. Whoever runs the deployed app: mount the share
+
+Mount the share at `/home/inventree/data/media`, read-write, on **both** web
+and worker:
+
+- Container Apps: `az containerapp env storage set --storage-name aimms-media
+  --azure-file-account-name <account> --azure-file-share-name aimms-media
+  --access-mode ReadWrite ...`, then add a volume of type `AzureFile` mounted at
+  the media path in both apps.
+- App Service: `az webapp config storage-account add --custom-id media
+  --storage-type AzureFiles --account-name <account> --share-name aimms-media
+  --mount-path /home/inventree/data/media ...`.
+- Docker host: an SMB/CIFS mount of the share bound into the containers.
+
+Before mounting, copy the app's existing media into the share. A mount hides
+whatever is already at that path, which includes existing part images and
+attachments.
+
+Until the share is mounted, the 22 rows on Azure stay link-only. Their
+`metadata.aimms_reference_pack.package_relative_path` still names each file
+in the pack.

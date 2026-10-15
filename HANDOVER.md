@@ -443,12 +443,16 @@ how it was run without writing.
     - Applied on Azure on 2026-10-15 as links: attachments 37 to 58. It was
       preceded by a backup, `InvenTree-db-2026-10-15-073236.psql.bin.gz`
       (sha256 `6cdae009…011a`), a plan and a dry run.
-    - The owner decided to store the files (`--with-files`). This was done on
-      the sandbox only: 15 files stored, 7 over the 10 MB limit. Not done on
-      Azure, because no shared media store is configured: files written from
-      the local container would exist only on this Mac. That needs the
-      deployment's media storage first (README, "Why the files are not on
-      Azure yet").
+    - Files: the owner decided to store them on Azure, in an Azure Files share
+      mounted as the media root. Blob isn't supported by this build, and
+      container disk is lost on redeploy. Blocked on access: this account
+      has no rights to create resources in `EpconChat`. The owner commands,
+      the one-step `publish_media_to_azure_files.sh` (tested on the sandbox,
+      no upload) and the mount steps are in the README section "Files on
+      Azure". The sandbox stores all 22 files (limit raised to 45 MB there).
+      Azure's upload limit was already 500 MB; a brief change to 45 was
+      reverted to 500 the same minute. Backup taken before it:
+      `InvenTree-db-2026-10-15-081930.psql.bin.gz`.
     - `contrib/cosmos/devtools/build_reference_upload_plan.py` classifies all
       4,184 pack files by destination (read-only).
     - The 84 pump-train photos and diagrams must come from the plant.
