@@ -431,11 +431,25 @@ how it was run without writing.
     correction. Do not use 474 rpm to calibrate other readings. The "unit V
     corroborated" notes (4 + 13) rest on the same bay's railed field voltage
     and are uncorroborated too.
+15. External reference pack "AIMMS Demo Data Final" (reviewed 2026-10-15,
+    `contrib/cosmos/reference_library/README.md`).
+    - It answers none of the plant questions in items 13 and 14.
+    - `manage.py attach_reference_library` links the workbook's 50
+      reference-library documents as link-only attachments. The targets are
+      the family part `CC-REF-Pnn` (pump roles) or the support machine
+      `CC-REF-Pnn-01`.
+    - 22 rows are linked and 28 are held (rights, format, missing, or a
+      reviewed hold in `reference_library/attachment_review.json`).
+    - It has been applied on the local sandbox only. It is not applied on
+      Azure (backup, plan and dry run first).
+    - The owner must decide whether OEM PDFs may be stored as files.
+    - The 84 pump-train photos and diagrams must come from the plant.
 
 ## 8. Further reading
 
 | Document | Covers |
 |---|---|
+| `contrib/cosmos/reference_library/README.md` | Where each part of the external reference pack goes; the link command and its holds |
 | `contrib/cosmos/HANDOFF.md` | Plant configuration step by step: source, dictionary review, schematic, activation |
 | `contrib/cosmos/POPULATION_ROLLBACK.md` | What a workbook population run changes and how to undo it |
 | `contrib/cosmos/demo/cedar-creek/README.md` | Portable Cedar Creek demo dataset: manifest, build, restore |

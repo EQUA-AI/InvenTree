@@ -1,0 +1,19 @@
+{
+  "reviewed_on": "2026-10-15",
+  "pack": "AIMMS Demo Data Final (research cutoff 2026-10-05)",
+  "workbook_sha256": "f9006a91f8a941d69f69a2d124058b8874047ff80d7dd51417212a786da7e7b5",
+  "basis": "Catalogued title, page count and source host from the pack SOURCE_CATALOG and the workbook Attachment Plan. These holds are about whether the linked document is the role's OEM manual; they make no claim about the plant. Remove a key to release it once a person has opened the document and confirmed it.",
+  "holds": {
+    "CC-DOC-01": "Source URL is a third-party mirror (goodluckmkt.com), not KSB; the catalogued title says 'mirror'.",
+    "CC-DOC-12": "Catalogued title 'Accessibility', 1 page, from mcwane.com: not shown to be a Waterman SS250 slide-gate manual.",
+    "CC-DOC-16": "Catalogued title 'Arc flash marking': not shown to be the CENTERLINE 2100 MCC manual.",
+    "CC-DOC-35": "Alfa Laval connectivity sensor kit installation manual: not shown to cover the T6-BFG heat exchanger.",
+    "CC-DOC-39": "Greenheck isolator mounting IOM (2 pages): an accessory document, not shown to be the BSQ fan manual.",
+    "CC-DOC-42": "BILCO commercial products catalogue from a regional site: a catalogue, not the J-AL access-cover instructions.",
+    "CC-DOC-28": "Endress+Hauser BA01063DCS_0820 is not the English edition; the pack also holds BA01063DEN_0921.",
+    "CC-DOC-29": "Endress+Hauser BA02011PDE_0522-00 is not the English edition; the pack also holds BA02011PEN_0925-00.",
+    "CC-DOC-34": "Endress+Hauser BA00444CCS_1613 is not the English edition; the pack also holds BA00444CEN_3225-00.",
+    "CC-DOC-46": "Endress+Hauser BA01988CBG_0220 is not the English edition; the pack also holds BA01988CEN_0526-00.",
+    "CC-DOC-47": "Endress+Hauser BA00461CBG_1819 is not the English edition; the pack also holds BA00461CEN_2124-00."
+  }
+}
