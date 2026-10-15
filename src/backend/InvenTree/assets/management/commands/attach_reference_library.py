@@ -7,13 +7,17 @@ Modes, as for ``populate_from_workbook``:
 ``--apply``    keep them. Requires ``--backup-ref`` and, for a non-local
                database host, ``--allow-remote``.
 
-Only link-only attachments are created; no document bytes are uploaded.
+Link-only attachments by default. ``--with-files`` also stores each pack
+file (sha256-checked) in the configured media storage; against a non-local
+database it additionally needs ``--shared-media``, confirming that this
+process's media storage is the one the deployed app serves.
 See ``assets/reference_library.py`` for the hold rules.
 """
 
 import json
 from pathlib import Path
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 
@@ -57,6 +61,19 @@ class Command(BaseCommand):
         mode.add_argument('--apply', action='store_true', help='Keep the writes')
         parser.add_argument('--actor', help='Username recorded as the uploader')
         parser.add_argument(
+            '--with-files',
+            action='store_true',
+            help='Store the pack file on each attachment as well as the link',
+        )
+        parser.add_argument(
+            '--shared-media',
+            action='store_true',
+            help=(
+                'Confirm this process writes to the media storage the deployed app '
+                'serves (required for --with-files against a non-local database)'
+            ),
+        )
+        parser.add_argument(
             '--backup-ref', help='Identifier of the database backup taken first'
         )
         parser.add_argument(
@@ -82,6 +99,14 @@ class Command(BaseCommand):
                     f'Database host {database_host()!r} is not local; re-run with '
                     '--allow-remote once the owner has approved the write.'
                 )
+        if (apply or dry_run) and options['with_files']:
+            if not is_local_database() and not options['shared_media']:
+                raise CommandError(
+                    f'--with-files against {database_host()!r} would store files in '
+                    f'{settings.MEDIA_ROOT!r} on this host while the database row is '
+                    'shared; add --shared-media only if that storage is the one the '
+                    'deployed app serves.'
+                )
         try:
             sha, rows, manual = load_attachment_plan(options['workbook'])
             manifest, catalog = load_pack_index(options['pack'])
@@ -95,6 +120,7 @@ class Command(BaseCommand):
                 ipn_prefix=options['ipn_prefix'],
                 workbook_sha256=sha,
                 manual=manual,
+                with_files=options['with_files'],
             )
         except ReferenceLibraryError as exc:
             raise CommandError(str(exc)) from exc
@@ -137,6 +163,10 @@ class Command(BaseCommand):
                 else row['ipn']
             )
             line = f'  {row["action"]:<9} {row["key"]:<10} {where[:48]:<48} {row["title"][:50]}'
+            if row['upload_file']:
+                line += ' [+file]'
+            if row['file_note']:
+                line += f' [{row["file_note"]}]'
             if row['reason']:
                 line += f' -- {row["reason"]}'
             self.stdout.write(line)
@@ -151,6 +181,6 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.SUCCESS(
                     f'{label} against {payload["database_host"]!r}: '
-                    f'{len(payload["created"])} link attachments'
+                    f'{len(payload["created"])} attachments written'
                 )
             )

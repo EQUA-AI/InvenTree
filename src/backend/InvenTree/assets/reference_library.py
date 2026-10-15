@@ -11,9 +11,13 @@ consolidated external-reference pack (``AIMMS Demo Data Final``). Only
   an unlinked part attachment falls back to the ``internal`` client scope;
 * otherwise the family part.
 
-No file bytes are copied: the pack's rights review says public
-retrieval is not a licence to reproduce OEM documents, and link-only
-attachments are never fetched or indexed by the attachment-RAG pipeline.
+No file bytes are copied by default; link-only attachments are never fetched
+or indexed by the attachment-RAG pipeline. With ``with_files=True`` (owner
+decision of 2026-10-15 to store OEM documents) the pack file is also stored
+on the attachment after its SHA-256 is checked against the manifest. Files
+above the ``INVENTREE_UPLOAD_MAX_SIZE`` setting stay link-only with a note,
+and an existing link-only attachment gains its file (action ``add_file``).
+The pack's own rights and format holds apply in both modes.
 
 A row is held, not linked, when any of these is true:
 
@@ -83,6 +87,8 @@ class PlanRow:
     target_pk: int | None = None
     target_label: str = ''
     approval_status: str = ''
+    upload_file: bool = False
+    file_note: str = ''
 
 
 @dataclass
@@ -92,6 +98,8 @@ class ReferencePlan:
     workbook_sha256: str
     rows: list[PlanRow] = field(default_factory=list)
     manual: dict[str, int] = field(default_factory=dict)
+    pack_dir: str = ''
+    with_files: bool = False
 
     def counts(self) -> dict[str, int]:
         """Rows per action."""
@@ -101,6 +109,7 @@ class ReferencePlan:
         """JSON-serialisable view."""
         return {
             'workbook_sha256': self.workbook_sha256,
+            'with_files': self.with_files,
             'counts': self.counts(),
             'manual': self.manual,
             'rows': [asdict(row) for row in self.rows],
@@ -237,6 +246,22 @@ def _existing_attachment(model_type: str, pk: int, key: str, url: str):
     )
 
 
+def upload_limit_bytes() -> int:
+    """The configured attachment size limit in bytes."""
+    from common.settings import get_global_setting
+
+    megabytes = get_global_setting('INVENTREE_UPLOAD_MAX_SIZE', create=False) or 10
+    return int(megabytes) * 1024 * 1024
+
+
+def _sha256(file: Path) -> str:
+    digest = hashlib.sha256()
+    with file.open('rb') as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def resolve_target(ipn: str) -> tuple[str, int | None, str, str]:
     """(model_type, pk, label, problem) for a family IPN such as ``CC-REF-P11``.
 
@@ -274,10 +299,17 @@ def plan_reference_links(
     ipn_prefix: str = 'CC-REF-',
     workbook_sha256: str = '',
     manual: dict[str, int] | None = None,
+    with_files: bool = False,
 ) -> ReferencePlan:
     """Decide an action for each reference-library row. Reads, never writes."""
-    plan = ReferencePlan(workbook_sha256=workbook_sha256, manual=dict(manual or {}))
+    plan = ReferencePlan(
+        workbook_sha256=workbook_sha256,
+        manual=dict(manual or {}),
+        pack_dir=str(pack_dir),
+        with_files=with_files,
+    )
     root = Path(pack_dir)
+    limit = upload_limit_bytes() if with_files else 0
     for cell in rows:
         key = cell['attachment_key']
         role = cell['target'][len(TARGET_PREFIX) :]
@@ -298,7 +330,14 @@ def plan_reference_links(
             'approval_status': cell['approval_status'],
         }
 
-        def row(action, reason='', path='', target=('', None, ''), _c=common):
+        def row(
+            action,
+            reason='',
+            path='',
+            target=('', None, ''),
+            upload=(False, ''),
+            _c=common,
+        ):
             return PlanRow(
                 **_c,
                 action=action,
@@ -307,6 +346,8 @@ def plan_reference_links(
                 target_type=target[0],
                 target_pk=target[1],
                 target_label=target[2],
+                upload_file=upload[0],
+                file_note=upload[1],
             )
 
         if not sha:
@@ -342,13 +383,33 @@ def plan_reference_links(
             plan.rows.append(row(action, problem, path))
             continue
         target = (model_type, pk, label)
+        upload = (False, '')
+        if with_files:
+            size = file.stat().st_size
+            if size > limit:
+                upload = (
+                    False,
+                    f'link only: {size} bytes exceeds upload limit {limit}',
+                )
+            elif _sha256(file) != sha:
+                plan.rows.append(
+                    row('held', 'pack file sha256 differs from manifest', path)
+                )
+                continue
+            else:
+                upload = (True, '')
         existing = _existing_attachment(model_type, pk, key, url)
         if existing is not None:
-            plan.rows.append(
-                row('unchanged', f'attachment {existing.pk}', path, target)
-            )
+            if upload[0] and not existing.attachment:
+                plan.rows.append(
+                    row('add_file', f'attachment {existing.pk}', path, target, upload)
+                )
+            else:
+                plan.rows.append(
+                    row('unchanged', f'attachment {existing.pk}', path, target, upload)
+                )
             continue
-        plan.rows.append(row('create', '', path, target))
+        plan.rows.append(row('create', '', path, target, upload))
     return plan
 
 
@@ -363,6 +424,17 @@ def _comment(row: PlanRow) -> str:
     return text if len(text) <= COMMENT_MAX else text[: COMMENT_MAX - 1] + '…'
 
 
+def _store_file(attachment, plan: ReferencePlan, row: PlanRow) -> None:
+    """Put the pack file on the attachment, re-checking its hash first."""
+    from django.core.files import File
+
+    source = Path(plan.pack_dir) / row.package_path
+    if _sha256(source) != row.sha256:
+        raise ReferenceLibraryError(f'{row.key}: pack file changed since planning')
+    with source.open('rb') as handle:
+        attachment.attachment.save(source.name, File(handle), save=False)
+
+
 def apply_reference_links(plan: ReferencePlan, actor=None, *, dry_run: bool) -> dict:
     """Create the planned link-only attachments in one transaction."""
     from django.db import transaction
@@ -372,6 +444,17 @@ def apply_reference_links(plan: ReferencePlan, actor=None, *, dry_run: bool) -> 
     created: list[dict] = []
     with transaction.atomic():
         for row in plan.rows:
+            if row.action == 'add_file':
+                attachment = Attachment.objects.get(pk=int(row.reason.split()[-1]))
+                _store_file(attachment, plan, row)
+                attachment.save()
+                created.append({
+                    'key': row.key,
+                    'target': f'{row.target_type}:{row.target_label}',
+                    'attachment': attachment.pk,
+                    'file': True,
+                })
+                continue
             if row.action != 'create':
                 continue
             attachment = Attachment(
@@ -392,11 +475,14 @@ def apply_reference_links(plan: ReferencePlan, actor=None, *, dry_run: bool) -> 
                 },
             )
             attachment.full_clean(exclude=['attachment', 'thumbnail'])
-            attachment.save(rebuild=False)
+            if row.upload_file:
+                _store_file(attachment, plan, row)
+            attachment.save(rebuild=row.upload_file)
             created.append({
                 'key': row.key,
                 'target': f'{row.target_type}:{row.target_label}',
                 'attachment': attachment.pk,
+                'file': row.upload_file,
             })
         if dry_run:
             transaction.set_rollback(True)

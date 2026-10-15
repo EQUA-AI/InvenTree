@@ -30,7 +30,7 @@ real plant's RTD schedule.
 | Pack section | Destination in AIMMS | Status |
 |---|---|---|
 | `00_Start_Here` | Package index and integrity records. Keep with the pack. | Not uploaded |
-| `01_Equipment_Manuals_and_Drawings`: the 50 workbook-selected documents (Attachment Plan `CC-DOC-01..50`) | Link-only attachment, either on the family part `CC-REF-Pnn` (pump-train roles, linked to all 14 pumps through `MachinePart`) or on the support machine with serial `CC-REF-Pnn-01` | Command below. 22 linked in the sandbox, 28 held |
+| `01_Equipment_Manuals_and_Drawings`: the 50 workbook-selected documents (Attachment Plan `CC-DOC-01..50`) | Link-only attachment, either on the family part `CC-REF-Pnn` (pump-train roles, linked to all 14 pumps through `MachinePart`) or on the support machine with serial `CC-REF-Pnn-01` | Command below. 22 linked on Azure (attachments 37-58), 28 held; files stored on the sandbox only |
 | `01_…`: the other ~2,300 OEM objects | The same targets, once someone picks which ones to add. `contrib/cosmos/devtools/build_reference_upload_plan.py` classifies every file (upload, hold, skip, non-English, superseded) | Not done; needs selection and a rights decision |
 | `01_…/90_Held_Originals_Format_Review`, Val-Matic files (373 `HOLD_PROTECTED…`) | Nowhere until the Val-Matic company-use basis is established (`EXT-RIGHTS-VALMATIC`) or the file is repaired | Held |
 | `02_Compliance_and_Reporting` | No compliance model yet (Import Sequence step 16). Never attach regulatory text to a machine | Held |
@@ -74,10 +74,25 @@ metadata records:
 - the workbook hash;
 - the approval status `NOT_APPROVED_FOR_SELECTED_BUILD`.
 
-No bytes are copied. Link-only attachments are never fetched or indexed by
-the attachment-RAG pipeline (`structural_skip_reason` → `link_only`). The
-command checks each pack file's presence and manifest size. Replaying it is a
-no-op.
+By default no bytes are copied. Link-only attachments are never fetched or
+indexed by the attachment-RAG pipeline (`structural_skip_reason` →
+`link_only`). The command checks each pack file's presence and manifest
+size. Replaying it is a no-op.
+
+`--with-files` follows the owner's decision of 2026-10-15 to store the OEM
+documents as files:
+
+- It stores the pack file on the attachment and keeps the source link.
+- It re-checks the file's SHA-256 against the pack manifest when planning and
+  again just before writing.
+- An existing link-only attachment gains its file (action `add_file`) rather
+  than getting a duplicate.
+- Files above the `INVENTREE_UPLOAD_MAX_SIZE` setting (default 10 MB) stay
+  link-only, with a note in the plan.
+- The pack's own rights and format holds still apply.
+- Against a non-local database it refuses unless `--shared-media` is given.
+  The reason is that the file goes to the media storage of the process
+  running the command, while the database row is shared.
 
 ### The 28 held rows
 
@@ -95,22 +110,52 @@ no-op.
     pack also holds the English ones, and those can replace the workbook
     pick.
 
-Run on 2026-10-15 against the local sandbox only (`pop-pg`, throwaway):
+### Runs on 2026-10-15
 
-- the plan showed create=22, held=28;
-- the dry run rolled back;
-- the apply created 22 links;
-- the replay showed unchanged=22.
+**Local sandbox** (`pop-pg`, throwaway):
 
-Azure has not been touched. For Azure:
+- Links: the plan showed create=22, held=28. The dry run rolled back, the
+  apply created 22, and the replay showed unchanged=22.
+- `--with-files`: add_file=15, unchanged=7. The replay showed unchanged=22.
+- The 7 not stored exceed the 10 MB limit, so they stay links: CC-DOC-17
+  (39 MB), 18 (43 MB), 19 (17 MB), 21 (24 MB), 22 (14 MB), 24 (14 MB) and
+  31 (10.9 MB).
 
-1. Take `manage.py dbbackup` and record its sha256.
-2. Run `--plan`, then `--dry-run`.
-3. Run `--apply --backup-ref <file> --allow-remote` with owner approval.
+**Azure** (`inventree`, links only):
 
-## Decision needed from the owner
+1. Backup `data/backup/InvenTree-db-2026-10-15-073236.psql.bin.gz`. It passes
+   `gzip -t` and its sha256 is `6cdae009781f791d94d0c8cdbe243340d0b770ae83fd7686993f14592f08011a`.
+2. The plan showed create=22, held=28, the same as the sandbox.
+3. The dry run rolled back.
+4. `--apply --allow-remote --backup-ref InvenTree-db-2026-10-15-073236.psql.bin.gz`
+   created attachments 37 to 58.
+5. The replay showed unchanged=22.
 
-Uploading the PDFs themselves would make them readable in the app and
-indexable by the AI. It would also copy publisher-copyright documents into
-company storage, and the pack's rights review says that needs its own basis.
-Until that is decided, links are the only cleared form.
+The Cedar Creek records sit under client `internal`, as the population left
+them. To undo the apply, delete those 22 attachment rows, which are
+identified by `metadata.aimms_reference_pack`, or restore the backup.
+
+## Why the files are not on Azure yet
+
+The owner decided on 2026-10-15 to store the files. The only process with
+the merged code that writes to the Azure database is the local
+`aimms-azure-server` container. Its media root is `/home/inventree/data/media`
+on this Mac, and the repository configures no shared media store (no blob or
+S3 storage). The deployed dev app still runs the older code. Storing files
+from here would leave Azure rows pointing at files that exist only on one
+laptop, so the command refuses (`--shared-media` gate).
+
+To finish, configure the deployment's shared media storage (for example
+Azure Blob through django-storages). Then run, from a process that uses
+that storage:
+
+```
+attach_reference_library ... --with-files --dry-run
+attach_reference_library ... --with-files --apply --allow-remote --shared-media --backup-ref <backup>
+```
+
+The 22 existing links will gain their files (add_file). The 7 large manuals
+need `INVENTREE_UPLOAD_MAX_SIZE` raised to at least 45 MB if they are to be
+stored too; that is an admin setting and was not changed. With files stored
+and the attachment-RAG flags on, the documents become searchable by the AI
+as `attachment_uploaded` sources, never as maintenance authority.

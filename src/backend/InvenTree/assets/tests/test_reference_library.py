@@ -6,6 +6,7 @@ import json
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from django.core.management import call_command
 from django.core.management.base import CommandError
@@ -128,7 +129,9 @@ class ReferenceLibraryTests(TestCase):
         )
 
     def tearDown(self):
-        """Remove the temporary pack."""
+        """Remove stored attachment files and the temporary pack."""
+        for attachment in Attachment.objects.all():
+            attachment.delete()
         self.tmp.cleanup()
 
     def _csv(self, rel, records):
@@ -137,7 +140,7 @@ class ReferenceLibraryTests(TestCase):
             writer.writeheader()
             writer.writerows(records)
 
-    def _plan(self):
+    def _plan(self, with_files=False):
         sha, rows, manual = load_attachment_plan(self.workbook)
         manifest, catalog = load_pack_index(self.pack)
         return plan_reference_links(
@@ -148,6 +151,7 @@ class ReferenceLibraryTests(TestCase):
             pack_dir=self.pack,
             workbook_sha256=sha,
             manual=manual,
+            with_files=with_files,
         )
 
     def test_plan_applies_every_hold_rule(self):
@@ -229,3 +233,49 @@ class ReferenceLibraryTests(TestCase):
             'attach_reference_library', *args, '--apply', '--backup-ref', 'test', stdout=StringIO()
         )
         self.assertEqual(Attachment.objects.count(), 2)
+
+    def test_with_files_stores_verified_bytes(self):
+        """File mode stores the pack bytes on the attachment and keeps the link."""
+        result = apply_reference_links(self._plan(with_files=True), None, dry_run=False)
+        self.assertTrue(all(entry['file'] for entry in result['created']))
+        attachment = Attachment.objects.get(model_type='part')
+        self.assertTrue(attachment.attachment)
+        self.assertEqual(attachment.link, 'https://oem.example.com/P01.pdf')
+        with attachment.attachment.open('rb') as handle:
+            self.assertEqual(handle.read(), b'%PDF-1.4 ok')
+        replay = self._plan(with_files=True)
+        self.assertEqual(replay.counts()['unchanged'], 2)
+
+    def test_with_files_adds_file_to_existing_link(self):
+        """A link created earlier gains its file instead of a duplicate row."""
+        apply_reference_links(self._plan(), None, dry_run=False)
+        plan = self._plan(with_files=True)
+        self.assertEqual(plan.counts()['add_file'], 2)
+        apply_reference_links(plan, None, dry_run=False)
+        self.assertEqual(Attachment.objects.count(), 2)
+        self.assertTrue(all(a.attachment for a in Attachment.objects.all()))
+
+    def test_file_over_upload_limit_stays_link_only(self):
+        """Files above the upload limit are linked with a note, not stored."""
+        with patch('assets.reference_library.upload_limit_bytes', return_value=5):
+            plan = self._plan(with_files=True)
+        row = next(r for r in plan.rows if r.key == 'CC-DOC-01')
+        self.assertEqual(row.action, 'create')
+        self.assertFalse(row.upload_file)
+        self.assertIn('exceeds upload limit', row.file_note)
+
+    def test_with_files_refused_on_remote_database_without_shared_media(self):
+        """Remote file writes need an explicit shared-media confirmation."""
+        args = [str(self.workbook), '--pack', str(self.pack), '--review', str(self.review)]
+        module = 'assets.management.commands.attach_reference_library'
+        with patch(f'{module}.is_local_database', return_value=False):
+            with self.assertRaises(CommandError):
+                call_command(
+                    'attach_reference_library', *args, '--dry-run', '--with-files',
+                    stdout=StringIO(),
+                )
+            call_command(
+                'attach_reference_library', *args, '--dry-run', '--with-files',
+                '--shared-media', stdout=StringIO(),
+            )
+        self.assertEqual(Attachment.objects.count(), 0)
