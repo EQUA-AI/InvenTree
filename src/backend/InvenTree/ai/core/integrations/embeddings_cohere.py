@@ -1,4 +1,4 @@
-"""Cohere Embed v4 adapter for the attachment-RAG text space (R0).
+"""Cohere embedding adapter for the attachment-RAG text space.
 
 Serves the auto-ingested attachment corpus only. The governed
 controlled-document corpus stays on ``AzureOpenAIEmbeddingClient``
@@ -12,11 +12,14 @@ before the swap, so no stored vector was invalidated and no re-embed was
 needed. ``test_cohere_wire_request_matches_the_frozen_sdk_contract`` is what
 keeps that true.
 
-Note this endpoint speaks ONLY the Model Inference API: both OpenAI routes
+The legacy endpoint speaks ONLY the Model Inference API: both OpenAI routes
 (``/openai/v1/embeddings`` and ``/openai/deployments/{model}/embeddings``)
 return 404, so migrating to an OpenAI-shaped client is not available here --
 and would in any case drop ``input_type``, whose asymmetry is real and
 measured (cos(query, document) = 0.871 on identical text).
+
+Embed v5 Pro uses the native Cohere v2 API under ``/providers/cohere``.
+Select that transport explicitly; never silently fall back between APIs/models.
 """
 
 from __future__ import annotations
@@ -79,7 +82,13 @@ class CohereEmbeddingClient:
         dimensions: int,
         api_key: str = "",
         api_version: str = "2024-05-01-preview",
+        api: str = "model_inference",
     ) -> None:
+        if api not in ("model_inference", "cohere_v2"):
+            raise AttachmentEmbeddingError(
+                "Unsupported Cohere embedding API",
+                code="ATTACHMENT_EMBEDDING_CONFIG_INVALID",
+            )
         self._endpoint = endpoint
         self._model = model
         self._dimensions = dimensions
@@ -87,6 +96,7 @@ class CohereEmbeddingClient:
         # The retired SDK hardcoded this; as a setting it is the lever for the
         # real risk here -- Azure retiring the api-version, not the SDK.
         self._api_version = api_version
+        self._api = api
         self._token_provider: Any | None = None
         self._client: Any | None = None
 
@@ -117,6 +127,7 @@ class CohereEmbeddingClient:
             dimensions=settings.cohere_embed_dimensions,
             api_key=settings.cohere_embed_key,
             api_version=settings.cohere_embed_api_version,
+            api=settings.cohere_embed_api,
         )
 
     def _auth_header(self) -> str:
@@ -198,21 +209,38 @@ class CohereEmbeddingClient:
                 # Verified bit-identical against it live before the swap, so
                 # no vector in the corpus is invalidated by this transport.
                 http = self._get_client()
+                if self._api == "cohere_v2":
+                    path = "/v2/embed"
+                    params = {}
+                    payload = {
+                        "texts": chunk,
+                        "model": self._model,
+                        "output_dimension": self._dimensions,
+                        "input_type": {
+                            "document": "search_document",
+                            "query": "search_query",
+                        }[input_type],
+                        "embedding_types": ["float"],
+                    }
+                else:
+                    path = "/embeddings"
+                    params = {"api-version": self._api_version}
+                    payload = {
+                        "input": chunk,
+                        "model": self._model,
+                        "dimensions": self._dimensions,
+                        "input_type": input_type,
+                        "encoding_format": "float",
+                    }
                 raw = None
                 timeout = probe_timeout()
                 retries = _THROTTLE_RETRIES if timeout is None else 0
                 for attempt in range(retries + 1):
                     raw = http.post(
-                        "/embeddings",
-                        params={"api-version": self._api_version},
+                        path,
+                        params=params,
                         headers={"Authorization": self._auth_header()},
-                        json={
-                            "input": chunk,
-                            "model": self._model,
-                            "dimensions": self._dimensions,
-                            "input_type": input_type,
-                            "encoding_format": "float",
-                        },
+                        json=payload,
                         **({"timeout": probe_timeout()} if timeout is not None else {}),
                     )
                     if raw.status_code != 429 or attempt == retries:
@@ -255,7 +283,18 @@ class CohereEmbeddingClient:
             from ai.core.integrations.model_pins import record_resolved_model
 
             record_resolved_model(self._model, str(response.get("model") or ""))
-            for item in self._ordered_items(response.get("data")):
+            if self._api == "cohere_v2":
+                encoded = response.get("embeddings")
+                native_vectors = encoded.get("float") if isinstance(encoded, dict) else None
+                if not isinstance(native_vectors, list):
+                    raise AttachmentEmbeddingError(
+                        "Embedding response is not float-encoded",
+                        code="ATTACHMENT_EMBEDDING_MALFORMED",
+                    )
+                items = [{"embedding": vector} for vector in native_vectors]
+            else:
+                items = self._ordered_items(response.get("data"))
+            for item in items:
                 vector = item.get("embedding")
                 if not isinstance(vector, list):
                     raise AttachmentEmbeddingError(
