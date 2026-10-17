@@ -137,3 +137,193 @@ def native_attachment_owner(actor, attachment):
     except ScopeError:
         return False
     return False
+
+
+def _exact_part_owner_authorized(actor, attachment) -> bool:
+    """Deliberate Part extension of the native owner policy (AT-R02).
+
+    ``native_attachment_owner`` covers machines and work orders only, so the
+    exact-target path reuses the *policy* for Parts instead of assuming that
+    function supports them: real Part existence plus the existing
+    ``derive_client_codes`` intersection (installed-machine client codes,
+    ``internal`` only for genuinely unlinked parts, linked-but-clientless
+    denied -- fail-closed, never a permissive shortcut).
+    """
+    from tasks.scope import ScopeError, client_codes_for_actor
+
+    try:
+        from part.models import Part
+
+        if not Part.objects.filter(pk=attachment.model_id).exists():
+            return False
+        from aichat.services.attachment_ingestion import derive_client_codes
+
+        codes = derive_client_codes("part", attachment.model_id)
+        if not codes:
+            return False
+        return bool(set(codes).intersection(client_codes_for_actor(actor)))
+    except ScopeError:
+        return False
+
+
+def _exact_owner_authorized(actor, attachment) -> bool:
+    """Native owner authorization for one exact-target attachment."""
+    if attachment.model_type == "part":
+        return _exact_part_owner_authorized(actor, attachment)
+    return native_attachment_owner(actor, attachment)
+
+
+def row_matches_exact_target(row, target) -> bool:
+    """Pure equality between one returned row and a bound exact target.
+
+    Search-filter acceptance grants nothing: attachment, native owner and
+    source hash must all match the bound target or the row is rejected.
+    """
+    if not target or not isinstance(row, dict):
+        return False
+    return (
+        row.get("attachment_id") == target.get("attachment_id")
+        and row.get("model_type") == target.get("model_type")
+        and row.get("model_id") == target.get("model_id")
+        and row.get("source_sha256") == target.get("source_sha256")
+    )
+
+
+def _compatible_profiles(settings):
+    """Embedding profiles acceptable for the ACTIVE retrieval settings.
+
+    Mirrors the corpus row filter exactly: baseline retrieval accepts the
+    baseline stamp (or an empty stamp); any other active profile accepts
+    only itself. A stale ingest profile is unavailable before provider work;
+    the projected row never rehabilitates it (AT-F1 R07/R08).
+    """
+    from ai.core.integrations.rag_profile import BASELINE_PROFILE, text_embedding_profile
+
+    active = text_embedding_profile(settings)
+    return (BASELINE_PROFILE, None, "") if active == BASELINE_PROFILE else (active,)
+
+
+def exact_attachment_target(user, attachment_id):
+    """Bind one EXACT uploaded attachment or refuse (fail-closed, AT-F1).
+
+    Returns the bound coordinates (attachment id, native ``model_type``/
+    ``model_id``, owner serial, active latest serving-index ingest hash) or
+    ``None``. Missing, deleted, unsupported-owner, unindexed, superseded,
+    wrong-index, role-less and unauthorized targets are indistinguishable:
+    callers must refuse with one typed value-free code and never enumerate.
+    """
+    from ai.core.config import get_settings
+    from aichat.models import AttachmentIngest
+    from common.models import Attachment
+    from django.db.models import F
+
+    if type(attachment_id) is not int or attachment_id < 1:
+        return None
+    actor = fresh_actor(user)
+    # Every reader needs the work-order role; part-owned documents
+    # additionally need the part role (the corpus arms' own RBAC).
+    if actor is None or not fresh_role(actor, "work_order"):
+        return None
+    settings = get_settings()
+    if not getattr(settings, "feature_attachment_rag_retrieval", False):
+        return None
+    attachment = Attachment.objects.filter(pk=attachment_id).first()
+    if attachment is None or attachment.model_type not in {"assetmachine", "part"}:
+        return None
+    if attachment.model_type == "part" and not fresh_role(actor, "part"):
+        return None
+    if not _exact_owner_authorized(actor, attachment):
+        return None
+    owner_serial = ""
+    if attachment.model_type == "assetmachine":
+        from assets.models import AssetMachine
+
+        machine = AssetMachine.objects.filter(pk=attachment.model_id, active=True).first()
+        if machine is None:
+            return None
+        owner_serial = machine.serial or ""
+    ingest_rows = AttachmentIngest.objects.filter(
+        attachment_id=attachment_id,
+        search_index_name=settings.azure_search_attachment_docs_index,
+    )
+    ingest = ingest_rows.order_by(F("claimed_at").desc(nulls_last=True), "-pk").first()
+    if ingest is None or ingest.state != "indexed" or ingest.pipeline != "doc":
+        return None
+    # AT-F1 R07/R08: the stored ingest must belong to the CURRENT native
+    # owner and to the ACTIVE embedding profile; a stale row is unavailable
+    # before any provider work, indistinguishable from any other refusal.
+    if ingest.model_type != attachment.model_type or ingest.model_id != attachment.model_id:
+        return None
+    if ingest.embedding_profile not in _compatible_profiles(settings):
+        return None
+    return {
+        "attachment_id": attachment.pk,
+        "model_type": attachment.model_type,
+        "model_id": attachment.model_id,
+        "owner_serial": owner_serial,
+        "source_sha256": ingest.source_sha256,
+        "embedding_profile": ingest.embedding_profile,
+        "search_index_name": ingest.search_index_name,
+        "ingest_state": ingest.state,
+        "pipeline": ingest.pipeline,
+    }
+
+
+_EXACT_BINDING_FIELDS = (
+    "attachment_id",
+    "model_type",
+    "model_id",
+    "owner_serial",
+    "source_sha256",
+    "embedding_profile",
+    "search_index_name",
+    "ingest_state",
+    "pipeline",
+)
+
+
+def exact_target_binding_current(user, target) -> bool:
+    """True only while a FRESH full re-derivation still equals the binding.
+
+    Re-runs the complete native policy (fresh actor/role/grant, owner
+    authorization, ingest owner coherence, active profile, index and state)
+    and compares every bound field, so a mid-provider revocation, ownership
+    change or source change is caught at the same typed, value-free boundary.
+    """
+    if not target:
+        return False
+    current = exact_attachment_target(user, target.get("attachment_id"))
+    if not current:
+        return False
+    return all(current.get(field) == target.get(field) for field in _EXACT_BINDING_FIELDS)
+
+
+def exact_target_row_reason(row, *, target, user) -> str:
+    """Exposure-time check for one returned row against a bound target.
+
+    Empty string accepts; any other value rejects. Re-runs the native
+    authorization against FRESH actor/role/grant/ownership state AND requires
+    the CURRENT native owner and full source binding to still equal the bound
+    target -- merely authorizing a new owner is not enough (AT-F1 R08).
+    """
+    from common.models import Attachment
+
+    if not row_matches_exact_target(row, target):
+        return "target_mismatch"
+    actor = fresh_actor(user)
+    if actor is None or not fresh_role(actor, "work_order"):
+        return "actor_changed"
+    if target.get("model_type") == "part" and not fresh_role(actor, "part"):
+        return "actor_changed"
+    attachment = Attachment.objects.filter(pk=target.get("attachment_id")).first()
+    if (
+        attachment is None
+        or attachment.model_type != target.get("model_type")
+        or attachment.model_id != target.get("model_id")
+    ):
+        return "owner_changed"
+    if not _exact_owner_authorized(actor, attachment):
+        return "authorization_changed"
+    if not exact_target_binding_current(user, target):
+        return "binding_changed"
+    return ""

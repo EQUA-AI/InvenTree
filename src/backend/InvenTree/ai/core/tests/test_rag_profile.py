@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ai.core.tests.settings")
 os.environ.setdefault("INVENTREE_TOKEN", "test-token")
 
@@ -107,3 +109,31 @@ def test_text_space_is_unchanged_by_media_knobs():
     """R5 changes nothing about how document chunks are embedded."""
     s = _settings(GEMINI_AUDIO_TRACK_EXTRACTION=True, RAG_VIDEO_CAPTION_FRAMES=8, **_MEDIA_ON)
     assert text_embedding_profile(s) == "v1"
+
+
+@pytest.mark.parametrize("model", ["embed-v-4-0", "embed-v4.0"])
+def test_legacy_v4_text_profiles_remain_compatible(model):
+    settings = _settings(COHERE_EMBED_MODEL=model, COHERE_EMBED_DIMENSIONS=1536)
+    assert text_embedding_profile(settings) == BASELINE_PROFILE
+
+
+def test_v5_pro_has_a_distinct_bounded_text_profile():
+    settings = _settings(COHERE_EMBED_MODEL="embed-v5.0-pro")
+    profile = text_embedding_profile(settings)
+    assert profile != BASELINE_PROFILE
+    assert profile == text_embedding_profile(settings)
+    assert len(profile) <= 32
+
+
+def test_text_vector_dimensions_change_the_profile():
+    narrow = _settings(COHERE_EMBED_MODEL="embed-v5.0-pro", COHERE_EMBED_DIMENSIONS=1536)
+    wide = _settings(COHERE_EMBED_MODEL="embed-v5.0-pro", COHERE_EMBED_DIMENSIONS=2048)
+    assert text_embedding_profile(narrow) != text_embedding_profile(wide)
+    assert text_embedding_profile(_settings(COHERE_EMBED_DIMENSIONS=1024)) != BASELINE_PROFILE
+
+
+@pytest.mark.parametrize("model", ["embed-v-5-0-pro", "Cohere-Embed-V5-Pro"])
+def test_azure_and_cohere_v5_model_aliases_share_a_profile(model):
+    azure = _settings(COHERE_EMBED_MODEL=model)
+    cohere = _settings(COHERE_EMBED_MODEL="embed-v5.0-pro")
+    assert text_embedding_profile(azure) == text_embedding_profile(cohere)

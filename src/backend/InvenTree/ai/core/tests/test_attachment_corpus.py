@@ -30,6 +30,7 @@ from ai.core.integrations.attachment_corpus import (  # noqa: E402
     attachment_corpus_filter,
     search_corpus_attachments,
 )
+from ai.core.integrations.rag_profile import text_embedding_profile  # noqa: E402
 
 SCOPE_KEY = "epcon-experimental"
 
@@ -38,6 +39,7 @@ BASE_FILTER = (
     "and access_class eq 'attachment_uploaded' "
     "and search.in(model_type, 'part,assetmachine', ',') "
     "and client_codes/any(c: search.in(c, 'acme', ','))"
+    " and (embedding_profile eq 'v1' or embedding_profile eq null or embedding_profile eq '')"
 )
 
 
@@ -107,6 +109,8 @@ def _settings(**overrides):
         "feature_attachment_rag_retrieval": True,
         "single_site_policy_key": SCOPE_KEY,
         "feature_question_cards": False,
+        "cohere_embed_model": "embed-v-4-0",
+        "cohere_embed_dimensions": 1536,
     }
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -221,6 +225,7 @@ def test_filter_appends_narrowing_clauses_in_order():
         "and access_class eq 'attachment_uploaded' "
         "and model_type eq 'part' "
         "and client_codes/any(c: search.in(c, 'acme,zeta', ',')) "
+        "and (embedding_profile eq 'v1' or embedding_profile eq null or embedding_profile eq '') "
         "and part_id eq 123 "
         "and (asset_id eq '' or asset_id eq null or asset_id eq 'SN-100') "
         "and doc_type eq 'datasheet'"
@@ -236,6 +241,31 @@ def test_filter_doubles_odata_quotes():
     )
     assert "scope_key eq 'o''brien'" in built
     assert "asset_id eq 'SN''1'" in built  # inside the other-owner exclusion group
+
+
+def test_filter_requires_the_selected_embedding_profile():
+    built = attachment_corpus_filter(
+        scope_key=SCOPE_KEY,
+        client_codes={"acme"},
+        model_types=("assetmachine",),
+        embedding_profile="v2-text-selected",
+    )
+    assert "embedding_profile eq 'v2-text-selected'" in built
+    assert "embedding_profile eq null" not in built
+
+
+def test_v5_retrieval_rejects_legacy_vectors(retrieval_on, monkeypatch):
+    settings = _settings(cohere_embed_model="embed-v5.0-pro")
+    monkeypatch.setattr(config, "get_settings", lambda: settings)
+    search, _, result = _run(search_client=_SearchClient(rows=[_row()]))
+    assert f"embedding_profile eq '{text_embedding_profile(settings)}'" in search.kwargs["filter"]
+    assert result["chunks"] == []
+
+
+def test_v4_retrieval_rejects_v5_vectors(retrieval_on):
+    profile = text_embedding_profile(_settings(cohere_embed_model="embed-v5.0-pro"))
+    _, _, result = _run(search_client=_SearchClient(rows=[_row(embedding_profile=profile)]))
+    assert result["chunks"] == []
 
 
 def test_filter_refuses_blank_scope_key():
@@ -523,6 +553,7 @@ def test_citation_shape_is_exact(retrieval_on):
         "access_class",
         "asset_id",
         "excerpt_hash",
+        "source_sha256",
     }
     # Document-authored citation fields arrive fenced (they are the same
     # attacker-writable tier as the excerpt); server-stamped ones stay raw.
@@ -536,6 +567,9 @@ def test_citation_shape_is_exact(retrieval_on):
     assert citation["access_class"] == "attachment_uploaded"
     assert citation["chunk_id"] == "att-2-461479ab8523-c7"
     assert citation["page_number"] == 60
+    # The server-stamped source hash is the declared citation provenance
+    # contract (present in the source; expectations aligned to it).
+    assert citation["source_sha256"] == "461479ab8523aa"
 
 
 def test_citation_metadata_cannot_forge_a_fence(retrieval_on):
@@ -593,8 +627,12 @@ def test_payload_never_leaks_client_codes_or_storage(retrieval_on):
     _search, _embed, result = _run()
     serialized = json.dumps(result)
     assert "acme" not in serialized
-    assert "source_sha256" not in serialized
     assert "client_codes" not in serialized
+    # source_sha256 is the declared citation provenance field: exactly one
+    # server-stamped value may appear, never raw storage coordinates or any
+    # second digest outside the citation contract.
+    assert serialized.count('"source_sha256"') == 1
+    assert '"source_sha256": "461479ab8523aa"' in serialized
 
 
 def test_search_failure_maps_to_stable_code(retrieval_on):
