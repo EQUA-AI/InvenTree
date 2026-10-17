@@ -22,6 +22,8 @@ deployment that changes nothing re-projects to byte-identical documents.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -63,13 +65,20 @@ def media_embedding_profile(settings: Settings) -> str:
 
 
 def text_embedding_profile(settings: Settings) -> str:
-    """Profile for the Cohere text space.
-
-    Nothing in R5 changes how document chunks are embedded — Cohere's
-    asymmetric ``input_type`` has been in place since R0 — so this is
-    ``"v1"`` throughout. It exists now so the stamp is written from the start
-    and R6's figure chunks have a place to bump it, rather than having to
-    backfill a column that was only ever populated for one space.
-    """
-    del settings  # No text-space knobs yet; signature is the stable contract.
-    return BASELINE_PROFILE
+    """Identify the model and vector width without invalidating legacy v4 rows."""
+    aliases = {
+        "embed-v-4-0": "embed-v4.0",
+        "embed-v-5-0-pro": "embed-v5.0-pro",
+        "cohere-embed-v5-pro": "embed-v5.0-pro",
+    }
+    model = aliases.get(settings.cohere_embed_model.casefold(), settings.cohere_embed_model)
+    dimensions = settings.cohere_embed_dimensions
+    if model == "embed-v4.0" and dimensions == 1536:
+        return BASELINE_PROFILE
+    payload = json.dumps(
+        {"model": model, "dimensions": dimensions},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    digest = hashlib.sha256(payload.encode()).hexdigest()[:20]
+    return f"v2-text-{digest}"

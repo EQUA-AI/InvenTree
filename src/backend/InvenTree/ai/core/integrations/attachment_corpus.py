@@ -32,17 +32,19 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from typing import Any
+from typing import Annotated, Any
 
 from ai.core.integrations.controlled_document_search import (
     EmbeddingClient,
     SearchClient,
     _odata_literal,
 )
+from ai.core.integrations.rag_profile import BASELINE_PROFILE, text_embedding_profile
 from ai.core.integrations.search_query import semantic_hybrid_kwargs
 from ai.core.maf_compat import ai_function
 from ai.core.tools.diagnostics import fence_untrusted_content
 from asgiref.sync import sync_to_async
+from pydantic import Field
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +77,7 @@ _SELECT_FIELDS = [
     "client_codes",
     "scope_key",
     "source_sha256",
+    "embedding_profile",
     "is_current",
     "id",
     "attachment_id",
@@ -120,7 +123,10 @@ def attachment_corpus_filter(
     part_id: int | None = None,
     asset_id: str | None = None,
     doc_type: str | None = None,
+    attachment_id: int | None = None,
+    model_id: int | None = None,
     scope_asset_ids: tuple[str, ...] | None = None,
+    embedding_profile: str = BASELINE_PROFILE,
 ) -> str:
     """Build the non-negotiable attachment filter from server-side values only.
 
@@ -134,6 +140,11 @@ def attachment_corpus_filter(
     scoped machine, while unstamped chunks (part documents, WO media whose
     owner has no serial) stay reachable — degrade steps may drop narrowing
     precision but can never step outside the scoped assets.
+
+    ``attachment_id``/``model_id`` are the exact-target selector (AT-F1):
+    positive native integers only, bound server-side from the Attachment and
+    its owner. bool/zero/negative/fraction/string values are refused, never
+    coerced or interpolated.
     """
     if not scope_key:
         raise AttachmentRetrievalError(
@@ -156,6 +167,11 @@ def attachment_corpus_filter(
                 "Actor client scope is invalid", code="ATTACHMENT_SCOPE_INVALID"
             )
 
+    if attachment_id is not None and (type(attachment_id) is not int or attachment_id < 1):
+        raise AttachmentRetrievalError("attachment_id is invalid", code="ATTACHMENT_TARGET_INVALID")
+    if model_id is not None and (type(model_id) is not int or model_id < 1):
+        raise AttachmentRetrievalError("model_id is invalid", code="ATTACHMENT_TARGET_INVALID")
+
     clauses = [
         f"scope_key eq '{_odata_literal(scope_key)}'",
         "is_current eq true",
@@ -168,6 +184,20 @@ def attachment_corpus_filter(
         clauses.append(f"search.in(model_type, '{joined}', ',')")
     joined_codes = ",".join(_odata_literal(code) for code in sorted(client_codes))
     clauses.append(f"client_codes/any(c: search.in(c, '{joined_codes}', ','))")
+    if not embedding_profile:
+        raise AttachmentRetrievalError(
+            "Embedding profile is not configured", code="ATTACHMENT_EMBEDDING_PROFILE_INVALID"
+        )
+    if embedding_profile == BASELINE_PROFILE:
+        clauses.append(
+            "(embedding_profile eq 'v1' or embedding_profile eq null or embedding_profile eq '')"
+        )
+    else:
+        clauses.append(f"embedding_profile eq '{_odata_literal(embedding_profile)}'")
+    if attachment_id is not None:
+        clauses.append(f"attachment_id eq {attachment_id}")
+    if model_id is not None:
+        clauses.append(f"model_id eq {model_id}")
     if part_id is not None:
         clauses.append(f"part_id eq {int(part_id)}")
     if asset_id:
@@ -229,6 +259,7 @@ def search_corpus_attachments(
     machine_resolver=None,
     part_resolver=None,
     scope_asset_ids: tuple[str, ...] | None = None,
+    attachment_id: int | None = None,
 ) -> dict[str, Any]:
     """Search current uploaded attachment documents and cite fenced excerpts.
 
@@ -237,6 +268,14 @@ def search_corpus_attachments(
     catalogue under the acting user. Every refusal happens before any network
     call -- flag, validation, site scope, arm grants and client codes are all
     checked before the query is embedded.
+
+    ``attachment_id`` is the exact-target selector (AT-F1): the current
+    Attachment, its active latest serving-index ingest and its native owner
+    authorization are bound BEFORE any inferred hint resolver runs or any
+    provider client is constructed. ``part``/``machine``/``doc_type`` are
+    then ignored entirely -- they can neither narrow nor hide the selected
+    source -- and an unavailable target refuses with the typed, value-free
+    ``ATTACHMENT_TARGET_UNAVAILABLE`` instead of degrading to a broad search.
     """
     from ai.core.config import get_settings
 
@@ -251,11 +290,53 @@ def search_corpus_attachments(
     if isinstance(top_k, bool) or not isinstance(top_k, int):
         raise AttachmentRetrievalError("top_k is invalid", code="ATTACHMENT_QUERY_INVALID")
     top_k = max(1, min(top_k, 5))
-    if doc_type is not None and doc_type not in _DOC_TYPE_ALLOWLIST:
+    if attachment_id is None and doc_type is not None and doc_type not in _DOC_TYPE_ALLOWLIST:
         raise AttachmentRetrievalError(
             "doc_type is not recognised", code="ATTACHMENT_QUERY_INVALID"
         )
-    if part and machine:
+    ignored_hints: tuple[str, ...] = ()
+    if attachment_id is not None:
+        ignored_hints = tuple(
+            name
+            for name, value in (("part", part), ("machine", machine), ("doc_type", doc_type))
+            if value
+        )
+    if attachment_id is not None and (type(attachment_id) is not int or attachment_id < 1):
+        _record_target_outcome(
+            requested_selector="attachment_id",
+            effective_filter="exact",
+            returned_count=0,
+            refusal_status="invalid_selector",
+            ignored_hints=ignored_hints,
+        )
+        raise AttachmentRetrievalError("attachment_id is invalid", code="ATTACHMENT_TARGET_INVALID")
+
+    # AT-F1: bind the EXACT target (current Attachment, active latest
+    # serving-index ingest, native owner authorization) before inferred
+    # hint resolvers or any client construction/provider call.
+    exact_target: dict[str, Any] | None = None
+    if attachment_id is not None:
+        from ai.core.integrations.retrieval_authority import exact_attachment_target
+
+        exact_target = exact_attachment_target(user, attachment_id)
+        if exact_target is None:
+            # Missing, deleted, unindexed, superseded, wrong-index, foreign
+            # owner and revoked access all refuse identically: one typed,
+            # value-free code, no candidate list, no provider work.
+            _record_target_outcome(
+                requested_selector="attachment_id",
+                effective_filter="exact",
+                returned_count=0,
+                refusal_status="target_unavailable",
+                requested_attachment_id=attachment_id,
+                ignored_hints=ignored_hints,
+            )
+            raise AttachmentRetrievalError(
+                "Exact attachment target is unavailable",
+                code="ATTACHMENT_TARGET_UNAVAILABLE",
+            )
+
+    if part and machine and exact_target is None:
         # The two narrowings are structurally exclusive: part docs carry no
         # asset_id and machine docs no part_id, so ANDing both clauses can
         # only ever return zero hits — a false "no documents" to the model.
@@ -274,7 +355,13 @@ def search_corpus_attachments(
             code="ATTACHMENT_SCOPE_UNCONFIGURED",
         )
 
-    model_types = _granted_arms(user)
+    if exact_target is not None:
+        # The binding already required the reader role (work_order for every
+        # source, part additionally for part-owned documents), so the arm is
+        # exactly the bound owner's own model_type.
+        model_types = (str(exact_target["model_type"]),)
+    else:
+        model_types = _granted_arms(user)
     if not model_types:
         raise AttachmentRetrievalError(
             "No document arm is authorized", code="ATTACHMENT_SCOPE_UNRESOLVED"
@@ -300,9 +387,9 @@ def search_corpus_attachments(
     # metadata the missing role protects. The arm's documents are already
     # excluded by the model_type clause, so degrading to the broad
     # (granted-arm) search stays honest.
-    if part:
+    if part and exact_target is None:
         part_filter = "not_applied"
-    if part and "part" in model_types:
+    if part and exact_target is None and "part" in model_types:
         resolver = part_resolver if part_resolver is not None else _resolve_parts
         part_candidates = resolver(user, str(part)[:100])
         if len(part_candidates) == 1:
@@ -330,9 +417,9 @@ def search_corpus_attachments(
 
     asset_id: str | None = None
     machine_filter = "not_requested"
-    if machine:
+    if machine and exact_target is None:
         machine_filter = "not_applied"
-    if machine and "assetmachine" in model_types:
+    if machine and exact_target is None and "assetmachine" in model_types:
         resolver = machine_resolver
         if resolver is None:
 
@@ -374,6 +461,46 @@ def search_corpus_attachments(
                 "part_filter": part_filter,
             }
 
+    if exact_target is not None:
+        from ai.core.analysis.scope_context import current_turn_scope as _exact_scope
+
+        exact_scope = _exact_scope()
+        conflict = False
+        if (
+            exact_scope is not None
+            and exact_scope.explicit
+            and exact_scope.enforce
+            and exact_target["model_type"] == "assetmachine"
+        ):
+            scoped_ids = set(getattr(exact_scope, "machine_ids", ()) or ())
+            scoped_serials = set(exact_scope.machine_serials)
+            conflict = bool(scoped_ids and exact_target["model_id"] not in scoped_ids) or bool(
+                scoped_serials and exact_target.get("owner_serial") not in scoped_serials
+            )
+        if (
+            not conflict
+            and isinstance(scope_asset_ids, tuple)
+            and exact_target.get("owner_serial")
+            and exact_target["owner_serial"] not in set(scope_asset_ids)
+        ):
+            conflict = True
+        if conflict:
+            # The trusted structured scope is a FLOOR: a conflicting exact
+            # target refuses, it never redirects to another owner.
+            _record_target_outcome(
+                requested_selector="attachment_id",
+                effective_filter="exact",
+                returned_count=0,
+                refusal_status="scope_conflict",
+                requested_attachment_id=attachment_id,
+                effective_target=exact_target,
+                ignored_hints=ignored_hints,
+            )
+            raise AttachmentRetrievalError(
+                "Exact attachment target is unavailable",
+                code="ATTACHMENT_TARGET_UNAVAILABLE",
+            )
+
     from ai.core.integrations.projection_gate import recall_allowed
 
     if not recall_allowed("attachment"):
@@ -386,6 +513,7 @@ def search_corpus_attachments(
     if search_client is None:
         search_client = _default_search_client()
 
+    active_profile = text_embedding_profile(settings)
     try:
         vector = embedding_client.embed_query(query)
     except Exception as exc:
@@ -432,7 +560,10 @@ def search_corpus_attachments(
             part_id=part_id,
             asset_id=asset_id,
             doc_type=type_filter,
+            attachment_id=exact_target["attachment_id"] if exact_target is not None else None,
+            model_id=exact_target["model_id"] if exact_target is not None else None,
             scope_asset_ids=scope_asset_ids,
+            embedding_profile=active_profile,
         )
         try:
             search_kwargs = semantic_hybrid_kwargs(
@@ -458,16 +589,56 @@ def search_corpus_attachments(
                 code="ATTACHMENT_SEARCH_FAILED",
             ) from exc
 
-    rows = _run(doc_type)
-    if not rows and doc_type:
+    rows = _run(None if exact_target is not None else doc_type)
+    if not rows and doc_type and exact_target is None:
         # Type narrowing is a precision hint, exactly like part and machine
         # narrowing -- never the reason a corpus that HAS the answer reports
         # none. Degrade to the un-narrowed result.
         rows = _run(None)
+    if exact_target is not None:
+        # AT-F1 R05: the provider call is not atomic with native authority.
+        # Re-derive the binding against FRESH state; a mid-call grant
+        # revocation, ownership change or source change refuses with the SAME
+        # typed, value-free unavailability -- never an empty result relabeled
+        # 'no_passages' for a now-inaccessible target.
+        from ai.core.integrations.retrieval_authority import exact_target_binding_current
+
+        if not exact_target_binding_current(user, exact_target):
+            _record_target_outcome(
+                requested_selector="attachment_id",
+                effective_filter="exact",
+                returned_count=0,
+                refusal_status="target_unavailable",
+                requested_attachment_id=attachment_id,
+                ignored_hints=ignored_hints,
+            )
+            raise AttachmentRetrievalError(
+                "Exact attachment target is unavailable",
+                code="ATTACHMENT_TARGET_UNAVAILABLE",
+            )
 
     from ai.core.integrations.retrieval_authority import attachment_rows
 
+    compatible_profiles = (
+        (BASELINE_PROFILE, None, "") if active_profile == BASELINE_PROFILE else (active_profile,)
+    )
+    rows = [row for row in rows if row.get("embedding_profile") in compatible_profiles]
+    if exact_target is not None:
+        # AT-R09/R08: a Search client that ignores its exact filter must not
+        # smuggle another attachment's rows into model context. Every row is
+        # checked against the bound target before native reauthorization and
+        # once more at exposure time (the provider call is not atomic with
+        # actor/role/grant/ownership state).
+        from ai.core.integrations.retrieval_authority import exact_target_row_reason
+
+        rows = [
+            row for row in rows if not exact_target_row_reason(row, target=exact_target, user=user)
+        ]
     rows = attachment_rows(rows, user=user, corpus="attachment")
+    if exact_target is not None:
+        rows = [
+            row for row in rows if not exact_target_row_reason(row, target=exact_target, user=user)
+        ]
     chunks: list[dict[str, Any]] = []
     for row in rows:
         text = str(row.get("content") or "")[:_EXCERPT_MAX_CHARS]
@@ -547,6 +718,7 @@ def search_corpus_attachments(
             "machine_filter": machine_filter,
             "part_filter": part_filter,
             "doc_type": doc_type or None,
+            **({"attachment_filter": "exact"} if exact_target is not None else {}),
         },
         coverage={
             "population_count": len(chunks),
@@ -564,14 +736,36 @@ def search_corpus_attachments(
         },
         warnings=() if chunks else (NO_RELEVANT_PASSAGE,),
     )
-    record_envelope("search_attachment_docs", envelope)
-    return {
+    if exact_target is not None:
+        _record_target_outcome(
+            requested_selector="attachment_id",
+            effective_filter="exact",
+            returned_count=len(chunks),
+            refusal_status="ok" if chunks else "no_passages",
+            requested_attachment_id=attachment_id,
+            effective_target=exact_target,
+            ignored_hints=ignored_hints,
+        )
+        record_envelope(
+            "search_attachment_docs",
+            envelope,
+            target_selector="attachment_id",
+            target_filter="exact",
+            returned_count=len(chunks),
+            refusal_status="ok" if chunks else "no_passages",
+        )
+    else:
+        record_envelope("search_attachment_docs", envelope)
+    result = {
         "chunks": chunks,
         "returned_count": len(chunks),
         "machine_filter": machine_filter,
         "part_filter": part_filter,
         "retrieval": envelope,
     }
+    if exact_target is not None:
+        result["attachment_filter"] = "exact"
+    return result
 
 
 def _resolve_parts(actor, name: str) -> list[dict[str, Any]]:
@@ -603,6 +797,51 @@ def _record_search_outcome(**kwargs) -> None:
     from aichat.services.retrieval_misses import record_search
 
     record_search(**kwargs)
+
+
+def _record_target_outcome(
+    *,
+    requested_selector: str,
+    effective_filter: str,
+    returned_count: int,
+    refusal_status: str,
+    requested_attachment_id: int | None = None,
+    effective_target: dict[str, Any] | None = None,
+    ignored_hints: tuple[str, ...] = (),
+) -> None:
+    """Bounded, turn-correlated exact-target diagnostics (AT-F1).
+
+    Enums, counts and bounded numeric identities only: never query text,
+    source text, filenames, vectors, secrets or ACL/client codes. The
+    requested id echoes the caller's own validated input (no existence
+    disclosure); effective owner identity is recorded ONLY after the native
+    binding authorized it, and invalid raw values are never echoed. Also
+    records the ignored hint FLAGS (never hint values) and the refusal /
+    no-passages status. Correlates to the active turn through
+    ``current_correlation`` and the capture ledger; fail-soft exactly like
+    every other recorder here.
+    """
+    try:
+        from ai.core.correlation import current_correlation
+        from ai.core.tools.capture_ledger import record_retrieval_meta
+
+        meta: dict[str, Any] = {
+            "correlation_id": current_correlation(),
+            "target_selector": requested_selector,
+            "target_filter": effective_filter,
+            "returned_count": int(returned_count),
+            "refusal_status": refusal_status,
+            "ignored_hints": list(ignored_hints),
+        }
+        if type(requested_attachment_id) is int and requested_attachment_id > 0:
+            meta["requested_attachment_id"] = requested_attachment_id
+        if effective_target:
+            meta["effective_attachment_id"] = int(effective_target["attachment_id"])
+            meta["effective_owner_type"] = str(effective_target["model_type"])
+            meta["effective_owner_id"] = int(effective_target["model_id"])
+        record_retrieval_meta("search_attachment_docs", meta)
+    except Exception:  # pragma: no cover - diagnostics must never kill a turn
+        logger.debug("attachment target diagnostics capture failed", exc_info=False)
 
 
 def _propose_machine_question(candidates: list[dict[str, Any]]) -> None:
@@ -670,6 +909,7 @@ async def search_attachment_docs(
     machine: str | None = None,
     doc_type: str | None = None,
     top_k: int = 5,
+    attachment_id: Annotated[int, Field(strict=True, gt=0)] | None = None,
 ) -> dict[str, Any]:
     """
     Search uploaded (uncontrolled) part and machine documents for this site.
@@ -695,12 +935,22 @@ async def search_attachment_docs(
                 tech_lit or other. A type with no hits degrades to the
                 un-narrowed result.
       top_k: Maximum passages to return (default 5, max 5).
+      attachment_id: Optional EXACT target -- the native ID of one uploaded
+        attachment the user explicitly referenced. When given, only that
+        attachment's passages can return; do NOT combine it with part, machine
+        or doc_type (inferred hints are ignored and never narrow an exact
+        target). An OEM, model or product number is NOT a native Part ID, IPN
+        or attachment_id. A missing, inaccessible or unsupported target
+        refuses with code ATTACHMENT_TARGET_UNAVAILABLE -- that refusal is
+        final for the request: do not drop the selector, guess an owner, or
+        retry more broadly.
 
     Returns:
       Dictionary with 'chunks' (each a fenced excerpt with a citation naming
       the source file, page and section), 'total', 'machine_filter' and
       'part_filter' (applied / not_applied / ambiguous -- ambiguous includes
-      candidates to pick from).
+      candidates to pick from). Exact-target calls add 'attachment_filter':
+      'exact'.
     """
 
     @sync_to_async
@@ -719,6 +969,7 @@ async def search_attachment_docs(
                 machine=machine,
                 doc_type=doc_type,
                 top_k=top_k,
+                attachment_id=attachment_id,
             )
         except AttachmentRetrievalError as exc:
             from ai.core.faults import log_fault
