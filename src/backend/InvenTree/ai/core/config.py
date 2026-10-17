@@ -1237,6 +1237,9 @@ class Settings(BaseSettings):
     )
     cohere_embed_model: str = Field(default="embed-v-4-0", alias="COHERE_EMBED_MODEL")
     cohere_embed_dimensions: int = Field(default=1536, ge=1, alias="COHERE_EMBED_DIMENSIONS")
+    cohere_embed_api: Literal["model_inference", "cohere_v2"] = Field(
+        default="model_inference", alias="COHERE_EMBED_API"
+    )
     # R5 WP-A. The retired azure-ai-inference SDK hardcoded this; exposing it is
     # the lever for the risk that actually bites -- Azure retiring the
     # api-version, which on a dead SDK would have meant forking it.

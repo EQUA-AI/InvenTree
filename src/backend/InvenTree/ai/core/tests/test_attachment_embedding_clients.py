@@ -466,6 +466,51 @@ def test_cohere_api_version_is_configurable():
     assert inner.requests[0]["params"] == {"api-version": "2099-01-01"}
 
 
+def test_cohere_v5_native_wire_preserves_document_and_query_semantics():
+    class NativeTransport:
+        def __init__(self):
+            self.requests = []
+
+        def post(self, path, *, params=None, headers=None, json=None):
+            self.requests.append({"path": path, "params": params, "json": json})
+            vectors = [[0.5] * 1536 for _text in json["texts"]]
+            return SimpleNamespace(status_code=200, json=lambda: {"embeddings": {"float": vectors}})
+
+    client = CohereEmbeddingClient(
+        endpoint="https://example.services.ai.azure.com/providers/cohere",
+        model="Cohere-Embed-V5-Pro",
+        dimensions=1536,
+        api_key="test",
+        api="cohere_v2",
+    )
+    transport = NativeTransport()
+    client._client = transport
+    assert len(client.embed_documents(["alpha", "beta"])) == 2
+    assert len(client.embed_query("where is the seal?")) == 1536
+    assert [request["path"] for request in transport.requests] == ["/v2/embed"] * 2
+    assert transport.requests[0]["params"] == {}
+    assert transport.requests[0]["json"] == {
+        "texts": ["alpha", "beta"],
+        "model": "Cohere-Embed-V5-Pro",
+        "output_dimension": 1536,
+        "input_type": "search_document",
+        "embedding_types": ["float"],
+    }
+    assert transport.requests[1]["json"]["input_type"] == "search_query"
+
+
+def test_cohere_v5_native_refuses_missing_float_embeddings():
+    class NativeTransport:
+        def post(self, *args, **kwargs):
+            return SimpleNamespace(status_code=200, json=lambda: {"embeddings": {}})
+
+    client = _cohere(api="cohere_v2")
+    client._client = NativeTransport()
+    with pytest.raises(AttachmentEmbeddingError) as excinfo:
+        client.embed_documents(["one"])
+    assert excinfo.value.code == "ATTACHMENT_EMBEDDING_MALFORMED"
+
+
 def test_cohere_non_200_is_value_free():
     """A provider error body echoes the endpoint; it must never reach a fault."""
     client = _cohere(inner=_FakeCohereInner(status_code=503))
