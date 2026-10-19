@@ -81,3 +81,10 @@ export function diagnoseReturnPath(pathname: string, search: string): string {
   params.set('work_panel', 'diagnose');
   return `${pathname}?${params.toString()}`;
 }
+
+/** A wf7 source citation is not necessarily a health snapshot UUID. */
+export function isSnapshotId(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    value
+  );
+}

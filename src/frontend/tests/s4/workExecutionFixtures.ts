@@ -37,7 +37,8 @@ export async function mockExecutionWork(
 export async function openExecutionPanel(
   page: Page,
   panel = 'work',
-  scheme: 'light' | 'dark' = 'light'
+  scheme: 'light' | 'dark' = 'light',
+  partReader = false
 ) {
   const params = new URLSearchParams({
     surface: 'maintenance-shell',
@@ -47,6 +48,7 @@ export async function openExecutionPanel(
     scheme,
     entry: `/maintenance/work-orders/73/?work_panel=${panel}`
   });
+  if (partReader) params.set('part_access', 'reader');
   await page.goto(`/playwright/s0-native.html?${params}`);
   await expect(page.getByRole('heading', { name: /^WO-73: / })).toBeVisible();
 }

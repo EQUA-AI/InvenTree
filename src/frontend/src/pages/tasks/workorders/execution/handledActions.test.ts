@@ -70,6 +70,7 @@ describe('readHandledActions', () => {
     expect(reading.projection.counts).toEqual({
       completed: 1,
       active: 1,
+      queued: 0,
       failed: 1,
       unknown: 1
     });
@@ -123,4 +124,21 @@ describe('handledLinkTarget', () => {
     ).toBe('?search=seal');
     expect(handledLinkTarget(null, params)).toBeNull();
   });
+});
+
+it('keeps enqueued intent outside the active handling section', () => {
+  const reading = readHandledActions(
+    projection([row('q', 'queued', { status: 'pending' })], {
+      completed: 0,
+      active: 0,
+      queued: 1,
+      failed: 0,
+      unknown: 0
+    })
+  );
+  expect(reading.kind).toBe('ready');
+  if (reading.kind !== 'ready') return;
+  expect(reading.handling).toEqual([]);
+  expect(reading.recorded[0].state).toBe('queued');
+  expect(reading.projection.counts.queued).toBe(1);
 });

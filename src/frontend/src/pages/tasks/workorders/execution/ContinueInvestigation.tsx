@@ -66,7 +66,7 @@ export function ContinueInvestigation({
       </Button>
       {caption && (
         <Text size='xs' c='dimmed' maw={560}>
-          {t`Opens the existing assistant on this Work. Respond, correct a finding, add a clarification or say a check cannot be done there. A specific request or finding is not carried into chat yet, so name it in your message.`}
+          {t`Opens the existing assistant on this Work for discussion. A specific request or finding is not carried into chat yet, so name it in your message. Chat does not save finding corrections, resolutions or agreed checks; use the native repair packet to record supported changes.`}
         </Text>
       )}
     </Stack>

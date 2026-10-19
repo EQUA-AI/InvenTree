@@ -11,6 +11,7 @@ export const HANDLED_PREVIEW_ROWS = 6;
 const STATES: HandledActionState[] = [
   'completed',
   'active',
+  'queued',
   'failed',
   'unknown'
 ];
@@ -63,7 +64,13 @@ export function readHandledActions(value: unknown): HandledReading {
     ])
   ) as Record<HandledActionState, number>;
   const served = projection.counts ?? ({} as Record<string, number>);
-  if (STATES.some((state) => served[state] !== counts[state]))
+  if (
+    STATES.some(
+      (state) =>
+        (served[state] ?? (state === 'queued' ? 0 : undefined)) !==
+        counts[state]
+    )
+  )
     return { kind: 'unsupported' };
   return {
     kind: 'ready',

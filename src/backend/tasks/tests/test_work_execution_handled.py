@@ -12,6 +12,7 @@ from assets.models import AssetMachine, get_default_client
 from InvenTree.unit_test import InvenTreeAPITestCase
 from repair.models import RepairPacket, RepairPacketEvent, RepairPacketGenerationRun
 from tasks.closeout_models import (
+    CloseoutAmendment,
     CloseoutCapture,
     CloseoutCaptureRevision,
     CloseoutEffect,
@@ -75,7 +76,7 @@ class HandledActionsTest(InvenTreeAPITestCase):
         self.assertEqual(handled['rule'], 'handled_actions.v1')
         self.assertEqual(handled['actions'], [])
         self.assertEqual(
-            handled['counts'], {'completed': 0, 'active': 0, 'failed': 0, 'unknown': 0}
+            handled['counts'], {'completed': 0, 'active': 0, 'queued': 0, 'failed': 0, 'unknown': 0}
         )
         self.assertEqual(
             handled['sources'],
@@ -120,7 +121,7 @@ class HandledActionsTest(InvenTreeAPITestCase):
 
         handled = self.overview()
         self.assertEqual(
-            handled['counts'], {'completed': 2, 'active': 1, 'failed': 1, 'unknown': 0}
+            handled['counts'], {'completed': 2, 'active': 1, 'queued': 0, 'failed': 1, 'unknown': 0}
         )
         self.assertEqual(len(handled['actions']), 4)
         prepared = next(
@@ -152,7 +153,8 @@ class HandledActionsTest(InvenTreeAPITestCase):
         self.assertEqual(created['link'], {'kind': 'work_panel', 'panel': 'parts'})
 
     @override_settings(
-        AIMMS_WORK_ORDERS_ENABLED=True, AIMMS_CLOSEOUT_WIZARD_ENABLED=True
+        AIMMS_WORK_ORDERS_ENABLED=True, AIMMS_CLOSEOUT_WIZARD_ENABLED=True,
+        AIMMS_CLOSEOUT_EFFECTS_ENABLED=True
     )
     def test_closeout_drafting_and_follow_ups_keep_their_recorded_outcome(self):
         """Effects map pending/unknown/failed/succeeded without upgrading any."""
@@ -212,7 +214,7 @@ class HandledActionsTest(InvenTreeAPITestCase):
             ['not_applicable', 'read', 'read'],
         )
         self.assertEqual(
-            handled['counts'], {'completed': 2, 'active': 1, 'failed': 1, 'unknown': 1}
+            handled['counts'], {'completed': 2, 'active': 0, 'queued': 1, 'failed': 1, 'unknown': 1}
         )
         kinds = {row['id']: row for row in handled['actions']}
         drafted = next(
@@ -223,6 +225,8 @@ class HandledActionsTest(InvenTreeAPITestCase):
             drafted['result'],
             {
                 'capture_revision': 1,
+                'current_revision': None,
+                'capture_status': 'consumed',
                 'fields': 2,
                 'part_candidates': 1,
                 'reading_candidates': 0,
@@ -243,27 +247,130 @@ class HandledActionsTest(InvenTreeAPITestCase):
         # Another work order's extraction is not this work's action.
         self.assertNotIn(f'closeout-capture:{extracting.pk}', kinds)
 
+    def capture(self, status='proposed', extractor='rules-v1'):
+        """Seed a current narrative and an attributed extraction proposal."""
+        capture = CloseoutCapture.objects.create(
+            work_order=self.work_order, created_by=self.technician, status=status
+        )
+        revision = CloseoutCaptureRevision.objects.create(
+            capture=capture, revision=1, narrative='Retained narrative',
+            source_content_hash='d' * 64, work_order_version=1,
+            created_by=self.technician,
+        )
+        capture.current_revision = revision
+        capture.save()
+        proposal = CloseoutProposal.objects.create(
+            capture_revision=revision, schema_version=1, extractor=extractor,
+            fields={}, content_hash='e' * 64, status='proposed',
+        )
+        return capture, revision, proposal
+
+    def closeout(self):
+        """Seed a completion without dispatching effects."""
+        return WorkOrderCloseout.objects.create(
+            work_order=self.work_order, action='Retained action', result='Retained result',
+            verification_summary='Recorded check', completed_by=self.technician,
+            completed_at=timezone.now(),
+        )
+
+    @override_settings(AIMMS_WORK_ORDERS_ENABLED=True, AIMMS_CLOSEOUT_WIZARD_ENABLED=True)
+    def test_manual_proposal_is_not_aimms_work_or_counted(self):
+        """The manual-entry path does not attribute a person's decisions to AIMMS."""
+        _, _, proposal = self.capture(extractor='manual')
+        proposal.status = 'reviewed'
+        proposal.save()
+        handled = self.overview()
+        self.assertEqual(handled['actions'], [])
+        self.assertEqual(handled['counts']['completed'], 0)
+
+    @override_settings(AIMMS_WORK_ORDERS_ENABLED=True, AIMMS_CLOSEOUT_WIZARD_ENABLED=True,
+                       AIMMS_CLOSEOUT_EFFECTS_ENABLED=False)
+    def test_wizard_without_executor_does_not_claim_pending_effect_is_running(self):
+        """Disabled executor is not a read source, even with durable queued intent."""
+        CloseoutEffect.objects.create(
+            closeout=self.closeout(), effect_type='notification', effect_key='disabled-effect',
+            payload_hash='f' * 64,
+        )
+        handled = self.overview()
+        self.assertIn({'key': 'closeout_follow_up', 'state': 'not_enabled'}, handled['sources'])
+        self.assertEqual(handled['actions'], [])
+        self.assertEqual(handled['counts']['active'], 0)
+
+    @override_settings(AIMMS_WORK_ORDERS_ENABLED=True, AIMMS_CLOSEOUT_WIZARD_ENABLED=True,
+                       AIMMS_CLOSEOUT_EFFECTS_ENABLED=True)
+    def test_enqueued_effects_are_not_running_or_started_at_enqueue(self):
+        """Only recorded dispatch is active; queue/claim/retry is not execution."""
+        closeout = self.closeout()
+        for status in ('pending', 'leased', 'retryable', 'dispatching'):
+            CloseoutEffect.objects.create(
+                closeout=closeout, effect_type='notification', effect_key=f'queue:{status}',
+                payload_hash='f' * 64, status=status,
+            )
+        handled = self.overview()
+        self.assertEqual(handled['counts']['queued'], 3)
+        self.assertEqual(handled['counts']['active'], 1)
+        for row in handled['actions']:
+            self.assertIsNone(row['started_at'])
+            self.assertEqual(row['state'], 'active' if row['status'] == 'dispatching' else 'queued')
+
+    @override_settings(AIMMS_WORK_ORDERS_ENABLED=True, AIMMS_CLOSEOUT_WIZARD_ENABLED=True)
+    def test_proposal_retains_capture_status_and_current_revision_context(self):
+        """Old or abandoned proposals cannot imply a live human review task."""
+        capture, revision, proposal = self.capture()
+        newer = CloseoutCaptureRevision.objects.create(
+            capture=capture, revision=2, narrative='Revised', source_content_hash='f' * 64,
+            work_order_version=1, created_by=self.technician,
+        )
+        capture.current_revision = newer
+        capture.status = 'abandoned'
+        capture.save()
+        result = self.overview()['actions'][0]['result']
+        self.assertFalse(result['current_revision'])
+        self.assertEqual(result['capture_revision'], revision.revision)
+        self.assertEqual(result['capture_status'], 'abandoned')
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, 'proposed')
+
+    @override_settings(AIMMS_WORK_ORDERS_ENABLED=True, AIMMS_CLOSEOUT_WIZARD_ENABLED=True,
+                       AIMMS_CLOSEOUT_EFFECTS_ENABLED=True)
+    def test_amendment_notification_names_its_actual_trigger(self):
+        """The notification's trigger is its amendment, not original completion."""
+        closeout = self.closeout()
+        amendment = CloseoutAmendment.objects.create(
+            closeout=closeout, changes={'result': {'from': 'A', 'to': 'B'}},
+            base_content_hash='a' * 64, reason='Correct recorded result',
+            requested_by=self.technician, status='applied', applied_at=timezone.now(),
+        )
+        CloseoutEffect.objects.create(
+            closeout=closeout, effect_type='notification',
+            effect_key=f'closeout:{closeout.pk}:notification:amendment:{amendment.pk}',
+            payload_hash='b' * 64, status='succeeded', result_reference='notified:1',
+        )
+        trigger = self.overview()['actions'][0]['trigger']
+        self.assertEqual(trigger, {'amendment_id': str(amendment.pk),
+                                  'amendment_applied_at': amendment.applied_at.isoformat()})
+        self.assertNotIn('closeout_completed_at', trigger)
+
+    @override_settings(AIMMS_WORK_ORDERS_ENABLED=True, AIMMS_CLOSEOUT_WIZARD_ENABLED=True,
+                       AIMMS_CLOSEOUT_EFFECTS_ENABLED=True)
     def test_opening_the_overview_prepares_nothing(self):
-        """Reading the Work page leaves every automation ledger unchanged."""
-        self.record_run('succeeded', finished_at=timezone.now())
-        before = (
-            RepairPacketGenerationRun.objects.count(),
-            RepairPacketEvent.objects.count(),
-            WorkOrderEvent.objects.count(),
-            CloseoutEffect.objects.count(),
-            CloseoutProposal.objects.count(),
+        """Two reads retain full ledger values, including live closeout branches."""
+        self.record_run('running')
+        capture, revision, _ = self.capture(status='extracting')
+        CloseoutEffect.objects.create(
+            closeout=self.closeout(), effect_type='notification', effect_key='read-only-effect',
+            payload_hash='c' * 64, attempts=2,
         )
+        ledgers = (RepairPacketGenerationRun, RepairPacketEvent, WorkOrderEvent,
+                   CloseoutCapture, CloseoutCaptureRevision, CloseoutEffect, CloseoutProposal)
+        def snapshot():
+            return [list(model.objects.order_by('pk').values()) for model in ledgers]
+        before = snapshot()
+        first = self.overview()
         self.overview()
-        self.overview()
+        self.assertEqual(before, snapshot())
+        extracting = next(row for row in first['actions'] if row['kind'] == 'account_drafting')
+        self.assertIsNone(extracting['started_at'])
+        self.assertIsNone(extracting['occurred_at'])
         self.packet.refresh_from_db()
-        self.assertEqual(
-            before,
-            (
-                RepairPacketGenerationRun.objects.count(),
-                RepairPacketEvent.objects.count(),
-                WorkOrderEvent.objects.count(),
-                CloseoutEffect.objects.count(),
-                CloseoutProposal.objects.count(),
-            ),
-        )
         self.assertEqual(self.packet.generation_status, 'idle')

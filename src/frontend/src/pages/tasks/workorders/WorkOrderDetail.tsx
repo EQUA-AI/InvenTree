@@ -67,6 +67,9 @@ import { WorkAttachmentResource } from './WorkAttachmentResource';
 import { WorkMaterialsPanel } from './WorkMaterialsPanel';
 import { DiagnoseProjection } from './execution/DiagnoseProjection';
 import { HandledByAimms } from './execution/HandledByAimms';
+import { PreparedPackage } from './execution/PreparedPackage';
+import { TimeAssignment } from './execution/TimeAssignment';
+import { VerificationReturn } from './execution/VerificationReturn';
 import {
   type WorkPanel,
   workPanelParams,
@@ -181,6 +184,7 @@ function WorkOrderWorkspace({
             <WorkOrderProblemPanel packet={workOrder.repair_packet} />
           )}
           <HandledByAimms value={workOrder.handled_actions} />
+          <TimeAssignment workOrder={workOrder} />
           <SectionCard
             title={t`Board cards`}
             icon={<IconLayoutKanban size={18} />}
@@ -221,14 +225,19 @@ function WorkOrderWorkspace({
       label: t`Plan & Safety`,
       content: (
         <Stack gap='md'>
+          <PreparedPackage
+            value={workOrder.prepared_package}
+            workOrderId={workOrder.id}
+          />
           {workOrder.repair_packet ? (
             <>
-              {workOrder.repair_packet.approved_scope && (
-                <InvestigationSection
-                  findings={[]}
-                  approvedScope={workOrder.repair_packet.approved_scope}
-                />
-              )}
+              {!workOrder.prepared_package &&
+                workOrder.repair_packet.approved_scope && (
+                  <InvestigationSection
+                    findings={[]}
+                    approvedScope={workOrder.repair_packet.approved_scope}
+                  />
+                )}
               <WorkOrderSafetyReadiness gates={workOrder.repair_packet.gates} />
               <RepairPacketCard packet={workOrder.repair_packet} />
             </>
@@ -267,26 +276,10 @@ function WorkOrderWorkspace({
     {
       name: 'verify',
       label: t`Verify & Return`,
+      // R6 P23 projection, then the shared native closeout readings (P24).
       content: (
         <Stack gap='md'>
-          <SectionCard
-            title={t`Recorded verification`}
-            icon={<IconShieldCheck size={18} />}
-          >
-            <InfoItem
-              label={t`Verification summary`}
-              value={
-                workOrder.structured_closeout?.verification_summary ?? null
-              }
-            />
-            <InfoItem
-              label={t`Recorded verification time`}
-              value={formatDateTime(
-                workOrder.structured_closeout?.verified_at ?? null
-              )}
-            />
-          </SectionCard>
-          <Alert color='gray'>{t`Physical test criteria, attempts, operating authority and service-return records are not supplied by this overview. A recorded summary or completed work order does not establish permission to operate.`}</Alert>
+          <VerificationReturn workOrder={workOrder} />
           {workOrder.canonical_commands_enabled && !workOrder.repair_packet && (
             <WorkCloseoutReadings
               workOrderId={workOrder.id}

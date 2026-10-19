@@ -24,6 +24,7 @@ import type {
   HandledActionState
 } from '@lib/types/WorkExecution';
 
+import { executionBadgeStyles } from './ExecutionFacts';
 import {
   HANDLED_PREVIEW_ROWS,
   handledLinkTarget,
@@ -33,6 +34,7 @@ import {
 const STATE_COLOR: Record<HandledActionState, string> = {
   completed: 'teal',
   active: 'indigo',
+  queued: 'gray',
   failed: 'red',
   unknown: 'orange'
 };
@@ -42,7 +44,9 @@ function stateLabel(row: HandledAction): string {
     case 'completed':
       return t`Handled`;
     case 'active':
-      return row.status === 'retryable' ? t`Retrying` : t`Working`;
+      return t`Working`;
+    case 'queued':
+      return t`Queued, not running`;
     case 'failed':
       return t`Could not complete`;
     default:
@@ -85,7 +89,7 @@ function describe(row: HandledAction): { action: string; result: string } {
         action: t`Repair packet prepared`,
         result:
           parts !== null && gates !== null
-            ? t`Preliminary diagnosis, ${parts} part line(s) and ${gates} safety gate(s) saved`
+            ? t`Preliminary diagnosis saved · ${parts} part suggestion(s) · ${gates} safety gate(s) created`
             : t`Preliminary diagnosis saved`
       };
     }
@@ -102,11 +106,15 @@ function describe(row: HandledAction): { action: string; result: string } {
       const readings = count(result.reading_candidates) ?? 0;
       const revision = count(result.capture_revision);
       const review =
-        row.status === 'reviewed'
-          ? t`reviewed by a person`
-          : row.status === 'superseded'
-            ? t`superseded by a later draft`
-            : t`waiting for review`;
+        result.capture_status === 'abandoned'
+          ? t`narrative abandoned`
+          : result.current_revision === false
+            ? t`for an earlier narrative revision`
+            : result.capture_status === 'consumed'
+              ? t`narrative consumed by completion`
+              : row.status === 'reviewed'
+                ? t`reviewed by a person`
+                : t`Recorded proposal status: ${row.status}`;
       return {
         action: t`Maintenance account drafted from the technician narrative`,
         result:
@@ -145,7 +153,7 @@ function describe(row: HandledAction): { action: string; result: string } {
             : t`Learning candidate`,
         result:
           row.state === 'completed' && result.learning_draft
-            ? t`Draft ${String(result.learning_draft)} — not reviewed and not a procedure change`
+            ? t`Draft ${String(result.learning_draft)} — not a procedure change`
             : ''
       };
     default:
@@ -193,6 +201,10 @@ function sourceRecord(row: HandledAction): string {
 function triggerLabel(row: HandledAction): string {
   const trigger = row.trigger ?? {};
   if (trigger.requested_by) return t`Requested by ${trigger.requested_by}`;
+  if (trigger.amendment_id)
+    return trigger.amendment_applied_at
+      ? t`Amendment ${trigger.amendment_id} applied ${when(trigger.amendment_applied_at)}`
+      : t`Amendment ${trigger.amendment_id} · applied time not recorded`;
   if (trigger.closeout_completed_at)
     return t`Closeout recorded ${when(trigger.closeout_completed_at)}`;
   return t`Not recorded`;
@@ -234,8 +246,12 @@ function ActionRow({ row }: Readonly<{ row: HandledAction }>) {
             </Text>
           )}
         </Stack>
-        <Group gap='xs' wrap='nowrap'>
-          <Badge variant='light' color={STATE_COLOR[row.state]}>
+        <Group gap='xs' wrap='wrap' style={{ maxWidth: '100%' }}>
+          <Badge
+            variant='light'
+            color={STATE_COLOR[row.state]}
+            styles={executionBadgeStyles}
+          >
             {stateLabel(row)}
           </Badge>
           <Text size='xs' c='dimmed' style={{ whiteSpace: 'nowrap' }}>
@@ -269,7 +285,9 @@ function ActionRow({ row }: Readonly<{ row: HandledAction }>) {
           <Detail
             label={t`Saved result`}
             value={
-              row.state === 'completed' ? result || t`Recorded` : t`None saved`
+              row.state === 'completed'
+                ? result || t`Recorded`
+                : t`No confirmed result`
             }
           />
           <Detail
@@ -336,22 +354,29 @@ export function HandledByAimms({ value }: Readonly<{ value: unknown }>) {
             <Title order={4} id='handled-by-aimms-title'>
               {t`Handled by AIMMS`}
             </Title>
-            <Badge variant='light' color='teal'>
-              {t`${counts.completed} handled`}
-            </Badge>
+            {checked.length > 0 && (
+              <Badge variant='light' color='teal'>
+                {t`${counts.completed} handled`}
+              </Badge>
+            )}
           </Group>
           <Group gap='xs'>
-            {counts.active > 0 && (
+            {checked.length > 0 && (counts.queued ?? 0) > 0 && (
+              <Badge variant='light' color='gray'>
+                {t`${counts.queued ?? 0} queued`}
+              </Badge>
+            )}
+            {checked.length > 0 && counts.active > 0 && (
               <Badge variant='light' color='indigo'>
                 {t`${counts.active} in progress`}
               </Badge>
             )}
-            {counts.failed > 0 && (
+            {checked.length > 0 && counts.failed > 0 && (
               <Badge variant='light' color='red'>
                 {t`${counts.failed} could not complete`}
               </Badge>
             )}
-            {counts.unknown > 0 && (
+            {checked.length > 0 && counts.unknown > 0 && (
               <Badge variant='light' color='orange'>
                 {t`${counts.unknown} outcome unknown`}
               </Badge>
@@ -381,7 +406,7 @@ export function HandledByAimms({ value }: Readonly<{ value: unknown }>) {
             <Stack gap={0}>
               {handling.length > 0 && (
                 <Text size='sm' fw={600}>
-                  {t`Recorded results`}
+                  {t`Recorded activity`}
                 </Text>
               )}
               {visible.map((row) => (
@@ -415,7 +440,7 @@ export function HandledByAimms({ value }: Readonly<{ value: unknown }>) {
         {counts.failed + counts.unknown > 0 && (
           <Alert color='gray' variant='light' p='xs'>
             <Text size='sm'>
-              {t`An action that could not complete, or whose outcome is unknown, saved no result. No next owner is recorded for it.`}
+              {t`No confirmed result or next owner is recorded here for failed or unknown actions.`}
             </Text>
           </Alert>
         )}

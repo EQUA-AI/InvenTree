@@ -4,6 +4,7 @@ import type { Investigation } from '@lib/types/WorkExecution';
 
 import {
   diagnoseReturnPath,
+  isSnapshotId,
   measured,
   readInvestigation
 } from './investigationProjection';
@@ -132,4 +133,10 @@ describe('diagnoseReturnPath', () => {
       '/maintenance/work-orders/73/?work_panel=diagnose'
     );
   });
+});
+
+it('distinguishes snapshot UUIDs from complete typed record citations', () => {
+  expect(isSnapshotId('6f1c2d4e-0000-4000-8000-000000000001')).toBe(true);
+  expect(isSnapshotId('work_order_closeout:41@7')).toBe(false);
+  expect(isSnapshotId('machine_signal_state:7@9')).toBe(false);
 });

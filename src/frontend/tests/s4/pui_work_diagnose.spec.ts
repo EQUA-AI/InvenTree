@@ -51,7 +51,7 @@ function investigation(extra: Partial<Investigation> = {}): Investigation {
       verified_at: null,
       analysis_status: 'available',
       authority: 'derived',
-      provider: 'wf7',
+      provider: 'machine_health.preliminary',
       model_or_rule_version: 'wf7-2026.10',
       generated_at: '2026-10-18T12:05:00Z',
       data_window: {
@@ -65,7 +65,7 @@ function investigation(extra: Partial<Investigation> = {}): Investigation {
         {
           observation: 'Synthetic DE vibration rose',
           relation: 'supports',
-          snapshot_id: '6f1c2d4e-0000',
+          snapshot_id: '6f1c2d4e-0000-4000-8000-000000000001',
           signal_label: 'DE vibration',
           value: 7.1,
           unit: 'mm/s',
@@ -342,3 +342,92 @@ test('a server without the projection keeps the native findings view', async ({
   await expect(diagnose.getByText('0 g', { exact: true })).toBeVisible();
   await expect(diagnose.getByTestId('diagnose-explanation')).toHaveCount(0);
 });
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`missing wf7 basis stays unknown and source citations stay complete (${scheme})`, async ({
+    page
+  }, info) => {
+    const base = investigation();
+    const missing = {
+      ...base.explanation!,
+      authority: null,
+      provider: 'azure_foundry_luna',
+      data_window: { start: null, end: null, snapshot_count: null },
+      stale_signal_count: null,
+      quality_summary: null,
+      evidence: [
+        {
+          observation: 'Synthetic prior repair cited',
+          relation: 'supports' as const,
+          snapshot_id: 'work_order_closeout:41@7'
+        }
+      ]
+    };
+    await mockExecutionWork(
+      page,
+      packetWork({ investigation: investigation({ explanation: missing }) })
+    );
+    await openExecutionPanel(page, 'diagnose', scheme);
+    const diagnose = panelRegion(page, 'Diagnose');
+    const basis = diagnose.getByTestId('diagnose-explanation');
+    await expect(basis.getByText('Not recorded', { exact: true })).toHaveCount(
+      4
+    );
+    await expect(
+      diagnose.getByText('Cited record work_order_closeout:41@7', {
+        exact: true
+      })
+    ).toBeVisible();
+    await expect(
+      diagnose.getByText(
+        /Snapshot work_ord|0 snapshot\(s\)|A threshold configured in AIMMS/
+      )
+    ).toHaveCount(0);
+    await expect(
+      diagnose.getByText(
+        /Chat does not save finding corrections, resolutions or agreed checks/
+      )
+    ).toBeVisible();
+    await expect(
+      diagnose.getByText(
+        /Resolve it in the assistant|Checks are agreed in the assistant/
+      )
+    ).toHaveCount(0);
+    await expect(
+      diagnose.getByRole('link', {
+        name: 'Open RP-901 to record supported changes'
+      })
+    ).toHaveAttribute('href', '/repair/packets/901/');
+    await expectNoPageOverflow(page);
+    await capturePanel(
+      page,
+      info.outputPath(`diagnose-missing-basis-${scheme}.png`)
+    );
+    const ungenerated = packetWork();
+    ungenerated.repair_packet!.diagnosis = {};
+    ungenerated.repair_packet!.diagnosis_status = null;
+    ungenerated.repair_packet!.generation_status = 'idle';
+    ungenerated.investigation = investigation({
+      packet: { id: 901, reference: 'RP-901', generation_status: 'idle' },
+      explanation: null
+    });
+    await mockExecutionWork(page, ungenerated);
+    await page.reload();
+    const empty = page.getByTestId('diagnose-explanation');
+    await expect(
+      empty.getByText('No explanation saved', { exact: true })
+    ).toBeVisible();
+    await expect(
+      empty.getByText(
+        /No data available|0 snapshot\(s\)|A threshold configured in AIMMS/
+      )
+    ).toHaveCount(0);
+    await expect(
+      empty.getByText('Evidence window', { exact: true })
+    ).toHaveCount(0);
+    await capturePanel(
+      page,
+      info.outputPath(`diagnose-not-generated-${scheme}.png`)
+    );
+  });
+}

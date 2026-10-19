@@ -31,6 +31,12 @@ function action(
   state: HandledAction['state'],
   extra: Partial<HandledAction> = {}
 ): HandledAction {
+  const occurred =
+    extra.occurred_at === undefined
+      ? kind === 'account_drafting'
+        ? null
+        : '2026-10-18T11:40:00Z'
+      : extra.occurred_at;
   return {
     id,
     kind,
@@ -38,12 +44,13 @@ function action(
     status: {
       completed: 'succeeded',
       active: 'running',
+      queued: 'pending',
       failed: 'failed',
       unknown: 'outcome_unknown'
     }[state],
-    occurred_at: '2026-10-18T11:40:00Z',
-    started_at: '2026-10-18T11:38:00Z',
-    finished_at: state === 'active' ? null : '2026-10-18T11:40:00Z',
+    occurred_at: occurred,
+    started_at: kind === 'packet_prepared' ? '2026-10-18T11:38:00Z' : null,
+    finished_at: state === 'completed' || state === 'failed' ? occurred : null,
     source: {
       record: 'repair_packet_generation_run',
       id: 31,
@@ -58,7 +65,7 @@ function action(
 }
 
 function projection(actions: HandledAction[]): HandledActions {
-  const counts = { completed: 0, active: 0, failed: 0, unknown: 0 };
+  const counts = { completed: 0, active: 0, queued: 0, failed: 0, unknown: 0 };
   for (const row of actions) counts[row.state] += 1;
   return {
     rule: 'handled_actions.v1',
@@ -68,7 +75,10 @@ function projection(actions: HandledAction[]): HandledActions {
       { key: 'closeout_follow_up', state: 'read' }
     ],
     counts,
-    actions
+    // Match the backend projection's recorded timestamp order, including nulls.
+    actions: [...actions].sort((a, b) =>
+      (b.occurred_at ?? '').localeCompare(a.occurred_at ?? '')
+    )
   };
 }
 
@@ -125,7 +135,7 @@ test('recorded AIMMS work lists saved results with counts that match the rows', 
   ).toBeVisible();
   await expect(
     card.getByText(
-      'Preliminary diagnosis, 3 part line(s) and 2 safety gate(s) saved',
+      'Preliminary diagnosis saved · 3 part suggestion(s) · 2 safety gate(s) created',
       { exact: true }
     )
   ).toBeVisible();
@@ -231,9 +241,11 @@ test('active, failed and unknown actions are never shown as handled', async ({
   ).toBeVisible();
   await failed.getByRole('button', { name: 'Details', exact: true }).click();
   await expect(failed.getByText('Next owner')).toBeVisible();
-  await expect(failed.getByText('None saved')).toBeVisible();
+  await expect(failed.getByText('No confirmed result')).toBeVisible();
   await expect(
-    card.getByText(/saved no result\. No next owner is recorded for it\./)
+    card.getByText(
+      'No confirmed result or next owner is recorded here for failed or unknown actions.'
+    )
   ).toBeVisible();
   // Six rows first, then every recorded action on request.
   await expect(card.getByTestId('handled-action')).toHaveCount(6);
@@ -281,7 +293,7 @@ test('a successful empty read names what was checked and what is not enabled', a
   const card = panelRegion(page, 'Work').locator(
     '[aria-labelledby="handled-by-aimms-title"]'
   );
-  await expect(card.getByText('0 handled', { exact: true })).toBeVisible();
+  await expect(card.getByText('0 handled', { exact: true })).toHaveCount(0);
   await expect(
     card.getByText('No AIMMS record source applies to this work order.')
   ).toBeVisible();
@@ -292,3 +304,101 @@ test('a successful empty read names what was checked and what is not enabled', a
   ).toBeVisible();
   await capturePanel(page, testInfo.outputPath('handled-empty.png'));
 });
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`queued intent and stale narratives retain their actual context (${scheme})`, async ({
+    page
+  }, info) => {
+    const rows = [
+      action('effect-q', 'closeout_notification', 'queued', {
+        source: { record: 'closeout_effect', id: 11, provider: 'notification' },
+        status: 'pending',
+        started_at: null,
+        finished_at: null
+      }),
+      action('earlier', 'account_drafted', 'completed', {
+        source: { record: 'closeout_proposal', id: 12, provider: 'rules-v1' },
+        status: 'proposed',
+        result: {
+          capture_revision: 1,
+          fields: 1,
+          part_candidates: 0,
+          reading_candidates: 0,
+          current_revision: false,
+          capture_status: 'proposed'
+        }
+      }),
+      action('abandoned', 'account_drafted', 'completed', {
+        source: { record: 'closeout_proposal', id: 13, provider: 'rules-v1' },
+        status: 'proposed',
+        result: {
+          capture_revision: 2,
+          fields: 1,
+          part_candidates: 0,
+          reading_candidates: 0,
+          current_revision: true,
+          capture_status: 'abandoned'
+        }
+      }),
+      action('amendment', 'closeout_notification', 'completed', {
+        source: { record: 'closeout_effect', id: 14, provider: 'notification' },
+        occurred_at: '2026-10-18T15:05:00Z',
+        started_at: null,
+        finished_at: '2026-10-18T15:05:00Z',
+        trigger: {
+          amendment_id: '21',
+          amendment_applied_at: '2026-10-18T15:00:00Z'
+        },
+        result: { notified: 1 }
+      }),
+      action('extracting', 'account_drafting', 'active', {
+        source: { record: 'closeout_capture', id: 15, provider: null },
+        status: 'extracting',
+        occurred_at: null,
+        started_at: null,
+        finished_at: null
+      })
+    ];
+    const requests = await mockExecutionWork(page, {
+      ...workOrder(),
+      handled_actions: projection(rows)
+    });
+    await openExecutionPanel(page, 'work', scheme);
+    const card = panelRegion(page, 'Work').locator(
+      '[aria-labelledby="handled-by-aimms-title"]'
+    );
+    await expect(card.getByText('1 queued', { exact: true })).toBeVisible();
+    await expect(
+      card.getByText('1 in progress', { exact: true })
+    ).toBeVisible();
+    await expect(
+      card.getByText(/for an earlier narrative revision/)
+    ).toBeVisible();
+    await expect(card.getByText(/narrative abandoned/)).toBeVisible();
+    await expect(card.getByText(/waiting for review/)).toHaveCount(0);
+    const queued = card
+      .getByTestId('handled-action')
+      .filter({ hasText: 'Queued, not running' });
+    await queued.getByRole('button', { name: 'Details', exact: true }).click();
+    await expect(
+      queued.getByText('Queued, not running', { exact: true })
+    ).toHaveCSS('white-space', 'normal');
+    await expect(queued.getByText('Working', { exact: true })).toHaveCount(0);
+    await expect(
+      queued
+        .getByText('Not recorded', { exact: true })
+        .filter({ visible: true })
+    ).toHaveCount(4);
+    const amendment = card
+      .getByTestId('handled-action')
+      .filter({ hasText: '1 person(s) notified' });
+    await amendment
+      .getByRole('button', { name: 'Details', exact: true })
+      .click();
+    await expect(amendment.getByText(/Amendment 21 applied/)).toBeVisible();
+    await expect(amendment.getByText(/Closeout recorded/)).toHaveCount(0);
+    await expectNoPageOverflow(page);
+    await capturePanel(page, info.outputPath(`handled-reviewed-${scheme}.png`));
+    expect(onlyReads(requests)).toBe(true);
+  });
+}

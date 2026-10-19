@@ -18,6 +18,8 @@ were read so an empty list is not mistaken for "nothing happened".
 
 from __future__ import annotations
 
+from django.conf import settings
+
 from .common import closeout_of, closeout_wizard_enabled, packet_of, person
 
 RULE = 'handled_actions.v1'
@@ -25,16 +27,17 @@ RULE = 'handled_actions.v1'
 # Recorded status -> what the Work page may say about it.
 COMPLETED = 'completed'
 ACTIVE = 'active'
+QUEUED = 'queued'
 FAILED = 'failed'
 UNKNOWN = 'unknown'
 
 _RUN_STATE = {'running': ACTIVE, 'succeeded': COMPLETED, 'failed': FAILED}
 
 _EFFECT_STATE = {
-    'pending': ACTIVE,
-    'leased': ACTIVE,
+    'pending': QUEUED,
+    'leased': QUEUED,
     'dispatching': ACTIVE,
-    'retryable': ACTIVE,
+    'retryable': QUEUED,
     'outcome_unknown': UNKNOWN,
     'succeeded': COMPLETED,
     'failed': FAILED,
@@ -125,7 +128,8 @@ def _closeout_extraction_actions(work_order) -> list[dict]:
     proposals = (
         CloseoutProposal.objects
         .filter(capture_revision__capture__work_order=work_order)
-        .select_related('capture_revision')
+        .exclude(extractor__in=['manual', ''])
+        .select_related('capture_revision__capture')
         .order_by('-created_at', '-pk')
     )
     for proposal in proposals:
@@ -146,6 +150,13 @@ def _closeout_extraction_actions(work_order) -> list[dict]:
             'trigger': None,
             'result': {
                 'capture_revision': proposal.capture_revision.revision,
+                'current_revision': (
+                    proposal.capture_revision_id
+                    == proposal.capture_revision.capture.current_revision_id
+                    if proposal.capture_revision.capture.current_revision_id is not None
+                    else None
+                ),
+                'capture_status': proposal.capture_revision.capture.status,
                 'fields': len(fields),
                 'part_candidates': len(proposal.part_candidates or []),
                 'reading_candidates': len(proposal.reading_candidates or []),
@@ -157,14 +168,14 @@ def _closeout_extraction_actions(work_order) -> list[dict]:
         work_order=work_order, status='extracting'
     ).select_related('current_revision')
     for capture in extracting.order_by('-pk'):
-        revision = capture.current_revision
         rows.append({
             'id': f'closeout-capture:{capture.pk}',
             'kind': 'account_drafting',
             'state': ACTIVE,
             'status': capture.status,
-            'occurred_at': _iso(revision.created_at if revision else None),
-            'started_at': _iso(revision.created_at if revision else None),
+            # The narrative timestamp is not the extraction start.
+            'occurred_at': None,
+            'started_at': None,
             'finished_at': None,
             'source': {
                 'record': 'closeout_capture',
@@ -198,9 +209,20 @@ def _effect_result(effect) -> dict | None:
 
 
 def _effect_actions(closeout) -> list[dict]:
+    amendments = {item.pk: item for item in closeout.amendments.all()}
     rows = []
     for effect in closeout.effects.all().order_by('-created_at', '-pk'):
         state = _EFFECT_STATE.get(effect.status, UNKNOWN)
+        trigger = {'closeout_completed_at': _iso(closeout.completed_at)}
+        if ':amendment:' in effect.effect_key:
+            key = effect.effect_key.rsplit(':amendment:', 1)[1]
+            amendment = amendments.get(int(key)) if key.isdecimal() else None
+            trigger = {
+                'amendment_id': key,
+                'amendment_applied_at': _iso(amendment.applied_at)
+                if amendment
+                else None,
+            }
         rows.append({
             'id': f'closeout-effect:{effect.pk}',
             'kind': (
@@ -213,14 +235,15 @@ def _effect_actions(closeout) -> list[dict]:
             'state': state,
             'status': effect.status,
             'occurred_at': _iso(effect.resolved_at or effect.created_at),
-            'started_at': _iso(effect.created_at),
+            # This ledger persists enqueue and resolution, not execution start.
+            'started_at': None,
             'finished_at': _iso(effect.resolved_at),
             'source': {
                 'record': 'closeout_effect',
                 'id': effect.pk,
                 'provider': effect.effect_type,
             },
-            'trigger': {'closeout_completed_at': _iso(closeout.completed_at)},
+            'trigger': trigger,
             'result': _effect_result(effect) if state == COMPLETED else None,
             'link': {'kind': 'work_panel', 'panel': 'closeout'},
             'attempts': effect.attempts,
@@ -248,14 +271,16 @@ def project(work_order) -> dict:
         actions += _closeout_extraction_actions(work_order)
         sources.append({'key': 'closeout_drafting', 'state': 'read'})
         closeout = closeout_of(work_order)
-        if closeout is None:
+        if not getattr(settings, 'AIMMS_CLOSEOUT_EFFECTS_ENABLED', False):
+            sources.append({'key': 'closeout_follow_up', 'state': 'not_enabled'})
+        elif closeout is None:
             sources.append({'key': 'closeout_follow_up', 'state': 'not_applicable'})
         else:
             actions += _effect_actions(closeout)
             sources.append({'key': 'closeout_follow_up', 'state': 'read'})
 
     actions.sort(key=lambda row: row['occurred_at'] or '', reverse=True)
-    counts = {COMPLETED: 0, ACTIVE: 0, FAILED: 0, UNKNOWN: 0}
+    counts = {COMPLETED: 0, ACTIVE: 0, QUEUED: 0, FAILED: 0, UNKNOWN: 0}
     for row in actions:
         counts[row['state']] += 1
     return {'rule': RULE, 'sources': sources, 'counts': counts, 'actions': actions}

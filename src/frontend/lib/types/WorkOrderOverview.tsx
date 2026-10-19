@@ -6,7 +6,13 @@
  */
 
 import type { BoardCard, WorkOrder } from './Tasks';
-import type { HandledActions, Investigation } from './WorkExecution';
+import type {
+  HandledActions,
+  Investigation,
+  PreparedPackage,
+  TimeAssignment,
+  VerificationReturn
+} from './WorkExecution';
 
 export interface WorkOrderSummary {
   id: number;
@@ -163,4 +169,7 @@ export interface WorkOrderOverview extends WorkOrder {
   /** R6 S4 projections (`tasks/work_execution`); absent on older servers. */
   handled_actions?: HandledActions;
   investigation?: Investigation;
+  prepared_package?: PreparedPackage;
+  verification_return?: VerificationReturn;
+  time_assignment?: TimeAssignment;
 }
