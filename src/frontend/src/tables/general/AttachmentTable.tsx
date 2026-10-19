@@ -1,6 +1,7 @@
 import { t } from '@lingui/core/macro';
 import {
   ActionIcon,
+  Alert,
   Badge,
   Group,
   Paper,
@@ -51,6 +52,7 @@ import {
   type AttachmentPreviewRecord,
   attachmentPreviewItem
 } from './attachmentPreview';
+import { useAttachmentRecovery } from './useAttachmentRecovery';
 
 /**
  * Define set of columns to display for the attachment table
@@ -281,6 +283,11 @@ export function AttachmentTable({
     number | undefined
   >(undefined);
 
+  const { onRevision, ...attachmentRecovery } = useAttachmentRecovery(
+    model_type === 'workorder',
+    url,
+    selectedAttachment
+  );
   const uploadFields: ApiFormFieldSet = useMemo(() => {
     const fields: ApiFormFieldSet = {
       model_type: {
@@ -296,6 +303,8 @@ export function AttachmentTable({
       link: {},
       comment: {}
     };
+    if (model_type === 'workorder' && selectedAttachment)
+      fields.expected_revision = { hidden: true, onValueChange: onRevision };
 
     if (attachmentType != 'link') {
       delete fields['link'];
@@ -315,12 +324,42 @@ export function AttachmentTable({
     }
 
     return fields;
-  }, [model_type, model_id, attachmentType, selectedAttachment]);
+  }, [model_type, model_id, attachmentType, selectedAttachment, onRevision]);
 
+  const [uploadFailure, setUploadFailure] = useState<
+    'refused' | 'uncertain' | null
+  >(null);
   const uploadAttachment = useCreateApiFormModal({
     url: url,
     title: t`Upload Attachment`,
     fields: uploadFields,
+    onOpen: () => setUploadFailure(null),
+    submitDisabled: model_type === 'workorder' && uploadFailure === 'uncertain',
+    hideErrorNotification: model_type === 'workorder',
+    preserveDraftOnRefresh: model_type === 'workorder',
+    preFormContent:
+      model_type === 'workorder' && uploadFailure ? (
+        <Alert color='orange'>
+          {uploadFailure === 'uncertain'
+            ? t`Attachment save not confirmed. This form keeps your file and metadata. Reconcile the Work attachments before another upload; this request may have saved.`
+            : t`Attachment save refused. Your file and metadata are retained. Check access and required fields before retrying.`}
+        </Alert>
+      ) : undefined,
+    onFormError: (error: any) => {
+      if (
+        model_type !== 'workorder' ||
+        (!error?.isAxiosError &&
+          !error?.response &&
+          typeof error?.status !== 'number')
+      )
+        return;
+      const status = error?.response?.status ?? error?.status;
+      setUploadFailure(
+        status >= 400 && status < 500 && ![408, 429].includes(status)
+          ? 'refused'
+          : 'uncertain'
+      );
+    },
     onFormSuccess: () => {
       table.refreshTable();
       onChange?.();
@@ -328,6 +367,7 @@ export function AttachmentTable({
   });
 
   const editAttachment = useEditApiFormModal({
+    ...attachmentRecovery,
     url: url,
     pk: selectedAttachment,
     title: t`Edit Attachment`,

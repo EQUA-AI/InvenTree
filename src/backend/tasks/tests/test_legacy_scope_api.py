@@ -359,7 +359,7 @@ class LegacyWorkScopeAPITest(TestCase):
         self.assertEqual(allowed.status_code, 201, allowed.data)
         moved = self.api.patch(
             f'/api/attachment/{allowed.data["pk"]}/',
-            {'model_type': 'assetmachine', 'model_id': self.foreign_machine.pk},
+            {'model_type': 'assetmachine', 'model_id': self.foreign_machine.pk, 'expected_revision': allowed.data['expected_revision']},
             format='json',
         )
         self.assertEqual(moved.status_code, 404)

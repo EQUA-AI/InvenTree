@@ -11,6 +11,7 @@ validates and stores the proposal in a second transaction (NFR-CO-003).
 """
 
 import hashlib
+import json
 import logging
 import uuid
 
@@ -584,6 +585,45 @@ def decisions_cover_required_fields(proposal) -> list[str]:
     ]
 
 
+def _decision_snapshot_hash(revision_id, proposal):
+    """Hash the same decision objects used by the read serializer."""
+    rows = (
+        sorted(proposal.decisions.all(), key=lambda row: row.field_path)
+        if proposal
+        else []
+    )
+    snapshot = {
+        'revision': revision_id,
+        'proposal': proposal.pk if proposal else None,
+        'decisions': [
+            {
+                'field_path': row.field_path,
+                'decision': row.decision,
+                'final_value': row.final_value,
+                'decided_by_id': row.decided_by_id,
+                'decided_at': row.decided_at,
+            }
+            for row in rows
+        ],
+    }
+    return hashlib.sha256(
+        json.dumps(snapshot, sort_keys=True, default=str).encode()
+    ).hexdigest()
+
+
+def proposal_decision_version(proposal):
+    """Bind a proposal's serialized field values to their own source revision."""
+    return _decision_snapshot_hash(proposal.capture_revision_id, proposal)
+
+
+def decision_version(capture):
+    """Identify the current source/proposal/decisions independently of Work version."""
+    proposal = (
+        _live_proposal(capture.current_revision) if capture.current_revision else None
+    )
+    return _decision_snapshot_hash(capture.current_revision_id, proposal)
+
+
 @transaction.atomic
 def record_decisions(
     *,
@@ -594,6 +634,7 @@ def record_decisions(
     expected_version,
     idempotency_key,
     correlation_id=None,
+    expected_decision_version=None,
 ):
     """Record a batch of explicit per-field human promotion decisions."""
     _require_wizard()
@@ -604,6 +645,8 @@ def record_decisions(
         'expected_version': expected_version,
         'decisions': decisions,
     }
+    if expected_decision_version is not None:
+        payload['expected_decision_version'] = expected_decision_version
     request_hash = _canonical_hash('closeout_decisions', actor, payload)
     replay = _replay_or_none(work_order, idempotency_key, request_hash)
     if replay:
@@ -613,6 +656,13 @@ def record_decisions(
     require_permission(actor, REVIEW_CLOSEOUT)
     _require_scope(actor, work_order)
     capture = _locked_capture(work_order, capture_id)
+    if (
+        expected_decision_version is not None
+        and expected_decision_version != decision_version(capture)
+    ):
+        raise CaptureStaleRevision(
+            'The capture decisions changed; review the latest values'
+        )
     if capture.status not in {
         CloseoutCaptureStatus.OPEN,
         CloseoutCaptureStatus.PROPOSED,

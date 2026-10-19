@@ -31,9 +31,11 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import DictateCloseoutModal from './DictateCloseoutModal';
+import { DraftRecovery } from './DraftRecovery';
 import { WorkRecordUpdate } from './FinalUpdateAction';
 import { PreparedCloseout } from './PreparedCloseout';
 import { fieldDecisions, savedFieldValue } from './closeoutAccount';
+import { useCaptureSave } from './useCaptureSave';
 import { useWorkRecordUpdate } from './useWorkRecordUpdate';
 import type { UpdateIntent } from './workRecordUpdate';
 
@@ -50,7 +52,6 @@ import type {
 } from '@lib/types/Closeout';
 
 import { useApi } from '../../../contexts/ApiContext';
-import { showApiErrorMessage } from '../../../functions/notifications';
 
 export type { CloseoutWorkOrder } from '@lib/types/Closeout';
 
@@ -93,6 +94,24 @@ export function CloseoutPanel({
   const [followUpRequired, setFollowUpRequired] = useState(false);
   const [busy, setBusy] = useState(false);
   const [reviewedVersion, setReviewedVersion] = useState<number | null>(null);
+  const [draftBase, setDraftBase] = useState<{
+    version: number;
+    decision?: string;
+    captureId: number | null;
+  } | null>(null);
+  const [latestReview, setLatestReview] = useState<{
+    version: number;
+    decision?: string;
+    captureId: number | null;
+    fields: Record<string, string>;
+  } | null>(null);
+  const [reviewError, setReviewError] = useState(false);
+  const [commandFailure, setCommandFailure] = useState<string | null>(null);
+  const [partDrafts, setPartDrafts] = useState<
+    Record<number, { disposition: string; reason: string; version: number }>
+  >({});
+  const [partFailure, setPartFailure] = useState<PartUsageRow | null>(null);
+  const [partLatest, setPartLatest] = useState<PartUsageRow | null>(null);
 
   const woId = workOrder.id;
 
@@ -185,8 +204,39 @@ export function CloseoutPanel({
   }, [queryClient, woId]);
 
   const update = useWorkRecordUpdate(woId, invalidate);
+  const captureSave = useCaptureSave(woId, () => {
+    setDraftBase(null);
+    setFieldValues({});
+    setNarrative('');
+    setLatestReview(null);
+    invalidate();
+  });
+  useEffect(() => {
+    const intent = captureSave.state?.intent;
+    if (!intent) return;
+    if (intent.command === 'closeout_capture')
+      setNarrative(String(intent.payload.narrative ?? ''));
+    else setFieldValues(intent.draft);
+    setDraftBase({
+      version: intent.payload.expected_version,
+      decision:
+        typeof intent.payload.expected_decision_version === 'string'
+          ? intent.payload.expected_decision_version
+          : undefined,
+      captureId: Number(intent.url.match(/captures\/(\d+)\//)?.[1]) || null
+    });
+  }, [captureSave.state?.intent]);
   const mutationLocked =
     busy ||
+    capturesQuery.isPending ||
+    proposalQuery.isFetching ||
+    partUsageQuery.isPending ||
+    readingsQuery.isPending ||
+    capturesQuery.isError ||
+    proposalQuery.isError ||
+    partUsageQuery.isError ||
+    readingsQuery.isError ||
+    captureSave.state != null ||
     dictateOpen ||
     ['pending', 'uncertain', 'confirmed'].includes(update.state.status);
   const effectsQuery = useQuery({
@@ -204,11 +254,14 @@ export function CloseoutPanel({
     async (fn: () => Promise<void>) => {
       if (mutationLocked) return;
       setBusy(true);
+      setCommandFailure(null);
       try {
         await fn();
         invalidate();
       } catch (error) {
-        showApiErrorMessage({ error, title: t`Closeout command failed` });
+        setCommandFailure(
+          t`Command not confirmed. Your inputs are retained. Review the current record before retrying.`
+        );
       } finally {
         setBusy(false);
       }
@@ -216,17 +269,25 @@ export function CloseoutPanel({
     [invalidate, mutationLocked]
   );
 
+  const decisionToken = proposalQuery.data
+    ? proposalQuery.data.decision_version
+    : capture?.decision_version;
+  const base = () =>
+    draftBase ?? {
+      version: workOrder.lifecycle_version,
+      decision: decisionToken,
+      captureId
+    };
   const createCapture = () =>
-    runCommand(async () => {
-      await api.post(apiUrl(ApiEndpoints.work_order_closeout_captures, woId), {
-        expected_version: workOrder.lifecycle_version,
+    void captureSave.save({
+      url: apiUrl(ApiEndpoints.work_order_closeout_captures, woId),
+      command: 'closeout_capture',
+      payload: {
+        expected_version: base().version,
         idempotency_key: newIdempotencyKey(),
         narrative
-      });
-      notifications.show({
-        message: t`Narrative captured`,
-        color: 'green'
-      });
+      },
+      draft: { [t`Narrative`]: narrative }
     });
 
   const extract = () =>
@@ -250,33 +311,105 @@ export function CloseoutPanel({
     [fieldValues, proposalQuery.data]
   );
 
-  const submitDecisions = () =>
-    runCommand(async () => {
-      if (!capture) return;
-      const decisions = fieldDecisions(
-        proposalQuery.data,
-        Object.fromEntries(
-          ['cause', ...REQUIRED_FIELDS].map((field) => [
-            field,
-            effectiveFieldValue(field)
-          ])
-        )
-      );
-      await api.post(
-        apiUrl(ApiEndpoints.work_order_closeout_capture_decisions, woId, {
-          capId: capture.id
-        }),
-        {
-          expected_version: workOrder.lifecycle_version,
-          idempotency_key: newIdempotencyKey(),
-          decisions
-        }
-      );
-      notifications.show({
-        message: t`Field decisions recorded`,
-        color: 'green'
-      });
+  const submitDecisions = () => {
+    if (!capture || !base().decision) return;
+    const fields = Object.fromEntries(
+      ['cause', ...REQUIRED_FIELDS].map((field) => [
+        field,
+        effectiveFieldValue(field)
+      ])
+    );
+    void captureSave.save({
+      url: apiUrl(ApiEndpoints.work_order_closeout_capture_decisions, woId, {
+        capId: base().captureId ?? capture.id
+      }),
+      command: 'closeout_decisions',
+      payload: {
+        expected_version: base().version,
+        expected_decision_version: base().decision,
+        idempotency_key: newIdempotencyKey(),
+        decisions: fieldDecisions(proposalQuery.data, fields)
+      },
+      draft: fields
     });
+  };
+  const reviewCapture = async () => {
+    setLatestReview(null);
+    setReviewError(false);
+    try {
+      const overview = (
+        await api.get<{ lifecycle_version: number }>(
+          apiUrl(ApiEndpoints.kanban_card_overview, woId)
+        )
+      ).data;
+      const captures = (
+        await api.get<CloseoutCapture[]>(
+          apiUrl(ApiEndpoints.work_order_closeout_captures, woId)
+        )
+      ).data;
+      const latestCapture = captures.find((row) =>
+        ACTIVE_CAPTURE_STATES.includes(row.status)
+      );
+      const proposal =
+        latestCapture && ['reviewed', 'proposed'].includes(latestCapture.status)
+          ? (
+              await api.get<CloseoutProposal>(
+                apiUrl(
+                  ApiEndpoints.work_order_closeout_capture_proposal,
+                  woId,
+                  { capId: latestCapture.id }
+                )
+              )
+            ).data
+          : null;
+      setLatestReview({
+        version: overview.lifecycle_version,
+        decision: proposal
+          ? proposal.decision_version
+          : latestCapture?.decision_version,
+        captureId: latestCapture?.id ?? null,
+        fields:
+          captureSave.state?.intent.command === 'closeout_capture'
+            ? { [t`Narrative`]: latestCapture?.narrative ?? t`Not recorded` }
+            : Object.fromEntries(
+                ['cause', ...REQUIRED_FIELDS].map((field) => [
+                  field,
+                  savedFieldValue(proposal, field)
+                ])
+              )
+      });
+    } catch {
+      setReviewError(true);
+    }
+  };
+  const useReviewedCapture = (keep: boolean) => {
+    if (!latestReview || !captureSave.state) return;
+    if (
+      keep &&
+      captureSave.state.intent.command === 'closeout_decisions' &&
+      latestReview.captureId !== base().captureId
+    )
+      return;
+    if (
+      captureSave.state.intent.command === 'closeout_capture' &&
+      latestReview.captureId != null
+    )
+      return;
+    if (captureSave.state.intent.command === 'closeout_decisions')
+      setFieldValues(
+        keep ? captureSave.state.intent.draft : latestReview.fields
+      );
+    else if (keep)
+      setNarrative(String(captureSave.state.intent.payload.narrative ?? ''));
+    setDraftBase({
+      version: latestReview.version,
+      decision: latestReview.decision,
+      captureId: latestReview.captureId
+    });
+    captureSave.release();
+    setLatestReview(null);
+    invalidate();
+  };
 
   const refreshPartUsage = () =>
     runCommand(async () => {
@@ -286,8 +419,14 @@ export function CloseoutPanel({
       );
     });
 
-  const resolveRow = (row: PartUsageRow, disposition: string, reason: string) =>
-    runCommand(async () => {
+  const resolveRow = async (
+    row: PartUsageRow,
+    disposition: string,
+    reason: string
+  ) => {
+    if (mutationLocked || partFailure) return;
+    setBusy(true);
+    try {
       await api.post(
         apiUrl(ApiEndpoints.work_order_closeout_part_usage_resolve, woId, {
           rowId: row.id
@@ -295,10 +434,38 @@ export function CloseoutPanel({
         {
           disposition,
           reason,
-          expected_row_version: row.version
+          expected_row_version: partDrafts[row.id]?.version ?? row.version
         }
       );
-    });
+      setPartDrafts((current) => {
+        const next = { ...current };
+        delete next[row.id];
+        return next;
+      });
+      invalidate();
+    } catch {
+      setPartFailure(row);
+      setPartLatest(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const reviewPart = async () => {
+    setPartLatest(null);
+    setReviewError(false);
+    try {
+      const rows = (
+        await api.get<PartUsageRow[]>(
+          apiUrl(ApiEndpoints.work_order_closeout_part_usage, woId)
+        )
+      ).data;
+      const latest = rows.find((row) => row.id === partFailure?.id);
+      if (!latest) throw new Error('Unavailable row');
+      setPartLatest(latest);
+    } catch {
+      setReviewError(true);
+    }
+  };
 
   const accountReady =
     REQUIRED_FIELDS.every(
@@ -328,7 +495,7 @@ export function CloseoutPanel({
     )
       return;
     const payload: UpdateIntent['payload'] = {
-      expected_version: workOrder.lifecycle_version,
+      expected_version: base().version,
       idempotency_key: newIdempotencyKey(),
       action: effectiveFieldValue('action'),
       result: effectiveFieldValue('result'),
@@ -365,6 +532,127 @@ export function CloseoutPanel({
         workOrderVersion={workOrder.lifecycle_version}
         onCommitted={() => void invalidate()}
       />
+      {(capturesQuery.isError ||
+        proposalQuery.isError ||
+        partUsageQuery.isError) && (
+        <Alert color='orange'>
+          {t`Closeout source unavailable. Last-known values and drafts are retained; saving is locked.`}
+          <Button
+            variant='light'
+            onClick={invalidate}
+          >{t`Retry sources`}</Button>
+        </Alert>
+      )}
+      {commandFailure && <Alert color='orange'>{commandFailure}</Alert>}
+      {partFailure && (
+        <DraftRecovery
+          title={t`Material resolution not confirmed`}
+          message={
+            reviewError
+              ? t`Latest row unavailable. Your draft is retained.`
+              : t`Compare the saved row before another resolution. Your disposition and reason are retained.`
+          }
+          draft={{
+            [t`Disposition`]: partDrafts[partFailure.id]?.disposition ?? '',
+            [t`Reason`]: partDrafts[partFailure.id]?.reason ?? '',
+            [t`Row version`]: String(
+              partDrafts[partFailure.id]?.version ?? partFailure.version
+            )
+          }}
+          latest={
+            partLatest
+              ? {
+                  [t`Disposition`]: partLatest.disposition,
+                  [t`Reason`]: partLatest.variance_reason ?? t`Not recorded`,
+                  [t`State`]: partLatest.state,
+                  [t`Row version`]: String(partLatest.version)
+                }
+              : undefined
+          }
+          onReview={() => void reviewPart()}
+          onKeep={
+            partLatest && partLatest.state !== 'reconciled'
+              ? () => {
+                  setPartDrafts((current) => ({
+                    ...current,
+                    [partLatest.id]: {
+                      ...current[partLatest.id],
+                      version: partLatest.version
+                    }
+                  }));
+                  setPartFailure(null);
+                  invalidate();
+                }
+              : undefined
+          }
+          onLatest={
+            partLatest
+              ? () => {
+                  setPartDrafts((current) => {
+                    const next = { ...current };
+                    delete next[partLatest.id];
+                    return next;
+                  });
+                  setPartFailure(null);
+                  invalidate();
+                }
+              : undefined
+          }
+        />
+      )}
+      {capture && !decisionToken && (
+        <Alert color='orange'>{t`Capture review cannot be saved safely on this server. Your draft is retained; the current saved revision is unavailable.`}</Alert>
+      )}
+      {captureSave.state && captureSave.state.status !== 'pending' && (
+        <DraftRecovery
+          title={t`Capture save needs attention`}
+          message={
+            reviewError
+              ? t`Latest record unavailable. Your draft is retained; access or source could not be confirmed.`
+              : captureSave.message
+          }
+          draft={captureSave.state.intent.draft}
+          latest={
+            latestReview
+              ? {
+                  [t`Work version`]: String(latestReview.version),
+                  [t`Capture`]:
+                    latestReview.captureId == null
+                      ? t`Not recorded`
+                      : String(latestReview.captureId),
+                  ...latestReview.fields
+                }
+              : undefined
+          }
+          onReview={
+            ['stale', 'failed'].includes(captureSave.state.status)
+              ? () => void reviewCapture()
+              : undefined
+          }
+          onRetry={
+            ['uncertain', 'failed'].includes(captureSave.state.status)
+              ? () => void captureSave.save()
+              : undefined
+          }
+          onKeep={
+            latestReview &&
+            !(
+              captureSave.state.intent.command === 'closeout_capture' &&
+              latestReview.captureId != null
+            ) &&
+            (captureSave.state.intent.command !== 'closeout_decisions' ||
+              latestReview.captureId === base().captureId)
+              ? () => useReviewedCapture(true)
+              : undefined
+          }
+          onLatest={
+            latestReview &&
+            captureSave.state.intent.command === 'closeout_decisions'
+              ? () => useReviewedCapture(false)
+              : undefined
+          }
+        />
+      )}
       <PreparedCloseout
         workOrder={workOrder}
         updateStatus={update.state.status}
@@ -422,23 +710,28 @@ export function CloseoutPanel({
               description={t`Leave blank when unknown`}
               min={0}
               value={downtime}
-              onChange={(value) =>
-                setDowntime(typeof value === 'number' ? value : '')
-              }
+              onChange={(value) => {
+                setDraftBase(base());
+                setDowntime(typeof value === 'number' ? value : '');
+              }}
             />
             <Checkbox
               label={t`Follow-up required`}
               checked={followUpRequired}
-              onChange={(event) =>
-                setFollowUpRequired(event.currentTarget.checked)
-              }
+              onChange={(event) => {
+                setDraftBase(base());
+                setFollowUpRequired(event.currentTarget.checked);
+              }}
             />
           </Group>
           {followUpRequired && (
             <Textarea
               label={t`Follow-up`}
               value={followUp}
-              onChange={(event) => setFollowUp(event.currentTarget.value)}
+              onChange={(event) => {
+                setDraftBase(base());
+                setFollowUp(event.currentTarget.value);
+              }}
               autosize
               minRows={2}
             />
@@ -478,6 +771,7 @@ export function CloseoutPanel({
           void update.releaseRefused().then((released) => {
             if (released) {
               setFieldValues({});
+              setDraftBase(null);
               setReviewedVersion(null);
             }
           });
@@ -532,11 +826,15 @@ export function CloseoutPanel({
                   <NarrativeStep
                     capture={capture}
                     narrative={narrative}
-                    setNarrative={setNarrative}
+                    setNarrative={(value) => {
+                      setDraftBase(base());
+                      setNarrative(value);
+                    }}
                     onCreate={createCapture}
                     onExtract={extract}
                     onDictate={() => setDictateOpen(true)}
                     busy={mutationLocked}
+                    saving={busy || captureSave.state?.status === 'pending'}
                     loading={capturesQuery.isLoading}
                   />
                 </Stepper.Step>
@@ -548,22 +846,45 @@ export function CloseoutPanel({
                     capture={capture}
                     proposal={proposalQuery.data ?? null}
                     effectiveFieldValue={effectiveFieldValue}
-                    setFieldValue={(field, value) =>
+                    setFieldValue={(field, value) => {
+                      setDraftBase(base());
                       setFieldValues((current) => ({
+                        ...Object.fromEntries(
+                          ['cause', ...REQUIRED_FIELDS].map((key) => [
+                            key,
+                            effectiveFieldValue(key)
+                          ])
+                        ),
                         ...current,
                         [field]: value
-                      }))
-                    }
+                      }));
+                    }}
                     onSubmit={submitDecisions}
-                    busy={mutationLocked}
+                    busy={mutationLocked || (capture != null && !decisionToken)}
+                    saving={busy || captureSave.state?.status === 'pending'}
                   />
                 </Stepper.Step>
                 <Stepper.Step label={t`Parts`}>
                   <PartsStep
                     rows={partUsageQuery.data ?? []}
+                    drafts={partDrafts}
+                    onDraft={(row, values) =>
+                      setPartDrafts((current) => ({
+                        ...current,
+                        [row.id]: {
+                          ...(current[row.id] ?? {
+                            disposition: '',
+                            reason: ''
+                          }),
+                          version: current[row.id]?.version ?? row.version,
+                          ...values
+                        }
+                      }))
+                    }
                     onRefresh={refreshPartUsage}
                     onResolve={resolveRow}
-                    busy={mutationLocked}
+                    busy={mutationLocked || partFailure != null}
+                    saving={busy}
                   />
                 </Stepper.Step>
               </Stepper>
@@ -582,6 +903,7 @@ function NarrativeStep({
   onExtract,
   onDictate,
   busy,
+  saving,
   loading
 }: Readonly<{
   capture: CloseoutCapture | null;
@@ -591,6 +913,7 @@ function NarrativeStep({
   onExtract: () => void;
   onDictate: () => void;
   busy: boolean;
+  saving: boolean;
   loading: boolean;
 }>) {
   if (loading) return <Loader size='sm' />;
@@ -611,7 +934,8 @@ function NarrativeStep({
           <Group>
             <Button
               onClick={onExtract}
-              loading={busy}
+              loading={saving}
+              disabled={busy}
               leftSection={<IconSparkles size={16} />}
             >
               {t`Extract structured draft`}
@@ -628,6 +952,7 @@ function NarrativeStep({
     <Stack gap='sm' mt='md'>
       <Textarea
         label={t`What did you do?`}
+        disabled={busy}
         description={t`Describe the work in your own words; you will review every extracted field before anything becomes record.`}
         placeholder={t`Found the inlet filter clogged, replaced it with a new one from the kit, flow back to 20 GPM...`}
         value={narrative}
@@ -636,7 +961,11 @@ function NarrativeStep({
         minRows={5}
       />
       <Group>
-        <Button onClick={onCreate} loading={busy} disabled={!narrative.trim()}>
+        <Button
+          onClick={onCreate}
+          loading={saving}
+          disabled={busy || !narrative.trim()}
+        >
           {t`Capture narrative`}
         </Button>
         {/* B4: voice provenance path — mutually exclusive with typing,
@@ -661,7 +990,8 @@ function ReviewStep({
   effectiveFieldValue,
   setFieldValue,
   onSubmit,
-  busy
+  busy,
+  saving
 }: Readonly<{
   capture: CloseoutCapture | null;
   proposal: CloseoutProposal | null;
@@ -669,6 +999,7 @@ function ReviewStep({
   setFieldValue: (field: string, value: string) => void;
   onSubmit: () => void;
   busy: boolean;
+  saving: boolean;
 }>) {
   const fields = ['cause', ...REQUIRED_FIELDS];
   return (
@@ -708,6 +1039,7 @@ function ReviewStep({
               </Text>
             ) : null}
             <Textarea
+              disabled={busy}
               value={effectiveFieldValue(field)}
               onChange={(event) =>
                 setFieldValue(field, event.currentTarget.value)
@@ -731,7 +1063,7 @@ function ReviewStep({
       ) : null}
       <Group>
         {capture && (
-          <Button onClick={onSubmit} loading={busy}>
+          <Button onClick={onSubmit} loading={saving} disabled={busy}>
             {t`Record decisions`}
           </Button>
         )}
@@ -749,22 +1081,33 @@ function PartsStep({
   rows,
   onRefresh,
   onResolve,
-  busy
+  busy,
+  saving,
+  drafts,
+  onDraft
 }: Readonly<{
   rows: PartUsageRow[];
+  drafts: Record<
+    number,
+    { disposition: string; reason: string; version: number }
+  >;
+  onDraft: (
+    row: PartUsageRow,
+    values: { disposition?: string; reason?: string }
+  ) => void;
   onRefresh: () => void;
   onResolve: (row: PartUsageRow, disposition: string, reason: string) => void;
   busy: boolean;
+  saving: boolean;
 }>) {
-  const [dispositions, setDispositions] = useState<Record<number, string>>({});
-  const [reasons, setReasons] = useState<Record<number, string>>({});
   return (
     <Stack gap='sm' mt='md'>
       <Group>
         <Button
           variant='light'
           onClick={onRefresh}
-          loading={busy}
+          loading={saving}
+          disabled={busy}
           leftSection={<IconRefresh size={16} />}
         >
           {t`Refresh from custody truth`}
@@ -775,96 +1118,92 @@ function PartsStep({
           {t`No usage rows yet. Refresh to seed rows from the job kit.`}
         </Text>
       ) : (
-        <Table striped withTableBorder>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t`Source`}</Table.Th>
-              <Table.Th>{t`Planned`}</Table.Th>
-              <Table.Th>{t`Issued`}</Table.Th>
-              <Table.Th>{t`Used`}</Table.Th>
-              <Table.Th>{t`State`}</Table.Th>
-              <Table.Th>{t`Resolution`}</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {rows.map((row) => (
-              <Table.Tr key={row.id}>
-                <Table.Td>
-                  {row.source === 'narrative'
-                    ? `${t`Candidate`}: ${row.candidate_text}`
-                    : row.source}
-                </Table.Td>
-                <Table.Td>{row.planned_quantity ?? '-'}</Table.Td>
-                <Table.Td>{row.issued_quantity ?? '-'}</Table.Td>
-                <Table.Td>{row.used_quantity ?? '-'}</Table.Td>
-                <Table.Td>
-                  <Badge
-                    color={row.state === 'reconciled' ? 'green' : 'yellow'}
-                    variant='light'
-                  >
-                    {row.disposition || row.state}
-                  </Badge>
-                </Table.Td>
-                <Table.Td>
-                  {row.state === 'reconciled' ? (
-                    <IconCircleCheck size={16} color='green' />
-                  ) : (
-                    <Group gap='xs' wrap='nowrap'>
-                      <Select
-                        size='xs'
-                        placeholder={t`Disposition`}
-                        data={
-                          row.source === 'narrative'
-                            ? ['dismissed']
-                            : [
-                                'consumed',
-                                'returned',
-                                'scrapped',
-                                'spare_installed',
-                                'serialized_manual',
-                                'correction'
-                              ]
-                        }
-                        value={dispositions[row.id] ?? null}
-                        onChange={(value) =>
-                          setDispositions((current) => ({
-                            ...current,
-                            [row.id]: value ?? ''
-                          }))
-                        }
-                      />
-                      <TextInput
-                        size='xs'
-                        placeholder={t`Reason`}
-                        value={reasons[row.id] ?? ''}
-                        onChange={(event) =>
-                          setReasons((current) => ({
-                            ...current,
-                            [row.id]: event.currentTarget.value
-                          }))
-                        }
-                      />
-                      <Button
-                        size='xs'
-                        variant='light'
-                        disabled={!dispositions[row.id] || busy}
-                        onClick={() =>
-                          onResolve(
-                            row,
-                            dispositions[row.id],
-                            reasons[row.id] ?? ''
-                          )
-                        }
-                      >
-                        {t`Resolve`}
-                      </Button>
-                    </Group>
-                  )}
-                </Table.Td>
+        <Table.ScrollContainer minWidth={640}>
+          <Table striped withTableBorder>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>{t`Source`}</Table.Th>
+                <Table.Th>{t`Planned`}</Table.Th>
+                <Table.Th>{t`Issued`}</Table.Th>
+                <Table.Th>{t`Used`}</Table.Th>
+                <Table.Th>{t`State`}</Table.Th>
+                <Table.Th>{t`Resolution`}</Table.Th>
               </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Thead>
+            <Table.Tbody>
+              {rows.map((row) => (
+                <Table.Tr key={row.id}>
+                  <Table.Td>
+                    {row.source === 'narrative'
+                      ? `${t`Candidate`}: ${row.candidate_text}`
+                      : row.source}
+                  </Table.Td>
+                  <Table.Td>{row.planned_quantity ?? '-'}</Table.Td>
+                  <Table.Td>{row.issued_quantity ?? '-'}</Table.Td>
+                  <Table.Td>{row.used_quantity ?? '-'}</Table.Td>
+                  <Table.Td>
+                    <Badge
+                      color={row.state === 'reconciled' ? 'green' : 'yellow'}
+                      variant='light'
+                    >
+                      {row.disposition || row.state}
+                    </Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    {row.state === 'reconciled' ? (
+                      <IconCircleCheck size={16} color='green' />
+                    ) : (
+                      <Group gap='xs' wrap='nowrap'>
+                        <Select
+                          size='xs'
+                          placeholder={t`Disposition`}
+                          data={
+                            row.source === 'narrative'
+                              ? ['dismissed']
+                              : [
+                                  'consumed',
+                                  'returned',
+                                  'scrapped',
+                                  'spare_installed',
+                                  'serialized_manual',
+                                  'correction'
+                                ]
+                          }
+                          value={drafts[row.id]?.disposition ?? null}
+                          onChange={(value) =>
+                            onDraft(row, { disposition: value ?? '' })
+                          }
+                        />
+                        <TextInput
+                          size='xs'
+                          placeholder={t`Reason`}
+                          value={drafts[row.id]?.reason ?? ''}
+                          onChange={(event) =>
+                            onDraft(row, { reason: event.currentTarget.value })
+                          }
+                        />
+                        <Button
+                          size='xs'
+                          variant='light'
+                          disabled={!drafts[row.id]?.disposition || busy}
+                          onClick={() =>
+                            onResolve(
+                              row,
+                              drafts[row.id].disposition,
+                              drafts[row.id]?.reason ?? ''
+                            )
+                          }
+                        >
+                          {t`Resolve`}
+                        </Button>
+                      </Group>
+                    )}
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       )}
     </Stack>
   );
@@ -889,10 +1228,12 @@ export function ReadingsStep({
 
   const addReading = () =>
     runCommand(async () => {
-      await api.post(
+      const response = await api.post(
         apiUrl(ApiEndpoints.work_order_closeout_readings, workOrderId),
         { label, raw_text: rawText, unit, required }
       );
+      if (response.status !== 201 || !Number.isSafeInteger(response.data?.id))
+        throw new Error('Reading save unconfirmed');
       setLabel('');
       setRawText('');
     });
@@ -929,24 +1270,28 @@ export function ReadingsStep({
       <Group align='end'>
         <TextInput
           label={t`Label`}
+          disabled={busy}
           value={label}
           onChange={(event) => setLabel(event.currentTarget.value)}
           size='xs'
         />
         <TextInput
           label={t`Value`}
+          disabled={busy}
           value={rawText}
           onChange={(event) => setRawText(event.currentTarget.value)}
           size='xs'
         />
         <TextInput
           label={t`Unit`}
+          disabled={busy}
           value={unit}
           onChange={(event) => setUnit(event.currentTarget.value)}
           size='xs'
         />
         <Checkbox
           label={t`Required`}
+          disabled={busy}
           checked={required}
           onChange={(event) => setRequired(event.currentTarget.checked)}
         />
@@ -966,6 +1311,7 @@ export function WorkCloseoutReadings({
   const api = useApi();
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<'refused' | 'uncertain' | null>(null);
   const query = useQuery({
     queryKey: ['closeout-readings', workOrderId],
     queryFn: async () =>
@@ -976,7 +1322,9 @@ export function WorkCloseoutReadings({
       ).data
   });
   const runCommand = async (fn: () => Promise<void>) => {
+    if (busy || failure === 'uncertain') return;
     setBusy(true);
+    setFailure(null);
     try {
       await fn();
       await queryClient.invalidateQueries({
@@ -986,7 +1334,12 @@ export function WorkCloseoutReadings({
         queryKey: ['work-order-readiness', workOrderId, 'complete']
       });
     } catch (error) {
-      showApiErrorMessage({ error, title: t`Reading could not be recorded` });
+      const status = (error as any)?.response?.status;
+      setFailure(
+        status >= 400 && status < 500 && ![408, 429].includes(status)
+          ? 'refused'
+          : 'uncertain'
+      );
     } finally {
       setBusy(false);
     }
@@ -994,9 +1347,19 @@ export function WorkCloseoutReadings({
   return (
     <Card withBorder>
       <Title order={4}>{t`Closeout readings`}</Title>
+      {failure && (
+        <Alert color='orange'>
+          {failure === 'uncertain'
+            ? t`Reading save not confirmed. Your draft is retained. This append has no safe automatic retry; reconcile the native readings before recording it again.`
+            : t`Reading save refused. Your draft is retained. Check access and required fields before retrying.`}
+        </Alert>
+      )}
+      {query.isError && query.data && (
+        <Alert color='orange'>{t`Latest readings unavailable. Last-known records and draft are retained; entry is locked.`}</Alert>
+      )}
       {query.isPending ? (
         <Loader size='sm' />
-      ) : query.isError ? (
+      ) : !query.data ? (
         <Alert color='red'>
           {t`Readings could not be read.`}
           <Button
@@ -1021,7 +1384,7 @@ export function WorkCloseoutReadings({
         <ReadingsStep
           workOrderId={workOrderId}
           rows={query.data}
-          busy={busy}
+          busy={busy || failure === 'uncertain' || query.isError}
           runCommand={runCommand}
         />
       )}

@@ -1,5 +1,7 @@
 """Serializers for the Closeout Automation API (Feature #15)."""
 
+from django.db.models import prefetch_related_objects
+
 from rest_framework import serializers
 
 from .closeout_models import (
@@ -51,6 +53,13 @@ class CloseoutCaptureSerializer(serializers.ModelSerializer):
     """Read-only capture resource with its current revision inline."""
 
     revisions = CloseoutCaptureRevisionSerializer(many=True, read_only=True)
+    decision_version = serializers.SerializerMethodField()
+
+    def get_decision_version(self, obj) -> str:
+        """Return the source-bound decision snapshot token."""
+        from .services.closeout_capture import decision_version
+
+        return decision_version(obj)
 
     revision = serializers.IntegerField(
         source='current_revision.revision', read_only=True, default=None
@@ -76,6 +85,7 @@ class CloseoutCaptureSerializer(serializers.ModelSerializer):
             'source_type',
             'transcript_reference',
             'revision',
+            'decision_version',
             'narrative',
             'revisions',
             'completed_closeout',
@@ -130,6 +140,18 @@ class CloseoutProposalSerializer(serializers.ModelSerializer):
     """Bounded proposal resource; never a raw model dump."""
 
     decisions = CloseoutFieldDecisionSerializer(many=True, read_only=True)
+    decision_version = serializers.SerializerMethodField()
+
+    def to_representation(self, instance):
+        """Keep the revision token and visible decisions on one read snapshot."""
+        prefetch_related_objects([instance], 'decisions__decided_by')
+        return super().to_representation(instance)
+
+    def get_decision_version(self, obj) -> str:
+        """Return the revision of exactly these serialized decisions."""
+        from .services.closeout_capture import proposal_decision_version
+
+        return proposal_decision_version(obj)
 
     class Meta:
         """Serializer metadata."""
@@ -148,6 +170,7 @@ class CloseoutProposalSerializer(serializers.ModelSerializer):
             'status',
             'created_at',
             'decisions',
+            'decision_version',
         )
         read_only_fields = fields
 
@@ -164,6 +187,7 @@ class DecisionBatchCommandSerializer(BaseCommandSerializer):
     """Validate a batch of field decisions."""
 
     decisions = DecisionEntrySerializer(many=True, allow_empty=False)
+    expected_decision_version = serializers.CharField(max_length=64, min_length=64)
 
 
 class CloseoutPartUsageSerializer(serializers.ModelSerializer):

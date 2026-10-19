@@ -233,7 +233,9 @@ function DeviationEntry({ workOrderId }: Readonly<{ workOrderId: number }>) {
   const queryClient = useQueryClient();
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<'saved' | 'uncertain' | null>(null);
+  const [outcome, setOutcome] = useState<
+    'saved' | 'uncertain' | 'refused' | null
+  >(null);
   async function save() {
     if (busy || !reason.trim()) return;
     setBusy(true);
@@ -252,8 +254,13 @@ function DeviationEntry({ workOrderId }: Readonly<{ workOrderId: number }>) {
       await queryClient.invalidateQueries({
         queryKey: ['work-order', workOrderId]
       });
-    } catch {
-      setOutcome('uncertain');
+    } catch (error: any) {
+      const status = error?.response?.status;
+      setOutcome(
+        status >= 400 && status < 500 && ![408, 429].includes(status)
+          ? 'refused'
+          : 'uncertain'
+      );
     } finally {
       setBusy(false);
     }
@@ -280,6 +287,9 @@ function DeviationEntry({ workOrderId }: Readonly<{ workOrderId: number }>) {
             )}
             {outcome === 'uncertain' && (
               <Alert color='orange'>{t`Save not confirmed. Your text is retained. Check the latest native deviations before submitting again; this request may have saved.`}</Alert>
+            )}
+            {outcome === 'refused' && (
+              <Alert color='red'>{t`Save refused. Your text is retained. Check access and required fields before submitting again.`}</Alert>
             )}
             <Button
               style={{ alignSelf: 'flex-start' }}

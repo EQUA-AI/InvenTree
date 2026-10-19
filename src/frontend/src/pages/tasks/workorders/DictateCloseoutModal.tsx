@@ -43,7 +43,6 @@ export default function DictateCloseoutModal({
   useEffect(() => {
     if (!opened) {
       voice.reset();
-      setTranscript('');
     }
     // voice.reset is stable per render of the hook; intentionally omitted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -70,6 +69,7 @@ export default function DictateCloseoutModal({
 
   useEffect(() => {
     if (state === 'committed') {
+      setTranscript('');
       onCommitted();
       onClose();
     }
@@ -78,16 +78,21 @@ export default function DictateCloseoutModal({
   return (
     <Modal
       opened={opened}
-      onClose={() => {
+      onClose={async () => {
+        if (voice.busy) return;
         if (state && state !== 'committed' && state !== 'canceled') {
-          void voice.cancel();
+          await voice.cancel();
         }
         onClose();
       }}
+      closeButtonProps={{ 'aria-label': t`Close dictation` }}
       title={t`Dictate closeout narrative`}
       size='lg'
     >
       <Stack gap='sm' data-testid='dictate-closeout-modal'>
+        {!state && transcript && (
+          <Alert color='orange'>{t`Your transcript draft is retained. Start a governed session to review and save it.`}</Alert>
+        )}
         {voice.error && (
           <Alert color='red' icon={<IconAlertTriangle size={16} />}>
             {voice.error === 'CAPTURE_PURPOSE_UNSUPPORTED'

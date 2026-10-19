@@ -19,6 +19,7 @@ export const story: CloseoutCapture = {
   status: 'reviewed',
   source_type: 'voice',
   revision: 2,
+  decision_version: 'a'.repeat(64),
   narrative:
     'Access was limited. The initial adjustment did not resolve the leak. Replaced the seal and observed flow.',
   transcript_reference: 'voice:capture:12:revision:2:fixture-hash',
@@ -53,6 +54,7 @@ export const story: CloseoutCapture = {
 };
 export const proposal: CloseoutProposal = {
   id: 20,
+  decision_version: 'a'.repeat(64),
   extractor: 'fixture-v1',
   fields: Object.fromEntries(
     Object.entries(values).map(([key, value]) => [

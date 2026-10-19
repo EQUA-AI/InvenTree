@@ -190,6 +190,10 @@ export function ApiForm({
   const api = useApi();
   const queryClient = useQueryClient();
   const keepOpenRef = useRef(false);
+  const submitDisabledRef = useRef(props.submitDisabled);
+  submitDisabledRef.current = props.submitDisabled;
+  const loadedDraftUrl = useRef<string | null>(null);
+  const renderedDraftUrl = useRef<string | null>(null);
 
   const onKeepOpenChange = (v: boolean) => {
     keepOpenRef.current = v;
@@ -354,6 +358,9 @@ export function ApiForm({
   useEffect(() => {
     // Fetch initial data if the fetchInitialData property is set
     if (!optionsLoading && props.fetchInitialData) {
+      if (props.preserveDraftOnRefresh && loadedDraftUrl.current === url)
+        return;
+      loadedDraftUrl.current = url;
       queryClient.removeQueries({
         queryKey: [
           'form-initial-data',
@@ -366,7 +373,12 @@ export function ApiForm({
       });
       initialDataQuery.refetch();
     }
-  }, [props.fetchInitialData, optionsLoading]);
+  }, [
+    props.fetchInitialData,
+    optionsLoading,
+    props.preserveDraftOnRefresh,
+    url
+  ]);
 
   const isLoading: boolean = useMemo(
     () =>
@@ -409,6 +421,7 @@ export function ApiForm({
   }, [props.focus, form.setFocus, isLoading, initialFocus]);
 
   const submitForm: SubmitHandler<FieldValues> = async (data) => {
+    if (submitDisabledRef.current) return;
     setNonFieldErrors([]);
 
     const method = props.method?.toLowerCase() ?? 'get';
@@ -558,7 +571,7 @@ export function ApiForm({
             break;
           default:
             // Unexpected state on form success
-            invalidResponse(response.status);
+            if (!props.hideErrorNotification) invalidResponse(response.status);
             props.onFormError?.(response, form);
             break;
         }
@@ -629,12 +642,13 @@ export function ApiForm({
               break;
             default:
               // Unexpected state on form error
-              invalidResponse(error.response.status);
+              if (!props.hideErrorNotification)
+                invalidResponse(error.response.status);
               props.onFormError?.(error, form);
               break;
           }
         } else {
-          showTimeoutNotification();
+          if (!props.hideErrorNotification) showTimeoutNotification();
           props.onFormError?.(error, form);
         }
 
@@ -684,15 +698,30 @@ export function ApiForm({
     []
   );
 
-  if (optionsLoading || initialDataQuery.isFetching) {
+  const initialDraftRead =
+    props.preserveDraftOnRefresh &&
+    props.fetchInitialData &&
+    initialDataQuery.isPending;
+  if (
+    initialDraftRead ||
+    ((optionsLoading || initialDataQuery.isFetching) &&
+      !(props.preserveDraftOnRefresh && renderedDraftUrl.current === url))
+  ) {
     return (
       <Paper mah={'65vh'}>
         <LoadingOverlay visible zIndex={1010} />
       </Paper>
     );
   }
+  // A schema refresh must not remount controllers and reapply their old defaults.
+  renderedDraftUrl.current = url;
   return (
     <Stack>
+      {props.preserveDraftOnRefresh && initialDataQuery.isError && (
+        <Alert color='orange' title={t`Saved record unavailable`}>
+          {t`The saved record could not be read. Your inputs remain in this form; saving requires a current authorized revision.`}
+        </Alert>
+      )}
       <Boundary label={`ApiForm-${id}`}>
         {/* Show loading overlay while fetching fields */}
         {/* zIndex used to force overlay on top of modal header bar */}
@@ -791,7 +820,11 @@ export function ApiForm({
               variant='filled'
               radius='sm'
               color={props.submitColor ?? 'green'}
-              disabled={isLoading || (props.fetchInitialData && !isDirty)}
+              disabled={
+                props.submitDisabled ||
+                isLoading ||
+                (props.fetchInitialData && !isDirty)
+              }
             >
               {props.submitText ?? t`Submit`}
             </Button>

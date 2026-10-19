@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.s0.json",
+  "files": [
+    "playwright.s7.config.ts",
+    "tests/s7/pui_draft_recovery.spec.ts",
+    "tests/s7/pui_attachment_recovery.spec.ts"
+  ]
+}

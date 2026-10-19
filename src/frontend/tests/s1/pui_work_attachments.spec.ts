@@ -10,6 +10,10 @@ const revision = 'a'.repeat(64);
 
 async function mockWorkAttachments(page: Page) {
   await mockWorkList(page);
+  // Native library CSS references this font; keep the harness fully offline.
+  await page.route('https://cdn.svar.dev/**', (route) =>
+    route.fulfill({ status: 404, body: '' })
+  );
   const records = [
     { pk: 901, filename: 'Synthetic work nameplate.png', is_image: true },
     { pk: 902, filename: 'Synthetic work manual.pdf', is_image: false },
@@ -192,7 +196,17 @@ test('resource close and preview retain native search selection and total owner 
     name: 'table-search-input',
     exact: true
   });
+  const filtered = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      response.request().method() === 'GET' &&
+      url.pathname === '/api/attachment/' &&
+      url.searchParams.get('search') === 'nameplate'
+    );
+  });
   await search.fill('nameplate');
+  await filtered;
+  await expect(page.getByTestId('fixture-fetching')).toHaveText('0');
   const row = page.getByRole('row').filter({
     has: page.getByRole('link', {
       name: 'Synthetic work nameplate.png',

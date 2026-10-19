@@ -300,6 +300,7 @@ class CloseoutDecisionBatch(CloseoutCommandView):
             record_decisions,
             capture_id=cap,
             decisions=[dict(entry) for entry in data['decisions']],
+            expected_decision_version=data['expected_decision_version'],
             expected_version=data['expected_version'],
             idempotency_key=data['idempotency_key'],
         )
