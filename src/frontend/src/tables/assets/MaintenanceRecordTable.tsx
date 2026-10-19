@@ -69,7 +69,7 @@ export function MaintenanceRecordTable({
           if (!record.work_order) {
             return (
               <Text size='sm' c='dimmed'>
-                {t`Legacy record`}
+                {t`No work order you can open`}
               </Text>
             );
           }
@@ -105,7 +105,7 @@ export function MaintenanceRecordTable({
             record.work_order_component
           ) : (
             <Text size='sm' c='dimmed'>
-              {t`Not recorded`}
+              {record.work_order ? t`Not recorded` : t`Not available`}
             </Text>
           )
       },

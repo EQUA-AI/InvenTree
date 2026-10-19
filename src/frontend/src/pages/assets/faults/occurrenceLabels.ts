@@ -73,7 +73,7 @@ export function shiftSpan(seconds: number): string | null {
 export function retainedValue(value: unknown, unit: string): string {
   if (value === null || value === undefined) return t`No value retained`;
   if (typeof value === 'number')
-    return unit ? `${value.toLocaleString()} ${unit}` : value.toLocaleString();
+    return unit ? `${String(value)} ${unit}` : String(value);
   if (typeof value === 'string' || typeof value === 'boolean')
     return unit ? `${String(value)} ${unit}` : String(value);
   return JSON.stringify(value);

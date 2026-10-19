@@ -32,7 +32,6 @@ import {
   detectorLabel,
   occurrenceStatusLabel,
   retainedValue,
-  shiftSpan,
   snapshotReasonLabel,
   workRelationLabel
 } from './occurrenceLabels';
@@ -156,7 +155,7 @@ function WorkLinks({
   if (!occurrence.work.length && !occurrence.repair_packet) {
     return (
       <Text size='sm' c='dimmed'>
-        {t`No owning work recorded`}
+        {t`No owning work you can open`}
       </Text>
     );
   }
@@ -213,19 +212,6 @@ function Outcome({ occurrence }: Readonly<{ occurrence: FaultOccurrence }>) {
         </Text>
       )}
     </Stack>
-  );
-}
-
-function ClockNote({
-  shifted,
-  seconds
-}: Readonly<{ shifted: boolean; seconds: number }>) {
-  const span = shifted ? shiftSpan(seconds) : null;
-  if (!span) return null;
-  return (
-    <Text size='xs' c='dimmed'>
-      {t`Observation times are on the dashboard clock, moved forward ${span} from the plant's own clock.`}
-    </Text>
   );
 }
 
@@ -302,10 +288,19 @@ function RetainedSnapshotCard({
           {snapshot.source_name ?? t`Source not recorded`} · {t`content hash`}{' '}
           {snapshot.content_hash.slice(0, 12)}
         </Text>
-        <ClockNote
-          shifted={snapshot.display_shifted}
-          seconds={snapshot.display_shift_seconds}
-        />
+        <Text size='xs' c='dimmed'>
+          {snapshot.captured_by_name
+            ? t`Captured by ${snapshot.captured_by_name}`
+            : snapshot.system_actor
+              ? t`Captured by system: ${snapshot.system_actor}`
+              : t`Captured by: Not recorded`}
+        </Text>
+        {snapshot.captured_by_name && snapshot.system_actor && (
+          <Text
+            size='xs'
+            c='dimmed'
+          >{t`System actor: ${snapshot.system_actor}`}</Text>
+        )}
       </Stack>
     </Paper>
   );
@@ -318,6 +313,67 @@ function RetainedSnapshotCard({
  */
 function OccurrenceEvidence({
   machineId,
+  occurrenceId,
+  extra
+}: Readonly<{
+  machineId: number;
+  occurrenceId: number;
+  extra?: (detail: FaultOccurrence) => ReactNode;
+}>) {
+  const api = useApi();
+  const detail = useQuery<FaultOccurrence>({
+    queryKey: ['machine-fault-occurrence', machineId, occurrenceId],
+    retry: false,
+    queryFn: async ({ signal }) =>
+      (
+        await api.get(
+          apiUrl(ApiEndpoints.asset_machine_fault_occurrence, machineId, {
+            occurrence: occurrenceId
+          }),
+          { signal }
+        )
+      ).data
+  });
+  if (detail.isPending)
+    return <Skeleton height={96} aria-label={t`Loading occurrence evidence`} />;
+  if (detail.isError) {
+    const denied =
+      isAxiosError(detail.error) &&
+      [401, 403, 404].includes(detail.error.response?.status ?? 0);
+    return (
+      <Alert
+        color={denied ? 'gray' : 'red'}
+        title={t`Retained evidence could not be loaded`}
+      >
+        <Stack gap='xs'>
+          <Text size='sm'>
+            {denied
+              ? t`This occurrence is not available to you.`
+              : t`Nothing is shown in its place. Try again.`}
+          </Text>
+          {!denied && (
+            <Button
+              size='xs'
+              variant='light'
+              w='fit-content'
+              onClick={() => void detail.refetch()}
+            >{t`Retry evidence`}</Button>
+          )}
+        </Stack>
+      </Alert>
+    );
+  }
+  return (
+    <OccurrenceAccount
+      machineId={machineId}
+      occurrence={detail.data}
+      extra={extra}
+    />
+  );
+}
+
+function OccurrenceAccount({
+  machineId,
   occurrence,
   extra
 }: Readonly<{
@@ -325,20 +381,6 @@ function OccurrenceEvidence({
   occurrence: FaultOccurrence;
   extra?: (detail: FaultOccurrence) => ReactNode;
 }>) {
-  const api = useApi();
-  const detail = useQuery<FaultOccurrence>({
-    queryKey: ['machine-fault-occurrence', machineId, occurrence.id],
-    retry: false,
-    queryFn: async ({ signal }) =>
-      (
-        await api.get(
-          apiUrl(ApiEndpoints.asset_machine_fault_occurrence, machineId, {
-            occurrence: occurrence.id
-          }),
-          { signal }
-        )
-      ).data
-  });
   const metrics = Object.entries(occurrence.metrics ?? {}).filter(
     ([, value]) =>
       value === null || ['number', 'string', 'boolean'].includes(typeof value)
@@ -363,8 +405,8 @@ function OccurrenceEvidence({
         </Field>
         <Field label={t`Seen by`}>
           <Text size='sm'>
-            {occurrence.acknowledged_by_name
-              ? t`Acknowledged by ${occurrence.acknowledged_by_name}`
+            {occurrence.acknowledged_at || occurrence.status === 'acknowledged'
+              ? `${t`Acknowledged`} ${occurrence.acknowledged_at ? when(occurrence.acknowledged_at) : t`time not recorded`} ${occurrence.acknowledged_by_name ? t`by ${occurrence.acknowledged_by_name}` : t`(recorder not recorded)`}`
               : t`Not acknowledged`}
           </Text>
         </Field>
@@ -393,10 +435,10 @@ function OccurrenceEvidence({
             .join(', ')}
         </Text>
       )}
-      <ClockNote
-        shifted={occurrence.display_shifted}
-        seconds={occurrence.display_shift_seconds}
-      />
+      <Text
+        size='xs'
+        c='dimmed'
+      >{t`Recorded plant times; no dashboard time shift is applied.`}</Text>
       <Divider />
       <Group justify='space-between' gap='xs'>
         <Title order={6}>{t`Evidence retained at the time`}</Title>
@@ -404,45 +446,26 @@ function OccurrenceEvidence({
           {t`Current readings are on the Health tab`}
         </Anchor>
       </Group>
-      {detail.isPending && <Skeleton height={96} />}
-      {detail.isError && (
-        <Alert color='red' title={t`Retained evidence could not be loaded`}>
-          <Group justify='space-between' gap='xs'>
-            <Text size='sm'>
-              {isAxiosError(detail.error) &&
-              detail.error.response?.status === 404
-                ? t`This occurrence is no longer available to you.`
-                : t`Nothing is shown in its place. Try again.`}
+      {occurrence.snapshots.length ? (
+        <Stack gap='xs'>
+          {occurrence.snapshot_count > occurrence.snapshots.length && (
+            <Text size='xs' c='dimmed'>
+              {t`Showing the ${occurrence.snapshots.length} most recent of ${occurrence.snapshot_count} retained snapshots.`}
             </Text>
-            <Button
-              size='xs'
-              variant='light'
-              onClick={() => void detail.refetch()}
-            >{t`Retry evidence`}</Button>
-          </Group>
-        </Alert>
+          )}
+          {occurrence.snapshots.map((snapshot) => (
+            <RetainedSnapshotCard key={snapshot.id} snapshot={snapshot} />
+          ))}
+        </Stack>
+      ) : (
+        <Text size='sm' c='dimmed'>
+          {t`No evidence snapshot was retained for this occurrence. The record above is what was kept; today's readings are not put in its place.`}
+        </Text>
       )}
-      {detail.data &&
-        (detail.data.snapshots.length ? (
-          <Stack gap='xs'>
-            {detail.data.snapshot_count > detail.data.snapshots.length && (
-              <Text size='xs' c='dimmed'>
-                {t`Showing the ${detail.data.snapshots.length} most recent of ${detail.data.snapshot_count} retained snapshots.`}
-              </Text>
-            )}
-            {detail.data.snapshots.map((snapshot) => (
-              <RetainedSnapshotCard key={snapshot.id} snapshot={snapshot} />
-            ))}
-          </Stack>
-        ) : (
-          <Text size='sm' c='dimmed'>
-            {t`No evidence snapshot was retained for this occurrence. The record above is what was kept; today's readings are not put in its place.`}
-          </Text>
-        ))}
-      {detail.data && extra?.(detail.data)}
+      {extra?.(occurrence)}
       <Divider />
       <Title order={6}>{t`Work`}</Title>
-      <WorkLinks occurrence={detail.data ?? occurrence} />
+      <WorkLinks occurrence={occurrence} />
     </Stack>
   );
 }
@@ -477,6 +500,10 @@ export function FaultOccurrences({
       ).data
   });
   const triggers = useRef(new Map<number, HTMLButtonElement | null>());
+  const openedEvidence = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (state.open !== null) openedEvidence.current?.focus();
+  }, [state.open]);
   const lastOpened = useRef<number | null>(null);
   const update = (changes: Partial<OccurrenceListState>, replace = false) =>
     setParams(
@@ -500,6 +527,11 @@ export function FaultOccurrences({
     1,
     Math.ceil((query.data?.count ?? 0) / OCCURRENCE_PAGE_SIZE)
   );
+  const outOfRange = !!query.data && state.page > lastPage;
+  useEffect(() => {
+    if (query.isSuccess && !query.isFetching && outOfRange)
+      update({ page: lastPage }, true);
+  }, [query.isSuccess, query.isFetching, outOfRange, lastPage]);
   const denied =
     isAxiosError(query.error) &&
     [401, 403, 404].includes(query.error.response?.status ?? 0);
@@ -525,16 +557,6 @@ export function FaultOccurrences({
     >
       {state.open === occurrence.id ? t`Hide evidence` : t`Evidence`}
     </Button>
-  );
-
-  const evidence = (occurrence: FaultOccurrence) => (
-    <div id={`occurrence-${occurrence.id}`}>
-      <OccurrenceEvidence
-        machineId={machineId}
-        occurrence={occurrence}
-        extra={renderInvestigation}
-      />
-    </div>
   );
 
   return (
@@ -564,6 +586,33 @@ export function FaultOccurrences({
           ]}
         />
       </Group>
+      {state.open !== null && (
+        <Paper
+          component='section'
+          withBorder
+          p='sm'
+          id={`occurrence-${state.open}`}
+          ref={openedEvidence}
+          tabIndex={-1}
+          aria-label={t`Opened occurrence evidence`}
+        >
+          <Stack gap='sm'>
+            <Group justify='space-between' gap='xs'>
+              <Title order={5}>{t`Occurrence ${state.open}`}</Title>
+              <Button
+                size='compact-xs'
+                variant='subtle'
+                onClick={() => toggle(state.open!)}
+              >{t`Close evidence`}</Button>
+            </Group>
+            <OccurrenceEvidence
+              machineId={machineId}
+              occurrenceId={state.open}
+              extra={renderInvestigation}
+            />
+          </Stack>
+        </Paper>
+      )}
       {query.isPending && (
         <Stack gap='xs' aria-label={t`Loading occurrences`}>
           {[1, 2, 3].map((row) => (
@@ -608,10 +657,10 @@ export function FaultOccurrences({
           {' · '}
           {t`newest first`}
           {' · '}
-          {t`times in your timezone (UTC${dayjs().format('Z')})`}
+          {t`Recorded plant times; shown in your timezone (UTC${dayjs().format('Z')}). No dashboard time shift is applied.`}
         </Text>
       )}
-      {query.data && !query.data.results.length && (
+      {query.data && query.data.count === 0 && (
         <Paper withBorder p='md'>
           <Text size='sm' c='dimmed'>
             {state.status === 'all'
@@ -659,7 +708,6 @@ export function FaultOccurrences({
                     </Field>
                   </SimpleGrid>
                   {toggleButton(occurrence)}
-                  {state.open === occurrence.id && evidence(occurrence)}
                 </Stack>
               </Paper>
             ))}
@@ -686,11 +734,7 @@ export function FaultOccurrences({
                   <OccurrenceRows
                     key={occurrence.id}
                     occurrence={occurrence}
-                    open={state.open === occurrence.id}
                     toggle={toggleButton(occurrence)}
-                    evidence={
-                      state.open === occurrence.id ? evidence(occurrence) : null
-                    }
                   />
                 ))}
               </Table.Tbody>
@@ -714,14 +758,10 @@ export function FaultOccurrences({
 
 function OccurrenceRows({
   occurrence,
-  open,
-  toggle,
-  evidence
+  toggle
 }: Readonly<{
   occurrence: FaultOccurrence;
-  open: boolean;
   toggle: ReactNode;
-  evidence: ReactNode;
 }>) {
   const top = { verticalAlign: 'top' } as const;
   return (
@@ -760,13 +800,6 @@ function OccurrenceRows({
           <Outcome occurrence={occurrence} />
         </Table.Td>
       </Table.Tr>
-      {open && (
-        <Table.Tr>
-          <Table.Td colSpan={6} bg='var(--mantine-color-default-hover)'>
-            {evidence}
-          </Table.Td>
-        </Table.Tr>
-      )}
     </>
   );
 }

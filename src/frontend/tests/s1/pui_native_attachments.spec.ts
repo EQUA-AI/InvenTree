@@ -259,6 +259,14 @@ test('preview preserves native search selection scroll and dark-mode return', as
 test('source-level PDF preview uses the authorized revision without inventing an exact page', async ({
   page
 }) => {
+  // Linux Chromium's built-in PDF viewer loads its packaged extension assets.
+  // Only those browser-owned GETs bypass the network-fixture guard; HTTP,
+  // API/media and other extension requests still require their exact fixtures.
+  await page.route(
+    /^(chrome-extension:\/\/mhjfbmdgcfjbbpaeojofohoefgiehjai\/|chrome:\/\/resources\/)/,
+    (route) =>
+      route.request().method() === 'GET' ? route.continue() : route.fallback()
+  );
   await mockResources(page);
   await openResources(page);
   await page

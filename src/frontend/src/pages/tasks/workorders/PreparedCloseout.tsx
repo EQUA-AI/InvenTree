@@ -80,13 +80,17 @@ export function PreparedCloseout({
     accepted
       ? t`Accepted fields are preserved. Material and reading rows are current supporting records; a complete accepted report snapshot is not supplied by this server.`
       : t`Prepared draft; no record update has been submitted by preview or download.`,
+    ...(proposal?.decisions ?? []).map(
+      (row) =>
+        `${t`Saved decision`}: ${labels[row.field_path] ?? row.field_path} · ${row.decision} · ${t`Recorded by`} ${fact(row.decided_by_name)} · ${when(row.decided_at)}`
+    ),
     ...(captures ?? []).flatMap((capture) => [
-      `${t`Story source`}: ${capture.source_type} · ${t`Capture`} ${capture.id} · ${capture.status} · ${t`Revision`} ${capture.revision ?? '?'} · ${t`Recorded by user`} ${capture.created_by ?? '?'} · ${when(capture.created_at)}`,
+      `${t`Story source`}: ${capture.source_type} · ${t`Capture`} ${capture.id} · ${capture.status} · ${t`Revision`} ${capture.revision ?? '?'} · ${t`Recorded by`} ${fact(capture.created_by_name)} · ${when(capture.created_at)}`,
       `${t`Transcript reference`}: ${fact(capture.transcript_reference)}`,
       capture.narrative,
       ...(capture.revisions ?? []).map(
         (row) =>
-          `${t`Revision`} ${row.revision} · ${t`Recorded by user`} ${row.created_by} · ${when(row.created_at)}\n${row.narrative}`
+          `${t`Revision`} ${row.revision} · ${t`Recorded by`} ${fact(row.created_by_name)} · ${when(row.created_at)}\n${row.narrative}`
       )
     ]),
     ...(partUsage ?? []).map(
@@ -100,11 +104,11 @@ export function PreparedCloseout({
       : []),
     ...(readings ?? []).map(
       (row) =>
-        `${row.label}: ${row.raw_text} ${row.unit} · ${row.verification_state} · ${when(row.recorded_at)} · ${t`Recorded by user`} ${row.recorded_by ?? t`Not recorded`}`
+        `${row.label}: ${row.raw_text} ${row.unit} · ${row.verification_state} · ${when(row.recorded_at)} · ${t`Recorded by`} ${fact(row.recorded_by_name)}`
     ),
     ...(amendments ?? []).map(
       (row) =>
-        `${t`Amendment`} ${row.id} · ${row.status} · ${t`Requested by user`} ${row.requested_by} · ${when(row.created_at)}\n${row.reason}\n${JSON.stringify(row.changes)}`
+        `${t`Amendment`} ${row.id} · ${row.status} · ${t`Requested by`} ${fact(row.requested_by_name)} · ${when(row.created_at)}\n${row.reason}\n${JSON.stringify(row.changes)}`
     )
   ].join('\n\n');
   const download = () => {
@@ -148,8 +152,8 @@ export function PreparedCloseout({
                   </Text>
                 </Group>
                 <Text size='xs' c='dimmed'>
-                  {t`Recorded by user`} {capture.created_by ?? t`Not recorded`}{' '}
-                  · {when(capture.created_at)}
+                  {t`Recorded by`} {fact(capture.created_by_name)} ·{' '}
+                  {when(capture.created_at)}
                 </Text>
                 <Text
                   style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
@@ -169,8 +173,8 @@ export function PreparedCloseout({
                       .map((row) => (
                         <Card key={row.id} withBorder mt='xs' padding='sm'>
                           <Text size='sm'>
-                            {t`Revision`} {row.revision} · {t`Recorded by user`}{' '}
-                            {row.created_by} · {when(row.created_at)}
+                            {t`Revision`} {row.revision} · {t`Recorded by`}{' '}
+                            {fact(row.created_by_name)} · {when(row.created_at)}
                           </Text>
                           <Text style={{ whiteSpace: 'pre-wrap' }}>
                             {row.narrative}
@@ -218,33 +222,32 @@ export function PreparedCloseout({
               ? `${t`Closeout id`}: ${accepted.id} · ${when(accepted.completed_at)}`
               : `${t`Work version`} ${workOrder.lifecycle_version} · ${t`Extraction is not a verified fact`}`}
           </Text>
-          {Object.entries(labels).map(([key, label]) => (
-            <div key={key}>
-              <Text size='xs' c='dimmed'>
-                {label}
-              </Text>
-              <Text
-                style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
-              >
-                {key === 'cause' && !values.cause
-                  ? t`Not established`
-                  : fact(values[key as keyof typeof values])}
-              </Text>
-              {!accepted &&
-                proposal?.decisions.find((row) => row.field_path === key) && (
+          {Object.entries(labels).map(([key, label]) => {
+            const decision = proposal?.decisions.find(
+              (row) => row.field_path === key
+            );
+            return (
+              <div key={key}>
+                <Text size='xs' c='dimmed'>
+                  {label}
+                </Text>
+                <Text
+                  style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
+                >
+                  {key === 'cause' && !values.cause
+                    ? t`Not established`
+                    : fact(values[key as keyof typeof values])}
+                </Text>
+                {!accepted && decision && (
                   <Text size='xs' c='dimmed'>
-                    {t`Saved decision`}:{' '}
-                    {
-                      proposal.decisions.find((row) => row.field_path === key)
-                        ?.decision
-                    }{' '}
-                    · {t`Recorded by user`}{' '}
-                    {proposal.decisions.find((row) => row.field_path === key)
-                      ?.decided_by ?? t`Not recorded`}
+                    {t`Saved decision`}: {decision.decision} · {t`Recorded by`}{' '}
+                    {fact(decision.decided_by_name)} ·{' '}
+                    {when(decision.decided_at)}
                   </Text>
                 )}
-            </div>
-          ))}
+              </div>
+            );
+          })}
           <Anchor
             component={Link}
             to='?work_panel=verify'
@@ -360,10 +363,9 @@ export function PreparedCloseout({
                       {t`Amendment`} {row.id} · {row.status}
                     </Text>
                     <Text size='xs' c='dimmed'>
-                      {t`Requested by user`} {row.requested_by} ·{' '}
-                      {when(row.created_at)} · {t`Decided by user`}{' '}
-                      {row.decided_by ?? t`Not recorded`} ·{' '}
-                      {when(row.applied_at)}
+                      {t`Requested by`} {fact(row.requested_by_name)} ·{' '}
+                      {when(row.created_at)} · {t`Decided by`}{' '}
+                      {fact(row.decided_by_name)} · {when(row.applied_at)}
                     </Text>
                     <Text size='sm'>{row.reason}</Text>
                     {Object.entries(row.changes).map(([key, value]) => (

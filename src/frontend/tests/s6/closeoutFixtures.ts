@@ -23,6 +23,7 @@ export const story: CloseoutCapture = {
     'Access was limited. The initial adjustment did not resolve the leak. Replaced the seal and observed flow.',
   transcript_reference: 'voice:capture:12:revision:2:fixture-hash',
   created_by: 3,
+  created_by_name: 'Synthetic Technician',
   created_at: '2026-10-19T08:00:00Z',
   revisions: [
     {
@@ -33,6 +34,7 @@ export const story: CloseoutCapture = {
       work_order_version: 7,
       supersedes: null,
       created_by: 3,
+      created_by_name: 'Synthetic Technician',
       created_at: '2026-10-19T08:00:00Z'
     },
     {
@@ -44,6 +46,7 @@ export const story: CloseoutCapture = {
       work_order_version: 7,
       supersedes: 120,
       created_by: 3,
+      created_by_name: 'Synthetic Technician',
       created_at: '2026-10-19T08:05:00Z'
     }
   ]
@@ -64,6 +67,7 @@ export const proposal: CloseoutProposal = {
       final_value,
       decision: 'accepted',
       decided_by: 3,
+      decided_by_name: 'Synthetic Technician',
       decided_at: '2026-10-19T08:10:00Z'
     })),
   part_candidates: [],
@@ -197,7 +201,9 @@ export async function closeoutWork(
             reason: 'Corrected the recorded observation',
             changes: { result: { from: values.result, to: accepted!.result } },
             requested_by: 3,
+            requested_by_name: 'Synthetic Technician',
             decided_by: 4,
+            decided_by_name: 'Synthetic Supervisor',
             created_at: '2026-10-19T10:00:00Z',
             applied_at: '2026-10-19T10:05:00Z',
             base_content_hash: 'c'.repeat(64),

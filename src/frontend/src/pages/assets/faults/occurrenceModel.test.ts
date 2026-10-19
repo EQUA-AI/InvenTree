@@ -1,4 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('@lingui/core/macro', () => ({
+  t: (strings: TemplateStringsArray) => strings.join('')
+}));
+import { retainedValue } from './occurrenceLabels';
 
 import {
   occurrenceListParams,
@@ -53,5 +58,15 @@ describe('shiftParts', () => {
       minutes: 0
     });
     expect(shiftParts(-5400)).toEqual({ days: 0, hours: 1, minutes: 30 });
+  });
+});
+
+describe('retained evidence precision', () => {
+  it.each([
+    [0.0004, '0.0004 g'],
+    [12.34567, '12.34567 g'],
+    [0, '0 g']
+  ])('keeps every digit of %s', (value, expected) => {
+    expect(retainedValue(value, 'g')).toBe(expected);
   });
 });

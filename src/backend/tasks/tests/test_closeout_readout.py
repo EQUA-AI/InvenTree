@@ -1,9 +1,15 @@
 """P24: source revisions and original accepted facts survive read projections."""
 
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from rest_framework.test import APIClient
 
+from tasks.closeout_models import (
+    CloseoutCapture,
+    CloseoutFieldDecision,
+    CloseoutProposal,
+)
 from tasks.models import WorkOrderCloseout
 from tasks.serializers import WorkOrderOverviewSerializer
 from tasks.services.closeout import complete_work_order
@@ -19,6 +25,9 @@ class CloseoutReadoutTests(CloseoutEnvMixin, TestCase):
     def setUp(self):
         """One authorized work order."""
         self.build_env(username='closeout-readout')
+        self.actor.first_name = 'Synthetic'
+        self.actor.last_name = 'Technician'
+        self.actor.save()
         self.client = APIClient()
         self.client.force_authenticate(self.actor)
 
@@ -44,6 +53,9 @@ class CloseoutReadoutTests(CloseoutEnvMixin, TestCase):
         revisions = sorted(capture['revisions'], key=lambda row: row['revision'])
         self.assertEqual([r['narrative'] for r in revisions], ['Original story', 'Corrected story'])
         self.assertEqual(revisions[0]['created_by'], self.actor.pk)
+        self.assertEqual(capture['created_by_name'], 'Synthetic Technician')
+        self.assertEqual(revisions[0]['created_by_name'], 'Synthetic Technician')
+        self.assertEqual(revisions[1]['created_by_name'], 'Synthetic Technician')
         self.assertTrue(revisions[0]['source_content_hash'])
         self.assertEqual(revisions[1]['supersedes'], revisions[0]['id'])
         self.assertEqual(capture['status'], 'open')
@@ -76,5 +88,35 @@ class CloseoutReadoutTests(CloseoutEnvMixin, TestCase):
         self.assertEqual(body['original']['result'], VALID_CLOSEOUT['result'])
         self.assertEqual(body['content_hash'], original.content_hash)
         self.assertEqual(body['completed_by'], self.actor.pk)
+        response = self.client.get(f'/api/tasks/work-orders/{self.work_order.pk}/closeout/amendments/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data[0]['requested_by_name'], 'Synthetic Technician')
+        self.assertEqual(response.data[0]['decided_by_name'], 'Synthetic Technician')
         original.refresh_from_db()
         self.assertEqual(original.result, VALID_CLOSEOUT['result'])
+
+
+    def test_saved_decision_carries_display_name_and_username_fallback(self):
+        """Every account value keeps the explicit decision's recorded person."""
+        created = create_capture(
+            work_order_id=self.work_order.pk, actor=self.actor,
+            expected_version=self.work_order.lifecycle_version,
+            idempotency_key='decision-name', narrative='Original story',
+        )
+        capture = CloseoutCapture.objects.get(pk=created.metadata['capture_id'])
+        proposal = CloseoutProposal.objects.create(
+            capture_revision=capture.current_revision, schema_version=1, fields={},
+            extractor='test', content_hash='d' * 64,
+        )
+        CloseoutFieldDecision.objects.create(
+            proposal=proposal, field_path='action', origin='extracted',
+            decision='accepted', final_value='Recorded action',
+            decided_by=self.actor, decided_at=timezone.now(),
+        )
+        url = f'/api/tasks/work-orders/{self.work_order.pk}/closeout/captures/{capture.pk}/proposal/'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['decisions'][0]['decided_by_name'], 'Synthetic Technician')
+        self.actor.first_name = self.actor.last_name = ''
+        self.actor.save()
+        self.assertEqual(self.client.get(url).data['decisions'][0]['decided_by_name'], self.actor.username)

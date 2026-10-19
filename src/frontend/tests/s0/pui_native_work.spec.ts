@@ -118,6 +118,11 @@ test('standalone command capability mounts the native closeout reads', async ({
     .getByRole('tablist', { name: 'Work workflow', exact: true })
     .getByRole('tab', { name: 'Closeout', exact: true })
     .click();
+  const capture = page.getByTestId('closeout-capture-disclosure');
+  await expect(capture).not.toHaveAttribute('open');
+  await capture
+    .getByText('Edit or add to the capture', { exact: true })
+    .click();
   await expect(page.getByText('Narrative', { exact: true })).toBeVisible();
   await expect(page.getByTestId('fixture-fetching')).toHaveText('0');
   expect(reads.sort()).toEqual([

@@ -104,7 +104,7 @@ export const completedRecords = [
 
 export interface MachineWorkOptions {
   jobs?: number;
-  /** null: the reader's Work scope could not be resolved. */
+  /** null: defensive unavailable projection; unresolved endpoint scope is 404. */
   open?: number | null;
   completed?: number;
   summaryStatus?: number;
@@ -288,8 +288,8 @@ export const occurrences = [
     ],
     first_observed_at: '2026-10-12T02:14:05Z',
     last_observed_at: '2026-10-12T05:51:40Z',
-    display_shifted: true,
-    display_shift_seconds: 442 * 86400,
+    display_shifted: false,
+    display_shift_seconds: 0,
     acknowledged_at: '2026-10-12T02:20:00Z',
     acknowledged_by_name: 'Synthetic Supervisor',
     resolved_at: '2026-10-12T06:00:00Z',
@@ -316,15 +316,17 @@ export const occurrences = [
         unit: 'degC',
         binding: 100,
         source_name: 'Synthetic SCADA',
-        window_start: '2026-10-12T02:14:05Z',
-        window_end: '2026-10-12T02:14:05Z',
+        captured_by_name: 'Synthetic Technician',
+        system_actor: 'historian-import',
+        window_start: '2025-07-27T02:14:05Z',
+        window_end: '2025-07-27T02:14:05Z',
         captured_at: '2026-10-12T02:16:00Z',
         quality: 'good',
         stale: false,
         reason: 'anomaly_repair',
         content_hash: 'c0ffee'.repeat(10),
-        display_shifted: true,
-        display_shift_seconds: 442 * 86400,
+        display_shifted: false,
+        display_shift_seconds: 0,
         sample_count: 1
       }
     ]
@@ -436,8 +438,11 @@ export async function mockFaultHistory(
           status,
           count: rows.length,
           limit: 25,
-          offset: 0,
-          results: rows
+          offset: Number(url.searchParams.get('offset') ?? 0),
+          results: rows.slice(
+            Number(url.searchParams.get('offset') ?? 0),
+            Number(url.searchParams.get('offset') ?? 0) + 25
+          )
         }
       });
     }
@@ -448,7 +453,9 @@ export async function mockFaultHistory(
       const url = new URL(route.request().url());
       requests.detail.push(url);
       const id = Number(url.pathname.split('/').at(-2));
-      return route.fulfill({ json: occurrenceDetail(id) });
+      return occurrences.some((row) => row.id === id)
+        ? route.fulfill({ json: occurrenceDetail(id) })
+        : route.fulfill({ status: 404, json: { detail: 'Not found' } });
     }
   );
   return requests;

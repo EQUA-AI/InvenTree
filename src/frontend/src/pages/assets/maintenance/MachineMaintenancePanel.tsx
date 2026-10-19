@@ -225,6 +225,8 @@ function OpenWork({
   state,
   counts,
   countsLoaded,
+  countsFailed,
+  countsDenied,
   onChange,
   onShowCompleted,
   onRefreshCounts
@@ -233,6 +235,8 @@ function OpenWork({
   state: MachineWorkState;
   counts: MachineWorkCounts;
   countsLoaded: boolean;
+  countsFailed: boolean;
+  countsDenied: boolean;
   onChange: (changes: Partial<MachineWorkState>, replace?: boolean) => void;
   onShowCompleted: () => void;
   onRefreshCounts: () => void;
@@ -265,6 +269,17 @@ function OpenWork({
       onChange({ page: lastPage }, true);
   }, [query.isSuccess, query.isFetching, outOfRange, lastPage]);
 
+  if (countsFailed)
+    return (
+      <Alert
+        color={countsDenied ? 'gray' : 'red'}
+        title={t`Open work could not be checked`}
+      >
+        {countsDenied
+          ? t`Open work is not available for this machine in your scope.`
+          : t`The work summary could not be read. Retry counts to check open work; no count or list is assumed.`}
+      </Alert>
+    );
   if (!countsLoaded) return <Skeleton height={120} />;
   if (!scopeKnown) {
     return (
@@ -510,8 +525,11 @@ export function MachineMaintenancePanel({
         )
       ).data as unknown
   });
-  const counts = machineWorkCounts(summary.data);
+  const counts = machineWorkCounts(summary.isError ? undefined : summary.data);
   const loading = summary.isPending;
+  const summaryDenied =
+    isAxiosError(summary.error) &&
+    [401, 403, 404].includes(summary.error.response?.status ?? 0);
   const update = (changes: Partial<MachineWorkState>, replace = false) =>
     setParams(
       (previous) =>
@@ -595,24 +613,35 @@ export function MachineMaintenancePanel({
             }
           ]}
         />
-        <Button
-          variant='default'
-          size='xs'
-          w={phone ? 'fit-content' : undefined}
-          leftSection={<IconRefresh size={14} />}
-          loading={summary.isFetching}
-          onClick={() => void summary.refetch()}
-        >{t`Refresh counts`}</Button>
+        {!summaryDenied && (
+          <Button
+            variant='default'
+            size='xs'
+            w={phone ? 'fit-content' : undefined}
+            leftSection={<IconRefresh size={14} />}
+            loading={summary.isFetching}
+            onClick={() => void summary.refetch()}
+          >{t`Refresh counts`}</Button>
+        )}
       </Group>
       {summary.isError && (
-        <Alert color='red' title={t`Maintenance counts could not be loaded`}>
+        <Alert
+          color={summaryDenied ? 'gray' : 'red'}
+          title={
+            summaryDenied
+              ? t`Maintenance counts unavailable`
+              : t`Maintenance counts could not be loaded`
+          }
+        >
           <Group justify='space-between' gap='xs'>
             <Text size='sm'>{t`Counts are not shown rather than shown as zero.`}</Text>
-            <Button
-              size='xs'
-              variant='light'
-              onClick={() => void summary.refetch()}
-            >{t`Retry counts`}</Button>
+            {!summaryDenied && (
+              <Button
+                size='xs'
+                variant='light'
+                onClick={() => void summary.refetch()}
+              >{t`Retry counts`}</Button>
+            )}
           </Group>
         </Alert>
       )}
@@ -627,6 +656,8 @@ export function MachineMaintenancePanel({
           state={state}
           counts={counts}
           countsLoaded={summary.isSuccess}
+          countsFailed={summary.isError}
+          countsDenied={summaryDenied}
           onChange={update}
           onShowCompleted={() => update({ view: 'completed', page: 1 })}
           onRefreshCounts={() => void summary.refetch()}
@@ -634,7 +665,7 @@ export function MachineMaintenancePanel({
       ) : (
         <Stack gap='xs'>
           <Text size='xs' c='dimmed'>
-            {t`Completed maintenance records for this machine. A record opens the work order that completed it; legacy records have none.`}
+            {t`Completed maintenance records for this machine. A record links its work order when you can open it. An unavailable link does not establish that no work was recorded.`}
           </Text>
           <MaintenanceRecordTable machineId={machineId} boundToMachine />
         </Stack>

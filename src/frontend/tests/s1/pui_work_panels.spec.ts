@@ -241,7 +241,7 @@ test('native record fields remain reachable and each native section has a workfl
 
 test('native standalone closeout mounts only on first visit and retains its local draft across views', async ({
   page
-}) => {
+}, info) => {
   const requests = await mockPanelWork(page, {
     ...workOrder(),
     canonical_commands_enabled: true
@@ -258,6 +258,12 @@ test('native standalone closeout mounts only on first visit and retains its loca
     exact: true
   });
   await tabs.getByRole('tab', { name: 'Closeout', exact: true }).click();
+  const capture = page.getByTestId('closeout-capture-disclosure');
+  await expect(capture).not.toHaveAttribute('open');
+  await capture
+    .getByText('Edit or add to the capture', { exact: true })
+    .click();
+  await expect(capture).toHaveAttribute('open');
   const narrative = page.getByRole('textbox', {
     name: 'What did you do?',
     exact: true
@@ -274,6 +280,8 @@ test('native standalone closeout mounts only on first visit and retains its loca
   await tabs.getByRole('tab', { name: 'History', exact: true }).click();
   await expect(narrative).toBeHidden();
   await tabs.getByRole('tab', { name: 'Closeout', exact: true }).click();
+  await expect(capture).toHaveAttribute('open');
+  await expect(narrative).toBeVisible();
   await expect(narrative).toHaveValue(
     'Synthetic unsaved local draft — preserve on panel navigation'
   );
@@ -285,6 +293,11 @@ test('native standalone closeout mounts only on first visit and retains its loca
   expect(
     requests.every((request) => ['GET', 'OPTIONS'].includes(request.method))
   ).toBe(true);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({
+    path: info.outputPath('retained-capture-draft.png'),
+    fullPage: true
+  });
 });
 
 test('direct-linked Parts and native browser history select views without changing work identity', async ({

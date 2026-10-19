@@ -5,6 +5,8 @@ import { mockExplorer, openExplorer } from '../s1/machineExplorerFixtures';
 import {
   mockFaultHistory,
   mockMachineWork,
+  occurrenceDetail,
+  occurrences,
   openFaultHistory,
   openMaintenance
 } from './machineWorkFixtures';
@@ -170,13 +172,13 @@ test.describe('R6 P12 machine Maintenance: Open work and Completed history', () 
         page.getByRole('link', { name: 'Open work order WO-60' })
       ).toBeVisible();
       await expect(
-        page.getByText('Legacy record', { exact: true })
+        page.getByText('No work order you can open', { exact: true })
       ).toBeVisible();
       await expect(page.getByText('Follow-up required')).toBeVisible();
       const component = page
         .getByRole('row')
         .filter({ hasText: 'Legacy service visit' });
-      await expect(component).toContainText('Not recorded');
+      await expect(component).toContainText('Not available');
       await expectContained(page);
       await page.screenshot({
         path: testInfo.outputPath(`maintenance-completed-${scheme}.png`),
@@ -194,9 +196,7 @@ test.describe('R6 P12 machine Maintenance: Open work and Completed history', () 
     expect(requests.records.length).toBeGreaterThan(0);
   });
 
-  test('an unresolved work scope is not available, never zero', async ({
-    page
-  }) => {
+  test('a defensive unavailable projection is never zero', async ({ page }) => {
     const requests = await mockMachineWork(page, { open: null });
     await openMaintenance(page);
     const views = page.getByRole('radiogroup', { name: 'Maintenance view' });
@@ -223,6 +223,38 @@ test.describe('R6 P12 machine Maintenance: Open work and Completed history', () 
       page.getByRole('radiogroup', { name: 'Maintenance view' })
     ).toContainText('not available');
     await expect(page.getByText('No open work on this machine')).toHaveCount(0);
+    await expect(
+      page.getByText('Open work could not be checked')
+    ).toBeVisible();
+    await expect(
+      page.getByTestId('machine-maintenance').locator('.mantine-Skeleton-root')
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: 'Retry counts' })
+    ).toBeVisible();
+  });
+
+  test('a denied summary has an explicit open-work state without a retryable failure', async ({
+    page
+  }, info) => {
+    const requests = await mockMachineWork(page, { summaryStatus: 404 });
+    await openMaintenance(page);
+    await expect(
+      page.getByText(
+        'Open work is not available for this machine in your scope.'
+      )
+    ).toBeVisible();
+    await expect(
+      page.getByTestId('machine-maintenance').locator('.mantine-Skeleton-root')
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: 'Retry counts' })
+    ).toHaveCount(0);
+    expect(requests.list).toHaveLength(0);
+    await page.screenshot({
+      path: info.outputPath('maintenance-denied.png'),
+      fullPage: true
+    });
   });
 
   test('a failed open-work read shows no cached rows', async ({ page }) => {
@@ -328,7 +360,7 @@ test.describe('R6 P12 Fault History: occurrences, retained evidence and owning w
       await expect(pressure).toContainText('No retained snapshot');
       await expect(
         page.locator('[data-occurrence="900"]').first()
-      ).toContainText('No owning work recorded');
+      ).toContainText('No owning work you can open');
       await expectContained(page);
       await page.screenshot({
         path: testInfo.outputPath(`fault-history-${scheme}.png`),
@@ -359,7 +391,7 @@ test.describe('R6 P12 Fault History: occurrences, retained evidence and owning w
         )
       ).toBeVisible();
       await expect(
-        evidence.getByText('Acknowledged by Synthetic Supervisor')
+        evidence.getByText(/Acknowledged .* by Synthetic Supervisor/)
       ).toBeVisible();
       const snapshot = evidence.locator('[data-snapshot]');
       await expect(snapshot).toContainText('Retained snapshot');
@@ -368,10 +400,13 @@ test.describe('R6 P12 Fault History: occurrences, retained evidence and owning w
         'Captured for the repair raised for it'
       );
       await expect(snapshot).toContainText('content hash c0ffeec0ffee');
-      // The display clock is disclosed, not hidden.
-      await expect(
-        snapshot.getByText(/moved forward 442 d from the plant's own clock/)
-      ).toBeVisible();
+      // Retained source times stay on the plant clock, even for migrated history.
+      await expect(snapshot).toContainText('27 Jul 2025');
+      await expect(snapshot).toContainText('Captured by Synthetic Technician');
+      await expect(snapshot).toContainText('System actor: historian-import');
+      await expect(page.getByTestId('fault-occurrences')).toContainText(
+        'Recorded plant times'
+      );
       await expect(
         evidence.getByRole('link', {
           name: 'Current readings are on the Health tab'
@@ -457,4 +492,132 @@ test.describe('R6 P12 Fault History: occurrences, retained evidence and owning w
     await expect(page.getByText('Verified causes')).toBeVisible();
     await expect(page.locator('[data-occurrence]')).toHaveCount(0);
   });
+});
+
+test('a filtered-out occurrence link still reads its independent evidence', async ({
+  page
+}, info) => {
+  const requests = await mockFaultHistory(page);
+  await openFaultHistory(page, {
+    query: '?fault_status=active&occurrence=901'
+  });
+  await expect(page.locator('[data-occurrence="901"]')).toHaveCount(0);
+  await expect(page.getByTestId('occurrence-evidence')).toContainText(
+    '118.4 degC'
+  );
+  expect(requests.detail.map((url) => url.pathname)).toContain(
+    '/api/assets/machines/18/fault-history/occurrences/901/'
+  );
+  await expectContained(page);
+  await page.screenshot({
+    path: info.outputPath('linked-evidence-outside-list.png'),
+    fullPage: true
+  });
+});
+
+test('a missing linked occurrence states unavailable independently of the list', async ({
+  page
+}) => {
+  await mockFaultHistory(page);
+  await openFaultHistory(page, { query: '?occurrence=640' });
+  await expect(
+    page.getByText('This occurrence is not available to you.')
+  ).toBeVisible();
+  await expect(page.getByText('3 occurrences')).toBeVisible();
+});
+
+test('out-of-range occurrence pages recover without claiming an empty history', async ({
+  page
+}) => {
+  const requests = await mockFaultHistory(page);
+  await openFaultHistory(page, {
+    query: '?fault_status=active&fault_page=2&from=machines'
+  });
+  await expect(page.locator('[data-occurrence]')).toHaveCount(2);
+  await expect(page.getByTestId('destination')).not.toContainText(
+    'fault_page=2'
+  );
+  await expect(page.getByTestId('destination')).toContainText('from=machines');
+  await expect(
+    page.getByText('No occurrence is active on this machine now.')
+  ).toHaveCount(0);
+  expect(requests.list.map((url) => url.searchParams.get('offset'))).toContain(
+    '25'
+  );
+  expect(requests.list.at(-1)!.searchParams.get('offset')).toBe('0');
+});
+
+test('acknowledgement without a recorder retains its time and state', async ({
+  page
+}) => {
+  await mockFaultHistory(page);
+  await page.route('**/occurrences/900/', (route) =>
+    route.fulfill({
+      json: {
+        ...occurrenceDetail(900),
+        acknowledged_by_name: null
+      }
+    })
+  );
+  await openFaultHistory(page, { query: '?occurrence=900' });
+  const evidence = page.getByTestId('occurrence-evidence');
+  await expect(evidence).toContainText('Acknowledged 10 Oct 2026 11:05:00');
+  await expect(evidence).toContainText('recorder not recorded');
+  await expect(
+    evidence.getByText('Not acknowledged', { exact: true })
+  ).toHaveCount(0);
+});
+
+test('an occurrence older than the first page opens without changing the current list', async ({
+  page
+}) => {
+  await mockFaultHistory(page);
+  const newer = Array.from({ length: 26 }, (_, index) => ({
+    ...occurrences[0],
+    id: 1000 - index
+  }));
+  await page.route('**/fault-history/occurrences/?*', (route) =>
+    route.fulfill({
+      json: {
+        rule: 'fault_occurrences.v1',
+        machine: 18,
+        count: 26,
+        limit: 25,
+        offset: 0,
+        results: newer.slice(0, 25)
+      }
+    })
+  );
+  await openFaultHistory(page, { query: '?occurrence=901' });
+  await expect(page.locator('[data-occurrence]')).toHaveCount(25);
+  await expect(page.locator('[data-occurrence="901"]')).toHaveCount(0);
+  await expect(page.getByTestId('occurrence-evidence')).toContainText(
+    '118.4 degC'
+  );
+  await expect(
+    page.getByRole('region', { name: 'Opened occurrence evidence' })
+  ).toBeFocused();
+});
+
+test('a failed refresh removes stale counts and open-work rows', async ({
+  page
+}) => {
+  await mockMachineWork(page, { jobs: 20 });
+  await openMaintenance(page);
+  await expect(page.getByText('20 open work orders')).toBeVisible();
+  await page.route('**/api/assets/machines/18/work-summary/', (route) =>
+    route.fulfill({
+      status: 503,
+      json: { detail: 'Synthetic unavailable source' }
+    })
+  );
+  await page.getByRole('button', { name: 'Refresh counts' }).click();
+  await expect(page.getByText('Open work could not be checked')).toBeVisible();
+  const views = page.getByRole('radiogroup', { name: 'Maintenance view' });
+  await expect(views).toContainText('not available');
+  await expect(views).not.toContainText('20');
+  await expect(page.getByTestId('machine-open-work')).toHaveCount(0);
+  await expect(
+    page.getByTestId('machine-maintenance').locator('.mantine-Skeleton-root')
+  ).toHaveCount(0);
 });

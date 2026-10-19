@@ -29,7 +29,7 @@ import {
   IconSparkles
 } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import DictateCloseoutModal from './DictateCloseoutModal';
 import { WorkRecordUpdate } from './FinalUpdateAction';
 import { PreparedCloseout } from './PreparedCloseout';
@@ -84,6 +84,7 @@ export function CloseoutPanel({
   const api = useApi();
   const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
+  const [captureEditing, setCaptureEditing] = useState(false);
   const [narrative, setNarrative] = useState('');
   const [dictateOpen, setDictateOpen] = useState(false);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
@@ -342,6 +343,17 @@ export function CloseoutPanel({
   };
 
   const readiness = readinessQuery.data;
+  const changedFields = Object.entries(fieldValues).some(
+    ([key, value]) => value !== savedFieldValue(proposalQuery.data, key)
+  );
+  const captureInProgress = capture != null && capture.status !== 'reviewed';
+  const hasCaptureDraft = !!narrative.trim() || changedFields;
+  useEffect(() => {
+    // A ready, saved account is direct; unfinished capture work is visible.
+    // Once opened, native panel retention also preserves this disclosure state.
+    if (captureInProgress || dictateOpen || hasCaptureDraft)
+      setCaptureEditing(true);
+  }, [captureInProgress, dictateOpen, hasCaptureDraft]);
 
   return (
     <Card withBorder padding='lg'>
@@ -397,9 +409,7 @@ export function CloseoutPanel({
           partUsageQuery.isError ||
           amendmentsQuery.isError
         }
-        changed={Object.entries(fieldValues).some(
-          ([key, value]) => value !== savedFieldValue(proposalQuery.data, key)
-        )}
+        changed={changedFields}
       />
       {!accepted && (
         <fieldset
@@ -436,7 +446,10 @@ export function CloseoutPanel({
         </fieldset>
       )}
       <WorkRecordUpdate
-        onRecovery={setStep}
+        onRecovery={(next) => {
+          setCaptureEditing(true);
+          setStep(next);
+        }}
         state={update.state}
         latest={Object.fromEntries(
           REQUIRED_FIELDS.map((field) => [
@@ -486,49 +499,76 @@ export function CloseoutPanel({
         !['pending', 'uncertain', 'confirmed'].includes(
           update.state.status
         ) && (
-          <Stepper
-            id='closeout-recovery'
-            active={step}
-            onStepClick={setStep}
-            size='sm'
-            allowNextStepsSelect
-          >
-            <Stepper.Step
-              label={t`Narrative`}
-              icon={<IconSparkles size={16} />}
+          <Stack gap='sm'>
+            {(captureInProgress || dictateOpen) && (
+              <Alert color='yellow' data-testid='closeout-capture-lock'>
+                {dictateOpen
+                  ? t`Finish or cancel dictation before changing the account or updating the maintenance record.`
+                  : t`Finish the active capture review before updating the maintenance record. The original narrative is preserved.`}
+              </Alert>
+            )}
+            <Card
+              component='details'
+              withBorder
+              open={captureEditing}
+              onToggle={(event) => setCaptureEditing(event.currentTarget.open)}
+              data-testid='closeout-capture-disclosure'
             >
-              <NarrativeStep
-                capture={capture}
-                narrative={narrative}
-                setNarrative={setNarrative}
-                onCreate={createCapture}
-                onExtract={extract}
-                onDictate={() => setDictateOpen(true)}
-                busy={mutationLocked}
-                loading={capturesQuery.isLoading}
-              />
-            </Stepper.Step>
-            <Stepper.Step label={t`Review`} icon={<IconListCheck size={16} />}>
-              <ReviewStep
-                capture={capture}
-                proposal={proposalQuery.data ?? null}
-                effectiveFieldValue={effectiveFieldValue}
-                setFieldValue={(field, value) =>
-                  setFieldValues((current) => ({ ...current, [field]: value }))
-                }
-                onSubmit={submitDecisions}
-                busy={mutationLocked}
-              />
-            </Stepper.Step>
-            <Stepper.Step label={t`Parts`}>
-              <PartsStep
-                rows={partUsageQuery.data ?? []}
-                onRefresh={refreshPartUsage}
-                onResolve={resolveRow}
-                busy={mutationLocked}
-              />
-            </Stepper.Step>
-          </Stepper>
+              <summary
+                style={{ cursor: 'pointer', fontWeight: 600 }}
+              >{t`Edit or add to the capture`}</summary>
+              <Stepper
+                mt='md'
+                id='closeout-recovery'
+                active={step}
+                onStepClick={setStep}
+                size='sm'
+                allowNextStepsSelect
+              >
+                <Stepper.Step
+                  label={t`Narrative`}
+                  icon={<IconSparkles size={16} />}
+                >
+                  <NarrativeStep
+                    capture={capture}
+                    narrative={narrative}
+                    setNarrative={setNarrative}
+                    onCreate={createCapture}
+                    onExtract={extract}
+                    onDictate={() => setDictateOpen(true)}
+                    busy={mutationLocked}
+                    loading={capturesQuery.isLoading}
+                  />
+                </Stepper.Step>
+                <Stepper.Step
+                  label={t`Review`}
+                  icon={<IconListCheck size={16} />}
+                >
+                  <ReviewStep
+                    capture={capture}
+                    proposal={proposalQuery.data ?? null}
+                    effectiveFieldValue={effectiveFieldValue}
+                    setFieldValue={(field, value) =>
+                      setFieldValues((current) => ({
+                        ...current,
+                        [field]: value
+                      }))
+                    }
+                    onSubmit={submitDecisions}
+                    busy={mutationLocked}
+                  />
+                </Stepper.Step>
+                <Stepper.Step label={t`Parts`}>
+                  <PartsStep
+                    rows={partUsageQuery.data ?? []}
+                    onRefresh={refreshPartUsage}
+                    onResolve={resolveRow}
+                    busy={mutationLocked}
+                  />
+                </Stepper.Step>
+              </Stepper>
+            </Card>
+          </Stack>
         )}
     </Card>
   );

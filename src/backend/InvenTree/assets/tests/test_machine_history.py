@@ -6,7 +6,9 @@ from uuid import uuid4
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.db import connection
 from django.test import TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from tasks.models import WorkOrder
@@ -24,7 +26,11 @@ from assets.health_models import (
     SnapshotReason,
     SourceType,
 )
-from assets.machine_history import FAULT_OCCURRENCES_RULE, MACHINE_WORK_VIEWS_RULE
+from assets.machine_history import (
+    FAULT_OCCURRENCES_RULE,
+    MACHINE_WORK_VIEWS_RULE,
+    fault_occurrences,
+)
 from assets.models import AssetMachine, AssetMaintenanceRecord, Client, ClientScopeGrant
 from assets.registry import ensure_pump, register_station
 from assets.registry_models import AssetComponent, DictionaryPoint
@@ -191,8 +197,18 @@ class MachineWorkViewsTests(TestCase):
         self.assertIsInstance(rows, list)
         self.assertNotIn('affected_component', rows[0])
 
-    def test_unresolved_work_scope_is_unknown_not_zero(self):
-        """No Work scope: the open count is null while history still counts."""
+    @override_settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=lambda actor: set())
+    def test_unresolved_work_scope_is_not_found(self):
+        """The real endpoint denies unresolved scope before reading counts."""
+        self.summary(expected=404)
+
+    def test_clientless_legacy_equipment_summary_is_not_found(self):
+        """Registry visibility does not grant a missing maintenance boundary."""
+        legacy = AssetMachine.objects.create(name='Legacy equipment')
+        self.summary(legacy, expected=404)
+
+    def test_scope_lost_after_machine_check_is_defensively_unknown(self):
+        """A resolver failure after the machine gate must never become zero."""
         with mock.patch(
             'assets.location_api.work_order_scope_filter',
             side_effect=ScopeError('unavailable'),
@@ -464,6 +480,76 @@ class FaultOccurrenceTests(TestCase):
             {'limit': 'x'},
         ):
             self.read(expected=400, **params)
+
+    def test_recorded_evidence_times_do_not_follow_the_dashboard_clock(self):
+        """A migrated source's moving display clock cannot alter evidence."""
+        self.source.config = {'data_ranges': {
+            str(self.station.source_entity_uuid): {
+                'from': (self.now - timedelta(days=450)).isoformat(),
+                'to': (self.now - timedelta(days=442)).isoformat(),
+            }
+        }}
+        self.source.save()
+        for now in (self.now, self.now + timedelta(days=1)):
+            with mock.patch('django.utils.timezone.now', return_value=now):
+                detail = self.read(f'{self.resolved.pk}/')
+                listed = self.read(status='resolved')['results'][0]
+            for row in (detail, listed):
+                self.assertEqual(row['first_observed_at'], self.resolved.first_observed_at.isoformat())
+                self.assertEqual(row['last_observed_at'], self.resolved.last_observed_at.isoformat())
+                self.assertFalse(row['display_shifted'])
+                snapshot = row['snapshots'][0]
+                self.assertEqual(snapshot['window_start'], self.snapshot.window_start.isoformat())
+                self.assertEqual(snapshot['window_end'], self.snapshot.window_end.isoformat())
+                self.assertEqual(snapshot['captured_at'], self.snapshot.captured_at.isoformat())
+                self.assertEqual(snapshot['content_hash'], self.snapshot.content_hash)
+                self.assertFalse(snapshot['display_shifted'])
+            self.assertEqual(detail['snapshots'][0]['samples'], self.snapshot.samples)
+
+    def test_snapshot_retains_human_and_system_recorder(self):
+        """Names follow Work's full-name / username convention; no guess."""
+        self.reader.first_name = 'Recorded'
+        self.reader.last_name = 'Technician'
+        self.reader.save()
+        retained = HealthEvidenceSnapshot.objects.create(
+            machine=self.machine, anomaly=self.resolved, source=self.source,
+            created_by=self.reader, system_actor='historian-import',
+            signal_label='Retained attribution', window_start=self.now,
+            window_end=self.now, content_hash='r' * 64,
+        )
+        def captured(snapshot_id):
+            return next(row for row in self.read(f'{self.resolved.pk}/')['snapshots'] if row['id'] == str(snapshot_id))
+        snapshot = captured(retained.pk)
+        self.assertEqual(snapshot['captured_by_name'], 'Recorded Technician')
+        self.assertEqual(snapshot['system_actor'], 'historian-import')
+        self.reader.first_name = self.reader.last_name = ''
+        self.reader.save()
+        self.assertEqual(captured(retained.pk)['captured_by_name'], self.reader.username)
+        self.assertIsNone(captured(self.snapshot.pk)['captured_by_name'])
+
+    def test_occurrence_queries_stay_flat_with_more_work_and_snapshots(self):
+        """Scope grants, work machines and snapshot recorders load in batches."""
+        for index in range(7):
+            owning = WorkOrder.objects.create(title=f'Owner {index}', machine=self.machine)
+            related = WorkOrder.objects.create(title=f'Packet job {index}', machine=self.machine)
+            packet = RepairPacket.objects.create(machine=self.machine, work_order=related, symptom='Retained alarm')
+            anomaly = MachineAnomaly.objects.create(
+                machine=self.machine, source=self.source, fingerprint=f'scale-{index}',
+                title=f'Scale alarm {index}', first_observed_at=self.now,
+                last_observed_at=self.now, work_order=owning, repair_packet=packet,
+            )
+            anomaly.bindings.add(self.binding)
+            HealthEvidenceSnapshot.objects.create(
+                machine=self.machine, anomaly=anomaly, source=self.source,
+                created_by=self.reader, signal_label='Retained value',
+                window_start=self.now, window_end=self.now,
+                content_hash=str(index) * 64,
+            )
+        with CaptureQueriesContext(connection) as small:
+            fault_occurrences(self.reader, self.machine, limit=1)
+        with self.assertNumQueries(len(small)):
+            page = fault_occurrences(self.reader, self.machine, limit=25)
+        self.assertEqual(len(page['results']), 10)
 
     def test_detail_belongs_to_its_machine(self):
         """Another machine's anomaly id is not found through this machine."""

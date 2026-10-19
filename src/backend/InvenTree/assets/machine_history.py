@@ -8,7 +8,8 @@ in the reader's canonical Work scope - the same status set, active flag and
 scope predicate the Machines list counts with (``assets.location_api``), so
 the two numbers cannot disagree. Completed history is the native maintenance
 record index for the machine, counted from the same queryset the native table
-pages through. An unresolvable Work scope is unknown (``None``), never zero.
+pages through. The endpoint returns 404 when machine/actor scope is unresolved.
+A later resolver failure is defensively represented as ``None``, never zero.
 
 **Fault occurrences** (``fault_occurrences.v1``). An occurrence is an existing
 ``MachineAnomaly``: its own id, the source's alarm id and code, when it was
@@ -17,22 +18,19 @@ the work that owns the response. Nothing here mints a new fault record or
 identifier. Retained snapshots are immutable and are returned as captured; the
 machine's current readings are not part of an occurrence and never replace
 its retained window. Work is re-authorized per row against the reader's
-canonical Work scope; work outside it is withheld entirely rather than shown
+canonical Work scope (resolved once for this projection); work outside it is withheld entirely rather than shown
 as a dead reference.
 
-Observation times are presented on the clock the rest of the machine page
-shows (``machine_health.services.display_time``) and each payload says when
-and by how much they were moved. Capture times are server facts and are not
-moved.
+Observation, snapshot window, sample and capture times retain their recorded
+clock. Dashboard display shifts never alter these historical evidence facts.
 """
 
 from __future__ import annotations
 
 from django.db.models import Prefetch
-from django.utils.dateparse import parse_datetime
 
 from tasks.dashboard_metrics import OPEN
-from tasks.scope import ScopeError, require_work_order_scope
+from tasks.scope import ScopeError, scope_for_actor, scope_for_work_order
 
 from assets.health_models import (
     ACTIVE_ANOMALY_STATUSES,
@@ -42,7 +40,6 @@ from assets.health_models import (
     MachineSignalBinding,
 )
 from assets.models import AssetMaintenanceRecord
-from machine_health.services.display_time import display_shift, to_display
 
 MACHINE_WORK_VIEWS_RULE = 'machine_work_views.v1'
 FAULT_OCCURRENCES_RULE = 'fault_occurrences.v1'
@@ -77,7 +74,7 @@ def machine_work_summary(actor, machine) -> dict:
         # The native order where it is known; any state OPEN adds is kept.
         'open_statuses': [state for state in OPEN_ORDER if state in OPEN]
         + sorted(set(OPEN) - set(OPEN_ORDER)),
-        # ``None``: the reader's Work scope could not be resolved.
+        # Defensive failure after the endpoint has authorized the machine.
         'open': None
         if open_work is None
         else open_work.get(machine.pk, {'count': 0, 'highest_priority': None}),
@@ -88,37 +85,22 @@ def machine_work_summary(actor, machine) -> dict:
     }
 
 
-def _station(machine):
-    return machine if machine.asset_type == 'pumphouse' else machine.parent
+def _reader_scopes(actor):
+    """Resolve the same canonical scopes once; failure withholds all work."""
+    try:
+        return scope_for_actor(actor)
+    except ScopeError:
+        return set()
 
 
-class _Clock:
-    """Display shifts per source for one machine, resolved once each."""
-
-    def __init__(self, machine):
-        self.station = _station(machine)
-        self._shifts = {}
-
-    def shift(self, source):
-        key = getattr(source, 'pk', None)
-        if key not in self._shifts:
-            self._shifts[key] = display_shift(self.station, source)
-        return self._shifts[key]
-
-    def show(self, moment, source):
-        shown = to_display(moment, self.shift(source))
-        return shown.isoformat() if shown is not None else None
-
-
-def _visible(actor, work_order):
-    """The work order when the reader's canonical Work scope covers it."""
+def _visible(scopes, work_order):
+    """Keep exact customer/client precedence without per-row resolver queries."""
     if work_order is None:
         return None
     try:
-        require_work_order_scope(actor, work_order)
+        return work_order if scope_for_work_order(work_order) in scopes else None
     except ScopeError:
         return None
-    return work_order
 
 
 def _work_row(work_order, relation: str) -> dict:
@@ -137,7 +119,7 @@ def _work_row(work_order, relation: str) -> dict:
     }
 
 
-def _work_for(actor, anomaly, machine) -> tuple[list[dict], dict | None]:
+def _work_for(scopes, anomaly, machine) -> tuple[list[dict], dict | None]:
     """Work that owns or relates to the occurrence, as the reader may see it.
 
     The anomaly's own ``work_order`` owns the response. A repair packet raised
@@ -145,14 +127,14 @@ def _work_for(actor, anomaly, machine) -> tuple[list[dict], dict | None]:
     are re-authorized here, so an out-of-scope job is simply absent.
     """
     rows = []
-    owning = _visible(actor, anomaly.work_order)
+    owning = _visible(scopes, anomaly.work_order)
     if owning is not None:
         rows.append(_work_row(owning, 'owning'))
     packet = anomaly.repair_packet
     packet_ref = None
     if packet is not None and packet.machine_id == machine.pk:
         packet_work = packet.work_order
-        visible_packet_work = _visible(actor, packet_work)
+        visible_packet_work = _visible(scopes, packet_work)
         if packet_work is None or visible_packet_work is not None:
             packet_ref = {
                 'id': packet.pk,
@@ -193,37 +175,34 @@ def _signals(anomaly) -> list[dict]:
     ]
 
 
-def _snapshot(snapshot, clock: _Clock, *, with_samples: bool) -> dict:
-    shift = clock.shift(snapshot.source)
+def _snapshot(snapshot, *, with_samples: bool) -> dict:
     row = {
         'id': str(snapshot.id),
         'signal_label': snapshot.signal_label,
         'unit': snapshot.unit,
         'binding': snapshot.binding_id,
         'source_name': snapshot.source.name if snapshot.source else None,
-        'window_start': clock.show(snapshot.window_start, snapshot.source),
-        'window_end': clock.show(snapshot.window_end, snapshot.source),
+        'window_start': snapshot.window_start.isoformat()
+        if snapshot.window_start
+        else None,
+        'window_end': snapshot.window_end.isoformat() if snapshot.window_end else None,
         'captured_at': snapshot.captured_at.isoformat(),
+        'captured_by_name': (
+            snapshot.created_by.get_full_name().strip()
+            or snapshot.created_by.get_username()
+        )
+        if snapshot.created_by
+        else None,
+        'system_actor': snapshot.system_actor,
         'quality': snapshot.quality,
         'stale': snapshot.stale,
         'reason': snapshot.reason,
         'content_hash': snapshot.content_hash,
-        'display_shifted': bool(shift),
-        'display_shift_seconds': int(shift.total_seconds()),
+        'display_shifted': False,
+        'display_shift_seconds': 0,
     }
     if with_samples:
-        samples = []
-        for sample in snapshot.samples or []:
-            observed = sample.get('observed_at') if isinstance(sample, dict) else None
-            moment = None
-            if observed:
-                parsed = parse_datetime(str(observed))
-                moment = clock.show(parsed, snapshot.source) if parsed else None
-            samples.append({
-                'observed_at': moment,
-                'value': sample.get('value') if isinstance(sample, dict) else None,
-            })
-        row['samples'] = samples
+        row['samples'] = snapshot.samples
         row['statistics'] = snapshot.statistics
         row['source_references'] = snapshot.source_references
     else:
@@ -231,9 +210,8 @@ def _snapshot(snapshot, clock: _Clock, *, with_samples: bool) -> dict:
     return row
 
 
-def _occurrence(actor, anomaly, machine, clock: _Clock, snapshots) -> dict:
-    shift = clock.shift(anomaly.source)
-    work, packet = _work_for(actor, anomaly, machine)
+def _occurrence(scopes, anomaly, machine, snapshots) -> dict:
+    work, packet = _work_for(scopes, anomaly, machine)
     acknowledged_by = anomaly.acknowledged_by
     return {
         'id': anomaly.pk,
@@ -256,10 +234,10 @@ def _occurrence(actor, anomaly, machine, clock: _Clock, snapshots) -> dict:
         else None,
         'signals': _signals(anomaly),
         'components': _components(anomaly),
-        'first_observed_at': clock.show(anomaly.first_observed_at, anomaly.source),
-        'last_observed_at': clock.show(anomaly.last_observed_at, anomaly.source),
-        'display_shifted': bool(shift),
-        'display_shift_seconds': int(shift.total_seconds()),
+        'first_observed_at': anomaly.first_observed_at.isoformat(),
+        'last_observed_at': anomaly.last_observed_at.isoformat(),
+        'display_shifted': False,
+        'display_shift_seconds': 0,
         'acknowledged_at': anomaly.acknowledged_at.isoformat()
         if anomaly.acknowledged_at
         else None,
@@ -282,7 +260,10 @@ def _anomalies(machine):
         MachineAnomaly.objects
         .filter(machine=machine)
         .select_related(
-            'source', 'acknowledged_by', 'work_order', 'repair_packet__work_order'
+            'source',
+            'acknowledged_by',
+            'work_order__machine',
+            'repair_packet__work_order__machine',
         )
         .prefetch_related(
             Prefetch(
@@ -322,22 +303,21 @@ def fault_occurrences(actor, machine, *, status='all', limit=None, offset=None):
     for snapshot in (
         HealthEvidenceSnapshot.objects
         .filter(anomaly__in=page)
-        .select_related('source')
+        .select_related('source', 'created_by')
         .order_by('captured_at', 'id')
     ):
         by_anomaly[snapshot.anomaly_id].append(snapshot)
 
-    clock = _Clock(machine)
+    scopes = _reader_scopes(actor)
     results = []
     for anomaly in page:
         retained = by_anomaly[anomaly.pk]
         row = _occurrence(
-            actor,
+            scopes,
             anomaly,
             machine,
-            clock,
             [
-                _snapshot(snapshot, clock, with_samples=False)
+                _snapshot(snapshot, with_samples=False)
                 for snapshot in retained[-MAX_ROW_SNAPSHOTS:]
             ],
         )
@@ -363,17 +343,16 @@ def fault_occurrence(actor, machine, occurrence_id: int) -> dict | None:
     retained = list(
         HealthEvidenceSnapshot.objects
         .filter(anomaly=anomaly)
-        .select_related('source')
+        .select_related('source', 'created_by')
         .order_by('captured_at', 'id')
     )
-    clock = _Clock(machine)
+    scopes = _reader_scopes(actor)
     row = _occurrence(
-        actor,
+        scopes,
         anomaly,
         machine,
-        clock,
         [
-            _snapshot(snapshot, clock, with_samples=True)
+            _snapshot(snapshot, with_samples=True)
             for snapshot in retained[-MAX_DETAIL_SNAPSHOTS:]
         ],
     )

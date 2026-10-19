@@ -14,6 +14,7 @@ export interface CloseoutCapture {
   narrative: string;
   transcript_reference?: string | null;
   created_by?: number;
+  created_by_name?: string | null;
   created_at?: string;
   completed_closeout?: number | null;
   revisions?: {
@@ -24,6 +25,7 @@ export interface CloseoutCapture {
     work_order_version: number;
     supersedes: number | null;
     created_by: number;
+    created_by_name?: string | null;
     created_at: string;
   }[];
 }
@@ -46,6 +48,7 @@ export interface CloseoutProposal {
     decision: string;
     final_value: unknown;
     decided_by?: number;
+    decided_by_name?: string | null;
     decided_at?: string;
   }[];
 }
@@ -65,6 +68,7 @@ export interface CloseoutPartUsageRow {
 export interface CloseoutReadingRow {
   phase?: string;
   recorded_by?: number;
+  recorded_by_name?: string | null;
   recorded_at?: string;
   id: number;
   label: string;
@@ -103,7 +107,9 @@ export interface CloseoutAmendment {
   reason: string;
   changes: Record<string, { from: unknown; to: unknown }>;
   requested_by: number;
+  requested_by_name?: string | null;
   decided_by: number | null;
+  decided_by_name?: string | null;
   created_at: string;
   applied_at: string | null;
   base_content_hash: string;

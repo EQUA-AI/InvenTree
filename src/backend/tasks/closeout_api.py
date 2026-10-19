@@ -14,6 +14,7 @@ from dataclasses import asdict
 
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
+from django.db.models import Prefetch, prefetch_related_objects
 from django.http import Http404
 
 from rest_framework import status
@@ -24,7 +25,9 @@ from rest_framework.views import APIView
 
 from .closeout_models import (
     CloseoutAmendment,
+    CloseoutCaptureRevision,
     CloseoutEffect,
+    CloseoutFieldDecision,
     CloseoutPartUsage,
     CloseoutReading,
 )
@@ -170,8 +173,15 @@ class CloseoutCaptureList(CloseoutCommandView):
         work_order = self.get_work_order(request, pk)
         captures = (
             work_order.closeout_captures
-            .select_related('current_revision')
-            .prefetch_related('revisions')
+            .select_related('current_revision', 'created_by')
+            .prefetch_related(
+                Prefetch(
+                    'revisions',
+                    queryset=CloseoutCaptureRevision.objects.select_related(
+                        'created_by'
+                    ),
+                )
+            )
             .order_by('-pk')
         )
         return Response(CloseoutCaptureSerializer(captures, many=True).data)
@@ -265,6 +275,13 @@ class CloseoutCaptureProposal(CloseoutEnabledMixin, APIView):
         )
         if proposal is None:
             raise Http404
+        prefetch_related_objects(
+            [proposal],
+            Prefetch(
+                'decisions',
+                queryset=CloseoutFieldDecision.objects.select_related('decided_by'),
+            ),
+        )
         return Response(CloseoutProposalSerializer(proposal).data)
 
 
@@ -380,7 +397,12 @@ class CloseoutReadingList(CloseoutCommandView):
     def get(self, request, pk):
         """Return every reading for the work order."""
         work_order = self.get_work_order(request, pk)
-        rows = CloseoutReading.objects.filter(work_order=work_order).order_by('pk')
+        rows = (
+            CloseoutReading.objects
+            .filter(work_order=work_order)
+            .select_related('recorded_by')
+            .order_by('pk')
+        )
         return Response(CloseoutReadingSerializer(rows, many=True).data)
 
     def post(self, request, pk):
@@ -519,9 +541,12 @@ class CloseoutAmendmentList(CloseoutCommandView):
     def get(self, request, pk):
         """Return every amendment for the work order's closeout."""
         work_order = self.get_work_order(request, pk)
-        amendments = CloseoutAmendment.objects.filter(
-            closeout__work_order=work_order
-        ).order_by('pk')
+        amendments = (
+            CloseoutAmendment.objects
+            .filter(closeout__work_order=work_order)
+            .select_related('requested_by', 'decided_by')
+            .order_by('pk')
+        )
         return Response(CloseoutAmendmentSerializer(amendments, many=True).data)
 
     def post(self, request, pk):

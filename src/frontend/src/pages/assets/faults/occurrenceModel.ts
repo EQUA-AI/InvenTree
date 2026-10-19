@@ -44,6 +44,8 @@ export interface RetainedSnapshot {
   window_start: string | null;
   window_end: string | null;
   captured_at: string;
+  captured_by_name?: string | null;
+  system_actor?: string;
   quality: SignalQuality;
   stale: boolean;
   reason: string;

@@ -377,6 +377,11 @@ test('following the answer back returns to the same panel with the unsaved nativ
     overview: { ...workOrder(), canonical_commands_enabled: true }
   });
   await openWork(page, 'closeout');
+  const capture = page.getByTestId('closeout-capture-disclosure');
+  await expect(capture).not.toHaveAttribute('open');
+  await capture
+    .getByText('Edit or add to the capture', { exact: true })
+    .click();
   const narrative = page.getByRole('textbox', {
     name: 'What did you do?',
     exact: true
@@ -408,6 +413,8 @@ test('following the answer back returns to the same panel with the unsaved nativ
   await expect(
     tabs.getByRole('tab', { name: 'Closeout', exact: true })
   ).toHaveAttribute('aria-selected', 'true');
+  await expect(capture).toHaveAttribute('open');
+  await expect(narrative).toBeVisible();
   await expect(narrative).toHaveValue(draft);
   if ((page.viewportSize()?.width ?? 0) < 768) {
     // On a phone the drawer gets out of the way of the page it opened.

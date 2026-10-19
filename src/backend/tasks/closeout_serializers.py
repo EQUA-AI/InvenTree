@@ -15,8 +15,19 @@ from .closeout_models import (
 from .workorder_serializers import BaseCommandSerializer
 
 
+def _actor_name(actor):
+    """Use Work's full-name / username display convention, with no numeric fallback."""
+    return (actor.get_full_name().strip() or actor.get_username()) if actor else None
+
+
 class CloseoutCaptureRevisionSerializer(serializers.ModelSerializer):
     """Original narratives remain addressable after revision and consumption."""
+
+    created_by_name = serializers.SerializerMethodField()
+
+    def get_created_by_name(self, obj):
+        """The recorded person's display name, when available."""
+        return _actor_name(obj.created_by)
 
     class Meta:
         """Read-only source snapshot and attribution."""
@@ -30,6 +41,7 @@ class CloseoutCaptureRevisionSerializer(serializers.ModelSerializer):
             'work_order_version',
             'supersedes',
             'created_by',
+            'created_by_name',
             'created_at',
         )
         read_only_fields = fields
@@ -47,6 +59,12 @@ class CloseoutCaptureSerializer(serializers.ModelSerializer):
         source='current_revision.narrative', read_only=True, default=''
     )
 
+    created_by_name = serializers.SerializerMethodField()
+
+    def get_created_by_name(self, obj):
+        """The recorded person's display name, when available."""
+        return _actor_name(obj.created_by)
+
     class Meta:
         """Serializer metadata."""
 
@@ -62,6 +80,7 @@ class CloseoutCaptureSerializer(serializers.ModelSerializer):
             'revisions',
             'completed_closeout',
             'created_by',
+            'created_by_name',
             'created_at',
         )
         read_only_fields = fields
@@ -84,6 +103,12 @@ class CaptureReviseCommandSerializer(BaseCommandSerializer):
 class CloseoutFieldDecisionSerializer(serializers.ModelSerializer):
     """Read-only decision row."""
 
+    decided_by_name = serializers.SerializerMethodField()
+
+    def get_decided_by_name(self, obj):
+        """The recorded person's display name, when available."""
+        return _actor_name(obj.decided_by)
+
     class Meta:
         """Serializer metadata."""
 
@@ -95,6 +120,7 @@ class CloseoutFieldDecisionSerializer(serializers.ModelSerializer):
             'decision',
             'final_value',
             'decided_by',
+            'decided_by_name',
             'decided_at',
         )
         read_only_fields = fields
@@ -195,6 +221,12 @@ class PartUsageResolveSerializer(serializers.Serializer):
 class CloseoutReadingSerializer(serializers.ModelSerializer):
     """Read-only reading row."""
 
+    recorded_by_name = serializers.SerializerMethodField()
+
+    def get_recorded_by_name(self, obj):
+        """The recorded person's display name, when available."""
+        return _actor_name(obj.recorded_by)
+
     class Meta:
         """Serializer metadata."""
 
@@ -216,6 +248,7 @@ class CloseoutReadingSerializer(serializers.ModelSerializer):
             'verification_state',
             'disposition_reason',
             'recorded_by',
+            'recorded_by_name',
             'recorded_at',
         )
         read_only_fields = fields
@@ -279,6 +312,17 @@ class CloseoutEffectSerializer(serializers.ModelSerializer):
 class CloseoutAmendmentSerializer(serializers.ModelSerializer):
     """Read-only amendment resource."""
 
+    requested_by_name = serializers.SerializerMethodField()
+    decided_by_name = serializers.SerializerMethodField()
+
+    def get_requested_by_name(self, obj):
+        """Name of the recorded requester."""
+        return _actor_name(obj.requested_by)
+
+    def get_decided_by_name(self, obj):
+        """Name of the recorded decider, if present."""
+        return _actor_name(obj.decided_by)
+
     class Meta:
         """Serializer metadata."""
 
@@ -290,10 +334,12 @@ class CloseoutAmendmentSerializer(serializers.ModelSerializer):
             'base_content_hash',
             'reason',
             'requested_by',
+            'requested_by_name',
             'status',
             'effective_snapshot',
             'effective_snapshot_hash',
             'decided_by',
+            'decided_by_name',
             'created_at',
             'applied_at',
         )
