@@ -1,0 +1,276 @@
+# AIMMS R6 — start here (Claude Code / Copilot / Codex)
+
+**Last update:** 19 October 2026 (Claude Code). **Current stage:** Work-focus transport, turn consumer, result linkage and Work launcher verified in isolated tests (S0-31/S1-25/S1-26); P02/P33 and both sprints remain In progress.
+**User instruction:** “okay lets begin s0 and keep track of all the tasks and plan later i may need to switch it to codex agent”.
+
+**Continued instruction:** “okay carry on and once done s0 then start s1”, followed by explicit S1 overlap. Historical technical checkpoints remain below. The later owner delegation accepts bounded artifacts, not unimplemented contracts or deployment.
+
+**Latest instruction:** the user confirms sole frontend/backend ownership and says “approve it on behalf of me now”. Read `owner-approval.md` before repeating owner questions. P00/P01/P04 are Done for their baseline/checklist/preservation deliverables; P02 and full S0 remain unfinished. P03/P14/P15/P17/P28 remain In progress; P16 Ready for review; P33 In progress for delegated contract design/implementation, not awaiting another team. `designprompt1.md` and continued next-unblocked-task work still apply. No Figma, false deployment acceptance or independent human-review claim.
+
+**This session's instruction:** “Resume AIMMS R6 from HANDOFF.md; preserve existing changes, continue the next recorded task, and update the sprint ledgers”, then “and apply designprompt1.md to all UI work”. A pre-session patch and untracked-file archive are kept under `data/devscratch/r6-s1/2026-10-19/ack-transport/pre-session/`.
+
+This file is the durable resumption point. Do not depend on the preceding chat, redo all research, or infer completion from source inspection.
+
+## Read order and authoritative state
+
+1. Root `AGENTS.md` and `CONTRIBUTING.md`.
+   Apply `designprompt1.md` to all AIMMS UI screen development: relevant installed skills, native architecture, premium operational UX, inspected renders, real test evidence and no Figma.
+2. This handoff, `owner-approval.md` (current delegated decisions), `s1.md` (active implementation) and `s0.md` / `s0-review.md` (remaining P02 work and historical evidence).
+3. `plan.md` (approved direction), `sprint-backlog.csv` (all 58 work items), `screen-plan.csv` (all 95 states).
+4. `contracts.csv` (D01–D26 actual providers and unresolved owner decisions).
+5. The authoritative R6 source documents for the specific task being implemented.
+
+Repository: `/Users/Aniketkumar/IdeaProjects/InvenTree`.
+Authoritative pack: `/Users/Aniketkumar/Desktop/x-WORK/Repo/equaAI/EQUA_AIMMS_Handoff_R6_FINAL_UI_UX`.
+Worklist: `/Users/Aniketkumar/Desktop/x-WORK/Repo/equaAI/EQUA_AIMMS_Simple_Complete_UI_UX_Worklist.md`.
+Older reference only: `/Users/Aniketkumar/Desktop/x-WORK/Repo/equaAI/EQUA_AIMMS_R5_1_Reference_Previous_UI_Screens`.
+Operational reference (user instruction 19 October: keep in context and use where required): `/Users/Aniketkumar/Desktop/x-WORK/Repo/equaAI/EQUA_AIMMS_Operational_Fault_to_Fix.md` and its overview `Document Overview of EQUA_AIMMS_Operational_Fault_to_Fix.md`. Use it for operating semantics — separate restoration milestones, accepted ownership, the six-question handoff, saved information showing its age/revision, confirmed writebacks, human-only OT/safety/regulatory authority. It does not override the R6 pack's scope or acceptance criteria and is not a site procedure.
+
+R6 source/native baseline `6871d38` is not the workspace baseline. Latest observed branch is **inventTree-aniket**, base **fe0d73a4a**. Check Git before work: this session's changes are **uncommitted**, including new files. No push or PR has been performed. Do not discard/reset them.
+
+## Switching agents — current sprint snapshot
+
+Status checked against `sprint-backlog.csv` on19 October2026. Full tracking/reference validation passes58 work items,95 screen dispositions and26 contracts. This is a documentation/status check; application tests were not rerun.
+
+| Sprint | Current parent status | Remaining work / next action |
+|---|---|---|
+| S0 | P00/P01/P04 Done; P02 In progress | Work focus is wired end to end (acknowledgement, receipt on all chat wires, wf8 model input, result/reload identity). Request/component/evidence focus has no provider; voice and specialist rails do not use the focus. See `s0.md`. |
+| S1 | P03/P14/P15/P17/P28/P33 In progress; P16 Ready for review | Work launcher/acknowledgement/reload/return-to-panel, saved-answer state, Machines-list Work context, Criticality and Condition, Needs attention and the first-use persona view done in isolated tests. Next: remaining domain facts where providers exist, and real-file/storage/native-action validation. P16 still depends on P15. See `s1.md` and `s1-acceptance.md`. |
+| S2 | P05/P06/P08 Blocked on prerequisites after delegated review (O12); P07 and P13 In progress (user: "start S2 alongside P02 like S1") | Reference 3D scene in a native Equipment view for pumps with reversible modes, camera presets, focus/reset/zoom, labels and a keyboard component list; `three@0.186.1` added with approval. The native pump schematic is Equipment view's secondary view and old mimic links redirect there (P08). Each position shows its own slot, readings and work in an inspector, by the owner-chosen `reference_positions.v1` mapping (O11, P07). The Parts tab (P13, slice 1) gives each slot its model position, fit basis, open work and the catalogue part's native stock, with exact native Part/Stock links and **Not recorded** where nothing records what is fitted. See `s2.md`. |
+| S3 | P11 In progress (user chose to start S3 with P11) | Native pump Performance inventory, truthful "Anything unusual" verdict and electrical axes done in isolated tests; next S3-05 station view, S3-06/S3-07 audits. P09/P10/P12/P37/P38 wait on prerequisites. See `s3.md`. |
+| S4–S8 | Planned | Ticket status and prerequisites are in `sprint-backlog.csv`; create each sprint's execution ledger when starting it. Six Later tickets remain Deferred. |
+
+Both root `AGENTS.md` and `CLAUDE.md` direct agents here. On the same workspace, Claude Code can resume from these files and local evidence without relying on this chat. Give the next agent this prompt:
+
+> Resume AIMMS R6 from contrib/ui-ux/r6/HANDOFF.md. Preserve all local uncommitted and untracked changes. Read the current S0/S1 ledgers, owner-approval.md, s1-acceptance.md, assistant-context-contract.md and contracts.csv. Next: S2 P13 per `s2.md` (slice 2: row detail per position with preserved origin and a labelled return path from the native Part page; fitted identity once a provider exists); S3 P11 per `s3.md` (S3-05 station view, S3-06/S3-07). P03 has only provider-blocked UI01 gaps left (Next action; the Work link waits for P12); S1 real-file/storage/native-action validation needs an approved session. P37 can build on the shared `health_conditions` reader. P15 has `needs_attention.v1` and the admin-named `work_persona.v1` mapping; no deployment has named its groups yet. Use the operational reference below where it applies. Apply designprompt1 for UI work; update the task ledger, backlog, contracts and handoff after each verified slice. Keep full sprint acceptance separate from partial implementation evidence.
+
+Latest technical checkpoints are `data/devscratch/r6-s1/2026-10-19/work-focus/manifest.json` (backend foundation) and `data/devscratch/r6-s1/2026-10-19/context/manifest.json` (frontend/context checks). They describe their original source snapshots; this documentation update does not rewrite their hashes or imply fresh application validation. Retain known failures and unverified tests listed below.
+
+For a separate checkout or machine, transfer all local source/documentation changes, including untracked files, the Git-ignored S0/S1 evidence directories and the external R6 reference pack. A clone alone does not contain these changes. Temporary tool caches are machine-local and may need re-establishing; no transfer or upload has been performed.
+
+## Active P02/P33 work — Work-focus transport, turn consumer and Work launcher
+
+S0-31/S1-25/S1-26 (19 October, Claude Code). The repository primitive below is now wired through real adapters and the one existing assistant; `assistant-context-contract.md` has the full contract table.
+
+- **Backend:** owner-only `POST /threads/{id}/work-focus` (strict integers, generic `400 work_focus_rejected`); optional `work_focus_receipt` on `/chat`, `/chat/stream` and `/agui` (`forwardedProps.workFocusReceipt`) with a read-only pre-check before any stream and the locked intake re-check; the receipt is never fingerprinted, stored or given to the model. `TurnRun.work_focus` → ids-only `workflow_context["work_focus"]`; wf8 adds a `[work focus]` note and reselects the maintenance pack for vague focused questions. Canonical result, owner-only reload and `GET /threads/{id}/turns/{turn_id}/work-focus` (with `stale`) carry the public identity. `capabilities.work_focus` is advertised; generated wire types added.
+- **Frontend:** Work header "Ask about this work" → separate Work-focus hint → drawer acknowledges the exact Work/version before sending → receipt sent once → chips on question and answer link back to the launching panel (closing the drawer on phones). Missing capability, refusal, mismatched 200 or close/switch sends nothing and keeps draft/files; removal is the only unfocused path; resend re-acknowledges.
+- **Evidence:** 41/41 Django, 136/136 targeted chat-wire, full island unchanged (192 pre-existing non-passing, compared by id), 203 units, S1 144/144, S0 95/95, native drawer 17/17, post-format focused replays, Biome 72 clean, Ruff clean, tracking/diff pass, inspected desktop/phone/dark renders. `data/devscratch/r6-s1/2026-10-19/ack-transport/manifest.json`.
+- **Saved state (S0-32/S1-27):** reloaded answers say whether their Work is current, changed since or no longer available (owner-only, one live check per Work). Evidence `data/devscratch/r6-s1/2026-10-19/focus-state/`.
+- **Not done:** request/component/evidence focus, voice and specialist rails, real login/deployed/live-model acceptance. The generator's pre-existing `memory.*` drift in `AimmsWire.generated.ts` is recorded, not fixed.
+
+## Prior P02/P33 work — signed Work-focus repository foundation
+
+The user explicitly takes P02/P33 next. S0-30/S1-24 implement the separate native Work-focus repository primitive in `aichat/services/work_focus.py` and `threads.py`: signed300-second actor/thread/policy-bound acknowledgement, fresh native Work role/customer/client authorization, lifecycle/machine/boundary checks, durable turn snapshot and exact replay, plus current-authorized historical lookup with a stale flag. `assistant-context-contract.md` describes the schema and boundaries. This does not restore the retired scoped-chat rail or broaden asset scope.
+
+Twenty-seven new Work-focus tests and11 native analysis-scope tests pass. Broader repository replay exposes two existing lifecycle failures that also reproduce with HEAD ThreadRepository overlaid read-only only inside a separate disposable container. One existing post-pilot-sharing placeholder remains skipped; SQLite is not concurrency acceptance. The separate normalized-turn pytest island is NOT VERIFIED: it refuses the Django runner's settings and pytest is absent from the cached image; no dependency was installed. Ruff check passes three touched Python files, new-file formatting passes and12 inherited repository formatter edits remain identical to HEAD and untouched. Current evidence is `data/devscratch/r6-s1/2026-10-19/work-focus/manifest.json`; prior context evidence stays immutable.
+
+All72 frontend source hashes from the previous context checkpoint are unchanged; no UI/browser/types run is claimed for this backend-only slice. No model migration, generated wire, HTTP/voice adapter, model/tool consumer, capability advertisement or Work launcher/return UI is added yet. No existing service/database, Azure or OT change. P02/P33 and full S0/S1 remain In progress. Next implement the real versioned acknowledgement/typed-turn consumer and canonical-result linkage, then the existing assistant's Work launch/reload/return journey; do not pass an ignored browser context bag or ask for another owner.
+
+## Prior S1 closure work — machine-context safety slice
+
+The latest user asks to close S1 quickly. `s1-acceptance.md` records the remaining criteria without changing scope or prerequisites. S0-29/S1-23 implement the first P02/P33 safety slice: native scope acknowledgement must match thread/schema/canonical selection/version before send; refusal keeps draft/files and an explicit remove-selection escape. Machine hint collapse uses canonical IDs, never labels. `UseAIChat.tsx` and `AIChatDrawer.tsx` are now intentionally changed; the prior checkpoint's unchanged-hook statement below is historical.
+
+The final S1 replay passes126 cases, with168 units,17 native-drawer cases,11 native backend scope tests, S1 app/fixture types and expanded Biome67 clean. The first native-drawer replay exposed a reload regression: detail summaries have labels but no canonical machine IDs. Fetch the native full scope when a hinted summary lacks IDs; ignore a late read if a newer scope has already been applied. Preserve the failed16/17 replay and intermediate S0 run separately. Current evidence is `data/devscratch/r6-s1/2026-10-19/context/manifest.json`; earlier checkpoints remain immutable. No exact work/request focus or persisted-result-return support is claimed.
+
+Native MachineDetail/Header, generated wire, backend provider and production media_stream.py remain unchanged. No dependency/lockfile, existing service/database, Azure or OT mutation. P02/P33 and the S0/S1 parents remain In progress. Next critical implementation is the separately authorized exact conversational-focus/result-return contract, followed by connected navigation and real-file/provider acceptance. Do not ask for another owner or mark the original sprint Done from these partial slices.
+
+Final S0 preservation replay also passes95 cases. The preceding final-source run had94 passes and one blank-page alarm failure; its trace records local-module `net::ERR_NETWORK_CHANGED`. The unchanged alarm passes targeted replay and the full95-case rerun. Keep the failed trace/console evidence; no alarm code/test change or automatic retry was used. Current results are126 S1 /95 S0 /17 native drawer /168 units /11 native backend scope cases, expanded S1 types and Biome67. Earlier425 backend results remain historical; all27 backend source files from that checkpoint are unchanged. Full S0/S1 acceptance is still not claimed.
+
+## Prior S1 checkpoint — bounded owner approval, not sprint/release completion
+
+- **Final render refinement verified:** S1-21 moves scrolling into only the native safety table; the complete phone blocking warning/count now fit the viewport. Red-before phone evidence,14 focused passes and final94/95 browser replays are retained. Native safety calculations/copy/actions are unchanged.
+- **Verified native foundation:** P03 supported Machines URL/return state; P15 additive paginated Work list; P16 native alternate-view preservation; P17 seven directly addressable native workflow views; P28 counted Work attachments using the native table and existing global viewer. No second assistant, completion authority or media provider. See `work-panel-map.md`, `work-list-contract.md` and `s1-validation-review.md`.
+- **Actual checks:**94 S1 and95 S0 browser cases pass;119 pure units, expanded S1/S0 app+fixture TypeScript and Biome58 pass. Selected backend425 run:423 pass/2 SQLite locking skips; three new/touched S1 Python provider/test files pass Ruff check/format. The inherited S0 Python documentation findings remain. These are isolated tests, not deployment or product acceptance.
+- **P17 preservation:** every native field/action has a recorded home; local standalone Closeout drafts survive switching and governed reads remain4→4. Explicit Mantine9 display-none retention avoids Activity effect restarts. Packet work keeps its distinct native completion link; the native stepper is not UI15/UI20/A18.15 consolidation. Verify shows only supplied summary/time, with no physical-operating/service authority inferred.
+- **P28 ownership and phone fixes:** count reauthorizes and refreshes on native save/delete/upload callbacks; errors do not show zero or cached files. Bound resources ignore ambient page filters so URL model/id cannot retarget their owner or disable native controls; interactive native filters remain. Shared table controls wrap instead of intercepting pointer clicks on phones. Five normal-user Work-media cases confirm existing indexed/client-scope/hash rules, including fail-closed customer-attributed work. Production media policy is unchanged.
+- **Inspected renders:** actual light/dark desktop/phone workflow, safety, list/filter, native save and preview captures, plus1440×900/1024×768 resource/list checks. Native MachineDetail.tsx, Header.tsx, UseAIChat.tsx, generated wire and production media_stream.py remain unchanged from HEAD. Browser save is intercepted; real storage/mutation/codec and full accessibility acceptance remain open.
+- **Next contract work:** O07 delegates source-backed P02/P33 design/implementation to this stream; there is no missing separate owner. Current machine hints/media links still do not establish exact work/request/component/conversation intent. Define/test the actual versioned acknowledgement/result-return contract in the existing assistant; do not invent already-shipped support or silently fall back after refused scope. O09 defers hardware selection while retaining later device/session acceptance.
+- **Evidence:** immutable technical snapshot `data/devscratch/r6-s1/2026-10-19/p17-p28/manifest.json` retains94/95/119/backend results and source hashes before this documentation-only approval update. Current approval/status hashes are in `data/devscratch/r6-s1/2026-10-19/owner-approval/manifest.json`, referencing unchanged implementation hashes. Earlier manifests stay immutable. Only P00/P01/P04's completed artifact criteria are accepted; no remaining prerequisite waiver, commit/push/PR, existing service/database, Azure or OT change.
+
+## Prior S0 closure checkpoint — historical evidence
+
+- **Technical closure:** R02 targeted legacy scope gap fixed with existing canonical customer/client rules; packet CRUD/actions also enforce native roles. Work/cards/parts/schedules/dependencies/HTTP commands and maintenance attachment/packet owners are covered. Twenty-one normal-user Django login/session/role/grant cases and original parity/revocation probe pass. Deliberate asset/internal/media boundaries and compatibility are in `closure-review.md`.
+- **R10:** shared PageDetail/PanelGroup treatment changes native shell Details document from 696px to 390px at 390px. Native MachineDetail/Header sources and fields/actions remain unchanged. Long identity values, light/dark, 360/390/430/1024px containment and End/Enter Attachments/Details navigation pass. Native table wrapping remains an agent-reviewed readability issue.
+- **R11:** exact RBAC expected-set omission corrected, not skipped. Final offline backend default: **366/366 pass**, 32 selected modules/classes. Earlier failures remain historical evidence.
+- **Engineering:** shared native Closeout types and consumed board/detail identity projections; 7 new projection tests. Final **44 units, 95 synthetic browser cases and S0 TypeScript pass**. Biome 24 clean; Ruff 26 formatted/zero introduced diagnostics against HEAD. **60 inherited D101/D102 findings remain in four legacy workflow fixture files**; no whole-repository lint pass is claimed.
+- **Reviews/planning:** `closure-review.md` and `design-review.md` complete agent engineering/L01–L07 review and a capacity-aware one-stream sequence/decision package. Human/domain approval, exact chat/completion/media contracts, hardware choice/approved deferral and real capacity remain unconfirmed.
+- **Status at that historical checkpoint:** P00/P02 In progress; P01/P04 Ready for review, not Done and not accepted before P00. S0 was not complete and S1 had not yet started. Current overlap statuses are above. No commit/push/PR or existing service/database/Azure/OT change.
+- **S0 evidence at that checkpoint:** `data/devscratch/r6-s0/2026-10-18/closure/manifest.json`; these hashes predate S1 changes. `biome/`, `continued/`, `resume/` and earlier backend logs remain historical. Do not rerun old discovery or describe resolved R02/R10/R11 as current failures.
+
+## Evidence history — earlier checkpoints
+
+- Recorded approval to start S0; all four parent tickets P00/P01/P02/P04 are **In progress**, not Done.
+- Created detailed native preservation, source-contract, design-review, fixture-selection and risk records. All 26 D contracts are mapped; unresolved contracts explicitly stay unresolved.
+- Established a reusable no-backend S0 browser harness: `src/frontend/vite.s0.config.ts` and `playwright.s0.config.ts`.
+- Ran existing asset-location and drawer/reflow fixtures: **23 passed**, including explicit mobile/narrow location cases and 390px chat reflow.
+- Saved **23 synthetic fixture screenshots**, logs and local hash manifest. These are native baseline captures, **not** implemented R6 numbered screens and not human visual approval.
+- Extracted `src/frontend/src/pages/assets/health/suppliedTrends.ts` and wired it into the existing `SignalTable.tsx`; no query, UI, chart or API behavior intentionally changed. Missing supplied bindings return null rather than triggering row reads. Complete source objects are preserved.
+- Added **8 adapter unit tests**; **29 existing location-tree tests** also pass (37 total).
+- Frontend **TypeScript passed both before and after changes** (exit 0).
+- Added `validate_tracking.py`; full reference cross-check passes for **58 work items, 95 screen states, 26 providers and dependency graph**.
+- **Codex resumption:** expanded the no-backend suite to **77 passing browser cases**, including native mimic/Performance, Details/header/QR/Move destinations, Work/packet and supplied-trend consumers. Re-ran all **37 pure unit tests** and passed the expanded S0 TypeScript check.
+- Reproduced R01 with card 501 → wrong work 501, then fixed the single navigation handler. Cards 501/502 → work 73 and 601 → work 86 pass on desktop/phone with actual native overview reads. Card mutation identities remain distinct.
+- Added `native-baseline.md`, `display-projections.md` and `integration-decisions.md`; contract evidence and S0-16/S0-17 are current. Registered S0 checks in the existing frontend maintenance-recovery CI job; GitHub Actions itself was not run.
+- Repeated **eight selected layout captures** with stable animation-disabled screenshots and durable scenario/viewport metadata. Native phone Details measured **680px document width at 390px** (R10); no native Details/header redesign was made. Human design signoff remains outstanding.
+- **Continued S0:** full browser suite now **91 passed**; 37 unit cases and expanded S0 TypeScript pass. Added Calendar/Timeline/Risk fixtures and real production Layout/header with synthetic providers. Captured native shell Details at 1440/1024/390px. Phone document is **696px at 390px**, with clipped values and overflowing header actions; R10 is reproduced, not fixed or approved.
+- Added `backend_baseline.py`: disposable cached-image container, network disabled, clean environment, copied source and task-owned synthetic SQLite/config/media. Original 69 selected backend tests pass; all **ten new HTTP capability/completion tests pass** independently. Expanded run: **150/151 pass**, one unchanged RBAC expected-model-set failure (R11). No existing service/database is reused.
+- `s0_scope_probe.py` uses a normal reader and real role/client-grant rows: canonical work list/detail respects scope, but legacy Kanban work list/overview returns both clients, including after grant revocation (R02). Probe exit 0 is not authorization acceptance. Backend policy decision requested; no answer or policy change.
+- Packet HTTP tests prove exact nested replay and changed-intent conflict; newly active LOTO after commit can make replay return 400 while original completion remains durable. Updated D11/D12/D17 evidence and prepared `s0-review.md`. Original and failed fixture evidence remain separate.
+- User approved the previously blocked temporary Biome 1.9.4 installation. Version verified; all 17 changed JS/TS/JSON files pass check after formatting/import-order-only cleanup in eleven files. S0-20 is Done; repository dependencies, lockfiles and Biome rules are unchanged. This is not full-repo lint or approval of the other open S0 gates.
+- Post-cleanup validation also passes: **91 browser cases**, **37 unit cases**, expanded S0 TypeScript and tracking cross-check. No backend suite was rerun for formatting-only edits; the earlier 150/151 result and R02/R10/R11/owner gates still stand.
+
+## What has NOT been completed
+
+- P02 shared canonical identity/context/projection implementation and full S0/S1 acceptance. Delegated approval resolves ownership/design-policy decisions, not missing request/criterion/authority/service/media providers. P01's accepted checklist does not select a final real showcase. Independent manual auditing is not claimed.
+- Actual browser login/bootstrap/CSRF/allauth, deployment, production DB/driver/migration acceptance, every plugin/generic asset/media path, external delivery, original audio and hardware. These remain separate from passing selected synthetic browser/Django session tests.
+- Full S1 or accepted numbered R6 operational designs. Current candidate/native-preservation screen statuses are in `screen-plan.csv`; a seven-panel frame does not implement later S4–S7 scenes. Screen56 stays retired and procurement32–36 later.
+- Whole-repository lint: current scoped Biome58 passes and three new/touched S1 Python files are clean; prior S0 Ruff26 had no introduced diagnostics but60 inherited test documentation findings remain. Four pre-existing imported mimic numeric-union test errors stay outside the dedicated app/S0/S1 typechecks; all14 mimic browser cases pass.
+- No existing/plant/production DB read/write/migration or service lifecycle change, Azure write/media publication, Cosmos polling/throughput or OT control. Only task-owned scratch schema/data and disposable test containers are used.
+
+## Resume next — specific order
+
+1. Preserve Git changes, run tracking validation and read the current S1 ledger/review plus `s0.md`, `s0-review.md`, `closure-review.md` and `design-review.md`. Confirm the current P17/P28 manifest; do not overwrite historical closure hashes.
+2. Apply O01/O02's delegated acceptance of the bounded engineering/native preservation/design direction. Do not ask for another team or claim an independent manual audit occurred; actual manual review is still required before any PR.
+3. Implement the approved D12/D17 exact-intent/reconciliation and D11/D13 truthful media/capture policies when their tickets are reached. Internal records are the known authority, not proof of external writeback. New packet LOTO can still refuse replay after an earlier commit; actual adapter/capture/receipt changes need tests.
+4. Work focus (acknowledgement, turn, model input, result/reload with saved state, launcher and return) is implemented. Request/component/evidence focus still needs a real canonical provider before any contract or capability is added; do not ship ignored optional scope or a second recorder/store.
+5. Honor O09's explicit S0/S1 hardware-selection deferral; retain P48/S7 real-device/session/persistence/reconnect acceptance and release risk. O10 confirms one user-plus-agent stream, not a staffed17-week deadline or known weekly hours.
+6. P01's selectable-case checklist is accepted; final real case remains later. Pump02 is reference-only.
+7. Resume the current ledger. Remaining P15 persona/attention/observation/action facts, P14/P28 real-file validation and P03 linked-work/context require actual implementation/evidence. No staging environment was identified; plan an isolated task-owned local acceptance setup rather than assuming an existing service is authorized. Preserve later physical/hardware/release gates and remaining dependencies.
+
+### Remaining technical evidence under delegated ownership
+
+- Actual versioned work/request/evidence context, acknowledgement, saved result and return implementation; the user is the owner and design authority is delegated.
+- Supported persona mapping/precedence, persisted Needs-attention rule and observation/durable-action providers; CRUD roles are not guessed personas.
+- Packet capture, exact pending intent and authorized reconciliation; internal completion is not external-system delivery proof.
+- Hardware selection is explicitly deferred for now, not guessed; real testing still required at P48/S7.
+- Approved isolated authentication/storage/native-mutation evidence and later coherent showcase records; no plant data fabricated.
+
+These are implementation/verification tasks, not an unresolved request to find another owner. They prevent full integration/release claims, not continued source-backed development.
+
+## Commands and environment
+
+Commands below do not fetch packages automatically. Use installed tools and zsh-compatible commands. The frontend dependency install is present; do not assume a package manager or formatter. Ruff is currently available only in `/tmp/aimms-r6-s0-tools/python`; that cache is not portable. User approved the current pinned Biome 1.9.4 temporary installation only; do not generalize this to other downloads.
+
+### Tracking validation (repository root)
+
+`python3 contrib/ui-ux/r6/validate_tracking.py`
+
+Optional full source cross-check:
+
+`python3 contrib/ui-ux/r6/validate_tracking.py --reference-dir /Users/Aniketkumar/Desktop/x-WORK/Repo/equaAI/EQUA_AIMMS_Handoff_R6_FINAL_UI_UX`
+
+### Frontend (working directory `src/frontend`)
+
+S1 types (app/lib plus S0/S1 fixtures): `env -i PATH="$PATH" HOME="$HOME" node node_modules/typescript/bin/tsc --noEmit --project tsconfig.s1.json`
+
+S1 native resources and existing viewer regressions: `env -i PATH="$PATH" HOME="$HOME" node node_modules/@playwright/test/cli.js test --config=playwright.s1.config.ts`
+
+Use only one S0/S1 server at a time; both reuse the isolated strict loopback port15173/no-backend Vite config. S1 replaces the base project array rather than merging extra projects. Source-level PDF cases verify URL/locator/fallback, not native PDF rendering or live media acceptance.
+
+
+Typecheck:
+
+`env -i PATH="$PATH" HOME="$HOME" node node_modules/typescript/bin/tsc --noEmit`
+
+App plus new S0 harness/tests:
+
+`env -i PATH="$PATH" HOME="$HOME" node node_modules/typescript/bin/tsc --noEmit --project tsconfig.s0.json`
+
+Fixture browser:
+
+`env -i PATH="$PATH" HOME="$HOME" node node_modules/@playwright/test/cli.js test --config=playwright.s0.config.ts`
+
+Pure unit tests with dotenv explicitly disabled:
+
+`env -i PATH="$PATH" HOME="$HOME" node --input-type=module -e 'import {startVitest} from "vitest/node"; const context=await startVitest("test",["src/tables/general/attachmentPreview.test.ts","src/components/aichat/evidenceLocator.test.ts","src/pages/tasks/workorders/workProjection.test.ts","src/pages/assets/health/suppliedTrends.test.ts","src/pages/assets/locations/locationTree.test.ts","src/pages/assets/locations/machineListState.test.ts","src/pages/maintenance/workListState.test.ts","src/pages/tasks/workorders/workPanelState.test.ts"],{config:"vitest.config.ts",run:true,watch:false},{envFile:false}); await context.close();'`
+
+Approved temporary Biome CLI: `/tmp/aimms-r6-s0-tools/npm/_npx/db52655fa99ef31e/node_modules/@biomejs/biome/bin/biome`, verified version1.9.4. Run with `node` directly from `src/frontend`, not `npm exec`, to avoid implicit fetching. The cache is disposable and not portable. Current scope:58 changed JS/TS/JSON files; exact paths/hashes are in the current P17/P28 manifest and frontend-file-list artifact. The S0 closure's24-file scope is historical. No whole-repository pass is inferred.
+
+Do not use the default Playwright config for this baseline: it starts ASGI/backend/worker and authenticated setup. The S0 config uses **127.0.0.1:15173**, refuses reuse, has no backend proxy, disables dotenv (`envDir:false`), blocks unmocked backend URL prefixes and uses empty auth state. Fixture mocks are installed by the tests before navigation; manually opening their HTML without mocks is not equivalent. This is not an OS network firewall.
+
+`build` writes/empties the backend static output; do not run it merely to typecheck. Do not expose `.env`, cookies, cached auth JSON, secrets or unrelated container environments in logs. `docker ps` showed no AIMMS web/worker; it did show unrelated applications occupying common ports. Do not stop them.
+
+### Isolated backend (repository root; Docker permission required)
+
+`python3 contrib/ui-ux/r6/backend_baseline.py tasks.tests.test_s0_capability_contracts`
+
+The ai/core pytest island (its own settings and runner) runs offline with `python3 contrib/ui-ux/r6/ai_island_baseline.py --output <new task-owned dir> <ai/core/tests paths>`; it uses the locally present `aimms-merged-image` (pytest installed there; never pulled) and archives an earlier log under `history/`. Its 167 setup errors from the `aichat.0042_memory_consent` → `assets.0015` migration dependency are pre-existing; compare non-passing test ids before and after a change.
+
+This focused command passes ten capability/completion HTTP cases. Without labels, the script now runs32 selected modules/classes and366 cases, all passing after the closure fixes. `python3 contrib/ui-ux/r6/backend_baseline.py tasks.tests.test_legacy_scope_api` runs21 normal-user session/role/grant regressions. `python3 contrib/ui-ux/r6/backend_baseline.py s0_scope_probe` separately asserts canonical/legacy parity and revocation. These are selected isolated tests, not a whole-backend/deployment acceptance claim.
+
+Current S1 labels are durably listed in `s1-backend-labels.txt` (36 labels;425 run,423 pass/2 SQLite locking skips). For a rerun, use a **new task-owned output directory** with `--output` and `$(cat contrib/ui-ux/r6/s1-backend-labels.txt)`. Do not copy/reuse the final location-suite DB: its TransactionTestCases flush data-migration Kanban seeds. Start with fresh scratch migrations or the separately documented original synthetic seeded DB, never an existing development/plant database. Selected migration-drift warnings in the cached test environment remain recorded, not fixed by this frontend work.
+
+The cached image ID is `sha256:89981388aff5f8329596f78ec9ce1bfb141ff9369e52fc7f9ae19305440fa96e`. The launcher refuses pulls, clears environment, disables network, mounts backend source read-only, copies it to scratch, and uses the installed standard Django runner (`django_slowtests` is absent). `--keepdb` reuses only `data/devscratch/r6-s0/2026-10-18/backend/test.sqlite3`, a task-created synthetic test DB. The launcher archives previous backend.log/manifest.json under timestamped history before each run; also retain explicitly named checkpoint evidence. Never rewrite historical source hashes. Existing DB/config/media and Docker services are not mounted or restarted. Image/Python dependency differences, SQLite concurrency limitations and current model/migration-drift warnings are not deployment acceptance.
+
+## Evidence location and portability
+
+Retained local path: **`data/devscratch/r6-s0/2026-10-18/`**.
+
+- `manifest.json`: base revision/evidence limitations, pass counts and hashes of 28 artifacts.
+- `browser/`: 23 test screenshots plus runner metadata.
+- `browser.log`, `unit.log`, `typecheck.log`, `typecheck-after.log`.
+
+Resumed evidence: **`data/devscratch/r6-s0/2026-10-18/resume/`**, indexed by its own `manifest.json` with source hashes and explicit evidence boundaries. `browser/` retains the full 77-case run, `r01-before/` the original defect reproduction, and `layout/` the selected stable captures and scenario/dimension metadata. These are synthetic component baselines; no images are relabeled as final R6 screen IDs. Original evidence remains intact.
+
+Continued evidence: **`data/devscratch/r6-s0/2026-10-18/continued/`** indexes the 91-case run, 37 units, S0 types, Python lint, shell captures at three sizes, failed fixture setup traces and current source hashes. **`backend/`** retains named original-69/new-10/expanded-151/scope logs and available runner manifests. The synthetic kept SQLite DB is disposable test state, not a product fixture or plant backup. Earlier manifests describe earlier snapshots and must not be presented as hashes of the latest edits.
+
+Approved tooling follow-up: **`data/devscratch/r6-s0/2026-10-18/biome/`** retains the initial check/formatter patch, clean 17-file result, version/tool hashes, post-cleanup 91-browser/37-unit/type/tracking evidence and a fresh source-hash manifest. `continued/` remains the pre-format snapshot; do not rewrite its historical hashes.
+
+Closure checkpoint: **`data/devscratch/r6-s0/2026-10-18/closure/`** retains final366 backend/95 browser/44 unit/type/lint/tracking evidence, the passing original scope probe, red-before/green-after layout evidence, fixture failures, review images and current source hashes. Its manifest explicitly records60 inherited Python documentation findings and all synthetic/deployment limitations. Current runner history prevents accidental log loss. Earlier manifests remain untouched.
+
+Current S1 checkpoint: **`data/devscratch/r6-s1/2026-10-19/p17-p28/`** retains current94 S1/95 S0 browser,119 unit,425 selected backend (2 skips), types/lint/tracking and reviewed render evidence. It also preserves separate failed/intermediate attempts and current source hashes. Prior `2026-10-19/p03-p16/` and `2026-10-18/manifest.json` remain historical, not rewritten.
+
+That directory is Git-ignored. For Codex on the **same workspace**, read it directly. For another machine, transfer the uncommitted changes plus this evidence directory and external R6 pack, or rerun tests; nothing uncommitted is guaranteed to exist in a remote checkout. Do not claim a remote handoff is ready merely because these local files exist. No automatic binary upload or Git staging was performed.
+
+## Update protocol for every agent/session
+
+1. Before edits: check branch/status, instructions, source changes and current S0/subtask state. Preserve others' work.
+2. Keep `sprint-backlog.csv` parent status authoritative: Planned / In progress / Blocked / Ready for review / Done / Deferred. A partial subtask does not finish a parent. Done requires completed prerequisites and evidence.
+3. Update the S0 task board or add the later sprint's execution ledger; record exact tests, failures, file paths, pending approvals and blockers. Update contracts as source-inspected versus runtime-tested, not assumed.
+4. Change screen status only for actual implementation/acceptance, preserving 32–36 later, 47 review-only and 56 retired. All 70–95 remain current operational scope.
+5. Run tracking validation and changed-file checks; record missing tools instead of inventing a pass.
+6. Update this handoff's current state/next action before yielding. Retain chronological session notes below. Ask before pushing; human review before PR; no AI co-author trailer.
+
+## Standing constraints
+
+Native Details/header and all existing chart/control/route/permission capabilities stay. Seven work panels are directly navigable; Attachments is a resource; existing chat is primary; only Closeout owns the final update. OT remains read-only. Do not invent OEM limits, plant facts, labor or service restoration. Cosmos remains **400 RU/s**. Fresh backup + dry-run + relevant authorization before any Azure write. Existing Azure Files/media and plant-evidence blockers remain separate; no new credentials may be used to bypass access.
+
+## Session history
+
+- **2026-10-18 — planning:** reviewed R6/worklist and R5 source/layout context, created plan/backlog/screen register; confirmed 52 current + 6 later items, 88 current product states within 95 IDs. No implementation at that point.
+- **2026-10-18 — S0 started:** user approved S0 and agent portability. Added isolated fixture harness, small canonical trend adapter/tests, preservation/contracts/layout/case records and validator. Typecheck clean, 37 unit tests and 23 browser tests pass. Lint unavailable; full integration/domain/visual/device acceptance outstanding. No commit/push/Azure changes. Next: complete remaining S0 baseline/consumer checks and owner contracts.
+- **2026-10-18 — Codex resumed:** preserved all local changes; 77 browser cases and 37 unit tests pass; expanded S0 typecheck passes. Reproduced/fixed R01, completed native supplied-trend consumer checks, mapped leaf permissions/projections/owner decisions and registered CI collection. Eight selected stable layout captures expose R10 phone Details overflow. Native Details/header unchanged; authenticated permission, integration, human design/domain and hardware gates remain open. No commit/push/PR or backend lifecycle/data/Azure changes.
+- **2026-10-18 — continued toward S0 then S1:** 91 browser/37 unit cases and S0 types pass. Isolated backend: original 69 and new ten cases pass; expanded 150/151 pass with unchanged R11 failure. Real grant probe confirms R02 legacy read divergence; shell components reproduce R10 with 696px document at 390px. Python lint passes; pinned Biome download auto-review rejected and awaits explicit permission. `s0-review.md` records unfinished technical/owner gates and ordered S1 queue. No S0 acceptance, S1 implementation, policy rewrite, commit/push/PR, existing DB/service or Azure change.
+- **2026-10-18 — approved Biome follow-up:** user explicitly approves the temporary pinned installation. Biome 1.9.4 checks all 17 changed JS/TS/JSON files clean after formatter/import-only cleanup in eleven files. S0 types, all 37 units and all 91 browser cases pass again; tracking remains valid. S0-20 Done, but remaining S0 coverage/owner/scope/design gates and S1 Planned are unchanged. No dependency/lockfile/rule changes, backend mutation or policy approval is inferred.
+
+- **2026-10-18 — requested closure pass:** implemented targeted canonical legacy/resource/packet scope and native packet action-role checks; 21 normal-user session regressions. Fixed stale RBAC expectation and shared phone containment without replacing Details/Header. Final366 backend/95 browser/44 unit/S0 types pass; Biome 24 clean, Ruff 26 formatted/no introduced diagnostics with 60 inherited test docstring findings disclosed. Completed agent engineering/design review and one-stream planning/decision package. P01/P04 Ready for review; P00/P02 and human/domain/chat/completion/media/hardware/capacity decisions remain open; S1 Planned. No commit/push/PR, existing DB/service/Azure/OT change or product acceptance.
+
+- **2026-10-19 — P13 Parts tab, slice 1:** panel labelled Parts; each slot shows its model position, fit basis, open work and native stock with exact Part/Stock links; reviewed under O12 (`s2-review.md`). See `s2.md`. Cadence from here (user: "we need to bit speedup, its slow dev[e]lopment"): per slice run types, Biome/Ruff, the affected backend modules and browser specs and inspect captures; the full S0-S3/native-drawer/backend replay runs at sprint checkpoints and before any commit; red-before/mutation only for bug fixes; an independent reviewer only for authorization or data-scope changes.
+
+- **2026-10-19 — delegated review:** user delegates human review (O12). S2/P11 reviewed in `s2-review.md`; one high and four medium findings fixed or disproved; P05/P06/P08 Blocked on prerequisites.
+
+- **2026-10-19 — P07 position inspector:** user chose the D02 mapping (O11, close matches). Each reference position shows its own slot, readings and work, with the rest as parent context and every absence named. See `s2.md`.
+
+- **2026-10-19 — P08 process schematic:** native pump mimic inside Equipment view behind a 3D model / Process schematic switch; old pump mimic links, Health's link and the station crumb all land correctly. See `s2.md`.
+
+- **2026-10-19 — P06 controls and component list:** reversible exploration controls checked on actual pixels and a keyboard list that reaches parts the casing hides; wheel no longer traps page scroll. See `s2.md`.
+
+- **2026-10-19 — S2 started with P05:** user authorizes S2 alongside P02. `three@0.186.1` installed with approval (plus yarn 1.22.22 via npx and five re-fetched locked packages); reference scene ported verbatim apart from its prototype global and mounted through a controlled React adapter in a native Equipment view for pumps. See `s2.md`.
+
+- **2026-10-19 — S3 started with P11:** user chose S3 P11. Native pump Performance inventory recorded before/after; "Anything unusual" no longer shows green without evaluated readings; reactive power no longer shares the power-factor axis. See `s3.md`.
+
+- **2026-10-19 — Machines list Condition:** S1-32: one Health condition reader for the list and the Health tab; desktop column overflow found and fixed. See `s1.md`.
+
+- **2026-10-19 — Machines list Criticality:** S1-31: declared classification as a quiet column and a server-side filter; corrects S1-28's "no provider" note. See `s1.md`.
+
+- **2026-10-19 — First-use persona view:** S1-30: admin-named supervisor/technician groups pick the starting Work view; two ways the wait could still pick All work found and fixed. See `s1.md`.
+
+- **2026-10-19 — Needs attention:** S1-29: server-side versioned rule with per-row reasons; phone control clipping found and fixed. See `s1.md`.
+
+- **2026-10-19 — Machines list Work context:** S1-28: open Work count and highest priority per machine from canonical Work scope, unknown shown as "Not available"; phone truncation found and fixed. See `s1.md`.
+
+- **2026-10-19 — saved Work-focus state:** user adds the Operational Fault-to-Fix playbook (and overview) as a standing reference, recorded in the sources above. S0-32/S1-27 implemented and verified; see `s1.md`.
+
+- **2026-10-19 — Claude Code resumed; Work-focus transport and launcher:** preserved all local changes (pre-session archive). Implemented the acknowledgement endpoint, receipt on all three chat wires, wf8 model input, result/reload identity, saved-turn read, capability and generated wire section; the Work-page launcher, acknowledgement-before-send, chips and link-back under designprompt1. Verified as recorded above and in `s1.md`; S0-31/S1-25/S1-26 technical Done, screen 43 In progress; P02/P33/S0/S1 parents unchanged. No commit/push/PR, existing DB/service, Azure or OT change.
+
+- **2026-10-18 — explicit S1 overlap:** user says “meanwhile start s1”. Started P14 native machine Preview/return, reusing the existing indexed-media viewer with exact source identity and native actions preserved. Final S1 suite26, units68, backend388 and S1/S0 types pass; Biome35/touched Python lint pass. Shared media drift fixture cleanup and production-style/non-superuser browser fixtures corrected; failed evidence retained. Full preservation replay/current hashes in S1 ledger/manifest. P14 and candidate22/23 In progress; S0 not accepted, other S1 tickets Planned. No commit/push/PR, existing DB/service, Azure or OT change.

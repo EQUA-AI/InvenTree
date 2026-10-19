@@ -1,0 +1,21 @@
+# S1 closure checklist
+
+**19 October 2026:** expedite closure without reducing the approved acceptance criteria. Owner decisions are delegated in `owner-approval.md`; there is no separate owner response to await. This checklist records remaining implementation and validation, not sprint acceptance.
+
+## Critical path
+
+| Order | Tickets | Required closure evidence | Current gap |
+|---|---|---|---|
+| 1 | P02 / P33 | Exact supported work/request/component/evidence focus, independently authorized and acknowledged; persisted turn/result identity; same-thread/reload policy; return restores the owning work panel and draft. Denial, stale/revoked identity and unsupported capability cannot send as if context succeeded. | Work focus now runs end to end in isolated tests: acknowledgement endpoint, receipt on all three chat wires with pre-check and locked re-check, ids-only wf8 model input, identity on the result and owner-only reload, Work-page launcher, refusal/capability/mismatch/close cases that send nothing, and return to the launching panel with its unsaved native draft. Reloaded answers now show whether their Work is current, changed or no longer available. Still open: request/component/evidence focus (no provider), voice and specialist rails, and real login/deployed/live-model acceptance. |
+| 2 | P03 / P17 | Machine → exact owning Work → native panel → assistant/evidence → return, with list/panel/selection retained. Preserve all native controls and distinct standalone/packet completion authority. | Machines return and native panel/resource slices pass existing isolated tests. Work → assistant → answer → owning panel round trip now passes in the production layout. The Machines list shows each machine's open Work count and highest priority from canonical scope; the Machine → exact owning Work hop needs P12's Open work view (S3), and live-provider acceptance remains. |
+| 3 | P15 / P16 | Supported role/persona default or explicit truthful fallback, durable saved selection, supplied attention/observation/action facts, pagination and preserved alternate-view authorization/routes. | Neutral All work, explicit actor-local selection, a server-side, versioned Needs attention scope with per-row reasons and a first-use persona view from admin-named groups (`work_persona.v1`; empty by default, so unconfigured deployments stay neutral) are implemented. CRUD permissions do not establish a persona. Unavailable domain facts need supported providers or an explicit approved acceptance change, not fabricated values. P16's P15 prerequisite remains open. |
+| 4 | P14 / P28 | Existing storage/indexed source preview, exact ownership and native upload/edit/delete/count refresh with representative actual files in an isolated authorized environment. Inspect light/dark and narrow-screen return/focus. | Synthetic preview/save/count and normal-user backend checks exist. Real-file/storage/codec/native-mutation acceptance has not been executed. No existing or plant service is implicitly authorized for this validation. |
+| 5 | All | Replay selected units, app/fixture types, scoped lint, S1/S0/native-drawer regression tests and relevant isolated backend contracts; inspect actual rendered captures; update ledgers/contracts/source hashes. | Current verification records must identify their source snapshot. A passing synthetic suite alone does not satisfy orders 1–4 or deployment acceptance. |
+
+## Closure rules
+
+- Keep P03/P14/P15/P17/P28/P33 In progress and P16 Ready for review until their actual criteria and prerequisites are met. P02 also prevents full S0 closure.
+- One existing assistant, native React/TypeScript/Mantine architecture, no new media store/recorder, no invented physical-service or external-delivery authority, no OT writes.
+- The user has already delegated owner/design decisions. Do not request another team or represent agent review as an independent human audit. A PR still needs manual human review.
+- O09 explicitly defers hardware selection for S0/S1; real device/session/reconnect acceptance remains P48/S7, not a new S1 blocker or a passed check.
+- If scope is changed to close a smaller milestone, record the explicit user-approved change separately. Never silently relabel these unimplemented criteria as later work or mark the original sprint Done.
