@@ -8,7 +8,7 @@ import { apiUrl } from '@lib/functions/Api';
 import type { SignalTrend } from '@lib/types/MachineHealth';
 
 import { useApi } from '../../../contexts/ApiContext';
-import { numericValue } from './common';
+import { prepareTrend, sparklinePath } from './trendSamples';
 
 const WIDTH = 120;
 const HEIGHT = 28;
@@ -47,7 +47,8 @@ export function SignalTrendSparkline({
   bindingId,
   enabled = true,
   trend: supplied,
-  supplierPending = false
+  supplierPending = false,
+  supplierFailed = false
 }: Readonly<{
   machineId: number;
   bindingId: number;
@@ -71,6 +72,11 @@ export function SignalTrendSparkline({
    * than the "no trend" it would otherwise be indistinguishable from.
    */
   supplierPending?: boolean;
+  /**
+   * The supplier's batched request failed. A failed read is not an absence
+   * of data, so it says so rather than reading "No trend".
+   */
+  supplierFailed?: boolean;
 }>) {
   const api = useApi();
 
@@ -112,35 +118,16 @@ export function SignalTrendSparkline({
   // supplied, or this sparkline's own fetch when it is standing alone.
   const trend = supplied ?? trendQuery.data;
 
-  const path = useMemo(() => {
-    // Via the shared reader, so a status trace ("R"/"I") draws here exactly as
-    // it does in the full chart. Reading `sample.value` directly is what made
-    // every status sparkline report "Too few samples".
-    const samples = (trend?.samples ?? [])
-      .map((sample) => numericValue(sample))
-      .filter((value): value is number => value !== null);
-
-    if (samples.length < 2) {
-      return null;
-    }
-
-    // Samples arrive oldest-first: `read_window` walks hour buckets forwards and
-    // queries each with ORDER BY sub_time_period ASC. Verified against the
-    // emulator. Draw them in the order given - reversing runs time backwards.
-    const ordered = samples;
-    const min = Math.min(...ordered);
-    const max = Math.max(...ordered);
-    const span = max - min || 1;
-    const step = WIDTH / (ordered.length - 1);
-
-    return ordered
-      .map((value, index) => {
-        const x = index * step;
-        const y = HEIGHT - ((value - min) / span) * HEIGHT;
-        return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-      })
-      .join(' ');
-  }, [trend]);
+  // The shared reading: every sample at its own time, a break after any
+  // reading that cannot be drawn and across any silence longer than the
+  // source's cadence (R6 A05.9). The old line spaced samples by index and
+  // dropped unreadable ones first, so a silence of minutes drew as one step
+  // and the readings either side of it were joined.
+  const prepared = useMemo(() => prepareTrend(trend), [trend]);
+  const path = useMemo(
+    () => sparklinePath(prepared, WIDTH, HEIGHT),
+    [prepared]
+  );
 
   if (!enabled) {
     return null;
@@ -148,6 +135,20 @@ export function SignalTrendSparkline({
 
   if (managed ? supplierPending : trendQuery.isLoading) {
     return <Loader size='xs' />;
+  }
+
+  if (managed ? supplierFailed && !supplied : trendQuery.isError) {
+    return (
+      <Tooltip
+        label={t`The trend read failed. That is not an absence of data, and the current reading is unaffected.`}
+        multiline
+        w={260}
+      >
+        <Text size='xs' c='dimmed'>
+          {t`Read failed`}
+        </Text>
+      </Tooltip>
+    );
   }
 
   if (!trend?.available) {
@@ -160,17 +161,45 @@ export function SignalTrendSparkline({
     );
   }
 
-  if (path === null) {
+  if (prepared.measured === 0) {
+    // A successful read that held nothing: not a recorded zero, not a
+    // failure, and not a source without history.
     return (
-      <Text size='xs' c='dimmed'>
-        {t`Too few samples`}
-      </Text>
+      <Tooltip
+        label={t`${trend.source_name} answered for this window but held no readings for this signal.`}
+        multiline
+        w={260}
+      >
+        <Text size='xs' c='dimmed'>
+          {t`No samples`}
+        </Text>
+      </Tooltip>
     );
   }
 
+  if (path === null) {
+    return (
+      <Tooltip
+        label={t`${prepared.drawn} of ${prepared.measured} readings in this window can be drawn.`}
+      >
+        <Text size='xs' c='dimmed'>
+          {t`Too few samples`}
+        </Text>
+      </Tooltip>
+    );
+  }
+
+  const breaks = prepared.silences + prepared.notNumeric + prepared.notGood;
+
   return (
     <Tooltip
-      label={t`${trend.samples.length} samples from ${trend.source_name}`}
+      label={
+        breaks > 0
+          ? t`${prepared.measured} samples from ${trend.source_name}. The line breaks where the source was silent or a reading could not be drawn.`
+          : t`${prepared.measured} samples from ${trend.source_name}`
+      }
+      multiline={breaks > 0}
+      w={breaks > 0 ? 260 : undefined}
     >
       <Group gap={4} wrap='nowrap'>
         <Box

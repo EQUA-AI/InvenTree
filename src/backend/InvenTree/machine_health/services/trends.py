@@ -20,11 +20,14 @@ cannot pull a historian dry or hang the worker pool.
 from __future__ import annotations
 
 import logging
+import statistics
+from itertools import pairwise
 
 from django.utils import timezone
 
 from assets.health_models import MachineSignalBinding
 from machine_health.connectors.base import (
+    EXPECTED_SAMPLE_INTERVAL_SECONDS,
     MAX_TREND_SAMPLES,
     MAX_TREND_WINDOW_SECONDS,
     bounded_window,
@@ -80,6 +83,24 @@ def plottable(value, statuses: dict):
     if isinstance(value, (int, float)):
         return float(value)
     return statuses.get(str(value).strip())
+
+
+def measured_cadence(readings) -> float | None:
+    """Median seconds between consecutive readings, or None below three.
+
+    The same measure the series read reports as ``cadence_seconds``. A chart
+    needs it to tell the source's normal spacing from a silence: a break is
+    drawn only where two readings are much further apart than this, so a gap
+    in the record stays a gap instead of being joined by a straight line. The
+    median, not the mean, so a few silences cannot stretch the cadence they
+    are measured against. Timestamps are sorted first; a connector need not
+    return its readings in order.
+    """
+    stamps = sorted(reading.observed_at for reading in readings)
+    if len(stamps) < 3:
+        return None
+    gaps = [(later - earlier).total_seconds() for earlier, later in pairwise(stamps)]
+    return round(statistics.median(gaps), 3)
 
 
 class TrendError(Exception):
@@ -146,6 +167,10 @@ def read_trend(
         'limits': {
             'max_window_seconds': MAX_TREND_WINDOW_SECONDS,
             'max_samples': MAX_TREND_SAMPLES,
+            # The cadence the source is expected to write at, as the series
+            # read states it; the fallback when too few readings came back
+            # to measure one.
+            'expected_sample_interval_seconds': EXPECTED_SAMPLE_INTERVAL_SECONDS,
         },
     }
 
@@ -238,6 +263,7 @@ def read_trend(
         **base,
         'available': True,
         'truncated': len(readings) > len(trimmed),
+        'cadence_seconds': measured_cadence(trimmed),
         'samples': [
             {
                 'observed_at': to_display(reading.observed_at, shift).isoformat(),
@@ -316,6 +342,7 @@ def read_trends(
             'limits': {
                 'max_window_seconds': MAX_TREND_WINDOW_SECONDS,
                 'max_samples': MAX_TREND_SAMPLES,
+                'expected_sample_interval_seconds': EXPECTED_SAMPLE_INTERVAL_SECONDS,
             },
         }
 
@@ -395,6 +422,7 @@ def read_trends(
                 **envelope(binding),
                 'available': True,
                 'truncated': len(found) > len(trimmed),
+                'cadence_seconds': measured_cadence(trimmed),
                 'samples': [
                     {
                         'observed_at': to_display(
