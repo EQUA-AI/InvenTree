@@ -138,7 +138,13 @@ export function StationPerformance({
     ],
     [bays]
   );
-  const targets = useMemo(() => ({ keys }), [keys]);
+  // Not before the bay list has answered: a keys-only read of the station's
+  // own points would be made and then repeated with every bay's keys - two
+  // reads for one window. A failed bay list still reads the station's own.
+  const targets = useMemo(
+    () => (baysQuery.isPending ? {} : { keys }),
+    [baysQuery.isPending, keys]
+  );
   const seriesQuery = useMachineSeries(
     station.pk,
     targets,
@@ -545,111 +551,117 @@ export function StationPerformance({
           </CardGrid>
 
           {bays.length > 0 && (
-            <Paper withBorder radius='md' p={0} style={{ overflowX: 'auto' }}>
-              <Table striped highlightOnHover>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>{t`Bay`}</Table.Th>
-                    <Table.Th>{t`State`}</Table.Th>
-                    {/* The unit belongs to the column, not to every cell in
+            <Paper withBorder radius='md' p={0}>
+              {/* Scrolls sideways rather than squeezing: at phone width the
+                  State column shrank its badges to "R…" and "I…". */}
+              <Table.ScrollContainer minWidth={720} type='native'>
+                <Table striped highlightOnHover>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>{t`Bay`}</Table.Th>
+                      {/* A badge's clipped label has no minimum width of its own, so
+                        the column keeps one or the table squeezes it. */}
+                      <Table.Th miw={96}>{t`State`}</Table.Th>
+                      {/* The unit belongs to the column, not to every cell in
                         it; right-aligned, the decimal points line up. */}
-                    <Table.Th ta='right'>
-                      {t`Active power`}
-                      {table.powerUnit ? ` (${table.powerUnit})` : ''}
-                    </Table.Th>
-                    <Table.Th ta='right'>
-                      {t`Discharge flow`}
-                      {table.flowUnit ? ` (${table.flowUnit})` : ''}
-                    </Table.Th>
-                    <Table.Th ta='right'>
-                      {t`Shaft speed`}
-                      {table.speedUnit ? ` (${table.speedUnit})` : ''}
-                    </Table.Th>
-                    <Table.Th ta='right'>
-                      {t`Window peak power`}
-                      {table.powerUnit ? ` (${table.powerUnit})` : ''}
-                    </Table.Th>
-                    <Table.Th>{t`Newest reading`}</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {table.rows.map((row) => {
-                    const { bay, power: p, flow: f, speed: s, peak } = row;
-                    const st = row.status;
-                    const newest = Math.max(
-                      ...[p, f, s, st].map((x) => x?.t ?? 0)
-                    );
-                    const state =
-                      st?.v === null || st?.v === undefined
-                        ? bay.state
-                        : st.v > 0
-                          ? 'running'
-                          : st.v < 0
-                            ? 'fault'
-                            : 'idle';
-                    return (
-                      <Table.Tr key={bay.key}>
-                        <Table.Td>
-                          <Anchor
-                            component={Link}
-                            to={`/machines/machine/${bay.machine}/performance`}
-                            size='sm'
-                          >
-                            {bay.name.split('/').pop()?.trim() || bay.key}
-                          </Anchor>
-                          {!bay.active && (
-                            <Text size='xs' c='dimmed'>
-                              {t`Inactive equipment`}
-                            </Text>
-                          )}
-                        </Table.Td>
-                        <Table.Td>
-                          <Badge
-                            size='sm'
-                            variant='light'
-                            color={
-                              state === 'running'
-                                ? 'green'
+                      <Table.Th ta='right'>
+                        {t`Active power`}
+                        {table.powerUnit ? ` (${table.powerUnit})` : ''}
+                      </Table.Th>
+                      <Table.Th ta='right'>
+                        {t`Discharge flow`}
+                        {table.flowUnit ? ` (${table.flowUnit})` : ''}
+                      </Table.Th>
+                      <Table.Th ta='right'>
+                        {t`Shaft speed`}
+                        {table.speedUnit ? ` (${table.speedUnit})` : ''}
+                      </Table.Th>
+                      <Table.Th ta='right'>
+                        {t`Window peak power`}
+                        {table.powerUnit ? ` (${table.powerUnit})` : ''}
+                      </Table.Th>
+                      <Table.Th>{t`Newest reading`}</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {table.rows.map((row) => {
+                      const { bay, power: p, flow: f, speed: s, peak } = row;
+                      const st = row.status;
+                      const newest = Math.max(
+                        ...[p, f, s, st].map((x) => x?.t ?? 0)
+                      );
+                      const state =
+                        st?.v === null || st?.v === undefined
+                          ? bay.state
+                          : st.v > 0
+                            ? 'running'
+                            : st.v < 0
+                              ? 'fault'
+                              : 'idle';
+                      return (
+                        <Table.Tr key={bay.key}>
+                          <Table.Td>
+                            <Anchor
+                              component={Link}
+                              to={`/machines/machine/${bay.machine}/performance`}
+                              size='sm'
+                            >
+                              {bay.name.split('/').pop()?.trim() || bay.key}
+                            </Anchor>
+                            {!bay.active && (
+                              <Text size='xs' c='dimmed'>
+                                {t`Inactive equipment`}
+                              </Text>
+                            )}
+                          </Table.Td>
+                          <Table.Td>
+                            <Badge
+                              size='sm'
+                              variant='light'
+                              color={
+                                state === 'running'
+                                  ? 'green'
+                                  : state === 'fault'
+                                    ? 'red'
+                                    : state === 'idle'
+                                      ? 'yellow'
+                                      : 'gray'
+                              }
+                            >
+                              {state === 'running'
+                                ? t`Running`
                                 : state === 'fault'
-                                  ? 'red'
+                                  ? t`Fault`
                                   : state === 'idle'
-                                    ? 'yellow'
-                                    : 'gray'
-                            }
-                          >
-                            {state === 'running'
-                              ? t`Running`
-                              : state === 'fault'
-                                ? t`Fault`
-                                : state === 'idle'
-                                  ? t`Idle`
-                                  : t`Unknown`}
-                          </Badge>
-                        </Table.Td>
-                        <Table.Td ta='right'>
-                          {p?.v == null ? '—' : formatAt(p.v, table.powerDp)}
-                        </Table.Td>
-                        <Table.Td ta='right'>
-                          {f?.v == null ? '—' : formatAt(f.v, table.flowDp)}
-                        </Table.Td>
-                        <Table.Td ta='right'>
-                          {s?.v == null ? '—' : formatAt(s.v, table.speedDp)}
-                        </Table.Td>
-                        <Table.Td ta='right'>
-                          {peak ? formatAt(peak.max, table.powerDp) : '—'}
-                        </Table.Td>
-                        <Table.Td>
-                          <Text size='xs' c='dimmed'>
-                            {newest > 0
-                              ? formatAge(newest, now)
-                              : t`No reading`}
-                          </Text>
-                        </Table.Td>
-                      </Table.Tr>
-                    );
-                  })}
-                </Table.Tbody>
-              </Table>
+                                    ? t`Idle`
+                                    : t`Unknown`}
+                            </Badge>
+                          </Table.Td>
+                          <Table.Td ta='right'>
+                            {p?.v == null ? '—' : formatAt(p.v, table.powerDp)}
+                          </Table.Td>
+                          <Table.Td ta='right'>
+                            {f?.v == null ? '—' : formatAt(f.v, table.flowDp)}
+                          </Table.Td>
+                          <Table.Td ta='right'>
+                            {s?.v == null ? '—' : formatAt(s.v, table.speedDp)}
+                          </Table.Td>
+                          <Table.Td ta='right'>
+                            {peak ? formatAt(peak.max, table.powerDp) : '—'}
+                          </Table.Td>
+                          <Table.Td>
+                            <Text size='xs' c='dimmed'>
+                              {newest > 0
+                                ? formatAge(newest, now)
+                                : t`No reading`}
+                            </Text>
+                          </Table.Td>
+                        </Table.Tr>
+                      );
+                    })}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
             </Paper>
           )}
         </Stack>
