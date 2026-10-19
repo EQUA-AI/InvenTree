@@ -18,11 +18,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi } from '../../contexts/ApiContext';
 import { generateUrl } from '../../functions/urls';
-import type { MediaEvidenceItem } from '../../hooks/UseAIChat';
 import { useAIChatState } from '../../states/AIChatState';
 import { useEvidenceViewerState } from '../../states/EvidenceViewerState';
 import { isolateDialog } from './dialogBackground';
 import {
+  type MediaPreviewItem,
   evidenceKey,
   parseSourceMetadata,
   validDocumentPage,
@@ -44,7 +44,7 @@ export function GlobalEvidenceViewer() {
 export function MediaEvidenceModal({
   item,
   onClose
-}: Readonly<{ item: MediaEvidenceItem | null; onClose: () => void }>) {
+}: Readonly<{ item: MediaPreviewItem | null; onClose: () => void }>) {
   const api = useApi();
   const onNavigate = useAssistantNavigation();
   const narrow = useMediaQuery('(max-width: 48em)');
@@ -143,7 +143,9 @@ export function MediaEvidenceModal({
         <Text size='xs' c='dimmed'>
           {item.source_revision
             ? t`Revision: ${item.source_revision}`
-            : t`Unversioned citation — showing the currently authorized source`}
+            : item.segment_index == null
+              ? t`Source preview — showing the currently authorized revision`
+              : t`Unversioned citation — showing the currently authorized source`}
         </Text>
         {unavailable ? (
           <Alert
@@ -155,7 +157,8 @@ export function MediaEvidenceModal({
         ) : (
           metadata && (
             <>
-              {(exactUnavailable || (isPdf && !exactPage)) && (
+              {(exactUnavailable ||
+                (isPdf && item.page_index != null && !exactPage)) && (
                 <Alert color='yellow'>
                   {isPdf
                     ? t`Exact page unavailable. The authorized source is shown below.`
@@ -215,6 +218,7 @@ export function MediaEvidenceModal({
                     src={mediaUrl}
                     onLoadedMetadata={(event) => {
                       const video = event.currentTarget;
+                      if (item.timecode_start_s == null) return;
                       if (
                         !validVideoSegment(
                           item.timecode_start_s,

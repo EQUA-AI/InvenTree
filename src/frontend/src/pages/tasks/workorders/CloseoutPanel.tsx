@@ -32,89 +32,20 @@ import DictateCloseoutModal from './DictateCloseoutModal';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
+import type {
+  CloseoutCapture,
+  CloseoutProposal,
+  CloseoutWorkOrder,
+  CloseoutEffectRow as EffectRow,
+  CloseoutPartUsageRow as PartUsageRow,
+  CloseoutReadiness as Readiness,
+  CloseoutReadingRow as ReadingRow
+} from '@lib/types/Closeout';
 
 import { useApi } from '../../../contexts/ApiContext';
 import { showApiErrorMessage } from '../../../functions/notifications';
 
-/** Work-order shape consumed by the wizard (canonical API). */
-export interface CloseoutWorkOrder {
-  id: number;
-  reference: string;
-  title: string;
-  lifecycle_status: string;
-  lifecycle_version: number;
-}
-
-interface CloseoutCapture {
-  id: number;
-  status: string;
-  source_type: string;
-  revision: number | null;
-  narrative: string;
-}
-
-interface ProposalField {
-  value: string | number | null;
-  spans: [number, number][];
-  confidence: number;
-  warnings: string[];
-}
-
-interface CloseoutProposal {
-  id: number;
-  extractor: string;
-  fields: Record<string, ProposalField>;
-  part_candidates: { text: string }[];
-  warnings: string[];
-  decisions: {
-    field_path: string;
-    decision: string;
-    final_value: unknown;
-  }[];
-}
-
-interface PartUsageRow {
-  id: number;
-  source: string;
-  state: string;
-  candidate_text: string;
-  planned_quantity: string | null;
-  issued_quantity: string | null;
-  used_quantity: string | null;
-  disposition: string;
-  version: number;
-}
-
-interface ReadingRow {
-  id: number;
-  label: string;
-  raw_text: string;
-  value: string | null;
-  unit: string;
-  required: boolean;
-  verification_state: string;
-  warnings: string[];
-}
-
-interface ReadinessBlocker {
-  code: string;
-  message: string;
-  blocking: boolean;
-}
-
-interface Readiness {
-  ready: boolean;
-  blockers: ReadinessBlocker[];
-  warnings: ReadinessBlocker[];
-}
-
-interface EffectRow {
-  id: number;
-  effect_type: string;
-  status: string;
-  attempts: number;
-  result_reference: string;
-}
+export type { CloseoutWorkOrder } from '@lib/types/Closeout';
 
 const ACTIVE_CAPTURE_STATES = ['open', 'extracting', 'proposed', 'reviewed'];
 const REQUIRED_FIELDS = ['action', 'result', 'verification_summary'] as const;

@@ -75,6 +75,8 @@ export enum ApiEndpoints {
   // and its card were the same row; the names keep the old spelling so the
   // rename lands in one place rather than across every caller at once.
   kanban_card_list = 'kanban/work-orders/',
+  kanban_work_order_table = 'kanban/work-orders/list/',
+  kanban_work_order_persona = 'kanban/work-orders/persona/',
   kanban_card_detail = 'kanban/work-orders/:id/',
   kanban_card_overview = 'kanban/work-orders/:id/overview/',
   kanban_card_restore = 'kanban/work-orders/:id/restore/',
@@ -183,6 +185,7 @@ export enum ApiEndpoints {
   asset_machine_list = 'assets/machines/',
   asset_machine_detail = 'assets/machines/:id/',
   asset_machine_fault_history = 'assets/machines/:id/fault-history/',
+  asset_machine_positions = 'assets/machines/:id/positions/',
   asset_machine_part_list = 'assets/parts/',
   asset_machine_part_detail = 'assets/parts/:id/',
   machine_health_summary = 'machine-health/machines/:id/health/',

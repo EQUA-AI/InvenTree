@@ -10,7 +10,7 @@ import type { Page, Route } from '@playwright/test';
 export const MACHINE = 18;
 export const NOW = Date.parse('2026-09-26T12:00:00Z');
 
-interface SignalSpec {
+export interface SignalSpec {
   key: string;
   value: number | string | null;
   unit: string;
@@ -116,8 +116,8 @@ export const SIGNALS: SignalSpec[] = [
   }
 ];
 
-export function signalRows() {
-  return SIGNALS.map((spec, index) => ({
+export function signalRows(specs: readonly SignalSpec[] = SIGNALS) {
+  return specs.map((spec, index) => ({
     binding_id: 100 + index,
     source_id: 1,
     source_name: 'Fixture source',
@@ -146,7 +146,11 @@ export function signalRows() {
 }
 
 /** Build a series response for whatever the panel asked for. */
-export function seriesFor(url: URL, options: { fail?: boolean } = {}) {
+export function seriesFor(
+  url: URL,
+  options: { fail?: boolean } = {},
+  specs: readonly SignalSpec[] = SIGNALS
+) {
   const from = Date.parse(url.searchParams.get('from') ?? '');
   const to = Date.parse(url.searchParams.get('to') ?? '');
   const points = Number(url.searchParams.get('points') ?? 240);
@@ -159,7 +163,7 @@ export function seriesFor(url: URL, options: { fail?: boolean } = {}) {
   const complete = expected <= 240;
   const count = complete ? expected : points;
   const step = (to - from) / count;
-  const rows = signalRows();
+  const rows = signalRows(specs);
 
   const series = ids
     .map((id) => rows.find((row) => row.binding_id === id))

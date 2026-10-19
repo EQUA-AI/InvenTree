@@ -440,11 +440,11 @@ function ChartBody({
           through ninety degrees ("V", "m") reads as a chevron or an E. */}
       {(leftTitle || rightTitle) && (
         <Group justify='space-between' gap='xs' px={4} mb={-4} wrap='nowrap'>
-          <Text size='xs' c='dimmed' truncate>
+          <Text size='xs' c='dimmed' truncate data-axis-title='left'>
             {leftTitle}
           </Text>
           {withRight && (
-            <Text size='xs' c='dimmed' truncate>
+            <Text size='xs' c='dimmed' truncate data-axis-title='right'>
               {rightTitle}
             </Text>
           )}

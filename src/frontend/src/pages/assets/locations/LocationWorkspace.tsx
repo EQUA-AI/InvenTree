@@ -12,6 +12,7 @@ import {
   Loader,
   Pagination,
   Paper,
+  Select,
   SimpleGrid,
   Stack,
   Switch,
@@ -28,6 +29,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { MachineAlarmBadges } from '../../../components/items/MachineAlarmBadges';
 import { useApi } from '../../../contexts/ApiContext';
 import { useUserState } from '../../../states/UserState';
+import { HealthStateBadge } from '../health/common';
 
 import { LocationBrowser, locationKindLabel } from './LocationBrowser';
 import { LocationEditDialog, MachineMoveDialog } from './LocationDialogs';
@@ -37,6 +39,7 @@ import {
   locationKind,
   machineDetailHref,
   machineEmptyKind,
+  machineLocationId,
   workspaceLabel
 } from './locationTree';
 import {
@@ -48,6 +51,18 @@ import {
   locationPath
 } from './locationTypes';
 import classes from './locations.module.css';
+import { type MachineCoverage, machineCondition } from './machineCondition';
+import {
+  MACHINE_CRITICALITIES,
+  MACHINE_PAGE_SIZE,
+  type MachineCriticality,
+  type MachineListState,
+  machineCriticality,
+  machineListParams,
+  machineListState,
+  machineLocationParams
+} from './machineListState';
+import { type WorkPriority, machineWorkSummary } from './machineWork';
 
 const ROOT_PAGE_SIZE = 10;
 
@@ -57,8 +72,8 @@ export function ScopedMachineList({
   unassigned = false,
   machineId,
   canChange,
-  search,
-  onSearchChange,
+  state,
+  onStateChange,
   source
 }: {
   location?: number;
@@ -67,25 +82,33 @@ export function ScopedMachineList({
   machineId?: number;
   canChange: boolean;
 
-  search: string;
-  onSearchChange: (value: string) => void;
+  state: MachineListState;
+  onStateChange: (
+    updates: Partial<MachineListState>,
+    replace?: boolean
+  ) => void;
   source: MachineSourceView;
 }) {
   const api = useApi();
   const identity = useUserState((s) => s.authGeneration);
+  const { search, alarmsOnly, criticality, page } = state;
   const [debounced] = useDebouncedValue(search, 200);
-  const [page, setPage] = useState(1);
+  const searchPending = search !== debounced;
   const [selection, setSelection] = useState<number[]>([]);
   const [moving, setMoving] = useState<LocatedMachine[] | null>(null);
-  // The morning question: which of these has something standing on it.
-  const [alarmsOnly, setAlarmsOnly] = useState(false);
-
-  // A different machine population (location, scope, search) must
-  // never keep stale paging or row selection (plan M3/U2).
   useEffect(() => {
-    setPage(1);
     setSelection([]);
-  }, [search, location, includeDescendants, unassigned, machineId, alarmsOnly]);
+  }, [
+    search,
+    location,
+    includeDescendants,
+    unassigned,
+    machineId,
+    alarmsOnly,
+    criticality,
+    page,
+    identity
+  ]);
 
   const query = useQuery<PageResult<LocatedMachine>>({
     queryKey: [
@@ -97,10 +120,11 @@ export function ScopedMachineList({
       unassigned,
       machineId,
       alarmsOnly,
-
+      criticality,
       debounced,
       page
     ],
+    enabled: !searchPending,
     queryFn: async ({ signal }) =>
       (
         await api.get(`${locationApi}machines/`, {
@@ -111,26 +135,47 @@ export function ScopedMachineList({
             unassigned,
             machine: machineId,
             has_alarms: alarmsOnly || undefined,
-
+            criticality: criticality || undefined,
             search: debounced,
-            limit: 25,
-            offset: (page - 1) * 25
+            limit: MACHINE_PAGE_SIZE,
+            offset: (page - 1) * MACHINE_PAGE_SIZE
           }
         })
       ).data
   });
-  const selected = (query.isError ? [] : (query.data?.results ?? [])).filter(
-    (m) => selection.includes(m.pk)
+  const lastPage = Math.max(
+    1,
+    Math.ceil((query.data?.count ?? 0) / MACHINE_PAGE_SIZE)
   );
+  const pageOutOfRange = !!query.data && page > lastPage;
+  useEffect(() => {
+    if (
+      !searchPending &&
+      query.isSuccess &&
+      !query.isFetching &&
+      pageOutOfRange
+    ) {
+      onStateChange({ page: lastPage }, true);
+    }
+  }, [
+    searchPending,
+    query.isSuccess,
+    query.isFetching,
+    pageOutOfRange,
+    lastPage,
+    onStateChange
+  ]);
+  const selected = (
+    query.isError || searchPending ? [] : (query.data?.results ?? [])
+  ).filter((m) => selection.includes(m.pk));
   const allSelected =
     !!query.data?.results.length &&
     selected.length === query.data.results.length;
-  // Row links hand the physical-location filters and the source view to the
-  // machine page, which returns to this exact list (U2).
   const rowScope = {
     location: location ?? null,
     direct: !includeDescendants,
-    source
+    source,
+    list: state
   };
   const placementHref = (locationPk: number) => {
     const linkParams = new URLSearchParams({ location: String(locationPk) });
@@ -139,8 +184,9 @@ export function ScopedMachineList({
     return `/machines/index/sites/?${linkParams.toString()}`;
   };
   const emptyKind = machineEmptyKind({
-    searched: !!debounced,
+    searched: !!debounced.trim(),
     alarmsOnly,
+    filtered: !!criticality,
     unassigned,
     locationSelected: location != null,
     includeDescendants
@@ -152,19 +198,44 @@ export function ScopedMachineList({
           <TextInput
             aria-label={t`Search machines`}
             placeholder={t`Search machines`}
+            description={t`Search this list by name, serial, or manufacturer.`}
             leftSection={<IconSearch size={16} />}
             value={search}
-            onChange={(event) => onSearchChange(event.currentTarget.value)}
+            onChange={(event) =>
+              onStateChange({ search: event.currentTarget.value }, true)
+            }
           />
           <Switch
             label={t`In alarm only`}
             checked={alarmsOnly}
-            onChange={(event) => setAlarmsOnly(event.currentTarget.checked)}
+            onChange={(event) =>
+              onStateChange({ alarmsOnly: event.currentTarget.checked })
+            }
+          />
+          <Select
+            aria-label={t`Criticality`}
+            placeholder={t`Any criticality`}
+            clearable
+            // The chosen value names its filter; the options stay short.
+            data={MACHINE_CRITICALITIES.map((level) => ({
+              value: level,
+              label: `${t`Criticality`}: ${criticalityLabel(level)}`
+            }))}
+            renderOption={({ option }) =>
+              criticalityLabel(option.value as MachineCriticality)
+            }
+            value={criticality || null}
+            onChange={(value) =>
+              onStateChange({ criticality: machineCriticality(value) ?? '' })
+            }
+            w={190}
           />
         </Group>
         <Group>
           <Text size='sm' c='dimmed'>
-            {query.data ? t`${query.data.count} machines` : ''}
+            {query.data && !query.isError && !searchPending
+              ? t`${query.data.count} machines`
+              : ''}
           </Text>
           {selection.length > 0 && (
             <Text size='sm' c='dimmed'>
@@ -184,8 +255,21 @@ export function ScopedMachineList({
           )}
         </Group>
       </Group>
-      {query.isPending && <Loader size='sm' />}
-      {query.isError && (
+      {(query.isPending ||
+        searchPending ||
+        (pageOutOfRange && !query.isError)) && <Loader size='sm' />}
+      {query.isFetching &&
+        query.data &&
+        !query.isError &&
+        !searchPending &&
+        !pageOutOfRange && (
+          <Text
+            component='output'
+            size='sm'
+            c='dimmed'
+          >{t`Updating machines — showing the last loaded results.`}</Text>
+        )}
+      {query.isError && !searchPending && (
         <Alert color='red' title={t`Machines unavailable`}>
           {t`Check your maintenance scope or try refreshing.`}
           <Button
@@ -194,9 +278,11 @@ export function ScopedMachineList({
           >{t`Retry`}</Button>
         </Alert>
       )}
-      {query.data && !query.isError && (
+      {query.data && !query.isError && !searchPending && !pageOutOfRange && (
         <>
-          <Table.ScrollContainer minWidth={720}>
+          {/* Below this the table scrolls in place (phones); a 1280px
+              desktop still shows every column without scrolling. */}
+          <Table.ScrollContainer minWidth={1000}>
             <Table striped highlightOnHover>
               <Table.Thead>
                 <Table.Tr>
@@ -220,7 +306,18 @@ export function ScopedMachineList({
                   <Table.Th>{t`Physical location`}</Table.Th>
                   <Table.Th>{t`Manufacturer / model`}</Table.Th>
                   <Table.Th>{t`Active record`}</Table.Th>
-                  <Table.Th>{t`Alarms`}</Table.Th>
+                  {/* Short status labels must read whole on a phone; the
+                      table scrolls sideways rather than truncating them. */}
+                  <Table.Th style={{ minWidth: STATUS_COLUMN_WIDTH }}>
+                    {t`Condition`}
+                  </Table.Th>
+                  <Table.Th style={{ minWidth: STATUS_COLUMN_WIDTH }}>
+                    {t`Alarms`}
+                  </Table.Th>
+                  <Table.Th style={{ minWidth: STATUS_COLUMN_WIDTH }}>
+                    {t`Work`}
+                  </Table.Th>
+                  <Table.Th>{t`Criticality`}</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -280,6 +377,7 @@ export function ScopedMachineList({
                         .join(' / ') || '—'}
                     </Table.Td>
                     <Table.Td>{machine.active ? t`Yes` : t`No`}</Table.Td>
+                    <MachineConditionCell value={machine.condition} />
                     <Table.Td data-alarms={machine.open_alarms ?? undefined}>
                       {machine.open_alarms ? (
                         <MachineAlarmBadges
@@ -290,6 +388,8 @@ export function ScopedMachineList({
                         '—'
                       )}
                     </Table.Td>
+                    <MachineWorkCell value={machine.open_work} />
+                    <MachineCriticalityCell value={machine.criticality} />
                   </Table.Tr>
                 ))}
               </Table.Tbody>
@@ -304,8 +404,21 @@ export function ScopedMachineList({
                     variant='light'
                     size='xs'
                     w='fit-content'
-                    onClick={() => onSearchChange('')}
+                    onClick={() => onStateChange({ search: '' }, true)}
                   >{t`Clear search`}</Button>
+                </Stack>
+              )}
+              {emptyKind === 'no-filter-matches' && (
+                <Stack gap='xs'>
+                  <Text c='dimmed'>{t`No machines match these filters.`}</Text>
+                  <Button
+                    variant='light'
+                    size='xs'
+                    w='fit-content'
+                    onClick={() =>
+                      onStateChange({ alarmsOnly: false, criticality: '' })
+                    }
+                  >{t`Clear filters`}</Button>
                 </Stack>
               )}
               {emptyKind === 'no-machines-in-alarm' && (
@@ -317,7 +430,7 @@ export function ScopedMachineList({
                     variant='light'
                     size='xs'
                     w='fit-content'
-                    onClick={() => setAlarmsOnly(false)}
+                    onClick={() => onStateChange({ alarmsOnly: false })}
                   >{t`Show all machines`}</Button>
                 </Stack>
               )}
@@ -343,14 +456,13 @@ export function ScopedMachineList({
               )}
             </Paper>
           )}
-          {query.data.count > 25 && (
+          {query.data.count > MACHINE_PAGE_SIZE && (
             <nav aria-label={t`Machine results pagination`}>
               <Pagination
-                total={Math.ceil(query.data.count / 25)}
+                total={lastPage}
                 value={page}
                 onChange={(value) => {
-                  setPage(value);
-                  setSelection([]);
+                  onStateChange({ page: value });
                 }}
               />
             </nav>
@@ -368,6 +480,145 @@ export function ScopedMachineList({
         />
       )}
     </Stack>
+  );
+}
+
+const STATUS_COLUMN_WIDTH = 132;
+
+// The Work list's priority colours, so one priority reads the same everywhere.
+const PRIORITY_COLORS: Record<WorkPriority, string> = {
+  high: 'red',
+  medium: 'orange',
+  low: 'gray'
+};
+
+/**
+ * R6 UI01: open Work for the row's machine, from the reader's Work scope.
+ * Condition (Alarms), Work and placement stay separate facts. An unknown
+ * count says so instead of showing a reassuring dash; the count is not a
+ * link yet, because the machine Maintenance view lists completed records
+ * until its open-work view (P12) exists.
+ */
+function MachineWorkCell({ value }: Readonly<{ value: unknown }>) {
+  const summary = machineWorkSummary(value);
+  if (summary.kind === 'unavailable') {
+    return (
+      <Table.Td data-open-work='unavailable'>
+        <Text size='sm' c='dimmed' title={t`Open work could not be checked`}>
+          {t`Not available`}
+        </Text>
+      </Table.Td>
+    );
+  }
+  if (summary.kind === 'none') {
+    return (
+      <Table.Td data-open-work='0' aria-label={t`No open work`}>
+        —
+      </Table.Td>
+    );
+  }
+  const priority = summary.priority;
+  return (
+    <Table.Td data-open-work={summary.count}>
+      <Group gap={6} wrap='nowrap'>
+        <Text size='sm' style={{ whiteSpace: 'nowrap' }}>
+          {t`${summary.count} open`}
+        </Text>
+        {priority && (
+          <Badge
+            size='xs'
+            variant='light'
+            color={PRIORITY_COLORS[priority]}
+            style={{ flexShrink: 0, overflow: 'visible' }}
+          >
+            {priority === 'high'
+              ? t`High`
+              : priority === 'medium'
+                ? t`Medium`
+                : t`Low`}
+          </Badge>
+        )}
+      </Group>
+    </Table.Td>
+  );
+}
+
+function coverageNote(coverage: MachineCoverage): string | null {
+  switch (coverage.kind) {
+    case 'unmapped':
+      return t`No signals mapped`;
+    case 'no-current-data':
+      return t`No current data`;
+    case 'stale':
+      return t`${coverage.stale} of ${coverage.signals} signals stale`;
+    case 'poor-quality':
+      return t`Poor-quality readings`;
+    case 'full':
+      return null;
+  }
+}
+
+/**
+ * R6 UI01: the machine's Health condition, judged exactly as its Health tab
+ * judges it and drawn with the same badge. A limited assessment says how,
+ * on its own line, so coverage is never mistaken for the condition itself.
+ */
+function MachineConditionCell({ value }: Readonly<{ value: unknown }>) {
+  const condition = machineCondition(value);
+  if (condition.kind === 'unavailable') {
+    return (
+      <Table.Td data-condition='unavailable'>
+        <Text size='sm' c='dimmed' title={t`Condition could not be checked`}>
+          {t`Not available`}
+        </Text>
+      </Table.Td>
+    );
+  }
+  const note = coverageNote(condition.coverage);
+  return (
+    <Table.Td data-condition={condition.state}>
+      <Stack gap={2} align='flex-start'>
+        <HealthStateBadge state={condition.state} size='sm' />
+        {note && (
+          <Text size='xs' c='dimmed' style={{ whiteSpace: 'nowrap' }}>
+            {note}
+          </Text>
+        )}
+      </Stack>
+    </Table.Td>
+  );
+}
+
+function criticalityLabel(level: MachineCriticality): string {
+  switch (level) {
+    case 'critical':
+      return t`Critical`;
+    case 'high':
+      return t`High`;
+    case 'medium':
+      return t`Medium`;
+    case 'low':
+      return t`Low`;
+  }
+}
+
+/**
+ * R6 UI01: the machine's declared criticality, shown as plain text so it is
+ * not read as an alarm severity or a work priority. Nothing declared says so
+ * rather than defaulting to a level.
+ */
+function MachineCriticalityCell({ value }: Readonly<{ value: unknown }>) {
+  const level = machineCriticality(value);
+  return (
+    <Table.Td data-criticality={level ?? 'undeclared'}>
+      <Text
+        size='sm'
+        c={level ? undefined : 'dimmed'}
+        style={{ whiteSpace: 'nowrap' }}
+      >
+        {level ? criticalityLabel(level) : t`Not declared`}
+      </Text>
+    </Table.Td>
   );
 }
 
@@ -397,8 +648,7 @@ function RootOverview({
       ).data
   });
   const locationHref = (pk: number) => {
-    const next = new URLSearchParams(params);
-    next.set('location', String(pk));
+    const next = machineLocationParams(params, pk);
     return `?${next.toString()}`;
   };
   return (
@@ -473,22 +723,20 @@ export function LocationWorkspace({
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
   const rawLocation = params.get('location');
-  const locationId =
-    rawLocation && /^\d+$/.test(rawLocation) && Number(rawLocation) > 0
-      ? Number(rawLocation)
-      : undefined;
+  const locationId = machineLocationId(params) ?? undefined;
   const direct = params.get('scope') === 'direct';
+  const listState = machineListState(params);
+  const updateListState = (
+    updates: Partial<MachineListState>,
+    replace = false
+  ) =>
+    setParams((previous) => machineListParams(previous, updates), { replace });
 
   const [editing, setEditing] = useState<{
     node?: LocationNode;
     parent?: LocationNode;
   } | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [machineSearch, setMachineSearch] = useState('');
-  useEffect(() => {
-    // A new location/view is a new machine population: start unsearched.
-    setMachineSearch('');
-  }, [locationId, view]);
 
   const context = useQuery<LocationContext>({
     queryKey: ['asset-locations', identity, 'context'],
@@ -507,16 +755,13 @@ export function LocationWorkspace({
   });
   const selected = detail.isError ? undefined : detail.data;
   const select = (id: number | null) =>
-    setParams((previous) => {
-      const next = new URLSearchParams(previous);
-      if (id) next.set('location', String(id));
-      else next.delete('location');
-      return next;
-    });
+    setParams((previous) => machineLocationParams(previous, id));
   const counts = selected?.counts;
   const summary = countSummary(counts, {
     direct,
-    searched: !!machineSearch.trim()
+    searched: !!listState.search.trim(),
+    alarmsOnly: listState.alarmsOnly,
+    filtered: !!listState.criticality
   });
   const countOrders = direct
     ? counts?.direct_open_work_orders
@@ -568,8 +813,8 @@ export function LocationWorkspace({
             key={view}
             unassigned={view === 'unassigned'}
             canChange={context.data.can_change}
-            search={machineSearch}
-            onSearchChange={setMachineSearch}
+            state={listState}
+            onStateChange={updateListState}
             source={view === 'all' ? 'machines' : 'unassigned'}
           />
         ) : (
@@ -615,7 +860,7 @@ export function LocationWorkspace({
                             <Anchor
                               key={node.pk}
                               component={Link}
-                              to={`?location=${node.pk}${direct ? '&scope=direct' : ''}`}
+                              to={`?${machineLocationParams(params, node.pk)}`}
                               aria-current={
                                 node.pk === selected.pk ? 'page' : undefined
                               }
@@ -669,7 +914,9 @@ export function LocationWorkspace({
                             checked={!direct}
                             onChange={(event) =>
                               setParams((previous) => {
-                                const next = new URLSearchParams(previous);
+                                const next = machineListParams(previous, {
+                                  page: 1
+                                });
                                 if (event.currentTarget.checked)
                                   next.delete('scope');
                                 else next.set('scope', 'direct');
@@ -737,15 +984,15 @@ export function LocationWorkspace({
                           c='dimmed'
                           data-testid='location-totals-note'
                         >
-                          {t`Location totals — the machine table search does not change these counts.`}
+                          {t`Location totals — machine search and alarm filters do not change these counts.`}
                         </Text>
                       )}
                       <ScopedMachineList
                         location={selected.pk}
                         includeDescendants={!direct}
                         canChange={context.data.can_change}
-                        search={machineSearch}
-                        onSearchChange={setMachineSearch}
+                        state={listState}
+                        onStateChange={updateListState}
                         source='sites'
                       />
                     </>

@@ -34,6 +34,10 @@ export function validDocumentPage(
 }
 import type { MediaEvidenceItem } from '../../hooks/UseAIChat';
 
+export type MediaPreviewItem = Omit<MediaEvidenceItem, 'segment_index'> & {
+  segment_index?: number;
+};
+
 export type SourceMetadata = {
   revision: string;
   content_type: string;
@@ -79,7 +83,7 @@ export function parseSourceMetadata(
 }
 
 /** Source identity and locator both participate in chip and viewer identity. */
-export function evidenceKey(item: MediaEvidenceItem): string {
+export function evidenceKey(item: MediaPreviewItem): string {
   return JSON.stringify([
     item.attachment_id,
     item.source_revision ?? null,

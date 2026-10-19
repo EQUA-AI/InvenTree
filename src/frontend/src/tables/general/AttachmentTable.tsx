@@ -1,11 +1,20 @@
 import { t } from '@lingui/core/macro';
-import { Badge, Group, Paper, Stack, Text } from '@mantine/core';
+import {
+  ActionIcon,
+  Badge,
+  Group,
+  Paper,
+  Stack,
+  Text,
+  Tooltip
+} from '@mantine/core';
 import { Dropzone } from '@mantine/dropzone';
 import { notifications } from '@mantine/notifications';
 import {
   IconCircleCheck,
   IconExclamationCircle,
   IconExternalLink,
+  IconEye,
   IconFileUpload,
   IconUpload,
   IconX
@@ -35,13 +44,21 @@ import {
   useDeleteApiFormModal,
   useEditApiFormModal
 } from '../../hooks/UseForm';
+import { useEvidenceViewerState } from '../../states/EvidenceViewerState';
 import { useGlobalSettingsState } from '../../states/SettingsStates';
 import { useUserState } from '../../states/UserState';
+import {
+  type AttachmentPreviewRecord,
+  attachmentPreviewItem
+} from './attachmentPreview';
 
 /**
  * Define set of columns to display for the attachment table
  */
-function attachmentTableColumns(): TableColumn[] {
+function attachmentTableColumns(
+  owner: { model_type: ModelType; model_id: number },
+  onPreview: (record: AttachmentPreviewRecord, trigger: HTMLElement) => void
+): TableColumn[] {
   return [
     {
       accessor: 'attachment',
@@ -51,10 +68,27 @@ function attachmentTableColumns(): TableColumn[] {
       render: (record: any) => {
         if (record.attachment) {
           return (
-            <AttachmentLink
-              thumbnail={record.thumbnail}
-              attachment={record.attachment}
-            />
+            <Group gap='xs' wrap='nowrap'>
+              <AttachmentLink
+                thumbnail={record.thumbnail}
+                attachment={record.attachment}
+              />
+              {attachmentPreviewItem(record, owner) && (
+                <Tooltip label={t`Preview ${record.filename}`}>
+                  <ActionIcon
+                    variant='subtle'
+                    size='lg'
+                    aria-label={t`Preview ${record.filename}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onPreview(record, event.currentTarget);
+                    }}
+                  >
+                    <IconEye size={18} />
+                  </ActionIcon>
+                </Tooltip>
+              )}
+            </Group>
           );
         } else if (record.link) {
           return <AttachmentLink attachment={record.link} external />;
@@ -122,10 +156,12 @@ function UploadProgress({
  */
 export function AttachmentTable({
   model_type,
-  model_id
+  model_id,
+  onChange
 }: Readonly<{
   model_type: ModelType;
   model_id: number;
+  onChange?: () => void;
 }>): ReactNode {
   const api = useApi();
   const user = useUserState();
@@ -135,7 +171,18 @@ export function AttachmentTable({
   );
   const table = useTable(`${model_type}-attachments`);
 
-  const tableColumns = useMemo(() => attachmentTableColumns(), []);
+  const openEvidence = useEvidenceViewerState((state) => state.open);
+  const previewAttachment = useCallback(
+    (record: AttachmentPreviewRecord, trigger: HTMLElement) => {
+      const item = attachmentPreviewItem(record, { model_type, model_id });
+      if (item) openEvidence(item, trigger);
+    },
+    [model_type, model_id, openEvidence]
+  );
+  const tableColumns = useMemo(
+    () => attachmentTableColumns({ model_type, model_id }, previewAttachment),
+    [model_type, model_id, previewAttachment]
+  );
 
   const url = apiUrl(ApiEndpoints.attachment_list);
 
@@ -203,6 +250,7 @@ export function AttachmentTable({
           });
 
           table.refreshTable();
+          onChange?.();
 
           return response;
         })
@@ -275,6 +323,7 @@ export function AttachmentTable({
     fields: uploadFields,
     onFormSuccess: () => {
       table.refreshTable();
+      onChange?.();
     }
   });
 
@@ -289,6 +338,7 @@ export function AttachmentTable({
       } else {
         table.refreshTable();
       }
+      onChange?.();
     }
   });
 
@@ -298,6 +348,7 @@ export function AttachmentTable({
     title: t`Delete Attachment`,
     onFormSuccess: () => {
       table.refreshTable();
+      onChange?.();
     }
   });
 
@@ -392,6 +443,8 @@ export function AttachmentTable({
               noRecordsText: t`No attachments found`,
               enableSelection: canDelete,
               enableBulkDelete: canDelete,
+              enableQueryFilters: false,
+              afterBulkDelete: onChange,
               tableActions: tableActions,
               tableFilters: tableFilters,
               rowActions: rowActions,

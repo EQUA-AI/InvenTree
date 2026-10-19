@@ -7,7 +7,6 @@ import {
   HoverCard,
   Indicator,
   Paper,
-  Space,
   Stack,
   Text,
   Tooltip
@@ -217,11 +216,7 @@ export default function InvenTreeTableHeader({
           onClose={() => clearQueryFilters()}
         />
       )}
-      <Group
-        justify='apart'
-        grow={!tableProps.tableActionsFullWidth}
-        wrap='nowrap'
-      >
+      <Group justify='space-between' wrap='wrap'>
         <Group
           justify='left'
           key='custom-actions'
@@ -263,8 +258,12 @@ export default function InvenTreeTableHeader({
             <Fragment key={idx}>{group}</Fragment>
           ))}
         </Group>
-        {!tableProps.tableActionsFullWidth && <Space />}
-        <Group justify='right' gap={5} wrap='nowrap'>
+        <Group
+          justify='right'
+          gap={5}
+          wrap='wrap'
+          style={{ maxWidth: '100%', minWidth: 0, marginInlineStart: 'auto' }}
+        >
           {tableProps.enableSearch && (
             <SearchInput
               disabled={hasCustomSearch}

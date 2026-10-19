@@ -10,6 +10,7 @@ export interface ScopeLike {
   mode: string;
   displayLabel?: string | null;
   machineCount?: number | null;
+  machineIds?: readonly number[];
 }
 
 export type AnalysisContext =
@@ -49,18 +50,17 @@ export function analysisContext(
 /**
  * True when the confirmed scope already covers the transient machine hint,
  * so the redundant "Asking about …" chip can collapse. This is a DISPLAY
- * decision only (matching the confirmed display label against the hint
- * name); authorization is and stays server-side.
+ * decision only; authorization is and stays server-side.
  */
 export function hintIsRedundant(
   scope: ScopeLike | null | undefined,
-  hint: { machineName: string } | null | undefined
+  hint: { machineId: number; machineName: string } | null | undefined
 ): boolean {
   if (!hint) return false;
   const context = analysisContext(scope);
   return (
     context.kind === 'explicit' &&
-    context.label !== null &&
-    context.label === hint.machineName
+    scope?.machineIds?.length === 1 &&
+    scope.machineIds[0] === hint.machineId
   );
 }

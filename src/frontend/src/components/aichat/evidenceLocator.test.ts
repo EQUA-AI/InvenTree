@@ -53,6 +53,19 @@ describe('revision metadata locators', () => {
       expect(validDocumentPage(page, 2)).toBe(false);
     expect(validDocumentPage(0, null)).toBe(false);
   });
+  it('keeps a source-level preview distinct from the first cited segment', () => {
+    const item = {
+      attachment_id: 901,
+      model_type: 'assetmachine',
+      model_id: 18,
+      media_type: 'video',
+      label: 'Native attachment'
+    };
+    expect(evidenceKey(item)).toBe(evidenceKey({ ...item }));
+    expect(evidenceKey(item)).not.toBe(
+      evidenceKey({ ...item, segment_index: 0 })
+    );
+  });
   it('requires finite video metadata and valid ranges, including zero', () => {
     expect(validVideoSegment(0, 2, 10)).toBe(true);
     expect(validVideoSegment(5, null, 10)).toBe(true);

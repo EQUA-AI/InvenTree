@@ -691,7 +691,7 @@ test('each machine shows its alarms and the list narrows to them', async ({
   await expect(row('Pump 1').getByText('1 warning')).toBeVisible();
   await expect(row('Pump 3').getByText('1 warning')).toBeVisible();
   await expect(row('Pump 3').getByText(/critical/)).toHaveCount(0);
-  await expect(row('Compressor 1').getByRole('cell').last()).toHaveText('—');
+  await expect(row('Compressor 1').locator('td[data-alarms]')).toHaveText('—');
 
   await page.getByRole('switch', { name: 'In alarm only' }).check();
   await expect(page.getByText('2 machines')).toBeVisible();
@@ -703,9 +703,10 @@ test('each machine shows its alarms and the list narrows to them', async ({
   await expect(page.getByText('Compressor 1')).toHaveCount(0);
 
   // Another location starts unnarrowed, as it starts with an empty search.
-  await page.evaluate(() =>
-    (window as any).__machineTest.setSearch('location', '21')
-  );
+  await page
+    .getByRole('button', { name: 'Expand South Site', exact: true })
+    .click();
+  await page.getByRole('button', { name: 'Line One', exact: true }).click();
   await expect(page.getByText('30 machines')).toBeVisible();
   const narrow = page.getByRole('switch', { name: 'In alarm only' });
   await expect(narrow).not.toBeChecked();

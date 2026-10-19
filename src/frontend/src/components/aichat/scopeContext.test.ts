@@ -62,7 +62,20 @@ describe('routing-hint collapse', () => {
 
   it('collapses the hint once the server confirmed the same machine', () => {
     expect(
-      hintIsRedundant({ mode: 'explicit_assets', displayLabel: 'Pump A' }, hint)
+      hintIsRedundant(
+        { mode: 'explicit_assets', displayLabel: 'Pump A', machineIds: [7] },
+        hint
+      )
     ).toBe(true);
+  });
+
+  it('does not infer identity from a matching display label or count', () => {
+    for (const machineIds of [undefined, [8], [7, 8]])
+      expect(
+        hintIsRedundant(
+          { mode: 'explicit_assets', displayLabel: 'Pump A', machineIds },
+          hint
+        )
+      ).toBe(false);
   });
 });

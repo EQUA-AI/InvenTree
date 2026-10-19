@@ -21,6 +21,7 @@ import { KpiStrip } from './KpiStrip';
 import type { WindowInfo } from './SensorGroupCard';
 import { StationPerformance } from './StationPerformance';
 import { LiveIndicator, TimeRangeControl } from './TimeRangeControl';
+import { evaluatePerformance } from './evaluation';
 import { buildKpiTiles } from './kpis';
 import { categoryLabel } from './parameters';
 import { inCategory, resolveParameters } from './resolve';
@@ -455,7 +456,9 @@ function HideIfEmpty({
 
 /**
  * Level 2: is anything unusual? Stale readings, poor quality, configured
- * limits crossed, and how much of the machine has limits at all.
+ * limits crossed, and how much of the machine was actually judged. Calm is
+ * claimed only from readings the server evaluated against their limits
+ * (``evaluatePerformance``); no limits or nothing evaluable says so instead.
  */
 function UnusualStrip({
   parameters,
@@ -466,27 +469,11 @@ function UnusualStrip({
 }>) {
   const stale = parameters.filter((p) => p.signal.stale);
   const poor = parameters.filter((p) => p.signal.quality !== 'good');
-  const configured = parameters.filter((p) => {
-    const l = p.signal.limits;
-    return (
-      l.warn_min !== null ||
-      l.warn_max !== null ||
-      l.critical_min !== null ||
-      l.critical_max !== null ||
-      l.normal_min !== null ||
-      l.normal_max !== null
-    );
-  });
+  const evaluation = evaluatePerformance(parameters.map((p) => p.signal));
   const critical = parameters.filter((p) => p.signal.state === 'critical');
   const warning = parameters.filter((p) => p.signal.state === 'warning');
   const unavailable =
     response?.series.filter((entry) => !entry.available) ?? [];
-
-  const calm =
-    critical.length === 0 &&
-    warning.length === 0 &&
-    stale.length === 0 &&
-    poor.length === 0;
 
   return (
     <Paper withBorder radius='md' p='sm'>
@@ -525,13 +512,24 @@ function UnusualStrip({
             {t`${unavailable.length} without history in this window`}
           </Badge>
         )}
-        {calm && (
+        {evaluation.verdict.kind === 'calm' && (
           <Badge color='green' variant='light'>
             {t`Nothing outside configured limits`}
           </Badge>
         )}
-        <Text size='xs' c='dimmed'>
-          {t`${configured.length} of ${parameters.length} signals have limits configured; the rest are drawn without a verdict.`}
+        {evaluation.verdict.kind === 'no-limits' && (
+          <Badge color='gray' variant='light'>
+            {t`No configured limits to evaluate`}
+          </Badge>
+        )}
+        {evaluation.verdict.kind === 'unavailable' && (
+          <Badge color='gray' variant='light'>
+            {t`Evaluation unavailable`}
+          </Badge>
+        )}
+        <Text size='xs' c='dimmed' data-evaluated={evaluation.evaluated}>
+          {t`${evaluation.evaluated} of ${evaluation.total} evaluated against their limits now.`}{' '}
+          {t`${evaluation.configured} of ${evaluation.total} signals have limits configured; the rest are drawn without a verdict.`}
         </Text>
       </Group>
     </Paper>

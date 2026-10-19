@@ -152,6 +152,74 @@ jobs:
         run: cd src/frontend && yarn compile
       - name: Maintenance and recovery regressions
         run: cd src/frontend && yarn playwright test --config playwright.maintenance.config.ts
+      - name: Typecheck S0 native fixtures
+        run: cd src/frontend && node node_modules/typescript/bin/tsc --noEmit --project tsconfig.s0.json
+      - name: S0 pure projection regressions
+        run: |
+          cd src/frontend
+          env -i PATH="$PATH" HOME="$HOME" CI=true node --input-type=module -e 'import {startVitest} from "vitest/node"; const context = await startVitest("test",["src/pages/tasks/workorders/workProjection.test.ts","src/pages/assets/health/suppliedTrends.test.ts","src/pages/assets/locations/locationTree.test.ts"],{config:"vitest.config.ts",run:true,watch:false},{envFile:false}); await context.close();'
+      - name: S0 native fixture regressions
+        run: |
+          cd src/frontend
+          env -i PATH="$PATH" HOME="$HOME" CI=true node node_modules/@playwright/test/cli.js test --config=playwright.s0.config.ts
+      - name: Typecheck S1 native resources
+        run: cd src/frontend && node node_modules/typescript/bin/tsc --noEmit --project tsconfig.s1.json
+      - name: S1 resource locator and workflow scope units
+        run: |
+          cd src/frontend
+          env -i PATH="$PATH" HOME="$HOME" CI=true node --input-type=module -e 'import {startVitest} from "vitest/node"; const context = await startVitest("test",["src/tables/general/attachmentPreview.test.ts","src/components/aichat/evidenceLocator.test.ts","src/components/aichat/scopeAcknowledgement.test.ts","src/components/aichat/scopeContext.test.ts","src/components/aichat/workFocus.test.ts","src/pages/assets/locations/machineCondition.test.ts","src/pages/assets/locations/machineListState.test.ts","src/pages/assets/locations/machineWork.test.ts","src/pages/maintenance/workListState.test.ts","src/pages/tasks/workorders/workPanelState.test.ts"],{config:"vitest.config.ts",run:true,watch:false},{envFile:false}); await context.close();'
+      - name: S1 native resource and viewer regressions
+        run: |
+          cd src/frontend
+          env -i PATH="$PATH" HOME="$HOME" CI=true node node_modules/@playwright/test/cli.js test --config=playwright.s1.config.ts
+      - name: S1 synthetic resource evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: aimms-r6-s1-native-resources
+          path: /tmp/aimms-r6-s1-browser
+          if-no-files-found: ignore
+      - name: Typecheck S2 equipment scene fixtures
+        run: cd src/frontend && node node_modules/typescript/bin/tsc --noEmit --project tsconfig.s2.json
+      - name: S2 reference model position units
+        run: |
+          cd src/frontend
+          env -i PATH="$PATH" HOME="$HOME" CI=true node --input-type=module -e 'import {startVitest} from "vitest/node"; const context = await startVitest("test",["src/pages/assets/equipment/referenceParts.test.ts","src/pages/assets/equipment/machinePositions.test.ts"],{config:"vitest.config.ts",run:true,watch:false},{envFile:false}); await context.close();'
+      - name: S2 reference 3D scene regressions
+        run: |
+          cd src/frontend
+          env -i PATH="$PATH" HOME="$HOME" CI=true node node_modules/@playwright/test/cli.js test --config=playwright.s2.config.ts
+      - name: S2 reference 3D scene evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: aimms-r6-s2-equipment-scene
+          path: /tmp/aimms-r6-s2-browser
+          if-no-files-found: ignore
+      - name: Typecheck S3 Performance fixtures
+        run: cd src/frontend && node node_modules/typescript/bin/tsc --noEmit --project tsconfig.s3.json
+      - name: S3 Performance evaluation units
+        run: |
+          cd src/frontend
+          env -i PATH="$PATH" HOME="$HOME" CI=true node --input-type=module -e 'import {startVitest} from "vitest/node"; const context = await startVitest("test",["src/pages/assets/performance/evaluation.test.ts"],{config:"vitest.config.ts",run:true,watch:false},{envFile:false}); await context.close();'
+      - name: S3 native Performance fidelity regressions
+        run: |
+          cd src/frontend
+          env -i PATH="$PATH" HOME="$HOME" CI=true node node_modules/@playwright/test/cli.js test --config=playwright.s3.config.ts
+      - name: S3 native Performance evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: aimms-r6-s3-native-performance
+          path: /tmp/aimms-r6-s3-browser
+          if-no-files-found: ignore
+      - name: S0 synthetic fixture evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: aimms-r6-s0-native-fixtures
+          path: /tmp/aimms-r6-s0-browser
+          if-no-files-found: ignore
 
   voice-mobile:
     name: Voice desktop and Pixel 7 (recording-only)

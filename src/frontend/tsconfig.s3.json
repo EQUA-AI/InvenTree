@@ -1,0 +1,10 @@
+{
+	"extends": "./tsconfig.s0.json",
+	"files": [
+		"playwright.s3.config.ts",
+		"tests/performance/fixtures.ts",
+		"tests/s3/performanceFixtures.ts",
+		"tests/s3/pui_performance_native.spec.ts",
+		"tests/s3/pui_performance_evaluation.spec.ts"
+	]
+}

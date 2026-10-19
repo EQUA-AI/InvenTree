@@ -9,6 +9,12 @@
  * Reveal paging/expansion helpers below pin the deep-link reveal contract.
  */
 
+import {
+  type MachineListState,
+  machineListParams,
+  machineListState
+} from './machineListState';
+
 /** Backend location kinds (`assets.location_models.MachineLocation.Kind`). */
 export const LOCATION_KINDS = [
   'site',
@@ -202,7 +208,12 @@ export interface CountSummary {
 
 export function countSummary(
   counts: MachineCountTotals | undefined | null,
-  opts: { direct: boolean; searched: boolean }
+  opts: {
+    direct: boolean;
+    searched: boolean;
+    alarmsOnly?: boolean;
+    filtered?: boolean;
+  }
 ): CountSummary {
   return {
     view: counts
@@ -212,7 +223,7 @@ export function countSummary(
       : null,
     direct: counts ? counts.direct_machines : null,
     showDirectBreakdown: !opts.direct,
-    locationTotalsOnly: opts.searched
+    locationTotalsOnly: opts.searched || !!opts.alarmsOnly || !!opts.filtered
   };
 }
 
@@ -231,14 +242,22 @@ export function machineSourceView(
   return raw && SOURCE_VIEWS.has(raw) ? (raw as MachineSourceView) : null;
 }
 
-function validLocation(raw: string | null): number | null {
-  return raw && /^[0-9]+$/.test(raw) && Number(raw) > 0 ? Number(raw) : null;
+export function machineLocationId(params: URLSearchParams): number | null {
+  const raw = params.get('location');
+  const location = Number(raw);
+  return raw &&
+    /^[0-9]+$/.test(raw) &&
+    Number.isSafeInteger(location) &&
+    location > 0
+    ? location
+    : null;
 }
 
 export interface MachineLinkScope {
   location: number | null;
   direct: boolean;
   source: MachineSourceView | null;
+  list?: MachineListState;
 }
 
 /**
@@ -255,7 +274,7 @@ export function machineDetailHref(
 
   if (scope.location != null) query.set('location', String(scope.location));
   if (scope.direct) query.set('scope', 'direct');
-  const search = query.toString();
+  const search = machineListParams(query, scope.list ?? {}).toString();
   return search
     ? `/machines/machine/${machinePk}/?${search}`
     : `/machines/machine/${machinePk}/`;
@@ -270,7 +289,7 @@ export function machineDetailHref(
 export function machinesReturnHref(params: URLSearchParams): string {
   const source = machineSourceView(params);
 
-  const location = validLocation(params.get('location'));
+  const location = machineLocationId(params);
   const direct = params.get('scope') === 'direct';
   const query = new URLSearchParams();
   if (source === 'sites' || source === null) {
@@ -278,18 +297,21 @@ export function machinesReturnHref(params: URLSearchParams): string {
     if (direct) query.set('scope', 'direct');
     const base =
       source === 'sites' ? '/machines/index/sites/' : '/machines/index/';
-    return query.toString() ? `${base}?${query}` : base;
+    const restored = machineListParams(query, machineListState(params));
+    return restored.toString() ? `${base}?${restored}` : base;
   }
 
   const base =
     source === 'machines'
       ? '/machines/index/machines/'
       : '/machines/index/unassigned/';
-  return query.toString() ? `${base}?${query}` : base;
+  const restored = machineListParams(query, machineListState(params));
+  return restored.toString() ? `${base}?${restored}` : base;
 }
 
 export type MachineEmptyKind =
   | 'no-search-matches'
+  | 'no-filter-matches'
   | 'no-machines-in-alarm'
   | 'no-direct-machines'
   | 'no-machines-here'
@@ -299,11 +321,14 @@ export type MachineEmptyKind =
 export function machineEmptyKind(opts: {
   searched: boolean;
   alarmsOnly?: boolean;
+  /** A filter other than alarms (criticality) narrows the list. */
+  filtered?: boolean;
   unassigned: boolean;
   locationSelected: boolean;
   includeDescendants: boolean;
 }): MachineEmptyKind {
   if (opts.searched) return 'no-search-matches';
+  if (opts.filtered) return 'no-filter-matches';
   // A list narrowed to its alarms is empty because nothing is in alarm, not
   // because nothing is placed here.
   if (opts.alarmsOnly) return 'no-machines-in-alarm';

@@ -64,6 +64,12 @@ export interface MachineComponent {
   provenance: string;
   review_note: string;
   reviewed_at: string | null;
+  /** R6 P13: the reference 3D position this slot's family stands for (O11). */
+  reference_position?: string | null;
+  /** Open work naming this slot; null when the reader's Work scope is unknown. */
+  open_work?: { count: number } | null;
+  /** In-stock quantity of the catalogue Part; null without stock access. */
+  stock?: { quantity: number } | null;
 }
 
 export interface AssetMaintenanceRecord {

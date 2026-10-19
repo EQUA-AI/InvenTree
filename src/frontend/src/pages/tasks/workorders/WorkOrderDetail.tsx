@@ -1,9 +1,12 @@
 import { t } from '@lingui/core/macro';
 import {
+  Accordion,
   ActionIcon,
   Alert,
   Anchor,
   Badge,
+  Box,
+  Button,
   Card,
   Divider,
   Group,
@@ -11,6 +14,7 @@ import {
   SimpleGrid,
   Stack,
   Table,
+  Tabs,
   Text,
   Timeline,
   Title
@@ -22,17 +26,22 @@ import {
   IconGitBranch,
   IconHistory,
   IconLayoutKanban,
+  IconMessageChatbot,
   IconPackage,
-  IconPaperclip,
   IconShieldCheck
 } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import type { ReactNode } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { type ReactNode, useEffect, useState } from 'react';
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams
+} from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
-import { ModelType } from '@lib/enums/ModelType';
 import { apiUrl } from '@lib/functions/Api';
 import type { BoardCard, WorkOrderPart } from '@lib/types/Tasks';
 
@@ -46,14 +55,21 @@ import type {
   WorkOrderSummary
 } from '@lib/types/WorkOrderOverview';
 import PageTitle from '../../../components/nav/PageTitle';
-import { AttachmentTable } from '../../../tables/general/AttachmentTable';
 
 import { useApi } from '../../../contexts/ApiContext';
+import { openGlobalAIChatAboutWork } from '../../../states/AIChatState';
 import { InvestigationSection } from '../../maintenance/workorders/components/InvestigationSection';
 import { WorkOrderAlertContext } from '../../maintenance/workorders/components/WorkOrderAlertContext';
 import { WorkOrderProblemPanel } from '../../maintenance/workorders/components/WorkOrderProblemPanel';
 import { WorkOrderSafetyReadiness } from '../../maintenance/workorders/components/WorkOrderSafetyReadiness';
-import { CloseoutPanel, type CloseoutWorkOrder } from './CloseoutPanel';
+import { CloseoutPanel } from './CloseoutPanel';
+import { WorkAttachmentResource } from './WorkAttachmentResource';
+import {
+  type WorkPanel,
+  workPanelParams,
+  workPanelState
+} from './workPanelState';
+import { projectCloseoutWorkOrder } from './workProjection';
 
 const LIFECYCLE_COLORS: Record<string, string> = {
   draft: 'gray',
@@ -74,13 +90,12 @@ const LIFECYCLE_COLORS: Record<string, string> = {
  */
 export default function WorkOrderDetail() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const api = useApi();
-  const workOrderId = Number(id);
+  const workOrderId = id && /^\d+$/.test(id) ? Number(id) : Number.NaN;
 
   const workOrderQuery = useQuery({
     queryKey: ['work-order', workOrderId],
-    enabled: Number.isFinite(workOrderId),
+    enabled: Number.isSafeInteger(workOrderId) && workOrderId > 0,
     retry: false,
     queryFn: async () => {
       const response = await api.get<WorkOrderOverview>(
@@ -113,22 +128,209 @@ export default function WorkOrderDetail() {
     );
   }
 
-  const workOrder = workOrderQuery.data;
+  return (
+    <WorkOrderWorkspace
+      key={workOrderQuery.data.id}
+      workOrder={workOrderQuery.data}
+    />
+  );
+}
+
+function WorkOrderWorkspace({
+  workOrder
+}: Readonly<{ workOrder: WorkOrderOverview }>) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [params, setParams] = useSearchParams();
+  const activePanel = workPanelState(params);
+  // P02/P33: the one existing assistant, asked about this exact Work at the
+  // lifecycle version shown here. The drawer acknowledges it with the server
+  // before sending; this page grants nothing.
+  const canAskAboutWork =
+    Number.isSafeInteger(workOrder.lifecycle_version) &&
+    workOrder.lifecycle_version > 0;
+  const askAboutWork = () =>
+    openGlobalAIChatAboutWork({
+      workOrderId: workOrder.id,
+      lifecycleVersion: workOrder.lifecycle_version,
+      label: `${workOrder.reference} · ${workOrder.title}`,
+      returnPath: `${location.pathname}${location.search}`
+    });
+  const [visited, setVisited] = useState<Set<WorkPanel>>(
+    () => new Set(activePanel ? [activePanel] : [])
+  );
+  useEffect(() => {
+    if (activePanel)
+      setVisited((previous) =>
+        previous.has(activePanel)
+          ? previous
+          : new Set([...previous, activePanel])
+      );
+  }, [activePanel]);
+
+  const panels: { name: WorkPanel; label: string; content: ReactNode }[] = [
+    {
+      name: 'work',
+      label: t`Work`,
+      content: (
+        <Stack gap='md'>
+          {workOrder.repair_packet && (
+            <WorkOrderProblemPanel packet={workOrder.repair_packet} />
+          )}
+          <SectionCard
+            title={t`Board cards`}
+            icon={<IconLayoutKanban size={18} />}
+          >
+            <Table.ScrollContainer minWidth={640}>
+              <CardsTable cards={workOrder.cards ?? []} />
+            </Table.ScrollContainer>
+          </SectionCard>
+        </Stack>
+      )
+    },
+    {
+      name: 'diagnose',
+      label: t`Diagnose`,
+      content: workOrder.repair_packet?.findings.length ? (
+        <Table.ScrollContainer minWidth={900}>
+          <InvestigationSection
+            findings={workOrder.repair_packet.findings}
+            approvedScope={null}
+          />
+        </Table.ScrollContainer>
+      ) : (
+        <Alert
+          color='gray'
+          title={t`No findings in this overview`}
+        >{t`Recorded findings are not supplied here. This does not establish a cause or mean that all evidence sources have been checked.`}</Alert>
+      )
+    },
+    {
+      name: 'plan',
+      label: t`Plan & Safety`,
+      content: (
+        <Stack gap='md'>
+          {workOrder.repair_packet ? (
+            <>
+              {workOrder.repair_packet.approved_scope && (
+                <InvestigationSection
+                  findings={[]}
+                  approvedScope={workOrder.repair_packet.approved_scope}
+                />
+              )}
+              <WorkOrderSafetyReadiness gates={workOrder.repair_packet.gates} />
+              <RepairPacketCard packet={workOrder.repair_packet} />
+            </>
+          ) : (
+            <Alert
+              color='gray'
+              title={t`No linked repair packet`}
+            >{t`Safety and approved-scope records are not included in this overview. This is not permission to begin physical work.`}</Alert>
+          )}
+          <SectionCard
+            title={t`Dependencies`}
+            icon={<IconGitBranch size={18} />}
+          >
+            <DependenciesTable dependencies={workOrder.dependencies} />
+          </SectionCard>
+        </Stack>
+      )
+    },
+    {
+      name: 'parts',
+      label: t`Parts`,
+      content: (
+        <SectionCard title={t`Required parts`} icon={<IconPackage size={18} />}>
+          <PartsTable parts={workOrder.parts} />
+        </SectionCard>
+      )
+    },
+    {
+      name: 'verify',
+      label: t`Verify & Return`,
+      content: (
+        <Stack gap='md'>
+          <SectionCard
+            title={t`Recorded verification`}
+            icon={<IconShieldCheck size={18} />}
+          >
+            <InfoItem
+              label={t`Verification summary`}
+              value={
+                workOrder.structured_closeout?.verification_summary ?? null
+              }
+            />
+            <InfoItem
+              label={t`Recorded verification time`}
+              value={formatDateTime(
+                workOrder.structured_closeout?.verified_at ?? null
+              )}
+            />
+          </SectionCard>
+          <Alert color='gray'>{t`Physical test criteria, attempts, operating authority and service-return records are not supplied by this overview. A recorded summary or completed work order does not establish permission to operate.`}</Alert>
+        </Stack>
+      )
+    },
+    {
+      name: 'closeout',
+      label: t`Closeout`,
+      content: (
+        <Stack gap='md'>
+          {(workOrder.maintenance_record || workOrder.structured_closeout) && (
+            <CompletionCard
+              maintenance={workOrder.maintenance_record}
+              closeout={workOrder.structured_closeout}
+            />
+          )}
+          {workOrder.canonical_commands_enabled && !workOrder.repair_packet ? (
+            <CloseoutPanel workOrder={projectCloseoutWorkOrder(workOrder)} />
+          ) : workOrder.repair_packet ? (
+            <Alert color='blue'>
+              <Stack gap='xs'>
+                <Text>{t`This work order is completed through its owning repair packet.`}</Text>
+                <Anchor
+                  component={Link}
+                  to={`/repair/packets/${workOrder.repair_packet.id}/`}
+                >{t`Open ${workOrder.repair_packet.reference}`}</Anchor>
+              </Stack>
+            </Alert>
+          ) : (
+            <Text c='dimmed'>{t`Standalone completion is not enabled for this work order.`}</Text>
+          )}
+        </Stack>
+      )
+    },
+    {
+      name: 'history',
+      label: t`History`,
+      content: (
+        <SectionCard title={t`Activity`} icon={<IconHistory size={18} />}>
+          <EventTimeline events={workOrder.events} />
+        </SectionCard>
+      )
+    }
+  ];
 
   return (
     <Stack gap='md' p='md'>
       <PageTitle title={`${workOrder.reference} - ${workOrder.title}`} />
-      <Group justify='space-between'>
-        <Group gap='sm' wrap='nowrap'>
+      <Group justify='space-between' align='flex-start'>
+        <Group
+          gap='sm'
+          wrap='nowrap'
+          align='flex-start'
+          style={{ flex: '1 1 320px', minWidth: 0 }}
+        >
           <ActionIcon
             variant='default'
             aria-label='work-order-back'
+            style={{ flexShrink: 0 }}
             onClick={() => navigate(-1)}
           >
             <IconArrowLeft size={16} />
           </ActionIcon>
-          <Stack gap={2}>
-            <Title order={3}>
+          <Stack gap={2} style={{ minWidth: 0 }}>
+            <Title order={3} style={{ overflowWrap: 'anywhere' }}>
               {workOrder.reference}: {workOrder.title}
             </Title>
             <Text size='sm' c='dimmed'>
@@ -140,127 +342,139 @@ export default function WorkOrderDetail() {
           </Stack>
         </Group>
         <Group gap='xs'>
-          <StateBadge value={workOrder.status} color='indigo' />
+          <Button
+            variant='light'
+            size='xs'
+            leftSection={<IconMessageChatbot size={16} />}
+            onClick={askAboutWork}
+            disabled={!canAskAboutWork}
+          >
+            {t`Ask about this work`}
+          </Button>
+          <StateBadge
+            value={workOrder.status}
+            color='indigo'
+            label={t`Board stage`}
+          />
           <StateBadge
             value={workOrder.lifecycle_status}
+            label={t`Lifecycle`}
             color={LIFECYCLE_COLORS[workOrder.lifecycle_status] ?? 'gray'}
           />
           <StateBadge
             value={workOrder.priority}
+            label={t`Priority`}
             color={priorityColor(workOrder.priority)}
           />
         </Group>
       </Group>
 
+      <WorkAttachmentResource workOrderId={workOrder.id} />
+
       {workOrder.source_alert && (
         <WorkOrderAlertContext alert={workOrder.source_alert} />
       )}
 
-      <Card withBorder padding='md'>
-        <Stack gap='md'>
-          {workOrder.description && (
-            <Text size='sm'>{workOrder.description}</Text>
-          )}
-          <Divider />
-          <SimpleGrid cols={{ base: 2, md: 4 }}>
-            <InfoItem
-              label={t`Board stage`}
-              value={humanize(workOrder.status)}
-            />
-            <InfoItem
-              label={t`Type`}
-              value={humanize(workOrder.work_order_type)}
-            />
-            <InfoItem label={t`Assignee`} value={assigneeLabel(workOrder)} />
-            <InfoItem
-              label={t`Estimated effort`}
-              value={formatMinutes(workOrder.estimated_minutes)}
-            />
-            <InfoItem
-              label={t`Scheduled start`}
-              value={formatDateTime(workOrder.scheduled_start)}
-            />
-            <InfoItem
-              label={t`Scheduled end`}
-              value={formatDateTime(workOrder.scheduled_end)}
-            />
-            <InfoItem
-              label={t`Due date`}
-              value={formatDate(workOrder.due_date)}
-            />
-            <InfoItem
-              label={t`Actual start`}
-              value={formatDateTime(workOrder.actual_started_at)}
-            />
-            <InfoItem
-              label={t`Actual completion`}
-              value={formatDateTime(workOrder.actual_completed_at)}
-            />
-            <InfoItem label={t`Reference`} value={workOrder.reference} />
-            <InfoItem
-              label={t`Created`}
-              value={formatDateTime(workOrder.created_at)}
-            />
-            <InfoItem
-              label={t`Last updated`}
-              value={formatDateTime(workOrder.updated_at)}
-            />
-          </SimpleGrid>
-        </Stack>
-      </Card>
+      <Accordion variant='contained'>
+        <Accordion.Item value='record-details'>
+          <Accordion.Control>{t`Record details`}</Accordion.Control>
+          <Accordion.Panel>
+            <Stack gap='md'>
+              {workOrder.description && (
+                <Text size='sm'>{workOrder.description}</Text>
+              )}
+              <Divider />
+              <SimpleGrid cols={{ base: 2, md: 4 }}>
+                <InfoItem
+                  label={t`Board stage`}
+                  value={humanize(workOrder.status)}
+                />
+                <InfoItem
+                  label={t`Type`}
+                  value={humanize(workOrder.work_order_type)}
+                />
+                <InfoItem
+                  label={t`Assignee`}
+                  value={assigneeLabel(workOrder)}
+                />
+                <InfoItem
+                  label={t`Estimated effort`}
+                  value={formatMinutes(workOrder.estimated_minutes)}
+                />
+                <InfoItem
+                  label={t`Scheduled start`}
+                  value={formatDateTime(workOrder.scheduled_start)}
+                />
+                <InfoItem
+                  label={t`Scheduled end`}
+                  value={formatDateTime(workOrder.scheduled_end)}
+                />
+                <InfoItem
+                  label={t`Due date`}
+                  value={formatDate(workOrder.due_date)}
+                />
+                <InfoItem
+                  label={t`Actual start`}
+                  value={formatDateTime(workOrder.actual_started_at)}
+                />
+                <InfoItem
+                  label={t`Actual completion`}
+                  value={formatDateTime(workOrder.actual_completed_at)}
+                />
+                <InfoItem label={t`Reference`} value={workOrder.reference} />
+                <InfoItem
+                  label={t`Created`}
+                  value={formatDateTime(workOrder.created_at)}
+                />
+                <InfoItem
+                  label={t`Last updated`}
+                  value={formatDateTime(workOrder.updated_at)}
+                />
+              </SimpleGrid>
+            </Stack>
+          </Accordion.Panel>
+        </Accordion.Item>
+      </Accordion>
 
-      {workOrder.repair_packet && (
-        <WorkOrderProblemPanel packet={workOrder.repair_packet} />
-      )}
-
-      {workOrder.repair_packet && (
-        <InvestigationSection
-          findings={workOrder.repair_packet.findings}
-          approvedScope={workOrder.repair_packet.approved_scope}
-        />
-      )}
-
-      {workOrder.repair_packet && (
-        <WorkOrderSafetyReadiness gates={workOrder.repair_packet.gates} />
-      )}
-
-      <SectionCard title={t`Board cards`} icon={<IconLayoutKanban size={18} />}>
-        <CardsTable cards={workOrder.cards ?? []} />
-      </SectionCard>
-
-      <SectionCard title={t`Required parts`} icon={<IconPackage size={18} />}>
-        <PartsTable parts={workOrder.parts} />
-      </SectionCard>
-
-      <SectionCard title={t`Dependencies`} icon={<IconGitBranch size={18} />}>
-        <DependenciesTable dependencies={workOrder.dependencies} />
-      </SectionCard>
-
-      {workOrder.repair_packet && (
-        <RepairPacketCard packet={workOrder.repair_packet} />
-      )}
-
-      {(workOrder.maintenance_record || workOrder.structured_closeout) && (
-        <CompletionCard
-          maintenance={workOrder.maintenance_record}
-          closeout={workOrder.structured_closeout}
-        />
-      )}
-
-      <SectionCard title={t`Activity`} icon={<IconHistory size={18} />}>
-        <EventTimeline events={workOrder.events} />
-      </SectionCard>
-
-      <SectionCard title={t`Attachments`} icon={<IconPaperclip size={18} />}>
-        <AttachmentTable
-          model_type={ModelType.workorder}
-          model_id={workOrder.id}
-        />
-      </SectionCard>
-
-      {workOrder.canonical_commands_enabled && !workOrder.repair_packet && (
-        <CloseoutPanel workOrder={closeoutWorkOrder(workOrder)} />
-      )}
+      <Tabs
+        value={activePanel}
+        keepMounted
+        keepMountedMode='display-none'
+        onChange={(value) => {
+          const panel = panels.find((entry) => entry.name === value);
+          if (panel)
+            setParams((previous) => workPanelParams(previous, panel.name));
+        }}
+      >
+        <Box style={{ overflowX: 'auto' }}>
+          <Tabs.List
+            aria-label={t`Work workflow`}
+            style={{ flexWrap: 'nowrap', minWidth: 'max-content' }}
+          >
+            {panels.map((panel) => (
+              <Tabs.Tab key={panel.name} value={panel.name}>
+                {panel.label}
+              </Tabs.Tab>
+            ))}
+          </Tabs.List>
+        </Box>
+        {!activePanel && (
+          <Alert mt='md' color='red' title={t`Work panel unavailable`}>
+            <Stack gap='xs'>
+              <Text>{t`This link does not name a supported workflow panel.`}</Text>
+              <Anchor
+                component={Link}
+                to={`?${workPanelParams(params, 'work')}`}
+              >{t`Return to Work`}</Anchor>
+            </Stack>
+          </Alert>
+        )}
+        {panels.map((panel) => (
+          <Tabs.Panel key={panel.name} value={panel.name} pt='md'>
+            {visited.has(panel.name) ? panel.content : null}
+          </Tabs.Panel>
+        ))}
+      </Tabs>
     </Stack>
   );
 }
@@ -274,7 +488,9 @@ function InfoItem({
       <Text size='xs' c='dimmed'>
         {label}
       </Text>
-      <Text size='sm'>{value || '-'}</Text>
+      <Text size='sm' style={{ overflowWrap: 'anywhere' }}>
+        {value || '-'}
+      </Text>
     </Stack>
   );
 }
@@ -299,11 +515,12 @@ function SectionCard({
 
 function StateBadge({
   value,
-  color
-}: Readonly<{ value: string; color: string }>) {
+  color,
+  label
+}: Readonly<{ value: string; color: string; label?: string }>) {
   return (
     <Badge variant='light' color={color}>
-      {humanize(value)}
+      {label ? `${label}: ${humanize(value)}` : humanize(value)}
     </Badge>
   );
 }
@@ -484,7 +701,14 @@ function RepairPacketCard({
           label={t`Production impact`}
           value={packet.production_impact}
         />
-        <InfoItem label={t`Likely cause`} value={likelyCause} />
+        <InfoItem
+          label={
+            packet.diagnosis_is_preliminary
+              ? t`Preliminary results`
+              : t`Verified diagnosis`
+          }
+          value={likelyCause}
+        />
       </SimpleGrid>
       <Divider />
       <Text size='sm' fw={600}>{t`Safety gates`}</Text>
@@ -590,16 +814,6 @@ function displayReference(
 
 function assigneeLabel(workOrder: WorkOrderOverview): string {
   return workOrder.assigned_to_name || workOrder.assignee || '-';
-}
-
-function closeoutWorkOrder(workOrder: WorkOrderOverview): CloseoutWorkOrder {
-  return {
-    id: workOrder.id,
-    reference: workOrder.reference ?? `WO-${workOrder.id}`,
-    title: workOrder.title,
-    lifecycle_status: workOrder.lifecycle_status,
-    lifecycle_version: workOrder.lifecycle_version
-  };
 }
 
 function humanize(value: string): string {

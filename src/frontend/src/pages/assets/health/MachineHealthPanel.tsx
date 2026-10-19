@@ -51,11 +51,14 @@ import { AlarmNoteModal } from './mimic/AlarmNoteModal';
  */
 export function MachineHealthPanel({
   machineId,
-  mimic = false
+  mimicHref = null
 }: Readonly<{
   machineId: number;
-  /** Whether this machine has a mimic tab to lead to. */
-  mimic?: boolean;
+  /**
+   * Where this machine's mimic is: a station's own tab, or a pump's process
+   * schematic inside Equipment view. Null when it has none.
+   */
+  mimicHref?: string | null;
 }>) {
   const api = useApi();
   const queryClient = useQueryClient();
@@ -227,12 +230,8 @@ export function MachineHealthPanel({
           <Title order={4}>{t`Active anomalies`}</Title>
           {/* Where the reading behind an alarm is drawn, on the part it
               belongs to. */}
-          {mimic && (
-            <Anchor
-              component={Link}
-              to={`/machines/machine/${machineId}/mimic`}
-              size='sm'
-            >
+          {mimicHref && (
+            <Anchor component={Link} to={mimicHref} size='sm'>
               {t`See the readings on the mimic`}
             </Anchor>
           )}

@@ -3,6 +3,7 @@ import { Stack } from '@mantine/core';
 import {
   IconCalendar,
   IconLayoutKanban,
+  IconListDetails,
   IconRadar2,
   IconTimeline
 } from '@tabler/icons-react';
@@ -18,6 +19,7 @@ import TaskCalendar from '../../components/tasks/TaskCalendar';
 import TaskGantt from '../../components/tasks/TaskGantt';
 import { useRiskScope } from '../../hooks/UseRiskScope';
 import MaintenanceBoard from './MaintenanceBoard';
+import WorkListPanel from './WorkListPanel';
 
 /**
  * Maintenance workspace.
@@ -44,6 +46,13 @@ export default function MaintenanceIndex() {
         label: t`Board`,
         icon: <IconLayoutKanban />,
         content: <MaintenanceBoard />
+      },
+      {
+        name: 'work-list',
+        label: t`Work list`,
+        icon: <IconListDetails />,
+        content: <WorkListPanel />,
+        showHeadline: false
       },
       {
         name: 'calendar',

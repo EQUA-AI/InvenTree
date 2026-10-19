@@ -16,6 +16,7 @@ import {
   SourceTypeBadge,
   qualityLabel
 } from './common';
+import { indexSuppliedTrends, suppliedTrend } from './suppliedTrends';
 
 function formatValue(signal: MachineSignal): string {
   if (signal.value === null || signal.value === undefined) {
@@ -93,13 +94,10 @@ export function SignalTable({
     }
   });
 
-  const trendByBinding = useMemo(() => {
-    const map = new Map<number, SignalTrend>();
-    for (const trend of trendsQuery.data?.results ?? []) {
-      map.set(trend.binding_id, trend);
-    }
-    return map;
-  }, [trendsQuery.data]);
+  const trendByBinding = useMemo(
+    () => indexSuppliedTrends(trendsQuery.data?.results),
+    [trendsQuery.data]
+  );
 
   if (signals.length === 0) {
     return (
@@ -155,13 +153,8 @@ export function SignalTable({
                 <SignalTrendSparkline
                   machineId={machineId}
                   bindingId={signal.binding_id}
-                  // `?? null` is load-bearing: this table supplies every row,
-                  // so a binding the batch has not delivered must still read as
-                  // supplied. Passing the bare `map.get(...)` hands back
-                  // `undefined` until the batch resolves, which each sparkline
-                  // reads as "nobody is supplying" and answers with its own
-                  // request - the N+1 this batch exists to remove.
-                  trend={trendByBinding.get(signal.binding_id) ?? null}
+                  // Missing/pending supplied rows stay null, suppressing N+1 reads.
+                  trend={suppliedTrend(trendByBinding, signal.binding_id)}
                   supplierPending={trendsQuery.isLoading}
                 />
               </Table.Td>

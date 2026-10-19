@@ -393,6 +393,44 @@ export type ScopeErrorCode =
   | 'scope_version_conflict'
   | 'scope_update_rejected';
 
+// --- Work focus (aichat.services.work_focus / ai.core.analysis.wire) ---
+
+export interface WorkFocusIdentity {
+  schema_version: number;
+  kind: 'work_order';
+  work_order_id: number;
+  lifecycle_version: number;
+  machine_id: number | null;
+}
+
+export interface WorkFocusAcknowledgeRequest {
+  work_order_id: number;
+  expected_version: number;
+}
+
+export interface WorkFocusAcknowledgement {
+  schema_version: number;
+  thread_id: string;
+  focus: WorkFocusIdentity;
+  receipt: string;
+  expires_in: number;
+}
+
+export interface SavedTurnWorkFocus {
+  thread_id: string;
+  turn_id: string;
+  focus: WorkFocusIdentity;
+  stale: boolean;
+}
+
+export type WorkFocusErrorCode =
+  | 'work_focus_rejected';
+
+export type WorkFocusState =
+  | 'current'
+  | 'changed'
+  | 'unavailable';
+
 // --- Quota / admission (ai.core.quota.wire) ---
 
 export type QuotaErrorCode =

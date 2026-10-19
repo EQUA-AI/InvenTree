@@ -23,12 +23,12 @@ import {
   useMantineTheme
 } from '@mantine/core';
 import { useLocalStorage, useMediaQuery } from '@mantine/hooks';
-import { showNotification } from '@mantine/notifications';
 import {
   IconArrowDown,
   IconBrain,
   IconCheck,
   IconChevronDown,
+  IconClipboardList,
   IconCopy,
   IconEye,
   IconFileExport,
@@ -139,10 +139,12 @@ import {
   ThreadActionsModal
 } from '../aichat/ThreadActionsModal';
 import { ThreadMemoryModal } from '../aichat/ThreadMemoryModal';
+import { WorkFocusChip } from '../aichat/WorkFocusChip';
 import type { EvidenceAnalysisAttachment } from '../aichat/evidenceAnalysis';
 import { composeAnswerMarkdown } from '../aichat/evidenceFormat';
 import { hintIsRedundant } from '../aichat/scopeContext';
 import type { ThreadDeleteResult } from '../aichat/threadDeletion';
+import { workFocusReturnPath } from '../aichat/workFocus';
 import RiskRadarDrawerBadge from '../riskradar/RiskRadarDrawerBadge';
 
 type AIChatDrawerTab = 'chat' | 'approvals' | 'history' | 'mail';
@@ -1076,6 +1078,12 @@ function ChatMessageItem({
                 onAnswer={(text) => onQuestionAnswer?.(text)}
               />
             )}
+            {/* P02/P33: the Work order this exchange was about — from the
+                acknowledgement on the question, from the saved turn on the
+                answer, so it survives reload. */}
+            {!message.isStreaming && message.workFocus && (
+              <WorkFocusChip focus={message.workFocus} />
+            )}
             {/* Server-observed entity chips (S28): navigate to the records
                 this turn was actually about. */}
             {!isUser && !message.isStreaming && message.entities && (
@@ -1303,6 +1311,9 @@ function AIChatSessionDrawer({
     scopeCapable,
     scopeConflict,
     setThreadScope,
+    workFocusCapable,
+    acknowledgeWorkFocus,
+    refreshThreadScope,
     resendLastTurn,
     aiHost,
     // Structured questions (S22/S23)
@@ -1320,6 +1331,13 @@ function AIChatSessionDrawer({
       ? pendingRoutingHint
       : undefined;
   const clearRoutingHint = useAIChatState((state) => state.clearHint);
+  // P02/P33: a question asked from one Work order (never with a machine hint).
+  const pendingWorkFocus = useAIChatState((state) => state.workFocusHint);
+  const workFocusHint =
+    hintThreadId === null || hintThreadId === activeThreadId
+      ? pendingWorkFocus
+      : undefined;
+  const clearWorkFocus = useAIChatState((state) => state.clearWorkFocus);
   // U1: machine Ask/scan carries a one-shot "open the Chat tab" intent.
   const chatOpenIntent = useAIChatState((state) => state.chatOpenIntent);
 
@@ -1416,6 +1434,15 @@ function AIChatSessionDrawer({
   // C2: the routing hint collapses once the server-confirmed scope already
   // covers it (display decision only; authorization stays server-side).
   const hintRedundant = hintIsRedundant(activeScope, routingHint ?? undefined);
+  useEffect(() => {
+    if (
+      routingHint &&
+      scopeCapable &&
+      activeScope?.mode === 'explicit_assets' &&
+      activeScope.machineIds === undefined
+    )
+      void refreshThreadScope();
+  }, [routingHint, scopeCapable, activeScope, refreshThreadScope]);
   const [approvalView, setApprovalView] = useState<'open' | 'resolved'>('open');
   // U1: friendly page labels for the drawer's context line (never raw path).
   const pageContextLabels: Record<PageContextKind, string> = {
@@ -1655,20 +1682,100 @@ function AIChatSessionDrawer({
 
   // S2: a scope PUT seeded by the routing hint is in flight before a send.
   const [isApplyingScope, setIsApplyingScope] = useState(false);
+  const scopeSendInFlight = useRef<symbol | null>(null);
+  const [scopeLaunchError, setScopeLaunchError] = useState(false);
+
+  // P02/P33: why a Work-focused send was held back, if it was.
+  const [workFocusLaunchError, setWorkFocusLaunchError] = useState<
+    'unsupported' | 'refused' | null
+  >(null);
+
+  useEffect(() => {
+    scopeSendInFlight.current = null;
+    setIsApplyingScope(false);
+    setScopeLaunchError(false);
+    setWorkFocusLaunchError(null);
+  }, [routingHint, workFocusHint]);
 
   // Handle sending a message
   const handleSendMessage = useCallback(
     async (messageText?: string) => {
       const text = messageText || inputValue;
-      if (!text.trim() || isLoading || isSyncing || isApplyingScope) return;
+      if (
+        !text.trim() ||
+        isLoading ||
+        isSyncing ||
+        isApplyingScope ||
+        scopeSendInFlight.current
+      )
+        return;
       const version = composerVersionRef.current;
       const fileIds = attachedFiles.map((f) => f.file_id);
-      // S2: the machine hint is now a SCOPE SEED, never message text — it
-      // becomes a server-side explicit-assets scope on this thread before
-      // the first send. Failure narrows nothing, so the send proceeds
-      // unscoped with a visible notice (per-turn authorization is the real
-      // boundary); the typed text always goes out byte-identical.
-      if (routingHint && scopeCapable && !activeThreadShared) {
+      if (workFocusHint) {
+        // P02/P33: the server must acknowledge this exact Work at the version
+        // the page showed before anything is sent. Every failure keeps the
+        // draft and attachments and sends nothing; removing the Work is the
+        // user's explicit choice to ask without it.
+        if (!workFocusCapable || activeThreadShared) {
+          setWorkFocusLaunchError('unsupported');
+          setInputValue(text);
+          return;
+        }
+        const focusAttempt = Symbol('work-focus');
+        scopeSendInFlight.current = focusAttempt;
+        setIsApplyingScope(true);
+        let acknowledged: Awaited<ReturnType<typeof acknowledgeWorkFocus>>;
+        try {
+          acknowledged = await acknowledgeWorkFocus(
+            workFocusHint.workOrderId,
+            workFocusHint.lifecycleVersion
+          );
+        } catch {
+          acknowledged = { ok: false, code: 'error' };
+        } finally {
+          if (scopeSendInFlight.current === focusAttempt) {
+            scopeSendInFlight.current = null;
+            if (version === composerVersionRef.current)
+              setIsApplyingScope(false);
+          }
+        }
+        // Closing, switching or a new launch during the request voids it.
+        if (
+          version !== composerVersionRef.current ||
+          useAIChatState.getState().workFocusHint !== workFocusHint
+        )
+          return;
+        if (!acknowledged.ok) {
+          setWorkFocusLaunchError('refused');
+          setInputValue(text);
+          return;
+        }
+        setWorkFocusLaunchError(null);
+        const identity = acknowledged.acknowledgement.focus;
+        sendMessage(text, fileIds.length > 0 ? fileIds : undefined, {
+          receipt: acknowledged.acknowledgement.receipt,
+          workFocus: {
+            identity,
+            label: workFocusHint.label,
+            returnPath: workFocusReturnPath(
+              identity.work_order_id,
+              workFocusHint.returnPath
+            )
+          }
+        });
+        clearWorkFocus();
+        setInputValue('');
+        setAttachedFiles([]);
+        return;
+      }
+      if (routingHint) {
+        if (!scopeCapable || activeThreadShared) {
+          setScopeLaunchError(true);
+          setInputValue(text);
+          return;
+        }
+        const scopeAttempt = Symbol('machine-scope');
+        scopeSendInFlight.current = scopeAttempt;
         setIsApplyingScope(true);
         try {
           const result = await setThreadScope({
@@ -1676,14 +1783,32 @@ function AIChatSessionDrawer({
             machine_ids: [routingHint.machineId],
             display_label: routingHint.machineName.slice(0, 120)
           });
+          if (
+            version !== composerVersionRef.current ||
+            useAIChatState.getState().routingHint !== routingHint
+          )
+            return;
           if (!result.ok) {
-            showNotification({
-              color: 'yellow',
-              message: t`Could not set the machine scope — sending without it.`
-            });
+            setScopeLaunchError(true);
+            setInputValue(text);
+            return;
           }
+          setScopeLaunchError(false);
+        } catch {
+          if (
+            version === composerVersionRef.current &&
+            useAIChatState.getState().routingHint === routingHint
+          ) {
+            setScopeLaunchError(true);
+            setInputValue(text);
+          }
+          return;
         } finally {
-          if (version === composerVersionRef.current) setIsApplyingScope(false);
+          if (scopeSendInFlight.current === scopeAttempt) {
+            scopeSendInFlight.current = null;
+            if (version === composerVersionRef.current)
+              setIsApplyingScope(false);
+          }
         }
       }
       if (version !== composerVersionRef.current) return;
@@ -1709,7 +1834,11 @@ function AIChatSessionDrawer({
       activeThreadShared,
       attachedFiles,
       routingHint,
-      clearRoutingHint
+      clearRoutingHint,
+      workFocusHint,
+      workFocusCapable,
+      acknowledgeWorkFocus,
+      clearWorkFocus
     ]
   );
 
@@ -1771,10 +1900,12 @@ function AIChatSessionDrawer({
   // owned thread — the composer is disabled on shared transcripts, so the
   // ask could never be sent there.
   useEffect(() => {
-    if (!opened || !routingHint) return;
+    if (!opened || (!routingHint && !workFocusHint)) return;
     if (activeThreadShared) {
       const id = createNewThread();
-      useAIChatState.getState().openWithHint(routingHint);
+      if (workFocusHint)
+        useAIChatState.getState().openWithWorkFocus(workFocusHint);
+      else if (routingHint) useAIChatState.getState().openWithHint(routingHint);
       useAIChatState.getState().bindHint(id);
     } else {
       useAIChatState.getState().bindHint(activeThreadId);
@@ -1782,6 +1913,7 @@ function AIChatSessionDrawer({
   }, [
     opened,
     routingHint,
+    workFocusHint,
     activeThreadShared,
     activeThreadId,
     createNewThread
@@ -2354,6 +2486,7 @@ function AIChatSessionDrawer({
                       rightSection={
                         <ActionIcon
                           aria-label={`remove-ai-chat-attachment-${f.file_id}`}
+                          disabled={isApplyingScope}
                           size='xs'
                           variant='transparent'
                           color='blue'
@@ -2381,7 +2514,46 @@ function AIChatSessionDrawer({
                 onChange={handleFileSelect}
               />
 
-              {routingHint && !hintRedundant && (
+              {workFocusHint && (
+                <Group
+                  gap='xs'
+                  mb={4}
+                  wrap='nowrap'
+                  data-testid='ai-chat-work-focus'
+                  style={{ minWidth: 0 }}
+                >
+                  <Badge
+                    variant='light'
+                    color='teal'
+                    leftSection={<IconClipboardList size={12} />}
+                    title={workFocusHint.label}
+                    style={{ maxWidth: '100%' }}
+                    rightSection={
+                      <ActionIcon
+                        size='xs'
+                        variant='transparent'
+                        color='teal'
+                        aria-label={t`Remove work order`}
+                        onClick={clearWorkFocus}
+                      >
+                        <IconX size={10} />
+                      </ActionIcon>
+                    }
+                  >
+                    {t`Asking about work order`}: {workFocusHint.label}
+                  </Badge>
+                </Group>
+              )}
+              {workFocusHint && workFocusLaunchError && (
+                <Alert color='red' title={t`Work order not confirmed`}>
+                  <Text size='sm'>
+                    {workFocusLaunchError === 'unsupported'
+                      ? t`No message was sent: this assistant cannot confirm a work order yet. Your draft and attachments are kept. Remove the work order to ask without it.`
+                      : t`No message was sent: the work order could not be confirmed as shown. Your draft and attachments are kept. Retry sending, reload the work order if it has changed, or remove the work order to ask without it.`}
+                  </Text>
+                </Alert>
+              )}
+              {routingHint && (!hintRedundant || scopeLaunchError) && (
                 <Group gap='xs' mb={4} data-testid='ai-chat-routing-hint'>
                   <Badge
                     variant='light'
@@ -2401,6 +2573,13 @@ function AIChatSessionDrawer({
                     {t`Asking about`}: {routingHint.machineName}
                   </Badge>
                 </Group>
+              )}
+              {routingHint && scopeLaunchError && (
+                <Alert color='red' title={t`Machine context not confirmed`}>
+                  <Text size='sm'>
+                    {t`No message was sent. Your draft and attachments are kept. Retry sending, or remove the machine selection before sending without that context.`}
+                  </Text>
+                </Alert>
               )}
               {/* C2: the truthful, read-only analysis context — reports
                 server-confirmed scope only, with no menu attached. */}
@@ -2428,6 +2607,7 @@ function AIChatSessionDrawer({
                       onClick={() => fileInputRef.current?.click()}
                       disabled={
                         isLoading ||
+                        isApplyingScope ||
                         isUploading ||
                         isSyncing ||
                         activeThreadShared ||
@@ -2458,6 +2638,7 @@ function AIChatSessionDrawer({
                     maxRows={4}
                     disabled={
                       isLoading ||
+                      isApplyingScope ||
                       isSyncing ||
                       activeThreadShared ||
                       activeThreadDeletionPending

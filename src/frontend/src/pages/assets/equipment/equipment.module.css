@@ -1,0 +1,19 @@
+/* The component list sits below the model: one column on a phone, three
+   columns flowing downward from 576 px, so it stays compact and still reads
+   in tree order. The inspector has the column beside the model. */
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+@media (min-width: 36em) {
+  .list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(3, auto);
+    grid-auto-flow: column;
+    column-gap: var(--mantine-spacing-sm);
+  }
+}

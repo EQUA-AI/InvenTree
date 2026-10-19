@@ -125,18 +125,21 @@ export function InvenTreeTableInternal<T extends Record<string, any>>({
   }, [userSettings]);
 
   const tableSearchParams = useMemo(() => {
-    return searchParams
-      ? excludeDetailNavigationParams(searchParams)
-      : undefined;
-  }, [searchParams]);
+    return props.enableQueryFilters === false
+      ? undefined
+      : searchParams
+        ? excludeDetailNavigationParams(searchParams)
+        : undefined;
+  }, [props.enableQueryFilters, searchParams]);
 
   const clearTableSearchParams = useCallback(() => {
+    if (props.enableQueryFilters === false) return;
     setSearchParams?.(
       searchParams
         ? extractDetailNavigationParams(searchParams)
         : new URLSearchParams()
     );
-  }, [searchParams, setSearchParams]);
+  }, [props.enableQueryFilters, searchParams, setSearchParams]);
 
   // Key used for caching table data
   const cacheKey = useMemo(() => {

@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 
 import { RelationChart } from '../RelationChart';
 import { familyColors } from '../TrendChart';
+import { reactiveSharesPowerAxis } from '../evaluation';
 import { withRole } from '../resolve';
 import { relationPoints } from '../series';
 import {
@@ -20,6 +21,11 @@ import {
  * Power and power factor share a chart because they are read together; current
  * and voltage share one for the same reason. Relationships against speed and
  * pressure are drawn as patterns, not explanations.
+ *
+ * Power factor is dimensionless and has the right axis to itself. Reactive
+ * power joins active power on the left axis only when their units carry the
+ * same magnitude (MW with Mvar, kW with kvar); otherwise it is drawn on its
+ * own trend beside them. It never shares a scale with the power factor.
  */
 export function ElectricalSection({
   parameters,
@@ -61,7 +67,15 @@ export function ElectricalSection({
     [power, currents, series]
   );
 
-  const hasPower = power.length + reactive.length + factor.length > 0;
+  const sharedAxis = reactiveSharesPowerAxis(
+    power.map((p) => p.signal.unit),
+    reactive.map((p) => p.signal.unit)
+  );
+  // Reactive power with no active power to share with: it takes the left
+  // axis of its own card and the power factor keeps the right.
+  const ownReactiveCard = reactive.length > 0 && !sharedAxis;
+  const powerCard = sharedAxis ? [...power, ...reactive] : power;
+  const hasPower = powerCard.length + factor.length > 0;
   const hasSupply = currents.length + voltages.length > 0;
   const hasExcitation = excitationCurrent.length + excitationVoltage.length > 0;
 
@@ -79,26 +93,55 @@ export function ElectricalSection({
           <ChartCard
             title={t`Power and power factor`}
             description={
-              power.length === 0 || reactive.length + factor.length === 0
-                ? undefined
-                : reactive.length > 0
-                  ? t`Active power on the left axis; reactive power and power factor on the right.`
-                  : t`Active power on the left axis; power factor on the right.`
+              sharedAxis
+                ? factor.length > 0
+                  ? t`Active and reactive power on the left axis (${power[0].signal.unit} / ${reactive[0].signal.unit}); power factor on the right.`
+                  : t`Active and reactive power share the left axis (${power[0].signal.unit} / ${reactive[0].signal.unit}).`
+                : power.length > 0 && factor.length > 0
+                  ? t`Active power on the left axis; power factor on the right.`
+                  : undefined
             }
           >
             <ParameterTrend
-              parameters={[...power, ...reactive, ...factor]}
+              parameters={[...powerCard, ...factor]}
               lines={[
                 ...power.map((p) => lineFor(p, 'blue.7')),
-                ...reactive.map((p) => lineFor(p, 'violet.6', 'right')),
+                ...(sharedAxis
+                  ? reactive.map((p) => lineFor(p, 'violet.6'))
+                  : []),
                 ...factor.map((p) => lineFor(p, 'orange.6', 'right'))
               ]}
               series={series}
               window={window}
               syncId={syncId}
               onZoom={onZoom}
-              unit={power[0]?.signal.unit}
-              rightUnit={factor[0] ? '' : reactive[0]?.signal.unit}
+              unit={
+                sharedAxis
+                  ? `${power[0].signal.unit} / ${reactive[0].signal.unit}`
+                  : power[0]?.signal.unit
+              }
+              // Dimensionless: named by its series rather than a unit.
+              rightUnit={factor[0]?.signal.unit || undefined}
+            />
+          </ChartCard>
+        )}
+        {ownReactiveCard && (
+          <ChartCard
+            title={t`Reactive power`}
+            description={
+              power.length > 0
+                ? t`Drawn apart from active power: their units (${power[0].signal.unit || t`none`} and ${reactive[0].signal.unit || t`none`}) are not stated at the same magnitude.`
+                : undefined
+            }
+          >
+            <ParameterTrend
+              parameters={reactive}
+              lines={reactive.map((p) => lineFor(p, 'violet.6'))}
+              series={series}
+              window={window}
+              syncId={syncId}
+              onZoom={onZoom}
+              unit={reactive[0].signal.unit}
             />
           </ChartCard>
         )}

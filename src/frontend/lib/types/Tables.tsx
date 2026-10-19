@@ -204,6 +204,7 @@ export type InvenTreeTableProps<T = any> = {
   enableBulkDelete?: boolean;
   enableDownload?: boolean;
   enableFilters?: boolean;
+  enableQueryFilters?: boolean;
   enableSelection?: boolean;
   enableSearch?: boolean;
   enablePagination?: boolean;

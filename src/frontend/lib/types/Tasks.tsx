@@ -39,6 +39,11 @@ export interface WorkOrder {
   reference: string | null;
   lifecycle_status: string;
   lifecycle_version: number;
+  /**
+   * R6 UI10: why the row is in "Needs attention" (``needs_attention.v1``);
+   * null outside that scope.
+   */
+  attention_reasons?: string[] | null;
   actual_started_at: string | null;
   actual_completed_at: string | null;
   tags: string[];

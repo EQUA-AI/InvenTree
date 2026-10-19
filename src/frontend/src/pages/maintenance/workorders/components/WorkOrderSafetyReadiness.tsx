@@ -75,52 +75,57 @@ export function WorkOrderSafetyReadiness({
             {t`No safety gates are attached to this repair.`}
           </Text>
         ) : (
-          <Table striped>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t`Gate`}</Table.Th>
-                <Table.Th>{t`Type`}</Table.Th>
-                <Table.Th>{t`Status`}</Table.Th>
-                <Table.Th>{t`Blocking`}</Table.Th>
-                <Table.Th>{t`Evidence required`}</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {gates.map((gate) => (
-                <Table.Tr key={gate.id}>
-                  <Table.Td>
-                    <Text size='sm'>{gate.name}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge variant='outline' color='gray'>
-                      {gate.gate_type}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge color={gateStatusColor(gate.status)} variant='light'>
-                      {gate.status}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size='sm'>
-                      {gate.is_blocking ? t`Blocking` : t`Advisory`}
-                      {gate.is_mandatory ? ` · ${t`mandatory`}` : ''}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size='sm' c='dimmed'>
-                      {[
-                        gate.requires_photo ? t`photo` : null,
-                        gate.requires_second_person ? t`second person` : null
-                      ]
-                        .filter(Boolean)
-                        .join(', ') || '—'}
-                    </Text>
-                  </Table.Td>
+          <Table.ScrollContainer minWidth={720}>
+            <Table striped>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{t`Gate`}</Table.Th>
+                  <Table.Th>{t`Type`}</Table.Th>
+                  <Table.Th>{t`Status`}</Table.Th>
+                  <Table.Th>{t`Blocking`}</Table.Th>
+                  <Table.Th>{t`Evidence required`}</Table.Th>
                 </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
+              </Table.Thead>
+              <Table.Tbody>
+                {gates.map((gate) => (
+                  <Table.Tr key={gate.id}>
+                    <Table.Td>
+                      <Text size='sm'>{gate.name}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge variant='outline' color='gray'>
+                        {gate.gate_type}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge
+                        color={gateStatusColor(gate.status)}
+                        variant='light'
+                      >
+                        {gate.status}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size='sm'>
+                        {gate.is_blocking ? t`Blocking` : t`Advisory`}
+                        {gate.is_mandatory ? ` · ${t`mandatory`}` : ''}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size='sm' c='dimmed'>
+                        {[
+                          gate.requires_photo ? t`photo` : null,
+                          gate.requires_second_person ? t`second person` : null
+                        ]
+                          .filter(Boolean)
+                          .join(', ') || '—'}
+                      </Text>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
         )}
       </Stack>
     </Card>

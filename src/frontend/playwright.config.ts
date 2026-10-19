@@ -60,14 +60,14 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome']
       },
-      testIgnore: /customization/ // Ignore all tests in the "customization" folder for this project
+      testIgnore: [/customization/, /\/s0\//, /\/s1\//]
     },
     {
       name: 'firefox',
       use: {
         ...devices['Desktop Firefox']
       },
-      testIgnore: /customization/ // Ignore all tests in the "customization" folder for this project
+      testIgnore: [/customization/, /\/s0\//, /\/s1\//]
     }
   ],
 
