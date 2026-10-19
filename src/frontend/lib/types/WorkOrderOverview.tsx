@@ -6,7 +6,7 @@
  */
 
 import type { BoardCard, WorkOrder } from './Tasks';
-import type { HandledActions } from './WorkExecution';
+import type { HandledActions, Investigation } from './WorkExecution';
 
 export interface WorkOrderSummary {
   id: number;
@@ -156,4 +156,5 @@ export interface WorkOrderOverview extends WorkOrder {
   canonical_commands_enabled: boolean;
   /** R6 S4 projections (`tasks/work_execution`); absent on older servers. */
   handled_actions?: HandledActions;
+  investigation?: Investigation;
 }

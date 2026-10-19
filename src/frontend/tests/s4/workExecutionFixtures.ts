@@ -84,3 +84,33 @@ export function onlyReads(requests: ApiRequest[]) {
 }
 
 export { workOrder };
+
+/**
+ * What the production assistant drawer reads once it opens, so "Continue
+ * investigation" can be followed into the one existing assistant.
+ */
+export async function mockAssistantOpen(page: Page) {
+  await page.route('**/api/approvals/count/**', (route) =>
+    route.fulfill({ json: { count: 0 } })
+  );
+  await page.route('**/api/aichat/proposals/**', (route) =>
+    route.fulfill({ json: { results: [] } })
+  );
+  // A UI library stylesheet names a web font on its CDN; nothing external
+  // is fetched in this harness.
+  await page.route('https://cdn.svar.dev/**', (route) =>
+    route.fulfill({ status: 404, body: '' })
+  );
+  await page.route(/\/api\/ai\/threads(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: {
+        threads: [],
+        shared_threads: [],
+        has_more: false,
+        capabilities: { thread_scope: true, work_focus: true }
+      }
+    })
+  );
+}
+
+export const WORK_LABEL = 'WO-73 · Synthetic job 73';

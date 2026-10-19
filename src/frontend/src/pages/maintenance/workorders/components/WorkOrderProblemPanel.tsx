@@ -34,14 +34,14 @@ function analysisStatusLabel(status: string | null): string {
  * it, and never "Diagnosis" before then. Calling an unverified model output a
  * diagnosis is the mistake that gets a machine worked on for the wrong reason,
  * so the label is derived from the server's verification flag rather than from
- * how confident the text sounds.
+ * how confident the text sounds. The generator's confidence number is not
+ * shown (R6 A08.2): certainty is read from cited evidence on Diagnose.
  */
 export function WorkOrderProblemPanel({
   packet
 }: Readonly<{ packet: RepairPacketOverview }>) {
   const diagnosis = packet.diagnosis ?? {};
   const likelyCause = String(diagnosis.likely_cause ?? '');
-  const confidence = Number(diagnosis.confidence ?? 0);
   const preliminary = packet.diagnosis_is_preliminary;
 
   return (
@@ -82,11 +82,6 @@ export function WorkOrderProblemPanel({
               <Text size='xs' c='dimmed' fw={500}>
                 {preliminary ? t`Preliminary results` : t`Verified diagnosis`}
               </Text>
-              {confidence > 0 && (
-                <Badge size='sm' variant='outline' color='gray'>
-                  {t`Confidence ${Math.round(confidence * 100)}%`}
-                </Badge>
-              )}
             </Group>
             <Text size='sm'>{likelyCause}</Text>
             {preliminary && (
