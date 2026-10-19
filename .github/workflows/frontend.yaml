@@ -184,7 +184,7 @@ jobs:
       - name: S2 reference model position units
         run: |
           cd src/frontend
-          env -i PATH="$PATH" HOME="$HOME" CI=true node --input-type=module -e 'import {startVitest} from "vitest/node"; const context = await startVitest("test",["src/pages/assets/equipment/referenceParts.test.ts","src/pages/assets/equipment/machinePositions.test.ts"],{config:"vitest.config.ts",run:true,watch:false},{envFile:false}); await context.close();'
+          env -i PATH="$PATH" HOME="$HOME" CI=true node --input-type=module -e 'import {startVitest} from "vitest/node"; const context = await startVitest("test",["src/pages/assets/equipment/referenceParts.test.ts","src/pages/assets/equipment/machinePositions.test.ts","src/components/nav/returnPath.test.ts"],{config:"vitest.config.ts",run:true,watch:false},{envFile:false}); await context.close();'
       - name: S2 reference 3D scene regressions
         run: |
           cd src/frontend

@@ -1,7 +1,7 @@
 import { t } from '@lingui/core/macro';
 import { Anchor, Badge, Group, Stack, Text } from '@mantine/core';
-import { useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useMemo } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { ModelType } from '@lib/enums/ModelType';
@@ -18,6 +18,7 @@ import {
   referencePartLabel
 } from '../../pages/assets/equipment/referenceParts';
 import { useUserState } from '../../states/UserState';
+import { ComponentSlotDetail } from './ComponentSlotDetail';
 
 /**
  * The equipment registry's components for a pump - or, for a station, its own
@@ -38,6 +39,23 @@ export function MachineComponentTable({
   const station = machine.asset_type === 'pumphouse';
   const linkParts = user.hasViewRole(UserRoles.part);
   const showStock = user.hasViewRole(UserRoles.stock);
+  // R6 P13: the open slot lives in the URL, so Back and a shared link return
+  // to it; opening pushes history, closing replaces it.
+  const [params, setParams] = useSearchParams();
+  const slot = params.get('slot');
+  const openSlot = useCallback(
+    (pk: number | null) =>
+      setParams(
+        (previous) => {
+          const next = new URLSearchParams(previous);
+          if (pk === null) next.delete('slot');
+          else next.set('slot', String(pk));
+          return next;
+        },
+        { replace: pk === null }
+      ),
+    [setParams]
+  );
 
   const tableFilters = useMemo<TableFilter[]>(
     () => [
@@ -85,8 +103,17 @@ export function MachineComponentTable({
         title: t`Component`,
         sortable: false,
         render: (record) => (
-          <Stack gap={0}>
-            <Text size='sm'>{record.name}</Text>
+          <Stack gap={0} align='flex-start'>
+            <Anchor
+              component='button'
+              type='button'
+              size='sm'
+              ta='left'
+              onClick={() => openSlot(record.pk)}
+              aria-haspopup='dialog'
+            >
+              {record.name}
+            </Anchor>
             <Text size='xs' c='dimmed'>
               {record.code}
             </Text>
@@ -243,19 +270,44 @@ export function MachineComponentTable({
           )
       }
     ];
-  }, [machine.pk, machine.name, station, linkParts, showStock]);
+  }, [machine.pk, machine.name, station, linkParts, showStock, openSlot]);
+
+  const records = table.records as MachineComponent[];
+  const record = slot
+    ? (records.find((row) => String(row.pk) === slot) ?? null)
+    : null;
 
   return (
-    <InvenTreeTable<MachineComponent>
-      url={`${apiUrl(ApiEndpoints.equipment_registry)}${machine.pk}/components/`}
-      tableState={table}
-      columns={tableColumns}
-      props={{
-        enableSearch: false,
-        enablePagination: true,
-        enableRefresh: true,
-        tableFilters
-      }}
-    />
+    <>
+      <ComponentSlotDetail
+        machine={machine}
+        record={record}
+        missingSlot={
+          !!slot && !record && !table.isLoading && records.length > 0
+        }
+        linkParts={linkParts}
+        showStock={showStock}
+        onClose={() => openSlot(null)}
+      />
+      <InvenTreeTable<MachineComponent>
+        url={`${apiUrl(ApiEndpoints.equipment_registry)}${machine.pk}/components/`}
+        tableState={table}
+        columns={tableColumns}
+        props={{
+          enableSearch: false,
+          enablePagination: true,
+          enableRefresh: true,
+          // The URL holds the open slot, not filters for this table.
+          enableQueryFilters: false,
+          tableFilters,
+          // A row opens its slot, except from a link or button inside it.
+          onRowClick: (row, _index, event) => {
+            if ((event?.target as HTMLElement | null)?.closest('a, button'))
+              return;
+            openSlot(row.pk);
+          }
+        }}
+      />
+    </>
   );
 }

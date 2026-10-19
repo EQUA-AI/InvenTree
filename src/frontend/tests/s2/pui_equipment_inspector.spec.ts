@@ -216,3 +216,35 @@ test('records the reader may not see say so, with no retry that cannot help', as
   await expect(panel.getByRole('button', { name: 'Retry' })).toHaveCount(0);
   await expect(panel.locator('[data-slot]')).toHaveCount(0);
 });
+
+test('a Parts slot opens the model on its own position', async ({ page }) => {
+  await mockPositions(page);
+  await page.goto(
+    `/playwright/s2-equipment.html?kind=panel&entry=${encodeURIComponent('/fixture?position=bearing')}`
+  );
+  await expect(page.locator('[data-scene-phase="ready"]')).toBeVisible();
+  await expect(
+    inspector(page).getByRole('heading', { name: 'Motor drive-end bearing' })
+  ).toBeVisible();
+  await expect(page.locator('[data-position="bearing"]')).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
+});
+
+test('an unknown position in the link falls back to the whole machine', async ({
+  page
+}) => {
+  await mockPositions(page);
+  await page.goto(
+    `/playwright/s2-equipment.html?kind=panel&entry=${encodeURIComponent('/fixture?position=gearbox')}`
+  );
+  await expect(page.locator('[data-scene-phase="ready"]')).toBeVisible();
+  await expect(page.locator('[data-position="machine"]')).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
+  await expect(
+    inspector(page).getByRole('heading', { name: 'Motor drive-end bearing' })
+  ).toHaveCount(0);
+});

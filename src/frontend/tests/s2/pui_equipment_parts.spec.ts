@@ -165,3 +165,113 @@ test('rows from a server without Parts context are not shown as known', async ({
   await expect(bearing).not.toContainText('None');
   await expect(bearing.getByText('Not available')).toHaveCount(3);
 });
+
+const destination = (page: Page) => page.getByTestId('destination');
+const slotDialog = (page: Page) =>
+  page.getByRole('dialog', { name: 'Motor Drive-End Bearing' });
+
+test('a slot opens its own detail, and its native records lead back to it', async ({
+  page
+}, testInfo) => {
+  const reads: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/api/assets/registry/18/components/'))
+      reads.push(request.url());
+  });
+  await openParts(page);
+  await row(page, 'PS-MOTOR-DE-BRG:1')
+    .getByRole('button', { name: 'Motor Drive-End Bearing' })
+    .click();
+  const detail = slotDialog(page);
+  await expect(detail).toBeVisible();
+  await expect(destination(page)).toHaveText(
+    '/machines/machine/18/parts/?slot=1'
+  );
+  await expect(detail).toContainText('Motor drive-end bearing');
+  await expect(
+    detail.getByRole('link', { name: 'View in 3D' })
+  ).toHaveAttribute('href', '/machines/machine/18/equipment/?position=bearing');
+  // Each fact on its own: nothing fitted is recorded; the family is not it.
+  await expect(detail).toContainText('Not recorded: no fitted part');
+  await expect(detail).toContainText('not what is fitted');
+  await expect(detail).toContainText('Fit not verified');
+  await expect(detail).toContainText('1 open job(s) name this slot.');
+  await expect(detail).toContainText(
+    '6 in stock for this catalogue part, shared by every slot that uses it.'
+  );
+  await expect(
+    detail.getByRole('link', { name: 'Open stock' })
+  ).toHaveAttribute('href', '/part/501/stock');
+  // The open slot is not a table filter, here or in what is read.
+  await expect(page.getByText('Custom table filters are active')).toHaveCount(
+    0
+  );
+  expect(reads.length).toBeGreaterThan(0);
+  for (const url of reads)
+    expect(new URL(url).searchParams.has('slot')).toBe(false);
+  await page.screenshot({
+    path: testInfo.outputPath('slot-detail.png'),
+    animations: 'disabled'
+  });
+
+  await detail.getByRole('link', { name: 'Open part record' }).click();
+  await expect(destination(page)).toHaveText('/part/501/');
+  const back = page.getByRole('link', {
+    name: 'Back to Synthetic pump · Parts'
+  });
+  await expect(back).toBeVisible();
+  await back.click();
+  // Back where it was: the same slot open on the same tab.
+  await expect(destination(page)).toHaveText(
+    '/machines/machine/18/parts/?slot=1'
+  );
+  await expect(slotDialog(page)).toBeVisible();
+});
+
+test('closing a slot returns focus, and row clicks never hijack a link', async ({
+  page
+}) => {
+  await openParts(page);
+  const trigger = row(page, 'PS-MOTOR-DE-BRG:1').getByRole('button', {
+    name: 'Motor Drive-End Bearing'
+  });
+  await trigger.focus();
+  await page.keyboard.press('Enter');
+  await expect(slotDialog(page)).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(slotDialog(page)).toHaveCount(0);
+  await expect(destination(page)).toHaveText('/machines/machine/18/parts/');
+  await expect(trigger).toBeFocused();
+
+  // Anywhere else on the row opens it too.
+  await row(page, 'PS-MOTOR:1').getByText('Workbook population').click();
+  await expect(
+    page.getByRole('dialog', { name: 'Electric Motor' })
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // A link in the row goes where it says, with no slot opened on the way.
+  await row(page, 'PS-MOTOR-DE-BRG:1')
+    .getByRole('link', { name: '6 in stock' })
+    .click();
+  await expect(destination(page)).toHaveText('/part/501/stock');
+});
+
+test('a slot that is not in the list says so', async ({ page }) => {
+  await mockMachine(page);
+  await page.route('**/api/assets/registry/18/components/**', (route) =>
+    route.fulfill({ json: { count: 3, results: components(true) } })
+  );
+  await page.route('**/api/assets/parts/?*', (route) =>
+    route.fulfill({ json: { count: 0, results: [], next: null } })
+  );
+  await page.goto(
+    `/playwright/s0-native.html?${new URLSearchParams({
+      surface: 'machine',
+      entry: '/machines/machine/18/parts/?slot=999'
+    })}`
+  );
+  await expect(page.getByRole('dialog')).toContainText(
+    'This component is not in the list shown.'
+  );
+});

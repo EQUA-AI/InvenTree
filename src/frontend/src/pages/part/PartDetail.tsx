@@ -63,6 +63,7 @@ import {
 import InstanceDetail from '../../components/nav/InstanceDetail';
 import NavigationTree from '../../components/nav/NavigationTree';
 import { PageDetail } from '../../components/nav/PageDetail';
+import { ReturnLink } from '../../components/nav/ReturnLink';
 import AttachmentPanel from '../../components/panels/AttachmentPanel';
 import NotesPanel from '../../components/panels/NotesPanel';
 import { PanelGroup } from '../../components/panels/PanelGroup';
@@ -816,6 +817,8 @@ export default function PartDetail() {
               selectedId={part?.category}
             />
           )}
+          {/* R6 P13: back to the machine/work context this was opened from. */}
+          <ReturnLink />
           <PageDetail
             title={`${t`Part`}: ${part.full_name}`}
             icon={

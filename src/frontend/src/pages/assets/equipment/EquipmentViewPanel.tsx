@@ -310,7 +310,13 @@ export function EquipmentViewPanel({
   const [params, setParams] = useSearchParams();
   const view: EquipmentView =
     schematic && params.get('view') === 'schematic' ? 'schematic' : 'model';
-  const [selected, setSelected] = useState<TwinPartId>('machine');
+  // R6 P13: a Parts slot opens here with its position (`?position=bearing`).
+  const [selected, setSelected] = useState<TwinPartId>(() => {
+    const asked = params.get('position');
+    return REFERENCE_PARTS.some((part) => part.id === asked)
+      ? (asked as TwinPartId)
+      : 'machine';
+  });
   const [mode, setMode] = useState<TwinMode>('assembled');
   const [labels, setLabels] = useState(true);
   const choose = (next: EquipmentView) =>

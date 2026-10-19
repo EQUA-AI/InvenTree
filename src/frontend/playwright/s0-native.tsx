@@ -26,6 +26,7 @@ import {
 } from 'react-router-dom';
 
 import LayoutComponent from '../src/components/nav/Layout';
+import { ReturnLink } from '../src/components/nav/ReturnLink';
 import { ApiProvider } from '../src/contexts/ApiContext';
 import MachineDetail from '../src/pages/assets/MachineDetail';
 import MachineIndex from '../src/pages/assets/MachineIndex';
@@ -183,6 +184,8 @@ function NativeSurface() {
         />
         <Route path='/repair/packets/:id/*' element={<RepairPacketDetail />} />
         <Route path='/machines/machine/:id/*' element={<MachineDetail />} />
+        {/* R6 P13: the labelled way back a native Part page offers. */}
+        <Route path='/part/:id/*' element={<ReturnLink />} />
       </Routes>
     </>
   );
