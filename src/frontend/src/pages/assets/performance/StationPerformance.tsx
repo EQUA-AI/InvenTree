@@ -16,6 +16,7 @@ import {
   useComputedColorScheme,
   useMantineTheme
 } from '@mantine/core';
+import { IconAlertTriangle } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
@@ -27,6 +28,7 @@ import type { PerformanceMachine } from './PerformancePanel';
 import { useClock, useWindowState, windowInfoFrom } from './PerformancePanel';
 import { LiveIndicator, TimeRangeControl } from './TimeRangeControl';
 import { TrendChart, type TrendSeries, familyColors } from './TrendChart';
+import { WindowStatus, formatWindow } from './WindowStatus';
 import { formatAge, formatAt, formatDuration, precisionFor } from './format';
 import { resolveParameters, withRole } from './resolve';
 import { CardGrid, ChartCard } from './sections/common';
@@ -246,16 +248,21 @@ export function StationPerformance({
         stale: false,
         state: 'unconfigured',
         calculated: true,
-        caption:
-          spread > gapThresholdMs(window.resolutionSeconds)
+        // A paused or fixed window ends where it was frozen, so its newest
+        // readings are that window's last ones, not the plant's present.
+        caption: range.live
+          ? spread > gapThresholdMs(window.resolutionSeconds)
             ? t`Calculated: sum of ${lasts.length} of ${bays.length} bays' newest readings, spanning ${formatDuration(spread / 1000)}`
             : t`Calculated: sum of ${lasts.length} of ${bays.length} bays' newest readings`
+          : spread > gapThresholdMs(window.resolutionSeconds)
+            ? t`Calculated: sum of ${lasts.length} of ${bays.length} bays' last readings in the selected window, spanning ${formatDuration(spread / 1000)}`
+            : t`Calculated: sum of ${lasts.length} of ${bays.length} bays' last readings in the selected window`
       });
     };
     total((k) => k.power, t`Plant power`, 'plant-power');
     total((k) => k.flow, t`Plant flow`, 'plant-flow');
     return out;
-  }, [parameters, series, bays, byKey, window.resolutionSeconds]);
+  }, [parameters, series, bays, byKey, window.resolutionSeconds, range.live]);
 
   const bayLines = (
     pick: (k: ReturnType<typeof bayKeys>) => string,
@@ -292,7 +299,12 @@ export function StationPerformance({
       present.map((item) => ({ key: item.key, entry: item.entry })),
       gapThresholdMs(window.resolutionSeconds)
     );
-    return { lines, rows, unit };
+    // A bay the source could not serve is named, not silently dropped: the
+    // card used to lose its line, or vanish when no bay had history.
+    const missing = items
+      .filter((item) => !item.entry?.available)
+      .map((item) => item.label);
+    return { lines, rows, unit, missing };
   };
 
   const power = useMemo(
@@ -443,6 +455,14 @@ export function StationPerformance({
   }
 
   const freshness = signalsQuery.data?.[0]?.freshness_threshold_seconds ?? null;
+  // The station view had no word for a source that served nothing: its bay
+  // cards emptied and the page looked merely quiet.
+  const unavailable =
+    response?.series.filter((entry) => !entry.available) ?? [];
+  const failedAll =
+    !!response &&
+    response.series.length > 0 &&
+    unavailable.length === response.series.length;
 
   return (
     <Stack gap='lg'>
@@ -462,6 +482,11 @@ export function StationPerformance({
             }}
             refreshing={seriesQuery.isFetching}
             dataRange={dataRange.data}
+          />
+          <WindowStatus
+            response={response}
+            updating={seriesQuery.isPlaceholderData}
+            now={now}
           />
         </Stack>
         <LiveIndicator
@@ -484,6 +509,17 @@ export function StationPerformance({
           title={t`Could not read history for this window`}
         >
           {t`The request failed; the charts below show nothing rather than a partial line.`}
+        </Alert>
+      )}
+      {failedAll && !seriesQuery.isError && (
+        <Alert
+          color='yellow'
+          variant='light'
+          icon={<IconAlertTriangle size={16} />}
+          title={t`The source could not serve this window`}
+        >
+          {unavailable[0]?.detail ??
+            t`No history is available for this window.`}
         </Alert>
       )}
 
@@ -518,8 +554,15 @@ export function StationPerformance({
                 />
               </ChartCard>
             )}
-            {power.lines.length > 0 && (
-              <ChartCard title={t`Active power by bay`}>
+            {bays.length > 0 && (
+              <ChartCard
+                title={t`Active power by bay`}
+                description={
+                  power.missing.length > 0
+                    ? t`No history in this window for ${power.missing.join(', ')}.`
+                    : undefined
+                }
+              >
                 <TrendChart
                   rows={power.rows}
                   series={power.lines}
@@ -533,8 +576,15 @@ export function StationPerformance({
                 />
               </ChartCard>
             )}
-            {flow.lines.length > 0 && (
-              <ChartCard title={t`Discharge flow by bay`}>
+            {bays.length > 0 && (
+              <ChartCard
+                title={t`Discharge flow by bay`}
+                description={
+                  flow.missing.length > 0
+                    ? t`No history in this window for ${flow.missing.join(', ')}.`
+                    : undefined
+                }
+              >
                 <TrendChart
                   rows={flow.rows}
                   series={flow.lines}
@@ -636,6 +686,14 @@ export function StationPerformance({
                                     ? t`Idle`
                                     : t`Unknown`}
                             </Badge>
+                            {/* Without a status reading in the window the
+                                state is the station's present word for the
+                                bay - not something this window recorded. */}
+                            {(st?.v === null || st?.v === undefined) && (
+                              <Text size='xs' c='dimmed'>
+                                {t`Current, not from this window`}
+                              </Text>
+                            )}
                           </Table.Td>
                           <Table.Td ta='right'>
                             {p?.v == null ? '—' : formatAt(p.v, table.powerDp)}
@@ -662,6 +720,13 @@ export function StationPerformance({
                   </Table.Tbody>
                 </Table>
               </Table.ScrollContainer>
+              {response && (
+                <Text size='xs' c='dimmed' px='sm' py={6}>
+                  {range.live
+                    ? t`Each bay's newest usable reading in the window on screen (${formatWindow(window.start, window.end, now)}); window peak over the same span.`
+                    : t`Each bay's last usable reading in the selected window (${formatWindow(window.start, window.end, now)}), not its present value; window peak over the same span.`}
+                </Text>
+              )}
             </Paper>
           )}
         </Stack>

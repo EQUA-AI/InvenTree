@@ -302,10 +302,16 @@ export function LiveIndicator({
     ageSeconds > freshnessSeconds;
   const disabled = response ? !response.live.enabled : false;
 
+  // A read that returned no reading at all has nothing to be fresh: green
+  // "Live" over a source that served nothing read as a healthy feed.
+  const empty = !!response && newestAt === null;
+
   let color = 'gray';
   let word = t`Paused`;
   if (live && disabled) {
     word = t`Polling off`;
+  } else if (live && empty) {
+    word = t`No readings`;
   } else if (live && stale) {
     color = 'yellow';
     word = t`Stale`;
@@ -331,7 +337,7 @@ export function LiveIndicator({
       <Group gap={6} wrap='nowrap'>
         <Badge
           color={color}
-          variant={live && !stale && !disabled ? 'filled' : 'light'}
+          variant={live && !stale && !disabled && !empty ? 'filled' : 'light'}
           size='sm'
           leftSection={
             <span
