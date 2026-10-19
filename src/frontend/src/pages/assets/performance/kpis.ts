@@ -9,6 +9,7 @@ import type {
 import type { KpiTile } from './KpiStrip';
 import { type ResolvedParameter, withKey, withRole } from './resolve';
 import { usable } from './series';
+import { groupByScale, largestGroup, unitText } from './units';
 
 const MAX_TILES = 8;
 
@@ -78,8 +79,14 @@ function highestTile(
   // Only good-quality readings compete: a pegged sensor reporting 3276.7 with
   // quality bad is the loudest number in the family and means nothing.
   const live = family.filter((p) => usableSignal(p.signal) && !p.signal.stale);
-  const pool =
+  const candidates =
     live.length > 0 ? live : family.filter((p) => usableSignal(p.signal));
+  // "Highest" only means something on one scale (R6 A19.7): an NDE channel
+  // in mm/s and a thrust channel in µm cannot be ranked against each other.
+  // The tile ranks the largest same-unit group and says what it left out.
+  const groups = groupByScale(candidates, (p) => p.signal.unit);
+  const pool = largestGroup(groups)?.items ?? [];
+  const uncompared = candidates.length - pool.length;
   if (pool.length === 0) {
     return {
       key,
@@ -121,9 +128,19 @@ function highestTile(
     state: worst,
     limitsConfigured: pool.some((p) => hasLimits(p.signal)),
     series: series.get(top.signal.binding_id),
-    caption: top.signal.unit
-      ? t`Highest of ${pool.length}: ${top.label}`
-      : t`Highest of ${pool.length}: ${top.label} · unit unconfirmed, raw source value`
+    caption: [
+      top.signal.unit
+        ? t`Highest of ${pool.length}: ${top.label}`
+        : t`Highest of ${pool.length}: ${top.label} · unit unconfirmed, raw source value`,
+      uncompared > 0
+        ? t`${uncompared} in ${groups
+            .filter((g) => !g.items.includes(top))
+            .map((g) => unitText(g) || t`no unit`)
+            .join(', ')} not compared`
+        : ''
+    ]
+      .filter(Boolean)
+      .join(' · ')
   };
 }
 

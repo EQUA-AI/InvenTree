@@ -16,6 +16,7 @@ import {
   useComputedColorScheme,
   useMantineTheme
 } from '@mantine/core';
+import { IconAlertTriangle } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
@@ -27,9 +28,10 @@ import type { PerformanceMachine } from './PerformancePanel';
 import { useClock, useWindowState, windowInfoFrom } from './PerformancePanel';
 import { LiveIndicator, TimeRangeControl } from './TimeRangeControl';
 import { TrendChart, type TrendSeries, familyColors } from './TrendChart';
+import { WindowStatus, formatWindow } from './WindowStatus';
 import { formatAge, formatAt, formatDuration, precisionFor } from './format';
 import { resolveParameters, withRole } from './resolve';
-import { CardGrid, ChartCard } from './sections/common';
+import { CardGrid, ChartCard, ScaledTrend } from './sections/common';
 import {
   alignRows,
   gapThresholdMs,
@@ -38,6 +40,7 @@ import {
   seriesStats,
   usable
 } from './series';
+import { groupByScale, largestGroup, sameScale, unitText } from './units';
 import {
   useDataRange,
   useMachineSeries,
@@ -138,7 +141,13 @@ export function StationPerformance({
     ],
     [bays]
   );
-  const targets = useMemo(() => ({ keys }), [keys]);
+  // Not before the bay list has answered: a keys-only read of the station's
+  // own points would be made and then repeated with every bay's keys - two
+  // reads for one window. A failed bay list still reads the station's own.
+  const targets = useMemo(
+    () => (baysQuery.isPending ? {} : { keys }),
+    [baysQuery.isPending, keys]
+  );
   const seriesQuery = useMachineSeries(
     station.pk,
     targets,
@@ -210,9 +219,24 @@ export function StationPerformance({
       label: string,
       key: string
     ) => {
-      const entries = bays
-        .map((bay) => byKey.get(pick(bayKeys(bay.key))))
-        .filter((e): e is SeriesEntry => !!e?.available);
+      const available = bays
+        .map((bay) => ({ bay, entry: byKey.get(pick(bayKeys(bay.key))) }))
+        .filter(
+          (item): item is { bay: (typeof bays)[number]; entry: SeriesEntry } =>
+            !!item.entry?.available
+        );
+      // Only one unit can be summed (R6 A19.7): a bay reporting kW added to
+      // bays in MW gave a total in neither. The largest same-unit group is
+      // summed, nothing is rescaled, and the rest are named.
+      const groups = groupByScale(available, (item) => item.entry.unit);
+      const summed = largestGroup(groups)?.items ?? [];
+      const entries = summed.map((item) => item.entry);
+      const excluded = available
+        .filter((item) => !summed.includes(item))
+        .map(
+          (item) =>
+            `${item.bay.name.split('/').pop()?.trim() || item.bay.key} (${item.entry.unit || t`no unit`})`
+        );
       // The newest *usable* reading, not merely the newest: a sample carrying
       // the source's over-range marker is bad quality, and every other view
       // of this series already drops it. Summed into a plant total it became
@@ -240,16 +264,28 @@ export function StationPerformance({
         stale: false,
         state: 'unconfigured',
         calculated: true,
-        caption:
-          spread > gapThresholdMs(window.resolutionSeconds)
-            ? t`Calculated: sum of ${lasts.length} of ${bays.length} bays' newest readings, spanning ${formatDuration(spread / 1000)}`
-            : t`Calculated: sum of ${lasts.length} of ${bays.length} bays' newest readings`
+        // A paused or fixed window ends where it was frozen, so its newest
+        // readings are that window's last ones, not the plant's present.
+        caption: [
+          range.live
+            ? spread > gapThresholdMs(window.resolutionSeconds)
+              ? t`Calculated: sum of ${lasts.length} of ${bays.length} bays' newest readings, spanning ${formatDuration(spread / 1000)}`
+              : t`Calculated: sum of ${lasts.length} of ${bays.length} bays' newest readings`
+            : spread > gapThresholdMs(window.resolutionSeconds)
+              ? t`Calculated: sum of ${lasts.length} of ${bays.length} bays' last readings in the selected window, spanning ${formatDuration(spread / 1000)}`
+              : t`Calculated: sum of ${lasts.length} of ${bays.length} bays' last readings in the selected window`,
+          excluded.length > 0
+            ? t`not summed, unit differs: ${excluded.join(', ')}`
+            : ''
+        ]
+          .filter(Boolean)
+          .join('; ')
       });
     };
     total((k) => k.power, t`Plant power`, 'plant-power');
     total((k) => k.flow, t`Plant flow`, 'plant-flow');
     return out;
-  }, [parameters, series, bays, byKey, window.resolutionSeconds]);
+  }, [parameters, series, bays, byKey, window.resolutionSeconds, range.live]);
 
   const bayLines = (
     pick: (k: ReturnType<typeof bayKeys>) => string,
@@ -274,19 +310,37 @@ export function StationPerformance({
       color: colors[i]
     }));
     const present = items.filter((item) => item.entry?.available);
-    const unit = present[0]?.entry?.unit ?? '';
-    const lines: TrendSeries[] = present.map((item) => ({
-      key: item.key,
-      label: item.label,
-      color: item.color,
-      unit,
-      decimals: 2
-    }));
     const rows = alignRows(
       present.map((item) => ({ key: item.key, entry: item.entry })),
       gapThresholdMs(window.resolutionSeconds)
     );
-    return { lines, rows, unit };
+    const asLine = (item: (typeof present)[number]): TrendSeries => ({
+      key: item.key,
+      label: item.label,
+      color: item.color,
+      unit: item.entry?.unit ?? '',
+      decimals: 2
+    });
+    // One axis, one unit (R6 A19.7): the comparison draws the largest
+    // same-unit group of bays, and any bay in another unit gets a trend of
+    // its own below rather than a line on the wrong scale.
+    const groups = groupByScale(present, (item) => item.entry?.unit);
+    const main = largestGroup(groups);
+    const lines: TrendSeries[] = (main?.items ?? []).map(asLine);
+    const unit = main ? unitText(main) : '';
+    const apart = groups
+      .filter((group) => group !== main)
+      .map((group) => ({
+        key: group.key,
+        unit: unitText(group),
+        lines: group.items.map(asLine)
+      }));
+    // A bay the source could not serve is named, not silently dropped: the
+    // card used to lose its line, or vanish when no bay had history.
+    const missing = items
+      .filter((item) => !item.entry?.available)
+      .map((item) => item.label);
+    return { lines, rows, unit, missing, apart };
   };
 
   const power = useMemo(
@@ -386,8 +440,14 @@ export function StationPerformance({
         }
       };
     });
-    const unitOf = (pick: (r: (typeof rows)[number]) => string) =>
-      rows.map(pick).find((u) => !!u) ?? '';
+    // A column's unit is the one most of its bays report, not merely the
+    // first: a cell in any other unit carries its own (see `cell` below).
+    const unitOf = (pick: (r: (typeof rows)[number]) => string) => {
+      const group = largestGroup(
+        groupByScale(rows.map(pick).filter(Boolean), (unit) => unit)
+      );
+      return group ? unitText(group) : '';
+    };
     return {
       rows,
       powerDp: columnPrecision(
@@ -437,6 +497,14 @@ export function StationPerformance({
   }
 
   const freshness = signalsQuery.data?.[0]?.freshness_threshold_seconds ?? null;
+  // The station view had no word for a source that served nothing: its bay
+  // cards emptied and the page looked merely quiet.
+  const unavailable =
+    response?.series.filter((entry) => !entry.available) ?? [];
+  const failedAll =
+    !!response &&
+    response.series.length > 0 &&
+    unavailable.length === response.series.length;
 
   return (
     <Stack gap='lg'>
@@ -456,6 +524,11 @@ export function StationPerformance({
             }}
             refreshing={seriesQuery.isFetching}
             dataRange={dataRange.data}
+          />
+          <WindowStatus
+            response={response}
+            updating={seriesQuery.isPlaceholderData}
+            now={now}
           />
         </Stack>
         <LiveIndicator
@@ -480,6 +553,17 @@ export function StationPerformance({
           {t`The request failed; the charts below show nothing rather than a partial line.`}
         </Alert>
       )}
+      {failedAll && !seriesQuery.isError && (
+        <Alert
+          color='yellow'
+          variant='light'
+          icon={<IconAlertTriangle size={16} />}
+          title={t`The source could not serve this window`}
+        >
+          {unavailable[0]?.detail ??
+            t`No history is available for this window.`}
+        </Alert>
+      )}
 
       <div style={{ position: 'relative' }}>
         <LoadingOverlay
@@ -499,45 +583,48 @@ export function StationPerformance({
                     : undefined
                 }
               >
-                <TrendChart
+                <ScaledTrend
                   rows={stationLines.rows}
-                  series={stationLines.lines}
-                  windowStart={window.start}
-                  windowEnd={window.end}
-                  windowSeconds={window.seconds}
+                  lines={stationLines.lines}
+                  window={window}
                   unit={stationLines.unit}
                   rightUnit=''
                   syncId={syncId}
                   onZoom={range.onZoom}
+                  toggleable={false}
                 />
               </ChartCard>
             )}
-            {power.lines.length > 0 && (
-              <ChartCard title={t`Active power by bay`}>
-                <TrendChart
-                  rows={power.rows}
-                  series={power.lines}
-                  windowStart={window.start}
-                  windowEnd={window.end}
-                  windowSeconds={window.seconds}
-                  unit={power.unit}
+            {bays.length > 0 && (
+              <ChartCard
+                title={t`Active power by bay`}
+                description={
+                  power.missing.length > 0
+                    ? t`No history in this window for ${power.missing.join(', ')}.`
+                    : undefined
+                }
+              >
+                <BayComparison
+                  data={power}
+                  window={window}
                   syncId={syncId}
-                  toggleable
                   onZoom={range.onZoom}
                 />
               </ChartCard>
             )}
-            {flow.lines.length > 0 && (
-              <ChartCard title={t`Discharge flow by bay`}>
-                <TrendChart
-                  rows={flow.rows}
-                  series={flow.lines}
-                  windowStart={window.start}
-                  windowEnd={window.end}
-                  windowSeconds={window.seconds}
-                  unit={flow.unit}
+            {bays.length > 0 && (
+              <ChartCard
+                title={t`Discharge flow by bay`}
+                description={
+                  flow.missing.length > 0
+                    ? t`No history in this window for ${flow.missing.join(', ')}.`
+                    : undefined
+                }
+              >
+                <BayComparison
+                  data={flow}
+                  window={window}
                   syncId={syncId}
-                  toggleable
                   onZoom={range.onZoom}
                 />
               </ChartCard>
@@ -545,115 +632,218 @@ export function StationPerformance({
           </CardGrid>
 
           {bays.length > 0 && (
-            <Paper withBorder radius='md' p={0} style={{ overflowX: 'auto' }}>
-              <Table striped highlightOnHover>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>{t`Bay`}</Table.Th>
-                    <Table.Th>{t`State`}</Table.Th>
-                    {/* The unit belongs to the column, not to every cell in
+            <Paper withBorder radius='md' p={0}>
+              {/* Scrolls sideways rather than squeezing: at phone width the
+                  State column shrank its badges to "R…" and "I…". */}
+              <Table.ScrollContainer minWidth={720} type='native'>
+                <Table striped highlightOnHover>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>{t`Bay`}</Table.Th>
+                      {/* A badge's clipped label has no minimum width of its own, so
+                        the column keeps one or the table squeezes it. */}
+                      <Table.Th miw={96}>{t`State`}</Table.Th>
+                      {/* The unit belongs to the column, not to every cell in
                         it; right-aligned, the decimal points line up. */}
-                    <Table.Th ta='right'>
-                      {t`Active power`}
-                      {table.powerUnit ? ` (${table.powerUnit})` : ''}
-                    </Table.Th>
-                    <Table.Th ta='right'>
-                      {t`Discharge flow`}
-                      {table.flowUnit ? ` (${table.flowUnit})` : ''}
-                    </Table.Th>
-                    <Table.Th ta='right'>
-                      {t`Shaft speed`}
-                      {table.speedUnit ? ` (${table.speedUnit})` : ''}
-                    </Table.Th>
-                    <Table.Th ta='right'>
-                      {t`Window peak power`}
-                      {table.powerUnit ? ` (${table.powerUnit})` : ''}
-                    </Table.Th>
-                    <Table.Th>{t`Newest reading`}</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {table.rows.map((row) => {
-                    const { bay, power: p, flow: f, speed: s, peak } = row;
-                    const st = row.status;
-                    const newest = Math.max(
-                      ...[p, f, s, st].map((x) => x?.t ?? 0)
-                    );
-                    const state =
-                      st?.v === null || st?.v === undefined
-                        ? bay.state
-                        : st.v > 0
-                          ? 'running'
-                          : st.v < 0
-                            ? 'fault'
-                            : 'idle';
-                    return (
-                      <Table.Tr key={bay.key}>
-                        <Table.Td>
-                          <Anchor
-                            component={Link}
-                            to={`/machines/machine/${bay.machine}/performance`}
-                            size='sm'
-                          >
-                            {bay.name.split('/').pop()?.trim() || bay.key}
-                          </Anchor>
-                          {!bay.active && (
-                            <Text size='xs' c='dimmed'>
-                              {t`Inactive equipment`}
-                            </Text>
-                          )}
-                        </Table.Td>
-                        <Table.Td>
-                          <Badge
-                            size='sm'
-                            variant='light'
-                            color={
-                              state === 'running'
-                                ? 'green'
+                      <Table.Th ta='right'>
+                        {t`Active power`}
+                        {table.powerUnit ? ` (${table.powerUnit})` : ''}
+                      </Table.Th>
+                      <Table.Th ta='right'>
+                        {t`Discharge flow`}
+                        {table.flowUnit ? ` (${table.flowUnit})` : ''}
+                      </Table.Th>
+                      <Table.Th ta='right'>
+                        {t`Shaft speed`}
+                        {table.speedUnit ? ` (${table.speedUnit})` : ''}
+                      </Table.Th>
+                      <Table.Th ta='right'>
+                        {t`Window peak power`}
+                        {table.powerUnit ? ` (${table.powerUnit})` : ''}
+                      </Table.Th>
+                      <Table.Th>{t`Newest reading`}</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {table.rows.map((row) => {
+                      const { bay, power: p, flow: f, speed: s, peak } = row;
+                      const st = row.status;
+                      const newest = Math.max(
+                        ...[p, f, s, st].map((x) => x?.t ?? 0)
+                      );
+                      const state =
+                        st?.v === null || st?.v === undefined
+                          ? bay.state
+                          : st.v > 0
+                            ? 'running'
+                            : st.v < 0
+                              ? 'fault'
+                              : 'idle';
+                      return (
+                        <Table.Tr key={bay.key}>
+                          <Table.Td>
+                            <Anchor
+                              component={Link}
+                              to={`/machines/machine/${bay.machine}/performance`}
+                              size='sm'
+                            >
+                              {bay.name.split('/').pop()?.trim() || bay.key}
+                            </Anchor>
+                            {!bay.active && (
+                              <Text size='xs' c='dimmed'>
+                                {t`Inactive equipment`}
+                              </Text>
+                            )}
+                          </Table.Td>
+                          <Table.Td>
+                            <Badge
+                              size='sm'
+                              variant='light'
+                              color={
+                                state === 'running'
+                                  ? 'green'
+                                  : state === 'fault'
+                                    ? 'red'
+                                    : state === 'idle'
+                                      ? 'yellow'
+                                      : 'gray'
+                              }
+                            >
+                              {state === 'running'
+                                ? t`Running`
                                 : state === 'fault'
-                                  ? 'red'
+                                  ? t`Fault`
                                   : state === 'idle'
-                                    ? 'yellow'
-                                    : 'gray'
-                            }
-                          >
-                            {state === 'running'
-                              ? t`Running`
-                              : state === 'fault'
-                                ? t`Fault`
-                                : state === 'idle'
-                                  ? t`Idle`
-                                  : t`Unknown`}
-                          </Badge>
-                        </Table.Td>
-                        <Table.Td ta='right'>
-                          {p?.v == null ? '—' : formatAt(p.v, table.powerDp)}
-                        </Table.Td>
-                        <Table.Td ta='right'>
-                          {f?.v == null ? '—' : formatAt(f.v, table.flowDp)}
-                        </Table.Td>
-                        <Table.Td ta='right'>
-                          {s?.v == null ? '—' : formatAt(s.v, table.speedDp)}
-                        </Table.Td>
-                        <Table.Td ta='right'>
-                          {peak ? formatAt(peak.max, table.powerDp) : '—'}
-                        </Table.Td>
-                        <Table.Td>
-                          <Text size='xs' c='dimmed'>
-                            {newest > 0
-                              ? formatAge(newest, now)
-                              : t`No reading`}
-                          </Text>
-                        </Table.Td>
-                      </Table.Tr>
-                    );
-                  })}
-                </Table.Tbody>
-              </Table>
+                                    ? t`Idle`
+                                    : t`Unknown`}
+                            </Badge>
+                            {/* Without a status reading in the window the
+                                state is the station's present word for the
+                                bay - not something this window recorded. */}
+                            {(st?.v === null || st?.v === undefined) && (
+                              <Text size='xs' c='dimmed'>
+                                {t`Current, not from this window`}
+                              </Text>
+                            )}
+                          </Table.Td>
+                          <Table.Td ta='right'>
+                            {cell(
+                              p?.v,
+                              table.powerDp,
+                              row.units.power,
+                              table.powerUnit
+                            )}
+                          </Table.Td>
+                          <Table.Td ta='right'>
+                            {cell(
+                              f?.v,
+                              table.flowDp,
+                              row.units.flow,
+                              table.flowUnit
+                            )}
+                          </Table.Td>
+                          <Table.Td ta='right'>
+                            {cell(
+                              s?.v,
+                              table.speedDp,
+                              row.units.speed,
+                              table.speedUnit
+                            )}
+                          </Table.Td>
+                          <Table.Td ta='right'>
+                            {cell(
+                              peak?.max,
+                              table.powerDp,
+                              row.units.power,
+                              table.powerUnit
+                            )}
+                          </Table.Td>
+                          <Table.Td>
+                            <Text size='xs' c='dimmed'>
+                              {newest > 0
+                                ? formatAge(newest, now)
+                                : t`No reading`}
+                            </Text>
+                          </Table.Td>
+                        </Table.Tr>
+                      );
+                    })}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+              {response && (
+                <Text size='xs' c='dimmed' px='sm' py={6}>
+                  {range.live
+                    ? t`Each bay's newest usable reading in the window on screen (${formatWindow(window.start, window.end, now)}); window peak over the same span.`
+                    : t`Each bay's last usable reading in the selected window (${formatWindow(window.start, window.end, now)}), not its present value; window peak over the same span.`}
+                </Text>
+              )}
             </Paper>
           )}
         </Stack>
       </div>
+    </Stack>
+  );
+}
+
+/**
+ * A table cell's number. The column header carries the unit its bays share;
+ * a bay reporting in another unit prints its own beside the number rather
+ * than appearing to read in the header's.
+ */
+function cell(
+  value: number | null | undefined,
+  decimals: number,
+  unit: string,
+  columnUnit: string
+): string {
+  if (value === null || value === undefined) return '—';
+  const text = formatAt(value, decimals);
+  return sameScale(unit, columnUnit) || !unit ? text : `${text} ${unit}`;
+}
+
+/** One per-bay comparison: the main same-unit trend and any set apart. */
+function BayComparison({
+  data,
+  window,
+  syncId,
+  onZoom
+}: Readonly<{
+  data: {
+    lines: TrendSeries[];
+    rows: ReturnType<typeof alignRows>;
+    unit: string;
+    apart: { key: string; unit: string; lines: TrendSeries[] }[];
+  };
+  window: ReturnType<typeof windowInfoFrom>;
+  syncId: string;
+  onZoom: (from: number, to: number) => void;
+}>) {
+  const chart = (lines: TrendSeries[], unit: string) => (
+    <TrendChart
+      rows={data.rows}
+      series={lines}
+      windowStart={window.start}
+      windowEnd={window.end}
+      windowSeconds={window.seconds}
+      unit={unit}
+      syncId={syncId}
+      toggleable
+      onZoom={onZoom}
+    />
+  );
+  if (data.apart.length === 0) return chart(data.lines, data.unit);
+  return (
+    <Stack gap='sm' data-units-split={data.apart.length}>
+      {chart(data.lines, data.unit)}
+      {data.apart.map((group) => (
+        <Stack gap={4} key={group.key}>
+          <Text size='xs' c='dimmed' data-units-apart={group.unit}>
+            {t`Drawn apart: ${group.lines.map((l) => l.label).join(', ')} in ${group.unit || t`no unit`}, not ${data.unit || t`no unit`}.`}
+          </Text>
+          {chart(group.lines, group.unit)}
+        </Stack>
+      ))}
     </Stack>
   );
 }

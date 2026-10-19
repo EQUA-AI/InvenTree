@@ -5,6 +5,11 @@
 		"tests/performance/fixtures.ts",
 		"tests/s3/performanceFixtures.ts",
 		"tests/s3/pui_performance_native.spec.ts",
-		"tests/s3/pui_performance_evaluation.spec.ts"
+		"tests/s3/pui_performance_evaluation.spec.ts",
+		"playwright/s3-performance.tsx",
+		"tests/s3/stationFixtures.ts",
+		"tests/s3/pui_performance_station.spec.ts",
+		"tests/s3/pui_performance_truthful.spec.ts",
+		"tests/s3/pui_performance_units.spec.ts"
 	]
 }

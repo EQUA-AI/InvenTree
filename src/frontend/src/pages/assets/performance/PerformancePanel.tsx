@@ -21,6 +21,7 @@ import { KpiStrip } from './KpiStrip';
 import type { WindowInfo } from './SensorGroupCard';
 import { StationPerformance } from './StationPerformance';
 import { LiveIndicator, TimeRangeControl } from './TimeRangeControl';
+import { WindowStatus } from './WindowStatus';
 import { evaluatePerformance } from './evaluation';
 import { buildKpiTiles } from './kpis';
 import { categoryLabel } from './parameters';
@@ -288,6 +289,11 @@ function PumpPerformance({
             }}
             refreshing={seriesQuery.isFetching}
             dataRange={dataRange.data}
+          />
+          <WindowStatus
+            response={response}
+            updating={seriesQuery.isPlaceholderData}
+            now={now}
           />
         </Stack>
         <LiveIndicator

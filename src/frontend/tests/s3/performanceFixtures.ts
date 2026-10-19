@@ -32,7 +32,17 @@ export const NATIVE_SIGNALS: readonly SignalSpec[] = [
  */
 export async function openPerformance(
   page: Page,
-  options: { signals?: readonly SignalSpec[]; scheme?: 'light' | 'dark' } = {}
+  options: {
+    signals?: readonly SignalSpec[];
+    scheme?: 'light' | 'dark';
+    /** The S3 harness: a router whose location the tests can read. */
+    harness?: 's0' | 's3';
+    /** Extra query parameters for the S3 harness page. */
+    harnessParams?: Record<string, string>;
+    /** Hold a series answer back, per request (0-based order). */
+    delaySeriesMs?: (url: URL, index: number) => number;
+    fail?: boolean;
+  } = {}
 ) {
   const specs = options.signals ?? NATIVE_SIGNALS;
   const requests: URL[] = [];
@@ -56,17 +66,34 @@ export async function openPerformance(
   );
   await page.route(
     `**/api/machine-health/machines/${MACHINE}/health/series/**`,
-    (route: Route) => {
+    async (route: Route) => {
       const url = new URL(route.request().url());
+      const index = requests.length;
       requests.push(url);
-      return route.fulfill({ json: seriesFor(url, {}, specs) });
+      const delay = options.delaySeriesMs?.(url, index) ?? 0;
+      if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+      // The page may have moved on while this answer was held back.
+      return route
+        .fulfill({ json: seriesFor(url, { fail: options.fail }, specs) })
+        .catch(() => undefined);
     }
   );
-  const query = new URLSearchParams({
-    surface: 'performance',
-    scheme: options.scheme ?? 'light'
-  });
-  await page.goto(`/playwright/s0-native.html?${query}`);
+  if (options.harness === 's3') {
+    const query = new URLSearchParams({
+      machine: String(MACHINE),
+      asset: 'pump',
+      name: 'Synthetic pump',
+      scheme: options.scheme ?? 'light',
+      ...options.harnessParams
+    });
+    await page.goto(`/playwright/s3-performance.html?${query}`);
+  } else {
+    const query = new URLSearchParams({
+      surface: 'performance',
+      scheme: options.scheme ?? 'light'
+    });
+    await page.goto(`/playwright/s0-native.html?${query}`);
+  }
   await expect(page.getByText('Anything unusual?')).toBeVisible();
   return requests;
 }
