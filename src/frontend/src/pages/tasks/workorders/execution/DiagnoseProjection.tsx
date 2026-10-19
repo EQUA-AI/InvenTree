@@ -31,7 +31,11 @@ import type {
 import type { WorkOrderOverview } from '@lib/types/WorkOrderOverview';
 
 import { ContinueInvestigation } from './ContinueInvestigation';
-import { measured, readInvestigation } from './investigationProjection';
+import {
+  isSnapshotId,
+  measured,
+  readInvestigation
+} from './investigationProjection';
 
 /** Badge text that wraps on a phone instead of truncating its meaning. */
 const WRAP_BADGE = {
@@ -43,7 +47,7 @@ function when(value: string | null | undefined): string | null {
   return value ? dayjs(value).format('DD MMM YYYY, HH:mm') : null;
 }
 
-function analysisLabel(status: string | null): string {
+function analysisLabel(status: string | null): string | null {
   switch (status) {
     case 'available':
       return t`Evidence available`;
@@ -54,7 +58,7 @@ function analysisLabel(status: string | null): string {
     case 'unavailable':
       return t`No data available`;
     default:
-      return t`Not analyzed`;
+      return null;
   }
 }
 
@@ -204,8 +208,10 @@ function EvidenceGroup({
                   value,
                   when(item.observed_at),
                   item.snapshot_id
-                    ? t`Snapshot ${item.snapshot_id.slice(0, 8)}`
-                    : t`No snapshot cited`,
+                    ? isSnapshotId(item.snapshot_id)
+                      ? t`Snapshot ${item.snapshot_id}`
+                      : t`Cited record ${item.snapshot_id}`
+                    : t`No source record cited`,
                   item.stale ? t`stale` : null
                 ]
                   .filter(Boolean)
@@ -243,6 +249,13 @@ export function DiagnoseProjection({
     );
   }
 
+  const packet = workOrder.investigation?.packet;
+  const nativePacketLink = packet ? (
+    <Anchor component={Link} size='sm' to={`/repair/packets/${packet.id}/`}>
+      {t`Open ${packet.reference} to record supported changes`}
+    </Anchor>
+  ) : null;
+
   const noRequests = (
     <Alert
       color='gray'
@@ -250,7 +263,7 @@ export function DiagnoseProjection({
       icon={<IconListCheck size={16} />}
       title={t`No saved investigation request`}
     >
-      {t`This server keeps no investigation request with an owner, status or due time, so there is no request queue to show. Checks are agreed in the assistant.`}
+      {t`This server keeps no investigation request with an owner, status or due time, so there is no request queue to show. Checks can be discussed in the assistant; chat does not create or agree a saved investigation request.`}
     </Alert>
   );
 
@@ -324,6 +337,7 @@ export function DiagnoseProjection({
         )}
         {explanation && <ExplanationBasis explanation={explanation} />}
         <ContinueInvestigation workOrder={workOrder} />
+        {nativePacketLink}
       </Section>
 
       <Section
@@ -383,7 +397,7 @@ export function DiagnoseProjection({
                 </Text>
               ))}
               <Text size='xs'>
-                {t`A disputed finding stays visible beside the explanation. Resolve it in the assistant; it does not block unrelated work.`}
+                {t`A disputed finding stays visible beside the explanation. Discuss it in the assistant; chat does not save its correction or resolution. Use the native repair packet to record supported changes. It does not block unrelated work.`}
               </Text>
             </Stack>
           </Alert>

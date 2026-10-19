@@ -56,32 +56,49 @@ def _evidence(item) -> dict:
     }
 
 
-def _explanation(packet) -> dict:
+def _explanation(packet) -> dict | None:
     from repair.schema import coerce_diagnosis, is_preliminary
 
     raw = packet.diagnosis if isinstance(packet.diagnosis, dict) else {}
-    diagnosis = coerce_diagnosis(raw)
-    window = diagnosis.get('data_window') or {}
-    freshness = diagnosis.get('freshness') or {}
-    quality = diagnosis.get('quality') or {}
+    if not raw or packet.diagnosis_schema_version == 0:
+        return None
+    diagnosis = coerce_diagnosis(raw)  # Normalize prose/citations, not provenance.
+    window = raw.get('data_window') or {}
+    freshness = raw.get('freshness') or {}
+    quality = raw.get('quality') or {}
+    has_window = bool(window.get('start') or window.get('end'))
+    health_rule = raw.get('provider') == 'machine_health.preliminary'
+    status = raw.get('status')
+    # The keyword heuristic and schema coercion infer 'available' from prose.
+    if raw.get('generator') == 'heuristic' or (
+        status == 'available' and not raw.get('evidence') and not health_rule
+    ):
+        status = None
+    authority = (
+        raw.get('authority') if (raw.get('authority_source') or health_rule) else None
+    )
     return {
         'likely_cause': diagnosis.get('likely_cause') or '',
         'failure_mode': diagnosis.get('failure_mode') or None,
         'preliminary': is_preliminary(raw),
         'verified_by': diagnosis.get('verified_by') or None,
         'verified_at': diagnosis.get('verified_at') or None,
-        'analysis_status': diagnosis.get('status'),
-        'authority': diagnosis.get('authority'),
+        'analysis_status': status,
+        'authority': authority,
         'provider': diagnosis.get('provider') or None,
         'model_or_rule_version': diagnosis.get('model_or_rule_version') or None,
         'generated_at': diagnosis.get('generated_at') or None,
         'data_window': {
             'start': window.get('start'),
             'end': window.get('end'),
-            'snapshot_count': window.get('snapshot_count'),
+            'snapshot_count': window.get('snapshot_count') if has_window else None,
         },
-        'stale_signal_count': freshness.get('stale_signal_count'),
-        'quality_summary': quality.get('summary'),
+        'stale_signal_count': freshness.get('stale_signal_count')
+        if has_window or health_rule
+        else None,
+        'quality_summary': quality.get('summary')
+        if quality.get('summary') not in (None, '', 'unknown')
+        else None,
         'evidence': [
             _evidence(item)
             for item in diagnosis.get('evidence') or []

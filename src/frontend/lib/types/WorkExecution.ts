@@ -12,7 +12,12 @@ export interface ProjectionSource {
   state: 'read' | 'not_applicable' | 'not_enabled';
 }
 
-export type HandledActionState = 'completed' | 'active' | 'failed' | 'unknown';
+export type HandledActionState =
+  | 'completed'
+  | 'active'
+  | 'queued'
+  | 'failed'
+  | 'unknown';
 
 export type HandledActionKind =
   | 'packet_prepared'
@@ -47,7 +52,9 @@ export interface HandledAction {
 export interface HandledActions {
   rule: 'handled_actions.v1';
   sources: ProjectionSource[];
-  counts: Record<HandledActionState, number>;
+  counts: Record<Exclude<HandledActionState, 'queued'>, number> & {
+    queued?: number;
+  };
   actions: HandledAction[];
 }
 
@@ -134,4 +141,156 @@ export interface Investigation {
   finding_history: 'overwritten_in_place' | 'not_applicable';
   intervention: InvestigationIntervention | null;
   requests: { available: boolean; reason: string };
+}
+
+export interface PackageStep {
+  key: string;
+  sequence: number;
+  step_type: string;
+  title: string;
+  instruction: string;
+  required: boolean;
+  required_permission: string;
+  value_type: string;
+  unit: string;
+  min_value: string | null;
+  max_value: string | null;
+  allowed_values: string[];
+}
+
+export interface PackageApplication {
+  id: number;
+  primary: boolean;
+  procedure_id: number | null;
+  revision_id: number | null;
+  revision: number | null;
+  change_summary: string | null;
+  snapshot_hash: string;
+  drift_status: string;
+  applied_by: string | null;
+  applied_at: string;
+  steps: PackageStep[];
+  resources: {
+    key: string;
+    sequence: number;
+    kind: string;
+    part_id: number;
+    /** Current catalogue label for authorized part readers, not snapshot content. */
+    part_name?: string | null;
+    quantity: string;
+    fulfillment_mode: string;
+    required: boolean;
+    notes: string;
+  }[];
+}
+
+export interface PackageScope {
+  id: number;
+  version: number;
+  current: boolean;
+  verified_cause: string;
+  lines: { sequence: number; action: string }[];
+  crew_size: number | null;
+  planned_elapsed_minutes: number | null;
+  approved_by: string | null;
+  approved_at: string;
+  note: string;
+}
+
+export interface PackageDeviation {
+  id: number;
+  category: string;
+  application_key: string;
+  step_key: string;
+  resource_key: string;
+  expected: unknown;
+  actual: unknown;
+  reason: string;
+  recorded_by: string | null;
+  created_at: string;
+  resolution: string;
+  resolved_at: string | null;
+}
+
+export interface PreparedPackage {
+  rule: 'prepared_package.v1';
+  scopes: PackageScope[];
+  procedures_state: 'read' | 'not_enabled';
+  applications: PackageApplication[];
+  deviations: PackageDeviation[];
+  can_record_deviation: boolean;
+  physical_authority: { available: false; reason: 'no_provider' };
+  affected_dependencies: { available: false; reason: 'no_provider' };
+}
+
+export interface VerificationTest {
+  id: number;
+  application_id: number;
+  procedure_revision: number | null;
+  step: PackageStep;
+  version: number;
+  status: string;
+  value: unknown;
+  passed: boolean | null;
+  note: string;
+  disposition_reason: string;
+  recorded_by: string | null;
+  recorded_at: string | null;
+  events: {
+    id: number;
+    event_type: string;
+    version: number | null;
+    recorded_by: string | null;
+    recorded_at: string;
+    reason: string;
+    evidence_ids: number[];
+    historical_value_available: false;
+  }[];
+}
+
+export interface VerificationReturn {
+  rule: 'verification_return.v1';
+  procedures_state: 'read' | 'not_enabled';
+  tests: VerificationTest[];
+  attempt_history: 'outcomes_only_previous_values_not_retained';
+  lockouts: {
+    id: number;
+    device: string;
+    energy_source: string;
+    status: string;
+    applied_by: string | null;
+    verified_by: string | null;
+    verified_at: string | null;
+    restored_at: string | null;
+    note: string;
+  }[];
+  technical_acceptance: { available: false; reason: 'no_provider' };
+  controlled_test_authority: { available: false; reason: 'no_provider' };
+  operating_permission: { available: false; reason: 'no_provider' };
+  observed_return: { available: false; reason: 'no_provider' };
+  service_state: { available: false; reason: 'no_provider' };
+}
+
+export interface TimeAssignment {
+  rule: 'time_assignment.v1';
+  observed_at: string;
+  assigned_to: string | null;
+  legacy_assignee: string | null;
+  assignment_event_at: string | null;
+  elapsed_assignment_seconds: number | null;
+  assignment_reason: string | null;
+  assignment_recorded_by: string | null;
+  events: {
+    id: number;
+    recorded_by: string | null;
+    recorded_at: string;
+    reason: string | null;
+    assigned_to_id: number | null;
+    previous_assigned_to_id: number | null;
+  }[];
+  attributed_intervals: { available: false; reason: 'no_provider' };
+  coverage: 'unknown';
+  correction: { available: false; reason: 'no_provider' };
+  assignment_factors: { available: false; reason: 'no_provider' };
+  accepted_handover: { available: false; reason: 'no_provider' };
 }

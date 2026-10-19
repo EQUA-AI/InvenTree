@@ -10,6 +10,7 @@ from django.utils import timezone
 from assets.models import AssetMachine, get_default_client
 from InvenTree.unit_test import InvenTreeAPITestCase
 from repair.models import ApprovedRepairScope, RepairInvestigationFinding, RepairPacket
+from repair.schema import coerce_diagnosis
 from tasks.models import WorkOrder
 
 SCOPE = 'tasks.scope.single_site_scope_resolver'
@@ -82,7 +83,7 @@ class InvestigationProjectionTest(InvenTreeAPITestCase):
             machine=self.machine,
             work_order=self.work_order,
             fault_summary='Noise',
-            diagnosis=DIAGNOSIS,
+            diagnosis=DIAGNOSIS, diagnosis_schema_version=2,
         )
         self.tech = get_user_model().objects.create_user(
             username='diag-tech', first_name='Sam', last_name='Reed'
@@ -143,6 +144,7 @@ class InvestigationProjectionTest(InvenTreeAPITestCase):
         )
         self.assertEqual(explanation['data_window']['snapshot_count'], 12)
         self.assertEqual(explanation['stale_signal_count'], 1)
+        # Confidence omission applies to this projection, not the legacy raw blob.
         serialized = json.dumps(investigation)
         self.assertNotIn('confidence', serialized)
         self.assertNotIn('0.87', serialized)
@@ -206,3 +208,56 @@ class InvestigationProjectionTest(InvenTreeAPITestCase):
         self.assertEqual(intervention['scope_line_count'], 2)
         self.assertEqual(intervention['approved_by'], 'Sam Reed')
         self.assertEqual(intervention['superseded_versions'], 1)
+
+    def test_no_generated_diagnosis_has_no_explanation_or_basis(self):
+        """Neither an empty packet nor an ungenerated blob establishes telemetry facts."""
+        for diagnosis, version in (({}, 0), ({}, 2), (DIAGNOSIS, 0)):
+            with self.subTest(diagnosis=diagnosis, version=version):
+                self.packet.diagnosis = diagnosis
+                self.packet.diagnosis_schema_version = version
+                self.packet.save()
+                self.assertIsNone(self.investigation()['explanation'])
+
+    def test_wf7_missing_provenance_is_unknown_even_after_schema_defaults_persisted(self):
+        """Cited records are not zero snapshots or evidence of threshold authority."""
+        raw = {
+            'schema_version': 2, 'likely_cause': 'Cited explanation', 'status': 'available',
+            'authority': 'derived', 'generator': 'wf7', 'provider': 'azure_foundry_luna',
+            'evidence': [{'snapshot_id': 'work_order_closeout:41@7', 'observation': 'Prior repair'}],
+        }
+        for diagnosis in (raw, coerce_diagnosis(raw)):
+            with self.subTest(coerced='data_window' in diagnosis):
+                self.packet.diagnosis = diagnosis
+                self.packet.save()
+                basis = self.investigation()['explanation']
+                self.assertEqual(basis['analysis_status'], 'available')
+                self.assertIsNone(basis['authority'])
+                self.assertEqual(basis['data_window'], {'start': None, 'end': None, 'snapshot_count': None})
+                self.assertIsNone(basis['stale_signal_count'])
+                self.assertIsNone(basis['quality_summary'])
+                self.assertEqual(basis['evidence'][0]['snapshot_id'], 'work_order_closeout:41@7')
+
+    def test_heuristic_prose_does_not_establish_available_evidence_or_threshold(self):
+        """The offline text heuristic records neither threshold authority nor telemetry."""
+        self.packet.diagnosis = coerce_diagnosis({
+            'likely_cause': 'Keyword fallback', 'generator': 'heuristic', 'evidence': []
+        })
+        self.packet.save()
+        explanation = self.investigation()['explanation']
+        self.assertIsNone(explanation['analysis_status'])
+        self.assertIsNone(explanation['authority'])
+        self.assertIsNone(explanation['data_window']['snapshot_count'])
+        self.assertIsNone(explanation['stale_signal_count'])
+
+    def test_recorded_zero_and_named_authority_remain_distinct_from_missing(self):
+        """A bounded recorded window can retain real zero counts and a named rule."""
+        self.packet.diagnosis = {
+            **DIAGNOSIS, 'authority_source': 'Recorded configured rule',
+            'data_window': {**DIAGNOSIS['data_window'], 'snapshot_count': 0},
+            'freshness': {'stale_signal_count': 0},
+        }
+        self.packet.save()
+        explanation = self.investigation()['explanation']
+        self.assertEqual(explanation['data_window']['snapshot_count'], 0)
+        self.assertEqual(explanation['stale_signal_count'], 0)
+        self.assertEqual(explanation['authority'], 'derived')

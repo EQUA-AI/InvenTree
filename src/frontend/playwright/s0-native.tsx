@@ -71,7 +71,12 @@ useUserState.setState({
       params.get('role') === 'editor'
         ? { work_order: ['view', 'add', 'change', 'delete'] }
         : nativeReader
-          ? { work_order: ['view'] }
+          ? {
+              work_order: ['view'],
+              ...(params.get('part_access') === 'reader'
+                ? { part: ['view'] }
+                : {})
+            }
           : {},
     permissions:
       params.get('role') === 'editor'

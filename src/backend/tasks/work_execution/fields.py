@@ -8,7 +8,13 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-WORK_EXECUTION_FIELDS = ('handled_actions', 'investigation')
+WORK_EXECUTION_FIELDS = (
+    'handled_actions',
+    'investigation',
+    'prepared_package',
+    'verification_return',
+    'time_assignment',
+)
 
 
 class WorkExecutionFieldsMixin(serializers.Serializer):
@@ -16,6 +22,31 @@ class WorkExecutionFieldsMixin(serializers.Serializer):
 
     handled_actions = serializers.SerializerMethodField()
     investigation = serializers.SerializerMethodField()
+    prepared_package = serializers.SerializerMethodField()
+    verification_return = serializers.SerializerMethodField()
+    time_assignment = serializers.SerializerMethodField()
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_time_assignment(self, obj) -> dict:
+        """P27: native assignment provenance, without inferred labor."""
+        from .time_assignment import project
+
+        return project(obj)
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_verification_return(self, obj) -> dict:
+        """P23: recorded test results without inferred operating authority."""
+        from .verification import project
+
+        return project(obj)
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_prepared_package(self, obj) -> dict:
+        """P21: immutable applied instructions and recorded scope history."""
+        from .package import project
+
+        request = self.context.get('request')
+        return project(obj, actor=request.user if request else None)
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_handled_actions(self, obj) -> dict:
