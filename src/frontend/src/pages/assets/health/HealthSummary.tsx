@@ -10,9 +10,13 @@ import {
 } from '@mantine/core';
 import { IconAlertTriangle, IconPlugConnectedX } from '@tabler/icons-react';
 
-import type { MachineHealthSummary } from '@lib/types/MachineHealth';
+import type {
+  MachineHealthSummary,
+  MachineSignal
+} from '@lib/types/MachineHealth';
 
 import { HealthStateBadge, ObservedAt } from './common';
+import { healthCoverage } from './healthCoverage';
 
 /**
  * Current condition for one machine.
@@ -22,13 +26,14 @@ import { HealthStateBadge, ObservedAt } from './common';
  * stale, so degraded data is called out even when the overall state looks calm.
  */
 export function HealthSummaryPanel({
-  summary
-}: Readonly<{ summary: MachineHealthSummary }>) {
-  const counts = summary.anomaly_counts ?? {
-    critical: 0,
-    warning: 0,
-    info: 0
-  };
+  summary,
+  signals
+}: Readonly<{
+  summary: MachineHealthSummary;
+  signals: MachineSignal[] | null;
+}>) {
+  const counts = summary.anomaly_counts;
+  const coverage = signals ? healthCoverage(signals) : null;
 
   return (
     <Stack gap='sm'>
@@ -39,6 +44,10 @@ export function HealthSummaryPanel({
               {t`Condition`}
             </Text>
             <HealthStateBadge state={summary.state} size='lg' />
+            <Text
+              size='xs'
+              c='dimmed'
+            >{t`Current backend assessment of mapped signals and active machine anomalies. Assessment time not supplied.`}</Text>
           </Stack>
 
           <Stack gap={4}>
@@ -47,23 +56,26 @@ export function HealthSummaryPanel({
             </Text>
             <ObservedAt
               observedAt={summary.last_observed_at}
-              stale={summary.stale_signal_count > 0}
+              stale={
+                summary.signal_count > 0 &&
+                summary.stale_signal_count === summary.signal_count
+              }
             />
           </Stack>
 
           <Stack gap={4}>
             <Text size='xs' c='dimmed' fw={500}>
-              {t`Active anomalies`}
+              {t`Active anomalies on this machine`}
             </Text>
             <Group gap='xs'>
               <Badge color='red' variant='light'>
-                {t`Critical: ${counts.critical ?? 0}`}
+                {t`Critical: ${counts?.critical ?? t`Unavailable`}`}
               </Badge>
               <Badge color='yellow' variant='light'>
-                {t`Warning: ${counts.warning ?? 0}`}
+                {t`Warning: ${counts?.warning ?? t`Unavailable`}`}
               </Badge>
               <Badge color='blue' variant='light'>
-                {t`Info: ${counts.info ?? 0}`}
+                {t`Info: ${counts?.info ?? t`Unavailable`}`}
               </Badge>
             </Group>
           </Stack>
@@ -79,6 +91,24 @@ export function HealthSummaryPanel({
             </Text>
           </Stack>
         </SimpleGrid>
+      </Paper>
+
+      <Paper withBorder radius='md' p='md'>
+        <Stack gap='xs'>
+          <Text size='sm' fw={600}>{t`Observation and coverage`}</Text>
+          {coverage ? (
+            <Text size='sm'>{t`${coverage.mapped} mapped · ${coverage.usable} usable now · ${coverage.evaluated} evaluated now`}</Text>
+          ) : (
+            <Text size='sm'>{t`Signal coverage unavailable: signal read failed`}</Text>
+          )}
+          <Text
+            size='xs'
+            c='dimmed'
+          >{t`Usable means a current observation with good source quality. Evaluated means the server classified that signal against configured limits. Neither establishes overall equipment health.`}</Text>
+          <Alert color='yellow' title={t`Critical coverage unavailable`}>
+            {t`No critical-signal designation is supplied. Critical limits do not identify which signals are critical. Missing critical evidence cannot be ruled out, even when the current assessment is Normal.`}
+          </Alert>
+        </Stack>
       </Paper>
 
       {summary.state === 'offline' && (

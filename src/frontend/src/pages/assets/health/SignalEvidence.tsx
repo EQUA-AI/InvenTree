@@ -1,0 +1,442 @@
+import { t } from '@lingui/core/macro';
+import {
+  ActionIcon,
+  Alert,
+  Anchor,
+  Badge,
+  Group,
+  Loader,
+  Paper,
+  SimpleGrid,
+  Stack,
+  Text,
+  Title,
+  Tooltip
+} from '@mantine/core';
+import { IconX } from '@tabler/icons-react';
+import { useQuery } from '@tanstack/react-query';
+import { type ReactNode, type RefObject, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+
+import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
+import { apiUrl } from '@lib/functions/Api';
+import type {
+  HealthEvidenceSnapshot,
+  HealthSourceStatus,
+  MachineAnomaly,
+  MachineSignal
+} from '@lib/types/MachineHealth';
+
+import { useApi } from '../../../contexts/ApiContext';
+import {
+  HealthStateBadge,
+  SeverityBadge,
+  formatSignalLimits,
+  qualityLabel,
+  sourceTypeLabel,
+  unassociatedAnomalyText
+} from './common';
+import { anomaliesForSignal } from './signalContext';
+import type { PreparedTrend } from './trendSamples';
+
+/** The id the row Inspect controls point at with aria-controls. */
+export const SIGNAL_EVIDENCE_ID = 'health-signal-evidence';
+
+/** A full instant with its zone, so no time is read on the wrong clock. */
+export function fullInstant(value: string | number | null | undefined) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    timeZoneName: 'short'
+  });
+}
+
+function Fact({
+  label,
+  children
+}: Readonly<{ label: string; children: ReactNode }>) {
+  return (
+    <Stack gap={2} style={{ minWidth: 0 }}>
+      <Text size='xs' c='dimmed' fw={500}>
+        {label}
+      </Text>
+      <div style={{ overflowWrap: 'anywhere' }}>{children}</div>
+    </Stack>
+  );
+}
+
+function Missing({ children }: Readonly<{ children: ReactNode }>) {
+  return (
+    <Text size='sm' c='dimmed'>
+      {children}
+    </Text>
+  );
+}
+
+function snapshotReason(reason: string): string {
+  switch (reason) {
+    case 'manual_repair':
+      return t`Manual repair`;
+    case 'anomaly_repair':
+      return t`Anomaly repair`;
+    case 'ai_diagnosis':
+      return t`Diagnosis`;
+    case 'confirmation_test':
+      return t`Confirmation test`;
+    default:
+      return reason;
+  }
+}
+
+function readingText(signal: MachineSignal): string | null {
+  if (signal.value === null || signal.value === undefined) {
+    return null;
+  }
+  const value =
+    typeof signal.value === 'number'
+      ? Number.parseFloat(signal.value.toFixed(3)).toString()
+      : String(signal.value);
+  return signal.unit ? `${value} ${signal.unit}` : value;
+}
+
+/**
+ * Everything recorded about one signal, opened from its row or the chart
+ * (R6 screen 11, A05.6, A23.1).
+ *
+ * Each fact says where it comes from, and a missing one says it is missing:
+ * no component is guessed from a tag name, no unit is supplied for a raw
+ * channel, an absent limit is not a passed one, and an anomaly with no signal
+ * association is never counted as "none for this signal". The current reading
+ * and any retained snapshot are labelled apart, with their own times.
+ */
+export function SignalEvidence({
+  machineId,
+  bindingId,
+  signal,
+  source,
+  anomalies,
+  prepared,
+  trendAvailable,
+  headingRef,
+  focusToken,
+  onClose
+}: Readonly<{
+  machineId: number;
+  bindingId: number;
+  signal: MachineSignal | undefined;
+  source: HealthSourceStatus | undefined;
+  anomalies: MachineAnomaly[] | null;
+  /** The chart's reading of its current window, for the window label. */
+  prepared: PreparedTrend | null;
+  trendAvailable: boolean;
+  headingRef: RefObject<HTMLHeadingElement | null>;
+  /** Changes each time the panel is opened from a trigger, to move focus. */
+  focusToken: number;
+  onClose: () => void;
+}>) {
+  const api = useApi();
+
+  // One read of the machine's snapshots, only while the panel is open, and
+  // filtered here by binding: no request per row.
+  const snapshotsQuery = useQuery<HealthEvidenceSnapshot[]>({
+    queryKey: ['machine-health-snapshots', machineId],
+    staleTime: 60 * 1000,
+    queryFn: async () => {
+      const response = await api.get(
+        apiUrl(ApiEndpoints.machine_health_snapshots, machineId)
+      );
+      return response.data?.results ?? [];
+    }
+  });
+
+  useEffect(() => {
+    if (focusToken > 0) {
+      headingRef.current?.focus();
+    }
+  }, [focusToken, headingRef]);
+
+  const context = anomaliesForSignal(anomalies ?? [], bindingId);
+  const snapshots = (snapshotsQuery.data ?? []).filter(
+    (snapshot) => snapshot.binding === bindingId
+  );
+
+  const name = signal?.display_name ?? t`Signal ${bindingId}`;
+  const reading = signal ? readingText(signal) : null;
+  const limits = signal ? formatSignalLimits(signal) : null;
+
+  return (
+    <Paper
+      withBorder
+      radius='md'
+      p='md'
+      id={SIGNAL_EVIDENCE_ID}
+      component='section'
+      aria-labelledby={`${SIGNAL_EVIDENCE_ID}-title`}
+    >
+      <Stack gap='md'>
+        <Group justify='space-between' align='flex-start' wrap='nowrap'>
+          <Title
+            order={5}
+            id={`${SIGNAL_EVIDENCE_ID}-title`}
+            ref={headingRef}
+            tabIndex={-1}
+            style={{ overflowWrap: 'anywhere' }}
+          >
+            {t`Signal evidence: ${name}`}
+          </Title>
+          <Tooltip label={t`Close signal evidence`}>
+            <ActionIcon
+              variant='subtle'
+              color='gray'
+              aria-label={t`Close signal evidence`}
+              onClick={onClose}
+            >
+              <IconX size={16} />
+            </ActionIcon>
+          </Tooltip>
+        </Group>
+
+        {!signal ? (
+          <Alert color='gray' title={t`This signal is not mapped here`}>
+            {t`No active mapping on this machine has that signal, so nothing about it can be shown.`}
+          </Alert>
+        ) : (
+          <SimpleGrid cols={{ base: 1, xs: 2, lg: 3 }} spacing='md'>
+            <Fact label={t`Source tag`}>
+              <Text size='sm' ff='monospace'>
+                {signal.external_key}
+              </Text>
+            </Fact>
+            <Fact label={t`Component`}>
+              {signal.component ? (
+                <Group gap={6} wrap='wrap'>
+                  <Text size='sm'>{signal.component.name}</Text>
+                  <Text size='xs' c='dimmed' ff='monospace'>
+                    {signal.component.code}
+                  </Text>
+                  <Badge
+                    size='xs'
+                    variant='outline'
+                    color={
+                      signal.component.status === 'verified' ? 'teal' : 'gray'
+                    }
+                  >
+                    {signal.component.status === 'verified'
+                      ? t`Verified assignment`
+                      : t`Draft inference`}
+                  </Badge>
+                </Group>
+              ) : (
+                <Missing>{t`Not recorded in the tag dictionary`}</Missing>
+              )}
+            </Fact>
+            <Fact label={t`Unit and kind`}>
+              <Text size='sm'>
+                {signal.unit
+                  ? signal.unit
+                  : t`No unit recorded - a raw source value`}
+                {signal.signal_kind ? ` · ${signal.signal_kind}` : ''}
+              </Text>
+            </Fact>
+            <Fact label={t`Latest recorded reading`}>
+              {reading ? (
+                <Group gap={6} wrap='wrap'>
+                  <Text size='sm' fw={500}>
+                    {reading}
+                  </Text>
+                  <Badge size='xs' variant='light' color='gray'>
+                    {signal.stale ? t`Last-known` : t`Current`}
+                  </Badge>
+                </Group>
+              ) : (
+                <Missing>{t`No reading`}</Missing>
+              )}
+            </Fact>
+            <Fact label={t`Observed (dashboard clock)`}>
+              {fullInstant(signal.observed_at) ? (
+                <Text size='sm'>{fullInstant(signal.observed_at)}</Text>
+              ) : (
+                <Missing>{t`No observation time`}</Missing>
+              )}
+            </Fact>
+            <Fact label={t`Received by AIMMS`}>
+              {fullInstant(signal.received_at) ? (
+                <Text size='sm'>{fullInstant(signal.received_at)}</Text>
+              ) : (
+                <Missing>{t`Not recorded`}</Missing>
+              )}
+            </Fact>
+            <Fact label={t`Freshness`}>
+              <Text size='sm'>
+                {signal.stale
+                  ? t`Stale: older than the ${Math.round(signal.freshness_threshold_seconds / 60)} min freshness budget`
+                  : signal.observed_at
+                    ? t`Within the ${Math.round(signal.freshness_threshold_seconds / 60)} min freshness budget`
+                    : t`No observation time; freshness unavailable`}
+              </Text>
+            </Fact>
+            <Fact label={t`Quality`}>
+              <Text size='sm'>
+                {t`${qualityLabel(signal.quality)}, as the source reported it`}
+              </Text>
+            </Fact>
+            <Fact label={t`State`}>
+              <HealthStateBadge state={signal.state} size='sm' />
+            </Fact>
+            <Fact label={t`Limits`}>
+              {limits ? (
+                <Stack gap={0}>
+                  <Text size='sm'>{limits}</Text>
+                  <Text size='xs' c='dimmed'>
+                    {t`Configured on this mapping in AIMMS`}
+                  </Text>
+                </Stack>
+              ) : (
+                <Missing>
+                  {t`Not configured - no applicable limit, which does not make the reading normal`}
+                </Missing>
+              )}
+            </Fact>
+            <Fact label={t`Source`}>
+              <Stack gap={0}>
+                <Text size='sm'>
+                  {signal.source_name}
+                  {signal.source_type
+                    ? ` · ${sourceTypeLabel(signal.source_type)}`
+                    : ''}
+                </Text>
+                {source ? (
+                  <Text size='xs' c='dimmed'>
+                    {source.healthy
+                      ? t`Connected; last success ${fullInstant(source.last_success_at) ?? t`never`}`
+                      : source.active
+                        ? t`Failing; last success ${fullInstant(source.last_success_at) ?? t`never`}`
+                        : t`Disabled`}
+                  </Text>
+                ) : (
+                  <Text size='xs' c='dimmed'>
+                    {t`Connection status not reported`}
+                  </Text>
+                )}
+              </Stack>
+            </Fact>
+            <Fact label={t`Chart window`}>
+              {prepared && trendAvailable ? (
+                <Text size='sm'>
+                  {t`Selected history window, read from the source: ${fullInstant(prepared.start) ?? '—'} to ${fullInstant(prepared.end) ?? '—'}`}
+                </Text>
+              ) : (
+                <Missing>{t`No history read for this signal`}</Missing>
+              )}
+            </Fact>
+          </SimpleGrid>
+        )}
+
+        <Stack gap={6}>
+          <Text size='sm' fw={600}>
+            {t`Active anomalies citing this signal`}
+          </Text>
+          {anomalies === null ? (
+            <Missing>{t`Active anomaly read incomplete or failed; association unavailable.`}</Missing>
+          ) : null}
+          {anomalies !== null &&
+          context.cited.length === 0 &&
+          context.unassociated.length === 0 ? (
+            <Missing>{t`No active anomaly cites this signal.`}</Missing>
+          ) : null}
+          {context.cited.length === 0 && context.unassociated.length > 0 ? (
+            <Missing>{t`None cites it by its signal.`}</Missing>
+          ) : null}
+          {context.cited.map((anomaly) => (
+            <Group key={anomaly.pk} gap='xs' wrap='wrap'>
+              <SeverityBadge severity={anomaly.severity} />
+              <Text size='sm'>{anomaly.title}</Text>
+              <Text size='xs' c='dimmed'>
+                {t`First observed ${fullInstant(anomaly.first_observed_at) ?? '—'}`}
+              </Text>
+              {anomaly.work_order ? (
+                <Anchor
+                  component={Link}
+                  to={`/maintenance/work-orders/${anomaly.work_order}/`}
+                  size='sm'
+                >
+                  {t`Open owning work order`}
+                </Anchor>
+              ) : (
+                <Text size='xs' c='dimmed'>
+                  {t`No owning work recorded`}
+                </Text>
+              )}
+            </Group>
+          ))}
+          {context.unassociated.length > 0 ? (
+            <Text size='sm' c='dimmed'>
+              {unassociatedAnomalyText(context.unassociated.length)}
+            </Text>
+          ) : null}
+        </Stack>
+
+        <Stack gap={6}>
+          <Text size='sm' fw={600}>
+            {t`Retained evidence`}
+          </Text>
+          {snapshotsQuery.isLoading ? <Loader size='xs' /> : null}
+          {snapshotsQuery.isError ? (
+            <Text size='sm' c='dimmed'>
+              {t`Retained evidence could not be read. That is not an absence of snapshots.`}
+            </Text>
+          ) : null}
+          {snapshotsQuery.isSuccess && snapshots.length === 0 ? (
+            <Missing>{t`No snapshot of this signal in the latest 50 machine snapshots.`}</Missing>
+          ) : null}
+          {snapshots.slice(0, 5).map((snapshot) => (
+            <Stack key={snapshot.id} gap={0}>
+              <Group gap={6} wrap='wrap'>
+                <Badge size='xs' variant='light' color='violet'>
+                  {t`Retained snapshot`}
+                </Badge>
+                <Text size='sm'>
+                  {t`Captured ${fullInstant(snapshot.captured_at) ?? '—'} for ${snapshotReason(snapshot.reason)}`}
+                  <Anchor
+                    component={Link}
+                    to={`/machines/machine/${machineId}/health/?snapshot=${snapshot.id}`}
+                    size='sm'
+                  >{t`Open exact retained snapshot`}</Anchor>
+                </Text>
+              </Group>
+              <Text size='xs' c='dimmed'>
+                {t`Window ${fullInstant(snapshot.window_start) ?? '—'} to ${fullInstant(snapshot.window_end) ?? '—'}`}
+                {' · '}
+                {qualityLabel(snapshot.quality)}
+                {snapshot.stale ? ` · ${t`stale when captured`}` : ''}
+                {snapshot.anomaly ? ` · ${t`anomaly ${snapshot.anomaly}`}` : ''}
+                {' · '}
+                <Text span ff='monospace' size='xs'>
+                  {snapshot.content_hash.slice(0, 12)}
+                </Text>
+              </Text>
+            </Stack>
+          ))}
+          {snapshots.length > 5 ? (
+            <Text size='xs' c='dimmed'>
+              {t`${snapshots.length - 5} older snapshots are not listed.`}
+            </Text>
+          ) : null}
+        </Stack>
+      </Stack>
+    </Paper>
+  );
+}
+
+export default SignalEvidence;

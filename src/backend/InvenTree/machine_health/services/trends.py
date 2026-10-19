@@ -20,7 +20,6 @@ cannot pull a historian dry or hang the worker pool.
 from __future__ import annotations
 
 import logging
-import statistics
 from itertools import pairwise
 
 from django.utils import timezone
@@ -86,21 +85,22 @@ def plottable(value, statuses: dict):
 
 
 def measured_cadence(readings) -> float | None:
-    """Median seconds between consecutive readings, or None below three.
+    """Shortest positive observed interval, or None below three readings.
 
-    The same measure the series read reports as ``cadence_seconds``. A chart
-    needs it to tell the source's normal spacing from a silence: a break is
-    drawn only where two readings are much further apart than this, so a gap
-    in the record stays a gap instead of being joined by a straight line. The
-    median, not the mean, so a few silences cannot stretch the cadence they
-    are measured against. Timestamps are sorted first; a connector need not
-    return its readings in order.
+    Silences must not stretch the interval they are checked against, even
+    when they make up half or more of the gaps. This is an estimate from the
+    returned record, not a configured source sampling rate. Ignore duplicate
+    timestamps; an entirely simultaneous record has no measurable interval.
     """
     stamps = sorted(reading.observed_at for reading in readings)
     if len(stamps) < 3:
         return None
-    gaps = [(later - earlier).total_seconds() for earlier, later in pairwise(stamps)]
-    return round(statistics.median(gaps), 3)
+    gaps = [
+        (later - earlier).total_seconds()
+        for earlier, later in pairwise(stamps)
+        if later > earlier
+    ]
+    return round(min(gaps), 3) if gaps else None
 
 
 class TrendError(Exception):
@@ -167,9 +167,8 @@ def read_trend(
         'limits': {
             'max_window_seconds': MAX_TREND_WINDOW_SECONDS,
             'max_samples': MAX_TREND_SAMPLES,
-            # The cadence the source is expected to write at, as the series
-            # read states it; the fallback when too few readings came back
-            # to measure one.
+            # Server-wide expected interval, also exposed by the series read.
+            # A fallback below three readings, not a measured per-source rate.
             'expected_sample_interval_seconds': EXPECTED_SAMPLE_INTERVAL_SECONDS,
         },
     }

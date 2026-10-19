@@ -27,6 +27,8 @@ class MachineSignalSerializer(serializers.Serializer):
     source_name = serializers.CharField(read_only=True)
     source_type = serializers.CharField(read_only=True)
     external_key = serializers.CharField(read_only=True)
+    #: ``{code, name, status}`` from the tag dictionary, or null when unrecorded.
+    component = serializers.JSONField(read_only=True, allow_null=True)
     display_name = serializers.CharField(read_only=True)
     signal_kind = serializers.CharField(read_only=True)
     unit = serializers.CharField(read_only=True)

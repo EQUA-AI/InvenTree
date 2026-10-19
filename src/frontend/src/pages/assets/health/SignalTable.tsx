@@ -1,19 +1,35 @@
 import { t } from '@lingui/core/macro';
-import { Group, Paper, Stack, Table, Text } from '@mantine/core';
+import {
+  Button,
+  Group,
+  Paper,
+  Select,
+  Stack,
+  Table,
+  Text,
+  TextInput
+} from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
-import type { MachineSignal, SignalTrend } from '@lib/types/MachineHealth';
+import type {
+  MachineAnomaly,
+  MachineSignal,
+  SignalTrend
+} from '@lib/types/MachineHealth';
 
 import { useApi } from '../../../contexts/ApiContext';
 
+import { SignalAnomalyContext, conditionText } from './SignalCondition';
+import classes from './SignalTable.module.css';
 import { SignalTrendSparkline } from './SignalTrend';
 import {
   HealthStateBadge,
   ObservedAt,
   SourceTypeBadge,
+  formatSignalLimits,
   qualityLabel
 } from './common';
 import { indexSuppliedTrends, suppliedTrend } from './suppliedTrends';
@@ -29,18 +45,6 @@ function formatValue(signal: MachineSignal): string {
   return signal.unit ? `${value} ${signal.unit}` : value;
 }
 
-function formatLimits(signal: MachineSignal): string {
-  const { warn_min, warn_max, critical_min, critical_max } = signal.limits;
-  const parts: string[] = [];
-  if (warn_min !== null || warn_max !== null) {
-    parts.push(t`Warn ${warn_min ?? '−∞'}…${warn_max ?? '∞'}`);
-  }
-  if (critical_min !== null || critical_max !== null) {
-    parts.push(t`Critical ${critical_min ?? '−∞'}…${critical_max ?? '∞'}`);
-  }
-  return parts.join(' · ');
-}
-
 /**
  * Mapped signals with their current value, provenance and freshness.
  *
@@ -53,9 +57,53 @@ const SPARKLINE_WINDOW_SECONDS = 10 * 60;
 
 export function SignalTable({
   signals,
-  machineId
-}: Readonly<{ signals: MachineSignal[]; machineId: number }>) {
+  machineId,
+  selectedBinding,
+  onInspect,
+  anomalies = null
+}: Readonly<{
+  signals: MachineSignal[];
+  machineId: number;
+  anomalies?: MachineAnomaly[] | null;
+  selectedBinding?: string | null;
+  onInspect?: (binding: number, trigger: HTMLElement) => void;
+}>) {
   const api = useApi();
+  const [mobileCards, setMobileCards] = useState(true);
+  const [search, setSearch] = useState('');
+  const [detailsOpen, setDetailsOpen] = useState<Record<number, boolean>>({});
+  const [component, setComponent] = useState<string | null>(null);
+  const visibleSignals = signals.filter(
+    (signal) =>
+      (!component || signal.component?.code === component) &&
+      (!search.trim() ||
+        [
+          signal.display_name,
+          signal.external_key,
+          signal.unit,
+          signal.component?.name,
+          signal.component?.code
+        ].some((value) =>
+          value?.toLowerCase().includes(search.trim().toLowerCase())
+        ))
+  );
+  const components = [
+    ...new Map(
+      signals.flatMap((signal) =>
+        signal.component
+          ? [
+              [
+                signal.component.code,
+                {
+                  value: signal.component.code,
+                  label: `${signal.component.name} · ${signal.component.code}`
+                }
+              ] as const
+            ]
+          : []
+      )
+    ).values()
+  ];
 
   const bindingIds = useMemo(
     () => signals.map((signal) => signal.binding_id).filter(Boolean),
@@ -108,78 +156,267 @@ export function SignalTable({
   }
 
   return (
-    <Paper withBorder radius='md' p={0} style={{ overflowX: 'auto' }}>
-      <Table striped highlightOnHover>
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>{t`Signal`}</Table.Th>
-            <Table.Th>{t`Value`}</Table.Th>
-            <Table.Th>{t`State`}</Table.Th>
-            <Table.Th>{t`Observed`}</Table.Th>
-            <Table.Th>{t`Trend`}</Table.Th>
-            <Table.Th>{t`Quality`}</Table.Th>
-            <Table.Th>{t`Source`}</Table.Th>
-            <Table.Th>{t`Limits`}</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {signals.map((signal) => (
-            <Table.Tr key={signal.binding_id}>
-              <Table.Td>
-                <Stack gap={0}>
-                  <Text size='sm'>{signal.display_name}</Text>
-                  {signal.signal_kind && (
-                    <Text size='xs' c='dimmed'>
-                      {signal.signal_kind}
-                    </Text>
-                  )}
-                </Stack>
-              </Table.Td>
-              <Table.Td>
-                <Text size='sm' fw={500}>
-                  {formatValue(signal)}
-                </Text>
-              </Table.Td>
-              <Table.Td>
-                <HealthStateBadge state={signal.state} size='sm' />
-              </Table.Td>
-              <Table.Td>
-                <ObservedAt
-                  observedAt={signal.observed_at}
-                  stale={signal.stale}
-                />
-              </Table.Td>
-              <Table.Td>
-                <SignalTrendSparkline
-                  machineId={machineId}
-                  bindingId={signal.binding_id}
-                  // Missing/pending supplied rows stay null, suppressing N+1 reads.
-                  trend={suppliedTrend(trendByBinding, signal.binding_id)}
-                  supplierPending={trendsQuery.isLoading}
-                  supplierFailed={trendsQuery.isError}
-                />
-              </Table.Td>
-              <Table.Td>
-                <Text size='sm'>{qualityLabel(signal.quality)}</Text>
-              </Table.Td>
-              <Table.Td>
-                <Group gap={6} wrap='nowrap'>
-                  <SourceTypeBadge type={signal.source_type} />
-                  <Text size='xs' c='dimmed'>
-                    {signal.source_name}
-                  </Text>
-                </Group>
-              </Table.Td>
-              <Table.Td>
-                <Text size='xs' c='dimmed'>
-                  {formatLimits(signal) || t`Not configured`}
-                </Text>
-              </Table.Td>
+    <Stack gap='xs'>
+      <Group align='flex-end'>
+        <TextInput
+          label={t`Search signals`}
+          placeholder={t`Signal, tag, component or unit`}
+          value={search}
+          onChange={(event) => setSearch(event.currentTarget.value)}
+          style={{ flex: '1 1 220px' }}
+        />
+        <Select
+          label={t`Component filter`}
+          placeholder={t`All components`}
+          clearable
+          value={component}
+          onChange={setComponent}
+          data={components}
+          style={{ flex: '1 1 220px' }}
+        />
+      </Group>
+      <Text
+        size='xs'
+        c='dimmed'
+      >{t`${visibleSignals.length} of ${signals.length} mapped signals in this table. Condition and coverage above describe the whole machine.`}</Text>
+      {selectedBinding &&
+        !visibleSignals.some(
+          (signal) => String(signal.binding_id) === selectedBinding
+        ) && (
+          <Text size='sm'>{t`The selected signal is outside this table filter. Its chart and evidence keep their selection.`}</Text>
+        )}
+      {visibleSignals.length === 0 && (
+        <Text size='sm'>{t`No mapped signals match these filters. Clear the filters to see all signals.`}</Text>
+      )}
+      <Button
+        hiddenFrom='sm'
+        variant='default'
+        onClick={() => setMobileCards((value) => !value)}
+      >
+        {mobileCards ? t`All columns table` : t`Signal cards`}
+      </Button>
+      <Paper
+        component='section'
+        aria-label={t`Signal readings; scroll for all columns`}
+        tabIndex={0}
+        withBorder
+        radius='md'
+        p={0}
+        style={{ overflowX: 'auto' }}
+      >
+        {/* biome-ignore lint/a11y/useSemanticElements: Mantine renders native table elements; explicit roles preserve them when phone CSS changes display. */}
+        <Table
+          role='table'
+          aria-label={t`Mapped signal readings`}
+          striped
+          highlightOnHover
+          className={classes.table}
+          data-cards={mobileCards}
+        >
+          {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+          <Table.Thead role='rowgroup'>
+            {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+            <Table.Tr role='row'>
+              {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+              <Table.Th role='columnheader' scope='col'>{t`Signal`}</Table.Th>
+              {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+              <Table.Th role='columnheader' scope='col'>{t`Value`}</Table.Th>
+              {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+              <Table.Th role='columnheader' scope='col'>{t`State`}</Table.Th>
+              {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+              <Table.Th role='columnheader' scope='col'>{t`Trend`}</Table.Th>
+              {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+              <Table.Th role='columnheader' scope='col'>{t`Observed`}</Table.Th>
+              {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+              <Table.Th
+                role='columnheader'
+                scope='col'
+              >{t`Current condition`}</Table.Th>
+              {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+              <Table.Th
+                role='columnheader'
+                scope='col'
+              >{t`Active anomalies`}</Table.Th>
+              {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+              <Table.Th role='columnheader' scope='col'>{t`Quality`}</Table.Th>
+              {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+              <Table.Th role='columnheader' scope='col'>{t`Source`}</Table.Th>
+              {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+              <Table.Th role='columnheader' scope='col'>{t`Limits`}</Table.Th>
             </Table.Tr>
-          ))}
-        </Table.Tbody>
-      </Table>
-    </Paper>
+          </Table.Thead>
+          {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+          <Table.Tbody role='rowgroup'>
+            {visibleSignals.map((signal) => (
+              // biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout.
+              <Table.Tr
+                role='row'
+                data-details-open={!!detailsOpen[signal.binding_id]}
+                key={signal.binding_id}
+                bg={
+                  selectedBinding === String(signal.binding_id)
+                    ? 'var(--mantine-primary-color-light)'
+                    : undefined
+                }
+                onClick={
+                  onInspect
+                    ? (event) => {
+                        if ((event.target as HTMLElement).closest('button, a'))
+                          return;
+                        const trigger =
+                          event.currentTarget.querySelector('button');
+                        if (trigger) onInspect(signal.binding_id, trigger);
+                      }
+                    : undefined
+                }
+              >
+                {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+                <Table.Td role='cell' data-label={t`Signal`}>
+                  <Stack gap={0}>
+                    {onInspect ? (
+                      <Button
+                        justify='flex-start'
+                        variant='subtle'
+                        size='compact-sm'
+                        px={0}
+                        h='auto'
+                        style={{ whiteSpace: 'normal', textAlign: 'left' }}
+                        aria-label={t`Inspect signal: ${signal.display_name}`}
+                        aria-controls='health-signal-evidence'
+                        aria-pressed={
+                          selectedBinding === String(signal.binding_id)
+                        }
+                        onClick={(event) =>
+                          onInspect(signal.binding_id, event.currentTarget)
+                        }
+                      >
+                        {signal.display_name}
+                      </Button>
+                    ) : (
+                      <Text size='sm'>{signal.display_name}</Text>
+                    )}
+                    {signal.component && (
+                      <Text size='xs' c='dimmed'>
+                        {signal.component.name} · {signal.component.code}
+                        {signal.component.status !== 'verified'
+                          ? ` · ${t`Draft inference`}`
+                          : ''}
+                      </Text>
+                    )}
+                    {signal.signal_kind && (
+                      <Text size='xs' c='dimmed'>
+                        {signal.signal_kind}
+                      </Text>
+                    )}
+                  </Stack>
+                </Table.Td>
+                {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+                <Table.Td role='cell' data-label={t`Value`}>
+                  <Text size='sm' fw={500}>
+                    {formatValue(signal)}
+                  </Text>
+                </Table.Td>
+                {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+                <Table.Td role='cell' data-label={t`State`}>
+                  <HealthStateBadge state={signal.state} size='sm' />
+                </Table.Td>
+                {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+                <Table.Td role='cell' data-label={t`Trend`}>
+                  <SignalTrendSparkline
+                    machineId={machineId}
+                    bindingId={signal.binding_id}
+                    // Missing/pending supplied rows stay null, suppressing N+1 reads.
+                    trend={suppliedTrend(trendByBinding, signal.binding_id)}
+                    supplierPending={trendsQuery.isLoading}
+                    supplierFailed={trendsQuery.isError}
+                  />
+                </Table.Td>
+                {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+                <Table.Td role='cell' data-label={t`Observed`}>
+                  <ObservedAt
+                    observedAt={signal.observed_at}
+                    stale={signal.stale}
+                  />
+                </Table.Td>
+                {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+                <Table.Td role='cell' data-label={t`Current condition`}>
+                  <Text size='sm'>{conditionText(signal)}</Text>
+                  <Button
+                    hiddenFrom='sm'
+                    variant='subtle'
+                    size='compact-sm'
+                    mt='xs'
+                    aria-label={t`Details for ${signal.display_name}`}
+                    aria-expanded={!!detailsOpen[signal.binding_id]}
+                    aria-controls={['anomalies', 'quality', 'source', 'limits']
+                      .map((detail) => `signal-${signal.binding_id}-${detail}`)
+                      .join(' ')}
+                    onClick={() =>
+                      setDetailsOpen((open) => ({
+                        ...open,
+                        [signal.binding_id]: !open[signal.binding_id]
+                      }))
+                    }
+                  >
+                    {detailsOpen[signal.binding_id]
+                      ? t`Hide details`
+                      : t`Show details`}
+                  </Button>
+                </Table.Td>
+                {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+                <Table.Td
+                  role='cell'
+                  data-detail='true'
+                  id={`signal-${signal.binding_id}-anomalies`}
+                  data-label={t`Active anomalies`}
+                >
+                  <SignalAnomalyContext signal={signal} anomalies={anomalies} />
+                </Table.Td>
+                {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+                <Table.Td
+                  role='cell'
+                  data-detail='true'
+                  id={`signal-${signal.binding_id}-quality`}
+                  data-label={t`Quality`}
+                >
+                  <Text size='sm'>{qualityLabel(signal.quality)}</Text>
+                </Table.Td>
+                {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+                <Table.Td
+                  role='cell'
+                  data-detail='true'
+                  id={`signal-${signal.binding_id}-source`}
+                  data-label={t`Source`}
+                >
+                  <Group gap={6} wrap='nowrap'>
+                    <SourceTypeBadge type={signal.source_type} />
+                    <Text size='xs'>{signal.source_name}</Text>
+                  </Group>
+                  <Text
+                    size='xs'
+                    ff='monospace'
+                    style={{ overflowWrap: 'anywhere' }}
+                  >
+                    {signal.external_key}
+                  </Text>
+                </Table.Td>
+                {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
+                <Table.Td
+                  role='cell'
+                  data-detail='true'
+                  id={`signal-${signal.binding_id}-limits`}
+                  data-label={t`Limits`}
+                >
+                  <Text size='sm'>
+                    {formatSignalLimits(signal) || t`Not configured`}
+                  </Text>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      </Paper>
+    </Stack>
   );
 }
 

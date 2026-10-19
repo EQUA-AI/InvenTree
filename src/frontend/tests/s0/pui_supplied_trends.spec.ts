@@ -62,7 +62,7 @@ test('pending and partial batches never start per-row trend reads', async ({
   await expect(
     page.getByRole('img', { name: 'Recent trend for Active Power' })
   ).toBeVisible();
-  await expect(page.getByText('No trend', { exact: true })).toHaveCount(2);
+  await expect(page.getByText('Not returned', { exact: true })).toHaveCount(2);
   await expect(
     page.getByRole('cell', { name: '0 MW', exact: true })
   ).toBeVisible();

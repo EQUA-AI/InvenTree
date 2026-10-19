@@ -1,8 +1,10 @@
 import { type Page, type Route, expect } from '@playwright/test';
 
 import type {
+  HealthEvidenceSnapshot,
   HealthState,
   MachineAnomaly,
+  MachineSignal,
   SignalQuality
 } from '../../lib/types/MachineHealth';
 import { mockMachine } from '../s0/machineFixtures';
@@ -16,7 +18,7 @@ import { mockMachine } from '../s0/machineFixtures';
 export const MACHINE = 18;
 /** The page clock: every relative time on the tab is measured from here. */
 export const NOW = Date.parse('2026-10-18T09:00:00Z');
-/** The source's expected cadence, as the trend read states it. */
+/** Server-default expected interval; fixtures also measure their own gaps. */
 export const CADENCE_SECONDS = 5;
 
 /**
@@ -36,9 +38,21 @@ export type TrendShape =
   | 'zero'
   | 'empty'
   | 'missing'
-  | { reason: 'NO_CONNECTOR' | 'SOURCE_UNAVAILABLE' | 'HISTORY_UNSUPPORTED' };
+  | 'sparse'
+  | 'flapping'
+  | 'two-readings'
+  | 'bad'
+  | 'mostly-bad'
+  | {
+      reason:
+        | 'NO_CONNECTOR'
+        | 'SOURCE_UNAVAILABLE'
+        | 'SOURCE_TIMEOUT'
+        | 'HISTORY_UNSUPPORTED';
+    };
 
 export interface HealthSignalSpec {
+  component?: MachineSignal['component'];
   id: number;
   key: string;
   name: string;
@@ -145,6 +159,27 @@ export function recordFor(
   const wave = (at: number) =>
     Number((base + Math.sin(at / 47_000) * base * 0.02).toFixed(3));
   switch (spec.trend) {
+    case 'sparse':
+    case 'flapping':
+    case 'two-readings': {
+      const offsets =
+        spec.trend === 'sparse'
+          ? [0, 5, 595]
+          : spec.trend === 'flapping'
+            ? [0, 5, 65, 70, 130, 135, 195]
+            : [0, 60];
+      return offsets.map((seconds) => ({
+        observed_at: iso(from + seconds * 1000),
+        value: base,
+        quality: 'good'
+      }));
+    }
+    case 'bad':
+    case 'mostly-bad':
+      return every(from, to, wave).map((sample, index) => ({
+        ...sample,
+        quality: spec.trend === 'mostly-bad' && index === 0 ? 'good' : 'bad'
+      }));
     case 'gappy': {
       // Three minutes of readings, then two minutes of silence, then the rest.
       const firstRun = every(to - 600_000, to - 420_000, wave);
@@ -203,20 +238,33 @@ export function trendFor(
       ...envelope,
       available: false,
       reason: spec.trend.reason,
-      detail:
-        spec.trend.reason === 'NO_CONNECTOR'
-          ? 'This source has no configured connector to read history from.'
-          : 'The source could not be reached for this window.',
+      detail: {
+        NO_CONNECTOR:
+          'This source has no configured connector to read history from.',
+        HISTORY_UNSUPPORTED: 'This source does not support historical windows.',
+        SOURCE_TIMEOUT: 'The source did not answer within the read timeout.',
+        SOURCE_UNAVAILABLE: 'The source could not be reached for this window.'
+      }[spec.trend.reason],
       samples: []
     };
   }
   const samples = recordFor(spec, from, to);
+  const gaps = samples
+    .slice(1)
+    .map(
+      (sample, index) =>
+        (Date.parse(sample.observed_at) -
+          Date.parse(samples[index].observed_at)) /
+        1000
+    );
   return {
     ...envelope,
     available: true,
     truncated: false,
     cadence_seconds:
-      options.cadence === false || samples.length < 3 ? null : CADENCE_SECONDS,
+      options.cadence === false || samples.length < 3
+        ? null
+        : Math.min(...gaps),
     samples
   };
 }
@@ -225,6 +273,7 @@ export function trendFor(
 export function signalRow(spec: HealthSignalSpec) {
   return {
     binding_id: spec.id,
+    component: spec.component ?? null,
     source_id: 1,
     source_name: 'Fixture historian',
     source_type: 'scada',
@@ -262,6 +311,10 @@ export interface HealthFixtureOptions {
   batchStatus?: number;
   /** Fail the full chart's read. */
   chartStatus?: number;
+  snapshots?: HealthEvidenceSnapshot[];
+  snapshotsStatus?: number;
+  anomaliesStatus?: number;
+  signalsStatus?: number;
   /** Extra query string on the Health entry. */
   entrySearch?: string;
   /** Leave the page on the real clock. */
@@ -358,7 +411,10 @@ export async function openHealth(
   );
   await page.route(`${health}/signals/**`, (route: Route) => {
     const rows = specs.map(signalRow);
-    return route.fulfill({ json: { count: rows.length, results: rows } });
+    return route.fulfill({
+      status: options.signalsStatus ?? 200,
+      json: { count: rows.length, results: rows }
+    });
   });
   await page.route(`${health}/anomalies/**`, (route: Route) => {
     const status = new URL(route.request().url()).searchParams.get('status');
@@ -366,7 +422,10 @@ export async function openHealth(
       status === 'resolved'
         ? []
         : (options.anomalies ?? []).map((row) => anomaly(row));
-    return route.fulfill({ json: { count: rows.length, results: rows } });
+    return route.fulfill({
+      status: options.anomaliesStatus ?? 200,
+      json: { count: rows.length, results: rows }
+    });
   });
   await page.route(`${health}/data-range/**`, (route: Route) =>
     route.fulfill({
@@ -427,9 +486,19 @@ export async function openHealth(
       status: spec ? 200 : 400
     });
   });
-  await page.route(`${health}/snapshots/**`, (route: Route) =>
-    route.fulfill({ json: { count: 0, results: [] } })
-  );
+  await page.route(`${health}/snapshots/**`, (route: Route) => {
+    const id = new URL(route.request().url()).searchParams.get('snapshot');
+    const rows = id
+      ? (options.snapshots ?? []).filter((row) => row.id === id)
+      : (options.snapshots ?? []);
+    return route.fulfill({
+      status: options.snapshotsStatus ?? (id && !rows.length ? 404 : 200),
+      json: {
+        count: rows.length,
+        results: rows
+      }
+    });
+  });
   const entry = `/machines/machine/${MACHINE}/health/${options.entrySearch ?? ''}`;
   const query = new URLSearchParams({
     surface: 'machine',
@@ -445,14 +514,14 @@ export async function openHealth(
 
 /** The Signals table on the Health tab. */
 export const signalTable = (page: Page) =>
-  page.locator('table').filter({ hasText: 'Signal' }).first();
+  page.getByRole('table', { name: 'Mapped signal readings', exact: true });
 
 /** The full trend card: the Paper holding the Parameter and Range controls. */
 export const trendCard = (page: Page) =>
   page
     .locator('.mantine-Paper-root')
     .filter({ has: page.getByRole('combobox', { name: 'Parameter' }) })
-    .first();
+    .last();
 
 /** The row sparkline drawn for one signal. */
 export const sparkline = (page: Page, name: string) =>

@@ -62,7 +62,7 @@ def signal_rows(machine, *, now=None):
     now = now or timezone.now()
     bindings = list(
         MachineSignalBinding.objects
-        .select_related('source', 'state')
+        .select_related('source', 'state', 'dictionary_point__component')
         .filter(machine=machine, active=True)
         .order_by('display_name')
     )
@@ -108,6 +108,11 @@ def _binding_rows(bindings, station, now):
             # mechanical needs the tag's own name; display names differ from
             # one station's dictionary to the next.
             'external_key': binding.external_key,
+            # The component the reviewed tag dictionary assigns this point to,
+            # with whether that assignment is a draft inference or verified.
+            # Null when no dictionary point or component is recorded: the
+            # signal is not attributed to any part, rather than to the machine.
+            'component': _component(binding),
             'display_name': binding.display_name,
             'signal_kind': binding.signal_kind,
             'unit': binding.unit,
@@ -136,6 +141,19 @@ def _binding_rows(bindings, station, now):
     return rows
 
 
+def _component(binding) -> dict | None:
+    """The component a binding's dictionary point names, or None."""
+    point = binding.dictionary_point if binding.dictionary_point_id else None
+    component = point.component if point and point.component_id else None
+    if (
+        component is None
+        or point.machine_id != binding.machine_id
+        or component.machine_id != binding.machine_id
+    ):
+        return None
+    return {'code': component.code, 'name': component.name, 'status': component.status}
+
+
 def health_summary(machine, *, now=None) -> dict:
     """Return the machine's current condition, freshness and anomaly counts."""
     now = now or timezone.now()
@@ -162,7 +180,7 @@ def health_conditions(machines, *, now=None) -> dict:
     bindings = defaultdict(list)
     for binding in (
         MachineSignalBinding.objects
-        .select_related('source', 'state')
+        .select_related('source', 'state', 'dictionary_point__component')
         .filter(machine_id__in=ids, active=True)
         .order_by('display_name')
     ):

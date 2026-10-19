@@ -13,7 +13,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import { IconInfoCircle, IconRefresh } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
@@ -32,6 +32,8 @@ import { AlarmHistory } from './AlarmHistory';
 import { AnomalyList } from './AnomalyList';
 import { HealthSourceStatusTable } from './HealthSourceStatus';
 import { HealthSummaryPanel } from './HealthSummary';
+import { RetainedHealthEvidence } from './RetainedHealthEvidence';
+import { SignalEvidence } from './SignalEvidence';
 import { SignalTable } from './SignalTable';
 import { SignalTrendChart } from './SignalTrendChart';
 import { AlarmNoteModal } from './mimic/AlarmNoteModal';
@@ -62,6 +64,17 @@ export function MachineHealthPanel({
 }>) {
   const api = useApi();
   const queryClient = useQueryClient();
+  const [selectedBinding, setSelectedBinding] = useState<string | null>(null);
+  const [evidenceToken, setEvidenceToken] = useState(0);
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
+  const evidenceHeading = useRef<HTMLHeadingElement>(null);
+  const evidenceTrigger = useRef<HTMLElement | null>(null);
+  const inspectSignal = (binding: number, trigger: HTMLElement) => {
+    setSelectedBinding(String(binding));
+    evidenceTrigger.current = trigger;
+    setEvidenceOpen(true);
+    setEvidenceToken((token) => token + 1);
+  };
   const [dismissing, setDismissing] = useState<MachineAnomaly | null>(null);
 
   const [acknowledging, setAcknowledging] = useState<number | null>(null);
@@ -186,10 +199,19 @@ export function MachineHealthPanel({
   const summary = summaryQuery.data;
   const signals = signalsQuery.data ?? [];
   const anomalies = anomaliesQuery.data ?? [];
+  const anomalyAssociationKnown =
+    !anomaliesQuery.isError &&
+    Number.isInteger(summary?.active_anomaly_count) &&
+    anomalies.length >=
+      (summary?.active_anomaly_count ?? Number.POSITIVE_INFINITY);
 
   if (!summary) {
     return null;
   }
+
+  const bindingId =
+    selectedBinding ?? (signals[0] ? String(signals[0].binding_id) : null);
+  const signal = signals.find((row) => String(row.binding_id) === bindingId);
 
   return (
     <Stack gap='lg'>
@@ -222,8 +244,13 @@ export function MachineHealthPanel({
           </Stack>
         </Alert>
       ) : (
-        <HealthSummaryPanel summary={summary} />
+        <HealthSummaryPanel
+          summary={summary}
+          signals={signalsQuery.isError ? null : signals}
+        />
       )}
+
+      <RetainedHealthEvidence machineId={machineId} />
 
       <Stack gap='sm'>
         <Group justify='space-between' align='center'>
@@ -236,16 +263,30 @@ export function MachineHealthPanel({
             </Anchor>
           )}
         </Group>
-        <AnomalyList
-          anomalies={anomalies}
-          acknowledging={acknowledging}
-          analyzing={analyzing}
-          results={results}
-          onAcknowledge={handleAcknowledge}
-          onCreateRepair={setRepairAnomaly}
-          onAnalyze={handleAnalyze}
-          onDismiss={setDismissing}
-        />
+        <Text
+          size='sm'
+          c='dimmed'
+        >{t`Showing ${anomalies.length} active anomaly records on this machine (maximum 200); summary counts cover the machine's active set.`}</Text>
+        {!anomalyAssociationKnown && !anomaliesQuery.isError && (
+          <Alert color='yellow'>{t`The active anomaly list is incomplete. Row association cannot establish an absence of anomalies.`}</Alert>
+        )}
+        {anomaliesQuery.isError ? (
+          <Alert
+            color='yellow'
+            title={t`Active anomalies unavailable`}
+          >{t`The anomaly read failed. An empty list cannot be inferred.`}</Alert>
+        ) : anomalies.length > 0 || anomalyAssociationKnown ? (
+          <AnomalyList
+            anomalies={anomalies}
+            acknowledging={acknowledging}
+            analyzing={analyzing}
+            results={results}
+            onAcknowledge={handleAcknowledge}
+            onCreateRepair={setRepairAnomaly}
+            onAnalyze={handleAnalyze}
+            onDismiss={setDismissing}
+          />
+        ) : null}
       </Stack>
 
       <Stack gap='sm'>
@@ -255,13 +296,66 @@ export function MachineHealthPanel({
 
       <Stack gap='sm'>
         <Title order={4}>{t`Signals`}</Title>
-        <SignalTable signals={signals} machineId={machineId} />
+        {signalsQuery.isError ? (
+          <Alert
+            color='yellow'
+            title={t`Signal readings unavailable`}
+          >{t`The signal read failed; mapping and coverage are unavailable.`}</Alert>
+        ) : (
+          <SignalTable
+            signals={signals}
+            machineId={machineId}
+            selectedBinding={bindingId}
+            onInspect={inspectSignal}
+            anomalies={anomalyAssociationKnown ? anomalies : null}
+          />
+        )}
       </Stack>
 
-      <Stack gap='sm'>
-        <Title order={4}>{t`Trend`}</Title>
-        <SignalTrendChart machineId={machineId} signals={signals} />
-      </Stack>
+      {!signalsQuery.isError && (
+        <Stack gap='sm'>
+          <Title order={4}>{t`Trend`}</Title>
+          <SignalTrendChart
+            machineId={machineId}
+            signals={signals}
+            bindingId={bindingId}
+            onBindingChange={setSelectedBinding}
+            onInspect={(trigger) =>
+              bindingId && inspectSignal(Number(bindingId), trigger)
+            }
+            evidence={
+              evidenceOpen && bindingId
+                ? (prepared, available) => (
+                    <SignalEvidence
+                      machineId={machineId}
+                      bindingId={Number(bindingId)}
+                      signal={signal}
+                      source={summary.sources?.find(
+                        (source) => source.source_id === signal?.source_id
+                      )}
+                      anomalies={anomalyAssociationKnown ? anomalies : null}
+                      prepared={prepared}
+                      trendAvailable={available}
+                      headingRef={evidenceHeading}
+                      focusToken={evidenceToken}
+                      onClose={() => {
+                        setEvidenceOpen(false);
+                        requestAnimationFrame(() =>
+                          (evidenceTrigger.current?.isConnected
+                            ? evidenceTrigger.current
+                            : document.getElementById(
+                                'inspect-selected-health-signal'
+                              )
+                          )?.focus()
+                        );
+                      }}
+                    />
+                  )
+                : undefined
+            }
+          />
+        </Stack>
+      )}
 
       <Stack gap='sm'>
         <Title order={4}>{t`Source connections`}</Title>

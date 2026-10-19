@@ -258,6 +258,7 @@ export default function MachineDetail() {
         icon: <IconActivityHeartbeat />,
         content: machine?.pk ? (
           <MachineHealthPanel
+            key={machine.pk}
             machineId={machine.pk}
             mimicHref={
               machine.asset_type === 'pumphouse'
