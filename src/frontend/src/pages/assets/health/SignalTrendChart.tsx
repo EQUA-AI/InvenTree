@@ -3,6 +3,7 @@ import { AreaChart } from '@mantine/charts';
 import {
   Alert,
   Badge,
+  Box,
   Group,
   Loader,
   Paper,
@@ -12,16 +13,24 @@ import {
   Tooltip
 } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
+import { useElementSize } from '@mantine/hooks';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { useMemo, useState } from 'react';
+import { type ReactElement, useMemo, useState } from 'react';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import type { MachineSignal, SignalTrend } from '@lib/types/MachineHealth';
 
 import { useApi } from '../../../contexts/ApiContext';
-import { numericValue } from './common';
+import { timeTicks } from '../performance/format';
+import {
+  type PreparedTrend,
+  type TrendRow,
+  isolatedIndices,
+  prepareTrend,
+  trendResolutionSeconds
+} from './trendSamples';
 
 /**
  * Longest window the server will read, in seconds.
@@ -127,14 +136,15 @@ function customWindowError(
   return null;
 }
 
-function formatTimestamp(
-  iso: string,
-  windowSeconds: number,
-  withDate: boolean
-): string {
-  const date = new Date(iso);
+/**
+ * An axis tick. Ticks fall on whole minutes of the reader's clock, so seconds
+ * would only ever print ":00"; full instants with seconds are in the tooltip
+ * and the window caption instead.
+ */
+function formatTick(ms: number, withDate: boolean): string {
+  const date = new Date(ms);
   if (Number.isNaN(date.getTime())) {
-    return iso;
+    return String(ms);
   }
   // Every window is now at most six hours, so clock times cannot repeat within
   // one axis and the date is redundant - except for a custom window picked on
@@ -142,11 +152,58 @@ function formatTimestamp(
   return date.toLocaleString(undefined, {
     ...(withDate ? { month: 'short', day: 'numeric' } : {}),
     hour: '2-digit',
-    minute: '2-digit',
-    // Seconds only matter when the window is short enough for them to be
-    // distinguishable; over six hours they are noise.
-    ...(windowSeconds <= 3600 ? { second: '2-digit' } : {})
+    minute: '2-digit'
   });
+}
+
+/** A full instant with seconds, for a tooltip or a caption. */
+function formatInstant(ms: number): string {
+  return new Date(ms).toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+}
+
+/** The reader's time zone, named so a time is never read on the wrong clock. */
+function timeZoneName(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time';
+  } catch {
+    return 'local time';
+  }
+}
+
+/** A clock shift as words: hours under two days, days beyond. */
+function shiftWords(seconds: number): string {
+  const hours = Math.abs(seconds) / 3600;
+  if (hours < 48) {
+    return t`${hours.toFixed(1)} hours`;
+  }
+  return t`${(hours / 24).toFixed(1)} days`;
+}
+
+/**
+ * What a hovered row is: a reading at its time, a reading that cannot be
+ * drawn and why, or a silence between two readings.
+ */
+function rowLabel(row: TrendRow | undefined, fallback: number): string {
+  if (!row) {
+    return formatInstant(fallback);
+  }
+  if (!row.measured) {
+    return t`No readings from ${formatInstant(row.from)} to ${formatInstant(row.to)}`;
+  }
+  if (row.undrawn === 'not_numeric') {
+    return t`${formatInstant(row.t)} - reading is not a number`;
+  }
+  if (row.undrawn === 'quality') {
+    return t`${formatInstant(row.t)} - reported ${row.quality} quality, not drawn`;
+  }
+  return formatInstant(row.t);
 }
 
 /**
@@ -309,25 +366,13 @@ export function SignalTrendChart({
 
   const trend = trendQuery.data;
 
-  const { points, skipped } = useMemo(() => {
-    const samples = trend?.samples ?? [];
-    const plotted: { label: string; value: number }[] = [];
-    let ignored = 0;
-
-    // Samples arrive oldest-first, which is already left-to-right.
-    for (const sample of samples) {
-      const value = numericValue(sample);
-      if (value === null) {
-        ignored += 1;
-        continue;
-      }
-      plotted.push({
-        label: formatTimestamp(sample.observed_at, windowSeconds, withDate),
-        value
-      });
-    }
-    return { points: plotted, skipped: ignored };
-  }, [trend, windowSeconds, withDate]);
+  // Every reading at its own time, through the reading the row graphs share:
+  // undrawable readings stay as nulls where they happened and silences longer
+  // than the source's cadence become breaks, so nothing is joined across
+  // missing time (R6 A05.3, A05.9). The old preparation dropped undrawable
+  // samples and put the rest on a category axis, so a two-minute silence drew
+  // as one step and its edges were joined.
+  const prepared = useMemo(() => prepareTrend(trend), [trend]);
 
   if (selectable.length === 0) {
     return (
@@ -336,8 +381,6 @@ export function SignalTrendChart({
       </Paper>
     );
   }
-
-  const unit = trend?.unit ?? '';
 
   return (
     <Paper withBorder radius='md' p='md'>
@@ -354,7 +397,10 @@ export function SignalTrendChart({
                 ? `${signal.display_name} (${signal.unit})`
                 : signal.display_name
             }))}
-            style={{ minWidth: 320 }}
+            // 320 px from the xs breakpoint up, as before; on a phone the
+            // card is narrower than that, so the field takes its width.
+            w={{ base: '100%', xs: 'auto' }}
+            miw={{ base: 0, xs: 320 }}
           />
           <Select
             label={t`Range`}
@@ -409,7 +455,7 @@ export function SignalTrendChart({
           )}
           {trend?.available && (
             <Badge variant='light' color='gray'>
-              {t`${points.length} samples`}
+              {t`${prepared.measured} samples`}
             </Badge>
           )}
           {dataRange?.available && (
@@ -449,50 +495,210 @@ export function SignalTrendChart({
           </Alert>
         )}
 
-        {trend?.available && skipped > 0 && (
-          <Alert color='gray' title={t`Some samples are not plottable`}>
-            {t`${skipped} of ${trend.samples.length} samples are not numeric and were left off the chart rather than coerced to a number.`}
-          </Alert>
+        {trend?.available && <RecordGaps trend={trend} prepared={prepared} />}
+
+        {trend?.available &&
+          prepared.measured === 0 &&
+          prepared.undated === 0 && (
+            <Alert color='gray' title={t`No samples in this window`}>
+              {t`${trend.source_name} served this window but had no data in it. That is different from the source being unable to answer, and from a recorded zero.`}
+            </Alert>
+          )}
+
+        {trend?.available && prepared.drawn > 1 && (
+          <TrendPlot trend={trend} prepared={prepared} withDate={withDate} />
         )}
 
-        {trend?.available && points.length === 0 && skipped === 0 && (
-          <Alert color='gray' title={t`No samples in this window`}>
-            {t`${trend.source_name} served this window but had no data in it. That is different from the source being unable to answer.`}
-          </Alert>
-        )}
-
-        {trend?.available && points.length > 1 && (
-          <AreaChart
-            h={320}
-            data={points}
-            dataKey='label'
-            series={[
-              { name: 'value', label: trend.display_name, color: 'blue.6' }
-            ]}
-            curveType='linear'
-            connectNulls={false}
-            withDots={points.length <= 60}
-            yAxisLabel={unit || undefined}
-            xAxisProps={{ minTickGap: 32 }}
-            valueFormatter={(value) =>
-              unit ? `${value} ${unit}` : String(value)
-            }
-          />
-        )}
-
-        {trend?.available && points.length === 1 && (
+        {trend?.available && prepared.drawn === 1 && (
           <Alert color='gray' title={t`Only one sample`}>
             {t`A single point is not a trend. Widen the range to see whether it is moving.`}
           </Alert>
         )}
 
         {trend?.available && (
-          <Text size='xs' c='dimmed'>
-            {t`Read live from ${trend.source_name}. AIMMS does not store this history.`}
-          </Text>
+          <Stack gap={2}>
+            <Text size='xs' c='dimmed'>
+              {t`Selected window: ${formatInstant(prepared.start)} to ${formatInstant(prepared.end)} (${timeZoneName()}).`}{' '}
+              {t`Read live from ${trend.source_name}. AIMMS does not store this history.`}
+            </Text>
+            {trend.display_shifted && trend.display_shift_seconds ? (
+              <Text size='xs' c='dimmed'>
+                {t`Times are shown on the dashboard clock, ${shiftWords(trend.display_shift_seconds)} later than the source recorded them.`}
+              </Text>
+            ) : null}
+          </Stack>
         )}
       </Stack>
     </Paper>
+  );
+}
+
+/**
+ * Where the record has holes, said once above the chart: silences longer than
+ * the source's cadence, readings that cannot be drawn, and readings with no
+ * readable time. Each is a break at its own time, never a filled value.
+ */
+function RecordGaps({
+  trend,
+  prepared
+}: Readonly<{ trend: SignalTrend; prepared: PreparedTrend }>) {
+  const undrawn = prepared.notNumeric + prepared.notGood;
+  const cadence = trendResolutionSeconds(trend);
+  const lines: string[] = [];
+  if (prepared.silences > 0 && cadence !== null) {
+    lines.push(
+      t`Silences longer than the source's ${cadence}-second cadence: ${prepared.silences}.`
+    );
+  }
+  if (prepared.notNumeric > 0) {
+    lines.push(
+      t`Readings that are not numbers: ${prepared.notNumeric} of ${prepared.measured}.`
+    );
+  }
+  if (prepared.notGood > 0) {
+    lines.push(
+      t`Readings not reported good quality: ${prepared.notGood} of ${prepared.measured}.`
+    );
+  }
+  if (prepared.undated > 0) {
+    lines.push(
+      t`Readings with no readable time, which cannot be placed on the axis: ${prepared.undated}.`
+    );
+  }
+  if (lines.length === 0 && (cadence !== null || prepared.measured < 2)) {
+    return null;
+  }
+  return (
+    <Alert color='gray' title={t`Gaps in this record`}>
+      <Stack gap={2}>
+        {lines.map((line) => (
+          <Text key={line} size='sm'>
+            {line}
+          </Text>
+        ))}
+        {(prepared.silences > 0 || undrawn > 0) && (
+          <Text size='sm'>
+            {t`Each is drawn as a break at its own time. Nothing is filled in, coerced to a number or joined across.`}
+          </Text>
+        )}
+        {cadence === null && (
+          <Text size='sm'>
+            {t`This source did not state its sampling interval, so silences between readings are not marked; only unreadable readings break the line.`}
+          </Text>
+        )}
+      </Stack>
+    </Alert>
+  );
+}
+
+/**
+ * The native full blue AreaChart, on a time axis.
+ *
+ * Same series colour, fill, linear interpolation, height and dot rule as
+ * before; what changed is the axis under it. Readings sit at their own
+ * times across the selected window, nulls and silence breaks keep the line
+ * open (`connectNulls` off), and a reading alone between two breaks still
+ * gets a dot so it is not lost.
+ */
+export function TrendPlot({
+  trend,
+  prepared,
+  withDate,
+  height = 320
+}: Readonly<{
+  trend: SignalTrend;
+  prepared: PreparedTrend;
+  withDate: boolean;
+  height?: number;
+}>) {
+  const unit = trend.unit ?? '';
+  // Ticks sized to the plot, as on the Performance charts: a clock label
+  // needs about 90 px, so a phone gets a five-minute grid rather than only
+  // the two ends.
+  const { ref: plotRef, width: plotWidth } = useElementSize<HTMLDivElement>();
+  const ticks = useMemo(
+    () =>
+      timeTicks(
+        prepared.start,
+        prepared.end,
+        Math.max(2, Math.floor((plotWidth || 600) / (withDate ? 130 : 90)))
+      ),
+    [prepared.start, prepared.end, plotWidth, withDate]
+  );
+  const isolated = useMemo(
+    () => isolatedIndices(prepared.rows),
+    [prepared.rows]
+  );
+  const withDots = prepared.drawn <= 60;
+
+  // Dots are drawn for every reading on a sparse chart; on a dense one only
+  // a reading with no drawn neighbour needs one to stay visible.
+  const isolatedDot = (props: {
+    cx?: number;
+    cy?: number;
+    index?: number;
+  }): ReactElement => {
+    const { cx, cy, index } = props;
+    if (
+      index === undefined ||
+      !isolated.has(index) ||
+      cx === undefined ||
+      cy === undefined
+    ) {
+      return <g key={`dot-${index}`} />;
+    }
+    return (
+      <circle
+        key={`dot-${index}`}
+        cx={cx}
+        cy={cy}
+        r={2.5}
+        fill='var(--mantine-color-blue-6)'
+      />
+    );
+  };
+
+  return (
+    <Box ref={plotRef}>
+      <AreaChart
+        h={height}
+        data={prepared.rows as unknown as Record<string, unknown>[]}
+        dataKey='t'
+        series={[{ name: 'value', label: trend.display_name, color: 'blue.6' }]}
+        curveType='linear'
+        connectNulls={false}
+        withDots={withDots}
+        areaProps={
+          !withDots && isolated.size > 0 ? { dot: isolatedDot } : undefined
+        }
+        yAxisLabel={unit || undefined}
+        xAxisProps={{
+          type: 'number',
+          scale: 'time',
+          domain: [prepared.start, prepared.end],
+          allowDataOverflow: true,
+          ticks,
+          // The ticks are already sized to the plot; this only stops a label
+          // printing over the nudged final one.
+          minTickGap: 12,
+          tickFormatter: (value: number) => formatTick(value, withDate)
+        }}
+        tooltipProps={{
+          labelFormatter: (label: unknown, payload: readonly unknown[]) => {
+            const row = (payload?.[0] as { payload?: TrendRow } | undefined)
+              ?.payload;
+            return rowLabel(row, Number(label));
+          }
+        }}
+        valueFormatter={(value) =>
+          value === null || value === undefined
+            ? '—'
+            : unit
+              ? `${value} ${unit}`
+              : String(value)
+        }
+      />
+    </Box>
   );
 }
 

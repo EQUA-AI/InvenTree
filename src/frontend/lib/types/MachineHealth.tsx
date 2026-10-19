@@ -238,7 +238,21 @@ export interface SignalTrend {
   window_start: string;
   window_end: string;
   max_samples: number;
-  limits: { max_window_seconds: number; max_samples: number };
+  limits: {
+    max_window_seconds: number;
+    max_samples: number;
+    /** The cadence the source is expected to write at, in seconds. */
+    expected_sample_interval_seconds?: number;
+  };
+  /**
+   * Median seconds between this read's readings; null when too few came back
+   * to measure. What a chart breaks its line against, so a silence in the
+   * source is drawn as one.
+   */
+  cadence_seconds?: number | null;
+  /** Whether the times were moved onto the clock the dashboard shows. */
+  display_shifted?: boolean;
+  display_shift_seconds?: number;
   available: boolean;
   reason?: string;
   detail?: string;

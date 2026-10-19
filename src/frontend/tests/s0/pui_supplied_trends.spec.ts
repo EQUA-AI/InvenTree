@@ -82,7 +82,9 @@ test('a failed batch keeps current readings without falling back to row reads', 
       })
   );
   await page.goto('/playwright/s0-native.html?surface=signals');
-  await expect(page.getByText('No trend', { exact: true })).toHaveCount(3);
+  // A failed read says so; it is not reported as an absence of trend (P09).
+  await expect(page.getByText('Read failed', { exact: true })).toHaveCount(3);
+  await expect(page.getByText('No trend', { exact: true })).toHaveCount(0);
   await expect(page.getByTestId('fixture-fetching')).toHaveText('0');
   await expect(
     page.getByRole('cell', { name: '0 MW', exact: true })

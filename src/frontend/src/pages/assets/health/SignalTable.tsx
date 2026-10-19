@@ -156,6 +156,7 @@ export function SignalTable({
                   // Missing/pending supplied rows stay null, suppressing N+1 reads.
                   trend={suppliedTrend(trendByBinding, signal.binding_id)}
                   supplierPending={trendsQuery.isLoading}
+                  supplierFailed={trendsQuery.isError}
                 />
               </Table.Td>
               <Table.Td>

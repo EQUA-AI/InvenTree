@@ -115,6 +115,21 @@ interface FormValues {
 }
 
 /**
+ * Field rules, defined once. Mantine form rebuilds `setFieldValue` whenever its
+ * rules object changes identity, so an inline object here made the packet
+ * toggle's effect below re-run on every render and loop ("Maximum update depth
+ * exceeded") wherever this modal is mounted - the machine header and Health
+ * tab included - even while it stays closed.
+ */
+const VALIDATION = {
+  title: (value: string) =>
+    value.trim().length === 0 ? t`Describe the work in a short title.` : null,
+  // Every work order is anchored to a machine; the backend enforces this too.
+  machine: (value: string | null) =>
+    value ? null : t`Select the machine for this work.`
+};
+
+/**
  * Reusable "New work order" experience for the Maintenance workspace.
  *
  * Submits one versioned work-package draft to the audited compound command
@@ -176,14 +191,7 @@ export function WorkOrderCreateModal({
       estimatedMinutes: '',
       createPacket: true
     },
-    validate: {
-      title: (value) =>
-        value.trim().length === 0
-          ? t`Describe the work in a short title.`
-          : null,
-      // Every work order is anchored to a machine; the backend enforces this too.
-      machine: (value) => (value ? null : t`Select the machine for this work.`)
-    }
+    validate: VALIDATION
   });
 
   const machinesQuery = useQuery<
