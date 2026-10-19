@@ -266,6 +266,7 @@ export function TimeRangeControl({
 export interface LiveIndicatorProps {
   live: boolean;
   fetching: boolean;
+  failed?: boolean;
   /** Newest reading on the page, display clock. */
   newestAt: number | null;
   /** When the last successful read finished. */
@@ -288,6 +289,7 @@ export interface LiveIndicatorProps {
 export function LiveIndicator({
   live,
   fetching,
+  failed = false,
   newestAt,
   updatedAt,
   response,
@@ -308,7 +310,11 @@ export function LiveIndicator({
 
   let color = 'gray';
   let word = t`Paused`;
-  if (live && disabled) {
+  if (failed) {
+    word = t`Read failed`;
+  } else if (!response) {
+    word = fetching ? t`Reading` : t`Not read yet`;
+  } else if (live && disabled) {
     word = t`Polling off`;
   } else if (live && empty) {
     word = t`No readings`;
@@ -325,7 +331,11 @@ export function LiveIndicator({
 
   let modeText: string | null = null;
   if (response) {
-    if (response.mode === 'complete') {
+    if (response.read_batches && response.read_batches.length > 1) {
+      modeText = response.read_batches.some((batch) => batch.failed)
+        ? t`Partial history: some bounded batches failed. See history coverage before drawing conclusions.`
+        : t`${response.read_batches.length} bounded history batches (${response.mode}); resolution ${formatDuration(response.resolution_seconds)}. Document counts are per batch, not a flat-cost total.`;
+    } else if (response.mode === 'complete') {
       modeText = t`Every reading in the window (${response.documents_read} snapshots, cadence ${formatDuration(response.cadence_seconds ?? cadence ?? 0)}).`;
     } else {
       modeText = t`Sampled: one reading every ${formatDuration(response.resolution_seconds)} — ${response.documents_read} of about ${response.expected_documents.toLocaleString()} snapshots.`;
@@ -337,7 +347,11 @@ export function LiveIndicator({
       <Group gap={6} wrap='nowrap'>
         <Badge
           color={color}
-          variant={live && !stale && !disabled && !empty ? 'filled' : 'light'}
+          variant={
+            live && !!response && !failed && !stale && !disabled && !empty
+              ? 'filled'
+              : 'light'
+          }
           size='sm'
           leftSection={
             <span

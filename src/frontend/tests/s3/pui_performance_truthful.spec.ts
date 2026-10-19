@@ -139,7 +139,9 @@ test('station values say they are the window’s, and a paused window is not the
     // Pump 2 has no status reading in the window: its state is the
     // station's present word for it, and says so.
     const row = page.locator('tbody tr').filter({ hasText: 'Pump 2' });
-    await expect(row).toContainText('Current, not from this window');
+    await expect(row).toContainText(
+      /Station mimic state at .*not from this window/
+    );
     await page.screenshot({
       path: testInfo.outputPath(`station-window-labels-${scheme}.png`),
       fullPage: true,

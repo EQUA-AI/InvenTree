@@ -151,7 +151,7 @@ function keySpecs(bays: readonly BaySpec[]): KeySpec[] {
 export function stationSeries(
   url: URL,
   bays: readonly BaySpec[],
-  options: { fail?: boolean } = {}
+  options: { fail?: boolean; absentKeys?: string[] } = {}
 ) {
   const from = Date.parse(url.searchParams.get('from') ?? '');
   const to = Date.parse(url.searchParams.get('to') ?? '');
@@ -165,7 +165,9 @@ export function stationSeries(
   const specs = keySpecs(bays);
   const series = keys
     .map((key) => specs.findIndex((s) => s.key === key))
-    .filter((index) => index >= 0)
+    .filter(
+      (index) => index >= 0 && !options.absentKeys?.includes(specs[index].key)
+    )
     .map((index) => {
       const spec = specs[index];
       const envelope = {
@@ -280,6 +282,9 @@ export async function openStation(
     scheme?: 'light' | 'dark';
     fail?: boolean;
     delaySeriesMs?: number;
+    absentKeys?: string[];
+    seriesStatus?: number;
+    mimicStatus?: number;
   } = {}
 ) {
   const bays = options.bays ?? BAYS;
@@ -307,7 +312,13 @@ export async function openStation(
   );
   await page.route(
     `**/api/machine-health/station/${STATION}/mimic/**`,
-    (route: Route) => route.fulfill({ json: stationMimic(bays) })
+    (route: Route) =>
+      route.fulfill({
+        status: options.mimicStatus ?? 200,
+        json: options.mimicStatus
+          ? { detail: 'Synthetic bay list denied' }
+          : stationMimic(bays)
+      })
   );
   await page.route(
     `**/api/machine-health/machines/${STATION}/health/series/**`,
@@ -319,7 +330,13 @@ export async function openStation(
           setTimeout(resolve, options.delaySeriesMs)
         );
       return route.fulfill({
-        json: stationSeries(url, bays, { fail: options.fail })
+        status: options.seriesStatus ?? 200,
+        json: options.seriesStatus
+          ? { detail: 'Synthetic history read failed' }
+          : stationSeries(url, bays, {
+              fail: options.fail,
+              absentKeys: options.absentKeys
+            })
       });
     }
   );
@@ -330,6 +347,6 @@ export async function openStation(
     scheme: options.scheme ?? 'light'
   });
   await page.goto(`/playwright/s3-performance.html?${query}`);
-  await expect(page.getByText('Pumps running').first()).toBeVisible();
+  await expect(page.locator('[data-kpi="pumps-running"]')).toBeVisible();
   return requests;
 }

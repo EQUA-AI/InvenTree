@@ -14,14 +14,28 @@ import {
 } from '@mantine/core';
 import { IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { HistoryProvenance } from '../investigation/HistoryProvenance';
+import { InvestigationSlices } from '../investigation/InvestigationSlices';
+import { LinkedEvidence } from '../investigation/LinkedEvidence';
+import { linkedWindow } from '../investigation/windows';
 
 import type { SeriesEntry } from '@lib/types/MachineHealth';
 
+import { useLocalState } from '../../../states/LocalState';
+import { useUserState } from '../../../states/UserState';
+import { ChannelNavigator } from './ChannelNavigator';
+import { ComparisonWorkbench } from './ComparisonWorkbench';
 import { KpiStrip } from './KpiStrip';
 import type { WindowInfo } from './SensorGroupCard';
 import { StationPerformance } from './StationPerformance';
 import { LiveIndicator, TimeRangeControl } from './TimeRangeControl';
 import { WindowStatus } from './WindowStatus';
+import {
+  type PerformanceSection,
+  matchesChannel,
+  sectionOf
+} from './channelNavigation';
 import { evaluatePerformance } from './evaluation';
 import { buildKpiTiles } from './kpis';
 import { categoryLabel } from './parameters';
@@ -60,7 +74,7 @@ const STATION_CONTEXT_KEYS = ['/dex/COMMAN_FORBAY_LEVEL', '/pc'];
  * Performance tab for a pump or a pump station.
  *
  * Reads two things and draws everything from them: the machine's current
- * signals, and one series read for every chartable parameter over the selected
+ * signals, and bounded aggregate reads for chartable parameters over the selected
  * window. The page is arranged by what an operator asks, in order - what is
  * happening now, whether anything is unusual, what changed, where, and how the
  * parameters relate - and every section is only as large as the machine's own
@@ -69,18 +83,58 @@ const STATION_CONTEXT_KEYS = ['/dex/COMMAN_FORBAY_LEVEL', '/pc'];
 export function PerformancePanel({
   machine
 }: Readonly<{ machine: PerformanceMachine }>) {
+  const host = useLocalState((state) => state.hostKey);
+  const actor = useUserState((state) => state.user?.pk);
+  const generation = useUserState((state) => state.authGeneration);
   if (machine.asset_type === 'pumphouse') {
-    return <StationPerformance station={machine} />;
+    return (
+      <StationPerformance
+        key={JSON.stringify([host, actor, generation, machine.pk])}
+        station={machine}
+      />
+    );
   }
-  return <PumpPerformance machine={machine} />;
+  return (
+    <PumpPerformance
+      key={JSON.stringify([host, actor, generation, machine.pk])}
+      machine={machine}
+    />
+  );
 }
 
 /** Window selection shared by the pump and station views. */
-export function useWindowState() {
+export function useWindowState(
+  initial?: Extract<WindowSpec, { kind: 'absolute' }>
+) {
+  const [, setParams] = useSearchParams();
+  const clearLinked = useCallback(
+    () =>
+      setParams(
+        (previous) => {
+          if (!previous.has('history_from') && !previous.has('history_to'))
+            return previous;
+          const next = new URLSearchParams(previous);
+          next.delete('history_from');
+          next.delete('history_to');
+          return next;
+        },
+        { replace: true }
+      ),
+    [setParams]
+  );
   const [preset, setPreset] = useState<RangePreset>('1h');
-  const [custom, setCustom] = useState<WindowSpec | null>(null);
+  const [custom, setCustom] = useState<WindowSpec | null>(initial ?? null);
   const [zoom, setZoom] = useState<WindowSpec | null>(null);
-  const [live, setLive] = useState(true);
+  const [live, setLive] = useState(!initial);
+  const initialFrom = initial?.from;
+  const initialTo = initial?.to;
+  useEffect(() => {
+    if (initialFrom !== undefined && initialTo !== undefined) {
+      setCustom({ kind: 'absolute', from: initialFrom, to: initialTo });
+      setZoom(null);
+      setLive(false);
+    }
+  }, [initialFrom, initialTo]);
 
   const base: WindowSpec = custom ?? {
     kind: 'relative',
@@ -88,33 +142,49 @@ export function useWindowState() {
   };
   const window: WindowSpec = zoom ?? base;
 
-  const onPreset = useCallback((next: RangePreset) => {
-    setPreset(next);
-    setCustom(null);
-    setZoom(null);
-    setLive(true);
-  }, []);
-  const onCustom = useCallback((from: number, to: number) => {
-    setCustom({ kind: 'absolute', from, to });
-    setZoom(null);
-    // A fixed span cannot follow the clock.
-    setLive(false);
-  }, []);
-  const onZoom = useCallback((from: number, to: number) => {
-    setZoom({ kind: 'absolute', from, to });
-    setLive(false);
-  }, []);
+  const onPreset = useCallback(
+    (next: RangePreset) => {
+      clearLinked();
+      setPreset(next);
+      setCustom(null);
+      setZoom(null);
+      setLive(true);
+    },
+    [clearLinked]
+  );
+  const onCustom = useCallback(
+    (from: number, to: number) => {
+      clearLinked();
+      setCustom({ kind: 'absolute', from, to });
+      setZoom(null);
+      // A fixed span cannot follow the clock.
+      setLive(false);
+    },
+    [clearLinked]
+  );
+  const onZoom = useCallback(
+    (from: number, to: number) => {
+      clearLinked();
+      setZoom({ kind: 'absolute', from, to });
+      setLive(false);
+    },
+    [clearLinked]
+  );
   const onClearZoom = useCallback(() => {
     setZoom(null);
     setLive((current) => current || !custom);
   }, [custom]);
-  const onLive = useCallback((next: boolean) => {
-    if (next) {
-      setZoom(null);
-      setCustom(null);
-    }
-    setLive(next);
-  }, []);
+  const onLive = useCallback(
+    (next: boolean) => {
+      if (next) {
+        clearLinked();
+        setZoom(null);
+        setCustom(null);
+      }
+      setLive(next);
+    },
+    [clearLinked]
+  );
 
   return {
     preset: custom ? ('custom' as const) : preset,
@@ -169,9 +239,20 @@ function PumpPerformance({
   machine
 }: Readonly<{ machine: PerformanceMachine }>) {
   const now = useClock();
-  const range = useWindowState();
+  const [params, setParams] = useSearchParams();
+  const linked = linkedWindow(params);
+  const invalidLink = linked.present && !linked.window;
+  const range = useWindowState(
+    linked.window ? { kind: 'absolute', ...linked.window } : undefined
+  );
   const signalsQuery = useMachineSignals(machine.pk, range.live);
   const dataRange = useDataRange(machine.pk);
+  const [investigationOpen, setInvestigationOpen] = useState(false);
+  const [comparisonOpen, setComparisonOpen] = useState(false);
+  const [comparisonMounted, setComparisonMounted] = useState(false);
+  const [search, setSearch] = useState('');
+  const [section, setSection] = useState('all');
+  const [expanded, setExpanded] = useState<Set<string> | null>(null);
 
   const parameters = useMemo(
     () => resolveParameters(signalsQuery.data ?? []),
@@ -184,8 +265,11 @@ function PumpPerformance({
   // Not before the signals arrive: a keys-only request would read the
   // station context on its own and then be repeated with the bindings.
   const targets = useMemo(
-    () => (bindings.length > 0 ? { bindings, keys: STATION_CONTEXT_KEYS } : {}),
-    [bindings]
+    () =>
+      bindings.length > 0 && !invalidLink
+        ? { bindings, keys: STATION_CONTEXT_KEYS }
+        : {},
+    [bindings, invalidLink]
   );
 
   const seriesQuery = useMachineSeries(
@@ -194,7 +278,8 @@ function PumpPerformance({
     range.window,
     range.live
   );
-  const response = seriesQuery.data;
+  const response =
+    seriesQuery.isError || invalidLink ? undefined : seriesQuery.data;
 
   // Station context arrives as series entries for bindings the pump's own
   // signal list does not carry; they are resolved into parameters here so the
@@ -223,6 +308,37 @@ function PumpPerformance({
   const syncId = `performance-${machine.pk}`;
 
   const freshness = signalsQuery.data?.[0]?.freshness_threshold_seconds ?? null;
+  const large = parameters.length > 100;
+  const isOpen = (key: string) => expanded?.has(key) ?? !large;
+  const visible = (key: PerformanceSection) =>
+    (section === 'all' || section === key) &&
+    allParameters.some(
+      (p) => sectionOf(p) === key && matchesChannel(p, search)
+    );
+  const toggleSection = (key: string) =>
+    setExpanded((previous) => {
+      const next = new Set(
+        previous ??
+          (large
+            ? []
+            : [
+                'electrical',
+                'operation',
+                'winding',
+                'vibration',
+                'cooling',
+                'bearing',
+                'other'
+              ])
+      );
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  const selectSection = (key: string) => {
+    setSection(key);
+    if (key !== 'all' && !isOpen(key)) toggleSection(key);
+  };
 
   if (signalsQuery.isLoading) {
     return (
@@ -274,7 +390,7 @@ function PumpPerformance({
   return (
     <Stack gap='lg'>
       <Group justify='space-between' align='flex-start' wrap='wrap' gap='md'>
-        <Stack gap={4} style={{ flex: 1, minWidth: 320 }}>
+        <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
           <TimeRangeControl
             preset={range.preset}
             onPreset={range.onPreset}
@@ -285,7 +401,7 @@ function PumpPerformance({
             onLive={range.onLive}
             onRefresh={() => {
               signalsQuery.refetch();
-              seriesQuery.refetch();
+              if (!invalidLink) seriesQuery.refetch();
             }}
             refreshing={seriesQuery.isFetching}
             dataRange={dataRange.data}
@@ -299,6 +415,7 @@ function PumpPerformance({
         <LiveIndicator
           live={range.live}
           fetching={seriesQuery.isFetching}
+          failed={seriesQuery.isError}
           newestAt={newestAt}
           updatedAt={seriesQuery.dataUpdatedAt || null}
           response={response}
@@ -307,6 +424,101 @@ function PumpPerformance({
         />
       </Group>
 
+      {invalidLink && (
+        <Alert color='yellow' title={t`Invalid investigation window`}>
+          {t`The linked window must have valid increasing timestamps and be no longer than 24 h. No history has been requested from this link.`}
+          <Button
+            size='xs'
+            variant='subtle'
+            onClick={() =>
+              setParams(
+                (previous) => {
+                  const next = new URLSearchParams(previous);
+                  next.delete('history_from');
+                  next.delete('history_to');
+                  return next;
+                },
+                { replace: true }
+              )
+            }
+          >{t`Use current range controls`}</Button>
+        </Alert>
+      )}
+      <LinkedEvidence machineId={machine.pk} />
+      <HistoryProvenance
+        response={response}
+        loading={seriesQuery.isFetching && !response}
+        updating={seriesQuery.isPlaceholderData}
+        failed={seriesQuery.isError}
+        extent={dataRange.data}
+        onRetry={() => seriesQuery.refetch()}
+      />
+      <Paper withBorder radius='md' p='sm'>
+        <Button
+          variant='subtle'
+          size='xs'
+          aria-expanded={investigationOpen}
+          onClick={() => setInvestigationOpen((value) => !value)}
+        >{t`Case span investigation`}</Button>
+        {investigationOpen && (
+          <InvestigationSlices
+            initial={resolveWindow(range.window, now)}
+            onRead={(span) => {
+              range.onCustom(span.from, span.to);
+            }}
+          />
+        )}
+      </Paper>
+      <ChannelNavigator
+        parameters={parameters}
+        search={search}
+        onSearch={setSearch}
+        section={section}
+        onSection={selectSection}
+        onShowAll={() => {
+          setSearch('');
+          setSection('all');
+          setExpanded(
+            new Set([
+              'electrical',
+              'operation',
+              'winding',
+              'vibration',
+              'cooling',
+              'bearing',
+              'other'
+            ])
+          );
+        }}
+      />
+      <Paper withBorder radius='md' p='sm'>
+        <Button
+          variant='subtle'
+          size='xs'
+          aria-expanded={comparisonOpen}
+          onClick={() => {
+            setComparisonOpen((value) => !value);
+            setComparisonMounted(true);
+          }}
+        >{t`Comparisons and display views`}</Button>
+        <div style={{ display: comparisonOpen ? undefined : 'none' }}>
+          {comparisonMounted && (
+            <ComparisonWorkbench
+              machineId={machine.pk}
+              assetType={machine.asset_type}
+              parameters={parameters}
+              response={seriesQuery.isError ? undefined : response}
+              window={range.window}
+              search={search}
+              section={section}
+              onView={(view) => {
+                setSearch(view.search);
+                selectSection(view.section);
+              }}
+            />
+          )}
+        </div>
+      </Paper>
       <KpiStrip tiles={tiles} now={now} />
 
       {/* Counts are of this machine's own signals; the station context read
@@ -343,7 +555,12 @@ function PumpPerformance({
           overlayProps={{ blur: 1 }}
         />
         <Stack gap='xl'>
-          <Section title={categoryLabel('electrical')}>
+          <Section
+            title={categoryLabel('electrical')}
+            visible={visible('electrical')}
+            open={isOpen('electrical')}
+            onToggle={() => toggleSection('electrical')}
+          >
             <ElectricalSection
               parameters={allParameters}
               series={series}
@@ -352,7 +569,12 @@ function PumpPerformance({
               onZoom={range.onZoom}
             />
           </Section>
-          <Section title={t`Speed, operation and hydraulics`}>
+          <Section
+            title={t`Speed, operation and hydraulics`}
+            visible={visible('operation')}
+            open={isOpen('operation')}
+            onToggle={() => toggleSection('operation')}
+          >
             <OperationSection
               parameters={allParameters}
               series={series}
@@ -361,7 +583,12 @@ function PumpPerformance({
               onZoom={range.onZoom}
             />
           </Section>
-          <Section title={categoryLabel('winding')}>
+          <Section
+            title={categoryLabel('winding')}
+            visible={visible('winding')}
+            open={isOpen('winding')}
+            onToggle={() => toggleSection('winding')}
+          >
             <WindingSection
               parameters={allParameters}
               series={series}
@@ -370,7 +597,12 @@ function PumpPerformance({
               onZoom={range.onZoom}
             />
           </Section>
-          <Section title={categoryLabel('vibration')}>
+          <Section
+            title={categoryLabel('vibration')}
+            visible={visible('vibration')}
+            open={isOpen('vibration')}
+            onToggle={() => toggleSection('vibration')}
+          >
             <VibrationSection
               parameters={allParameters}
               series={series}
@@ -379,7 +611,12 @@ function PumpPerformance({
               onZoom={range.onZoom}
             />
           </Section>
-          <Section title={categoryLabel('cooling')}>
+          <Section
+            title={categoryLabel('cooling')}
+            visible={visible('cooling')}
+            open={isOpen('cooling')}
+            onToggle={() => toggleSection('cooling')}
+          >
             <CoolingSection
               parameters={allParameters}
               series={series}
@@ -388,7 +625,12 @@ function PumpPerformance({
               onZoom={range.onZoom}
             />
           </Section>
-          <Section title={categoryLabel('bearing')}>
+          <Section
+            title={categoryLabel('bearing')}
+            visible={visible('bearing')}
+            open={isOpen('bearing')}
+            onToggle={() => toggleSection('bearing')}
+          >
             <BearingSection
               parameters={allParameters}
               series={series}
@@ -398,7 +640,12 @@ function PumpPerformance({
             />
           </Section>
           {inCategory(allParameters, 'other').length > 0 && (
-            <Section title={categoryLabel('other')}>
+            <Section
+              title={categoryLabel('other')}
+              visible={visible('other')}
+              open={isOpen('other')}
+              onToggle={() => toggleSection('other')}
+            >
               <OtherSection
                 parameters={inCategory(allParameters, 'other')}
                 series={series}
@@ -410,53 +657,52 @@ function PumpPerformance({
 
       {response && (
         <Text size='xs' c='dimmed'>
-          {t`Read live from ${response.series[0]?.source_name ?? t`the source`}. AIMMS stores current values only; every chart here is a bounded read of the source's own history.`}
+          {t`Read live from ${response.series[0]?.source_name ?? t`the source`}. Every window chart here is a bounded read of the source's own history; retained evidence is identified separately.`}
         </Text>
       )}
     </Stack>
   );
 }
 
-/** A section heading that disappears with its content. */
+/** Mount on first expansion, then retain chart controls through collapse/filter. */
 function Section({
   title,
-  children
-}: Readonly<{ title: string; children: React.ReactNode }>) {
-  // A section component returns null when the machine has none of its
-  // parameters; the heading must go with it, so both are rendered together and
-  // the child decides.
+  children,
+  visible,
+  open,
+  onToggle
+}: Readonly<{
+  title: string;
+  children: React.ReactNode;
+  visible: boolean;
+  open: boolean;
+  onToggle: () => void;
+}>) {
+  const [mounted, setMounted] = useState(open);
+  useEffect(() => {
+    if (open) setMounted(true);
+  }, [open]);
   return (
-    <Stack gap='sm' data-section={title}>
-      <SectionBody title={title}>{children}</SectionBody>
+    <Stack
+      gap='sm'
+      data-section={title}
+      style={{ display: visible ? undefined : 'none' }}
+    >
+      <Group justify='space-between'>
+        <Title order={5}>{title}</Title>
+        <Button
+          variant='subtle'
+          size='compact-xs'
+          aria-expanded={open}
+          onClick={onToggle}
+        >
+          {open ? t`Collapse ${title}` : t`Open ${title}`}
+        </Button>
+      </Group>
+      <div style={{ display: open ? undefined : 'none' }}>
+        {(mounted || open) && children}
+      </div>
     </Stack>
-  );
-}
-
-function SectionBody({
-  title,
-  children
-}: Readonly<{ title: string; children: React.ReactNode }>) {
-  return <HideIfEmpty title={title}>{children}</HideIfEmpty>;
-}
-
-/**
- * Render the heading only when the child produced something. Sections return
- * null for machines without their parameters; this keeps an empty heading from
- * standing over nothing.
- */
-function HideIfEmpty({
-  title,
-  children
-}: Readonly<{ title: string; children: React.ReactNode }>) {
-  const [empty, setEmpty] = useState(false);
-  const ref = useCallback((node: HTMLDivElement | null) => {
-    if (node) setEmpty(node.childElementCount === 0);
-  }, []);
-  return (
-    <>
-      {!empty && <Title order={5}>{title}</Title>}
-      <div ref={ref}>{children}</div>
-    </>
   );
 }
 

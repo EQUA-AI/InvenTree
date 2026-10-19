@@ -25,7 +25,7 @@ import {
   seriesStats,
   syntheticEntry
 } from '../series';
-import { sameScale } from '../units';
+import { groupByScale, sameScale, unitText } from '../units';
 import { CardGrid, ChartCard, type SectionProps } from './common';
 
 /**
@@ -244,7 +244,32 @@ function withRefusal(description: string, refused: string[]): string {
  * badges. Computed only where both sensors were read at the same instant, and
  * labelled as calculated wherever it appears.
  */
-function DifferenceCard({
+function DifferenceCard(
+  props: Readonly<Parameters<typeof SameScaleDifferenceCard>[0]>
+) {
+  const groups = groupByScale(props.pairs, (pair) => pair.a.signal.unit);
+  if (groups.length <= 1) return <SameScaleDifferenceCard {...props} />;
+  const units = groups.map((group) => unitText(group) || t`no unit`);
+  return (
+    <Stack gap='md'>
+      <Text
+        size='sm'
+        c='dimmed'
+      >{t`Drawn apart: temperature rises in ${units.join(', ')} have separate axes; no conversion is assumed.`}</Text>
+      {groups.map((group, index) => (
+        <div key={group.key} data-difference-unit={unitText(group)}>
+          <SameScaleDifferenceCard
+            {...props}
+            pairs={group.items}
+            title={`${props.title} (${units[index]})`}
+          />
+        </div>
+      ))}
+    </Stack>
+  );
+}
+
+function SameScaleDifferenceCard({
   title,
   description,
   pairs,

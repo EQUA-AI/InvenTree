@@ -61,8 +61,7 @@ export interface SensorGroupCardProps {
  * The family card assumes one unit: its axis, heatmap scale, bars and
  * "highest now" all compare members with each other. A family whose
  * dictionary units differ - a draft-tube pressure beside a draft-tube level,
- * an RTD in degF among degC - is drawn as one card per unit, each keeping
- * every native form, rather than ranking one reading on another's scale.
+ * an RTD in degF among degC - is drawn as one card per unit, retaining forms supported by the unit group size, without ranking one reading on another's scale.
  */
 export function SensorGroupCard(props: Readonly<SensorGroupCardProps>) {
   const groups = useMemo(
@@ -79,7 +78,15 @@ export function SensorGroupCard(props: Readonly<SensorGroupCardProps>) {
           {...props}
           parameters={group.items}
           title={t`${props.title} (${units[index]})`}
-          description={t`This family reports in ${units.join(', ')}; each unit has its own card, so no reading is compared on another's scale.`}
+          description={[
+            props.description,
+            t`This family reports in ${units.join(', ')}; each unit has its own card, so no reading is compared on another's scale.`,
+            props.heatmap && group.items.length < 4
+              ? t`Heatmap not drawn: this unit group has fewer than four sensors.`
+              : ''
+          ]
+            .filter(Boolean)
+            .join(' ')}
         />
       ))}
     </Stack>

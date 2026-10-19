@@ -1,0 +1,222 @@
+import { expect, test } from '@playwright/test';
+import { nativeBaseline } from '../s0/guards';
+import { openPerformance } from './performanceFixtures';
+nativeBaseline();
+async function choose(page: import('@playwright/test').Page, name: string) {
+  await page
+    .getByRole('combobox', { name: 'Comparison channels', exact: true })
+    .fill(name);
+  await page.getByRole('option').filter({ hasText: name }).first().click();
+  await page.keyboard.press('Escape');
+}
+for (const scheme of ['light', 'dark'] as const)
+  test(`compatible channels overlay, incompatible units stay separate and personal views restore in ${scheme}`, async ({
+    page
+  }, info) => {
+    const requests = await openPerformance(page, { harness: 's3', scheme });
+    await page
+      .getByRole('button', {
+        name: 'Comparisons and display views',
+        exact: true
+      })
+      .click();
+    await choose(page, 'Winding 1');
+    await choose(page, 'Winding 2');
+    await choose(page, 'Shaft speed');
+    await expect(page.locator('[data-comparison-group]')).toHaveCount(2);
+    await page.getByLabel('View name', { exact: true }).fill('Investigation');
+    await page.getByRole('button', { name: 'Save view', exact: true }).click();
+    await expect(
+      page.getByText('Display view saved in this browser.', { exact: true })
+    ).toBeVisible();
+    await page
+      .getByRole('button', {
+        name: 'Comparisons and display views',
+        exact: true
+      })
+      .click();
+    await page
+      .getByRole('button', {
+        name: 'Comparisons and display views',
+        exact: true
+      })
+      .click();
+    await expect(page.locator('[data-comparison-group]')).toHaveCount(2);
+    expect(requests).toHaveLength(1);
+    await page.reload();
+    await page
+      .getByRole('button', {
+        name: 'Comparisons and display views',
+        exact: true
+      })
+      .click();
+    await page
+      .getByRole('combobox', { name: 'Saved view', exact: true })
+      .click();
+    await page
+      .getByRole('option', { name: 'Investigation', exact: true })
+      .click();
+    await page
+      .getByRole('button', { name: 'Restore view', exact: true })
+      .click();
+    await expect(page.locator('[data-comparison-group]')).toHaveCount(2);
+    await expect(
+      page.getByText('Shared sets unavailable', { exact: true })
+    ).toBeVisible();
+    await page.getByTestId('comparison-workbench').scrollIntoViewIfNeeded();
+    await page.getByTestId('comparison-workbench').screenshot({
+      path: info.outputPath(`personal-views-${scheme}.png`),
+      animations: 'disabled'
+    });
+  });
+test('blocked browser storage never reports a saved view', async ({ page }) => {
+  await openPerformance(page, { harness: 's3' });
+  await page
+    .getByRole('button', { name: 'Comparisons and display views', exact: true })
+    .click();
+  await page.evaluate(() => {
+    Storage.prototype.setItem = () => {
+      throw new Error('Blocked fixture storage');
+    };
+  });
+  await page.getByLabel('View name', { exact: true }).fill('Unsaved');
+  await page.getByRole('button', { name: 'Save view', exact: true }).click();
+  await expect(page.getByText(/Display view could not be saved/)).toBeVisible();
+});
+test('machine comparisons use a permitted same-type candidate and independent aligned reads', async ({
+  page
+}) => {
+  await page.route('**/api/assets/machines/**', (route) =>
+    route.fulfill({
+      json: {
+        count: 2,
+        results: [
+          { pk: 18, name: 'Current pump', asset_type: 'pump' },
+          { pk: 19, name: 'Permitted pump', asset_type: 'pump' }
+        ]
+      }
+    })
+  );
+  await page.route(
+    '**/api/machine-health/machines/19/health/signals/**',
+    async (route) => {
+      const { signalRows, SIGNALS } = await import('../performance/fixtures');
+      return route.fulfill({ json: { results: signalRows(SIGNALS) } });
+    }
+  );
+  const requests: URL[] = [];
+  await page.route(
+    '**/api/machine-health/machines/19/health/series/**',
+    async (route) => {
+      const { seriesFor } = await import('../performance/fixtures');
+      const url = new URL(route.request().url());
+      requests.push(url);
+      return route.fulfill({ json: { ...seriesFor(url), machine: 19 } });
+    }
+  );
+  await openPerformance(page, { harness: 's3' });
+  await page
+    .getByRole('button', { name: 'Comparisons and display views', exact: true })
+    .click();
+  await choose(page, 'Shaft speed');
+  await page
+    .getByRole('combobox', { name: 'Comparison mode', exact: true })
+    .click();
+  await page
+    .getByRole('option', { name: 'Another permitted machine', exact: true })
+    .click();
+  await page
+    .getByRole('combobox', { name: 'Comparison machine', exact: true })
+    .click();
+  await page
+    .getByRole('option', { name: 'Permitted pump', exact: true })
+    .click();
+  await expect.poll(() => requests.length).toBe(1);
+  await expect(
+    page.getByText(/Duty, load and configuration remain unverified/)
+  ).toBeVisible();
+});
+for (const scheme of ['light', 'dark'] as const)
+  test(`comparison controls contained in ${scheme}`, async ({ page }, info) => {
+    await openPerformance(page, { harness: 's3', scheme });
+    await page
+      .getByRole('button', {
+        name: 'Comparisons and display views',
+        exact: true
+      })
+      .click();
+    await page
+      .getByRole('combobox', { name: 'Comparison mode', exact: true })
+      .click();
+    await page
+      .getByRole('option', { name: 'Before / after windows', exact: true })
+      .click();
+    await choose(page, 'Shaft speed');
+    await expect(
+      page.getByLabel('Window B from', { exact: true })
+    ).toBeVisible();
+    const panel = page.getByTestId('comparison-workbench');
+    expect(
+      await panel.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)
+    ).toBe(true);
+    for (const name of ['Restore view', 'Delete view']) {
+      const label = panel
+        .getByRole('button', { name, exact: true })
+        .locator('.mantine-Button-label');
+      expect(
+        await label.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)
+      ).toBe(true);
+    }
+    await panel.scrollIntoViewIfNeeded();
+    await panel.screenshot({
+      path: info.outputPath(`comparison-${scheme}.png`),
+      animations: 'disabled'
+    });
+  });
+
+test('before and after use independent bounded windows and query identities', async ({
+  page
+}, info) => {
+  const requests = await openPerformance(page, { harness: 's3' });
+  await page
+    .getByRole('button', { name: 'Comparisons and display views', exact: true })
+    .click();
+  await choose(page, 'Shaft speed');
+  await page
+    .getByRole('combobox', { name: 'Comparison mode', exact: true })
+    .click();
+  await page
+    .getByRole('option', { name: 'Before / after windows', exact: true })
+    .click();
+  await page
+    .getByRole('button', {
+      name: 'Read preceding equal window as B',
+      exact: true
+    })
+    .click();
+  await expect.poll(() => requests.length).toBeGreaterThanOrEqual(3);
+  const comparisons = requests.filter(
+    (url) => url.searchParams.get('bindings')?.split(',').length === 1
+  );
+  expect(comparisons).toHaveLength(2);
+  const windows = comparisons
+    .map((url) => ({
+      from: Date.parse(url.searchParams.get('from')!),
+      to: Date.parse(url.searchParams.get('to')!)
+    }))
+    .sort((a, b) => a.from - b.from);
+  expect(windows[0].to).toBe(windows[1].from);
+  expect(windows[0].to - windows[0].from).toBe(3600_000);
+  expect(windows[1].to - windows[1].from).toBe(3600_000);
+  await expect(
+    page.getByText('Window A — selected origin', { exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByText('Window B — independent origin', { exact: true })
+  ).toBeVisible();
+  await expect(page.getByTestId('fixture-fetching')).toHaveText('0');
+  await page.getByTestId('comparison-workbench').screenshot({
+    path: info.outputPath('aligned-windows-light.png'),
+    animations: 'disabled'
+  });
+});
