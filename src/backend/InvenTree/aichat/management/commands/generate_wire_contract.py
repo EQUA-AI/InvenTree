@@ -278,6 +278,31 @@ class Command(BaseCommand):
             f'export type ScopeErrorCode =\n  | {_ts_string_union(list(SCOPE_ERROR_CODES))};\n'
         )
 
+        sections.append(
+            '// --- Work focus (aichat.services.work_focus / ai.core.analysis.wire) ---\n'
+        )
+        from ai.core.analysis.wire import (
+            WORK_FOCUS_ERROR_CODES,
+            WORK_FOCUS_STATES,
+            SavedTurnWorkFocus,
+            WorkFocusAcknowledgement,
+            WorkFocusAcknowledgeRequest,
+            WorkFocusIdentity,
+        )
+
+        sections.append(_emit_model_interface(WorkFocusIdentity))
+        sections.append(_emit_model_interface(WorkFocusAcknowledgeRequest))
+        sections.append(_emit_model_interface(WorkFocusAcknowledgement))
+        sections.append(_emit_model_interface(SavedTurnWorkFocus))
+        sections.append(
+            'export type WorkFocusErrorCode =\n'
+            f'  | {_ts_string_union(list(WORK_FOCUS_ERROR_CODES))};\n'
+        )
+        sections.append(
+            'export type WorkFocusState =\n'
+            f'  | {_ts_string_union(list(WORK_FOCUS_STATES))};\n'
+        )
+
         sections.append('// --- Quota / admission (ai.core.quota.wire) ---\n')
         from ai.core.quota.wire import (
             QUOTA_ERROR_CODES,

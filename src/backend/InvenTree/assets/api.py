@@ -251,6 +251,39 @@ class AssetMachineFaultHistory(APIView):
         return Response(machine_fault_history(request.user, machine, fenced=False))
 
 
+class AssetMachinePositions(APIView):
+    """R6 P07: the machine's records for each reference 3D model position.
+
+    Read-only, scoped like the fault history: an out-of-scope machine is
+    indistinguishable from a missing one. See ``assets.equipment_positions``.
+    """
+
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
+
+    def get(self, request, pk):
+        """Return each position's component slots, signals and work."""
+        from django.http import Http404
+
+        from tasks.scope import ScopeError, require_machine_scope
+
+        from assets.equipment_positions import machine_positions
+
+        machine = AssetMachine.objects.filter(pk=pk).first()
+        if machine is None:
+            raise Http404
+        try:
+            require_machine_scope(request.user, machine)
+        except ScopeError as exc:
+            raise Http404 from exc
+        response = Response(machine_positions(request.user, machine))
+        response['Cache-Control'] = 'private, no-store'
+        return response
+
+
 class MachinePartList(ListCreateAPI):
     """List and create machine-part relationships."""
 
@@ -353,6 +386,11 @@ assets_api_urls = [
                 '<int:pk>/fault-history/',
                 AssetMachineFaultHistory.as_view(),
                 name='asset-machine-fault-history',
+            ),
+            path(
+                '<int:pk>/positions/',
+                AssetMachinePositions.as_view(),
+                name='asset-machine-positions',
             ),
         ]),
     ),

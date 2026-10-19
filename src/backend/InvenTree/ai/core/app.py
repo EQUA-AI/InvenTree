@@ -65,6 +65,7 @@ from aichat.services.transcript_export import (
     ExportTooLargeError,
     browser_transcript_export,
 )
+from aichat.services.work_focus import WorkFocusError, public_focus
 from asgiref.sync import sync_to_async
 from fastapi import (
     Depends,
@@ -78,7 +79,7 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 
 # Configure logging.
 #
@@ -119,6 +120,11 @@ class ChatRequest(BaseModel):
     # ``scope_version_conflict`` before any model call. Detection only — it
     # grants nothing, and legacy clients simply omit it.
     expected_scope_version: int | None = None
+    # P02/P33: the signed receipt from ``POST /threads/{id}/work-focus``.
+    # Verified, never trusted: a receipt is bound to this actor, thread and
+    # server policy, expires after five minutes and is re-checked against the
+    # live Work record before the turn exists. Legacy clients omit it.
+    work_focus_receipt: str | None = Field(default=None, min_length=1, max_length=4096)
 
 
 class ChatResponse(BaseModel):
@@ -664,6 +670,30 @@ async def _reject_stale_scope_version(
         raise HTTPException(status_code=409, detail="scope_version_conflict")
 
 
+async def _reject_unusable_work_focus(
+    principal: AIPrincipal, thread_id: str | None, receipt: str | None
+) -> None:
+    """400 when a Work-focus receipt cannot be used, BEFORE any model call.
+
+    A pure detector like the scope check above: it writes nothing, and
+    ``begin_turn`` verifies the receipt again under the thread lock, so a
+    revocation that lands in between still refuses the turn. Every failure
+    is the same value-free ``work_focus_rejected``; the client keeps its draft
+    and asks again, or sends without the focus by choice.
+    """
+    if receipt is None:
+        return
+    if not thread_id:
+        raise HTTPException(status_code=400, detail="work_focus_rejected")
+    repository = _repository(principal)
+    try:
+        await sync_to_async(repository.verify_work_focus, thread_sensitive=True)(thread_id, receipt)
+    except (ThreadNotFound, ScopedThreadRejected):
+        raise HTTPException(status_code=404, detail="Thread not found") from None
+    except WorkFocusError:
+        raise HTTPException(status_code=400, detail="work_focus_rejected") from None
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest) -> ChatResponse:
     """Adapt typed REST chat to the shared normalized turn service."""
@@ -672,6 +702,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
     if "user_id" in request.model_fields_set:
         _observe_legacy_identity(request.user_id, source="body")
     await _reject_stale_scope_version(principal, request.thread_id, request.expected_scope_version)
+    await _reject_unusable_work_focus(principal, request.thread_id, request.work_focus_receipt)
     idempotency_key = request.idempotency_key or str(uuid.uuid4())
     correlation_id = _server_correlation_id(principal, idempotency_key, request.correlation_id)
     try:
@@ -696,6 +727,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
             modality_metadata=metadata,
             idempotency_key=idempotency_key,
             correlation_id=correlation_id,
+            work_focus_receipt=request.work_focus_receipt,
         )
     except (ThreadNotFound, ScopedThreadRejected):
         raise HTTPException(status_code=404, detail="Thread not found") from None
@@ -765,6 +797,7 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
     if "user_id" in request.model_fields_set:
         _observe_legacy_identity(request.user_id, source="body")
     await _reject_stale_scope_version(principal, request.thread_id, request.expected_scope_version)
+    await _reject_unusable_work_focus(principal, request.thread_id, request.work_focus_receipt)
     idempotency_key = request.idempotency_key or str(uuid.uuid4())
     correlation_id = _server_correlation_id(principal, idempotency_key, request.correlation_id)
     try:
@@ -808,9 +841,26 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
                     idempotency_key=idempotency_key,
                     correlation_id=correlation_id,
                     emitter=emitter,
+                    work_focus_receipt=request.work_focus_receipt,
                 )
             except asyncio.CancelledError:
                 raise
+            except WorkFocusError:
+                # Revoked or changed between the pre-check and intake: the
+                # turn was never created, so the client can keep its draft.
+                await emitter.emit(
+                    AGUIEvent(
+                        event_type=EventType.RUN_ERROR,
+                        data={
+                            "message": "The Work focus could not be confirmed.",
+                            "code": "work_focus_rejected",
+                            # The browser's typed failure path reads this key
+                            # on both wires (AG-UI forwards it as failureClass).
+                            "failure_class": "work_focus_rejected",
+                        },
+                        thread_id=thread_id,
+                    )
+                )
             except (ThreadNotFound, ScopedThreadRejected):
                 await emitter.emit(
                     AGUIEvent(
@@ -1002,6 +1052,9 @@ async def list_threads(
             # scope-banner flow on this advertisement (no endpoint probing).
             "thread_scope": True,
             "thread_pagination": True,
+            # P02/P33: Work-focus acknowledgement, the receipt on /chat and
+            # /chat/stream, and the saved-turn focus read all exist.
+            "work_focus": True,
             # S10: evidence-set expansion endpoints exist while the gate is
             # not "off" (rows only exist once the executor writes them).
             "evidence_sets": getattr(get_settings(), "evidence_gate_mode", "off") != "off",
@@ -1086,6 +1139,16 @@ async def get_thread(
             if include_messages
             else ([], False)
         )
+        # P02/P33: how each focused answer's Work stands now — one live check
+        # per distinct Work on the page, owner-only like the focus itself.
+        focus_states = (
+            repository.work_focus_states(
+                thread_id,
+                [message.pk for message in selected if message.metadata.get("work_focus")],
+            )
+            if not shared and any(message.metadata.get("work_focus") for message in selected)
+            else {}
+        )
         return {
             "thread_id": thread.pk,
             "user_id": principal.user_pk,
@@ -1108,6 +1171,10 @@ async def get_thread(
                     # S22: cards and their resolutions survive reload.
                     "question": message.metadata.get("question"),
                     "question_resolution": message.metadata.get("question_resolution"),
+                    # P02/P33: the Work this answer was about (ids only),
+                    # owner-only like the route facts; a grantee sees null.
+                    "work_focus": None if shared else message.metadata.get("work_focus"),
+                    "work_focus_state": focus_states.get(message.pk),
                     "provenance": _persisted_provenance(message.metadata),
                     # S28: server-observed entity chips survive reload.
                     "entities": message.metadata.get("entities"),
@@ -1651,6 +1718,71 @@ async def set_thread_scope(thread_id: str, request: ThreadScopeUpdateRequest) ->
         raise HTTPException(status_code=400, detail="scope_update_rejected") from None
     except (ScopeValidationError, InvalidBoundary) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
+class WorkFocusAcknowledgeRequest(BaseModel):
+    """Ask to focus the next turn on one exact native Work record."""
+
+    work_order_id: StrictInt = Field(gt=0)
+    #: The ``lifecycle_version`` the client is showing. A different current
+    #: version is refused, so a stale page cannot focus a changed record.
+    expected_version: StrictInt = Field(gt=0)
+
+
+@app.post("/threads/{thread_id}/work-focus")
+async def acknowledge_work_focus(
+    thread_id: str, request: WorkFocusAcknowledgeRequest
+) -> dict[str, Any]:
+    """Issue a five-minute receipt for one owned thread and one Work record.
+
+    Owner-only. The Work is authorized fresh — native view role, current
+    customer/client boundary, exact lifecycle version — and the receipt names
+    that identity, this actor, this thread and the server policy. Nothing is
+    written: not the Work, not the analysis scope. A client-minted thread id
+    is materialized first, as the scope update does. Every refusal is the same
+    400 ``work_focus_rejected``; it never says whether the record exists.
+    """
+    repository = _repository(_principal())
+
+    def perform() -> dict[str, Any]:
+        """Materialize the owned thread, then acknowledge."""
+        repository.get_or_create(thread_id)
+        acknowledged = repository.acknowledge_work_focus(
+            thread_id, request.work_order_id, expected_version=request.expected_version
+        )
+        # The hashed boundary stays inside the signed receipt; the client
+        # gets the ids it shows and returns to.
+        return {**acknowledged, "focus": public_focus(acknowledged["focus"])}
+
+    try:
+        return await sync_to_async(perform, thread_sensitive=True)()
+    except (ThreadNotFound, ScopedThreadRejected):
+        raise HTTPException(status_code=404, detail="Thread not found") from None
+    except WorkFocusError:
+        raise HTTPException(status_code=400, detail="work_focus_rejected") from None
+    except InvalidBoundary:
+        raise HTTPException(status_code=400, detail="work_focus_rejected") from None
+
+
+@app.get("/threads/{thread_id}/turns/{turn_id}/work-focus")
+async def get_turn_work_focus(thread_id: str, turn_id: str) -> dict[str, Any]:
+    """Return a saved turn's Work focus, re-authorized now (owner-only).
+
+    The stored identity is returned as it was when the question was asked,
+    with ``stale`` true when the Work's lifecycle, machine or boundary has
+    changed since. A turn without focus, a Work the actor can no longer see,
+    and an unknown thread or turn all answer the same 404.
+    """
+    repository = _repository(_principal())
+    try:
+        found = await sync_to_async(repository.get_turn_work_focus, thread_sensitive=True)(
+            thread_id, turn_id
+        )
+    except (ThreadNotFound, ScopedThreadRejected, WorkFocusError):
+        raise HTTPException(status_code=404, detail="Not found") from None
+    if found is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {**found, "focus": public_focus(found["focus"])}
 
 
 class ThreadShareRequest(BaseModel):

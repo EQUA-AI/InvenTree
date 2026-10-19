@@ -8,12 +8,12 @@ anyway is possible but must be deliberate and attributed.
 import uuid
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from tasks.models import WorkOrder
 
 from assets.health_models import AnomalySeverity
-from assets.models import AssetMachine
+from assets.models import AssetMachine, get_default_client
 from InvenTree.unit_test import InvenTreeAPITestCase
 from machine_health.services.anomalies import fingerprint_for, record_anomaly
 
@@ -246,6 +246,9 @@ class AnomalyEvidenceLinkTest(TestCase):
         self.assertIsNone(foreign.work_order_id)
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class DuplicateApiTest(InvenTreeAPITestCase):
     """The HTTP surface reports a duplicate as a conflict, with links."""
 
@@ -256,7 +259,7 @@ class DuplicateApiTest(InvenTreeAPITestCase):
         """Create a machine that already has one open repair."""
         super().setUp()
         self.machine = AssetMachine.objects.create(
-            name=f'Centrifuge {uuid.uuid4().hex[:6]}'
+            client=get_default_client(), name=f'Centrifuge {uuid.uuid4().hex[:6]}'
         )
         self.first = self.post(
             self.url,

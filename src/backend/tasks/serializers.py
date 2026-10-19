@@ -303,6 +303,31 @@ class WorkOrderBoardSerializer(serializers.ModelSerializer):
         return filtered
 
 
+class WorkOrderTableSerializer(WorkOrderBoardSerializer):
+    """The Board's Work projection plus the Work list's "Needs attention" reasons.
+
+    The Board keeps its exact shape; only the paginated Work list uses this.
+    ``attention_reasons`` is null unless the list was asked for its "Needs
+    attention" scope, so an absent rule is never read as "no reasons".
+    """
+
+    attention_reasons = serializers.SerializerMethodField()
+
+    class Meta(WorkOrderBoardSerializer.Meta):
+        """Board fields plus the attention reasons."""
+
+        fields = (*WorkOrderBoardSerializer.Meta.fields, 'attention_reasons')
+
+    def get_attention_reasons(self, work) -> list[str] | None:
+        """Reasons under ``tasks.attention`` when that scope was requested."""
+        today = self.context.get('attention_today')
+        if today is None:
+            return None
+        from .attention import attention_reasons
+
+        return attention_reasons(work, today)
+
+
 class KanbanCardSerializer(serializers.ModelSerializer):
     """One tracked piece of a work order, as the board needs it.
 
@@ -518,6 +543,20 @@ class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
 
     def get_dependencies(self, obj) -> list:
         """Return predecessor and successor relationships."""
+        from tasks.scope import scoped_work_orders
+
+        request = self.context.get('request')
+        incoming_dependencies = list(obj.dependencies_in.all())
+        outgoing_dependencies = list(obj.dependencies_out.all())
+        related_ids = {
+            *(dependency.predecessor_id for dependency in incoming_dependencies),
+            *(dependency.successor_id for dependency in outgoing_dependencies),
+        }
+        allowed_ids = set(
+            scoped_work_orders(getattr(request, 'user', None))
+            .filter(pk__in=related_ids)
+            .values_list('pk', flat=True)
+        )
         incoming = [
             {
                 'id': dependency.pk,
@@ -526,7 +565,8 @@ class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
                 'lag_minutes': dependency.lag_minutes,
                 'card': self._summary(dependency.predecessor),
             }
-            for dependency in obj.dependencies_in.all()
+            for dependency in incoming_dependencies
+            if dependency.predecessor_id in allowed_ids
         ]
         outgoing = [
             {
@@ -536,7 +576,8 @@ class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
                 'lag_minutes': dependency.lag_minutes,
                 'card': self._summary(dependency.successor),
             }
-            for dependency in obj.dependencies_out.all()
+            for dependency in outgoing_dependencies
+            if dependency.successor_id in allowed_ids
         ]
         return [*incoming, *outgoing]
 

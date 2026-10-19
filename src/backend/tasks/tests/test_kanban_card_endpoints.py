@@ -9,14 +9,18 @@ between them: moving a card is a board edit, not a lifecycle change.
 import uuid
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from assets.models import AssetMachine, get_default_client
 from tasks.models import KanbanCard, WorkOrder, WorkOrderLifecycle
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class KanbanCardEndpointTest(TestCase):
     """The card collection at /api/kanban/cards/."""
 
@@ -30,8 +34,12 @@ class KanbanCardEndpointTest(TestCase):
         )
         self.client = APIClient()
         self.client.force_authenticate(self.actor)
+        self.machine = AssetMachine.objects.create(
+            name='Board machine', client=get_default_client()
+        )
         self.work_order = WorkOrder.objects.create(
             title='Rebuild Pump 2',
+            machine=self.machine,
             status=WorkOrder.STATUS_BACKLOG,
             priority=WorkOrder.PRIORITY_HIGH,
             assigned_to=self.actor,
@@ -58,9 +66,7 @@ class KanbanCardEndpointTest(TestCase):
         [payload] = response.json()
         self.assertEqual(payload['work_order_reference'], self.work_order.reference)
         self.assertEqual(payload['priority'], WorkOrder.PRIORITY_HIGH)
-        self.assertEqual(
-            payload['lifecycle_status'], self.work_order.lifecycle_status
-        )
+        self.assertEqual(payload['lifecycle_status'], self.work_order.lifecycle_status)
         self.assertEqual(payload['effective_assignee'], self.actor.pk)
 
     def test_a_job_can_be_given_another_card(self):
@@ -108,6 +114,7 @@ class KanbanCardEndpointTest(TestCase):
         """
         other = WorkOrder.objects.create(
             title='Different job',
+            machine=self.machine,
             status=WorkOrder.STATUS_BACKLOG,
             priority=WorkOrder.PRIORITY_LOW,
         )
@@ -147,6 +154,7 @@ class KanbanCardEndpointTest(TestCase):
         """The detail page asks for one job's cards."""
         other = WorkOrder.objects.create(
             title='Different job',
+            machine=self.machine,
             status=WorkOrder.STATUS_BACKLOG,
             priority=WorkOrder.PRIORITY_LOW,
         )
@@ -158,6 +166,9 @@ class KanbanCardEndpointTest(TestCase):
         self.assertEqual(payload[0]['work_order'], other.pk)
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class WorkOrderBoardRouteTest(TestCase):
     """The work-order surface moved, and still works."""
 
@@ -169,8 +180,12 @@ class WorkOrderBoardRouteTest(TestCase):
         )
         self.client = APIClient()
         self.client.force_authenticate(self.actor)
+        self.machine = AssetMachine.objects.create(
+            name='Route machine', client=get_default_client()
+        )
         self.work_order = WorkOrder.objects.create(
             title='Rebuild Pump 2',
+            machine=self.machine,
             status=WorkOrder.STATUS_BACKLOG,
             priority=WorkOrder.PRIORITY_HIGH,
         )
@@ -200,6 +215,5 @@ class WorkOrderBoardRouteTest(TestCase):
         cards = response.json()['cards']
         self.assertEqual(len(cards), 2)
         self.assertEqual(
-            {card['title'] for card in cards},
-            {'Rebuild Pump 2', 'Source the seal kit'},
+            {card['title'] for card in cards}, {'Rebuild Pump 2', 'Source the seal kit'}
         )

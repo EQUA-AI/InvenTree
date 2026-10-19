@@ -5,20 +5,25 @@ from django.contrib.auth.models import Group
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from assets.models import AssetMachine
+from assets.models import AssetMachine, get_default_client
 from tasks.models import WorkOrder
 from users.models import RuleSet
 from users.ruleset import RuleSetEnum
 
 
-@override_settings(USE_TZ=True)
+@override_settings(
+    USE_TZ=True,
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver',
+)
 class SchedulePlanApiTest(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_superuser(
             username='plan-sup', email='p@example.com', password='pw'
         )
         self.client.force_login(self.user)
-        self.machine = AssetMachine.objects.create(name='Plan Press')
+        self.machine = AssetMachine.objects.create(
+            name='Plan Press', client=get_default_client()
+        )
 
     def _card(self, minutes=120, **kw):
         return WorkOrder.objects.create(
@@ -38,7 +43,7 @@ class SchedulePlanApiTest(TestCase):
             reverse('kanban-schedule-plan'),
             data={
                 'candidate_ids': [a.id, b.id],
-                'horizon_start': '2026-08-03T09:00:00Z'
+                'horizon_start': '2026-08-03T09:00:00Z',
             },
             content_type='application/json',
         )
@@ -76,7 +81,7 @@ class SchedulePlanApiTest(TestCase):
             reverse('kanban-schedule-optimize'),
             data={
                 'candidate_ids': [a.id, b.id],
-                'horizon_start': '2026-08-03T09:00:00Z'
+                'horizon_start': '2026-08-03T09:00:00Z',
             },
             content_type='application/json',
         )
@@ -89,8 +94,7 @@ class SchedulePlanApiTest(TestCase):
         self.assertIsNotNone(a.scheduled_start)
         self.assertIsNotNone(b.scheduled_start)
         self.assertFalse(
-            a.scheduled_start < b.scheduled_end
-            and b.scheduled_start < a.scheduled_end
+            a.scheduled_start < b.scheduled_end and b.scheduled_start < a.scheduled_end
         )
 
     def test_optimize_with_nothing_to_do_is_a_noop(self):
@@ -103,7 +107,10 @@ class SchedulePlanApiTest(TestCase):
         self.assertEqual(response.json()['applied'], [])
 
 
-@override_settings(USE_TZ=True)
+@override_settings(
+    USE_TZ=True,
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver',
+)
 class SchedulePlanPermissionTest(TestCase):
     def setUp(self):
         self.group = Group.objects.create(name='plan-techs')
@@ -112,10 +119,15 @@ class SchedulePlanPermissionTest(TestCase):
         )
         self.user.groups.add(self.group)
         self.client.force_login(self.user)
-        self.machine = AssetMachine.objects.create(name='Plan Perm Press')
+        self.machine = AssetMachine.objects.create(
+            name='Plan Perm Press', client=get_default_client()
+        )
         self.work_order = WorkOrder.objects.create(
-            title='WO', status='backlog', priority='low',
-            machine=self.machine, estimated_minutes=120,
+            title='WO',
+            status='backlog',
+            priority='low',
+            machine=self.machine,
+            estimated_minutes=120,
         )
         self.ruleset = RuleSet.objects.get(
             group=self.group, name=RuleSetEnum.WORK_ORDER

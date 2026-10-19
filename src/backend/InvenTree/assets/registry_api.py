@@ -68,11 +68,50 @@ class EquipmentSerializer(serializers.ModelSerializer):
 
 
 class ComponentSerializer(serializers.ModelSerializer):
-    """Component occurrence projection with catalogue context."""
+    """Component occurrence projection with catalogue context.
+
+    R6 P13 adds, for the machine's Parts tab: the reference 3D position the
+    slot's catalogue family stands for (owner rule O11), open work naming the
+    slot, and the in-stock quantity of its catalogue Part. The last two are only
+    known when the list view annotates them; elsewhere they are null, which
+    means unknown, never zero.
+    """
 
     part_name = serializers.CharField(source='part.name')
     virtual = serializers.BooleanField(source='part.virtual')
     machine_name = serializers.CharField(source='machine.name')
+    reference_position = serializers.SerializerMethodField()
+    open_work = serializers.SerializerMethodField()
+    stock = serializers.SerializerMethodField()
+
+    def get_reference_position(self, obj) -> str | None:
+        """The reference-model position for this slot's family, if any.
+
+        Only a pump has the reference model; a station's own slots have none.
+        """
+        from .equipment_positions import CATALOGUE_PREFIX, POSITION_FAMILIES
+
+        if obj.machine.asset_type != 'pump':
+            return None
+        for position, family in POSITION_FAMILIES.items():
+            if family and f'{CATALOGUE_PREFIX}{family}' == obj.part.IPN:
+                return position
+        return None
+
+    def get_open_work(self, obj) -> dict | None:
+        """Open, active work in the reader's scope that names this slot."""
+        count = getattr(obj, 'open_work_count', None)
+        return None if count is None else {'count': count}
+
+    def get_stock(self, obj) -> dict | None:
+        """In-stock quantity of the catalogue Part, for stock readers only.
+
+        A virtual part (a logical group) is never stocked: null, as natively.
+        """
+        quantity = getattr(obj, 'stock_quantity', None)
+        if quantity is None or obj.part.virtual:
+            return None
+        return {'quantity': float(quantity)}
 
     class Meta:
         """Read-only component fields."""
@@ -92,6 +131,9 @@ class ComponentSerializer(serializers.ModelSerializer):
             'provenance',
             'review_note',
             'reviewed_at',
+            'reference_position',
+            'open_work',
+            'stock',
         ]
         read_only_fields = fields
 
@@ -403,6 +445,79 @@ class RegistryDetail(RegistryAPI):
         return Response(EquipmentSerializer(pump).data, status=201)
 
 
+def _with_parts_context(queryset, actor):
+    """R6 P13: open work per slot and catalogue stock, in the same query.
+
+    Work is counted only inside the reader's Work scope (left unannotated, so
+    unknown, when that scope cannot be resolved). Stock is counted only for a
+    reader with the stock view role, and is the catalogue Part's native
+    in-stock quantity (not net of allocations) - a separate fact from anything
+    installed.
+    """
+    from decimal import Decimal
+
+    from django.db.models import (
+        Count,
+        DecimalField,
+        IntegerField,
+        OuterRef,
+        Subquery,
+        Sum,
+        Value,
+    )
+    from django.db.models.functions import Coalesce
+
+    from tasks.dashboard_metrics import OPEN
+    from tasks.models import WorkOrder
+    from tasks.scope import work_order_scope_filter
+
+    from stock.models import StockItem
+
+    try:
+        scope = work_order_scope_filter(actor)
+    except ScopeError:
+        scope = None
+    if scope is not None:
+        work = (
+            WorkOrder.objects
+            .filter(
+                scope,
+                machine_id=OuterRef('machine_id'),
+                affected_component_ref=OuterRef('code'),
+                is_active=True,
+                lifecycle_status__in=OPEN,
+            )
+            .order_by()
+            .values('affected_component_ref')
+            .annotate(total=Count('pk', distinct=True))
+            .values('total')[:1]
+        )
+        queryset = queryset.annotate(
+            open_work_count=Coalesce(
+                Subquery(work, output_field=IntegerField()), Value(0)
+            )
+        )
+    if check_user_role(actor, 'stock', 'view'):
+        stock = (
+            StockItem.objects
+            .filter(StockItem.IN_STOCK_FILTER, part=OuterRef('part'))
+            .order_by()
+            .values('part')
+            .annotate(total=Sum('quantity'))
+            .values('total')[:1]
+        )
+        queryset = queryset.annotate(
+            stock_quantity=Coalesce(
+                Subquery(
+                    stock, output_field=DecimalField(max_digits=15, decimal_places=5)
+                ),
+                Value(Decimal(0)),
+                output_field=DecimalField(max_digits=15, decimal_places=5),
+            )
+        )
+    return queryset
+
+
 class Components(RegistryAPI):
     """List or propose individually addressable component occurrences."""
 
@@ -419,7 +534,9 @@ class Components(RegistryAPI):
         )
         if status := request.query_params.get('status'):
             queryset = queryset.filter(status=status)
-        return self.page(queryset, ComponentSerializer)
+        return self.page(
+            _with_parts_context(queryset, request.user), ComponentSerializer
+        )
 
     def post(self, request, pk):
         """Propose an occurrence without asserting verified installation."""

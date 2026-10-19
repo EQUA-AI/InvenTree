@@ -273,6 +273,26 @@ def work_order_scope_filter(actor) -> Q:
     return predicate
 
 
+def scoped_work_orders(actor):
+    """Return only work whose canonical customer/client boundary is authorized."""
+    from tasks.models import WorkOrder
+
+    try:
+        return WorkOrder.objects.filter(work_order_scope_filter(actor))
+    except ScopeError:
+        return WorkOrder.objects.none()
+
+
+def scoped_machines(actor):
+    """Return only machines authorized by the canonical client boundary."""
+    from assets.models import AssetMachine
+
+    try:
+        return AssetMachine.objects.filter(machine_scope_filter(actor))
+    except ScopeError:
+        return AssetMachine.objects.none()
+
+
 def client_codes_for_actor(actor) -> frozenset[str]:
     """Return the client codes named by the actor's resolved scopes.
 

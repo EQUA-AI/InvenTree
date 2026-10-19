@@ -1,4 +1,4 @@
-"""Current-condition projection for one machine.
+"""Current-condition projection for one machine, or a page of machines.
 
 The Health blade must never present stale telemetry as current. Every value the
 summary reports carries its observation time, its quality and whether it has
@@ -11,10 +11,16 @@ data behind it cannot be trusted:
   whatever the readable signals say.
 
 That way a connector outage reads as an outage rather than as a healthy machine.
+
+``health_conditions`` judges many machines at once by exactly these rules, and
+``health_summary`` is built on it, so a list and a Health tab cannot disagree.
 """
 
 from __future__ import annotations
 
+from collections import defaultdict
+
+from django.db.models import Count
 from django.utils import timezone
 
 from assets.health_models import (
@@ -25,6 +31,7 @@ from assets.health_models import (
     MachineSignalBinding,
     SignalQuality,
 )
+from assets.models import AssetMachine
 from machine_health.services.display_time import display_shift, to_display
 
 #: Anomaly severity mapped onto the machine's overall condition.
@@ -53,16 +60,19 @@ def signal_rows(machine, *, now=None):
     times, which reads as a fault rather than as the design.
     """
     now = now or timezone.now()
-    rows = []
-
     bindings = list(
         MachineSignalBinding.objects
         .select_related('source', 'state')
         .filter(machine=machine, active=True)
         .order_by('display_name')
     )
-
     station = machine if machine.asset_type == 'pumphouse' else machine.parent
+    return _binding_rows(bindings, station, now)
+
+
+def _binding_rows(bindings, station, now):
+    """Signal rows for one machine's active bindings, for every reader."""
+    rows = []
     shift = (
         display_shift(station, bindings[0].source, now=now)
         if bindings
@@ -129,14 +139,74 @@ def signal_rows(machine, *, now=None):
 def health_summary(machine, *, now=None) -> dict:
     """Return the machine's current condition, freshness and anomaly counts."""
     now = now or timezone.now()
-    rows = signal_rows(machine, now=now)
+    return {
+        **health_conditions([machine], now=now)[machine.pk],
+        'sources': source_rows(machine, now=now),
+    }
+
+
+def health_conditions(machines, *, now=None) -> dict:
+    """``health_summary`` without its source list, for many machines at once.
+
+    Bindings, station clocks and active anomaly counts are each read once for
+    the whole set, so a page of machines costs the same few queries however
+    long it is. Returns ``{machine pk: condition}``. Authorization is the
+    caller's: pass only machines the reader may see.
+    """
+    now = now or timezone.now()
+    machines = list(machines)
+    if not machines:
+        return {}
+    ids = [machine.pk for machine in machines]
+
+    bindings = defaultdict(list)
+    for binding in (
+        MachineSignalBinding.objects
+        .select_related('source', 'state')
+        .filter(machine_id__in=ids, active=True)
+        .order_by('display_name')
+    ):
+        bindings[binding.machine_id].append(binding)
+
+    # A pump presents on its station's clock (see display_time).
+    parent_ids = {
+        machine.parent_id
+        for machine in machines
+        if machine.pk in bindings
+        and machine.asset_type != 'pumphouse'
+        and machine.parent_id
+    }
+    parents = AssetMachine.objects.in_bulk(parent_ids) if parent_ids else {}
 
     active_values = [status.value for status in ACTIVE_ANOMALY_STATUSES]
-    anomalies = MachineAnomaly.objects.filter(machine=machine, status__in=active_values)
+    severities = defaultdict(list)
+    for row in (
+        MachineAnomaly.objects
+        .filter(machine_id__in=ids, status__in=active_values)
+        .values('machine_id', 'severity')
+        .annotate(total=Count('pk'))
+    ):
+        severities[row['machine_id']].append((row['severity'], row['total']))
 
+    conditions = {}
+    for machine in machines:
+        station = (
+            machine
+            if machine.asset_type == 'pumphouse'
+            else parents.get(machine.parent_id)
+        )
+        conditions[machine.pk] = _condition(
+            _binding_rows(bindings.get(machine.pk, []), station, now),
+            severities.get(machine.pk, []),
+        )
+    return conditions
+
+
+def _condition(rows, severity_counts) -> dict:
+    """Judge one machine from its signal rows and active anomaly counts."""
     counts = {severity.value: 0 for severity in AnomalySeverity}
     worst_anomaly_state = HealthState.UNKNOWN
-    for severity, count in _severity_counts(anomalies):
+    for severity, count in severity_counts:
         counts[severity] = count
         if count:
             worst_anomaly_state = _worse(
@@ -145,9 +215,9 @@ def health_summary(machine, *, now=None) -> dict:
 
     if not rows:
         # No mapped source: say so rather than implying a healthy machine.
-        state = worst_anomaly_state if anomalies.exists() else HealthState.UNKNOWN
+        # Active anomalies still speak; with none the state is unknown.
         return {
-            'state': state,
+            'state': worst_anomaly_state,
             'configured': False,
             'signal_count': 0,
             'stale_signal_count': 0,
@@ -155,7 +225,6 @@ def health_summary(machine, *, now=None) -> dict:
             'last_observed_at': None,
             'anomaly_counts': counts,
             'active_anomaly_count': sum(counts.values()),
-            'sources': source_rows(machine, now=now),
         }
 
     stale_rows = [row for row in rows if row['stale']]
@@ -187,17 +256,7 @@ def health_summary(machine, *, now=None) -> dict:
         'last_observed_at': last_observed_at,
         'anomaly_counts': counts,
         'active_anomaly_count': sum(counts.values()),
-        'sources': source_rows(machine, now=now),
     }
-
-
-def _severity_counts(queryset):
-    """Yield ``(severity, count)`` for the active anomalies."""
-    from django.db.models import Count
-
-    rows = queryset.values('severity').annotate(total=Count('pk'))
-    for row in rows:
-        yield row['severity'], row['total']
 
 
 def _worse(left: str, right: str) -> str:

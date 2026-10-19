@@ -14,12 +14,12 @@ from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from tasks.models import WorkOrder, WorkOrderLifecycle, WorkOrderType
 
-from assets.models import AssetMachine
+from assets.models import AssetMachine, get_default_client
 from InvenTree.unit_test import InvenTreeAPITestCase
 
 from . import generation, services
@@ -643,13 +643,30 @@ class AdvanceAuditTest(TestCase):
         )
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class VerifyDiagnosisTest(InvenTreeAPITestCase):
     """The verify-diagnosis endpoint: the only path out of 'preliminary'."""
 
-    roles = 'all'
+    roles = [
+        'work_order.view',
+        'work_order.add',
+        'work_order.change',
+        'work_order.delete',
+    ]
+
+    def setUp(self):
+        """Create an explicitly owned asset for the HTTP packet fixtures."""
+        super().setUp()
+        self.machine = AssetMachine.objects.create(
+            name='Diagnosis API machine', client=get_default_client()
+        )
 
     def _diagnosed_packet(self):
-        packet = RepairPacket.objects.create(fault_summary='bearing noise')
+        packet = RepairPacket.objects.create(
+            machine=self.machine, fault_summary='bearing noise'
+        )
         services.run_repair_packet_workflow(packet, {'generator': 'heuristic'})
         packet.refresh_from_db()
         return packet
@@ -698,7 +715,7 @@ class VerifyDiagnosisTest(InvenTreeAPITestCase):
 
     def test_empty_diagnosis_cannot_be_verified(self):
         """There is nothing to verify on an ungenerated packet."""
-        packet = RepairPacket.objects.create(fault_summary='x')
+        packet = RepairPacket.objects.create(machine=self.machine, fault_summary='x')
         url = reverse('repair-packet-verify-diagnosis', kwargs={'pk': packet.pk})
         resp = self.post(url, {}, expected_code=400)
         self.assertFalse(resp.data['ok'])
@@ -712,19 +729,30 @@ class VerifyDiagnosisTest(InvenTreeAPITestCase):
         self.assertFalse(packet.diagnosis.get('verified_by_user'))
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class RepairPacketNewEndpointsTest(InvenTreeAPITestCase):
     """New API endpoints: cancel, generation-status, and events in the payload."""
 
-    roles = 'all'
+    roles = [
+        'work_order.view',
+        'work_order.add',
+        'work_order.change',
+        'work_order.delete',
+    ]
 
     def setUp(self):
         """Reset repair packets before each test."""
         super().setUp()
         RepairPacket.objects.all().delete()
+        self.machine = AssetMachine.objects.create(
+            name='Packet API machine', client=get_default_client()
+        )
 
     def test_cancel_endpoint(self):
         """The cancel endpoint cancels the packet and reports ok."""
-        packet = RepairPacket.objects.create(fault_summary='x')
+        packet = RepairPacket.objects.create(machine=self.machine, fault_summary='x')
         url = reverse('repair-packet-cancel', kwargs={'pk': packet.pk})
         resp = self.post(url, {'reason': 'not needed'}, expected_code=200)
         self.assertTrue(resp.data['ok'])
@@ -732,7 +760,7 @@ class RepairPacketNewEndpointsTest(InvenTreeAPITestCase):
 
     def test_generation_status_endpoint(self):
         """The generation-status endpoint reports status and the latest run."""
-        packet = RepairPacket.objects.create(fault_summary='x')
+        packet = RepairPacket.objects.create(machine=self.machine, fault_summary='x')
         services.run_repair_packet_workflow(packet, {'generator': 'heuristic'})
         url = reverse('repair-packet-generation-status', kwargs={'pk': packet.pk})
         resp = self.get(url, expected_code=200)
@@ -741,7 +769,7 @@ class RepairPacketNewEndpointsTest(InvenTreeAPITestCase):
 
     def test_detail_exposes_events_and_generation_fields(self):
         """The detail payload includes events and generation fields."""
-        packet = RepairPacket.objects.create(fault_summary='x')
+        packet = RepairPacket.objects.create(machine=self.machine, fault_summary='x')
         services.run_repair_packet_workflow(packet, {'generator': 'heuristic'})
         url = reverse('repair-packet-detail', kwargs={'pk': packet.pk})
         resp = self.get(url, expected_code=200)
@@ -752,7 +780,9 @@ class RepairPacketNewEndpointsTest(InvenTreeAPITestCase):
 
     def test_generate_via_api_uses_heuristic_when_ai_down(self):
         """The generate endpoint succeeds with the heuristic provider forced."""
-        packet = RepairPacket.objects.create(fault_summary='overheating gearbox')
+        packet = RepairPacket.objects.create(
+            machine=self.machine, fault_summary='overheating gearbox'
+        )
         url = reverse('repair-packet-generate', kwargs={'pk': packet.pk})
         with mock.patch.dict(os.environ, {'AIMMS_REPAIR_GENERATOR': 'heuristic'}):
             resp = self.post(url, {}, expected_code=200)

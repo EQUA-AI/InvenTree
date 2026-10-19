@@ -52,13 +52,20 @@ class FlagBridgeTests(SimpleTestCase):
             self.assertTrue(hasattr(settings, name), name)
 
     def test_risk_rules_list_is_a_parsed_list(self):
-        """The rules enablement is a LIST, never a raw comma string.
+        """The csv settings are LISTS, never raw comma strings.
 
-        The consumer iterates rule codes; a raw string would iterate
+        The consumers iterate codes or names; a raw string would iterate
         characters and enable nothing while looking configured.
         """
-        value = settings.AIMMS_RISK_RULES_ENABLED
-        self.assertIsInstance(value, list)
-        for code in value:
-            self.assertIsInstance(code, str)
-            self.assertNotIn(',', code)
+        for name in (
+            'AIMMS_RISK_RULES_ENABLED',
+            # R6 UI10 persona group names: a raw string would match a group
+            # per character.
+            'AIMMS_WORK_SUPERVISOR_GROUPS',
+            'AIMMS_WORK_TECHNICIAN_GROUPS',
+        ):
+            value = getattr(settings, name)
+            self.assertIsInstance(value, list, name)
+            for code in value:
+                self.assertIsInstance(code, str)
+                self.assertNotIn(',', code)

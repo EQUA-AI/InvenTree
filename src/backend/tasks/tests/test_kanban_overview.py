@@ -4,9 +4,10 @@ import datetime
 import uuid
 from decimal import Decimal
 
+from django.test import override_settings
 from django.urls import reverse
 
-from assets.models import AssetMachine, AssetMaintenanceRecord
+from assets.models import AssetMachine, AssetMaintenanceRecord, get_default_client
 from InvenTree.unit_test import InvenTreeAPITestCase
 from part.models import Part
 from repair.models import RepairPacket, RepairPacketGate
@@ -14,6 +15,9 @@ from tasks.models import KanbanCard, WorkOrder, WorkOrderDependency, WorkOrderPa
 from tasks.workorder_models import WorkOrderEvent
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class WorkOrderOverviewTest(InvenTreeAPITestCase):
     """Verify the stable overview surface used by work-order details."""
 
@@ -23,7 +27,9 @@ class WorkOrderOverviewTest(InvenTreeAPITestCase):
         """Create one job with cards, dependency, parts, repair, and history."""
         super().setUp()
         self.machine = AssetMachine.objects.create(
-            name='Overview Machine', location='Plant / Bay 4'
+            name='Overview Machine',
+            location='Plant / Bay 4',
+            client=get_default_client(),
         )
         self.work_order = WorkOrder.objects.create(
             reference='WO-OVERVIEW-001',
@@ -112,6 +118,9 @@ class WorkOrderOverviewTest(InvenTreeAPITestCase):
         self.assertEqual(response.data['events'][0]['event_type'], 'CREATED')
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class OverviewDetailSectionsTest(InvenTreeAPITestCase):
     """The detail page renders every applicable section from one read.
 
@@ -130,7 +139,7 @@ class OverviewDetailSectionsTest(InvenTreeAPITestCase):
         from repair import investigation
 
         self.machine = AssetMachine.objects.create(
-            name=f'Section machine {uuid.uuid4().hex[:6]}'
+            name=f'Section machine {uuid.uuid4().hex[:6]}', client=get_default_client()
         )
         self.work_order = WorkOrder.objects.create(
             reference=f'WO-SECT-{uuid.uuid4().hex[:6]}',
@@ -197,9 +206,7 @@ class OverviewDetailSectionsTest(InvenTreeAPITestCase):
         anomaly.work_order = self.work_order
         anomaly.save(update_fields=['work_order'])
 
-        self.url = reverse(
-            'kanban-card-overview', kwargs={'pk': self.work_order.pk}
-        )
+        self.url = reverse('kanban-card-overview', kwargs={'pk': self.work_order.pk})
 
     def test_source_alert_is_projected(self):
         """The alert that raised the work order is on the page."""
@@ -257,8 +264,7 @@ class OverviewDetailSectionsTest(InvenTreeAPITestCase):
         )
 
         data = self.get(
-            reverse('kanban-card-overview', kwargs={'pk': plain.pk}),
-            expected_code=200,
+            reverse('kanban-card-overview', kwargs={'pk': plain.pk}), expected_code=200
         ).data
 
         self.assertIsNone(data['repair_packet'])

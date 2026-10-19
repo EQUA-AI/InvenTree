@@ -898,12 +898,51 @@ def get_viewable_attachment_model_types(user) -> set:
     }
 
 
+def _maintenance_attachment_scope(queryset, actor):
+    """Apply maintenance ownership without changing unrelated attachment types."""
+    from tasks.scope import scoped_machines, scoped_work_orders
+
+    return queryset.filter(
+        ~Q(model_type__in=('workorder', 'assetmachine'))
+        | Q(model_type='workorder', model_id__in=scoped_work_orders(actor))
+        | Q(model_type='assetmachine', model_id__in=scoped_machines(actor))
+    )
+
+
+def _require_maintenance_attachment_owner(actor, serializer):
+    """Authorize a new or reassigned maintenance resource before persistence."""
+    from django.shortcuts import get_object_or_404
+
+    from tasks.scope import scoped_machines, scoped_work_orders
+
+    instance = serializer.instance
+    model_type = serializer.validated_data.get(
+        'model_type', getattr(instance, 'model_type', None)
+    )
+    model_id = serializer.validated_data.get(
+        'model_id', getattr(instance, 'model_id', None)
+    )
+    if model_type == 'workorder':
+        get_object_or_404(scoped_work_orders(actor), pk=model_id)
+    elif model_type == 'assetmachine':
+        get_object_or_404(scoped_machines(actor), pk=model_id)
+
+
 class AttachmentMixin:
     """Mixin class for Attachment views."""
 
     queryset = common.models.Attachment.objects.all()
     serializer_class = common.serializers.AttachmentSerializer
     permission_classes = [IsAuthenticatedOrReadScope]
+
+    def get_queryset(self):
+        """Keep maintenance attachment metadata inside its owner's scope."""
+        return _maintenance_attachment_scope(super().get_queryset(), self.request.user)
+
+    def perform_update(self, serializer):
+        """Check the proposed owner as well as the already-scoped original."""
+        _require_maintenance_attachment_owner(self.request.user, serializer)
+        super().perform_update(serializer)
 
 
 class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
@@ -925,6 +964,7 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
 
     def perform_create(self, serializer):
         """Save the user information when a file is uploaded."""
+        _require_maintenance_attachment_owner(self.request.user, serializer)
         serializer.save(upload_user=self.request.user)
 
     def validate_delete(self, queryset, request) -> None:

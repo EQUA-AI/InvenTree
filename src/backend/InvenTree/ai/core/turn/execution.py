@@ -390,6 +390,13 @@ def _assemble_workflow_context(
     workflow_context: WorkflowContext = dict(run.trusted)
     workflow_context["modality"] = run.modality
     workflow_context["thread_id"] = run.thread.pk
+    if run.work_focus is not None:
+        # P02/P33: the server-verified Work this question is about — ids
+        # only, from the receipt ``begin_turn`` verified. Information, not a
+        # grant: every tool that reads the Work re-authorizes the actor.
+        from aichat.services.work_focus import public_focus
+
+        workflow_context["work_focus"] = public_focus(run.work_focus)
     if bundle is not None:
         # M1 PR E (plan §9.3 row 5): the routing classifier reads TYPED
         # trusted fields and the builder's fenced thread summary — never

@@ -2,23 +2,28 @@
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from assets.models import AssetMachine
+from assets.models import AssetMachine, get_default_client
 from tasks.models import WorkOrder, WorkOrderDeletionRecord
 from tasks.tests.tz_support import iso
 from users.models import RuleSet
 from users.ruleset import RuleSetEnum
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class SchedulingApiTest(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_superuser(
             username='cmd-sup', email='c@example.com', password='pw'
         )
         self.client.force_login(self.user)
-        self.machine = AssetMachine.objects.create(name='Cmd Press')
+        self.machine = AssetMachine.objects.create(
+            name='Cmd Press', client=get_default_client()
+        )
 
     def _card(self, **kw):
         return WorkOrder.objects.create(
@@ -45,9 +50,7 @@ class SchedulingApiTest(TestCase):
             {'title': 'Made via command', 'machine': self.machine.pk},
         )
         self.assertEqual(response.status_code, 201)
-        self.assertTrue(
-            WorkOrder.objects.filter(title='Made via command').exists()
-        )
+        self.assertTrue(WorkOrder.objects.filter(title='Made via command').exists())
 
     def test_schedule_command_sets_window(self):
         work_order = self._card()
@@ -106,7 +109,10 @@ class SchedulingApiTest(TestCase):
         work_order = self._card()
         response = self._post(
             'kanban-command-resize',
-            {'expected_version': work_order.lifecycle_version, 'estimated_minutes': 180},
+            {
+                'expected_version': work_order.lifecycle_version,
+                'estimated_minutes': 180,
+            },
             pk=work_order.pk,
         )
         self.assertEqual(response.status_code, 200)
@@ -186,6 +192,9 @@ class SchedulingApiTest(TestCase):
         self.assertIn(work_order.title, titles)
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class SchedulingApiPermissionTest(TestCase):
     """Command endpoints are gated per-action on the work_order ruleset."""
 
@@ -196,7 +205,9 @@ class SchedulingApiPermissionTest(TestCase):
         )
         self.user.groups.add(self.group)
         self.client.force_login(self.user)
-        self.machine = AssetMachine.objects.create(name='Perm Press')
+        self.machine = AssetMachine.objects.create(
+            name='Perm Press', client=get_default_client()
+        )
         self.work_order = WorkOrder.objects.create(
             title='Perm', status='backlog', priority='low', machine=self.machine
         )
@@ -256,7 +267,6 @@ class SchedulingApiPermissionTest(TestCase):
         # add, so this is a representable "cannot create" state.
         self._set(can_view=True, can_change=True, can_add=False)
         response = self._post(
-            'kanban-command-create',
-            {'title': 'Nope', 'machine': self.machine.pk},
+            'kanban-command-create', {'title': 'Nope', 'machine': self.machine.pk}
         )
         self.assertEqual(response.status_code, 403)

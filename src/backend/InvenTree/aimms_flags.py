@@ -129,6 +129,28 @@ REGISTRY: tuple[FlagEntry, ...] = (
         description='Work-order surfaces master gate',
     ),
     FlagEntry(
+        'AIMMS_WORK_SUPERVISOR_GROUPS',
+        'csv',
+        '',
+        'django',
+        config_key='aimms_work_supervisor_groups',
+        description=(
+            'R6 UI10: group names whose members first see Needs attention in '
+            'the Work list; wins over technician. Empty = no persona'
+        ),
+    ),
+    FlagEntry(
+        'AIMMS_WORK_TECHNICIAN_GROUPS',
+        'csv',
+        '',
+        'django',
+        config_key='aimms_work_technician_groups',
+        description=(
+            'R6 UI10: group names whose members first see My work in the Work '
+            'list. Empty = no persona'
+        ),
+    ),
+    FlagEntry(
         'AIMMS_MACHINE_AI_READ_ENABLED',
         'bool',
         False,

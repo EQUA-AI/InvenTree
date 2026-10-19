@@ -6,14 +6,17 @@ prefers the package, so this module was unreachable *and* it made
 imported". Moving it into the package fixes both.
 """
 
+from django.test import override_settings
 from django.urls import reverse
 
+from assets.models import AssetMachine, get_default_client
+from InvenTree.unit_test import InvenTreeAPITestCase
 from tasks.models import WorkOrder
 
-from assets.models import AssetMachine
-from InvenTree.unit_test import InvenTreeAPITestCase
 
-
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class WorkOrderBoardAPITest(InvenTreeAPITestCase):
     """API behaviour for the work orders the board lists."""
 
@@ -30,7 +33,9 @@ class WorkOrderBoardAPITest(InvenTreeAPITestCase):
         """Ensure a clean slate for each test."""
         super().setUp()
         WorkOrder.objects.all().delete()
-        self.machine = AssetMachine.objects.create(name='Kanban API machine')
+        self.machine = AssetMachine.objects.create(
+            name='Kanban API machine', client=get_default_client()
+        )
 
     def _create_card(self, **overrides):
         """Helper to create a card with sensible defaults."""

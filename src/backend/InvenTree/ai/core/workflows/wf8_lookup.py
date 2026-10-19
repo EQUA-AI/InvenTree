@@ -663,6 +663,45 @@ as the specified torque for a tightening sequence.
                 return content[:300]
         return ""
 
+    #: P02/P33: fixed template for the verified Work focus. Ids only, as a
+    #: labelled USER note like the question-resolution hint — never a system
+    #: message, and never record text that could carry instructions. The focus
+    #: is information, not a grant: the maintenance tools re-authorize the
+    #: actor on every read.
+    WORK_FOCUS_NOTE_TEMPLATE = (
+        "[work focus] This question is about work order {work_order_id}{machine}. "
+        "The server confirmed this user may view it for this turn. When the user "
+        'says "this work", "this job", "it" or similar, they mean that work order; '
+        "look it up by its id (work_order_id={work_order_id})."
+    )
+
+    @staticmethod
+    def _work_focus(context: dict[str, Any] | None) -> dict[str, Any] | None:
+        """The turn's verified Work focus, when it is well formed."""
+        focus = (context or {}).get("work_focus")
+        if not isinstance(focus, dict) or focus.get("kind") != "work_order":
+            return None
+        work_order_id = focus.get("work_order_id")
+        if type(work_order_id) is not int or work_order_id < 1:
+            return None
+        return focus
+
+    @classmethod
+    def _with_work_focus(cls, run_input: Any, context: dict[str, Any] | None) -> Any:
+        """Append the verified Work focus as a labelled note (P02/P33)."""
+        focus = cls._work_focus(context)
+        if focus is None:
+            return run_input
+        machine_id = focus.get("machine_id")
+        machine = f" on machine {machine_id}" if type(machine_id) is int and machine_id > 0 else ""
+        note = cls.WORK_FOCUS_NOTE_TEMPLATE.format(
+            work_order_id=focus["work_order_id"], machine=machine
+        )
+        messages = run_input
+        if isinstance(messages, str):
+            messages = [ChatMessage(role=Role.USER, contents=[TextContent(text=messages)])]
+        return [*messages, ChatMessage(role=Role.USER, contents=[TextContent(text=note)])]
+
     @staticmethod
     def _with_question_resolution(run_input: Any, context: dict[str, Any] | None) -> Any:
         """Append the trusted hint for an accepted question selection (S22).
@@ -1060,6 +1099,23 @@ as the specified torque for a tightening sequence.
                 enforce_selection = enforce and not selection.requires_specialist
                 runtime_tools = list(selection.tools) if enforce_selection else tools
                 clarify = False
+        work_focus = self._work_focus(context)
+        if clarify and work_focus is not None:
+            # P02/P33: "what is left on this?" names no capability, but the
+            # user asked it from one verified Work. Reframe on that record so
+            # selection attaches the maintenance pack instead of asking which
+            # record they mean; the focus note below names it exactly.
+            reselect = await sync_to_async(self._capability_selection)(
+                query=f"{query} — work order {work_focus['work_order_id']} overview",
+                lookup_type=lookup_type,
+                context=context,
+                current_tools=tools,
+            )
+            if reselect is not None and not reselect.clarification_required:
+                selection = reselect
+                enforce_selection = enforce and not selection.requires_specialist
+                runtime_tools = list(selection.tools) if enforce_selection else tools
+                clarify = False
         modality_for_question = "voice" if is_voice else "text"
         if clarify:
             # S22: when the sentence itself named enough (machines or
@@ -1088,6 +1144,11 @@ as the specified torque for a tightening sequence.
         # reject it, demanding max_completion_tokens instead.
         modality = "voice" if is_voice else "text"
         run_input = self._run_input(query, context)
+        if not clarify:
+            # P02/P33: the verified Work focus rides every tool-bearing run,
+            # enforced selection or not; the clarify agent has no tools to
+            # look it up with, so it does not get the note.
+            run_input = self._with_work_focus(run_input, context)
         if enforce_selection and runtime_tools:
             # Gate on the tools actually being passed, which is the real
             # invariant: telling a turn to "resolve the category first" is

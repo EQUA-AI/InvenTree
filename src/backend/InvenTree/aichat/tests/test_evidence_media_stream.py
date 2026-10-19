@@ -260,9 +260,13 @@ class EvidenceMediaStreamTests(TestCase):
 
     def test_bytes_changed_before_reindex_are_unavailable(self):
         """Storage drift cannot reuse the indexed revision's identity."""
-        with default_storage.open(self.image.attachment.name, 'wb') as handle:
-            handle.write(b'changed bytes')
-        self.assertEqual(self.client.get(_url(self.image.pk)).status_code, 404)
+        try:
+            with default_storage.open(self.image.attachment.name, 'wb') as handle:
+                handle.write(b'changed bytes')
+            self.assertEqual(self.client.get(_url(self.image.pk)).status_code, 404)
+        finally:
+            with default_storage.open(self.image.attachment.name, 'wb') as handle:
+                handle.write(_BODY[:512])
 
     def test_pdf_metadata_and_source(self):
         """Physical page count comes from the actual authorized PDF revision."""

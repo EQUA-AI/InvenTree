@@ -6,6 +6,7 @@ import uuid
 
 from django.db import transaction
 from django.db.models import Q
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.urls import include, path
 from django.utils import timezone
@@ -15,6 +16,7 @@ from django_filters.rest_framework import FilterSet, filters
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
+from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -24,6 +26,7 @@ from InvenTree.filters import SEARCH_ORDER_FILTER
 from InvenTree.mixins import ListCreateAPI, RetrieveUpdateDestroyAPI
 from tasks.json_lookups import filter_json_array_contains
 
+from .attention import attention_filter, order_by_attention
 from .closeout_api import (
     CloseoutAmendmentDecide,
     CloseoutAmendmentList,
@@ -67,6 +70,7 @@ from .models import (
     WorkOrderDependency,
     WorkOrderPart,
 )
+from .persona import work_persona
 from .procedure_api import (
     ProcedureArchive,
     ProcedureBlockers,
@@ -92,6 +96,12 @@ from .procedure_execution_api import (
     StepExecutionReopen,
     WorkOrderDeviationList,
 )
+from .scope import (
+    ScopeError,
+    require_work_order_scope,
+    scoped_machines,
+    scoped_work_orders,
+)
 from .serializers import (
     KanbanCardSerializer,
     KanbanColumnSerializer,
@@ -99,6 +109,7 @@ from .serializers import (
     WorkOrderDependencySerializer,
     WorkOrderOverviewSerializer,
     WorkOrderPartSerializer,
+    WorkOrderTableSerializer,
 )
 from .services import schedule_planner, scheduling
 from .services.conflicts import detect_conflicts
@@ -209,7 +220,62 @@ class WorkOrderBoardFilter(FilterSet):
         return queryset
 
 
-class KanbanCardList(ListCreateAPI):
+def _require_candidate_scope(actor, serializer):
+    """Authorize the proposed boundary before creating or changing a job."""
+    instance = serializer.instance
+    candidate = WorkOrder(
+        machine=serializer.validated_data.get(
+            'machine', getattr(instance, 'machine', None)
+        ),
+        customer_id=getattr(instance, 'customer_id', None),
+    )
+    try:
+        require_work_order_scope(actor, candidate)
+    except ScopeError as exc:
+        raise Http404 from exc
+
+
+class ScopedWorkOrderMixin:
+    """Keep legacy work reads and direct edits inside the canonical boundary."""
+
+    def get_queryset(self):
+        """Filter before lookup, search, ordering or pagination."""
+        return (
+            super().get_queryset().filter(pk__in=scoped_work_orders(self.request.user))
+        )
+
+    def perform_create(self, serializer):
+        """Check the new machine's owning scope before writing."""
+        _require_candidate_scope(self.request.user, serializer)
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        """Check the resulting boundary as well as the scoped original object."""
+        _require_candidate_scope(self.request.user, serializer)
+        super().perform_update(serializer)
+
+
+class ScopedKanbanCardMixin:
+    """Authorize a board card through its owning work order, not its card ID."""
+
+    def get_queryset(self):
+        """Retain only cards belonging to accessible work."""
+        return (
+            super()
+            .get_queryset()
+            .filter(work_order__in=scoped_work_orders(self.request.user))
+        )
+
+    def perform_create(self, serializer):
+        """An add role cannot select another scope's work-order parent."""
+        get_object_or_404(
+            scoped_work_orders(self.request.user),
+            pk=serializer.validated_data['work_order'].pk,
+        )
+        super().perform_create(serializer)
+
+
+class KanbanCardList(ScopedKanbanCardMixin, ListCreateAPI):
     """List and create the cards a work order is tracked by.
 
     Unpaginated for the same reason the work-order board is: the board renders
@@ -252,7 +318,7 @@ class KanbanCardList(ListCreateAPI):
         return queryset.order_by('board_order', 'created_at')
 
 
-class KanbanCardDetail(RetrieveUpdateDestroyAPI):
+class KanbanCardDetail(ScopedKanbanCardMixin, RetrieveUpdateDestroyAPI):
     """Retrieve, move, or archive one card.
 
     Moving a card between columns is a PATCH of ``status`` here. It changes
@@ -286,7 +352,7 @@ class KanbanCardDetail(RetrieveUpdateDestroyAPI):
             instance.save(update_fields=['is_active', 'updated_at'])
 
 
-class WorkOrderBoardList(ListCreateAPI):
+class WorkOrderBoardList(ScopedWorkOrderMixin, ListCreateAPI):
     """List and create work orders as the board sees them."""
 
     queryset = WorkOrder.objects.all()
@@ -343,7 +409,91 @@ class WorkOrderBoardList(ListCreateAPI):
         return queryset.order_by('-created_at')
 
 
-class WorkOrderBoardDetail(RetrieveUpdateDestroyAPI):
+class WorkOrderTablePagination(LimitOffsetPagination):
+    """Bound native Work-list reads without changing the Board's array API."""
+
+    default_limit = 25
+    max_limit = 200
+
+
+class WorkOrderTableList(WorkOrderBoardList):
+    """Read the native work projection with authorized server-side pagination.
+
+    ``attention=true`` narrows to the ``tasks.attention`` "Needs attention"
+    rule (version in ``NEEDS_ATTENTION_RULE``), orders by it unless an explicit
+    ``ordering`` is given, and adds each row's reasons. The site's local date
+    is taken once per request so the filter and the reasons agree.
+    """
+
+    http_method_names = ['get', 'head', 'options']
+    pagination_class = WorkOrderTablePagination
+    serializer_class = WorkOrderTableSerializer
+    ordering = ['-created_at', '-pk']
+    search_fields = [
+        'reference',
+        'title',
+        'description',
+        'machine__name',
+        'assigned_to__username',
+        'assigned_to__first_name',
+        'assigned_to__last_name',
+        'assignee',
+    ]
+
+    def _attention_today(self):
+        """The site date when the attention scope was requested, else None."""
+        if not hasattr(self, '_attention_date'):
+            value = self.request.query_params.get('attention')
+            if value not in (None, '', 'true', 'false'):
+                raise ValidationError({'attention': ['Use true or false.']})
+            self._attention_date = timezone.localdate() if value == 'true' else None
+        return self._attention_date
+
+    def get_queryset(self):
+        """Narrow to the attention rule when it was requested."""
+        queryset = super().get_queryset()
+        today = self._attention_today()
+        return queryset if today is None else queryset.filter(attention_filter(today))
+
+    def filter_queryset(self, queryset):
+        """Apply search and filters, then the attention order by default."""
+        queryset = super().filter_queryset(queryset)
+        if self._attention_today() is not None and not self.request.query_params.get(
+            'ordering'
+        ):
+            queryset = order_by_attention(queryset)
+        return queryset
+
+    def get_serializer_context(self):
+        """Give the serializer the same date the filter used."""
+        context = super().get_serializer_context()
+        today = self._attention_today()
+        if today is not None:
+            context['attention_today'] = today
+        return context
+
+
+class WorkOrderPersona(APIView):
+    """The reader's Work persona and first-use Work-list scope (``tasks.persona``).
+
+    Read on first use only; the list's URL and saved choice take precedence.
+    """
+
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
+
+    @extend_schema(responses={200: dict})
+    def get(self, request):
+        """Return the persona from live group membership; never cached."""
+        response = Response(work_persona(request.user))
+        response['Cache-Control'] = 'private, no-store'
+        return response
+
+
+class WorkOrderBoardDetail(ScopedWorkOrderMixin, RetrieveUpdateDestroyAPI):
     """Retrieve, update, or archive a Kanban card."""
 
     queryset = WorkOrder.objects.all()
@@ -373,27 +523,31 @@ class WorkOrderOverviewDetail(APIView):
 
     def get(self, request, pk):
         """Return one card with its hierarchy, execution, and repair context."""
-        queryset = WorkOrder.objects.select_related(
-            'machine',
-            'assigned_to',
-            'requested_by',
-            'repair_packet',
-            'maintenance_record',
-            'structured_closeout',
-        ).prefetch_related(
-            'work_order_parts__part',
-            'cards__assigned_to',
-            'dependencies_in__predecessor__machine',
-            'dependencies_in__predecessor__assigned_to',
-            'dependencies_out__successor__machine',
-            'dependencies_out__successor__assigned_to',
-            'events__actor',
-            'repair_packet__gates',
-            # The new detail sections join here rather than issuing a request
-            # per section: the page renders from one read.
-            'repair_packet__findings__snapshot',
-            'repair_packet__approved_scopes',
-            'anomalies__source',
+        queryset = (
+            scoped_work_orders(request.user)
+            .select_related(
+                'machine',
+                'assigned_to',
+                'requested_by',
+                'repair_packet',
+                'maintenance_record',
+                'structured_closeout',
+            )
+            .prefetch_related(
+                'work_order_parts__part',
+                'cards__assigned_to',
+                'dependencies_in__predecessor__machine',
+                'dependencies_in__predecessor__assigned_to',
+                'dependencies_out__successor__machine',
+                'dependencies_out__successor__assigned_to',
+                'events__actor',
+                'repair_packet__gates',
+                # The new detail sections join here rather than issuing a request
+                # per section: the page renders from one read.
+                'repair_packet__findings__snapshot',
+                'repair_packet__approved_scopes',
+                'anomalies__source',
+            )
         )
         work_order = get_object_or_404(queryset, pk=pk)
         return Response(
@@ -413,7 +567,7 @@ class WorkOrderRestore(APIView):
 
     def post(self, request, pk):
         """Restore an archived card."""
-        work_order = get_object_or_404(WorkOrder, pk=pk)
+        work_order = get_object_or_404(scoped_work_orders(request.user), pk=pk)
 
         if not work_order.is_active:
             work_order.is_active = True
@@ -462,14 +616,18 @@ class WorkOrderPartList(APIView):
     @extend_schema(operation_id='kanban_cards_parts_list')
     def get(self, request, work_order_pk):
         """List all parts for a card."""
-        work_order = get_object_or_404(WorkOrder, pk=work_order_pk)
+        work_order = get_object_or_404(
+            scoped_work_orders(request.user), pk=work_order_pk
+        )
         parts = work_order.work_order_parts.all().select_related('part')
         serializer = WorkOrderPartSerializer(parts, many=True)
         return Response(serializer.data)
 
     def post(self, request, work_order_pk):
         """Add a part to a card and check stock availability."""
-        work_order = get_object_or_404(WorkOrder, pk=work_order_pk)
+        work_order = get_object_or_404(
+            scoped_work_orders(request.user), pk=work_order_pk
+        )
         serializer = WorkOrderPartSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -497,7 +655,9 @@ class WorkOrderPartList(APIView):
         were silently dropped. Reconciling server-side removes both failure modes
         and makes the save atomic.
         """
-        work_order = get_object_or_404(WorkOrder, pk=work_order_pk)
+        work_order = get_object_or_404(
+            scoped_work_orders(request.user), pk=work_order_pk
+        )
         payload = request.data
 
         if not isinstance(payload, list):
@@ -554,14 +714,22 @@ class WorkOrderPartDetail(APIView):
     def get(self, request, work_order_pk, pk):
         """Return one card part."""
         work_order_part = get_object_or_404(
-            WorkOrderPart, pk=pk, work_order_id=work_order_pk
+            WorkOrderPart.objects.filter(
+                work_order__in=scoped_work_orders(request.user)
+            ),
+            pk=pk,
+            work_order_id=work_order_pk,
         )
         return Response(WorkOrderPartSerializer(work_order_part).data)
 
     def patch(self, request, work_order_pk, pk):
         """Update the required quantity and re-check allocation."""
         work_order_part = get_object_or_404(
-            WorkOrderPart, pk=pk, work_order_id=work_order_pk
+            WorkOrderPart.objects.filter(
+                work_order__in=scoped_work_orders(request.user)
+            ),
+            pk=pk,
+            work_order_id=work_order_pk,
         )
         quantity = request.data.get('quantity')
         if quantity is not None:
@@ -573,7 +741,11 @@ class WorkOrderPartDetail(APIView):
     def delete(self, request, work_order_pk, pk):
         """Remove a part from the card."""
         work_order_part = get_object_or_404(
-            WorkOrderPart, pk=pk, work_order_id=work_order_pk
+            WorkOrderPart.objects.filter(
+                work_order__in=scoped_work_orders(request.user)
+            ),
+            pk=pk,
+            work_order_id=work_order_pk,
         )
         work_order_part.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -593,7 +765,9 @@ class WorkOrderAllocateParts(APIView):
 
     def post(self, request, work_order_pk):
         """Check and allocate stock for every card part."""
-        work_order = get_object_or_404(WorkOrder, pk=work_order_pk)
+        work_order = get_object_or_404(
+            scoped_work_orders(request.user), pk=work_order_pk
+        )
 
         for cp in work_order.work_order_parts.all().select_related('part'):
             cp.check_and_allocate()
@@ -763,12 +937,16 @@ class _CommandView(APIView):
     ]
 
     def _work_order_payload(self, work_order_id):
-        work_order = get_object_or_404(WorkOrder, pk=work_order_id)
+        work_order = get_object_or_404(
+            scoped_work_orders(self.request.user), pk=work_order_id
+        )
         return WorkOrderBoardSerializer(work_order).data
 
     def _card_payload(self, card_id):
         card = get_object_or_404(
-            KanbanCard.objects.select_related(
+            KanbanCard.objects.filter(
+                work_order__in=scoped_work_orders(self.request.user)
+            ).select_related(
                 'work_order', 'work_order__machine', 'work_order__assigned_to'
             ),
             pk=card_id,
@@ -788,6 +966,7 @@ class WorkOrderCreateCommand(_CommandView):
 
         if not machine_id:
             raise ValidationError({'machine': 'A machine is required.'})
+        get_object_or_404(scoped_machines(request.user), pk=machine_id)
 
         allowed = {
             key: data[key]
@@ -825,11 +1004,23 @@ class WorkOrderUpdateCommand(_CommandView):
 
     def post(self, request, pk):
         """Apply a versioned planning update."""
+        work_order = get_object_or_404(scoped_work_orders(request.user), pk=pk)
         fields = request.data.get('fields', {})
 
         # Accept ``machine`` as an alias for ``machine_id``.
         if 'machine' in fields and 'machine_id' not in fields:
             fields['machine_id'] = fields.pop('machine')
+        if 'machine_id' in fields:
+            from assets.models import AssetMachine
+
+            candidate = WorkOrder(
+                customer_id=work_order.customer_id,
+                machine=get_object_or_404(AssetMachine, pk=fields['machine_id']),
+            )
+            try:
+                require_work_order_scope(request.user, candidate)
+            except ScopeError as exc:
+                raise Http404 from exc
 
         try:
             scheduling.update_work_order_plan(
@@ -852,6 +1043,7 @@ class WorkOrderScheduleCommand(_CommandView):
 
     def post(self, request, pk):
         """Set the scheduled window (a move; duration handled by resize)."""
+        get_object_or_404(scoped_work_orders(request.user), pk=pk)
         try:
             scheduling.schedule_work_order(
                 work_order_id=pk,
@@ -878,6 +1070,7 @@ class WorkOrderResizeCommand(_CommandView):
 
     def post(self, request, pk):
         """Set estimated_minutes and/or move the end."""
+        get_object_or_404(scoped_work_orders(request.user), pk=pk)
         try:
             scheduling.resize_work_order(
                 work_order_id=pk,
@@ -902,6 +1095,7 @@ class WorkOrderDeleteCommand(_CommandView):
 
     def post(self, request, pk):
         """Delete the card, leaving a durable deletion record."""
+        get_object_or_404(scoped_work_orders(request.user), pk=pk)
         try:
             result = scheduling.delete_work_order(
                 work_order_id=pk,
@@ -928,6 +1122,7 @@ class WorkOrderCreateChildCommand(_CommandView):
 
     def post(self, request, pk):
         """Create a subtask/procurement child inheriting machine + customer."""
+        get_object_or_404(scoped_work_orders(request.user), pk=pk)
         try:
             result = scheduling.create_child(
                 parent_id=pk,
@@ -952,6 +1147,7 @@ class WorkOrderGenerateProcurementCommand(_CommandView):
 
     def post(self, request, pk):
         """Create/refresh the procurement child, or 200 with none if no shortfall."""
+        get_object_or_404(scoped_work_orders(request.user), pk=pk)
         try:
             child = scheduling.generate_procurement_child(
                 parent_id=pk, actor=request.user
@@ -979,6 +1175,9 @@ class WorkOrderScheduleBatchCommand(_CommandView):
 
         if not isinstance(operations, list):
             raise ValidationError({'operations': 'Expected a list of operations.'})
+        _require_work_order_ids(
+            request.user, [operation.get('card_id') for operation in operations]
+        )
 
         parsed = []
         for op in operations:
@@ -1011,6 +1210,21 @@ class WorkOrderScheduleBatchCommand(_CommandView):
         })
 
 
+def _require_work_order_ids(actor, identities):
+    """Reject a mixed-scope batch before preview or any partial mutation."""
+    if not all(
+        isinstance(identity, int) and not isinstance(identity, bool)
+        for identity in identities
+    ):
+        raise ValidationError({'work_order_ids': 'Expected integer work-order IDs.'})
+    requested = set(identities)
+    accessible = set(
+        scoped_work_orders(actor).filter(pk__in=requested).values_list('pk', flat=True)
+    )
+    if requested != accessible:
+        raise Http404
+
+
 def _parse_plan_request(request):
     """Build a PlanRequest from the request body, validating types."""
     candidate_ids = request.data.get('candidate_ids')
@@ -1025,6 +1239,7 @@ def _parse_plan_request(request):
     locked = request.data.get('locked_ids', [])
     if not isinstance(locked, list):
         raise ValidationError({'locked_ids': 'Expected a list of card ids.'})
+    _require_work_order_ids(request.user, [*candidate_ids, *locked])
 
     return schedule_planner.PlanRequest(
         candidate_ids=candidate_ids,
@@ -1147,7 +1362,7 @@ class WorkOrderScheduleWindow(APIView):
     def get(self, request):
         """Return {cards, dependencies, warnings} for the requested window."""
         queryset = (
-            WorkOrder.objects
+            scoped_work_orders(request.user)
             .filter(is_active=True)
             .select_related('machine', 'assigned_to')
             .prefetch_related('work_order_parts__part')
@@ -1181,6 +1396,10 @@ class WorkOrderDependencyCommand(_CommandView):
 
     def post(self, request):
         """Create ``predecessor -> successor``, rejecting self-loops and cycles."""
+        _require_work_order_ids(
+            request.user,
+            [request.data.get('predecessor'), request.data.get('successor')],
+        )
         try:
             dependency = scheduling.create_dependency(
                 predecessor_id=request.data.get('predecessor'),
@@ -1205,6 +1424,13 @@ class WorkOrderDependencyDetailCommand(_CommandView):
 
     def delete(self, request, pk):
         """Remove the dependency; 404 if it does not exist."""
+        accessible = scoped_work_orders(request.user)
+        get_object_or_404(
+            WorkOrderDependency.objects.filter(
+                predecessor__in=accessible, successor__in=accessible
+            ),
+            pk=pk,
+        )
         removed = scheduling.delete_dependency(dependency_id=pk, actor=request.user)
 
         if not removed:
@@ -1242,6 +1468,10 @@ kanban_api_urls = [
         'work-orders/',
         include([
             path('', WorkOrderBoardList.as_view(), name='kanban-card-list'),
+            path('list/', WorkOrderTableList.as_view(), name='kanban-work-order-table'),
+            path(
+                'persona/', WorkOrderPersona.as_view(), name='kanban-work-order-persona'
+            ),
             path(
                 '<int:pk>/overview/',
                 WorkOrderOverviewDetail.as_view(),

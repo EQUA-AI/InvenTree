@@ -16,6 +16,8 @@ stays in ``scope.py``/``threads.py``.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -92,6 +94,73 @@ SCOPE_ERROR_CODES: tuple[str, ...] = (
     "scope_version_conflict",
     "scope_update_rejected",
 )
+
+
+# --- Work focus (P02/P33) ----------------------------------------------------
+#
+# ``POST /threads/{id}/work-focus`` acknowledges one exact native Work record
+# and returns a signed five-minute receipt; ``/chat``, ``/chat/stream`` and
+# ``/agui`` accept it as ``work_focus_receipt``; the answer and its reloaded
+# message carry the verified ids as ``work_focus``; and
+# ``GET /threads/{id}/turns/{turn_id}/work-focus`` re-reads a saved focus with
+# a staleness flag. Focus names what a question is about. It is separate from
+# the analysis scope above and grants nothing. Serving authority stays in
+# ``aichat.services.work_focus``; ``test_work_focus_wire.py`` pins these.
+
+
+class WorkFocusIdentity(BaseModel):
+    """The verified ids a focused turn, its answer and the model carry."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: int
+    kind: Literal["work_order"]
+    work_order_id: int
+    #: The Work's native ``lifecycle_version`` when the focus was confirmed.
+    lifecycle_version: int
+    machine_id: int | None
+
+
+class WorkFocusAcknowledgeRequest(BaseModel):
+    """The ``POST /threads/{id}/work-focus`` body (mirror of the route model)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    work_order_id: int
+    expected_version: int
+
+
+class WorkFocusAcknowledgement(BaseModel):
+    """A confirmed focus and the receipt to send with the next turn."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: int
+    thread_id: str
+    focus: WorkFocusIdentity
+    #: Opaque and short-lived: bound to this actor, thread and server policy.
+    receipt: str
+    expires_in: int
+
+
+class SavedTurnWorkFocus(BaseModel):
+    """A saved turn's focus as it was asked, re-authorized now."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    thread_id: str
+    turn_id: str
+    focus: WorkFocusIdentity
+    #: True when the Work's lifecycle, machine or boundary changed since.
+    stale: bool
+
+
+#: Machine-readable ``detail`` / RUN_ERROR ``code`` values of the focus rail.
+WORK_FOCUS_ERROR_CODES: tuple[str, ...] = ("work_focus_rejected",)
+
+#: ``work_focus_state`` on a reloaded answer: how its Work stands now for the
+#: owner (``aichat.services.work_focus.WORK_FOCUS_STATES``); null otherwise.
+WORK_FOCUS_STATES: tuple[str, ...] = ("current", "changed", "unavailable")
 
 
 # --- Evidence analysis v2 (S10/S11) -----------------------------------------

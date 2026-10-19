@@ -20,7 +20,7 @@ from InvenTree.mixins import ListAPI, ListCreateAPI, RetrieveUpdateAPI
 
 from .models import WorkOrder, WorkOrderEvent
 from .permissions import PLAN_WORKORDER, VIEW_WORKORDER_AUDIT, require_permission
-from .scope import ScopeError, require_work_order_scope, work_order_scope_filter
+from .scope import ScopeError, require_work_order_scope, scoped_work_orders
 from .services.closeout import complete_work_order
 from .services.readiness import evaluate_work_order_readiness
 from .services.work_orders import (
@@ -79,10 +79,7 @@ class WorkOrderEnabledMixin:
 
 def _scoped_work_orders(actor):
     """Apply actor scope before any other queryset operation."""
-    try:
-        return WorkOrder.objects.filter(work_order_scope_filter(actor))
-    except ScopeError:
-        return WorkOrder.objects.none()
+    return scoped_work_orders(actor)
 
 
 def _work_order_queryset(actor):

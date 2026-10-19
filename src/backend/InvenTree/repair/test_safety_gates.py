@@ -1,10 +1,11 @@
 """Tests for Safety Gates & LOTO S2 backend slice."""
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from approvals.executors import SafetyGateExecutor
 from approvals.models import ActionType, Approval
+from assets.models import AssetMachine, get_default_client
 from InvenTree.unit_test import InvenTreeAPITestCase
 
 from . import services
@@ -173,21 +174,34 @@ class SafetyGateActionTest(TestCase):
         self.assertEqual(gate.waiver_authority, 'EHS')
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class SafetyGateAPITest(InvenTreeAPITestCase):
     """API behaviour for safety gates."""
 
-    roles = 'all'
+    roles = [
+        'work_order.view',
+        'work_order.add',
+        'work_order.change',
+        'work_order.delete',
+    ]
 
     def setUp(self):
         """Create shared test fixtures."""
         super().setUp()
         RepairPacket.objects.all().delete()
+        self.machine = AssetMachine.objects.create(
+            name='Packet API machine', client=get_default_client()
+        )
 
     def test_resolve_gates_endpoint(self):
         """Test resolve gates endpoint."""
         _create_electrical_template()
         packet = RepairPacket.objects.create(
-            fault_summary='Motor coil voltage fault', status=PacketStatus.DIAGNOSED
+            machine=self.machine,
+            fault_summary='Motor coil voltage fault',
+            status=PacketStatus.DIAGNOSED,
         )
         url = reverse('repair-packet-resolve-gates', kwargs={'pk': packet.pk})
         response = self.post(url, {}, expected_code=200)
@@ -197,7 +211,7 @@ class SafetyGateAPITest(InvenTreeAPITestCase):
 
     def test_proof_then_confirm_endpoint(self):
         """Test proof then confirm endpoint."""
-        packet = RepairPacket.objects.create(fault_summary='x')
+        packet = RepairPacket.objects.create(machine=self.machine, fault_summary='x')
         gate = RepairPacketGate.objects.create(
             packet=packet, name='Photo gate', requires_photo=True
         )
@@ -219,7 +233,7 @@ class SafetyGateAPITest(InvenTreeAPITestCase):
     def test_lockout_endpoint_blocks_close_until_restored(self):
         """Test lockout endpoint blocks close until restored."""
         packet = RepairPacket.objects.create(
-            fault_summary='x', status=PacketStatus.EXECUTING
+            machine=self.machine, fault_summary='x', status=PacketStatus.EXECUTING
         )
         gate = RepairPacketGate.objects.create(
             packet=packet, name='LOTO', gate_type='loto', status=GateStatus.CONFIRMED
