@@ -11,6 +11,7 @@ import {
   Text
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
+import dayjs from 'dayjs';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
@@ -31,12 +32,13 @@ import {
   OPEN_SHORTAGE,
   type Stage,
   coveredByStock,
+  fitSourceLabel,
   reservationStages,
   reservedQuantity
 } from './materials';
 
 const when = (at: string | null) =>
-  at ? new Date(at).toLocaleString() : t`time not recorded`;
+  at ? dayjs(at).format('DD MMM YYYY, HH:mm') : t`time not recorded`;
 
 const amount = (quantity: number | null, units: string | undefined) =>
   quantity === null
@@ -250,7 +252,7 @@ function Requirement({
         <Fact label={t`Fit basis`}>
           {requirement.fit_basis ? (
             <Text size='sm'>
-              {t`Source: ${requirement.fit_basis.source}`}
+              {t`Source: ${fitSourceLabel(requirement.fit_basis.source, { manual: t`Manually recorded requirement`, procedure: t`Procedure requirement` })}`}
               {requirement.fit_basis.note
                 ? ` · ${requirement.fit_basis.note}`
                 : ''}

@@ -62,7 +62,7 @@ import { InvestigationSection } from '../../maintenance/workorders/components/In
 import { WorkOrderAlertContext } from '../../maintenance/workorders/components/WorkOrderAlertContext';
 import { WorkOrderProblemPanel } from '../../maintenance/workorders/components/WorkOrderProblemPanel';
 import { WorkOrderSafetyReadiness } from '../../maintenance/workorders/components/WorkOrderSafetyReadiness';
-import { CloseoutPanel } from './CloseoutPanel';
+import { CloseoutPanel, WorkCloseoutReadings } from './CloseoutPanel';
 import { WorkAttachmentResource } from './WorkAttachmentResource';
 import { WorkMaterialsPanel } from './WorkMaterialsPanel';
 import { DiagnoseProjection } from './execution/DiagnoseProjection';
@@ -287,6 +287,12 @@ function WorkOrderWorkspace({
             />
           </SectionCard>
           <Alert color='gray'>{t`Physical test criteria, attempts, operating authority and service-return records are not supplied by this overview. A recorded summary or completed work order does not establish permission to operate.`}</Alert>
+          {workOrder.canonical_commands_enabled && !workOrder.repair_packet && (
+            <WorkCloseoutReadings
+              workOrderId={workOrder.id}
+              readOnly={workOrder.lifecycle_status === 'completed'}
+            />
+          )}
         </Stack>
       )
     },
@@ -302,7 +308,10 @@ function WorkOrderWorkspace({
             />
           )}
           {workOrder.canonical_commands_enabled && !workOrder.repair_packet ? (
-            <CloseoutPanel workOrder={projectCloseoutWorkOrder(workOrder)} />
+            <CloseoutPanel
+              workOrder={projectCloseoutWorkOrder(workOrder)}
+              accepted={workOrder.structured_closeout}
+            />
           ) : workOrder.repair_packet ? (
             <Alert color='blue'>
               <Stack gap='xs'>
@@ -805,22 +814,34 @@ function EventTimeline({ events }: Readonly<{ events: WorkOrderEvent[] }>) {
 
   return (
     <Timeline bulletSize={22} lineWidth={2} active={events.length}>
-      {events.map((event) => (
-        <Timeline.Item key={event.id} title={humanize(event.event_type)}>
-          <Text size='sm'>
-            {[event.from_status, event.to_status]
-              .filter(Boolean)
-              .map(humanize)
-              .join(' → ') ||
-              event.reason ||
-              '-'}
-          </Text>
-          {event.reason && <Text size='xs'>{event.reason}</Text>}
-          <Text size='xs' c='dimmed'>
-            {formatDateTime(event.created_at)}
-          </Text>
-        </Timeline.Item>
-      ))}
+      {[...events]
+        .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id - b.id)
+        .map((event) => (
+          <Timeline.Item
+            key={event.id}
+            title={
+              event.event_type.toUpperCase() === 'COMPLETED'
+                ? t`Maintenance record updated`
+                : humanize(event.event_type)
+            }
+          >
+            <Text size='sm'>
+              {[event.from_status, event.to_status]
+                .filter(Boolean)
+                .map(humanize)
+                .join(' → ') ||
+                event.reason ||
+                '-'}
+            </Text>
+            {event.reason && <Text size='xs'>{event.reason}</Text>}
+            <Text size='xs' c='dimmed'>
+              {formatDateTime(event.created_at)} ·{' '}
+              {event.actor != null
+                ? t`Recorded by user ${event.actor}`
+                : t`Actor not recorded`}
+            </Text>
+          </Timeline.Item>
+        ))}
     </Timeline>
   );
 }

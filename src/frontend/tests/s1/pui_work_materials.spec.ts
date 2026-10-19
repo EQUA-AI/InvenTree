@@ -105,8 +105,9 @@ async function openParts(
   {
     body = readout(),
     status = 200,
-    role
-  }: { body?: object; status?: number; role?: 'viewer' } = {}
+    role,
+    scheme
+  }: { body?: object; status?: number; role?: 'viewer'; scheme?: 'dark' } = {}
 ) {
   await mockWorkList(page);
   await page.route('**/api/kanban/work-orders/73/overview/', (route) =>
@@ -126,6 +127,7 @@ async function openParts(
     entry: '/maintenance/work-orders/73/?work_panel=parts'
   });
   if (role) params.set('role', role);
+  if (scheme) params.set('scheme', scheme);
   await page.goto(`/playwright/s0-native.html?${params}`);
   return reads;
 }
@@ -139,6 +141,8 @@ test('each material stage keeps its own record and recorder', async ({
   const line = requirement(page);
   await expect(line).toContainText('Mechanical seal kit');
   await expect(line).toContainText('Required 2 ea');
+  await expect(line).toContainText('Source: Procedure requirement');
+  await expect(line).toContainText('19 Oct 2026,');
   await expect(line).toContainText('Reserved 2 ea of 2 ea');
   const used = line.locator('[data-reservation="1"]');
   await expect(used).toContainText('planner');
@@ -302,4 +306,21 @@ test('a failed read shows nothing old and offers retry', async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
   await expect(requirement(page)).toHaveCount(0);
+});
+
+test('material stages remain readable in the dark scheme', async ({
+  page
+}, testInfo) => {
+  await openParts(page, { scheme: 'dark' });
+  await expect(requirement(page)).toContainText(
+    'Source: Procedure requirement'
+  );
+  await expect(
+    requirement(page).locator('[data-reservation="1"]')
+  ).toContainText('tech-a');
+  await page.screenshot({
+    path: testInfo.outputPath('work-materials-dark.png'),
+    fullPage: true,
+    animations: 'disabled'
+  });
 });

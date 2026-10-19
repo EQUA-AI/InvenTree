@@ -181,3 +181,18 @@ export function coveredByStock(readout: MaterialReadout): boolean {
         )
     );
 }
+
+/** JobKitLine sources written by the native manual and procedure services. */
+export function fitSourceLabel(
+  source: string,
+  labels: { manual: string; procedure: string }
+): string {
+  switch (source) {
+    case 'manual':
+      return labels.manual;
+    case 'procedure':
+      return labels.procedure;
+    default:
+      return source;
+  }
+}

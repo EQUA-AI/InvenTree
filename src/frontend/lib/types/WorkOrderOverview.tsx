@@ -36,6 +36,9 @@ export interface WorkOrderDependency {
 }
 
 export interface WorkOrderEvent {
+  actor?: number | null;
+  idempotency_key?: string;
+  metadata?: Record<string, any>;
   id: number;
   event_type: string;
   from_status: string;
@@ -126,6 +129,9 @@ export interface MaintenanceRecordOverview {
 }
 
 export interface StructuredCloseoutOverview {
+  original?: Record<string, unknown>;
+  content_hash?: string;
+  completed_by?: number | null;
   id: number;
   cause: string;
   action: string;

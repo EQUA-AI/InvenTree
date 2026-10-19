@@ -148,3 +148,59 @@ class WorkMaterialsTests(CloseoutEnvMixin, TestCase):
 
         with self.assertRaises(Http404):
             self.read()
+
+    @override_settings(**KITS)
+    def test_query_count_is_constant_as_material_records_grow(self):
+        """Batch reads stay constant across distinct lines, stock and usage."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from tasks.closeout_models import CloseoutPartUsage
+        from tasks.services.job_kit_custody import consume_allocation
+
+        self.build_kit_line(quantity='1')
+        self.reserve_kit()
+
+        def consume_new_allocations():
+            from tasks.jobkit_models import JobKitAllocation
+
+            for allocation in JobKitAllocation.objects.filter(
+                line__kit__work_order=self.work_order, status='reserved'
+            ):
+                consume_allocation(
+                    work_order_id=self.work_order.pk,
+                    allocation_id=allocation.pk,
+                    actor=self.actor,
+                )
+                CloseoutPartUsage.objects.create(
+                    work_order=self.work_order,
+                    allocation=allocation,
+                    part=allocation.line.requested_part,
+                    stock_item=allocation.stock_item,
+                    resolved_by=self.actor,
+                    source='kit',
+                )
+
+        consume_new_allocations()
+        self.read()  # Warm permission caches outside the measured reads.
+        with CaptureQueriesContext(connection) as small:
+            self.assertEqual(len(self.read().data['requirements']), 1)
+        for _ in range(7):
+            self.build_kit_line(quantity='1')
+        # A new reserve intent includes the seven new requirement lines.
+        from tasks.services.job_kits import reserve_job_kit
+
+        self.work_order.refresh_from_db()
+        reserve_job_kit(
+            work_order_id=self.work_order.pk,
+            actor=self.actor,
+            expected_version=self.work_order.lifecycle_version,
+            idempotency_key='reserve-expanded-materials',
+        )
+        consume_new_allocations()
+        with CaptureQueriesContext(connection) as large:
+            body = self.read().data
+            self.assertEqual(len(body['requirements']), 8)
+            self.assertEqual(sum(len(r['reservations']) for r in body['requirements']), 9)
+            self.assertEqual(sum(len(a['usage']) for r in body['requirements'] for a in r['reservations']), 9)
+        self.assertEqual(len(small), len(large))

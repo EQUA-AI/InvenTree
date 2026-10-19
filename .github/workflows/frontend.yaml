@@ -213,6 +213,36 @@ jobs:
           name: aimms-r6-s3-native-performance
           path: /tmp/aimms-r6-s3-browser
           if-no-files-found: ignore
+      - name: R6 area unit regressions (S2 onwards)
+        run: |
+          cd src/frontend
+          env -i PATH="$PATH" HOME="$HOME" CI=true node --input-type=module -e 'import {startVitest} from "vitest/node"; const context = await startVitest("test",["src/pages/assets/health/","src/pages/assets/performance/","src/pages/assets/equipment/","src/pages/assets/faults/","src/pages/assets/locations/","src/pages/assets/maintenance/","src/pages/tasks/workorders/","src/components/nav/"],{config:"vitest.config.ts",run:true,watch:false},{envFile:false}); if (!context || context.state.getFiles().some(file => file.result?.state !== "pass") || context.state.getUnhandledErrors().length) process.exitCode = 1; await context?.close();'
+      - name: Typecheck S4 Work execution fixtures
+        run: cd src/frontend && node node_modules/typescript/bin/tsc --noEmit --project tsconfig.s4.json
+      - name: S4 Work execution regressions
+        run: |
+          cd src/frontend
+          env -i PATH="$PATH" HOME="$HOME" CI=true node node_modules/@playwright/test/cli.js test --config=playwright.s4.config.ts
+      - name: S4 Work execution evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: aimms-r6-s4-work-execution
+          path: /tmp/aimms-r6-s4-browser
+          if-no-files-found: ignore
+      - name: Typecheck S6 Closeout fixtures
+        run: cd src/frontend && node node_modules/typescript/bin/tsc --noEmit --project tsconfig.s6.json
+      - name: S6 Closeout and final update regressions
+        run: |
+          cd src/frontend
+          env -i PATH="$PATH" HOME="$HOME" CI=true node node_modules/@playwright/test/cli.js test --config=playwright.s6.config.ts
+      - name: S6 Closeout evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: aimms-r6-s6-closeout
+          path: /tmp/aimms-r6-s6-browser
+          if-no-files-found: ignore
       - name: S0 synthetic fixture evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()

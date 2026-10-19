@@ -1,3 +1,5 @@
+import type { CloseoutAmendment } from '@lib/types/Closeout';
+import type { StructuredCloseoutOverview } from '@lib/types/WorkOrderOverview';
 import { t } from '@lingui/core/macro';
 import {
   Alert,
@@ -29,6 +31,11 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
 import DictateCloseoutModal from './DictateCloseoutModal';
+import { WorkRecordUpdate } from './FinalUpdateAction';
+import { PreparedCloseout } from './PreparedCloseout';
+import { fieldDecisions, savedFieldValue } from './closeoutAccount';
+import { useWorkRecordUpdate } from './useWorkRecordUpdate';
+import type { UpdateIntent } from './workRecordUpdate';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
@@ -62,15 +69,18 @@ function newIdempotencyKey(): string {
 }
 
 /**
- * Closeout wizard panel (Feature #15, CO1 surface).
+ * Closeout account with native capture recovery (Feature #15, CO1 surface).
  *
- * The wizard never computes eligibility itself: the Preview step renders the
- * server readiness contract, and Complete drives the one existing completion
- * command with the reviewed capture id. Manual entry works with AI disabled.
+ * Server readiness remains authoritative. The prepared report and one update
+ * action are direct; the native stepper retains capture/reconciliation recovery.
  */
 export function CloseoutPanel({
-  workOrder
-}: Readonly<{ workOrder: CloseoutWorkOrder }>) {
+  workOrder,
+  accepted
+}: Readonly<{
+  workOrder: CloseoutWorkOrder;
+  accepted?: StructuredCloseoutOverview | null;
+}>) {
   const api = useApi();
   const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
@@ -81,7 +91,7 @@ export function CloseoutPanel({
   const [followUp, setFollowUp] = useState('');
   const [followUpRequired, setFollowUpRequired] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [receipt, setReceipt] = useState<Record<string, any> | null>(null);
+  const [reviewedVersion, setReviewedVersion] = useState<number | null>(null);
 
   const woId = workOrder.id;
 
@@ -150,15 +160,16 @@ export function CloseoutPanel({
     }
   });
 
-  const effectsQuery = useQuery({
-    queryKey: ['closeout-effects', woId],
-    enabled: receipt != null,
-    queryFn: async () => {
-      const response = await api.get<EffectRow[]>(
-        apiUrl(ApiEndpoints.work_order_closeout_effects, woId)
-      );
-      return response.data;
-    }
+  const amendmentsQuery = useQuery({
+    queryKey: ['closeout-amendments', woId],
+    enabled: accepted != null,
+    retry: false,
+    queryFn: async () =>
+      (
+        await api.get<CloseoutAmendment[]>(
+          apiUrl(ApiEndpoints.work_order_closeout_amendments, woId)
+        )
+      ).data
   });
 
   const invalidate = useCallback(() => {
@@ -172,8 +183,25 @@ export function CloseoutPanel({
     queryClient.invalidateQueries({ queryKey: ['work-order', woId] });
   }, [queryClient, woId]);
 
+  const update = useWorkRecordUpdate(woId, invalidate);
+  const mutationLocked =
+    busy ||
+    dictateOpen ||
+    ['pending', 'uncertain', 'confirmed'].includes(update.state.status);
+  const effectsQuery = useQuery({
+    queryKey: ['closeout-effects', woId],
+    enabled: update.state.status === 'confirmed' || accepted != null,
+    queryFn: async () => {
+      const response = await api.get<EffectRow[]>(
+        apiUrl(ApiEndpoints.work_order_closeout_effects, woId)
+      );
+      return response.data;
+    }
+  });
+
   const runCommand = useCallback(
     async (fn: () => Promise<void>) => {
+      if (mutationLocked) return;
       setBusy(true);
       try {
         await fn();
@@ -184,7 +212,7 @@ export function CloseoutPanel({
         setBusy(false);
       }
     },
-    [invalidate]
+    [invalidate, mutationLocked]
   );
 
   const createCapture = () =>
@@ -215,29 +243,24 @@ export function CloseoutPanel({
       });
     });
 
-  const proposalValue = useCallback(
-    (field: string): string => {
-      const proposed = proposalQuery.data?.fields?.[field]?.value;
-      return proposed == null ? '' : String(proposed);
-    },
-    [proposalQuery.data]
-  );
-
   const effectiveFieldValue = useCallback(
-    (field: string): string => fieldValues[field] ?? proposalValue(field),
-    [fieldValues, proposalValue]
+    (field: string): string =>
+      fieldValues[field] ?? savedFieldValue(proposalQuery.data, field),
+    [fieldValues, proposalQuery.data]
   );
 
   const submitDecisions = () =>
     runCommand(async () => {
       if (!capture) return;
-      const decisions = ['cause', ...REQUIRED_FIELDS]
-        .map((field) => ({
-          field_path: field,
-          decision: 'edited',
-          final_value: effectiveFieldValue(field)
-        }))
-        .filter((entry) => String(entry.final_value).trim().length > 0);
+      const decisions = fieldDecisions(
+        proposalQuery.data,
+        Object.fromEntries(
+          ['cause', ...REQUIRED_FIELDS].map((field) => [
+            field,
+            effectiveFieldValue(field)
+          ])
+        )
+      );
       await api.post(
         apiUrl(ApiEndpoints.work_order_closeout_capture_decisions, woId, {
           capId: capture.id
@@ -276,35 +299,47 @@ export function CloseoutPanel({
       );
     });
 
-  const complete = () =>
-    runCommand(async () => {
-      const payload: Record<string, unknown> = {
-        expected_version: workOrder.lifecycle_version,
-        idempotency_key: newIdempotencyKey(),
-        action: effectiveFieldValue('action'),
-        result: effectiveFieldValue('result'),
-        verification_summary: effectiveFieldValue('verification_summary'),
-        cause: effectiveFieldValue('cause'),
-        follow_up: followUp,
-        follow_up_required: followUpRequired
-      };
-      if (downtime !== '') {
-        payload.downtime_minutes = downtime;
-      }
-      if (capture?.status === 'reviewed') {
-        payload.capture_id = capture.id;
-      }
-      const response = await api.post(
-        apiUrl(ApiEndpoints.work_order_complete, woId),
-        payload
-      );
-      setReceipt(response.data);
-      setStep(5);
-      notifications.show({
-        message: t`Work order completed`,
-        color: 'green'
-      });
-    });
+  const accountReady =
+    REQUIRED_FIELDS.every(
+      (field) => effectiveFieldValue(field).trim().length > 0
+    ) &&
+    (!capture ||
+      (capture.status === 'reviewed' &&
+        REQUIRED_FIELDS.every(
+          (field) =>
+            effectiveFieldValue(field) ===
+            savedFieldValue(proposalQuery.data, field)
+        ))) &&
+    !capturesQuery.isPending &&
+    !capturesQuery.isError &&
+    !proposalQuery.isFetching &&
+    !proposalQuery.isError &&
+    !partUsageQuery.isPending &&
+    !partUsageQuery.isError &&
+    !readingsQuery.isPending &&
+    !readingsQuery.isError;
+  const complete = () => {
+    if (
+      !accountReady ||
+      mutationLocked ||
+      !readinessQuery.data?.ready ||
+      workOrder.lifecycle_status === 'completed'
+    )
+      return;
+    const payload: UpdateIntent['payload'] = {
+      expected_version: workOrder.lifecycle_version,
+      idempotency_key: newIdempotencyKey(),
+      action: effectiveFieldValue('action'),
+      result: effectiveFieldValue('result'),
+      verification_summary: effectiveFieldValue('verification_summary'),
+      cause: effectiveFieldValue('cause'),
+      follow_up: followUp,
+      follow_up_required: followUpRequired,
+      ...(downtime !== '' ? { downtime_minutes: downtime } : {}),
+      ...(capture?.status === 'reviewed' ? { capture_id: capture.id } : {})
+    };
+    void update.execute({ workOrderId: woId, payload });
+  };
 
   const readiness = readinessQuery.data;
 
@@ -318,71 +353,183 @@ export function CloseoutPanel({
         workOrderVersion={workOrder.lifecycle_version}
         onCommitted={() => void invalidate()}
       />
-      <Stepper
-        active={step}
-        onStepClick={setStep}
-        size='sm'
-        allowNextStepsSelect
-      >
-        <Stepper.Step label={t`Narrative`} icon={<IconSparkles size={16} />}>
-          <NarrativeStep
-            capture={capture}
-            narrative={narrative}
-            setNarrative={setNarrative}
-            onCreate={createCapture}
-            onExtract={extract}
-            onDictate={() => setDictateOpen(true)}
-            busy={busy}
-            loading={capturesQuery.isLoading}
-          />
-        </Stepper.Step>
-        <Stepper.Step label={t`Review`} icon={<IconListCheck size={16} />}>
-          <ReviewStep
-            capture={capture}
-            proposal={proposalQuery.data ?? null}
-            effectiveFieldValue={effectiveFieldValue}
-            setFieldValue={(field, value) =>
-              setFieldValues((current) => ({ ...current, [field]: value }))
+      <PreparedCloseout
+        workOrder={workOrder}
+        updateStatus={update.state.status}
+        partUsage={partUsageQuery.isError ? undefined : partUsageQuery.data}
+        draftDowntime={
+          update.state.status === 'idle'
+            ? downtime
+            : (update.state.intent.payload.downtime_minutes ?? '')
+        }
+        draftFollowUp={
+          update.state.status === 'idle'
+            ? followUpRequired
+              ? followUp
+              : ''
+            : update.state.intent.payload.follow_up
+        }
+        captures={capturesQuery.isError ? undefined : capturesQuery.data}
+        proposal={proposalQuery.data}
+        fields={
+          update.state.status === 'idle'
+            ? Object.fromEntries(
+                ['cause', ...REQUIRED_FIELDS].map((field) => [
+                  field,
+                  effectiveFieldValue(field)
+                ])
+              )
+            : {
+                cause: update.state.intent.payload.cause,
+                action: update.state.intent.payload.action,
+                result: update.state.intent.payload.result,
+                verification_summary:
+                  update.state.intent.payload.verification_summary
+              }
+        }
+        accepted={accepted}
+        amendments={amendmentsQuery.isError ? undefined : amendmentsQuery.data}
+        readings={readingsQuery.isError ? undefined : readingsQuery.data}
+        error={
+          capturesQuery.isError ||
+          proposalQuery.isError ||
+          readingsQuery.isError ||
+          partUsageQuery.isError ||
+          amendmentsQuery.isError
+        }
+        changed={Object.entries(fieldValues).some(
+          ([key, value]) => value !== savedFieldValue(proposalQuery.data, key)
+        )}
+      />
+      {!accepted && (
+        <fieldset
+          disabled={mutationLocked}
+          style={{ border: 0, padding: 0, margin: 0 }}
+        >
+          <Group mt='md'>
+            <NumberInput
+              label={t`Downtime (minutes)`}
+              description={t`Leave blank when unknown`}
+              min={0}
+              value={downtime}
+              onChange={(value) =>
+                setDowntime(typeof value === 'number' ? value : '')
+              }
+            />
+            <Checkbox
+              label={t`Follow-up required`}
+              checked={followUpRequired}
+              onChange={(event) =>
+                setFollowUpRequired(event.currentTarget.checked)
+              }
+            />
+          </Group>
+          {followUpRequired && (
+            <Textarea
+              label={t`Follow-up`}
+              value={followUp}
+              onChange={(event) => setFollowUp(event.currentTarget.value)}
+              autosize
+              minRows={2}
+            />
+          )}
+        </fieldset>
+      )}
+      <WorkRecordUpdate
+        onRecovery={setStep}
+        state={update.state}
+        latest={Object.fromEntries(
+          REQUIRED_FIELDS.map((field) => [
+            field,
+            savedFieldValue(proposalQuery.data, field)
+          ])
+        )}
+        version={workOrder.lifecycle_version}
+        readiness={readiness}
+        loading={readinessQuery.isPending || readinessQuery.isFetching}
+        eligible={accountReady && update.available}
+        completed={workOrder.lifecycle_status === 'completed'}
+        completedAt={accepted?.completed_at}
+        onSubmit={complete}
+        onReconcile={() => void update.execute()}
+        onReview={() => {
+          void update
+            .reviewLatest()
+            .then((version) => setReviewedVersion(version ?? null));
+        }}
+        reviewed={
+          reviewedVersion != null &&
+          reviewedVersion === workOrder.lifecycle_version
+        }
+        onUseReviewed={() => {
+          void update.releaseRefused().then((released) => {
+            if (released) {
+              setFieldValues({});
+              setReviewedVersion(null);
             }
-            onSubmit={submitDecisions}
-            busy={busy}
-          />
-        </Stepper.Step>
-        <Stepper.Step label={t`Parts`}>
-          <PartsStep
-            rows={partUsageQuery.data ?? []}
-            onRefresh={refreshPartUsage}
-            onResolve={resolveRow}
-            busy={busy}
-          />
-        </Stepper.Step>
-        <Stepper.Step label={t`Readings`}>
-          <ReadingsStep
-            workOrderId={woId}
-            rows={readingsQuery.data ?? []}
-            runCommand={runCommand}
-            busy={busy}
-          />
-        </Stepper.Step>
-        <Stepper.Step label={t`Complete`}>
-          <CompleteStep
-            readiness={readiness ?? null}
-            loading={readinessQuery.isLoading}
-            capture={capture}
-            downtime={downtime}
-            setDowntime={setDowntime}
-            followUp={followUp}
-            setFollowUp={setFollowUp}
-            followUpRequired={followUpRequired}
-            setFollowUpRequired={setFollowUpRequired}
-            onComplete={complete}
-            busy={busy}
-          />
-        </Stepper.Step>
-        <Stepper.Completed>
-          <ReceiptStep receipt={receipt} effects={effectsQuery.data ?? []} />
-        </Stepper.Completed>
-      </Stepper>
+          });
+        }}
+        locked={busy || dictateOpen}
+      />
+      {effectsQuery.data && effectsQuery.data.length > 0 && (
+        <details>
+          <summary>{t`Recorded follow-up effects`}</summary>
+          {effectsQuery.data.map((effect) => (
+            <Text size='sm' key={effect.id}>
+              {effect.effect_type} · {effect.status} · {t`Attempts`}:{' '}
+              {effect.attempts}
+            </Text>
+          ))}
+        </details>
+      )}
+      {!accepted &&
+        !['pending', 'uncertain', 'confirmed'].includes(
+          update.state.status
+        ) && (
+          <Stepper
+            id='closeout-recovery'
+            active={step}
+            onStepClick={setStep}
+            size='sm'
+            allowNextStepsSelect
+          >
+            <Stepper.Step
+              label={t`Narrative`}
+              icon={<IconSparkles size={16} />}
+            >
+              <NarrativeStep
+                capture={capture}
+                narrative={narrative}
+                setNarrative={setNarrative}
+                onCreate={createCapture}
+                onExtract={extract}
+                onDictate={() => setDictateOpen(true)}
+                busy={mutationLocked}
+                loading={capturesQuery.isLoading}
+              />
+            </Stepper.Step>
+            <Stepper.Step label={t`Review`} icon={<IconListCheck size={16} />}>
+              <ReviewStep
+                capture={capture}
+                proposal={proposalQuery.data ?? null}
+                effectiveFieldValue={effectiveFieldValue}
+                setFieldValue={(field, value) =>
+                  setFieldValues((current) => ({ ...current, [field]: value }))
+                }
+                onSubmit={submitDecisions}
+                busy={mutationLocked}
+              />
+            </Stepper.Step>
+            <Stepper.Step label={t`Parts`}>
+              <PartsStep
+                rows={partUsageQuery.data ?? []}
+                onRefresh={refreshPartUsage}
+                onResolve={resolveRow}
+                busy={mutationLocked}
+              />
+            </Stepper.Step>
+          </Stepper>
+        )}
     </Card>
   );
 }
@@ -483,16 +630,12 @@ function ReviewStep({
   onSubmit: () => void;
   busy: boolean;
 }>) {
-  if (!capture) {
-    return (
-      <Alert color='gray' mt='md'>
-        {t`Capture a narrative first, or enter the fields manually and complete without a capture.`}
-      </Alert>
-    );
-  }
   const fields = ['cause', ...REQUIRED_FIELDS];
   return (
     <Stack gap='sm' mt='md'>
+      {!capture && (
+        <Alert color='gray'>{t`Manual account recovery: values remain an unsaved draft until the final update. A technician story can be added separately through the native capture.`}</Alert>
+      )}
       {proposal?.warnings?.length ? (
         <Alert color='yellow' icon={<IconAlertTriangle size={16} />}>
           {proposal.warnings.join(', ')}
@@ -547,10 +690,12 @@ function ReviewStep({
         </Alert>
       ) : null}
       <Group>
-        <Button onClick={onSubmit} loading={busy}>
-          {t`Record decisions`}
-        </Button>
-        {capture.status === 'reviewed' && (
+        {capture && (
+          <Button onClick={onSubmit} loading={busy}>
+            {t`Record decisions`}
+          </Button>
+        )}
+        {capture?.status === 'reviewed' && (
           <Badge color='green' leftSection={<IconCircleCheck size={12} />}>
             {t`Reviewed`}
           </Badge>
@@ -685,7 +830,7 @@ function PartsStep({
   );
 }
 
-function ReadingsStep({
+export function ReadingsStep({
   workOrderId,
   rows,
   runCommand,
@@ -773,165 +918,73 @@ function ReadingsStep({
   );
 }
 
-function CompleteStep({
-  readiness,
-  loading,
-  capture,
-  downtime,
-  setDowntime,
-  followUp,
-  setFollowUp,
-  followUpRequired,
-  setFollowUpRequired,
-  onComplete,
-  busy
-}: Readonly<{
-  readiness: Readiness | null;
-  loading: boolean;
-  capture: CloseoutCapture | null;
-  downtime: number | '';
-  setDowntime: (value: number | '') => void;
-  followUp: string;
-  setFollowUp: (value: string) => void;
-  followUpRequired: boolean;
-  setFollowUpRequired: (value: boolean) => void;
-  onComplete: () => void;
-  busy: boolean;
-}>) {
+/** Physical reading entry lives in Verify & Return; Closeout reads the same cache. */
+export function WorkCloseoutReadings({
+  workOrderId,
+  readOnly = false
+}: Readonly<{ workOrderId: number; readOnly?: boolean }>) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const query = useQuery({
+    queryKey: ['closeout-readings', workOrderId],
+    queryFn: async () =>
+      (
+        await api.get<ReadingRow[]>(
+          apiUrl(ApiEndpoints.work_order_closeout_readings, workOrderId)
+        )
+      ).data
+  });
+  const runCommand = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    try {
+      await fn();
+      await queryClient.invalidateQueries({
+        queryKey: ['closeout-readings', workOrderId]
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['work-order-readiness', workOrderId, 'complete']
+      });
+    } catch (error) {
+      showApiErrorMessage({ error, title: t`Reading could not be recorded` });
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
-    <Stack gap='sm' mt='md'>
-      {loading ? (
+    <Card withBorder>
+      <Title order={4}>{t`Closeout readings`}</Title>
+      {query.isPending ? (
         <Loader size='sm' />
-      ) : readiness == null ? null : readiness.ready ? (
-        <Alert color='green' icon={<IconCircleCheck size={16} />}>
-          {t`Ready to complete.`}
+      ) : query.isError ? (
+        <Alert color='red'>
+          {t`Readings could not be read.`}
+          <Button
+            variant='light'
+            onClick={() => void query.refetch()}
+          >{t`Retry`}</Button>
         </Alert>
+      ) : readOnly ? (
+        <Stack gap='xs'>
+          {query.data.map((row) => (
+            <Text key={row.id} size='sm'>
+              {row.label}: {row.raw_text || t`Not recorded`} {row.unit} ·{' '}
+              {row.verification_state}
+            </Text>
+          ))}
+          <Text
+            size='xs'
+            c='dimmed'
+          >{t`This work is completed. Further physical investigation requires the supported linked or reopened work flow.`}</Text>
+        </Stack>
       ) : (
-        <Alert color='red' icon={<IconAlertTriangle size={16} />}>
-          <Stack gap={4}>
-            {readiness.blockers.map((blocker) => (
-              <Text size='sm' key={`${blocker.code}-${blocker.message}`}>
-                <Badge size='xs' color='red' variant='light' mr={6}>
-                  {blocker.code}
-                </Badge>
-                {blocker.message}
-              </Text>
-            ))}
-          </Stack>
-        </Alert>
-      )}
-      {readiness?.warnings?.length ? (
-        <Alert color='yellow'>
-          <Stack gap={4}>
-            {readiness.warnings.map((warning) => (
-              <Text size='sm' key={`${warning.code}-${warning.message}`}>
-                <Badge size='xs' color='yellow' variant='light' mr={6}>
-                  {warning.code}
-                </Badge>
-                {warning.message}
-              </Text>
-            ))}
-          </Stack>
-        </Alert>
-      ) : null}
-      <Group>
-        <NumberInput
-          label={t`Downtime (minutes)`}
-          min={0}
-          value={downtime}
-          onChange={(value) =>
-            setDowntime(typeof value === 'number' ? value : '')
-          }
-          size='xs'
-        />
-        <Checkbox
-          label={t`Follow-up required`}
-          checked={followUpRequired}
-          onChange={(event) => setFollowUpRequired(event.currentTarget.checked)}
-        />
-      </Group>
-      {followUpRequired && (
-        <Textarea
-          label={t`Follow-up`}
-          value={followUp}
-          onChange={(event) => setFollowUp(event.currentTarget.value)}
-          autosize
-          minRows={2}
+        <ReadingsStep
+          workOrderId={workOrderId}
+          rows={query.data}
+          busy={busy}
+          runCommand={runCommand}
         />
       )}
-      {capture && capture.status !== 'reviewed' && (
-        <Alert color='yellow'>
-          {t`The capture has not finished review; completion will be blocked until it is reviewed or abandoned.`}
-        </Alert>
-      )}
-      <Group>
-        <Button
-          color='green'
-          onClick={onComplete}
-          loading={busy}
-          disabled={readiness != null && !readiness.ready}
-        >
-          {t`Complete work order`}
-        </Button>
-      </Group>
-    </Stack>
-  );
-}
-
-function ReceiptStep({
-  receipt,
-  effects
-}: Readonly<{
-  receipt: Record<string, any> | null;
-  effects: EffectRow[];
-}>) {
-  if (!receipt) {
-    return (
-      <Text size='sm' c='dimmed' mt='md'>
-        {t`No completion receipt yet.`}
-      </Text>
-    );
-  }
-  return (
-    <Stack gap='sm' mt='md'>
-      <Alert color='green' icon={<IconCircleCheck size={16} />}>
-        {t`Completed.`} {t`Closeout id`}: {receipt.metadata?.closeout_id ?? '-'}
-      </Alert>
-      {effects.length > 0 && (
-        <Table withTableBorder>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t`Effect`}</Table.Th>
-              <Table.Th>{t`Status`}</Table.Th>
-              <Table.Th>{t`Attempts`}</Table.Th>
-              <Table.Th>{t`Result`}</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {effects.map((effect) => (
-              <Table.Tr key={effect.id}>
-                <Table.Td>{effect.effect_type}</Table.Td>
-                <Table.Td>
-                  <Badge
-                    variant='light'
-                    color={
-                      effect.status === 'succeeded'
-                        ? 'green'
-                        : effect.status === 'failed'
-                          ? 'red'
-                          : 'yellow'
-                    }
-                  >
-                    {effect.status}
-                  </Badge>
-                </Table.Td>
-                <Table.Td>{effect.attempts}</Table.Td>
-                <Table.Td>{effect.result_reference || '-'}</Table.Td>
-              </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
-      )}
-    </Stack>
+    </Card>
   );
 }

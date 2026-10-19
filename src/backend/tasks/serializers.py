@@ -711,7 +711,10 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
         ``amendment_count`` make a governed correction visible instead of
         silently changing values.
         """
-        from .services.closeout_amend import effective_closeout_overview
+        from .services.closeout_amend import (
+            base_closeout_fields,
+            effective_closeout_overview,
+        )
 
         closeout = getattr(obj, 'structured_closeout', None)
         if closeout is None:
@@ -726,6 +729,9 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
             'downtime_minutes': fields['downtime_minutes'],
             'follow_up_required': fields['follow_up_required'],
             'follow_up': fields['follow_up'],
+            'original': base_closeout_fields(closeout),
+            'content_hash': closeout.content_hash,
+            'completed_by': closeout.completed_by_id,
             'completed_at': closeout.completed_at,
             'verified_at': closeout.verified_at,
             'amended': fields['amended'],

@@ -12,6 +12,20 @@ export interface CloseoutCapture {
   source_type: string;
   revision: number | null;
   narrative: string;
+  transcript_reference?: string | null;
+  created_by?: number;
+  created_at?: string;
+  completed_closeout?: number | null;
+  revisions?: {
+    id: number;
+    revision: number;
+    narrative: string;
+    source_content_hash: string;
+    work_order_version: number;
+    supersedes: number | null;
+    created_by: number;
+    created_at: string;
+  }[];
 }
 
 export interface CloseoutProposalField {
@@ -31,6 +45,8 @@ export interface CloseoutProposal {
     field_path: string;
     decision: string;
     final_value: unknown;
+    decided_by?: number;
+    decided_at?: string;
   }[];
 }
 
@@ -47,6 +63,9 @@ export interface CloseoutPartUsageRow {
 }
 
 export interface CloseoutReadingRow {
+  phase?: string;
+  recorded_by?: number;
+  recorded_at?: string;
   id: number;
   label: string;
   raw_text: string;
@@ -75,4 +94,18 @@ export interface CloseoutEffectRow {
   status: string;
   attempts: number;
   result_reference: string;
+}
+
+export interface CloseoutAmendment {
+  id: number;
+  closeout: number;
+  status: string;
+  reason: string;
+  changes: Record<string, { from: unknown; to: unknown }>;
+  requested_by: number;
+  decided_by: number | null;
+  created_at: string;
+  applied_at: string | null;
+  base_content_hash: string;
+  effective_snapshot: { closeout?: Record<string, unknown> };
 }

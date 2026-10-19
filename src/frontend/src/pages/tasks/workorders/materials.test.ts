@@ -5,6 +5,7 @@ import {
   type MaterialRequirement,
   type MaterialReservation,
   coveredByStock,
+  fitSourceLabel,
   reservationStages,
   reservedQuantity
 } from './materials';
@@ -165,4 +166,14 @@ describe('stock coverage', () => {
     ).toBe(false);
     expect(coveredByStock(readout([]))).toBe(false);
   });
+});
+
+it('labels native fit sources and preserves an unfamiliar source verbatim', () => {
+  const labels = {
+    manual: 'Manually recorded requirement',
+    procedure: 'Procedure requirement'
+  };
+  expect(fitSourceLabel('manual', labels)).toBe(labels.manual);
+  expect(fitSourceLabel('procedure', labels)).toBe(labels.procedure);
+  expect(fitSourceLabel('site-specific', labels)).toBe('site-specific');
 });

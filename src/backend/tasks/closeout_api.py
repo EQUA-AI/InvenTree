@@ -168,9 +168,12 @@ class CloseoutCaptureList(CloseoutCommandView):
     def get(self, request, pk):
         """Return every capture for the work order, newest first."""
         work_order = self.get_work_order(request, pk)
-        captures = work_order.closeout_captures.select_related(
-            'current_revision'
-        ).order_by('-pk')
+        captures = (
+            work_order.closeout_captures
+            .select_related('current_revision')
+            .prefetch_related('revisions')
+            .order_by('-pk')
+        )
         return Response(CloseoutCaptureSerializer(captures, many=True).data)
 
     def post(self, request, pk):

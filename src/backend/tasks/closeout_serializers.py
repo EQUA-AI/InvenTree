@@ -5,6 +5,7 @@ from rest_framework import serializers
 from .closeout_models import (
     CloseoutAmendment,
     CloseoutCapture,
+    CloseoutCaptureRevision,
     CloseoutEffect,
     CloseoutFieldDecision,
     CloseoutPartUsage,
@@ -14,8 +15,30 @@ from .closeout_models import (
 from .workorder_serializers import BaseCommandSerializer
 
 
+class CloseoutCaptureRevisionSerializer(serializers.ModelSerializer):
+    """Original narratives remain addressable after revision and consumption."""
+
+    class Meta:
+        """Read-only source snapshot and attribution."""
+
+        model = CloseoutCaptureRevision
+        fields = (
+            'id',
+            'revision',
+            'narrative',
+            'source_content_hash',
+            'work_order_version',
+            'supersedes',
+            'created_by',
+            'created_at',
+        )
+        read_only_fields = fields
+
+
 class CloseoutCaptureSerializer(serializers.ModelSerializer):
     """Read-only capture resource with its current revision inline."""
+
+    revisions = CloseoutCaptureRevisionSerializer(many=True, read_only=True)
 
     revision = serializers.IntegerField(
         source='current_revision.revision', read_only=True, default=None
@@ -36,6 +59,7 @@ class CloseoutCaptureSerializer(serializers.ModelSerializer):
             'transcript_reference',
             'revision',
             'narrative',
+            'revisions',
             'completed_closeout',
             'created_by',
             'created_at',

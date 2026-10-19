@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.s0.json",
+  "files": [
+    "playwright.s6.config.ts",
+    "tests/s1/workListFixtures.ts",
+    "tests/s6/closeoutFixtures.ts",
+    "tests/s6/pui_closeout_report.spec.ts",
+    "tests/s6/pui_final_update.spec.ts"
+  ]
+}
