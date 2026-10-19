@@ -1,4 +1,4 @@
-import { t } from '@lingui/core/macro';
+import { plural, t } from '@lingui/core/macro';
 import { Badge, Group, Text } from '@mantine/core';
 import {
   IconAlertTriangle,
@@ -15,6 +15,7 @@ import type {
   AnomalySeverity,
   HealthSourceType,
   HealthState,
+  MachineSignal,
   SignalQuality
 } from '@lib/types/MachineHealth';
 
@@ -100,6 +101,7 @@ export function HealthStateBadge({
   const visual = healthStateVisual(state);
   return (
     <Badge
+      style={{ flexShrink: 0, maxWidth: 'none' }}
       color={visual.color}
       variant='light'
       size={size}
@@ -187,11 +189,49 @@ export function ObservedAt({
   }
 
   return (
-    <Group gap={6} wrap='nowrap'>
+    <Group
+      gap={6}
+      wrap='wrap'
+      title={new Date(observedAt).toLocaleString(undefined, {
+        timeZoneName: 'long'
+      })}
+    >
       <Text size='sm'>{dayjs(observedAt).format('MMM D, HH:mm')}</Text>
       <Text size='xs' c={stale ? undefined : 'dimmed'}>
         {stale ? t`Stale` : dayjs(observedAt).fromNow()}
       </Text>
     </Group>
   );
+}
+
+/** Bounds follow the native classifier: a minimum is breached below, a maximum above. */
+export function formatSignalLimits(signal: MachineSignal): string | null {
+  const unit = signal.unit ? ` ${signal.unit}` : '';
+  const parts: string[] = [];
+  for (const [label, min, max] of [
+    [t`Normal`, signal.limits.normal_min, signal.limits.normal_max],
+    [t`Warning`, signal.limits.warn_min, signal.limits.warn_max],
+    [t`Critical`, signal.limits.critical_min, signal.limits.critical_max]
+  ] as const) {
+    if (label === t`Normal`) {
+      if (min !== null) parts.push(t`Normal minimum ${min}${unit}`);
+      if (max !== null) parts.push(t`Normal maximum ${max}${unit}`);
+    } else if (min !== null && max !== null) {
+      parts.push(t`${label} below ${min}${unit} or above ${max}${unit}`);
+    } else if (min !== null) {
+      parts.push(t`${label} below ${min}${unit}`);
+    } else if (max !== null) {
+      parts.push(t`${label} above ${max}${unit}`);
+    }
+  }
+  return parts.length ? parts.join(' · ') : null;
+}
+
+/** An unassociated machine anomaly cannot be ruled out for this signal. */
+export function unassociatedAnomalyText(count: number): string {
+  return plural(count, {
+    one: '# active machine anomaly does not name its signals; this signal may be affected.',
+    other:
+      '# active machine anomalies do not name their signals; this signal may be affected.'
+  });
 }

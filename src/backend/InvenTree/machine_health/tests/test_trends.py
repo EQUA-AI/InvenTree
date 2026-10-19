@@ -644,6 +644,29 @@ class TrendsBatchReadTest(HealthEnvMixin, TestCase):
 class MeasuredCadenceTest(TestCase):
     """The cadence a chart breaks its line against."""
 
+    def test_one_silence_cannot_stretch_a_three_reading_cadence(self):
+        """An outage is not the interval, even with just two gaps."""
+        self.assertEqual(self.cadence_at([0, 5, 595]), 5.0)
+
+    def test_alternating_silences_cannot_become_the_cadence(self):
+        """Repeated sixty-second silences remain distinct from five-second reads."""
+        self.assertEqual(self.cadence_at([0, 5, 65, 70, 130, 135, 195]), 5.0)
+
+    def test_duplicate_times_do_not_become_a_zero_cadence(self):
+        """Only positive observed gaps inform the interval."""
+        self.assertEqual(self.cadence_at([0, 0, 5]), 5.0)
+        self.assertIsNone(self.cadence_at([0, 0, 0]))
+
+    def cadence_at(self, offsets):
+        """Measure the supplied observation times relative to one origin."""
+        start = timezone.now()
+        return measured_cadence([
+            Reading(
+                external_key='k', value=1.0, observed_at=start + timedelta(seconds=s)
+            )
+            for s in offsets
+        ])
+
     def test_the_median_ignores_a_few_silences(self):
         """Two long silences among five-second readings leave the cadence at five."""
         start = timezone.now()

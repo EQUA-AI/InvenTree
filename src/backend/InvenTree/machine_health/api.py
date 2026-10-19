@@ -2,8 +2,9 @@
 
 Read endpoints are nested under a machine so scope is applied before lookup: the
 machine is resolved and authorized first, and every signal, anomaly and snapshot
-is filtered by that machine. A client never names a source, a tag or a snapshot
-id directly, so it cannot reach another machine's telemetry by guessing one.
+is filtered by that machine. Source, tag and snapshot lookups remain nested under
+the authorized machine; guessing an identifier cannot reach another machine's
+telemetry.
 
 Ingestion is separate and authenticated by signature, not by session.
 """
@@ -11,6 +12,7 @@ Ingestion is separate and authenticated by signature, not by session.
 from __future__ import annotations
 
 import json
+from uuid import UUID
 
 from django.http import Http404
 from django.shortcuts import get_object_or_404
@@ -401,9 +403,19 @@ class MachineHealthSnapshots(_MachineHealthView):
     """Evidence snapshots captured for one machine."""
 
     def get(self, request, pk):
-        """Return the machine's most recent evidence snapshots."""
+        """Return recent snapshots, or an exact ``snapshot`` UUID citation."""
         machine = _machine(request, pk)
-        snapshots = snapshot_services.snapshots_for_machine(machine)
+        snapshot_id = request.query_params.get('snapshot')
+        if snapshot_id is not None:
+            try:
+                snapshot_id = UUID(snapshot_id)
+            except (ValueError, AttributeError):
+                raise Http404 from None
+        snapshots = snapshot_services.snapshots_for_machine(
+            machine, snapshot_id=snapshot_id
+        )
+        if snapshot_id is not None and not snapshots:
+            raise Http404
         return Response({
             'count': len(snapshots),
             'results': HealthEvidenceSnapshotSerializer(snapshots, many=True).data,

@@ -124,7 +124,7 @@ test('the full chart keeps the silence open on a proportional time axis', async 
       .getByRole('alert')
       .filter({ hasText: 'Gaps in this record' });
     await expect(gaps).toContainText(
-      "Silences longer than the source's 5-second cadence: 1."
+      'Gaps longer than 15 seconds: 1. Based on the measured 5-second interval.'
     );
     await expect(gaps).toContainText('Readings that are not numbers: 1 of 98.');
     await expect(gaps).toContainText('Nothing is filled in');
@@ -162,7 +162,7 @@ test('recorded zero, empty read, no source history and a missing row stay distin
     table.getByRole('row').filter({ hasText: name });
   await expect(row('Seal flush flow')).toContainText('No samples');
   await expect(row('Cooling water flow')).toContainText('No trend');
-  await expect(row('Winding temperature')).toContainText('No trend');
+  await expect(row('Winding temperature')).toContainText('Not returned');
 
   await chooseParameter(page, 'Bypass flow (m3/h)');
   await expect(curve(page)).toHaveCount(1);
@@ -176,6 +176,134 @@ test('recorded zero, empty read, no source history and a missing row stay distin
     path: testInfo.outputPath('table-states.png'),
     animations: 'disabled'
   });
+});
+
+test('source outages, timeouts, unsupported history and missing batch rows have reachable distinct reasons', async ({
+  page
+}) => {
+  const reasons = [
+    'SOURCE_UNAVAILABLE',
+    'SOURCE_TIMEOUT',
+    'HISTORY_UNSUPPORTED',
+    'NO_CONNECTOR'
+  ] as const;
+  const signals = reasons.map((reason, index) => ({
+    ...HEALTH_SIGNALS[0],
+    id: 301 + index,
+    name: reason,
+    trend: { reason }
+  }));
+  await openHealth(page, {
+    signals: [
+      ...signals,
+      {
+        ...HEALTH_SIGNALS[0],
+        id: 305,
+        name: 'Missing batch row',
+        trend: 'missing'
+      }
+    ]
+  });
+  const table = signalTable(page);
+  for (const [index, reason] of reasons.entries()) {
+    const row = table.getByRole('row').filter({ hasText: reason });
+    const label =
+      index < 2 ? 'Read failed' : index === 2 ? 'No history' : 'No trend';
+    const status = row.getByRole('button', { name: new RegExp(`^${label}:`) });
+    await expect(status).toBeVisible();
+    await row
+      .getByRole('button', { name: `Inspect signal: ${reason}`, exact: true })
+      .focus();
+    await page.keyboard.press('Tab');
+    await expect(status).toBeFocused();
+    await expect(status).toHaveAttribute('aria-describedby', /.+/);
+    const reasonId = await status.getAttribute('aria-describedby');
+    await expect(
+      page.locator(`[role="tooltip"][id="${reasonId}"]`)
+    ).toBeVisible();
+    await chooseParameter(page, `${reason} (m3/h)`);
+    await expect(trendCard(page)).toContainText(
+      index < 2 ? 'Could not read the source' : 'No history for this signal'
+    );
+    if (reason === 'SOURCE_TIMEOUT')
+      await expect(trendCard(page)).toContainText(
+        'did not answer within the read timeout'
+      );
+    if (reason === 'HISTORY_UNSUPPORTED')
+      await expect(trendCard(page)).toContainText(
+        'does not support historical windows'
+      );
+    if (index < 2)
+      await expect(trendCard(page)).not.toContainText(
+        'No history for this signal'
+      );
+  }
+  await expect(
+    table.getByRole('row').filter({ hasText: 'Missing batch row' })
+  ).toContainText('Not returned');
+});
+
+test('invalid readings stay distinct from a sparse record with truthful drawable counts', async ({
+  page
+}, info) => {
+  await openHealth(page, {
+    signals: [
+      { ...HEALTH_SIGNALS[0], name: 'All invalid', trend: 'bad' },
+      { ...HEALTH_SIGNALS[1], name: 'One drawable', trend: 'mostly-bad' }
+    ]
+  });
+  const table = signalTable(page);
+  await expect(
+    table.getByRole('row').filter({ hasText: 'All invalid' })
+  ).toContainText('No drawable readings');
+  await expect(
+    table.getByRole('row').filter({ hasText: 'One drawable' })
+  ).toContainText('1 of 121 drawable');
+  await expect(trendCard(page)).toContainText('No drawable readings');
+  await expect(curve(page)).toHaveCount(0);
+  await expect(trendCard(page)).not.toContainText('Each is drawn as a break');
+  await chooseParameter(page, 'One drawable (m3/h)');
+  await expect(trendCard(page)).toContainText('Only one drawable reading');
+  await expect(trendCard(page)).toContainText('1 of 121 readings can be drawn');
+  await expect(trendCard(page)).not.toContainText('Each is drawn as a break');
+  await trendCard(page).screenshot({
+    path: info.outputPath('invalid-readings.png')
+  });
+});
+
+test('sparse and flapping records keep long silences open in row and full graphs', async ({
+  page
+}) => {
+  for (const [shape, breaks] of [
+    ['sparse', 1],
+    ['flapping', 3]
+  ] as const) {
+    await openHealth(page, {
+      signals: [{ ...HEALTH_SIGNALS[0], trend: shape }]
+    });
+    expect(subpaths(await rowGraphPath(page, 'Discharge flow'))).toHaveLength(
+      breaks + 1
+    );
+    await expect(trendCard(page)).toContainText(
+      `Gaps longer than 15 seconds: ${breaks}. Based on the measured 5-second interval.`
+    );
+    await expect(curve(page)).toHaveCount(1);
+    expect(subpaths((await curve(page).getAttribute('d'))!)).toHaveLength(
+      breaks + 1
+    );
+  }
+});
+
+test('an unmeasured interval names the server default and the actual break threshold', async ({
+  page
+}) => {
+  await openHealth(page, {
+    signals: [{ ...HEALTH_SIGNALS[0], trend: 'two-readings' }]
+  });
+  await expect(trendCard(page)).toContainText(
+    'Gaps longer than 15 seconds: 1. Based on the expected 5-second interval (server default).'
+  );
+  await expect(trendCard(page)).not.toContainText("source's 5-second cadence");
 });
 
 test('a failed read says it failed, in the rows and in the chart', async ({

@@ -63,6 +63,21 @@ function segments(path: string): number[][] {
 }
 
 describe('Health trend reading', () => {
+  it('keeps one long silence open with just three readings', () => {
+    const prepared = prepareTrend(
+      trend([sample(0, 1), sample(5, 2), sample(595, 3)])
+    );
+    expect(prepared.silences).toBe(1);
+    expect(segments(sparklinePath(prepared, 120, 28)!)).toHaveLength(2);
+  });
+
+  it('keeps every alternating silence open rather than joining a flapping record', () => {
+    const prepared = prepareTrend(
+      trend([0, 5, 65, 70, 130, 135, 195].map((seconds) => sample(seconds, 1)))
+    );
+    expect(prepared.silences).toBe(3);
+    expect(segments(sparklinePath(prepared, 120, 28)!)).toHaveLength(4);
+  });
   it('keeps every reading at its own time and in time order', () => {
     const prepared = prepareTrend(
       trend([sample(10, 3), sample(0, 1), sample(5, null), sample(15, 4)])

@@ -4,8 +4,10 @@ import {
   Alert,
   Badge,
   Box,
+  Button,
   Group,
   Loader,
+  Modal,
   Paper,
   Select,
   Stack,
@@ -16,7 +18,13 @@ import { DateTimePicker } from '@mantine/dates';
 import { useElementSize } from '@mantine/hooks';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { type ReactElement, useMemo, useState } from 'react';
+import {
+  type ReactElement,
+  type ReactNode,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
@@ -217,9 +225,11 @@ function unavailableMessage(trend: SignalTrend): string {
     case 'NO_CONNECTOR':
       return t`This source has no configured connector, so no history can be read.`;
     case 'HISTORY_UNSUPPORTED':
-      return t`${trend.source_name} cannot serve historical windows. Only the current value is available.`;
+      return t`${trend.source_name} does not support historical windows. Check the separately reported current reading.`;
+    case 'SOURCE_TIMEOUT':
+      return t`${trend.source_name} did not answer within the read timeout. The failed read does not establish an empty record.`;
     case 'SOURCE_UNAVAILABLE':
-      return t`${trend.source_name} could not be reached for this window. This is an outage, not an absence of data.`;
+      return t`${trend.source_name} could not be read for this window. The failed read does not establish an absence of data.`;
     default:
       return trend.detail ?? t`No trend data is available.`;
   }
@@ -248,8 +258,19 @@ function unavailableMessage(trend: SignalTrend): string {
  */
 export function SignalTrendChart({
   machineId,
-  signals
-}: Readonly<{ machineId: number; signals: MachineSignal[] }>) {
+  signals,
+  bindingId,
+  onBindingChange,
+  onInspect,
+  evidence
+}: Readonly<{
+  machineId: number;
+  signals: MachineSignal[];
+  bindingId: string | null;
+  onBindingChange: (value: string | null) => void;
+  onInspect: (trigger: HTMLElement) => void;
+  evidence?: (prepared: PreparedTrend, available: boolean) => ReactNode;
+}>) {
   const api = useApi();
 
   // Only signals that can be charted at all. A status code has no numeric axis.
@@ -258,9 +279,8 @@ export function SignalTrendChart({
     [signals]
   );
 
-  const [bindingId, setBindingId] = useState<string | null>(
-    selectable.length > 0 ? String(selectable[0].binding_id) : null
-  );
+  const [expanded, setExpanded] = useState(false);
+  const expandTrigger = useRef<HTMLButtonElement>(null);
   // Ten minutes, not an hour. Each snapshot is a whole-station document of
   // ~55KB that the source must fetch and parse, so an hour is ~720 of them -
   // tens of megabytes for a line a few hundred pixels wide. Ten minutes is
@@ -319,6 +339,9 @@ export function SignalTrendChart({
     [customRange]
   );
 
+  const selectedIsMapped = selectable.some(
+    (signal) => String(signal.binding_id) === bindingId
+  );
   const trendQuery = useQuery<SignalTrend>({
     queryKey: [
       'machine-health-trend-chart',
@@ -330,7 +353,7 @@ export function SignalTrendChart({
     ],
     // A custom window is only requested once it is complete and legal; an
     // incomplete one is a half-filled form, not a failed read.
-    enabled: bindingId != null && (!isCustom || customRange != null),
+    enabled: selectedIsMapped && (!isCustom || customRange != null),
     staleTime: 60 * 1000,
     queryFn: async () => {
       // Relative to now, and resolved at fetch time rather than at render so a
@@ -364,7 +387,7 @@ export function SignalTrendChart({
     }
   });
 
-  const trend = trendQuery.data;
+  const trend = selectedIsMapped ? trendQuery.data : undefined;
 
   // Every reading at its own time, through the reading the row graphs share:
   // undrawable readings stay as nulls where they happened and silences longer
@@ -382,15 +405,29 @@ export function SignalTrendChart({
     );
   }
 
-  return (
+  const content = (
     <Paper withBorder radius='md' p='md'>
       <Stack gap='sm'>
         <Group gap='sm' align='flex-end' wrap='wrap'>
+          {!expanded && (
+            <Button
+              ref={expandTrigger}
+              variant='default'
+              onClick={() => setExpanded(true)}
+            >{t`Expand chart`}</Button>
+          )}
+          <Button
+            variant='subtle'
+            id='inspect-selected-health-signal'
+            aria-controls='health-signal-evidence'
+            onClick={(event) => onInspect(event.currentTarget)}
+          >{t`Inspect selected signal`}</Button>
           <Select
             label={t`Parameter`}
+            allowDeselect={false}
             searchable
             value={bindingId}
-            onChange={setBindingId}
+            onChange={onBindingChange}
             data={selectable.map((signal) => ({
               value: String(signal.binding_id),
               label: signal.unit
@@ -469,6 +506,15 @@ export function SignalTrendChart({
           )}
         </Group>
 
+        {!selectedIsMapped && (
+          <Alert
+            color='gray'
+            title={t`Selected signal is no longer mapped here`}
+          >
+            {t`Its selection is retained. Choose an available parameter to read current history; no other signal is substituted.`}
+          </Alert>
+        )}
+
         {rangeError && (
           <Alert color='gray' title={t`Choose a window to read`}>
             {rangeError}
@@ -484,7 +530,15 @@ export function SignalTrendChart({
         )}
 
         {trend && !trend.available && (
-          <Alert color='gray' title={t`No history for this signal`}>
+          <Alert
+            color='gray'
+            title={
+              trend.reason === 'SOURCE_UNAVAILABLE' ||
+              trend.reason === 'SOURCE_TIMEOUT'
+                ? t`Could not read the source`
+                : t`No history for this signal`
+            }
+          >
             {unavailableMessage(trend)}
           </Alert>
         )}
@@ -509,9 +563,16 @@ export function SignalTrendChart({
           <TrendPlot trend={trend} prepared={prepared} withDate={withDate} />
         )}
 
+        {trend?.available &&
+          prepared.drawn === 0 &&
+          (prepared.measured > 0 || prepared.undated > 0) && (
+            <Alert color='gray' title={t`No drawable readings`}>
+              {t`Readings arrived, but none have both a readable time and a numeric value reported good quality. This is different from an empty or sparse record.`}
+            </Alert>
+          )}
         {trend?.available && prepared.drawn === 1 && (
-          <Alert color='gray' title={t`Only one sample`}>
-            {t`A single point is not a trend. Widen the range to see whether it is moving.`}
+          <Alert color='gray' title={t`Only one drawable reading`}>
+            {t`1 of ${prepared.measured} readings can be drawn. A single point is not a trend.`}
           </Alert>
         )}
 
@@ -528,8 +589,25 @@ export function SignalTrendChart({
             ) : null}
           </Stack>
         )}
+        {evidence?.(prepared, !!trend?.available)}
       </Stack>
     </Paper>
+  );
+  return (
+    <>
+      {!expanded && content}
+      <Modal
+        opened={expanded}
+        onClose={() => setExpanded(false)}
+        title={t`Expanded signal trend`}
+        size='calc(100vw - 32px)'
+        fullScreen={false}
+        returnFocus={false}
+        onExitTransitionEnd={() => expandTrigger.current?.focus()}
+      >
+        {expanded && content}
+      </Modal>
+    </>
   );
 }
 
@@ -547,7 +625,9 @@ function RecordGaps({
   const lines: string[] = [];
   if (prepared.silences > 0 && cadence !== null) {
     lines.push(
-      t`Silences longer than the source's ${cadence}-second cadence: ${prepared.silences}.`
+      trend.cadence_seconds != null && trend.cadence_seconds > 0
+        ? t`Gaps longer than ${prepared.gapMs! / 1000} seconds: ${prepared.silences}. Based on the measured ${cadence}-second interval.`
+        : t`Gaps longer than ${prepared.gapMs! / 1000} seconds: ${prepared.silences}. Based on the expected ${cadence}-second interval (server default).`
     );
   }
   if (prepared.notNumeric > 0) {
@@ -576,7 +656,7 @@ function RecordGaps({
             {line}
           </Text>
         ))}
-        {(prepared.silences > 0 || undrawn > 0) && (
+        {prepared.drawn > 1 && (prepared.silences > 0 || undrawn > 0) && (
           <Text size='sm'>
             {t`Each is drawn as a break at its own time. Nothing is filled in, coerced to a number or joined across.`}
           </Text>

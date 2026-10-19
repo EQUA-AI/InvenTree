@@ -63,8 +63,7 @@ export interface PreparedTrend {
   /** Silences marked as breaks. */
   silences: number;
   /**
-   * The spacing beyond which a silence is a break, from the source's own
-   * cadence; null when the server stated none, and then only unreadable
+   * The spacing beyond which a silence is a break, from the measured interval or server default; null when the server stated none, and then only unreadable
    * samples break the line.
    */
   gapMs: number | null;
@@ -97,7 +96,7 @@ export function numericValue(sample: {
 
 /**
  * The cadence the server states for this read, in seconds: measured from the
- * readings when there were enough, else the source's expected interval.
+ * readings when there were enough, else the server's expected interval (a global default, not a source fact).
  */
 export function trendResolutionSeconds(
   trend: Pick<SignalTrend, 'cadence_seconds' | 'limits'>

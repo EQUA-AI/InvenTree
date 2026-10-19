@@ -1,5 +1,12 @@
 import { t } from '@lingui/core/macro';
-import { Box, Group, Loader, Text, Tooltip } from '@mantine/core';
+import {
+  Box,
+  Group,
+  Loader,
+  Text,
+  Tooltip,
+  UnstyledButton
+} from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
@@ -116,7 +123,7 @@ export function SignalTrendSparkline({
 
   // One source of truth for the rest of the component: whatever the table
   // supplied, or this sparkline's own fetch when it is standing alone.
-  const trend = supplied ?? trendQuery.data;
+  const trend = managed ? supplied : trendQuery.data;
 
   // The shared reading: every sample at its own time, a break after any
   // reading that cannot be drawn and across any silence longer than the
@@ -139,53 +146,62 @@ export function SignalTrendSparkline({
 
   if (managed ? supplierFailed && !supplied : trendQuery.isError) {
     return (
-      <Tooltip
-        label={t`The trend read failed. That is not an absence of data, and the current reading is unaffected.`}
-        multiline
-        w={260}
-      >
-        <Text size='xs' c='dimmed'>
-          {t`Read failed`}
-        </Text>
-      </Tooltip>
+      <TrendStatus
+        label={t`Read failed`}
+        detail={t`The trend read failed. The current reading is unaffected.`}
+      />
     );
   }
 
-  if (!trend?.available) {
+  if (!trend) {
     return (
-      <Tooltip label={trend?.detail ?? t`No trend data is available.`}>
-        <Text size='xs' c='dimmed'>
-          {t`No trend`}
-        </Text>
-      </Tooltip>
+      <TrendStatus
+        label={t`Not returned`}
+        detail={t`The completed trend read did not return this signal. Its history is unknown; the current reading is unaffected.`}
+      />
     );
   }
 
-  if (prepared.measured === 0) {
-    // A successful read that held nothing: not a recorded zero, not a
-    // failure, and not a source without history.
+  if (!trend.available) {
+    const label =
+      trend.reason === 'SOURCE_UNAVAILABLE' || trend.reason === 'SOURCE_TIMEOUT'
+        ? t`Read failed`
+        : trend.reason === 'NO_CONNECTOR'
+          ? t`No trend`
+          : trend.reason === 'HISTORY_UNSUPPORTED'
+            ? t`No history`
+            : t`History unavailable`;
     return (
-      <Tooltip
-        label={t`${trend.source_name} answered for this window but held no readings for this signal.`}
-        multiline
-        w={260}
-      >
-        <Text size='xs' c='dimmed'>
-          {t`No samples`}
-        </Text>
-      </Tooltip>
+      <TrendStatus
+        label={label}
+        detail={
+          trend.detail ?? t`The source could not serve history for this signal.`
+        }
+      />
+    );
+  }
+
+  if (prepared.measured === 0 && prepared.undated === 0) {
+    return (
+      <TrendStatus
+        label={t`No samples`}
+        detail={t`${trend.source_name} answered for this window but held no readings for this signal.`}
+      />
     );
   }
 
   if (path === null) {
+    const label =
+      prepared.drawn === 0
+        ? t`No drawable readings`
+        : prepared.measured > 1
+          ? t`1 of ${prepared.measured} drawable`
+          : t`Only one reading`;
     return (
-      <Tooltip
-        label={t`${prepared.drawn} of ${prepared.measured} readings in this window can be drawn.`}
-      >
-        <Text size='xs' c='dimmed'>
-          {t`Too few samples`}
-        </Text>
-      </Tooltip>
+      <TrendStatus
+        label={label}
+        detail={t`${prepared.drawn} of ${prepared.measured} timed readings in this window can be drawn; ${prepared.undated} readings have no readable time.`}
+      />
     );
   }
 
@@ -226,6 +242,25 @@ export function SignalTrendSparkline({
           </Text>
         )}
       </Group>
+    </Tooltip>
+  );
+}
+
+/** Visible state and a reason available on keyboard focus and touch. */
+function TrendStatus({
+  label,
+  detail
+}: Readonly<{ label: string; detail: string }>) {
+  return (
+    <Tooltip
+      label={detail}
+      multiline
+      w={260}
+      events={{ hover: true, focus: true, touch: true }}
+    >
+      <UnstyledButton fz='xs' c='dimmed' aria-label={`${label}: ${detail}`}>
+        {label}
+      </UnstyledButton>
     </Tooltip>
   );
 }

@@ -81,7 +81,7 @@ export function AnomalyList({
       {anomalies.map((anomaly) => (
         <Card key={anomaly.pk} withBorder radius='md' p='md'>
           <Stack gap='sm'>
-            <Group justify='space-between' align='flex-start' wrap='nowrap'>
+            <Group justify='space-between' align='flex-start' wrap='wrap'>
               <Stack gap={4}>
                 <Group gap='xs'>
                   <SeverityBadge severity={anomaly.severity} />
@@ -103,7 +103,7 @@ export function AnomalyList({
                 )}
               </Stack>
 
-              <Group gap='xs' wrap='nowrap'>
+              <Group gap='xs' wrap='wrap'>
                 <Button
                   size='xs'
                   variant='subtle'

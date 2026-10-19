@@ -2,7 +2,7 @@ import { writeFile } from 'node:fs/promises';
 import { type Page, expect, test } from '@playwright/test';
 
 import { nativeBaseline } from '../s0/guards';
-import { openHealth, signalTable, trendCard } from './healthFixtures';
+import { openHealth, trendCard } from './healthFixtures';
 
 nativeBaseline();
 test.use({ timezoneId: 'UTC' });
@@ -88,10 +88,15 @@ for (const scheme of ['light', 'dark'] as const) {
       fullPage: true,
       animations: 'disabled'
     });
-    await signalTable(page).screenshot({
-      path: testInfo.outputPath(`health-table-${scheme}.png`),
-      animations: 'disabled'
-    });
+    await page
+      .getByRole('region', {
+        name: 'Signal readings; scroll for all columns',
+        exact: true
+      })
+      .screenshot({
+        path: testInfo.outputPath(`health-table-${scheme}.png`),
+        animations: 'disabled'
+      });
     await trendCard(page).screenshot({
       path: testInfo.outputPath(`health-chart-${scheme}.png`),
       animations: 'disabled'

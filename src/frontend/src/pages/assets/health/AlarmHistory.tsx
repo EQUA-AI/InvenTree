@@ -81,6 +81,10 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
   if (query.isLoading) {
     return <Text c='dimmed'>{t`Loading past alarms…`}</Text>;
   }
+  if (query.isError)
+    return (
+      <Text c='dimmed'>{t`Past alarms could not be read. Their absence is not established.`}</Text>
+    );
   if (!alarms.length) {
     return (
       <Text c='dimmed'>{t`No past alarms recorded for this machine.`}</Text>

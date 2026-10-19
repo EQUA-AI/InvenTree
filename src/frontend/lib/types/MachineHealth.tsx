@@ -74,6 +74,7 @@ export interface MachineSignal {
   source_type: HealthSourceType;
   /** The mapped pointer, e.g. `/dex/PUMP3_SPEED`; what a page groups by. */
   external_key: string;
+  component?: { code: string; name: string; status: string } | null;
   display_name: string;
   signal_kind: string;
   unit: string;
@@ -241,13 +242,13 @@ export interface SignalTrend {
   limits: {
     max_window_seconds: number;
     max_samples: number;
-    /** The cadence the source is expected to write at, in seconds. */
+    /** Server-wide expected interval in seconds; not a source-specific fact. */
     expected_sample_interval_seconds?: number;
   };
   /**
-   * Median seconds between this read's readings; null when too few came back
-   * to measure. What a chart breaks its line against, so a silence in the
-   * source is drawn as one.
+   * Shortest positive observed interval in seconds; null below three readings
+   * or with no positive gaps. An estimate from this read, not a configured
+   * source rate. Silences cannot stretch their own comparison interval.
    */
   cadence_seconds?: number | null;
   /** Whether the times were moved onto the clock the dashboard shows. */
