@@ -64,6 +64,7 @@ import { WorkOrderProblemPanel } from '../../maintenance/workorders/components/W
 import { WorkOrderSafetyReadiness } from '../../maintenance/workorders/components/WorkOrderSafetyReadiness';
 import { CloseoutPanel } from './CloseoutPanel';
 import { WorkAttachmentResource } from './WorkAttachmentResource';
+import { HandledByAimms } from './execution/HandledByAimms';
 import {
   type WorkPanel,
   workPanelParams,
@@ -177,6 +178,7 @@ function WorkOrderWorkspace({
           {workOrder.repair_packet && (
             <WorkOrderProblemPanel packet={workOrder.repair_packet} />
           )}
+          <HandledByAimms value={workOrder.handled_actions} />
           <SectionCard
             title={t`Board cards`}
             icon={<IconLayoutKanban size={18} />}
