@@ -21,7 +21,7 @@ P18,24,S4,current,Recorded autonomous action progress and result links,P17,Front
 P19,23,S4,current,Outcome-led Work and operational task variants,P17 P18 P01,Frontend maintenance,A07 A16 A17 A22,Planned
 P20,25,S4,current,Chat-primary evidence-grounded Diagnose view,P17,Frontend reliability,A08 A17,Planned
 P21,29,S4,current,Effective plan and recorded physical authority,P17,Frontend maintenance and domain,A08 A17 A21 A22,Planned
-P22,30,S4,current,In-stock requirements fit and material lifecycle,P13 P17 P01,Frontend inventory,A09,Planned
+P22,30,S4,current,In-stock requirements fit and material lifecycle,P13 P17 P01,Frontend inventory,A09,In progress
 P23,36,S4,current,Tests acceptance authority and separate operating/service return,P17 P01,Frontend verification and domain,A10 A22,Planned
 P24,39,S6,current,Direct Closeout report and immutable accepted History,P17 P23,Frontend reporting,A11 A18,Planned
 P25,40,S6,current,One versioned idempotent final-update controller,P02 P17 P23,Frontend and backend integration,A12 A14 A18,Planned

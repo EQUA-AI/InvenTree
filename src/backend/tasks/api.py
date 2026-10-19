@@ -63,6 +63,7 @@ from .jobkit_api import (
     JobKitSubstitutionDecide,
     JobKitSubstitutionPropose,
 )
+from .materials_api import WorkOrderMaterials
 from .models import (
     KanbanCard,
     KanbanColumn,
@@ -1714,6 +1715,11 @@ tasks_api_urls = [
                 '<int:pk>/deviations/',
                 WorkOrderDeviationList.as_view(),
                 name='work-order-deviation-list',
+            ),
+            path(
+                '<int:pk>/materials/',
+                WorkOrderMaterials.as_view(),
+                name='work-order-materials',
             ),
             path(
                 '<int:pk>/job-kit/', JobKitDetail.as_view(), name='work-order-job-kit'

@@ -105,6 +105,7 @@ export enum ApiEndpoints {
   work_order_list = 'tasks/work-orders/',
   work_order_detail = 'tasks/work-orders/:id/',
   work_order_readiness = 'tasks/work-orders/:id/readiness/',
+  work_order_materials = 'tasks/work-orders/:id/materials/',
   work_order_complete = 'tasks/work-orders/:id/complete/',
   work_order_events = 'tasks/work-orders/:id/events/',
   work_order_closeout_captures = 'tasks/work-orders/:id/closeout/captures/',

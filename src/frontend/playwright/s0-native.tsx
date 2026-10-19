@@ -155,6 +155,9 @@ function NativeSurface() {
                 path='/maintenance/work-orders/:id/*'
                 element={<WorkOrderDetail />}
               />
+              {/* R6 P13/P22: the labelled way back a native Part page offers. */}
+              <Route path='/part/:id/*' element={<ReturnLink />} />
+              <Route path='/stock/item/:id/*' element={<ReturnLink />} />
             </Route>
           </Routes>
         </ContextMenuProvider>

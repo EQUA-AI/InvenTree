@@ -23,25 +23,28 @@ async function mockPanelWork(
     route.fulfill({ json: overview })
   );
   await page.route('**/api/tasks/work-orders/73/**', (route) =>
-    route.fulfill({
-      json: route.request().url().includes('/readiness/')
-        ? {
-            ready: false,
-            blockers: [
-              {
-                code: 'SYNTHETIC_BLOCKER',
-                message: 'Synthetic missing verification',
-                blocking: true
+    // R6 P22: no material readout here; Parts shows the native table.
+    route.request().url().includes('/materials/')
+      ? route.fulfill({ status: 404, json: { detail: 'Not found.' } })
+      : route.fulfill({
+          json: route.request().url().includes('/readiness/')
+            ? {
+                ready: false,
+                blockers: [
+                  {
+                    code: 'SYNTHETIC_BLOCKER',
+                    message: 'Synthetic missing verification',
+                    blocking: true
+                  }
+                ],
+                warnings: [],
+                evaluated_at: '2026-10-18T12:00:00Z',
+                lifecycle_version: 7,
+                policy_version: 1,
+                snapshot_hash: 'a'.repeat(64)
               }
-            ],
-            warnings: [],
-            evaluated_at: '2026-10-18T12:00:00Z',
-            lifecycle_version: 7,
-            policy_version: 1,
-            snapshot_hash: 'a'.repeat(64)
-          }
-        : []
-    })
+            : []
+        })
   );
   return requests;
 }
@@ -213,7 +216,7 @@ test('native record fields remain reachable and each native section has a workfl
   for (const [panel, heading] of [
     ['Work', 'Board cards'],
     ['Plan & Safety', 'Dependencies'],
-    ['Parts', 'Required parts'],
+    ['Parts', 'Parts for this job'],
     ['History', 'Activity']
   ]) {
     await tabs.getByRole('tab', { name: panel, exact: true }).click();
@@ -225,11 +228,12 @@ test('native record fields remain reachable and each native section has a workfl
   await expect(
     page.getByText('Standalone completion is not enabled for this work order.')
   ).toBeVisible();
+  // Only the Parts panel's own read-only material readout, once.
   expect(
     requests.filter((request) =>
       request.path.includes('/api/tasks/work-orders/')
     )
-  ).toEqual([]);
+  ).toEqual([{ method: 'GET', path: '/api/tasks/work-orders/73/materials/' }]);
   expect(
     requests.every((request) => ['GET', 'OPTIONS'].includes(request.method))
   ).toBe(true);
@@ -296,7 +300,7 @@ test('direct-linked Parts and native browser history select views without changi
     tabs.getByRole('tab', { name: 'Parts', exact: true })
   ).toHaveAttribute('aria-selected', 'true');
   await expect(
-    page.getByRole('heading', { name: 'Required parts', exact: true })
+    page.getByRole('heading', { name: 'Parts for this job', exact: true })
   ).toBeVisible();
   await tabs.getByRole('tab', { name: 'History', exact: true }).click();
   await page.getByRole('button', { name: 'Fixture back', exact: true }).click();

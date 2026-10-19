@@ -64,6 +64,7 @@ import { WorkOrderProblemPanel } from '../../maintenance/workorders/components/W
 import { WorkOrderSafetyReadiness } from '../../maintenance/workorders/components/WorkOrderSafetyReadiness';
 import { CloseoutPanel } from './CloseoutPanel';
 import { WorkAttachmentResource } from './WorkAttachmentResource';
+import { WorkMaterialsPanel } from './WorkMaterialsPanel';
 import {
   type WorkPanel,
   workPanelParams,
@@ -240,8 +241,16 @@ function WorkOrderWorkspace({
       name: 'parts',
       label: t`Parts`,
       content: (
-        <SectionCard title={t`Required parts`} icon={<IconPackage size={18} />}>
-          <PartsTable parts={workOrder.parts} />
+        <SectionCard
+          title={t`Parts for this job`}
+          icon={<IconPackage size={18} />}
+        >
+          {/* R6 P22: requirement → reservation → issue → use, each recorded. */}
+          <WorkMaterialsPanel
+            workOrderId={workOrder.id}
+            label={workOrder.reference || t`Work order ${workOrder.id}`}
+            fallback={<PartsTable parts={workOrder.parts} />}
+          />
         </SectionCard>
       )
     },

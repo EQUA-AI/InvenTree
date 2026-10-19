@@ -138,6 +138,11 @@ export async function mockWork(page: Page, overview = workOrder()) {
       }
     });
   });
+  // R6 P22: a server without the material readout; the Parts panel then
+  // shows the job's native requirement table.
+  await page.route('**/api/tasks/work-orders/*/materials/', (route) =>
+    route.fulfill({ status: 404, json: { detail: 'Not found.' } })
+  );
   await page.route('**/api/attachment/**', (route) =>
     route.fulfill({
       json:

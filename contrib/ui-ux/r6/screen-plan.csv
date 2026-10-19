@@ -29,7 +29,7 @@ screen,areas,state,disposition,integration_stage,primary_tickets,final_review,st
 28,UI12,Chat-primary persistent Diagnose view,current,S5,P20 P41,S8,Planned
 29,UI12,Ambiguous corrected or contradictory evidence,current,S5,P20 P42,S8,Planned
 30,UI13,Prepared effective package and recorded authority,current,S4,P21,S8,Planned
-31,UI14,In-stock requirement through fitted use,current,S4,P22,S8,Planned
+31,UI14,In-stock requirement through fitted use,current,S4,P22,S8,In progress
 32,UI14,Full shortage and RFQ journey,later,Later,L01,Separate,Deferred
 33,UI14,Supplier offer comparison,later,Later,L01,Separate,Deferred
 34,UI14,Prepared and issued purchase order,later,Later,L02,Separate,Deferred

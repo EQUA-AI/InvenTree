@@ -63,25 +63,28 @@ async function mockWorkAssistant(
   // The native Closeout panel's governed reads, as the Work-panel suite
   // serves them.
   await page.route('**/api/tasks/work-orders/73/**', (route) =>
-    route.fulfill({
-      json: route.request().url().includes('/readiness/')
-        ? {
-            ready: false,
-            blockers: [
-              {
-                code: 'SYNTHETIC_BLOCKER',
-                message: 'Synthetic missing verification',
-                blocking: true
+    // R6 P22: no material readout here; Parts shows the native table.
+    route.request().url().includes('/materials/')
+      ? route.fulfill({ status: 404, json: { detail: 'Not found.' } })
+      : route.fulfill({
+          json: route.request().url().includes('/readiness/')
+            ? {
+                ready: false,
+                blockers: [
+                  {
+                    code: 'SYNTHETIC_BLOCKER',
+                    message: 'Synthetic missing verification',
+                    blocking: true
+                  }
+                ],
+                warnings: [],
+                evaluated_at: '2026-10-18T12:00:00Z',
+                lifecycle_version: 7,
+                policy_version: 1,
+                snapshot_hash: 'a'.repeat(64)
               }
-            ],
-            warnings: [],
-            evaluated_at: '2026-10-18T12:00:00Z',
-            lifecycle_version: 7,
-            policy_version: 1,
-            snapshot_hash: 'a'.repeat(64)
-          }
-        : []
-    })
+            : []
+        })
   );
   await page.route(/\/api\/ai\/threads(?:\?|$)/, (route) =>
     route.fulfill({

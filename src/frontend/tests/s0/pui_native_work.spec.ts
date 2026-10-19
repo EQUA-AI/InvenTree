@@ -63,7 +63,7 @@ test('native standalone work keeps its fields and disables command reads when th
   }
   for (const [panel, title] of [
     ['Work', 'Board cards'],
-    ['Parts', 'Required parts'],
+    ['Parts', 'Parts for this job'],
     ['Plan & Safety', 'Dependencies'],
     ['History', 'Activity']
   ]) {

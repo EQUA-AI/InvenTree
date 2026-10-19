@@ -1,0 +1,263 @@
+"""R6 P22: one job's material facts, from requirement to recorded use.
+
+Read-only. Each fact keeps its own record and its own recorder: a requirement
+is not a reservation, a reservation is not an issue, an issue is not a use, and
+a use is not proof of what is fitted. Where the deployment has no Job Kit
+(``AIMMS_JOB_KITS_ENABLED`` off, or no kit for the job) the job's requirement
+rows are shown with their stock *check* - computed from on-hand stock, never a
+reservation of an item. Stock-item identity (serial, batch, location) is only
+given to readers with the stock view role.
+"""
+
+from django.conf import settings
+
+from users.permissions import check_user_role
+
+TERMINAL = ('consumed', 'returned', 'released', 'exception')
+
+
+def _person(user):
+    """A recorder's display name, or None when nobody is recorded."""
+    if user is None:
+        return None
+    return user.get_full_name() or user.username
+
+
+def _when(value):
+    return value.isoformat() if value else None
+
+
+def _number(value):
+    return None if value is None else float(value)
+
+
+def _part(part):
+    if part is None:
+        return None
+    return {
+        'pk': part.pk,
+        'name': part.name,
+        'ipn': part.IPN or '',
+        'units': part.units or '',
+        'virtual': part.virtual,
+    }
+
+
+def _stock(item, visible):
+    """Exact stock item; identity only for stock readers."""
+    if item is None:
+        return None
+    if not visible:
+        return {'pk': None, 'hidden': True}
+    location = item.location
+    return {
+        'pk': item.pk,
+        'hidden': False,
+        'serial': item.serial or '',
+        'batch': item.batch or '',
+        'location': location.pathstring if location else '',
+        'location_pk': location.pk if location else None,
+    }
+
+
+def _tracking(ids):
+    """Native stock-tracking entries (who and when) by id."""
+    from stock.models import StockItemTracking
+
+    if not ids:
+        return {}
+    return {
+        row.pk: row
+        for row in StockItemTracking.objects.filter(pk__in=ids).select_related('user')
+    }
+
+
+def _usage_row(row, visible):
+    return {
+        'id': row.pk,
+        'part': _part(row.part),
+        'stock_item': _stock(row.stock_item, visible),
+        'planned_quantity': _number(row.planned_quantity),
+        'issued_quantity': _number(row.issued_quantity),
+        'used_quantity': _number(row.used_quantity),
+        'disposition': row.disposition or None,
+        'variance_reason': row.variance_reason or '',
+        'source': row.source,
+        'candidate_text': row.candidate_text or '',
+        'state': row.state,
+        'resolved_by': _person(row.resolved_by),
+        'updated_at': _when(row.updated_at),
+    }
+
+
+def _component(work_order):
+    """The registry slot the job names, when the machine holds one."""
+    from assets.registry_models import AssetComponent
+
+    ref = (work_order.affected_component_ref or '').strip()
+    if not ref:
+        return None
+    slot = (
+        AssetComponent.objects
+        .filter(machine_id=work_order.machine_id, code=ref)
+        .only('pk', 'code', 'name', 'machine_id')
+        .first()
+    )
+    return {
+        'ref': ref,
+        'pk': slot.pk if slot else None,
+        'name': slot.name if slot else '',
+        'machine': work_order.machine_id,
+    }
+
+
+def material_readout(actor, work_order) -> dict:
+    """Requirements, reservations, custody and recorded use for one job."""
+    from tasks.closeout_models import CloseoutPartUsage
+    from tasks.jobkit_models import JobKit
+
+    visible = check_user_role(actor, 'stock', 'view')
+    kits_enabled = bool(getattr(settings, 'AIMMS_JOB_KITS_ENABLED', False))
+
+    usage = list(
+        CloseoutPartUsage.objects
+        .filter(work_order=work_order)
+        .select_related('part', 'stock_item__location', 'resolved_by')
+        .order_by('pk')
+    )
+    usage_by_allocation = {}
+    loose_usage = []
+    for row in usage:
+        if row.allocation_id:
+            usage_by_allocation.setdefault(row.allocation_id, []).append(row)
+        else:
+            loose_usage.append(_usage_row(row, visible))
+
+    kit = None
+    if kits_enabled:
+        kit = (
+            JobKit.objects
+            .filter(work_order=work_order)
+            .prefetch_related(
+                'lines__requested_part',
+                'lines__selected_part',
+                'lines__shortages',
+                'lines__allocations__stock_item__location',
+                'lines__allocations__reserved_by',
+                'lines__allocations__staged_by',
+            )
+            .first()
+        )
+
+    requirements = []
+    if kit is not None:
+        lines = sorted(kit.lines.all(), key=lambda line: line.sequence)
+        tracking = _tracking([
+            allocation.stock_tracking_id
+            for line in lines
+            for allocation in line.allocations.all()
+            if allocation.stock_tracking_id
+        ])
+        for line in lines:
+            part = line.selected_part or line.requested_part
+            reservations = []
+            for allocation in sorted(line.allocations.all(), key=lambda a: a.pk):
+                track = tracking.get(allocation.stock_tracking_id)
+                reservations.append({
+                    'id': allocation.pk,
+                    'quantity': float(allocation.quantity),
+                    'status': allocation.status,
+                    'stock_item': _stock(allocation.stock_item, visible),
+                    'reserved': {
+                        'by': _person(allocation.reserved_by),
+                        'at': _when(allocation.reserved_at),
+                    },
+                    'staged': (
+                        {
+                            'by': _person(allocation.staged_by),
+                            'at': _when(allocation.staged_at),
+                        }
+                        if allocation.staged_at
+                        else None
+                    ),
+                    # Issue records when, not who.
+                    'issued': (
+                        {'by': None, 'at': _when(allocation.issued_at)}
+                        if allocation.issued_at
+                        else None
+                    ),
+                    'closed': (
+                        {
+                            'status': allocation.status,
+                            'by': _person(track.user) if track else None,
+                            'at': _when(allocation.disposed_at),
+                            'tracking_id': allocation.stock_tracking_id,
+                        }
+                        if allocation.status in TERMINAL
+                        else None
+                    ),
+                    'usage': [
+                        _usage_row(row, visible)
+                        for row in usage_by_allocation.get(allocation.pk, [])
+                    ],
+                })
+            requirements.append({
+                'key': str(line.key),
+                'part': _part(part),
+                'requested_part': (
+                    _part(line.requested_part)
+                    if line.selected_part_id
+                    and line.selected_part_id != line.requested_part_id
+                    else None
+                ),
+                'quantity': float(line.required_quantity),
+                'required': line.required,
+                'fit_basis': {
+                    'source': line.source,
+                    'substitution_policy': line.substitution_policy,
+                    'note': line.note or '',
+                },
+                'reservations': reservations,
+                'shortages': [
+                    {
+                        'id': shortage.pk,
+                        'quantity': float(shortage.quantity),
+                        'status': shortage.status,
+                        'purchase_order_line': shortage.purchase_order_line_id,
+                        'reason': shortage.reason or '',
+                    }
+                    for shortage in line.shortages.all()
+                ],
+                'availability_check': None,
+            })
+    else:
+        for row in work_order.work_order_parts.select_related('part').order_by(
+            'created_at', 'pk'
+        ):
+            requirements.append({
+                'key': f'requirement-{row.pk}',
+                'part': _part(row.part),
+                'requested_part': None,
+                'quantity': float(row.quantity),
+                'required': True,
+                'fit_basis': None,
+                # Not recorded: no stock item is reserved to this requirement.
+                'reservations': None,
+                'shortages': None,
+                'availability_check': {
+                    'status': row.allocation_status,
+                    'quantity': float(row.allocated_quantity),
+                    'note': row.allocation_note or '',
+                    'checked_at': _when(row.updated_at),
+                },
+            })
+
+    return {
+        'work_order': work_order.pk,
+        'source': 'job_kit' if kit is not None else 'requirements',
+        'kits_enabled': kits_enabled,
+        'stock_visible': visible,
+        'component': _component(work_order),
+        'requirements': requirements,
+        'unmatched_usage': loose_usage,
+    }
