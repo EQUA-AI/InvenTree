@@ -8,26 +8,26 @@ screen,areas,state,disposition,integration_stage,primary_tickets,final_review,st
 07,UI03,Component owning-work inspector,current,S2,P07,S8,In progress
 08,UI03,Component identity and Parts inspector,current,S2,P07 P13,S8,In progress
 09,UI03,Own work closed but independent restriction remains,current,S4,P07 P23 P32,S8,Planned
-10,UI04,Original Health row graphs and full trend,current,S3,P09,S8,Planned
-11,UI04,Signal evidence and bounded window detail,current,S5,P10 P40,S8,Planned
-12,UI04,Expanded original trend and focus return,current,S3,P10,S8,Planned
-13,UI04,Raw unitless vibration,current,S3,P09,S8,Planned
-14,UI04,Missing history and truthful source state,current,S5,P09 P10 P40,S8,Planned
+10,UI04,Original Health row graphs and full trend,current,S3,P09,S8,In progress
+11,UI04,Signal evidence and bounded window detail,current,S5,P10 P40,S8,In progress
+12,UI04,Expanded original trend and focus return,current,S3,P10,S8,In progress
+13,UI04,Raw unitless vibration,current,S3,P09,S8,In progress
+14,UI04,Missing history and truthful source state,current,S5,P09 P10 P40,S8,In progress
 15,UI05,Native thermal and related chart forms,current,S3,P11,S8,In progress
 16,UI05,Native electrical and other chart forms,current,S3,P11,S8,In progress
-17,UI06,Open machine work with owning record,current,S3,P12,S8,Planned
-18,UI06,Completed machine maintenance history,current,S3,P12,S8,Planned
+17,UI06,Open machine work with owning record,current,S3,P12,S8,In progress
+18,UI06,Completed machine maintenance history,current,S3,P12,S8,In progress
 19,UI07,Functional positions and fitted identity,current,S2,P13,S8,In progress
 20,UI07,Exact native Part and Stock context,current,S2,P13,S8,In progress
-21,UI08,Retained fault evidence and owning work,current,S5,P12 P40,S8,Planned
+21,UI08,Retained fault evidence and owning work,current,S5,P12 P40,S8,In progress
 22,UI09,Applicable technical attachments,current,S1,P14,S8,In progress
 23,UI09,In-place attachment preview and return,current,S1,P14,S8,In progress
 24,UI10,Role-aware saved Work list,current,S1,P15,S8,In progress
 25,UI10,Native Board retained,current,S1,P15 P16,S8,Ready for review
-26,UI11,Recorded AIMMS preparation and case brief,current,S4,P18 P19,S8,Planned
-27,UI11,Recorded repair and authorized operational tasks,current,S4,P18 P19,S8,Planned
-28,UI12,Chat-primary persistent Diagnose view,current,S5,P20 P41,S8,Planned
-29,UI12,Ambiguous corrected or contradictory evidence,current,S5,P20 P42,S8,Planned
+26,UI11,Recorded AIMMS preparation and case brief,current,S4,P18 P19,S8,In progress
+27,UI11,Recorded repair and authorized operational tasks,current,S4,P18 P19,S8,In progress
+28,UI12,Chat-primary persistent Diagnose view,current,S5,P20 P41,S8,In progress
+29,UI12,Ambiguous corrected or contradictory evidence,current,S5,P20 P42,S8,In progress
 30,UI13,Prepared effective package and recorded authority,current,S4,P21,S8,Planned
 31,UI14,In-stock requirement through fitted use,current,S4,P22,S8,In progress
 32,UI14,Full shortage and RFQ journey,later,Later,L01,Separate,Deferred
@@ -48,7 +48,7 @@ screen,areas,state,disposition,integration_stage,primary_tickets,final_review,st
 47,UI19,Design-review feedback tooling,review-only,Review,P00,Not product,Excluded
 48,UI03,Equipment at 1100x800,current,S2,P06,S8,In progress
 49,UI03,Equipment at 1920x1080,current,S2,P06,S8,In progress
-50,UI04,Health at 1100x800,current,S3,P09 P10,S8,Planned
+50,UI04,Health at 1100x800,current,S3,P09 P10,S8,In progress
 51,UI11,Work at 1100x800,current,S4,P19,S8,Planned
 52,UI15,Verify and Return at 1100x800,current,S4,P23,S8,Planned
 53,UI19,Source failure distinct from successful empty,current,S7,P03 P30,S8,Planned
@@ -61,7 +61,7 @@ screen,areas,state,disposition,integration_stage,primary_tickets,final_review,st
 60,UI20,Confirmed final update only in Closeout,current,S7,P25 P26,S8,Planned
 61,UI20,Failed stale or uncertain final update,current,S7,P25 P26 P30,S8,Planned
 62,UI11,Assignment rationale and attributed handover,current,S5,P27 P44,S8,Planned
-63,UI11,Recorded AIMMS action detail,current,S4,P18,S8,Planned
+63,UI11,Recorded AIMMS action detail,current,S4,P18,S8,In progress
 64,UI10,Native Calendar retained,current,S1,P16,S8,Ready for review
 65,UI10,Native Timeline retained,current,S1,P16,S8,Ready for review
 66,UI10,Native Risk Radar under existing gate,current,S1,P16,S8,Ready for review
@@ -73,8 +73,8 @@ screen,areas,state,disposition,integration_stage,primary_tickets,final_review,st
 72,UI05,High-channel navigation preserving every chart,current,S3,P38,S8,Planned
 73,UI05,Compatible component machine and before/after comparisons,current,S5,P39,S8,Planned
 74,UI05,Bounded case-span history with source provenance,current,S5,P40,S8,Planned
-75,UI11 UI12,Awaiting compound field evidence through chat,current,S5,P41,S8,Planned
-76,UI12,Attributed contradiction correction and ambiguity,current,S5,P42,S8,Planned
+75,UI11 UI12,Awaiting compound field evidence through chat,current,S5,P41,S8,In progress
+76,UI12,Attributed contradiction correction and ambiguity,current,S5,P42,S8,In progress
 77,UI11 UI12 UI13 UI14 UI15,Revised scope and affected dependencies,current,S5,P43,S8,Planned
 78,UI11 UI13 UI16,Hold resume and accepted shift handover,current,S5,P44,S8,Planned
 79,UI10 UI11 UI12 UI16,Multiple technicians and related scoped work,current,S5,P41 P44,S8,Planned
