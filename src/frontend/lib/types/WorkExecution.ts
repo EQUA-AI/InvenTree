@@ -138,9 +138,92 @@ export interface Investigation {
   packet: { id: number; reference: string; generation_status: string } | null;
   explanation: InvestigationExplanation | null;
   findings: InvestigationFinding[];
-  finding_history: 'overwritten_in_place' | 'not_applicable';
+  finding_history:
+    | 'overwritten_in_place'
+    | 'not_applicable'
+    | 'preserved_revisions';
+  finding_revisions?: FindingRevision[];
   intervention: InvestigationIntervention | null;
-  requests: { available: boolean; reason: string };
+  requests: InvestigationRequests;
+}
+
+export interface InvestigationArtifact {
+  id: number;
+  request: number;
+  kind:
+    | 'observation'
+    | 'reading_set'
+    | 'photo'
+    | 'report'
+    | 'laboratory'
+    | 'check_result';
+  payload: Record<string, unknown>;
+  attachment: number | null;
+  supersedes: number | null;
+  recorded_by: number;
+  recorded_by_name: string | null;
+  /** Audit ids grant no access to the private source conversation. */
+  source_turn_id?: string;
+  source_proposal_id?: string | null;
+  source_file?: {
+    file_id: string;
+    filename: string;
+    size: number;
+    sha256: string;
+    is_image: boolean;
+    supported: boolean;
+  } | null;
+  created_at: string;
+}
+export interface InvestigationRequest {
+  id: number;
+  work_order: number;
+  schema_version: 1;
+  version: number;
+  purpose: string;
+  next_check: string;
+  priority: number | null;
+  required_artifacts: {
+    kind: InvestigationArtifact['kind'];
+    description: string;
+    unit?: string;
+    conditions?: string;
+  }[];
+  status:
+    | 'open'
+    | 'answered'
+    | 'cannot_perform'
+    | 'pending_external'
+    | 'disputed'
+    | 'resolved';
+  owner: number | null;
+  owner_name: string | null;
+  next_checkpoint: string | null;
+  source_finding: number | null;
+  source_proposal: {
+    packet_id: number;
+    check: string;
+    generated_at: string | null;
+  } | null;
+  blocked_reason: string;
+  resolution: string;
+  created_by: number;
+  updated_by: number;
+  created_at: string;
+  updated_at: string;
+  artifacts: InvestigationArtifact[];
+}
+export interface InvestigationRequests {
+  available: boolean;
+  reason: string;
+  items?: InvestigationRequest[];
+}
+export interface FindingRevision {
+  id: number;
+  finding_id: number;
+  snapshot: InvestigationFinding;
+  replaced_by: string | null;
+  replaced_at: string;
 }
 
 export interface PackageStep {

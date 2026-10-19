@@ -119,6 +119,8 @@ class WorkFocusIdentity(BaseModel):
     #: The Work's native ``lifecycle_version`` when the focus was confirmed.
     lifecycle_version: int
     machine_id: int | None
+    request_id: int | None = None
+    request_version: int | None = None
 
 
 class WorkFocusAcknowledgeRequest(BaseModel):
@@ -128,6 +130,8 @@ class WorkFocusAcknowledgeRequest(BaseModel):
 
     work_order_id: int
     expected_version: int
+    request_id: int | None = None
+    request_version: int | None = None
 
 
 class WorkFocusAcknowledgement(BaseModel):

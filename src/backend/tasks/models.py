@@ -757,6 +757,10 @@ from tasks.closeout_models import (  # noqa: F401
     CloseoutSourceType,
     PartUsageDisposition,
 )
+from tasks.investigation_models import (  # noqa: F401
+    InvestigationArtifact,
+    InvestigationRequest,
+)
 from tasks.jobkit_models import (  # noqa: F401
     ACTIVE_ALLOCATION_STATUSES,
     JobKit,

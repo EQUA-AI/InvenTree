@@ -22,7 +22,7 @@ class WorkFocusError(ValueError):
     """Reject unavailable, unauthorized, stale or invalid focus uniformly."""
 
 
-def authorized_focus(actor_id, work_order_id) -> dict:
+def authorized_focus(actor_id, work_order_id, request_id=None) -> dict:
     """Resolve current native Work identity without cached actor permissions."""
     if type(work_order_id) is not int or work_order_id < 1:
         raise WorkFocusError('work_focus_rejected')
@@ -47,7 +47,7 @@ def authorized_focus(actor_id, work_order_id) -> dict:
         sort_keys=True,
         separators=(',', ':'),
     )
-    return {
+    focus = {
         'schema_version': FOCUS_SCHEMA_VERSION,
         'kind': 'work_order',
         'work_order_id': work_order.pk,
@@ -55,6 +55,21 @@ def authorized_focus(actor_id, work_order_id) -> dict:
         'machine_id': work_order.machine_id,
         'boundary_hash': hashlib.sha256(boundary_json.encode()).hexdigest(),
     }
+
+    if request_id is not None:
+        from tasks.investigation_models import InvestigationRequest
+
+        if type(request_id) is not int or request_id < 1:
+            raise WorkFocusError('work_focus_rejected')
+        request = InvestigationRequest.objects.filter(
+            pk=request_id, work_order=work_order
+        ).first()
+        if request is None:
+            raise WorkFocusError('work_focus_rejected')
+        focus.update(
+            schema_version=2, request_id=request.pk, request_version=request.version
+        )
+    return focus
 
 
 #: The identity a turn's result, its reloaded message and the model may carry.
@@ -80,14 +95,36 @@ def public_focus(snapshot) -> dict | None:
     """Project a verified snapshot to its ids, or None when there is none."""
     if not isinstance(snapshot, dict):
         return None
-    return {key: snapshot.get(key) for key in PUBLIC_FOCUS_KEYS}
+    keys = (
+        (*PUBLIC_FOCUS_KEYS, 'request_id', 'request_version')
+        if snapshot.get('schema_version') == 2
+        else PUBLIC_FOCUS_KEYS
+    )
+    return {key: snapshot.get(key) for key in keys}
 
 
-def issue_receipt(actor_id, scope_hash, thread_id, work_order_id, expected_version):
+def issue_receipt(
+    actor_id,
+    scope_hash,
+    thread_id,
+    work_order_id,
+    expected_version,
+    *,
+    request_id=None,
+    request_version=None,
+):
     """Acknowledge an exact lifecycle identity, never a grant or write intent."""
     if type(expected_version) is not int or expected_version < 1:
         raise WorkFocusError('work_focus_rejected')
-    focus = authorized_focus(actor_id, work_order_id)
+    if (request_id is None) != (request_version is None):
+        raise WorkFocusError('work_focus_rejected')
+    if request_version is not None and (
+        type(request_version) is not int or request_version < 1
+    ):
+        raise WorkFocusError('work_focus_rejected')
+    focus = authorized_focus(actor_id, work_order_id, request_id)
+    if request_id is not None and focus['request_version'] != request_version:
+        raise WorkFocusError('work_focus_rejected')
     if focus['lifecycle_version'] != expected_version:
         raise WorkFocusError('work_focus_rejected')
     receipt = signing.dumps(
@@ -125,7 +162,11 @@ def resolve_receipt(actor_id, scope_hash, thread_id, receipt) -> dict:
         or not isinstance(claims['focus'], dict)
     ):
         raise WorkFocusError('work_focus_rejected')
-    current = authorized_focus(actor_id, claims['focus'].get('work_order_id'))
+    current = authorized_focus(
+        actor_id,
+        claims['focus'].get('work_order_id'),
+        claims['focus'].get('request_id'),
+    )
     if claims['focus'] != current:
         raise WorkFocusError('work_focus_rejected')
     return current

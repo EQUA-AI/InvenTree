@@ -90,6 +90,7 @@ export type ProposalActionType =
   | 'stock.remove'
   | 'stock.transfer'
   | 'stock.count'
+  | 'investigation.artifact'
   | 'procedure.complete'
   | 'closeout.consent'
   | 'closeout.accept'
@@ -116,6 +117,7 @@ export const PROPOSAL_ACTION_LABELS: Record<ProposalActionType, string> = {
   'stock.remove': 'Remove stock',
   'stock.transfer': 'Transfer stock',
   'stock.count': 'Count stock',
+  'investigation.artifact': 'Publish investigation evidence',
   'procedure.complete': 'Complete procedure step',
   'closeout.consent': 'Consent to closeout dictation',
   'closeout.accept': 'Accept closeout note',
@@ -401,11 +403,15 @@ export interface WorkFocusIdentity {
   work_order_id: number;
   lifecycle_version: number;
   machine_id: number | null;
+  request_id?: number | null;
+  request_version?: number | null;
 }
 
 export interface WorkFocusAcknowledgeRequest {
   work_order_id: number;
   expected_version: number;
+  request_id?: number | null;
+  request_version?: number | null;
 }
 
 export interface WorkFocusAcknowledgement {

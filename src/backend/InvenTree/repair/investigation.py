@@ -13,10 +13,18 @@ Two things a repair page has to be able to answer, and could not before:
 
 from __future__ import annotations
 
+from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from .models import ApprovedRepairScope, RepairInvestigationFinding, RepairPacketEvent
+from .models import (
+    ApprovedRepairScope,
+    RepairFindingRevision,
+    RepairInvestigationFinding,
+    RepairPacket,
+    RepairPacketEvent,
+)
 
 #: A packet is a work package, not a data warehouse. Bounding the finding set
 #: keeps one import from turning a repair page into a scroll of noise.
@@ -100,9 +108,24 @@ def record_finding(
             'That evidence snapshot belongs to a different machine.'
         )
 
+    # Serialize upserts/corrections through the native parent on PostgreSQL.
+    packet = RepairPacket.objects.select_for_update().get(pk=packet.pk)
+    try:
+        observed_at = RepairInvestigationFinding._meta.get_field(
+            'observed_at'
+        ).to_python(observed_at)
+    except ValidationError as exc:
+        raise InvestigationError('Invalid observation time.') from exc
+    if observed_at is not None:
+        zone = timezone.get_default_timezone()
+        if settings.USE_TZ and timezone.is_naive(observed_at):
+            observed_at = timezone.make_aware(observed_at, zone)
+        elif not settings.USE_TZ and timezone.is_aware(observed_at):
+            observed_at = timezone.make_naive(observed_at, zone)
+    existing = packet.findings.filter(finding_key=finding_key).first()
     existing_count = packet.findings.count()
     if sequence is None:
-        sequence = existing_count + 1
+        sequence = existing.sequence if existing else existing_count + 1
 
     defaults = {
         'sequence': sequence,
@@ -130,6 +153,16 @@ def record_finding(
             True,
         )
 
+    # Preserve the observation before replacing any fact. Exact repeats remain
+    # idempotent, including original attribution and timestamps.
+    changed = any(getattr(finding, field) != value for field, value in defaults.items())
+    if not changed:
+        return finding, False
+    RepairFindingRevision.objects.create(
+        finding=finding,
+        snapshot=finding_snapshot(finding),
+        replaced_by=actor if getattr(actor, 'pk', None) else None,
+    )
     for field, field_value in defaults.items():
         setattr(finding, field, field_value)
     finding.save(update_fields=[*defaults, 'updated_at'])
@@ -205,3 +238,26 @@ def approve_repair_scope(
 def current_scope(packet) -> ApprovedRepairScope | None:
     """Return the approved scope currently in force, if any."""
     return packet.approved_scopes.filter(superseded_at__isnull=True).first()
+
+
+def finding_snapshot(finding):
+    """Retain every original typed fact and its recorded attribution."""
+    from tasks.work_execution.common import person
+
+    return {
+        'id': finding.pk,
+        'finding_key': finding.finding_key,
+        'sequence': finding.sequence,
+        'category': finding.category,
+        'observation': finding.observation,
+        'value': finding.value,
+        'unit': finding.unit,
+        'evidence_source': finding.evidence_source,
+        'snapshot_id': str(finding.snapshot_id) if finding.snapshot_id else None,
+        'observed_at': finding.observed_at.isoformat() if finding.observed_at else None,
+        'verification': finding.verification,
+        'recorded_by': person(finding.recorded_by),
+        'recorded_by_id': finding.recorded_by_id,
+        'created_at': finding.created_at.isoformat(),
+        'updated_at': finding.updated_at.isoformat(),
+    }

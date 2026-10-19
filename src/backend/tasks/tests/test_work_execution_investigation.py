@@ -109,7 +109,7 @@ class InvestigationProjectionTest(InvenTreeAPITestCase):
         self.assertIsNone(investigation['packet'])
         self.assertIsNone(investigation['explanation'])
         self.assertEqual(
-            investigation['requests'], {'available': False, 'reason': 'no_provider'}
+            investigation['requests'], {'available': True, 'reason': '', 'items': []}
         )
 
     def test_preliminary_explanation_keeps_relations_and_drops_confidence(self):
@@ -149,7 +149,7 @@ class InvestigationProjectionTest(InvenTreeAPITestCase):
         self.assertNotIn('confidence', serialized)
         self.assertNotIn('0.87', serialized)
         self.assertEqual(
-            investigation['requests'], {'available': False, 'reason': 'no_provider'}
+            investigation['requests'], {'available': True, 'reason': '', 'items': []}
         )
 
     def test_verified_diagnosis_names_the_verifier(self):
@@ -202,7 +202,7 @@ class InvestigationProjectionTest(InvenTreeAPITestCase):
         self.assertEqual(finding['verification'], 'disputed')
         self.assertEqual(finding['recorded_by'], 'Sam Reed')
         self.assertEqual(finding['value'], 0.0)
-        self.assertEqual(investigation['finding_history'], 'overwritten_in_place')
+        self.assertEqual(investigation['finding_history'], 'preserved_revisions')
         intervention = investigation['intervention']
         self.assertEqual(intervention['version'], 2)
         self.assertEqual(intervention['scope_line_count'], 2)

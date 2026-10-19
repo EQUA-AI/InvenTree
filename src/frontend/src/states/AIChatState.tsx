@@ -31,6 +31,8 @@ export interface AIChatWorkFocusHint {
   workOrderId: number;
   /** The Work's native `lifecycle_version` as the launching page showed it. */
   lifecycleVersion: number;
+  requestId?: number;
+  requestVersion?: number;
   /** What the launching page showed, e.g. "WO-73 · Replace seal". */
   label: string;
   /** The launching route (path and query), validated before it is used. */

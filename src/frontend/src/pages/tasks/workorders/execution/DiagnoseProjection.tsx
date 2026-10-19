@@ -31,6 +31,7 @@ import type {
 import type { WorkOrderOverview } from '@lib/types/WorkOrderOverview';
 
 import { ContinueInvestigation } from './ContinueInvestigation';
+import { InvestigationRequests } from './InvestigationRequests';
 import {
   isSnapshotId,
   measured,
@@ -257,14 +258,15 @@ export function DiagnoseProjection({
   ) : null;
 
   const noRequests = (
-    <Alert
-      color='gray'
-      variant='light'
-      icon={<IconListCheck size={16} />}
-      title={t`No saved investigation request`}
-    >
-      {t`This server keeps no investigation request with an owner, status or due time, so there is no request queue to show. Checks can be discussed in the assistant; chat does not create or agree a saved investigation request.`}
-    </Alert>
+    <InvestigationRequests
+      requests={workOrder.investigation!.requests}
+      workOrder={workOrder}
+    />
+  );
+
+  const hasRequests = Boolean(
+    workOrder.investigation?.requests.available &&
+      workOrder.investigation.requests.items?.length
   );
 
   if (reading.kind === 'no_packet') {
@@ -276,9 +278,11 @@ export function DiagnoseProjection({
           testId='diagnose-explanation'
         >
           <Text size='sm'>
-            {t`This work order has no repair packet, so no diagnosis, cited evidence or findings are saved for it. This does not establish a cause or mean that evidence was checked.`}
+            {hasRequests
+              ? t`No repair packet diagnosis is saved for this Work. Its saved investigation requests and evidence are shown below; they do not establish a cause or authorize physical work.`
+              : t`This work order has no repair packet, so no diagnosis, cited evidence or findings are saved for it. This does not establish a cause or mean that evidence was checked.`}
           </Text>
-          <ContinueInvestigation workOrder={workOrder} />
+          {!hasRequests && <ContinueInvestigation workOrder={workOrder} />}
         </Section>
         {noRequests}
         {nativeFindings}
@@ -335,8 +339,18 @@ export function DiagnoseProjection({
             {t`The initiating cause is not established. This restates what the cited evidence shows, with the gaps below, and authorizes nothing.`}
           </Text>
         )}
+        {(disputed.length > 0 ||
+          investigation.requests.items?.some((r) =>
+            ['disputed', 'cannot_perform', 'pending_external'].includes(
+              r.status
+            )
+          )) && (
+          <Alert color='orange' title={t`Investigation decision unresolved`}>
+            {t`The saved explanation retains its recorded verification. Conflicting or unavailable evidence still needs a decision on the affected request; this does not invalidate unrelated findings or authorize work.`}
+          </Alert>
+        )}
         {explanation && <ExplanationBasis explanation={explanation} />}
-        <ContinueInvestigation workOrder={workOrder} />
+        {!hasRequests && <ContinueInvestigation workOrder={workOrder} />}
         {nativePacketLink}
       </Section>
 
@@ -446,6 +460,68 @@ export function DiagnoseProjection({
           <Text size='sm' c='dimmed'>
             {t`No technician correction is recorded on the diagnosis.`}
           </Text>
+        )}
+        {investigation.finding_history === 'preserved_revisions' && (
+          <Stack gap='sm' data-testid='finding-revisions'>
+            <Text size='sm'>{t`Original observations are retained when corrected. Values overwritten before history was introduced cannot be reconstructed. A correction does not invalidate unrelated findings.`}</Text>
+            {(investigation.finding_revisions ?? []).map((revision) => {
+              const original = revision.snapshot;
+              const current = investigation.findings.find(
+                (f) => f.id === revision.finding_id
+              );
+              return (
+                <Stack
+                  key={revision.id}
+                  gap={4}
+                  p='sm'
+                  style={{
+                    borderLeft: '3px solid var(--mantine-color-orange-filled)',
+                    overflowWrap: 'anywhere'
+                  }}
+                >
+                  <Text size='sm' fw={600}>
+                    {t`Original finding`} · {original.finding_key} ·{' '}
+                    {t`Revision ${revision.id}`}
+                  </Text>
+                  <Text size='sm'>
+                    {original.observation} ·{' '}
+                    {measured(original.value, original.unit) ||
+                      t`Value not recorded`}{' '}
+                    · {original.verification}
+                  </Text>
+                  <Text size='sm'>
+                    {original.recorded_by || t`Recorder not recorded`} ·{' '}
+                    {when(original.observed_at) ||
+                      t`Observation time not recorded`}{' '}
+                    · {original.evidence_source || t`Source not recorded`}
+                    {original.snapshot_id
+                      ? ` · ${t`Snapshot ${original.snapshot_id}`}`
+                      : ''}
+                  </Text>
+                  <Text size='sm'>
+                    {t`Replaced by`}: {revision.replaced_by || t`Not recorded`}{' '}
+                    · {when(revision.replaced_at)}
+                  </Text>
+                  {current && (
+                    <>
+                      <Text size='sm' fw={600}>
+                        {t`Current finding`} · {current.verification}
+                      </Text>
+                      <Text size='sm'>
+                        {current.observation} ·{' '}
+                        {measured(current.value, current.unit) ||
+                          t`Value not recorded`}
+                      </Text>
+                      <Text size='sm'>
+                        {current.recorded_by || t`Recorder not recorded`} ·{' '}
+                        {when(current.updated_at)}
+                      </Text>
+                    </>
+                  )}
+                </Stack>
+              );
+            })}
+          </Stack>
         )}
         {investigation.finding_history === 'overwritten_in_place' && (
           <Text size='xs' c='dimmed'>

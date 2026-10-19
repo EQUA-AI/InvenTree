@@ -1055,6 +1055,7 @@ async def list_threads(
             # P02/P33: Work-focus acknowledgement, the receipt on /chat and
             # /chat/stream, and the saved-turn focus read all exist.
             "work_focus": True,
+            "investigation_request_focus": True,
             # S10: evidence-set expansion endpoints exist while the gate is
             # not "off" (rows only exist once the executor writes them).
             "evidence_sets": getattr(get_settings(), "evidence_gate_mode", "off") != "off",
@@ -1727,6 +1728,8 @@ class WorkFocusAcknowledgeRequest(BaseModel):
     #: The ``lifecycle_version`` the client is showing. A different current
     #: version is refused, so a stale page cannot focus a changed record.
     expected_version: StrictInt = Field(gt=0)
+    request_id: StrictInt | None = Field(default=None, gt=0)
+    request_version: StrictInt | None = Field(default=None, gt=0)
 
 
 @app.post("/threads/{thread_id}/work-focus")
@@ -1748,7 +1751,14 @@ async def acknowledge_work_focus(
         """Materialize the owned thread, then acknowledge."""
         repository.get_or_create(thread_id)
         acknowledged = repository.acknowledge_work_focus(
-            thread_id, request.work_order_id, expected_version=request.expected_version
+            thread_id,
+            request.work_order_id,
+            expected_version=request.expected_version,
+            **(
+                {"request_id": request.request_id, "request_version": request.request_version}
+                if request.request_id is not None or request.request_version is not None
+                else {}
+            ),
         )
         # The hashed boundary stays inside the signed receipt; the client
         # gets the ids it shows and returns to.

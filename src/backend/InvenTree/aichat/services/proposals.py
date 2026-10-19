@@ -218,7 +218,9 @@ def _optimize_candidate_ids(intent: dict[str, Any]) -> list[int]:
     return [int(cid) for cid in (intent.get('candidate_ids') or [])]
 
 
-def _authorize_and_bind(owner, action_type: str, work_order_id, intent):
+def _authorize_and_bind(
+    owner, action_type: str, work_order_id, intent, *, thread_id='', source_turn_id=''
+):
     """Authorize the actor for the action's target(s); return the binding.
 
     Returns ``(target_work_order_id, target_version, preview_work_order)``. For
@@ -256,6 +258,20 @@ def _authorize_and_bind(owner, action_type: str, work_order_id, intent):
         _authorized_work_order(owner, int(intent.get('predecessor_id')))
         return successor.pk, successor.lifecycle_version, successor
     work_order = _authorized_work_order(owner, int(work_order_id))
+    if action_type == 'investigation.artifact':
+        from aichat.services.investigation_proposals import prepare
+
+        return (
+            work_order.pk,
+            work_order.lifecycle_version,
+            prepare(
+                owner,
+                work_order,
+                intent,
+                thread_id=thread_id,
+                source_turn_id=source_turn_id,
+            ),
+        )
     if action_type.startswith('closeout.'):
         from ai.core.decisions.adapters.capture_adapter import authorize, bound_capture
 
@@ -653,7 +669,10 @@ def _preview(work_order, action_type: str, intent: dict[str, Any]) -> dict[str, 
     have no pinned card; their builders read only from the (server-validated)
     intent.
     """
-    if action_type.startswith(('stock.', 'memory.')):
+    if (
+        action_type.startswith(('stock.', 'memory.'))
+        or action_type == 'investigation.artifact'
+    ):
         return dict(work_order)
     base = {
         'action': action_type,
@@ -694,6 +713,7 @@ ACTION_COMMAND: dict[str, str] = {
     ProposalAction.CLOSEOUT_CONSENT.value: 'create_capture',
     ProposalAction.CLOSEOUT_ACCEPT.value: 'accept_revision',
     ProposalAction.CLOSEOUT_HANDOFF.value: 'handoff_capture',
+    ProposalAction.INVESTIGATION_ARTIFACT.value: 'investigation_requests.command',
     ProposalAction.PROCEDURE_COMPLETE.value: 'complete_step',
     ProposalAction.STOCK_ADD.value: 'stock_commands.execute',
     ProposalAction.STOCK_REMOVE.value: 'stock_commands.execute',
@@ -754,6 +774,16 @@ def create_proposal(
     telemetry only: it never joins the idempotent-replay comparison, so a
     retried request with a re-minted id still replays cleanly.
     """
+    if action_type == 'investigation.artifact':
+        from django.contrib.auth import get_user_model
+
+        owner = get_user_model().objects.select_for_update().get(pk=owner.pk)
+        from aichat.services.scope_strings import scope_strings
+
+        if (scope_key, scope_hash) != scope_strings(owner):
+            raise ProposalNotFound(
+                'Investigation scope unavailable. Nothing was saved.'
+            )
     if action_type.startswith('memory.'):
         from aichat.services.memory_commands import lock_scope_owner, owner_scope
 
@@ -800,7 +830,12 @@ def create_proposal(
         reason = intent_reason or supplied_reason
         intent['reason'] = reason
     target_id, target_version, work_order = _authorize_and_bind(
-        owner, action_type, work_order_id, intent
+        owner,
+        action_type,
+        work_order_id,
+        intent,
+        thread_id=thread_id,
+        source_turn_id=source_turn_id,
     )
     normalized_reason = (reason or '').strip()[:2000]
     # Build the preview first: it validates intent shape (e.g. datetimes) and
@@ -924,20 +959,36 @@ def _bridge_to_approval(proposal: ChatActionProposal, owner) -> None:
 def get_owned_proposal(*, owner, scope_hash: str, proposal_id) -> ChatActionProposal:
     """Owner-safe lookup; existence is never disclosed across owners."""
     try:
-        return ChatActionProposal.objects.get(
+        proposal = ChatActionProposal.objects.get(
             id=proposal_id, owner=owner, scope_hash=scope_hash
         )
+        if proposal.action_type == 'investigation.artifact':
+            from aichat.services.investigation_proposals import authorize
+
+            authorize(proposal, owner, current=False)
+        return proposal
     except Exception as exc:  # DoesNotExist / ValidationError / ValueError
         raise ProposalNotFound('no such proposal') from exc
 
 
 def list_owned_proposals(*, owner, scope_hash: str, limit: int = 20):
     """Return the owner's most recent proposals."""
-    return list(
+    rows = list(
         ChatActionProposal.objects.filter(owner=owner, scope_hash=scope_hash)[
             : max(1, limit)
         ]
     )
+    visible = []
+    for row in rows:
+        if row.action_type == 'investigation.artifact':
+            from aichat.services.investigation_proposals import authorize
+
+            try:
+                authorize(row, owner, current=False)
+            except ProposalError:
+                continue
+        visible.append(row)
+    return visible
 
 
 def reject_proposal(*, owner, scope_hash: str, proposal_id) -> ChatActionProposal:
@@ -946,6 +997,15 @@ def reject_proposal(*, owner, scope_hash: str, proposal_id) -> ChatActionProposa
         from aichat.services.memory_commands import lock_scope_owner
 
         owner = lock_scope_owner(owner, scope_hash)
+        if ChatActionProposal.objects.filter(
+            id=proposal_id,
+            owner=owner,
+            scope_hash=scope_hash,
+            action_type='investigation.artifact',
+        ).exists():
+            from django.contrib.auth import get_user_model
+
+            owner = get_user_model().objects.select_for_update().get(pk=owner.pk)
         proposal = (
             ChatActionProposal.objects
             .select_for_update()
@@ -954,6 +1014,10 @@ def reject_proposal(*, owner, scope_hash: str, proposal_id) -> ChatActionProposa
         )
         if proposal is None:
             raise ProposalNotFound('no such proposal')
+        if proposal.action_type == 'investigation.artifact':
+            from aichat.services.investigation_proposals import authorize
+
+            authorize(proposal, owner, current=False)
         if proposal.action_type.startswith('memory.'):
             from aichat.services.memory_commands import authorize_preview
 
@@ -1163,6 +1227,10 @@ def _dispatch(proposal: ChatActionProposal, owner) -> dict[str, Any]:
         return execute(proposal, owner)
     if action.startswith('closeout.'):
         from ai.core.decisions.adapters.capture_adapter import execute
+
+        return execute(proposal, owner)
+    if action == 'investigation.artifact':
+        from aichat.services.investigation_proposals import execute
 
         return execute(proposal, owner)
     if action == 'procedure.complete':
@@ -1442,6 +1510,15 @@ def confirm_proposal(
             from aichat.services.memory_commands import lock_scope_owner
 
             owner = lock_scope_owner(owner, scope_hash)
+            if ChatActionProposal.objects.filter(
+                id=proposal_id,
+                owner=owner,
+                scope_hash=scope_hash,
+                action_type='investigation.artifact',
+            ).exists():
+                from django.contrib.auth import get_user_model
+
+                owner = get_user_model().objects.select_for_update().get(pk=owner.pk)
             proposal = (
                 ChatActionProposal.objects
                 .select_for_update()
@@ -1458,6 +1535,20 @@ def confirm_proposal(
                 if not expected_preview_hash:
                     raise ProposalPreviewChanged(
                         'Review the exact memory preview first'
+                    )
+            if proposal.action_type == 'investigation.artifact':
+                from aichat.services.investigation_proposals import authorize, verified
+
+                authorize(
+                    proposal, owner, current=proposal.state == ProposalState.PROPOSED
+                )
+                if not expected_preview_hash:
+                    raise ProposalPreviewChanged(
+                        'Review the exact publication preview first. Nothing was saved.'
+                    )
+                if proposal.state == ProposalState.EXECUTED and not verified(proposal):
+                    raise ProposalStateConflict(
+                        'The saved evidence receipt could not be verified.'
                     )
             stored_hash = compute_preview_hash(proposal.preview or {})
             if expected_preview_hash is not None and (
@@ -1538,6 +1629,8 @@ def confirm_proposal(
                     proposal.action_type,
                     proposal.target_work_order_id,
                     proposal.intent,
+                    thread_id=proposal.thread_id,
+                    source_turn_id=proposal.source_turn_id,
                 )
                 current_hash = compute_preview_hash(
                     _preview(target, proposal.action_type, proposal.intent)
@@ -1604,6 +1697,14 @@ def confirm_proposal(
         # siblings, which previously also 500ed.
         _mark(owner, scope_hash, proposal_id, ProposalState.FAILED, exc.code[:64])
         raise ProposalStateConflict(str(exc)) from exc
+    except Exception:
+        # Storage is not transactional. Clean up a copied file if persisting
+        # the final proposal receipt failed after the command succeeded.
+        published = getattr(locals().get('proposal'), '_published_file', None)
+        if published:
+            storage, name = published
+            storage.delete(name)
+        raise
 
 
 def _mark(owner, scope_hash: str, proposal_id, state: str, code: str) -> None:

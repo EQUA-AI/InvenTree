@@ -73,9 +73,14 @@ export function parseWorkFocusIdentity(
   const focus = record(value);
   if (
     !focus ||
-    Object.keys(focus).length !== IDENTITY_KEYS.length ||
+    Object.keys(focus).length !==
+      (focus.schema_version === 2
+        ? IDENTITY_KEYS.length + 2
+        : IDENTITY_KEYS.length) ||
     !IDENTITY_KEYS.every((key) => key in focus) ||
-    focus.schema_version !== 1 ||
+    ![1, 2].includes(focus.schema_version as number) ||
+    (focus.schema_version === 2 &&
+      (!positiveId(focus.request_id) || !positiveId(focus.request_version))) ||
     focus.kind !== 'work_order' ||
     !positiveId(focus.work_order_id) ||
     !positiveId(focus.lifecycle_version) ||
@@ -83,7 +88,13 @@ export function parseWorkFocusIdentity(
   )
     return null;
   return {
-    schema_version: 1,
+    schema_version: focus.schema_version as number,
+    ...(focus.schema_version === 2
+      ? {
+          request_id: focus.request_id as number,
+          request_version: focus.request_version as number
+        }
+      : {}),
     kind: 'work_order',
     work_order_id: focus.work_order_id,
     lifecycle_version: focus.lifecycle_version,
@@ -99,7 +110,9 @@ export function parseWorkFocusAcknowledgement(
   value: unknown,
   threadId: string,
   workOrderId: number,
-  expectedVersion: number
+  expectedVersion: number,
+  requestId?: number,
+  requestVersion?: number
 ): WorkFocusAcknowledgement | null {
   const payload = record(value);
   const focus = parseWorkFocusIdentity(payload?.focus);
@@ -111,6 +124,8 @@ export function parseWorkFocusAcknowledgement(
     payload.thread_id !== threadId ||
     focus.work_order_id !== workOrderId ||
     focus.lifecycle_version !== expectedVersion ||
+    (focus.request_id ?? undefined) !== requestId ||
+    (focus.request_version ?? undefined) !== requestVersion ||
     typeof payload.receipt !== 'string' ||
     payload.receipt.length === 0 ||
     payload.receipt.length > MAX_RECEIPT_LENGTH ||
@@ -139,10 +154,13 @@ const WORK_ROUTE = /^\/maintenance\/work-orders\/(\d+)\/?(?:\?[^#]*)?$/;
  */
 export function workFocusReturnPath(
   workOrderId: number,
-  launchPath?: string | null
+  launchPath?: string | null,
+  requestId?: number | null
 ): string {
   const canonical = `/maintenance/work-orders/${workOrderId}`;
   const match = launchPath ? WORK_ROUTE.exec(launchPath) : null;
+  if (positiveId(requestId))
+    return `${canonical}?work_panel=diagnose&investigation_request=${requestId}`;
   if (!match || Number(match[1]) !== workOrderId) return canonical;
   const query = launchPath!.includes('?')
     ? launchPath!.slice(launchPath!.indexOf('?') + 1)
@@ -167,7 +185,11 @@ export function reloadedWorkFocus(
   const state = parseWorkFocusState(stateValue);
   return {
     identity,
-    returnPath: workFocusReturnPath(identity.work_order_id),
+    returnPath: workFocusReturnPath(
+      identity.work_order_id,
+      null,
+      identity.request_id
+    ),
     ...(state ? { state } : {})
   };
 }

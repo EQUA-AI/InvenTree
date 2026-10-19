@@ -11,6 +11,7 @@ from ai.core.integrations.attachment_corpus import ATTACHMENT_CORPUS_TOOLS
 from ai.core.integrations.controlled_document_corpus import CONTROLLED_CORPUS_TOOLS
 from ai.core.integrations.email.tools import EMAIL_TOOLS
 from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS
+from ai.core.integrations.investigation_tools import INVESTIGATION_PROPOSAL_TOOLS
 from ai.core.integrations.kanban_tools import KANBAN_READ_TOOLS, KANBAN_TOOLS
 from ai.core.integrations.media_corpus import EVIDENCE_MEDIA_TOOLS
 from ai.core.integrations.memory_tools import MEMORY_ACTION_TOOLS
@@ -67,6 +68,7 @@ def test_catalog_covers_every_workflow_toolset_once_in_canonical_order():
         *EVIDENCE_MEDIA_TOOLS,
         *SOURCE_INVENTORY_TOOLS,
         *MEMORY_ACTION_TOOLS,
+        *INVESTIGATION_PROPOSAL_TOOLS,
     )
     catalog = capability_catalog()
 
@@ -76,9 +78,9 @@ def test_catalog_covers_every_workflow_toolset_once_in_canonical_order():
     # search_evidence_media; S8a added list_document_sources; R5 retired
     # search_part_documents (59 -> 58, catalog 95 -> 94).
     # Connected mailbox discovery and the owner-bound receipt reader are additive.
-    assert len(wf8_tools) == 61
-    assert len(catalog) == 97
-    assert tuple(entry.tool for entry in catalog[:61]) == wf8_tools
+    assert len(wf8_tools) == 62
+    assert len(catalog) == 98
+    assert tuple(entry.tool for entry in catalog[:62]) == wf8_tools
     assert len({entry.tool_id for entry in catalog}) == len(catalog)
 
 
@@ -103,6 +105,7 @@ def test_catalog_has_expected_stable_pack_shapes():
 
     assert counts == {
         "memory.proposals": 1,
+        "investigation.proposals": 1,
         "parts.read": 5,
         "stock.read": 6,
         "bom.read": 2,
@@ -328,8 +331,8 @@ def test_contract_manifest_is_stable_and_complete():
 
     assert first == second
     assert manifest_json() == manifest_json()
-    # Matches the catalog pin above: 96 entries (wf8 60 + specialist writes).
-    assert len(first) == 96
+    # Matches the catalog pin above: 62 wf8 entries plus specialist writes.
+    assert len(first) == 98
     assert all(record["module"] for record in first)
     assert all(record["qualname"] for record in first)
     assert all(len(record["contract_digest"]) == 64 for record in first)
@@ -822,13 +825,18 @@ def test_every_text_action_name_routes_to_specialist_fallback():
     missed = [
         tool_name(tool)
         for tool in text_chat_action_tools()
-        if not select_capabilities(
+        if tool_name(tool) != "propose_memory_action"
+        and not select_capabilities(
             tool_name(tool).replace("_", " "),
             authenticated=True,
         ).requires_specialist
     ]
 
     assert missed == []
+    # The existing memory proposal has its own permission-gated review rail.
+    memory = select_capabilities("forget all my memories", authenticated=True)
+    assert memory.tools == ()
+    assert memory.reason == "memory_permission_required"
 
 
 def test_ambiguous_prompt_requires_clarification_without_broad_fallback():
@@ -1452,6 +1460,13 @@ async def test_wf8_agent_is_toolless_guarded_and_bounded(monkeypatch):
     class FakeClient:
         function_invocation_config = invocation_config
 
+        def __init__(self):
+            self.client = self
+
+        def with_options(self, **kwargs):
+            captured["transport"] = kwargs
+            return self
+
     class FakeAgent:
         def __init__(self, **kwargs):
             captured.update(kwargs)
@@ -1491,6 +1506,8 @@ async def test_wf8_agent_is_toolless_guarded_and_bounded(monkeypatch):
     assert isinstance(captured["middleware"], CapabilityInvocationMiddleware)
     assert invocation_config.max_iterations == workflow.MAX_TOOL_ITERATIONS
     assert invocation_config.include_detailed_errors is False
+    assert captured["transport"]["max_retries"] == 1
+    assert captured["transport"]["timeout"].read == pytest.approx(30.0)
 
 
 def test_manual_fact_intent_carries_the_uploaded_corpus(monkeypatch):
@@ -1753,3 +1770,34 @@ def test_memory_proposals_require_native_permission_and_never_select_fact_execut
         "forget all my memories", authenticated=True, profile=ALL_VIEW_PROFILE
     )
     assert denied.tools == ()
+
+
+def test_request_focus_exposes_only_reviewed_evidence_proposal_and_native_reads():
+    """Request focus enables proposal preparation, never the artifact executor."""
+    context = {"work_focus": {"schema_version": 2, "kind": "work_order", "request_id": 401}}
+    reader = select_capabilities(
+        "Record these readings",
+        context=context,
+        profile=frozenset({("work_order", "view")}),
+        authenticated=True,
+    )
+    assert "propose_investigation_artifact" not in reader.tool_ids
+    technician = select_capabilities(
+        "Record these readings",
+        context=context,
+        profile=frozenset({("work_order", "view"), ("work_order", "change")}),
+        authenticated=True,
+    )
+    assert technician.pack_ids == ("maintenance.read", "investigation.proposals")
+    assert "propose_investigation_artifact" in technician.tool_ids
+    entries = [entry for entry in capability_catalog() if entry.tool_id in technician.tool_ids]
+    assert [entry.tool_id for entry in entries if entry.effect != ToolEffect.READ] == [
+        "propose_investigation_artifact"
+    ]
+    assert len(entries) <= MAX_INITIAL_TOOLS
+    assert (
+        select_capabilities(
+            "Record these readings", context=context, profile=frozenset(), authenticated=False
+        ).tool_ids
+        == ()
+    )

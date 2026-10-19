@@ -31,8 +31,10 @@ import {
   IconPlayerPlay,
   IconTrash
 } from '@tabler/icons-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 import { useVoiceDecisionState } from '../../states/VoiceDecisionState';
+import { InvestigationArtifactReview } from '../aichat/InvestigationArtifactReview';
 
 import { api } from '../../App';
 import { InlineMarkdown } from '../aichat/MarkdownMessage';
@@ -145,11 +147,16 @@ function receiptSummary(receipt: Record<string, unknown>): string {
 
 export function ProposalCard({
   proposal,
-  onChanged
+  onChanged,
+  onPublicationError
 }: Readonly<{
   proposal: ChatActionProposalPayload;
   onChanged: () => void;
+  onPublicationError?: (message: string) => void;
 }>) {
+  const queryClient = useQueryClient();
+  const publication = proposal.action_type === 'investigation.artifact';
+  const supported = proposal.preview.publication_supported !== false;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [phrase, setPhrase] = useState('');
@@ -166,6 +173,7 @@ export function ProposalCard({
     async (verb: 'confirm' | 'reject') => {
       setBusy(true);
       setError(null);
+      if (publication) onPublicationError?.('');
       try {
         const body =
           verb === 'confirm'
@@ -192,30 +200,50 @@ export function ProposalCard({
         );
         if (!result.ok) {
           setError(describeFailure(result));
+        } else if (publication && verb === 'confirm') {
+          void queryClient.invalidateQueries({
+            queryKey: ['work-order', proposal.work_order_id]
+          });
         }
       } catch (err: any) {
         const failure = parseBusinessResult(
           err?.response?.status ?? 0,
           err?.response?.data
         );
-        setError(
-          failure.ok
-            ? 'PROPOSAL_REQUEST_FAILED'
-            : describeFailure({
-                ...failure,
-                code:
-                  err?.response?.data?.error ??
-                  (failure.code === 'HTTP_0'
-                    ? 'PROPOSAL_REQUEST_FAILED'
-                    : failure.code)
-              })
-        );
+        const detail = err?.response?.data?.detail;
+        const message =
+          publication && !failure.ok && failure.committed === 'no'
+            ? `${typeof detail === 'string' ? detail : describeFailure(failure)} No additional evidence was shared by this attempt.`
+            : publication && typeof detail === 'string'
+              ? detail
+              : failure.ok
+                ? 'PROPOSAL_REQUEST_FAILED'
+                : describeFailure({
+                    ...failure,
+                    code:
+                      err?.response?.data?.error ??
+                      (failure.code === 'HTTP_0'
+                        ? 'PROPOSAL_REQUEST_FAILED'
+                        : failure.code)
+                  });
+        setError(message);
+        if (publication) onPublicationError?.(message);
       } finally {
         setBusy(false);
         onChanged();
       }
     },
-    [proposal.id, onChanged, irreversible, phrase]
+    [
+      proposal.id,
+      proposal.preview_hash,
+      proposal.work_order_id,
+      onChanged,
+      onPublicationError,
+      irreversible,
+      phrase,
+      publication,
+      queryClient
+    ]
   );
 
   const pending = proposal.state === 'proposed';
@@ -238,9 +266,9 @@ export function ProposalCard({
 
   return (
     <Card withBorder radius='md' p='sm' data-testid='chat-action-proposal'>
-      <Stack gap={6}>
-        <Group justify='space-between' wrap='nowrap'>
-          <Group gap='xs' wrap='nowrap'>
+      <Stack gap={6} style={{ overflowWrap: 'anywhere' }}>
+        <Group justify='space-between' align='flex-start'>
+          <Group gap='xs' wrap='nowrap' style={{ flex: 1, minWidth: 160 }}>
             {actionIcon(proposal.action_type)}
             <Text fw={600} size='sm'>
               {label}: {target}?
@@ -260,6 +288,47 @@ export function ProposalCard({
             <InlineMarkdown content={summary} />
           </Text>
         )}
+        {publication && (
+          <Stack gap='xs' data-testid='investigation-publication-review'>
+            <Text size='sm' fw={600}>
+              Request {String(proposal.preview.request_id)} · revision{' '}
+              {String(proposal.preview.request_version)}
+            </Text>
+            <Text size='sm'>
+              Decision purpose:{' '}
+              {String(proposal.preview.purpose ?? 'Not recorded')}
+            </Text>
+            <Text size='sm' fw={600}>
+              {String(proposal.preview.kind ?? 'Artifact')}
+            </Text>
+            <InvestigationArtifactReview payload={proposal.preview.payload} />
+            {proposal.preview.supersedes_id != null && (
+              <Text size='sm'>
+                Correction of evidence {String(proposal.preview.supersedes_id)}.
+                The original remains saved.
+              </Text>
+            )}
+            {proposal.preview.file != null &&
+              typeof proposal.preview.file === 'object' &&
+              (() => {
+                const file = proposal.preview.file as Record<string, unknown>;
+                return (
+                  <Stack gap={2}>
+                    <Text size='sm'>
+                      Selected chat file: {String(file.filename)} ·{' '}
+                      {String(file.size)} bytes
+                    </Text>
+                  </Stack>
+                );
+              })()}
+            <Alert color={supported ? 'blue' : 'orange'} p='xs'>
+              {String(
+                proposal.preview.publication ??
+                  'Publication details unavailable. Nothing is saved.'
+              )}
+            </Alert>
+          </Stack>
+        )}
         {proposal.reason && (
           <Text size='xs' fs='italic' component='div'>
             “<InlineMarkdown content={proposal.reason} />”
@@ -272,7 +341,10 @@ export function ProposalCard({
             </Text>
           </Alert>
         )}
-        <Text size='xs' c='orange'>
+        <Text
+          size={publication ? 'sm' : 'xs'}
+          c={publication ? undefined : 'orange'}
+        >
           {proposal.preview.warning ??
             'This does not change any safety status.'}
         </Text>
@@ -290,16 +362,18 @@ export function ProposalCard({
             <Group gap='xs'>
               <Button
                 size='xs'
-                color='teal'
+                mih={publication ? 44 : undefined}
+                color={publication ? 'blue.8' : 'teal'}
                 loading={busy}
-                disabled={!phraseSatisfied}
+                disabled={!phraseSatisfied || (publication && !supported)}
                 onClick={() => void act('confirm')}
                 data-testid='proposal-confirm'
               >
-                Confirm
+                {publication ? t`Approve and share evidence` : t`Confirm`}
               </Button>
               <Button
                 size='xs'
+                mih={publication ? 44 : undefined}
                 variant='light'
                 color='gray'
                 disabled={busy}
@@ -315,10 +389,21 @@ export function ProposalCard({
           </Stack>
         )}
         {proposal.state === 'executed' && proposal.receipt && (
-          <Text size='xs' c='teal'>
-            Executed: {receiptSummary(proposal.receipt)}
+          <Text
+            size={publication ? 'sm' : 'xs'}
+            c={publication ? undefined : 'teal'}
+          >
+            {publication
+              ? `Saved evidence ${String(proposal.receipt.artifact_id)} for request ${String(proposal.receipt.request_id)} · recorded by technician ${String(proposal.receipt.recorded_by)}. Return to Diagnose to continue with the updated request.`
+              : `Executed: ${receiptSummary(proposal.receipt)}`}
           </Text>
         )}
+        {publication &&
+          ['rejected', 'expired', 'failed'].includes(proposal.state) && (
+            <Text size='sm' c='dimmed'>
+              Nothing was shared from this proposal.
+            </Text>
+          )}
         {proposal.failure_code && (
           <Text size='xs' c='red'>
             {proposal.failure_code}
@@ -345,15 +430,42 @@ export function ChatActionProposalList({
   error?: unknown;
   loading?: boolean;
 }>) {
-  if (error) return <ReadErrorNotice error={error} retry={refresh} />;
+  const [publicationError, setPublicationError] = useState<{
+    proposalId: string;
+    message: string;
+  } | null>(null);
+  // A scope refresh may remove the private preview; retain only the attempt's
+  // outcome so a refused publication does not disappear with that card.
+  const notice =
+    publicationError &&
+    (error ||
+      loading ||
+      !proposals.some((p) => p.id === publicationError.proposalId)) ? (
+      <Alert color='orange' data-testid='publication-outcome'>
+        {publicationError.message}
+      </Alert>
+    ) : null;
+  if (error)
+    return (
+      <Stack gap='xs'>
+        {notice}
+        <ReadErrorNotice error={error} retry={refresh} />
+      </Stack>
+    );
   if (loading)
-    return <Loader size='xs' aria-label={t`Loading action proposals`} />;
+    return (
+      <Stack gap='xs'>
+        {notice}
+        <Loader size='xs' aria-label={t`Loading action proposals`} />
+      </Stack>
+    );
   if (proposals.length === 0) {
-    return null;
+    return notice;
   }
 
   return (
     <Stack gap='xs' data-testid='chat-action-proposals'>
+      {notice}
       <Text size='sm' fw={600}>
         {t`Recent action proposals`}
       </Text>
@@ -362,6 +474,11 @@ export function ChatActionProposalList({
           key={proposal.id}
           proposal={proposal}
           onChanged={() => void refresh()}
+          onPublicationError={(message) =>
+            setPublicationError(
+              message ? { proposalId: proposal.id, message } : null
+            )
+          }
         />
       ))}
     </Stack>

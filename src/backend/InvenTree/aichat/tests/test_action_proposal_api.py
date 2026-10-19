@@ -96,6 +96,7 @@ class ProposalServiceTests(ProposalRailTestCase):
                 'closeout.handoff',
                 'dependency.create',
                 'dependency.delete',
+                'investigation.artifact',
                 'memory.forget',
                 'memory.forget_all',
                 'memory.remember',
