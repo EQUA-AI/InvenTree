@@ -315,9 +315,23 @@ class WorkOrderTableSerializer(WorkOrderBoardSerializer):
     attention_reasons = serializers.SerializerMethodField()
 
     class Meta(WorkOrderBoardSerializer.Meta):
-        """Board fields plus the attention reasons."""
+        """Board fields plus the attention reasons and the affected component.
 
-        fields = (*WorkOrderBoardSerializer.Meta.fields, 'attention_reasons')
+        The component (R6 P12, the machine Maintenance tab's Open work view) is
+        the work order's own recorded component, read-only here.
+        """
+
+        fields = (
+            *WorkOrderBoardSerializer.Meta.fields,
+            'attention_reasons',
+            'affected_component',
+            'affected_component_ref',
+        )
+        read_only_fields = (
+            *WorkOrderBoardSerializer.Meta.read_only_fields,
+            'affected_component',
+            'affected_component_ref',
+        )
 
     def get_attention_reasons(self, work) -> list[str] | None:
         """Reasons under ``tasks.attention`` when that scope was requested."""

@@ -44,6 +44,12 @@ export interface WorkOrder {
    * null outside that scope.
    */
   attention_reasons?: string[] | null;
+  /**
+   * R6 P12: the work order's own recorded component. Only the paginated Work
+   * list carries these; the Board's array does not.
+   */
+  affected_component?: string;
+  affected_component_ref?: string;
   actual_started_at: string | null;
   actual_completed_at: string | null;
   tags: string[];

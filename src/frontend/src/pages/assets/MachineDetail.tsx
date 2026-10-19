@@ -32,7 +32,6 @@ import { PageDetail } from '../../components/nav/PageDetail';
 import { PanelGroup } from '../../components/panels/PanelGroup';
 import { useInstance } from '../../hooks/UseInstance';
 import { openGlobalAIChat } from '../../states/AIChatState';
-import { MaintenanceRecordTable } from '../../tables/assets/MaintenanceRecordTable';
 import { WorkOrderCreateModal } from '../maintenance/components/WorkOrderCreateModal';
 import FaultHistoryPanel from './FaultHistoryPanel';
 import { InstalledPartsPanel } from './InstalledPartsPanel';
@@ -42,6 +41,7 @@ import { MachineHealthPanel } from './health/MachineHealthPanel';
 import PumpMimic from './health/PumpMimic';
 import PumphouseMimic from './health/PumphouseMimic';
 import { machineTrail } from './machineTrail';
+import { MachineMaintenancePanel } from './maintenance/MachineMaintenancePanel';
 import { PerformancePanel } from './performance/PerformancePanel';
 
 import {
@@ -288,8 +288,9 @@ export default function MachineDetail() {
         name: 'maintenance',
         label: t`Maintenance`,
         icon: <IconTool />,
+        // R6 UI06: Open work and Completed history (P12).
         content: machine?.pk ? (
-          <MaintenanceRecordTable machineId={machine.pk} />
+          <MachineMaintenancePanel machineId={machine.pk} />
         ) : null
       },
       {
