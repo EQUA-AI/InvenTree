@@ -12,6 +12,7 @@ from .models import (
     WorkOrderDependency,
     WorkOrderPart,
 )
+from .work_execution.fields import WORK_EXECUTION_FIELDS, WorkExecutionFieldsMixin
 
 
 class WorkOrderDependencySerializer(serializers.ModelSerializer):
@@ -492,7 +493,7 @@ def _approved_scope_projection(packet) -> dict | None:
     }
 
 
-class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
+class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerializer):
     """Complete read-only work-order context for the detail page."""
 
     cards = serializers.SerializerMethodField()
@@ -517,6 +518,7 @@ class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
             'structured_closeout',
             'canonical_commands_enabled',
             'source_alert',
+            *WORK_EXECUTION_FIELDS,
         )
         read_only_fields = fields
 

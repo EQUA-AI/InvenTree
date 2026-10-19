@@ -65,6 +65,8 @@ import { WorkOrderSafetyReadiness } from '../../maintenance/workorders/component
 import { CloseoutPanel } from './CloseoutPanel';
 import { WorkAttachmentResource } from './WorkAttachmentResource';
 import { WorkMaterialsPanel } from './WorkMaterialsPanel';
+import { DiagnoseProjection } from './execution/DiagnoseProjection';
+import { HandledByAimms } from './execution/HandledByAimms';
 import {
   type WorkPanel,
   workPanelParams,
@@ -178,6 +180,7 @@ function WorkOrderWorkspace({
           {workOrder.repair_packet && (
             <WorkOrderProblemPanel packet={workOrder.repair_packet} />
           )}
+          <HandledByAimms value={workOrder.handled_actions} />
           <SectionCard
             title={t`Board cards`}
             icon={<IconLayoutKanban size={18} />}
@@ -192,18 +195,25 @@ function WorkOrderWorkspace({
     {
       name: 'diagnose',
       label: t`Diagnose`,
-      content: workOrder.repair_packet?.findings.length ? (
-        <Table.ScrollContainer minWidth={900}>
-          <InvestigationSection
-            findings={workOrder.repair_packet.findings}
-            approvedScope={null}
-          />
-        </Table.ScrollContainer>
-      ) : (
-        <Alert
-          color='gray'
-          title={t`No findings in this overview`}
-        >{t`Recorded findings are not supplied here. This does not establish a cause or mean that all evidence sources have been checked.`}</Alert>
+      content: (
+        <DiagnoseProjection
+          workOrder={workOrder}
+          nativeFindings={
+            workOrder.repair_packet?.findings.length ? (
+              <Table.ScrollContainer minWidth={900}>
+                <InvestigationSection
+                  findings={workOrder.repair_packet.findings}
+                  approvedScope={null}
+                />
+              </Table.ScrollContainer>
+            ) : (
+              <Alert
+                color='gray'
+                title={t`No findings in this overview`}
+              >{t`Recorded findings are not supplied here. This does not establish a cause or mean that all evidence sources have been checked.`}</Alert>
+            )
+          }
+        />
       )
     },
     {
