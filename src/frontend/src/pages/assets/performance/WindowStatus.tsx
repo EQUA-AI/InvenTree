@@ -69,7 +69,13 @@ export function WindowStatus({
           {t`Updating`}
         </Badge>
       )}
-      <Text size='xs' c='dimmed' role={updating ? 'status' : undefined}>
+      <Text
+        component='output'
+        size='xs'
+        c='dimmed'
+        aria-live='polite'
+        aria-atomic='true'
+      >
         {updating
           ? t`Charts still show the previous window, ${formatWindow(start, end, now)} (${formatDuration(seconds)}), until the new one arrives.`
           : t`Window on screen: ${formatWindow(start, end, now)} (${formatDuration(seconds)}).`}{' '}

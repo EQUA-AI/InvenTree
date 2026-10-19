@@ -42,6 +42,7 @@ export async function openPerformance(
     /** Hold a series answer back, per request (0-based order). */
     delaySeriesMs?: (url: URL, index: number) => number;
     fail?: boolean;
+    failSeries?: (url: URL) => boolean;
   } = {}
 ) {
   const specs = options.signals ?? NATIVE_SIGNALS;
@@ -70,6 +71,22 @@ export async function openPerformance(
       const url = new URL(route.request().url());
       const index = requests.length;
       requests.push(url);
+      const targetCount = ['bindings', 'keys'].reduce(
+        (total, key) =>
+          total +
+          (url.searchParams.get(key)?.split(',').filter(Boolean).length ?? 0),
+        0
+      );
+      if (options.failSeries?.(url))
+        return route.fulfill({
+          status: 503,
+          json: { detail: 'Synthetic batch unavailable' }
+        });
+      if (targetCount > 200)
+        return route.fulfill({
+          status: 400,
+          json: { code: 'TOO_MANY_TARGETS' }
+        });
       const delay = options.delaySeriesMs?.(url, index) ?? 0;
       if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
       // The page may have moved on while this answer was held back.

@@ -306,6 +306,8 @@ export interface SeriesLive {
  * them across the window. Nothing in either is averaged or interpolated.
  */
 export interface SeriesResponse {
+  /** Frontend aggregation metadata; not asserted by the historian API. */
+  read_batches?: { target_count: number; failed: boolean }[];
   machine: number;
   station: { pk: number; name: string } | null;
   window_start: string;

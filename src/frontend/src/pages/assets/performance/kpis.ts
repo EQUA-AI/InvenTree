@@ -104,7 +104,7 @@ function highestTile(
   const top = pool.reduce((a, b) =>
     (numeric(b.signal) as number) > (numeric(a.signal) as number) ? b : a
   );
-  const worst = pool
+  const worst = candidates
     .map((p) => (hasLimits(p.signal) ? p.signal.state : 'unconfigured'))
     .reduce<HealthState | 'unconfigured'>((acc, state) => {
       const rank = {
@@ -126,7 +126,7 @@ function highestTile(
     observedAt: instant(top.signal),
     stale: top.signal.stale,
     state: worst,
-    limitsConfigured: pool.some((p) => hasLimits(p.signal)),
+    limitsConfigured: candidates.some((p) => hasLimits(p.signal)),
     series: series.get(top.signal.binding_id),
     caption: [
       top.signal.unit
@@ -137,7 +137,19 @@ function highestTile(
             .filter((g) => !g.items.includes(top))
             .map((g) => unitText(g) || t`no unit`)
             .join(', ')} not compared`
-        : ''
+        : '',
+      ...candidates
+        .filter(
+          (p) =>
+            !pool.includes(p) &&
+            hasLimits(p.signal) &&
+            p.signal.state === worst &&
+            (worst === 'critical' || worst === 'warning')
+        )
+        .map(
+          (p) =>
+            t`${p.label} (${p.signal.unit || t`no unit`}) ${p.signal.state}, not compared`
+        )
     ]
       .filter(Boolean)
       .join(' · ')

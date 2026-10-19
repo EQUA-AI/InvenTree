@@ -18,6 +18,7 @@ import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import { useApi } from '../../contexts/ApiContext';
 import { FaultOccurrences } from './faults/FaultOccurrences';
+import { OccurrenceInvestigation } from './investigation/OccurrenceInvestigation';
 
 interface CountRow {
   code?: string;
@@ -103,7 +104,15 @@ export default function FaultHistoryPanel({
     <Stack gap='lg'>
       <FaultHistoryRollup machineId={machineId} />
       <Divider />
-      <FaultOccurrences machineId={machineId} />
+      <FaultOccurrences
+        machineId={machineId}
+        renderInvestigation={(occurrence) => (
+          <OccurrenceInvestigation
+            machineId={machineId}
+            occurrence={occurrence}
+          />
+        )}
+      />
     </Stack>
   );
 }
