@@ -25,6 +25,7 @@ import {
   seriesStats,
   syntheticEntry
 } from '../series';
+import { sameScale } from '../units';
 import { CardGrid, ChartCard, type SectionProps } from './common';
 
 /**
@@ -212,6 +213,33 @@ function pairByIndex(
 }
 
 /**
+ * Pairs whose readings can be subtracted: the same unit on both sides. An
+ * outlet in degF minus an inlet in degC is not a temperature rise, so such a
+ * pair is named and left uncalculated rather than drawn.
+ */
+function subtractable(
+  pairs: { a: ResolvedParameter; b: ResolvedParameter }[]
+): {
+  pairs: { a: ResolvedParameter; b: ResolvedParameter }[];
+  refused: string[];
+} {
+  const ok = pairs.filter((p) => sameScale(p.a.signal.unit, p.b.signal.unit));
+  const refused = pairs
+    .filter((p) => !sameScale(p.a.signal.unit, p.b.signal.unit))
+    .map(
+      (p) =>
+        `${p.a.label} (${p.a.signal.unit || t`no unit`}) − ${p.b.label} (${p.b.signal.unit || t`no unit`})`
+    );
+  return { pairs: ok, refused };
+}
+
+function withRefusal(description: string, refused: string[]): string {
+  return refused.length > 0
+    ? `${description} ${t`Not calculated, because the paired units differ: ${refused.join('; ')}.`}`
+    : description;
+}
+
+/**
  * A calculated ΔT per pair, drawn as its own trend with the current values as
  * badges. Computed only where both sensors were read at the same instant, and
  * labelled as calculated wherever it appears.
@@ -294,7 +322,15 @@ function DifferenceCard({
     decimals
   }));
 
-  if (pairs.length === 0) return null;
+  // Every pair refused for its units: the card stays to say so.
+  if (pairs.length === 0)
+    return (
+      <ChartCard title={title} description={description}>
+        <Text size='sm' c='dimmed'>
+          {t`No pair could be calculated.`}
+        </Text>
+      </ChartCard>
+    );
 
   return (
     <ChartCard title={title} description={description}>
@@ -361,15 +397,24 @@ export function CoolingSection({
 }: Readonly<SectionProps>) {
   const inlet = withRole(parameters, 'water_inlet');
   const outlet = withRole(parameters, 'water_outlet');
-  const water = withRole(parameters, 'water');
+  const waterRtd = withRole(parameters, 'water');
   const cold = withRole(parameters, 'cold_air');
   const hot = withRole(parameters, 'hot_air');
 
-  const waterPairs = useMemo(() => pairByIndex(outlet, inlet), [outlet, inlet]);
-  const airPairs = useMemo(() => pairByIndex(hot, cold), [hot, cold]);
+  const water = useMemo(
+    () => subtractable(pairByIndex(outlet, inlet)),
+    [outlet, inlet]
+  );
+  const air = useMemo(() => subtractable(pairByIndex(hot, cold)), [hot, cold]);
+  const waterPairs = water.pairs;
+  const airPairs = air.pairs;
 
   if (
-    inlet.length + outlet.length + water.length + cold.length + hot.length ===
+    inlet.length +
+      outlet.length +
+      waterRtd.length +
+      cold.length +
+      hot.length ===
     0
   ) {
     return null;
@@ -378,7 +423,7 @@ export function CoolingSection({
   return (
     <Stack gap='md'>
       {(inlet.length > 0 || outlet.length > 0) && (
-        <CardGrid cols={waterPairs.length > 0 ? 3 : 2}>
+        <CardGrid cols={waterPairs.length + water.refused.length > 0 ? 3 : 2}>
           {inlet.length > 0 && (
             <SensorGroupCard
               title={t`Cooling water inlet`}
@@ -403,10 +448,13 @@ export function CoolingSection({
               onZoom={onZoom}
             />
           )}
-          {waterPairs.length > 0 && (
+          {waterPairs.length + water.refused.length > 0 && (
             <DifferenceCard
               title={t`Cooling water rise (outlet − inlet)`}
-              description={t`How much heat the water carries away. Calculated from sensors paired by number, only where both were read at the same instant.`}
+              description={withRefusal(
+                t`How much heat the water carries away. Calculated from sensors paired by number, only where both were read at the same instant.`,
+                water.refused
+              )}
               pairs={waterPairs}
               series={series}
               window={window}
@@ -416,11 +464,11 @@ export function CoolingSection({
           )}
         </CardGrid>
       )}
-      {water.length > 0 && (
+      {waterRtd.length > 0 && (
         <SensorGroupCard
           title={t`Cooling water RTDs`}
           description={t`The dictionary does not say which of these are inlet and which outlet, so they are drawn as one family.`}
-          parameters={water}
+          parameters={waterRtd}
           series={series}
           window={window}
           syncId={syncId}
@@ -430,7 +478,7 @@ export function CoolingSection({
         />
       )}
       {(cold.length > 0 || hot.length > 0) && (
-        <CardGrid cols={airPairs.length > 0 ? 3 : 2}>
+        <CardGrid cols={airPairs.length + air.refused.length > 0 ? 3 : 2}>
           {cold.length > 0 && (
             <SensorGroupCard
               title={t`Cooling air, cold side`}
@@ -455,10 +503,13 @@ export function CoolingSection({
               onZoom={onZoom}
             />
           )}
-          {airPairs.length > 0 && (
+          {airPairs.length + air.refused.length > 0 && (
             <DifferenceCard
               title={t`Air rise (hot − cold)`}
-              description={t`Calculated from hot and cold sensors paired by number.`}
+              description={withRefusal(
+                t`Calculated from hot and cold sensors paired by number.`,
+                air.refused
+              )}
               pairs={airPairs}
               series={series}
               window={window}

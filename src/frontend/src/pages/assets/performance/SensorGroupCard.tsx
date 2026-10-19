@@ -30,6 +30,7 @@ import {
   limitState,
   seriesStats
 } from './series';
+import { groupByScale, unitText } from './units';
 
 export interface WindowInfo {
   start: number;
@@ -55,6 +56,37 @@ export interface SensorGroupCardProps {
 }
 
 /**
+ * A family of like sensors, one card per scale (R6 A19.7).
+ *
+ * The family card assumes one unit: its axis, heatmap scale, bars and
+ * "highest now" all compare members with each other. A family whose
+ * dictionary units differ - a draft-tube pressure beside a draft-tube level,
+ * an RTD in degF among degC - is drawn as one card per unit, each keeping
+ * every native form, rather than ranking one reading on another's scale.
+ */
+export function SensorGroupCard(props: Readonly<SensorGroupCardProps>) {
+  const groups = useMemo(
+    () => groupByScale(props.parameters, (p) => p.signal.unit),
+    [props.parameters]
+  );
+  if (groups.length <= 1) return <SensorGroupCardBody {...props} />;
+  const units = groups.map((g) => unitText(g) || t`no unit`);
+  return (
+    <Stack gap='md' data-units-split={groups.length}>
+      {groups.map((group, index) => (
+        <SensorGroupCardBody
+          key={group.key}
+          {...props}
+          parameters={group.items}
+          title={t`${props.title} (${units[index]})`}
+          description={t`This family reports in ${units.join(', ')}; each unit has its own card, so no reading is compared on another's scale.`}
+        />
+      ))}
+    </Stack>
+  );
+}
+
+/**
  * A family of like sensors - twelve winding RTDs, ten thrust pads, four
  * cooling water inlets - in one card.
  *
@@ -64,7 +96,7 @@ export interface SensorGroupCardProps {
  * are enough of them, shows the whole family's history at once; the comparison
  * ranks their current readings. Everything derived is labelled calculated.
  */
-export function SensorGroupCard({
+function SensorGroupCardBody({
   title,
   parameters,
   series,
