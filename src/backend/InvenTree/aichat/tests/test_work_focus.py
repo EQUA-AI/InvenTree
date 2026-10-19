@@ -491,3 +491,131 @@ class WorkFocusTests(TestCase):
             {answer: 'unavailable'},
         )
         self.assertEqual(self.repository.work_focus_states(self.thread.pk, []), {})
+
+
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.granted_client_scope_resolver'
+)
+class InvestigationRequestFocusTests(TestCase):
+    """Request focus narrows Work focus and never grants more access."""
+
+    setUp = WorkFocusTests.setUp
+    begin = WorkFocusTests.begin
+
+    def request(self, work=None):
+        """Create only synthetic local records for receipt tests."""
+        from tasks.investigation_models import InvestigationRequest
+
+        return InvestigationRequest.objects.create(
+            work_order=work or self.work,
+            purpose='Read synthetic evidence',
+            next_check='Check',
+            priority=1,
+            created_by=self.actor,
+            updated_by=self.actor,
+        )
+
+    def acknowledge(self, row, **kwargs):
+        """Acknowledge an exact request revision under the same Work."""
+        return self.repository.acknowledge_work_focus(
+            self.thread.pk,
+            self.work.pk,
+            expected_version=self.work.lifecycle_version,
+            request_id=row.pk,
+            request_version=row.version,
+            **kwargs,
+        )
+
+    def test_receipt_and_durable_snapshot_carry_one_request(self):
+        """Verified public identity retains request id and version, no receipt."""
+        row = self.request()
+        ack = self.acknowledge(row)
+        self.assertEqual(ack['focus']['schema_version'], 2)
+        self.assertEqual(public_focus(ack['focus'])['request_id'], row.pk)
+        result = self.begin(ack['receipt'])
+        self.assertEqual(result.work_focus_snapshot, ack['focus'])
+        self.assertEqual(
+            self.begin(self.acknowledge(row)['receipt']).turn.pk, result.turn.pk
+        )
+
+    def test_foreign_request_and_half_or_invalid_pairs_reject(self):
+        """Even a sibling Work on the same machine cannot supply this request."""
+        row = self.request(self.second_work)
+        with self.assertRaises(WorkFocusError):
+            self.acknowledge(row)
+        own = self.request()
+        for rid, version in [
+            (own.pk, None),
+            (None, 1),
+            (True, 1),
+            (str(own.pk), 1),
+            (own.pk, True),
+            (own.pk, '1'),
+        ]:
+            with (
+                self.subTest(rid=rid, version=version),
+                self.assertRaises(WorkFocusError),
+            ):
+                self.repository.acknowledge_work_focus(
+                    self.thread.pk,
+                    self.work.pk,
+                    expected_version=1,
+                    request_id=rid,
+                    request_version=version,
+                )
+
+    def test_changed_request_invalidates_receipt_without_work_lifecycle_change(self):
+        """The request revision is rechecked before and under turn intake."""
+        row = self.request()
+        ack = self.acknowledge(row)
+        row.version += 1
+        row.save()
+        with self.assertRaises(WorkFocusError):
+            self.repository.verify_work_focus(self.thread.pk, ack['receipt'])
+        with self.assertRaises(WorkFocusError):
+            self.begin(ack['receipt'])
+        self.assertFalse(ChatTurn.objects.exists())
+
+    def test_replay_cannot_swap_or_remove_request_under_same_fingerprint(self):
+        """Full verified focus identity participates in durable exact replay."""
+        first, second = self.request(), self.request()
+        self.begin(self.acknowledge(first)['receipt'])
+        work_only = self.repository.acknowledge_work_focus(
+            self.thread.pk, self.work.pk, expected_version=1
+        )
+        for receipt in (
+            self.acknowledge(second)['receipt'],
+            work_only['receipt'],
+            None,
+        ):
+            with self.assertRaises(IdempotencyConflict):
+                self.begin(receipt)
+
+    def test_saved_request_state_is_independent_per_request(self):
+        """A changed sibling request cannot change the state of another answer."""
+        one, two = self.request(), self.request()
+        a = self.begin(self.acknowledge(one)['receipt'], key='one')
+        b = self.begin(self.acknowledge(two)['receipt'], key='two')
+        for result in (a, b):
+            self.repository.terminal(
+                result.turn.pk,
+                state=TurnState.COMPLETE,
+                canonical_result={'message': 'answer'},
+                output_content='Synthetic request answer',
+            )
+            result.turn.refresh_from_db()
+        answer_one, answer_two = a.turn.output_message_id, b.turn.output_message_id
+        one.version += 1
+        one.save()
+        self.assertEqual(
+            self.repository.work_focus_states(self.thread.pk, [answer_one, answer_two]),
+            {answer_one: 'changed', answer_two: 'current'},
+        )
+        saved = self.repository.get_turn_work_focus(self.thread.pk, a.turn.pk)
+        self.assertEqual(saved['focus']['request_version'], 1)
+        self.assertTrue(saved['stale'])
+        two.delete()
+        self.assertEqual(
+            self.repository.work_focus_states(self.thread.pk, [answer_two]),
+            {answer_two: 'unavailable'},
+        )

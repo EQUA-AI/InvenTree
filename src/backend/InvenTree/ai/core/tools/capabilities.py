@@ -92,6 +92,7 @@ class CapabilitySelection:
 
 
 _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
+    "investigation.proposals": (ToolEffect.WRITE, ("propose_investigation_artifact",), ()),
     "memory.proposals": (ToolEffect.WRITE, ("propose_memory_action",), ()),
     "parts.read": (
         ToolEffect.READ,
@@ -440,6 +441,7 @@ _DEFAULT_PACK_WORKFLOWS = frozenset({"wf8", "general"})
 _SPECIALIST_WORKFLOWS = frozenset({"wf2", "wf3", "wf4", "wf6"})
 _ALL_PACK_WORKFLOWS = _DEFAULT_PACK_WORKFLOWS | _SPECIALIST_WORKFLOWS
 _PACK_WORKFLOWS: dict[str, frozenset[str]] = {
+    "investigation.proposals": frozenset({"wf8"}),
     "memory.proposals": _DEFAULT_PACK_WORKFLOWS,
     "documents.read": _ALL_PACK_WORKFLOWS | frozenset({"wf9"}),
     "manuals.read": _ALL_PACK_WORKFLOWS | frozenset({"wf9"}),
@@ -1182,6 +1184,7 @@ def _catalog_tools() -> tuple[Any, ...]:
     from ai.core.integrations.controlled_document_corpus import CONTROLLED_CORPUS_TOOLS
     from ai.core.integrations.email.tools import EMAIL_TOOLS
     from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS, INVENTORY_TOOLS
+    from ai.core.integrations.investigation_tools import INVESTIGATION_PROPOSAL_TOOLS
     from ai.core.integrations.kanban_tools import KANBAN_TOOLS
     from ai.core.integrations.media_corpus import EVIDENCE_MEDIA_TOOLS
     from ai.core.integrations.memory_tools import MEMORY_ACTION_TOOLS
@@ -1201,6 +1204,7 @@ def _catalog_tools() -> tuple[Any, ...]:
         *EVIDENCE_MEDIA_TOOLS,
         *SOURCE_INVENTORY_TOOLS,
         *MEMORY_ACTION_TOOLS,
+        *INVESTIGATION_PROPOSAL_TOOLS,
         # Specialist rails (wf2/wf3/wf4/wf6) below; the wf8 prefix above keeps
         # the existing catalog order stable for the manifest.
         *INVENTORY_TOOLS,
@@ -1926,6 +1930,24 @@ def select_capabilities(
     carryover never runs for them, so a prior off-domain turn cannot pull an
     analysis question with it.
     """
+    focus = (context or {}).get("work_focus")
+    if (
+        isinstance(focus, dict)
+        and focus.get("schema_version") == 2
+        and type(focus.get("request_id")) is int
+    ):
+        entries = tuple(
+            entry
+            for entry in entries_for_packs(("maintenance.read", "investigation.proposals"))
+            if exposure_authorized(entry, profile, authenticated=authenticated)
+        )
+        return CapabilitySelection(
+            pack_ids=tuple(dict.fromkeys(entry.pack_id for entry in entries)),
+            tool_ids=tuple(entry.tool_id for entry in entries),
+            tools=tuple(entry.tool for entry in entries),
+            reason="investigation_request_review",
+            clarification_required=not bool(entries),
+        )
     normalized = " ".join(query.casefold().split())
     if re.search(r"\b(?:memory|memories)\b", normalized) and re.search(
         r"\b(?:remember|forget|delete|update|correct)\b", normalized

@@ -862,8 +862,12 @@ async function requestWorkFocus(
   threadId: string,
   host: string,
   workOrderId: number,
-  expectedVersion: number
+  expectedVersion: number,
+  requestId?: number,
+  requestVersion?: number
 ): Promise<WorkFocusResult> {
+  if ((requestId === undefined) !== (requestVersion === undefined))
+    return { ok: false, code: 'invalid_work_focus_acknowledgement' };
   try {
     const response = await fetch(
       `${host}/threads/${encodeURIComponent(threadId)}/work-focus`,
@@ -876,7 +880,10 @@ async function requestWorkFocus(
         credentials: 'include',
         body: JSON.stringify({
           work_order_id: workOrderId,
-          expected_version: expectedVersion
+          expected_version: expectedVersion,
+          ...(requestId !== undefined
+            ? { request_id: requestId, request_version: requestVersion }
+            : {})
         })
       }
     );
@@ -885,7 +892,9 @@ async function requestWorkFocus(
         await response.json().catch(() => null),
         threadId,
         workOrderId,
-        expectedVersion
+        expectedVersion,
+        requestId,
+        requestVersion
       );
       return acknowledgement
         ? { ok: true, acknowledgement }
@@ -1108,6 +1117,7 @@ export function useAIChat(config: AIChatConfig = {}) {
   // P02/P33: the server advertises the Work-focus contract; without it a
   // Work launch sends nothing rather than a question without its Work.
   const [workFocusCapable, setWorkFocusCapable] = useState(false);
+  const [requestFocusCapable, setRequestFocusCapable] = useState(false);
   // S1: a send bounced on scope_version_conflict; the bounced turn is kept
   // for one-click resend once the refreshed scope has been reviewed.
   const [scopeConflict, setScopeConflict] = useState(false);
@@ -1281,6 +1291,9 @@ export function useAIChat(config: AIChatConfig = {}) {
       // S1: the capability advertisement gates the whole scope feature.
       setScopeCapable(Boolean(serverData.capabilities?.thread_scope));
       setWorkFocusCapable(Boolean(serverData.capabilities?.work_focus));
+      setRequestFocusCapable(
+        Boolean(serverData.capabilities?.investigation_request_focus)
+      );
       setThreadCursor(serverData.next_cursor ?? null);
 
       const localThreads = storedThreadsRef.current;
@@ -2411,7 +2424,9 @@ export function useAIChat(config: AIChatConfig = {}) {
   const acknowledgeWorkFocus = useCallback(
     async (
       workOrderId: number,
-      expectedVersion: number
+      expectedVersion: number,
+      requestId?: number,
+      requestVersion?: number
     ): Promise<WorkFocusResult> => {
       const threadId = activeThreadIdRef.current;
       const version = selectionVersionRef.current;
@@ -2424,7 +2439,9 @@ export function useAIChat(config: AIChatConfig = {}) {
         threadId,
         aiHost,
         workOrderId,
-        expectedVersion
+        expectedVersion,
+        requestId,
+        requestVersion
       );
       if (!currentSelection()) return { ok: false, code: 'error' };
       return result;
@@ -3540,7 +3557,9 @@ export function useAIChat(config: AIChatConfig = {}) {
     void (async () => {
       const result = await acknowledgeWorkFocus(
         workFocus.identity.work_order_id,
-        workFocus.identity.lifecycle_version
+        workFocus.identity.lifecycle_version,
+        workFocus.identity.request_id ?? undefined,
+        workFocus.identity.request_version ?? undefined
       );
       if (!result.ok) {
         setError(
@@ -3601,6 +3620,7 @@ export function useAIChat(config: AIChatConfig = {}) {
     scopeCapable,
     // P02/P33: Work-focus acknowledgement for the active thread.
     workFocusCapable,
+    requestFocusCapable,
     acknowledgeWorkFocus,
     scopeConflict,
     refreshThreadScope,

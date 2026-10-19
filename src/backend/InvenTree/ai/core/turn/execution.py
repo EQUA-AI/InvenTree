@@ -44,6 +44,14 @@ def _effective_pinned_workflow(run: TurnRun) -> str | None:
 
     if run.server_pinned_workflow is not None:
         return run.server_pinned_workflow
+    if (
+        run.modality != TurnModality.VOICE
+        and isinstance(run.work_focus, dict)
+        and run.work_focus.get("schema_version") == 2
+    ):
+        # Keep request evidence in the existing assistant's reviewed proposal
+        # flow, including uploads. This pin grants no write authority.
+        return "wf8"
     uploaded_files = run.metadata.get("uploaded_files")
     if isinstance(uploaded_files, list) and uploaded_files:
         # `_turn_metadata` authorized these paths against the durable thread.
@@ -505,9 +513,11 @@ async def _run_legacy_workflow(service: NormalizedTurnService, run: TurnRun) -> 
         from contextlib import ExitStack as _ExitStack
 
         from ai.core.config import get_settings as _get_settings
+        from ai.core.integrations.investigation_tools import bind_investigation_source
         from ai.core.tool_events import bind_tool_event_sink
 
         with _ExitStack() as sink_stack:
+            sink_stack.enter_context(bind_investigation_source(run.thread.pk, run.turn.pk))
             if getattr(_get_settings(), "feature_tool_events", False):
                 sink_stack.enter_context(
                     bind_tool_event_sink(run.emitter, run.thread.pk, f"run:{run.turn.pk}")

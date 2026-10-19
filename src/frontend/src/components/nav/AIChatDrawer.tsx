@@ -1312,6 +1312,7 @@ function AIChatSessionDrawer({
     scopeConflict,
     setThreadScope,
     workFocusCapable,
+    requestFocusCapable,
     acknowledgeWorkFocus,
     refreshThreadScope,
     resendLastTurn,
@@ -1716,7 +1717,11 @@ function AIChatSessionDrawer({
         // the page showed before anything is sent. Every failure keeps the
         // draft and attachments and sends nothing; removing the Work is the
         // user's explicit choice to ask without it.
-        if (!workFocusCapable || activeThreadShared) {
+        if (
+          !workFocusCapable ||
+          (workFocusHint.requestId !== undefined && !requestFocusCapable) ||
+          activeThreadShared
+        ) {
           setWorkFocusLaunchError('unsupported');
           setInputValue(text);
           return;
@@ -1728,7 +1733,9 @@ function AIChatSessionDrawer({
         try {
           acknowledged = await acknowledgeWorkFocus(
             workFocusHint.workOrderId,
-            workFocusHint.lifecycleVersion
+            workFocusHint.lifecycleVersion,
+            workFocusHint.requestId,
+            workFocusHint.requestVersion
           );
         } catch {
           acknowledged = { ok: false, code: 'error' };
@@ -1759,11 +1766,12 @@ function AIChatSessionDrawer({
             label: workFocusHint.label,
             returnPath: workFocusReturnPath(
               identity.work_order_id,
-              workFocusHint.returnPath
+              workFocusHint.returnPath,
+              identity.request_id
             )
           }
         });
-        clearWorkFocus();
+        if (workFocusHint.requestId === undefined) clearWorkFocus();
         setInputValue('');
         setAttachedFiles([]);
         return;
@@ -1836,6 +1844,7 @@ function AIChatSessionDrawer({
       routingHint,
       clearRoutingHint,
       workFocusHint,
+      requestFocusCapable,
       workFocusCapable,
       acknowledgeWorkFocus,
       clearWorkFocus
@@ -2147,7 +2156,7 @@ function AIChatSessionDrawer({
                 >
                   <Tabs.List>
                     <Tabs.Tab value='chat'>{t`Chat`}</Tabs.Tab>
-                    <Tabs.Tab value='approvals'>
+                    <Tabs.Tab value='approvals' aria-label={t`Approvals`}>
                       <Group gap={6} wrap='nowrap'>
                         <Text size='sm'>{t`Approvals`}</Text>
                         {/* C1: an attention DOT — never a numeric aggregate
@@ -2386,7 +2395,10 @@ function AIChatSessionDrawer({
                     key={voiceDecision?.decision_id ?? 'none'}
                   />
                 )}
-                <ChatActionProposalList {...proposals} />
+                <ChatActionProposalList
+                  key={activeThreadId ?? 'new'}
+                  {...proposals}
+                />
                 {/* C1: resolved actions moved here from History behind a
                   truthful local filter. */}
                 <Text
@@ -2527,6 +2539,17 @@ function AIChatSessionDrawer({
                     color='teal'
                     leftSection={<IconClipboardList size={12} />}
                     title={workFocusHint.label}
+                    styles={
+                      workFocusHint.requestId
+                        ? {
+                            root: { height: 'auto' },
+                            label: {
+                              whiteSpace: 'normal',
+                              overflowWrap: 'anywhere'
+                            }
+                          }
+                        : undefined
+                    }
                     style={{ maxWidth: '100%' }}
                     rightSection={
                       <ActionIcon
@@ -2541,6 +2564,9 @@ function AIChatSessionDrawer({
                     }
                   >
                     {t`Asking about work order`}: {workFocusHint.label}
+                    {workFocusHint.requestId
+                      ? ` · Request ${workFocusHint.requestId}`
+                      : ''}
                   </Badge>
                 </Group>
               )}

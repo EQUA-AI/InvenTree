@@ -5,6 +5,7 @@
 		"tests/s1/workListFixtures.ts",
 		"tests/s4/workExecutionFixtures.ts",
 		"tests/s4/pui_work_handled.spec.ts",
-		"tests/s4/pui_work_diagnose.spec.ts"
+		"tests/s4/pui_work_diagnose.spec.ts",
+        "tests/s4/pui_work_investigation.spec.ts"
 	]
 }

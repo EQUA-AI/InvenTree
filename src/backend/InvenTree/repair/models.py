@@ -985,3 +985,27 @@ __all__ = [
 # Risk Radar / Command Center models live in their own module; importing it
 # here registers them with Django's app registry (model discovery).
 from . import risk_models  # noqa: F401
+
+
+class RepairFindingRevision(models.Model):
+    """The original observation before an attributed correction, retained intact.
+
+    Current finding ids remain stable for existing consumers. Each replacement
+    appends the prior snapshot, including original recorder and evidence links.
+    Legacy overwritten values cannot be reconstructed and are not invented.
+    """
+
+    finding = models.ForeignKey(
+        RepairInvestigationFinding, on_delete=models.CASCADE, related_name='revisions'
+    )
+    snapshot = models.JSONField()
+    replaced_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.PROTECT, related_name='+'
+    )
+    replaced_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        """Require another revision rather than destructive edits through app paths."""
+        if not self._state.adding:
+            raise ValueError('Finding revisions are immutable')
+        super().save(*args, **kwargs)

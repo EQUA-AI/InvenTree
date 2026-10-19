@@ -533,7 +533,14 @@ class RepairStateTests(MaintenanceAiReadTestCase):
     def test_missing_packet_is_reported_not_invented(self):
         """A job with no packet says so explicitly."""
         state = ai_read.work_order_repair_state(self.customer_wo)
-        self.assertEqual(state, {'work_order_id': self.customer_wo.pk, 'packet': None})
+        self.assertEqual(
+            state,
+            {
+                'work_order_id': self.customer_wo.pk,
+                'packet': None,
+                'requests': {'available': True, 'reason': '', 'items': []},
+            },
+        )
 
     def test_packet_identity_is_projected_with_fenced_free_text(self):
         """Status fields ride bare; operator prose rides fenced."""
@@ -734,17 +741,13 @@ class ExcludedFieldsTests(RepairStateTests):
 
     def test_withheld_fields_never_appear_in_any_projection(self):
         """Walk the whole JSON surface for every sentinel at once."""
-        blob = json.dumps(
-            {
-                'row': ai_read.work_order_row(self.wo),
-                'overview': ai_read.work_order_overview(self.wo),
-                'readiness': ai_read.work_order_readiness(self.actor, self.wo),
-                'repair_state': ai_read.work_order_repair_state(self.wo),
-                'open_repairs': ai_read.open_repairs_for_machine(
-                    self.actor, self.machine
-                ),
-            }
-        )
+        blob = json.dumps({
+            'row': ai_read.work_order_row(self.wo),
+            'overview': ai_read.work_order_overview(self.wo),
+            'readiness': ai_read.work_order_readiness(self.actor, self.wo),
+            'repair_state': ai_read.work_order_repair_state(self.wo),
+            'open_repairs': ai_read.open_repairs_for_machine(self.actor, self.machine),
+        })
         for forbidden in (
             HIDDEN_QUOTE,  # WorkOrder.service_quote
             HIDDEN_PHONE,  # WorkOrder.company_contact_phone

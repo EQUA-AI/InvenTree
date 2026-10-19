@@ -12,6 +12,7 @@
 import { t } from '@lingui/core/macro';
 import { Anchor, Badge, Group, Tooltip } from '@mantine/core';
 import { IconClipboardList } from '@tabler/icons-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 
 import { useAssistantNavigation } from './useAssistantNavigation';
@@ -19,12 +20,18 @@ import { type ChatWorkFocus, workFocusReturnPath } from './workFocus';
 
 export function WorkFocusChip({ focus }: Readonly<{ focus: ChatWorkFocus }>) {
   const onNavigate = useAssistantNavigation();
+  const queries = useQueryClient();
   const workOrderId = focus.identity.work_order_id;
-  const label = focus.label?.trim()
+  const workLabel = focus.label?.trim()
     ? focus.label.trim()
     : t`Work order ${workOrderId}`;
+  const label = focus.identity.request_id
+    ? `${workLabel} · ${t`Request ${focus.identity.request_id}`} · v${focus.identity.request_version}`
+    : workLabel;
   const unavailable = focus.state === 'unavailable';
-  const changedDetail = t`This work order's status, machine or access has changed since this answer. Check the work order before relying on it.`;
+  const changedDetail = focus.identity.request_id
+    ? t`This Work or investigation request has changed since this answer. Check the saved request before relying on it.`
+    : t`This work order's status, machine or access has changed since this answer. Check the work order before relying on it.`;
   const workBadge = (
     <Badge
       size='sm'
@@ -32,6 +39,14 @@ export function WorkFocusChip({ focus }: Readonly<{ focus: ChatWorkFocus }>) {
       color={unavailable ? 'gray' : 'teal'}
       leftSection={<IconClipboardList size={12} />}
       style={{ cursor: unavailable ? 'default' : 'pointer', maxWidth: '100%' }}
+      styles={
+        focus.identity.request_id
+          ? {
+              root: { height: 'auto' },
+              label: { whiteSpace: 'normal', overflowWrap: 'anywhere' }
+            }
+          : undefined
+      }
     >
       {label}
     </Badge>
@@ -55,8 +70,27 @@ export function WorkFocusChip({ focus }: Readonly<{ focus: ChatWorkFocus }>) {
       ) : (
         <Anchor
           component={Link}
-          to={workFocusReturnPath(workOrderId, focus.returnPath)}
-          onClick={onNavigate}
+          to={workFocusReturnPath(
+            workOrderId,
+            focus.returnPath,
+            focus.identity.request_id
+          )}
+          onClick={(event) => {
+            if (
+              !event.defaultPrevented &&
+              event.button === 0 &&
+              !event.ctrlKey &&
+              !event.metaKey &&
+              !event.shiftKey &&
+              !event.altKey &&
+              focus.identity.request_id
+            ) {
+              void queries.invalidateQueries({
+                queryKey: ['work-order', workOrderId]
+              });
+            }
+            onNavigate(event);
+          }}
           underline='never'
           aria-label={t`Open work order: ${label}`}
           title={label}

@@ -45,6 +45,7 @@ from .closeout_api import (
     CloseoutVerify,
 )
 from .dashboard_metrics import OPEN
+from .investigation_api import WorkInvestigationRequests
 from .jobkit_api import (
     JobKitAllocationConsume,
     JobKitAllocationIssue,
@@ -1487,6 +1488,16 @@ kanban_api_urls = [
             path('list/', WorkOrderTableList.as_view(), name='kanban-work-order-table'),
             path(
                 'persona/', WorkOrderPersona.as_view(), name='kanban-work-order-persona'
+            ),
+            path(
+                '<int:pk>/investigation-requests/',
+                WorkInvestigationRequests.as_view(),
+                name='work-investigation-requests',
+            ),
+            path(
+                '<int:pk>/investigation-requests/<int:request_id>/',
+                WorkInvestigationRequests.as_view(),
+                name='work-investigation-request',
             ),
             path(
                 '<int:pk>/overview/',

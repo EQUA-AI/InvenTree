@@ -630,7 +630,13 @@ class ThreadRepository:
             )
 
     def acknowledge_work_focus(
-        self, thread_id: str, work_order_id: int, *, expected_version: int
+        self,
+        thread_id: str,
+        work_order_id: int,
+        *,
+        expected_version: int,
+        request_id: int | None = None,
+        request_version: int | None = None,
     ) -> dict[str, Any]:
         """Issue an owner-bound receipt without changing analysis scope."""
         with transaction.atomic():
@@ -641,6 +647,8 @@ class ThreadRepository:
                 thread.pk,
                 work_order_id,
                 expected_version,
+                request_id=request_id,
+                request_version=request_version,
             )
 
     def verify_work_focus(self, thread_id: str, receipt: str) -> dict[str, Any]:
@@ -679,12 +687,15 @@ class ThreadRepository:
             if not isinstance(snapshot, dict):
                 continue
             work_order_id = snapshot.get('work_order_id')
-            if work_order_id not in live:
+            cache_key = (work_order_id, snapshot.get('request_id'))
+            if cache_key not in live:
                 try:
-                    live[work_order_id] = authorized_focus(self.actor_id, work_order_id)
+                    live[cache_key] = authorized_focus(
+                        self.actor_id, work_order_id, snapshot.get('request_id')
+                    )
                 except WorkFocusError:
-                    live[work_order_id] = None
-            current = live[work_order_id]
+                    live[cache_key] = None
+            current = live[cache_key]
             states[message_id] = (
                 'unavailable'
                 if current is None
@@ -707,7 +718,9 @@ class ThreadRepository:
             return None
         if not isinstance(snapshot, dict):
             raise WorkFocusError('work_focus_rejected')
-        current = authorized_focus(self.actor_id, snapshot.get('work_order_id'))
+        current = authorized_focus(
+            self.actor_id, snapshot.get('work_order_id'), snapshot.get('request_id')
+        )
         return {
             'thread_id': thread.pk,
             'turn_id': turn.pk,

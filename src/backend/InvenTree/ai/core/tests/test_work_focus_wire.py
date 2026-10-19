@@ -586,8 +586,11 @@ def test_reload_reports_how_the_work_stands_now_for_the_owner(
 def test_public_focus_is_the_wire_identity() -> None:
     assert public_focus(SNAPSHOT) == PUBLIC
     assert public_focus(None) is None
-    assert set(wire.WorkFocusIdentity.model_fields) == set(PUBLIC)
-    wire.WorkFocusIdentity.model_validate(PUBLIC)
+    assert set(wire.WorkFocusIdentity.model_fields) == set(PUBLIC) | {
+        "request_id",
+        "request_version",
+    }
+    assert wire.WorkFocusIdentity.model_validate(PUBLIC).model_dump(exclude_none=True) == PUBLIC
     with pytest.raises(ValidationError):
         wire.WorkFocusIdentity.model_validate(SNAPSHOT)
 
@@ -657,3 +660,76 @@ def test_lookup_rail_omits_an_unknown_machine() -> None:
     )
     note = messages[-1].contents[-1].text
     assert "This question is about work order 73. " in note
+
+
+@pytest.mark.parametrize("field", ["request_id", "request_version"])
+@pytest.mark.parametrize("value", [True, "401", 0, -1, 1.5])
+def test_request_focus_ids_are_strict_positive_integers(field, value):
+    """The request extension cannot coerce hints into canonical identity."""
+    body = {"work_order_id": 73, "expected_version": 4, "request_id": 401, "request_version": 3}
+    body[field] = value
+    with pytest.raises(ValidationError):
+        WorkFocusAcknowledgeRequest.model_validate(body)
+
+
+def test_request_focus_wire_keeps_ids_and_hides_the_signed_boundary():
+    """All result wires can retain the same request identity as the receipt."""
+    snapshot = {**SNAPSHOT, "schema_version": 2, "request_id": 401, "request_version": 3}
+    public = public_focus(snapshot)
+    assert public["request_id"] == 401
+    assert public["request_version"] == 3
+    assert "boundary_hash" not in public
+    assert wire.WorkFocusIdentity.model_validate(public).model_dump() == public
+
+
+def test_request_uploads_stay_in_existing_assistant_and_labels_have_no_path():
+    """A file can be proposed without handing a local path or invented facts to the model."""
+    from ai.core.turn.execution import _effective_pinned_workflow
+    from ai.core.workflows.wf8_lookup import T1LookupWorkflow
+
+    focus = {**PUBLIC, "schema_version": 2, "request_id": 401, "request_version": 3}
+    run = SimpleNamespace(
+        server_pinned_workflow=None,
+        modality="text",
+        work_focus=focus,
+        metadata={
+            "uploaded_files": [
+                {
+                    "file_id": "thread/report.pdf",
+                    "filename": "report.pdf",
+                    "path": "/private/server/path",
+                    "size": 123,
+                    "extension": ".pdf",
+                }
+            ]
+        },
+    )
+    assert _effective_pinned_workflow(run) == "wf8"
+    messages = T1LookupWorkflow._with_work_focus(
+        "Record this", {"work_focus": focus, **run.metadata}
+    )
+    note = messages[-1].contents[-1].text
+    assert "propose_investigation_artifact" in note
+    assert "thread/report.pdf" in note
+    assert "/private/server/path" not in note
+    assert "File content has not been interpreted" in note
+    run.work_focus = PUBLIC
+    assert _effective_pinned_workflow(run) == "wf6"
+    run.server_pinned_workflow = "wf7"
+    assert _effective_pinned_workflow(run) == "wf7"
+
+
+def test_investigation_tool_source_is_isolated_across_concurrent_turns():
+    """Model calls inherit only the exact executing turn, with no leaked next-turn binding."""
+    from ai.core.integrations.investigation_tools import _source, bind_investigation_source
+
+    async def turn(thread, identifier):
+        with bind_investigation_source(thread, identifier):
+            await asyncio.sleep(0)
+            return _source.get()
+
+    async def exercise():
+        return await asyncio.gather(turn("thread_1", "turn_1"), turn("thread_2", "turn_2"))
+
+    assert asyncio.run(exercise()) == [("thread_1", "turn_1"), ("thread_2", "turn_2")]
+    assert _source.get() is None

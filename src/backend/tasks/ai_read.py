@@ -475,10 +475,21 @@ def work_order_repair_state(work_order) -> dict[str, Any]:
     module-level import here would be circular.
     """
     from repair.models import ApprovedRepairScope, RepairPacket
+    from tasks.services.investigation_requests import project_requests
 
+    def fenced(value):
+        if isinstance(value, str):
+            return fence(value)
+        if isinstance(value, list):
+            return [fenced(item) for item in value]
+        if isinstance(value, dict):
+            return {key: fenced(item) for key, item in value.items()}
+        return value
+
+    requests = fenced(project_requests(work_order))
     packet = RepairPacket.objects.filter(work_order=work_order).order_by('pk').first()
     if packet is None:
-        return {'work_order_id': work_order.pk, 'packet': None}
+        return {'work_order_id': work_order.pk, 'packet': None, 'requests': requests}
 
     findings = [
         {
@@ -528,6 +539,7 @@ def work_order_repair_state(work_order) -> dict[str, Any]:
 
     return {
         'work_order_id': work_order.pk,
+        'requests': requests,
         'packet': {
             'packet_id': packet.pk,
             'reference': packet.reference or '',

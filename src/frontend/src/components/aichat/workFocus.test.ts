@@ -172,3 +172,71 @@ describe('reloaded Work-focus state', () => {
     expect(reloadedWorkFocus({ work_order_id: 73 }, 'changed')).toBeNull();
   });
 });
+
+describe('P41 request focus', () => {
+  const identity = {
+    schema_version: 2,
+    kind: 'work_order',
+    work_order_id: 73,
+    lifecycle_version: 7,
+    machine_id: 18,
+    request_id: 401,
+    request_version: 3
+  };
+  const ack = {
+    schema_version: 1,
+    thread_id: 'request-thread',
+    focus: identity,
+    receipt: 'signed-request-receipt',
+    expires_in: 300
+  };
+  it('accepts only the exact request and revision under the exact Work', () => {
+    expect(
+      parseWorkFocusAcknowledgement(ack, 'request-thread', 73, 7, 401, 3)?.focus
+    ).toEqual(identity);
+    expect(
+      parseWorkFocusAcknowledgement(ack, 'request-thread', 73, 7, 402, 3)
+    ).toBeNull();
+    expect(
+      parseWorkFocusAcknowledgement(ack, 'request-thread', 73, 7, 401, 4)
+    ).toBeNull();
+    expect(
+      parseWorkFocusAcknowledgement(ack, 'request-thread', 73, 7)
+    ).toBeNull();
+    expect(
+      parseWorkFocusAcknowledgement(
+        { ...ack, focus: { ...identity, schema_version: 1 } },
+        'request-thread',
+        73,
+        7,
+        401,
+        3
+      )
+    ).toBeNull();
+  });
+  it('rejects half-pairs, additional fields and malformed request ids', () => {
+    for (const bad of [undefined, null, true, '401', 0, -1]) {
+      expect(
+        parseWorkFocusIdentity({ ...identity, request_id: bad })
+      ).toBeNull();
+      expect(
+        parseWorkFocusIdentity({ ...identity, request_version: bad })
+      ).toBeNull();
+    }
+    expect(parseWorkFocusIdentity({ ...identity, finding_id: 12 })).toBeNull();
+  });
+  it('restores the selected request after reload and validates the Work return', () => {
+    expect(reloadedWorkFocus(identity)?.returnPath).toBe(
+      '/maintenance/work-orders/73?work_panel=diagnose&investigation_request=401'
+    );
+    expect(
+      workFocusReturnPath(
+        73,
+        '/maintenance/work-orders/999?work_panel=parts',
+        401
+      )
+    ).toBe(
+      '/maintenance/work-orders/73?work_panel=diagnose&investigation_request=401'
+    );
+  });
+});

@@ -13,12 +13,13 @@ import { diagnoseReturnPath } from './investigationProjection';
  *
  * It opens the assistant focused on this exact Work at the lifecycle version
  * shown, returning to the panel it was launched from. The assistant's Work
- * focus is the supported context: no saved request, finding or evidence id is
- * carried, and the caption says so rather than implying it.
+ * focus carries a saved request and revision when supplied. Evidence is shared
+ * only through an explicitly approved proposal in that same assistant.
  */
 export function ContinueInvestigation({
   workOrder,
   panel = 'diagnose',
+  request,
   label,
   caption = true,
   variant = 'filled'
@@ -28,6 +29,7 @@ export function ContinueInvestigation({
     'id' | 'lifecycle_version' | 'reference' | 'title'
   >;
   panel?: string;
+  request?: { id: number; version: number };
   label?: string;
   caption?: boolean;
   variant?: 'filled' | 'light' | 'default';
@@ -57,6 +59,9 @@ export function ContinueInvestigation({
           openGlobalAIChatAboutWork({
             workOrderId: workOrder.id,
             lifecycleVersion: workOrder.lifecycle_version,
+            ...(request
+              ? { requestId: request.id, requestVersion: request.version }
+              : {}),
             label: `${workOrder.reference ?? `WO-${workOrder.id}`} · ${workOrder.title}`,
             returnPath
           })
@@ -65,8 +70,10 @@ export function ContinueInvestigation({
         {label ?? t`Continue investigation`}
       </Button>
       {caption && (
-        <Text size='xs' c='dimmed' maw={560}>
-          {t`Opens the existing assistant on this Work. Respond, correct a finding, add a clarification or say a check cannot be done there. A specific request or finding is not carried into chat yet, so name it in your message.`}
+        <Text size='sm' maw={560}>
+          {request
+            ? t`Opens the existing assistant on this saved request. Review and approve the assistant’s proposal in chat to share typed evidence. Chat alone does not resolve the request.`
+            : t`Opens the existing assistant on this Work. To share evidence for a saved request, use that request’s Discuss action. Name any other finding in your message.`}
         </Text>
       )}
     </Stack>

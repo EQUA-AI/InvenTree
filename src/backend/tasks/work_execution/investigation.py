@@ -6,13 +6,14 @@ findings and the approved intervention basis. It never carries the model's
 confidence number: certainty is expressed through the cited evidence, its
 relation to the cause and the named gaps.
 
-No investigation-request entity exists (no id, owner, state or due time), so
-``requests`` reports ``no_provider`` rather than dressing the diagnosis's
-proposed checks up as saved requests. Findings are overwritten in place by
-their writer, so ``finding_history`` says earlier values are not retained.
+P41 adds canonical Work-owned request/evidence records. P42 retains earlier
+finding observations as attributed revisions; historic values overwritten before
+that feature cannot be reconstructed.
 """
 
 from __future__ import annotations
+
+from tasks.services.investigation_requests import project_requests
 
 from .common import packet_of
 
@@ -160,7 +161,7 @@ def project(work_order) -> dict:
             'findings': [],
             'finding_history': 'not_applicable',
             'intervention': None,
-            'requests': {'available': False, 'reason': 'no_provider'},
+            'requests': project_requests(work_order),
         }
     return {
         'rule': RULE,
@@ -171,9 +172,29 @@ def project(work_order) -> dict:
         },
         'explanation': _explanation(packet),
         'findings': _findings(packet),
-        # ``record_finding`` upserts on the finding key and overwrites value,
-        # verification and author; no earlier version is kept.
-        'finding_history': 'overwritten_in_place',
+        # Current ids stay stable; earlier observations are separate revisions.
+        'finding_history': 'preserved_revisions',
+        'finding_revisions': _revisions(packet),
         'intervention': _intervention(packet),
-        'requests': {'available': False, 'reason': 'no_provider'},
+        'requests': project_requests(work_order),
     }
+
+
+def _revisions(packet):
+    from repair.models import RepairFindingRevision
+
+    from .common import person
+
+    return [
+        {
+            'id': row.pk,
+            'finding_id': row.finding_id,
+            'snapshot': row.snapshot,
+            'replaced_by': person(row.replaced_by),
+            'replaced_at': row.replaced_at.isoformat(),
+        }
+        for row in RepairFindingRevision.objects
+        .filter(finding__packet=packet)
+        .select_related('replaced_by')
+        .order_by('replaced_at', 'pk')
+    ]
