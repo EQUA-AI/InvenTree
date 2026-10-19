@@ -74,7 +74,7 @@ export function ContinueInvestigation({
           {request
             ? t`Opens the existing assistant on this saved request. Review and approve the assistant’s proposal in chat to share typed evidence. Chat alone does not resolve the request.`
             : t`Opens the existing assistant on this Work. To share evidence for a saved request, use that request’s Discuss action. Name any other finding in your message.`}{' '}
-          {t`Chat does not save finding corrections or resolutions; use the native repair packet for supported changes.`}
+          {t`Chat does not save finding corrections, resolutions or agreed checks; use the native repair packet to record supported changes.`}
         </Text>
       )}
     </Stack>

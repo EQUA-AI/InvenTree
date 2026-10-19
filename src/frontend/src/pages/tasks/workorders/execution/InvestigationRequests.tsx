@@ -63,7 +63,7 @@ export function InvestigationRequests({
       <Alert
         color='gray'
         title={t`No saved investigation request`}
-      >{t`This server keeps no investigation request with an owner, status or due time, so there is no request queue to show. Checks are agreed in the assistant.`}</Alert>
+      >{t`This server keeps no investigation request with an owner, status or due time, so there is no request queue to show. Checks can be discussed in the assistant; chat does not create or agree a saved investigation request.`}</Alert>
     );
   if (!Array.isArray(requests.items))
     return (

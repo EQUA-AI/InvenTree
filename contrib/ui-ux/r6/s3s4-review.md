@@ -34,4 +34,4 @@ High and medium findings:
 
 ## Outcome
 
-Pending the fixes: P09, P11, P12, P18 and P20 stay **Ready for review** in the backlog until their findings are fixed and re-checked. Dispositions are recorded here when each fix run is merged.
+All 36 confirmed findings were sent to Codex with each ticket's next run and fixed, each with its disposition in the ticket report (P09: 5, P11: 9, P12: 10, P18: 8, P20: 4); fixes merged in `4ff346734`..`4db5f2992`. Re-checked by the coordinator on the host browser: Health S3 108/108 + S0 95/95; Performance S3 146/146 + S0 95/95; S4 52/52, S1 work 44/44, S0 work 18/18; main S6 36/36 and S3 machine-work 46/46 before the closeout-disclosure follow-up, whose S0 95/95, S1 178/178 and S6 44/44 are Codex's runs in Docker Chromium; the coordinator's full host replay on the merged tip `4db5f2992` is recorded separately. P09, P11, P18 and P20 are **Ready for review**; P12 is **Blocked** on its named missing providers.
