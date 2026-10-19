@@ -3,6 +3,7 @@ import {
   Alert,
   Badge,
   Card,
+  Divider,
   Group,
   Loader,
   SimpleGrid,
@@ -16,6 +17,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import { useApi } from '../../contexts/ApiContext';
+import { FaultOccurrences } from './faults/FaultOccurrences';
 
 interface CountRow {
   code?: string;
@@ -90,13 +92,28 @@ function CountTable({
 }
 
 /**
- * Deterministic fault-history rollup (C4): server-computed aggregates only —
- * maintenance cadence, approved-scope failure codes, and causes from
- * verified closeouts. Declared and observed provenance are labelled apart.
+ * R6 UI08 Fault History: the native rollup first, then each recorded
+ * occurrence with its retained evidence and owning work (P12). The two load
+ * independently, so one failing never hides the other.
  */
 export default function FaultHistoryPanel({
   machineId
 }: Readonly<{ machineId: number }>) {
+  return (
+    <Stack gap='lg'>
+      <FaultHistoryRollup machineId={machineId} />
+      <Divider />
+      <FaultOccurrences machineId={machineId} />
+    </Stack>
+  );
+}
+
+/**
+ * Deterministic fault-history rollup (C4): server-computed aggregates only —
+ * maintenance cadence, approved-scope failure codes, and causes from
+ * verified closeouts. Declared and observed provenance are labelled apart.
+ */
+function FaultHistoryRollup({ machineId }: Readonly<{ machineId: number }>) {
   const api = useApi();
   const query = useQuery({
     queryKey: ['machine-fault-history', machineId],

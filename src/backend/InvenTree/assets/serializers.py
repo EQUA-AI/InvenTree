@@ -176,6 +176,7 @@ class AssetMaintenanceRecordSerializer(serializers.ModelSerializer):
     work_order_reference = serializers.SerializerMethodField()
     work_order_title = serializers.SerializerMethodField()
     work_order_type = serializers.SerializerMethodField()
+    work_order_component = serializers.SerializerMethodField()
     lifecycle_status = serializers.SerializerMethodField()
     actual_completed_at = serializers.SerializerMethodField()
     downtime_minutes = serializers.SerializerMethodField()
@@ -198,6 +199,7 @@ class AssetMaintenanceRecordSerializer(serializers.ModelSerializer):
             'work_order_reference',
             'work_order_title',
             'work_order_type',
+            'work_order_component',
             'lifecycle_status',
             'actual_completed_at',
             'downtime_minutes',
@@ -287,6 +289,11 @@ class AssetMaintenanceRecordSerializer(serializers.ModelSerializer):
         """Maintenance type (corrective, preventive, inspection, ...)."""
         work_order = self._visible_work_order(record)
         return work_order.work_order_type if work_order else None
+
+    def get_work_order_component(self, record) -> str | None:
+        """The component the linked work order recorded (R6 P12), if any."""
+        work_order = self._visible_work_order(record)
+        return (work_order.affected_component or None) if work_order else None
 
     def get_lifecycle_status(self, record) -> str | None:
         """Work-order lifecycle outcome; distinct from the board stage."""

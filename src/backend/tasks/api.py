@@ -44,6 +44,7 @@ from .closeout_api import (
     CloseoutReadingList,
     CloseoutVerify,
 )
+from .dashboard_metrics import OPEN
 from .jobkit_api import (
     JobKitAllocationConsume,
     JobKitAllocationIssue,
@@ -449,9 +450,23 @@ class WorkOrderTableList(WorkOrderBoardList):
             self._attention_date = timezone.localdate() if value == 'true' else None
         return self._attention_date
 
+    def _lifecycle_group(self):
+        """``open`` narrows to the open lifecycle set; nothing else is offered.
+
+        R6 P12: the machine Maintenance tab's Open work view. The set is the
+        one the Machines list and location counts use (``dashboard_metrics.
+        OPEN``), so its count agrees with theirs in the same scope.
+        """
+        value = self.request.query_params.get('lifecycle_group')
+        if value not in (None, '', 'open'):
+            raise ValidationError({'lifecycle_group': ['Use open.']})
+        return value or None
+
     def get_queryset(self):
-        """Narrow to the attention rule when it was requested."""
+        """Narrow to the attention rule and lifecycle group when requested."""
         queryset = super().get_queryset()
+        if self._lifecycle_group() == 'open':
+            queryset = queryset.filter(lifecycle_status__in=OPEN)
         today = self._attention_today()
         return queryset if today is None else queryset.filter(attention_filter(today))
 

@@ -31,6 +31,7 @@ import { useApi } from '../../../contexts/ApiContext';
 import { useUserState } from '../../../states/UserState';
 import { HealthStateBadge } from '../health/common';
 
+import { machineOpenWorkHref } from '../maintenance/machineWorkViews';
 import { LocationBrowser, locationKindLabel } from './LocationBrowser';
 import { LocationEditDialog, MachineMoveDialog } from './LocationDialogs';
 import {
@@ -388,7 +389,10 @@ export function ScopedMachineList({
                         '—'
                       )}
                     </Table.Td>
-                    <MachineWorkCell value={machine.open_work} />
+                    <MachineWorkCell
+                      value={machine.open_work}
+                      href={machineDetailHref(machine.pk, rowScope)}
+                    />
                     <MachineCriticalityCell value={machine.criticality} />
                   </Table.Tr>
                 ))}
@@ -495,11 +499,14 @@ const PRIORITY_COLORS: Record<WorkPriority, string> = {
 /**
  * R6 UI01: open Work for the row's machine, from the reader's Work scope.
  * Condition (Alarms), Work and placement stay separate facts. An unknown
- * count says so instead of showing a reassuring dash; the count is not a
- * link yet, because the machine Maintenance view lists completed records
- * until its open-work view (P12) exists.
+ * count says so instead of showing a reassuring dash. A count opens the
+ * machine's Maintenance tab on its Open work view (P12), which counts the
+ * same open set in the same scope, with this list's return state kept.
  */
-function MachineWorkCell({ value }: Readonly<{ value: unknown }>) {
+function MachineWorkCell({
+  value,
+  href
+}: Readonly<{ value: unknown; href: string }>) {
   const summary = machineWorkSummary(value);
   if (summary.kind === 'unavailable') {
     return (
@@ -521,9 +528,15 @@ function MachineWorkCell({ value }: Readonly<{ value: unknown }>) {
   return (
     <Table.Td data-open-work={summary.count}>
       <Group gap={6} wrap='nowrap'>
-        <Text size='sm' style={{ whiteSpace: 'nowrap' }}>
+        <Anchor
+          component={Link}
+          to={machineOpenWorkHref(href)}
+          size='sm'
+          style={{ whiteSpace: 'nowrap' }}
+          aria-label={t`${summary.count} open work orders — open the machine's open work`}
+        >
           {t`${summary.count} open`}
-        </Text>
+        </Anchor>
         {priority && (
           <Badge
             size='xs'

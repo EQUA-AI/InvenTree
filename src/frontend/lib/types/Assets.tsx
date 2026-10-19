@@ -88,6 +88,8 @@ export interface AssetMaintenanceRecord {
   work_order_reference: string | null;
   work_order_title: string | null;
   work_order_type: string | null;
+  /** R6 P12: the linked work order's recorded component, when it has one. */
+  work_order_component?: string | null;
   lifecycle_status: string | null;
   actual_completed_at: string | null;
   downtime_minutes: number | null;

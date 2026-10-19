@@ -251,6 +251,103 @@ class AssetMachineFaultHistory(APIView):
         return Response(machine_fault_history(request.user, machine, fenced=False))
 
 
+def _scoped_machine(request, pk):
+    """The machine when the reader's machine scope covers it, else a 404."""
+    from django.http import Http404
+
+    from tasks.scope import require_machine_scope
+
+    machine = AssetMachine.objects.filter(pk=pk).first()
+    if machine is None:
+        raise Http404
+    try:
+        require_machine_scope(request.user, machine)
+    except ScopeError as exc:
+        raise Http404 from exc
+    return machine
+
+
+class AssetMachineWorkSummary(APIView):
+    """R6 P12: counts for the machine's Open work and Completed history views.
+
+    Scoped like the fault history. See ``assets.machine_history``.
+    """
+
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
+
+    def get(self, request, pk):
+        """Return both counts; an unresolved Work scope is null, not zero."""
+        from assets.machine_history import machine_work_summary
+
+        machine = _scoped_machine(request, pk)
+        response = Response(machine_work_summary(request.user, machine))
+        response['Cache-Control'] = 'private, no-store'
+        return response
+
+
+class AssetMachineFaultOccurrences(APIView):
+    """R6 P12 (UI08): the machine's fault occurrences with retained evidence.
+
+    Each occurrence is an existing anomaly; work is re-authorized per row.
+    See ``assets.machine_history``.
+    """
+
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
+
+    def get(self, request, pk):
+        """Return a page of occurrences, newest first."""
+        from assets.machine_history import OccurrenceQueryError, fault_occurrences
+
+        machine = _scoped_machine(request, pk)
+        try:
+            data = fault_occurrences(
+                request.user,
+                machine,
+                status=request.query_params.get('status') or 'all',
+                limit=request.query_params.get('limit'),
+                offset=request.query_params.get('offset'),
+            )
+        except OccurrenceQueryError as exc:
+            return Response(
+                {'code': 'INVALID_OCCURRENCE_QUERY', 'detail': str(exc)}, status=400
+            )
+        response = Response(data)
+        response['Cache-Control'] = 'private, no-store'
+        return response
+
+
+class AssetMachineFaultOccurrence(APIView):
+    """One occurrence with every retained snapshot and its samples."""
+
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
+
+    def get(self, request, pk, occurrence):
+        """Return the occurrence, or 404 when it is not this machine's."""
+        from django.http import Http404
+
+        from assets.machine_history import fault_occurrence
+
+        machine = _scoped_machine(request, pk)
+        data = fault_occurrence(request.user, machine, occurrence)
+        if data is None:
+            raise Http404
+        response = Response(data)
+        response['Cache-Control'] = 'private, no-store'
+        return response
+
+
 class AssetMachinePositions(APIView):
     """R6 P07: the machine's records for each reference 3D model position.
 
@@ -391,6 +488,21 @@ assets_api_urls = [
                 '<int:pk>/positions/',
                 AssetMachinePositions.as_view(),
                 name='asset-machine-positions',
+            ),
+            path(
+                '<int:pk>/fault-history/occurrences/',
+                AssetMachineFaultOccurrences.as_view(),
+                name='asset-machine-fault-occurrences',
+            ),
+            path(
+                '<int:pk>/fault-history/occurrences/<int:occurrence>/',
+                AssetMachineFaultOccurrence.as_view(),
+                name='asset-machine-fault-occurrence',
+            ),
+            path(
+                '<int:pk>/work-summary/',
+                AssetMachineWorkSummary.as_view(),
+                name='asset-machine-work-summary',
             ),
         ]),
     ),

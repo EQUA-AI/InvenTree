@@ -5,6 +5,8 @@
 		"tests/performance/fixtures.ts",
 		"tests/s3/performanceFixtures.ts",
 		"tests/s3/pui_performance_native.spec.ts",
-		"tests/s3/pui_performance_evaluation.spec.ts"
+		"tests/s3/pui_performance_evaluation.spec.ts",
+		"tests/s3/machineWorkFixtures.ts",
+		"tests/s3/pui_machine_work_history.spec.ts"
 	]
 }
