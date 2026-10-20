@@ -2,7 +2,6 @@ import { t } from '@lingui/core/macro';
 import {
   Alert,
   Anchor,
-  Badge,
   Card,
   Group,
   List,
@@ -17,8 +16,10 @@ import {
   IconCircleX,
   IconHelpCircle
 } from '@tabler/icons-react';
-import dayjs from 'dayjs';
 import { Link } from 'react-router-dom';
+import { displayInstant } from '../displayClock';
+import monitoring from '../monitoring.module.css';
+import { StatusBadge as Badge } from './StatusBadge';
 
 import type {
   AnalysisStatus,
@@ -90,7 +91,7 @@ export function PreliminaryResultsPanel({
     results.authority === 'source_declared' ? results.authority_source : null;
 
   return (
-    <Card withBorder radius='md' p='md'>
+    <Card withBorder p='md'>
       <Stack gap='sm'>
         <Group justify='space-between' align='center' wrap='wrap'>
           <Group gap='xs'>
@@ -128,8 +129,8 @@ export function PreliminaryResultsPanel({
             )}
           </Group>
           {results.generated_at && (
-            <Text size='xs' c='dimmed'>
-              {t`Generated ${dayjs(results.generated_at).format('MMM D, HH:mm')} by ${results.provider}`}
+            <Text size='xs' className={monitoring.meta}>
+              {t`Generated ${displayInstant(results.generated_at) ?? t`Time unavailable`} by ${results.provider}`}
             </Text>
           )}
         </Group>
@@ -150,7 +151,7 @@ export function PreliminaryResultsPanel({
 
         {results.evidence.length > 0 && (
           <Stack gap={4}>
-            <Text size='xs' c='dimmed' fw={500}>
+            <Text size='xs' className={monitoring.meta} fw={500}>
               {t`Evidence`}
             </Text>
             {results.evidence.map((item) => {
@@ -173,9 +174,10 @@ export function PreliminaryResultsPanel({
                   <Stack gap={0} style={{ flex: 1 }}>
                     <Text size='sm'>{item.observation}</Text>
                     {item.snapshot_id && (
-                      <Text size='xs' c='dimmed'>
+                      <Text size='xs' className={monitoring.meta}>
                         {machineId ? (
                           <Anchor
+                            className={monitoring.link}
                             component={Link}
                             size='xs'
                             to={`/machines/machine/${machineId}/health/?snapshot=${encodeURIComponent(item.snapshot_id)}`}
@@ -197,7 +199,7 @@ export function PreliminaryResultsPanel({
 
         {results.alternatives.length > 0 && (
           <Stack gap={4}>
-            <Text size='xs' c='dimmed' fw={500}>
+            <Text size='xs' className={monitoring.meta} fw={500}>
               {t`Rule these out first`}
             </Text>
             <List size='sm' spacing={2}>
@@ -210,7 +212,7 @@ export function PreliminaryResultsPanel({
 
         {results.confirm_tests.length > 0 && (
           <Stack gap={4}>
-            <Text size='xs' c='dimmed' fw={500}>
+            <Text size='xs' className={monitoring.meta} fw={500}>
               {t`Suggested confirmation tests`}
             </Text>
             <List size='sm' spacing={2}>
@@ -222,16 +224,16 @@ export function PreliminaryResultsPanel({
         )}
 
         <Group gap='lg' wrap='wrap'>
-          <Text size='xs' c='dimmed'>
+          <Text size='xs' className={monitoring.meta}>
             {t`Based on ${results.data_window.snapshot_count} snapshot(s)`}
           </Text>
           {results.freshness.stale && (
-            <Text size='xs' c='dimmed'>
+            <Text size='xs' className={monitoring.meta}>
               {t`${results.freshness.stale_signal_count} stale signal(s)`}
             </Text>
           )}
           {results.quality.bad_signal_count > 0 && (
-            <Text size='xs' c='dimmed'>
+            <Text size='xs' className={monitoring.meta}>
               {t`${results.quality.bad_signal_count} signal(s) of poor quality`}
             </Text>
           )}

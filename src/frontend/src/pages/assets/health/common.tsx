@@ -1,5 +1,5 @@
 import { plural, t } from '@lingui/core/macro';
-import { Badge, Group, Text } from '@mantine/core';
+import { Group, Text } from '@mantine/core';
 import {
   IconAlertTriangle,
   IconCircleCheck,
@@ -7,8 +7,6 @@ import {
   IconPlugConnectedX,
   IconUrgent
 } from '@tabler/icons-react';
-import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
 import type { ReactNode } from 'react';
 
 import type {
@@ -19,7 +17,9 @@ import type {
   SignalQuality
 } from '@lib/types/MachineHealth';
 
-dayjs.extend(relativeTime);
+import { displayInstant } from '../displayClock';
+import monitoring from '../monitoring.module.css';
+import { StatusBadge } from './StatusBadge';
 
 /**
  * Shared presentation for health state, severity, quality and freshness.
@@ -85,10 +85,16 @@ export function severityVisual(severity: AnomalySeverity): StateVisual {
         label: t`Warning`,
         icon: <IconAlertTriangle size={16} />
       };
-    default:
+    case 'info':
       return {
         color: 'blue',
         label: t`Info`,
+        icon: <IconHelpCircle size={16} />
+      };
+    default:
+      return {
+        color: 'gray',
+        label: t`Severity unavailable`,
         icon: <IconHelpCircle size={16} />
       };
   }
@@ -100,7 +106,7 @@ export function HealthStateBadge({
 }: Readonly<{ state: HealthState; size?: string }>) {
   const visual = healthStateVisual(state);
   return (
-    <Badge
+    <StatusBadge
       style={{ flexShrink: 0, maxWidth: 'none' }}
       color={visual.color}
       variant='light'
@@ -108,7 +114,7 @@ export function HealthStateBadge({
       leftSection={visual.icon}
     >
       {visual.label}
-    </Badge>
+    </StatusBadge>
   );
 }
 
@@ -117,9 +123,9 @@ export function SeverityBadge({
 }: Readonly<{ severity: AnomalySeverity }>) {
   const visual = severityVisual(severity);
   return (
-    <Badge color={visual.color} variant='light' leftSection={visual.icon}>
+    <StatusBadge color={visual.color} variant='light' leftSection={visual.icon}>
       {visual.label}
-    </Badge>
+    </StatusBadge>
   );
 }
 
@@ -164,9 +170,9 @@ export function SourceTypeBadge({
     return null;
   }
   return (
-    <Badge variant='outline' color='gray'>
+    <StatusBadge variant='outline' color='gray'>
       {sourceTypeLabel(type)}
-    </Badge>
+    </StatusBadge>
   );
 }
 
@@ -180,28 +186,15 @@ export function ObservedAt({
   observedAt,
   stale
 }: Readonly<{ observedAt: string | null; stale: boolean }>) {
-  if (!observedAt) {
+  const time = displayInstant(observedAt);
+  if (!time)
     return (
-      <Text size='sm' c='dimmed'>
-        {t`No reading`}
-      </Text>
+      <Text
+        size='sm'
+        className={monitoring.meta}
+      >{t`Observation time unavailable`}</Text>
     );
-  }
-
-  return (
-    <Group
-      gap={6}
-      wrap='wrap'
-      title={new Date(observedAt).toLocaleString(undefined, {
-        timeZoneName: 'long'
-      })}
-    >
-      <Text size='sm'>{dayjs(observedAt).format('MMM D, HH:mm')}</Text>
-      <Text size='xs' c={stale ? undefined : 'dimmed'}>
-        {stale ? t`Stale` : dayjs(observedAt).fromNow()}
-      </Text>
-    </Group>
-  );
+  return <StackedObservation time={time} stale={stale} />;
 }
 
 /** Bounds follow the native classifier: a minimum is breached below, a maximum above. */
@@ -234,4 +227,20 @@ export function unassociatedAnomalyText(count: number): string {
     other:
       '# active machine anomalies do not name their signals; this signal may be affected.'
   });
+}
+
+function StackedObservation({
+  time,
+  stale
+}: Readonly<{ time: string; stale: boolean }>) {
+  return (
+    <Group gap={6} wrap='wrap'>
+      <Text size='sm' ff='monospace'>
+        {time}
+      </Text>
+      {stale && (
+        <StatusBadge color='gray'>{t`Stale · last observed`}</StatusBadge>
+      )}
+    </Group>
+  );
 }

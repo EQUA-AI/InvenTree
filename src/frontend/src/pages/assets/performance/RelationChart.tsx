@@ -8,6 +8,7 @@ import {
   useComputedColorScheme
 } from '@mantine/core';
 import { useMemo } from 'react';
+import monitoring from '../monitoring.module.css';
 
 import { formatInstant, formatTick, formatValue, niceTicks } from './format';
 import { type RelationPoint, axisDomain } from './series';
@@ -127,7 +128,7 @@ export function RelationChart({
   }, [points, windowSeconds, scheme]);
 
   return (
-    <Paper withBorder radius='md' p='sm'>
+    <Paper withBorder p='sm'>
       <Stack gap={4}>
         <Text size='sm' fw={600}>
           {title}
@@ -135,12 +136,18 @@ export function RelationChart({
         {points.length < 3 ? (
           // As tall as the chart it stands in for, so a card in a row of them
           // does not collapse, and specific about how few were paired.
-          <Text size='sm' c='dimmed' py='lg' mih={height}>
+          <Text size='sm' className={monitoring.meta} py='lg' mih={height}>
             {t`Only ${points.length} paired readings in this window; too few to show a relationship.`}
           </Text>
         ) : (
           <>
             <ScatterChart
+              textColor='var(--aimms-monitoring-meta, var(--mantine-color-text))'
+              styles={{
+                axisLabel: {
+                  fill: 'var(--aimms-monitoring-meta, var(--mantine-color-text))'
+                }
+              }}
               h={height}
               data={bands}
               dataKey={{ x: 'x', y: 'y' }}
@@ -184,7 +191,7 @@ export function RelationChart({
                 )
               }}
             />
-            <Text size='xs' c='dimmed'>
+            <Text size='xs' className={monitoring.meta}>
               {t`Each point is one snapshot in which both were read; colour strengthens toward the present. A pattern here is an operating pattern, not a cause.`}
             </Text>
           </>
@@ -235,12 +242,12 @@ function PointTooltip({
     </Group>
   );
   return (
-    <Paper withBorder shadow='sm' radius='sm' p='xs' style={{ minWidth: 180 }}>
-      <Text size='xs' c='dimmed'>
+    <Paper withBorder shadow='sm' p='xs' style={{ minWidth: 180 }}>
+      <Text size='xs' className={monitoring.meta}>
         {formatInstant(datum.t)}
       </Text>
       {datum.name && (
-        <Text size='xs' c='dimmed' mb={4}>
+        <Text size='xs' className={monitoring.meta} mb={4}>
           {datum.name}
         </Text>
       )}

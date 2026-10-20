@@ -17,6 +17,8 @@ import { IconX } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { type ReactNode, type RefObject, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { displayInstant } from '../displayClock';
+import monitoring from '../monitoring.module.css';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
@@ -49,22 +51,7 @@ function freshnessBudget(seconds: number) {
 
 /** A full instant with its zone, so no time is read on the wrong clock. */
 export function fullInstant(value: string | number | null | undefined) {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-  return date.toLocaleString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    timeZoneName: 'short'
-  });
+  return displayInstant(value);
 }
 
 function Fact({
@@ -73,7 +60,7 @@ function Fact({
 }: Readonly<{ label: string; children: ReactNode }>) {
   return (
     <Stack gap={2} style={{ minWidth: 0 }}>
-      <Text size='xs' c='dimmed' fw={500}>
+      <Text size='sm' className={monitoring.meta} fw={500}>
         {label}
       </Text>
       <div style={{ overflowWrap: 'anywhere' }}>{children}</div>
@@ -83,7 +70,7 @@ function Fact({
 
 function Missing({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <Text size='sm' c='dimmed'>
+    <Text size='sm' className={monitoring.meta}>
       {children}
     </Text>
   );
@@ -208,7 +195,6 @@ export function SignalEvidence({
   return (
     <Paper
       withBorder
-      radius='md'
       p='md'
       id={SIGNAL_EVIDENCE_ID}
       component='section'
@@ -252,11 +238,11 @@ export function SignalEvidence({
               {signal.component ? (
                 <Group gap={6} wrap='wrap'>
                   <Text size='sm'>{signal.component.name}</Text>
-                  <Text size='xs' c='dimmed' ff='monospace'>
+                  <Text size='sm' className={monitoring.meta} ff='monospace'>
                     {signal.component.code}
                   </Text>
                   <Badge
-                    size='xs'
+                    size='sm'
                     variant='outline'
                     color={
                       signal.component.status === 'verified' ? 'teal' : 'gray'
@@ -285,7 +271,7 @@ export function SignalEvidence({
                   <Text size='sm' fw={500}>
                     {reading}
                   </Text>
-                  <Badge size='xs' variant='light' color='gray'>
+                  <Badge size='sm' variant='light' color='gray'>
                     {signal.stale ? t`Last-known` : t`Current`}
                   </Badge>
                 </Group>
@@ -337,13 +323,14 @@ export function SignalEvidence({
                     : t`Not designated`}
               </Text>
               {signal.critical_designation && (
-                <Text size='xs' c='dimmed'>
+                <Text size='sm' className={monitoring.meta}>
                   {signal.critical_designation.reason} ·{' '}
                   {signal.critical_designation.recorded_by ?? t`Not recorded`} ·{' '}
                   {fullInstant(signal.critical_designation.recorded_at)}
                 </Text>
               )}
               <Anchor
+                className={monitoring.link}
                 component={Link}
                 to='/machines/registry/'
                 size='sm'
@@ -353,7 +340,7 @@ export function SignalEvidence({
               {limits ? (
                 <Stack gap={0}>
                   <Text size='sm'>{limits}</Text>
-                  <Text size='xs' c='dimmed'>
+                  <Text size='sm' className={monitoring.meta}>
                     {t`Configured on this mapping in AIMMS`}
                   </Text>
                 </Stack>
@@ -372,7 +359,7 @@ export function SignalEvidence({
                     : ''}
                 </Text>
                 {source ? (
-                  <Text size='xs' c='dimmed'>
+                  <Text size='sm' className={monitoring.meta}>
                     {source.healthy
                       ? t`Connected; last success ${fullInstant(source.last_success_at) ?? t`never`}`
                       : source.active
@@ -380,7 +367,7 @@ export function SignalEvidence({
                         : t`Disabled`}
                   </Text>
                 ) : (
-                  <Text size='xs' c='dimmed'>
+                  <Text size='sm' className={monitoring.meta}>
                     {t`Connection status not reported`}
                   </Text>
                 )}
@@ -418,7 +405,7 @@ export function SignalEvidence({
             <Group key={anomaly.pk} gap='xs' wrap='wrap'>
               <SeverityBadge severity={anomaly.severity} />
               <Text size='sm'>{anomaly.title}</Text>
-              <Text size='xs' c='dimmed'>
+              <Text size='sm' className={monitoring.meta}>
                 {t`First observed ${fullInstant(anomaly.first_observed_at) ?? '—'}`}
               </Text>
               <AnomalyHistoryLink
@@ -428,6 +415,7 @@ export function SignalEvidence({
               />
               {anomaly.work_order ? (
                 <Anchor
+                  className={monitoring.link}
                   component={Link}
                   to={`/maintenance/work-orders/${anomaly.work_order}/`}
                   size='sm'
@@ -435,14 +423,14 @@ export function SignalEvidence({
                   {t`Open owning work order`}
                 </Anchor>
               ) : (
-                <Text size='xs' c='dimmed'>
+                <Text size='sm' className={monitoring.meta}>
                   {t`No owning work recorded`}
                 </Text>
               )}
             </Group>
           ))}
           {context.unassociated.length > 0 ? (
-            <Text size='sm' c='dimmed'>
+            <Text size='sm' className={monitoring.meta}>
               {unassociatedAnomalyText(context.unassociated.length)}
             </Text>
           ) : null}
@@ -452,9 +440,9 @@ export function SignalEvidence({
           <Text size='sm' fw={600}>
             {t`Retained evidence`}
           </Text>
-          {snapshotsQuery.isLoading ? <Loader size='xs' /> : null}
+          {snapshotsQuery.isLoading ? <Loader size='sm' /> : null}
           {snapshotsQuery.isError ? (
-            <Text size='sm' c='dimmed'>
+            <Text size='sm' className={monitoring.meta}>
               {t`Retained evidence could not be read. That is not an absence of snapshots.`}
             </Text>
           ) : null}
@@ -464,12 +452,13 @@ export function SignalEvidence({
           {snapshots.slice(0, 5).map((snapshot) => (
             <Stack key={snapshot.id} gap={0}>
               <Group gap={6} wrap='wrap'>
-                <Badge size='xs' variant='light' color='violet'>
+                <Badge size='sm' variant='light' color='violet'>
                   {t`Retained snapshot`}
                 </Badge>
                 <Text size='sm'>
                   {t`Captured ${fullInstant(snapshot.captured_at) ?? '—'} for ${snapshotReason(snapshot.reason)}`}
                   <Anchor
+                    className={monitoring.link}
                     component={Link}
                     to={`/machines/machine/${machineId}/health/?snapshot=${snapshot.id}`}
                     size='sm'
@@ -485,21 +474,21 @@ export function SignalEvidence({
                 occurrence={snapshot.anomaly}
                 snapshot={snapshot.id}
               />
-              <Text size='xs' c='dimmed'>
+              <Text size='sm' className={monitoring.meta}>
                 {t`Window ${fullInstant(snapshot.window_start) ?? '—'} to ${fullInstant(snapshot.window_end) ?? '—'}`}
                 {' · '}
                 {qualityLabel(snapshot.quality)}
                 {snapshot.stale ? ` · ${t`stale when captured`}` : ''}
                 {snapshot.anomaly ? ` · ${t`anomaly ${snapshot.anomaly}`}` : ''}
                 {' · '}
-                <Text span ff='monospace' size='xs'>
+                <Text span ff='monospace' size='sm'>
                   {snapshot.content_hash.slice(0, 12)}
                 </Text>
               </Text>
             </Stack>
           ))}
           {snapshots.length > 5 ? (
-            <Text size='xs' c='dimmed'>
+            <Text size='sm' className={monitoring.meta}>
               {t`${snapshots.length - 5} older snapshots are not listed.`}
             </Text>
           ) : null}

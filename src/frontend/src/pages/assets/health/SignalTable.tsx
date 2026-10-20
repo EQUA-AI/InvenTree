@@ -11,6 +11,7 @@ import {
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
+import monitoring from '../monitoring.module.css';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
@@ -36,7 +37,7 @@ import { indexSuppliedTrends, suppliedTrend } from './suppliedTrends';
 
 function formatValue(signal: MachineSignal): string {
   if (signal.value === null || signal.value === undefined) {
-    return '—';
+    return t`Unavailable · no observation`;
   }
   const value =
     typeof signal.value === 'number'
@@ -48,9 +49,8 @@ function formatValue(signal: MachineSignal): string {
 /**
  * Mapped signals with their current value, provenance and freshness.
  *
- * A stale row still shows its last value - hiding it would lose information -
- * but its state reads Unknown rather than Normal, so an old number can never be
- * mistaken for a healthy machine.
+ * Last-known readings retain their backend state and an explicit stale label.
+ * The compact rows and all-columns view use the same native table and fields.
  */
 /** The sparkline window, matched to the one the standalone sparkline uses. */
 const SPARKLINE_WINDOW_SECONDS = 10 * 60;
@@ -153,8 +153,10 @@ export function SignalTable({
 
   if (signals.length === 0) {
     return (
-      <Paper withBorder radius='md' p='md'>
-        <Text c='dimmed'>{t`No signals are mapped for this machine.`}</Text>
+      <Paper withBorder p='md'>
+        <Text
+          className={monitoring.meta}
+        >{t`No signals are mapped for this machine.`}</Text>
       </Paper>
     );
   }
@@ -167,19 +169,21 @@ export function SignalTable({
           placeholder={t`Signal, tag, component or unit`}
           value={search}
           onChange={(event) => setSearch(event.currentTarget.value)}
-          style={{ flex: '1 1 220px' }}
+          flex='1 1 220px'
+          classNames={{ input: monitoring.input, description: monitoring.meta }}
         />
         <Select
           label={t`Component filter`}
-          placeholder={t`All components`}
+          description={t`Clear to include all components`}
           clearable
           value={component}
           onChange={setComponent}
           data={components}
-          style={{ flex: '1 1 220px' }}
+          flex='1 1 220px'
+          classNames={{ input: monitoring.input, description: monitoring.meta }}
         />
       </Group>
-      <Text size='xs' c='dimmed'>
+      <Text size='xs' className={monitoring.meta}>
         {signals.some((signal) => signal.active === false)
           ? t`${visibleSignals.length} of ${signals.length} signal records in this table, including inactive retained bindings. Condition and coverage above describe the whole machine.`
           : t`${visibleSignals.length} of ${signals.length} mapped signals in this table. Condition and coverage above describe the whole machine.`}
@@ -194,7 +198,6 @@ export function SignalTable({
         <Text size='sm'>{t`No mapped signals match these filters. Clear the filters to see all signals.`}</Text>
       )}
       <Button
-        hiddenFrom='sm'
         variant='default'
         onClick={() => setMobileCards((value) => !value)}
       >
@@ -205,7 +208,6 @@ export function SignalTable({
         aria-label={t`Signal readings; scroll for all columns`}
         tabIndex={0}
         withBorder
-        radius='md'
         p={0}
         style={{ overflowX: 'auto' }}
       >
@@ -256,11 +258,12 @@ export function SignalTable({
               // biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout.
               <Table.Tr
                 role='row'
+                data-selected={selectedBinding === String(signal.binding_id)}
                 data-details-open={!!detailsOpen[signal.binding_id]}
                 key={signal.binding_id}
                 bg={
                   selectedBinding === String(signal.binding_id)
-                    ? 'var(--mantine-primary-color-light)'
+                    ? 'var(--mantine-color-body)'
                     : undefined
                 }
                 onClick={
@@ -280,6 +283,7 @@ export function SignalTable({
                   <Stack gap={0}>
                     {onInspect ? (
                       <Button
+                        className={monitoring.link}
                         justify='flex-start'
                         variant='subtle'
                         size='compact-sm'
@@ -300,8 +304,16 @@ export function SignalTable({
                     ) : (
                       <Text size='sm'>{signal.display_name}</Text>
                     )}
+                    {signal.critical_designation?.critical && (
+                      <Text size='sm' fw={600}>
+                        {signal.critical_designation.review_required ||
+                        signal.critical_designation.applies_current === false
+                          ? t`Critical signal · review required`
+                          : t`Designated critical signal`}
+                      </Text>
+                    )}
                     {signal.component && (
-                      <Text size='xs' c='dimmed'>
+                      <Text size='xs' className={monitoring.meta}>
                         {signal.component.name} · {signal.component.code}
                         {signal.component.status !== 'verified'
                           ? ` · ${t`Draft inference`}`
@@ -311,11 +323,11 @@ export function SignalTable({
                     {signal.active === false && (
                       <Text
                         size='xs'
-                        c='orange'
+                        className={monitoring.meta}
                       >{t`Inactive binding — retained for critical coverage review`}</Text>
                     )}
                     {signal.signal_kind && (
-                      <Text size='xs' c='dimmed'>
+                      <Text size='xs' className={monitoring.meta}>
                         {signal.signal_kind}
                       </Text>
                     )}
@@ -326,6 +338,12 @@ export function SignalTable({
                   <Text size='sm' fw={500}>
                     {formatValue(signal)}
                   </Text>
+                  {signal.stale && signal.value != null && (
+                    <Text
+                      size='sm'
+                      className={monitoring.meta}
+                    >{t`Last known · not current`}</Text>
+                  )}
                 </Table.Td>
                 {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
                 <Table.Td role='cell' data-label={t`State`}>
@@ -354,7 +372,7 @@ export function SignalTable({
                   <Text size='sm'>{conditionText(signal)}</Text>
                   {mobileCards && (
                     <Button
-                      hiddenFrom='sm'
+                      className={monitoring.link}
                       variant='subtle'
                       size='compact-sm'
                       mt='xs'

@@ -4,6 +4,18 @@ import { MACHINE, SIGNALS, mount } from './fixtures';
 
 void MACHINE;
 
+let pageErrors: string[] = [];
+test.beforeEach(({ page }) => {
+  pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+});
+test.afterEach(() => {
+  expect(
+    pageErrors,
+    'The component harness must not hide runtime errors'
+  ).toEqual([]);
+});
+
 test('the KPI strip shows fixture values and states what it cannot show', async ({
   page
 }) => {
@@ -13,7 +25,7 @@ test('the KPI strip shows fixture values and states what it cannot show', async 
   await expect(power).toContainText('MW');
   await expect(page.locator('[data-kpi="speed"]')).toContainText('745');
   await expect(page.locator('[data-kpi="vibration"]')).toContainText(
-    'No approved vibration channel'
+    'Unavailable · no vibration channel with a confirmed role and unit'
   );
   // Winding 4 is pegged at the over-range marker with quality bad: it is not
   // the highest sensor, and 3276.7 appears nowhere on the tile.
@@ -56,8 +68,20 @@ test('families are drawn as sections with a heatmap and calculated rises', async
   ).toBeVisible();
   // Said twice on purpose: on the KPI tile and as the section's own state.
   await expect(
-    page.getByText('No approved vibration channel', { exact: true })
+    page.getByText(
+      'Unavailable · no vibration channel with a confirmed role and unit',
+      { exact: true }
+    )
   ).toHaveCount(2);
+  // Absent families stay out of navigation; their mounted fallback must still explain why.
+  await expect(
+    page.locator('[data-section="Vibration and mechanical"]')
+  ).toContainText(
+    'Channels without a confirmed engineering role and unit cannot be used for vibration comparison.'
+  );
+  await expect(
+    page.getByText(/Unclassified tags remain in Other signals/)
+  ).toHaveCount(0);
   // A sensor without a usable reading is named as one the chart left out,
   // and no bar of its own is drawn for it.
   await expect(

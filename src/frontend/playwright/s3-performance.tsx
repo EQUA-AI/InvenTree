@@ -1,8 +1,10 @@
 import './aichat-drawer-lingui';
 
+import { FixtureTheme } from './FixtureTheme';
+
 import { i18n } from '@lingui/core';
 import { I18nProvider } from '@lingui/react';
-import { Button, Group, MantineProvider, Stack, Text } from '@mantine/core';
+import { Button, Group, Stack, Text } from '@mantine/core';
 import '@mantine/core/styles.css';
 import '@mantine/charts/styles.css';
 import '@mantine/dates/styles.css';
@@ -56,26 +58,28 @@ function Harness() {
   return (
     <Stack p='md' gap='sm'>
       <Text>S3 synthetic fixture — native Performance</Text>
-      <Text
-        data-testid='destination'
-        size='xs'
-        style={{ overflowWrap: 'anywhere' }}
-      >
-        {location.pathname + location.search}
-      </Text>
-      <Group gap='xs'>
-        <Button
+      <div hidden={params.get('compactChrome') === 'true'}>
+        <Text
+          data-testid='destination'
           size='xs'
-          variant='default'
-          onClick={() => navigate(`/machines/machine/${pk}/health`)}
+          style={{ overflowWrap: 'anywhere' }}
         >
-          Fixture leave Performance
-        </Button>
-        <Button size='xs' variant='default' onClick={() => navigate(-1)}>
-          Fixture back
-        </Button>
-        <QueryState />
-      </Group>
+          {location.pathname + location.search}
+        </Text>
+        <Group gap='xs'>
+          <Button
+            size='xs'
+            variant='default'
+            onClick={() => navigate(`/machines/machine/${pk}/health`)}
+          >
+            Fixture leave Performance
+          </Button>
+          <Button size='xs' variant='default' onClick={() => navigate(-1)}>
+            Fixture back
+          </Button>
+          <QueryState />
+        </Group>
+      </div>
       {onPerformance && (
         <PerformancePanel
           machine={{
@@ -91,9 +95,7 @@ function Harness() {
 
 createRoot(document.getElementById('root')!).render(
   <I18nProvider i18n={i18n}>
-    <MantineProvider
-      forceColorScheme={params.get('scheme') === 'dark' ? 'dark' : 'light'}
-    >
+    <FixtureTheme>
       <ApiProvider api={axios.create()} client={client}>
         <MemoryRouter
           basename={params.get('basename') ?? '/'}
@@ -102,6 +104,6 @@ createRoot(document.getElementById('root')!).render(
           <Harness />
         </MemoryRouter>
       </ApiProvider>
-    </MantineProvider>
+    </FixtureTheme>
   </I18nProvider>
 );

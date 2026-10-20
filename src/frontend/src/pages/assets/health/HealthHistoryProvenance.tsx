@@ -1,6 +1,8 @@
 import type { SignalTrend } from '@lib/types/MachineHealth';
 import { t } from '@lingui/core/macro';
 import { Stack, Text } from '@mantine/core';
+import { displayInstant } from '../displayClock';
+import monitoring from '../monitoring.module.css';
 
 /** Native trend metadata, without inventing SeriesResponse resolution/extent. */
 export function HealthHistoryProvenance({
@@ -24,10 +26,11 @@ export function HealthHistoryProvenance({
   return (
     <Stack gap={2} data-testid='health-history-provenance'>
       <Text
-        size='xs'
-        c='dimmed'
+        maw='70ch'
+        size='sm'
+        className={monitoring.meta}
       >{t`Current condition, values and row sparklines use current observations and the recent 10-minute source window. They are not the selected historical range. Retained snapshots keep their capture-time origin.`}</Text>
-      <Text size='xs'>
+      <Text maw='70ch' size='sm'>
         {blocked
           ? t`Investigation window not read.`
           : fixed
@@ -44,33 +47,27 @@ export function HealthHistoryProvenance({
                 : t`Source window returned.`}
       </Text>
       {window && (
-        <Text size='xs'>
+        <Text maw='70ch' size='sm'>
           {t`Requested window`}:{' '}
-          {new Date(window.from).toLocaleString(undefined, {
-            timeZoneName: 'short'
-          })}{' '}
-          —{' '}
-          {new Date(window.to).toLocaleString(undefined, {
-            timeZoneName: 'short'
-          })}
-          .
+          {displayInstant(window.from) ?? t`Time unavailable`} —{' '}
+          {displayInstant(window.to) ?? t`Time unavailable`}.
         </Text>
       )}
       {!trend && (
-        <Text size='xs'>
+        <Text maw='70ch' size='sm'>
           {t`Target source`}: {targetSource ?? t`Not mapped`} ·{' '}
           {t`Request budget: 4320 samples; at most 6 h per read.`}
         </Text>
       )}
       {trend && (
         <>
-          <Text size='xs'>
+          <Text maw='70ch' size='sm'>
             {t`History source`}: {trend.source_name} · {t`Read budget`}:{' '}
             {trend.max_samples} · {t`Sample ceiling`}:{' '}
             {trend.limits.max_samples} · {t`Window limit`}:{' '}
             {trend.limits.max_window_seconds / 3600} h.
           </Text>
-          <Text size='xs'>
+          <Text maw='70ch' size='sm'>
             {cadence != null && cadence > 0
               ? t`Measured interval: ${cadence} s (estimate from this read).`
               : t`Measured interval unavailable.`}{' '}

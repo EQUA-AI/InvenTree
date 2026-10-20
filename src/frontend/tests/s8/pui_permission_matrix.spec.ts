@@ -34,8 +34,12 @@ function watchWrites(page: Page) {
   return writes;
 }
 
-async function noWriteControls(page: Page, names: RegExp) {
+async function noWriteControls(page: Page, names: RegExp, minimum = 0) {
   const controls = page.getByRole('button', { name: names });
+  expect(
+    await controls.count(),
+    'Expected permission controls to be present'
+  ).toBeGreaterThanOrEqual(minimum);
   for (const control of await controls.all()) {
     if (await control.isVisible()) await expect.soft(control).toBeDisabled();
   }
@@ -452,9 +456,14 @@ for (const pump of [false, true]) {
           `mimic-${pump ? 'pump' : 'station'}-viewer-${scheme}.png`
         )
       );
+      // Position the action cell in both scroll axes: scrolling only the last
+      // button can leave its neighbours clipped at the phone viewport edge.
       await alarm
-        .getByRole('button', { name: 'Dismiss', exact: true })
-        .scrollIntoViewIfNeeded();
+        .locator('td')
+        .last()
+        .evaluate((cell) =>
+          cell.scrollIntoView({ block: 'center', inline: 'center' })
+        );
       for (const name of ['Acknowledge', 'Create repair', 'Dismiss'])
         await expect(
           alarm.getByRole('button', { name, exact: true })
@@ -560,7 +569,8 @@ for (const scheme of ['light', 'dark'] as const) {
     ).toBeVisible();
     await noWriteControls(
       page,
-      /^(Analyze|Acknowledge|Dismiss|Create repair|Start repair)$/
+      /^(Analyze|Acknowledge|Dismiss|Create repair|Start repair)\b/,
+      4
     );
     await expectNoPageOverflow(page);
     await capturePanel(page, info.outputPath(`viewer-health-${scheme}.png`));
@@ -659,7 +669,11 @@ for (const scheme of ['light', 'dark'] as const) {
     );
     await viewerEntry(page, '/machines/machine/18/parts/', scheme, 'machine');
     const row = page.getByRole('row').filter({ hasText: 'PS-MOTOR:1' });
-    await expect(row).toContainText('Fit not verified');
+    await expect(row.getByText('Draft', { exact: true })).toBeVisible();
+    await expect(row).toContainText('Slot assignment not verified');
+    await expect(row).toContainText(
+      'P32 synthetic inferred assignment; fit unverified.'
+    );
     await expect(row).toContainText('Not available');
     await expect(row.getByRole('link')).toHaveCount(0);
     await expect(
@@ -837,7 +851,8 @@ for (const status of [403, 404]) {
     ).toHaveCount(0);
     await noWriteControls(
       page,
-      /^(Analyze|Acknowledge|Dismiss|Create repair|Start repair)$/
+      /^(Analyze|Acknowledge|Dismiss|Create repair|Start repair)\b/,
+      1
     );
     await capturePanel(page, info.outputPath(`health-refused-${status}.png`));
     expect(writes).toEqual([]);
@@ -867,7 +882,8 @@ for (const status of [403, 404]) {
     ).toHaveCount(0);
     await noWriteControls(
       page,
-      /^(Analyze|Acknowledge|Dismiss|Create repair|Start repair)$/
+      /^(Analyze|Acknowledge|Dismiss|Create repair|Start repair)\b/,
+      1
     );
     await expectNoPageOverflow(page);
     await capturePanel(

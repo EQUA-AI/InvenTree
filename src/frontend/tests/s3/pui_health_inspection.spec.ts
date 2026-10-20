@@ -88,7 +88,14 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(modal.getByRole('combobox', { name: 'Range' })).toHaveValue(
       '15 minutes'
     );
-    await expect(modal.getByText(/^Selected window:/)).toHaveText(caption!);
+    // Expansion preserves the exact selected window/source and declares the
+    // shared clock, since the panel clock is outside the dialog.
+    await expect(modal.getByText(/^Selected window:/)).toHaveText(
+      caption!.replace(
+        'Read from ',
+        'Times: your clock (UTC, UTC+00:00). Read from '
+      )
+    );
     await expect(modal.locator('.recharts-area-curve')).toHaveAttribute(
       'stroke',
       /blue-6/

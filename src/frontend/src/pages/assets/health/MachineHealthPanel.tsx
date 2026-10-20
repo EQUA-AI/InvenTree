@@ -2,6 +2,7 @@ import { t } from '@lingui/core/macro';
 import {
   Alert,
   Anchor,
+  Box,
   Button,
   Center,
   Group,
@@ -15,6 +16,7 @@ import { IconInfoCircle, IconRefresh } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import monitoring from '../monitoring.module.css';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
@@ -28,6 +30,7 @@ import type {
 import { useApi } from '../../../contexts/ApiContext';
 import { showApiErrorMessage } from '../../../functions/notifications';
 import { WorkOrderCreateModal } from '../../maintenance/components/WorkOrderCreateModal';
+import { displayClockLabel, displayInstant } from '../displayClock';
 import { AlarmHistory } from './AlarmHistory';
 import { AnomalyList } from './AnomalyList';
 import { HealthSourceStatusTable } from './HealthSourceStatus';
@@ -237,20 +240,38 @@ export function MachineHealthPanel({
   const signal = signals.find((row) => String(row.binding_id) === bindingId);
 
   return (
-    <Stack gap='lg'>
-      <Group justify='space-between' align='center'>
-        <Title order={4}>{t`Current condition`}</Title>
+    <Stack
+      component='section'
+      aria-labelledby='pump-health-title'
+      gap='md'
+      className={monitoring.scope}
+      data-testid='pump-health'
+    >
+      <Group className={monitoring.band} justify='space-between' align='center'>
+        <Title id='pump-health-title' order={4}>{t`Current condition`}</Title>
         <Button
           size='xs'
-          variant='subtle'
+          variant='default'
           leftSection={<IconRefresh size={14} />}
           onClick={refreshAll}
         >
           {t`Refresh`}
         </Button>
+        {summary.active_anomaly_count > 0 && (
+          <Anchor
+            className={monitoring.link}
+            href='#health-active-anomalies'
+            size='sm'
+          >{t`Review active anomalies (${summary.active_anomaly_count})`}</Anchor>
+        )}
       </Group>
 
-      <MonitoringContinuityNotice />
+      <Text
+        size='sm'
+        className={monitoring.meta}
+        component='output'
+        aria-live='polite'
+      >{t`Condition read ${displayInstant(summaryQuery.dataUpdatedAt) ?? t`Time unavailable`} · Times: your clock (${displayClockLabel()}) for unshifted times · shifted anomaly times are labelled separately · plant timezone not supplied`}</Text>
       {!summary.configured ? (
         <Alert
           color='blue'
@@ -273,52 +294,6 @@ export function MachineHealthPanel({
           signals={signalsQuery.isError ? null : signals}
         />
       )}
-
-      <RetainedHealthEvidence machineId={machineId} />
-
-      <Stack gap='sm'>
-        <Group justify='space-between' align='center'>
-          <Title order={4}>{t`Active anomalies`}</Title>
-          {/* Where the reading behind an alarm is drawn, on the part it
-              belongs to. */}
-          {mimicHref && (
-            <Anchor component={Link} to={mimicHref} size='sm'>
-              {t`See the readings on the mimic`}
-            </Anchor>
-          )}
-        </Group>
-        {!anomaliesQuery.isError && (
-          <Text
-            size='sm'
-            c='dimmed'
-          >{t`Showing ${anomalies.length} active anomaly records on this machine (maximum 200); summary counts cover the machine's active set.`}</Text>
-        )}
-        {!anomalyAssociationKnown && !anomaliesQuery.isError && (
-          <Alert color='yellow'>{t`The active anomaly list is incomplete. Row association cannot establish an absence of anomalies.`}</Alert>
-        )}
-        {anomaliesQuery.isError ? (
-          <Alert
-            color='yellow'
-            title={t`Active anomalies unavailable`}
-          >{t`The anomaly read failed. An empty list cannot be inferred.`}</Alert>
-        ) : anomalies.length > 0 || anomalyAssociationKnown ? (
-          <AnomalyList
-            anomalies={anomalies}
-            acknowledging={acknowledging}
-            analyzing={analyzing}
-            results={results}
-            onAcknowledge={handleAcknowledge}
-            onCreateRepair={setRepairAnomaly}
-            onAnalyze={handleAnalyze}
-            onDismiss={setDismissing}
-          />
-        ) : null}
-      </Stack>
-
-      <Stack gap='sm'>
-        <Title order={4}>{t`Past alarms`}</Title>
-        <AlarmHistory machineId={machineId} />
-      </Stack>
 
       <Stack gap='sm'>
         <Title order={4}>{t`Signals`}</Title>
@@ -388,6 +363,63 @@ export function MachineHealthPanel({
         </Stack>
       )}
 
+      <Stack gap='sm'>
+        <Group justify='space-between' align='center'>
+          <Title
+            id='health-active-anomalies'
+            tabIndex={-1}
+            order={4}
+          >{t`Active anomalies`}</Title>
+          {/* Where the reading behind an alarm is drawn, on the part it
+              belongs to. */}
+          {mimicHref && (
+            <Anchor
+              className={monitoring.link}
+              component={Link}
+              to={mimicHref}
+              size='sm'
+            >
+              {t`See the readings on the mimic`}
+            </Anchor>
+          )}
+        </Group>
+        {!anomaliesQuery.isError && (
+          <Text
+            size='sm'
+            className={monitoring.meta}
+          >{t`Showing ${anomalies.length} active anomaly records on this machine (maximum 200); summary counts cover the machine's active set.`}</Text>
+        )}
+        {!anomalyAssociationKnown && !anomaliesQuery.isError && (
+          <Alert color='yellow'>{t`The active anomaly list is incomplete. Row association cannot establish an absence of anomalies.`}</Alert>
+        )}
+        {anomaliesQuery.isError ? (
+          <Alert
+            color='yellow'
+            title={t`Active anomalies unavailable`}
+          >{t`The anomaly read failed. An empty list cannot be inferred.`}</Alert>
+        ) : anomalies.length > 0 || anomalyAssociationKnown ? (
+          <AnomalyList
+            anomalies={anomalies}
+            acknowledging={acknowledging}
+            analyzing={analyzing}
+            results={results}
+            onAcknowledge={handleAcknowledge}
+            onCreateRepair={setRepairAnomaly}
+            onAnalyze={handleAnalyze}
+            onDismiss={setDismissing}
+          />
+        ) : null}
+      </Stack>
+
+      <Stack gap='sm'>
+        <Title order={4}>{t`Past alarms`}</Title>
+        <AlarmHistory machineId={machineId} />
+      </Stack>
+
+      <RetainedHealthEvidence machineId={machineId} />
+      <Box maw='70ch'>
+        <MonitoringContinuityNotice />
+      </Box>
       <Stack gap='sm'>
         <Title order={4}>{t`Source connections`}</Title>
         <HealthSourceStatusTable sources={summary.sources ?? []} />

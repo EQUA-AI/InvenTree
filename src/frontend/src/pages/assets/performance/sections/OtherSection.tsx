@@ -1,5 +1,6 @@
 import { t } from '@lingui/core/macro';
 import { Paper, Table, Text } from '@mantine/core';
+import monitoring from '../../monitoring.module.css';
 
 import type { SeriesEntry } from '@lib/types/MachineHealth';
 
@@ -25,7 +26,7 @@ export function OtherSection({
     return null;
   }
   return (
-    <Paper withBorder radius='md' p={0} style={{ overflowX: 'auto' }}>
+    <Paper withBorder p={0} style={{ overflowX: 'auto' }}>
       <Table striped highlightOnHover>
         <Table.Thead>
           <Table.Tr>
@@ -44,7 +45,7 @@ export function OtherSection({
               <Table.Tr key={p.id}>
                 <Table.Td>
                   <Text size='sm'>{p.label}</Text>
-                  <Text size='xs' c='dimmed'>
+                  <Text size='xs' className={monitoring.meta}>
                     {p.signal.external_key}
                   </Text>
                 </Table.Td>

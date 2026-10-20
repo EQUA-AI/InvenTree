@@ -4,7 +4,6 @@ import { apiUrl } from '@lib/functions/Api';
 import { t } from '@lingui/core/macro';
 import {
   Alert,
-  Badge,
   Button,
   Group,
   Loader,
@@ -21,7 +20,11 @@ import { RecordCommandState } from '../../../components/records/RecordCommandSta
 import { useRecordedCommand } from '../../../components/records/useRecordedCommand';
 import { useLocalState } from '../../../states/LocalState';
 import { useUserState } from '../../../states/UserState';
-import { recordedTime } from '../../tasks/workorders/execution/ExecutionFacts';
+import { displayInstant } from '../displayClock';
+import { StatusBadge as Badge } from '../health/StatusBadge';
+const recordedTime = (value: string) =>
+  displayInstant(value) ?? t`Time unavailable`;
+import monitoring from '../monitoring.module.css';
 import type { DisplayView } from './comparisonViews';
 
 type SharedView = {
@@ -80,8 +83,8 @@ export function SharedDisplayViews({
     >
       <Text fw={600} size='sm'>{t`Shared display views`}</Text>
       <Text
-        size='xs'
-        c='dimmed'
+        size='sm'
+        className={monitoring.meta}
       >{t`Visible to everyone who can read this machine. The creator owns each view; engineers curate the default set. Display choices do not save historical evidence or grant access.`}</Text>
       {!read && (
         <Button
@@ -111,11 +114,11 @@ export function SharedDisplayViews({
                     <Badge variant='light'>{t`Engineer default`}</Badge>
                   )}
                 </Group>
-                <Text size='xs' c='dimmed'>
+                <Text size='sm' className={monitoring.meta}>
                   {t`Created by`}: {view.owner ?? t`Not recorded`} ·{' '}
                   {recordedTime(view.recorded_at)}
                 </Text>
-                <Text size='xs' c='dimmed'>
+                <Text size='sm' className={monitoring.meta}>
                   {t`Last recorded by`}: {view.updated_by ?? t`Not recorded`} ·{' '}
                   {recordedTime(view.updated_at)}
                 </Text>
@@ -145,6 +148,7 @@ export function SharedDisplayViews({
                   )}
                   {view.owner_id === user.user?.pk && (
                     <Button
+                      className={monitoring.link}
                       variant='subtle'
                       disabled={
                         locked ||
@@ -161,8 +165,8 @@ export function SharedDisplayViews({
                   view.is_default &&
                   !user.hasChangeRole(UserRoles.admin) && (
                     <Text
-                      size='xs'
-                      c='dimmed'
+                      size='sm'
+                      className={monitoring.meta}
                     >{t`An engineer must remove this view from defaults before deletion.`}</Text>
                   )}
               </Stack>
@@ -174,6 +178,7 @@ export function SharedDisplayViews({
       {user.hasChangeRole(UserRoles.work_order) && (
         <>
           <TextInput
+            classNames={{ input: monitoring.input }}
             label={t`Shared view name`}
             maxLength={80}
             value={name}

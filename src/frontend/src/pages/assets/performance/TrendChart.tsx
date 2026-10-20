@@ -25,6 +25,8 @@ import {
   useState
 } from 'react';
 import { ReferenceArea } from 'recharts';
+import monitoring from '../monitoring.module.css';
+import { thresholdBands } from './thresholdBands';
 
 import { useHistoryReadFailures } from './HistoryReadContext';
 import {
@@ -54,6 +56,8 @@ export interface TrendSeries {
 }
 
 export interface ReferenceLine {
+  direction?: 'low' | 'high';
+  severity?: 'warning' | 'critical';
   y: number;
   label: string;
   color: string;
@@ -233,7 +237,7 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
         props.rows.some((row) =>
           visible.some((line) => typeof row[line.key] === 'number')
         ) && (
-          <Text size='xs' c='dimmed'>
+          <Text size='xs' className={monitoring.meta}>
             {failureText}
           </Text>
         )}
@@ -254,7 +258,7 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
             props.rows.some((row) =>
               visible.some((line) => typeof row[line.key] === 'number')
             ) && (
-              <Text size='xs' c='dimmed'>
+              <Text size='xs' className={monitoring.meta}>
                 {failureText}
               </Text>
             )}
@@ -295,7 +299,12 @@ function ChartBody({
   const [dragging, setDragging] = useState(false);
 
   const plotted = useMemo(
-    () => rows.some((row) => series.some((s) => row[s.key] !== null)),
+    () =>
+      rows.some((row) =>
+        series.some(
+          (s) => typeof row[s.key] === 'number' && Number.isFinite(row[s.key])
+        )
+      ),
     [rows, series]
   );
 
@@ -467,8 +476,15 @@ function ChartBody({
 
   if (!plotted) {
     return (
-      <Paper withBorder radius='sm' p='md' h={height}>
-        <Text size='sm' c={emptyText ? undefined : 'dimmed'}>
+      <Paper withBorder p='md' h={height}>
+        <Text
+          size='sm'
+          c={
+            emptyText
+              ? undefined
+              : 'var(--aimms-monitoring-meta, var(--mantine-color-text))'
+          }
+        >
           {emptyText ?? t`No readings in this window.`}
         </Text>
       </Paper>
@@ -481,17 +497,28 @@ function ChartBody({
           through ninety degrees ("V", "m") reads as a chevron or an E. */}
       {(leftTitle || rightTitle) && (
         <Group justify='space-between' gap='xs' px={4} mb={-4} wrap='nowrap'>
-          <Text size='xs' c='dimmed' truncate data-axis-title='left'>
+          <Text
+            size='xs'
+            className={monitoring.meta}
+            truncate
+            data-axis-title='left'
+          >
             {leftTitle}
           </Text>
           {withRight && (
-            <Text size='xs' c='dimmed' truncate data-axis-title='right'>
+            <Text
+              size='xs'
+              className={monitoring.meta}
+              truncate
+              data-axis-title='right'
+            >
               {rightTitle}
             </Text>
           )}
         </Group>
       )}
       <LineChart
+        textColor='var(--aimms-monitoring-meta, var(--mantine-color-text))'
         h={height}
         data={rows}
         dataKey='t'
@@ -539,7 +566,10 @@ function ChartBody({
         }}
         referenceLines={referenceLines?.map((line) => ({
           y: line.y,
-          label: line.label,
+          label: {
+            value: line.label,
+            fill: 'var(--aimms-monitoring-meta, var(--mantine-color-text))'
+          },
           color: line.color
         }))}
         lineChartProps={{
@@ -577,6 +607,20 @@ function ChartBody({
           )
         }}
       >
+        {thresholdBands(
+          referenceLines ?? [],
+          Number(axis.left.domain[0]),
+          Number(axis.left.domain[1])
+        ).map((band, index) => (
+          <ReferenceArea
+            key={`threshold-${index}`}
+            y1={band.from}
+            y2={band.to}
+            fill={`var(--mantine-color-${band.severity === 'critical' ? 'red' : 'yellow'}-6)`}
+            fillOpacity={0.08}
+            strokeOpacity={0}
+          />
+        ))}
         {selection && selection.start !== selection.end && (
           <ReferenceArea
             x1={Math.min(selection.start, selection.end)}
@@ -588,6 +632,18 @@ function ChartBody({
           />
         )}
       </LineChart>
+      {!!referenceLines?.length && (
+        <Text
+          size='sm'
+          maw='70ch'
+          className={monitoring.meta}
+          data-testid='threshold-key'
+        >
+          {t`Configured binding limits (current Health signal mapping)`}:{' '}
+          {referenceLines.map((line) => line.label).join(' · ')}.{' '}
+          {t`Shaded regions compare against these limits; engineering approval and historical applicability unavailable.`}
+        </Text>
+      )}
       {/* The row's height is reserved from the start, and clears the legend
           above it: mounted only once a drag finished, it grew the card under
           the cursor and started inside the legend's glyphs. */}
@@ -648,8 +704,8 @@ function TrendTooltip({
     return null;
   }
   return (
-    <Paper withBorder shadow='sm' radius='sm' p='xs' style={{ minWidth: 180 }}>
-      <Text size='xs' c='dimmed' mb={4}>
+    <Paper withBorder shadow='sm' p='xs' style={{ minWidth: 180 }}>
+      <Text size='xs' className={monitoring.meta} mb={4}>
         {formatInstant(instant)}
       </Text>
       <Stack gap={2}>
@@ -676,7 +732,11 @@ function TrendTooltip({
               <Text
                 size='xs'
                 fw={600}
-                c={value === null ? 'dimmed' : undefined}
+                c={
+                  value === null
+                    ? 'var(--aimms-monitoring-meta, var(--mantine-color-text))'
+                    : undefined
+                }
               >
                 {value === null
                   ? t`no reading`

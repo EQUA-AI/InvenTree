@@ -4,11 +4,13 @@ import {
   Group,
   Paper,
   Select,
+  SimpleGrid,
   Stack,
   Text,
   TextInput
 } from '@mantine/core';
 import { useMemo } from 'react';
+import monitoring from '../monitoring.module.css';
 import {
   PERFORMANCE_SECTIONS,
   type PerformanceSection,
@@ -44,7 +46,7 @@ export function ChannelNavigator({
     [parameters, search]
   );
   return (
-    <Paper withBorder radius='md' p='sm' data-testid='channel-navigator'>
+    <Paper withBorder p='sm' data-testid='channel-navigator'>
       <Stack gap='xs'>
         <Group justify='space-between'>
           <Text size='sm' fw={600}>
@@ -52,12 +54,13 @@ export function ChannelNavigator({
           </Text>
           <Button
             size='compact-xs'
-            variant='light'
+            variant='default'
             onClick={onShowAll}
           >{t`Show all`}</Button>
         </Group>
-        <Group align='flex-end' grow>
+        <SimpleGrid cols={{ base: 1, sm: 2 }}>
           <TextInput
+            classNames={{ input: monitoring.input }}
             label={t`Find a channel`}
             maxLength={200}
             placeholder={t`Name, tag or unit`}
@@ -65,6 +68,7 @@ export function ChannelNavigator({
             onChange={(event) => onSearch(event.currentTarget.value)}
           />
           <Select
+            classNames={{ input: monitoring.input }}
             label={t`Section`}
             value={section}
             allowDeselect={false}
@@ -77,11 +81,11 @@ export function ChannelNavigator({
               }))
             ]}
           />
-        </Group>
+        </SimpleGrid>
         <Text
-          size='xs'
-          c='dimmed'
-        >{t`Search locates whole native chart groups. History scope and chart selections are retained. Current readings remain independent of the selected history window.`}</Text>
+          size='sm'
+          className={monitoring.meta}
+        >{t`Search by name, tag or unit opens native chart groups; it keeps the history scope and chart selections.`}</Text>
         <Group gap='xs'>
           {PERFORMANCE_SECTIONS.map((key) => {
             const count = matched.filter((p) => sectionOf(p) === key).length;
@@ -91,6 +95,7 @@ export function ChannelNavigator({
                   key={key}
                   size='compact-xs'
                   variant={section === key ? 'light' : 'subtle'}
+                  aria-pressed={section === key}
                   onClick={() => onSection(key)}
                 >
                   {sectionTitle(key)} · {count}
@@ -111,6 +116,7 @@ export function ChannelNavigator({
           >
             {matched.map((p) => (
               <Button
+                className={monitoring.link}
                 key={p.id}
                 size='compact-xs'
                 h='auto'

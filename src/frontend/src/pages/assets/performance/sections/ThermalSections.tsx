@@ -1,7 +1,6 @@
 import { t } from '@lingui/core/macro';
 import {
   Alert,
-  Badge,
   Group,
   SimpleGrid,
   Stack,
@@ -11,6 +10,8 @@ import {
 } from '@mantine/core';
 import { IconInfoCircle } from '@tabler/icons-react';
 import { useMemo } from 'react';
+import { StatusBadge as Badge } from '../../health/StatusBadge';
+import monitoring from '../../monitoring.module.css';
 
 import type { SeriesEntry } from '@lib/types/MachineHealth';
 
@@ -124,10 +125,10 @@ export function VibrationSection({
         color='gray'
         variant='light'
         icon={<IconInfoCircle size={16} />}
-        title={t`No approved vibration channel`}
+        title={t`Unavailable · no vibration channel with a confirmed role and unit`}
       >
         <Text size='sm'>
-          {t`This pump's vibration tags are in the dictionary but have not passed review, because the source does not say whether they report displacement (µm) or velocity (mm/s). Until that is confirmed they are not shown as live readings, so this section has nothing it can honestly draw.`}
+          {t`Channels without a confirmed engineering role and unit cannot be used for vibration comparison.`}
         </Text>
       </Alert>
     );
@@ -255,7 +256,7 @@ function DifferenceCard(
     <Stack gap='md'>
       <Text
         size='sm'
-        c='dimmed'
+        className={monitoring.meta}
       >{t`Drawn apart: temperature rises in ${units.join(', ')} have separate axes; no conversion is assumed.`}</Text>
       {groups.map((group, index) => (
         <div key={group.key} data-difference-unit={unitText(group)}>
@@ -359,7 +360,7 @@ function SameScaleDifferenceCard({
   if (pairs.length === 0)
     return (
       <ChartCard title={title} description={description}>
-        <Text size='sm' c='dimmed'>
+        <Text size='sm' className={monitoring.meta}>
           {t`No pair could be calculated.`}
         </Text>
       </ChartCard>

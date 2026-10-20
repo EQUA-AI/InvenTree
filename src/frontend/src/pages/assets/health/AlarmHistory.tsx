@@ -10,14 +10,16 @@ import {
   TextInput
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import dayjs from 'dayjs';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { displayInstant } from '../displayClock';
+import monitoring from '../monitoring.module.css';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import type { MachineAnomaly } from '@lib/types/MachineHealth';
 import { useApi } from '../../../contexts/ApiContext';
+import { AnomalyTimeShift } from './AnomalyTimeShift';
 import { SeverityBadge } from './common';
 
 /** How many past alarms are shown before the rest are asked for. */
@@ -26,7 +28,7 @@ const FIRST_PAGE = 10;
 type Dismissal = { by?: string; note?: string };
 
 function when(value: string | null): string {
-  return value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '—';
+  return displayInstant(value) ?? t`Time unavailable`;
 }
 
 /** Everything about an alarm a reader might search the history for. */
@@ -56,7 +58,7 @@ function haystack(alarm: MachineAnomaly): string {
  * what became of it.
  *
  * Both times shown are when the condition was observed, first and last, and
- * both are on the same clock - the one the rest of the page shows. When the
+ * any display offset is identified on that row. When the
  * detector wrote the row closed is a fact about this server, on another
  * clock, and putting it beside them made an alarm on replayed history look
  * as though it had ended before it began.
@@ -79,15 +81,19 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
 
   const alarms = query.data ?? [];
   if (query.isLoading) {
-    return <Text c='dimmed'>{t`Loading past alarms…`}</Text>;
+    return <Text className={monitoring.meta}>{t`Loading past alarms…`}</Text>;
   }
   if (query.isError)
     return (
-      <Text c='dimmed'>{t`Past alarms could not be read. Their absence is not established.`}</Text>
+      <Text
+        className={monitoring.meta}
+      >{t`Past alarms could not be read. Their absence is not established.`}</Text>
     );
   if (!alarms.length) {
     return (
-      <Text c='dimmed'>{t`No past alarms recorded for this machine.`}</Text>
+      <Text
+        className={monitoring.meta}
+      >{t`No past alarms recorded for this machine.`}</Text>
     );
   }
   const wanted = search.trim().toLowerCase();
@@ -105,6 +111,7 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
     <Stack gap='xs'>
       <Group gap='sm'>
         <TextInput
+          classNames={{ input: monitoring.input }}
           size='xs'
           w={260}
           aria-label={t`Search past alarms`}
@@ -123,7 +130,7 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
             { value: 'warning', label: t`Warning` }
           ]}
         />
-        <Text size='xs' c='dimmed'>
+        <Text size='xs' className={monitoring.meta}>
           {count === total
             ? t`${total} alarms`
             : t`${count} of ${total} alarms`}
@@ -156,12 +163,14 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
                       {alarm.title}
                     </Text>
                     {alarm.evidence_summary && (
-                      <Text size='xs' c='dimmed'>
+                      <Text size='xs' className={monitoring.meta}>
                         {alarm.evidence_summary}
                       </Text>
                     )}
+                    <AnomalyTimeShift anomaly={alarm} />
                     {alarm.work_order && (
                       <Anchor
+                        className={monitoring.link}
                         component={Link}
                         to={`/maintenance/work-orders/${alarm.work_order}/`}
                         size='xs'
@@ -187,7 +196,7 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
                         <Text size='sm'>
                           {t`Dismissed by`} {dismissed.by || t`Unknown`}
                         </Text>
-                        <Text size='xs' c='dimmed'>
+                        <Text size='xs' className={monitoring.meta}>
                           {dismissed.note}
                         </Text>
                       </>
@@ -197,13 +206,13 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
                           {t`Acknowledged by`} {alarm.acknowledged_by_name}
                         </Text>
                         {alarm.acknowledgement_note && (
-                          <Text size='xs' c='dimmed'>
+                          <Text size='xs' className={monitoring.meta}>
                             {alarm.acknowledgement_note}
                           </Text>
                         )}
                       </>
                     ) : (
-                      <Text size='sm' c='dimmed'>
+                      <Text size='sm' className={monitoring.meta}>
                         {t`Nobody, before it ended`}
                       </Text>
                     )}
@@ -214,18 +223,23 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
           </Table.Tbody>
         </Table>
       </Table.ScrollContainer>
-      {!count && <Text c='dimmed' size='sm'>{t`No past alarm matches.`}</Text>}
+      {!count && (
+        <Text
+          className={monitoring.meta}
+          size='sm'
+        >{t`No past alarm matches.`}</Text>
+      )}
       {hidden > 0 && (
         <Group>
-          <Button variant='subtle' size='xs' onClick={() => setShowAll(true)}>
+          <Button
+            className={monitoring.link}
+            variant='subtle'
+            size='xs'
+            onClick={() => setShowAll(true)}
+          >
             {t`Show ${hidden} more`}
           </Button>
         </Group>
-      )}
-      {alarms.some((alarm) => alarm.display_shifted) && (
-        <Text size='xs' c='dimmed'>
-          {t`Times are on the clock this station is presented on, the same as the rest of the page.`}
-        </Text>
       )}
     </Stack>
   );

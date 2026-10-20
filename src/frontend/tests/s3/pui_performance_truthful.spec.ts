@@ -26,7 +26,12 @@ test('the charts say which window they draw, and when it is still the previous o
   await expect(status(page)).toHaveAttribute('data-window-status', 'current');
   await expect(status(page)).toContainText('Window on screen:');
   await expect(status(page)).toContainText('(1 h)');
-  await expect(status(page)).toContainText(/Times in .*UTC[+-]\d\d:\d\d/);
+  const clock = page
+    .getByTestId('pump-performance')
+    .getByText(/Times: your clock .*UTC[+-]\d\d:\d\d/);
+  await expect(clock).toHaveCount(1);
+  await expect(clock).toBeVisible();
+  await expect(status(page)).not.toContainText('Times in');
 
   await page.getByText('6 h', { exact: true }).click();
   await expect(status(page)).toHaveAttribute('data-window-status', 'updating');

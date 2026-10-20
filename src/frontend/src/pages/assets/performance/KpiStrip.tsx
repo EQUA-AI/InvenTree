@@ -1,6 +1,5 @@
 import { t } from '@lingui/core/macro';
 import {
-  Badge,
   Box,
   Group,
   Paper,
@@ -14,6 +13,8 @@ import {
   IconArrowUpRight,
   IconMinus
 } from '@tabler/icons-react';
+import { StatusBadge as Badge } from '../health/StatusBadge';
+import monitoring from '../monitoring.module.css';
 
 import type {
   HealthState,
@@ -131,7 +132,11 @@ function TrendMark({ trend }: Readonly<{ trend: Trend | null }>) {
         : t`Steady over the window`;
   return (
     <Tooltip label={label}>
-      <Text component='span' c='dimmed' style={{ display: 'inline-flex' }}>
+      <Text
+        component='span'
+        className={monitoring.meta}
+        style={{ display: 'inline-flex' }}
+      >
         {icon}
       </Text>
     </Tooltip>
@@ -145,7 +150,7 @@ function Range({
 }: Readonly<{ stats: SeriesStats | null; decimals: number; unit: string }>) {
   if (!stats) return null;
   return (
-    <Text size='xs' c='dimmed'>
+    <Text size='xs' className={monitoring.meta}>
       {t`Window`} {formatRange(stats.min, stats.max, decimals, unit)}
     </Text>
   );
@@ -168,19 +173,19 @@ export function KpiTileCard({
     );
 
   return (
-    <Paper withBorder radius='md' p='sm' data-kpi={tile.key}>
+    <Paper withBorder p='sm' data-kpi={tile.key}>
       <Stack gap={4}>
         {/* The label alone, always one line. A badge beside it wrapped the
             header on the one tile that carried a verdict, which dropped that
             tile's value a line below its neighbours' - so the badges sit on
             the age row at the foot instead, where the Stale badge also lands
             beside the yellow age it explains. */}
-        <Text size='xs' c='dimmed' fw={500}>
+        <Text size='xs' className={monitoring.meta} fw={500}>
           {tile.label}
         </Text>
         {missing ? (
-          <Text size='sm' c='dimmed' py={6}>
-            {tile.missingReason ?? t`No reading`}
+          <Text size='sm' className={monitoring.meta} py={6}>
+            {tile.missingReason || t`Unavailable · no usable observation`}
           </Text>
         ) : (
           <Stack gap={2}>
@@ -192,7 +197,7 @@ export function KpiTileCard({
               </Text>
               <Group gap={4} align='center' wrap='nowrap'>
                 {!tile.valueText && tile.unit && (
-                  <Text size='sm' c='dimmed'>
+                  <Text size='sm' className={monitoring.meta}>
                     {tile.unit}
                   </Text>
                 )}
@@ -203,7 +208,7 @@ export function KpiTileCard({
           </Stack>
         )}
         {tile.caption && (
-          <Text size='xs' c='dimmed'>
+          <Text size='xs' className={monitoring.meta}>
             {tile.caption}
           </Text>
         )}
@@ -218,7 +223,14 @@ export function KpiTileCard({
               label={t`Observed ${formatClockOn(tile.observedAt, now)}`}
               disabled={tile.observedAt === null}
             >
-              <Text size='xs' c={tile.stale ? 'yellow.8' : 'dimmed'}>
+              <Text
+                size='xs'
+                c={
+                  tile.stale
+                    ? 'var(--mantine-color-text)'
+                    : 'var(--aimms-monitoring-meta, var(--mantine-color-text))'
+                }
+              >
                 {tile.observedAt === null
                   ? t`No reading`
                   : formatAge(tile.observedAt, now)}
@@ -241,7 +253,7 @@ export function KpiTileCard({
               </Badge>
             )}
             {tile.stale && !missing && (
-              <Badge size='xs' color='yellow' variant='light'>
+              <Badge size='xs' color='gray' variant='light'>
                 {t`Stale`}
               </Badge>
             )}

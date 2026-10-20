@@ -1,7 +1,6 @@
 import { t } from '@lingui/core/macro';
 import {
   Alert,
-  Badge,
   Button,
   Center,
   Group,
@@ -15,10 +14,13 @@ import {
 import { IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { displayClockLabel } from '../displayClock';
+import { StatusBadge as Badge } from '../health/StatusBadge';
 import { HistoryProvenance } from '../investigation/HistoryProvenance';
 import { InvestigationSlices } from '../investigation/InvestigationSlices';
 import { LinkedEvidence } from '../investigation/LinkedEvidence';
 import { displayLinkedWindow } from '../investigation/windows';
+import monitoring from '../monitoring.module.css';
 import { HistoryReadStack } from './HistoryReadContext';
 import { failedHistoryTargets } from './historyBatches';
 
@@ -365,7 +367,7 @@ function PumpPerformance({
         variant='light'
         title={t`Performance data unavailable`}
       >
-        {t`The health service could not be reached. Nothing on this tab is cached or estimated.`}
+        {t`Signal observations could not be read. Retry to check this machine.`}
         <Group mt='xs'>
           <Button
             size='xs'
@@ -402,7 +404,28 @@ function PumpPerformance({
     unavailable.length + failedCount === coveredCount + failedCount;
 
   return (
-    <HistoryReadStack response={response} gap='lg'>
+    <HistoryReadStack
+      response={response}
+      gap='md'
+      className={monitoring.scope}
+      data-testid='pump-performance'
+      aria-labelledby='pump-performance-title'
+    >
+      <Group justify='space-between' className={monitoring.band}>
+        <Title
+          id='pump-performance-title'
+          order={4}
+        >{t`Performance workspace`}</Title>
+        <Text
+          size='sm'
+          className={monitoring.meta}
+        >{t`Times: your clock (${displayClockLabel()}) · plant timezone not supplied`}</Text>
+      </Group>
+      <Text
+        size='sm'
+        maw='70ch'
+        className={monitoring.meta}
+      >{t`Current values and limit assessments use latest observations. Trends use the selected source window; retained evidence is separate.`}</Text>
       <Group justify='space-between' align='flex-start' wrap='wrap' gap='md'>
         <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
           <TimeRangeControl
@@ -421,6 +444,7 @@ function PumpPerformance({
             dataRange={dataRange.data}
           />
           <WindowStatus
+            showClock={false}
             response={response}
             updating={seriesQuery.isPlaceholderData}
             now={now}
@@ -452,12 +476,14 @@ function PumpPerformance({
             : t`The linked window must have valid increasing timestamps and be no longer than 24 h. No history has been requested from this link.`}
           {linked.clockUnknown && (
             <Button
+              className={monitoring.link}
               size='xs'
               variant='subtle'
               onClick={() => dataRange.refetch()}
             >{t`Retry source extent`}</Button>
           )}
           <Button
+            className={monitoring.link}
             size='xs'
             variant='subtle'
             onClick={() =>
@@ -476,30 +502,6 @@ function PumpPerformance({
         </Alert>
       )}
       <LinkedEvidence machineId={machine.pk} />
-      <HistoryProvenance
-        response={response}
-        loading={seriesQuery.isFetching && !response}
-        updating={seriesQuery.isPlaceholderData}
-        failed={seriesQuery.isError}
-        extent={dataRange.data}
-        onRetry={() => seriesQuery.refetch()}
-      />
-      <Paper withBorder radius='md' p='sm'>
-        <Button
-          variant='subtle'
-          size='xs'
-          aria-expanded={investigationOpen}
-          onClick={() => setInvestigationOpen((value) => !value)}
-        >{t`Case span investigation`}</Button>
-        {investigationOpen && (
-          <InvestigationSlices
-            initial={resolveWindow(range.window, now)}
-            onRead={(span) => {
-              range.onCustom(span.from, span.to);
-            }}
-          />
-        )}
-      </Paper>
       <ChannelNavigator
         parameters={parameters}
         search={search}
@@ -522,8 +524,15 @@ function PumpPerformance({
           );
         }}
       />
-      <Paper withBorder radius='md' p='sm'>
+      <KpiStrip tiles={tiles} now={now} />
+
+      {/* Counts are of this machine's own signals; the station context read
+        alongside them is not something this pump has limits on. */}
+      <UnusualStrip parameters={parameters} response={response} />
+
+      <Paper withBorder p='sm'>
         <Button
+          className={monitoring.link}
           variant='subtle'
           size='xs'
           aria-expanded={comparisonOpen}
@@ -550,11 +559,6 @@ function PumpPerformance({
           )}
         </div>
       </Paper>
-      <KpiStrip tiles={tiles} now={now} />
-
-      {/* Counts are of this machine's own signals; the station context read
-        alongside them is not something this pump has limits on. */}
-      <UnusualStrip parameters={parameters} response={response} />
 
       {seriesQuery.isError && (
         <Alert
@@ -562,7 +566,7 @@ function PumpPerformance({
           variant='light'
           title={t`Could not read history for this window`}
         >
-          {t`The request failed. Current values above are still live; the charts below show nothing rather than a partial line.`}
+          {t`The history request failed. Latest signal observations are shown separately; the requested history window is unavailable.`}
         </Alert>
       )}
       {failedAll && !seriesQuery.isError && (
@@ -688,9 +692,34 @@ function PumpPerformance({
         </Stack>
       </div>
 
+      <HistoryProvenance
+        response={response}
+        loading={seriesQuery.isFetching && !response}
+        updating={seriesQuery.isPlaceholderData}
+        failed={seriesQuery.isError}
+        extent={dataRange.data}
+        onRetry={() => seriesQuery.refetch()}
+      />
+      <Paper withBorder p='sm'>
+        <Button
+          className={monitoring.link}
+          variant='subtle'
+          size='xs'
+          aria-expanded={investigationOpen}
+          onClick={() => setInvestigationOpen((value) => !value)}
+        >{t`Case span investigation`}</Button>
+        {investigationOpen && (
+          <InvestigationSlices
+            initial={resolveWindow(range.window, now)}
+            onRead={(span) => {
+              range.onCustom(span.from, span.to);
+            }}
+          />
+        )}
+      </Paper>
       {response && (
-        <Text size='xs' c='dimmed'>
-          {t`Read live from ${response.series[0]?.source_name ?? t`the source`}. Every window chart here is a bounded read of the source's own history; retained evidence is identified separately.`}
+        <Text size='xs' className={monitoring.meta}>
+          {t`Read from ${response.series[0]?.source_name ?? t`the source`}. Every window chart here is a bounded read of source history; retained evidence is identified separately.`}
         </Text>
       )}
     </HistoryReadStack>
@@ -724,6 +753,7 @@ function Section({
       <Group justify='space-between'>
         <Title order={5}>{title}</Title>
         <Button
+          className={monitoring.link}
           variant='subtle'
           size='compact-xs'
           aria-expanded={open}
@@ -762,7 +792,7 @@ function UnusualStrip({
   const failedTargets = failedHistoryTargets(response);
 
   return (
-    <Paper withBorder radius='md' p='sm'>
+    <Paper withBorder p='sm'>
       <Group gap='xs' wrap='wrap' align='center'>
         <Text size='sm' fw={600}>
           {t`Anything unusual?`}
@@ -784,7 +814,7 @@ function UnusualStrip({
           </Badge>
         )}
         {stale.length > 0 && (
-          <Badge color='yellow' variant='light'>
+          <Badge color='gray' variant='outline'>
             {t`${stale.length} of ${parameters.length} signals stale`}
           </Badge>
         )}
@@ -828,7 +858,11 @@ function UnusualStrip({
             {t`Evaluation unavailable`}
           </Badge>
         )}
-        <Text size='xs' c='dimmed' data-evaluated={evaluation.evaluated}>
+        <Text
+          size='xs'
+          className={monitoring.meta}
+          data-evaluated={evaluation.evaluated}
+        >
           {t`${evaluation.evaluated} of ${evaluation.total} evaluated against their limits now.`}{' '}
           {t`${evaluation.configured} of ${evaluation.total} signals have limits configured; the rest are drawn without a verdict.`}
         </Text>

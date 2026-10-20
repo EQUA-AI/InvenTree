@@ -1,7 +1,9 @@
 import { t } from '@lingui/core/macro';
-import { Badge, Box, Group, Paper, Stack, Table, Text } from '@mantine/core';
+import { Box, Group, Paper, Stack, Table, Text } from '@mantine/core';
 import { IconCircleCheck, IconPlugConnectedX } from '@tabler/icons-react';
-import dayjs from 'dayjs';
+import { displayInstant } from '../displayClock';
+import monitoring from '../monitoring.module.css';
+import { StatusBadge as Badge } from './StatusBadge';
 
 import type { HealthSourceStatus } from '@lib/types/MachineHealth';
 
@@ -19,14 +21,16 @@ export function HealthSourceStatusTable({
 }: Readonly<{ sources: HealthSourceStatus[] }>) {
   if (sources.length === 0) {
     return (
-      <Paper withBorder radius='md' p='md'>
-        <Text c='dimmed'>{t`No health source is configured for this machine.`}</Text>
+      <Paper withBorder p='md'>
+        <Text
+          className={monitoring.meta}
+        >{t`No health source is configured for this machine.`}</Text>
       </Paper>
     );
   }
 
   return (
-    <Paper withBorder radius='md' p={0} style={{ overflowX: 'auto' }}>
+    <Paper withBorder p={0} style={{ overflowX: 'auto' }}>
       <Table striped miw={720} aria-label={t`Source connections`}>
         <Table.Thead>
           <Table.Tr>
@@ -50,7 +54,7 @@ export function HealthSourceStatusTable({
                 </Group>
               </Table.Td>
               <Table.Td>
-                {source.healthy ? (
+                {source.active && source.healthy ? (
                   <Badge
                     w='max-content'
                     maw='none'
@@ -64,7 +68,7 @@ export function HealthSourceStatusTable({
                   <Badge
                     w='max-content'
                     maw='none'
-                    color='red'
+                    color='gray'
                     variant='light'
                     leftSection={<IconPlugConnectedX size={14} />}
                   >
@@ -75,7 +79,8 @@ export function HealthSourceStatusTable({
               <Table.Td>
                 <Text size='sm'>
                   {source.last_success_at
-                    ? dayjs(source.last_success_at).format('MMM D, HH:mm')
+                    ? (displayInstant(source.last_success_at) ??
+                      t`Time unavailable`)
                     : t`Not recorded`}
                 </Text>
               </Table.Td>
@@ -83,11 +88,12 @@ export function HealthSourceStatusTable({
                 <Stack gap={0}>
                   <Text size='sm'>
                     {source.last_error_at
-                      ? dayjs(source.last_error_at).format('MMM D, HH:mm')
-                      : '—'}
+                      ? (displayInstant(source.last_error_at) ??
+                        t`Time unavailable`)
+                      : t`Not recorded`}
                   </Text>
                   {source.last_error_code && (
-                    <Text size='xs' c='dimmed'>
+                    <Text size='xs' className={monitoring.meta}>
                       {source.last_error_code}
                     </Text>
                   )}
@@ -95,7 +101,7 @@ export function HealthSourceStatusTable({
               </Table.Td>
               <Table.Td>
                 <Text size='sm'>
-                  {t`${Math.round(source.freshness_threshold_seconds / 60)} min`}
+                  {t`${source.freshness_threshold_seconds} s`}
                 </Text>
               </Table.Td>
               <Table.Td>

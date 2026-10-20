@@ -238,7 +238,7 @@ export function buildKpiTiles(
       t`Vibration`,
       vibration,
       series,
-      t`No approved vibration channel`
+      t`Unavailable · no vibration channel with a confirmed role and unit`
     )
   );
 

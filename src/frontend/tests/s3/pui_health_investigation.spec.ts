@@ -116,7 +116,7 @@ for (const scheme of ['light', 'dark'] as const) {
       .click();
     const dialog = page.getByRole('dialog', { name: 'Expanded signal trend' });
     await expect(dialog.getByText(/^Selected window:/)).toContainText(
-      'Oct 17, 2026'
+      '17 Oct 2026'
     );
     await expect(dialog.locator('.recharts-area-curve')).toHaveAttribute(
       'stroke',

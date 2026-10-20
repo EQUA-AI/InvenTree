@@ -27,6 +27,8 @@ import {
   useState
 } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { displayClockLabel, displayInstant } from '../displayClock';
+import monitoring from '../monitoring.module.css';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
@@ -81,13 +83,7 @@ const CUSTOM = 'custom';
 
 /** A range edge, short enough for a badge but unambiguous about the date. */
 function formatRangeEdge(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+  return displayInstant(iso) ?? t`Time unavailable`;
 }
 
 /**
@@ -170,32 +166,12 @@ function formatTick(ms: number, withDate: boolean): string {
   // Every window is now at most six hours, so clock times cannot repeat within
   // one axis and the date is redundant - except for a custom window picked on
   // an earlier day, where the time alone would not say *which* day.
-  return date.toLocaleString(undefined, {
-    ...(withDate ? { month: 'short', day: 'numeric' } : {}),
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+  return dayjs(ms).format(withDate ? 'D MMM HH:mm' : 'HH:mm');
 }
 
 /** A full instant with seconds, for a tooltip or a caption. */
 function formatInstant(ms: number): string {
-  return new Date(ms).toLocaleString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  });
-}
-
-/** The reader's time zone, named so a time is never read on the wrong clock. */
-function timeZoneName(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time';
-  } catch {
-    return 'local time';
-  }
+  return displayInstant(ms) ?? t`Time unavailable`;
 }
 
 /** A clock shift as words: hours under two days, days beyond. */
@@ -486,8 +462,10 @@ export function SignalTrendChart({
 
   if (selectable.length === 0) {
     return (
-      <Paper withBorder radius='md' p='md'>
-        <Text c='dimmed'>{t`No mapped signals are available to chart.`}</Text>
+      <Paper withBorder p='md'>
+        <Text
+          className={monitoring.meta}
+        >{t`No mapped signals are available to chart.`}</Text>
       </Paper>
     );
   }
@@ -512,7 +490,7 @@ export function SignalTrendChart({
   )?.response?.status;
   const historyDenied = historyStatus === 403 || historyStatus === 401;
   const content = (
-    <Paper withBorder radius='md' p='md'>
+    <Paper withBorder p='md'>
       <Stack gap='sm'>
         {params.has('occurrence') && <LinkedEvidence machineId={machineId} />}
         {provenance}
@@ -534,12 +512,14 @@ export function SignalTrendChart({
                 : t`Linked bounds must be valid, increasing and at most 24 h. No history was requested from this link.`}
             {linked.clockUnknown && (
               <Button
+                className={monitoring.link}
                 size='xs'
                 variant='subtle'
                 onClick={() => rangeQuery.refetch()}
               >{t`Retry source extent`}</Button>
             )}
             <Button
+              className={monitoring.link}
               size='xs'
               variant='subtle'
               onClick={clearLinked}
@@ -547,6 +527,7 @@ export function SignalTrendChart({
           </Alert>
         )}
         <Button
+          className={monitoring.link}
           variant='subtle'
           size='xs'
           aria-expanded={investigationOpen || needsSlice}
@@ -589,12 +570,14 @@ export function SignalTrendChart({
             >{t`Expand chart`}</Button>
           )}
           <Button
+            className={monitoring.link}
             variant='subtle'
             id='inspect-selected-health-signal'
             aria-controls='health-signal-evidence'
             onClick={(event) => onInspect(event.currentTarget)}
           >{t`Inspect selected signal`}</Button>
           <Select
+            classNames={{ input: monitoring.input }}
             label={t`Parameter`}
             allowDeselect={false}
             searchable
@@ -612,6 +595,7 @@ export function SignalTrendChart({
             miw={{ base: 0, xs: 320 }}
           />
           <Select
+            classNames={{ input: monitoring.input }}
             label={t`Range`}
             value={investigating ? 'investigation' : rangeSeconds}
             onChange={(value) => {
@@ -643,6 +627,7 @@ export function SignalTrendChart({
           {isCustom && !investigating && (
             <>
               <DateTimePicker
+                classNames={{ input: monitoring.input }}
                 label={t`From`}
                 value={customFrom}
                 onChange={setCustomFrom}
@@ -659,6 +644,7 @@ export function SignalTrendChart({
                 style={{ minWidth: 210 }}
               />
               <DateTimePicker
+                classNames={{ input: monitoring.input }}
                 label={t`To`}
                 value={customTo}
                 onChange={setCustomTo}
@@ -728,6 +714,7 @@ export function SignalTrendChart({
               ? t`This source window could not be read in your current scope. No history or empty record is inferred.`
               : t`The request for this window failed. No data is shown rather than a partial line.`}
             <Button
+              className={monitoring.link}
               size='xs'
               variant='subtle'
               onClick={() => trendQuery.refetch()}
@@ -784,12 +771,15 @@ export function SignalTrendChart({
 
         {trend?.available && (
           <Stack gap={2}>
-            <Text size='xs' c='dimmed'>
-              {t`Selected window: ${formatInstant(prepared.start)} to ${formatInstant(prepared.end)} (${timeZoneName()}).`}{' '}
-              {t`Read live from ${trend.source_name}. AIMMS does not store this history.`}
+            <Text size='xs' className={monitoring.meta}>
+              {t`Selected window: ${formatInstant(prepared.start)} to ${formatInstant(prepared.end)}.`}{' '}
+              {expanded && (
+                <>{t`Times: your clock (${displayClockLabel()})`}. </>
+              )}
+              {t`Read from ${trend.source_name}. AIMMS does not store this history.`}
             </Text>
             {trend.display_shifted && trend.display_shift_seconds ? (
-              <Text size='xs' c='dimmed'>
+              <Text size='xs' className={monitoring.meta}>
                 {t`Times are shown on the dashboard clock, ${shiftWords(trend.display_shift_seconds)} later than the source recorded them.`}
               </Text>
             ) : null}
@@ -806,6 +796,7 @@ export function SignalTrendChart({
         opened={expanded}
         onClose={() => setExpanded(false)}
         title={t`Expanded signal trend`}
+        closeButtonProps={{ 'aria-label': t`Close expanded signal trend` }}
         size='calc(100vw - 32px)'
         fullScreen={false}
         returnFocus={false}
@@ -947,6 +938,12 @@ export function TrendPlot({
   return (
     <Box ref={plotRef}>
       <AreaChart
+        styles={{
+          axisLabel: {
+            fill: 'var(--aimms-monitoring-meta, var(--mantine-color-text))'
+          }
+        }}
+        textColor='var(--aimms-monitoring-meta, var(--mantine-color-text))'
         h={height}
         data={prepared.rows as unknown as Record<string, unknown>[]}
         dataKey='t'

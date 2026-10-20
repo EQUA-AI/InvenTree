@@ -9,6 +9,7 @@ import {
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
+import monitoring from '../monitoring.module.css';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
@@ -237,7 +238,7 @@ export function SignalTrendSparkline({
           />
         </Box>
         {trend.truncated && (
-          <Text size='xs' c='dimmed'>
+          <Text size='xs' className={monitoring.meta}>
             {t`(trimmed)`}
           </Text>
         )}
@@ -258,7 +259,11 @@ function TrendStatus({
       w={260}
       events={{ hover: true, focus: true, touch: true }}
     >
-      <UnstyledButton fz='xs' c='dimmed' aria-label={`${label}: ${detail}`}>
+      <UnstyledButton
+        fz='xs'
+        className={monitoring.meta}
+        aria-label={`${label}: ${detail}`}
+      >
         {label}
       </UnstyledButton>
     </Tooltip>

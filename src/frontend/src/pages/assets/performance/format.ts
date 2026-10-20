@@ -1,5 +1,6 @@
 import { t } from '@lingui/core/macro';
 import dayjs from 'dayjs';
+import { displayInstant } from '../displayClock';
 
 /**
  * Formatting for the Performance tab. Numbers keep the precision the catalogue
@@ -117,7 +118,7 @@ export function formatInstant(ms: number | null | undefined): string {
   if (ms === null || ms === undefined) {
     return '—';
   }
-  return dayjs(ms).format('D MMM YYYY HH:mm:ss');
+  return displayInstant(ms) ?? t`Time unavailable`;
 }
 
 export function formatClock(ms: number | null | undefined): string {

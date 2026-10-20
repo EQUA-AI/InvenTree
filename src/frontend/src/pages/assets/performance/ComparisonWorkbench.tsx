@@ -24,6 +24,7 @@ import { useLocalState } from '../../../states/LocalState';
 import { useUserState } from '../../../states/UserState';
 import { HistoryProvenance } from '../investigation/HistoryProvenance';
 import { pickerInstant } from '../investigation/windows';
+import monitoring from '../monitoring.module.css';
 import { DisplayPreferences } from './DisplayPreferences';
 import { HistoryReadStack } from './HistoryReadContext';
 import { windowInfoFrom } from './PerformancePanel';
@@ -78,11 +79,6 @@ export function ComparisonWorkbench({
   };
   return (
     <Stack gap='md' data-testid='comparison-workbench'>
-      <DisplayPreferences
-        machineId={machineId}
-        current={{ search, section, bindings: selected.map(Number) }}
-        onRestore={restore}
-      />
       {(missing ||
         selected.some(
           (id) => !parameters.some((p) => String(p.signal.binding_id) === id)
@@ -91,6 +87,7 @@ export function ComparisonWorkbench({
       )}
       <Text fw={600} size='sm'>{t`Investigation comparison`}</Text>
       <Select
+        classNames={{ input: monitoring.input }}
         label={t`Comparison mode`}
         value={mode}
         allowDeselect={false}
@@ -105,6 +102,7 @@ export function ComparisonWorkbench({
         ]}
       />
       <MultiSelect
+        classNames={{ input: monitoring.input }}
         label={t`Comparison channels`}
         searchable
         value={selected}
@@ -119,8 +117,8 @@ export function ComparisonWorkbench({
         }))}
       />
       <Text
-        size='xs'
-        c='dimmed'
+        size='sm'
+        className={monitoring.meta}
       >{t`Up to 12 channels. Only matching engineering roles and compatible units share a chart. Other channels use separate synchronized charts. Operating duty, load and instrument configuration are not verified by unit compatibility.`}</Text>
       {chosen.length === 0 ? (
         <Text size='sm'>{t`Select channels to compare.`}</Text>
@@ -146,6 +144,11 @@ export function ComparisonWorkbench({
           window={anchor}
         />
       )}
+      <DisplayPreferences
+        machineId={machineId}
+        current={{ search, section, bindings: selected.map(Number) }}
+        onRestore={restore}
+      />
     </Stack>
   );
 }
@@ -169,12 +172,17 @@ export function ComparisonPlots({
   const series = useMemo(() => indexSeries(response), [response]);
   return (
     <Stack gap='sm'>
+      {comparisonGroups(parameters).length > 1 && (
+        <Text
+          size='sm'
+          maw='70ch'
+        >{t`Different engineering roles or units: selected channels use separate synchronized charts.`}</Text>
+      )}
       {comparisonGroups(parameters).map((group) => (
         <Paper
           key={group.key}
           withBorder
           p='sm'
-          radius='md'
           data-comparison-group={group.key}
         >
           <Text fw={600} size='sm'>
@@ -241,14 +249,15 @@ function HistoryComparison({
       </Text>
       {query.isFetching && (
         <Group gap='xs'>
-          <Loader size='xs' />
-          <Text size='xs'>{t`Reading bounded history…`}</Text>
+          <Loader size='sm' />
+          <Text size='sm'>{t`Reading bounded history…`}</Text>
         </Group>
       )}
       {query.isError ? (
         <Alert color='red'>
           {t`Comparison history read failed. No current reading is substituted.`}
           <Button
+            className={monitoring.link}
             size='compact-xs'
             variant='subtle'
             onClick={() => query.refetch()}
@@ -257,6 +266,7 @@ function HistoryComparison({
       ) : (
         <>
           <WindowStatus
+            showClock={false}
             response={query.data}
             updating={query.isPlaceholderData}
             now={Date.now()}
@@ -272,7 +282,7 @@ function HistoryComparison({
           />
           {query.data && (
             <>
-              <Text size='xs' c='dimmed'>
+              <Text size='sm' className={monitoring.meta}>
                 {query.data.series
                   .map((entry) => entry.source_name)
                   .filter((name, i, all) => all.indexOf(name) === i)
@@ -319,7 +329,7 @@ function BeforeAfter({
   return (
     <Stack gap='sm'>
       <Button
-        size='xs'
+        size='sm'
         variant='light'
         w='fit-content'
         onClick={() => {
@@ -340,14 +350,15 @@ function BeforeAfter({
         }}
       >{t`Read preceding equal window as B`}</Button>
       <Text
-        size='xs'
-        c='dimmed'
+        size='sm'
+        className={monitoring.meta}
       >{t`A is the selected window frozen when this mode opens. B is an independent source read, up to 24 h. Timestamps remain absolute in the browser timezone; charts do not shift events to imply a repair effect. The preceding-window shortcut does not infer a repair boundary. Select the actual repair boundaries and check duty/load yourself.`}</Text>
       <SimpleGrid
         cols={{ base: 1, sm: 2, lg: 3 }}
         style={{ alignItems: 'end' }}
       >
         <DateTimePicker
+          classNames={{ input: monitoring.input }}
           label={t`Window B from`}
           value={from}
           onChange={setFrom}
@@ -360,7 +371,7 @@ function BeforeAfter({
       </SimpleGrid>
       {(from || to) && !valid && (
         <Text
-          size='xs'
+          size='sm'
           c='red'
         >{t`Choose an increasing window no longer than 24 h.`}</Text>
       )}
@@ -434,11 +445,12 @@ function MachineComparison({
   return (
     <Stack gap='sm'>
       <Text
-        size='xs'
-        c='dimmed'
+        size='sm'
+        className={monitoring.meta}
       >{t`Candidates come from your permitted machine list, with the same recorded asset type. This does not establish equivalent duty or load. No operational ranking is made. Both machines use the same absolute display-time bounds. Crosshairs synchronize only when their recorded-to-display clock offsets are known and equal.`}</Text>
       <Group align='flex-end' grow>
         <TextInput
+          classNames={{ input: monitoring.input }}
           label={t`Find comparison machine`}
           value={search}
           onChange={(event) => setSearch(event.currentTarget.value)}
@@ -451,11 +463,12 @@ function MachineComparison({
           }}
         >{t`Search machines`}</Button>
       </Group>
-      {machines.isFetching && <Loader size='xs' />}
+      {machines.isFetching && <Loader size='sm' />}
       {machines.isError ? (
         <Alert color='red'>{t`Permitted machines could not be read.`}</Alert>
       ) : (
         <Select
+          classNames={{ input: monitoring.input }}
           label={t`Comparison machine`}
           data={candidates.map((item) => ({
             value: String(item.pk),
@@ -529,7 +542,7 @@ function MatchedMachine({
   const matched = compatible.slice(0, 12);
   return (
     <Stack gap='sm'>
-      {signals.isFetching && <Loader size='xs' />}
+      {signals.isFetching && <Loader size='sm' />}
       {signals.isError && (
         <Alert color='red'>{t`Comparison signals unavailable or no longer permitted.`}</Alert>
       )}
@@ -538,8 +551,8 @@ function MatchedMachine({
       )}
       {!signals.isError && matched.length > 0 && (
         <Text
-          size='xs'
-          c='dimmed'
+          size='sm'
+          className={monitoring.meta}
         >{t`Only the first 12 available role/unit matches below are compared; unmatched channels are omitted. Duty, load and configuration remain unverified.`}</Text>
       )}
       {!signals.isError && matched.length > 0 && (

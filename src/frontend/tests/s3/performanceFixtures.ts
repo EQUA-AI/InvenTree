@@ -1,4 +1,5 @@
 import { type Page, type Route, expect } from '@playwright/test';
+import { mockTheme } from './themeFixtures';
 
 import {
   MACHINE,
@@ -37,6 +38,8 @@ export async function openPerformance(
     /** Await the actual initial history response for non-loading scenarios. */
     settleInitialRead?: boolean;
     scheme?: 'light' | 'dark';
+    nativeTheme?: boolean;
+    compactChrome?: boolean;
     /** The S3 harness: a router whose location the tests can read. */
     harness?: 's0' | 's3';
     /** Extra query parameters for the S3 harness page. */
@@ -52,6 +55,7 @@ export async function openPerformance(
     ) => ReturnType<typeof seriesFor>;
   } = {}
 ) {
+  await mockTheme(page);
   const specs = options.signals ?? NATIVE_SIGNALS;
   const requests: URL[] = [];
   await page.route(
@@ -129,13 +133,17 @@ export async function openPerformance(
       asset: 'pump',
       name: 'Synthetic pump',
       scheme: options.scheme ?? 'light',
+      nativeTheme: String(options.nativeTheme ?? false),
+      compactChrome: String(options.compactChrome ?? false),
       ...options.harnessParams
     });
     await page.goto(`/playwright/s3-performance.html?${query}`);
   } else {
     const query = new URLSearchParams({
       surface: 'performance',
-      scheme: options.scheme ?? 'light'
+      scheme: options.scheme ?? 'light',
+      nativeTheme: String(options.nativeTheme ?? false),
+      compactChrome: String(options.compactChrome ?? false)
     });
     await page.goto(`/playwright/s0-native.html?${query}`);
   }

@@ -1,7 +1,6 @@
 import { t } from '@lingui/core/macro';
 import { BarChart } from '@mantine/charts';
 import {
-  Badge,
   Group,
   Paper,
   SimpleGrid,
@@ -11,6 +10,8 @@ import {
   useMantineTheme
 } from '@mantine/core';
 import { useMemo } from 'react';
+import { StatusBadge as Badge } from '../health/StatusBadge';
+import monitoring from '../monitoring.module.css';
 
 import type { SeriesEntry } from '@lib/types/MachineHealth';
 
@@ -222,25 +223,35 @@ function SensorGroupCardBody({
     if (warnMax !== null)
       lines.push({
         y: warnMax,
-        label: t`Warn ${formatValue(warnMax, decimals, unit)}`,
-        color: 'yellow.7'
+        direction: 'high',
+        severity: 'warning',
+        label: t`Warning above ${formatValue(warnMax, decimals, unit)}`,
+        color:
+          'color-mix(in srgb, var(--mantine-color-yellow-9) 85%, var(--mantine-color-text))'
       });
     if (criticalMax !== null)
       lines.push({
         y: criticalMax,
-        label: t`Critical ${formatValue(criticalMax, decimals, unit)}`,
+        direction: 'high',
+        severity: 'critical',
+        label: t`Critical above ${formatValue(criticalMax, decimals, unit)}`,
         color: 'red.7'
       });
     if (warnMin !== null)
       lines.push({
         y: warnMin,
-        label: t`Warn ${formatValue(warnMin, decimals, unit)}`,
-        color: 'yellow.7'
+        direction: 'low',
+        severity: 'warning',
+        label: t`Warning below ${formatValue(warnMin, decimals, unit)}`,
+        color:
+          'color-mix(in srgb, var(--mantine-color-yellow-9) 85%, var(--mantine-color-text))'
       });
     if (criticalMin !== null)
       lines.push({
         y: criticalMin,
-        label: t`Critical ${formatValue(criticalMin, decimals, unit)}`,
+        direction: 'low',
+        severity: 'critical',
+        label: t`Critical below ${formatValue(criticalMin, decimals, unit)}`,
         color: 'red.7'
       });
     return lines;
@@ -349,13 +360,13 @@ function SensorGroupCardBody({
   }
 
   return (
-    <Paper withBorder radius='md' p='md'>
+    <Paper withBorder p='md'>
       <Stack gap='sm'>
         <Group justify='space-between' align='flex-start' wrap='wrap' gap='xs'>
           <Stack gap={2}>
             <Text fw={600}>{title}</Text>
             {description && (
-              <Text size='xs' c='dimmed'>
+              <Text size='xs' className={monitoring.meta}>
                 {description}
               </Text>
             )}
@@ -437,6 +448,7 @@ function SensorGroupCardBody({
                   {t`Current reading by sensor`}
                 </Text>
                 <BarChart
+                  textColor='var(--aimms-monitoring-meta, var(--mantine-color-text))'
                   h={Math.max(
                     120,
                     readable.length * (barAxis.wraps ? 32 : 22) + 30
@@ -490,7 +502,7 @@ function SensorGroupCardBody({
                   tooltipAnimationDuration={0}
                 />
                 {unreadable.length > 0 && (
-                  <Text size='xs' c='dimmed'>
+                  <Text size='xs' className={monitoring.meta}>
                     {t`No usable current reading, so not plotted: ${unreadable.map((b) => b.sensor).join(', ')}`}
                   </Text>
                 )}

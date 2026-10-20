@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../../../contexts/ApiContext';
 import { snapshotReasonLabel } from '../faults/occurrenceLabels';
+import monitoring from '../monitoring.module.css';
 import { fullInstant } from './SignalEvidence';
 import { qualityLabel } from './common';
 
@@ -74,7 +75,6 @@ export function RetainedHealthEvidence({
     <Paper
       component='section'
       withBorder
-      radius='md'
       p='md'
       aria-label={t`Retained evidence`}
     >
@@ -86,6 +86,7 @@ export function RetainedHealthEvidence({
               : t`Current observations`}
           </Text>
           <Button
+            className={monitoring.link}
             ref={trigger}
             variant='subtle'
             size='xs'
@@ -99,8 +100,8 @@ export function RetainedHealthEvidence({
         </Group>
         <Text
           size='sm'
-          c='dimmed'
-        >{t`Current readings and condition remain below. Retained snapshots preserve the original fault-time values and clock; reconnecting a source does not replace them.`}</Text>
+          className={monitoring.meta}
+        >{t`Current readings and condition remain above. Retained snapshots preserve the original fault-time values and clock; reconnecting a source does not replace them.`}</Text>
         {listed && (
           <Stack gap='xs'>
             {list.isLoading && <Loader size='xs' />}
@@ -110,7 +111,7 @@ export function RetainedHealthEvidence({
             {list.isSuccess && (
               <Text
                 size='xs'
-                c='dimmed'
+                className={monitoring.meta}
               >{t`Latest ${list.data.length} machine snapshots (maximum 50); older citations remain accessible by their exact links.`}</Text>
             )}
             {list.data?.map((row) => (
@@ -173,7 +174,7 @@ export function RetainedHealthEvidence({
                 >{t`Snapshot ${snapshot.id} · hash ${snapshot.content_hash}`}</Text>
                 <Text
                   size='xs'
-                  c='dimmed'
+                  className={monitoring.meta}
                 >{t`Only captured observations are shown. A snapshot does not reconstruct unrecorded history.`}</Text>
                 <Table.ScrollContainer minWidth={450}>
                   <Table aria-label={t`Retained observations`}>

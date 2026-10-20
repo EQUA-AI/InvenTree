@@ -136,20 +136,18 @@ for (const scheme of ['light', 'dark'] as const) {
       name: 'Details for Signal normal',
       exact: true
     });
-    if (info.project.name.includes('phone')) {
-      await expect(details).toHaveAttribute('aria-expanded', 'false');
-      await expect(
-        normal.getByRole('cell', { name: /Warning below/ })
-      ).toHaveCount(0);
-      await details.click();
-      await expect(details).toHaveAttribute('aria-expanded', 'true');
-      await warning
-        .getByRole('button', {
-          name: 'Details for Signal warning',
-          exact: true
-        })
-        .click();
-    }
+    await expect(details).toHaveAttribute('aria-expanded', 'false');
+    await expect(
+      normal.getByRole('cell', { name: /Warning below/ })
+    ).toHaveCount(0);
+    await details.click();
+    await expect(details).toHaveAttribute('aria-expanded', 'true');
+    await warning
+      .getByRole('button', {
+        name: 'Details for Signal warning',
+        exact: true
+      })
+      .click();
     await expect(
       warning.getByRole('link', { name: 'Open owning work 818' })
     ).toHaveAttribute('href', '/maintenance/work-orders/818/');
@@ -475,9 +473,9 @@ for (const newest of ['future', 'expired', 'current'] as const) {
     const observation = page
       .getByText('Last observation', { exact: true })
       .locator('..');
-    await expect(observation.getByText('Stale', { exact: true })).toHaveCount(
-      newest === 'current' ? 0 : 1
-    );
+    await expect(
+      observation.getByText('Stale · last observed', { exact: true })
+    ).toHaveCount(newest === 'current' ? 0 : 1);
     await observation.screenshot({
       path: info.outputPath(`newest-${newest}.png`)
     });
@@ -521,7 +519,12 @@ test('retained recorder uses the human name and states missing provenance', asyn
 test('preliminary analysis citation opens its exact retained incident', async ({
   page
 }, info) => {
-  await openHealth(page, { anomalies: [anomaly()], snapshots: [snapshot] });
+  await openHealth(page, {
+    anomalies: [anomaly()],
+    snapshots: [snapshot],
+    nativeTheme: true,
+    compactChrome: true
+  });
   const results: PreliminaryResults = {
     status: 'available',
     authority: 'derived',
@@ -549,7 +552,7 @@ test('preliminary analysis citation opens its exact retained incident', async ({
     quality: { summary: 'good', bad_signal_count: 0 },
     provider: 'fixture',
     model_or_rule_version: 'fixture',
-    generated_at: null,
+    generated_at: '2026-10-18T09:01:02Z',
     verified_by_user: false,
     verified_at: null,
     amendments: [],
@@ -559,7 +562,18 @@ test('preliminary analysis citation opens its exact retained incident', async ({
     '**/api/machine-health/machines/18/health/anomalies/44/preliminary-analysis/',
     (route) => route.fulfill({ json: { preliminary_results: results } })
   );
-  await page.getByRole('button', { name: 'Analyze', exact: true }).click();
+  await page
+    .getByRole('button', {
+      name: 'Analyze Discharge flow below warning limit',
+      exact: true
+    })
+    .click();
+  await expect(
+    page.getByText('Generated 18 Oct 2026 09:01:02 by fixture', { exact: true })
+  ).toBeVisible();
+  await page
+    .getByText('Generated 18 Oct 2026 09:01:02 by fixture', { exact: true })
+    .screenshot({ path: info.outputPath('preliminary-generated-instant.png') });
   const citation = page.getByRole('link', {
     name: 'Snapshot 9ae91736',
     exact: true

@@ -9,6 +9,7 @@ import {
 } from '@mantine/core';
 import { useElementSize } from '@mantine/hooks';
 import { useMemo } from 'react';
+import monitoring from '../monitoring.module.css';
 
 import { formatTick, formatValue, timeTicks } from './format';
 import { type HeatmapMatrix, limitState } from './series';
@@ -234,7 +235,7 @@ export function SensorHeatmap({
                 y={13}
                 fontSize={10}
                 textAnchor='middle'
-                fill='var(--mantine-color-dimmed)'
+                fill='var(--aimms-monitoring-meta, var(--mantine-color-text))'
               >
                 {text}
               </text>
@@ -243,7 +244,7 @@ export function SensorHeatmap({
         </g>
       </Box>
       <Group gap='xs' justify='flex-end'>
-        <Text size='xs' c='dimmed'>
+        <Text size='xs' className={monitoring.meta}>
           {t`Scale spans the observed range:`}
         </Text>
         <Text size='xs'>
@@ -260,7 +261,7 @@ export function SensorHeatmap({
         <Text size='xs'>
           {formatValue(matrix.max, decimals, unit, matrix.max - matrix.min)}
         </Text>
-        <Text size='xs' c='dimmed'>
+        <Text size='xs' className={monitoring.meta}>
           {t`· each cell is the mean of the readings in its column`}
         </Text>
       </Group>

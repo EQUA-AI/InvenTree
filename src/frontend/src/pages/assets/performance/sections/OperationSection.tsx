@@ -7,6 +7,7 @@ import {
   useMantineTheme
 } from '@mantine/core';
 import { useMemo } from 'react';
+import monitoring from '../../monitoring.module.css';
 
 import { RelationChart } from '../RelationChart';
 import { SensorGroupCard } from '../SensorGroupCard';
@@ -147,7 +148,7 @@ export function OperationSection({
               rightUnit=''
             />
             {running && (
-              <Text size='xs' c='dimmed'>
+              <Text size='xs' className={monitoring.meta}>
                 {t`Reported running for ${Math.round(running.share * 100)}% of the window (${running.samples} status readings${window.resolutionSeconds > 10 ? t`, sampled` : ''}).`}
               </Text>
             )}

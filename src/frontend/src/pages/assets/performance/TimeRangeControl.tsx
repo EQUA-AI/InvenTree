@@ -1,14 +1,14 @@
 import { t } from '@lingui/core/macro';
 import {
   ActionIcon,
-  Badge,
   Button,
   Group,
   SegmentedControl,
   Stack,
   Switch,
   Text,
-  Tooltip
+  Tooltip,
+  useMantineTheme
 } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import {
@@ -19,6 +19,9 @@ import {
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
+import { displayInstant } from '../displayClock';
+import { StatusBadge as Badge } from '../health/StatusBadge';
+import monitoring from '../monitoring.module.css';
 
 import type { SeriesResponse } from '@lib/types/MachineHealth';
 
@@ -80,6 +83,7 @@ export function TimeRangeControl({
   refreshing,
   dataRange
 }: Readonly<TimeRangeControlProps>) {
+  const theme = useMantineTheme();
   const [customFrom, setCustomFrom] = useState<string | null>(null);
   const [customTo, setCustomTo] = useState<string | null>(null);
   // Opening the custom form is local, but the window it belongs to is not:
@@ -122,6 +126,7 @@ export function TimeRangeControl({
     <Stack gap='xs'>
       <Group gap='sm' align='center' wrap='wrap'>
         <SegmentedControl
+          color={`${theme.primaryColor}.7`}
           size='xs'
           value={pickingCustom ? CUSTOM : preset}
           onChange={(value) => {
@@ -167,6 +172,7 @@ export function TimeRangeControl({
             }
           >
             <Switch
+              classNames={{ track: monitoring.track }}
               size='sm'
               checked={live}
               onChange={(event) => onLive(event.currentTarget.checked)}
@@ -198,11 +204,15 @@ export function TimeRangeControl({
         <>
           <Group gap='sm' align='flex-end' wrap='wrap'>
             <DateTimePicker
+              classNames={{
+                input: monitoring.input,
+                placeholder: monitoring.meta
+              }}
               label={t`From`}
               size='xs'
               value={customFrom}
               onChange={setCustomFrom}
-              valueFormat='YYYY-MM-DD HH:mm:ss'
+              valueFormat='D MMM YYYY HH:mm:ss'
               withSeconds
               clearable
               minDate={minDate}
@@ -211,11 +221,15 @@ export function TimeRangeControl({
               style={{ minWidth: 200 }}
             />
             <DateTimePicker
+              classNames={{
+                input: monitoring.input,
+                placeholder: monitoring.meta
+              }}
               label={t`To`}
               size='xs'
               value={customTo}
               onChange={setCustomTo}
-              valueFormat='YYYY-MM-DD HH:mm:ss'
+              valueFormat='D MMM YYYY HH:mm:ss'
               withSeconds
               clearable
               minDate={customFrom ? new Date(customFrom) : minDate}
@@ -242,7 +256,11 @@ export function TimeRangeControl({
             {customError && (
               <Text
                 size='xs'
-                c={customInvalid ? 'red' : 'dimmed'}
+                c={
+                  customInvalid
+                    ? 'red'
+                    : 'var(--aimms-monitoring-meta, var(--mantine-color-text))'
+                }
                 fw={customInvalid ? 500 : undefined}
                 role={customInvalid ? 'alert' : undefined}
               >
@@ -253,8 +271,8 @@ export function TimeRangeControl({
           {/* Its own line: sharing a row with the refusal above made the two
               grey sentences read as one. */}
           {dataRange?.available && dataRange.from && dataRange.to && (
-            <Text size='xs' c='dimmed'>
-              {t`History held from ${dayjs(dataRange.from).format('D MMM HH:mm')} to ${dayjs(dataRange.to).format('D MMM HH:mm')}.`}
+            <Text size='xs' className={monitoring.meta}>
+              {t`History held from ${displayInstant(dataRange.from) ?? t`Time unavailable`} to ${displayInstant(dataRange.to) ?? t`Time unavailable`}.`}
             </Text>
           )}
         </>
@@ -318,8 +336,10 @@ export function LiveIndicator({
     word = t`Polling off`;
   } else if (live && empty) {
     word = t`No readings`;
+  } else if (live && (freshnessSeconds === null || freshnessSeconds <= 0)) {
+    word = t`Freshness unavailable`;
   } else if (live && stale) {
-    color = 'yellow';
+    color = 'gray';
     word = t`Stale`;
   } else if (live) {
     color = 'green';
@@ -369,7 +389,7 @@ export function LiveIndicator({
         >
           {word}
         </Badge>
-        <Text size='xs' c='dimmed'>
+        <Text size='xs' className={monitoring.meta}>
           {updatedAt === null
             ? t`Not read yet`
             : t`Updated ${formatClock(updatedAt)}`}
@@ -379,25 +399,25 @@ export function LiveIndicator({
             : ''}
         </Text>
       </Group>
-      <Text size='xs' c='dimmed' ta='right'>
+      <Text size='xs' className={monitoring.meta} ta='right'>
         {cadence !== null
-          ? t`Source writes every ${formatDuration(cadence)}`
+          ? t`Expected sample interval ${formatDuration(cadence)} (server default)`
           : ''}
         {poll !== null
-          ? ` · ${t`read here every ${formatDuration(poll)}`}`
+          ? ` · ${t`source poll interval ${formatDuration(poll)}`}`
           : ''}
         {response?.live.last_poll_at
-          ? ` · ${t`last poll ${dayjs(response.live.last_poll_at).format('HH:mm:ss')}`}`
+          ? ` · ${t`last poll attempt ${displayInstant(response.live.last_poll_at) ?? t`Time unavailable`}`}`
           : ''}
       </Text>
       {modeText && (
-        <Text size='xs' c='dimmed' ta='right'>
+        <Text size='xs' className={monitoring.meta} ta='right'>
           {modeText}
         </Text>
       )}
       {response?.display_shifted && (
-        <Text size='xs' c='dimmed' ta='right'>
-          {t`Recorded history presented as current; the plant's own times are ${formatDuration(response.display_shift_seconds)} earlier.`}
+        <Text size='xs' className={monitoring.meta} ta='right'>
+          {t`Source history display shift: ${formatDuration(Math.abs(response.display_shift_seconds))} ${response.display_shift_seconds >= 0 ? t`later than recorded` : t`earlier than recorded`}.`}
         </Text>
       )}
     </Stack>

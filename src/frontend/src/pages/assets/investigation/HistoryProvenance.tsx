@@ -1,8 +1,8 @@
 import type { SeriesResponse } from '@lib/types/MachineHealth';
 import { t } from '@lingui/core/macro';
 import { Alert, Button, Group, Paper, Stack, Text } from '@mantine/core';
-import { formatDate } from '../../../defaults/formatters';
-import { clockLabel } from '../performance/WindowStatus';
+import { displayInstant } from '../displayClock';
+import monitoring from '../monitoring.module.css';
 import type { DataRange } from '../performance/usePerformanceData';
 
 export function HistoryProvenance({
@@ -28,30 +28,32 @@ export function HistoryProvenance({
     (entry) => entry.available && entry.samples.length === 0
   );
   return (
-    <Paper withBorder radius='md' p='sm' data-testid='history-provenance'>
+    <Paper withBorder p='sm' data-testid='history-provenance'>
       <Stack gap={4}>
         <Text fw={600} size='sm'>{t`History origin and limits`}</Text>
-        <Text size='xs' c='dimmed'>
+        <Text maw='70ch' size='sm' className={monitoring.meta}>
           {currentDescription ??
             t`KPIs, current bars and the current-limit evaluation use each signal's latest observation, even for a fixed historical window. They are not the selected range. Window trends read source history; retained snapshots are separate evidence.`}
         </Text>
-        {loading && <Text size='xs'>{t`Loading selected source window…`}</Text>}
+        {loading && (
+          <Text maw='70ch' size='sm'>{t`Loading selected source window…`}</Text>
+        )}
         {failed && (
           <Alert color='red'>{t`History read failed. Current readings do not replace missing history.`}</Alert>
         )}
         {response && !failed && (
           <>
-            <Text size='xs'>
+            <Text maw='70ch' size='sm'>
               {t`Source`}:{' '}
               {[...new Set(entries.map((entry) => entry.source_name))].join(
                 ', '
               ) || t`Not supplied`}
-              . {t`Window`}: {new Date(response.window_start).toLocaleString()}{' '}
-              — {new Date(response.window_end).toLocaleString()} (
-              {clockLabel(Date.parse(response.window_end))}).{' '}
+              . {t`Window`}:{' '}
+              {displayInstant(response.window_start) ?? t`Time unavailable`} —{' '}
+              {displayInstant(response.window_end) ?? t`Time unavailable`}.{' '}
               {updating ? t`Previous window while updating.` : ''}
             </Text>
-            <Text size='xs'>
+            <Text maw='70ch' size='sm'>
               {response.read_batches && response.read_batches.length > 1 ? (
                 t`Resolution is reported per bounded read below.`
               ) : (
@@ -64,7 +66,7 @@ export function HistoryProvenance({
                 ? t`Sampled real readings; fast transients may be absent.`
                 : t`Complete source read for this bounded window; source gaps remain gaps.`}
             </Text>
-            <Text size='xs'>
+            <Text maw='70ch' size='sm'>
               {t`Single-window limit`}:{' '}
               {response.limits.max_window_seconds / 3600} h · {t`Point budget`}:{' '}
               {response.slots ?? t`Complete mode`} · {t`Returned series`}:{' '}
@@ -79,7 +81,7 @@ export function HistoryProvenance({
                   <details>
                     <summary>{t`${unavailable.length} unavailable series — show source reasons`}</summary>
                     {unavailable.map((entry) => (
-                      <Text key={entry.binding_id} size='xs'>
+                      <Text key={entry.binding_id} size='sm'>
                         {entry.display_name || entry.external_key}:{' '}
                         {entry.detail || entry.reason || t`History unavailable`}
                       </Text>
@@ -87,7 +89,10 @@ export function HistoryProvenance({
                   </details>
                 )}
                 {empty.length > 0 && (
-                  <Text size='xs'>{t`${empty.length} series returned no samples. No samples is different from a recorded zero.`}</Text>
+                  <Text
+                    maw='70ch'
+                    size='sm'
+                  >{t`${empty.length} series returned no samples. No samples is different from a recorded zero.`}</Text>
                 )}
               </Alert>
             )}
@@ -95,6 +100,7 @@ export function HistoryProvenance({
               <Alert color='yellow' title={t`Partial history read`}>
                 {t`${response.read_batches.filter((batch) => batch.failed).length} of ${response.read_batches.length} bounded batches failed. Available charts remain visible; missing batches are not complete evidence.`}
                 <Button
+                  className={monitoring.link}
                   size='compact-xs'
                   variant='subtle'
                   onClick={onRetry}
@@ -105,7 +111,7 @@ export function HistoryProvenance({
               <details>
                 <summary>{t`Per-batch resolution and clock`}</summary>
                 {response.read_batches.map((batch, i) => (
-                  <Text size='xs' key={i}>
+                  <Text maw='70ch' size='sm' key={i}>
                     {t`Batch ${i + 1}`}:{' '}
                     {batch.failed
                       ? t`History read failed; coverage unknown.`
@@ -116,21 +122,22 @@ export function HistoryProvenance({
             )}
             {response.read_batches && response.read_batches.length > 1 && (
               <Text
-                size='xs'
-                c='dimmed'
+                maw='70ch'
+                size='sm'
+                className={monitoring.meta}
               >{t`${response.read_batches.length} bounded batches share these time bounds. Each may read overlapping source documents; batching does not imply flat source work or payload.`}</Text>
             )}
           </>
         )}
-        <Text size='xs' c='dimmed'>
+        <Text maw='70ch' size='sm' className={monitoring.meta}>
           {extent?.available && extent.from && extent.to
-            ? t`Reported source extent: ${formatDate(extent.from, { showTime: true, showSeconds: true })} — ${formatDate(extent.to, { showTime: true, showSeconds: true })}. Availability within it is not guaranteed.`
+            ? t`Reported source extent: ${displayInstant(extent.from) ?? t`Time unavailable`} — ${displayInstant(extent.to) ?? t`Time unavailable`}. Availability within it is not guaranteed.`
             : t`Source extent unavailable. This does not prove that the source has no history.`}
         </Text>
         {failed && (
           <Group>
             <Button
-              size='xs'
+              size='sm'
               variant='light'
               onClick={onRetry}
             >{t`Retry history`}</Button>

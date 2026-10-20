@@ -11,6 +11,7 @@ import { useLocalStorage } from '@mantine/hooks';
 import { useState } from 'react';
 import { useLocalState } from '../../../states/LocalState';
 import { useUserState } from '../../../states/UserState';
+import monitoring from '../monitoring.module.css';
 import { SharedDisplayViews } from './SharedDisplayViews';
 import {
   type DisplayView,
@@ -30,7 +31,7 @@ export function DisplayPreferences({
   const host = useLocalState((state) => state.hostKey);
   const actor = useUserState((state) => state.user?.pk);
   if (!actor)
-    return <Text size='xs'>{t`Sign in to save personal display views.`}</Text>;
+    return <Text size='sm'>{t`Sign in to save personal display views.`}</Text>;
   return (
     <ScopedPreferences
       key={JSON.stringify([host, actor, machineId])}
@@ -83,11 +84,12 @@ function ScopedPreferences({
     <Stack gap='xs'>
       <Text fw={600} size='sm'>{t`Personal display views`}</Text>
       <Text
-        size='xs'
-        c='dimmed'
+        size='sm'
+        className={monitoring.meta}
       >{t`Saved only in this browser for this signed-in user, server and machine. Display choices only; no historical evidence or access grant is saved. Changes remain unsaved until Save view.`}</Text>
       <SimpleGrid cols={{ base: 1, sm: 2 }} style={{ alignItems: 'end' }}>
         <TextInput
+          classNames={{ input: monitoring.input }}
           label={t`View name`}
           maxLength={80}
           value={name}
@@ -119,6 +121,7 @@ function ScopedPreferences({
       </SimpleGrid>
       <SimpleGrid cols={{ base: 1, sm: 3 }} style={{ alignItems: 'end' }}>
         <Select
+          classNames={{ input: monitoring.input }}
           label={t`Saved view`}
           value={selected}
           onChange={setSelected}
@@ -139,6 +142,7 @@ function ScopedPreferences({
           }}
         >{t`Restore view`}</Button>
         <Button
+          className={monitoring.link}
           variant='subtle'
           disabled={!selected}
           onClick={() => {
@@ -150,7 +154,7 @@ function ScopedPreferences({
         >{t`Delete view`}</Button>
       </SimpleGrid>
       {notice && (
-        <Text component='output' size='xs' style={{ overflowWrap: 'anywhere' }}>
+        <Text component='output' size='sm' style={{ overflowWrap: 'anywhere' }}>
           {notice}
         </Text>
       )}

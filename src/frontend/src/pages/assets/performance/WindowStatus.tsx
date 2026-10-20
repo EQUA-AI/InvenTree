@@ -1,6 +1,8 @@
 import { t } from '@lingui/core/macro';
-import { Badge, Group, Loader, Text } from '@mantine/core';
+import { Group, Loader, Text } from '@mantine/core';
 import dayjs from 'dayjs';
+import { StatusBadge as Badge } from '../health/StatusBadge';
+import monitoring from '../monitoring.module.css';
 
 import type { SeriesResponse } from '@lib/types/MachineHealth';
 
@@ -42,12 +44,14 @@ export function formatWindow(start: number, end: number, now: number): string {
 export function WindowStatus({
   response,
   updating,
-  now
+  now,
+  showClock = true
 }: Readonly<{
   response: SeriesResponse | undefined;
   /** The response on screen is the previous query's, kept while this one loads. */
   updating: boolean;
   now: number;
+  showClock?: boolean;
 }>) {
   if (!response) return null;
   const start = new Date(response.window_start).getTime();
@@ -72,11 +76,16 @@ export function WindowStatus({
       <Text component='output' size='xs' aria-live='polite' aria-atomic='true'>
         {updating ? t`Updating selected history window.` : ''}
       </Text>
-      <Text component='div' size='xs' c='dimmed' aria-live='off'>
+      <Text
+        component='div'
+        size='xs'
+        className={monitoring.meta}
+        aria-live='off'
+      >
         {updating
           ? t`Charts still show the previous window, ${formatWindow(start, end, now)} (${formatDuration(seconds)}), until the new one arrives.`
           : t`Window on screen: ${formatWindow(start, end, now)} (${formatDuration(seconds)}).`}{' '}
-        {t`Times in ${clockLabel(end)}.`}
+        {showClock && t`Times in ${clockLabel(end)}.`}
       </Text>
     </Group>
   );

@@ -94,7 +94,7 @@ test('the full chart keeps the silence open on a proportional time axis', async 
   page
 }, testInfo) => {
   for (const scheme of ['light', 'dark'] as const) {
-    await openHealth(page, { scheme });
+    await openHealth(page, { scheme, nativeTheme: true, compactChrome: true });
     const card = trendCard(page);
     await expect(curve(page)).toHaveCount(1);
     await expect(card.getByText('98 samples')).toBeVisible();
@@ -129,8 +129,28 @@ test('the full chart keeps the silence open on a proportional time axis', async 
     await expect(gaps).toContainText('Readings that are not numbers: 1 of 98.');
     await expect(gaps).toContainText('Nothing is filled in');
     await expect(card).toContainText(
-      'Selected window: Oct 18, 2026, 08:50:00 AM to Oct 18, 2026, 09:00:00 AM (UTC).'
+      'Selected window: 18 Oct 2026 08:50:00 to 18 Oct 2026 09:00:00.'
     );
+    await card
+      .getByRole('button', { name: 'Expand chart', exact: true })
+      .click();
+    const expanded = page.getByRole('dialog', {
+      name: 'Expanded signal trend',
+      exact: true
+    });
+    await expect(expanded.getByText(/Selected window:/)).toContainText(
+      'Times: your clock (UTC, UTC+00:00)'
+    );
+    await expanded.getByText(/Selected window:/).scrollIntoViewIfNeeded();
+    await expect(expanded.getByText(/Selected window:/)).toBeInViewport({
+      ratio: 1
+    });
+    await expanded.screenshot({
+      path: testInfo.outputPath(`expanded-clock-${scheme}.png`)
+    });
+    await expanded
+      .getByRole('button', { name: 'Close expanded signal trend', exact: true })
+      .click();
     // The controls stay inside the card at every width.
     const cardBox = (await card.boundingBox())!;
     const parameterBox = (await card

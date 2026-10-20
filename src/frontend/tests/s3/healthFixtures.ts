@@ -1,4 +1,5 @@
 import { type Page, type Route, expect } from '@playwright/test';
+import { mockTheme } from './themeFixtures';
 
 import type {
   HealthEvidenceSnapshot,
@@ -328,9 +329,12 @@ export function signalRow(spec: HealthSignalSpec) {
 export interface HealthFixtureOptions {
   signals?: readonly HealthSignalSpec[];
   scheme?: 'light' | 'dark';
+  nativeTheme?: boolean;
+  compactChrome?: boolean;
   /** Overrides on the summary the tab opens with. */
   summary?: Record<string, unknown>;
   anomalies?: Partial<MachineAnomaly>[];
+  pastAnomalies?: Partial<MachineAnomaly>[];
   /** Omit the cadence fields, as a server before this change would. */
   cadence?: boolean;
   /** Fail the table's batch read. */
@@ -404,6 +408,7 @@ export async function openHealth(
   page: Page,
   options: HealthFixtureOptions = {}
 ): Promise<HealthRequests> {
+  await mockTheme(page);
   const specs = options.signals ?? HEALTH_SIGNALS;
   const requests: HealthRequests = { batch: [], chart: [] };
   if (!options.realClock) {
@@ -456,7 +461,7 @@ export async function openHealth(
     const status = new URL(route.request().url()).searchParams.get('status');
     const rows =
       status === 'resolved'
-        ? []
+        ? (options.pastAnomalies ?? []).map((row) => anomaly(row))
         : (options.anomalies ?? []).map((row) => anomaly(row));
     return route.fulfill({
       status: options.anomaliesStatus ?? 200,
@@ -547,7 +552,9 @@ export async function openHealth(
   const query = new URLSearchParams({
     surface: 'machine',
     entry,
-    scheme: options.scheme ?? 'light'
+    scheme: options.scheme ?? 'light',
+    nativeTheme: String(options.nativeTheme ?? false),
+    compactChrome: String(options.compactChrome ?? false)
   });
   // Match Performance's diagnostic wrapping, including a reopened canonical
   // entry. A style added only after this goto disappears on the next document.
