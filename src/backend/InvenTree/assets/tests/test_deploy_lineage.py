@@ -115,6 +115,46 @@ class DeployLineageTests(TestCase):
         )
         self.assertIn('Do not run migrate', printed)
 
+    def test_retired_upstream_names_allow_this_lines_rollout(self):
+        """The old nested build squash and merged part branch are known history."""
+        name = self.make_pending()
+        retired = (
+            ('build', '0021_auto_20201020_0908'),
+            ('build', '0022_auto_20201020_0953'),
+            ('build', '0023_auto_20201020_1009'),
+            ('build', '0024_auto_20201020_1144'),
+            ('build', '0025_auto_20201020_1248'),
+            ('build', '0026_auto_20201023_1228'),
+            ('part', '0061_auto_20210104_2331'),
+        )
+        for app_label, migration_name in retired:
+            with self.subTest(app_label=app_label, name=migration_name):
+                self.record(app_label, migration_name)
+                found = lineage()
+                self.assertEqual(found.pending, (('assets', name),))
+                self.assertEqual(found.unknown, ())
+                self.assertEqual(found.leftover, ())
+                self.assertFalse(found.diverged)
+
+        out = StringIO()
+        self.assertTrue(report(out=out))
+        self.assertIn('lineage ok: 1 migration(s) to apply', out.getvalue())
+
+    def test_retired_names_do_not_hide_fork_only_history(self):
+        """Even a name resembling a retired migration must still be refused."""
+        self.make_pending()
+        self.record('build', '0026_auto_20201023_1228')
+        self.record('build', '0026_auto_20201023_1228_fork_only')
+
+        found = lineage()
+        self.assertTrue(found.diverged)
+        self.assertEqual(
+            found.unknown, (('build', '0026_auto_20201023_1228_fork_only'),)
+        )
+        printed = self.refused()
+        self.assertIn('already holds 1 it has never seen', printed)
+        self.assertIn('build 1 (0026_auto_20201023_1228_fork_only)', printed)
+
     def test_unknown_history_in_another_app_still_refuses(self):
         """Not judged app by app: one line's migrations lean on another's tables.
 
