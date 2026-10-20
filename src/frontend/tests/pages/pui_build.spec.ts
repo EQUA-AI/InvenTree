@@ -131,7 +131,7 @@ test('Build Order - Tags', async ({ browser }) => {
     .getByRole('button', { name: 'segmented-icon-control-table' })
     .click();
   await clearTableFilters(page);
-  await page.getByRole('button', { name: 'table-select-filters' }).click();
+  await page.getByTestId('table-select-filters').click();
   await page.getByRole('button', { name: 'Add Filter' }).click();
   await page.getByRole('combobox', { name: 'Filter' }).fill('tag');
   await page.getByRole('option', { name: 'Tags' }).click();
@@ -355,7 +355,7 @@ test('Build Order - Build Outputs', async ({ browser }) => {
   // Cancel one of the newly created outputs
   const cell = await page.getByRole('cell', { name: `# ${sn}` });
   const row = await getRowFromCell(cell);
-  await row.getByLabel(/row-action-menu-/i).click();
+  await row.getByTestId(/row-action-menu-/i).click();
   await page.getByRole('menuitem', { name: 'Cancel' }).click();
   await page.getByRole('button', { name: 'Submit' }).click();
   await page.getByText('Build outputs have been cancelled').waitFor();
@@ -363,7 +363,7 @@ test('Build Order - Build Outputs', async ({ browser }) => {
   // Complete the other output
   const cell2 = await page.getByRole('cell', { name: `# ${sn + 1}` });
   const row2 = await getRowFromCell(cell2);
-  await row2.getByLabel(/row-action-menu-/i).click();
+  await row2.getByTestId(/row-action-menu-/i).click();
   await page.getByRole('menuitem', { name: 'Complete' }).click();
   await page.getByLabel('tree-field-location').click();
   await page.getByLabel('tree-field-location').fill('Mechanical');
@@ -375,7 +375,7 @@ test('Build Order - Build Outputs', async ({ browser }) => {
   // Check for expected UI elements in the "scrap output" dialog
   const cell3 = await page.getByRole('cell', { name: '16', exact: true });
   const row3 = await getRowFromCell(cell3);
-  await row3.getByLabel(/row-action-menu-/i).click();
+  await row3.getByTestId(/row-action-menu-/i).click();
   await page.getByRole('menuitem', { name: 'Scrap' }).click();
 
   await page
@@ -425,7 +425,7 @@ test('Build Order - Allocation', async ({ browser }) => {
   const mainRedWidget = await page.getByRole('cell', { name: 'Red Widget' });
   const mainRedRow = await getRowFromCell(mainRedWidget);
 
-  await mainRedRow.getByLabel(/row-action-menu-/i).click();
+  await mainRedRow.getByTestId(/row-action-menu-/i).click();
 
   await page
     .getByRole('menuitem', { name: 'Allocate Stock', exact: true })
@@ -508,7 +508,7 @@ test('Build Order - Allocation', async ({ browser }) => {
   const redWidget = await page.getByRole('cell', { name: 'Red Widget' });
   const redRow = await getRowFromCell(redWidget);
 
-  await redRow.getByLabel(/row-action-menu-/i).click();
+  await redRow.getByTestId(/row-action-menu-/i).click();
 
   const allocateStockBtn = page.getByRole('menuitem', {
     name: 'Allocate Stock',

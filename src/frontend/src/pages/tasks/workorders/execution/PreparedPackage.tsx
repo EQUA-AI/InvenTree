@@ -30,6 +30,7 @@ import type {
 import { useApi } from '../../../../contexts/ApiContext';
 import { extractErrorMessage } from '../../../../functions/api';
 import { useUserState } from '../../../../states/UserState';
+import { useActionFocus } from '../useActionFocus';
 import { workPanelParams } from '../workPanelState';
 import {
   ExecutionFact,
@@ -260,6 +261,7 @@ function DeviationEntry({ workOrderId }: Readonly<{ workOrderId: number }>) {
     'saved' | 'uncertain' | 'refused' | null
   >(null);
   const [refusal, setRefusal] = useState('');
+  const resultFocus = useActionFocus(busy);
   async function save() {
     if (busy || !reason.trim()) return;
     setBusy(true);
@@ -313,7 +315,11 @@ function DeviationEntry({ workOrderId }: Readonly<{ workOrderId: number }>) {
       <Accordion.Item value='deviation'>
         <Accordion.Control>{t`Record a changed condition`}</Accordion.Control>
         <Accordion.Panel>
-          <Stack gap='sm'>
+          <Stack
+            {...resultFocus.props}
+            aria-label={t`Changed condition record`}
+            gap='sm'
+          >
             <Text size='sm'>{t`Native manual recovery records a deviation. It does not approve a revised scope or release a restriction.`}</Text>
             <Textarea
               label={t`Changed condition and reason`}
@@ -339,7 +345,7 @@ function DeviationEntry({ workOrderId }: Readonly<{ workOrderId: number }>) {
             )}
             <Button
               style={{ alignSelf: 'flex-start' }}
-              onClick={save}
+              onClick={() => resultFocus.run(save)}
               loading={busy}
               disabled={!reason.trim() || outcome === 'uncertain'}
             >{t`Save deviation`}</Button>

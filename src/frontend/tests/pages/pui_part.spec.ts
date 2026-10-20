@@ -656,7 +656,7 @@ test('Parts - Allocations', async ({ browser }) => {
   await build_order_cell.click();
 
   // Check row options for BO0001
-  await build_order_row.getByLabel(/row-action-menu/).click();
+  await build_order_row.getByTestId(/row-action-menu/).click();
   await page.getByRole('menuitem', { name: 'View Build Order' }).waitFor();
   await page.keyboard.press('Escape');
 
@@ -673,7 +673,7 @@ test('Parts - Allocations', async ({ browser }) => {
   await sales_order_cell.click();
 
   // Check row options for SO0025
-  await sales_order_row.getByLabel(/row-action-menu/).click();
+  await sales_order_row.getByTestId(/row-action-menu/).click();
   await page.getByRole('menuitem', { name: 'View Sales Order' }).waitFor();
   await page.keyboard.press('Escape');
 });
@@ -960,7 +960,7 @@ test('Parts - Parameters', async ({ browser }) => {
         name: 'Is this part polarized?'
       });
       const row = await getRowFromCell(cell);
-      await row.getByLabel(/row-action-menu-/i).click();
+      await row.getByTestId(/row-action-menu-/i).click();
       await page.getByRole('menuitem', { name: 'Delete' }).click();
 
       await page.getByRole('button', { name: 'Delete', exact: true }).click();
@@ -1003,7 +1003,7 @@ test('Parts - Parameters', async ({ browser }) => {
 
   await row.getByRole('cell', { name: 'No', exact: true }).waitFor();
   await row.getByRole('cell', { name: 'allaccess' }).waitFor();
-  await row.getByLabel(/row-action-menu-/i).click();
+  await row.getByTestId(/row-action-menu-/i).click();
   await page.getByRole('menuitem', { name: 'Edit' }).click();
 
   // Toggle false to true
@@ -1011,7 +1011,7 @@ test('Parts - Parameters', async ({ browser }) => {
   await page.getByRole('button', { name: 'Submit' }).click();
 
   // Finally, delete the parameter
-  await row.getByLabel(/row-action-menu-/i).click();
+  await row.getByTestId(/row-action-menu-/i).click();
   await page.getByRole('menuitem', { name: 'Delete' }).click();
 
   await page.getByRole('button', { name: 'Delete', exact: true }).click();

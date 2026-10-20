@@ -15,7 +15,10 @@ export function CloseoutReconciliation({
   return (
     <Stack gap='sm' data-testid='closeout-reconciliation'>
       <Stack gap='sm'>
-        <Title order={5}>{t`Material custody, time and downtime`}</Title>
+        <Title
+          order={3}
+          size='h5'
+        >{t`Material custody, time and downtime`}</Title>
         <Text size='sm'>{t`Usage and custody are separate records. A reservation or a reconciled usage row does not prove fitted identity or stock release.`}</Text>
         <details
           onToggle={(event) => {

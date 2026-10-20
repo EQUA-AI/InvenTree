@@ -487,7 +487,7 @@ test('C2: machine Ask seeds the scope before the send and collapses the hint', a
 
   const composer = page.getByPlaceholder('Type a message...');
   await composer.fill('What is wrong?');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByText('Golden typed response', { exact: true })
   ).toBeVisible();
@@ -519,7 +519,7 @@ test('C2: dismissing the hint never clears a confirmed scope', async ({
   // Unconfirmed scope + hint: dismissal hides the chip only.
   await page.getByTestId('fixture-ask-machine').click();
   await expect(page.getByTestId('ai-chat-routing-hint')).toBeVisible();
-  await page.getByLabel('dismiss-routing-hint').click();
+  await page.getByTestId('dismiss-routing-hint').click();
   await expect(page.getByTestId('ai-chat-routing-hint')).toHaveCount(0);
   expect(foundation.scopeMutations).toHaveLength(0);
   await expect(page.getByTestId('ai-chat-analysis-context')).toContainText(
@@ -532,7 +532,7 @@ test('C2: dismissing the hint never clears a confirmed scope', async ({
   foundation.scope.machineIds = [7];
   foundation.scope.displayLabel = 'Pump A';
   await page.reload();
-  await page.getByLabel('open-ai-chat').click();
+  await page.getByTestId('open-ai-chat').click();
   await page.getByTestId('fixture-ask-machine').click();
   await expect(page.getByTestId('ai-chat-routing-hint')).toHaveCount(0);
   await expect(page.getByTestId('ai-chat-analysis-context')).toContainText(
@@ -595,7 +595,7 @@ test('C3: active voice strip stays reachable on every tab and close cleans up', 
   );
 
   // Closing the drawer ends voice (current explicit close policy).
-  await page.getByLabel('close-ai-chat').click();
+  await page.getByTestId('close-ai-chat').click();
   await expect.poll(() => voice?.sessionEnded).toBe(true);
   await expect(page.getByTestId('voice-minimized-indicator')).toHaveCount(0);
 });
@@ -751,7 +751,7 @@ test('U1: empty-state suggestions are semantic buttons and adapt to a machine hi
 
   // Machine hint → machine-relevant prompts.
   await page.reload();
-  await page.getByLabel('open-ai-chat').click();
+  await page.getByTestId('open-ai-chat').click();
   await page.getByTestId('fixture-ask-machine').click();
   await expect(
     page.getByRole('button', { name: 'Machine status' })

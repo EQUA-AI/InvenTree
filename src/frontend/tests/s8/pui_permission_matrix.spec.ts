@@ -659,7 +659,7 @@ for (const scheme of ['light', 'dark'] as const) {
     );
     await viewerEntry(page, '/machines/machine/18/parts/', scheme, 'machine');
     const row = page.getByRole('row').filter({ hasText: 'PS-MOTOR:1' });
-    await expect(row).toContainText('Fit not verified');
+    await expect(row).toContainText('Slot assignment not verified');
     await expect(row).toContainText('Not available');
     await expect(row.getByRole('link')).toHaveCount(0);
     await expect(

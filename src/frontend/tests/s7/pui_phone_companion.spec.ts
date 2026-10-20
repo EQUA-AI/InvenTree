@@ -208,9 +208,7 @@ for (const width of [360, 390]) {
       path: info.outputPath(`phone-downtime-${width}-${scheme}.png`)
     });
     // Native icon controls retain their square geometry as well.
-    const back = await page
-      .getByRole('button', { name: 'work-order-back', exact: true })
-      .boundingBox();
+    const back = await page.getByTestId('work-order-back').boundingBox();
     expect(back!.width).toBe(back!.height);
     await completionAccess(page, false);
     await expect(downtime).toBeDisabled();
@@ -498,7 +496,7 @@ for (const width of [360, 390]) {
       exact: true
     });
     await composer.fill('Synthetic phone observation for this saved request.');
-    await page.getByLabel('send-ai-chat-message').click();
+    await page.getByTestId('send-ai-chat-message').click();
     await expect(
       page
         .getByRole('alert')
@@ -513,7 +511,7 @@ for (const width of [360, 390]) {
       path: info.outputPath(`phone-request-refused-${width}-dark.png`)
     });
     assistant.confirm();
-    await page.getByLabel('send-ai-chat-message').click();
+    await page.getByTestId('send-ai-chat-message').click();
     await expect(
       page.getByText('Synthetic phone answer; no evidence published.', {
         exact: true
@@ -598,7 +596,7 @@ test('phone Work chat returns to the same unsaved capture without publishing or 
   await page
     .getByRole('textbox', { name: 'Message', exact: true })
     .fill('Which account fact remains missing?');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByText('Synthetic phone answer; no evidence published.', {
       exact: true

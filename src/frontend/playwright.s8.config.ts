@@ -12,13 +12,23 @@ export default defineConfig({
   testMatch: ['s8/*.spec.ts'],
   outputDir: resolve(tmpdir(), `aimms-r6-s8-browser${harnessSuffix}`),
   projects: [
-    { name: 's8-desktop', use: devices['Desktop Chrome'] },
+    {
+      name: 's8-desktop',
+      testIgnore: ['s8/pui_p31_work_*.spec.ts'],
+      use: devices['Desktop Chrome']
+    },
     {
       name: 's8-phone',
+      testIgnore: ['s8/pui_p31_work_*.spec.ts'],
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 390, height: 844 }
       }
+    },
+    {
+      name: 's8-work',
+      testMatch: ['s8/pui_p31_work_*.spec.ts'],
+      use: devices['Desktop Chrome']
     }
   ]
 });

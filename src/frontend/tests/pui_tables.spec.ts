@@ -178,7 +178,7 @@ test('Tables - Navigation query parameters', async ({ browser }) => {
   await expect(page.getByText('Custom table filters are active')).toHaveCount(
     0
   );
-  await expect(page.getByLabel('table-select-filters')).toBeEnabled();
+  await expect(page.getByTestId('table-select-filters')).toBeEnabled();
 
   await setTableChoiceFilter(page, 'Assembly', 'Yes');
 
@@ -211,7 +211,7 @@ test('Tables - Navigation query parameters', async ({ browser }) => {
     .getByRole('alert')
     .filter({ hasText: 'Custom table filters are active' });
   await expect(queryFilterAlert).toBeVisible();
-  await expect(page.getByLabel('table-select-filters')).toBeDisabled();
+  await expect(page.getByTestId('table-select-filters')).toBeDisabled();
 
   await queryFilterAlert.getByRole('button').click();
   await expect(queryFilterAlert).toBeHidden();
@@ -223,7 +223,7 @@ test('Tables - Navigation query parameters', async ({ browser }) => {
     expect(new URL(page.url()).searchParams.get(key)).toBe(value);
   }
 
-  await expect(page.getByLabel('table-select-filters')).toBeEnabled();
+  await expect(page.getByTestId('table-select-filters')).toBeEnabled();
 });
 
 test('Tables - Detail navigation', async ({ browser }) => {
@@ -299,7 +299,7 @@ test('Tables - Columns', async ({ browser }) => {
   });
 
   // Open column selector
-  await page.getByLabel('table-select-columns').click();
+  await page.getByTestId('table-select-columns').click();
 
   // De-select some items
   await page.getByRole('menuitem', { name: 'Description' }).click();
@@ -310,7 +310,7 @@ test('Tables - Columns', async ({ browser }) => {
   await navigate(page, '/sales/index/salesorders');
 
   // Open column selector
-  await page.getByLabel('table-select-columns').click();
+  await page.getByTestId('table-select-columns').click();
 
   await page.getByRole('menuitem', { name: 'Start Date' }).click();
   await page.getByRole('menuitem', { name: 'Target Date' }).click();

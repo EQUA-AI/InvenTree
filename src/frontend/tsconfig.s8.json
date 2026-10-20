@@ -3,6 +3,10 @@
   "files": [
     "playwright.s8.config.ts",
     "tests/s8/pui_permission_matrix.spec.ts",
-    "tests/s8/permissionGuard.spec.ts"
+    "tests/s8/permissionGuard.spec.ts",
+    "tests/s8/pui_p31_work_reflow.spec.ts",
+    "tests/s8/pui_p31_work_review.spec.ts",
+    "tests/s8/pui_p31_work_keyboard.spec.ts",
+    "tests/s8/pui_p31_work_commands.spec.ts"
   ]
 }

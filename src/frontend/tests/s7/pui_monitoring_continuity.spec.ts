@@ -562,7 +562,7 @@ for (const scheme of ['light', 'dark'] as const) {
       if (action === 'create_linked') {
         await expect(account).toContainText(accepted!.result);
         await page
-          .getByText('Original accepted snapshot', { exact: true })
+          .getByText('Original completed account', { exact: true })
           .click();
         await expect(
           account.getByText(`Result: ${values.result}`, { exact: true })

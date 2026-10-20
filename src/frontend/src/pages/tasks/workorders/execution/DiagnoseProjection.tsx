@@ -95,7 +95,9 @@ function Section({
       <Stack gap='sm'>
         <Group gap='xs' wrap='nowrap' align='center'>
           {icon}
-          <Title order={4}>{title}</Title>
+          <Title order={2} size='h4'>
+            {title}
+          </Title>
         </Group>
         {children}
       </Stack>

@@ -40,7 +40,9 @@ export function ExecutionSection({
       style={{ overflowWrap: 'anywhere' }}
     >
       <Stack gap='sm'>
-        <Title order={4}>{title}</Title>
+        <Title order={2} size='h4'>
+          {title}
+        </Title>
         {children}
       </Stack>
     </Card>

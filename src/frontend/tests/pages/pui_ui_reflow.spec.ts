@@ -5,7 +5,7 @@ import { loadDrawerFixture, prepareDrawerFixture } from './ai_drawer_harness';
 test('selecting a conversation closes its dropdown', async ({ page }) => {
   await prepareDrawerFixture(page);
   await loadDrawerFixture(page);
-  await page.getByRole('button', { name: 'select-ai-chat-thread' }).click();
+  await page.getByTestId('select-ai-chat-thread').click();
   const menu = page.getByRole('menu');
   await expect(menu).toBeVisible();
   await menu.getByText('Server conversation', { exact: true }).click();
@@ -45,9 +45,7 @@ test('composer controls remain reachable without horizontal overflow', async ({
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(
     page.viewportSize()!.width
   );
-  await expect(
-    composer.getByRole('button', { name: 'send-ai-chat-message' })
-  ).toBeVisible();
+  await expect(composer.getByTestId('send-ai-chat-message')).toBeVisible();
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth + 1
   );

@@ -338,7 +338,7 @@ export async function seedLegacyHistory(page: Page) {
 }
 
 export async function openChat(page: Page) {
-  await page.getByLabel('open-ai-chat').click();
+  await page.getByTestId('open-ai-chat').click();
   // 'AI Assistant' also appears in the nav button and menu entries, so the
   // drawer-open assertion must not use a strict single-element match.
   await expect(

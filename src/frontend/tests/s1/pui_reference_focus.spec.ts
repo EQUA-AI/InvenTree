@@ -149,7 +149,7 @@ for (const scheme of ['light', 'dark'])
       'reference position'
     );
     await composer.fill('What is recorded for this reference position?');
-    await page.getByLabel('send-ai-chat-message').click();
+    await page.getByTestId('send-ai-chat-message').click();
     await expect(
       page.getByText(
         'Synthetic focused answer; no physical state is inferred.',
@@ -208,7 +208,7 @@ for (const problem of ['refuse', 'mismatch', 'unsupported'] as const)
     });
     const composer = await equipment(page);
     await composer.fill('Keep my exact reference question.');
-    await page.getByLabel('send-ai-chat-message').click();
+    await page.getByTestId('send-ai-chat-message').click();
     await expect(
       page.getByRole('alert').filter({ hasText: 'Reference not confirmed' })
     ).toBeVisible();
@@ -225,7 +225,7 @@ for (const problem of ['refuse', 'mismatch', 'unsupported'] as const)
         .click();
       await expect(page.getByTestId('ai-chat-work-focus')).toHaveCount(0);
       await expect(composer).toHaveValue('Keep my exact reference question.');
-      await page.getByLabel('send-ai-chat-message').click();
+      await page.getByTestId('send-ai-chat-message').click();
       await expect(
         page.getByText(
           'Synthetic focused answer; no physical state is inferred.',
@@ -269,7 +269,7 @@ for (const scheme of ['light', 'dark'])
       exact: true
     });
     await composer.fill('Which qualifiers were recorded for this reading?');
-    await page.getByLabel('send-ai-chat-message').click();
+    await page.getByTestId('send-ai-chat-message').click();
     await expect(
       page.getByText(
         'Synthetic focused answer; no physical state is inferred.',
@@ -300,7 +300,7 @@ for (const scheme of ['light', 'dark'])
     await chips.first().getByRole('link').click();
     if (info.project.name.includes('phone'))
       await expect(composer).toBeHidden();
-    else await page.getByLabel('close-ai-chat').click();
+    else await page.getByTestId('close-ai-chat').click();
     await page
       .getByRole('button', { name: 'Ask about this reading' })
       .scrollIntoViewIfNeeded();
@@ -482,7 +482,7 @@ test('a component-focused question keeps its uploaded file and signed focus', as
   });
   await expect(page.getByText('report.pdf', { exact: true })).toBeVisible();
   await composer.fill('Read this file about the selected reference position.');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect.poll(() => observed.sends.length).toBe(1);
   expect(observed.acks).toHaveLength(1);
   expect(observed.sends[0].file_ids).toEqual(['synthetic-thread/report.pdf']);
