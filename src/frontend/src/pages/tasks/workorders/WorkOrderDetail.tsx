@@ -354,12 +354,13 @@ function WorkOrderWorkspace({
         <Stack gap='md'>
           <ScopeRevisionNotice workOrder={workOrder} />
           <VerificationReturn workOrder={workOrder} />
-          {workOrder.canonical_commands_enabled && !workOrder.repair_packet && (
-            <WorkCloseoutReadings
-              workOrderId={workOrder.id}
-              readOnly={workOrder.lifecycle_status === 'completed'}
-            />
-          )}
+          {workOrder.canonical_commands_enabled &&
+            workOrder.closeout_wizard_enabled !== false && (
+              <WorkCloseoutReadings
+                workOrderId={workOrder.id}
+                readOnly={workOrder.lifecycle_status === 'completed'}
+              />
+            )}
         </Stack>
       )
     },
@@ -375,22 +376,14 @@ function WorkOrderWorkspace({
             />
           )}
           <MonitoringContinuity workOrder={workOrder} />
-          {workOrder.canonical_commands_enabled && !workOrder.repair_packet ? (
+          {workOrder.canonical_commands_enabled || workOrder.repair_packet ? (
             <CloseoutPanel
               workOrder={projectCloseoutWorkOrder(workOrder)}
               accepted={workOrder.structured_closeout}
               execution={workOrder}
+              packetId={workOrder.repair_packet?.id}
+              captureEnabled={workOrder.closeout_wizard_enabled !== false}
             />
-          ) : workOrder.repair_packet ? (
-            <Alert color='blue'>
-              <Stack gap='xs'>
-                <Text>{t`This work order is completed through its owning repair packet.`}</Text>
-                <Anchor
-                  component={Link}
-                  to={`/repair/packets/${workOrder.repair_packet.id}/closeout/`}
-                >{t`Open ${workOrder.repair_packet.reference}`}</Anchor>
-              </Stack>
-            </Alert>
           ) : (
             <Text c='dimmed'>{t`Standalone completion is not enabled for this work order.`}</Text>
           )}

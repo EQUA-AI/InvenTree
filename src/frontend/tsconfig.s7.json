@@ -9,6 +9,8 @@
 		"tests/s7/pui_closeout_placement.spec.ts",
 		"tests/s7/pui_monitoring_continuity.spec.ts",
 		"tests/s7/pui_phone_companion.spec.ts",
-		"tests/s7/phoneCompanionFixtures.ts"
+		"tests/s7/phoneCompanionFixtures.ts",
+		"tests/s7/packetReceiptFixtures.ts",
+		"tests/s7/pui_packet_receipt.spec.ts"
 	]
 }

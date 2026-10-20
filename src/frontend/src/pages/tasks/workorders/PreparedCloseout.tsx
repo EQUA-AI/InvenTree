@@ -45,6 +45,7 @@ export function PreparedCloseout({
   partUsage,
   draftDowntime,
   draftFollowUp,
+  sourcesEnabled = true,
   accountLoading = false,
   accountUnavailable = false,
   manualAccepted = false,
@@ -65,6 +66,7 @@ export function PreparedCloseout({
   partUsage?: CloseoutPartUsageRow[];
   draftDowntime: number | '';
   draftFollowUp: string;
+  sourcesEnabled?: boolean;
   accountLoading?: boolean;
   accountUnavailable?: boolean;
   manualAccepted?: boolean;
@@ -307,7 +309,11 @@ export function PreparedCloseout({
           )}
           <Text size='sm'>{t`The preview exports the displayed account and recorded source references. It does not update the maintenance record.`}</Text>
           {loading ? (
-            <Text size='sm'>{t`Loading report sources… Preview is unavailable until the account, materials, readings and amendments have been read.`}</Text>
+            <Text size='sm'>
+              {sourcesEnabled
+                ? t`Loading report sources… Preview is unavailable until the account, materials, readings and amendments have been read.`
+                : t`Report sources are not enabled. Preview and download are unavailable.`}
+            </Text>
           ) : (
             <details>
               <summary>{t`Read report`}</summary>

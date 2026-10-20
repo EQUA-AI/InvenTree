@@ -325,6 +325,27 @@ class VoiceHandoffTest(CloseoutEnvMixin, TestCase):
         voice_capture.refresh_from_db()
         self.assertEqual(voice_capture.state, CaptureState.COMMITTED)
 
+    def test_packet_voice_handoff_uses_only_the_actual_owner(self):
+        """Packet dispatch preserves source acceptance, ownership and replay."""
+        from repair.models import RepairPacket
+        from repair.services import packet_voice_closeout
+        from tasks.services.work_orders import CommandConflict
+        from voice.services.capture import handoff_capture
+
+        packet = RepairPacket.objects.create(work_order=self.work_order)
+        other = RepairPacket.objects.create()
+        voice_capture, revision = self.build_voice_capture()
+        with self.assertRaises(CommandConflict):
+            accept_voice_handoff(voice_capture=voice_capture)
+        with self.assertRaises(CommandConflict):
+            packet_voice_closeout(packet_id=other.pk, voice_capture=voice_capture)
+        closeout = handoff_capture(capture=voice_capture)
+        self.assertEqual(closeout.transcript_reference, str(revision.pk))
+        self.assertEqual(closeout.current_revision.source_content_hash, revision.content_hash)
+        replay = packet_voice_closeout(packet_id=packet.pk, voice_capture=voice_capture)
+        self.assertEqual(replay.pk, closeout.pk)
+        self.assertEqual(CloseoutCapture.objects.count(), 1)
+
     @override_settings(AIMMS_CLOSEOUT_WIZARD_ENABLED=False)
     def test_voice_service_handoff_fails_closed_when_disabled(self):
         from voice.models import CaptureState

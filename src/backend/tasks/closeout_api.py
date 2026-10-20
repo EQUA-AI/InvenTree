@@ -205,10 +205,19 @@ class CloseoutCaptureList(CloseoutCommandView):
         serializer = CaptureCreateCommandSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        service = create_capture
+        ownership = {}
+        packet = getattr(work_order, 'repair_packet', None)
+        if packet is not None:
+            from repair.services import packet_closeout_capture
+
+            service = packet_closeout_capture
+            ownership['packet_id'] = packet.pk
         result = self.run(
             request,
             work_order,
-            create_capture,
+            service,
+            **ownership,
             narrative=data['narrative'],
             voice_unavailable_reason=data['voice_unavailable_reason'],
             expected_version=data['expected_version'],
@@ -228,11 +237,23 @@ class CloseoutCaptureDetail(CloseoutCommandView):
         serializer = CaptureReviseCommandSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        revise_service, abandon_service = revise_capture, abandon_capture
+        ownership = {}
+        packet = getattr(work_order, 'repair_packet', None)
+        if packet is not None:
+            from repair.services import packet_closeout_abandon, packet_closeout_revise
+
+            revise_service, abandon_service = (
+                packet_closeout_revise,
+                packet_closeout_abandon,
+            )
+            ownership['packet_id'] = packet.pk
         if data['abandon']:
             result = self.run(
                 request,
                 work_order,
-                abandon_capture,
+                abandon_service,
+                **ownership,
                 capture_id=cap,
                 expected_version=data['expected_version'],
                 idempotency_key=data['idempotency_key'],
@@ -247,7 +268,8 @@ class CloseoutCaptureDetail(CloseoutCommandView):
             result = self.run(
                 request,
                 work_order,
-                revise_capture,
+                revise_service,
+                **ownership,
                 capture_id=cap,
                 narrative=data.get('narrative', ''),
                 expected_revision=data['expected_revision'],
@@ -265,7 +287,15 @@ class CloseoutCaptureExtract(CloseoutCommandView):
     def post(self, request, pk, cap):
         """Run extraction and return the stored proposal."""
         work_order = self.get_work_order(request, pk)
-        result = self.run(request, work_order, request_extraction, capture_id=cap)
+        service = request_extraction
+        ownership = {}
+        packet = getattr(work_order, 'repair_packet', None)
+        if packet is not None:
+            from repair.services import packet_closeout_extract
+
+            service = packet_closeout_extract
+            ownership['packet_id'] = packet.pk
+        result = self.run(request, work_order, service, **ownership, capture_id=cap)
         if _is_response(result):
             return result
         return Response(CloseoutProposalSerializer(result).data)
@@ -309,10 +339,19 @@ class CloseoutDecisionBatch(CloseoutCommandView):
         serializer = DecisionBatchCommandSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        service = record_decisions
+        ownership = {}
+        packet = getattr(work_order, 'repair_packet', None)
+        if packet is not None:
+            from repair.services import packet_closeout_decisions
+
+            service = packet_closeout_decisions
+            ownership['packet_id'] = packet.pk
         result = self.run(
             request,
             work_order,
-            record_decisions,
+            service,
+            **ownership,
             capture_id=cap,
             decisions=[dict(entry) for entry in data['decisions']],
             expected_decision_version=data['expected_decision_version'],

@@ -170,6 +170,7 @@ export interface WorkOrderOverview extends WorkOrder {
   maintenance_record: MaintenanceRecordOverview | null;
   structured_closeout: StructuredCloseoutOverview | null;
   canonical_commands_enabled: boolean;
+  closeout_wizard_enabled?: boolean;
   /** R6 S4 projections (`tasks/work_execution`); absent on older servers. */
   handled_actions?: HandledActions;
   investigation?: Investigation;
