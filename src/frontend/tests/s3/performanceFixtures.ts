@@ -43,6 +43,11 @@ export async function openPerformance(
     delaySeriesMs?: (url: URL, index: number) => number;
     fail?: boolean;
     failSeries?: (url: URL) => boolean;
+    displayShift?: number | null;
+    mapSeriesResponse?: (
+      response: ReturnType<typeof seriesFor>,
+      url: URL
+    ) => ReturnType<typeof seriesFor>;
   } = {}
 ) {
   const specs = options.signals ?? NATIVE_SIGNALS;
@@ -60,6 +65,9 @@ export async function openPerformance(
       route.fulfill({
         json: {
           available: true,
+          ...(options.displayShift === null
+            ? {}
+            : { display_shift_seconds: options.displayShift ?? 0 }),
           from: new Date(NOW - 10 * 86400_000).toISOString(),
           to: new Date(NOW).toISOString()
         }
@@ -89,9 +97,17 @@ export async function openPerformance(
         });
       const delay = options.delaySeriesMs?.(url, index) ?? 0;
       if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+      const response = seriesFor(url, { fail: options.fail }, specs);
+      const mapped = options.mapSeriesResponse?.(response, url) ?? response;
       // The page may have moved on while this answer was held back.
       return route
-        .fulfill({ json: seriesFor(url, { fail: options.fail }, specs) })
+        .fulfill({
+          json: {
+            ...mapped,
+            display_shifted: !!options.displayShift,
+            display_shift_seconds: options.displayShift ?? 0
+          }
+        })
         .catch(() => undefined);
     }
   );

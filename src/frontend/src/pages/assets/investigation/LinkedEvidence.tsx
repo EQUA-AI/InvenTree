@@ -3,7 +3,7 @@ import { apiUrl } from '@lib/functions/Api';
 import { t } from '@lingui/core/macro';
 import { Alert, Anchor, Loader, Stack, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useApi } from '../../../contexts/ApiContext';
 import type { FaultOccurrence } from '../faults/occurrenceModel';
 
@@ -54,8 +54,9 @@ export function LinkedEvidence({ machineId }: Readonly<{ machineId: number }>) {
       style={{ overflowWrap: 'anywhere' }}
     >
       <Anchor
+        component={Link}
         size='sm'
-        href={`/machines/machine/${machineId}/fault-history/?occurrence=${occurrence.id}`}
+        to={`/machines/machine/${machineId}/fault-history/?${new URLSearchParams({ occurrence: String(occurrence.id), ...(snapshotId ? { snapshot: snapshotId } : {}) })}`}
       >
         {t`Retained occurrence ${occurrence.id}`}: {occurrence.title}
       </Anchor>

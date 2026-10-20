@@ -1,6 +1,6 @@
 import { t } from '@lingui/core/macro';
 import { Anchor, Stack, Text } from '@mantine/core';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import type { FaultOccurrence } from '../faults/occurrenceModel';
 import { InvestigationSlices } from './InvestigationSlices';
 import {
@@ -24,12 +24,20 @@ export function OccurrenceInvestigation({
       <Text
         size='xs'
         c='dimmed'
-      >{t`A new historian read can differ from the retained evidence below. It does not replace, extend or recapture a snapshot. Source retention, resolution and permissions apply.`}</Text>
+      >{t`A new historian read can differ from the retained evidence below. It does not replace, extend or recapture a snapshot. Source retention, resolution and permissions apply. Case and snapshot bounds use the recorded plant clock; Performance converts them only with a known display-clock offset.`}</Text>
       {validSpan(from, to) ? (
         <InvestigationSlices
           initial={{ from, to }}
           onRead={(span) =>
-            navigate(investigationHref(machineId, span, occurrence.id))
+            navigate(
+              investigationHref(
+                machineId,
+                span,
+                occurrence.id,
+                undefined,
+                'recorded'
+              )
+            )
           }
         />
       ) : (
@@ -43,13 +51,15 @@ export function OccurrenceInvestigation({
         return (
           span && (
             <Anchor
+              component={Link}
               key={snapshot.id}
               size='xs'
-              href={investigationHref(
+              to={investigationHref(
                 machineId,
                 span,
                 occurrence.id,
-                snapshot.id
+                snapshot.id,
+                'recorded'
               )}
             >
               {t`Read source history for retained snapshot ${snapshot.id}`} ·{' '}

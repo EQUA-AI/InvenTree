@@ -1,14 +1,43 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   MAX_HISTORY_WINDOW_MS,
   boundedWindow,
+  displayLinkedWindow,
   investigationHref,
   linkedWindow,
+  pickerInstant,
   sliceAt,
   sliceCount
 } from './windows';
 const hour = 3600_000;
 describe('bounded linked historian windows', () => {
+  it('converts recorded bounds once using a known non-zero display shift', () => {
+    const params = new URLSearchParams(
+      'history_from=2025-09-20T00:00:00Z&history_to=2025-09-20T01:00:00Z&history_clock=recorded'
+    );
+    expect(displayLinkedWindow(params, 365 * 86400).window).toEqual({
+      from: Date.parse('2026-09-20T00:00:00Z'),
+      to: Date.parse('2026-09-20T01:00:00Z')
+    });
+    expect(displayLinkedWindow(params).clockUnknown).toBe(true);
+    expect(displayLinkedWindow(params).window).toBeNull();
+    expect(displayLinkedWindow(params, 0).window).toEqual(
+      linkedWindow(params).window
+    );
+    params.set('history_clock', 'unrecognized');
+    expect(displayLinkedWindow(params, 0).window).toBeNull();
+  });
+  it('parses the Mantine picker format without the native Date string parser', () => {
+    const parser = vi.spyOn(Date, 'parse').mockReturnValue(Number.NaN);
+    try {
+      expect(pickerInstant('2026-10-01 12:34:56')).toBe(
+        new Date(2026, 9, 1, 12, 34, 56).getTime()
+      );
+      expect(pickerInstant(null)).toBeNaN();
+    } finally {
+      parser.mockRestore();
+    }
+  });
   it('retains the existing 24 hour limit including exact boundaries', () => {
     expect(boundedWindow(0, 24 * hour)).toEqual({ from: 0, to: 24 * hour });
     expect(boundedWindow(0, 24 * hour + 1)).toBeNull();

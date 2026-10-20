@@ -18,12 +18,14 @@ import {
 import { DateTimePicker } from '@mantine/dates';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApi } from '../../../contexts/ApiContext';
 import { useLocalState } from '../../../states/LocalState';
 import { useUserState } from '../../../states/UserState';
 import { HistoryProvenance } from '../investigation/HistoryProvenance';
+import { pickerInstant } from '../investigation/windows';
 import { DisplayPreferences } from './DisplayPreferences';
+import { HistoryReadStack } from './HistoryReadContext';
 import { windowInfoFrom } from './PerformancePanel';
 import type { WindowInfo } from './SensorGroupCard';
 import { TrendChart } from './TrendChart';
@@ -207,21 +209,33 @@ function HistoryComparison({
   parameters,
   window,
   label,
-  syncId
+  syncId,
+  onShift
 }: Readonly<{
   machineId: number;
   parameters: ResolvedParameter[];
   window: WindowSpec;
   label: string;
   syncId: string;
+  onShift?: (shift: number | undefined) => void;
 }>) {
   const bindings = useMemo(
     () => parameters.map((p) => p.signal.binding_id),
     [parameters]
   );
   const query = useMachineSeries(machineId, { bindings }, window, false);
+  const shift =
+    query.isError || query.isFetching
+      ? undefined
+      : query.data?.display_shift_seconds;
+  useEffect(() => {
+    onShift?.(shift);
+  }, [onShift, shift]);
   return (
-    <Stack gap='xs'>
+    <HistoryReadStack
+      response={query.isError ? undefined : query.data}
+      gap='xs'
+    >
       <Text fw={600} size='sm'>
         {label}
       </Text>
@@ -269,13 +283,17 @@ function HistoryComparison({
                 parameters={parameters}
                 response={query.data}
                 window={windowInfoFrom(query.data, window, Date.now())}
-                syncId={syncId}
+                syncId={
+                  onShift
+                    ? `${syncId}-${Number.isFinite(shift) ? shift : `unknown-${machineId}`}`
+                    : syncId
+                }
               />
             </>
           )}
         </>
       )}
-    </Stack>
+    </HistoryReadStack>
   );
 }
 
@@ -291,8 +309,8 @@ function BeforeAfter({
   const [from, setFrom] = useState<string | null>(null);
   const [to, setTo] = useState<string | null>(null);
   const [after, setAfter] = useState<WindowSpec | null>(null);
-  const start = from ? new Date(from).getTime() : Number.NaN;
-  const end = to ? new Date(to).getTime() : Number.NaN;
+  const start = pickerInstant(from);
+  const end = pickerInstant(to);
   const valid =
     Number.isFinite(start) &&
     Number.isFinite(end) &&
@@ -384,6 +402,8 @@ function MachineComparison({
   const [search, setSearch] = useState('');
   const [lookup, setLookup] = useState('');
   const [candidate, setCandidate] = useState<string | null>(null);
+  const [primaryShift, setPrimaryShift] = useState<number | undefined>();
+  const [candidateShift, setCandidateShift] = useState<number | undefined>();
   const machines = useQuery<{
     results: { pk: number; name: string; asset_type: string }[];
   }>({
@@ -416,7 +436,7 @@ function MachineComparison({
       <Text
         size='xs'
         c='dimmed'
-      >{t`Candidates come from your permitted machine list, with the same recorded asset type. This does not establish equivalent duty or load. No operational ranking is made. Both machines use the same absolute display-time bounds; source clock shifts remain disclosed.`}</Text>
+      >{t`Candidates come from your permitted machine list, with the same recorded asset type. This does not establish equivalent duty or load. No operational ranking is made. Both machines use the same absolute display-time bounds. Crosshairs synchronize only when their recorded-to-display clock offsets are known and equal.`}</Text>
       <Group align='flex-end' grow>
         <TextInput
           label={t`Find comparison machine`}
@@ -442,13 +462,22 @@ function MachineComparison({
             label: item.name
           }))}
           value={candidate}
-          onChange={setCandidate}
+          onChange={(value) => {
+            setCandidateShift(undefined);
+            setCandidate(value);
+          }}
           searchable
         />
       )}
       {!machines.isFetching && !machines.isError && candidates.length === 0 && (
         <Text size='sm'>{t`No same-type candidate in these 25 results. Refine the search. Duty eligibility is not recorded.`}</Text>
       )}
+      {permitted &&
+        Number.isFinite(primaryShift) &&
+        Number.isFinite(candidateShift) &&
+        primaryShift !== candidateShift && (
+          <Alert color='yellow'>{t`Different plant periods: these machines have different display-clock shifts (${primaryShift!} s and ${candidateShift!} s). Matching display times do not mean simultaneous plant observations. Crosshairs are not synchronized between machines.`}</Alert>
+        )}
       {permitted && (
         <HistoryComparison
           machineId={machineId}
@@ -456,12 +485,14 @@ function MachineComparison({
           window={window}
           label={t`This machine — selected origin`}
           syncId='machine-comparison'
+          onShift={setPrimaryShift}
         />
       )}
       {permitted && (
         <MatchedMachine
           key={permitted.pk}
           machineId={permitted.pk}
+          onShift={setCandidateShift}
           parameters={parameters}
           window={window}
         />
@@ -472,11 +503,13 @@ function MachineComparison({
 function MatchedMachine({
   machineId,
   parameters,
-  window
+  window,
+  onShift
 }: Readonly<{
   machineId: number;
   parameters: ResolvedParameter[];
   window: WindowSpec;
+  onShift: (shift: number | undefined) => void;
 }>) {
   const signals = useMachineSignals(machineId, false);
   const mapped = useMemo(
@@ -515,6 +548,7 @@ function MatchedMachine({
           parameters={matched}
           window={window}
           label={t`Machine ${machineId} — matching roles and units`}
+          onShift={onShift}
           syncId='machine-comparison'
         />
       )}

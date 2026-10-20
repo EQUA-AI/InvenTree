@@ -4,6 +4,7 @@ import { Paper, Table, Text } from '@mantine/core';
 import type { SeriesEntry } from '@lib/types/MachineHealth';
 
 import { ObservedAt, qualityLabel } from '../../health/common';
+import { useHistoryReadFailures } from '../HistoryReadContext';
 import { Sparkline } from '../KpiStrip';
 import { formatValue } from '../format';
 import type { ResolvedParameter } from '../resolve';
@@ -19,6 +20,7 @@ export function OtherSection({
   parameters: ResolvedParameter[];
   series: Map<number, SeriesEntry>;
 }>) {
+  const failed = useHistoryReadFailures();
   if (parameters.length === 0) {
     return null;
   }
@@ -62,7 +64,13 @@ export function OtherSection({
                   />
                 </Table.Td>
                 <Table.Td>
-                  {entry ? <Sparkline entry={entry} /> : null}
+                  {failed.bindings.has(p.signal.binding_id) ? (
+                    <Text size='xs'>{t`History read failed; coverage unknown.`}</Text>
+                  ) : entry ? (
+                    <Sparkline entry={entry} />
+                  ) : failed.missing ? (
+                    <Text size='xs'>{t`History has not been returned for this window.`}</Text>
+                  ) : null}
                 </Table.Td>
                 <Table.Td>
                   <Text size='sm'>{qualityLabel(p.signal.quality)}</Text>

@@ -463,12 +463,13 @@ export async function mockFaultHistory(
 
 export async function openFaultHistory(
   page: Page,
-  options: { query?: string; scheme?: 'light' | 'dark' } = {}
+  options: { query?: string; scheme?: 'light' | 'dark'; basename?: string } = {}
 ) {
   const query = new URLSearchParams({
     surface: 'machine',
     role: 'viewer',
     scheme: options.scheme ?? 'light',
+    basename: options.basename ?? '',
     entry: `/machines/machine/18/fault-history/${options.query ?? ''}`
   });
   await page.goto(`/playwright/s0-native.html?${query}`);

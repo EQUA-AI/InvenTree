@@ -28,6 +28,7 @@ import {
   gapThresholdMs,
   heatmapMatrix,
   limitState,
+  resolutionForSeries,
   seriesStats
 } from './series';
 import { groupByScale, unitText } from './units';
@@ -117,6 +118,10 @@ function SensorGroupCardBody({
 }: Readonly<SensorGroupCardProps>) {
   const theme = useMantineTheme();
   const scheme = useComputedColorScheme('light');
+  const resolutionSeconds = resolutionForSeries(
+    parameters.map((p) => series.get(p.signal.binding_id)),
+    window.resolutionSeconds
+  );
   const unit = parameters[0]?.signal.unit ?? '';
   const decimals = parameters[0]?.definition.decimals ?? 1;
   const colors = useMemo(
@@ -128,6 +133,8 @@ function SensorGroupCardBody({
     () =>
       parameters.map((p, i) => ({
         key: p.id,
+        bindingIds: [p.signal.binding_id],
+        externalKeys: [p.signal.external_key],
         label: p.label,
         color: colors[i],
         unit: p.signal.unit,
@@ -143,9 +150,9 @@ function SensorGroupCardBody({
           key: p.id,
           entry: series.get(p.signal.binding_id)
         })),
-        gapThresholdMs(window.resolutionSeconds)
+        gapThresholdMs(resolutionSeconds)
       ),
-    [parameters, series, window.resolutionSeconds]
+    [parameters, series, resolutionSeconds]
   );
 
   // Current readings come from the signals (the machine's present state), the
@@ -254,14 +261,12 @@ function SensorGroupCardBody({
               48,
               Math.max(
                 12,
-                Math.floor(
-                  window.seconds / Math.max(window.resolutionSeconds, 1)
-                )
+                Math.floor(window.seconds / Math.max(resolutionSeconds, 1))
               )
             )
           )
         : null,
-    [heatmap, parameters, series, window]
+    [heatmap, parameters, series, window, resolutionSeconds]
   );
 
   const bars = useMemo(

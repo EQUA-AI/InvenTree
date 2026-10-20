@@ -1,6 +1,7 @@
 import type { SeriesResponse } from '@lib/types/MachineHealth';
 import { t } from '@lingui/core/macro';
 import { Alert, Button, Group, Paper, Stack, Text } from '@mantine/core';
+import { formatDate } from '../../../defaults/formatters';
 import { clockLabel } from '../performance/WindowStatus';
 import type { DataRange } from '../performance/usePerformanceData';
 
@@ -51,7 +52,14 @@ export function HistoryProvenance({
               {updating ? t`Previous window while updating.` : ''}
             </Text>
             <Text size='xs'>
-              {t`Resolution`}: {response.resolution_seconds} s ·{' '}
+              {response.read_batches && response.read_batches.length > 1 ? (
+                t`Resolution is reported per bounded read below.`
+              ) : (
+                <>
+                  {t`Resolution`}: {response.resolution_seconds} s
+                </>
+              )}{' '}
+              ·{' '}
               {response.mode === 'sampled'
                 ? t`Sampled real readings; fast transients may be absent.`
                 : t`Complete source read for this bounded window; source gaps remain gaps.`}
@@ -94,6 +102,19 @@ export function HistoryProvenance({
               </Alert>
             )}
             {response.read_batches && response.read_batches.length > 1 && (
+              <details>
+                <summary>{t`Per-batch resolution and clock`}</summary>
+                {response.read_batches.map((batch, i) => (
+                  <Text size='xs' key={i}>
+                    {t`Batch ${i + 1}`}:{' '}
+                    {batch.failed
+                      ? t`History read failed; coverage unknown.`
+                      : t`Resolution ${batch.resolution_seconds ?? t`not supplied`} s; measured cadence ${batch.cadence_seconds ?? t`not supplied`} s; display shift ${batch.display_shift_seconds ?? t`not supplied`} s.`}
+                  </Text>
+                ))}
+              </details>
+            )}
+            {response.read_batches && response.read_batches.length > 1 && (
               <Text
                 size='xs'
                 c='dimmed'
@@ -103,7 +124,7 @@ export function HistoryProvenance({
         )}
         <Text size='xs' c='dimmed'>
           {extent?.available && extent.from && extent.to
-            ? t`Reported source extent: ${extent.from} — ${extent.to}. Availability within it is not guaranteed.`
+            ? t`Reported source extent: ${formatDate(extent.from, { showTime: true, showSeconds: true })} — ${formatDate(extent.to, { showTime: true, showSeconds: true })}. Availability within it is not guaranteed.`
             : t`Source extent unavailable. This does not prove that the source has no history.`}
         </Text>
         {failed && (

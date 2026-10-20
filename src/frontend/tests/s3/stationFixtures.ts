@@ -285,6 +285,9 @@ export async function openStation(
     absentKeys?: string[];
     seriesStatus?: number;
     mimicStatus?: number;
+    failSeries?: (url: URL) => boolean;
+    displayShift?: number | null;
+    entry?: string;
   } = {}
 ) {
   const bays = options.bays ?? BAYS;
@@ -305,6 +308,9 @@ export async function openStation(
       route.fulfill({
         json: {
           available: true,
+          ...(options.displayShift === null
+            ? {}
+            : { display_shift_seconds: options.displayShift ?? 0 }),
           from: new Date(NOW - 10 * 86400_000).toISOString(),
           to: new Date(NOW).toISOString()
         }
@@ -325,6 +331,11 @@ export async function openStation(
     async (route: Route) => {
       const url = new URL(route.request().url());
       requests.push(url);
+      if (options.failSeries?.(url))
+        return route.fulfill({
+          status: 503,
+          json: { detail: 'Synthetic batch unavailable' }
+        });
       if (options.delaySeriesMs)
         await new Promise((resolve) =>
           setTimeout(resolve, options.delaySeriesMs)
@@ -333,10 +344,14 @@ export async function openStation(
         status: options.seriesStatus ?? 200,
         json: options.seriesStatus
           ? { detail: 'Synthetic history read failed' }
-          : stationSeries(url, bays, {
-              fail: options.fail,
-              absentKeys: options.absentKeys
-            })
+          : {
+              ...stationSeries(url, bays, {
+                fail: options.fail,
+                absentKeys: options.absentKeys
+              }),
+              display_shifted: !!options.displayShift,
+              display_shift_seconds: options.displayShift ?? 0
+            }
       });
     }
   );
@@ -344,7 +359,8 @@ export async function openStation(
     machine: String(STATION),
     asset: 'pumphouse',
     name: 'Fixture station',
-    scheme: options.scheme ?? 'light'
+    scheme: options.scheme ?? 'light',
+    ...(options.entry ? { entry: options.entry } : {})
   });
   await page.goto(`/playwright/s3-performance.html?${query}`);
   await expect(page.locator('[data-kpi="pumps-running"]')).toBeVisible();

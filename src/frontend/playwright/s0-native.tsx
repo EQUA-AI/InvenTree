@@ -208,7 +208,11 @@ createRoot(document.getElementById('root')!).render(
         <ModalsProvider>
           <Notifications />
           <MemoryRouter
-            initialEntries={[params.get('entry') ?? '/maintenance/board']}
+            basename={params.get('basename') ?? '/'}
+            initialEntries={[
+              (params.get('basename') ?? '') +
+                (params.get('entry') ?? '/maintenance/board')
+            ]}
           >
             <Stack p='md'>
               <Text>

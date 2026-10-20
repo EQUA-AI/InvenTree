@@ -43,8 +43,33 @@ export function indexSeries(
   response: SeriesResponse | undefined
 ): Map<number, SeriesEntry> {
   const map = new Map<number, SeriesEntry>();
+  const bindings = new Map<number, { seconds: number; index: number }>();
+  const keys = new Map<string, { seconds: number; index: number }>();
+  response?.read_batches?.forEach((batch, index) => {
+    const seconds = batch.resolution_seconds;
+    if (
+      batch.failed ||
+      seconds === undefined ||
+      !Number.isFinite(seconds) ||
+      seconds <= 0
+    )
+      return;
+    for (const id of batch.bindings ?? []) bindings.set(id, { seconds, index });
+    for (const key of batch.keys ?? []) keys.set(key, { seconds, index });
+  });
   for (const entry of response?.series ?? []) {
-    map.set(entry.binding_id, entry);
+    const bindingRead = bindings.get(entry.binding_id);
+    const keyRead = keys.get(entry.external_key);
+    const read =
+      keyRead && (!bindingRead || keyRead.index > bindingRead.index)
+        ? keyRead
+        : bindingRead;
+    map.set(
+      entry.binding_id,
+      read && read.seconds !== response?.resolution_seconds
+        ? { ...entry, read_resolution_seconds: read.seconds }
+        : entry
+    );
   }
   return map;
 }
@@ -96,6 +121,20 @@ export function seriesStats(
     maxAt: max.t,
     count: points.length
   };
+}
+
+/** Drawing resolution supplied by the bounded reads contributing real samples.
+ * This is read metadata, not a configured physical sampling rate. */
+export function resolutionForSeries(
+  entries: readonly (SeriesEntry | undefined)[],
+  fallback: number
+): number {
+  const resolutions = entries.flatMap((entry) => {
+    if (!entry?.available || !entry.samples.length) return [];
+    const value = entry.read_resolution_seconds ?? fallback;
+    return Number.isFinite(value) && value > 0 ? [value] : [];
+  });
+  return resolutions.length ? Math.min(...resolutions) : fallback;
 }
 
 /**
@@ -161,9 +200,19 @@ export function alignRows(
   if (gapMs <= 0) {
     return rows;
   }
+  const thresholds = entries.flatMap(({ entry }) => {
+    if (!entry?.available || !entry.samples.length) return [];
+    const resolution = entry.read_resolution_seconds;
+    return [
+      resolution !== undefined && Number.isFinite(resolution) && resolution > 0
+        ? gapThresholdMs(resolution)
+        : gapMs
+    ];
+  });
+  const threshold = thresholds.length ? Math.min(...thresholds) : gapMs;
   const withBreaks: ChartRow[] = [];
   for (let i = 0; i < rows.length; i++) {
-    if (i > 0 && rows[i].t - rows[i - 1].t > gapMs) {
+    if (i > 0 && rows[i].t - rows[i - 1].t > threshold) {
       const filler = { t: rows[i - 1].t + 1 } as ChartRow;
       for (const k of keys) filler[k] = null;
       withBreaks.push(filler);
@@ -189,18 +238,23 @@ export function differenceSeries(
   if (!a?.available || !b?.available) {
     return [];
   }
-  const bAt = new Map<number, number>();
-  for (const s of b.samples) {
-    if (usable(s)) bAt.set(s.t, s.v as number);
-  }
-  const out: SeriesSample[] = [];
-  for (const s of a.samples) {
-    const other = bAt.get(s.t);
-    if (usable(s) && other !== undefined) {
-      out.push({ t: s.t, v: (s.v as number) - other, q: s.q });
-    }
-  }
-  return out;
+  const aAt = new Map<number, SeriesSample>(
+    a.samples.map((sample) => [sample.t, sample])
+  );
+  const bAt = new Map<number, SeriesSample>(
+    b.samples.map((sample) => [sample.t, sample])
+  );
+  // Unmatched or invalid inputs are explicit unknowns, never joined over by
+  // a calculated line or replaced with an interpolated input.
+  return [...new Set([...aAt.keys(), ...bAt.keys()])]
+    .sort((x, y) => x - y)
+    .map((t) => {
+      const left = aAt.get(t);
+      const right = bAt.get(t);
+      return left && right && usable(left) && usable(right)
+        ? { t, v: (left.v as number) - (right.v as number), q: 'good' as const }
+        : { t, v: null, q: 'unknown' as const };
+    });
 }
 
 /** Wrap a computed sample list as an entry-like object for the helpers above. */

@@ -95,7 +95,10 @@ createRoot(document.getElementById('root')!).render(
       forceColorScheme={params.get('scheme') === 'dark' ? 'dark' : 'light'}
     >
       <ApiProvider api={axios.create()} client={client}>
-        <MemoryRouter initialEntries={[entry]}>
+        <MemoryRouter
+          basename={params.get('basename') ?? '/'}
+          initialEntries={[(params.get('basename') ?? '') + entry]}
+        >
           <Harness />
         </MemoryRouter>
       </ApiProvider>

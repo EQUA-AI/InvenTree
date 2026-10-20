@@ -7,6 +7,7 @@ import { clockLabel } from '../performance/WindowStatus';
 import {
   type InvestigationWindow,
   MAX_HISTORY_WINDOW_MS,
+  pickerInstant,
   sliceAt,
   sliceCount,
   validSpan
@@ -31,8 +32,8 @@ export function InvestigationSlices({
   );
   const [span, setSpan] = useState(initial);
   const [index, setIndex] = useState(0);
-  const start = from ? Date.parse(from) : Number.NaN;
-  const end = to ? Date.parse(to) : Number.NaN;
+  const start = pickerInstant(from);
+  const end = pickerInstant(to);
   const valid = validSpan(start, end);
   const limit = Math.min(maxWindowMs, MAX_HISTORY_WINDOW_MS);
   const count = sliceCount(span, limit);
