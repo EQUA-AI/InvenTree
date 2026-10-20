@@ -9,7 +9,8 @@ Keep its execution ledger, sprint backlog and contract evidence current when
 changing tasks or handing off to another agent. Partial source/fixture checks
 must not be recorded as completed deployment or product acceptance.
 
-For every EQUA AIMMS UI screen implementation, apply
+For every EQUA AIMMS UI screen implementation, apply the
+[master design prompt](contrib/ui-ux/r6/masterdesignprompt.md) and
 [designprompt1 — Frontend Excellence](contrib/ui-ux/r6/designprompt1.md).
 Select relevant installed skills, preserve the native architecture and safety
 boundaries, inspect rendered screenshots and report actual verification. No Figma.

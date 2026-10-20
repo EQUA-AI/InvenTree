@@ -1,7 +1,7 @@
 # Parallel stream brief (O13)
 
 For an agent working one R6 stream in its own worktree. Read this first, then
-`HANDOFF.md` (read order and rules), `designprompt1.md` (applies to every
+`HANDOFF.md` (read order and rules), `masterdesignprompt.md` and `designprompt1.md` (apply to every
 screen), `owner-approval.md` (O11-O13) and the sprint ledger for your tickets
 (`s2.md`, `s3.md`, ...). Authoritative R6 pack:
 `/Users/Aniketkumar/Desktop/x-WORK/Repo/equaAI/EQUA_AIMMS_Handoff_R6_FINAL_UI_UX`

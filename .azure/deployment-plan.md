@@ -438,9 +438,13 @@ Keep `aimms-experimental--0000016` active at 0% through at least `2026-07-25T05:
 ## 13. Prepared Rollout — 2026-10-02 (pump-station monitoring: Performance tab, limits, alarms, data-quality rules)
 
 > **Status:** built and rehearsed locally; **nothing below has been run against
-> Azure.** Re-checked 2026-10-02: the signed-in account `Aniket@equa.work` is
-> still denied `Microsoft.App/containerApps/read` on `EpconChat` and cannot see
-> the registry. This section replaces the 2026-09-26 preparation, which was
+> Azure.** Re-checked 2026-10-02 and again 2026-10-20: the signed-in account
+> `Aniket@equa.work` is still denied `Microsoft.App/containerApps/read` on
+> `aimms-dev` and cannot see the registry. Its only roles in `EpconChat` are
+> Reader and Contributor on the two Postgres servers and Cosmos DB Operator on
+> `epconchatcosmos9d6b`, so this account cannot deploy: the rollout needs
+> write access to the Container App and push access to the `aimms` registry,
+> or someone who already has them. This section replaces the 2026-09-26 preparation, which was
 > pinned to `37e31e8e9877` and carried four errors that would have stopped it
 > or misdirected it; they are listed in 13.5 so nobody restores them.
 
@@ -727,12 +731,20 @@ done
 #    the size step 2 gave it.
 
 # 7. Settle. Take the variable off - left on, every start pays for two extra
-#    application boots - and bring the size down. Not to step 0's 0.5 GiB: the
-#    server alone wants 546 MiB. --min-replicas is whatever step 0 printed.
+#    application boots. Keep the size at 1 vCPU / 2 GiB (owner decision O18,
+#    2026-10-20): the production image with its default four workers was
+#    OOM-killed at 1 GiB during a work-order read and at 512 MiB before it was
+#    ready; at 2 GiB all reads passed, peak about 1.0 GiB. Container Apps pairs
+#    2 GiB with 1 vCPU. --min-replicas is whatever step 0 printed.
 az containerapp update -n "$APP" -g "$RG" \
   --remove-env-vars AIMMS_MIGRATE_ON_START \
-  --cpu 0.5 --memory 1.0Gi --min-replicas 0
+  --cpu 1.0 --memory 2.0Gi --min-replicas 0
 ```
+
+The 2026-10-20 production-image rehearsal on a copy of the Azure database
+(`data/devscratch/azure-rehearsal/REPORT-prod.md`, image
+`aimms-r6-prod:1610c07c3-fix2`) measured those three sizes. Two workers at
+1 GiB were not tested.
 
 What `aimms-dev` should cost to run is its owner's decision, and going back to
 0.25 vCPU and 0.5 GiB is theirs to make — but on the measurements above that
