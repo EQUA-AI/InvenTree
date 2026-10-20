@@ -304,3 +304,112 @@ def test_rate_limit_maps_cover_agui() -> None:
     assert '"/agui"' in limits_block
     exempt_block = source.split("exempt_paths={")[1].split("}")[0]
     assert "/agui" not in exempt_block
+
+
+# --- RV07: expectedFocusVersion survives the forwarded-props model and the
+# real handler/service boundary (strict-optional, ChatRequest parity). ---
+
+
+def test_expected_focus_version_accepts_both_aliases() -> None:
+    """RV07: the focus stamp is NOT dropped by extra=ignore (both spellings)."""
+    camel = RunAgentInput.model_validate({
+        "threadId": "t",
+        "runId": "r",
+        "forwardedProps": {"expectedFocusVersion": 7},
+    })
+    snake = RunAgentInput.model_validate({
+        "thread_id": "t",
+        "run_id": "r",
+        "forwarded_props": {"expected_focus_version": 7},
+    })
+    assert camel.forwarded_props.expected_focus_version == 7
+    assert snake.forwarded_props.expected_focus_version == 7
+    # Deliberately optional: legacy omission is unaffected.
+    assert _input().forwarded_props.expected_focus_version is None
+
+
+def test_expected_focus_version_is_strict_like_chat_request() -> None:
+    """RV07: ChatRequest parity — strict int in [0, 2**31-1], no coercion."""
+    from pydantic import ValidationError
+
+    for bad in ("7", True, 1.0, -1, 2**31, [7], {"v": 1}):
+        with pytest.raises(ValidationError):
+            RunAgentInput.model_validate({
+                "runId": "r",
+                "messages": [{"role": "user", "content": "q"}],
+                "forwardedProps": {"expectedFocusVersion": bad},
+            })
+    ok = RunAgentInput.model_validate({
+        "runId": "r",
+        "messages": [{"role": "user", "content": "q"}],
+        "forwardedProps": {"expectedFocusVersion": 0, "unknownFutureField": True},
+    })
+    assert ok.forwarded_props.expected_focus_version == 0
+    assert (
+        RunAgentInput.model_validate({
+            "runId": "r",
+            "messages": [{"role": "user", "content": "q"}],
+            "forwardedProps": {"expectedFocusVersion": 2**31 - 1},
+        }).forwarded_props.expected_focus_version
+        == 2**31 - 1
+    )
+
+
+def test_expected_focus_version_reaches_the_turn_service() -> None:
+    """RV07: fresh stamp crosses real validation into process(); omission is a no-op."""
+    run_input = _input(forwardedProps={"expectedFocusVersion": 7})
+    (_r, _f), fake = _run_route(run_input)
+    assert fake.calls[0]["expected_focus_version"] == 7
+    (_r, _f), fake = _run_route(_input())
+    assert fake.calls[0]["expected_focus_version"] is None
+
+
+class _StaleFocusTurnService(_FakeTurnService):
+    """The real service's stale boundary (threads.py row lock) — before model work."""
+
+    async def process(self, **kwargs):
+        self.calls.append(kwargs)
+        from aichat.services.threads import FocusVersionConflict
+
+        raise FocusVersionConflict("Focus version is stale")
+
+
+def test_stale_focus_stamp_fails_before_model_work() -> None:
+    """RV07: stale stamp => focus_version_conflict RUN_ERROR, no model frames."""
+    run_input = _input(forwardedProps={"expectedFocusVersion": 2})
+    (_r, frames), fake = _run_route(run_input, fake=_StaleFocusTurnService())
+    assert len(fake.calls) == 1
+    assert fake.calls[0]["expected_focus_version"] == 2
+    blob = "".join(frames)
+    assert '"code":"focus_version_conflict"' in blob
+    assert "Conversation focus changed" in blob
+    for model_work in ("TEXT_MESSAGE", "RUN_FINISHED", "delta"):
+        assert model_work not in blob
+
+
+def test_invalid_focus_stamp_is_422_before_processing() -> None:
+    """RV07: a non-strict stamp never reaches the turn service (ChatRequest parity)."""
+    fake = _FakeTurnService()
+
+    async def scenario():
+        with (
+            patch(
+                "ai.core.config.get_settings",
+                return_value=SimpleNamespace(feature_agui_endpoint=True),
+            ),
+            patch("ai.core.app._principal", side_effect=_principal_stub),
+            patch("ai.core.app.get_turn_service", return_value=fake),
+        ):
+            await run_agui(
+                _request({
+                    "threadId": "thread_t1",
+                    "runId": "run_1",
+                    "messages": [{"role": "user", "content": "q"}],
+                    "forwardedProps": {"expectedFocusVersion": "7"},
+                })
+            )
+
+    with pytest.raises(HTTPException) as excinfo:
+        asyncio.run(scenario())
+    assert excinfo.value.status_code == 422
+    assert fake.calls == []

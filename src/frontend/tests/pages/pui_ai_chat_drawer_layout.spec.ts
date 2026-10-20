@@ -15,11 +15,13 @@ import {
   prepareDrawerFixture
 } from './ai_drawer_harness.js';
 import {
+  type MockFocusRow,
   type ObservedRequest,
+  mockFocusCandidates,
   observeRequest,
   sseBody
 } from './aichat_harness.js';
-import { startVoice } from './voice_harness.js';
+import { emitTranscript, startVoice, turnPayload } from './voice_harness.js';
 
 // ---------------------------------------------------------------------------
 // fixtures
@@ -772,4 +774,349 @@ test('U1: context line shows a friendly page label, never the raw path', async (
   await expect(context).toBeVisible();
   await expect(context).toContainText('Machines');
   await expect(context).not.toContainText('/machines/');
+});
+
+// ---------------------------------------------------------------------------
+// plan A — shared machine-context preflight and safe voice thread teardown
+
+test('plan A: machine hint is committed before voice session creation with no typed send', async ({
+  page
+}) => {
+  const { foundation, voice } = await prepareDrawerFixture(page);
+  await mockApprovalSources(page);
+  const timeline: string[] = [];
+  page.on('request', (request) => {
+    const { pathname } = new URL(request.url());
+    if (request.method() === 'PUT' && pathname.endsWith('/scope'))
+      timeline.push('scope-put');
+    if (request.method() === 'POST' && pathname.endsWith('/voice/sessions'))
+      timeline.push('session-create');
+  });
+  await loadDrawerFixture(page);
+  await page.getByTestId('fixture-ask-machine').click();
+  await expect(page.getByTestId('ai-chat-routing-hint')).toBeVisible();
+
+  // Voice entry only — no typed message is ever composed or sent.
+  await startVoice(page);
+  await expect(page.getByTestId('ai-chat-voice-active')).toBeVisible();
+
+  expect(foundation.scopeMutations).toHaveLength(1);
+  expect(foundation.scopeMutations[0].body?.scope).toMatchObject({
+    mode: 'explicit_assets',
+    machine_ids: [7],
+    display_label: 'Pump A'
+  });
+  // The active strip appears while the session POST is in flight — poll for
+  // the mocked create to land before asserting the ordering.
+  await expect.poll(() => voice?.sessionCreates.length ?? 0).toBe(1);
+  await expect.poll(() => timeline.length).toBeGreaterThanOrEqual(2);
+  // Ordering: the explicit machine context is acknowledged BEFORE the
+  // voice session is created.
+  expect(timeline).toEqual(['scope-put', 'session-create']);
+});
+
+test('plan A: a failed machine selection blocks the typed send and preserves the draft', async ({
+  page
+}) => {
+  await prepareDrawerFixture(page);
+  const observed = await mockApprovalSources(page);
+  await loadDrawerFixture(page);
+  await page.getByTestId('fixture-ask-machine').click();
+  await expect(page.getByTestId('ai-chat-routing-hint')).toBeVisible();
+  // The explicit selection cannot be confirmed: the entry must fail closed.
+  await page.route('**/api/ai/threads/*/scope', (route) =>
+    route.request().method() === 'PUT'
+      ? route.fulfill({
+          status: 403,
+          json: { detail: 'scope_update_rejected' }
+        })
+      : route.continue()
+  );
+  const composer = page.getByPlaceholder('Type a message...');
+  await composer.fill('What is wrong?');
+  await page.getByLabel('send-ai-chat-message').click();
+  await expect(
+    page.getByText(/Could not confirm the machine context/)
+  ).toBeVisible();
+
+  // Nothing was sent unscoped; the draft, attachments and hint survive.
+  expect(observed.streamPosts).toHaveLength(0);
+  await expect(composer).toHaveValue('What is wrong?');
+  await expect(page.getByTestId('ai-chat-routing-hint')).toBeVisible();
+});
+
+test('plan A: a failed machine selection blocks voice start, never minting a session', async ({
+  page
+}) => {
+  const { voice } = await prepareDrawerFixture(page);
+  await mockApprovalSources(page);
+  await loadDrawerFixture(page);
+  await page.getByTestId('fixture-ask-machine').click();
+  await expect(page.getByTestId('ai-chat-routing-hint')).toBeVisible();
+  await page.route('**/api/ai/threads/*/scope', (route) =>
+    route.request().method() === 'PUT'
+      ? route.fulfill({
+          status: 403,
+          json: { detail: 'scope_update_rejected' }
+        })
+      : route.continue()
+  );
+  await startVoice(page);
+  await expect(page.getByText(/voice did not start/)).toBeVisible();
+  // Fail closed: no session is created against the unconfirmed target.
+  expect(voice?.sessionCreates ?? []).toHaveLength(0);
+});
+
+test('plan A: a thread switch during voice ends the old session before any rebind', async ({
+  page
+}) => {
+  const { voice } = await prepareDrawerFixture(page);
+  await mockApprovalSources(page);
+  await loadDrawerFixture(page);
+  await startVoice(page);
+  await expect(page.getByTestId('ai-chat-voice-active')).toBeVisible();
+  await expect.poll(() => voice?.sessionCreates.length ?? 0).toBe(1);
+
+  // Deliberate thread switch while the session is live: the old session is
+  // torn down (DELETE) and its turn channel disappears with it.
+  await page.getByLabel('new-ai-chat-thread').click();
+  await expect.poll(() => voice?.sessionEnded).toBe(true);
+  await expect(page.getByTestId('ai-chat-voice-active')).toHaveCount(0);
+  expect(voice?.turns ?? []).toHaveLength(0);
+});
+
+// ---------------------------------------------------------------------------
+// plan C — Talking about (machine/task/work-order), focus preflight and stamps
+
+function focusRow(over: Partial<MockFocusRow> = {}): MockFocusRow {
+  return {
+    kind: 'machine',
+    id: 7,
+    label: 'Pump A',
+    machine_id: 7,
+    work_order_id: null,
+    ...over
+  };
+}
+
+const allTargetCandidates = [
+  // Two machines with the SAME display name: only the canonical id decides.
+  focusRow({ kind: 'machine', id: 7, label: 'Pump A' }),
+  focusRow({ kind: 'machine', id: 8, label: 'Pump A' }),
+  focusRow({
+    kind: 'kanban_card',
+    id: 11,
+    label: 'Replace seal',
+    machine_id: 7,
+    work_order_id: 5
+  }),
+  focusRow({
+    kind: 'work_order',
+    id: 5,
+    label: 'WO-000005 Pump service',
+    machine_id: 7,
+    work_order_id: 5
+  })
+];
+
+async function pickTarget(
+  page: import('@playwright/test').Page,
+  kindLabel: string,
+  optionIndex: number
+) {
+  await page.getByTestId('conversation-focus-change').click();
+  await page
+    .getByTestId('conversation-focus-kind')
+    .getByText(kindLabel, { exact: true })
+    .click();
+  const option = page.getByTestId('conversation-focus-option').nth(optionIndex);
+  await option.click();
+}
+
+test('plan C: canonical machine/card/work-order selection commits ids, never labels, and clears', async ({
+  page
+}) => {
+  const { foundation } = await prepareDrawerFixture(page);
+  await mockApprovalSources(page);
+  await mockFocusCandidates(page, { candidates: allTargetCandidates });
+  await loadDrawerFixture(page);
+  await expect(page.getByTestId('conversation-focus-label')).toHaveText(
+    'nothing yet'
+  );
+
+  // Machine with a duplicate display name: the SECOND row's id is committed.
+  await pickTarget(page, 'Machine', 1);
+  await expect.poll(() => foundation.focusMutations.length).toBe(1);
+  expect(foundation.focusMutations[0].body).toMatchObject({
+    focus: { kind: 'machine', id: 8 },
+    expected_focus_version: 0
+  });
+  // The chip renders the SERVER-acknowledged projection only.
+  await expect(page.getByTestId('conversation-focus-label')).toHaveText(
+    'machine 8'
+  );
+
+  // Board task: the CARD pk, never its parent WorkOrder id.
+  await pickTarget(page, 'Task', 0);
+  await expect.poll(() => foundation.focusMutations.length).toBe(2);
+  expect(foundation.focusMutations[1].body).toMatchObject({
+    focus: { kind: 'kanban_card', id: 11 },
+    expected_focus_version: 1
+  });
+  await expect(page.getByTestId('conversation-focus-label')).toHaveText(
+    'kanban_card 11'
+  );
+
+  // Work order: the canonical WorkOrder pk.
+  await pickTarget(page, 'Work order', 0);
+  await expect.poll(() => foundation.focusMutations.length).toBe(3);
+  expect(foundation.focusMutations[2].body).toMatchObject({
+    focus: { kind: 'work_order', id: 5 },
+    expected_focus_version: 2
+  });
+
+  // Clear is safe and quotes the current version.
+  await page.getByTestId('conversation-focus-clear').click();
+  await expect.poll(() => foundation.focusMutations.length).toBe(4);
+  expect(foundation.focusMutations[3].body).toMatchObject({
+    focus: null,
+    expected_focus_version: 3
+  });
+  await expect(page.getByTestId('conversation-focus-label')).toHaveText(
+    'nothing yet'
+  );
+  // A focus change never touches the analysis scope.
+  expect(foundation.scopeMutations).toHaveLength(0);
+});
+
+test('plan C: a denied candidate blocks the picker with an honest error and changes nothing', async ({
+  page
+}) => {
+  const { foundation } = await prepareDrawerFixture(page, {
+    foundation: {
+      focus: {
+        focus: focusRow({ kind: 'work_order', id: 5, label: 'WO-000005' }),
+        version: 4
+      }
+    }
+  });
+  await mockApprovalSources(page);
+  await mockFocusCandidates(page, { candidates: allTargetCandidates });
+  await loadDrawerFixture(page);
+  await expect(page.getByTestId('conversation-focus-label')).toHaveText(
+    'WO-000005'
+  );
+  foundation.focus.rejectUpdates = true;
+  await pickTarget(page, 'Machine', 0);
+  await expect(
+    page.getByTestId('conversation-focus-error').first()
+  ).toBeVisible();
+  // The server state is unchanged and the chip still shows the old focus.
+  await expect(page.getByTestId('conversation-focus-label')).toHaveText(
+    'WO-000005'
+  );
+});
+
+test('plan C: a task target Ask commits focus before the typed send and never seeds scope', async ({
+  page
+}) => {
+  const { foundation } = await prepareDrawerFixture(page);
+  const observed = await mockApprovalSources(page);
+  const timeline: string[] = [];
+  page.on('request', (request) => {
+    const { pathname } = new URL(request.url());
+    if (request.method() === 'PUT' && pathname.endsWith('/focus'))
+      timeline.push('focus-put');
+    if (request.method() === 'PUT' && pathname.endsWith('/scope'))
+      timeline.push('scope-put');
+    if (request.method() === 'POST' && pathname.endsWith('/chat/stream'))
+      timeline.push('stream-post');
+  });
+  await loadDrawerFixture(page);
+  await page.getByTestId('fixture-ask-task').click();
+  await page.getByPlaceholder('Type a message...').fill('What is left to do?');
+  await page.getByLabel('send-ai-chat-message').click();
+  await expect.poll(() => observed.streamPosts.length).toBe(1);
+  await expect.poll(() => timeline.length).toBeGreaterThanOrEqual(2);
+  // The exact focus ack precedes the submit; the turn carries its stamp.
+  expect(timeline).toEqual(['focus-put', 'stream-post']);
+  expect(foundation.focusMutations[0].body).toMatchObject({
+    focus: { kind: 'kanban_card', id: 11 }
+  });
+  expect(observed.streamPosts[0].body?.expected_focus_version).toBe(1);
+  // A task target never seeds or widens the analysis scope.
+  expect(foundation.scopeMutations).toHaveLength(0);
+});
+
+test('plan C: a failed target selection blocks the typed send and preserves the draft', async ({
+  page
+}) => {
+  const { foundation } = await prepareDrawerFixture(page);
+  const observed = await mockApprovalSources(page);
+  await loadDrawerFixture(page);
+  await page.getByTestId('fixture-ask-work-order').click();
+  foundation.focus.rejectUpdates = true;
+  const composer = page.getByPlaceholder('Type a message...');
+  await composer.fill('What is its status?');
+  await page.getByLabel('send-ai-chat-message').click();
+  await expect(page.getByText(/Could not confirm the target/)).toBeVisible();
+  expect(observed.streamPosts).toHaveLength(0);
+  // Fail closed: nothing was sent and the draft survives.
+  await expect(composer).toHaveValue('What is its status?');
+});
+
+test('plan C: voice turns carry the capture-time focus stamp; a stale echo never moves the chip', async ({
+  page
+}) => {
+  const staleEcho = focusRow({
+    kind: 'machine',
+    id: 99,
+    label: 'Stale echo target'
+  });
+  const { voice } = await prepareDrawerFixture(page, {
+    foundation: {
+      focus: {
+        focus: focusRow({ label: 'Pump A' }),
+        version: 3,
+        rows: { 'machine:7': focusRow({ label: 'Pump A' }) }
+      }
+    },
+    voice: {
+      onTurn: () =>
+        turnPayload({
+          // The turn's RECORDED snapshot — never current thread state.
+          focus: staleEcho,
+          focus_version: 9,
+          workflow_used: 'general'
+        })
+    }
+  });
+  await mockApprovalSources(page);
+  await loadDrawerFixture(page);
+  await expect(page.getByTestId('conversation-focus-label')).toHaveText(
+    'Pump A'
+  );
+  await startVoice(page);
+  await expect
+    .poll(() => voice?.sessionCreates.length ?? 0, { timeout: 20_000 })
+    .toBe(1);
+  // Session creation quotes the observed version.
+  expect(voice?.sessionCreates[0].body?.expected_focus_version).toBe(3);
+
+  // Finals that land before the transport reaches `connected` are dropped by
+  // the controller — wait for the connected capture state first.
+  await expect(page.getByText('Microphone listening')).toBeVisible();
+  await emitTranscript(page, {
+    text: 'what is its status?',
+    itemId: 'item-c1'
+  });
+  await expect
+    .poll(() => voice?.turns.length ?? 0, { timeout: 20_000 })
+    .toBe(1);
+  // The utterance is stamped at CAPTURE with the version the user saw.
+  expect(voice?.turns[0].body?.expected_focus_version).toBe(3);
+  // The stale snapshot echo must never move the chip.
+  await expect(page.getByTestId('conversation-focus-label')).toHaveText(
+    'Pump A'
+  );
 });

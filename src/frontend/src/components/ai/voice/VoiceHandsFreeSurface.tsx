@@ -5,6 +5,7 @@ import {
   useVoiceSurfaceState,
   voiceController
 } from '../../../states/VoiceSessionState';
+import { ConversationFocusControl } from '../../aichat/ConversationFocusControl';
 import { VoiceDecisionCard } from '../VoiceDecisionCard';
 import { VoiceSessionControl } from '../VoiceSessionControl';
 import { VoiceTranscript } from '../VoiceTranscript';
@@ -61,6 +62,9 @@ export function VoiceHandsFreeContent({
         onConfirmTranscript={() => void voiceController.confirmPending()}
         onDiscardTranscript={voiceController.discardPending}
       />
+      {/* Plan C: the same Talking about chip as the drawer (server-confirmed
+        focus only) — the hands-free surface may change or clear it. */}
+      <ConversationFocusControl />
       <VoiceTranscript
         partial={s.partial}
         listening={s.mic === 'listening'}

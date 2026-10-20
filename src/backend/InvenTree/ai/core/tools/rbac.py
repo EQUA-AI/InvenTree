@@ -138,6 +138,14 @@ def _tool_permission_map() -> dict[Any, tuple[str, str]]:
         kt.get_kanban_card: ("work_order", "view"),
         kt.get_kanban_summary: ("work_order", "view"),
         kt.check_kanban_card_stock: ("work_order", "view"),
+        # S5b board-task (card-typed) reads: the SAME audited WORK_ORDER
+        # ruleset as the compatibility tools above — a board card is how a
+        # work order's tracked work shows on the board (no invented "board"
+        # or "parent" rule), and tasks.ai_read re-derives the card/parent
+        # relationship and scope per call.
+        kt.list_board_tasks: ("work_order", "view"),
+        kt.get_board_task: ("work_order", "view"),
+        kt.check_board_task_stock: ("work_order", "view"),
         # The direct-ORM kanban write tools were deleted (S12 step 3): board
         # mutations go through the governed proposal rail and REST surface only.
         # Machines / assets. AssetMachine has no ruleset of its own, and an

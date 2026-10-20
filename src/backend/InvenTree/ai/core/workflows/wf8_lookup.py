@@ -26,7 +26,7 @@ from ai.core.integrations.attachment_corpus import ATTACHMENT_CORPUS_TOOLS
 from ai.core.integrations.controlled_document_corpus import CONTROLLED_CORPUS_TOOLS
 from ai.core.integrations.email.tools import EMAIL_TOOLS
 from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS
-from ai.core.integrations.kanban_tools import KANBAN_TOOLS
+from ai.core.integrations.kanban_tools import BOARD_TASK_READ_TOOLS, KANBAN_TOOLS
 from ai.core.integrations.media_corpus import EVIDENCE_MEDIA_TOOLS
 from ai.core.integrations.memory_tools import MEMORY_ACTION_TOOLS
 from ai.core.integrations.source_inventory_tools import SOURCE_INVENTORY_TOOLS
@@ -566,6 +566,7 @@ as the specified torque for a tightening sequence.
                 INVENTORY_READ_TOOLS
                 + EMAIL_TOOLS
                 + KANBAN_TOOLS
+                + BOARD_TASK_READ_TOOLS
                 + MEMORY_ACTION_TOOLS
                 + CONTROLLED_CORPUS_TOOLS
                 + ATTACHMENT_CORPUS_TOOLS

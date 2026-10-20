@@ -359,6 +359,228 @@ async def get_kanban_summary() -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Board-task READ tools (explicit card identity, S5b/Q14 follow-up)
+# ---------------------------------------------------------------------------
+#
+# The legacy ``*_kanban_card`` tools above are COMPATIBILITY aliases with
+# WorkOrder-PK semantics and stay byte-compatible (``get_kanban_card(work_
+# order_id)`` keeps meaning "the job"). The tools below are CARD-typed: the
+# id argument is a ``KanbanCard`` PK and every result names BOTH identities
+# (``kanban_card_id`` and ``work_order_id``) explicitly — the two are never
+# interchangeable and a bare ``id`` is never returned. Retrieval is aligned
+# with the analysis-scope fence (``current_turn_scope``) AFTER the actor's
+# maintenance authorization, never instead of it.
+
+
+def _scope_machine_ids() -> list[int] | None:
+    """The turn's explicit analysis-scope machine ids, or None (no fence)."""
+    from ai.core.analysis.scope_context import current_turn_scope
+
+    scope = current_turn_scope()
+    if scope is not None and scope.explicit:
+        return sorted(scope.machine_ids)
+    return None
+
+
+@ai_function
+async def list_board_tasks(
+    work_order_id: int | None = None,
+    search: str | None = None,
+    limit: int = 25,
+) -> dict[str, Any]:
+    """
+    List board tasks (Kanban cards) with both identities named.
+
+    Filters:
+      - work_order_id: only cards belonging to THIS work order (its PK)
+      - search: title fragment
+      - limit: max number of cards returned, clamped to 0..25 (default 25);
+        values above the 25-result ceiling return at most 25 rows and the
+        counts below report the actual bounded rows
+
+    Returns rows keyed by 'kanban_card_id' AND 'work_order_id' (never an
+    ambiguous bare 'id'), plus 'population_count' (ALL matching cards) and
+    a 'retrieval' envelope. Cards outside the current analysis scope are
+    excluded by the scope fence; authorization is enforced separately.
+    """
+    from ai.core.auth import get_current_principal
+    from django.contrib.auth import get_user_model
+
+    @sync_to_async
+    def _query():
+        from tasks.ai_read import kanban_cards_page
+
+        principal = get_current_principal()
+        if principal is None:
+            return {"rows": [], "population_count": 0, "returned_count": 0}
+        user = get_user_model().objects.filter(pk=principal.user_pk).first()
+        if user is None:
+            return {"rows": [], "population_count": 0, "returned_count": 0}
+        return kanban_cards_page(
+            user,
+            work_order_id=work_order_id,
+            query=search,
+            limit=limit,
+            machine_ids=_scope_machine_ids(),
+        )
+
+    page = await _query()
+    from ai.core.contracts.retrieval import build_envelope, coverage, record_envelope
+
+    rows = page["rows"]
+    population_count = int(page.get("population_count") or 0)
+    envelope = build_envelope(
+        source_class="kanban_card",
+        population_type="kanban_cards",
+        operation="list",
+        filters={"query_applied": bool(search), "work_order_id": work_order_id},
+        coverage=coverage(
+            population_count=population_count,
+            returned_count=len(rows),
+            complete_population=population_count == len(rows),
+        ),
+    )
+    record_envelope("list_board_tasks", envelope)
+    return {
+        "returned_count": len(rows),
+        "population_count": population_count,
+        "display_truncated": population_count > len(rows),
+        "tasks": rows,
+        "retrieval": envelope,
+    }
+
+
+@ai_function
+async def get_board_task(kanban_card_id: int) -> dict[str, Any]:
+    """
+    Get one board task (Kanban card) by ITS OWN id, with both identities.
+
+    Args:
+      kanban_card_id: The primary key of the Kanban card (NOT the work
+        order — use the legacy work-order tools for job-level reads).
+
+    Returns the allow-listed card projection naming 'kanban_card_id' and
+    'work_order_id', or one generic not-found error whether the card is
+    missing or another tenant's.
+    """
+
+    @sync_to_async
+    def _fetch():
+        from ai.core.auth import get_current_principal
+        from django.contrib.auth import get_user_model
+        from tasks.ai_read import authorized_kanban_card, kanban_card_row
+
+        principal = get_current_principal()
+        if principal is None:
+            return None
+        user = get_user_model().objects.filter(pk=principal.user_pk).first()
+        pair = authorized_kanban_card(user, kanban_card_id) if user is not None else None
+        if pair is None:
+            return None
+        card, work_order = pair
+        scope_ids = _scope_machine_ids()
+        if scope_ids is not None and (
+            work_order.machine_id is None or work_order.machine_id not in scope_ids
+        ):
+            # Out-of-analysis-scope, or unassigned while an explicit machine
+            # scope is active (the reader's population rule): the fence stays
+            # closed — focus never widens the population.
+            return None
+        return kanban_card_row(card, work_order=work_order)
+
+    row = await _fetch()
+    if row is None:
+        return {"error": f"Board task {kanban_card_id} not found."}
+    return row
+
+
+@ai_function
+async def check_board_task_stock(kanban_card_id: int) -> dict[str, Any]:
+    """
+    Check stock availability for the PARENT WORK ORDER's parts, focused on
+    one board task. Both identities are named in the result: the card tracks
+    the piece of work; the parts and allocation belong to its work order.
+
+    Args:
+      kanban_card_id: The Kanban card id.
+
+    Returns per-part allocation results for the card's job, plus
+    'kanban_card_id' and 'work_order_id' (never a bare 'id').
+    """
+
+    @sync_to_async
+    def _check():
+        from ai.core.auth import get_current_principal
+        from django.contrib.auth import get_user_model
+        from tasks.ai_read import authorized_kanban_card
+
+        principal = get_current_principal()
+        if principal is None:
+            return {"error": f"Board task {kanban_card_id} not found."}
+        user = get_user_model().objects.filter(pk=principal.user_pk).first()
+        pair = authorized_kanban_card(user, kanban_card_id) if user is not None else None
+        if pair is None:
+            return {"error": f"Board task {kanban_card_id} not found."}
+        card, work_order = pair
+        scope_ids = _scope_machine_ids()
+        if scope_ids is not None and (
+            work_order.machine_id is None or work_order.machine_id not in scope_ids
+        ):
+            # Out-of-analysis-scope, or unassigned under an explicit machine
+            # scope: the stock fence closes exactly like the get fence —
+            # authorization is never a substitute for the population rule
+            # (the legacy stock check precedent).
+            return {"error": f"Board task {kanban_card_id} not found."}
+        work_order_parts = work_order.work_order_parts.all().select_related("part")
+        if not work_order_parts.exists():
+            return {
+                "kanban_card_id": card.pk,
+                "work_order_id": work_order.pk,
+                "message": "No parts attached to this work order.",
+                "parts": [],
+                "warnings": [],
+            }
+        results = []
+        warnings = []
+        for cp in work_order_parts:
+            # Compute-only: this tool is registered read-only, so it must
+            # not persist allocation state (same rule as the legacy stock
+            # check).
+            alloc = cp.check_and_allocate(persist=False)
+            results.append(alloc)
+            if alloc["allocation_status"] == "insufficient":
+                warnings.append(
+                    f"⚠ Part '{alloc['part_name']}' (ID {alloc['part_id']}): "
+                    f"need {alloc['quantity_needed']}, NO stock available"
+                )
+            elif alloc["allocation_status"] == "partial":
+                warnings.append(
+                    f"⚠ Part '{alloc['part_name']}' (ID {alloc['part_id']}): "
+                    f"only {alloc['quantity_available']} of "
+                    f"{alloc['quantity_needed']} available"
+                )
+        return {
+            "kanban_card_id": card.pk,
+            "work_order_id": work_order.pk,
+            "parts": results,
+            "warnings": warnings,
+            "all_allocated": len(warnings) == 0,
+        }
+
+    return await _check()
+
+
+# Card-typed read pack — separate from the compatibility pack so existing
+# callers and their WorkOrder-PK tool ids are untouched. Registering this
+# pack into the active tool surfaces is an explicit, reviewed wiring step.
+BOARD_TASK_READ_TOOLS = [
+    list_board_tasks,
+    get_board_task,
+    check_board_task_stock,
+]
+
+
+# ---------------------------------------------------------------------------
 # Export
 # ---------------------------------------------------------------------------
 
@@ -379,4 +601,4 @@ KANBAN_READ_TOOLS = [
 # tool here; add a governed command instead.
 KANBAN_TOOLS = list(KANBAN_READ_TOOLS)
 
-__all__ = ["KANBAN_READ_TOOLS", "KANBAN_TOOLS"]
+__all__ = ["BOARD_TASK_READ_TOOLS", "KANBAN_READ_TOOLS", "KANBAN_TOOLS"]

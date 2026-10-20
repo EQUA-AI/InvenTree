@@ -1,4 +1,4 @@
-import { type Page, expect } from '@playwright/test';
+import { type Locator, type Page, expect } from '@playwright/test';
 import { createApi } from './api';
 
 export const clickOnParamFilter = async (page: Page, name: string) => {
@@ -81,11 +81,11 @@ export const setTableChoiceFilter = async (
  * Return the parent 'row' element for a given 'cell' element
  * @param cell - The cell element
  */
-export const getRowFromCell = async (cell) => {
+export const getRowFromCell = async (cell: Locator) => {
   return cell.locator('xpath=ancestor::tr').first();
 };
 
-export const clickOnRowMenu = async (cell) => {
+export const clickOnRowMenu = async (cell: Locator) => {
   const row = await getRowFromCell(cell);
 
   await row.getByLabel(/row-action-menu-/i).click();
@@ -102,7 +102,7 @@ interface NavigateOptions {
  * @param url
  */
 export const navigate = async (
-  page,
+  page: Page,
   url: string,
   options?: NavigateOptions
 ) => {

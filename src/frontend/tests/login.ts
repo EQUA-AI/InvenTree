@@ -135,7 +135,7 @@ interface LogoutOptions {
   baseUrl?: string;
 }
 
-export const doLogout = async (page, options?: LogoutOptions) => {
+export const doLogout = async (page: Page, options?: LogoutOptions) => {
   await navigate(page, logoutUrl, {
     baseUrl: options?.baseUrl,
     waitUntil: 'load'

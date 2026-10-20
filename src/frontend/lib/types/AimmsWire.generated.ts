@@ -65,11 +65,16 @@ export type AimmsCustomChannel =
   | 'aimms.custom'
   | 'aimms.evidenceAnalysis'
   | 'aimms.analysisProgress'
-  | 'aimms.contextUsed';
+  | 'aimms.contextUsed'
+  | 'aimms.threadFocus';
 
 // --- Proposal rail (aichat.models) ---
 
 export type ProposalActionType =
+  | 'memory.remember'
+  | 'memory.update'
+  | 'memory.forget'
+  | 'memory.forget_all'
   | 'work_order.hold'
   | 'work_order.resume'
   | 'work_order.schedule'
@@ -96,6 +101,10 @@ export type ProposalActionType =
   | 'closeout.handoff';
 
 export const PROPOSAL_ACTION_LABELS: Record<ProposalActionType, string> = {
+  'memory.remember': 'Remember a memory',
+  'memory.update': 'Correct a memory',
+  'memory.forget': 'Forget a memory',
+  'memory.forget_all': 'Forget all memories',
   'work_order.hold': 'Hold work order',
   'work_order.resume': 'Resume work order',
   'work_order.schedule': 'Schedule work order',
@@ -183,8 +192,11 @@ export const RISK_FINDING_FIELDS = [
 export interface VoiceClientTiming {
   speech_to_final_ms?: number | null;
   final_to_submit_ms?: number | null;
+  ms_queue?: number | null;
   ack_schedule_ms?: number | null;
   submit_to_observed_playback_ms?: number | null;
+  feedback_onset_ms?: number | null;
+  answer_onset_ms?: number | null;
   local_stop_ms?: number | null;
 }
 
@@ -194,6 +206,9 @@ export interface VoiceTimingReport {
   spoken_hash: string;
   provenance: 'rtp_energy_proxy' | 'local_pause_proxy';
   first_playback_epoch_ms?: number | null;
+  onset_kind?: 'filler' | 'answer' | null;
+  coverage_reason?: 'not_observed' | 'hidden_page' | 'canceled' | 'no_audio_proxy' | 'late_or_out_of_order' | null;
+  generation?: number | null;
   timing: VoiceClientTiming;
 }
 
@@ -216,6 +231,11 @@ export interface VoiceSessionPayload {
   locale: string;
   voice: string;
   consent_version: string;
+  focus: unknown | null;
+  focus_version: number;
+  speech_utterance_id?: string | null;
+  speech_playback_state?: string | null;
+  speech_audit_state?: 'unavailable' | 'confirmed' | 'uncertain' | null;
 }
 
 export interface VoiceSpokenPayload {
@@ -223,6 +243,7 @@ export interface VoiceSpokenPayload {
   spoken_summary: string;
   spoken_summary_hash: string;
   playback_state: string;
+  playback_audit_state?: 'unavailable' | 'confirmed' | 'uncertain';
 }
 
 export interface VoicePendingQuestionOption {
@@ -309,6 +330,9 @@ export interface VoiceTurnResponse {
   pending_decision: VoicePendingDecision | null;
   decision_event: VoiceDecisionEvent | null;
   presentation: VoicePresentationPayload | null;
+  focus: unknown | null;
+  focus_version: number;
+  focus_refresh_required: boolean;
 }
 
 export type ServerVoiceErrorCode =
@@ -323,6 +347,7 @@ export type ServerVoiceErrorCode =
   | 'VOICE_TRANSCRIPT_INCOMPLETE'
   | 'VOICE_RESPONSE_INCOMPLETE'
   | 'VOICE_SCOPE_CHANGED'
+  | 'VOICE_FOCUS_CHANGED'
   | 'VOICE_PROMPT_UNKNOWN'
   | 'VOICE_DECISION_UNAVAILABLE'
   | 'VOICE_DECISION_CONFLICT'
@@ -332,6 +357,27 @@ export type ServerVoiceErrorCode =
   | 'VOICE_PRESENTATION_UNAVAILABLE'
   | 'VOICE_SAMPLE_UNAVAILABLE'
   | 'VOICE_SAMPLE_LIMIT';
+
+// --- Voice request models (ai.core.voice.routes) ---
+
+export interface VoiceSessionCreateRequest {
+  thread_id?: string | null;
+  locale?: string;
+  voice?: string;
+  consent_version?: string;
+  expected_focus_version?: number | null;
+}
+
+export interface VoiceTurnRequest {
+  transcript: string;
+  item_id: string;
+  confidence?: number | null;
+  language?: string;
+  decision_context?: Record<string, unknown> | null;
+  timing?: VoiceClientTiming | null;
+  expected_focus_version?: number | null;
+  progress_mode?: 'off' | 'brief' | 'guided';
+}
 
 // --- Analysis scope (ai.core.analysis.scope / .wire) ---
 
@@ -392,6 +438,49 @@ export interface ThreadScopeUpdateRequest {
 export type ScopeErrorCode =
   | 'scope_version_conflict'
   | 'scope_update_rejected';
+
+// --- Conversation focus (ai.core.focus.contract / .wire) ---
+
+export type ConversationFocusKind =
+  | 'machine'
+  | 'kanban_card'
+  | 'work_order';
+
+export interface ConversationFocusRef {
+  kind: ConversationFocusKind;
+  id: number;
+}
+
+export interface ConversationFocusPayload {
+  kind: ConversationFocusKind;
+  id: number;
+  label: string;
+  machine_id: number | null;
+  work_order_id: number | null;
+}
+
+export interface ThreadFocusPayload {
+  focus: ConversationFocusPayload | null;
+  focus_version: number;
+  focus_unavailable: boolean;
+}
+
+export interface ThreadFocusUpdateRequest {
+  focus: ConversationFocusRef | null;
+  expected_focus_version: number;
+}
+
+export interface FocusCandidateSearchResult {
+  candidates: ConversationFocusPayload[];
+  returned_count: number;
+  has_more: boolean;
+}
+
+export type FocusErrorCode =
+  | 'focus_version_conflict'
+  | 'focus_update_rejected'
+  | 'focus_out_of_analysis_scope'
+  | 'focus_decision_not_set_aside';
 
 // --- Quota / admission (ai.core.quota.wire) ---
 
@@ -576,4 +665,30 @@ export interface ThreadMemoryCorrectionResponse {
   item_id: string;
   result: 'applied' | 'unknown_item';
   through_sequence: number;
+}
+
+// --- Typed chat request/response (ai.core.app) ---
+
+export interface ChatRequest {
+  message: string;
+  thread_id?: string | null;
+  user_id?: string;
+  context?: Record<string, unknown> | null;
+  file_ids?: string[] | null;
+  modality?: string;
+  modality_metadata?: Record<string, unknown> | null;
+  idempotency_key?: string | null;
+  correlation_id?: string | null;
+  expected_scope_version?: number | null;
+  expected_focus_version?: number | null;
+}
+
+export interface ChatResponse {
+  thread_id: string;
+  message: string;
+  agent: string;
+  workflow_used: string | null;
+  focus: ConversationFocusPayload | null;
+  focus_version: number;
+  focus_refresh_required: boolean;
 }

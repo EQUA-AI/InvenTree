@@ -286,6 +286,7 @@ class VoiceComplexityRouter:
             rf"\bhow\s+(?:do|can|should)\s+(?:i|we|you)\s+{_EFFECT_VERB}\b",
             rf"\bhelp\s+me\s+(?:to\s+)?{_EFFECT_VERB}\b",
             rf"\bi\s+{_EFFECT_VERB}\b",
+            r"(?:^|[.!?])\s*(?:(?:please|kindly)\s+)?propose\s+memory\s+action\b",
         )
     )
     _START_GUIDANCE_QUESTION = re.compile(

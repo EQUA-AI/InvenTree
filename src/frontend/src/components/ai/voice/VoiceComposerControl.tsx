@@ -13,7 +13,15 @@ import { t } from '@lingui/core/macro';
 import { ActionIcon, Badge, Button, Group, Text, Tooltip } from '@mantine/core';
 import { IconMicrophone } from '@tabler/icons-react';
 import type { VoiceClientState, VoiceError } from '../../../../lib/types/Voice';
-import { useVoiceSessionState } from '../../../states/VoiceSessionState';
+import {
+  useVoiceSessionState,
+  useVoiceSurfaceState
+} from '../../../states/VoiceSessionState';
+import {
+  type VoiceErrorKey,
+  type VoiceStartFeedback,
+  voiceErrorKey
+} from './voiceFeedback';
 import { VOICE_SHORTCUT } from './voiceShortcuts';
 import type { VoiceStartBlockReason } from './voiceStartEligibility';
 
@@ -52,6 +60,106 @@ export function voiceStartBlockedLabel(
 }
 
 /**
+ * VOICE-H01: translated explanation plus a safe recovery hint for a mapped
+ * error key. Raw codes and server `detail` strings are never rendered — the
+ * generic fallback keeps unknown failures useful without disclosure.
+ */
+export function voiceErrorText(key: VoiceErrorKey): {
+  message: string;
+  recovery: string;
+} {
+  switch (key) {
+    case 'microphone-denied':
+      return {
+        message: t`AIMMS can't reach your microphone.`,
+        recovery: t`Allow microphone access in your browser, then try again.`
+      };
+    case 'browser-unsupported':
+      return {
+        message: t`This browser can't run voice sessions.`,
+        recovery: t`Try a current version of Chrome, Edge, Firefox or Safari.`
+      };
+    case 'session-expired':
+      return {
+        message: t`The voice session ended.`,
+        recovery: t`Start voice again to continue.`
+      };
+    case 'session-limit':
+      return {
+        message: t`Too many voice sessions are active right now.`,
+        recovery: t`Wait a moment, then try again.`
+      };
+    case 'not-allowed':
+      return {
+        message: t`Your account can't use voice in this conversation.`,
+        recovery: t`Ask an administrator if you think this is wrong.`
+      };
+    case 'connection':
+      return {
+        message: t`Voice can't reach the speech service right now.`,
+        recovery: t`Check your connection and try again.`
+      };
+    case 'consent-required':
+      return {
+        message: t`Voice needs your consent before it can start.`,
+        recovery: t`Review the disclosure and accept it, then try again.`
+      };
+    case 'locale-unsupported':
+      return {
+        message: t`That language isn't supported for voice yet.`,
+        recovery: t`Choose English (en-US) and try again.`
+      };
+    case 'context-changed':
+      return {
+        message: t`The conversation context changed while voice was starting.`,
+        recovery: t`Refresh the conversation, then start voice again.`
+      };
+    case 'incomplete':
+      return {
+        message: t`Voice didn't finish processing.`,
+        recovery: t`Please try again.`
+      };
+    case 'conflict':
+      return {
+        message: t`That voice request was already processed.`,
+        recovery: t`Refresh the conversation, then try again.`
+      };
+    case 'sample':
+      return {
+        message: t`The voice sample couldn't play.`,
+        recovery: t`Wait a minute, then try again.`
+      };
+    default:
+      return {
+        message: t`Something went wrong with voice.`,
+        recovery: t`Please try again.`
+      };
+  }
+}
+
+/**
+ * VOICE-H05: accessible explanation for a refused start request — the
+ * existing eligibility labels where they apply, and a safe fallback for any
+ * reason those labels do not know (the raw reason is never echoed).
+ */
+export function voiceStartFeedbackText(feedback: VoiceStartFeedback): string {
+  if (feedback.key === 'blocked') {
+    return (
+      voiceStartBlockedLabel(feedback.reason as VoiceStartBlockReason) ??
+      t`Voice can't start right now. Please try again.`
+    );
+  }
+  switch (feedback.key) {
+    case 'capability-missing':
+      return t`Voice isn't ready yet — voice settings are still loading. Please try again in a moment.`;
+    case 'capability-disabled':
+      return t`Voice is turned off for your account. Ask an administrator to enable it.`;
+    default:
+      return t`Voice is temporarily unavailable while AI starts or recovers. Please wait, then try again.`;
+  }
+}
+
+/**
  * The composer-embedded microphone start action. Renders nothing when the
  * capability is off (no misleading control), a disabled action with a
  * readable explanation while voice is unavailable, and the mic otherwise.
@@ -60,6 +168,7 @@ export function VoiceComposerControl(
   props: Readonly<VoiceComposerControlProps>
 ) {
   const split = useVoiceSessionState();
+  const startFeedback = useVoiceSurfaceState((s) => s.startFeedback);
   const active = !['unavailable', 'ready', 'error'].includes(props.state);
   if (props.state === 'unavailable') {
     if (!split.capability?.enabled) return null;
@@ -89,6 +198,9 @@ export function VoiceComposerControl(
     );
   }
   const blockedLabel = voiceStartBlockedLabel(props.startBlockedReason);
+  const errorText = props.error
+    ? voiceErrorText(voiceErrorKey(props.error.code))
+    : null;
   return (
     <Group gap='xs' data-testid='voice-session-control' data-voice-surface>
       {!active && (
@@ -111,10 +223,28 @@ export function VoiceComposerControl(
           </ActionIcon>
         </Tooltip>
       )}
-      {!active && props.error && (
-        <Text c='red' data-testid='voice-error'>
-          {props.error.code}
+      {!active && errorText && (
+        <Text
+          component='output'
+          c='red'
+          data-testid='voice-error'
+          aria-live='polite'
+        >
+          {errorText.message} {errorText.recovery}
         </Text>
+      )}
+      {startFeedback && (
+        <Group gap='xs' data-testid='voice-start-feedback'>
+          <Text component='output' aria-live='polite' size='sm'>
+            {voiceStartFeedbackText(startFeedback)}
+          </Text>
+          <Button
+            mih={44}
+            variant='default'
+            data-testid='voice-start-feedback-retry'
+            onClick={props.onStart}
+          >{t`Try again`}</Button>
+        </Group>
       )}
     </Group>
   );
@@ -127,6 +257,9 @@ export function VoiceComposerControl(
  */
 export function VoiceActiveStrip(props: Readonly<VoiceComposerControlProps>) {
   const split = useVoiceSessionState();
+  const errorText = props.error
+    ? voiceErrorText(voiceErrorKey(props.error.code))
+    : null;
   const labels: Record<VoiceClientState, string> = {
     unavailable: t`Voice unavailable`,
     ready: t`Voice ready`,
@@ -200,9 +333,14 @@ export function VoiceActiveStrip(props: Readonly<VoiceComposerControlProps>) {
         aria-keyshortcuts={VOICE_SHORTCUT.aria}
       >{t`End voice`}</Button>
       {props.webrtcPreview && <Badge variant='outline'>{t`Preview`}</Badge>}
-      {props.error && (
-        <Text c='red' data-testid='voice-error'>
-          {props.error.code}
+      {errorText && (
+        <Text
+          component='output'
+          c='red'
+          data-testid='voice-error'
+          aria-live='polite'
+        >
+          {errorText.message} {errorText.recovery}
         </Text>
       )}
     </Group>

@@ -33,7 +33,7 @@ def _analysis_override_applies(run: TurnRun) -> bool:
     )
 
 
-async def build_route(service: NormalizedTurnService, run: TurnRun) -> None:
+async def _build_route_inner(service: NormalizedTurnService, run: TurnRun) -> None:
     """Assemble routing content, task intent, diagnostic context, and the route."""
 
     # An accepted selection re-routes the ORIGINAL intent enriched by
@@ -43,6 +43,14 @@ async def build_route(service: NormalizedTurnService, run: TurnRun) -> None:
     run.routing_content = run.content
     if run.question_resolution is not None and run.question_resolution.outcome == "selected":
         run.routing_content = run.question_resolution.routing_content
+    else:
+        # Focus reference continuity: a bare anaphor ("what is its status?")
+        # binds to the focus snapshot RECORDED with this turn (the original
+        # binding on replay) via the same "utterance — label" idiom the
+        # question rail uses. Explicit references win and stay untouched.
+        from ai.core.focus.commands import continuity_content
+
+        run.routing_content = continuity_content(run.content, run.focus_snapshot)
 
     # S3: typed task/effect intent BEFORE diagnostic-context construction.
     # Skipped for already-refused turns (no wasted classifier call). The
@@ -169,3 +177,15 @@ async def build_route(service: NormalizedTurnService, run: TurnRun) -> None:
                 scope_hash_prefix=str(run.analysis_scope.get("hash") or "")[:8],
                 scope_machine_count=len(machine_ids),
             )
+
+
+async def build_route(service: NormalizedTurnService, run: TurnRun) -> None:
+    """Assemble routing content, task intent, diagnostic context, and the route.
+
+    Thin content-free timing wrapper around ``_build_route_inner``: the
+    ``routing`` phase measures this real stage only (voice timing §4.2).
+    """
+    from ai.core.voice import timing
+
+    with timing.stage("routing"):
+        await _build_route_inner(service, run)

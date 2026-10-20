@@ -18,6 +18,7 @@ import {
   useVoiceSurfaceState,
   voiceController
 } from '../../../states/VoiceSessionState';
+import { type ConsentGateOutcome, consentSubmitGate } from './voiceFeedback';
 import { voiceHeaders, voiceUrl } from './voiceHttp';
 
 /** Shared disclosure for live voice and transcript-only capture/closeout. */
@@ -39,6 +40,13 @@ export function VoiceConsentDialog() {
   const [sampleState, setSampleState] = useState<'idle' | 'loading' | 'failed'>(
     'idle'
   );
+  // VOICE-H02: an invalid submit records WHY it was refused (visible,
+  // accessible) instead of returning silently. Recovery re-checks against
+  // the live capability seam — the same checks, never loosened.
+  const [submitIssue, setSubmitIssue] = useState<Extract<
+    ConsentGateOutcome,
+    { ok: false }
+  > | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
   const sampleAbort = useRef<AbortController | null>(null);
   const objectUrl = useRef<string | null>(null);
@@ -72,6 +80,7 @@ export function VoiceConsentDialog() {
         sounds: useLocalState.getState().voiceEarcons
       });
       form.clearErrors();
+      setSubmitIssue(null);
     } else stopSample();
     return stopSample;
   }, [opened]);
@@ -107,6 +116,13 @@ export function VoiceConsentDialog() {
       if (!abort.signal.aborted) setSampleState('failed');
     }
   };
+  const recheck = () => {
+    // Recovery seam: re-validate against the capability the existing
+    // pipeline (useVoiceLiveSession → voiceController.setCapability) last
+    // delivered. Same checks — it can only confirm or keep refusing.
+    const gate = consentSubmitGate(capability ?? undefined, form.values.locale);
+    setSubmitIssue(gate.ok ? null : gate);
+  };
   return (
     <Modal
       opened={opened}
@@ -116,19 +132,23 @@ export function VoiceConsentDialog() {
     >
       <form
         onSubmit={form.onSubmit((values) => {
-          const pair = capability?.voices.find(
-            (pair) => pair.locale === values.locale
+          const gate = consentSubmitGate(
+            capability ?? undefined,
+            values.locale
           );
-          if (
-            !pair ||
-            capability?.consent_version !== 'consent-v3-memory' ||
-            capability.idle_timeout_s !== 300
-          )
+          // VOICE-H02: every pre-existing check (voice pair, consent version,
+          // idle timeout) stays authoritative; a refusal is now visible and
+          // leaves the dialog open, stores nothing and starts no microphone.
+          if (!gate.ok || !capability) {
+            setSubmitIssue(
+              gate.ok ? { ok: false, reason: 'missing-voice' } : gate
+            );
             return;
+          }
           stopSample();
           preferences.setVoicePreferences({
-            voiceLocale: pair.locale,
-            voiceOutputVoice: pair.voice,
+            voiceLocale: gate.pair.locale,
+            voiceOutputVoice: gate.pair.voice,
             voiceConsentVersion: capability.consent_version,
             voiceEarcons: values.sounds
           });
@@ -171,6 +191,23 @@ export function VoiceConsentDialog() {
             label={t`I have read the disclosure and want to start voice.`}
             {...form.getInputProps('accepted', { type: 'checkbox' })}
           />
+          {submitIssue && (
+            <Alert color='red' role='alert' data-testid='voice-consent-issue'>
+              <Text component='output' aria-live='assertive' size='sm'>
+                {submitIssue.reason === 'missing-voice'
+                  ? t`That language and voice is no longer available. Choose an available language and voice, then try again.`
+                  : submitIssue.reason === 'consent-version'
+                    ? t`The voice disclosure on the server has changed. Review the disclosure above, accept it again, then start voice.`
+                    : t`The voice session settings on the server don't match this app. Recheck the voice settings before starting.`}
+              </Text>
+              <Button
+                mih={44}
+                variant='default'
+                data-testid='voice-consent-recheck'
+                onClick={recheck}
+              >{t`Recheck voice settings`}</Button>
+            </Alert>
+          )}
           <Group justify='end'>
             <Button
               variant='default'

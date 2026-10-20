@@ -130,10 +130,28 @@ def test_planner_iterations_are_capped_low():
 # --------------------------------------------------------------------------- #
 # V19/V20                                                                      #
 # --------------------------------------------------------------------------- #
-def test_filler_threshold_is_above_the_measured_turn_floor():
-    from ai.core.voice import status_phrases
+def test_optional_progress_schedule_is_explicit_and_bounded():
+    """Contract delta (2026-10-05, VoiceScopeLatencyFixPlan §5.2, approved).
 
-    assert status_phrases.INTERIM_STATUS_DELAY_S >= 4.0
+    The historical single filler timer (``INTERIM_STATUS_DELAY_S >= 4.0``,
+    itself raised after the 2026-07-26 measurement) is replaced by the
+    plan's explicit bounded schedule: the first optional cue at 2 s after
+    admission, a second no earlier than 8 s after admission and never
+    closer than the minimum gap to the previous cue, at most two optional
+    cues per turn. These are policy bounds taken from the approved plan,
+    NOT new measured latency wins. Threshold behaviour is covered with a
+    fake clock in test_voice_progress.py.
+    """
+    from ai.core.voice import progress, status_phrases
+
+    assert pytest.approx(2.0) == progress.FIRST_OPTIONAL_DELAY_S
+    assert pytest.approx(8.0) == progress.SECOND_OPTIONAL_DELAY_S
+    assert progress.SECOND_OPTIONAL_DELAY_S > progress.FIRST_OPTIONAL_DELAY_S
+    assert progress.MIN_OPTIONAL_GAP_S > 0
+    assert progress.MAX_OPTIONAL_PROMPTS == 2
+    # The legacy constant is the bridge for the not-yet-integrated route
+    # path and now equals the first optional cue instead of 4 s.
+    assert pytest.approx(progress.FIRST_OPTIONAL_DELAY_S) == status_phrases.INTERIM_STATUS_DELAY_S
 
 
 def test_intent_classifier_prefers_the_fast_deployment():

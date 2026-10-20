@@ -25,7 +25,21 @@ type Output = {
   wall?: number;
   ambiguous?: boolean;
   reason?: TimingDiagnostic;
+  /**
+   * Optional-waiting cue confirmed by actual provider metadata
+   * (`aimms_onset_kind: 'filler'` with its opaque utterance id/hash). Never
+   * inferred from a status transcript label. `aimms_dispatch_generation` is
+   * provider telemetry, NOT the local browser generation — never read here.
+   */
+  filler?: boolean;
 };
+
+export type TimingCoverageReason =
+  | 'not_observed'
+  | 'hidden_page'
+  | 'canceled'
+  | 'no_audio_proxy'
+  | 'late_or_out_of_order';
 
 export type TimingDiagnostic =
   | 'inactive'
@@ -57,6 +71,8 @@ export class VoiceTiming {
   private boundaryPending = false;
   private bufferOwner: string | null = null;
   private diagnostic: TimingDiagnostic = 'inactive';
+  /** Local turn generation (browser-side only). Never server/provider data. */
+  private turnGeneration = 0;
   constructor(
     private send: (report: VoiceTimingReport) => void,
     private now = () => performance.now(),
@@ -81,16 +97,23 @@ export class VoiceTiming {
     this.bufferOwner = null;
     this.note('inactive');
   }
-  begin(itemId?: string) {
+  /** Monotonic enqueue stamp (same clock domain as all intervals). */
+  mark() {
+    return this.now();
+  }
+  begin(itemId?: string, enqueuedAt?: number) {
     this.stop();
     if (!this.epoch) return undefined;
     this.submitted = this.now();
+    this.turnGeneration = Math.min(this.turnGeneration + 1, 2 ** 31 - 1);
     this.note('awaiting_energy');
     const item = itemId ? this.inputs.get(itemId) : undefined;
     this.values = {
       speech_to_final_ms:
         item?.final === undefined ? undefined : interval(item.final, item.end),
       final_to_submit_ms: interval(this.submitted, item?.final),
+      // Enqueue -> actual submit on the browser monotonic clock.
+      ms_queue: interval(this.submitted, enqueuedAt),
       ack_schedule_ms:
         item?.ack === undefined ? undefined : interval(item.ack, item.end)
     };
@@ -145,9 +168,16 @@ export class VoiceTiming {
         previous.ambiguous = true;
         previous.reason = 'overlapping_output';
       }
+      const meta = response?.metadata;
       this.outputs.set(id, {
-        utterance: response?.metadata?.aimms_utterance_id,
-        hash: response?.metadata?.aimms_spoken_hash,
+        utterance: meta?.aimms_utterance_id,
+        hash: meta?.aimms_spoken_hash,
+        filler:
+          meta?.aimms_onset_kind === 'filler' &&
+          typeof meta?.aimms_utterance_id === 'string' &&
+          typeof meta?.aimms_spoken_hash === 'string'
+            ? true
+            : undefined,
         ambiguous: active.length > 0 || this.boundaryPending,
         reason: active.length
           ? 'overlapping_output'
@@ -336,8 +366,21 @@ export class VoiceTiming {
       this.note('binding_mismatch');
       return;
     }
-    const elapsed = interval(item.observed, this.submitted);
-    if (elapsed === undefined) return;
+    const answerElapsed = interval(item.observed, this.submitted);
+    if (answerElapsed === undefined) return;
+    // First CLASSIFIED feedback onset (filler cue or the answer itself). An
+    // unclassified output (e.g. a required status without onset metadata) is
+    // unknown coverage, never filler — and filler can never populate
+    // answer_onset_ms, which comes only from the authorized answer bind.
+    // This report is keyed to the bound ANSWER row, and a filler's provider
+    // metadata is not a persisted-row binding: the row is classified ONLY by
+    // its own observed onset. An earlier filler survives solely as the
+    // distinct first-feedback interval (feedback_onset_ms), never as this
+    // row's onset_kind or first_playback_epoch_ms.
+    const first = this.firstOnset(item);
+    const feedbackElapsed =
+      first === undefined ? answerElapsed : interval(first.at, this.submitted);
+    if (feedbackElapsed === undefined) return;
     this.reported = true;
     this.note('reported');
     this.emit({
@@ -345,8 +388,119 @@ export class VoiceTiming {
       utterance_id: binding.utterance_id,
       spoken_hash: binding.spoken_summary_hash,
       provenance: 'rtp_energy_proxy',
-      first_playback_epoch_ms: item.wall,
-      timing: { ...this.values, submit_to_observed_playback_ms: elapsed }
+      first_playback_epoch_ms: item.wall as number,
+      onset_kind: 'answer',
+      generation: this.turnGeneration,
+      timing: {
+        ...this.values,
+        feedback_onset_ms: feedbackElapsed,
+        answer_onset_ms: answerElapsed,
+        submit_to_observed_playback_ms: answerElapsed
+      }
     });
+  }
+  private matchedAnswer(binding: VoiceSpokenPayload): Output | null {
+    const matches = [...this.outputs.values()].filter(
+      (item) => item.text === binding.spoken_summary
+    );
+    return matches.length === 1 ? matches[0] : null;
+  }
+  /** Earliest onset that is attributable: the bound answer or a
+   * metadata-confirmed optional-waiting cue. Everything else is unknown. */
+  private firstOnset(answer: Output | null) {
+    const candidates: {
+      at: number;
+      wall: number;
+      kind: 'filler' | 'answer';
+    }[] = [];
+    for (const item of this.outputs.values()) {
+      if (item.observed === undefined || item.canceled || item.ambiguous)
+        continue;
+      if (interval(item.observed, this.submitted) === undefined) continue;
+      const kind = item === answer ? 'answer' : item.filler ? 'filler' : null;
+      if (kind)
+        candidates.push({
+          at: item.observed,
+          wall: item.wall as number,
+          kind
+        });
+    }
+    candidates.sort((a, b) => a.at - b.at);
+    return candidates[0];
+  }
+  private deriveCoverage(answer: Output | null): TimingCoverageReason {
+    if ([...this.outputs.values()].some((item) => item.canceled))
+      return 'canceled';
+    if (answer) {
+      if (answer.canceled) return 'canceled';
+      if (answer.stopped && answer.observed === undefined)
+        return 'no_audio_proxy';
+      if (answer.ambiguous)
+        return answer.reason === 'missing_baseline'
+          ? 'no_audio_proxy'
+          : 'late_or_out_of_order';
+      return 'not_observed';
+    }
+    if (this.diagnostic === 'canceled_output') return 'canceled';
+    if (
+      this.diagnostic === 'no_correlated_energy' ||
+      this.diagnostic === 'missing_baseline'
+    )
+      return 'no_audio_proxy';
+    if (
+      this.diagnostic === 'crossed_output_boundary' ||
+      this.diagnostic === 'overlapping_output' ||
+      this.diagnostic === 'repeated_text'
+    )
+      return 'late_or_out_of_order';
+    if ([...this.outputs.values()].some((item) => item.text === undefined))
+      return 'late_or_out_of_order';
+    // The authorized answer simply never played: its onset is missing, never
+    // zero. No onset_kind is claimed without a classified observation.
+    return 'not_observed';
+  }
+  /**
+   * Turn boundary (end/hidden/cancel/new output): one content-free coverage
+   * report when the authorized persisted bind exists and no observation
+   * report was emitted. Missing times stay absent, never zero.
+   */
+  finish(coverage?: 'hidden_page' | 'canceled') {
+    const binding = this.binding;
+    const epoch = this.epoch;
+    const submitted = this.submitted;
+    const values = this.values;
+    const generation = this.turnGeneration;
+    const answer =
+      binding && epoch && !this.reported ? this.matchedAnswer(binding) : null;
+    const reason =
+      binding && epoch && !this.reported && submitted !== undefined
+        ? (coverage ?? this.deriveCoverage(answer))
+        : undefined;
+    if (binding && epoch && reason && !this.reported) {
+      // A coverage report explains a MISSING onset, so it claims no
+      // onset_kind and no first_playback_epoch_ms. The bound answer row is
+      // never relabeled with a filler onset, and the filler's provider
+      // metadata is not a persisted-row identity — nothing is invented.
+      // The honest first feedback survives as the feedback_onset_ms interval.
+      const first = this.firstOnset(answer);
+      const feedbackElapsed =
+        first === undefined ? undefined : interval(first.at, submitted);
+      this.reported = true;
+      this.emit({
+        epoch,
+        utterance_id: binding.utterance_id,
+        spoken_hash: binding.spoken_summary_hash,
+        provenance: 'rtp_energy_proxy',
+        coverage_reason: reason,
+        generation,
+        timing: {
+          ...values,
+          ...(first && feedbackElapsed !== undefined
+            ? { feedback_onset_ms: feedbackElapsed }
+            : {})
+        }
+      });
+    }
+    this.stop();
   }
 }

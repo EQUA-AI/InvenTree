@@ -49,6 +49,16 @@ class VoiceSessionPayload(BaseModel):
     locale: str = "en-US"
     voice: str = "en-US-AvaNeural"
     consent_version: str = ""
+    # The thread's confirmed conversation focus at session time (optional,
+    # compatible). The projection is server-resolved and hash-free; the
+    # version is the stamp clients quote on each utterance. A later focus
+    # change does NOT invalidate the session — per-turn stamps handle it.
+    focus: dict | None = None
+    focus_version: int = 0
+    # Retained live-dispatch audit metadata; unavailable after release/restart.
+    speech_utterance_id: str | None = None
+    speech_playback_state: str | None = None
+    speech_audit_state: Literal["unavailable", "confirmed", "uncertain"] | None = None
 
 
 class VoiceSpokenPayload(BaseModel):
@@ -60,6 +70,7 @@ class VoiceSpokenPayload(BaseModel):
     spoken_summary: str
     spoken_summary_hash: str
     playback_state: str
+    playback_audit_state: Literal["unavailable", "confirmed", "uncertain"] = "unavailable"
 
 
 class VoicePendingQuestionOption(BaseModel):
@@ -165,6 +176,14 @@ class VoiceTurnResponse(BaseModel):
     pending_decision: VoicePendingDecision | None = None
     decision_event: VoiceDecisionEvent | None = None
     presentation: VoicePresentationPayload | None = None
+    # The turn's RECORDED focus snapshot projection and version (echo of
+    # what this utterance was bound to — on replay the ORIGINAL binding,
+    # never the thread's current focus). Hash-free; null when unbound.
+    # ``focus_refresh_required`` marks a turn that CHANGED the focus: the
+    # echo above is pre-change; refresh ``GET /threads/{id}/focus``.
+    focus: dict | None = None
+    focus_version: int = 0
+    focus_refresh_required: bool = False
 
 
 #: Every error code the SERVER can send a voice client (exception ``code``
@@ -185,6 +204,10 @@ SERVER_VOICE_ERROR_CODES: tuple[str, ...] = (
     "VOICE_TRANSCRIPT_INCOMPLETE",
     "VOICE_RESPONSE_INCOMPLETE",
     "VOICE_SCOPE_CHANGED",
+    # Per-turn stale focus stamp (expected_focus_version): the utterance was
+    # recorded under a focus selection the client has not seen. NOT a scope
+    # change — no transport restart, no analysis_scope_version movement.
+    "VOICE_FOCUS_CHANGED",
     "VOICE_PROMPT_UNKNOWN",
     "VOICE_DECISION_UNAVAILABLE",
     "VOICE_DECISION_CONFLICT",

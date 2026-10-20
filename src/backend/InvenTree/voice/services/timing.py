@@ -9,7 +9,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from ai.core.voice.timing import VoiceTimingReport
-from voice.models import VoiceSession, VoiceUtterance
+from voice.models import VoiceSession, VoiceUtterance, VoiceUtteranceType
 from voice.services import realtime
 
 
@@ -96,6 +96,16 @@ def report(*, owner, scope_key, session_id, limits, observation: VoiceTimingRepo
     if utterance is None:
         raise TimingRejected('VOICE_TIMING_UNAVAILABLE')
     values = observation.timing.model_dump(exclude_none=True)
+    is_answer = utterance.utterance_type == VoiceUtteranceType.COMPLETED_ANSWER
+    # Filler onset and useful-answer onset are separate observations: the
+    # first filler must never populate a useful-answer onset, and an answer
+    # row never records a filler onset as its own.
+    if observation.onset_kind == 'answer' and not is_answer:
+        raise TimingRejected('VOICE_TIMING_UNAVAILABLE')
+    if observation.onset_kind == 'filler' and is_answer:
+        raise TimingRejected('VOICE_TIMING_UNAVAILABLE')
+    if values.get('answer_onset_ms') is not None and not is_answer:
+        raise TimingRejected('VOICE_TIMING_UNAVAILABLE')
     now = timezone.now()
     observed = None
     if observation.first_playback_epoch_ms is not None:
@@ -114,12 +124,24 @@ def report(*, owner, scope_key, session_id, limits, observation: VoiceTimingRepo
         ):
             raise TimingRejected('VOICE_TIMING_UNAVAILABLE')
     if observation.provenance == 'local_pause_proxy' and set(values) - {
-        'local_stop_ms'
+        'local_stop_ms',
+        # A queue wait is a client-clock interval, meaningful without any
+        # audio observation; onset fields are not.
+        'ms_queue',
     }:
         raise TimingRejected('VOICE_TIMING_UNAVAILABLE')
     previous = utterance.timing_metrics or {}
     # Store provenance by fixed field, not arbitrary metadata from the client.
-    merged = {**values, **previous}
+    fixed = {
+        key: value
+        for key, value in (
+            ('onset_kind', observation.onset_kind),
+            ('coverage_reason', observation.coverage_reason),
+            ('generation', observation.generation),
+        )
+        if value is not None
+    }
+    merged = {**values, **fixed, **previous}
     updates = {}
     if merged != previous:
         updates['timing_metrics'] = merged

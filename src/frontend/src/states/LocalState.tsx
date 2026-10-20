@@ -7,6 +7,10 @@ import type { UserTheme } from '@lib/types/Core';
 import type { HostList } from '@lib/types/Server';
 import { api } from '../App';
 import type { VoicePreferences } from '../components/ai/voice/types';
+import {
+  DEFAULT_VOICE_PROGRESS_MODE,
+  mergeVoicePreferences
+} from '../components/ai/voice/types';
 import { useUserState } from './UserState';
 
 interface LocalStateProps extends VoicePreferences {
@@ -60,6 +64,7 @@ export const useLocalState = create<LocalStateProps>()(
       voiceLocale: 'en-US',
       voiceOutputVoice: 'en-US-AvaNeural',
       voiceSpeakerNoticeSeen: false,
+      voiceProgressMode: DEFAULT_VOICE_PROGRESS_MODE,
       setVoicePreferences: (values) => set(values),
       autoupdate: false,
       toggleAutoupdate: () =>
@@ -201,7 +206,11 @@ export const useLocalState = create<LocalStateProps>()(
       }
     }),
     {
-      name: 'session-settings'
+      name: 'session-settings',
+      // Persisted state is kept, but an invalid/legacy progress mode is
+      // normalized safely back to the Brief default (never a silent crash or
+      // an out-of-range mode reaching the turn payload).
+      merge: mergeVoicePreferences
     }
   )
 );

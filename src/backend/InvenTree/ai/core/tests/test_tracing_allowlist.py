@@ -98,6 +98,20 @@ def test_the_vocabulary_is_frozen():
             "aimms.compaction_directives_dropped",
             "aimms.compaction_directives_flagged",
             "aimms.compaction_entropy_flags",
+            # Voice E/F (VoiceScopeLatencyFixPlan §4.2/§5.3): reviewed,
+            # content-free dispatch/playback phase metrics and bindings.
+            "aimms.ms_lock_wait",
+            "aimms.ms_admission",
+            "aimms.ms_model",
+            "aimms.ms_final_persist",
+            "aimms.ms_cancellation",
+            "aimms.ms_dispatch_ack",
+            "aimms.ms_dispatch_terminal",
+            "aimms.ms_cancel_terminal",
+            "aimms.dispatch_id",
+            "aimms.kind",
+            "aimms.generation",
+            "aimms.focus_version",
         })
         == _ALLOWED_ATTRS
     )

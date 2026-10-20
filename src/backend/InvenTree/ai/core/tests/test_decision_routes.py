@@ -11,7 +11,6 @@ from ai.core.tests.test_decision_store import T0, _decision
 from ai.core.tests.test_realtime_session_api import _principal, _run, _settings, _user
 from ai.core.tests.test_voice_status_phrases import _session_for
 from ai.core.voice import routes
-from django.core.management import call_command
 from fastapi import HTTPException
 from voice.models import VoiceSession, VoiceUtterance
 from voice.services import realtime
@@ -19,7 +18,12 @@ from voice.services import realtime
 
 @pytest.fixture(scope="module", autouse=True)
 def database():
-    call_command("migrate", verbosity=0, interactive=False)
+    # Not call_command("migrate"): the island migration graph is
+    # inconsistent (held H07) -- real ORM tables via the established
+    # test-only schema bootstrap instead.
+    from ai.core.tests.focus_test_db import ensure_island_tables
+
+    ensure_island_tables()
 
 
 def endpoint(name):
@@ -158,13 +162,13 @@ def test_foreground_readback_refreshes_delivery_not_consent_or_expiry(route_setu
     assert after.playback_completed_at is None
     assert after.utterance_id != before.utterance_id
     assert not session.operations.exists()
-    assert channel.send_control.await_args_list[0].args == ({"type": "response.cancel"},)
-    assert (
-        channel.send_control.await_args_list[1].args[0]["response"]["metadata"][
-            "aimms_utterance_id"
-        ]
-        == after.utterance_id
-    )
+    # The shared dispatcher owns the readback send: the bare response.cancel
+    # is gone (its bounded replacement reconciles provider ownership) and the
+    # first payload is the persisted readback itself, prompt dispatch class.
+    first = channel.send_control.await_args_list[0].args[0]
+    assert first["type"] == "response.create"
+    assert first["response"]["metadata"]["aimms_speech_kind"] == "prompt"
+    assert first["response"]["metadata"]["aimms_utterance_id"] == after.utterance_id
 
 
 def test_readback_is_flag_gated_without_creating_output(route_setup):

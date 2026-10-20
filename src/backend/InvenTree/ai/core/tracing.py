@@ -87,6 +87,23 @@ _ALLOWED_ATTRS = frozenset({
     "aimms.compaction_directives_dropped",
     "aimms.compaction_directives_flagged",
     "aimms.compaction_entropy_flags",
+    # Voice E/F (VoiceScopeLatencyFixPlan §4.2/§5.3): content-free phase
+    # metrics and identity bindings for dispatch/playback telemetry. The
+    # ms_* keys are numeric-only; dispatch_id is an opaque id; kind is a
+    # closed vocabulary; generation/focus_version are bounded ints. Nothing
+    # here can carry content.
+    "aimms.ms_lock_wait",
+    "aimms.ms_admission",
+    "aimms.ms_model",
+    "aimms.ms_final_persist",
+    "aimms.ms_cancellation",
+    "aimms.ms_dispatch_ack",
+    "aimms.ms_dispatch_terminal",
+    "aimms.ms_cancel_terminal",
+    "aimms.dispatch_id",
+    "aimms.kind",
+    "aimms.generation",
+    "aimms.focus_version",
 })
 
 _MAX_ATTR_LEN = 128
@@ -118,9 +135,27 @@ def span_attrs(**kwargs: Any) -> dict[str, Any]:
             if type(value) in (int, float) and math.isfinite(value) and 0 <= value <= 300000:
                 allowed[full_key] = value
             continue
-        if full_key in {"aimms.decision_id", "aimms.operation_id", "aimms.utterance_id"}:
+        if full_key in {
+            "aimms.decision_id",
+            "aimms.operation_id",
+            "aimms.utterance_id",
+            "aimms.dispatch_id",
+        }:
             value = opaque_voice_id(value)
             if value:
+                allowed[full_key] = value
+            continue
+        if full_key == "aimms.kind":
+            # Closed utterance/dispatch-kind vocabulary only; arbitrary
+            # strings (potential content) are dropped at this same gate.
+            if type(value) is str and value in {
+                "answer",
+                "status",
+                "prompt",
+                "interim_status",
+                "completed_answer",
+                "failure_status",
+            }:
                 allowed[full_key] = value
             continue
         if full_key == "aimms.decision_state":

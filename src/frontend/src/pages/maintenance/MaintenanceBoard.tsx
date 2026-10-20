@@ -30,6 +30,7 @@ import {
   IconCircleCheck,
   IconDeviceFloppy,
   IconExternalLink,
+  IconMessageChatbot,
   IconPencil,
   IconPlus,
   IconTrash,
@@ -60,6 +61,7 @@ import type {
 
 import { useApi } from '../../contexts/ApiContext';
 import { showApiErrorMessage } from '../../functions/notifications';
+import { openGlobalAIChat } from '../../states/AIChatState';
 
 import {
   WorkOrderCreateModal,
@@ -2074,13 +2076,44 @@ export default function MaintenanceBoard() {
                 {t`Add tag`}
               </Button>
             </Group>
-            <Group justify='flex-end'>
-              <Button variant='default' onClick={closeTaskModal} type='button'>
-                {t`Cancel`}
+            <Group justify='space-between'>
+              {/* Plan C: contextual Ask for this board task (card PK — never
+                its parent WorkOrder id). The card identity rides as a typed
+                focus candidate; the drawer commits it server-side. */}
+              <Button
+                variant='light'
+                type='button'
+                leftSection={<IconMessageChatbot size={16} />}
+                data-testid='ask-about-task'
+                disabled={!editingTask}
+                onClick={() => {
+                  if (!editingTask) return;
+                  openGlobalAIChat({
+                    kind: 'kanban_card',
+                    id: editingTask.id,
+                    label: editingTask.title,
+                    machineId: editingTask.machine,
+                    workOrderId: editingTask.workOrderId
+                  });
+                  // Asking is not permission to discard: the task form stays
+                  // open with its unsaved draft while the chat opens (Cancel
+                  // remains the explicit discard action).
+                }}
+              >
+                {t`Ask about this task`}
               </Button>
-              <Button type='submit' loading={savingTask}>
-                {t`Save changes`}
-              </Button>
+              <Group justify='flex-end'>
+                <Button
+                  variant='default'
+                  onClick={closeTaskModal}
+                  type='button'
+                >
+                  {t`Cancel`}
+                </Button>
+                <Button type='submit' loading={savingTask}>
+                  {t`Save changes`}
+                </Button>
+              </Group>
             </Group>
           </Stack>
         </form>

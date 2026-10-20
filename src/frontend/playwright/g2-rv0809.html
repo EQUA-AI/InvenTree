@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>G2 RV08/RV09 mounted baseline fixture</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      window.__g2Errors = [];
+      window.addEventListener('error', (e) =>
+        window.__g2Errors.push(String(e.message || e.error))
+      );
+      window.addEventListener('unhandledrejection', (e) =>
+        window.__g2Errors.push(String(e.reason))
+      );
+    </script>
+    <script type="module" src="./g2-rv0809.tsx"></script>
+  </body>
+</html>

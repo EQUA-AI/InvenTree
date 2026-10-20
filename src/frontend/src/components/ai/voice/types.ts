@@ -26,6 +26,8 @@ export type VoiceNotice =
   | 'route_changed'
   | 'sounds_off'
   | 'readback_available'
+  | 'warmup_held'
+  | 'warmup_discarded'
   | null;
 export interface VoiceCapability {
   enabled: boolean;
@@ -73,6 +75,39 @@ export interface VoicePreferences {
   voiceLocale: string;
   voiceOutputVoice: string;
   voiceSpeakerNoticeSeen: boolean;
+  /**
+   * Spoken progress preference for NEW requests (a mid-flight server request
+   * keeps the preference it was admitted with). `off` suppresses only the
+   * optional spoken waiting cues — errors, clarifications, decision readbacks,
+   * useful answers and help always speak. Earcon and screen-reader transcript
+   * preferences stay independent. The controller sends `progress_mode` only
+   * when the preference is set (server default `brief`).
+   */
+  voiceProgressMode?: VoiceProgressMode;
+}
+export type VoiceProgressMode = 'off' | 'brief' | 'guided';
+export const DEFAULT_VOICE_PROGRESS_MODE: VoiceProgressMode = 'brief';
+/** Persisted/entered values are normalized safely to the Brief default. */
+export function normalizeVoiceProgressMode(value: unknown): VoiceProgressMode {
+  return value === 'off' || value === 'guided' ? value : 'brief';
+}
+/** zustand-persist merge: keep stored state, renormalize the progress mode. */
+export function mergeVoicePreferences<S extends object>(
+  persisted: unknown,
+  current: S
+): S & { voiceProgressMode?: VoiceProgressMode } {
+  const source =
+    persisted && typeof persisted === 'object'
+      ? (persisted as Record<string, unknown>)
+      : {};
+  const merged = {
+    ...current,
+    ...source
+  } as S & { voiceProgressMode?: VoiceProgressMode };
+  merged.voiceProgressMode = normalizeVoiceProgressMode(
+    source.voiceProgressMode
+  );
+  return merged;
 }
 export interface VoiceSnapshot {
   networkDiagnostics: VoiceNetworkDiagnostics | null;

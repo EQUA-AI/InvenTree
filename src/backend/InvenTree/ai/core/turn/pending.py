@@ -48,10 +48,12 @@ async def resolve_preconditions(service: NormalizedTurnService, run: TurnRun) ->
         run.question_resolution = None
     else:
         # S4: a request to skip or defeat a safety control is refused
-        # deterministically, for BOTH modalities, before a pending write
-        # could be confirmed or routing could reach a workflow. A
-        # bypass-phrased "confirmation" must refuse AND close the window —
-        # never execute.
+        # deterministically, for BOTH modalities, BEFORE a pending write
+        # could be confirmed, BEFORE a focus switch could capture the turn,
+        # and before routing could reach a workflow. A bypass-phrased
+        # "confirmation" must refuse AND close the window — never execute.
+        # (Ordering is the control: the focus rail below may never step over
+        # this refusal.)
         run.safety_response = await service._refuse_unsafe_shortcut(
             content=run.content,
             modality=run.modality,
@@ -65,6 +67,22 @@ async def resolve_preconditions(service: NormalizedTurnService, run: TurnRun) ->
             service._abandon_pending_voice_write(modality=run.modality, thread_id=run.thread.pk)
             service._abandon_pending_question(thread_id=run.thread.pk)
             run.write_canonical = None
+            run.question_resolution = None
+            return
+        # Focus rail: an EXPLICIT switch ("talk about machine 3") captures
+        # the turn AFTER the safety refusal above and BEFORE any pending
+        # window can mistake it for an answer — an option ordinal buried in
+        # a switch phrase must never select, and a successful switch sets
+        # aside any unconfirmed pending decision through its coordinator
+        # (fail closed; a later "yes" cannot apply an old-target preview to
+        # the new focus). Unmatched/unauthorized switches and clarifications
+        # leave focus unchanged.
+        from ai.core.focus import commands as focus_commands
+
+        run.focus_canonical = await focus_commands.maybe_handle(service, run)
+        if run.focus_canonical is not None:
+            # The focus turn consumed the one-turn question window.
+            service._abandon_pending_question(thread_id=run.thread.pk)
             run.question_resolution = None
             return
         if await decisions.resolve(service, run):
@@ -90,3 +108,10 @@ async def resolve_preconditions(service: NormalizedTurnService, run: TurnRun) ->
             run.question_resolution = service._resolve_pending_question(
                 content=run.content, modality=run.modality, thread_id=run.thread.pk
             )
+            if run.question_resolution is not None:
+                # A CONFIRMED focus-selection option (server-owned ref) may
+                # update the durable focus; unmatched/declined answers and
+                # every other question source leave focus unchanged.
+                from ai.core.focus import commands as focus_commands
+
+                run.focus_canonical = await focus_commands.apply_question_answer(service, run)

@@ -165,7 +165,24 @@ def test_create_get_end_lifecycle_and_credential_free_payload():
         "terminal_reason",
         # §13.3-10 scope binding: an integer version, no provider authority.
         "analysis_scope_version",
+        # Accepted additive focus/audit fields (owner-approved test-
+        # contract alignment): server-resolved focus echo and retained
+        # live-dispatch audit metadata; none can carry provider
+        # authority or any credential.
+        "focus",
+        "focus_version",
+        "speech_utterance_id",
+        "speech_playback_state",
+        "speech_audit_state",
     }, "payload grew a field; verify it cannot carry provider authority"
+    # Safe defaults straight from the accepted producer for a fresh,
+    # threadless session: no focus echo, an integer zero focus version
+    # and no speech audit metadata.
+    assert created["focus"] is None
+    assert type(created["focus_version"]) is int and created["focus_version"] == 0
+    assert created["speech_utterance_id"] is None
+    assert created["speech_playback_state"] is None
+    assert created["speech_audit_state"] is None
 
     fetched = _run(principal, lambda: get_voice_session(created["id"]), settings)
     assert fetched["id"] == created["id"]
@@ -543,10 +560,13 @@ def test_turn_bridge_tts_failure_leaves_playback_honestly_pending():
     )
 
     class BrokenChannel:
+        send_attempts = 0
+
         async def request_sdp_answer(self, _payload):  # pragma: no cover - unused
             raise AssertionError("no SDP expected in this test")
 
         async def send_control(self, _payload):
+            BrokenChannel.send_attempts += 1
             raise RuntimeError("provider connection lost")
 
     routes.set_provider_channel_factory(lambda session: BrokenChannel())  # noqa: ARG005
@@ -569,6 +589,27 @@ def test_turn_bridge_tts_failure_leaves_playback_honestly_pending():
     finally:
         routes.set_provider_channel_factory(None)
 
-    # The visible chat answer is never blocked by TTS; playback stays pending.
+    # The visible chat answer is never blocked by TTS; a provider send
+    # failure is reported HONESTLY as playback failure -- never the old
+    # false "pending" -- and the audit explicitly confirms the persisted
+    # failure state (audit truth about the write, never audio success).
     assert result["response_state"] == "complete"
-    assert result["spoken"]["playback_state"] == "pending"
+    assert result["spoken"]["playback_state"] == "failed"
+    assert result["spoken"]["playback_audit_state"] == "confirmed"
+
+    from hashlib import sha256
+
+    from voice.models import VoiceUtterance
+
+    # Exact persisted utterance through the native ORM: identity, text
+    # and SHA-256 hash survive the failure untouched, and the persisted
+    # playback state is the same honest failure.
+    row = VoiceUtterance.objects.get(id=result["spoken"]["utterance_id"])
+    assert str(row.session_id) == created["id"]
+    assert row.spoken_summary == "Two likely causes. Confirm the vibration reading."
+    assert row.spoken_summary_hash == result["spoken"]["spoken_summary_hash"]
+    assert row.spoken_summary_hash == sha256(row.spoken_summary.encode()).hexdigest()
+    assert row.playback_state == "failed"
+    # Exactly one provider dispatch attempt; the real send failure is
+    # never replayed or retried.
+    assert BrokenChannel.send_attempts == 1

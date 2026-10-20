@@ -14,6 +14,8 @@ import { i18n } from '@lingui/core';
 import { I18nProvider } from '@lingui/react';
 import { Button, MantineProvider, Stack } from '@mantine/core';
 import '@mantine/core/styles.css';
+import { Notifications } from '@mantine/notifications';
+import '@mantine/notifications/styles.css';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -46,6 +48,33 @@ function DrawerFixture() {
       >
         Ask about Pump A
       </Button>
+      <Button
+        data-testid='fixture-ask-task'
+        onClick={() =>
+          openGlobalAIChat({
+            kind: 'kanban_card',
+            id: 11,
+            label: 'Replace seal',
+            workOrderId: 5,
+            machineId: 7
+          })
+        }
+      >
+        Ask about task card 11
+      </Button>
+      <Button
+        data-testid='fixture-ask-work-order'
+        onClick={() =>
+          openGlobalAIChat({
+            kind: 'work_order',
+            id: 5,
+            label: 'WO-000005 Pump service',
+            machineId: 7
+          })
+        }
+      >
+        Ask about work order 5
+      </Button>
       <AIChatButton
         opened={opened}
         onClick={() => {
@@ -68,6 +97,21 @@ function DrawerFixture() {
 // Test hooks for flows with no visible control in the fixture.
 (window as any).__aiDrawerTest = {
   ask: () => openGlobalAIChat({ machineId: 7, machineName: 'Pump A' }),
+  askTask: () =>
+    openGlobalAIChat({
+      kind: 'kanban_card',
+      id: 11,
+      label: 'Replace seal',
+      workOrderId: 5,
+      machineId: 7
+    }),
+  askWorkOrder: () =>
+    openGlobalAIChat({
+      kind: 'work_order',
+      id: 5,
+      label: 'WO-000005 Pump service',
+      machineId: 7
+    }),
   openHandsFree: () => useVoiceSurfaceState.getState().openFullscreen(),
   closeHandsFree: () => useVoiceSurfaceState.getState().closeFullscreen()
 };
@@ -79,6 +123,9 @@ const initialRoute =
 createRoot(document.getElementById('root')!).render(
   <I18nProvider i18n={i18n}>
     <MantineProvider defaultColorScheme='auto'>
+      {/* Honest failure feedback (plan A fail-closed preflight) is rendered
+          through showNotification — the fixture must mount its portal. */}
+      <Notifications autoClose={false} />
       <ApiProvider api={api} client={queryClient}>
         <MemoryRouter initialEntries={[initialRoute]}>
           <DrawerFixture />

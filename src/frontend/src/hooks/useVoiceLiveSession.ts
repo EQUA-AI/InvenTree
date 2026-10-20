@@ -27,6 +27,11 @@ export interface UseVoiceLiveSessionOptions {
   threadId?: string;
   onTurnResult?: (turn: VoiceTurnResponse) => void;
   onFinalTranscript?: (value: VoiceFinalTranscript) => void;
+  /**
+   * Plan C: a turn/session refused with a stale focus stamp — the session
+   * stays alive and the UI should re-read the authoritative thread focus.
+   */
+  onFocusStale?: () => void;
 }
 export function useVoiceLiveSession(options: UseVoiceLiveSessionOptions) {
   const snapshot = useVoiceSessionState();
@@ -78,7 +83,8 @@ export function useVoiceLiveSession(options: UseVoiceLiveSessionOptions) {
       onTurnResult: (turn: VoiceTurnResponse) =>
         callbacks.current.onTurnResult?.(turn),
       onFinalTranscript: (value: VoiceFinalTranscript) =>
-        callbacks.current.onFinalTranscript?.(value)
+        callbacks.current.onFinalTranscript?.(value),
+      onFocusStale: () => callbacks.current.onFocusStale?.()
     };
     voiceController.listeners.add(listener);
     // StrictMode can replay this subscription, but cannot start/end the session.

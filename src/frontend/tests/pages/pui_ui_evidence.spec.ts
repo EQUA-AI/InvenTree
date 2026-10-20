@@ -48,7 +48,11 @@ test('evidence stops voice, gives one dialog ownership, and restores citation fo
   expect((await readMockState(page)).trackStopped).toBe(true);
   await expect(page.getByTestId('ai-chat-drawer')).toHaveAttribute('inert', '');
   await expect
-    .poll(() => page.locator('#root').evaluate((element) => element.inert))
+    .poll(() =>
+      page
+        .locator('#root')
+        .evaluate((element) => element instanceof HTMLElement && element.inert)
+    )
     .toBe(true);
   await expect(page.locator('[role="dialog"][aria-modal="true"]')).toHaveCount(
     1

@@ -592,7 +592,11 @@ def create_owner(sender, instance, **kwargs):
 def delete_owner(sender, instance, **kwargs):
     """Callback function to delete an owner instance after either a new group or user instance is deleted."""
     owner = Owner.get_owner(instance)
-    owner.delete()
+    if owner is not None:
+        # The Owner row can legitimately be missing (Owner creation is
+        # suppressed in read-only/import command contexts, or the row was
+        # already removed). Deleting a user or group must never fail on it.
+        owner.delete()
 
 
 @receiver(post_save, sender=Group, dispatch_uid='create_missing_rule_sets')

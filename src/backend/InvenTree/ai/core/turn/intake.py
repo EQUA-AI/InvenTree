@@ -35,8 +35,15 @@ async def begin(
     correlation_id: str,
     server_pinned_workflow: str | None,
     server_generation_target: dict[str, int] | None,
+    expected_focus_version: int | None = None,
 ) -> TurnRun:
-    """Validate the request and bind it to a durable thread + turn row."""
+    """Validate the request and bind it to a durable thread + turn row.
+
+    ``expected_focus_version`` is the client's focus stamp for this recorded
+    utterance: it participates in the fingerprint (replay identity) and in
+    admission under the begin_turn row lock, so queued words can never be
+    reinterpreted against a later focus selection.
+    """
 
     if not content.strip():
         raise ValueError("turn content must not be empty")
@@ -74,6 +81,7 @@ async def begin(
         modality=modality,
         trusted_context=trusted,
         modality_metadata=metadata,
+        expected_focus_version=expected_focus_version,
     )
 
     repository = await service._call_sync(service.repository_factory, actor, trusted_context)
@@ -92,6 +100,7 @@ async def begin(
         idempotency_key=idempotency_key,
         request_fingerprint=fingerprint,
         correlation_id=correlation_id,
+        expected_focus_version=expected_focus_version,
     )
 
     run = TurnRun(
@@ -112,6 +121,8 @@ async def begin(
         # creation. Replay carries the ORIGINAL turn's snapshot — a scope
         # change after the fact never rebinds a turn.
         analysis_scope=begin_result.scope_snapshot,
+        # Focus rides the same rule: original snapshot on replay.
+        focus_snapshot=begin_result.focus_snapshot,
     )
 
     if begin_result.replayed:

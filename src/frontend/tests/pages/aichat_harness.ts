@@ -30,6 +30,28 @@ export interface MockScopeState {
   displayLabel: string;
 }
 
+/** Plan C: one canonical conversation-focus projection the mock serves. */
+export interface MockFocusRow {
+  kind: string;
+  id: number;
+  label: string;
+  machine_id: number | null;
+  work_order_id: number | null;
+}
+
+/** Plan C: the mutable thread-focus state the mock serves and mutates. */
+export interface MockFocusState {
+  /** Current canonical focus (null = none confirmed). */
+  focus: MockFocusRow | null;
+  version: number;
+  /** PUT answers 400 `focus_update_rejected` while true. */
+  rejectUpdates: boolean;
+  /** PUT answers 409 `focus_version_conflict` while true. */
+  conflictUpdates: boolean;
+  /** Canonical ack rows by `${kind}:${id}` — the server-resolved truth. */
+  rows: Record<string, MockFocusRow>;
+}
+
 export interface FoundationObservations {
   threadReads: ObservedRequest[];
   threadMutations: ObservedRequest[];
@@ -40,6 +62,11 @@ export interface FoundationObservations {
   evidenceSetReads: ObservedRequest[];
   /** S1: mutable server-side scope the mock serves; tests may pre-seed it. */
   scope: MockScopeState;
+  /** Plan C: GET/PUT /threads/{id}/focus traffic. */
+  focusReads: ObservedRequest[];
+  focusMutations: ObservedRequest[];
+  /** Plan C: mutable server-side focus the mock serves; tests may pre-seed. */
+  focus: MockFocusState;
 }
 
 export interface FoundationOptions {
@@ -55,6 +82,44 @@ export interface FoundationOptions {
       next_cursor?: string | null;
     }
   >;
+  /** Plan C: pre-seed the mutable thread-focus mock state. */
+  focus?: Partial<MockFocusState>;
+}
+
+/**
+ * Plan C: mock the authorized candidate search behind the focus picker.
+ * Register AFTER `prepareDrawerFixture` (most recently registered wins).
+ */
+export async function mockFocusCandidates(
+  page: Page,
+  options: { candidates?: MockFocusRow[]; status?: number } = {}
+): Promise<void> {
+  await page.route('**/api/ai/focus/candidates**', async (route: Route) => {
+    if (options.status && options.status !== 200) {
+      await route.fulfill({
+        status: options.status,
+        json: { detail: 'search unavailable' }
+      });
+      return;
+    }
+    const url = new URL(route.request().url());
+    const kind = url.searchParams.get('kind');
+    const query = (url.searchParams.get('query') ?? '').toLowerCase();
+    const candidates = (options.candidates ?? []).filter(
+      (row) =>
+        (kind === null || row.kind === kind) &&
+        (query === '' ||
+          row.label.toLowerCase().includes(query) ||
+          String(row.id) === query)
+    );
+    await route.fulfill({
+      json: {
+        candidates,
+        returned_count: candidates.length,
+        has_more: false
+      }
+    });
+  });
 }
 
 export const goldenEvents: SSEEvent[] = [
@@ -142,8 +207,23 @@ export async function mockChatFoundation(
       version: 0,
       machineIds: [],
       displayLabel: ''
+    },
+    focusReads: [],
+    focusMutations: [],
+    focus: {
+      focus: null,
+      version: 0,
+      rejectUpdates: false,
+      conflictUpdates: false,
+      rows: {},
+      ...(options.focus ?? {})
     }
   };
+
+  const focusPayload = () => ({
+    focus: observations.focus.focus,
+    focus_version: observations.focus.version
+  });
 
   const scopeSummary = () => ({
     mode: observations.scope.mode,
@@ -180,6 +260,52 @@ export async function mockChatFoundation(
     const request = route.request();
     const url = new URL(request.url());
     const isThreadDetail = url.pathname.endsWith(`/threads/${threadId}`);
+
+    // Plan C: the focus endpoints share the /threads glob — before the
+    // detail fallthrough (the same ordering trap as the scope branch).
+    if (/\/threads\/[^/]+\/focus$/.test(url.pathname)) {
+      if (request.method() === 'PUT') {
+        const observed = await observeRequest(request);
+        observations.focusMutations.push(observed);
+        if (observations.focus.conflictUpdates) {
+          await route.fulfill({
+            status: 409,
+            json: { detail: 'focus_version_conflict' }
+          });
+          return;
+        }
+        if (observations.focus.rejectUpdates) {
+          await route.fulfill({
+            status: 400,
+            json: { detail: 'focus_update_rejected' }
+          });
+          return;
+        }
+        const ref = (observed.body?.focus ?? null) as {
+          kind?: string;
+          id?: number;
+        } | null;
+        if (ref && typeof ref.kind === 'string' && typeof ref.id === 'number') {
+          observations.focus.focus = observations.focus.rows[
+            `${ref.kind}:${ref.id}`
+          ] ?? {
+            kind: ref.kind,
+            id: ref.id,
+            label: `${ref.kind} ${ref.id}`,
+            machine_id: ref.kind === 'machine' ? ref.id : null,
+            work_order_id: ref.kind === 'work_order' ? ref.id : null
+          };
+        } else {
+          observations.focus.focus = null;
+        }
+        observations.focus.version += 1;
+        await route.fulfill({ json: focusPayload() });
+        return;
+      }
+      observations.focusReads.push(await observeRequest(request));
+      await route.fulfill({ json: focusPayload() });
+      return;
+    }
 
     // S1: the scope endpoints share the /threads glob — this branch must
     // come FIRST or a scope GET would fall into the detail fallthrough.
@@ -286,7 +412,7 @@ export async function mockChatFoundation(
         ],
         sync_token: null,
         has_more: false,
-        capabilities: { thread_scope: true }
+        capabilities: { thread_scope: true, thread_focus: true }
       }
     });
   });

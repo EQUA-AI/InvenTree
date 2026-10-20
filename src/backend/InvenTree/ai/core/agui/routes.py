@@ -55,6 +55,7 @@ async def run_agui(request: Request) -> StreamingResponse:
     # so a module-level import would be circular (voice routes precedent).
     from ai.core.app import (
         ChatRequest,
+        _normalize_focus_stamp,
         _principal,
         _record_rejection,
         _reject_stale_scope_version,
@@ -72,6 +73,7 @@ async def run_agui(request: Request) -> StreamingResponse:
         ScopedThreadRejected,
         ThreadNotFound,
     )
+    from aichat.services.threads import FocusVersionConflict
     from pydantic import ValidationError
 
     if not getattr(get_settings(), "feature_agui_endpoint", False):
@@ -91,6 +93,11 @@ async def run_agui(request: Request) -> StreamingResponse:
     # /chat and /chat/stream. Omitted version (legacy clients) is a no-op.
     await _reject_stale_scope_version(
         principal, run_input.thread_id, run_input.forwarded_props.expected_scope_version
+    )
+    # RV07: the conversation-focus stamp — strictly normalized exactly like
+    # ``/chat`` and ``/chat/stream``. Omitted (legacy clients) is a no-op.
+    expected_focus_version = _normalize_focus_stamp(
+        run_input.forwarded_props.expected_focus_version
     )
     try:
         content = derive_user_message(run_input)
@@ -154,6 +161,7 @@ async def run_agui(request: Request) -> StreamingResponse:
                     idempotency_key=idempotency_key,
                     correlation_id=correlation_id,
                     emitter=emitter,
+                    expected_focus_version=expected_focus_version,
                 )
             except asyncio.CancelledError:
                 raise
@@ -162,6 +170,20 @@ async def run_agui(request: Request) -> StreamingResponse:
                     AGUIEvent(
                         event_type=EventType.RUN_ERROR,
                         data={"message": "Thread not found", "code": "thread_not_found"},
+                        thread_id=thread_id,
+                    )
+                )
+            except FocusVersionConflict:
+                # RV07: the utterance was stamped against a focus selection
+                # the client has not seen — same SSE shape as /chat/stream,
+                # raised by the service before any model/tool work.
+                await emitter.emit(
+                    AGUIEvent(
+                        event_type=EventType.RUN_ERROR,
+                        data={
+                            "message": "Conversation focus changed. Refresh and retry.",
+                            "code": "focus_version_conflict",
+                        },
                         thread_id=thread_id,
                     )
                 )

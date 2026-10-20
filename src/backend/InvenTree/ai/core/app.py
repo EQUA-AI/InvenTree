@@ -119,6 +119,13 @@ class ChatRequest(BaseModel):
     # ``scope_version_conflict`` before any model call. Detection only — it
     # grants nothing, and legacy clients simply omit it.
     expected_scope_version: int | None = None
+    # Conversation-focus stamp for this recorded utterance: when present, a
+    # mismatch with the thread's CURRENT focus version returns 409
+    # ``focus_version_conflict`` before any model call, so queued words are
+    # never reinterpreted against a later selection. Strictly a real
+    # non-negative int (no bool/float/string coercion); absent keeps legacy
+    # behavior byte-compatible.
+    expected_focus_version: int | None = Field(default=None, strict=True, ge=0, le=2**31 - 1)
 
 
 class ChatResponse(BaseModel):
@@ -128,6 +135,13 @@ class ChatResponse(BaseModel):
     message: str
     agent: str
     workflow_used: str | None = None
+    # The turn's RECORDED conversation-focus binding (the ORIGINAL snapshot
+    # on replay) and its version — never a claim about current thread state.
+    # ``focus_refresh_required`` marks a turn that CHANGED the focus: refresh
+    # ``GET /threads/{id}/focus`` for current state.
+    focus: dict[str, Any] | None = None
+    focus_version: int = 0
+    focus_refresh_required: bool = False
 
 
 class UploadResponse(BaseModel):
@@ -672,6 +686,9 @@ async def chat(request: ChatRequest) -> ChatResponse:
     if "user_id" in request.model_fields_set:
         _observe_legacy_identity(request.user_id, source="body")
     await _reject_stale_scope_version(principal, request.thread_id, request.expected_scope_version)
+    expected_focus_version = _normalize_focus_stamp(request.expected_focus_version)
+    from aichat.services.threads import FocusVersionConflict
+
     idempotency_key = request.idempotency_key or str(uuid.uuid4())
     correlation_id = _server_correlation_id(principal, idempotency_key, request.correlation_id)
     try:
@@ -696,9 +713,14 @@ async def chat(request: ChatRequest) -> ChatResponse:
             modality_metadata=metadata,
             idempotency_key=idempotency_key,
             correlation_id=correlation_id,
+            expected_focus_version=expected_focus_version,
         )
     except (ThreadNotFound, ScopedThreadRejected):
         raise HTTPException(status_code=404, detail="Thread not found") from None
+    except FocusVersionConflict:
+        # The utterance was stamped against a focus selection the client has
+        # not seen: refresh focus and resubmit deliberately.
+        raise HTTPException(status_code=409, detail="focus_version_conflict") from None
     except (IdempotencyConflict, TurnAlreadyRunning):
         raise HTTPException(status_code=409, detail="Idempotency conflict") from None
     except AdmissionSaturated as exc:
@@ -740,7 +762,20 @@ async def chat(request: ChatRequest) -> ChatResponse:
         message=result.message,
         agent=result.agent,
         workflow_used=result.workflow_used,
+        focus=result.focus,
+        focus_version=result.focus_version,
+        focus_refresh_required=result.focus_refresh_required,
     )
+
+
+def _normalize_focus_stamp(value: object) -> int | None:
+    """Strict focus-stamp normalization (no bool/float/string coercion)."""
+    from ai.core.focus.contract import FocusValidationError, normalize_expected_focus_version
+
+    try:
+        return normalize_expected_focus_version(value)
+    except FocusValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
 @app.post("/chat/stream")
@@ -765,6 +800,9 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
     if "user_id" in request.model_fields_set:
         _observe_legacy_identity(request.user_id, source="body")
     await _reject_stale_scope_version(principal, request.thread_id, request.expected_scope_version)
+    expected_focus_version = _normalize_focus_stamp(request.expected_focus_version)
+    from aichat.services.threads import FocusVersionConflict
+
     idempotency_key = request.idempotency_key or str(uuid.uuid4())
     correlation_id = _server_correlation_id(principal, idempotency_key, request.correlation_id)
     try:
@@ -808,6 +846,7 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
                     idempotency_key=idempotency_key,
                     correlation_id=correlation_id,
                     emitter=emitter,
+                    expected_focus_version=expected_focus_version,
                 )
             except asyncio.CancelledError:
                 raise
@@ -816,6 +855,17 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
                     AGUIEvent(
                         event_type=EventType.RUN_ERROR,
                         data={"message": "Thread not found", "code": "thread_not_found"},
+                        thread_id=thread_id,
+                    )
+                )
+            except FocusVersionConflict:
+                await emitter.emit(
+                    AGUIEvent(
+                        event_type=EventType.RUN_ERROR,
+                        data={
+                            "message": "Conversation focus changed. Refresh and retry.",
+                            "code": "focus_version_conflict",
+                        },
                         thread_id=thread_id,
                     )
                 )
@@ -1062,6 +1112,68 @@ def _persisted_provenance(metadata: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+#: RV02-B (history only): outward structured focus question cards.
+_HISTORY_FOCUS_QUESTION_SOURCE = "focus_selection"
+_HISTORY_FOCUS_KINDS = ("machine", "work_order", "kanban_card")
+
+
+def _history_focus_question_projection(question: Any, actor: Any) -> Any:
+    """Project one stored question card for history; ``None`` hides the card.
+
+    A structured ``focus_selection`` card is kept VERBATIM only when every
+    recorded option's literal id token (``focus:<kind>:<id>``) is readable by
+    the CURRENT viewer (never the thread owner's authority, snapshot
+    permissions or the thread's later focus) through the accepted RV02-A
+    reauthorization interface. Any unreadable, missing or malformed option,
+    or an actor-lookup/resolver error, hides the WHOLE card (fail closed,
+    never normalized into a valid identity). The stored message is never
+    rewritten; non-focus and legacy cards pass through unchanged.
+    """
+    if not isinstance(question, dict):
+        return question
+    if question.get("source") != _HISTORY_FOCUS_QUESTION_SOURCE:
+        return question
+    options = question.get("options")
+    if not isinstance(options, list) or not options:
+        return None
+    from ai.core.turn_service import NormalizedTurnService
+
+    for option in options:
+        if not isinstance(option, dict):
+            return None
+        label = option.get("label")
+        if not isinstance(label, str) or not label:
+            return None
+        token = option.get("id")
+        if not isinstance(token, str):
+            return None
+        parts = token.split(":")
+        if len(parts) != 3 or parts[0] != "focus":
+            return None
+        kind, identity = parts[1], parts[2]
+        if kind not in _HISTORY_FOCUS_KINDS:
+            return None
+        if not identity.isascii() or not identity.isdigit():
+            return None
+        # Oversized decimal identities overflow the native ``int()`` digit
+        # limit, so the single parse sits INSIDE the fail-closed boundary.
+        try:
+            target_id = int(identity)
+        except (TypeError, ValueError):
+            return None  # fail closed: oversized/malformed identity
+        if identity != str(target_id):
+            return None
+        try:
+            readable = NormalizedTurnService._recorded_focus_readable_now(
+                actor, {"kind": kind, "id": target_id}
+            )
+        except Exception:  # fail closed without disclosing why
+            return None
+        if not readable:
+            return None
+    return question
+
+
 @app.get("/threads/{thread_id}")
 async def get_thread(
     thread_id: str,
@@ -1106,7 +1218,11 @@ async def get_thread(
                     "workflow_id": message.metadata.get("workflow_id"),
                     "response_state": message.metadata.get("response_state"),
                     # S22: cards and their resolutions survive reload.
-                    "question": message.metadata.get("question"),
+                    # RV02-B: history-only current-actor redaction; the stored
+                    # card itself is never rewritten.
+                    "question": _history_focus_question_projection(
+                        message.metadata.get("question"), principal
+                    ),
                     "question_resolution": message.metadata.get("question_resolution"),
                     "provenance": _persisted_provenance(message.metadata),
                     # S28: server-observed entity chips survive reload.
@@ -1651,6 +1767,121 @@ async def set_thread_scope(thread_id: str, request: ThreadScopeUpdateRequest) ->
         raise HTTPException(status_code=400, detail="scope_update_rejected") from None
     except (ScopeValidationError, InvalidBoundary) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
+class ThreadFocusUpdateRequest(BaseModel):
+    """Replace a thread's conversation focus under optimistic concurrency.
+
+    ``focus`` is the candidate reference ``{kind, id}`` (strictly validated
+    against ``ai.core.focus.contract``) or ``null`` to clear. The wire mirror
+    lives in ``ai.core.focus.wire`` (typed) — this route model follows the
+    ``ThreadScopeUpdateRequest`` shape.
+    """
+
+    focus: dict[str, Any] | None = None
+    expected_focus_version: int
+
+
+@app.get("/threads/{thread_id}/focus")
+async def get_thread_focus(thread_id: str) -> dict[str, Any]:
+    """Return the current conversation focus (owner, or shared read-only).
+
+    Focus is DISTINCT from analysis scope and from authorization: this is
+    the projection of the record the conversation is about, nothing more.
+    """
+    repository = _repository(_principal())
+    try:
+        return await sync_to_async(repository.get_focus, thread_sensitive=True)(thread_id)
+    except (ThreadNotFound, ScopedThreadRejected):
+        raise HTTPException(status_code=404, detail="Thread not found") from None
+
+
+@app.put("/threads/{thread_id}/focus")
+async def set_thread_focus(thread_id: str, request: ThreadFocusUpdateRequest) -> dict[str, Any]:
+    """Replace (or clear) the conversation focus on an owned thread.
+
+    Mirrors ``PUT /threads/{id}/scope``: a client-minted thread id
+    materializes before the write; 409 ``focus_version_conflict`` reports a
+    stale ``expected_focus_version``; 400 ``focus_update_rejected`` covers
+    every unknown/unauthorized/unavailable candidate without disclosing
+    which id failed or whether it exists. A focus change never touches
+    ``analysis_scope_version`` and never requires a transport restart.
+    """
+    from ai.core.focus.contract import (
+        FocusOutOfAnalysisScope,
+        FocusRejected,
+        FocusSetAsideUnavailable,
+        FocusValidationError,
+    )
+    from aichat.services.threads import FocusVersionConflict, InvalidBoundary
+
+    repository = _repository(_principal())
+
+    def perform() -> dict[str, Any]:
+        """Materialize the thread if needed, then update its focus."""
+        repository.get_or_create(thread_id)
+        return repository.set_focus(
+            thread_id, request.focus, expected_focus_version=request.expected_focus_version
+        )
+
+    try:
+        return await sync_to_async(perform, thread_sensitive=True)()
+    except (ThreadNotFound, ScopedThreadRejected):
+        raise HTTPException(status_code=404, detail="Thread not found") from None
+    except FocusVersionConflict:
+        raise HTTPException(status_code=409, detail="focus_version_conflict") from None
+    except FocusRejected:
+        raise HTTPException(status_code=400, detail="focus_update_rejected") from None
+    except FocusOutOfAnalysisScope:
+        # An authorized target OUTSIDE the explicit analysis scope: the
+        # client decides (keep context / change scope / new conversation).
+        # State is unchanged and the scope version is never touched.
+        raise HTTPException(status_code=400, detail="focus_out_of_analysis_scope") from None
+    except FocusSetAsideUnavailable:
+        # An unconfirmed decision could not be set aside: fail CLOSED, the
+        # focus change is refused (never a stale-target "yes").
+        raise HTTPException(status_code=400, detail="focus_decision_not_set_aside") from None
+    except (FocusValidationError, InvalidBoundary) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
+@app.get("/focus/candidates")
+async def list_focus_candidates(
+    kind: str = Query(..., max_length=32),
+    query: str = Query(default="", max_length=200),
+    limit: int = Query(default=8, ge=1, le=25),
+) -> dict[str, Any]:
+    """One bounded page of AUTHORIZED focus candidates (target picker).
+
+    ``kind`` is one of ``machine | kanban_card | work_order``. Every returned
+    candidate is re-authorized for the CALLING actor before its canonical
+    label is exposed (search hints never authorize; unknown/unauthorized
+    rows are silently dropped — existence is never disclosed), and the fetch
+    is bounded server-side at ``limit + 1`` so ``has_more`` reports real
+    truncation instead of letting a truncated page look unique.
+    """
+    from ai.core.focus.contract import FOCUS_KINDS, FocusValidationError, focus_payload
+
+    if kind not in FOCUS_KINDS:
+        raise HTTPException(status_code=400, detail="Unknown focus kind")
+    principal = _principal()
+
+    def _search():
+        from ai.core.focus import resolution as focus_resolution
+        from django.contrib.auth import get_user_model
+
+        user = get_user_model().objects.filter(pk=principal.user_pk, is_active=True).first()
+        return focus_resolution.search_focus_candidates(user, kind, query, limit=limit)
+
+    try:
+        page = await sync_to_async(_search, thread_sensitive=True)()
+    except FocusValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return {
+        "candidates": [focus_payload(candidate) for candidate in page.candidates],
+        "returned_count": page.returned_count,
+        "has_more": page.has_more,
+    }
 
 
 class ThreadShareRequest(BaseModel):

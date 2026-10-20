@@ -1,10 +1,11 @@
+import type { Page } from '@playwright/test';
 import { test } from './baseFixtures';
 import { stevenuser } from './defaults';
 import { globalSearch, loadTab, navigate } from './helpers';
 import { doCachedLogin } from './login';
 
 // Helper function to open the export data dialog
-const openExportDialog = async (page) => {
+const openExportDialog = async (page: Page) => {
   await page.waitForLoadState('networkidle');
 
   await page.getByRole('button', { name: 'table-export-data' }).click();

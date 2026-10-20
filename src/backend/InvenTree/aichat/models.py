@@ -143,6 +143,17 @@ class ChatThread(models.Model):
     analysis_scope = models.JSONField(default=dict, blank=True)
     analysis_scope_version = models.PositiveBigIntegerField(default=0)
     analysis_scope_hash = models.CharField(max_length=64, blank=True, default='')
+    # Focus rail: the durable, server-owned conversational target ("what this
+    # conversation is about"): one machine, board card or work order, or
+    # empty. DISTINCT from both rails above — a focus never grants access and
+    # never widens analysis scope; ``focus_version`` is its own optimistic
+    # version and a focus change does NOT advance ``analysis_scope_version``.
+    # Updates are owner-only and optimistic (``expected_focus_version`` check
+    # under row lock); shape/canonical projection validation lives in
+    # ``ai.core.focus.contract``, resolution/authorization in
+    # ``ai.core.focus.resolution``, not in the database.
+    conversation_focus = models.JSONField(default=dict, blank=True)
+    focus_version = models.PositiveBigIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

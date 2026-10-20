@@ -60,6 +60,19 @@ class AGUIForwardedProps(BaseModel):
         None,
         validation_alias=AliasChoices("expectedScopeVersion", "expected_scope_version"),
     )
+    # RV07: conversation-focus stamp for the recorded utterance. Strictly the
+    # ``ChatRequest.expected_focus_version`` contract — a real non-negative int
+    # in [0, 2**31-1], no bool/float/string coercion. A mismatch with the
+    # thread's CURRENT focus version is a focus-version conflict before any
+    # model work. Optional: clients that omit it keep legacy behavior
+    # byte-compatible.
+    expected_focus_version: int | None = Field(
+        None,
+        strict=True,
+        ge=0,
+        le=2**31 - 1,
+        validation_alias=AliasChoices("expectedFocusVersion", "expected_focus_version"),
+    )
 
 
 class RunAgentInput(BaseModel):
