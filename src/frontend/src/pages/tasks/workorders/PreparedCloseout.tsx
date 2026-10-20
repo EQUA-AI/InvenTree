@@ -20,8 +20,10 @@ import {
   Title
 } from '@mantine/core';
 import dayjs from 'dayjs';
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ContinueInvestigation } from './execution/ContinueInvestigation';
+import { narrativeExcerpts } from './storyProvenance';
 
 const when = (value?: string | null) =>
   value ? dayjs(value).format('DD MMM YYYY, HH:mm') : t`Not recorded`;
@@ -42,7 +44,12 @@ export function PreparedCloseout({
   changed,
   partUsage,
   draftDowntime,
-  draftFollowUp
+  draftFollowUp,
+  accountLoading = false,
+  accountUnavailable = false,
+  manualAccepted = false,
+  sourceCapture,
+  reconciliation
 }: Readonly<{
   workOrder: CloseoutWorkOrder;
   updateStatus: string;
@@ -57,6 +64,11 @@ export function PreparedCloseout({
   partUsage?: CloseoutPartUsageRow[];
   draftDowntime: number | '';
   draftFollowUp: string;
+  accountLoading?: boolean;
+  accountUnavailable?: boolean;
+  manualAccepted?: boolean;
+  sourceCapture?: CloseoutCapture | null;
+  reconciliation?: ReactNode;
 }>) {
   const values = accepted ?? fields;
   const labels: Record<string, string> = {
@@ -65,21 +77,36 @@ export function PreparedCloseout({
     result: t`Result`,
     verification_summary: t`Verification summary`
   };
+  const loading =
+    accountLoading ||
+    captures === undefined ||
+    readings === undefined ||
+    partUsage === undefined ||
+    (!!accepted && amendments === undefined);
   const report = [
     `${workOrder.reference} · ${workOrder.title}`,
     accepted
-      ? `${t`Accepted account`} ${accepted.id} · ${when(accepted.completed_at)}`
+      ? `${t`Accepted account`} ${accepted.id} · ${when(accepted.completed_at)} · ${t`Accepted by`} ${fact(accepted.completed_by_name)}`
       : `${t`Prepared account`} · ${t`Work version`} ${workOrder.lifecycle_version}`,
     ...Object.entries(labels).map(
-      ([key, label]) => `${label}: ${fact(values[key as keyof typeof values])}`
+      ([key, label]) =>
+        `${label}: ${key === 'cause' && !values.cause ? t`Not established` : fact(values[key as keyof typeof values])}`
     ),
     `${t`Downtime (minutes)`}: ${fact(accepted ? accepted.downtime_minutes : draftDowntime)}`,
-    `${t`Person-work time`}: ${t`Not recorded`}`,
+    `${t`Person-work time`}: ${t`Unavailable — coverage unknown`}`,
     `${t`Follow-up`}: ${fact(accepted ? accepted.follow_up : draftFollowUp)}`,
     `${t`Operating / service return`}: ${t`Not established by this account`}`,
     accepted
       ? t`Accepted fields are preserved. Material and reading rows are current supporting records; a complete accepted report snapshot is not supplied by this server.`
       : t`Prepared draft; no record update has been submitted by preview or download.`,
+    ...(sourceCapture
+      ? Object.entries(proposal?.fields ?? {}).flatMap(([key, field]) =>
+          narrativeExcerpts(sourceCapture.narrative, field).map(
+            (span) =>
+              `${t`Source`}: ${labels[key] ?? key} · ${t`Capture`} ${sourceCapture.id} · ${t`Revision`} ${sourceCapture.revision} · ${t`Narrative code points`} [${span.start}, ${span.end}) · ${span.text}`
+          )
+        )
+      : []),
     ...(proposal?.decisions ?? []).map(
       (row) =>
         `${t`Saved decision`}: ${labels[row.field_path] ?? row.field_path} · ${row.decision} · ${t`Recorded by`} ${fact(row.decided_by_name)} · ${when(row.decided_at)}`
@@ -88,11 +115,25 @@ export function PreparedCloseout({
       `${t`Story source`}: ${capture.source_type} · ${t`Capture`} ${capture.id} · ${capture.status} · ${t`Revision`} ${capture.revision ?? '?'} · ${t`Recorded by`} ${fact(capture.created_by_name)} · ${when(capture.created_at)}`,
       `${t`Transcript reference`}: ${fact(capture.transcript_reference)}`,
       capture.narrative,
-      ...(capture.revisions ?? []).map(
-        (row) =>
-          `${t`Revision`} ${row.revision} · ${t`Recorded by`} ${fact(row.created_by_name)} · ${when(row.created_at)}\n${row.narrative}`
-      )
+      ...(capture.source_type === 'typed'
+        ? [
+            `${t`Voice unavailable reason`}: ${capture.voice_unavailable_reason || t`Not supplied`}`
+          ]
+        : []),
+      ...[...(capture.revisions ?? [])]
+        .sort((a, b) => a.revision - b.revision)
+        .map(
+          (row) =>
+            `${t`Revision`} ${row.revision} · ${t`Recorded by`} ${fact(row.created_by_name)} · ${when(row.created_at)}\n${row.narrative}`
+        )
     ]),
+    ...(partUsage === undefined ? [t`Materials: not available yet`] : []),
+    ...(manualAccepted
+      ? [t`Per-field decisions are not supplied for this manual account.`]
+      : []),
+    ...(accepted && amendments === undefined
+      ? [t`Amendments: not available yet`]
+      : []),
     ...(partUsage ?? []).map(
       (row) =>
         `${t`Material usage row`} ${row.id} · ${row.source} · ${row.state} · ${t`Issued`}: ${fact(row.issued_quantity)} · ${t`Used`}: ${fact(row.used_quantity)} · ${fact(row.disposition)}`
@@ -108,7 +149,7 @@ export function PreparedCloseout({
     ),
     ...(amendments ?? []).map(
       (row) =>
-        `${t`Amendment`} ${row.id} · ${row.status} · ${t`Requested by`} ${fact(row.requested_by_name)} · ${when(row.created_at)}\n${row.reason}\n${JSON.stringify(row.changes)}`
+        `${t`Amendment`} ${row.id} · ${row.status} · ${t`Requested by`} ${fact(row.requested_by_name)} · ${when(row.created_at)}\n${row.reason}\n${row.status === 'proposed' ? t`Not yet decided` : `${t`Decided by`} ${fact(row.decided_by_name)} · ${when(row.applied_at)}`}\n${JSON.stringify(row.changes)}`
     )
   ].join('\n\n');
   const download = () => {
@@ -130,7 +171,7 @@ export function PreparedCloseout({
       {error && (
         <Alert color='red'>{t`Some closeout sources could not be read. Missing information is unknown; refresh before updating.`}</Alert>
       )}
-      <Card withBorder>
+      <Card withBorder data-testid='closeout-story'>
         <Stack gap='sm'>
           <Title order={4}>{t`Technician story & insights`}</Title>
           {captures === undefined ? (
@@ -160,6 +201,13 @@ export function PreparedCloseout({
                 >
                   {capture.narrative}
                 </Text>
+                {capture.source_type === 'typed' && (
+                  <Text size='xs'>
+                    {t`Voice unavailable reason`}:{' '}
+                    {capture.voice_unavailable_reason ||
+                      t`Not supplied for this capture`}
+                  </Text>
+                )}
                 {capture.transcript_reference && (
                   <Text size='xs' style={{ overflowWrap: 'anywhere' }}>
                     {t`Transcript reference`}: {capture.transcript_reference}
@@ -205,7 +253,7 @@ export function PreparedCloseout({
           >{t`Carries this Work to the existing assistant; naming a story there does not save a closeout capture automatically.`}</Text>
         </Stack>
       </Card>
-      <Card withBorder>
+      <Card withBorder data-testid='closeout-account'>
         <Stack gap='sm'>
           <Group justify='space-between'>
             <Title order={4}>{t`Prepared maintenance account`}</Title>
@@ -219,13 +267,13 @@ export function PreparedCloseout({
           </Group>
           <Text size='xs' c='dimmed'>
             {accepted
-              ? `${t`Closeout id`}: ${accepted.id} · ${when(accepted.completed_at)}`
+              ? `${t`Closeout id`}: ${accepted.id} · ${when(accepted.completed_at)} · ${t`Accepted by`} ${fact(accepted.completed_by_name)}`
               : `${t`Work version`} ${workOrder.lifecycle_version} · ${t`Extraction is not a verified fact`}`}
           </Text>
           {Object.entries(labels).map(([key, label]) => {
-            const decision = proposal?.decisions.find(
-              (row) => row.field_path === key
-            );
+            const decision =
+              !accountLoading &&
+              proposal?.decisions.find((row) => row.field_path === key);
             return (
               <div key={key}>
                 <Text size='xs' c='dimmed'>
@@ -234,11 +282,32 @@ export function PreparedCloseout({
                 <Text
                   style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
                 >
-                  {key === 'cause' && !values.cause
-                    ? t`Not established`
-                    : fact(values[key as keyof typeof values])}
+                  {accountUnavailable && !accepted
+                    ? t`Account decisions unavailable`
+                    : accountLoading && !accepted
+                      ? t`Loading account decisions…`
+                      : key === 'cause' && !values.cause
+                        ? t`Not established`
+                        : fact(values[key as keyof typeof values])}
                 </Text>
-                {!accepted && decision && (
+                {!accountLoading &&
+                  sourceCapture &&
+                  narrativeExcerpts(
+                    sourceCapture.narrative,
+                    proposal?.fields[key]
+                  ).map((span) => (
+                    <Text
+                      key={`${span.start}-${span.end}`}
+                      size='xs'
+                      c='dimmed'
+                    >
+                      {t`Source`}: {t`Capture`} {sourceCapture.id} ·{' '}
+                      {t`Revision`} {sourceCapture.revision} ·{' '}
+                      {t`Narrative code points`} [{span.start}, {span.end}) · “
+                      {span.text}”
+                    </Text>
+                  ))}
+                {decision && (
                   <Text size='xs' c='dimmed'>
                     {t`Saved decision`}: {decision.decision} · {t`Recorded by`}{' '}
                     {fact(decision.decided_by_name)} ·{' '}
@@ -248,6 +317,12 @@ export function PreparedCloseout({
               </div>
             );
           })}
+          {manualAccepted && (
+            <Text
+              size='xs'
+              c='dimmed'
+            >{t`Per-field decisions are not supplied for this manual account.`}</Text>
+          )}
           <Anchor
             component={Link}
             to='?work_panel=verify'
@@ -262,7 +337,8 @@ export function PreparedCloseout({
             to='?work_panel=parts'
           >{t`View recorded materials and custody`}</Anchor>
           <Text size='sm'>
-            {t`Person-work time`}: {t`Not recorded`} · {t`Downtime (minutes)`}:{' '}
+            {t`Person-work time`}: {t`Unavailable — coverage unknown`} ·{' '}
+            {t`Downtime (minutes)`}:{' '}
             {fact(accepted ? accepted.downtime_minutes : draftDowntime)}
           </Text>
           <Text
@@ -288,6 +364,7 @@ export function PreparedCloseout({
               c='dimmed'
             >{t`Optional time and follow-up edits are an unsaved draft.`}</Text>
           )}
+          {reconciliation}
           <Title order={5}>{t`Saved readings and attempts`}</Title>
           {readings === undefined ? (
             <Text size='sm'>{t`Reading records are not available.`}</Text>
@@ -309,24 +386,28 @@ export function PreparedCloseout({
             >{t`Accepted fields are preserved. Material and reading rows are current supporting records; a complete accepted report snapshot is not supplied by this server.`}</Text>
           )}
           <Text size='sm'>{t`The preview exports the displayed account and recorded source references. It does not update the maintenance record.`}</Text>
-          <details>
-            <summary>{t`Read report`}</summary>
-            <Text
-              component='pre'
-              size='sm'
-              style={{
-                whiteSpace: 'pre-wrap',
-                overflowWrap: 'anywhere',
-                fontFamily: 'inherit'
-              }}
-            >
-              {report}
-            </Text>
-          </details>
+          {loading ? (
+            <Text size='sm'>{t`Loading report sources… Preview is unavailable until the account, materials, readings and amendments have been read.`}</Text>
+          ) : (
+            <details>
+              <summary>{t`Read report`}</summary>
+              <Text
+                component='pre'
+                size='sm'
+                style={{
+                  whiteSpace: 'pre-wrap',
+                  overflowWrap: 'anywhere',
+                  fontFamily: 'inherit'
+                }}
+              >
+                {report}
+              </Text>
+            </details>
+          )}
           <Button
             variant='default'
             onClick={download}
-            disabled={error || captures === undefined || readings === undefined}
+            disabled={error || loading}
           >{t`Download account (.txt)`}</Button>
           {accepted && (
             <details>
@@ -364,8 +445,10 @@ export function PreparedCloseout({
                     </Text>
                     <Text size='xs' c='dimmed'>
                       {t`Requested by`} {fact(row.requested_by_name)} ·{' '}
-                      {when(row.created_at)} · {t`Decided by`}{' '}
-                      {fact(row.decided_by_name)} · {when(row.applied_at)}
+                      {when(row.created_at)} ·{' '}
+                      {row.status === 'proposed'
+                        ? t`Not yet decided`
+                        : `${t`Decided by`} ${fact(row.decided_by_name)} · ${when(row.applied_at)}`}
                     </Text>
                     <Text size='sm'>{row.reason}</Text>
                     {Object.entries(row.changes).map(([key, value]) => (

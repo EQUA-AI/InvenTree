@@ -63,6 +63,7 @@ class CloseoutCapture(models.Model):
         default=CloseoutSourceType.TYPED,
     )
     transcript_reference = models.CharField(max_length=128, null=True, blank=True)
+    voice_unavailable_reason = models.CharField(max_length=500, blank=True, default='')
     current_revision = models.ForeignKey(
         'tasks.CloseoutCaptureRevision',
         null=True,

@@ -197,6 +197,7 @@ class CloseoutCaptureList(CloseoutCommandView):
             work_order,
             create_capture,
             narrative=data['narrative'],
+            voice_unavailable_reason=data['voice_unavailable_reason'],
             expected_version=data['expected_version'],
             idempotency_key=data['idempotency_key'],
         )

@@ -1,6 +1,10 @@
 import type { CloseoutProposal } from '@lib/types/Closeout';
 import { describe, expect, it } from 'vitest';
-import { fieldDecisions, savedFieldValue } from './closeoutAccount';
+import {
+  fieldDecisions,
+  reviewedAccountValues,
+  savedFieldValue
+} from './closeoutAccount';
 const proposal: CloseoutProposal = {
   id: 1,
   extractor: 'fixture',
@@ -62,4 +66,34 @@ describe('prepared account provenance', () => {
       fieldDecisions(proposal, { action: 'Inspected seal' })[0].decision
     ).toBe('edited');
   });
+});
+
+it('recovers manual values and later local edits while respecting newer saved decisions', () => {
+  expect(
+    reviewedAccountValues(
+      undefined,
+      { action: 'manual', result: 'retained' },
+      { result: 'later edit' }
+    )
+  ).toMatchObject({ action: 'manual', result: 'later edit' });
+  const saved = {
+    ...proposal,
+    decisions: [
+      { field_path: 'action', decision: 'edited', final_value: 'new saved' }
+    ]
+  };
+  expect(
+    reviewedAccountValues(
+      saved,
+      { action: 'old saved', result: 'manual' },
+      { action: 'local conflicting' }
+    )
+  ).toEqual({ cause: '', result: 'manual', verification_summary: '' });
+  expect(
+    reviewedAccountValues(
+      saved,
+      { action: 'new saved' },
+      { action: 'later local' }
+    ).action
+  ).toBe('later local');
 });

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { nativeBaseline } from '../s0/guards';
 import {
+  accepted,
   closeoutWork,
   containment,
   openCloseout,
@@ -256,7 +257,7 @@ test('accepted report retains original snapshot and attributed amendment; Histor
 }, info) => {
   const { commands, setOverview } = await closeoutWork(page, {
     completed: true,
-    captures: [{ ...story, status: 'consumed' }]
+    captures: [{ ...story, status: 'consumed', completed_closeout: 301 }]
   });
   setOverview({
     events: [
@@ -374,4 +375,204 @@ test('missing recorder names remain Not recorded in the story, revisions and sav
     account.locator('p').filter({ hasText: /Recorded by Not recorded/ })
   ).toHaveCount(6);
   await expect(account).not.toContainText('Recorded by user');
+});
+
+test('review regression: accepted consumed capture retains field recorders and completer', async ({
+  page
+}) => {
+  await closeoutWork(page, {
+    completed: true,
+    captures: [{ ...story, status: 'consumed', completed_closeout: 301 }]
+  });
+  await openCloseout(page);
+  const account = page.getByTestId('prepared-closeout');
+  await expect(account).toContainText('Accepted by Synthetic Technician');
+  await expect(account.getByText(/Saved decision: accepted/)).toHaveCount(3);
+  await page.getByText('Read report', { exact: true }).click();
+  await expect(account.locator('pre')).toContainText(
+    'Accepted by Synthetic Technician'
+  );
+  await expect(account.locator('pre')).toContainText(
+    'Saved decision: Action taken'
+  );
+});
+
+test('review regression: unticked follow-up matches preview and payload', async ({
+  page
+}) => {
+  const { commands } = await closeoutWork(page);
+  await openCloseout(page);
+  await page
+    .getByRole('checkbox', { name: 'Follow-up required', exact: true })
+    .check();
+  await page
+    .getByRole('textbox', { name: 'Follow-up', exact: true })
+    .fill('Replace belt next week');
+  await page
+    .getByRole('checkbox', { name: 'Follow-up required', exact: true })
+    .uncheck();
+  await page
+    .getByRole('button', { name: 'Update maintenance record', exact: true })
+    .click();
+  await expect.poll(() => commands.length).toBe(1);
+  expect(commands[0].body.follow_up).toBe('');
+});
+
+test('review regression: pending proposal and materials block export without absent facts', async ({
+  page
+}) => {
+  await closeoutWork(page);
+  let release: (() => void) | undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(
+    '**/api/tasks/work-orders/73/closeout/captures/12/proposal/',
+    async (route) => {
+      await gate;
+      await route.fulfill({ json: proposal });
+    }
+  );
+  await page.goto(
+    '/playwright/s0-native.html?surface=maintenance-shell&sprint=s1&work_access=reader&entry=/maintenance/work-orders/73/?work_panel=closeout'
+  );
+  await expect(
+    page.getByRole('button', { name: 'Download account (.txt)', exact: true })
+  ).toBeDisabled();
+  await expect(page.getByTestId('prepared-closeout')).toContainText(
+    'Loading account decisions'
+  );
+  release!();
+  await expect(
+    page.getByRole('button', { name: 'Download account (.txt)', exact: true })
+  ).toBeEnabled();
+});
+
+test('report waits for material and amendment reads, shows pending decisions and orders revisions', async ({
+  page
+}) => {
+  await closeoutWork(page, {
+    completed: true,
+    captures: [
+      {
+        ...story,
+        status: 'consumed',
+        completed_closeout: 301,
+        revisions: [...story.revisions!].reverse()
+      }
+    ]
+  });
+  let releaseMaterials: (() => void) | undefined;
+  let releaseAmendments: (() => void) | undefined;
+  const materialsGate = new Promise<void>((resolve) => {
+    releaseMaterials = resolve;
+  });
+  const amendmentsGate = new Promise<void>((resolve) => {
+    releaseAmendments = resolve;
+  });
+  await page.route(
+    '**/api/tasks/work-orders/73/closeout/part-usage/',
+    async (route) => {
+      await materialsGate;
+      await route.fulfill({ json: [] });
+    }
+  );
+  await page.route(
+    '**/api/tasks/work-orders/73/closeout/amendments/',
+    async (route) => {
+      await amendmentsGate;
+      await route.fulfill({
+        json: [
+          {
+            id: 41,
+            closeout: 301,
+            status: 'proposed',
+            reason: 'Pending correction',
+            changes: {},
+            requested_by: 3,
+            requested_by_name: 'Synthetic Technician',
+            created_at: '2026-10-19T10:00:00Z',
+            decided_by: null,
+            decided_by_name: null,
+            applied_at: null
+          }
+        ]
+      });
+    }
+  );
+  await page.goto(
+    '/playwright/s0-native.html?surface=maintenance-shell&sprint=s1&work_access=reader&entry=/maintenance/work-orders/73/?work_panel=closeout'
+  );
+  const account = page.getByTestId('prepared-closeout');
+  await expect(account).toContainText(story.narrative);
+  const download = page.getByRole('button', {
+    name: 'Download account (.txt)',
+    exact: true
+  });
+  await expect(download).toBeDisabled();
+  releaseMaterials!();
+  await expect(account).toContainText('No material usage rows recorded');
+  await expect(download).toBeDisabled();
+  releaseAmendments!();
+  await expect(download).toBeEnabled();
+  await expect(account).toContainText('Not yet decided');
+  await expect(account).not.toContainText('Decided by Not recorded');
+  await page.getByText('Read report', { exact: true }).click();
+  const report = await account.locator('pre').innerText();
+  expect(report.indexOf('\n\nRevision 1 ·')).toBeLessThan(
+    report.indexOf('\n\nRevision 2 ·')
+  );
+});
+
+test('accepted export waits for the fresh consumed-capture link instead of cached manual attribution', async ({
+  page
+}) => {
+  const { setOverview } = await closeoutWork(page);
+  let completing = false;
+  let releaseCapture: (() => void) | undefined;
+  const gate = new Promise<void>((resolve) => {
+    releaseCapture = resolve;
+  });
+  await page.route(
+    '**/api/tasks/work-orders/73/closeout/captures/',
+    async (route) => {
+      if (completing) await gate;
+      await route.fulfill({
+        json: [
+          {
+            ...story,
+            ...(completing
+              ? { status: 'consumed', completed_closeout: 301 }
+              : {})
+          }
+        ]
+      });
+    }
+  );
+  await openCloseout(page);
+  completing = true;
+  setOverview({
+    lifecycle_status: 'completed',
+    lifecycle_version: 8,
+    structured_closeout: accepted
+  });
+  await page
+    .getByRole('button', { name: 'Refresh fixture', exact: true })
+    .click();
+  const account = page.getByTestId('prepared-closeout');
+  await expect(account).toContainText('Accepted by Synthetic Technician');
+  await expect(account).toContainText('Corrected the recorded observation');
+  await expect(page.getByTestId('fixture-fetching')).toHaveText('1');
+  await expect(
+    page.getByRole('button', { name: 'Download account (.txt)', exact: true })
+  ).toBeDisabled();
+  await expect(account).not.toContainText(
+    'Per-field decisions are not supplied for this manual account.'
+  );
+  releaseCapture!();
+  await expect(page.getByTestId('fixture-fetching')).toHaveText('0');
+  await expect(account.getByText(/Saved decision: accepted/)).toHaveCount(3);
+  await expect(
+    page.getByRole('button', { name: 'Download account (.txt)', exact: true })
+  ).toBeEnabled();
 });

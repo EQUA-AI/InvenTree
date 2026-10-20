@@ -6,7 +6,11 @@ from rest_framework.test import APIClient
 
 from assets.models import AssetMaintenanceRecord
 from tasks.models import WorkOrderCloseout, WorkOrderEvent
-from tasks.tests.closeout_fixtures import CLOSEOUT_FLAGS, VALID_CLOSEOUT, CloseoutEnvMixin
+from tasks.tests.closeout_fixtures import (
+    CLOSEOUT_FLAGS,
+    VALID_CLOSEOUT,
+    CloseoutEnvMixin,
+)
 
 
 @override_settings(**CLOSEOUT_FLAGS)
@@ -32,27 +36,71 @@ class CloseoutUpdateContractTests(CloseoutEnvMixin, TestCase):
         event = WorkOrderEvent.objects.get(pk=first.data['event_id'])
         original_time = event.created_at
         self.work_order.refresh_from_db()
-        self.assertGreater(self.work_order.lifecycle_version, self.payload['expected_version'])
+        self.assertGreater(
+            self.work_order.lifecycle_version, self.payload['expected_version']
+        )
         replay = self.client.post(self.url, self.payload, format='json')
         self.assertEqual(replay.status_code, 200)
         self.assertEqual(replay.data, first.data)
-        self.assertEqual(WorkOrderCloseout.objects.filter(work_order=self.work_order).count(), 1)
-        self.assertEqual(AssetMaintenanceRecord.objects.filter(work_order=self.work_order).count(), 1)
-        self.assertEqual(WorkOrderEvent.objects.filter(work_order=self.work_order, event_type='COMPLETED').count(), 1)
+        self.assertEqual(
+            WorkOrderCloseout.objects.filter(work_order=self.work_order).count(), 1
+        )
+        self.assertEqual(
+            AssetMaintenanceRecord.objects.filter(work_order=self.work_order).count(), 1
+        )
+        self.assertEqual(
+            WorkOrderEvent.objects.filter(
+                work_order=self.work_order, event_type='COMPLETED'
+            ).count(),
+            1,
+        )
         event.refresh_from_db()
-        events = self.client.get(f'/api/tasks/work-orders/{self.work_order.pk}/events/').data['results']
+        events = self.client.get(
+            f'/api/tasks/work-orders/{self.work_order.pk}/events/'
+        ).data['results']
         original = next(row for row in events if row['id'] == event.pk)
         self.assertEqual(original['idempotency_key'], self.payload['idempotency_key'])
         from tasks.workorder_serializers import WorkOrderEventSerializer
 
         self.assertEqual(event.created_at, original_time)
-        self.assertEqual(original['created_at'], WorkOrderEventSerializer(event).data['created_at'])
+        self.assertEqual(
+            original['created_at'], WorkOrderEventSerializer(event).data['created_at']
+        )
 
     def test_changed_payload_or_version_cannot_reuse_the_original_key(self):
         """The frontend must preserve the original payload when reconciling."""
-        self.assertEqual(self.client.post(self.url, self.payload, format='json').status_code, 200)
-        for change in ({'result': 'Different result'}, {'expected_version': self.payload['expected_version'] + 1}):
-            response = self.client.post(self.url, {**self.payload, **change}, format='json')
+        self.assertEqual(
+            self.client.post(self.url, self.payload, format='json').status_code, 200
+        )
+        for change in (
+            {'result': 'Different result'},
+            {'expected_version': self.payload['expected_version'] + 1},
+        ):
+            response = self.client.post(
+                self.url, {**self.payload, **change}, format='json'
+            )
             self.assertEqual(response.status_code, 409)
             self.assertEqual(response.data['code'], 'IDEMPOTENCY_CONFLICT')
-        self.assertEqual(WorkOrderCloseout.objects.filter(work_order=self.work_order).count(), 1)
+        self.assertEqual(
+            WorkOrderCloseout.objects.filter(work_order=self.work_order).count(), 1
+        )
+
+    def test_uncommitted_exact_intent_is_definitively_stale_after_version_advances(
+        self,
+    ):
+        """Unlike scope denial, STALE follows the replay lookup under the lock."""
+        for _ in range(2):
+            self.work_order.lifecycle_version += 1
+            self.work_order.save(update_fields=['lifecycle_version'])
+            response = self.client.post(self.url, self.payload, format='json')
+            self.assertEqual(response.status_code, 409)
+            self.assertEqual(response.data['code'], 'STALE_VERSION')
+        self.assertFalse(
+            WorkOrderCloseout.objects.filter(work_order=self.work_order).exists()
+        )
+        self.assertFalse(
+            WorkOrderEvent.objects.filter(
+                work_order=self.work_order,
+                idempotency_key=self.payload['idempotency_key'],
+            ).exists()
+        )

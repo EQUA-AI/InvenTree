@@ -86,7 +86,7 @@ describe('one logical final update', () => {
     expect(updateFailure(400, 'CLOSEOUT_INVALID')).toBe('failed');
     expect(updateFailure(409, 'STALE_VERSION')).toBe('stale');
     expect(updateFailure(409, 'IDEMPOTENCY_CONFLICT')).toBe('uncertain');
-    for (const status of [undefined, 408, 429, 500, 502, 504])
+    for (const status of [undefined, 404, 408, 429, 500, 502, 504])
       expect(updateFailure(status)).toBe('uncertain');
   });
 });

@@ -13,6 +13,7 @@ export interface CloseoutCapture {
   revision: number | null;
   narrative: string;
   transcript_reference?: string | null;
+  voice_unavailable_reason?: string;
   created_by?: number;
   created_by_name?: string | null;
   created_at?: string;

@@ -149,10 +149,15 @@ export function useWorkRecordUpdate(
             error?.response?.status,
             error?.response?.data?.code
           );
-          // A refusal on reconciliation cannot disprove the earlier commit.
+          // Exact replay precedes the monotonic version check in the service.
+          // STALE_VERSION proves this key did not commit and cannot commit later.
+          // Scope/permission refusals can occur before replay and stay uncertain.
           const recovering =
             stored.status === 'uncertain' || stored.status === 'pending';
-          const status = recovering ? 'uncertain' : classification;
+          const status =
+            recovering && classification !== 'stale'
+              ? 'uncertain'
+              : classification;
           publish({
             status,
             intent,

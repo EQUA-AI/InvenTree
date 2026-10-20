@@ -138,6 +138,7 @@ export interface StructuredCloseoutOverview {
   original?: Record<string, unknown>;
   content_hash?: string;
   completed_by?: number | null;
+  completed_by_name?: string | null;
   id: number;
   cause: string;
   action: string;

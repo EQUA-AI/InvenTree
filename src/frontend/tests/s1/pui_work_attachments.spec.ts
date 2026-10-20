@@ -9,6 +9,12 @@ nativeBaseline();
 const revision = 'a'.repeat(64);
 
 async function mockWorkAttachments(page: Page) {
+  // Optional third-party fonts are unavailable in this offline fixture.
+  // Keep all other external/API requests subject to the native guard.
+  await page.route(
+    /^https:\/\/cdn\.svar\.dev\/fonts\/roboto\/regular\.woff2?$/,
+    (route) => route.fulfill({ status: 503, body: 'Offline font fixture' })
+  );
   await mockWorkList(page);
   const records = [
     { pk: 901, filename: 'Synthetic work nameplate.png', is_image: true },
@@ -192,7 +198,20 @@ test('resource close and preview retain native search selection and total owner 
     name: 'table-search-input',
     exact: true
   });
+  const filtered = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.pathname === '/api/attachment/' &&
+      url.searchParams.get('search') === 'nameplate' &&
+      url.searchParams.get('model_id') === '73' &&
+      response.status() === 200
+    );
+  });
   await search.fill('nameplate');
+  await filtered;
+  await expect(
+    page.getByRole('link', { name: 'Synthetic work manual.pdf', exact: true })
+  ).toHaveCount(0);
   const row = page.getByRole('row').filter({
     has: page.getByRole('link', {
       name: 'Synthetic work nameplate.png',

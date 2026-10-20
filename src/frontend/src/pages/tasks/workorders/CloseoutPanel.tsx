@@ -1,5 +1,8 @@
 import type { CloseoutAmendment } from '@lib/types/Closeout';
-import type { StructuredCloseoutOverview } from '@lib/types/WorkOrderOverview';
+import type {
+  StructuredCloseoutOverview,
+  WorkOrderOverview
+} from '@lib/types/WorkOrderOverview';
 import { t } from '@lingui/core/macro';
 import {
   Alert,
@@ -30,10 +33,17 @@ import {
 } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CloseoutReconciliation } from './CloseoutReconciliation';
 import DictateCloseoutModal from './DictateCloseoutModal';
 import { WorkRecordUpdate } from './FinalUpdateAction';
 import { PreparedCloseout } from './PreparedCloseout';
-import { fieldDecisions, savedFieldValue } from './closeoutAccount';
+import {
+  fieldDecisions,
+  reviewedAccountValues,
+  savedFieldValue
+} from './closeoutAccount';
+import { ServiceRestoration } from './execution/ServiceRestoration';
+import { narrativeExcerpts } from './storyProvenance';
 import { useWorkRecordUpdate } from './useWorkRecordUpdate';
 import type { UpdateIntent } from './workRecordUpdate';
 
@@ -76,16 +86,19 @@ function newIdempotencyKey(): string {
  */
 export function CloseoutPanel({
   workOrder,
-  accepted
+  accepted,
+  execution
 }: Readonly<{
   workOrder: CloseoutWorkOrder;
   accepted?: StructuredCloseoutOverview | null;
+  execution?: WorkOrderOverview;
 }>) {
   const api = useApi();
   const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
   const [captureEditing, setCaptureEditing] = useState(false);
   const [narrative, setNarrative] = useState('');
+  const [voiceReason, setVoiceReason] = useState('');
   const [dictateOpen, setDictateOpen] = useState(false);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [downtime, setDowntime] = useState<number | ''>('');
@@ -114,12 +127,19 @@ export function CloseoutPanel({
     [capturesQuery.data]
   );
 
-  const captureId = capture?.id ?? null;
+  const accountCapture = accepted
+    ? (capturesQuery.data?.find(
+        (row) => row.completed_closeout === accepted.id
+      ) ?? null)
+    : capture;
+  const captureId = accountCapture?.id ?? null;
   const proposalQuery = useQuery({
     queryKey: ['closeout-proposal', woId, captureId],
     enabled:
       captureId != null &&
-      ['proposed', 'reviewed'].includes(capture?.status ?? ''),
+      ['proposed', 'reviewed', 'consumed'].includes(
+        accountCapture?.status ?? ''
+      ),
     retry: false,
     queryFn: async () => {
       const response = await api.get<CloseoutProposal>(
@@ -221,7 +241,8 @@ export function CloseoutPanel({
       await api.post(apiUrl(ApiEndpoints.work_order_closeout_captures, woId), {
         expected_version: workOrder.lifecycle_version,
         idempotency_key: newIdempotencyKey(),
-        narrative
+        narrative,
+        voice_unavailable_reason: voiceReason
       });
       notifications.show({
         message: t`Narrative captured`,
@@ -334,7 +355,7 @@ export function CloseoutPanel({
       result: effectiveFieldValue('result'),
       verification_summary: effectiveFieldValue('verification_summary'),
       cause: effectiveFieldValue('cause'),
-      follow_up: followUp,
+      follow_up: followUpRequired ? followUp : '',
       follow_up_required: followUpRequired,
       ...(downtime !== '' ? { downtime_minutes: downtime } : {}),
       ...(capture?.status === 'reviewed' ? { capture_id: capture.id } : {})
@@ -356,8 +377,8 @@ export function CloseoutPanel({
   }, [captureInProgress, dictateOpen, hasCaptureDraft]);
 
   return (
-    <Card withBorder padding='lg'>
-      <Title order={4} mb='md'>{t`Closeout`}</Title>
+    <Stack gap='md'>
+      <Title order={4}>{t`Closeout`}</Title>
       <DictateCloseoutModal
         opened={dictateOpen}
         onClose={() => setDictateOpen(false)}
@@ -365,6 +386,74 @@ export function CloseoutPanel({
         workOrderVersion={workOrder.lifecycle_version}
         onCommitted={() => void invalidate()}
       />
+      {!accepted &&
+        !capturesQuery.isPending &&
+        !capturesQuery.isError &&
+        !proposalQuery.isFetching &&
+        !proposalQuery.isError && (
+          <Card withBorder mb='md' data-testid='closeout-questions'>
+            <Stack gap='xs'>
+              <Title order={5}>
+                {REQUIRED_FIELDS.some(
+                  (field) => !effectiveFieldValue(field).trim()
+                )
+                  ? t`Missing account questions`
+                  : t`Known account facts`}
+              </Title>
+              {!capture && capturesQuery.data?.length === 0 && (
+                <Group>
+                  <Button
+                    color='grape'
+                    disabled={mutationLocked || !!narrative.trim()}
+                    onClick={() => setDictateOpen(true)}
+                  >{t`Start voice-transcript capture`}</Button>
+                  <Button
+                    variant='default'
+                    disabled={mutationLocked}
+                    onClick={() => {
+                      setCaptureEditing(true);
+                      setStep(0);
+                    }}
+                  >{t`Use typed story fallback`}</Button>
+                </Group>
+              )}
+              {REQUIRED_FIELDS.filter(
+                (field) => !effectiveFieldValue(field).trim()
+              ).length ? (
+                REQUIRED_FIELDS.filter(
+                  (field) => !effectiveFieldValue(field).trim()
+                ).map((field) => (
+                  <Button
+                    key={field}
+                    variant='subtle'
+                    styles={{
+                      label: { whiteSpace: 'normal' },
+                      root: { height: 'auto' }
+                    }}
+                    onClick={() => {
+                      setCaptureEditing(true);
+                      setStep(1);
+                    }}
+                  >
+                    {field === 'action'
+                      ? t`What work was actually done, and why?`
+                      : field === 'result'
+                        ? t`What was the observed result?`
+                        : t`What verification was recorded?`}
+                  </Button>
+                ))
+              ) : (
+                <Text size='sm'>{t`Required account facts are already supplied; no re-entry is needed.`}</Text>
+              )}
+              <Text size='xs' c='dimmed'>
+                {capturesQuery.data?.length
+                  ? t`Saved story and answers are reused. Coverage of finding, failed approaches, practical advice and residual uncertainty has no structured provider; unasked topics are not marked complete.`
+                  : t`Add the finding and supporting evidence, what changed the diagnosis, useful practical advice and remaining uncertainty to the existing story capture. Cause may remain not established.`}
+              </Text>
+            </Stack>
+          </Card>
+        )}
+      {execution && <ServiceRestoration workOrder={execution} />}
       <PreparedCloseout
         workOrder={workOrder}
         updateStatus={update.state.status}
@@ -383,6 +472,20 @@ export function CloseoutPanel({
         }
         captures={capturesQuery.isError ? undefined : capturesQuery.data}
         proposal={proposalQuery.data}
+        accountLoading={
+          capturesQuery.isFetching ||
+          (captureId != null &&
+            (proposalQuery.isPending || proposalQuery.isFetching))
+        }
+        accountUnavailable={proposalQuery.isError}
+        sourceCapture={accountCapture}
+        manualAccepted={
+          !!accepted &&
+          capturesQuery.data !== undefined &&
+          !capturesQuery.isFetching &&
+          !capturesQuery.isError &&
+          !accountCapture
+        }
         fields={
           update.state.status === 'idle'
             ? Object.fromEntries(
@@ -410,6 +513,9 @@ export function CloseoutPanel({
           amendmentsQuery.isError
         }
         changed={changedFields}
+        reconciliation={
+          execution && <CloseoutReconciliation workOrder={execution} />
+        }
       />
       {!accepted && (
         <fieldset
@@ -452,7 +558,7 @@ export function CloseoutPanel({
         }}
         state={update.state}
         latest={Object.fromEntries(
-          REQUIRED_FIELDS.map((field) => [
+          ['cause', ...REQUIRED_FIELDS].map((field) => [
             field,
             savedFieldValue(proposalQuery.data, field)
           ])
@@ -463,6 +569,7 @@ export function CloseoutPanel({
         eligible={accountReady && update.available}
         completed={workOrder.lifecycle_status === 'completed'}
         completedAt={accepted?.completed_at}
+        completedId={accepted?.id}
         onSubmit={complete}
         onReconcile={() => void update.execute()}
         onReview={() => {
@@ -472,12 +579,25 @@ export function CloseoutPanel({
         }}
         reviewed={
           reviewedVersion != null &&
-          reviewedVersion === workOrder.lifecycle_version
+          reviewedVersion === workOrder.lifecycle_version &&
+          !capturesQuery.isFetching &&
+          !capturesQuery.isError &&
+          !proposalQuery.isFetching &&
+          !proposalQuery.isError
         }
         onUseReviewed={() => {
+          const retained =
+            update.state.status !== 'idle' ? update.state.intent.payload : {};
+          // Local edits win for fields without a newer saved human decision.
+          // Saved decisions are displayed in the comparison and remain authoritative.
+          const recovered = reviewedAccountValues(
+            proposalQuery.data,
+            retained,
+            fieldValues
+          );
           void update.releaseRefused().then((released) => {
             if (released) {
-              setFieldValues({});
+              setFieldValues(recovered);
               setReviewedVersion(null);
             }
           });
@@ -532,6 +652,8 @@ export function CloseoutPanel({
                   <NarrativeStep
                     capture={capture}
                     narrative={narrative}
+                    voiceReason={voiceReason}
+                    setVoiceReason={setVoiceReason}
                     setNarrative={setNarrative}
                     onCreate={createCapture}
                     onExtract={extract}
@@ -570,7 +692,7 @@ export function CloseoutPanel({
             </Card>
           </Stack>
         )}
-    </Card>
+    </Stack>
   );
 }
 
@@ -579,6 +701,8 @@ function NarrativeStep({
   narrative,
   setNarrative,
   onCreate,
+  voiceReason,
+  setVoiceReason,
   onExtract,
   onDictate,
   busy,
@@ -588,6 +712,8 @@ function NarrativeStep({
   narrative: string;
   setNarrative: (value: string) => void;
   onCreate: () => void;
+  voiceReason: string;
+  setVoiceReason: (value: string) => void;
   onExtract: () => void;
   onDictate: () => void;
   busy: boolean;
@@ -626,6 +752,14 @@ function NarrativeStep({
   }
   return (
     <Stack gap='sm' mt='md'>
+      <Text size='sm'>{t`Use Dictate for the default voice-transcript path, or record a typed equivalent and why voice cannot be used. This deployment does not store original audio.`}</Text>
+      <TextInput
+        label={t`Why voice is unavailable or unusable`}
+        description={t`Retained with the typed story and its recorder. Required for a new typed fallback.`}
+        value={voiceReason}
+        maxLength={500}
+        onChange={(event) => setVoiceReason(event.currentTarget.value)}
+      />
       <Textarea
         label={t`What did you do?`}
         description={t`Describe the work in your own words; you will review every extracted field before anything becomes record.`}
@@ -636,13 +770,17 @@ function NarrativeStep({
         minRows={5}
       />
       <Group>
-        <Button onClick={onCreate} loading={busy} disabled={!narrative.trim()}>
+        <Button
+          onClick={onCreate}
+          loading={busy}
+          disabled={!narrative.trim() || !voiceReason.trim()}
+        >
           {t`Capture narrative`}
         </Button>
         {/* B4: voice provenance path — mutually exclusive with typing,
             because the server refuses a handoff over an active capture. */}
         <Button
-          variant='light'
+          variant='filled'
           color='grape'
           onClick={onDictate}
           disabled={busy || !!narrative.trim()}
@@ -707,6 +845,13 @@ function ReviewStep({
                 {proposed.warnings.join(', ')}
               </Text>
             ) : null}
+            {capture &&
+              narrativeExcerpts(capture.narrative, proposed).map((span) => (
+                <Text key={`${span.start}-${span.end}`} size='xs' c='dimmed'>
+                  {t`Narrative code points`} [{span.start}, {span.end}) · “
+                  {span.text}”
+                </Text>
+              ))}
             <Textarea
               value={effectiveFieldValue(field)}
               onChange={(event) =>

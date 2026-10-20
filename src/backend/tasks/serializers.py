@@ -719,6 +719,8 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
         closeout = getattr(obj, 'structured_closeout', None)
         if closeout is None:
             return None
+        from .closeout_serializers import _actor_name
+
         fields = effective_closeout_overview(closeout)
         return {
             'id': closeout.pk,
@@ -732,6 +734,7 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
             'original': base_closeout_fields(closeout),
             'content_hash': closeout.content_hash,
             'completed_by': closeout.completed_by_id,
+            'completed_by_name': _actor_name(closeout.completed_by),
             'completed_at': closeout.completed_at,
             'verified_at': closeout.verified_at,
             'amended': fields['amended'],

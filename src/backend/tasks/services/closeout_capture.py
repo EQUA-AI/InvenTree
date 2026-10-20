@@ -196,6 +196,7 @@ def create_capture(
     expected_version,
     idempotency_key,
     correlation_id=None,
+    voice_unavailable_reason='',
 ):
     """Create a typed narrative capture against an active work order."""
     _require_wizard()
@@ -206,6 +207,9 @@ def create_capture(
         'expected_version': expected_version,
         'narrative_hash': _narrative_hash(narrative),
     }
+    # Preserve hashes of legacy commands whose optional fallback reason is empty.
+    if voice_unavailable_reason:
+        payload['voice_unavailable_reason'] = voice_unavailable_reason
     request_hash = _canonical_hash('closeout_capture', actor, payload)
     replay = _replay_or_none(work_order, idempotency_key, request_hash)
     if replay:
@@ -217,11 +221,21 @@ def create_capture(
     _require_no_packet(work_order)
     _require_capture_eligible(work_order)
     _validate_narrative(narrative)
+    if (
+        not isinstance(voice_unavailable_reason, str)
+        or len(voice_unavailable_reason) > 500
+    ):
+        raise CaptureError(
+            'Voice unavailable reason must be text of at most 500 characters'
+        )
     if active_capture(work_order) is not None:
         raise CaptureError('An active closeout capture already exists')
 
     capture = CloseoutCapture.objects.create(
-        work_order=work_order, source_type=CloseoutSourceType.TYPED, created_by=actor
+        work_order=work_order,
+        source_type=CloseoutSourceType.TYPED,
+        created_by=actor,
+        voice_unavailable_reason=voice_unavailable_reason,
     )
     revision = CloseoutCaptureRevision.objects.create(
         capture=capture,

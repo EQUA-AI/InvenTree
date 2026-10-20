@@ -548,7 +548,7 @@ class WorkOrderOverviewDetail(APIView):
                 'requested_by',
                 'repair_packet',
                 'maintenance_record',
-                'structured_closeout',
+                'structured_closeout__completed_by',
             )
             .prefetch_related(
                 'work_order_parts__part',

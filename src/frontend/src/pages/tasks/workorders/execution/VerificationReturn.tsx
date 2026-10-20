@@ -20,6 +20,7 @@ import {
   recordedTime
 } from './ExecutionFacts';
 import { StepCriteria } from './PreparedPackage';
+import { ServiceRestoration } from './ServiceRestoration';
 import { recordedValue, testEvaluation } from './verificationProjection';
 
 function TestResult({ test }: Readonly<{ test: VerificationTest }>) {
@@ -183,13 +184,7 @@ export function VerificationReturn({
           >{t`Awaiting operations record of return.`}</ExecutionFact>
         </SimpleGrid>
       </ExecutionSection>
-      <ExecutionSection title={t`Service and redundancy`}>
-        <Text size='sm'>{t`Awaiting service verification — affected duty, process acceptance, standby capacity and redundancy state are not supplied.`}</Text>
-        <Text
-          size='sm'
-          c='dimmed'
-        >{t`An accepted equipment test does not establish full service, restored redundancy or closed follow-up obligations. Source, owner and next checkpoint are not recorded here.`}</Text>
-      </ExecutionSection>
+      <ServiceRestoration workOrder={workOrder} />
       <ExecutionSection title={t`Recorded verification`}>
         <ExecutionFact label={t`Verification summary`}>
           {workOrder.structured_closeout?.verification_summary}

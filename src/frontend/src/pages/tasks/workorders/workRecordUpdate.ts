@@ -106,6 +106,7 @@ export function updateFailure(
   return status != null &&
     status >= 400 &&
     status < 500 &&
+    status !== 404 &&
     status !== 408 &&
     status !== 429
     ? 'failed'

@@ -36,6 +36,17 @@ export function nativeBaseline(surface?: string) {
         });
         return;
       }
+      // An explicitly reused local harness can outlive its file watcher. Ask
+      // Vite for a fresh source transform without changing API fixture routing.
+      const sourceRevision = process.env.AIMMS_SOURCE_REVISION;
+      if (
+        sourceRevision &&
+        /^\/(src|playwright)\/.+\.[cm]?[jt]sx?$/.test(url.pathname)
+      ) {
+        url.searchParams.set('r6_source_revision', sourceRevision);
+        await route.continue({ url: url.href });
+        return;
+      }
       await route.continue();
     });
   });

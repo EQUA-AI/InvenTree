@@ -13,6 +13,7 @@ export function WorkRecordUpdate({
   eligible,
   completed,
   completedAt,
+  completedId,
   onSubmit,
   onReconcile,
   onReview,
@@ -29,6 +30,7 @@ export function WorkRecordUpdate({
   eligible: boolean;
   completed: boolean;
   completedAt?: string | null;
+  completedId?: number;
   onSubmit: () => void;
   onReconcile: () => void;
   onReview: () => void;
@@ -39,8 +41,20 @@ export function WorkRecordUpdate({
   version: number;
   onRecovery: (step: number) => void;
 }>) {
+  const labels = {
+    cause: t`Cause`,
+    action: t`Action taken`,
+    result: t`Result`,
+    verification_summary: t`Verification summary`
+  };
+  const comparedFields = [
+    'cause',
+    'action',
+    'result',
+    'verification_summary'
+  ] as const;
   const when = (value?: string | null) =>
-    value ? dayjs(value).format('DD MMM YYYY, HH:mm') : t`Time not recorded`;
+    value ? dayjs(value).format('DD MMM YYYY, HH:mm') : t`Time unavailable`;
   return (
     <Stack gap='sm' mt='md' data-testid='work-record-update' aria-live='polite'>
       <Text
@@ -49,9 +63,15 @@ export function WorkRecordUpdate({
       >{t`Updates the internal AIMMS maintenance record. Physical return and external-system acknowledgement are separate.`}</Text>
       {state.status === 'confirmed' ? (
         <Alert color='green'>
-          {t`Record updated`} · {when(state.recordedAt)}
+          {t`Record updated`} ·{' '}
+          {when(
+            state.recordedAt ??
+              (state.receipt.metadata.closeout_id === completedId
+                ? completedAt
+                : null)
+          )}
         </Alert>
-      ) : state.status === 'idle' && completed ? (
+      ) : completed && ['idle', 'stale', 'failed'].includes(state.status) ? (
         <Alert color='blue'>
           {t`Record updated elsewhere`} · {when(completedAt)}
         </Alert>
@@ -130,31 +150,36 @@ export function WorkRecordUpdate({
                   {t`Retained draft version`}:{' '}
                   {state.intent.payload.expected_version}
                 </Text>
-                {(['action', 'result', 'verification_summary'] as const).map(
-                  (field) => (
-                    <Text
-                      size='sm'
-                      key={field}
-                      style={{ overflowWrap: 'anywhere' }}
-                    >
-                      {state.intent.payload[field]}
-                    </Text>
-                  )
-                )}
+                {comparedFields.map((field) => (
+                  <Text
+                    size='sm'
+                    key={field}
+                    style={{ overflowWrap: 'anywhere' }}
+                  >
+                    {labels[field]}:{' '}
+                    {state.intent.payload[field] ||
+                      (field === 'cause'
+                        ? t`Not established`
+                        : t`Not recorded`)}
+                  </Text>
+                ))}
                 <Text size='xs'>
                   {t`Latest saved account version`}: {version}
                 </Text>
-                {(['action', 'result', 'verification_summary'] as const).map(
-                  (field) => (
-                    <Text
-                      size='sm'
-                      key={`latest-${field}`}
-                      style={{ overflowWrap: 'anywhere' }}
-                    >
-                      {latest[field] || t`Not recorded`}
-                    </Text>
-                  )
-                )}
+                {comparedFields.map((field) => (
+                  <Text
+                    size='sm'
+                    key={`latest-${field}`}
+                    style={{ overflowWrap: 'anywhere' }}
+                  >
+                    {labels[field]}:{' '}
+                    {latest[field] ||
+                      (field === 'cause'
+                        ? t`Not established`
+                        : t`Not recorded`)}
+                  </Text>
+                ))}
+                <Text size='xs'>{t`Newer saved decisions replace conflicting retained values. Manual values and later local edits are preserved for review.`}</Text>
                 <Group>
                   <Button
                     variant='light'

@@ -345,13 +345,19 @@ function Requirement({
 export function WorkMaterialsPanel({
   workOrderId,
   label,
-  fallback
-}: Readonly<{ workOrderId: number; label: string; fallback: ReactNode }>) {
+  fallback,
+  returnLabel
+}: Readonly<{
+  workOrderId: number;
+  label: string;
+  fallback: ReactNode;
+  returnLabel?: string;
+}>) {
   const user = useUserState();
   const location = useLocation();
   const back = returnState(
     `${location.pathname}${location.search}`,
-    t`${label} · Parts`
+    returnLabel ?? t`${label} · Parts`
   );
   const linkParts = user.hasViewRole(UserRoles.part);
   const linkStock = user.hasViewRole(UserRoles.stock);
@@ -464,7 +470,7 @@ export function WorkMaterialsPanel({
       {readout.unmatched_usage.length > 0 && (
         <Stack gap={4}>
           <Text size='xs' c='dimmed' fw={600}>
-            {t`Use recorded at closeout without a reservation`}
+            {t`Material rows without a linked reservation`}
           </Text>
           {readout.unmatched_usage.map((usage) => (
             <Stack gap={0} key={usage.id}>
@@ -472,6 +478,11 @@ export function WorkMaterialsPanel({
                 {usage.part?.name ??
                   (usage.candidate_text || t`Part not identified`)}
               </Text>
+              <StockLabel
+                stock={usage.stock_item}
+                linkStock={linkStock && readout.stock_visible}
+                back={back}
+              />
               <UsageLine usage={usage} units={usage.part?.units} />
             </Stack>
           ))}

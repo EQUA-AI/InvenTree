@@ -77,6 +77,7 @@ test('one deliberate update is pending then confirmed with the original recorded
   await page.getByText('Read report', { exact: true }).click();
   expect(commands).toHaveLength(1);
   await containment(page);
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
     path: info.outputPath('record-updated.png'),
     fullPage: true
@@ -104,6 +105,7 @@ test('uncertain timeout and refresh reconcile the exact original operation', asy
     page.getByRole('button', { name: 'Update maintenance record', exact: true })
   ).toHaveCount(0);
   await containment(page);
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
     path: info.outputPath('uncertain-update-dark.png'),
     fullPage: true
@@ -285,6 +287,7 @@ test('stale version retains the original draft and requires latest-record review
   await expect(page.getByTestId('work-record-update')).toContainText(
     'Retained draft version: 7'
   );
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
     path: info.outputPath('stale-update.png'),
     fullPage: true
@@ -302,4 +305,128 @@ test('completed elsewhere has no fresh completion action', async ({ page }) => {
     page.getByRole('button', { name: 'Update maintenance record', exact: true })
   ).toHaveCount(0);
   expect(commands).toEqual([]);
+});
+
+test('review regression: timeout replay STALE_VERSION releases uncertainty and completed elsewhere wins', async ({
+  page
+}) => {
+  const { commands, setOverview } = await closeoutWork(page);
+  await page.route('**/api/tasks/work-orders/73/complete/', (route) => {
+    commands.push({
+      path: '/complete/',
+      method: 'POST',
+      body: route.request().postDataJSON()
+    });
+    if (commands.length === 1) return route.abort('timedout');
+    setOverview({ lifecycle_version: 8, lifecycle_status: 'completed' });
+    return route.fulfill({ status: 409, json: { code: 'STALE_VERSION' } });
+  });
+  await openCloseout(page);
+  await page
+    .getByRole('button', { name: 'Update maintenance record', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: 'Check original update', exact: true })
+    .click();
+  await expect(page.getByTestId('prepared-closeout')).toHaveAttribute(
+    'data-update-status',
+    'stale'
+  );
+  await expect(page.getByTestId('work-record-update')).toContainText(
+    'Record updated elsewhere'
+  );
+  await page.reload();
+  await expect(page.getByTestId('work-record-update')).toContainText(
+    'Record updated elsewhere'
+  );
+  expect(commands[1].body).toEqual(commands[0].body);
+});
+
+test('review regression: manual draft and later edits survive stale review with a new identity', async ({
+  page
+}) => {
+  const { commands, setOverview } = await closeoutWork(page, { captures: [] });
+  await page.route('**/api/tasks/work-orders/73/complete/', (route) => {
+    const body = route.request().postDataJSON();
+    commands.push({ path: '/complete/', method: 'POST', body });
+    if (commands.length === 1) {
+      setOverview({ lifecycle_version: 8 });
+      return route.fulfill({ status: 409, json: { code: 'STALE_VERSION' } });
+    }
+    return route.fulfill({ json: receipt(body) });
+  });
+  await openCloseout(page);
+  await page.getByText('Edit or add to the capture', { exact: true }).click();
+  await page.getByText('Review', { exact: true }).click();
+  await page
+    .getByRole('textbox', { name: 'Action taken', exact: true })
+    .fill('Manual action');
+  await page
+    .getByRole('textbox', { name: 'Result', exact: true })
+    .fill('Manual result');
+  await page
+    .getByRole('textbox', { name: 'Verification summary', exact: true })
+    .fill('Manual verification');
+  await page
+    .getByRole('button', { name: 'Update maintenance record', exact: true })
+    .click();
+  await page
+    .getByRole('textbox', { name: 'Result', exact: true })
+    .fill('Reviewed manual result');
+  await page
+    .getByRole('button', { name: 'Review latest record', exact: true })
+    .click();
+  await page
+    .getByRole('button', {
+      name: 'Use reviewed account for a new update',
+      exact: true
+    })
+    .click();
+  await expect(
+    page.getByRole('textbox', { name: 'Result', exact: true })
+  ).toHaveValue('Reviewed manual result');
+  await page
+    .getByRole('button', { name: 'Update maintenance record', exact: true })
+    .click();
+  await expect(page.getByTestId('prepared-closeout')).toHaveAttribute(
+    'data-update-status',
+    'confirmed'
+  );
+  expect(commands[1].body).toMatchObject({
+    expected_version: 8,
+    action: 'Manual action',
+    result: 'Reviewed manual result',
+    verification_summary: 'Manual verification'
+  });
+  expect(commands[1].body.idempotency_key).not.toBe(
+    commands[0].body.idempotency_key
+  );
+});
+
+test('review regression: confirmed time uses matching overview when audit is denied', async ({
+  page
+}) => {
+  const { accepted } = await import('./closeoutFixtures');
+  const { setOverview } = await closeoutWork(page);
+  await page.route('**/api/tasks/work-orders/73/events/', (route) =>
+    route.fulfill({ status: 403, json: {} })
+  );
+  await page.route('**/api/tasks/work-orders/73/complete/', (route) => {
+    setOverview({
+      structured_closeout: accepted,
+      lifecycle_status: 'completed',
+      lifecycle_version: 8
+    });
+    return route.fulfill({ json: receipt(route.request().postDataJSON()) });
+  });
+  await openCloseout(page);
+  await page
+    .getByRole('button', { name: 'Update maintenance record', exact: true })
+    .click();
+  await expect(page.getByTestId('work-record-update')).toContainText(
+    '19 Oct 2026, 12:00'
+  );
+  await expect(page.getByTestId('work-record-update')).not.toContainText(
+    'Time not recorded'
+  );
 });

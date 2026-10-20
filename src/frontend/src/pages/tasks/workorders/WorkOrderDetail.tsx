@@ -68,6 +68,7 @@ import { WorkMaterialsPanel } from './WorkMaterialsPanel';
 import { DiagnoseProjection } from './execution/DiagnoseProjection';
 import { HandledByAimms } from './execution/HandledByAimms';
 import { PreparedPackage } from './execution/PreparedPackage';
+import { ServiceRestoration } from './execution/ServiceRestoration';
 import { TimeAssignment } from './execution/TimeAssignment';
 import { VerificationReturn } from './execution/VerificationReturn';
 import {
@@ -183,6 +184,7 @@ function WorkOrderWorkspace({
           {workOrder.repair_packet && (
             <WorkOrderProblemPanel packet={workOrder.repair_packet} />
           )}
+          <ServiceRestoration workOrder={workOrder} />
           <HandledByAimms value={workOrder.handled_actions} />
           <TimeAssignment workOrder={workOrder} />
           <SectionCard
@@ -304,6 +306,7 @@ function WorkOrderWorkspace({
             <CloseoutPanel
               workOrder={projectCloseoutWorkOrder(workOrder)}
               accepted={workOrder.structured_closeout}
+              execution={workOrder}
             />
           ) : workOrder.repair_packet ? (
             <Alert color='blue'>

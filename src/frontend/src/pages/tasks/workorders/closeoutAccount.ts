@@ -27,3 +27,20 @@ export function fieldDecisions(
         : { field_path, decision: 'edited' as const, final_value: value }
     );
 }
+
+/** Preserve manual/local drafts unless a newer saved decision conflicts. */
+export function reviewedAccountValues(
+  proposal: CloseoutProposal | undefined,
+  retained: Record<string, unknown>,
+  local: Record<string, string>
+): Record<string, string> {
+  return Object.fromEntries(
+    ['cause', 'action', 'result', 'verification_summary']
+      .filter(
+        (field) =>
+          !proposal?.decisions.some((row) => row.field_path === field) ||
+          savedFieldValue(proposal, field) === retained[field]
+      )
+      .map((field) => [field, local[field] ?? String(retained[field] ?? '')])
+  );
+}

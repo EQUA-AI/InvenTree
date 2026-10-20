@@ -75,6 +75,7 @@ class CloseoutCaptureSerializer(serializers.ModelSerializer):
             'status',
             'source_type',
             'transcript_reference',
+            'voice_unavailable_reason',
             'revision',
             'narrative',
             'revisions',
@@ -90,6 +91,9 @@ class CaptureCreateCommandSerializer(BaseCommandSerializer):
     """Validate typed narrative capture intent."""
 
     narrative = serializers.CharField(allow_blank=False)
+    voice_unavailable_reason = serializers.CharField(
+        required=False, allow_blank=True, max_length=500, default=''
+    )
 
 
 class CaptureReviseCommandSerializer(BaseCommandSerializer):

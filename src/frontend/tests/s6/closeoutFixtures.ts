@@ -86,7 +86,8 @@ export const accepted: WorkOrderOverview['structured_closeout'] = {
   amendment_count: 1,
   original: { ...values, downtime_minutes: null },
   content_hash: 'c'.repeat(64),
-  completed_by: 3
+  completed_by: 3,
+  completed_by_name: 'Synthetic Technician'
 };
 export type Command = { path: string; body: any; method: string };
 export async function closeoutWork(
@@ -106,6 +107,7 @@ export async function closeoutWork(
     canonical_commands_enabled: true,
     lifecycle_status: options.completed ? 'completed' : 'verifying',
     lifecycle_version: options.completed ? 8 : 7,
+    actual_completed_at: options.completed ? accepted!.completed_at : null,
     structured_closeout: options.completed ? accepted : null
   };
   await page.route('**/api/kanban/work-orders/73/overview/', (route) =>
@@ -131,7 +133,16 @@ export async function closeoutWork(
         status: options.sourceError ? 500 : 200,
         json: options.sourceError
           ? { detail: 'Synthetic unreadable source' }
-          : (options.captures ?? [story])
+          : (options.captures ?? [
+              overview.lifecycle_status === 'completed' &&
+              overview.structured_closeout
+                ? {
+                    ...story,
+                    status: 'consumed',
+                    completed_closeout: overview.structured_closeout.id
+                  }
+                : story
+            ])
       });
     if (path.endsWith('/proposal/')) return route.fulfill({ json: proposal });
     if (path.endsWith('/readiness/'))
