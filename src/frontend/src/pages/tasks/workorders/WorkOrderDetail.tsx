@@ -69,6 +69,7 @@ import { WorkAttachmentResource } from './WorkAttachmentResource';
 import { WorkMaterialsPanel } from './WorkMaterialsPanel';
 import { DiagnoseProjection } from './execution/DiagnoseProjection';
 import { PreparedPackage } from './execution/PreparedPackage';
+import { RoutineWork } from './execution/RoutineWork';
 import { ScopeRevisionNotice } from './execution/ScopeRevisionReview';
 import { ServiceRestoration } from './execution/ServiceRestoration';
 import { TimeAssignment } from './execution/TimeAssignment';
@@ -216,6 +217,7 @@ function WorkOrderWorkspace({
         <Stack gap='md'>
           <CloseoutLink />
           <ScopeRevisionNotice workOrder={workOrder} />
+          <RoutineWork workOrder={workOrder} />
           <WorkBrief workOrder={workOrder} />
           {workOrder.repair_packet && (
             <WorkOrderProblemPanel packet={workOrder.repair_packet} />

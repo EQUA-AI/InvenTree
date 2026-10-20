@@ -15,6 +15,7 @@ WORK_EXECUTION_FIELDS = (
     'verification_return',
     'time_assignment',
     'work_continuity',
+    'routine_work',
 )
 
 
@@ -27,6 +28,14 @@ class WorkExecutionFieldsMixin(serializers.Serializer):
     verification_return = serializers.SerializerMethodField()
     time_assignment = serializers.SerializerMethodField()
     work_continuity = serializers.SerializerMethodField()
+    routine_work = serializers.SerializerMethodField()
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_routine_work(self, obj) -> dict | None:
+        """P51: existing type-specific tasks and reading records."""
+        from .routine import project
+
+        return project(obj)
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_work_continuity(self, obj) -> dict:

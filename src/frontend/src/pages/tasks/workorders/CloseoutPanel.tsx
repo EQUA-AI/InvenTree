@@ -1507,6 +1507,9 @@ export function WorkCloseoutReadings({
       await queryClient.invalidateQueries({
         queryKey: ['work-order-readiness', workOrderId, 'complete']
       });
+      await queryClient.invalidateQueries({
+        queryKey: ['work-order', workOrderId]
+      });
     } catch (error) {
       const status = (error as any)?.response?.status;
       setFailure(

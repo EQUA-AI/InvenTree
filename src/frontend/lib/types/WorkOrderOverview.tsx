@@ -5,6 +5,7 @@
  * section from this one read rather than a request per section.
  */
 
+import type { RoutineWork } from './RoutineWork';
 import type { BoardCard, WorkOrder } from './Tasks';
 import type {
   HandledActions,
@@ -176,4 +177,5 @@ export interface WorkOrderOverview extends WorkOrder {
   verification_return?: VerificationReturn;
   time_assignment?: TimeAssignment;
   work_continuity?: WorkContinuity;
+  routine_work?: RoutineWork | null;
 }

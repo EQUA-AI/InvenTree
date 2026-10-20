@@ -28,6 +28,9 @@ export function WorkBrief({
   const [params] = useSearchParams();
   const brief = workBrief(work);
   const account = work.structured_closeout;
+  const routine = ['preventive', 'inspection', 'calibration'].includes(
+    work.work_order_type
+  );
   const explanation = brief.investigation?.explanation;
   const link = (panel: WorkPanel, label: string) => (
     <Anchor
@@ -41,7 +44,13 @@ export function WorkBrief({
   return (
     <Stack gap='md' data-testid='work-brief'>
       <ExecutionSection
-        title={account ? t`Recorded repair outcome` : t`Current work outcome`}
+        title={
+          account
+            ? routine
+              ? t`Recorded maintenance outcome`
+              : t`Recorded repair outcome`
+            : t`Current work outcome`
+        }
       >
         {account ? (
           <>
@@ -81,7 +90,11 @@ export function WorkBrief({
             </Text>
           </>
         ) : (
-          <Text size='sm'>{t`No recorded repair outcome is supplied. The lifecycle and Board stage do not establish a physical result.`}</Text>
+          <Text size='sm'>
+            {routine
+              ? t`No recorded maintenance outcome is supplied. The lifecycle and Board stage do not establish a physical result.`
+              : t`No recorded repair outcome is supplied. The lifecycle and Board stage do not establish a physical result.`}
+          </Text>
         )}
         {link('closeout', t`View maintenance account and report`)}
       </ExecutionSection>
