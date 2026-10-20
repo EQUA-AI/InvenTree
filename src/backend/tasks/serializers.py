@@ -604,13 +604,12 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
         ]
         return [*incoming, *outgoing]
 
-    @staticmethod
-    def get_events(obj) -> list:
+    def get_events(self, obj) -> list:
         """Return append-only lifecycle audit events."""
         from .workorder_serializers import WorkOrderEventSerializer
 
         return WorkOrderEventSerializer(
-            obj.events.all().order_by('-created_at'), many=True
+            obj.events.all().order_by('-created_at'), many=True, context=self.context
         ).data
 
     @staticmethod

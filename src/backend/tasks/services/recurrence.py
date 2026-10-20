@@ -144,7 +144,11 @@ def project(work, actor):
             'items': [],
         }
     linked_from = None
-    if work.recurrence_of_id and actor:
+    if (
+        work.recurrence_of_id
+        and actor
+        and work.corrective_origin_kind != 'routine_finding'
+    ):
         previous = scoped_work_orders(actor).filter(pk=work.recurrence_of_id).first()
         if previous:
             linked_from = {'id': previous.pk, 'reference': previous.reference}

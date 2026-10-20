@@ -9,6 +9,7 @@
     "tests/s6/pui_closeout_story.spec.ts",
     "tests/s6/pui_closeout_reconciliation.spec.ts",
     "tests/s6/pui_service_restoration.spec.ts",
-    "tests/s6/pui_routine_work.spec.ts"
+    "tests/s6/pui_routine_work.spec.ts",
+    "tests/s6/pui_routine_findings.spec.ts"
   ]
 }

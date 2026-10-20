@@ -7,7 +7,7 @@ from .common import closeout_wizard_enabled, person, procedures_enabled
 ROUTINE_TYPES = ('preventive', 'inspection', 'calibration')
 
 
-def project(work_order):
+def project(work_order, actor=None):
     """Read only this Work's records; work type does not create a second workflow."""
     if work_order.work_order_type not in ROUTINE_TYPES:
         return None
@@ -32,7 +32,11 @@ def project(work_order):
         if procedures
         else []
     )
+    from tasks.services.routine_findings import creation_availability, linked
+
     return {
+        'linked_corrective': linked(work_order, actor),
+        **creation_availability(work_order, actor),
         'rule': 'routine_work.v1',
         'work_order_type': work_order.work_order_type,
         'procedures_state': 'read' if procedures else 'not_enabled',

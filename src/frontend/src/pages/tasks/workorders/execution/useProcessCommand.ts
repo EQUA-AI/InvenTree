@@ -92,7 +92,8 @@ export function useProcessCommand(
                 ? response.data.version_after
                 : undefined,
             result:
-              original.kind === 'recurrence' &&
+              (original.kind === 'recurrence' ||
+                original.kind === 'routine_finding') &&
               processReceipt(response.data, original)
                 ? {
                     outcome:
@@ -109,13 +110,21 @@ export function useProcessCommand(
           });
         } catch (error) {
           const failure = error as {
-            response?: { status?: number; data?: { detail?: string } };
+            response?: {
+              status?: number;
+              data?: { detail?: string; code?: string };
+            };
           };
           const refused =
-            saved.status === 'idle' &&
-            [400, 401, 403, 404, 409, 422].includes(
-              failure.response?.status ?? 0
-            );
+            (saved.status === 'idle' &&
+              [400, 401, 403, 404, 409, 422].includes(
+                failure.response?.status ?? 0
+              )) ||
+            // The routine source is locked; ledger replay precedes its version
+            // check. Exact STALE_VERSION proves this intent never committed.
+            (original.kind === 'routine_finding' &&
+              failure.response?.status === 409 &&
+              failure.response.data?.code === 'STALE_VERSION');
           publish({
             status: refused ? 'refused' : 'uncertain',
             intent: original,
