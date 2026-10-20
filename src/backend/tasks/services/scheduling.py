@@ -214,10 +214,28 @@ def create_work_order(
     payload = {'title': title, 'machine_id': machine_id, **planning}
     request_hash = _canonical_hash('create', actor, payload)
 
-    recurrence_intent = (
+    routine_intent = planning.get('corrective_origin_kind') == 'routine_finding'
+    origin_kind = planning.get('corrective_origin_kind')
+    if origin_kind not in (None, '', 'recurrence', 'routine_finding'):
+        raise InvalidSchedule('Unknown corrective origin kind.')
+    if not routine_intent and any(
+        planning.get(key) is not None
+        for key in ('corrective_finding', 'corrective_reading', 'corrective_step')
+    ):
+        raise InvalidSchedule('Routine finding requires an explicit routine origin.')
+    routine_source = None
+    if routine_intent:
+        from tasks.services.routine_findings import source
+
+        routine_source = source(
+            actor=actor, machine_id=machine_id, planning=planning, replay=True
+        )
+    recurrence_intent = not routine_intent and (
         planning.get('recurrence_of') is not None
         or planning.get('recurrence_occurrence') is not None
     )
+    if origin_kind == 'recurrence' and not recurrence_intent:
+        raise InvalidSchedule('Recurrence requires its prior Work and occurrence.')
     if recurrence_intent:
         from django.core.exceptions import PermissionDenied
 
@@ -249,14 +267,23 @@ def create_work_order(
         # The command is FK'd to the card it created, so the card is prior's
         # work_order — result_ref holds the event pk, not the card pk.
         existing = WorkOrder.objects.filter(pk=prior.work_order_id).first()
+        if existing is None:
+            raise WorkOrderCommandError('Stored create result cannot be replayed')
+        if routine_intent:
+            from rest_framework.exceptions import ValidationError
+
+            from tasks.services.routine_findings import REFUSAL, visible_work
+
+            if (
+                existing.corrective_origin_kind != 'routine_finding'
+                or existing.recurrence_of_id != routine_source.pk
+                or not visible_work(actor).filter(pk=existing.pk).exists()
+            ):
+                raise ValidationError(REFUSAL)
         if planning.get('recurrence_of'):
             from tasks.services.work_orders import _require_scope
 
-            if existing:
-                _require_scope(actor, existing)
-        if existing is None:
-            raise WorkOrderCommandError('Stored create result cannot be replayed')
-        if planning.get('recurrence_of'):
+            _require_scope(actor, existing)
             return _replay_or_none(existing, idempotency_key, request_hash)
         return _result_for(existing, 'create', prior.correlation_id, idempotency_key)
 
@@ -265,6 +292,10 @@ def create_work_order(
         raise WorkOrderCommandError(
             f'Work title must be text of at most {maximum} characters.'
         )
+    if routine_intent:
+        if not isinstance(title, str) or not title.strip():
+            raise InvalidSchedule('A corrective Work title is required.')
+        routine_source = source(actor=actor, machine_id=machine_id, planning=planning)
     recurrence = None
     if recurrence_intent:
         from tasks.services.recurrence import (
@@ -342,6 +373,7 @@ def create_work_order(
 
     if recurrence:
         fields.update(
+            corrective_origin_kind='recurrence',
             recurrence_of=recurrence[0],
             recurrence_occurrence=recurrence[1],
             affected_component_ref=recurrence[0].affected_component_ref,
@@ -352,6 +384,16 @@ def create_work_order(
         existing = WorkOrder.objects.filter(recurrence_occurrence=recurrence[1]).first()
         if existing:
             raise NotMutable('This deviation already has corrective work.')
+    if routine_source:
+        fields.update(
+            recurrence_of=routine_source,
+            corrective_origin_kind='routine_finding',
+            corrective_finding=planning['corrective_finding'].strip(),
+            corrective_reading_id=planning.get('corrective_reading'),
+            corrective_step_id=planning.get('corrective_step'),
+            customer_id=routine_source.customer_id,
+            work_order_type=WorkOrderType.CORRECTIVE,
+        )
     correlation_id = _new_correlation(correlation_id)
 
     with transaction.atomic():
@@ -379,6 +421,13 @@ def create_work_order(
                 'occurrence_id': recurrence[1].pk,
             }
             if recurrence
+            else {
+                'outcome': 'linked_created',
+                'origin_kind': 'routine_finding',
+                'routine_work_id': routine_source.pk,
+                'prior_version': planning['prior_version'],
+            }
+            if routine_source
             else None,
         )
 
@@ -726,6 +775,10 @@ def _snapshot(work_order: WorkOrder) -> dict[str, Any]:
         'customer_id': work_order.customer_id,
         'recurrence_of_id': work_order.recurrence_of_id,
         'recurrence_occurrence_id': work_order.recurrence_occurrence_id,
+        'corrective_origin_kind': work_order.corrective_origin_kind,
+        'corrective_finding': work_order.corrective_finding,
+        'corrective_reading_id': work_order.corrective_reading_id,
+        'corrective_step_id': work_order.corrective_step_id,
         'assigned_to_id': work_order.assigned_to_id,
         'assignee': work_order.assignee,
         'scheduled_start': (

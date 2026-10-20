@@ -995,6 +995,10 @@ class WorkOrderCreateCommand(_CommandView):
             key: data[key]
             for key in (
                 'description',
+                'corrective_origin_kind',
+                'corrective_finding',
+                'corrective_reading',
+                'corrective_step',
                 'recurrence_of',
                 'recurrence_occurrence',
                 'prior_version',

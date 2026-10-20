@@ -81,6 +81,7 @@ import { WorkMaterialsPanel } from './WorkMaterialsPanel';
 import { WorkPanelNavigation } from './WorkPanelNavigation';
 import { DiagnoseProjection } from './execution/DiagnoseProjection';
 import { PreparedPackage } from './execution/PreparedPackage';
+import { RoutineLinks } from './execution/RoutineLinks';
 import { RoutineWork } from './execution/RoutineWork';
 import { ScopeRevisionNotice } from './execution/ScopeRevisionReview';
 import { ServiceRestoration } from './execution/ServiceRestoration';
@@ -244,6 +245,7 @@ function WorkOrderWorkspace({
           <WorkBrief workOrder={workOrder} />
           <ScopeRevisionNotice workOrder={workOrder} />
           <CloseoutLink />
+          <RoutineLinks workOrder={workOrder} originOnly />
           <RoutineWork workOrder={workOrder} />
           {workOrder.repair_packet && (
             <WorkOrderProblemPanel packet={workOrder.repair_packet} />
@@ -419,6 +421,7 @@ function WorkOrderWorkspace({
           />
           <MonitoringContinuity workOrder={workOrder} />
           <WorkContinuityHistory workOrder={workOrder} />
+          <RoutineLinks workOrder={workOrder} />
           <SectionCard title={t`Activity`} icon={<IconHistory size={18} />}>
             <EventTimeline events={workOrder.events} />
           </SectionCard>

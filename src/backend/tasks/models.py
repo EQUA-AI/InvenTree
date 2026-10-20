@@ -152,6 +152,29 @@ class WorkOrder(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
         on_delete=models.PROTECT,
         related_name='recurrence_work',
     )
+    # The existing linked-corrective relation also carries routine findings;
+    # these never participate in the recurrence window or reopen policy.
+    corrective_origin_kind = models.CharField(
+        max_length=24,
+        blank=True,
+        default='',
+        choices=[('recurrence', 'Recurrence'), ('routine_finding', 'Routine finding')],
+    )
+    corrective_finding = models.TextField(blank=True)
+    corrective_reading = models.ForeignKey(
+        'tasks.CloseoutReading',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='+',
+    )
+    corrective_step = models.ForeignKey(
+        'tasks.WorkOrderStepExecution',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='+',
+    )
 
     # ``parent`` and ``card_kind`` used to live here, so a subtask or a
     # procurement task was a second work order with its own WO- number for what

@@ -218,7 +218,7 @@ test('P51 selected saved request opens the existing assistant and keeps original
     .getByRole('button', { name: 'Fault found during this work', exact: true })
     .click();
   await expect(section).toContainText(
-    'A durable link from routine work to a new corrective order is not supplied'
+    'Linked corrective Work is created only by an explicit command'
   );
   await section
     .getByRole('button', { name: 'Discuss request 401', exact: true })
@@ -343,7 +343,10 @@ test('P51 reading append and retest refresh the mounted Work overview', async ({
       return route.fulfill({ status: 201, json: reading });
     }
   );
-  await openExecutionPanel(page);
+  // Reading capture requires native closeout authority; the viewer harness
+  // intentionally has none. Reuse the existing authorized closeout fixture.
+  await openCloseout(page);
+  await page.getByRole('tab', { name: 'Work', exact: true }).click();
   const section = page.getByTestId('routine-work');
   await expect(section).toContainText('No closeout readings returned');
   await expect(page.getByTestId('fixture-fetching')).toHaveText('0');

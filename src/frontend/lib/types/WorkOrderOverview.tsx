@@ -188,5 +188,6 @@ export interface WorkOrderOverview extends WorkOrder {
   time_assignment?: TimeAssignment;
   work_continuity?: WorkContinuity;
   routine_work?: RoutineWork | null;
+  routine_origin?: import('./RoutineWork').RoutineOrigin | null;
   recurrence_policy?: import('./WorkExecution').RecurrencePolicy;
 }

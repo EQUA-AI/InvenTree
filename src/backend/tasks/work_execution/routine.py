@@ -54,7 +54,11 @@ def project(work_order, actor=None):
     if work_order.work_order_type == 'calibration':
         for reading in reading_rows:
             reading['calibration_traceability'] = traceability.get(reading['id'], [])
+    from tasks.services.routine_findings import creation_availability, linked
+
     return {
+        'linked_corrective': linked(work_order, actor),
+        **creation_availability(work_order, actor),
         'calibration_traceability_can_record': bool(
             readings
             and work_order.work_order_type == 'calibration'

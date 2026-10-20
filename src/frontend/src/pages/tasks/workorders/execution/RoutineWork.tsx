@@ -19,6 +19,8 @@ import {
   recordedTime
 } from './ExecutionFacts';
 import { StepCriteria } from './PreparedPackage';
+import { RoutineFindingForm } from './RoutineFindingForm';
+import { RoutineLinks } from './RoutineLinks';
 import { recordedValue } from './verificationProjection';
 
 /** Type-specific records inside Work; the native readers and commands still own them. */
@@ -247,6 +249,8 @@ export function RoutineWork({
           <Accordion.Control>{t`Fault found during this work`}</Accordion.Control>
           <Accordion.Panel>
             <Stack gap='sm'>
+              <RoutineLinks workOrder={work} />
+              <RoutineFindingForm workOrder={work} />
               <ContinueInvestigation
                 workOrder={work}
                 panel='work'
@@ -261,7 +265,7 @@ export function RoutineWork({
               />
               {link('diagnose', t`Open saved investigation requests`)}
               <Text size='sm'>{t`Discussion retains this Work as context. A request or evidence is saved only through the existing approved chat proposal. Opening chat does not change the original tasks, evidence or completion.`}</Text>
-              <Text size='sm'>{t`Corrective follow-up can be discussed through the existing assistant. A durable link from routine work to a new corrective order is not supplied by the current create command. Scheduling dependencies, where recorded, remain in Plan & Safety.`}</Text>
+              <Text size='sm'>{t`Linked corrective Work is created only by an explicit command. The routine Work retains its tasks, readings and outcome.`}</Text>
             </Stack>
           </Accordion.Panel>
         </Accordion.Item>

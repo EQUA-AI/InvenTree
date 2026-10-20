@@ -317,6 +317,7 @@ class ProcessDecisionTests(InvenTreeAPITestCase):
         self.assertEqual(first, create_work_order(**args))
         new = WorkOrder.objects.get(pk=first.work_order_id)
         self.assertEqual(new.recurrence_of_id, self.work.pk)
+        self.assertEqual(new.corrective_origin_kind, 'recurrence')
         self.assertEqual(new.recurrence_occurrence_id, occurrence.pk)
         occurrence.refresh_from_db()
         self.assertEqual(occurrence.work_order_id, new.pk)

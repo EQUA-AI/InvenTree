@@ -162,3 +162,99 @@ describe('expert/recurrence command integrity', () => {
     ).toBe(true);
   });
 });
+
+describe('routine finding intent integrity', () => {
+  const intent: ProcessIntent = {
+    kind: 'routine_finding',
+    workId: 73,
+    targetId: 73,
+    url: '/api/kanban/work-orders/commands/create/',
+    payload: {
+      idempotency_key: 'original-routine',
+      machine: 18,
+      recurrence_of: 73,
+      prior_version: 7,
+      corrective_origin_kind: 'routine_finding',
+      work_order_type: 'corrective',
+      title: 'Inspect leak',
+      corrective_finding: 'Observed drip',
+      corrective_reading: 701,
+      corrective_step: 901
+    }
+  };
+  const receipt = {
+    id: 80,
+    process_receipt: {
+      command: 'create',
+      work_order_id: 80,
+      event_id: 911,
+      idempotency_key: 'original-routine',
+      lifecycle_version: 1,
+      metadata: {
+        origin_kind: 'routine_finding',
+        outcome: 'linked_created',
+        routine_work_id: 73,
+        prior_version: 7
+      }
+    }
+  };
+  it('accepts only the matching new corrective receipt', () => {
+    expect(processReceipt(receipt, intent)).toBe(true);
+    expect(processReceipt({ ...receipt, id: 81 }, intent)).toBe(false);
+    expect(processReceipt(receipt, { ...intent, workId: 74 })).toBe(false);
+    expect(
+      processReceipt(receipt, {
+        ...intent,
+        payload: { ...intent.payload, prior_version: 8 }
+      })
+    ).toBe(false);
+    expect(
+      processReceipt(receipt, {
+        ...intent,
+        payload: { ...intent.payload, idempotency_key: 'other' }
+      })
+    ).toBe(false);
+  });
+  it('restores pending as uncertain and preserves the original intent', () => {
+    expect(
+      restoreProcess(
+        JSON.stringify({ status: 'pending', intent }),
+        'routine_finding',
+        73,
+        73
+      )
+    ).toEqual({ status: 'uncertain', intent });
+  });
+  it('refuses mixed recurrence, invalid source, or alternate endpoint on restore', () => {
+    for (const change of [
+      { recurrence_occurrence: 701 },
+      { corrective_origin_kind: 'recurrence' },
+      { corrective_finding: '' },
+      { recurrence_of: 74 },
+      { corrective_step: true }
+    ]) {
+      expect(
+        restoreProcess(
+          JSON.stringify({
+            status: 'uncertain',
+            intent: { ...intent, payload: { ...intent.payload, ...change } }
+          }),
+          'routine_finding',
+          73,
+          73
+        ).status
+      ).toBe('refused');
+    }
+    expect(
+      restoreProcess(
+        JSON.stringify({
+          status: 'uncertain',
+          intent: { ...intent, url: '/other' }
+        }),
+        'routine_finding',
+        73,
+        73
+      ).status
+    ).toBe('refused');
+  });
+});

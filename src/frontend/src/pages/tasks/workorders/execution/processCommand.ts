@@ -1,5 +1,5 @@
 export interface ProcessIntent {
-  kind: 'escalation' | 'recurrence';
+  kind: 'escalation' | 'recurrence' | 'routine_finding';
   workId: number;
   targetId: number;
   url: string;
@@ -24,6 +24,22 @@ export function processReceipt(value: unknown, intent: ProcessIntent): boolean {
       data.request?.work_order === intent.workId
     );
   const receipt = data.process_receipt;
+  if (intent.kind === 'routine_finding')
+    return (
+      receipt?.command === 'create' &&
+      receipt.idempotency_key === body.idempotency_key &&
+      receipt.metadata?.origin_kind === 'routine_finding' &&
+      receipt.metadata?.outcome === 'linked_created' &&
+      receipt.metadata?.routine_work_id === intent.workId &&
+      receipt.metadata?.prior_version === body.prior_version &&
+      receipt.lifecycle_version === 1 &&
+      Number.isSafeInteger(receipt.event_id) &&
+      receipt.event_id > 0 &&
+      Number.isSafeInteger(data.id) &&
+      data.id > 0 &&
+      data.id !== intent.workId &&
+      data.id === receipt.work_order_id
+    );
   return (
     receipt?.command === 'create' &&
     receipt.idempotency_key === body.idempotency_key &&
@@ -101,6 +117,24 @@ export function restoreProcess(
         !Number.isFinite(Date.parse(fields.next_checkpoint)) ||
         typeof fields.blocked_reason !== 'string' ||
         !fields.blocked_reason.trim()
+      )
+        throw new Error();
+    } else if (kind === 'routine_finding') {
+      if (
+        targetId !== workId ||
+        i.payload.recurrence_of !== workId ||
+        i.payload.corrective_origin_kind !== 'routine_finding' ||
+        i.payload.recurrence_occurrence != null ||
+        i.payload.work_order_type !== 'corrective' ||
+        typeof i.payload.title !== 'string' ||
+        !i.payload.title.trim() ||
+        typeof i.payload.corrective_finding !== 'string' ||
+        !i.payload.corrective_finding.trim() ||
+        !positive(i.payload.machine) ||
+        !positive(i.payload.prior_version) ||
+        ['corrective_reading', 'corrective_step'].some(
+          (key) => i.payload[key] != null && !positive(i.payload[key])
+        )
       )
         throw new Error();
     } else if (
