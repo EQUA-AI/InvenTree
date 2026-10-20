@@ -15,6 +15,8 @@
 		"tests/s4/continuityFixtures.ts",
 		"tests/s4/pui_work_continuity.spec.ts",
 		"tests/s4/pui_work_outcome.spec.ts",
-		"tests/s4/pui_work_observation.spec.ts"
+		"tests/s4/pui_work_observation.spec.ts",
+		"tests/s4/authorityFixtures.ts",
+		"tests/s4/pui_work_authority.spec.ts"
 	]
 }

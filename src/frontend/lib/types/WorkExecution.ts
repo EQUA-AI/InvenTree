@@ -395,7 +395,13 @@ export interface PreparedPackage {
   applications: PackageApplication[];
   deviations: PackageDeviation[];
   can_record_deviation: boolean;
-  physical_authority: { available: false; reason: 'no_provider' };
+  physical_authority: {
+    available: boolean;
+    reason: string;
+    recorded?: boolean;
+    current_records?: import('./OperationalAuthority').AuthorityRecord[];
+    records?: import('./OperationalAuthority').AuthorityRecord[];
+  };
   affected_dependencies: { available: false; reason: 'no_provider' };
   revision_review?: ScopeRevisionReview;
 }
@@ -450,7 +456,13 @@ export interface WorkContinuity {
         accepted_version: number | null;
         can_accept: boolean;
       };
-  physical_service_state: { available: false; reason: 'no_provider' };
+  physical_service_state: {
+    available: boolean;
+    reason: string;
+    recorded?: boolean;
+    current_records?: import('./OperationalAuthority').AuthorityRecord[];
+    records?: import('./OperationalAuthority').AuthorityRecord[];
+  };
   cross_crew_restrictions: { available: false; reason: 'no_provider' };
 }
 
@@ -499,11 +511,35 @@ export interface VerificationReturn {
     restored_at: string | null;
     note: string;
   }[];
-  technical_acceptance: { available: false; reason: 'no_provider' };
+  technical_acceptance: {
+    available: boolean;
+    reason: string;
+    recorded?: boolean;
+    current_records?: import('./OperationalAuthority').AuthorityRecord[];
+    records?: import('./OperationalAuthority').AuthorityRecord[];
+  };
   controlled_test_authority: { available: false; reason: 'no_provider' };
-  operating_permission: { available: false; reason: 'no_provider' };
-  observed_return: { available: false; reason: 'no_provider' };
-  service_state: { available: false; reason: 'no_provider' };
+  operating_permission: {
+    available: boolean;
+    reason: string;
+    recorded?: boolean;
+    current_records?: import('./OperationalAuthority').AuthorityRecord[];
+    records?: import('./OperationalAuthority').AuthorityRecord[];
+  };
+  observed_return: {
+    available: boolean;
+    reason: string;
+    recorded?: boolean;
+    current_records?: import('./OperationalAuthority').AuthorityRecord[];
+    records?: import('./OperationalAuthority').AuthorityRecord[];
+  };
+  service_state: {
+    available: boolean;
+    reason: string;
+    recorded?: boolean;
+    current_records?: import('./OperationalAuthority').AuthorityRecord[];
+    records?: import('./OperationalAuthority').AuthorityRecord[];
+  };
 }
 
 export interface TimeAssignment {

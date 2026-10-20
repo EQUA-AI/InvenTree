@@ -761,6 +761,7 @@ class WorkOrderPart(models.Model):
 # Re-export split work-order models for compatibility with ``tasks.models`` imports.
 # Re-export job-kit models for compatibility with ``tasks.models`` imports.
 # Re-export closeout-automation models for compatibility with ``tasks.models``.
+from tasks.authority_models import OperationalAuthorityRecord  # noqa: F401
 from tasks.closeout_models import (  # noqa: F401
     ACTIVE_CAPTURE_STATUSES,
     CloseoutAmendment,

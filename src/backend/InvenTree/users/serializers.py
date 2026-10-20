@@ -62,6 +62,7 @@ class RuleSetSerializer(InvenTreeModelSerializer):
             'can_assign_workorder',
             'can_transition_workorder',
             'can_execute_workorder',
+            'can_record_operating_authority',
             'can_complete_workorder',
             'can_view_workorder_audit',
             'can_author_procedure',

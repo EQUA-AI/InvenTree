@@ -1,3 +1,4 @@
+import type { OperationalAuthority } from '@lib/types/OperationalAuthority';
 import { t } from '@lingui/core/macro';
 import {
   Accordion,
@@ -15,6 +16,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { AuthorityRecorder, AuthorityRecords } from './OperationalAuthority';
 
 import { ModelType } from '@lib/enums/ModelType';
 import { UserRoles } from '@lib/enums/Roles';
@@ -350,8 +352,13 @@ function DeviationEntry({ workOrderId }: Readonly<{ workOrderId: number }>) {
 
 export function PreparedPackage({
   value,
-  workOrderId
-}: Readonly<{ value: Package | undefined; workOrderId: number }>) {
+  workOrderId,
+  authority
+}: Readonly<{
+  value: Package | undefined;
+  workOrderId: number;
+  authority?: OperationalAuthority;
+}>) {
   const [params] = useSearchParams();
   if (value?.rule !== 'prepared_package.v1')
     return (
@@ -408,11 +415,21 @@ export function PreparedPackage({
         >{t`Open Parts for this job`}</Anchor>
       </ExecutionSection>
       <ExecutionSection title={t`Recorded physical authority`}>
-        <Text size='sm'>{t`Not available — no physical-authority provider is connected. Applied isolation, valid job-specific permits, access, operations window and independent restrictions are not established by the package or its safety-gate status.`}</Text>
-        <Text
-          size='sm'
-          c='dimmed'
-        >{t`Authority source, effective time, responsible owner and resume conditions: Not recorded here.`}</Text>
+        {authority?.rule === 'operational_authority.v1' ? (
+          <>
+            <AuthorityRecords
+              value={authority}
+              kinds={['isolation', 'permit', 'access_window']}
+            />
+            <Text
+              size='sm'
+              c='dimmed'
+            >{t`Recorded facts retain their own effective window and independent verification. They do not confirm the safety gate, clear other restrictions or grant operating permission.`}</Text>
+            <AuthorityRecorder value={authority} mode='physical' />
+          </>
+        ) : (
+          <Text size='sm'>{t`Not available — no physical-authority provider is connected. Applied isolation, valid job-specific permits, access, operations window and independent restrictions are not established by the package or its safety-gate status.`}</Text>
+        )}
       </ExecutionSection>
       <ExecutionSection title={t`Scope revisions and affected dependencies`}>
         <ScopeRevisionReview value={value} />

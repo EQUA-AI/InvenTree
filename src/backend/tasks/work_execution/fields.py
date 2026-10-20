@@ -17,11 +17,35 @@ WORK_EXECUTION_FIELDS = (
     'work_continuity',
     'routine_work',
     'recurrence_policy',
+    'operational_authority',
 )
 
 
 class WorkExecutionFieldsMixin(serializers.Serializer):
     """Read-only projections the seven Work panels render from the overview."""
+
+    def to_representation(self, instance):
+        """One source snapshot for displayed facts and their recording context."""
+        from tasks.services.operational_authority import (
+            capture_read_sources,
+            clear_read_sources,
+        )
+
+        capture_read_sources(instance)
+        try:
+            return super().to_representation(instance)
+        finally:
+            clear_read_sources(instance)
+
+    operational_authority = serializers.SerializerMethodField()
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_operational_authority(self, obj) -> dict:
+        """O15: recorded authority and role-gated commands, never lifecycle inference."""
+        from tasks.services.operational_authority import project
+
+        request = self.context.get('request')
+        return project(obj, request.user if request else None)
 
     handled_actions = serializers.SerializerMethodField()
     investigation = serializers.SerializerMethodField()
@@ -67,7 +91,8 @@ class WorkExecutionFieldsMixin(serializers.Serializer):
         """P23: recorded test results without inferred operating authority."""
         from .verification import project
 
-        return project(obj)
+        request = self.context.get('request')
+        return project(obj, actor=request.user if request else None)
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_prepared_package(self, obj) -> dict:

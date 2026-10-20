@@ -492,7 +492,11 @@ def _is_preliminary(diagnosis) -> bool:
 
 def _approved_scope_projection(packet) -> dict | None:
     """Return the approved scope currently in force for a packet."""
-    scopes = list(packet.approved_scopes.all().order_by('-version', '-pk'))
+    scopes = (
+        packet._authority_scopes
+        if hasattr(packet, '_authority_scopes')
+        else list(packet.approved_scopes.all().order_by('-version', '-pk'))
+    )
     candidates = [scope for scope in scopes if scope.superseded_at is None]
     if len(candidates) != 1 or candidates[0].pk != scopes[0].pk:
         return None
@@ -613,12 +617,18 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
             obj.events.all().order_by('-created_at'), many=True
         ).data
 
-    @staticmethod
-    def get_repair_packet(obj) -> dict | None:
+    def get_repair_packet(self, obj) -> dict | None:
         """Return repair diagnosis and safety context when present."""
+        from repair.authority_models import gate_reason_for_actor
+        from tasks.services.operational_authority import read_gates
+
         packet = getattr(obj, 'repair_packet', None)
         if packet is None:
             return None
+        actor = (
+            self.context.get('request').user if self.context.get('request') else None
+        )
+
         return {
             'id': packet.pk,
             'reference': packet.reference,
@@ -661,8 +671,13 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
                     'is_mandatory': gate.is_mandatory,
                     'requires_photo': gate.requires_photo,
                     'requires_second_person': gate.requires_second_person,
+                    'is_satisfied': (gate_blocking_reason := gate.unsatisfied_reason())
+                    == '',
+                    'unsatisfied_reason': gate_reason_for_actor(
+                        gate, actor, gate_blocking_reason
+                    ),
                 }
-                for gate in packet.gates.all().order_by('sequence', 'created_at')
+                for gate in read_gates(packet)
             ],
         }
 

@@ -19,6 +19,7 @@ import {
   recordedTime
 } from './ExecutionFacts';
 import { HandledByAimms } from './HandledByAimms';
+import { AuthorityRecords, currentAuthority } from './OperationalAuthority';
 import { workBrief } from './workBriefProjection';
 
 /** Outcome-led case brief; each owning panel retains its native operations. */
@@ -134,18 +135,42 @@ export function WorkBrief({
           <ExecutionFact
             label={t`Required service restored`}
           >{t`Not available — service restoration not supplied`}</ExecutionFact>
-          <ExecutionFact
-            label={t`Technical test acceptance`}
-          >{t`Not available — recorded test results are separate`}</ExecutionFact>
-          <ExecutionFact
-            label={t`Operating return and permission`}
-          >{t`Not available — no operating-authority record`}</ExecutionFact>
-          <ExecutionFact
-            label={t`Standby capacity / resilience`}
-          >{t`Not recorded`}</ExecutionFact>
-          <ExecutionFact
-            label={t`Operating restrictions and duty`}
-          >{t`Not recorded`}</ExecutionFact>
+          <ExecutionFact label={t`Technical test acceptance`}>
+            {work.operational_authority ? (
+              <AuthorityRecords
+                value={work.operational_authority}
+                kinds={['test_acceptance']}
+              />
+            ) : (
+              t`Not available — recorded test results are separate`
+            )}
+          </ExecutionFact>
+          <ExecutionFact label={t`Operating return and permission`}>
+            {work.operational_authority ? (
+              <AuthorityRecords
+                value={work.operational_authority}
+                kinds={['operating_permission', 'observed_return']}
+              />
+            ) : (
+              t`Not available — no operating-authority record`
+            )}
+          </ExecutionFact>
+          <ExecutionFact label={t`Standby capacity / resilience`}>
+            {work.operational_authority ? (
+              <AuthorityRecords
+                value={work.operational_authority}
+                kinds={['service_state']}
+              />
+            ) : (
+              t`Not recorded`
+            )}
+          </ExecutionFact>
+          <ExecutionFact label={t`Operating restrictions and duty`}>
+            {currentAuthority(work.operational_authority, 'service_state')
+              .length
+              ? t`See the attributed duty and standby records above`
+              : t`Not recorded`}
+          </ExecutionFact>
         </SimpleGrid>
         <Text
           size='sm'

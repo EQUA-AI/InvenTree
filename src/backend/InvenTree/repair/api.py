@@ -5,10 +5,13 @@ from __future__ import annotations
 import uuid
 from dataclasses import asdict
 
+from django.db import transaction
+from django.db.models.deletion import ProtectedError
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.urls import include, path
 
+from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from tasks.models import WorkOrderCommand
@@ -27,6 +30,7 @@ from InvenTree.mixins import ListCreateAPI, RetrieveUpdateDestroyAPI
 
 from . import investigation, services
 from .models import (
+    AuthorityOwnershipError,
     LockoutPoint,
     PacketStatus,
     RepairInvestigationFinding,
@@ -111,6 +115,13 @@ def _require_packet_candidate(actor, serializer):
         raise Http404 from exc
 
 
+class PacketAuthorityConflict(APIException):
+    """Return a reviewable conflict, never a server error or discarded history."""
+
+    status_code = 409
+    default_code = 'packet_authority_conflict'
+
+
 class ScopedRepairPacketMixin(ObjectInputMixin):
     """Apply the same packet boundary to list, detail and direct updates."""
 
@@ -148,7 +159,10 @@ class ScopedRepairPacketMixin(ObjectInputMixin):
     def perform_update(self, serializer):
         """Check the proposed owner as well as the scoped original packet."""
         _require_packet_candidate(self.request.user, serializer)
-        super().perform_update(serializer)
+        try:
+            super().perform_update(serializer)
+        except AuthorityOwnershipError as exc:
+            raise PacketAuthorityConflict(str(exc)) from exc
 
 
 class RepairPacketList(ScopedRepairPacketMixin, ListCreateAPI):
@@ -181,6 +195,23 @@ class RepairPacketDetail(ScopedRepairPacketMixin, RetrieveUpdateDestroyAPI):
         InvenTree.permissions.IsAuthenticatedOrReadScope,
         InvenTree.permissions.RolePermission,
     ]
+
+    def perform_destroy(self, instance):
+        """Protected authority history must not turn an ordinary DELETE into 500."""
+        from .authority_models import GateAuthorityRecord
+
+        with transaction.atomic():
+            packet = RepairPacket.objects.select_for_update().get(pk=instance.pk)
+            if GateAuthorityRecord.objects.filter(gate__packet=packet).exists():
+                raise PacketAuthorityConflict(
+                    'Packet cannot be deleted because its gates have retained authority history.'
+                )
+            try:
+                super().perform_destroy(packet)
+            except ProtectedError as exc:
+                raise PacketAuthorityConflict(
+                    'Packet cannot be deleted because retained records reference it.'
+                ) from exc
 
 
 class RepairPacketAction(APIView):

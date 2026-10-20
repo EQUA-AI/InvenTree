@@ -150,6 +150,17 @@ class CompleteCommandSerializer(BaseCommandSerializer):
 class WorkOrderEventSerializer(serializers.ModelSerializer):
     """Read-only work-order audit event serializer."""
 
+    def to_representation(self, instance):
+        """Generic Work audit access must not expose asset-scoped authority receipts."""
+        data = super().to_representation(instance)
+        if instance.event_type in ('authority_record', 'authority_verify'):
+            data['metadata'] = {
+                key: value
+                for key, value in data['metadata'].items()
+                if key != 'result_metadata'
+            }
+        return data
+
     class Meta:
         """Serializer metadata."""
 

@@ -9,6 +9,13 @@ import {
   ExecutionSection,
   recordedTime
 } from './ExecutionFacts';
+import {
+  AuthorityRecorder,
+  AuthorityRecords,
+  currentAuthority
+} from './OperationalAuthority';
+import { acceptanceSummary } from './authorityProjection';
+import { authorityReading } from './authorityReading';
 import { testEvaluation } from './verificationProjection';
 
 /** Existing Work facts only; record completion never promotes a service state. */
@@ -21,6 +28,14 @@ export function ServiceRestoration({
     next.set('investigation_request', String(id));
     return `?${next}`;
   };
+  const authority = workOrder.operational_authority;
+  const acceptance = acceptanceSummary(authority);
+  const acceptanceBadge =
+    acceptance.state === 'unavailable'
+      ? t`Test acceptance: unavailable`
+      : acceptance.state === 'not_recorded'
+        ? t`Test acceptance: not recorded`
+        : t`Test acceptance: ${acceptance.outcomes.join(', ')}${acceptance.basis ? t` · basis changed or unavailable` : ''}${acceptance.ineffective ? t` · outside effective window` : ''}`;
   const closeout = workOrder.structured_closeout;
   const service = displayAuthority();
   const verification = workOrder.verification_return;
@@ -72,10 +87,16 @@ export function ServiceRestoration({
         {[
           t`Condition controlled: unknown`,
           t`Asset repair: unconfirmed`,
-          t`Test acceptance: unavailable`,
-          t`Operating return: awaiting record`,
+          acceptanceBadge,
+          currentAuthority(authority, 'observed_return').length
+            ? t`Operating return: recorded observation`
+            : t`Operating return: awaiting record`,
           t`Service: awaiting verification`,
-          t`Resilience: unknown`
+          currentAuthority(authority, 'service_state').some(
+            (row) => row.details.redundancy
+          )
+            ? t`Resilience: recorded state`
+            : t`Resilience: unknown`
         ].map((label) => (
           <Badge
             key={label}
@@ -90,7 +111,46 @@ export function ServiceRestoration({
           </Badge>
         ))}
       </Group>
-      <Text size='sm'>{t`Awaiting service verification — duty, affected process, standby capacity, operating conditions and operations-owned restrictions are unavailable from the current providers. Their source, responsible owner and effective time are unknown.`}</Text>
+      {authority ? (
+        <>
+          <AuthorityRecords
+            value={authority}
+            kinds={[
+              'test_acceptance',
+              'operating_permission',
+              'observed_return',
+              'service_state'
+            ]}
+          />
+          <Text size='sm'>{t`Full service, required capacity and resilience remain unverified unless explicitly established by the recorded source. Run telemetry alone cannot establish these facts.`}</Text>
+          {authority.telemetry.length ? (
+            <Stack gap='xs'>
+              <Text
+                size='sm'
+                fw={600}
+              >{t`Read-only operating telemetry context`}</Text>
+              {authority.telemetry.map((row) => (
+                <Text
+                  key={row.binding_id}
+                  size='xs'
+                  style={{ overflowWrap: 'anywhere' }}
+                >
+                  {row.target_name} · {row.tag} ·{' '}
+                  {authorityReading(row.value) ?? t`Not recorded`} ·{' '}
+                  {row.source} · {recordedTime(row.observed_at)} · {row.quality}
+                  {row.stale ? t` · Stale` : ''}
+                  {!row.source_active ? t` · Source inactive` : ''}
+                </Text>
+              ))}
+            </Stack>
+          ) : (
+            <Text size='sm'>{t`Duty / standby / run telemetry: Not recorded — no reviewed bound tags supplied.`}</Text>
+          )}
+          <AuthorityRecorder value={authority} mode='service' />
+        </>
+      ) : (
+        <Text size='sm'>{t`Awaiting service verification — duty, affected process, standby capacity, operating conditions and operations-owned restrictions are unavailable from the current providers. Their source, responsible owner and effective time are unknown.`}</Text>
+      )}
       <Text
         size='sm'
         c='dimmed'

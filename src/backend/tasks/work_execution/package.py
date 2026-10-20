@@ -28,8 +28,12 @@ def _scopes(packet):
             if scope.superseded_at
             else None,
         }
-        for scope in packet.approved_scopes.select_related('approved_by').order_by(
-            '-version', '-pk'
+        for scope in (
+            packet._authority_scopes
+            if hasattr(packet, '_authority_scopes')
+            else packet.approved_scopes.select_related('approved_by').order_by(
+                '-version', '-pk'
+            )
         )
     ]
 
@@ -90,8 +94,11 @@ def _application(application, part_names):
 
 def project(work_order, actor=None) -> dict:
     """Read the scoped parent's saved package and native deviations only."""
+    from tasks.services.operational_authority import records
+
     from .scope_revision import project as revision_review
 
+    physical = records(work_order, physical=True, actor=actor)
     enabled = procedures_enabled()
     scopes = _scopes(packet_of(work_order))
     applications = (
@@ -155,6 +162,12 @@ def project(work_order, actor=None) -> dict:
             and actor.is_authenticated
             and actor.has_perm('tasks.execute_workorder')
         ),
-        'physical_authority': {'available': False, 'reason': 'no_provider'},
+        'physical_authority': {
+            'available': True,
+            'recorded': bool(physical),
+            'current_records': [row for row in physical if row['current']],
+            'reason': '' if physical else 'not_recorded',
+            'records': physical,
+        },
         'affected_dependencies': {'available': False, 'reason': 'no_provider'},
     }

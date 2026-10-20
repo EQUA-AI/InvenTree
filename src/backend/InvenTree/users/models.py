@@ -298,6 +298,11 @@ class RuleSet(models.Model):
         verbose_name=_('Can execute work orders'), default=False
     )
 
+    can_record_operating_authority = models.BooleanField(
+        verbose_name=_('Can record operating authority and service state'),
+        default=False,
+    )
+
     can_complete_workorder = models.BooleanField(
         verbose_name=_('Can complete work orders'), default=False
     )
