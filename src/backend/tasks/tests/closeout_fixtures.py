@@ -3,7 +3,7 @@
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Permission
+from django.contrib.auth.models import Group, Permission
 
 from assets.models import AssetMachine
 from company.models import Company
@@ -18,6 +18,7 @@ from tasks.models import (
     WorkOrderType,
 )
 from tasks.scope import MaintenanceScope
+from users.models import RuleSet
 
 CLOSEOUT_FLAGS = {
     'AIMMS_WORK_ORDERS_ENABLED': True,
@@ -74,6 +75,11 @@ class CloseoutEnvMixin:
         user = get_user_model().objects.create_user(
             username=username, email=f'{username}@example.com', password='pw'
         )
+        readers, _ = Group.objects.get_or_create(name='Closeout fixture readers')
+        RuleSet.objects.update_or_create(
+            group=readers, name='work_order', defaults={'can_view': True}
+        )
+        user.groups.add(readers)
         for codename in permissions:
             user.user_permissions.add(
                 Permission.objects.get(

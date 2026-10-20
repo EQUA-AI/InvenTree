@@ -3,6 +3,7 @@
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.test import TestCase, override_settings
 
 from assets.registry_models import AssetComponent
@@ -12,6 +13,7 @@ from stock.models import StockItem, StockLocation
 from tasks.models import WorkOrderPart
 from tasks.scope import MaintenanceScope
 from tasks.tests.closeout_fixtures import CloseoutEnvMixin
+from users.models import RuleSet
 
 FLAGS = {'AIMMS_WORK_ORDERS_ENABLED': True}
 KITS = {**FLAGS, 'AIMMS_JOB_KITS_ENABLED': True}
@@ -23,6 +25,10 @@ class WorkMaterialsTests(CloseoutEnvMixin, TestCase):
     def setUp(self):
         """One scoped job on one machine."""
         self.build_env(username='materials')
+        self.readers = Group.objects.create(name='Materials readers')
+        RuleSet.objects.update_or_create(
+            group=self.readers, name='work_order', defaults={'can_view': True}
+        )
 
     def read(self, user=None, pk=None):
         """The readout as the Work Parts panel reads it (scope kept on the actor)."""
@@ -109,6 +115,7 @@ class WorkMaterialsTests(CloseoutEnvMixin, TestCase):
         self.build_kit_line(quantity='1')
         self.reserve_kit()
         reader = self.make_scoped_user('materials-reader')
+        reader.groups.add(self.readers)
         (reserved,) = self.read(reader).data['requirements'][0]['reservations']
         self.assertEqual(reserved['quantity'], 1.0)
         self.assertEqual(reserved['stock_item'], {'pk': None, 'hidden': True})
@@ -120,6 +127,7 @@ class WorkMaterialsTests(CloseoutEnvMixin, TestCase):
         outsider = get_user_model().objects.create_user(
             username='outsider', email='outsider@example.com', password='pw'
         )
+        outsider.groups.add(self.readers)
         outsider.maintenance_scopes = {
             MaintenanceScope(customer_id=other.pk, site_key=None)
         }
@@ -201,6 +209,15 @@ class WorkMaterialsTests(CloseoutEnvMixin, TestCase):
         with CaptureQueriesContext(connection) as large:
             body = self.read().data
             self.assertEqual(len(body['requirements']), 8)
-            self.assertEqual(sum(len(r['reservations']) for r in body['requirements']), 9)
-            self.assertEqual(sum(len(a['usage']) for r in body['requirements'] for a in r['reservations']), 9)
+            self.assertEqual(
+                sum(len(r['reservations']) for r in body['requirements']), 9
+            )
+            self.assertEqual(
+                sum(
+                    len(a['usage'])
+                    for r in body['requirements']
+                    for a in r['reservations']
+                ),
+                9,
+            )
         self.assertEqual(len(small), len(large))

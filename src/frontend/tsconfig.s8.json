@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.s0.json",
+  "files": [
+    "playwright.s8.config.ts",
+    "tests/s8/pui_permission_matrix.spec.ts",
+    "tests/s8/permissionGuard.spec.ts"
+  ]
+}

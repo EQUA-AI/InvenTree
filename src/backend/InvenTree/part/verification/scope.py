@@ -97,7 +97,15 @@ def scope_for_actor(actor) -> set[VerificationScope]:
     if not raw:
         raise VerificationScopeError('Verification actor scope is unresolved')
 
-    return {_coerce_scope(item) for item in raw}
+    scopes = {_coerce_scope(item) for item in raw}
+    if any(
+        scope.customer_id is not None and scope.client_id is not None
+        for scope in scopes
+    ):
+        raise VerificationScopeError(
+            'A verification scope cannot mix customer and client'
+        )
+    return scopes
 
 
 def scope_for_context(

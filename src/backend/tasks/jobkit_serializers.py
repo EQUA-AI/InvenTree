@@ -2,6 +2,8 @@
 
 from rest_framework import serializers
 
+from users.permissions import check_user_role
+
 from .jobkit_models import (
     JobKit,
     JobKitAllocation,
@@ -101,6 +103,19 @@ class JobKitShortageSerializer(serializers.ModelSerializer):
 
 class JobKitAllocationSerializer(serializers.ModelSerializer):
     """Read-only representation of a real Job Kit stock reservation."""
+
+    def to_representation(self, instance):
+        """Apply the same stock-identity boundary as the Materials projection."""
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        if request is None or not check_user_role(request.user, 'stock', 'view'):
+            for field in (
+                'stock_item',
+                'source_location_snapshot',
+                'stock_tracking_id',
+            ):
+                data[field] = None
+        return data
 
     class Meta:
         """Serializer metadata."""

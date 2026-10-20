@@ -36,7 +36,9 @@ class SchedulingApiTest(TestCase):
 
     def _post(self, name, body, **kwargs):
         return self.client.post(
-            reverse(name, kwargs=kwargs), data=body, content_type='application/json'
+            reverse(name, kwargs=kwargs),
+            data={'idempotency_key': f'test-{self._testMethodName}', **body},
+            content_type='application/json',
         )
 
     def test_create_command_requires_a_machine(self):
@@ -222,7 +224,9 @@ class SchedulingApiPermissionTest(TestCase):
 
     def _post(self, name, body, **kwargs):
         return self.client.post(
-            reverse(name, kwargs=kwargs), data=body, content_type='application/json'
+            reverse(name, kwargs=kwargs),
+            data={'idempotency_key': f'test-{self._testMethodName}', **body},
+            content_type='application/json',
         )
 
     def test_schedule_needs_change_permission(self):

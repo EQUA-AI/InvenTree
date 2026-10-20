@@ -357,7 +357,7 @@ export default function MachineDetail() {
               key='create-repair'
               leftSection={<IconTool size={16} />}
               onClick={() => setCreateRepairOpen(true)}
-              disabled={!machine?.pk}
+              disabled={!machine?.pk || !user.hasAddRole(UserRoles.work_order)}
             >
               {t`Create repair`}
             </Button>,
@@ -368,7 +368,12 @@ export default function MachineDetail() {
               variant='light'
               leftSection={<IconPlayerPlay size={16} />}
               onClick={() => setStartRepairOpen(true)}
-              disabled={!machine?.pk}
+              disabled={
+                !machine?.pk ||
+                !user.hasChangeRole(UserRoles.work_order) ||
+                (!user.isSuperuser() &&
+                  !user.user?.permissions?.workorder?.includes('execute'))
+              }
             >
               {t`Start repair`}
             </Button>
