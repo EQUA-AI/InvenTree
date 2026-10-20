@@ -47,6 +47,17 @@ DEFAULT_TESTS = [
 ]
 
 
+EXTRA_SOURCES = (
+    ('contrib/cosmos', 'contrib/cosmos'),
+    ('contrib/pump-cassandra', 'contrib/pump-cassandra'),
+    (
+        'contrib/container/dev-docker-compose.yml',
+        'contrib/container/dev-docker-compose.yml',
+    ),
+    ('src/frontend/src/assets/mimic', 'src/frontend/src/assets/mimic'),
+)
+
+
 def run_inside(labels):
     """Copy code into temporary storage and run Django's isolated test runner."""
     scratch = Path(tempfile.mkdtemp(prefix='aimms-r6-s0-'))
@@ -69,6 +80,22 @@ def run_inside(labels):
             '*.sqlite*',
         ),
     )
+    # Repository data some backend tests read by path (pump-station packs,
+    # limits, samples, the dev compose file and the mimic SVGs). Mounted
+    # read-only when present; secrets and env files are never copied.
+    for _source, target in EXTRA_SOURCES:
+        mounted = Path('/source/extra') / target
+        if mounted.is_file():
+            (workspace / target).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(mounted, workspace / target)
+        elif mounted.is_dir():
+            shutil.copytree(
+                mounted,
+                workspace / target,
+                ignore=shutil.ignore_patterns(
+                    '.env*', '*.env', 'secret*', '__pycache__'
+                ),
+            )
     (workspace / 'VERSION').write_text('')
     (backend / 'InvenTree' / 's0_settings.py').write_text(
         'import InvenTree.settings as baseline\n'
@@ -155,6 +182,15 @@ def run_host(labels, image, output):
         '/tmp:rw,nosuid,size=2g',
         '--mount',
         f'type=bind,src={root / "src/backend"},dst=/source/backend,readonly',
+        *[
+            arg
+            for source, target in EXTRA_SOURCES
+            if (root / source).exists()
+            for arg in (
+                '--mount',
+                f'type=bind,src={root / source},dst=/source/extra/{target},readonly',
+            )
+        ],
         '--mount',
         f'type=bind,src={Path(__file__).resolve()},dst=/s0/backend_baseline.py,readonly',
         '--mount',
