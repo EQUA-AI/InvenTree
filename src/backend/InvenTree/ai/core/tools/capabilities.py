@@ -29,7 +29,12 @@ CATALOG_VERSION = "1"
 #: owner-approved get_work_order_closeout (A16/Q14), growing the worst-case
 #: stack (maintenance 7 + machines 9 + SQL 1). A one-tool schema increase is
 #: a deliberate decision, not drift — the budget test pins the new worst case.
-MAX_INITIAL_TOOLS = 17
+#: Raised 17 -> 20 with the S5b board-task reads: the kanban.read pack grew
+#: 4 -> 7 (list/get/check_board_task_*), so the worst selectable stack is
+#: kanban 7 + machines 9 + documents 3 + SQL 1 = 20. Same deliberate-decision
+#: rule; ``test_tool_budget_holds_for_every_selectable_pack_combination``
+#: recomputes and pins the actual worst case.
+MAX_INITIAL_TOOLS = 20
 
 
 class ToolEffect(StrEnum):
@@ -133,6 +138,7 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
             "aisle",
             "stored",
             "on hand",
+            "seal kit",
         ),
     ),
     "bom.read": (
@@ -261,6 +267,13 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
             "get_kanban_card",
             "get_kanban_summary",
             "check_kanban_card_stock",
+            # S5b card-typed board-task reads (both identities named). Same
+            # pack as the compatibility WorkOrder-PK tools above: a board
+            # card IS the job's tracked work, so the same sentence terms
+            # select both surfaces.
+            "list_board_tasks",
+            "get_board_task",
+            "check_board_task_stock",
         ),
         # "job"/"task" are what the floor calls these; without them "Check for
         # all jobs" scored no kanban pack and the assistant claimed it could not
@@ -1306,7 +1319,7 @@ def _catalog_tools() -> tuple[Any, ...]:
     from ai.core.integrations.controlled_document_corpus import CONTROLLED_CORPUS_TOOLS
     from ai.core.integrations.email.tools import EMAIL_TOOLS
     from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS, INVENTORY_TOOLS
-    from ai.core.integrations.kanban_tools import KANBAN_TOOLS
+    from ai.core.integrations.kanban_tools import BOARD_TASK_READ_TOOLS, KANBAN_TOOLS
     from ai.core.integrations.media_corpus import EVIDENCE_MEDIA_TOOLS
     from ai.core.integrations.memory_tools import MEMORY_ACTION_TOOLS
     from ai.core.integrations.source_inventory_tools import SOURCE_INVENTORY_TOOLS
@@ -1320,6 +1333,7 @@ def _catalog_tools() -> tuple[Any, ...]:
         get_last_action_status,
         *EMAIL_TOOLS,
         *KANBAN_TOOLS,
+        *BOARD_TASK_READ_TOOLS,
         *CONTROLLED_CORPUS_TOOLS,
         *ATTACHMENT_CORPUS_TOOLS,
         *EVIDENCE_MEDIA_TOOLS,

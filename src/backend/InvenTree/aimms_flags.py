@@ -794,6 +794,13 @@ REGISTRY: tuple[FlagEntry, ...] = (
             'are code constants, not settings.'
         ),
     ),
+    FlagEntry(
+        'FEATURE_RAG_PROJECTION_AUDIT',
+        'bool',
+        False,
+        'ai',
+        ai_field='feature_rag_projection_audit',
+    ),
 )
 
 

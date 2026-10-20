@@ -221,7 +221,26 @@ class NormalizedTurnServiceTests(SimpleTestCase):
         self.assertEqual(len(repository.terminal_calls), 2)
 
     def test_exact_retry_replays_events_and_does_not_execute_twice(self) -> None:
+        def split_events(events):
+            import json
+
+            workflow_events = []
+            focus_events = []
+            for raw in events:
+                payload = ""
+                for line in raw.splitlines():
+                    if line.startswith("data: "):
+                        payload = line.removeprefix("data: ")
+                parsed = json.loads(payload)
+                if parsed.get("type") == "CUSTOM" and parsed.get("name") == "aimms.threadFocus":
+                    focus_events.append(parsed)
+                else:
+                    workflow_events.append(raw)
+            return workflow_events, focus_events
+
         async def exercise():
+            import copy
+
             repository = _Repository()
             workflow = _Workflow()
             proposal_calls: list[str] = []
@@ -229,6 +248,15 @@ class NormalizedTurnServiceTests(SimpleTestCase):
             def transform(**kwargs):
                 proposal_calls.append(kwargs["canonical_result"]["turn_id"])
                 return kwargs["canonical_result"]
+
+            def _stored_snapshot():
+                turn = repository.turns["stable-key"]
+                return copy.deepcopy({
+                    "pk": turn.pk,
+                    "request_fingerprint": turn.request_fingerprint,
+                    "state": turn.state,
+                    "canonical_result": turn.canonical_result,
+                })
 
             service = _TestTurnService(
                 workflow_factory=lambda: workflow,
@@ -250,6 +278,7 @@ class NormalizedTurnServiceTests(SimpleTestCase):
                 emitter=emitter,
             )
             unsubscribe()
+            stored_before = _stored_snapshot()
             replay_capture = _Capture()
             await emitter.subscribe(replay_capture)
             replay = await service.process(
@@ -263,6 +292,7 @@ class NormalizedTurnServiceTests(SimpleTestCase):
                 correlation_id=_context().correlation_id,
                 emitter=emitter,
             )
+            stored_after = _stored_snapshot()
             return (
                 first,
                 replay,
@@ -270,6 +300,8 @@ class NormalizedTurnServiceTests(SimpleTestCase):
                 first_capture,
                 replay_capture,
                 proposal_calls,
+                stored_before,
+                stored_after,
             )
 
         (
@@ -279,13 +311,76 @@ class NormalizedTurnServiceTests(SimpleTestCase):
             first_capture,
             replay_capture,
             proposal_calls,
+            stored_before,
+            stored_after,
         ) = asyncio.run(exercise())
         self.assertFalse(first.replayed)
         self.assertTrue(replay.replayed)
         self.assertEqual(first.message, replay.message)
         self.assertEqual(len(workflow.calls), 1)
         self.assertEqual(proposal_calls, ["turn_normalized"])
-        self.assertEqual(first_capture.events, replay_capture.events)
+        self.assertTrue(stored_before["request_fingerprint"])
+        self.assertEqual(stored_before["pk"], first.turn_id)
+        self.assertEqual(stored_before["state"], first.response_state)
+        self.assertEqual(stored_before, stored_after)
+        self.assertEqual(first.thread_id, replay.thread_id)
+        self.assertEqual(first.turn_id, replay.turn_id)
+        self.assertEqual(first.response_state, replay.response_state)
+        self.assertEqual(first.canonical_response, replay.canonical_response)
+        first_workflow_events, first_focus_events = split_events(first_capture.events)
+        replay_workflow_events, replay_focus_events = split_events(replay_capture.events)
+        self.assertEqual(len(first_workflow_events), 3)
+        self.assertEqual(len(replay_workflow_events), 3)
+        self.assertEqual(first_workflow_events, replay_workflow_events)
+        self.assertEqual(len(first_focus_events), 1)
+        self.assertEqual(len(replay_focus_events), 1)
+        first_echo = first_focus_events[0]
+        replay_echo = replay_focus_events[0]
+        self.assertEqual(
+            first_echo.get("value"),
+            {
+                "focus": first.focus,
+                "focus_version": first.focus_version,
+                "focus_refresh_required": first.focus_refresh_required,
+            },
+        )
+        self.assertEqual(
+            replay_echo.get("value"),
+            {
+                "focus": replay.focus,
+                "focus_version": replay.focus_version,
+                "focus_refresh_required": replay.focus_refresh_required,
+            },
+        )
+        self.assertEqual(type(first_echo.get("value").get("focus_version")), int)
+        self.assertEqual(type(first_echo.get("value").get("focus_refresh_required")), bool)
+        self.assertEqual(type(replay_echo.get("value").get("focus_version")), int)
+        self.assertEqual(type(replay_echo.get("value").get("focus_refresh_required")), bool)
+        self.assertEqual(first_echo.get("threadId"), first.thread_id)
+        self.assertEqual(replay_echo.get("threadId"), replay.thread_id)
+        self.assertEqual(first_echo.get("runId"), "")
+        self.assertEqual(replay_echo.get("runId"), "")
+        self.assertIsInstance(first_echo.get("eventId"), str)
+        self.assertTrue(first_echo.get("eventId"))
+        self.assertIsInstance(first_echo.get("timestamp"), str)
+        self.assertTrue(first_echo.get("timestamp"))
+        self.assertIsInstance(replay_echo.get("eventId"), str)
+        self.assertTrue(replay_echo.get("eventId"))
+        self.assertIsInstance(replay_echo.get("timestamp"), str)
+        self.assertTrue(replay_echo.get("timestamp"))
+        self.assertNotEqual(first_echo.get("eventId"), replay_echo.get("eventId"))
+        self.assertEqual(
+            {
+                key: value
+                for key, value in first_echo.items()
+                if key not in ("eventId", "timestamp")
+            },
+            {
+                key: value
+                for key, value in replay_echo.items()
+                if key not in ("eventId", "timestamp")
+            },
+        )
 
     def test_same_key_with_changed_content_is_rejected(self) -> None:
         async def exercise():

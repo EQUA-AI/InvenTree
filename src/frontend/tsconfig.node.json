@@ -4,7 +4,11 @@
     "module": "ESNext",
     "target": "ES2023",
     "lib": ["ES2023"],
-    "moduleResolution": "Node",
+    "moduleResolution": "Bundler",
+    "paths": {
+      "@babel/core": ["./node_modules/@types/babel__core/index.d.ts"],
+      "@babel/traverse": ["./node_modules/@types/babel__traverse/index.d.ts"]
+    },
     "allowSyntheticDefaultImports": true
   },
   "include": [

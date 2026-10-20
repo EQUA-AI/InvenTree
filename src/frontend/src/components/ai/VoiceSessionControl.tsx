@@ -1,7 +1,15 @@
 import { t } from '@lingui/core/macro';
 import { Badge, Button, Group, Text } from '@mantine/core';
 import type { VoiceClientState, VoiceError } from '../../../lib/types/Voice';
-import { useVoiceSessionState } from '../../states/VoiceSessionState';
+import {
+  useVoiceSessionState,
+  useVoiceSurfaceState
+} from '../../states/VoiceSessionState';
+import {
+  voiceErrorText,
+  voiceStartFeedbackText
+} from './voice/VoiceComposerControl';
+import { voiceErrorKey } from './voice/voiceFeedback';
 import { VOICE_SHORTCUT } from './voice/voiceShortcuts';
 
 export interface VoiceSessionControlProps {
@@ -18,6 +26,10 @@ export interface VoiceSessionControlProps {
 }
 export function VoiceSessionControl(props: Readonly<VoiceSessionControlProps>) {
   const split = useVoiceSessionState();
+  const startFeedback = useVoiceSurfaceState((s) => s.startFeedback);
+  const errorText = props.error
+    ? voiceErrorText(voiceErrorKey(props.error.code))
+    : null;
   const active = !['unavailable', 'ready', 'error'].includes(props.state);
   if (props.state === 'unavailable') {
     if (!split.capability?.enabled) return null;
@@ -120,10 +132,28 @@ export function VoiceSessionControl(props: Readonly<VoiceSessionControlProps>) {
       {props.webrtcPreview && active && (
         <Badge variant='outline'>{t`Preview`}</Badge>
       )}
-      {props.error && (
-        <Text c='red' data-testid='voice-error'>
-          {props.error.code}
+      {errorText && (
+        <Text
+          component='output'
+          c='red'
+          data-testid='voice-error'
+          aria-live='polite'
+        >
+          {errorText.message} {errorText.recovery}
         </Text>
+      )}
+      {startFeedback && (
+        <Group gap='xs' data-testid='voice-start-feedback'>
+          <Text component='output' aria-live='polite' size='sm'>
+            {voiceStartFeedbackText(startFeedback)}
+          </Text>
+          <Button
+            mih={44}
+            variant='default'
+            data-testid='voice-start-feedback-retry'
+            onClick={props.onStart}
+          >{t`Try again`}</Button>
+        </Group>
       )}
     </Group>
   );

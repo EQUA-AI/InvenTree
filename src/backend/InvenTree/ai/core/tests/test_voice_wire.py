@@ -72,6 +72,11 @@ def test_session_payload_dump_matches_the_historic_dict_shape() -> None:
         "locale": "en-US",
         "voice": "en-US-AvaNeural",
         "consent_version": "",
+        "focus": None,
+        "focus_version": 0,
+        "speech_utterance_id": None,
+        "speech_playback_state": None,
+        "speech_audit_state": None,
     }
 
 

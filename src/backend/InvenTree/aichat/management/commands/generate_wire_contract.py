@@ -216,12 +216,48 @@ class Command(BaseCommand):
                         if not field.is_required()
                     )
                     if model in (VoiceClientTiming, VoiceTimingReport)
+                    else ('playback_audit_state',)
+                    if model is VoiceSpokenPayload
+                    else (
+                        'speech_utterance_id',
+                        'speech_playback_state',
+                        'speech_audit_state',
+                    )
+                    if model is VoiceSessionPayload
                     else (),
                 )
             )
         sections.append(
             'export type ServerVoiceErrorCode =\n'
             f'  | {_ts_string_union(list(SERVER_VOICE_ERROR_CODES))};\n'
+        )
+
+        sections.append('// --- Voice request models (ai.core.voice.routes) ---\n')
+        from ai.core.voice.routes import VoiceSessionCreateRequest, VoiceTurnRequest
+
+        sections.append(
+            _emit_model_interface(
+                VoiceSessionCreateRequest,
+                optional_fields=tuple(
+                    name
+                    for name, field in VoiceSessionCreateRequest.model_fields.items()
+                    if not field.is_required()
+                ),
+            )
+        )
+        sections.append(
+            _emit_model_interface(
+                VoiceTurnRequest,
+                overrides={
+                    'decision_context': 'Record<string, unknown> | null',
+                    'timing': 'VoiceClientTiming | null',
+                },
+                optional_fields=tuple(
+                    name
+                    for name, field in VoiceTurnRequest.model_fields.items()
+                    if not field.is_required()
+                ),
+            )
         )
 
         sections.append('// --- Analysis scope (ai.core.analysis.scope / .wire) ---\n')
@@ -276,6 +312,39 @@ class Command(BaseCommand):
         sections.append(_emit_model_interface(ThreadScopeUpdateRequest))
         sections.append(
             f'export type ScopeErrorCode =\n  | {_ts_string_union(list(SCOPE_ERROR_CODES))};\n'
+        )
+
+        sections.append(
+            '// --- Conversation focus (ai.core.focus.contract / .wire) ---\n'
+        )
+        from ai.core.focus.contract import FOCUS_KINDS
+        from ai.core.focus.wire import (
+            FOCUS_ERROR_CODES,
+            ConversationFocusPayload,
+            ConversationFocusRef,
+            FocusCandidateSearchResult,
+            ThreadFocusPayload,
+            ThreadFocusUpdateRequest,
+        )
+
+        sections.append(
+            f'export type ConversationFocusKind =\n  | {_ts_string_union(list(FOCUS_KINDS))};\n'
+        )
+        sections.append(
+            _emit_model_interface(
+                ConversationFocusRef, overrides={'kind': 'ConversationFocusKind'}
+            )
+        )
+        sections.append(
+            _emit_model_interface(
+                ConversationFocusPayload, overrides={'kind': 'ConversationFocusKind'}
+            )
+        )
+        sections.append(_emit_model_interface(ThreadFocusPayload))
+        sections.append(_emit_model_interface(ThreadFocusUpdateRequest))
+        sections.append(_emit_model_interface(FocusCandidateSearchResult))
+        sections.append(
+            f'export type FocusErrorCode =\n  | {_ts_string_union(list(FOCUS_ERROR_CODES))};\n'
         )
 
         sections.append('// --- Quota / admission (ai.core.quota.wire) ---\n')
@@ -357,6 +426,8 @@ class Command(BaseCommand):
             '// --- Thread listing and memory inspection (ai.core.app) ---\n'
         )
         from ai.core.app import (
+            ChatRequest,
+            ChatResponse,
             ThreadInfo,
             ThreadMemoryCorrectionRequest,
             ThreadMemoryCorrectionResponse,
@@ -375,6 +446,27 @@ class Command(BaseCommand):
         sections.append(_emit_model_interface(ThreadMemoryResponse))
         sections.append(_emit_model_interface(ThreadMemoryCorrectionRequest))
         sections.append(_emit_model_interface(ThreadMemoryCorrectionResponse))
+
+        sections.append('// --- Typed chat request/response (ai.core.app) ---\n')
+        sections.append(
+            _emit_model_interface(
+                ChatRequest,
+                overrides={
+                    'context': 'Record<string, unknown> | null',
+                    'modality_metadata': 'Record<string, unknown> | null',
+                },
+                optional_fields=tuple(
+                    name
+                    for name, field in ChatRequest.model_fields.items()
+                    if not field.is_required()
+                ),
+            )
+        )
+        sections.append(
+            _emit_model_interface(
+                ChatResponse, overrides={'focus': 'ConversationFocusPayload | null'}
+            )
+        )
 
         return '\n'.join(sections)
 

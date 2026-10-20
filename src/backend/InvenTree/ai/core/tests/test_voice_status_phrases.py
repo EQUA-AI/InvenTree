@@ -36,7 +36,6 @@ from ai.core.voice.routes import (  # noqa: E402
     create_voice_session,
     submit_voice_turn,
 )
-from django.core.management import call_command  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
 
 ai_app = api_fixtures.ai_app
@@ -44,7 +43,12 @@ ai_app = api_fixtures.ai_app
 
 @pytest.fixture(scope="module", autouse=True)
 def _database():
-    call_command("migrate", verbosity=0, interactive=False)
+    # Not call_command("migrate"): the island migration graph is
+    # inconsistent (held H07) -- real ORM tables via the established
+    # test-only schema bootstrap instead.
+    from ai.core.tests.focus_test_db import ensure_island_tables
+
+    ensure_island_tables()
     yield
 
 
@@ -138,7 +142,7 @@ def _submit(principal, settings, session_id, turn_service):
         )
 
 
-def test_slow_turn_speaks_thinking_then_cancels_and_speaks_answer():
+def test_slow_turn_speaks_only_the_answer_under_the_bounded_cue_schedule():
     user = _user()
     settings = _settings([user.pk])
     principal = _principal(user)
@@ -147,16 +151,20 @@ def test_slow_turn_speaks_thinking_then_cancels_and_speaks_answer():
 
     routes.set_provider_channel_factory(lambda session: channel)  # noqa: ARG005
     try:
-        with patch.object(status_phrases, "INTERIM_STATUS_DELAY_S", 0.01):
-            result = _submit(principal, settings, created["id"], _SlowSpeakingTurnService())
+        result = _submit(principal, settings, created["id"], _SlowSpeakingTurnService())
     finally:
         routes.set_provider_channel_factory(None)
 
+    # Truthful protocol (bounded progress): optional waiting speech follows
+    # the 2 s / 8 s schedule through the single shared dispatcher, so a 150 ms
+    # turn never speaks a filler phrase (the deprecated single 2 s sleep is
+    # gone; its schedule lives in ai.core.voice.progress and is covered by
+    # test_voice_route_speech_integration). The answer is spoken and stays
+    # honestly REQUESTED -- a send is never heard.
     texts = _spoken_texts(channel.sent)
-    assert texts == [status_phrases.THINKING, "Two likely causes."]
-    # The still-playing thinking phrase is cancelled before the answer.
+    assert texts == ["Two likely causes."]
     types = [payload["type"] for payload in channel.sent]
-    assert types == ["response.create", "response.cancel", "response.create"]
+    assert types == ["response.create"]
     assert result["spoken"]["playback_state"] == "requested"
 
     from voice.models import VoiceUtterance, VoiceUtteranceType
@@ -164,8 +172,7 @@ def test_slow_turn_speaks_thinking_then_cancels_and_speaks_answer():
     interim = VoiceUtterance.objects.filter(
         session_id=created["id"], utterance_type=VoiceUtteranceType.INTERIM_STATUS
     )
-    assert [u.spoken_summary for u in interim] == [status_phrases.THINKING]
-    assert all(u.policy_version == status_phrases.STATUS_PHRASE_POLICY_VERSION for u in interim)
+    assert not interim.exists()
 
 
 def test_fast_turn_never_speaks_filler():

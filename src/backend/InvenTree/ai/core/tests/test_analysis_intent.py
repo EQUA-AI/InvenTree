@@ -423,6 +423,7 @@ class TestRoutingIntegration:
                 )
 
         run = SimpleNamespace(
+            focus_snapshot=None,
             content=content,
             routing_content="",
             question_resolution=None,

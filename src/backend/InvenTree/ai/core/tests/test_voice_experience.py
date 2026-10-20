@@ -175,18 +175,77 @@ def test_fixed_sample_rate_limit_and_no_session_or_transcript():
 
 
 def test_cancel_stops_provider_speech_and_keeps_input_records():
+    from ai.core.voice import route_speech, speech_dispatch
+    from voice.services.realtime import persist_utterance
+
     user = _user()
     settings = _settings()
     session = session_for(user, settings)
     channel = SimpleNamespace(send_control=AsyncMock())
+    # REAL active output FIRST: one exact persisted utterance, dispatched
+    # through the real shared dispatcher with only the transport
+    # simulated. The active producer and the real cancel run in ONE
+    # _run/coroutine/event loop: a separate loop would re-adopt the
+    # dispatcher and discard the active state this test cancels.
+    utterance = persist_utterance(
+        session=session,
+        utterance_type="completed_answer",
+        spoken_summary="Confirm the vibration reading before restart.",
+    )
+    utterance_pk = str(utterance.pk)
+    spoken_text = utterance.spoken_summary
+    spoken_hash = utterance.spoken_summary_hash
+    observed = {}
+
+    async def _active_speech_then_real_cancel():
+        # Cleanup registered BEFORE the first await: neither the shared
+        # dispatcher nor the provider factory can leak from a failing
+        # assertion.
+        try:
+            dispatcher = route_speech.session_dispatcher(session)
+            assert dispatcher is not None
+            record = await route_speech.speak_persisted(
+                dispatcher,
+                kind="answer",
+                utterance=utterance,
+                onset_kind="answer",
+            )
+            observed["record_state"] = route_speech.dispatch_state_for(record)
+            # Real pre-cancel evidence, captured independently of the
+            # later reset: the exact persisted utterance is actively
+            # dispatched and the provider create is on the wire.
+            channel.send_control.assert_awaited_once()
+            assert channel.send_control.await_args.args[0]["type"] == "response.create"
+            snapshot = dispatcher.snapshot()
+            assert snapshot["utterance_id"] == utterance_pk
+            assert snapshot["playback_state"] == "requested"
+            assert observed["record_state"] == "requested"
+            # Isolate the cancel observation WITHOUT erasing the evidence
+            # asserted above: only the expected cancel may follow -- no
+            # replay and no new create.
+            channel.send_control.reset_mock()
+            return await routes.cancel_voice_playback(str(session.pk))
+        finally:
+            speech_dispatch.release_dispatcher(str(session.pk))
+
     with patch.object(routes, "_provider_channel_factory", return_value=channel):
-        result = _run(
-            _principal(user), lambda: routes.cancel_voice_playback(str(session.pk)), settings
-        )
-    assert result["id"] == str(session.pk)
+        result = _run(_principal(user), lambda: _active_speech_then_real_cancel(), settings)
+
+    # Positive cancellation through the real shared dispatcher.
     channel.send_control.assert_awaited_once_with({"type": "response.cancel"})
+    assert result["id"] == str(session.pk)
     session.refresh_from_db()
     assert session.state == "created"
+    # Exact persisted identity/text/hash survive cancellation untouched,
+    # the cancellation truth is durable (honestly canceled, nothing left
+    # pending/requested) and the records are kept, never deleted.
+    row = VoiceUtterance.objects.get(pk=utterance_pk)
+    assert row.session_id == session.pk
+    assert row.spoken_summary == spoken_text
+    assert row.spoken_summary_hash == spoken_hash
+    assert row.playback_state == "canceled"
+    assert session.utterances.count() == 1
+    assert not session.utterances.filter(playback_state__in=["pending", "requested"]).exists()
 
 
 def test_versioned_vocabulary_never_widens_scope_or_emits_stale_names():

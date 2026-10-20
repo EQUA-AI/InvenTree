@@ -20,6 +20,7 @@ describe('chat session boundary', () => {
       isOpen: false,
       sessionGeneration: 0,
       routingHint: undefined,
+      targetHint: undefined,
       hintThreadId: null,
       chatOpenIntent: null
     });
@@ -94,6 +95,73 @@ describe('chat session boundary', () => {
       .getState()
       .openWithHint({ machineId: 7, machineName: 'Fixture pump' });
     useAIChatState.getState().resetSession(false);
+    expect(useAIChatState.getState().chatOpenIntent).toBeNull();
+  });
+});
+
+describe('generalized conversation target hint (plan C)', () => {
+  beforeEach(() => {
+    useAIChatState.setState({
+      isOpen: false,
+      sessionGeneration: 0,
+      routingHint: undefined,
+      targetHint: undefined,
+      hintThreadId: null,
+      chatOpenIntent: null
+    });
+  });
+
+  it('maps the backward-compatible machine open onto a canonical target', () => {
+    useAIChatState
+      .getState()
+      .openWithHint({ machineId: 7, machineName: 'Fixture pump' });
+    expect(useAIChatState.getState().routingHint).toEqual({
+      machineId: 7,
+      machineName: 'Fixture pump'
+    });
+    // Same canonical identity, interim display label only.
+    expect(useAIChatState.getState().targetHint).toEqual({
+      kind: 'machine',
+      id: 7,
+      label: 'Fixture pump',
+      machineId: 7
+    });
+  });
+
+  it('opens with a board-card or work-order target without a machine scope seed', () => {
+    openGlobalAIChat({
+      kind: 'kanban_card',
+      id: 11,
+      label: 'Replace seal',
+      workOrderId: 5
+    });
+    expect(useAIChatState.getState().targetHint).toEqual({
+      kind: 'kanban_card',
+      id: 11,
+      label: 'Replace seal',
+      workOrderId: 5
+    });
+    // No machine routing hint: no analysis-scope seeding for task targets.
+    expect(useAIChatState.getState().routingHint).toBeUndefined();
+    expect(useAIChatState.getState().chatOpenIntent).toBe('chat');
+
+    openGlobalAIChat({ kind: 'work_order', id: 5, label: 'WO-000005' });
+    expect(useAIChatState.getState().targetHint?.kind).toBe('work_order');
+    expect(useAIChatState.getState().routingHint).toBeUndefined();
+  });
+
+  it('binds and clears the target hint together with the machine hint', () => {
+    openGlobalAIChat({ kind: 'work_order', id: 5, label: 'WO-000005' });
+    useAIChatState.getState().bindHint('thread-1');
+    expect(useAIChatState.getState().hintThreadId).toBe('thread-1');
+    useAIChatState.getState().clearHint();
+    expect(useAIChatState.getState().targetHint).toBeUndefined();
+    expect(useAIChatState.getState().hintThreadId).toBeNull();
+
+    openGlobalAIChat({ kind: 'machine', id: 7, label: 'Pump A' });
+    useAIChatState.getState().close();
+    expect(useAIChatState.getState().targetHint).toBeUndefined();
+    expect(useAIChatState.getState().routingHint).toBeUndefined();
     expect(useAIChatState.getState().chatOpenIntent).toBeNull();
   });
 });

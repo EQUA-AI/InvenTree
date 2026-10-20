@@ -18563,3 +18563,175 @@ msgstr ""
 #: src/views/MobileAppView.tsx:46
 msgid "Open full app (not optimized for phones)"
 msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:74
+msgid "AIMMS can't reach your microphone."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:75
+msgid "Allow microphone access in your browser, then try again."
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:153
+msgid "Applies to new requests. Off hides optional waiting updates only; errors, questions, decisions and answers still speak."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:95
+msgid "Ask an administrator if you think this is wrong."
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:157
+msgid "Brief"
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:100
+msgid "Check your connection and try again."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:110
+msgid "Choose English (en-US) and try again."
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:158
+msgid "Guided"
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:50
+msgid "I heard you before the connection was ready. Nothing was sent. Review the words and confirm once connected, or discard them."
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:156
+msgid "Off"
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:120
+#: src/components/ai/voice/VoiceComposerControl.tsx:135
+msgid "Please try again."
+msgstr ""
+
+#: src/components/ai/voice/VoiceConsentDialog.tsx:208
+msgid "Recheck voice settings"
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:115
+msgid "Refresh the conversation, then start voice again."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:125
+msgid "Refresh the conversation, then try again."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:105
+msgid "Review the disclosure and accept it, then try again."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:134
+msgid "Something went wrong with voice."
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:152
+msgid "Spoken progress"
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:85
+msgid "Start voice again to continue."
+msgstr ""
+
+#: src/components/ai/voice/VoiceConsentDialog.tsx:198
+msgid "That language and voice is no longer available. Choose an available language and voice, then try again."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:109
+msgid "That language isn't supported for voice yet."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:124
+msgid "That voice request was already processed."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:114
+msgid "The conversation context changed while voice was starting."
+msgstr ""
+
+#: src/components/ai/voice/VoiceConsentDialog.tsx:200
+msgid "The voice disclosure on the server has changed. Review the disclosure above, accept it again, then start voice."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:129
+msgid "The voice sample couldn't play."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:84
+msgid "The voice session ended."
+msgstr ""
+
+#: src/components/ai/voice/VoiceConsentDialog.tsx:201
+msgid "The voice session settings on the server don't match this app. Recheck the voice settings before starting."
+msgstr ""
+
+#: src/components/ai/voice/VoiceExperienceControls.tsx:52
+msgid "The words heard before connecting were discarded without being sent. Say them again when you are ready."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:79
+msgid "This browser can't run voice sessions."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:89
+msgid "Too many voice sessions are active right now."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:80
+msgid "Try a current version of Chrome, Edge, Firefox or Safari."
+msgstr ""
+
+#: src/components/ai/VoiceSessionControl.tsx:150
+#: src/components/ai/voice/VoiceComposerControl.tsx:241
+msgid "Try again"
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:99
+msgid "Voice can't reach the speech service right now."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:149
+msgid "Voice can't start right now. Please try again."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:119
+msgid "Voice didn't finish processing."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:158
+msgid "Voice is temporarily unavailable while AI starts or recovers. Please wait, then try again."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:156
+msgid "Voice is turned off for your account. Ask an administrator to enable it."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:154
+msgid "Voice isn't ready yet — voice settings are still loading. Please try again in a moment."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:104
+msgid "Voice needs your consent before it can start."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:130
+msgid "Wait a minute, then try again."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:90
+msgid "Wait a moment, then try again."
+msgstr ""
+
+#: src/components/ai/voice/VoiceComposerControl.tsx:94
+msgid "Your account can't use voice in this conversation."
+msgstr ""
+
+#. placeholder {0}: s.queued
+#: src/components/ai/voice/VoiceExperienceControls.tsx:106
+msgid "{0} request(s) waiting to send. They go in order once the current request finishes."
+msgstr ""
+

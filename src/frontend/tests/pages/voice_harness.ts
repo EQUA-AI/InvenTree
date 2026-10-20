@@ -13,7 +13,7 @@
  * more specific `/sdp`, `/turns`, `/cancel`, `/decision`, `/prompts` ones.
  */
 
-import type { Page, Route } from '@playwright/test';
+import type { Page, Request, Route } from '@playwright/test';
 
 import {
   type ObservedRequest,
@@ -65,7 +65,25 @@ export interface VoiceHarnessOptions {
   onPrompt?: (body: Record<string, unknown>) => unknown;
   /** Body for `GET /api/ai/voice/ice-servers`; a number fulfils with that status. */
   iceServers?: unknown | number;
+  /**
+   * VOICE-H03 delayed-metadata control: awaited inside the observation
+   * recorder BEFORE the request is recorded, simulating artificially slow
+   * request header/metadata fetches. Tests use it to prove the
+   * observation-ready seam stays deterministic (exact payload/count).
+   */
+  slowObservation?: (kind: VoiceObservationKind) => void | Promise<void>;
 }
+
+export type VoiceObservationKind =
+  | 'sessionCreates'
+  | 'sdpOffers'
+  | 'turns'
+  | 'cancels'
+  | 'deletes'
+  | 'decisionReads'
+  | 'decisionActions'
+  | 'prompts'
+  | 'iceRequests';
 
 export interface VoiceObservations {
   sessionCreates: ObservedRequest[];
@@ -79,6 +97,17 @@ export interface VoiceObservations {
   iceRequests: ObservedRequest[];
   /** True once the client issued `DELETE /sessions/{id}`. */
   readonly sessionEnded: boolean;
+  /**
+   * VOICE-H03 deterministic observation-ready seam: resolves only when
+   * `count` REAL requests of `kind` have been fully observed (entry pushed,
+   * metadata attached). No placeholder entries are ever fabricated, so a
+   * request that never happens never resolves and the test fails on the
+   * seam timeout instead of flaking a count assertion. Consumers assert
+   * counts/payloads only after awaiting this.
+   */
+  whenObserved: (kind: VoiceObservationKind, count: number) => Promise<void>;
+  /** Resolves when every in-flight observation is fully recorded. */
+  ready: () => Promise<void>;
 }
 
 export const defaultCapability: VoiceCapabilityPayload = {
@@ -177,7 +206,77 @@ export async function installVoiceMocks(
     iceRequests: [],
     get sessionEnded() {
       return sessionEnded;
+    },
+    whenObserved: (kind, count) =>
+      (observations[kind] as ObservedRequest[]).length >= count
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => {
+            waiters.push({ kind, count, resolve });
+          }),
+    ready: async () => {
+      while (inFlight.size) await Promise.all([...inFlight]);
     }
+  };
+  // VOICE-H03: per-kind readiness waiters and in-flight observation tasks.
+  // The bucket push stays the single source of truth for counts — the seam
+  // only ever waits on REAL recorded requests (never on UI state).
+  const waiters: {
+    kind: VoiceObservationKind;
+    count: number;
+    resolve: () => void;
+  }[] = [];
+  const inFlight = new Set<Promise<unknown>>();
+  const settleWaiters = () => {
+    for (let i = waiters.length - 1; i >= 0; i--) {
+      const waiter = waiters[i];
+      if (
+        (observations[waiter.kind] as ObservedRequest[]).length >= waiter.count
+      ) {
+        waiters.splice(i, 1);
+        waiter.resolve();
+      }
+    }
+  };
+  // RV14: per-kind registration ordinals. Each observation takes the next
+  // ordinal when the REQUEST arrives (before any metadata continuation can
+  // run), so overlapped observations whose metadata completes out of order
+  // still report their OWN record and their OWN stable per-kind index.
+  const nextOrdinal = new Map<VoiceObservationKind, number>();
+  const recordedOrdinals = new Map<VoiceObservationKind, number[]>();
+  const observe = (
+    kind: VoiceObservationKind,
+    request: Request
+  ): Promise<{ observed: ObservedRequest; index: number }> => {
+    const index = nextOrdinal.get(kind) ?? 0;
+    nextOrdinal.set(kind, index + 1);
+    const task = (async () => {
+      if (options.slowObservation) await options.slowObservation(kind);
+      const observed = await observeRequest(request);
+      // Record in registration order: the entry lands at its own ordinal's
+      // position even when metadata continuations complete reordered.
+      const bucket = observations[kind] as ObservedRequest[];
+      const ordinals = recordedOrdinals.get(kind) ?? [];
+      recordedOrdinals.set(kind, ordinals);
+      let position = 0;
+      while (position < ordinals.length && ordinals[position] < index) {
+        position += 1;
+      }
+      ordinals.splice(position, 0, index);
+      bucket.splice(position, 0, observed);
+      settleWaiters();
+      return { observed, index };
+    })();
+    inFlight.add(task);
+    return task.then(
+      (result) => {
+        inFlight.delete(task);
+        return result;
+      },
+      (error) => {
+        inFlight.delete(task);
+        throw error;
+      }
+    );
   };
 
   await page.addInitScript(
@@ -369,7 +468,7 @@ export async function installVoiceMocks(
   }
 
   await page.route('**/api/ai/voice/ice-servers', async (route: Route) => {
-    observations.iceRequests.push(await observeRequest(route.request()));
+    await observe('iceRequests', route.request());
     if (typeof options.iceServers === 'number') {
       await route.fulfill({
         status: options.iceServers,
@@ -384,7 +483,7 @@ export async function installVoiceMocks(
   });
 
   await page.route('**/api/ai/voice/sessions', async (route: Route) => {
-    observations.sessionCreates.push(await observeRequest(route.request()));
+    await observe('sessionCreates', route.request());
     await route.fulfill({
       status: 201,
       json: sessionPayload({ id: sessionId, thread_id: threadId })
@@ -395,7 +494,7 @@ export async function installVoiceMocks(
     const request = route.request();
     if (request.method() === 'DELETE') {
       sessionEnded = true;
-      observations.deletes.push(await observeRequest(request));
+      await observe('deletes', request);
       await route.fulfill({
         status: 200,
         json: { id: sessionId, state: 'ended' }
@@ -409,7 +508,7 @@ export async function installVoiceMocks(
   });
 
   await page.route('**/api/ai/voice/sessions/*/sdp', async (route: Route) => {
-    observations.sdpOffers.push(await observeRequest(route.request()));
+    await observe('sdpOffers', route.request());
     await route.fulfill({
       status: 200,
       json: { sdp_answer: 'v=0\r\nmock-answer' }
@@ -422,7 +521,7 @@ export async function installVoiceMocks(
   await page.route(
     '**/api/ai/voice/sessions/*/cancel',
     async (route: Route) => {
-      observations.cancels.push(await observeRequest(route.request()));
+      await observe('cancels', route.request());
       await route.fulfill({
         status: 200,
         json: { id: sessionId, canceled_utterances: 0 }
@@ -431,9 +530,7 @@ export async function installVoiceMocks(
   );
 
   await page.route('**/api/ai/voice/sessions/*/turns', async (route: Route) => {
-    const observed = await observeRequest(route.request());
-    observations.turns.push(observed);
-    const index = observations.turns.length - 1;
+    const { observed, index } = await observe('turns', route.request());
     const body = options.onTurn
       ? options.onTurn(observed.body ?? {}, index)
       : turnPayload({ session_id: sessionId, thread_id: threadId });
@@ -443,8 +540,7 @@ export async function installVoiceMocks(
   await page.route(
     '**/api/ai/voice/sessions/*/prompts',
     async (route: Route) => {
-      const observed = await observeRequest(route.request());
-      observations.prompts.push(observed);
+      const { observed } = await observe('prompts', route.request());
       await route.fulfill({
         status: 200,
         json: options.onPrompt
@@ -462,7 +558,7 @@ export async function installVoiceMocks(
   await page.route(
     '**/api/ai/voice/sessions/*/decision',
     async (route: Route) => {
-      observations.decisionReads.push(await observeRequest(route.request()));
+      await observe('decisionReads', route.request());
       await route.fulfill({
         status: 200,
         json: options.onDecisionRead
@@ -475,8 +571,7 @@ export async function installVoiceMocks(
   await page.route(
     '**/api/ai/voice/sessions/*/decision/*',
     async (route: Route) => {
-      const observed = await observeRequest(route.request());
-      observations.decisionActions.push(observed);
+      const { observed } = await observe('decisionActions', route.request());
       const action = new URL(observed.url).pathname.split('/').pop() ?? '';
       await route.fulfill({
         status: 200,

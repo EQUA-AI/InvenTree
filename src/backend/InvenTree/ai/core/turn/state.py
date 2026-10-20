@@ -55,6 +55,10 @@ class TurnRun:
     #: reply set a pending write aside). None when nothing was set aside.
     pre_speech_status: str | None = None
     question_resolution: QuestionResolution | None = None
+    #: A focus turn (explicit switch / clarification) captured this turn's
+    #: canonical. When set it supersedes routing, exactly like
+    #: ``write_canonical``. None when the turn routes normally.
+    focus_canonical: dict[str, Any] | None = None
     # Routing stage outputs.
     routing_content: str = ""
     diagnostic_context: Any = None
@@ -65,6 +69,19 @@ class TurnRun:
     # remaining fields are populated by the analysis stages as they land
     # (intent S3, plan/retrieval S5+, validation S10, safety S4).
     analysis_scope: dict[str, Any] | None = None
+    #: The immutable conversation-focus snapshot ``begin_turn`` bound under
+    #: the SAME row lock (``{"focus": <stored projection>, "version": int}``).
+    #: None on threads without a focus. On replay it is the ORIGINAL stored
+    #: snapshot — a later focus switch never rebinds a recorded utterance.
+    focus_snapshot: dict[str, Any] | None = None
+    #: True when THIS turn changed the durable focus (spoken switch or a
+    #: confirmed focus-selection answer). The turn's echo above is then the
+    #: PRE-change recorded binding — the client must refresh
+    #: ``GET /threads/{id}/focus`` for current state.
+    focus_changed: bool = False
+    #: Set when the recorded focus target failed its per-turn
+    #: re-authorization: its label/ids must not guide routing or reads.
+    focus_unavailable: bool = False
     task_intent: Any = None
     query_plan: Any = None
     retrieval_snapshot: Any = None

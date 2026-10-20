@@ -1,4 +1,5 @@
 import { expect, test } from './baseFixtures';
+import { adminuser } from './defaults';
 import { navigate } from './helpers';
 import { doCachedLogin } from './login';
 
@@ -8,10 +9,7 @@ import { doCachedLogin } from './login';
  * scoped-chat rail was deleted.
  */
 test('AI Chat - Ask about this machine', async ({ browser }) => {
-  const page = await doCachedLogin(browser, {
-    username: 'admin',
-    password: 'inventree'
-  });
+  const page = await doCachedLogin(browser, { user: adminuser });
 
   await navigate(page, 'machines/machine/1/');
   await page.getByRole('button', { name: 'Ask about this machine' }).click();
@@ -26,10 +24,7 @@ test('AI Chat - Ask about this machine', async ({ browser }) => {
  * S20 A8: the history tab searches the durable conversation ledger.
  */
 test('AI Chat - History search', async ({ browser }) => {
-  const page = await doCachedLogin(browser, {
-    username: 'admin',
-    password: 'inventree'
-  });
+  const page = await doCachedLogin(browser, { user: adminuser });
 
   await page.getByLabel('open-ai-chat').click();
   await page.getByRole('tab', { name: 'History' }).click();
@@ -47,10 +42,7 @@ test('AI Chat - History search', async ({ browser }) => {
  * not resolve a machine root) the spec verifies nothing phantom rendered.
  */
 test('AI Chat - Entity chips navigate', async ({ browser }) => {
-  const page = await doCachedLogin(browser, {
-    username: 'admin',
-    password: 'inventree'
-  });
+  const page = await doCachedLogin(browser, { user: adminuser });
 
   await navigate(page, 'machines/machine/1/');
   await page.getByRole('button', { name: 'Ask about this machine' }).click();
@@ -91,10 +83,7 @@ test('AI Chat - Entity chips navigate', async ({ browser }) => {
  * no phantom transcript content).
  */
 test('AI Chat - Question card round trip', async ({ browser }) => {
-  const page = await doCachedLogin(browser, {
-    username: 'admin',
-    password: 'inventree'
-  });
+  const page = await doCachedLogin(browser, { user: adminuser });
 
   await page.getByLabel('open-ai-chat').click();
   const composer = page.getByPlaceholder(/Type a message|Answer the question/);
@@ -131,10 +120,7 @@ test('AI Chat - Question card round trip', async ({ browser }) => {
  * is mocked — the barcode resolution rail has its own backend tests.
  */
 test('AI Chat - Machine scan opens drawer with hint', async ({ browser }) => {
-  const page = await doCachedLogin(browser, {
-    username: 'admin',
-    password: 'inventree'
-  });
+  const page = await doCachedLogin(browser, { user: adminuser });
 
   await navigate(page, 'home');
   await page.route(/\/api\/barcode\//, (route) =>

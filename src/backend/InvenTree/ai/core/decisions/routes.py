@@ -18,61 +18,72 @@ class DecisionActionRequest(VoiceDecisionContext):
 
 async def speak_reply(session, reply, coordinator, *, include_spoken=False):
     """Persist-before-speak for button/reconnect read-back requests."""
-    from ai.core.voice import routes
-    from ai.core.voice.speech import build_exact_tts_payload
-    from voice.models import VoiceUtteranceType
+    from ai.core.voice import route_speech
+    from voice.models import VoiceUtterance, VoiceUtteranceType
     from voice.services import realtime
 
+    # Caller admission (BEFORE any await), never re-captured after a cancel:
+    # output persisted before a completed cancel must never dispatch after it.
+    speech_fence = route_speech.fence_token(str(session.id))
     utterance = await sync_to_async(realtime.persist_utterance, thread_sensitive=True)(
         session=session, utterance_type=VoiceUtteranceType.PROMPT, spoken_summary=reply.spoken
     )
     decision = reply.decision
-    channel = (
-        routes._provider_channel_factory(session) if routes._provider_channel_factory else None
-    )
-    send = getattr(channel, "send_control", None)
-    if send is not None:
-        if decision and decision.state == "presented" and reply.event in ("presented", "review"):
+    # ONE shared dispatcher owns this readback send (prompt dispatch class:
+    # never a useful-answer onset, never an optional cue).
+    dispatcher = route_speech.session_dispatcher(session)
+    playback_state = None
+    playback_audit_state = "unavailable"
+    if dispatcher is not None and not route_speech.fenced(str(session.id), speech_fence):
+        if (
+            decision
+            and decision.state == "presented"
+            and reply.event in ("presented", "review")
+            and not route_speech.fenced(str(session.id), speech_fence)
+        ):
+            # Decision bind BEFORE dispatch; the sequence and hash match
+            # checks stay exactly as they were. A stale bind (cancel completed
+            # across the persistence await) is never performed.
             decision = await sync_to_async(coordinator.bind_playback, thread_sensitive=True)(
                 decision,
                 utterance_id=str(utterance.pk),
                 spoken_text=utterance.spoken_summary,
                 spoken_hash=utterance.spoken_summary_hash,
             )
-        try:
-            from ai.core.config import get_settings
-
-            if get_settings().feature_voice_foreground_session:
-                await send({"type": "response.cancel"})
-            speech = build_exact_tts_payload(
-                persisted_text=utterance.spoken_summary,
-                persisted_hash=utterance.spoken_summary_hash,
-                utterance_id=str(utterance.id),
-            )
-            if decision and decision.utterance_id == str(utterance.pk):
-                speech["response"]["metadata"] = {
-                    "aimms_utterance_id": decision.utterance_id,
-                    "aimms_spoken_hash": decision.spoken_summary_hash,
-                }
-            await send(speech)
-            utterance = await sync_to_async(realtime.mark_playback, thread_sensitive=True)(
-                utterance=utterance, state="requested"
-            )
-        except Exception:
-            utterance = await sync_to_async(realtime.mark_playback, thread_sensitive=True)(
-                utterance=utterance, state="failed"
-            )
-            # Delivery is not outcome. Keep the preview visible and say pending.
-            if decision and decision.state == "presented":
-                decision = await sync_to_async(coordinator.advance, thread_sensitive=True)(
-                    decision, delivery_state="failed"
+        if not route_speech.fenced(str(session.id), speech_fence):
+            # Re-checked immediately before dispatch: a cancel that completed
+            # across the bind await kills this send.
+            try:
+                # The dispatcher's bounded replacement does what the old bare
+                # response.cancel did -- reconciled, never a competing send.
+                record = await route_speech.speak_persisted(
+                    dispatcher, kind="prompt", utterance=utterance
                 )
+            except Exception:
+                playback_state = "failed"
+            else:
+                playback_state = route_speech.dispatch_state_for(record)
+                playback_audit_state = route_speech.dispatch_audit_state_for(record)
+        if playback_state == "failed" and decision and decision.state == "presented":
+            # Delivery is not outcome. Keep the preview visible and say pending.
+            decision = await sync_to_async(coordinator.advance, thread_sensitive=True)(
+                decision, delivery_state="failed"
+            )
     if include_spoken:
+        if playback_state is None:
+            # No dispatch record produced a state (fenced across a persistence
+            # await, or no dispatcher): report the row's CURRENT authoritative
+            # state -- never this caller's stale in-memory instance.
+            playback_state = await sync_to_async(
+                lambda: VoiceUtterance.objects.get(pk=utterance.pk).playback_state,
+                thread_sensitive=True,
+            )()
         return decision, {
             "utterance_id": str(utterance.pk),
             "spoken_summary": utterance.spoken_summary,
             "spoken_summary_hash": utterance.spoken_summary_hash,
-            "playback_state": utterance.playback_state,
+            "playback_state": playback_state,
+            "playback_audit_state": playback_audit_state,
         }
     return decision
 

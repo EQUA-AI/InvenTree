@@ -38,6 +38,9 @@ CUSTOM_CHANNELS = (
     "aimms.analysisProgress",
     # M1 PR G (§9.11 / GR-16): the bounded, content-free Context used record.
     "aimms.contextUsed",
+    # Conversation-focus echo: the turn's RECORDED binding + version and the
+    # refresh flag (see ``ai.core.turn_service.FOCUS_ECHO_CHANNEL``).
+    "aimms.threadFocus",
 )
 
 #: Classic base-envelope keys that are NOT part of a record's payload.

@@ -41,7 +41,6 @@ from ai.core.voice.transcription import (  # noqa: E402
     normalize_final_transcript,
 )
 from ai.core.voice.wire import VoiceTurnResponse  # noqa: E402
-from django.core.management import call_command  # noqa: E402
 
 from .test_realtime_session_api import (  # noqa: E402
     _expect_http,
@@ -55,7 +54,12 @@ from .test_realtime_session_api import (  # noqa: E402
 
 @pytest.fixture(scope="module", autouse=True)
 def _database():
-    call_command("migrate", verbosity=0, interactive=False)
+    # Not call_command("migrate"): the island migration graph is
+    # inconsistent (held H07) -- real ORM tables via the established
+    # test-only schema bootstrap instead.
+    from ai.core.tests.focus_test_db import ensure_island_tables
+
+    ensure_island_tables()
     yield
 
 
@@ -348,6 +352,9 @@ def test_voice_turn_payload_never_leaks_evidence_keys():
         _EvidenceLadenService(),
     )
     assert set(result) == {
+        "focus",
+        "focus_version",
+        "focus_refresh_required",
         "presentation",
         "session_id",
         "thread_id",

@@ -11,6 +11,11 @@ import {
   type DecisionSnapshot,
   decisionContext
 } from '../../../states/decisionReducer';
+import type {
+  ContextPreflight,
+  ContextPreflightOutcome
+} from '../../aichat/contextPreflight';
+import { VOICE_FOCUS_CHANGED } from '../../aichat/conversationFocus';
 import { DecisionPlayback } from '../decisionPlayback';
 import {
   VOICE_CONFIRM_RE,
@@ -26,6 +31,7 @@ import { selectedCandidateDiagnostics } from './networkDiagnostics';
 import { TurnQueue } from './turnQueue';
 import {
   type VoiceCapability,
+  type VoiceNotice,
   type VoicePreferences,
   type VoiceSnapshot,
   legacyClientState
@@ -39,6 +45,8 @@ const FILLER = /^(?:uh|um|hmm+|mm+|mhm|huh|erm|ah|oh)[.!?,\s]*$/i;
 export class VoiceSessionController {
   private host = '';
   private threadId: string | undefined;
+  /** Thread requested when the live session was created (null = unrequested). */
+  private sessionRequestThread: string | null = null;
   private peer: RTCPeerConnection | null = null;
   private channel: RTCDataChannel | null = null;
   private stream: MediaStream | null = null;
@@ -66,6 +74,41 @@ export class VoiceSessionController {
   private suspension: Promise<unknown> = Promise.resolve();
   private abort = new AbortController();
   private droppedPending = false;
+  /**
+   * VOICE-H08: a warm-up final held for VISIBLE explicit review while the
+   * transport was not yet connected (null = none). It is never executed or
+   * replayed automatically on connection; see the confirm-time fences.
+   */
+  private warmupHold: VoiceFinalTranscript | null = null;
+  /** Account/thread/focus/decision/session captured when the warm-up was held. */
+  private warmupFence: {
+    sessionId: string | null;
+    threadId: string | null;
+    focusVersion: number | null;
+    operationId: string | null;
+    utteranceId: string | null;
+  } | null = null;
+  /**
+   * Plan C: focus stamps captured at ENQUEUE (itemId → `focus_version` the
+   * user saw when the words were captured; null = never observed). Queued
+   * words keep their capture stamp and are never rebound to a later focus.
+   */
+  private focusStamps = new Map<string, number | null>();
+  /**
+   * Ephemeral per-transcript enqueue clocks (the same browser monotonic
+   * clock as the timing report) for the visible client queue wait
+   * (`ms_queue`). Bounded by the queue itself and cleared on every
+   * queue/focus/thread/end/hidden boundary so no cross-generation wait can
+   * ever be reported or rebound. Never touches transcripts, idempotency,
+   * capture-time focus stamps or approval state.
+   */
+  private enqueueClocks = new Map<string, number>();
+  /**
+   * Plan C: invalidates result callbacks/timing across a confirmed focus
+   * change WITHOUT touching the session generation (the live data-channel
+   * handlers are fenced by the session generation and must keep working).
+   */
+  private resultEpoch = 0;
   private idleEnding = false;
   private outputEnergy = 0;
   private timingRtpSource: string | null = null;
@@ -110,12 +153,31 @@ export class VoiceSessionController {
   readonly listeners = new Set<{
     onTurnResult?: (turn: VoiceTurnResponse) => void;
     onFinalTranscript?: (value: VoiceFinalTranscript) => void;
+    /**
+     * Plan C: a turn/session refused with a stale focus stamp
+     * (`VOICE_FOCUS_CHANGED`). The session stays alive; the UI re-reads the
+     * authoritative thread focus. Never a retry signal.
+     */
+    onFocusStale?: () => void;
   }>();
   constructor(
     private store: StoreApi<VoiceSnapshot>,
     private decisions: Pick<StoreApi<VoiceDecisionStore>, 'getState'>,
     private preferences: () => VoicePreferences,
-    private savePreferences: (values: Partial<VoicePreferences>) => void
+    private savePreferences: (values: Partial<VoicePreferences>) => void,
+    /**
+     * Shared machine-context preflight (plan 3.1): awaited before any entry
+     * path mints a session (microphone, consent completion, keyboard start
+     * and restart all funnel through `start`). A failed or stale outcome
+     * blocks the start; its thread id is authoritative for session creation.
+     */
+    private contextPreflight?: ContextPreflight,
+    /**
+     * Plan C: the CURRENT thread's server-confirmed `focus_version` ("the
+     * version the user saw"), captured at enqueue and stamped on every turn.
+     * Null = never observed: the stamp is omitted entirely.
+     */
+    private focusStamp?: () => number | null
   ) {}
   get snapshot() {
     return this.store.getState();
@@ -127,7 +189,27 @@ export class VoiceSessionController {
   configure(host: string, threadId?: string) {
     if (this.host && this.host !== host) void this.end();
     this.host = host;
-    if (!this.snapshot.session) this.threadId = threadId;
+    const active = this.snapshot.session;
+    if (!active) {
+      this.threadId = threadId;
+      return;
+    }
+    if (
+      threadId === undefined ||
+      threadId === this.threadId ||
+      threadId === this.sessionRequestThread
+    ) {
+      // No visible thread, the session's server-assigned thread arriving
+      // back, or the thread the session was created for (the initial
+      // undefined→server-created adoption window): never an actual switch.
+      return;
+    }
+    // Actual thread switch during a live session: end the old session before
+    // any rebind — disable submits, invalidate generation/output, clear the
+    // queue, abort stale requests and DELETE the server session. Nothing is
+    // replayed into the new thread (plan 3.1.4).
+    this.threadId = threadId;
+    void this.end();
   }
   setCapability(capability: VoiceCapability | null) {
     if (!capability?.validation_metrics) {
@@ -204,6 +286,7 @@ export class VoiceSessionController {
     if (this.snapshot.transport !== 'connected') return;
     this.update({ muted: !this.snapshot.muted });
     this.gateMicrophone();
+    this.discardWarmup('warmup_discarded');
   };
   private installLifecycle() {
     this.lifecycleCleanup?.();
@@ -274,6 +357,9 @@ export class VoiceSessionController {
   }
   private hide() {
     this.timingGeneration++;
+    // Hidden boundary: a missing onset becomes hidden-page coverage, never a
+    // zero measurement.
+    this.timing.finish('hidden_page');
     this.timing.reset();
     if (this.starting && this.snapshot.transport !== 'connected') {
       void this.end('ended_away');
@@ -281,6 +367,7 @@ export class VoiceSessionController {
     }
     this.bounds.hide();
     this.held = false;
+    this.discardWarmup();
     this.update({ hidden: true, notice: 'hidden' });
     this.gateMicrophone();
     this.stopLocal();
@@ -289,6 +376,7 @@ export class VoiceSessionController {
     this.update({ queued: 0 });
     // Set-aside does not require a possibly stale client decision snapshot.
     this.suspension = this.control('suspend').catch(() => null);
+    this.enqueueClocks.clear();
   }
   private async show() {
     if (!this.snapshot.session) return;
@@ -473,7 +561,8 @@ export class VoiceSessionController {
   private stopLocal() {
     this.outputEpoch++;
     this.playback.stop();
-    this.timing.stop();
+    // Output boundary: honest coverage for a missing onset.
+    this.timing.finish(this.snapshot.hidden ? 'hidden_page' : undefined);
     this.audio?.pause();
     window.clearTimeout(this.ttsTimer);
     this.update({ playback: 'paused' });
@@ -643,7 +732,18 @@ export class VoiceSessionController {
       this.seen.has(transcript.itemId)
     )
       return;
-    if (!this.queue.push(transcript)) return;
+    // Plan C: the focus stamp is captured HERE (enqueue), never re-read at
+    // submission — queued words can never be reinterpreted against a focus
+    // selection the user had not seen when they spoke.
+    this.focusStamps.set(transcript.itemId, this.focusStamp?.() ?? null);
+    // Queue wait clock: enqueue -> actual submit, same browser monotonic
+    // clock as the timing report. Ephemeral, bounded by the queue.
+    this.enqueueClocks.set(transcript.itemId, this.timing.mark());
+    if (!this.queue.push(transcript)) {
+      this.focusStamps.delete(transcript.itemId);
+      this.enqueueClocks.delete(transcript.itemId);
+      return;
+    }
     this.seen.add(transcript.itemId);
     this.update({ queued: this.queue.length });
     void this.drainQueue();
@@ -680,7 +780,12 @@ export class VoiceSessionController {
     const active = this.snapshot.session;
     if (!active) return;
     const generation = this.generation;
+    const resultEpoch = this.resultEpoch;
     const outputEpoch = this.outputEpoch;
+    const focusStamp = this.focusStamps.get(transcript.itemId) ?? null;
+    const enqueuedAt = this.enqueueClocks.get(transcript.itemId);
+    this.enqueueClocks.delete(transcript.itemId);
+    const progressMode = this.preferences().voiceProgressMode;
     const lastSubmitted = {
       itemId: transcript.itemId,
       sessionId: active.id,
@@ -690,7 +795,9 @@ export class VoiceSessionController {
     this.update({ lastSubmitted });
     this.bounds.touch();
     const epoch = this.playback.beginTurn();
-    const clientTiming = this.timing.begin(transcript.itemId);
+    // Close the previous turn's timing window before measuring this submit.
+    this.timing.finish();
+    const clientTiming = this.timing.begin(transcript.itemId, enqueuedAt);
     // A newly requested turn may speak a fixed status before its HTTP result.
     void this.playAudio();
     try {
@@ -700,9 +807,20 @@ export class VoiceSessionController {
         confidence: transcript.confidence,
         language: transcript.language,
         decision_context: transcript.decisionContext ?? null,
-        ...(clientTiming ? { timing: clientTiming } : {})
+        ...(clientTiming ? { timing: clientTiming } : {}),
+        // Plan C: the capture-time focus stamp (omitted when never observed —
+        // byte-compatible with historical requests).
+        ...(focusStamp != null ? { expected_focus_version: focusStamp } : {}),
+        // Reserved progress-mode bridge for the local preference (server
+        // default is `brief`): sent only when the preference is set.
+        ...(progressMode ? { progress_mode: progressMode } : {})
       });
-      if (!turn || generation !== this.generation) return;
+      if (
+        !turn ||
+        generation !== this.generation ||
+        resultEpoch !== this.resultEpoch
+      )
+        return;
       this.playback.bindTurn(
         epoch,
         turn.spoken?.utterance_id === turn.pending_decision?.utterance_id
@@ -745,7 +863,33 @@ export class VoiceSessionController {
         if (this.snapshot.hidden) await this.control('suspend').catch(() => {});
       }
     } catch (error) {
-      if (generation !== this.generation) return;
+      if (generation !== this.generation || resultEpoch !== this.resultEpoch)
+        return;
+      if (
+        error instanceof VoiceHttpError &&
+        (error.code as string) === VOICE_FOCUS_CHANGED
+      ) {
+        // The utterance's capture-time focus stamp is stale: admission
+        // refused the turn (NOT recorded). Focus is not scope — the session
+        // and transport STAY alive. The refused words are HELD for user
+        // review (never rebound to the new focus, never automatically
+        // retried); queued pre-change transcripts are discarded; the UI
+        // re-reads the authoritative thread focus.
+        this.focusStamps.delete(transcript.itemId);
+        this.seen.delete(transcript.itemId);
+        this.queue.clear();
+        this.focusStamps.clear();
+        this.enqueueClocks.clear();
+        this.update({
+          queued: 0,
+          partial: null,
+          pendingConfirm: transcript,
+          holdPrompt: null,
+          lastSubmitted: { ...lastSubmitted, status: 'unconfirmed' }
+        });
+        this.listeners.forEach((listener) => listener.onFocusStale?.());
+        return;
+      }
       this.update({
         lastSubmitted: { ...lastSubmitted, status: 'unconfirmed' }
       });
@@ -809,11 +953,74 @@ export class VoiceSessionController {
   confirmPending = async () => {
     const held = this.snapshot.pendingConfirm;
     if (!held || this.snapshot.hidden) return;
+    if (held === this.warmupHold) {
+      // A warm-up confirm is an approved action only once connected, and
+      // only while every fence captured when the words were held still
+      // holds. A pre-connect confirm is NOT approval: the hold stays
+      // visible. When it does send, it sends exactly once (the hold is
+      // cleared before submission and item idempotency dedupes).
+      if (this.snapshot.transport !== 'connected') return;
+      const fence = this.warmupFence;
+      const decision = this.decisions.getState().decision;
+      const valid =
+        !!this.snapshot.session &&
+        this.snapshot.session.id === fence?.sessionId &&
+        (this.threadId ?? null) === fence?.threadId &&
+        (this.focusStamp?.() ?? null) === fence?.focusVersion &&
+        (decision?.operation_id ?? null) === fence?.operationId &&
+        (decision?.utterance_id ?? null) === fence?.utteranceId;
+      this.warmupHold = null;
+      this.warmupFence = null;
+      if (!valid) {
+        this.update({
+          pendingConfirm: null,
+          holdPrompt: null,
+          notice: 'warmup_discarded'
+        });
+        return;
+      }
+      this.update({ pendingConfirm: null, holdPrompt: null });
+      await this.submitTranscript(held);
+      return;
+    }
     this.update({ pendingConfirm: null, holdPrompt: null });
     await this.submitTranscript(held);
   };
   discardPending = () => {
+    this.warmupHold = null;
+    this.warmupFence = null;
     this.update({ pendingConfirm: null, holdPrompt: null });
+  };
+  /**
+   * Plan C: a CONFIRMED conversation-focus change while a session is live
+   * (picker Change/Clear on the Talking about chip). Focus is not analysis
+   * scope — the session and transport stay alive (no restart; the
+   * `VOICE_SCOPE_CHANGED` restart boundary is untouched). Old-context work
+   * is invalidated instead: output stops (pending filler/server playback
+   * cancelled), queued pre-change transcripts are discarded (never silently
+   * rebound), and in-flight turn results are fenced out of the UI (they stay
+   * in thread history; nothing is replayed). Capture resumes immediately
+   * and stamps the new confirmed version.
+   */
+  focusChanged = () => {
+    this.discardWarmup('warmup_discarded');
+    this.queue.clear();
+    this.focusStamps.clear();
+    this.enqueueClocks.clear();
+    this.resultEpoch += 1;
+    this.update({
+      queued: 0,
+      partial: null,
+      lastSubmitted:
+        this.snapshot.lastSubmitted?.status === 'pending'
+          ? { ...this.snapshot.lastSubmitted, status: 'unconfirmed' }
+          : this.snapshot.lastSubmitted
+    });
+    // Timing generations are invalidated with the result fence (plan E
+    // keeps the timing modules themselves); stale timing may never be
+    // attributed to post-change capture.
+    this.refreshTiming();
+    if (this.snapshot.session) void this.cancelOutput(true);
   };
   handleEvent = (raw: string) => {
     let event: Record<string, unknown>;
@@ -869,15 +1076,17 @@ export class VoiceSessionController {
     }
     if (!/[\p{L}\p{N}]/u.test(text) || FILLER.test(text)) return;
     // Finals can arrive after PTT release; track gating prevents new capture.
-    if (this.snapshot.muted || this.snapshot.transport !== 'connected') return;
+    if (this.snapshot.muted) return;
+    const connected = this.snapshot.transport === 'connected';
     this.bounds.touch();
     if (this.cue('heard'))
       this.timing.acknowledged(String(event.item_id ?? ''));
     if (/^(?:what can i say|help|what are you waiting for)$/.test(command)) {
-      void this.help();
+      if (connected) void this.help();
       return;
     }
     if (command === 'turn sounds off') {
+      if (!connected) return;
       this.savePreferences({ voiceEarcons: false });
       this.update({ notice: 'sounds_off' });
       void this.prompt('status', 'sounds_off');
@@ -899,7 +1108,7 @@ export class VoiceSessionController {
         'short version': 'short'
       };
       if (commands[command]) {
-        void this.present(commands[command]);
+        if (connected) void this.present(commands[command]);
         return;
       }
     }
@@ -912,6 +1121,14 @@ export class VoiceSessionController {
       decisionContext: decisionContext(this.decisions.getState().decision)
     };
     if (!value.itemId) return;
+    // VOICE-H08: a warm-up final is preserved for visible explicit
+    // review/confirmation — never auto-executed or replayed on connection,
+    // with no prompt, provider dispatch or business submit while
+    // disconnected.
+    if (!connected) {
+      this.holdWarmup(value, command);
+      return;
+    }
     const held = this.snapshot.pendingConfirm;
     if (held) {
       if (VOICE_CONFIRM_RE.test(command)) {
@@ -946,12 +1163,62 @@ export class VoiceSessionController {
     void this.submitTranscript(value);
   };
   private hold(value: VoiceFinalTranscript) {
+    // A connected revision supersedes any warm-up hold as fresh connected
+    // capture; the warm-up fences no longer apply to it.
+    this.warmupHold = null;
+    this.warmupFence = null;
     this.update({
       pendingConfirm: value,
       revisions: [...this.snapshot.revisions, value].slice(-20)
     });
     this.listeners.forEach((listener) => listener.onFinalTranscript?.(value));
     void this.requestHoldPrompt(value);
+  }
+  /**
+   * VOICE-H08: preserve a completed warm-up final for visible explicit
+   * review/confirmation while the transport is not connected. No review
+   * prompt (or any other request) is sent before connection, and bare
+   * pre-connect confirm/discard speech is never an approved action.
+   */
+  private holdWarmup(value: VoiceFinalTranscript, command: string) {
+    if (VOICE_CONFIRM_RE.test(command) || VOICE_DISCARD_RE.test(command))
+      return;
+    const held = this.snapshot.pendingConfirm;
+    const revision = held
+      ? {
+          ...value,
+          revision: (held.revision ?? 1) + 1,
+          supersedes: held.itemId
+        }
+      : { ...value, revision: 1 };
+    const decision = this.decisions.getState().decision;
+    this.warmupHold = revision;
+    this.warmupFence = {
+      sessionId: this.snapshot.session?.id ?? null,
+      threadId: this.threadId ?? null,
+      focusVersion: this.focusStamp?.() ?? null,
+      operationId: decision?.operation_id ?? null,
+      utteranceId: decision?.utterance_id ?? null
+    };
+    this.update({
+      pendingConfirm: revision,
+      revisions: [...this.snapshot.revisions, revision].slice(-20),
+      holdPrompt: null,
+      notice: 'warmup_held'
+    });
+    this.listeners.forEach((listener) =>
+      listener.onFinalTranscript?.(revision)
+    );
+  }
+  /** Mute/hidden/end/logout/focus boundaries discard a held warm-up safely. */
+  private discardWarmup(notice: VoiceNotice = null) {
+    const held = this.warmupHold;
+    this.warmupHold = null;
+    this.warmupFence = null;
+    if (!held) return;
+    if (this.snapshot.pendingConfirm === held)
+      this.update({ pendingConfirm: null, holdPrompt: null, notice });
+    else if (notice) this.update({ notice });
   }
   private async reportPlayback() {
     if (this.reporting || this.snapshot.hidden) return;
@@ -999,6 +1266,35 @@ export class VoiceSessionController {
     this.idleEnding = false;
     this.outputEnergy = 0;
     this.timingRtpSource = null;
+    const requestedThread = this.threadId ?? null;
+    const preflightGeneration = this.generation;
+    let preflightFocusVersion: number | null | undefined;
+    if (this.contextPreflight) {
+      let outcome: ContextPreflightOutcome | null = null;
+      try {
+        outcome = await this.contextPreflight({
+          threadId: requestedThread,
+          entry: 'voice'
+        });
+      } catch {
+        outcome = null;
+      }
+      if (
+        !outcome ||
+        !outcome.ok ||
+        preflightGeneration !== this.generation ||
+        (this.threadId ?? null) !== requestedThread
+      ) {
+        // Failed or stale context: fail closed — no session is minted for an
+        // unconfirmed machine target, and a start admitted against the old
+        // thread is dropped after a switch (plan 3.1).
+        if (preflightGeneration === this.generation) this.starting = false;
+        return;
+      }
+      // The preflight's thread id is authoritative for session creation.
+      if (outcome.threadId != null) this.threadId = outcome.threadId;
+      preflightFocusVersion = outcome.focusVersion;
+    }
     const generation = ++this.generation;
     this.abort = new AbortController();
     this.ears.unlock();
@@ -1022,6 +1318,8 @@ export class VoiceSessionController {
       Math.max(1, Math.min(cap.max_queued_turns, 10)),
       () => this.dropped()
     );
+    this.warmupHold = null;
+    this.warmupFence = null;
     this.bounds = new ForegroundBounds(cap.idle_timeout_s * 1000);
     this.installLifecycle();
     try {
@@ -1030,6 +1328,14 @@ export class VoiceSessionController {
         !navigator.mediaDevices?.getUserMedia
       )
         throw new VoiceHttpError('BROWSER_UNSUPPORTED', 0);
+      this.sessionRequestThread = this.threadId ?? null;
+      // Plan C: an optional compatible focus stamp (omitted when never
+      // observed). A stale stamp refuses the session BEFORE it begins —
+      // the focus is re-confirmed through the owner focus PUT first.
+      const createFocusStamp =
+        preflightFocusVersion !== undefined
+          ? preflightFocusVersion
+          : (this.focusStamp?.() ?? null);
       const created = await this.request<VoiceSessionPayload>(
         'sessions',
         'POST',
@@ -1037,10 +1343,19 @@ export class VoiceSessionController {
           thread_id: this.threadId ?? null,
           locale: p.voiceLocale,
           voice: p.voiceOutputVoice,
-          consent_version: p.voiceConsentVersion
+          consent_version: p.voiceConsentVersion,
+          ...(createFocusStamp != null
+            ? { expected_focus_version: createFocusStamp }
+            : {})
         }
       );
       if (generation !== this.generation) {
+        endOnPageHide(this.host, created.id);
+        return;
+      }
+      if ((this.threadId ?? null) !== this.sessionRequestThread) {
+        // The visible thread changed while this session was being created.
+        // A stale start is deleted server-side and never adopted (plan 3.1).
         endOnPageHide(this.host, created.id);
         return;
       }
@@ -1197,6 +1512,12 @@ export class VoiceSessionController {
           : error instanceof DOMException && error.name === 'NotAllowedError'
             ? 'MICROPHONE_DENIED'
             : 'VOICE_SIGNALING_FAILED';
+      if ((code as string) === VOICE_FOCUS_CHANGED) {
+        // The session was refused BEFORE it began: no session exists and no
+        // automatic retry is attempted. The UI re-reads the authoritative
+        // thread focus and the user re-enters after confirming it.
+        this.listeners.forEach((listener) => listener.onFocusStale?.());
+      }
       const retry =
         reconnecting &&
         this.reconnectAttempts < cap.reconnect.max_attempts &&
@@ -1222,6 +1543,8 @@ export class VoiceSessionController {
   };
   private connectionLost() {
     if (!this.snapshot.session) return;
+    // A drop mutes: the mute boundary discards a held warm-up safely.
+    this.discardWarmup();
     this.update({
       transport: 'reconnecting',
       muted: true,
@@ -1238,6 +1561,7 @@ export class VoiceSessionController {
     this.queue.clear();
     this.update({ queued: 0 });
     this.suspension = this.control('suspend').catch(() => null);
+    this.enqueueClocks.clear();
     this.scheduleReconnect();
   }
   private scheduleReconnect() {
@@ -1327,6 +1651,11 @@ export class VoiceSessionController {
     this.lifecycleCleanup = null;
     this.queue.clear();
     this.seen.clear();
+    this.warmupHold = null;
+    this.warmupFence = null;
+    this.focusStamps.clear();
+    this.enqueueClocks.clear();
+    this.sessionRequestThread = null;
     this.held = false;
     if (!reconnecting) this.reconnectAttempts = 0;
     this.decisions.getState().setSession(null);

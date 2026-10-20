@@ -247,11 +247,69 @@ def persist_utterance(
 
 
 def mark_playback(*, utterance: VoiceUtterance, state: str) -> VoiceUtterance:
-    """Advance playback state without ever mutating the spoken text."""
+    """Advance playback state without ever mutating the spoken text.
+
+    Terminal rows are sticky and the guard is evaluated ON THE ROW AT WRITE
+    TIME (guarded UPDATE, not a stale in-memory check): a slow route write
+    must never overwrite a terminal state landed by a fast provider
+    callback (exact-speech playback support only).
+    """
     if state not in PlaybackState.values:
         raise VoiceSessionError('unknown playback state')
-    utterance.playback_state = state
-    utterance.save(update_fields=['playback_state', 'updated_at'])
+    VoiceUtterance.objects.filter(pk=utterance.pk).exclude(
+        playback_state__in=list(_PLAYBACK_TERMINAL)
+    ).update(playback_state=state, updated_at=timezone.now())
+    utterance.refresh_from_db()
+    return utterance
+
+
+#: Terminal playback states are sticky (exact-speech playback support).
+_PLAYBACK_TERMINAL = frozenset({
+    PlaybackState.DONE,
+    PlaybackState.CANCELED,
+    PlaybackState.FAILED,
+})
+
+
+def reconcile_playback(*, session: VoiceSession, utterance_id, state: str):
+    """Reconcile one row from one correlated provider lifecycle event.
+
+    Exact-speech playback support only. Unknown or foreign ids return
+    ``None`` (existence is never disclosed across sessions). Terminal
+    states are sticky: an interrupted dispatch is never completed and a
+    late completion never resurrects a canceled row; a successful send is
+    ``requested``, never heard. The spoken text, its hash and its bindings
+    are never touched here.
+
+    The transition is a compare-and-swap, not read-check-save: the guarded
+    UPDATE only lands when the row is still non-terminal (and the
+    transition is not backwards) AT WRITE TIME, so a concurrent backend or
+    client event landing between the read and the write can never be
+    overwritten by this stale write.
+    """
+    if state not in PlaybackState.values:
+        raise VoiceSessionError('unknown playback state')
+    try:
+        utterance = VoiceUtterance.objects.get(pk=utterance_id, session=session)
+    except (VoiceUtterance.DoesNotExist, DjangoValidationError, ValueError, TypeError):
+        return None
+    if (
+        utterance.playback_state in _PLAYBACK_TERMINAL
+        or utterance.playback_state == state
+    ):
+        return utterance
+    if (
+        utterance.playback_state == PlaybackState.REQUESTED
+        and state == PlaybackState.PENDING
+    ):
+        return utterance  # never backwards
+    guarded = VoiceUtterance.objects.filter(pk=utterance.pk, session=session).exclude(
+        playback_state__in=list(_PLAYBACK_TERMINAL)
+    )
+    if state == PlaybackState.PENDING:
+        guarded = guarded.exclude(playback_state=PlaybackState.REQUESTED)
+    guarded.update(playback_state=state, updated_at=timezone.now())
+    utterance.refresh_from_db()
     return utterance
 
 

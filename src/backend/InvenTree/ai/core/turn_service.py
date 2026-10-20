@@ -11,7 +11,7 @@ import asyncio
 import inspect
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -82,6 +82,94 @@ from ai.core.turn.types import (
 
 logger = logging.getLogger(__name__)
 
+#: RV02 result/replay: the ``source`` stamp that makes a question card a
+#: structured focus card (identical to the accepted RV02-B history projection).
+_RESULT_FOCUS_QUESTION_SOURCE = "focus_selection"
+
+#: Replay envelope keys kept verbatim when a focus QUESTION card body is
+#: withheld (the ``_event_from_record``/``to_dict`` base keys).
+_REPLAY_ENVELOPE_KEYS = ("type", "timestamp", "threadId", "runId", "agentName", "eventId")
+
+
+class _LiveQuestionProjectionHandler:
+    """Durable-storage side of the live-question split (RV02 live slice).
+
+    Wraps the per-turn ``_EventCapture`` so exactly the ORIGINAL event — the
+    raw focus-selection card body and exact envelope included — reaches
+    durable storage exactly once, mirroring ``InMemoryEventEmitter``'s
+    per-handler failure semantics: a capture fault is logged and never
+    propagates into the turn pipeline.
+    """
+
+    def __init__(self, capture: Any) -> None:
+        self._capture = capture
+
+    async def handle(self, event: Any) -> None:
+        try:
+            await self._capture.handle(event)
+        except Exception as e:
+            logger.error(f"Event handler error: {e}")
+
+
+class _LiveQuestionProjectionEmitter:
+    """Per-turn emitter splitting ORIGINAL storage from PROJECTED outward.
+
+    Subscribers (the durable side) observe each ORIGINAL event exactly once;
+    the wrapped outward emitter receives the projected copy. Non-QUESTION
+    events are forwarded unchanged (the very same object). A
+    ``focus_selection`` QUESTION event whose recorded options are not ALL
+    readable by the current actor right now leaves with its WHOLE structured
+    body withheld — envelope UUID/timestamp/thread/run/agent/type preserved —
+    failing closed on every unreadable/malformed option, actor rehydration or
+    resolver failure, with no owner-authority fallback and no substitution by
+    the thread's later current focus. ``emit`` keeps the caller's outward
+    failure semantics (an outward ``emit`` exception propagates exactly as
+    before) and ``subscribe`` keeps the synchronous-unsubscribe contract.
+    """
+
+    def __init__(self, outward: Any, project: Any) -> None:
+        self._outward = outward
+        self._project = project
+        self._handlers: list[Any] = []
+
+    @staticmethod
+    def _withheld(event: Any) -> Any:
+        """Envelope-only copy: the structured card body is withheld."""
+        return AGUIEvent(
+            event_type=event.event_type,
+            data={},
+            event_id=event.event_id,
+            timestamp=event.timestamp,
+            thread_id=event.thread_id,
+            run_id=event.run_id,
+            agent_name=event.agent_name,
+        )
+
+    async def emit(self, event: Any) -> None:
+        try:
+            projected = await self._project(event)
+        except Exception:  # fail closed on cards; never drop or alter others
+            projected = (
+                self._withheld(event)
+                if getattr(event, "event_type", None) == EventType.QUESTION
+                else event
+            )
+        for handler in list(self._handlers):
+            try:
+                await handler.handle(event)  # ORIGINAL, exactly once
+            except Exception as e:
+                logger.error(f"Event handler error: {e}")
+        await self._outward.emit(projected)
+
+    async def subscribe(self, handler: Any) -> Any:
+        self._handlers.append(handler)
+
+        def unsubscribe() -> None:
+            if handler in self._handlers:
+                self._handlers.remove(handler)
+
+        return unsubscribe
+
 
 @dataclass(frozen=True, slots=True)
 class NormalizedTurnResult:
@@ -106,6 +194,51 @@ class NormalizedTurnResult:
     #: A3: a status phrase to speak before the routed answer (a pending voice
     #: write was set aside by this unrelated turn). None otherwise.
     pre_speech_status: str | None = None
+    #: The turn's RECORDED conversation-focus binding: the canonical
+    #: projection (``focus_payload`` shape, hash-free) and its version. On
+    #: replay this is the ORIGINAL binding, never the thread's current
+    #: focus. ``focus`` is None for a turn without a focus.
+    focus: dict[str, Any] | None = None
+    focus_version: int = 0
+    #: True when this turn CHANGED the durable focus: the echo above is the
+    #: pre-change recorded binding, not the current focus. The client
+    #: refreshes ``GET /threads/{id}/focus`` for current state.
+    focus_refresh_required: bool = False
+
+
+#: The S49 CUSTOM channel carrying each turn's conversation-focus echo
+#: (``{focus, focus_version, focus_refresh_required}``) on every rail.
+FOCUS_ECHO_CHANNEL = "aimms.threadFocus"
+
+
+async def _emit_focus_echo(emitter, thread_id: str, result: NormalizedTurnResult) -> None:
+    """Echo the turn's RECORDED focus binding on the ``aimms.threadFocus`` channel.
+
+    The value is the turn's snapshot (the ORIGINAL binding on replay), never
+    a claim about current thread state — ``focus_refresh_required`` tells the
+    client when to re-read ``GET /threads/{id}/focus``.
+    """
+    if emitter is None:
+        return
+    from ai.core.streaming import AGUIEvent, EventType
+
+    try:
+        await emitter.emit(
+            AGUIEvent(
+                event_type=EventType.CUSTOM,
+                data={
+                    "name": FOCUS_ECHO_CHANNEL,
+                    "value": {
+                        "focus": result.focus,
+                        "focus_version": result.focus_version,
+                        "focus_refresh_required": result.focus_refresh_required,
+                    },
+                },
+                thread_id=thread_id,
+            )
+        )
+    except Exception:  # pragma: no cover - echo must never fail a turn
+        return
 
 
 def _log_voice_write_confirmation_shadow(content: str, thread_id: int) -> None:
@@ -312,6 +445,171 @@ class NormalizedTurnService:
         except Exception:
             return None
 
+    async def _reauthorize_result_focus(
+        self, actor: Any, result: NormalizedTurnResult
+    ) -> NormalizedTurnResult:
+        """RV02-A: re-authorize the RECORDED focus as the CURRENT actor.
+
+        Runs after the turn is durably persisted and before its focus
+        projection (result + ``aimms.threadFocus`` echo) leaves the service,
+        on the complete, replayed and incomplete paths alike. The recorded
+        projection is either kept VERBATIM (kind/id/label/relationships/
+        version — never the thread's later current focus) or withheld
+        entirely (``focus=None``) while the ORIGINAL recorded version is
+        retained. A missing/cleared snapshot never touches the database,
+        stored snapshot JSON is never rewritten, and every resolution
+        failure fails closed WITHOUT failing the persisted turn.
+        """
+        if result.focus is None:
+            return result
+        try:
+            readable = await self._call_sync(self._recorded_focus_readable_now, actor, result.focus)
+        except Exception:  # fail closed, never fail a persisted turn
+            readable = False
+        if readable:
+            return result
+        return replace(result, focus=None)
+
+    @staticmethod
+    def _recorded_focus_readable_now(actor: Any, focus_payload: dict[str, Any]) -> bool:
+        """True when the CURRENT actor may still read the recorded target.
+
+        Runs entirely on the sync bridge (real ORM + the existing authorized
+        readers via ``resolve_focus_candidate``); identity rehydration is
+        never a grant, and unknown/missing/deleted/out-of-scope/error
+        outcomes all deny without disclosing which.
+        """
+        from ai.core.focus import contract as focus_contract
+        from ai.core.focus import resolution as focus_resolution
+
+        user = NormalizedTurnService._rehydrate_user_for_grounding(actor)
+        if user is None:
+            return False
+        try:
+            candidate = focus_contract.FocusCandidate(
+                kind=str(focus_payload.get("kind")), id=int(focus_payload.get("id"))
+            )
+            focus_resolution.resolve_focus_candidate(user, candidate)
+        except Exception:
+            return False
+        return True
+
+    async def _reauthorize_result_question(
+        self, actor: Any, result: NormalizedTurnResult
+    ) -> NormalizedTurnResult:
+        """RV02: re-authorize the outward structured question card as the
+        CURRENT actor before the result leaves the service (complete, replayed
+        and incomplete paths alike). Only a ``focus_selection`` card is
+        structured: if every recorded option identity is not readable right
+        now, the WHOLE card is withheld (``pending_question=None``); fully
+        readable cards and non-focus cards stay VERBATIM. Stored canonical,
+        pending, options and message are never rewritten, recorded identities
+        are never replaced by the thread's later focus or the owner's
+        authority, and every failure fails closed WITHOUT failing the
+        persisted turn.
+        """
+        question = result.pending_question
+        if not isinstance(question, dict):
+            return result
+        if question.get("source") != _RESULT_FOCUS_QUESTION_SOURCE:
+            return result
+        try:
+            readable = await self._call_sync(
+                self._recorded_focus_question_readable_now, actor, question
+            )
+        except Exception:  # fail closed, never fail a persisted turn
+            readable = False
+        if readable:
+            return result
+        return replace(result, pending_question=None)
+
+    @staticmethod
+    def _recorded_focus_question_readable_now(actor: Any, question: Any) -> bool:
+        """True only when EVERY recorded option of the question card is still
+        readable by the CURRENT actor (never the owner's authority, snapshot
+        permissions or the thread's later focus).
+
+        Mirrors the accepted RV02-B history projection exactly: the literal
+        recorded id token (``focus:<kind>:<id>``) is parsed inside the
+        fail-closed boundary and re-authorized through the existing authorized
+        readers via ``_recorded_focus_readable_now``. Unreadable, missing or
+        malformed options and actor-lookup/resolver errors all deny without
+        disclosing which.
+        """
+        focus_kinds = ("machine", "work_order", "kanban_card")
+        if not isinstance(question, dict):
+            return False
+        if question.get("source") != _RESULT_FOCUS_QUESTION_SOURCE:
+            return True
+        options = question.get("options")
+        if not isinstance(options, list) or not options:
+            return False
+        for option in options:
+            if not isinstance(option, dict):
+                return False
+            label = option.get("label")
+            if not isinstance(label, str) or not label:
+                return False
+            token = option.get("id")
+            if not isinstance(token, str):
+                return False
+            parts = token.split(":")
+            if len(parts) != 3 or parts[0] != "focus":
+                return False
+            kind, identity = parts[1], parts[2]
+            if kind not in focus_kinds:
+                return False
+            if not identity.isascii() or not identity.isdigit():
+                return False
+            # Oversized decimal identities overflow the native ``int()`` digit
+            # limit, so the single parse sits INSIDE the fail-closed boundary.
+            try:
+                target_id = int(identity)
+            except (TypeError, ValueError):
+                return False  # fail closed: oversized/malformed identity
+            if identity != str(target_id):
+                return False
+            try:
+                readable = NormalizedTurnService._recorded_focus_readable_now(
+                    actor, {"kind": kind, "id": target_id}
+                )
+            except Exception:  # fail closed without disclosing why
+                return False
+            if not readable:
+                return False
+        return True
+
+    async def _project_live_question_event(self, actor: Any, event: Any) -> Any:
+        """RV02 live slice: project one NEW outward turn event on the CURRENT
+        acting viewer before it reaches the outward emitter.
+
+        Only a live/new ``focus_selection`` QUESTION card is structured: if
+        every recorded option identity is not readable right now (the real
+        ordinary-actor reader ``_recorded_focus_question_readable_now`` —
+        never the owner's authority, snapshot permissions or the thread's
+        later current focus), the WHOLE card body is withheld from the outward
+        copy while the exact envelope is preserved. Fully readable cards and
+        non-focus events are returned UNCHANGED (the same object), and every
+        failure fails closed WITHOUT failing the persisted turn; the durable
+        captured original is never modified.
+        """
+        if getattr(event, "event_type", None) != EventType.QUESTION:
+            return event
+        question = getattr(event, "data", None)
+        if not isinstance(question, dict):
+            return event
+        if question.get("source") != _RESULT_FOCUS_QUESTION_SOURCE:
+            return event
+        try:
+            readable = await self._call_sync(
+                self._recorded_focus_question_readable_now, actor, question
+            )
+        except Exception:  # fail closed, never fail a persisted turn
+            readable = False
+        if readable:
+            return event
+        return _LiveQuestionProjectionEmitter._withheld(event)
+
     def _context_assembler(self):
         """The process-wide ContextAssembler (M1; created lazily)."""
         assembler = getattr(self, "_assembler", None)
@@ -461,13 +759,37 @@ class NormalizedTurnService:
         return bundle.replay_dict()
 
     async def _emit_replay(
-        self, emitter: EventEmitter | None, canonical_result: dict[str, Any]
+        self,
+        emitter: EventEmitter | None,
+        canonical_result: dict[str, Any],
+        *,
+        actor: Any | None = None,
     ) -> None:
+        """Re-emit the stored events exactly. RV02: a stored
+        ``focus_selection`` QUESTION card is re-authorized as the CURRENT actor
+        first; an unreadable card keeps its stored envelope/type/identity/
+        timestamp while only the structured card body is withheld. Every other
+        stored event is emitted verbatim.
+        """
         if emitter is None:
             return
         for record in canonical_result.get("events", []):
             if isinstance(record, dict):
-                await emitter.emit(_event_from_record(record))
+                event = _event_from_record(record)
+                if str(record.get("type")) == str(EventType.QUESTION.value):
+                    try:
+                        readable = await self._call_sync(
+                            self._recorded_focus_question_readable_now, actor, record
+                        )
+                    except Exception:  # fail closed, never fail a replayed turn
+                        readable = False
+                    if not readable:
+                        event = _event_from_record({
+                            key: value
+                            for key, value in record.items()
+                            if key in _REPLAY_ENVELOPE_KEYS
+                        })
+                await emitter.emit(event)
 
     async def _transform_proposals(
         self,
@@ -1378,6 +1700,7 @@ class NormalizedTurnService:
         emitter: EventEmitter | None = None,
         server_pinned_workflow: str | None = None,
         server_generation_target: dict[str, int] | None = None,
+        expected_focus_version: int | None = None,
     ) -> NormalizedTurnResult:
         """Root-span wrapper around :meth:`_process_turn` (S36).
 
@@ -1443,6 +1766,7 @@ class NormalizedTurnService:
                     emitter=emitter,
                     server_pinned_workflow=server_pinned_workflow,
                     server_generation_target=server_generation_target,
+                    expected_focus_version=expected_focus_version,
                 )
             except TurnAlreadyRunning:
                 # An idempotency conflict never executed anything: the
@@ -1492,6 +1816,7 @@ class NormalizedTurnService:
         emitter: EventEmitter | None = None,
         server_pinned_workflow: str | None = None,
         server_generation_target: dict[str, int] | None = None,
+        expected_focus_version: int | None = None,
     ) -> NormalizedTurnResult:
         """Process one idempotent turn through the common reasoning path.
 
@@ -1519,18 +1844,38 @@ class NormalizedTurnService:
             correlation_id=correlation_id,
             server_pinned_workflow=server_pinned_workflow,
             server_generation_target=server_generation_target,
+            expected_focus_version=expected_focus_version,
         )
         if run.replayed_canonical is not None:
-            await self._emit_replay(emitter, run.replayed_canonical)
-            return self._result_from_canonical(
-                run.thread.pk, run.turn.pk, run.replayed_canonical, replayed=True
+            await self._emit_replay(emitter, run.replayed_canonical, actor=actor)
+            result = self._result_from_canonical(
+                run.thread.pk,
+                run.turn.pk,
+                run.replayed_canonical,
+                replayed=True,
+                focus_snapshot=run.focus_snapshot,
             )
+            result = await self._reauthorize_result_focus(actor, result)
+            await _emit_focus_echo(emitter, run.thread.pk, result)
+            result = await self._reauthorize_result_question(actor, result)
+            return result
 
         thread = run.thread
         turn = run.turn
-        isolated_emitter = emitter or InMemoryEventEmitter()
+        outward_emitter = emitter or InMemoryEventEmitter()
         capture = _EventCapture(thread.pk)
-        unsubscribe = await isolated_emitter.subscribe(capture)
+        # RV02 live slice: the durable capture observes each ORIGINAL event
+        # exactly once (the stored QUESTION record keeps the raw card body and
+        # exact envelope), while the outward emitter only ever sees the
+        # current-actor projection — a focus-selection QUESTION card whose
+        # recorded options are not all readable right now leaves with its
+        # WHOLE structured body withheld (fail closed, no owner/later-focus
+        # fallback). Every other event is forwarded unchanged.
+        isolated_emitter = _LiveQuestionProjectionEmitter(
+            outward_emitter,
+            lambda event: self._project_live_question_event(actor, event),
+        )
+        unsubscribe = await isolated_emitter.subscribe(_LiveQuestionProjectionHandler(capture))
         run.emitter = isolated_emitter
         run.capture = capture
 
@@ -1601,7 +1946,17 @@ class NormalizedTurnService:
                 )
             except Exception:  # pragma: no cover - telemetry must never raise
                 logger.debug("slo recording failed", exc_info=False)
-            return self._result_from_canonical(thread.pk, finalized.pk, canonical, replayed=False)
+            result = self._result_from_canonical(
+                thread.pk,
+                finalized.pk,
+                canonical,
+                replayed=False,
+                focus_snapshot=run.focus_snapshot,
+            )
+            result = await self._reauthorize_result_focus(actor, result)
+            await _emit_focus_echo(isolated_emitter, thread.pk, result)
+            result = await self._reauthorize_result_question(actor, result)
+            return result
         except asyncio.CancelledError:
             await isolated_emitter.emit(
                 AGUIEvent(
@@ -1650,7 +2005,15 @@ class NormalizedTurnService:
                 state=TurnState.INCOMPLETE,
                 output_content=str(canonical["message"]),
             )
-            return self._result_from_canonical(thread.pk, finalized.pk, canonical, replayed=False)
+            result = self._result_from_canonical(
+                thread.pk,
+                finalized.pk,
+                canonical,
+                replayed=False,
+                focus_snapshot=run.focus_snapshot,
+            )
+            result = await self._reauthorize_result_focus(actor, result)
+            return await self._reauthorize_result_question(actor, result)
         except (IdempotencyConflict, TurnAlreadyRunning):
             raise
         except Exception as exc:
@@ -1725,11 +2088,19 @@ class NormalizedTurnService:
         canonical: dict[str, Any],
         *,
         replayed: bool,
+        focus_snapshot: dict[str, Any] | None = None,
     ) -> NormalizedTurnResult:
+        from ai.core.focus import contract as focus_contract
+
         canonical_response = canonical.get("canonical_response")
         reasoning_provenance = canonical.get("reasoning_provenance")
         route = canonical.get("route")
         pending_question = canonical.get("question")
+        focus_target = (
+            focus_contract.focus_from_stored((focus_snapshot or {}).get("focus"))
+            if focus_snapshot
+            else None
+        )
         return NormalizedTurnResult(
             thread_id=thread_id,
             turn_id=turn_id,
@@ -1756,6 +2127,9 @@ class NormalizedTurnService:
             pre_speech_status=(
                 str(canonical["pre_speech_status"]) if canonical.get("pre_speech_status") else None
             ),
+            focus=focus_contract.focus_payload(focus_target) if focus_target else None,
+            focus_version=int((focus_snapshot or {}).get("version") or 0),
+            focus_refresh_required=bool(canonical.get("focus_changed")),
         )
 
 

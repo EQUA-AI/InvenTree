@@ -73,6 +73,16 @@ class ScopeVersionConflict(ThreadRepositoryError):  # noqa: N818
     """Raised when a scope update carries a stale expected version (S1)."""
 
 
+class FocusVersionConflict(ThreadRepositoryError):  # noqa: N818
+    """Raised when a focus write/turn carries a stale expected focus version.
+
+    Distinct from ``ScopeVersionConflict``: a focus change never restarts a
+    transport or advances ``analysis_scope_version`` — this only reports a
+    stale ``expected_focus_version`` stamp (or a turn stamped against a focus
+    selection the client never saw).
+    """
+
+
 class ScopeUpdateRejected(ThreadRepositoryError):  # noqa: N818
     """Raised when a scope update fails authorization — deliberately generic.
 
@@ -86,6 +96,14 @@ class ScopeUpdateRejected(ThreadRepositoryError):  # noqa: N818
 #: unscoped turns keep the exact client-supplied trusted context.
 ANALYSIS_SCOPE_SNAPSHOT_KEY = 'analysis_scope_snapshot'
 
+#: Key under which ``begin_turn`` snapshots the thread's conversation focus
+#: into the stored turn context (``{"focus": <stored projection>, "version":
+#: int}``). Added only when a focus is set. Snapshots are recorded AFTER the
+#: request fingerprint is computed, so they never affect replay identity —
+#: and replay always returns the ORIGINAL stored snapshot, never the
+#: thread's current focus.
+FOCUS_SNAPSHOT_KEY = 'conversation_focus_snapshot'
+
 
 @dataclass(frozen=True, slots=True)
 class BeginTurnResult:
@@ -97,6 +115,11 @@ class BeginTurnResult:
     #: for a thread without typed scope. On replay this is the ORIGINAL
     #: turn's stored snapshot — a later scope change never rebinds a turn.
     scope_snapshot: dict[str, Any] | None = None
+    #: The immutable conversation-focus snapshot bound to this turn under
+    #: the SAME row lock. None when the thread had no focus. On replay this
+    #: is the ORIGINAL turn's stored snapshot — a later focus switch never
+    #: rebinds a recorded utterance.
+    focus_snapshot: dict[str, Any] | None = None
 
 
 def scope_fingerprint(scope_key: str) -> str:
@@ -528,8 +551,17 @@ class ThreadRepository:
         idempotency_key: str,
         request_fingerprint: str,
         correlation_id: str,
+        expected_focus_version: int | None = None,
     ) -> BeginTurnResult:
-        """Begin once, replay exactly, or reject a conflicting key reuse."""
+        """Begin once, replay exactly, or reject a conflicting key reuse.
+
+        ``expected_focus_version`` is the client's focus stamp for this
+        recorded utterance: when supplied it is admitted (under the same row
+        lock) only against the thread's CURRENT focus version, so queued
+        words can never be reinterpreted against a later selection. A replay
+        is exempt — its fingerprint already carries the stamp and the
+        original stored snapshot is what returns.
+        """
         self._validate_turn_input(
             content=content,
             modality=modality,
@@ -541,6 +573,13 @@ class ThreadRepository:
             raise InvalidBoundary('Trusted context must be an object')
         if modality_metadata is not None and not isinstance(modality_metadata, Mapping):
             raise InvalidBoundary('Modality metadata must be an object')
+        if expected_focus_version is not None and (
+            not isinstance(expected_focus_version, int)
+            or isinstance(expected_focus_version, bool)
+        ):
+            raise InvalidBoundary('expected_focus_version must be an integer')
+
+        from ai.core.focus import contract as focus_contract
 
         with transaction.atomic():
             thread = self._lock_thread(thread_id)
@@ -560,7 +599,19 @@ class ThreadRepository:
                     turn=existing,
                     replayed=True,
                     scope_snapshot=stored.get(ANALYSIS_SCOPE_SNAPSHOT_KEY),
+                    focus_snapshot=stored.get(FOCUS_SNAPSHOT_KEY),
                 )
+
+            # Focus admission (same row lock as everything below): a turn
+            # stamped against a selection the client never saw is refused
+            # before any message/turn row exists. Focus changes never touch
+            # ``analysis_scope_version`` and never raise VOICE_SCOPE_CHANGED —
+            # this is a per-turn staleness check only.
+            if (
+                expected_focus_version is not None
+                and thread.focus_version != expected_focus_version
+            ):
+                raise FocusVersionConflict('Focus version is stale')
 
             # S1: snapshot the active analysis scope under the SAME row lock
             # that creates the turn — one atomic operation, so a concurrent
@@ -577,9 +628,28 @@ class ThreadRepository:
                     'version': thread.analysis_scope_version,
                     'hash': thread.analysis_scope_hash,
                 }
+            # Focus rides the SAME lock and the same identity rule: recorded
+            # after the fingerprint, returned verbatim on replay. A thread
+            # that ever SET a focus keeps a snapshot even after it is cleared
+            # — ``{'focus': None, 'version': N}`` — so the turn echo reports
+            # the TRUE version (never a bogus 0) and replay retains the
+            # original binding.
+            focus_snapshot: dict[str, Any] | None = None
+            stored_focus = focus_contract.focus_from_stored(thread.conversation_focus)
+            if stored_focus is not None or thread.focus_version > 0:
+                focus_snapshot = {
+                    'focus': (
+                        focus_contract.focus_to_stored(stored_focus)
+                        if stored_focus is not None
+                        else None
+                    ),
+                    'version': thread.focus_version,
+                }
             stored_context = dict(trusted_context)
             if scope_snapshot is not None:
                 stored_context[ANALYSIS_SCOPE_SNAPSHOT_KEY] = scope_snapshot
+            if focus_snapshot is not None:
+                stored_context[FOCUS_SNAPSHOT_KEY] = focus_snapshot
 
             input_message = self._append_locked(
                 thread,
@@ -600,7 +670,10 @@ class ThreadRepository:
                 correlation_id=correlation_id,
             )
             return BeginTurnResult(
-                turn=turn, replayed=False, scope_snapshot=scope_snapshot
+                turn=turn,
+                replayed=False,
+                scope_snapshot=scope_snapshot,
+                focus_snapshot=focus_snapshot,
             )
 
     def _turn_thread_id(self, turn_id: str) -> str:
@@ -942,6 +1015,19 @@ class ThreadRepository:
             thread = self._lock_thread(thread_id)
             if thread.analysis_scope_version != expected_version:
                 raise ScopeVersionConflict('Scope version is stale')
+            if (
+                scope_contract.scope_to_payload(
+                    scope_contract.scope_from_stored(thread.analysis_scope)
+                )
+                == payload
+            ):
+                # Canonical no-op: the stored scope is already exactly this
+                # normalized request. Explicit-id re-authorization, the
+                # owner-only lock and the expected-version check have all
+                # already run above; return the unchanged canonical payload
+                # without touching the version, hash, timestamps or turn
+                # idempotency.
+                return self._scope_payload(thread, editable=True)
             thread.analysis_scope = payload
             thread.analysis_scope_version += 1
             thread.analysis_scope_hash = digest
@@ -954,6 +1040,159 @@ class ThreadRepository:
                 ]
             )
         return self._scope_payload(thread, editable=True)
+
+    # ---- Focus rail (distinct from analysis scope and authorization) -----
+    #
+    # The focus is the ONE record the conversation is about. Writes ride
+    # ``_lock_thread`` (owner-only, exactly like rename/delete — a shared
+    # reader can never change focus), resolve through the existing
+    # authorized readers, and bump ONLY ``focus_version``. Errors of every
+    # kind leave the stored state byte-identical.
+
+    def _reject_out_of_analysis_scope(self, thread: ChatThread, target) -> None:
+        """Refuse a focus target outside the thread's explicit analysis scope.
+
+        Only an EXPLICIT machine fence (``explicit_assets``/scoped sets with
+        machine ids) can place a target outside; focus never silently
+        broadens evidence fences and the scope version is never touched.
+        """
+        from ai.core.analysis import scope as scope_contract
+        from ai.core.focus.contract import FocusOutOfAnalysisScope
+
+        scope = scope_contract.scope_from_stored(thread.analysis_scope)
+        if not scope.machine_ids:
+            return
+        machine_id = getattr(target, 'machine_id', None)
+        if machine_id is not None and machine_id not in scope.machine_ids:
+            raise FocusOutOfAnalysisScope()
+
+    def _focus_payload(self, thread: ChatThread) -> dict[str, Any]:
+        """Project one thread's stored focus for the wire (no hashes).
+
+        Write-path echo: the target was just re-authorized, so it is
+        available. Reads go through ``get_focus``, which re-authorizes the
+        record per CALLER before any label is disclosed.
+        """
+        from ai.core.focus import contract as focus_contract
+
+        target = focus_contract.focus_from_stored(thread.conversation_focus)
+        return {
+            'focus': focus_contract.focus_payload(target)
+            if target is not None
+            else None,
+            'focus_version': thread.focus_version,
+            'focus_unavailable': False,
+        }
+
+    def get_focus(self, thread_id: str) -> dict[str, Any]:
+        """Return the current conversation focus (owner, or shared read-only).
+
+        The stored target is re-authorized on EVERY read as the CALLING
+        actor (a shared thread view never inherits the owner's record
+        grant). When the record was revoked or deleted the label is withheld
+        entirely: ``focus`` is null with ``focus_unavailable: True`` so the
+        client asks for a new target instead of echoing stale state.
+        """
+        from ai.core.focus import contract as focus_contract
+        from ai.core.focus import resolution as focus_resolution
+
+        thread, _shared = self.get_readable(thread_id)
+        target = focus_contract.focus_from_stored(thread.conversation_focus)
+        if target is None:
+            return {
+                'focus': None,
+                'focus_version': thread.focus_version,
+                'focus_unavailable': False,
+            }
+        try:
+            current = focus_resolution.resolve_focus_candidate(
+                self._actor_user(),
+                focus_contract.FocusCandidate(kind=target.kind, id=target.id),
+            )
+        except focus_contract.FocusRejected:
+            return {
+                'focus': None,
+                'focus_version': thread.focus_version,
+                'focus_unavailable': True,
+            }
+        return {
+            'focus': focus_contract.focus_payload(current),
+            'focus_version': thread.focus_version,
+            'focus_unavailable': False,
+        }
+
+    def set_focus(
+        self,
+        thread_id: str,
+        requested: Mapping[str, Any] | None,
+        *,
+        expected_focus_version: int,
+    ) -> dict[str, Any]:
+        """Replace (or clear) the conversation focus under optimistic concurrency.
+
+        ``requested`` is a candidate reference ``{kind, id}`` or ``None`` to
+        clear. The candidate is resolved and authorized through the existing
+        asset/task readers BEFORE any write; unknown, unauthorized and
+        unavailable collapse into the generic ``FocusRejected``, and a
+        malformed request raises ``FocusValidationError`` — the previous
+        focus and version are preserved in every failure case. Re-selecting
+        the identical target is a canonical no-op: the version does not
+        advance (but a stale ``expected_focus_version`` still conflicts).
+        The thread boundary is checked FIRST: a stranger sees ``ThreadNotFound``
+        and no reader is ever consulted for them.
+        """
+        from ai.core.focus import contract as focus_contract
+        from ai.core.focus import resolution as focus_resolution
+
+        if not isinstance(expected_focus_version, int) or isinstance(
+            expected_focus_version, bool
+        ):
+            raise InvalidBoundary('expected_focus_version must be an integer')
+
+        if requested is not None:
+            # Shape validation only; nothing is resolved or written yet.
+            candidate = focus_contract.normalize_focus_request(requested)
+        else:
+            candidate = None
+
+        with transaction.atomic():
+            thread = self._lock_thread(thread_id)
+            if thread.focus_version != expected_focus_version:
+                raise FocusVersionConflict('Focus version is stale')
+            if candidate is None:
+                stored_payload: dict[str, Any] = {}
+            else:
+                actor_user = self._actor_user()
+                target = focus_resolution.resolve_focus_candidate(actor_user, candidate)
+                # Focus never widens analysis scope: an authorized target
+                # OUTSIDE an explicit scope is refused here (state unchanged)
+                # and the client decides — keep context, change scope or
+                # start a new conversation. The scope version is untouched.
+                self._reject_out_of_analysis_scope(thread, target)
+                stored_payload = focus_contract.focus_to_stored(target)
+            current = focus_contract.focus_from_stored(thread.conversation_focus)
+            current_payload = (
+                focus_contract.focus_to_stored(current) if current is not None else {}
+            )
+            if stored_payload == current_payload:
+                # Canonical no-op: the identical selection never advances the
+                # version (which is what makes the focus chip idempotent).
+                return self._focus_payload(thread)
+            # An ACTUAL change/clear: any ARMED (unconfirmed) decision about
+            # the OLD target must be set aside FIRST and fail CLOSED — a
+            # later "yes" must never apply an old-target preview to the new
+            # focus. Only an ARMED decision is touched (already-confirmed or
+            # unknown effects stay on the receipt rails) and this is never
+            # retried: if the set-aside cannot happen, nothing is written.
+            from ai.core.focus.commands import set_aside_pending_decision_sync
+
+            set_aside_pending_decision_sync(thread.pk)
+            thread.conversation_focus = stored_payload
+            thread.focus_version += 1
+            thread.save(
+                update_fields=['conversation_focus', 'focus_version', 'updated_at']
+            )
+        return self._focus_payload(thread)
 
     # ---- S32b (B6): explicit read-only sharing ---------------------------
     #

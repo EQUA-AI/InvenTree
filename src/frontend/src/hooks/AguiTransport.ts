@@ -74,6 +74,12 @@ export interface AguiTurnCallbacks {
    */
   onContextUsed?(value: unknown): void;
   onProposalsRefresh(): void;
+  /**
+   * `aimms.threadFocus` CUSTOM: the turn's RECORDED pre-change focus echo.
+   * Raw pass-through (normalized hook-side). Optional so existing callback
+   * sets keep working unchanged.
+   */
+  onThreadFocus?(value: unknown): void;
 }
 
 export interface AguiTurnOptions {
@@ -84,6 +90,8 @@ export interface AguiTurnOptions {
   idempotencyKey: string;
   /** S1: scope staleness detector; omitted when no version was observed. */
   expectedScopeVersion?: number;
+  /** Plan C: capture-time focus stamp; omitted when never observed. */
+  expectedFocusVersion?: number;
   signal: AbortSignal;
   csrfToken?: string;
   callbacks: AguiTurnCallbacks;
@@ -188,6 +196,11 @@ function dispatchCustom(
       // M2 PR 9: raw pass-through; normalized (allow-listed) hook-side.
       callbacks.onContextUsed?.(value ?? {});
       break;
+    case 'aimms.threadFocus':
+      // The echoed snapshot is never applied to the chip; only its
+      // `focus_refresh_required` signal is consumed (hook-side normalizer).
+      callbacks.onThreadFocus?.(value ?? {});
+      break;
     case 'aimms.error': {
       // Stashed for the spec RUN_ERROR that follows (which terminates the
       // run); the CUSTOM carries what zod would strip from RUN_ERROR.
@@ -281,7 +294,12 @@ export async function runAguiTurn(options: AguiTurnOptions): Promise<void> {
       }
       fatal = new AguiRunError(
         event.message || 'Agent run failed',
-        stash.failureClass,
+        // Exact typed RUN_ERROR code classes are preserved verbatim (only the
+        // focus stamp conflict is new here — nothing else is reclassified).
+        stash.failureClass ??
+          (event.code === 'focus_version_conflict'
+            ? 'focus_version_conflict'
+            : undefined),
         stash.localizedMessage
       );
     }
@@ -293,7 +311,8 @@ export async function runAguiTurn(options: AguiTurnOptions): Promise<void> {
         forwardedProps: {
           idempotencyKey: options.idempotencyKey,
           fileIds: options.fileIds,
-          expectedScopeVersion: options.expectedScopeVersion
+          expectedScopeVersion: options.expectedScopeVersion,
+          expectedFocusVersion: options.expectedFocusVersion
         }
       },
       subscriber
@@ -330,6 +349,15 @@ export async function runAguiTurn(options: AguiTurnOptions): Promise<void> {
       throw new AguiRunError(
         'The conversation scope changed.',
         'scope_version_conflict'
+      );
+    }
+    // The focus stamp conflict is a typed, non-retryable outcome exactly like
+    // the scope conflict — carried as its own failureClass (never a generic
+    // retryable, never flattened into scope).
+    if (resolvedStatus === 409 && /focus_version_conflict/.test(message)) {
+      throw new AguiRunError(
+        'The conversation focus changed.',
+        'focus_version_conflict'
       );
     }
     // S12: extract the typed limiter code from the SDK's rejection message

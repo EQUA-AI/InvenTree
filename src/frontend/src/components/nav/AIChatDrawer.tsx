@@ -85,9 +85,12 @@ import { useVoiceLiveSession } from '../../hooks/useVoiceLiveSession';
 import { useAIChatState } from '../../states/AIChatState';
 import { useEvidenceViewerState } from '../../states/EvidenceViewerState';
 import { useLocalState } from '../../states/LocalState';
+import { useThreadFocusState } from '../../states/ThreadFocusState';
 import { useUserState } from '../../states/UserState';
 import { useVoiceDecisionState } from '../../states/VoiceDecisionState';
 import {
+  registerContextPreflight,
+  useVoiceSessionState,
   useVoiceSurfaceState,
   voiceController
 } from '../../states/VoiceSessionState';
@@ -127,6 +130,10 @@ import { AssistantSurface } from '../aichat/AssistantSurface';
 import { CitationList } from '../aichat/CitationList';
 import { ClaimEvidence } from '../aichat/ClaimEvidence';
 import { ContextUsedDisclosure } from '../aichat/ContextUsedDisclosure';
+import {
+  ConversationFocusControl,
+  commitFocusChange
+} from '../aichat/ConversationFocusControl';
 import { DeleteOwnedThreadsModal } from '../aichat/DeleteOwnedThreadsModal';
 import { EntityChips } from '../aichat/EntityChips';
 import { EvidenceChips } from '../aichat/EvidenceChips';
@@ -139,6 +146,15 @@ import {
   ThreadActionsModal
 } from '../aichat/ThreadActionsModal';
 import { ThreadMemoryModal } from '../aichat/ThreadMemoryModal';
+import {
+  type ContextPreflight,
+  type ContextTargetHint,
+  type ExplicitMachineScope,
+  canAdoptSessionThread,
+  runContextPreflight as executeContextPreflight,
+  isFreshSessionTurn
+} from '../aichat/contextPreflight';
+import type { ConversationFocusRef } from '../aichat/conversationFocus';
 import type { EvidenceAnalysisAttachment } from '../aichat/evidenceAnalysis';
 import { composeAnswerMarkdown } from '../aichat/evidenceFormat';
 import { hintIsRedundant } from '../aichat/scopeContext';
@@ -1303,6 +1319,9 @@ function AIChatSessionDrawer({
     scopeCapable,
     scopeConflict,
     setThreadScope,
+    refreshThreadScope,
+    // Plan C: thread-focus capability + capture-time turn stamps
+    focusCapable,
     resendLastTurn,
     aiHost,
     // Structured questions (S22/S23)
@@ -1320,6 +1339,19 @@ function AIChatSessionDrawer({
       ? pendingRoutingHint
       : undefined;
   const clearRoutingHint = useAIChatState((state) => state.clearHint);
+  // Plan C: the generalized pending target (machine/task/work order) behind
+  // a contextual Ask — a candidate, committed through the owner focus PUT.
+  const pendingTargetHint = useAIChatState((state) => state.targetHint);
+  const targetHint: ContextTargetHint | undefined =
+    hintThreadId === null || hintThreadId === activeThreadId
+      ? pendingTargetHint
+        ? {
+            kind: pendingTargetHint.kind,
+            id: pendingTargetHint.id,
+            label: pendingTargetHint.label
+          }
+        : undefined
+      : undefined;
   // U1: machine Ask/scan carries a one-shot "open the Chat tab" intent.
   const chatOpenIntent = useAIChatState((state) => state.chatOpenIntent);
 
@@ -1339,6 +1371,15 @@ function AIChatSessionDrawer({
   const voiceHost = new URL('api/ai/', `${backendHost.replace(/\/$/, '')}/`)
     .toString()
     .replace(/\/$/, '');
+  // Plan 3.1.5: the visible thread at which the current voice session was
+  // created. Late turn results may never navigate a deliberately switched
+  // drawer back to their own thread; only the initial server-assigned thread
+  // adoption is allowed (and initial undefined→server-created adoption is
+  // not a switch).
+  const voiceBindingRef = useRef<{
+    sessionId: string;
+    threadId: string | null;
+  } | null>(null);
   const voice = useVoiceLiveSession({
     host: voiceHost,
     enabled: true,
@@ -1348,7 +1389,25 @@ function AIChatSessionDrawer({
       // Typed and voice turns share one server history; resync so the
       // drawer renders the converged conversation.
       void syncThreads();
-      if (turn.thread_id && turn.thread_id !== activeThreadId) {
+      // Guard drawer callbacks by session/thread (the controller already
+      // fences by generation): a late result stays in its thread's history
+      // but must not move the visible drawer, replace B's focus or arm its
+      // questions.
+      const currentSessionId =
+        useVoiceSessionState.getState().session?.id ?? null;
+      const binding = voiceBindingRef.current;
+      const turnContext = {
+        turnSessionId: turn.session_id ?? null,
+        turnThreadId: turn.thread_id ?? null,
+        currentSessionId,
+        createdThreadId:
+          binding && binding.sessionId === currentSessionId
+            ? binding.threadId
+            : null,
+        visibleThreadId: activeThreadId
+      };
+      if (!isFreshSessionTurn(turnContext)) return;
+      if (canAdoptSessionThread(turnContext)) {
         switchThread(turn.thread_id);
       }
       // S22/S23: voice turns deliver the pending question on the REST
@@ -1356,8 +1415,32 @@ function AIChatSessionDrawer({
       // the card renders clickable instead of permanently frozen, and
       // disarm when a turn resolves it.
       armQuestion((turn.pending_question as QuestionPayload | null) ?? null);
+      // Plan C: a spoken focus switch/clarify ("talk about …", a confirmed
+      // focus answer) changes the thread focus server-side. The chip
+      // converges from the authoritative thread read — a turn's echoed
+      // `focus` is its recorded snapshot and never moves the chip.
+      void useThreadFocusState.getState().refresh();
+    },
+    onFocusStale: () => {
+      // Plan C: a turn/session refused on a stale focus stamp. The session
+      // is alive; re-read the authoritative focus and tell the user the
+      // words were not sent (the controller holds them for review).
+      void useThreadFocusState.getState().refresh();
+      showNotification({
+        color: 'yellow',
+        message: t`The conversation focus changed — the last words were not sent.`
+      });
     }
   });
+  const voiceSessionId = voice.session?.id ?? null;
+  if (voiceSessionId && voiceBindingRef.current?.sessionId !== voiceSessionId) {
+    voiceBindingRef.current = {
+      sessionId: voiceSessionId,
+      threadId: activeThreadId
+    };
+  } else if (!voiceSessionId && voiceBindingRef.current) {
+    voiceBindingRef.current = null;
+  }
   const handleClose = useCallback(() => {
     void voice.end();
     useVoiceSurfaceState.getState().closeConsent();
@@ -1656,6 +1739,106 @@ function AIChatSessionDrawer({
   // S2: a scope PUT seeded by the routing hint is in flight before a send.
   const [isApplyingScope, setIsApplyingScope] = useState(false);
 
+  // Plan 3.1: the shared machine-context preflight. Typed send and every
+  // voice entry path (microphone, consent completion, keyboard start and
+  // restart) await this exact callback through the controller; it never
+  // touches the typed draft or attachments and returns the authoritative
+  // thread id for voice session creation.
+  const applyScopeToThread = useCallback(
+    async (scope: ExplicitMachineScope) => {
+      setIsApplyingScope(true);
+      try {
+        return await setThreadScope(scope);
+      } finally {
+        setIsApplyingScope(false);
+      }
+    },
+    [setThreadScope]
+  );
+  // Plan C: the focus half of the entry commit — one owner focus PUT with
+  // the exact server ack (its version becomes the turn's capture stamp).
+  const applyFocusToThread = useCallback(async (ref: ConversationFocusRef) => {
+    let version: number | undefined;
+    const result = await commitFocusChange(ref, (acknowledgedVersion) => {
+      version = acknowledgedVersion;
+    });
+    return {
+      ok: result.ok,
+      code: result.code,
+      version
+    };
+  }, []);
+  const fetchScopeForPreflight = useCallback(
+    async () => (await refreshThreadScope()) ?? null,
+    [refreshThreadScope]
+  );
+  const contextPreflight = useCallback<ContextPreflight>(
+    async (context) => {
+      const threadId = activeThreadIdRef.current;
+      const hintAtEntry = useAIChatState.getState().targetHint;
+      const outcome = await executeContextPreflight({
+        hint: targetHint ?? null,
+        scopeCapable,
+        focusCapable,
+        threadShared: activeThreadShared,
+        busy: isApplyingScope,
+        confirmed: activeScope
+          ? {
+              mode: activeScope.mode,
+              displayLabel: activeScope.displayLabel,
+              machineIds: activeScope.machineIds ?? null,
+              machineCount: activeScope.machineCount ?? null
+            }
+          : null,
+        threadId,
+        applyScope: applyScopeToThread,
+        fetchScope: fetchScopeForPreflight,
+        applyFocus: applyFocusToThread,
+        contextUnchanged: () =>
+          activeThreadIdRef.current === threadId &&
+          useAIChatState.getState().targetHint === hintAtEntry
+      });
+      if (!outcome.ok && outcome.code !== 'context_changed') {
+        const machine = targetHint?.kind === 'machine';
+        showNotification({
+          color: 'yellow',
+          message:
+            context.entry === 'voice'
+              ? machine
+                ? t`Could not confirm the machine context — voice did not start.`
+                : t`Could not confirm the target — voice did not start.`
+              : machine
+                ? t`Could not confirm the machine context — nothing was sent.`
+                : t`Could not confirm the target — nothing was sent.`
+        });
+      }
+      return outcome;
+    },
+    [
+      targetHint,
+      scopeCapable,
+      focusCapable,
+      activeThreadShared,
+      isApplyingScope,
+      activeScope,
+      applyScopeToThread,
+      fetchScopeForPreflight,
+      applyFocusToThread
+    ]
+  );
+  // Registration is identity-checked in the store, so a StrictMode
+  // double-mount cleanup can never drop the surviving registration and a
+  // stale callback is replaced on every render through the ref below.
+  const contextPreflightRef = useRef(contextPreflight);
+  contextPreflightRef.current = contextPreflight;
+  useEffect(
+    () =>
+      registerContextPreflight((context) =>
+        contextPreflightRef.current(context)
+      ),
+    []
+  );
+
   // Handle sending a message
   const handleSendMessage = useCallback(
     async (messageText?: string) => {
@@ -1663,37 +1846,49 @@ function AIChatSessionDrawer({
       if (!text.trim() || isLoading || isSyncing || isApplyingScope) return;
       const version = composerVersionRef.current;
       const fileIds = attachedFiles.map((f) => f.file_id);
-      // S2: the machine hint is now a SCOPE SEED, never message text — it
-      // becomes a server-side explicit-assets scope on this thread before
-      // the first send. Failure narrows nothing, so the send proceeds
-      // unscoped with a visible notice (per-turn authorization is the real
-      // boundary); the typed text always goes out byte-identical.
-      if (routingHint && scopeCapable && !activeThreadShared) {
-        setIsApplyingScope(true);
-        try {
-          const result = await setThreadScope({
-            mode: 'explicit_assets',
-            machine_ids: [routingHint.machineId],
-            display_label: routingHint.machineName.slice(0, 120)
-          });
-          if (!result.ok) {
-            showNotification({
-              color: 'yellow',
-              message: t`Could not set the machine scope — sending without it.`
-            });
-          }
-        } finally {
-          if (version === composerVersionRef.current) setIsApplyingScope(false);
-        }
-      }
+      // RV08: capture the pending hint identity, its owning thread and the
+      // session before the await so the consume below can fence them.
+      const pendingAtEntry = useAIChatState.getState();
+      const routingAtEntry = pendingAtEntry.routingHint;
+      const hintAtEntry = pendingAtEntry.targetHint;
+      const threadAtEntry = activeThreadIdRef.current;
+      const sessionAtEntry = pendingAtEntry.sessionGeneration;
+      // S2 + plan 3.1: the machine hint is now a SCOPE SEED, never message
+      // text — the shared preflight commits it as the thread's explicit
+      // assets scope before the first send. An explicit selection that
+      // cannot be confirmed BLOCKS this send (fail closed, per-turn
+      // authorization is still the real boundary); the draft and
+      // attachments are preserved and the typed text always goes out
+      // byte-identical when the send proceeds.
+      const outcome = await contextPreflight({
+        threadId: threadAtEntry,
+        entry: 'typed'
+      });
+      if (!outcome.ok) return;
       if (version !== composerVersionRef.current) return;
       // Closing or switching during the scope request cancels this send intent.
       // The hint is bound to one thread and is cleared by those transitions.
-      if (routingHint && useAIChatState.getState().routingHint !== routingHint)
+      const pendingNow = useAIChatState.getState();
+      if (
+        (routingAtEntry || hintAtEntry) &&
+        (pendingNow.routingHint !== routingAtEntry ||
+          pendingNow.targetHint !== hintAtEntry)
+      )
         return;
-      sendMessage(text, fileIds.length > 0 ? fileIds : undefined);
-      if (routingHint) {
-        clearRoutingHint();
+      sendMessage(
+        text,
+        fileIds.length > 0 ? fileIds : undefined,
+        outcome.focusVersion
+      );
+      // RV08: one acknowledged typed entry consumes the pending hint at its
+      // acknowledging owner — routing and target together, refused for a
+      // differently bound thread — so no later send can re-apply it.
+      if (
+        (routingAtEntry || hintAtEntry) &&
+        activeThreadIdRef.current === threadAtEntry &&
+        pendingNow.sessionGeneration === sessionAtEntry
+      ) {
+        useAIChatState.getState().consumeHint(threadAtEntry);
       }
       setInputValue('');
       setAttachedFiles([]);
@@ -1703,13 +1898,9 @@ function AIChatSessionDrawer({
       isLoading,
       isSyncing,
       isApplyingScope,
+      contextPreflight,
       sendMessage,
-      setThreadScope,
-      scopeCapable,
-      activeThreadShared,
-      attachedFiles,
-      routingHint,
-      clearRoutingHint
+      attachedFiles
     ]
   );
 
@@ -1771,10 +1962,19 @@ function AIChatSessionDrawer({
   // owned thread — the composer is disabled on shared transcripts, so the
   // ask could never be sent there.
   useEffect(() => {
-    if (!opened || !routingHint) return;
+    if (!opened || (!routingHint && !targetHint)) return;
     if (activeThreadShared) {
+      // Capture the FULL pending target BEFORE createNewThread(), whose
+      // synchronous clearHint would otherwise empty this snapshot.
+      const pending = useAIChatState.getState().targetHint;
       const id = createNewThread();
-      useAIChatState.getState().openWithHint(routingHint);
+      // Reopen with the FULL pending target — machine/task/work-order
+      // metadata intact — never a flattened routing-only hint.
+      if (pending) {
+        useAIChatState.getState().openWithTargetHint(pending);
+      } else if (routingHint) {
+        useAIChatState.getState().openWithHint(routingHint);
+      }
       useAIChatState.getState().bindHint(id);
     } else {
       useAIChatState.getState().bindHint(activeThreadId);
@@ -1782,6 +1982,7 @@ function AIChatSessionDrawer({
   }, [
     opened,
     routingHint,
+    targetHint,
     activeThreadShared,
     activeThreadId,
     createNewThread
@@ -2405,6 +2606,9 @@ function AIChatSessionDrawer({
               {/* C2: the truthful, read-only analysis context — reports
                 server-confirmed scope only, with no menu attached. */}
               <AnalysisContextLine scope={activeScope} />
+              {/* Plan C: the editable Talking about chip — server-confirmed
+                focus only, separate from the analysis scope above. */}
+              <ConversationFocusControl />
 
               <Paper
                 radius='xl'

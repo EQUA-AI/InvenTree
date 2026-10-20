@@ -351,3 +351,232 @@ describe('optional voice timing', () => {
     expect(() => timing.energy()).not.toThrow();
   });
 });
+
+// Package E: first feedback onset vs useful-answer onset. Filler is observed
+// ONLY from actual provider metadata (`aimms_onset_kind: 'filler'` with its
+// opaque utterance id/hash) plus a clean RTP boundary — never inferred from a
+// status transcript label. The answer bind stays the completed persisted
+// spoken summary/hash. `generation` is the LOCAL turn generation; provider
+// `aimms_dispatch_generation` metadata is deliberately never read or mixed in.
+describe('feedback and answer onset', () => {
+  const fillerMeta = {
+    aimms_onset_kind: 'filler',
+    aimms_utterance_id: '33333333-3333-3333-3333-333333333333',
+    aimms_spoken_hash: 'c'.repeat(64)
+  };
+  function fillerStart(timing: VoiceTiming, id: string) {
+    timing.event({
+      type: 'response.created',
+      response: { id, metadata: fillerMeta }
+    });
+    timing.event({ type: 'response.audio.delta', response_id: id });
+    timing.event({ type: 'output_audio_buffer.started' });
+  }
+  it('bounds the queue wait interval just before, at and after the threshold', () => {
+    const { timing, at } = fixture();
+    timing.reset('a'.repeat(32));
+    at(299_999);
+    expect(timing.begin('item', 0)?.ms_queue).toBe(299_999);
+    timing.reset('a'.repeat(32));
+    at(300_000);
+    expect(timing.begin('item', 0)?.ms_queue).toBe(300_000);
+    timing.reset('a'.repeat(32));
+    at(300_001);
+    expect(timing.begin('item', 0)?.ms_queue).toBeUndefined();
+    at(0);
+    expect(timing.begin('item', 100)?.ms_queue).toBeUndefined();
+  });
+  it('reports a fast answer as its own first feedback', () => {
+    const { timing, at, reports } = fixture();
+    timing.reset('a'.repeat(32));
+    timing.begin();
+    timing.sampleEnergy(0);
+    timing.bind(spoken);
+    providerStart(timing, 'final');
+    at(30);
+    timing.sampleEnergy(1);
+    providerEnd(timing, 'final', spoken.spoken_summary);
+    expect(reports).toHaveLength(1);
+    expect(reports[0]).toMatchObject({
+      onset_kind: 'answer',
+      generation: 1,
+      first_playback_epoch_ms: 1700000000030,
+      timing: { feedback_onset_ms: 30, answer_onset_ms: 30 }
+    });
+  });
+  it('keeps a metadata-confirmed filler onset separate from the answer onset', () => {
+    const { timing, at, reports } = fixture();
+    timing.reset('a'.repeat(32));
+    timing.begin();
+    timing.sampleEnergy(0);
+    fillerStart(timing, 'cue');
+    at(10);
+    timing.sampleEnergy(1);
+    providerEnd(timing, 'cue', 'One moment.');
+    at(20);
+    timing.sampleEnergy(1); // Clean quiet interval before the answer.
+    providerStart(timing, 'final');
+    at(150);
+    timing.sampleEnergy(2);
+    providerEnd(timing, 'final', spoken.spoken_summary);
+    timing.bind(spoken);
+    expect(reports).toHaveLength(1);
+    expect(reports[0]).toMatchObject({
+      // Real server contract: the report row is the bound ANSWER row, so its
+      // classification must match its own observed onset ('answer' at its own
+      // wall). The earlier filler onset survives only as the distinct
+      // first-feedback interval, never as this row's onset.
+      onset_kind: 'answer',
+      first_playback_epoch_ms: 1700000000150,
+      timing: { feedback_onset_ms: 10, answer_onset_ms: 150 }
+    });
+  });
+  it('never lets a filler onset populate answer_onset_ms', () => {
+    const { timing, at, reports } = fixture();
+    timing.reset('a'.repeat(32));
+    timing.begin();
+    timing.sampleEnergy(0);
+    fillerStart(timing, 'cue');
+    at(10);
+    timing.sampleEnergy(1);
+    providerEnd(timing, 'cue', 'One moment.');
+    timing.bind(spoken);
+    timing.finish();
+    expect(reports).toHaveLength(1);
+    expect(reports[0]).toMatchObject({
+      coverage_reason: 'not_observed',
+      timing: { feedback_onset_ms: 10 }
+    });
+    const timing2 = (reports[0] as { timing: Record<string, unknown> }).timing;
+    expect(timing2).not.toHaveProperty('answer_onset_ms');
+    expect(timing2.answer_onset_ms).not.toBe(0);
+    // Honest unknown coverage: the filler's provider metadata is not a
+    // persisted-row binding, so the bound answer row claims NO onset_kind and
+    // NO onset timestamp — only the honest first-feedback interval remains.
+    expect(reports[0]).not.toHaveProperty('onset_kind');
+    expect(reports[0]).not.toHaveProperty('first_playback_epoch_ms');
+  });
+  it('satisfies real VoiceTimingReport onset honesty on filler-first reports', () => {
+    for (const answer of [true, false]) {
+      const { timing, at, reports } = fixture();
+      timing.reset('a'.repeat(32));
+      timing.begin();
+      timing.sampleEnergy(0);
+      fillerStart(timing, 'cue');
+      at(10);
+      timing.sampleEnergy(1);
+      providerEnd(timing, 'cue', 'One moment.');
+      at(20);
+      timing.sampleEnergy(1); // Clean quiet interval before any answer.
+      if (answer) {
+        providerStart(timing, 'final');
+        at(150);
+        timing.sampleEnergy(2);
+        providerEnd(timing, 'final', spoken.spoken_summary);
+      }
+      timing.bind(spoken);
+      if (!answer) timing.finish();
+      expect(reports).toHaveLength(1);
+      const report = reports[0] as Record<string, unknown>;
+      // Real wire rules: onset_kind requires first_playback_epoch_ms, and a
+      // coverage_reason only explains a MISSING onset.
+      if ('onset_kind' in report)
+        expect(report.first_playback_epoch_ms).toBeTypeOf('number');
+      if ('coverage_reason' in report)
+        expect(report).not.toHaveProperty('first_playback_epoch_ms');
+      // The report row is the bound answer row: never classified 'filler'.
+      expect(report.utterance_id).toBe(spoken.utterance_id);
+      expect(report.onset_kind).not.toBe('filler');
+    }
+  });
+  it('does not infer filler from an unclassified status output', () => {
+    const { timing, at, reports } = fixture();
+    timing.reset('a'.repeat(32));
+    timing.begin();
+    timing.sampleEnergy(0);
+    providerStart(timing, 'status'); // No aimms_onset_kind metadata.
+    at(10);
+    timing.sampleEnergy(1);
+    providerEnd(timing, 'status', 'One moment.');
+    at(20);
+    timing.sampleEnergy(1);
+    providerStart(timing, 'final');
+    at(150);
+    timing.sampleEnergy(2);
+    providerEnd(timing, 'final', spoken.spoken_summary);
+    timing.bind(spoken);
+    expect(reports).toHaveLength(1);
+    expect(reports[0]).toMatchObject({
+      onset_kind: 'answer',
+      timing: { feedback_onset_ms: 150, answer_onset_ms: 150 }
+    });
+  });
+  it('keeps missing times absent with content-free coverage', () => {
+    const { timing, at, reports } = fixture();
+    timing.reset('a'.repeat(32));
+    timing.begin();
+    timing.sampleEnergy(0);
+    timing.bind(spoken);
+    providerStart(timing, 'final');
+    at(120);
+    providerEnd(timing, 'final', spoken.spoken_summary); // Never observed.
+    timing.finish();
+    expect(reports).toHaveLength(1);
+    expect(reports[0]).toMatchObject({
+      provenance: 'rtp_energy_proxy',
+      coverage_reason: 'no_audio_proxy',
+      generation: 1
+    });
+    expect(reports[0]).not.toHaveProperty('onset_kind');
+    expect(reports[0]).not.toHaveProperty('first_playback_epoch_ms');
+    const t = (reports[0] as { timing: Record<string, unknown> }).timing;
+    expect(t).not.toHaveProperty('answer_onset_ms');
+    expect(t).not.toHaveProperty('feedback_onset_ms');
+    expect(JSON.stringify(reports)).not.toContain('PRIVATE_SENTINEL');
+  });
+  it('covers hidden and canceled boundaries without onset claims', () => {
+    const hidden = fixture();
+    hidden.timing.reset('a'.repeat(32));
+    hidden.timing.begin();
+    hidden.timing.sampleEnergy(0);
+    hidden.timing.bind(spoken);
+    hidden.timing.finish('hidden_page');
+    expect(hidden.reports).toHaveLength(1);
+    expect(hidden.reports[0]).toMatchObject({ coverage_reason: 'hidden_page' });
+    expect(hidden.reports[0]).not.toHaveProperty('onset_kind');
+
+    const canceled = fixture();
+    canceled.timing.reset('a'.repeat(32));
+    canceled.timing.begin();
+    canceled.timing.sampleEnergy(0);
+    providerStart(canceled.timing, 'final');
+    canceled.timing.sampleEnergy(1);
+    canceled.timing.event({
+      type: 'response.done',
+      response: { id: 'final', status: 'cancelled' }
+    });
+    canceled.timing.bind(spoken);
+    canceled.timing.finish();
+    expect(canceled.reports).toHaveLength(1);
+    expect(canceled.reports[0]).toMatchObject({ coverage_reason: 'canceled' });
+    expect(canceled.reports[0]).not.toHaveProperty('onset_kind');
+  });
+  it('fences late stats and duplicate output across generations', () => {
+    const { timing, at, reports } = fixture();
+    timing.reset('a'.repeat(32));
+    timing.begin();
+    timing.sampleEnergy(0);
+    timing.bind(spoken);
+    timing.finish();
+    expect(reports).toHaveLength(1);
+    // Late events after the boundary can never add or duplicate a report.
+    at(500);
+    providerStart(timing, 'final');
+    timing.sampleEnergy(1);
+    providerEnd(timing, 'final', spoken.spoken_summary);
+    timing.energy();
+    timing.finish();
+    timing.bind(spoken);
+    expect(reports).toHaveLength(1);
+  });
+});

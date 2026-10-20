@@ -752,6 +752,133 @@ def authorized_machine(user, machine_id):
     return machine
 
 
+def authorized_kanban_card(user, card_id):
+    """Load one board card WITH its parent work order, scope-safely.
+
+    A board card ("Task" in the UI) and its work order are DIFFERENT
+    identities with different PKs — this reader returns the pair and never
+    substitutes one for the other. The parent work order must satisfy the
+    same ``require_work_order_scope`` predicate the canonical work-order API
+    applies (the board relationship IS the access rule); a card whose parent
+    is missing or unauthorized is denied outright, never rebound to a
+    similarly numbered work order. Denial is a silent ``None`` — missing,
+    foreign and revoked are indistinguishable.
+    """
+    if not maintenance_ai_read_enabled():
+        return None
+    if not getattr(user, 'is_authenticated', False):
+        return None
+
+    try:
+        pk = int(card_id)
+    except (TypeError, ValueError):
+        return None
+
+    from tasks.models import KanbanCard
+
+    card = (
+        KanbanCard.objects
+        .select_related('work_order', 'work_order__machine')
+        .filter(pk=pk)
+        .first()
+    )
+    if card is None:
+        return None
+    try:
+        require_work_order_scope(user, card.work_order)
+    except ScopeError:
+        return None
+    return card, card.work_order
+
+
+def kanban_card_row(card, *, work_order=None, identity=None) -> dict[str, Any]:
+    """The allow-listed board-card projection with BOTH identities explicit.
+
+    ``board_column_status`` is the CARD's board column (execution tracking);
+    ``work_order_lifecycle_status`` is the governed job lifecycle. A
+    board-column change must never imply a governed lifecycle transition,
+    so the two are separate fields, and there is no ambiguous bare ``id``:
+    ``kanban_card_id`` and ``work_order_id`` are named. Mirrors the
+    ``ai.core.focus.contract.card_read_payload`` shape (pinned by tests).
+    """
+    parent = work_order if work_order is not None else card.work_order
+    return {
+        'kanban_card_id': card.pk,
+        'work_order_id': parent.pk,
+        'machine_id': parent.machine_id,
+        'title': fence(card.title, limit=255),
+        'card_kind': card.card_kind,
+        'board_column_status': card.status,
+        'work_order_lifecycle_status': parent.lifecycle_status,
+        'work_order_reference': parent.reference or None,
+        'is_active': card.is_active,
+        'assigned': card.assigned_to_id is not None
+        or bool((card.assignee or '').strip()),
+        'assigned_to': _identity_label(
+            identity, card.assigned_to if card.assigned_to_id else None
+        ),
+        'scheduled_start': _iso(card.effective_start),
+        'scheduled_end': _iso(card.effective_end),
+        'created_at': _iso(card.created_at),
+        'updated_at': _iso(card.updated_at),
+    }
+
+
+def kanban_cards_page(
+    user,
+    *,
+    work_order_id=None,
+    query: str | None = None,
+    limit: int = MAX_SEARCH_RESULTS,
+    machine_ids=None,
+) -> dict[str, Any]:
+    """The bounded board-card page with honest coverage (S5 vocabulary).
+
+    ``machine_ids`` is the caller-applied analysis-scope narrowing (the AI
+    plane reads ``current_turn_scope()`` and passes it in) — a NARROWING
+    applied AFTER ``work_order_scope_filter`` authorization, never instead
+    of it. Both identities ride every row.
+
+    ``limit`` is supported in ``0..MAX_SEARCH_RESULTS``: values above the
+    ceiling are clamped to it (a prompt gets a readable page, never a dump),
+    zero and negative values keep their empty-page semantics, and
+    ``population_count`` / ``returned_count`` / ``display_truncated`` always
+    report the ACTUAL bounded rows against the real population.
+    """
+    from tasks.models import KanbanCard, WorkOrder
+
+    if not maintenance_ai_read_enabled() or not getattr(
+        user, 'is_authenticated', False
+    ):
+        return {'rows': [], 'population_count': 0, 'returned_count': 0}
+
+    try:
+        cards = KanbanCard.objects.filter(
+            work_order__in=WorkOrder.objects.filter(work_order_scope_filter(user)),
+            is_active=True,
+        ).select_related('work_order', 'work_order__machine')
+        if work_order_id is not None:
+            cards = cards.filter(work_order_id=int(work_order_id))
+        if machine_ids is not None:
+            cards = cards.filter(work_order__machine_id__in=list(machine_ids))
+        if query:
+            cards = cards.filter(title__icontains=query)
+        population_count = cards.count()
+        # RV05: clamp at the authoritative reader, BEFORE the query is
+        # materialized, so no caller (tool seam or otherwise) can request a
+        # page past the module ceiling.
+        page_limit = min(max(int(limit), 0), MAX_SEARCH_RESULTS)
+        rows = [kanban_card_row(card) for card in cards.order_by('pk')[:page_limit]]
+    except (ScopeError, TypeError, ValueError):
+        return {'rows': [], 'population_count': 0, 'returned_count': 0}
+    return {
+        'rows': rows,
+        'population_count': population_count,
+        'returned_count': len(rows),
+        'display_truncated': population_count > len(rows),
+    }
+
+
 __all__ = [
     'EXCLUDED_FIELDS',
     'MAX_FINDINGS',
@@ -759,9 +886,12 @@ __all__ = [
     'MAX_PARTS',
     'MAX_SEARCH_RESULTS',
     'PAGE_DATE_FIELDS',
+    'authorized_kanban_card',
     'authorized_machine',
     'authorized_work_order',
     'fence',
+    'kanban_card_row',
+    'kanban_cards_page',
     'maintenance_ai_read_enabled',
     'open_repairs_for_machine',
     'work_order_closeout',

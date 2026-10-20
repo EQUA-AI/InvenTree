@@ -49,6 +49,7 @@ def _service():
 
 def _run(intent: str = "record_retrieval", emitter=None):
     return SimpleNamespace(
+        focus_snapshot=None,
         actor=SimpleNamespace(user_pk="5"),
         thread=SimpleNamespace(pk="thread_1"),
         turn=SimpleNamespace(pk="turn_1"),

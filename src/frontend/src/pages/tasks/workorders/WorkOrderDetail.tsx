@@ -4,6 +4,7 @@ import {
   Alert,
   Anchor,
   Badge,
+  Button,
   Card,
   Divider,
   Group,
@@ -22,6 +23,7 @@ import {
   IconGitBranch,
   IconHistory,
   IconLayoutKanban,
+  IconMessageChatbot,
   IconPackage,
   IconPaperclip,
   IconShieldCheck
@@ -46,6 +48,7 @@ import type {
   WorkOrderSummary
 } from '@lib/types/WorkOrderOverview';
 import PageTitle from '../../../components/nav/PageTitle';
+import { openGlobalAIChat } from '../../../states/AIChatState';
 import { AttachmentTable } from '../../../tables/general/AttachmentTable';
 
 import { useApi } from '../../../contexts/ApiContext';
@@ -140,6 +143,23 @@ export default function WorkOrderDetail() {
           </Stack>
         </Group>
         <Group gap='xs'>
+          {/* Plan C: contextual Ask for this work order. The route id IS the
+            real WorkOrder PK (never a board card id); the drawer commits it
+            as a `work_order` focus candidate. */}
+          <Button
+            variant='light'
+            leftSection={<IconMessageChatbot size={16} />}
+            data-testid='ask-about-work-order'
+            onClick={() =>
+              openGlobalAIChat({
+                kind: 'work_order',
+                id: workOrderId,
+                label: `${workOrder.reference}: ${workOrder.title}`
+              })
+            }
+          >
+            {t`Ask about this work order`}
+          </Button>
           <StateBadge value={workOrder.status} color='indigo' />
           <StateBadge
             value={workOrder.lifecycle_status}

@@ -196,3 +196,144 @@ def test_report_contract_is_fixed_size_and_content_free():
     with pytest.raises(ValidationError):
         VoiceTimingReport(**report, first_playback_epoch_ms=True)
     assert "PRIVATE_SENTINEL" not in json.dumps(VoiceTimingReport(**report).model_dump())
+
+
+# --------------------------------------------------------------------------- #
+# Package E: content-free backend phase timings and onset separation           #
+# --------------------------------------------------------------------------- #
+def test_phase_ledger_records_backend_phases_content_free():
+    from ai.core.voice import timing as voice_timing
+
+    with voice_timing.measurement():
+        voice_timing.bind(
+            utterance_id="11111111-1111-1111-1111-111111111111",
+            kind="answer",
+            generation=3,
+            focus_version=2,
+            scope_version=7,
+        )
+        with voice_timing.stage("lock_wait"):
+            pass
+        with voice_timing.stage("model"):
+            pass
+        with voice_timing.stage("model"):
+            pass
+        voice_timing.record_duration("dispatch_ack", 12.5)
+        voice_timing.record_duration("cancel_terminal", 4.0)
+        # Content and malformed ids never enter the measurement.
+        voice_timing.bind(
+            transcript="PRIVATE_SENTINEL",
+            kind="PRIVATE_SENTINEL",
+            utterance_id="private-label",
+        )
+        snapshot = voice_timing.snapshot()
+    phases = snapshot["phases"]
+    assert phases["lock_wait"] >= 0
+    # Individual model round trips accumulate like tool calls do.
+    assert phases["model"] >= 0
+    assert phases["dispatch_ack"] == 12.5  # noqa: RUF069 - exact injected value.
+    assert phases["cancel_terminal"] == 4.0  # noqa: RUF069 - exact injected value.
+    assert snapshot["bindings"] == {
+        "utterance_id": "11111111-1111-1111-1111-111111111111",
+        "kind": "answer",
+        "generation": 3,
+        "focus_version": 2,
+        "scope_version": 7,
+    }
+    assert "PRIVATE_SENTINEL" not in json.dumps(snapshot)
+
+
+def test_stage_names_are_fixed_and_unknown_names_record_nothing():
+    from ai.core.voice import timing as voice_timing
+
+    with voice_timing.measurement():
+        with voice_timing.stage("PRIVATE_SENTINEL"):
+            pass
+        snapshot = voice_timing.snapshot()
+    assert snapshot["phases"] == {}
+
+
+def test_client_onset_fields_are_optional_bounded_and_separate():
+    model = VoiceClientTiming(ms_queue=150.0, feedback_onset_ms=1200.0, answer_onset_ms=3400.0)
+    assert model.ms_queue == pytest.approx(150.0)
+    assert model.feedback_onset_ms == pytest.approx(1200.0)
+    assert model.answer_onset_ms == pytest.approx(3400.0)
+    for key in ("ms_queue", "feedback_onset_ms", "answer_onset_ms"):
+        for bad in (True, -1, 300001, float("nan"), float("inf"), "x", {}):
+            with pytest.raises(ValidationError):
+                VoiceClientTiming(**{key: bad})
+
+
+def test_report_separates_filler_onset_from_answer_onset_honestly():
+    report = {
+        "epoch": "a" * 32,
+        "utterance_id": "11111111-1111-1111-1111-111111111111",
+        "spoken_hash": "b" * 64,
+        "provenance": "rtp_energy_proxy",
+        "timing": {},
+    }
+    filler = VoiceTimingReport(**report, first_playback_epoch_ms=1.0, onset_kind="filler")
+    assert filler.onset_kind == "filler"
+    with pytest.raises(ValidationError):
+        VoiceTimingReport(**report, first_playback_epoch_ms=1.0, onset_kind="PRIVATE")
+    # An onset kind needs an onset; a coverage reason explains its absence.
+    with pytest.raises(ValidationError):
+        VoiceTimingReport(**report, onset_kind="answer")
+    with pytest.raises(ValidationError):
+        VoiceTimingReport(**report, first_playback_epoch_ms=1.0, coverage_reason="not_observed")
+    missing = VoiceTimingReport(**report, coverage_reason="hidden_page")
+    assert missing.first_playback_epoch_ms is None
+    with pytest.raises(ValidationError):
+        VoiceTimingReport(**report, coverage_reason="PRIVATE_SENTINEL")
+    # Generation/version binding is content-free and bounded.
+    bound = VoiceTimingReport(**report, generation=4)
+    assert bound.generation == 4
+    with pytest.raises(ValidationError):
+        VoiceTimingReport(**report, generation=-1)
+
+
+def test_tracing_allowlist_admits_only_the_content_free_dispatch_metrics():
+    """The real span allowlist must keep the new phase telemetry.
+
+    Verifying the private ledger alone would hide that ``span_attrs`` drops
+    the keys at the single choke point -- the telemetry would silently never
+    ship. Content and malformed ids stay dropped either way.
+    """
+    from ai.core.tracing import span_attrs
+
+    kept = span_attrs(
+        ms_dispatch_ack=12.0,
+        ms_dispatch_terminal=30.0,
+        ms_cancel_terminal=8.0,
+        ms_lock_wait=5.0,
+        ms_admission=4.0,
+        ms_model=100.0,
+        ms_final_persist=6.0,
+        ms_cancellation=7.0,
+        dispatch_id="22222222-2222-2222-2222-222222222222",
+        kind="answer",
+        generation=3,
+        focus_version=1,
+    )
+    assert kept["aimms.ms_dispatch_ack"] == 12.0  # noqa: RUF069 - exact wire fixture.
+    assert kept["aimms.ms_dispatch_terminal"] == 30.0  # noqa: RUF069 - exact wire fixture.
+    assert kept["aimms.ms_cancel_terminal"] == 8.0  # noqa: RUF069 - exact wire fixture.
+    assert kept["aimms.ms_lock_wait"] == 5.0  # noqa: RUF069 - exact wire fixture.
+    assert kept["aimms.ms_admission"] == 4.0  # noqa: RUF069 - exact wire fixture.
+    assert kept["aimms.ms_model"] == 100.0  # noqa: RUF069 - exact wire fixture.
+    assert kept["aimms.ms_final_persist"] == 6.0  # noqa: RUF069 - exact wire fixture.
+    assert kept["aimms.ms_cancellation"] == 7.0  # noqa: RUF069 - exact wire fixture.
+    assert kept["aimms.dispatch_id"] == "22222222-2222-2222-2222-222222222222"
+    assert kept["aimms.kind"] == "answer"
+    assert kept["aimms.generation"] == 3
+    assert kept["aimms.focus_version"] == 1
+    # Content-shaped and malformed values are still dropped at the same gate.
+    dropped = span_attrs(
+        kind="PRIVATE_SENTINEL",
+        dispatch_id="PRIVATE_SENTINEL",
+        ms_dispatch_ack=float("nan"),
+    )
+    assert "PRIVATE_SENTINEL" not in str(dropped)
+    assert "aimms.kind" not in dropped
+    assert "aimms.dispatch_id" not in dropped
+    assert "aimms.ms_dispatch_ack" not in dropped

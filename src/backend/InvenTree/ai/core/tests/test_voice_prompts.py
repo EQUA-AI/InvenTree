@@ -19,13 +19,17 @@ from ai.core.tests.test_voice_status_phrases import RecordingChannel, _session_f
 from ai.core.voice import prompts, routes
 from ai.core.voice.routes import VoicePromptRequest, request_voice_prompt
 from ai.core.voice.wire import SERVER_VOICE_ERROR_CODES
-from django.core.management import call_command
 from fastapi import HTTPException
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _database():
-    call_command("migrate", verbosity=0, interactive=False)
+    # Not call_command("migrate"): the island migration graph is
+    # inconsistent (held H07) -- real ORM tables via the established
+    # test-only schema bootstrap instead.
+    from ai.core.tests.focus_test_db import ensure_island_tables
+
+    ensure_island_tables()
     yield
 
 

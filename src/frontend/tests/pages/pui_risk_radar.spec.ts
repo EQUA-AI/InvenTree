@@ -120,11 +120,13 @@ test('Risk Radar retains dismissal text and blocks retry after a stale conflict'
     }
   );
 
-  let dismissBody: Record<string, unknown> | null = null;
+  const dismissBody: { current: Record<string, unknown> | null } = {
+    current: null
+  };
   await page.route(
     (url) => url.pathname === '/api/repair/risk-findings/7/dismiss/',
     async (route) => {
-      dismissBody = route.request().postDataJSON();
+      dismissBody.current = route.request().postDataJSON();
       await route.fulfill({
         status: 409,
         contentType: 'application/json',
@@ -168,11 +170,11 @@ test('Risk Radar retains dismissal text and blocks retry after a stale conflict'
     )
   ).toBeVisible();
   await expect(confirm).toBeDisabled();
-  expect(dismissBody).toMatchObject({
+  expect(dismissBody.current).toMatchObject({
     expected_version: 3,
     reason: 'Known duplicate'
   });
-  expect(`${dismissBody?.idempotency_key}`).toMatch(/^risk-/);
+  expect(`${dismissBody.current?.idempotency_key}`).toMatch(/^risk-/);
 });
 
 test('Risk Radar reports a queued recheck and refreshes after dispatch', async ({

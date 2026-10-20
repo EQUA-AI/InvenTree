@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { type StoreApi, createStore } from 'zustand/vanilla';
 import type { VoiceDecisionStore } from '../../../states/VoiceDecisionState';
 import { emptyDecisionState } from '../../../states/decisionReducer';
+import type { ContextPreflight } from '../../aichat/contextPreflight';
 import { VoiceSessionController } from './VoiceSessionController';
 import {
   type VoiceCapability,
@@ -654,4 +655,613 @@ it('stops a late permission grant and never overlaps a pending acquisition', asy
   expect(FakePeer.peers).toHaveLength(0);
   await controller.start();
   expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(2);
+});
+
+it('an active session is fenced and ended when the visible thread switches', async () => {
+  await controller.start();
+  expect(state.getState().session?.thread_id).toBe('thread-1');
+  controller.configure('https://app.test/api/ai', 'thread-2');
+  await controller.submitTranscript({
+    text: 'What is its status?',
+    itemId: 'late-item',
+    confidence: 1,
+    language: 'en-US'
+  });
+  // Safe minimum contract (planning probe promoted): block/end until the new
+  // thread binding is confirmed. No silent rebind, no replayed turn.
+  expect(
+    requests.filter((r) => r.path.endsWith('/sessions/session-1/turns'))
+  ).toHaveLength(0);
+  expect(state.getState().session).toBeNull();
+  // The old session is torn down server-side, not left running on thread-1.
+  expect(
+    requests.filter(
+      (r) => r.path.endsWith('/sessions/session-1') && r.method === 'DELETE'
+    )
+  ).toHaveLength(1);
+});
+
+it('an unchanged visible thread still submits to its own active session', async () => {
+  await controller.start();
+  controller.configure('https://app.test/api/ai', 'thread-1');
+  await controller.submitTranscript({
+    text: 'What is its status?',
+    itemId: 'control-item',
+    confidence: 1,
+    language: 'en-US'
+  });
+  expect(
+    requests.filter((r) => r.path.endsWith('/sessions/session-1/turns'))
+  ).toHaveLength(1);
+});
+
+it('a session created while the visible thread switched is discarded, never adopted', async () => {
+  let releaseCreate!: (value: unknown) => void;
+  fetcher.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        releaseCreate = resolve;
+      })
+  );
+  const starting = controller.start();
+  await flush();
+  // The visible thread switches while the session is still being created.
+  controller.configure('https://app.test/api/ai', 'thread-2');
+  releaseCreate({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      id: 'session-1',
+      thread_id: 'thread-1',
+      state: 'active',
+      locale: 'en-US',
+      voice: 'en-US-AvaNeural',
+      consent_version: 'consent-v3-memory',
+      transports_allowed: { webrtc: true, relay: false }
+    })
+  });
+  await starting;
+  // The stale start is deleted server-side and never becomes the live session.
+  expect(state.getState().session).toBeNull();
+  expect(
+    requests.filter(
+      (r) => r.path.endsWith('/sessions/session-1') && r.method === 'DELETE'
+    )
+  ).toHaveLength(1);
+});
+
+/** Fresh controller wired with an injected shared context preflight. */
+const withPreflight = (preflight: ContextPreflight) => {
+  const local = new VoiceSessionController(
+    state,
+    decisions,
+    () => prefs,
+    (values) => {
+      prefs = { ...prefs, ...values };
+    },
+    preflight
+  );
+  local.configure('https://app.test/api/ai', 'thread-1');
+  local.setCapability(cap);
+  return local;
+};
+
+it('a failed context preflight blocks voice start instead of creating an unscoped session', async () => {
+  const local = withPreflight(async () => ({
+    ok: false,
+    code: 'scope_update_rejected'
+  }));
+  await local.start();
+  expect(requests).toEqual([]);
+  expect(state.getState().session).toBeNull();
+  expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+});
+
+it('voice start binds the authoritative thread returned by the context preflight', async () => {
+  const local = withPreflight(async () => ({ ok: true, threadId: 'thread-9' }));
+  await local.start();
+  const creates = requests.filter(
+    (r) => r.path.endsWith('/sessions') && r.method === 'POST'
+  );
+  expect(creates).toHaveLength(1);
+  expect(creates[0].body?.thread_id).toBe('thread-9');
+  await local.end();
+});
+
+it('a preflight resolving after a thread switch can never admit the start', async () => {
+  let releasePreflight!: (value: { ok: true; threadId: string | null }) => void;
+  const local = withPreflight(
+    () =>
+      new Promise((resolve) => {
+        releasePreflight = resolve;
+      })
+  );
+  const starting = local.start();
+  await flush();
+  // The visible thread switches while the context preflight is still running.
+  local.configure('https://app.test/api/ai', 'thread-2');
+  releasePreflight({ ok: true, threadId: 'thread-1' });
+  await starting;
+  expect(requests).toEqual([]);
+  expect(state.getState().session).toBeNull();
+});
+
+// ---------------------------------------------------------------------------
+// plan C — conversation-focus stamps and safe live focus transitions
+
+const turnOk = {
+  ok: true,
+  status: 200,
+  json: async () => ({
+    session_id: 'session-1',
+    thread_id: 'thread-1',
+    turn_id: 'turn-1',
+    response_state: 'complete',
+    spoken: null
+  })
+};
+const transcript = (itemId: string, text = 'what is its status?') => ({
+  text,
+  itemId,
+  confidence: 1,
+  language: 'en-US'
+});
+
+/** Fresh controller wired with an injected thread-focus stamp source. */
+const withFocus = (focusStamp: () => number | null) => {
+  const local = new VoiceSessionController(
+    state,
+    decisions,
+    () => prefs,
+    (values) => {
+      prefs = { ...prefs, ...values };
+    },
+    undefined,
+    focusStamp
+  );
+  local.configure('https://app.test/api/ai', 'thread-1');
+  local.setCapability(cap);
+  return local;
+};
+
+/** One-off fetch response that still records the request like the default. */
+const recordOnce = (handler: () => unknown) => {
+  fetcher.mockImplementationOnce(async (url: string, options: RequestInit) => {
+    requests.push({
+      path: new URL(url).pathname,
+      method: options.method ?? 'GET',
+      body: options.body ? JSON.parse(String(options.body)) : null
+    });
+    return handler();
+  });
+};
+
+it('stamps each utterance at capture, not at later submission', async () => {
+  let stamp: number | null = 3;
+  const local = withFocus(() => stamp);
+  await local.start();
+  let releaseTurn!: (value: unknown) => void;
+  // The first turn POST is held in flight so the second utterance stays
+  // QUEUED (captured) while the visible focus advances underneath it.
+  recordOnce(
+    () =>
+      new Promise((resolve) => {
+        releaseTurn = resolve;
+      })
+  );
+  void local.submitTranscript(transcript('item-1', 'first'));
+  await flush();
+  void local.submitTranscript(transcript('item-2', 'second'));
+  await flush();
+  // A confirmed focus change lands BEFORE the queued utterance submits.
+  stamp = 5;
+  releaseTurn(turnOk);
+  for (let i = 0; i < 10; i++) await flush();
+  const turns = requests.filter((r) => r.path.endsWith('/turns'));
+  expect(turns).toHaveLength(2);
+  // Capture-time stamps: the queued words are never rebound to the newer
+  // focus version that appeared while they waited.
+  expect(turns.map((r) => r.body?.expected_focus_version)).toEqual([3, 3]);
+  await local.end();
+});
+
+it('omits the focus stamp when no version was ever observed', async () => {
+  const local = withFocus(() => null);
+  await local.start();
+  const create = requests.find(
+    (r) => r.path.endsWith('/sessions') && r.method === 'POST'
+  );
+  expect(create?.body).not.toHaveProperty('expected_focus_version');
+  await local.submitTranscript(transcript('item-1'));
+  for (let i = 0; i < 5; i++) await flush();
+  const turn = requests.find((r) => r.path.endsWith('/turns'));
+  expect(turn?.body).not.toHaveProperty('expected_focus_version');
+  await local.end();
+});
+
+it('stamps session creation with the observed focus version', async () => {
+  const local = withFocus(() => 2);
+  await local.start();
+  const create = requests.find(
+    (r) => r.path.endsWith('/sessions') && r.method === 'POST'
+  );
+  expect(create?.body?.expected_focus_version).toBe(2);
+  await local.end();
+});
+
+it('a stale focus stamp keeps the session alive and holds the utterance for review', async () => {
+  let stamp: number | null = 3;
+  const local = withFocus(() => stamp);
+  const staleEvents: string[] = [];
+  local.listeners.add({ onFocusStale: () => staleEvents.push('focus-stale') });
+  await local.start();
+  recordOnce(async () => ({
+    ok: false,
+    status: 409,
+    json: async () => ({ detail: 'VOICE_FOCUS_CHANGED' })
+  }));
+  await local.submitTranscript(transcript('item-1'));
+  for (let i = 0; i < 5; i++) await flush();
+  // Focus is not scope: the session and transport stay alive.
+  expect(state.getState().session).not.toBeNull();
+  expect(
+    requests.filter(
+      (r) => r.path.endsWith('/sessions/session-1') && r.method === 'DELETE'
+    )
+  ).toHaveLength(0);
+  // The refused utterance was NOT recorded: it is held for user review and
+  // never automatically retried.
+  expect(staleEvents).toEqual(['focus-stale']);
+  expect(state.getState().pendingConfirm?.itemId).toBe('item-1');
+  expect(state.getState().queued).toBe(0);
+  expect(requests.filter((r) => r.path.endsWith('/turns'))).toHaveLength(1);
+  // An explicit user confirm re-captures with the CURRENT focus version.
+  stamp = 6;
+  await local.confirmPending();
+  for (let i = 0; i < 5; i++) await flush();
+  const turns = requests.filter((r) => r.path.endsWith('/turns'));
+  expect(turns).toHaveLength(2);
+  expect(turns[1].body?.expected_focus_version).toBe(6);
+  await local.end();
+});
+
+it('a stale focus stamp at session create refuses the start before it begins', async () => {
+  const stamp: number | null = 3;
+  const local = withFocus(() => stamp);
+  const staleEvents: string[] = [];
+  local.listeners.add({ onFocusStale: () => staleEvents.push('focus-stale') });
+  recordOnce(async () => ({
+    ok: false,
+    status: 409,
+    json: async () => ({ detail: 'VOICE_FOCUS_CHANGED' })
+  }));
+  await local.start();
+  expect(state.getState().session).toBeNull();
+  expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+  expect(staleEvents).toEqual(['focus-stale']);
+  expect(state.getState().error?.code).toBe('VOICE_FOCUS_CHANGED');
+  // No retry: the focus must be re-confirmed through the owner focus PUT.
+  expect(
+    requests.filter((r) => r.path.endsWith('/sessions') && r.method === 'POST')
+  ).toHaveLength(1);
+});
+
+it('a confirmed focus change discards queued context and fences late results without ending the session', async () => {
+  const local = withFocus(() => 3);
+  const turns: string[] = [];
+  local.listeners.add({
+    onTurnResult: (turn) => turns.push(turn.turn_id)
+  });
+  await local.start();
+  let releaseTurn!: (value: unknown) => void;
+  recordOnce(
+    () =>
+      new Promise((resolve) => {
+        releaseTurn = resolve;
+      })
+  );
+  void local.submitTranscript(transcript('item-1', 'first'));
+  await flush();
+  void local.submitTranscript(transcript('item-2', 'second'));
+  await flush();
+  // Manual chip Change while both are outstanding.
+  local.focusChanged();
+  expect(state.getState().session).not.toBeNull();
+  expect(state.getState().queued).toBe(0);
+  releaseTurn(turnOk);
+  for (let i = 0; i < 10; i++) await flush();
+  // The queued pre-change utterance is discarded (never silently rebound)
+  // and the in-flight result never reaches UI callbacks.
+  expect(requests.filter((r) => r.path.endsWith('/turns'))).toHaveLength(1);
+  expect(turns).toHaveLength(0);
+  expect(state.getState().lastSubmitted?.status).toBe('unconfirmed');
+  // Fresh capture after the confirmed focus ack uses the new stamp.
+  await local.submitTranscript(transcript('item-3', 'third'));
+  for (let i = 0; i < 5; i++) await flush();
+  const submitted = requests.filter((r) => r.path.endsWith('/turns'));
+  expect(submitted).toHaveLength(2);
+  await local.end();
+});
+
+it('bridges the local progress preference into the turn payload', async () => {
+  prefs = { ...prefs, voiceProgressMode: 'guided' };
+  const local = withFocus(() => null);
+  await local.start();
+  await local.submitTranscript(transcript('item-1'));
+  for (let i = 0; i < 5; i++) await flush();
+  const turn = requests.find((r) => r.path.endsWith('/turns'));
+  expect(turn?.body?.progress_mode).toBe('guided');
+  await local.end();
+});
+
+it('measures the client queue wait from enqueue to actual submit', async () => {
+  let releaseTurn!: (value: unknown) => void;
+  let held = true;
+  fetcher.mockImplementation(async (url: string, options: RequestInit) => {
+    const path = new URL(url).pathname;
+    requests.push({
+      path,
+      method: options.method ?? 'GET',
+      body: options.body ? JSON.parse(String(options.body)) : null
+    });
+    if (path.endsWith('/timing-epoch'))
+      return { ok: true, json: async () => ({ epoch: 'a'.repeat(32) }) };
+    if (path.endsWith('/turns') && held)
+      return new Promise((resolve) => {
+        releaseTurn = () => resolve({ ok: true, json: async () => turnOk });
+      });
+    if (path.endsWith('/turns')) return { ok: true, json: async () => turnOk };
+    if (path.endsWith('/sdp'))
+      return { ok: true, json: async () => ({ sdp_answer: 'answer' }) };
+    return {
+      ok: true,
+      json: async () => ({
+        id: 'session-1',
+        thread_id: 'thread-1',
+        state: 'active',
+        locale: 'en-US',
+        voice: 'en-US-AvaNeural',
+        consent_version: 'consent-v3-memory',
+        transports_allowed: { webrtc: true, relay: false }
+      })
+    };
+  });
+  const local = withFocus(() => null);
+  local.setCapability({ ...cap, validation_metrics: true });
+  await local.start();
+  for (let i = 0; i < 5; i++) await flush();
+  void local.submitTranscript(transcript('item-1', 'first'));
+  await flush();
+  void local.submitTranscript(transcript('item-2', 'second'));
+  await flush();
+  // The queue wait is visible before any server timer exists.
+  expect(state.getState().queued).toBe(1);
+  held = false;
+  releaseTurn(turnOk);
+  for (let i = 0; i < 10; i++) await flush();
+  const turns = requests.filter((r) => r.path.endsWith('/turns'));
+  expect(turns).toHaveLength(2);
+  for (const turn of turns) {
+    // Enqueue→submit queue wait on the browser monotonic clock; nothing else
+    // in the transcript/idempotency payload changes shape.
+    const timing = turn.body?.timing as { ms_queue?: unknown } | undefined;
+    expect(typeof timing?.ms_queue).toBe('number');
+    expect(timing?.ms_queue as number).toBeGreaterThanOrEqual(0);
+    expect(timing?.ms_queue as number).toBeLessThanOrEqual(300_000);
+    expect(turn.body?.item_id).toMatch(/^item-/);
+    expect(turn.body?.transcript).toBeTruthy();
+  }
+  await local.end();
+});
+
+it('Off keeps required outcomes: turns and help still run', async () => {
+  prefs = { ...prefs, voiceProgressMode: 'off' };
+  const local = withFocus(() => null);
+  await local.start();
+  await local.submitTranscript(transcript('item-1'));
+  for (let i = 0; i < 5; i++) await flush();
+  const turn = requests.find((r) => r.path.endsWith('/turns'));
+  expect(turn?.body?.progress_mode).toBe('off');
+  expect(state.getState().lastSubmitted?.status).toBe('complete');
+  await local.help();
+  expect(
+    requests.some((r) => r.path.includes('help') || r.path.endsWith('/prompts'))
+  ).toBe(true);
+  await local.end();
+});
+
+// --- VOICE-H08: warm-up finals must survive the pre-connect window -------
+
+/** Deliver a completed final transcript through the real event handler. */
+const emitFinal = (
+  itemId: string,
+  text: string,
+  target: VoiceSessionController = controller
+) =>
+  target.handleEvent(
+    JSON.stringify({
+      type: 'conversation.item.input_audio_transcription.completed',
+      transcript: text,
+      item_id: itemId
+    })
+  );
+const turnRequests = () => requests.filter((r) => r.path.endsWith('/turns'));
+const dispatchRequests = () =>
+  requests.filter((r) =>
+    /\/(turns|prompts|cancel|suspend|decision|help|presentation|timing)/.test(
+      r.path
+    )
+  );
+/** Gate the SDP answer so the session is live but the transport is not connected. */
+const gateSdp = () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const base = fetcher.getMockImplementation()!;
+  fetcher.mockImplementation(async (url: string, options: RequestInit) => {
+    if (new URL(url).pathname.endsWith('/sdp')) await gate;
+    return base(url, options);
+  });
+  return release;
+};
+const flush8 = async () => {
+  for (let i = 0; i < 8; i++) await flush();
+};
+
+it('VOICE-H08: holds a warm-up final visibly with zero dispatch until explicit connected confirmation', async () => {
+  const releaseSdp = gateSdp();
+  const heard: string[] = [];
+  controller.listeners.add({
+    onFinalTranscript: (value) => heard.push(value.itemId)
+  });
+  const started = controller.start();
+  await flush8();
+  expect(state.getState().transport).toBe('connecting');
+  expect(state.getState().session).not.toBeNull();
+  emitFinal('warm-1', 'close the purchase order for machine four');
+  const held = state.getState().pendingConfirm;
+  expect(held?.itemId).toBe('warm-1');
+  expect(held?.text).toBe('close the purchase order for machine four');
+  expect(state.getState().notice).toBe('warmup_held');
+  expect(heard).toContain('warm-1');
+  // No review prompt, provider dispatch or business submit while disconnected.
+  expect(dispatchRequests()).toEqual([]);
+  // A pre-connect "yes" is never an approved action.
+  emitFinal('warm-yes', 'yes');
+  expect(state.getState().pendingConfirm?.itemId).toBe('warm-1');
+  await controller.confirmPending();
+  expect(state.getState().pendingConfirm?.itemId).toBe('warm-1');
+  expect(dispatchRequests()).toEqual([]);
+  releaseSdp();
+  await started;
+  expect(state.getState().transport).toBe('connected');
+  // Connecting never auto-executes or replays the held warm-up.
+  expect(state.getState().pendingConfirm?.itemId).toBe('warm-1');
+  expect(dispatchRequests()).toEqual([]);
+  // Explicit confirmation post-connect sends exactly once.
+  await controller.confirmPending();
+  await flush();
+  const warmTurns = () =>
+    turnRequests().filter((r) => r.body?.item_id === 'warm-1');
+  expect(warmTurns()).toHaveLength(1);
+  expect(warmTurns()[0].body?.transcript).toBe(
+    'close the purchase order for machine four'
+  );
+  // Explicit confirmation and repeated spoken confirm never resend it.
+  await controller.confirmPending();
+  emitFinal('warm-yes-2', 'yes');
+  await flush();
+  expect(warmTurns()).toHaveLength(1);
+  // Fresh connected capture still auto-submits (positive control).
+  emitFinal('fresh-1', 'what is its status?');
+  await flush();
+  expect(
+    turnRequests().filter((r) => r.body?.item_id === 'fresh-1')
+  ).toHaveLength(1);
+});
+
+it('VOICE-H08: double warm-up finals revise the hold; a drop discards it and reconnect capture never auto-fires', async () => {
+  const releaseSdp = gateSdp();
+  const started = controller.start();
+  await flush8();
+  emitFinal('warm-a', 'first warm-up words');
+  emitFinal('warm-b', 'second warm-up words');
+  const held = state.getState().pendingConfirm;
+  expect(held?.itemId).toBe('warm-b');
+  expect(held?.revision).toBe(2);
+  expect(held?.supersedes).toBe('warm-a');
+  expect(state.getState().revisions.map((r) => r.itemId)).toEqual([
+    'warm-a',
+    'warm-b'
+  ]);
+  expect(dispatchRequests()).toEqual([]);
+  releaseSdp();
+  await started;
+  expect(state.getState().pendingConfirm?.itemId).toBe('warm-b');
+  expect(dispatchRequests()).toEqual([]);
+  // Connection drop mutes: the mute boundary discards the warm-up safely.
+  FakePeer.peers[0].channel.dispatchEvent(new Event('close'));
+  await flush();
+  expect(state.getState().transport).toBe('reconnecting');
+  expect(state.getState().pendingConfirm).toBeNull();
+  // A final during reconnect (muted, not connected) is neither held nor sent.
+  emitFinal('warm-c', 'third warm-up words');
+  emitFinal('warm-c-yes', 'yes');
+  await flush();
+  expect(state.getState().pendingConfirm).toBeNull();
+  expect(turnRequests()).toEqual([]);
+  await controller.confirmPending();
+  expect(turnRequests()).toEqual([]);
+});
+
+it('VOICE-H08: hidden/focus/logout/end boundaries and changed fences discard the warm-up without submitting', async () => {
+  // Hidden boundary.
+  let releaseSdp = gateSdp();
+  let started = controller.start();
+  await flush8();
+  emitFinal('warm-h', 'hidden boundary words');
+  releaseSdp();
+  await started;
+  doc.hidden = true;
+  doc.dispatchEvent(new Event('visibilitychange'));
+  expect(state.getState().pendingConfirm).toBeNull();
+  await controller.confirmPending();
+  expect(turnRequests()).toEqual([]);
+  doc.hidden = false;
+  await controller.end();
+
+  // Focus boundary discards the hold before any confirmation can send.
+  let stamp: number | null = 7;
+  const local = withFocus(() => stamp);
+  releaseSdp = gateSdp();
+  started = local.start();
+  await flush8();
+  emitFinal('warm-f', 'focus boundary words', local);
+  local.focusChanged();
+  expect(state.getState().pendingConfirm).toBeNull();
+  releaseSdp();
+  await started;
+  await local.confirmPending();
+  expect(turnRequests()).toEqual([]);
+  await local.end();
+
+  // Confirm-time fence: a changed focus stamp discards instead of sending.
+  stamp = 7;
+  releaseSdp = gateSdp();
+  started = local.start();
+  await flush8();
+  emitFinal('warm-f2', 'stale fence words', local);
+  releaseSdp();
+  await started;
+  stamp = 8;
+  await local.confirmPending();
+  expect(turnRequests()).toEqual([]);
+  expect(state.getState().pendingConfirm).toBeNull();
+  expect(state.getState().notice).toBe('warmup_discarded');
+  await local.end();
+
+  // Logout and thread-switch (account/session) boundaries.
+  releaseSdp = gateSdp();
+  started = controller.start();
+  await flush8();
+  emitFinal('warm-l', 'logout boundary words');
+  releaseSdp();
+  await started;
+  controller.logout();
+  expect(state.getState().pendingConfirm).toBeNull();
+  await controller.confirmPending();
+  expect(turnRequests()).toEqual([]);
+
+  releaseSdp = gateSdp();
+  started = controller.start();
+  await flush8();
+  emitFinal('warm-t', 'thread switch words');
+  releaseSdp();
+  await started;
+  controller.configure('https://app.test/api/ai', 'thread-2');
+  await flush();
+  expect(state.getState().pendingConfirm).toBeNull();
+  await controller.confirmPending();
+  expect(turnRequests()).toEqual([]);
 });

@@ -11,7 +11,11 @@ from ai.core.integrations.attachment_corpus import ATTACHMENT_CORPUS_TOOLS
 from ai.core.integrations.controlled_document_corpus import CONTROLLED_CORPUS_TOOLS
 from ai.core.integrations.email.tools import EMAIL_TOOLS
 from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS
-from ai.core.integrations.kanban_tools import KANBAN_READ_TOOLS, KANBAN_TOOLS
+from ai.core.integrations.kanban_tools import (
+    BOARD_TASK_READ_TOOLS,
+    KANBAN_READ_TOOLS,
+    KANBAN_TOOLS,
+)
 from ai.core.integrations.media_corpus import EVIDENCE_MEDIA_TOOLS
 from ai.core.integrations.memory_tools import MEMORY_ACTION_TOOLS
 from ai.core.integrations.source_inventory_tools import SOURCE_INVENTORY_TOOLS
@@ -62,6 +66,7 @@ def test_catalog_covers_every_workflow_toolset_once_in_canonical_order():
         get_last_action_status,
         *EMAIL_TOOLS,
         *KANBAN_TOOLS,
+        *BOARD_TASK_READ_TOOLS,
         *CONTROLLED_CORPUS_TOOLS,
         *ATTACHMENT_CORPUS_TOOLS,
         *EVIDENCE_MEDIA_TOOLS,
@@ -70,15 +75,17 @@ def test_catalog_covers_every_workflow_toolset_once_in_canonical_order():
     )
     catalog = capability_catalog()
 
-    # 61 wf8 tools (delete_kanban_card is withheld) + the specialist writes
+    # 64 wf8 tools (delete_kanban_card is withheld) + the specialist writes
     # wf2/wf3/wf4/wf6 carry: parts/stock/company/sales writes and the nine
     # purchase-order write tools. R2 added search_attachment_docs; R3 added
     # search_evidence_media; S8a added list_document_sources; R5 retired
     # search_part_documents (59 -> 58, catalog 95 -> 94).
-    # Connected mailbox discovery and the owner-bound receipt reader are additive.
-    assert len(wf8_tools) == 61
-    assert len(catalog) == 97
-    assert tuple(entry.tool for entry in catalog[:61]) == wf8_tools
+    # Connected mailbox discovery and the owner-bound receipt reader are
+    # additive. S5b board-task reads (list/get/check_board_task_*) joined
+    # wf8 and the catalog: 61 -> 64 tools, catalog 97 -> 100.
+    assert len(wf8_tools) == 64
+    assert len(catalog) == 100
+    assert tuple(entry.tool for entry in catalog[:64]) == wf8_tools
     assert len({entry.tool_id for entry in catalog}) == len(catalog)
 
 
@@ -119,7 +126,7 @@ def test_catalog_has_expected_stable_pack_shapes():
         "machines.read": 9,
         "email.read": 4,
         "email.write": 3,
-        "kanban.read": 4,
+        "kanban.read": 7,
         # 7, not 8: delete_kanban_card is withheld, though it remains listed in
         # the kanban.write pack spec so a re-add still resolves to a pack.
         # Maintenance work orders: search plus the per-order drill-downs
@@ -328,8 +335,8 @@ def test_contract_manifest_is_stable_and_complete():
 
     assert first == second
     assert manifest_json() == manifest_json()
-    # Matches the catalog pin above: 97 entries (wf8 61 + specialist writes).
-    assert len(first) == 97
+    # Matches the catalog pin above: 100 entries (wf8 64 + specialist writes).
+    assert len(first) == 100
     assert all(record["module"] for record in first)
     assert all(record["qualname"] for record in first)
     assert all(len(record["contract_digest"]) == 64 for record in first)
@@ -801,6 +808,9 @@ def test_native_read_capabilities_require_their_explicit_profile():
         "get_kanban_card",
         "get_kanban_summary",
         "check_kanban_card_stock",
+        "list_board_tasks",
+        "get_board_task",
+        "check_board_task_stock",
     )
 
 
@@ -903,10 +913,9 @@ def test_tool_budget_holds_for_every_selectable_pack_combination():
 
     assert worst <= MAX_INITIAL_TOOLS
     # Informational pin: update alongside deliberate pack-size changes.
-    # 17 = maintenance(7, +closeout S5b) + machines(9) + SQL(1) after the
-    # manuals-rider adjacency change kept manuals reachable from a
-    # maintenance primary.
-    assert worst == 17
+    # 20 after the S5b board-task reads grew kanban.read 4 -> 7 (the previous
+    # pin was 17 = maintenance(7, +closeout S5b) + machines(9) + SQL(1)).
+    assert worst == 20
 
 
 def test_forced_budget_trims_weakest_adjacent_and_terminates(monkeypatch, caplog):

@@ -16,6 +16,7 @@ import {
 } from '../../../states/VoiceSessionState';
 import { PushToTalkButton } from './PushToTalkButton';
 import type { VoiceNotice } from './types';
+import { normalizeVoiceProgressMode } from './types';
 
 export function noticeText(notice: VoiceNotice): string {
   switch (notice) {
@@ -45,6 +46,10 @@ export function noticeText(notice: VoiceNotice): string {
       return t`Status sounds are off. Spoken answers and visible status remain available.`;
     case 'readback_available':
       return t`Confirmation is not armed. Resume available output, or ask for a fresh preview.`;
+    case 'warmup_held':
+      return t`I heard you before the connection was ready. Nothing was sent. Review the words and confirm once connected, or discard them.`;
+    case 'warmup_discarded':
+      return t`The words heard before connecting were discarded without being sent. Say them again when you are ready.`;
     default:
       return '';
   }
@@ -96,6 +101,11 @@ export function VoiceExperienceControls({
           >{t`Hands-free view`}</Button>
         )}
       </Group>
+      {s.queued > 0 && (
+        <Text component='output' data-testid='voice-queue-waiting'>
+          {t`${s.queued} request(s) waiting to send. They go in order once the current request finishes.`}
+        </Text>
+      )}
       {!p.voiceSpeakerNoticeSeen && (
         <Alert title={t`Using device speakers?`}>
           <Text>{t`Continuous listening works on every route. If playback interrupts itself, try push to talk.`}</Text>
@@ -135,6 +145,23 @@ export function VoiceExperienceControls({
           onChange={(event) =>
             p.setVoicePreferences({
               voiceSrAnnounceTranscripts: event.currentTarget.checked
+            })
+          }
+        />
+        <NativeSelect
+          label={t`Spoken progress`}
+          description={t`Applies to new requests. Off hides optional waiting updates only; errors, questions, decisions and answers still speak.`}
+          value={p.voiceProgressMode ?? 'brief'}
+          data={[
+            { value: 'off', label: t`Off` },
+            { value: 'brief', label: t`Brief` },
+            { value: 'guided', label: t`Guided` }
+          ]}
+          onChange={(event) =>
+            p.setVoicePreferences({
+              voiceProgressMode: normalizeVoiceProgressMode(
+                event.currentTarget.value
+              )
             })
           }
         />

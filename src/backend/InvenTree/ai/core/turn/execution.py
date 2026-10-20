@@ -87,6 +87,11 @@ async def build_canonical(service: NormalizedTurnService, run: TurnRun) -> dict[
     if run.write_canonical is not None:
         # A pending write confirmation resolved; it supersedes routing.
         return run.write_canonical
+    if run.focus_canonical is not None:
+        # A focus switch/clarification captured the turn (or a confirmed
+        # focus-selection answer applied a server-owned ref); routing never
+        # reinterprets these words against a different record.
+        return run.focus_canonical
     if run.question_resolution is not None and run.question_resolution.outcome == "declined":
         # A declined question is terminal: acknowledge and invite a
         # rephrase. It never routes and never executes anything.
@@ -358,6 +363,21 @@ async def _bind_turn_capture_and_scope(service: NormalizedTurnService, run: Turn
     from ai.core.tools.capture_ledger import bind_tool_captures
 
     capture_ledger = bind_tool_captures()
+    from ai.core.focus.context import bind_turn_focus
+
+    # Focus continuity carrier: the recorded snapshot reaches every tool
+    # body and reader through the ContextVar (rebind-never-reset, same
+    # discipline as the scope carrier below). Never authorization — and the
+    # record is RE-AUTHORIZED here, before routing and any read: a revoked
+    # or deleted focus must not guide routing or reads at all (the anaphora
+    # path already surfaced an unavailable clarification instead).
+    bind_turn_focus(run.focus_snapshot)
+    if getattr(run, "focus_snapshot", None) is not None:
+        from ai.core.focus import commands as focus_commands
+
+        if not await focus_commands._focus_snapshot_available(service, run):
+            run.focus_unavailable = True
+            bind_turn_focus(None)
     from ai.core.analysis.scope_context import bind_turn_scope, resolve_scope_serials
 
     scope_context = bind_turn_scope(
@@ -390,6 +410,20 @@ def _assemble_workflow_context(
     workflow_context: WorkflowContext = dict(run.trusted)
     workflow_context["modality"] = run.modality
     workflow_context["thread_id"] = run.thread.pk
+    if run.focus_snapshot is not None and not getattr(run, "focus_unavailable", False):
+        # Reference continuity: the recorded focus projection (the ORIGINAL
+        # snapshot on replay) is what "it"/"this"/"that job" bind to. Read
+        # as routing/continuity input only — readers keep their own fences.
+        # A revoked/deleted target (``focus_unavailable``) is dropped here:
+        # its stale label must never guide routing or reads.
+        from ai.core.focus.contract import focus_from_stored, focus_payload
+
+        target = focus_from_stored(run.focus_snapshot.get("focus"))
+        if target is not None:
+            workflow_context["conversation_focus"] = {
+                **focus_payload(target),
+                "focus_version": int(run.focus_snapshot.get("version") or 0),
+            }
     if bundle is not None:
         # M1 PR E (plan §9.3 row 5): the routing classifier reads TYPED
         # trusted fields and the builder's fenced thread summary — never

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import logging
 import time
 import typing
@@ -107,6 +108,18 @@ class VoiceLiveChannel:
         self._drain_task: asyncio.Task | None = None
         self._gate = EventGate()
         self._lock = asyncio.Lock()
+        #: Send-ownership lock: one control event on the wire at a time, so
+        #: a create cannot overlap another create's send side effect.
+        self._send_lock = asyncio.Lock()
+        #: Optional lifecycle listener (the session speech dispatcher),
+        #: called with each classified ``speech_lifecycle``/``error`` event
+        #: so persisted utterance states can be reconciled instead of the
+        #: events being silently discarded.
+        self.lifecycle_listener: typing.Callable[..., Any] | None = None
+
+    def set_lifecycle_listener(self, listener: typing.Callable[..., Any] | None) -> None:
+        """Install the dispatcher's ``on_provider_event`` callback."""
+        self.lifecycle_listener = listener
 
     async def _connect(self) -> Any:
         if self._ws is not None and not self._ws.closed:
@@ -283,42 +296,60 @@ class VoiceLiveChannel:
 
     async def send_control(self, payload: dict[str, Any]) -> None:
         """Send one application control event (exact TTS ``response.create``)."""
-        ws = self._ws
-        if ws is None or ws.closed:
-            raise TransportUnavailable("no active provider channel")
-        if payload.get("type") == "response.create":
-            payload = dict(payload)
-            rate = payload.pop("_aimms_rate", 1.0)
-            if rate not in (0.8, 1.0):
-                raise ValueError("unsupported output rate")
-            if rate != self._output_rate:
-                from ai.core.config import get_settings
+        async with self._send_lock:
+            ws = self._ws
+            if ws is None or ws.closed:
+                raise TransportUnavailable("no active provider channel")
+            if payload.get("type") == "response.create":
+                payload = dict(payload)
+                rate = payload.pop("_aimms_rate", 1.0)
+                response = payload.get("response")
+                if isinstance(response, dict):
+                    response = dict(response)
+                    rate = response.pop("_aimms_rate", rate)
+                    payload["response"] = response
+                if rate not in (0.8, 1.0):
+                    raise ValueError("unsupported output rate")
+                if rate != self._output_rate:
+                    from ai.core.config import get_settings
 
-                preference = await self._actor_voice_override()
-                name = preference[0] if preference else get_settings().azure_voicelive_voice
-                await ws.send_json({
-                    "type": "session.update",
-                    "session": {
-                        "voice": {"type": "azure-standard", "name": name, "rate": str(rate)}
-                    },
-                })
-                self._output_rate = rate
-            # Let the gate adopt the acknowledging response id instead of
-            # flagging the application's own speech as a policy violation.
-            # The client event id lets a provider error be attributed to
-            # exactly this request and no other.
-            event_id = str(payload.get("event_id") or "") or f"app-{uuid.uuid4().hex}"
-            payload = {**payload, "event_id": event_id}
-            self._gate.expect_app_response(event_id)
-            try:
-                await ws.send_json(payload)
-            except Exception:
-                # A failed send never acknowledges; the allowance must not
-                # survive to legitimize an autonomous response later.
-                self._gate.abandon_app_response(event_id)
-                raise
-            return
-        await ws.send_json(payload)
+                    preference = await self._actor_voice_override()
+                    name = preference[0] if preference else get_settings().azure_voicelive_voice
+                    await ws.send_json({
+                        "type": "session.update",
+                        "session": {
+                            "voice": {"type": "azure-standard", "name": name, "rate": str(rate)}
+                        },
+                    })
+                    self._output_rate = rate
+                # Let the gate adopt the acknowledging response id instead of
+                # flagging the application's own speech as a policy violation.
+                # The client event id lets a provider error be attributed to
+                # exactly this request and no other.
+                event_id = str(payload.get("event_id") or "") or f"app-{uuid.uuid4().hex}"
+                payload = {**payload, "event_id": event_id}
+                from ai.core.voice.speech import utterance_binding
+
+                self._gate.expect_app_response(event_id, owner=utterance_binding(payload) or "")
+                try:
+                    await ws.send_json(payload)
+                except asyncio.CancelledError:
+                    # The cancellation may have landed on either side of the
+                    # WebSocket send side effect -- we cannot know whether
+                    # the create reached the provider. Reconcile/close: no
+                    # allowance may survive to legitimize a later response,
+                    # and the connection is torn down so nothing stale can
+                    # play unobserved.
+                    await self._teardown()
+                    raise
+                except Exception:
+                    # A write exception may follow the create side effect.
+                    # Retire both transport and reader so a late acknowledgement
+                    # cannot be attributed to a later request.
+                    await self.close()
+                    raise
+                return
+            await ws.send_json(payload)
 
     async def _drain(self) -> None:
         """Read and discard provider events after signaling completes.
@@ -339,7 +370,8 @@ class VoiceLiveChannel:
                     event = message.json()
                 except ValueError:
                     continue
-                if self._gate.classify(event) == "forbidden":
+                kind = self._gate.classify(event)
+                if kind == "forbidden":
                     # Name the event. Without its type these were 138 identical
                     # warnings in one 20-minute session -- 89% of all log output
                     # -- and none of them said what had actually been rejected.
@@ -349,6 +381,19 @@ class VoiceLiveChannel:
                         str(event.get("type") or "unknown")[:64],
                         str(event.get("response_id") or event.get("event_id") or "")[:64],
                     )
+                elif kind in ("speech_lifecycle", "error") and self.lifecycle_listener is not None:
+                    # Persisted-audit reconciliation: correlated provider
+                    # events go to the speech dispatcher instead of being
+                    # discarded. A listener failure never breaks the drain.
+                    try:
+                        result = self.lifecycle_listener(event, kind)
+                        if inspect.isawaitable(result):
+                            await result
+                    except Exception:  # pragma: no cover - listener faults
+                        logger.warning(
+                            "voice.lifecycle_listener_failed session=%s",
+                            self.session_id,
+                        )
         except Exception:  # pragma: no cover - connection teardown races
             pass
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { api, queryClient } from '../App';
+import { createFocusRefreshGate } from '../components/aichat/conversationFocus';
 import type { ThreadDeleteResult } from '../components/aichat/threadDeletion';
 import { getCsrfCookie } from '../functions/auth';
 import {
@@ -22,6 +23,7 @@ import {
 } from '../functions/transcriptExport';
 import { useAIChatState } from '../states/AIChatState';
 import { useLocalState } from '../states/LocalState';
+import { useThreadFocusState } from '../states/ThreadFocusState';
 import { useUserState } from '../states/UserState';
 import { useVoiceSessionState } from '../states/VoiceSessionState';
 import {
@@ -30,6 +32,12 @@ import {
   runAguiTurn
 } from './AguiTransport';
 
+// VOICE-H06: summary-derived scope hydration through the full authorized
+// scope endpoint (canonical machine ids, never label-derived authority).
+import {
+  createScopeHydrationTracker,
+  summaryDerivedScope
+} from './threadScopeHydration';
 import {
   emptyChatThreadRuntime,
   useChatThreadRuntime
@@ -510,6 +518,13 @@ export interface ActiveThreadScope {
   displayLabel: string;
   editable: boolean;
   machineCount?: number;
+  /**
+   * Canonical machine ids when the full scope payload was observed (the
+   * shared context preflight reuses a matching scope without a redundant
+   * PUT); absent on summary-derived scopes, which fall back to the
+   * single-machine display-label match.
+   */
+  machineIds?: number[];
 }
 
 /**
@@ -721,6 +736,24 @@ async function fetchServerThread(
     console.error('Error fetching server thread:', error);
     return null;
   }
+}
+
+/**
+ * Plan C: the canonical ActiveThreadScope projection of a full scope
+ * payload (ids included) — shared by state application and the preflight's
+ * "fetch the full scope" decision input.
+ */
+export function activeScopeFromPayload(
+  payload: ThreadScopePayload
+): ActiveThreadScope {
+  return {
+    mode: payload.scope.mode,
+    version: payload.version,
+    displayLabel: payload.display_label,
+    editable: payload.editable,
+    machineCount: payload.scope.machine_ids.length,
+    machineIds: payload.scope.machine_ids
+  };
 }
 
 /**
@@ -1012,6 +1045,10 @@ export function useAIChat(config: AIChatConfig = {}) {
   );
   const activeScopeVersionRef = useRef<number | null>(null);
   const [scopeCapable, setScopeCapable] = useState(false);
+  // Plan C: the thread-focus endpoints are advertised alongside the scope
+  // endpoints. An explicit selection is BLOCKED (never display-only) when
+  // the backend cannot confirm it.
+  const [focusCapable, setFocusCapable] = useState(false);
   // S1: a send bounced on scope_version_conflict; the bounced turn is kept
   // for one-click resend once the refreshed scope has been reviewed.
   const [scopeConflict, setScopeConflict] = useState(false);
@@ -1019,8 +1056,16 @@ export function useAIChat(config: AIChatConfig = {}) {
     null
   );
 
+  // VOICE-H06: the hydration tracker fences awaited summary-scope reads
+  // against newer scope observations (PUT acks, newer summaries, denials);
+  // `cacheKeyRef` lets a hydration read verify the account is unchanged.
+  const scopeHydrationRef = useRef(createScopeHydrationTracker());
+  const cacheKeyRef = useRef(cacheKey);
+  cacheKeyRef.current = cacheKey;
+
   const applyScopeState = useCallback((scope: ActiveThreadScope | null) => {
     activeScopeVersionRef.current = scope ? scope.version : null;
+    scopeHydrationRef.current.fence();
     setActiveScope(scope);
   }, []);
 
@@ -1030,12 +1075,7 @@ export function useAIChat(config: AIChatConfig = {}) {
         applyScopeState(null);
         return;
       }
-      applyScopeState({
-        mode: summary.mode,
-        version: summary.version,
-        displayLabel: summary.display_label,
-        editable: !shared
-      });
+      applyScopeState(summaryDerivedScope(summary, shared));
     },
     [applyScopeState]
   );
@@ -1046,13 +1086,7 @@ export function useAIChat(config: AIChatConfig = {}) {
         applyScopeState(null);
         return;
       }
-      applyScopeState({
-        mode: payload.scope.mode,
-        version: payload.version,
-        displayLabel: payload.display_label,
-        editable: payload.editable,
-        machineCount: payload.scope.machine_ids.length
-      });
+      applyScopeState(activeScopeFromPayload(payload));
     },
     [applyScopeState]
   );
@@ -1144,6 +1178,61 @@ export function useAIChat(config: AIChatConfig = {}) {
   const aiHost = chatEndpoint.replace(/\/chat\/?$/, '');
 
   /**
+   * VOICE-H06: hydrate a summary-derived scope through the FULL authorized
+   * scope endpoint so the active scope carries canonical machine ids (the
+   * preflight's reuse decision input) instead of falling back to a display
+   * label. The awaited read is fenced by thread, selection version, session,
+   * account key AND scope request ordering — it can never overwrite a newer
+   * scope ack or another thread. A failed/revoked/null response keeps the
+   * summary display without ids (unconfirmed, never label-authorized).
+   */
+  const hydrateActiveScopeSummary = useCallback(
+    async (
+      threadId: string,
+      summary: ActiveScopeSummary | null | undefined,
+      shared: boolean
+    ): Promise<void> => {
+      if (!summary) return;
+      const selectionVersion = selectionVersionRef.current;
+      const accountKey = cacheKey;
+      const isCurrent = () =>
+        sessionIsCurrent() &&
+        activeThreadIdRef.current === threadId &&
+        selectionVersionRef.current === selectionVersion &&
+        cacheKeyRef.current === accountKey;
+      const result = await scopeHydrationRef.current.hydrate({
+        threadId,
+        shared,
+        summary,
+        isCurrent,
+        fetchScope: () => fetchThreadScope(threadId, aiHost),
+        project: activeScopeFromPayload
+      });
+      if (result.status !== 'applied' || !isCurrent()) return;
+      // A strictly older scope version is provably stale; equal versions
+      // apply so the canonical ids arrive for the displayed summary.
+      const observed = activeScopeVersionRef.current;
+      if (observed !== null && result.scope.version < observed) return;
+      applyScopeState(result.scope);
+    },
+    [aiHost, applyScopeState, sessionIsCurrent]
+  );
+
+  // Plan C: the conversation-focus state follows the visible thread. It is
+  // server-derived only (GET/PUT acks); an untouched client-minted thread
+  // has no row (404 = no focus, no observed version — the owner focus PUT
+  // materializes it on first commit).
+  useEffect(() => {
+    const focus = useThreadFocusState.getState();
+    focus.bind({
+      threadId: activeThreadId,
+      shared: activeThreadShared,
+      host: aiHost
+    });
+    void focus.refresh();
+  }, [activeThreadId, activeThreadShared, aiHost]);
+
+  /**
    * Sync threads with the server
    * Merges server threads with local threads, server wins on conflicts
    */
@@ -1180,6 +1269,14 @@ export function useAIChat(config: AIChatConfig = {}) {
       capabilitiesRef.current = serverData.capabilities ?? {};
       // S1: the capability advertisement gates the whole scope feature.
       setScopeCapable(Boolean(serverData.capabilities?.thread_scope));
+      // Plan C: focus support rides the same advertisement (an explicit
+      // `thread_focus` key when present, else the thread-rail family).
+      setFocusCapable(
+        Boolean(
+          serverData.capabilities?.thread_focus ??
+            serverData.capabilities?.thread_scope
+        )
+      );
       setThreadCursor(serverData.next_cursor ?? null);
 
       const localThreads = storedThreadsRef.current;
@@ -1297,6 +1394,12 @@ export function useAIChat(config: AIChatConfig = {}) {
             });
             // S1: the detail's scope summary is authoritative for the UI.
             applyScopeSummary(serverThread.active_scope, serverThread.shared);
+            // VOICE-H06: hydrate canonical machine ids via the full scope.
+            void hydrateActiveScopeSummary(
+              nextActiveThreadId,
+              serverThread.active_scope,
+              serverThread.shared
+            );
             setActiveThreadShared(serverThread.shared);
             const last = serverThread.messages.at(-1);
             const unexpired =
@@ -1348,6 +1451,7 @@ export function useAIChat(config: AIChatConfig = {}) {
     aiHost,
     applyScopeSummary,
     applyScopeState,
+    hydrateActiveScopeSummary,
     sessionIsCurrent,
     saveStoredThreads,
     patchThreadRuntime,
@@ -1387,6 +1491,12 @@ export function useAIChat(config: AIChatConfig = {}) {
         // scope may occupy the banner state.
         if (activeThreadIdRef.current === threadId) {
           applyScopeSummary(serverData.active_scope, serverData.shared);
+          // VOICE-H06: hydrate canonical machine ids via the full scope.
+          void hydrateActiveScopeSummary(
+            threadId,
+            serverData.active_scope,
+            serverData.shared
+          );
           setActiveThreadShared(serverData.shared);
         }
         // Update stored thread with messages
@@ -1433,6 +1543,7 @@ export function useAIChat(config: AIChatConfig = {}) {
     [
       aiHost,
       applyScopeSummary,
+      hydrateActiveScopeSummary,
       sessionIsCurrent,
       saveStoredThreads,
       patchThreadRuntime,
@@ -2233,19 +2344,22 @@ export function useAIChat(config: AIChatConfig = {}) {
   }, []);
 
   /** S1: re-fetch the active thread's full scope (null → unconfirmed). */
-  const refreshThreadScope = useCallback(async () => {
-    const threadId = activeThreadIdRef.current;
-    const version = selectionVersionRef.current;
-    if (!threadId || !sessionIsCurrent()) return;
-    const payload = await fetchThreadScope(threadId, aiHost);
-    if (
-      sessionIsCurrent() &&
-      version === selectionVersionRef.current &&
-      activeThreadIdRef.current === threadId
-    ) {
+  const refreshThreadScope =
+    useCallback(async (): Promise<ActiveThreadScope | null> => {
+      const threadId = activeThreadIdRef.current;
+      const version = selectionVersionRef.current;
+      if (!threadId || !sessionIsCurrent()) return null;
+      const payload = await fetchThreadScope(threadId, aiHost);
+      const current =
+        sessionIsCurrent() &&
+        version === selectionVersionRef.current &&
+        activeThreadIdRef.current === threadId;
+      if (!current) return null;
       applyScopePayload(payload);
-    }
-  }, [aiHost, applyScopePayload, sessionIsCurrent]);
+      // Plan C: the fetched payload (canonical machine ids included) is also
+      // the shared preflight's "fetch the full scope" decision input.
+      return payload ? activeScopeFromPayload(payload) : null;
+    }, [aiHost, applyScopePayload, sessionIsCurrent]);
 
   /**
    * S1: replace the active thread's analysis scope. On a version conflict
@@ -2264,6 +2378,9 @@ export function useAIChat(config: AIChatConfig = {}) {
         version === selectionVersionRef.current &&
         activeThreadIdRef.current === threadId;
       if (!threadId || !currentSelection()) return { ok: false, code: 'error' };
+      // A newer scope write is a newer request: it fences any summary-scope
+      // hydration read issued before it (R05 ordering, scope side).
+      scopeHydrationRef.current.fence();
       let result = await updateThreadScope(
         threadId,
         aiHost,
@@ -2299,7 +2416,11 @@ export function useAIChat(config: AIChatConfig = {}) {
    * Handles AG-UI protocol events from Microsoft Agent Framework
    */
   const sendMessage = useCallback(
-    async (userContent: string, fileIds?: string[]) => {
+    async (
+      userContent: string,
+      fileIds?: string[],
+      focusVersion?: number | null
+    ) => {
       if (
         !sessionIsCurrent() ||
         !userContent.trim() ||
@@ -2314,6 +2435,30 @@ export function useAIChat(config: AIChatConfig = {}) {
         return;
 
       setError(null);
+      // Plan C: the focus stamp is captured HERE with the utterance (before
+      // any await) and kept for every transport retry of this logical turn —
+      // never re-read at submission time.
+      const expectedFocusVersion =
+        focusVersion ?? useThreadFocusState.getState().version ?? undefined;
+      // Client integration: a turn's focus echo is the ONLY thing allowed to
+      // request a chip refresh. Capture the turn's thread + selection
+      // generation up front so late, aborted and cross-thread events are
+      // ignored; at most ONE authoritative `GET /threads/{id}/focus` refresh
+      // runs per turn and only for a normalized valid
+      // `focus_refresh_required === true` signal. The echo's recorded
+      // snapshot is never applied to the server-confirmed chip.
+      const turnThreadId = activeThreadId;
+      const turnSelectionVersion = selectionVersionRef.current;
+      let turnAborted = false;
+      let turnDone = false;
+      const focusRefresh = createFocusRefreshGate(
+        () =>
+          !turnDone &&
+          !turnAborted &&
+          sessionIsCurrent() &&
+          turnSelectionVersion === selectionVersionRef.current &&
+          activeThreadIdRef.current === turnThreadId
+      );
       // S1: every send clears a standing conflict and becomes the turn a
       // later conflict would offer to resend.
       setScopeConflict(false);
@@ -2373,7 +2518,11 @@ export function useAIChat(config: AIChatConfig = {}) {
           idempotency_key: idempotencyKey,
           // S1: staleness detector — attached only once a server version has
           // been observed, so brand-new client-minted threads send nothing.
-          expected_scope_version: activeScopeVersionRef.current ?? undefined
+          expected_scope_version: activeScopeVersionRef.current ?? undefined,
+          // Plan C: the capture-time focus stamp (omitted when never
+          // observed; the backend mirrors it into the turn's recorded
+          // binding and refuses stale stamps).
+          expected_focus_version: expectedFocusVersion
         };
 
         // Use streaming endpoint for real-time AG-UI events
@@ -2414,6 +2563,7 @@ export function useAIChat(config: AIChatConfig = {}) {
                       fileIds && fileIds.length > 0 ? fileIds : undefined,
                     idempotencyKey,
                     expectedScopeVersion: payload.expected_scope_version,
+                    expectedFocusVersion,
                     signal: abortControllerRef.current!.signal,
                     csrfToken: getCsrfCookie() || undefined,
                     callbacks: {
@@ -2529,6 +2679,11 @@ export function useAIChat(config: AIChatConfig = {}) {
                         if (record) {
                           attachContextUsed(assistantMessage.id, record);
                         }
+                      },
+                      onThreadFocus: (value) => {
+                        // aimms.threadFocus: consume only the refresh
+                        // signal; the recorded snapshot never rebinds.
+                        focusRefresh.consume(value);
                       },
                       onProposalsRefresh: () => {
                         window.dispatchEvent(
@@ -2672,6 +2827,15 @@ export function useAIChat(config: AIChatConfig = {}) {
                   throw new AIRunError(
                     'The conversation scope changed.',
                     'scope_version_conflict'
+                  );
+                }
+                if (body?.detail === 'focus_version_conflict') {
+                  // Typed focus-stamp conflict: terminal for this attempt —
+                  // surfaced as its own class, never auto-retried and never
+                  // replayed under the same key with a new stamp.
+                  throw new AIRunError(
+                    'The conversation focus changed before your message was processed.',
+                    'focus_version_conflict'
                   );
                 }
                 throw new Error('HTTP error! status: 409');
@@ -2895,6 +3059,10 @@ export function useAIChat(config: AIChatConfig = {}) {
                           }
 
                           case AGUIEventType.STATE_DELTA: {
+                            // Belt and braces: a legacy delta may carry the
+                            // strict refresh flag; only `=== true` counts and
+                            // nothing else in the delta can move the chip.
+                            focusRefresh.consume(event);
                             // Diagnosis-rail provenance: citations + declared
                             // confidence attach to the answer so an uncited
                             // diagnosis is visibly different from a cited one.
@@ -2987,6 +3155,20 @@ export function useAIChat(config: AIChatConfig = {}) {
                             break;
                           }
 
+                          case AGUIEventType.CUSTOM: {
+                            // Legacy-wire focus echo channel. The ONLY
+                            // effect is the single refresh signal; the
+                            // recorded snapshot is never applied.
+                            const customEvent = event as unknown as {
+                              name?: string;
+                              value?: unknown;
+                            };
+                            if (customEvent.name === 'aimms.threadFocus') {
+                              focusRefresh.consume(customEvent.value);
+                            }
+                            break;
+                          }
+
                           case AGUIEventType.MESSAGES_SNAPSHOT: {
                             // S45 reconciliation: the server's FINAL text
                             // supersedes whatever streamed (question
@@ -3019,7 +3201,12 @@ export function useAIChat(config: AIChatConfig = {}) {
                             const errorEvent = event as AGUIRunErrorEvent;
                             throw new AIRunError(
                               errorEvent.message || 'Agent run failed',
-                              errorEvent.failure_class,
+                              // Exact typed RUN_ERROR code classes are
+                              // preserved verbatim (focus stamp conflict).
+                              errorEvent.failure_class ??
+                                (errorEvent.code === 'focus_version_conflict'
+                                  ? 'focus_version_conflict'
+                                  : undefined),
                               errorEvent.localized_message
                             );
                           }
@@ -3175,6 +3362,8 @@ export function useAIChat(config: AIChatConfig = {}) {
           });
 
           const data = response.data;
+          // Typed JSON response: same echo discipline as both streams.
+          focusRefresh.consume(data);
           // Handle OrchestratorAgent response format
           const content =
             data.message ||
@@ -3194,6 +3383,7 @@ export function useAIChat(config: AIChatConfig = {}) {
         }
       } catch (err: any) {
         if (err.name === 'AbortError') {
+          turnAborted = true;
           // Request was cancelled
           updateMessage(assistantMessage.id, '(Message cancelled)');
         } else {
@@ -3206,12 +3396,26 @@ export function useAIChat(config: AIChatConfig = {}) {
             err.failureClass === 'scope_version_conflict' ||
             (err.response?.status === 409 &&
               err.response?.data?.detail === 'scope_version_conflict');
+          const focusConflictHit =
+            err.failureClass === 'focus_version_conflict' ||
+            (err.response?.status === 409 &&
+              err.response?.data?.detail === 'focus_version_conflict');
           let errorMsg = err.message || 'Failed to get AI response';
           if (scopeConflictHit) {
             errorMsg =
               'The conversation scope changed. Review the scope and send again.';
             setScopeConflict(true);
             void refreshThreadScope();
+          } else if (focusConflictHit) {
+            // Typed focus-stamp conflict (legacy 409, SSE RUN_ERROR code,
+            // AG-UI failureClass): surfaced separately like the voice
+            // VOICE_FOCUS_CHANGED conflict. The refused text stays preserved
+            // for review (visible user bubble + `lastTurnRef` for an explicit
+            // resend) — never auto-retried, never idempotency-replayed under
+            // a new stamp. The authoritative focus converges via one GET.
+            errorMsg =
+              'The conversation focus changed before your message was processed. Review your message and send again.';
+            void useThreadFocusState.getState().refresh();
           } else if (err.localizedMessage) {
             errorMsg = err.localizedMessage;
           } else if (err.failureClass === 'provider_outage') {
@@ -3242,14 +3446,25 @@ export function useAIChat(config: AIChatConfig = {}) {
           // English would mix languages for non-English users (P8-W0e).
           updateMessage(
             assistantMessage.id,
-            err.localizedMessage || scopeConflictHit
+            err.localizedMessage || scopeConflictHit || focusConflictHit
               ? errorMsg
               : `Sorry, I encountered an error: ${errorMsg}`
           );
         }
       } finally {
+        // At most ONE authoritative focus refresh per turn, only for a
+        // normalized valid `focus_refresh_required === true` signal from the
+        // still-live turn. A false echo, a replayed stale version and any
+        // late/aborted/cross-thread event cannot move the chip; a failed GET
+        // fails closed in the store (never fabricating a confirmed target)
+        // and never touches the typed turn result text.
+        const refreshFocusNow = focusRefresh.shouldRefresh();
+        turnDone = true;
         setIsLoading(false);
         abortControllerRef.current = null;
+        if (refreshFocusNow) {
+          void useThreadFocusState.getState().refresh();
+        }
       }
     },
     [
@@ -3399,6 +3614,8 @@ export function useAIChat(config: AIChatConfig = {}) {
     // S1: active analysis scope
     activeScope,
     scopeCapable,
+    // Plan C: the thread-focus endpoints are confirmed available
+    focusCapable,
     scopeConflict,
     refreshThreadScope,
     setThreadScope,

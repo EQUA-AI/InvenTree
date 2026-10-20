@@ -174,26 +174,38 @@ class EventGate:
     #: Adopted app responses that have not yet reached a terminal event;
     #: used to decide whether a ``response.cancel`` has anything to cancel.
     active_app_response_ids: set[str] = field(default_factory=set)
+    #: Correlation ledger: client event id -> opaque owner token (the
+    #: persisted utterance/dispatch id) and provider response id -> the
+    #: owning client event id/owner. Content-free ids only.
+    pending_create_owners: dict[str, str] = field(default_factory=dict)
+    response_event_ids: dict[str, str] = field(default_factory=dict)
+    response_owners: dict[str, str] = field(default_factory=dict)
 
     def expect_response(self, response_id: str) -> None:
         """Register a response id the application itself requested."""
         if response_id:
             self.expected_response_ids.add(response_id)
 
-    def expect_app_response(self, event_id: str = "") -> None:
+    def expect_app_response(self, event_id: str = "", owner: str = "") -> None:
         """Register one application ``response.create`` before its id is known.
 
         Provider-generated response ids are only learned from the
         acknowledging ``response.created`` event, so exact-TTS dispatch
         registers intent here and :meth:`classify` adopts the next id.
-        Adoption is first-come: a provider drifting in exactly the
-        request-to-ack window could be misattributed, so this gate remains
-        telemetry and fail-closed teardown, never the speech authority —
-        ``create_response:false`` is what structurally prevents drift.
+        Adoption happens ONLY while exactly one create is outstanding (the
+        dispatcher guarantees one); with several outstanding creates the
+        gate refuses to guess (no FIFO misattribution) and fails closed.
+        Providers do not echo client event ids on ``response.created``, so
+        the single-outstanding-creates rule is the documented correlation
+        limitation -- this gate remains telemetry and fail-closed teardown,
+        never the speech authority: ``create_response:false`` is what
+        structurally prevents drift.
         """
         self.pending_app_responses += 1
         if event_id:
             self.pending_create_event_ids.add(event_id)
+            if owner:
+                self.pending_create_owners[event_id] = owner
 
     def abandon_app_response(self, event_id: str = "") -> None:
         """Drop one pending allowance for a failed or rejected request.
@@ -205,16 +217,37 @@ class EventGate:
             self.pending_app_responses -= 1
         if event_id:
             self.pending_create_event_ids.discard(event_id)
+            self.pending_create_owners.pop(event_id, None)
 
     def reset_pending(self) -> None:
-        """Clear in-flight bookkeeping when its connection goes away."""
+        """Clear ALL bookkeeping when its connection goes away.
+
+        The historical expected set is cleared too: a stale expected id
+        must never legitimize a provider response after teardown.
+        """
         self.pending_app_responses = 0
         self.pending_create_event_ids.clear()
         self.active_app_response_ids.clear()
+        self.expected_response_ids.clear()
+        self.pending_create_owners.clear()
+        self.response_event_ids.clear()
+        self.response_owners.clear()
 
     def has_active_app_response(self) -> bool:
-        """Whether an application-requested response may still be playing."""
-        return bool(self.active_app_response_ids)
+        """Whether an application-requested response may still be playing.
+
+        A create awaiting acknowledgement counts as active: a boolean over
+        acknowledged ids alone would let new speech overlap a pending one.
+        """
+        return bool(self.active_app_response_ids) or self.pending_app_responses > 0
+
+    def owner_for_response(self, response_id: str) -> str | None:
+        """Opaque owner token (utterance/dispatch id) for a response id."""
+        return self.response_owners.get(response_id)
+
+    def event_for_response(self, response_id: str) -> str | None:
+        """Client event id whose create adopted ``response_id``."""
+        return self.response_event_ids.get(response_id)
 
     def classify(self, event: dict[str, Any]) -> EventKind:
         """Return the event kind, flagging policy violations as forbidden."""
@@ -247,14 +280,35 @@ class EventGate:
                 if event_type in ("response.done", "response.cancelled"):
                     self.active_app_response_ids.discard(response_id)
                 return kind
-            if event_type == "response.created" and self.pending_app_responses > 0:
+            if event_type == "response.created" and self.pending_app_responses == 1:
                 # The acknowledgement of a response the application itself
-                # requested through exact TTS: adopt its provider-generated id.
+                # requested through exact TTS: adopt its provider-generated
+                # id, correlated to the single outstanding owner. Provider
+                # responses may not echo the client event id, so ownership
+                # rests on the single-outstanding-create rule.
+                if not response_id:
+                    # Malformed acknowledgement: unadoptable. It must NOT
+                    # consume the outstanding allowance (which would leave a
+                    # real response unaccounted) nor bind anything; the
+                    # dispatcher's bounded wait fails closed if no real
+                    # acknowledgement ever comes.
+                    return kind
                 self.pending_app_responses -= 1
-                if response_id:
-                    self.expected_response_ids.add(response_id)
-                    self.active_app_response_ids.add(response_id)
+                self.expected_response_ids.add(response_id)
+                self.active_app_response_ids.add(response_id)
+                event_id = next(iter(self.pending_create_event_ids), "")
+                self.pending_create_event_ids.discard(event_id)
+                owner = self.pending_create_owners.pop(event_id, "")
+                if event_id:
+                    self.response_event_ids[response_id] = event_id
+                if owner:
+                    self.response_owners[response_id] = owner
                 return kind
+            if event_type == "response.created" and self.pending_app_responses > 1:
+                # Several outstanding creates: which one is this? The gate
+                # refuses to guess (no FIFO misattribution) and fails closed.
+                self.violations.append(event_type)
+                return "forbidden"
             # An answer nobody asked for: the two-agent drift case.
             self.violations.append(event_type)
             return "forbidden"

@@ -82,19 +82,27 @@ def turn_request_fingerprint(
     modality: str,
     trusted_context: dict[str, Any],
     modality_metadata: dict[str, Any],
+    expected_focus_version: int | None = None,
 ) -> str:
-    """Return the stable fingerprint bound to an idempotency key."""
+    """Return the stable fingerprint bound to an idempotency key.
 
+    ``expected_focus_version`` is the client's focus stamp for the recorded
+    utterance. When present it joins the envelope (so a reused key under a
+    different stamp can never replay); when absent the envelope is
+    byte-identical to the pre-focus history — a stored turn replayed after
+    the upgrade must not conflict.
+    """
+    envelope: dict[str, Any] = {
+        "content": content,
+        "modality": modality,
+        "trusted_context": trusted_context,
+        # Optional observations cannot change a business replay fingerprint.
+        "modality_metadata": {k: v for k, v in modality_metadata.items() if k != "voice_timing"},
+    }
+    if expected_focus_version is not None:
+        envelope["expected_focus_version"] = expected_focus_version
     payload = json.dumps(
-        {
-            "content": content,
-            "modality": modality,
-            "trusted_context": trusted_context,
-            # Optional observations cannot change a business replay fingerprint.
-            "modality_metadata": {
-                k: v for k, v in modality_metadata.items() if k != "voice_timing"
-            },
-        },
+        envelope,
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
