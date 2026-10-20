@@ -19,7 +19,7 @@ class InvestigationRequest(models.Model):
 
     work_order = models.ForeignKey(
         'tasks.WorkOrder',
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='investigation_requests',
     )
     schema_version = models.PositiveIntegerField(default=1)
@@ -111,14 +111,15 @@ class InvestigationArtifact(models.Model):
         'common.Attachment',
         null=True,
         blank=True,
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
         related_name='+',
     )
+    attachment_snapshot = models.JSONField(null=True, blank=True)
     supersedes = models.ForeignKey(
         'self',
         null=True,
         blank=True,
-        on_delete=models.PROTECT,
+        on_delete=models.RESTRICT,
         related_name='corrections',
     )
     recorded_by = models.ForeignKey(

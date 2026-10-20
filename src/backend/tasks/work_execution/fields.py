@@ -14,6 +14,7 @@ WORK_EXECUTION_FIELDS = (
     'prepared_package',
     'verification_return',
     'time_assignment',
+    'work_continuity',
 )
 
 
@@ -25,6 +26,15 @@ class WorkExecutionFieldsMixin(serializers.Serializer):
     prepared_package = serializers.SerializerMethodField()
     verification_return = serializers.SerializerMethodField()
     time_assignment = serializers.SerializerMethodField()
+    work_continuity = serializers.SerializerMethodField()
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_work_continuity(self, obj) -> dict:
+        """P44: attributed holds and existing standalone record commands."""
+        from .continuity import project
+
+        request = self.context.get('request')
+        return project(obj, actor=request.user if request else None)
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_time_assignment(self, obj) -> dict:

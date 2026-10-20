@@ -5,14 +5,18 @@ import uuid
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
+from django.db.models import Max
 
 from rest_framework.exceptions import ValidationError
 
 from tasks.investigation_models import InvestigationArtifact, InvestigationRequest
 from tasks.investigation_serializers import (
     ArtifactFieldsSerializer,
+    InvestigationArtifactSerializer,
+    InvestigationRequestRevisionSerializer,
     InvestigationRequestSerializer,
     RequestFieldsSerializer,
+    RequiredArtifactSerializer,
 )
 from tasks.scope import scoped_work_orders
 from tasks.services.work_orders import (
@@ -127,22 +131,30 @@ def command(
     request_hash = _canonical_hash('investigation', actor, intent)
     replay = _replay_or_none(work, idempotency_key, request_hash)
     if replay:
-        return replay.metadata
+        return _response(replay.metadata)
     if type(expected_version) is not int:
         raise ValidationError('An integer Work version is required.')
     _require_version(work, expected_version)
     row = None
     if request_id is not None:
-        row = InvestigationRequest.objects.filter(
-            pk=request_id, work_order=work
-        ).first()
+        row = (
+            InvestigationRequest.objects
+            .select_related('owner')
+            .filter(pk=request_id, work_order=work)
+            .first()
+        )
         if row is None:
             raise ValidationError('Request is unavailable in this Work.')
         if type(request_version) is not int or request_version != row.version:
             raise StaleVersion(
                 'Investigation request changed; refresh before retrying.'
             )
-    before = InvestigationRequestSerializer(row).data if row else None
+    version_before = row.version if row else None
+    revision_before = None
+    artifact_through_id = None
+    if operation == 'revise' and row is not None:
+        revision_before = dict(InvestigationRequestRevisionSerializer(row).data)
+        artifact_through_id = row.artifacts.aggregate(last=Max('pk'))['last']
     artifact_id = None
     if operation in ('create', 'revise'):
         if (operation == 'create') != (row is None):
@@ -168,12 +180,18 @@ def command(
             raise ValidationError(
                 'Resolution requires an attributed owner and explanation.'
             )
+        if clean.get('status') == 'open':
+            row.blocked_reason = ''
         if row.status == 'resolved':
+            required_validator = RequiredArtifactSerializer(
+                data=row.required_artifacts, many=True
+            )
+            required_validator.is_valid(raise_exception=True)
             artifacts = list(row.artifacts.all()) if row.pk else []
             superseded = {a.supersedes_id for a in artifacts if a.supersedes_id}
             current = [a for a in artifacts if a.pk not in superseded]
             for required in row.required_artifacts:
-                candidates = [a for a in current if a.kind == required['kind']]
+                candidates = [a for a in current if a.kind == required.get('kind')]
                 if required['kind'] in ('laboratory', 'report'):
                     candidates = [
                         a for a in candidates if a.payload.get('status') == 'final'
@@ -188,13 +206,16 @@ def command(
                         a
                         for a in candidates
                         if all(
-                            r.get('value') is not None for r in a.payload.get(key, [])
+                            r.get('value') is not None
+                            and (not isinstance(r['value'], str) or r['value'].strip())
+                            for r in a.payload.get(key, [])
                         )
                     ]
                 if not candidates:
                     raise ValidationError(
                         'Required typed evidence is still missing or unresolved.'
                     )
+                current.remove(candidates[0])
         if row.pk:
             row.version += 1
         row.updated_by = actor
@@ -216,13 +237,21 @@ def command(
             )
             if clean['kind'] == 'photo':
                 attachments = attachments.filter(is_image=True)
-            if not attachments.exists():
+            attachment = attachments.first()
+            if attachment is None:
                 raise ValidationError('Attachment must be saved on this Work.')
         supersedes_id = clean.get('supersedes_id')
         if supersedes_id and not row.artifacts.filter(pk=supersedes_id).exists():
             raise ValidationError(
                 'Correction must refer to an artifact of this request.'
             )
+        if attachment_id:
+            clean['attachment_snapshot'] = {
+                'id': attachment.pk,
+                'filename': attachment.attachment.name,
+                'link': attachment.link,
+                'comment': attachment.comment,
+            }
         artifact = InvestigationArtifact.objects.create(
             request=row, recorded_by=actor, **clean, **(provenance or {})
         )
@@ -253,10 +282,20 @@ def command(
         )
     else:
         raise ValidationError('Unsupported investigation command.')
-    result = dict(InvestigationRequestSerializer(row).data)
-    metadata = {'request': result, 'before': before}
+    metadata = {
+        'request_id': row.pk,
+        'version_before': version_before,
+        'version_after': row.version,
+        'status': row.status,
+    }
     if artifact_id is not None:
         metadata['artifact_id'] = artifact_id
+    if revision_before is not None:
+        metadata['request_revision'] = {
+            'before': revision_before,
+            'after': dict(InvestigationRequestRevisionSerializer(row).data),
+            'artifact_through_id': artifact_through_id,
+        }
     _append_result(
         work_order=work,
         actor=actor,
@@ -270,14 +309,32 @@ def command(
         request_hash=request_hash,
         result_metadata=metadata,
     )
-    return metadata
+    return _response(metadata)
+
+
+def request_queryset():
+    """Bounded queries for full projections, independent of artifact count."""
+    return InvestigationRequest.objects.select_related(
+        'owner', 'updated_by', 'created_by'
+    ).prefetch_related('artifacts__recorded_by')
+
+
+def _response(metadata):
+    """Hydrate current state separately from the small durable command receipt."""
+    row = request_queryset().get(pk=metadata['request_id'])
+    result = {**metadata, 'request': dict(InvestigationRequestSerializer(row).data)}
+    if metadata.get('artifact_id'):
+        result['artifact'] = dict(
+            InvestigationArtifactSerializer(
+                next(a for a in row.artifacts.all() if a.pk == metadata['artifact_id'])
+            ).data
+        )
+    return result
 
 
 def project_requests(work_order):
     """A successful empty queue is distinct from an unavailable provider."""
-    rows = work_order.investigation_requests.select_related('owner').prefetch_related(
-        'artifacts__recorded_by'
-    )
+    rows = request_queryset().filter(work_order=work_order)
     return {
         'available': True,
         'reason': '',

@@ -1936,17 +1936,36 @@ def select_capabilities(
         and focus.get("schema_version") == 2
         and type(focus.get("request_id")) is int
     ):
-        entries = tuple(
+        # Request publication extends the shared assistant's normal query routing.
+        base = select_capabilities(
+            query,
+            lookup_type=lookup_type,
+            context={key: value for key, value in (context or {}).items() if key != "work_focus"},
+            profile=profile,
+            authenticated=authenticated,
+            task_intent=task_intent,
+        )
+        pack_ids = base.pack_ids or ("maintenance.read",)
+        riders = tuple(
             entry
-            for entry in entries_for_packs(("maintenance.read", "investigation.proposals"))
+            for entry in entries_for_packs(("investigation.proposals",))
             if exposure_authorized(entry, profile, authenticated=authenticated)
         )
+        reads = _authorized_read_entries(pack_ids, profile, authenticated=authenticated)
+        normal_entries = (
+            tuple(entry for entry in entries_for_packs(pack_ids) if entry.tool_id in base.tool_ids)
+            if base.tool_ids
+            else reads
+        )
+        entries = (*normal_entries, *riders)
         return CapabilitySelection(
             pack_ids=tuple(dict.fromkeys(entry.pack_id for entry in entries)),
             tool_ids=tuple(entry.tool_id for entry in entries),
             tools=tuple(entry.tool for entry in entries),
             reason="investigation_request_review",
             clarification_required=not bool(entries),
+            requires_specialist=base.requires_specialist,
+            signals=base.signals,
         )
     normalized = " ".join(query.casefold().split())
     if re.search(r"\b(?:memory|memories)\b", normalized) and re.search(

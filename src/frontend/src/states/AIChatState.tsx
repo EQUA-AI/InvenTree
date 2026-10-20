@@ -54,6 +54,11 @@ interface AIChatStateProps {
   close: () => void;
   clearHint: () => void;
   clearWorkFocus: () => void;
+  advanceRequestFocus: (
+    workOrderId: number,
+    requestId: number,
+    version: number
+  ) => void;
   /**
    * Transient "open the Chat tab" intent set by machine Ask/scan. The drawer
    * consumes it exactly once (select Chat + focus the composer); it must not
@@ -136,6 +141,19 @@ export const useAIChatState = create<AIChatStateProps>()((set) => ({
     }),
   clearHint: () => set({ routingHint: undefined, hintThreadId: null }),
   clearWorkFocus: () => set({ workFocusHint: undefined, hintThreadId: null }),
+  advanceRequestFocus: (workOrderId, requestId, version) =>
+    set((state) => {
+      const hint = state.workFocusHint;
+      if (
+        !hint ||
+        hint.workOrderId !== workOrderId ||
+        hint.requestId !== requestId ||
+        !Number.isSafeInteger(version) ||
+        version <= (hint.requestVersion ?? 0)
+      )
+        return {};
+      return { workFocusHint: { ...hint, requestVersion: version } };
+    }),
   chatOpenIntent: null,
   consumeChatOpenIntent: () => set({ chatOpenIntent: null })
 }));

@@ -153,6 +153,7 @@ class InvestigationProposalTests(TestCase):
         first = self.approve(p)
         second = self.approve(p)
         self.assertEqual(first.receipt, second.receipt)
+        self.assertEqual(first.receipt['recorded_by_name'], self.actor.get_username())
         self.assertEqual(InvestigationArtifact.objects.count(), 1)
         a = InvestigationArtifact.objects.get()
         self.assertEqual(
@@ -601,3 +602,233 @@ class InvestigationProposalTests(TestCase):
             [path.name for path in Path(self.temp.name).rglob('*') if path.is_file()],
             ['rollback.pdf'],
         )
+
+    def test_long_description_keeps_full_payload_and_valid_native_comment(self):
+        """SQLite proves the attachment field fits using its model validators."""
+        from common.models import Attachment
+
+        file_id = self.upload('long.pdf', b'%PDF-1.4\nSynthetic\n')
+        description = 'Long technician report ' * 30
+        p = self.create(
+            intent={
+                'request_id': self.row.pk,
+                'request_version': 1,
+                'kind': 'report',
+                'payload': {
+                    'description': description,
+                    'source': 'Technician',
+                    'status': 'final',
+                },
+                'file_id': file_id,
+            }
+        )
+        receipt = self.approve(p).receipt
+        saved = Attachment.objects.get(pk=receipt['attachment_id'])
+        Attachment._meta.get_field('comment').clean(saved.comment, saved)
+        self.assertEqual(saved.comment, description[:250])
+        self.assertEqual(
+            InvestigationArtifact.objects.get().payload['description'], description
+        )
+
+    def test_sibling_proposals_and_later_proposal_from_same_turn_publish(self):
+        """Only sibling publications may advance the signed request revision."""
+        first_file = self.upload('first.pdf', b'%PDF-1.4\nFirst\n')
+        second_file = f'{self.thread.pk}/second.pdf'
+        (Path(self.temp.name) / 'ai_uploads' / second_file).write_bytes(
+            b'%PDF-1.4\nSecond\n'
+        )
+        self.turn = self.begin(
+            {'uploaded_files': [{'file_id': first_file}, {'file_id': second_file}]},
+            key='multi-file-turn',
+        )
+        intent = {
+            'request_id': self.row.pk,
+            'request_version': 1,
+            'kind': 'report',
+            'payload': {
+                'description': 'First report',
+                'source': 'Technician',
+                'status': 'final',
+            },
+            'file_id': first_file,
+        }
+        first = self.create(intent=intent)
+        second = self.create(
+            idempotency_key='sibling', intent={**intent, 'file_id': second_file}
+        )
+        self.assertEqual(self.approve(first).receipt['request_version'], 2)
+        self.assertEqual(self.approve(second).receipt['request_version'], 3)
+        third = self.create(
+            idempotency_key='late-sibling',
+            intent={
+                'request_id': self.row.pk,
+                'request_version': 1,
+                'kind': 'observation',
+                'payload': {'text': 'Third artifact'},
+            },
+        )
+        self.assertEqual(self.approve(third).receipt['request_version'], 4)
+        self.assertEqual(InvestigationArtifact.objects.count(), 3)
+        self.row.refresh_from_db()
+        self.turn = self.begin(key='next-request-message')
+        self.assertEqual(
+            self.turn.trusted_context['work_focus_snapshot']['request_version'], 4
+        )
+
+    def test_bomb_image_creates_nonexecutable_review(self):
+        """Pillow's dimensional guard becomes a supported refusal, never a 500."""
+        from io import BytesIO
+
+        from PIL import Image
+
+        content = BytesIO()
+        Image.new('RGB', (2, 2)).save(content, format='PNG')
+        file_id = self.upload('bomb.png', content.getvalue())
+        with mock.patch.object(Image, 'MAX_IMAGE_PIXELS', 1):
+            p = self.create(
+                intent={
+                    'request_id': self.row.pk,
+                    'request_version': 1,
+                    'kind': 'photo',
+                    'payload': {'description': 'Oversized dimensions'},
+                    'file_id': file_id,
+                }
+            )
+            self.assertFalse(p.preview['publication_supported'])
+            with self.assertRaises(proposals.ProposalStateConflict):
+                self.approve(p)
+        self.assert_nothing_published()
+
+    def test_visibility_reads_batch_without_thread_locks(self):
+        """Refreshing proposals reauthorizes once per focus, without write locks."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        self.create()
+        for i in range(4):
+            self.create(idempotency_key=f'visible-{i}')
+        with mock.patch.object(
+            ThreadRepository,
+            '_lock_thread',
+            side_effect=AssertionError('read took lock'),
+        ):
+            with CaptureQueriesContext(connection) as queries:
+                rows = proposals.list_owned_proposals(
+                    owner=self.actor, scope_hash=self.scope_hash
+                )
+            self.assertEqual(len(rows), 5)
+            self.assertLess(len(queries), 25)
+            proposals.get_owned_proposal(
+                owner=self.actor, scope_hash=self.scope_hash, proposal_id=rows[0].pk
+            )
+
+    def test_real_sibling_artifact_and_unsupported_owner_finding_refuse(self):
+        """Proposal intake cannot correct a real artifact of another request."""
+        sibling = InvestigationRequest.objects.create(
+            work_order=self.work,
+            purpose='Sibling',
+            next_check='Sibling',
+            created_by=self.actor,
+            updated_by=self.actor,
+        )
+        artifact = InvestigationArtifact.objects.create(
+            request=sibling,
+            kind='observation',
+            payload={'text': 'Sibling'},
+            recorded_by=self.actor,
+        )
+        base = {
+            'request_id': self.row.pk,
+            'request_version': 1,
+            'kind': 'observation',
+            'payload': {'text': 'Correction'},
+        }
+        from django.contrib.auth import get_user_model
+
+        from assets.models import ClientScopeGrant
+        from common.models import Attachment
+        from repair.models import RepairInvestigationFinding, RepairPacket
+
+        outside = get_user_model().objects.create_user(
+            username='foreign-proposal-owner'
+        )
+        outside.groups.add(self.group)
+        ClientScopeGrant.objects.create(
+            user=outside, client=self.foreign_work.machine.client
+        )
+
+        packet = RepairPacket.objects.create(
+            work_order=self.second_work, machine=self.machine, fault_summary='Foreign'
+        )
+        finding = RepairInvestigationFinding.objects.create(
+            packet=packet,
+            finding_key='foreign',
+            category='inspection',
+            observation='Foreign Work',
+        )
+        attachment = Attachment.objects.create(
+            model_type='workorder',
+            model_id=self.second_work.pk,
+            link='https://example.invalid/foreign-report',
+        )
+        # These links are not accepted by the publication schema at all.
+        for extra in (
+            {'supersedes_id': artifact.pk},
+            {'owner_id': outside.pk},
+            {'source_finding_id': finding.pk},
+            {'attachment_id': attachment.pk},
+        ):
+            with self.subTest(extra=extra), self.assertRaises(proposals.ProposalError):
+                self.create(idempotency_key=str(extra), intent={**base, **extra})
+        self.assertFalse(ChatActionProposal.objects.exists())
+
+    def test_deleted_native_file_keeps_executed_replay_and_evidence(self):
+        """A retained snapshot proves the saved result after native attachment removal."""
+        from common.models import Attachment
+
+        file_id = self.upload('removed.pdf', b'%PDF-1.4\nSynthetic\n')
+        p = self.create(
+            intent={
+                'request_id': self.row.pk,
+                'request_version': 1,
+                'kind': 'report',
+                'payload': {
+                    'description': 'Original',
+                    'source': 'Technician',
+                    'status': 'final',
+                },
+                'file_id': file_id,
+            }
+        )
+        saved = self.approve(p)
+        Attachment.objects.get(pk=saved.receipt['attachment_id']).delete()
+        self.assertEqual(self.approve(p).receipt, saved.receipt)
+        self.assertIsNone(InvestigationArtifact.objects.get().attachment_id)
+
+    def test_optional_nontext_description_is_not_a_native_comment(self):
+        """Extra facts on file-backed observations are retained without type coercion."""
+        from common.models import Attachment
+
+        file_id = self.upload('observation.pdf', b'%PDF-1.4\nSynthetic\n')
+        for index, description in enumerate((None, 42)):
+            payload = {'text': 'Technician observation', 'description': description}
+            proposal = self.create(
+                idempotency_key=f'optional-description-{index}',
+                intent={
+                    'request_id': self.row.pk,
+                    'request_version': 1,
+                    'kind': 'observation',
+                    'payload': payload,
+                    'file_id': file_id,
+                },
+            )
+            saved = self.approve(proposal)
+            self.assertEqual(
+                Attachment.objects.get(pk=saved.receipt['attachment_id']).comment, ''
+            )
+            self.assertEqual(
+                InvestigationArtifact.objects.get(
+                    pk=saved.receipt['artifact_id']
+                ).payload,
+                payload,
+            )

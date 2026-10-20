@@ -34,7 +34,9 @@ import {
   executionBadgeStyles,
   recordedTime
 } from './ExecutionFacts';
+import { ScopeRevisionReview } from './ScopeRevisionReview';
 import { deviationFacts } from './packagePresentation';
+import { effectiveScope } from './scopeRevision';
 
 /** A criterion is a saved instruction, never a threshold supplied by the UI. */
 export function StepCriteria({ step }: Readonly<{ step: PackageStep }>) {
@@ -317,21 +319,30 @@ export function PreparedPackage({
       >{t`This server does not supply the applied procedure, resources or revision history here. Use the linked native records. Missing information does not establish readiness.`}</Alert>
     );
   const current = value.scopes.filter((scope) => scope.current);
+  const effective = effectiveScope(
+    value.scopes,
+    value.revision_review
+      ? value.revision_review.current_scope_id
+      : current.length === 1
+        ? current[0].id
+        : null
+  );
   return (
     <Stack gap='md' data-testid='prepared-package'>
       <ExecutionSection title={t`Prepared work package`}>
-        {current.length === 1 ? (
+        {effective ? (
           <>
             <Badge
               styles={executionBadgeStyles}
               style={{ alignSelf: 'flex-start' }}
-            >{t`Current scope version ${current[0].version}`}</Badge>
-            <Scope scope={current[0]} />
+            >{t`Current scope version ${effective.version}`}</Badge>
+            <Scope scope={effective} />
           </>
         ) : (
           <Text size='sm'>
-            {current.length > 1
-              ? t`Conflicting current scope records — effective scope is unresolved.`
+            {current.length > 0 ||
+            value.revision_review?.state === 'conflicting_scope'
+              ? t`Current scope markers do not identify a single latest version. Effective scope is unresolved.`
               : t`No current approved repair scope recorded.`}
           </Text>
         )}
@@ -362,20 +373,7 @@ export function PreparedPackage({
         >{t`Authority source, effective time, responsible owner and resume conditions: Not recorded here.`}</Text>
       </ExecutionSection>
       <ExecutionSection title={t`Scope revisions and affected dependencies`}>
-        <Text size='sm'>{t`Affected tasks, materials, resources, permissions and test criteria: not available. Scope versions are retained, but no provider records which dependencies require reassessment or which evidence remains valid.`}</Text>
-        <Accordion variant='contained'>
-          {value.scopes.map((scope) => (
-            <Accordion.Item key={scope.id} value={String(scope.id)}>
-              <Accordion.Control>
-                {t`Scope version ${scope.version}`} ·{' '}
-                {scope.current ? t`Current` : t`Superseded`}
-              </Accordion.Control>
-              <Accordion.Panel>
-                <Scope scope={scope} />
-              </Accordion.Panel>
-            </Accordion.Item>
-          ))}
-        </Accordion>
+        <ScopeRevisionReview value={value} />
       </ExecutionSection>
       <ExecutionSection title={t`Native deviations`}>
         {value.procedures_state === 'not_enabled' ? (

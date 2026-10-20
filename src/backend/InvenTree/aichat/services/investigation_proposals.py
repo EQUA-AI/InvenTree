@@ -8,6 +8,7 @@ from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.core.files.base import ContentFile
 from django.db import transaction
+from django.db.models import Q
 
 from rest_framework.exceptions import ValidationError
 
@@ -66,7 +67,20 @@ def source(owner, *, work_order_id, intent, thread_id, source_turn_id, current=T
         raise proposals.ProposalNotFound(
             'Investigation source unavailable. Nothing was saved.'
         ) from exc
-    if current and live != snapshot:
+    comparable = {**live, 'request_version': snapshot['request_version']}
+    sibling_count = 0
+    if current and comparable == snapshot:
+        from tasks.investigation_models import InvestigationArtifact
+
+        sibling_count = InvestigationArtifact.objects.filter(
+            request_id=intent['request_id'],
+            source_turn_id=turn.pk,
+            source_proposal_id__isnull=False,
+        ).count()
+    if current and (
+        comparable != snapshot
+        or live['request_version'] != snapshot['request_version'] + sibling_count
+    ):
         raise proposals.ProposalRevalidationFailed(
             'Work or request revision changed. Nothing was saved; return to Diagnose for a fresh review.'
         )
@@ -130,7 +144,7 @@ def selected_file(turn, file_id):
                 image.verify()
             is_image = actual_format == ('PNG' if suffix == '.png' else 'JPEG')
             supported = is_image
-        except (OSError, ValueError):
+        except (OSError, ValueError, Image.DecompressionBombError):
             supported = False
     elif suffix == '.pdf':
         supported = contents.startswith(b'%PDF-')
@@ -206,7 +220,7 @@ def prepare(owner, work_order, intent, *, thread_id, source_turn_id):
         'reference': work_order.reference,
         'title': work_order.title,
         'request_id': row.pk,
-        'request_version': row.version,
+        'request_version': intent['request_version'],
         'purpose': row.purpose,
         'required_artifacts': row.required_artifacts,
         'kind': fields['kind'],
@@ -277,12 +291,15 @@ def execute(proposal, owner):
     saved = None
     try:
         if file:
+            description = fields['payload'].get('description')
             saved = Attachment(
                 model_type='workorder',
                 model_id=work.pk,
                 upload_user=owner,
                 is_image=file['is_image'],
-                comment=fields['payload'].get('description', ''),
+                comment=(description if isinstance(description, str) else '')[
+                    : Attachment._meta.get_field('comment').max_length
+                ],
             )
             saved.attachment.save(file['filename'], ContentFile(contents), save=False)
             saved.save(rebuild=False)
@@ -296,7 +313,7 @@ def execute(proposal, owner):
             operation='artifact',
             fields=fields,
             request_id=proposal.intent['request_id'],
-            request_version=proposal.intent['request_version'],
+            request_version=preview_live_version(proposal),
             provenance={
                 'source_turn_id': turn.pk,
                 'source_proposal_id': str(proposal.pk),
@@ -307,9 +324,7 @@ def execute(proposal, owner):
         if saved and saved.attachment:
             saved.attachment.storage.delete(saved.attachment.name)
         raise
-    artifact = next(
-        a for a in result['request']['artifacts'] if a['id'] == result['artifact_id']
-    )
+    artifact = result['artifact']
     return {
         'command': ACTION,
         'work_order_id': work.pk,
@@ -320,6 +335,7 @@ def execute(proposal, owner):
         'source_turn_id': turn.pk,
         'source_proposal_id': str(proposal.pk),
         'recorded_by': owner.pk,
+        'recorded_by_name': owner.get_full_name() or owner.get_username(),
         'idempotency_key': f'proposal:{proposal.pk}',
     }
 
@@ -344,7 +360,8 @@ def verified(proposal):
         and receipt.get('source_turn_id') == proposal.source_turn_id
         and receipt.get('source_proposal_id') == str(proposal.pk)
         and receipt.get('recorded_by') == proposal.owner_id
-        and InvestigationArtifact.objects.filter(
+        and InvestigationArtifact.objects
+        .filter(
             pk=receipt.get('artifact_id'),
             request_id=proposal.intent.get('request_id'),
             request__work_order_id=proposal.target_work_order_id,
@@ -353,8 +370,12 @@ def verified(proposal):
             source_proposal_id=proposal.pk,
             kind=proposal.intent.get('kind'),
             payload=proposal.intent.get('payload'),
-            attachment_id=receipt.get('attachment_id'),
-        ).exists()
+        )
+        .filter(
+            Q(attachment_id=receipt.get('attachment_id'))
+            | Q(attachment_snapshot__id=receipt.get('attachment_id'))
+        )
+        .exists()
         and WorkOrderEvent.objects.filter(
             pk=ledger.result_ref,
             actor_id=proposal.owner_id,
@@ -363,3 +384,79 @@ def verified(proposal):
             event_type='investigation_artifact',
         ).exists()
     )
+
+
+def preview_live_version(proposal):
+    """The Work lock serializes sibling approvals; source() checked their lineage."""
+    from tasks.investigation_models import InvestigationRequest
+
+    return InvestigationRequest.objects.get(pk=proposal.intent['request_id']).version
+
+
+def visible_proposals(rows, owner):
+    """Batch current read authorization without taking actor or thread write locks."""
+    from tasks.services.investigation_requests import _change_actor
+
+    from ai.core.auth import principal_for_user
+    from aichat.services.scope_strings import scope_strings
+
+    if not rows:
+        return []
+    try:
+        current_scope = scope_strings(owner)
+        owner = _change_actor(owner)
+        repository = ThreadRepository(owner, principal_for_user(owner).scope)
+    except (proposals.ProposalError, PermissionDenied, ValueError):
+        return []
+    turns = {
+        turn.pk: turn
+        for turn in ChatTurn.objects.filter(pk__in=[r.source_turn_id for r in rows])
+    }
+    threads = {}
+    focuses = {}
+    visible = []
+    for row in rows:
+        try:
+            if (row.scope_key, row.scope_hash) != current_scope:
+                continue
+            if row.thread_id not in threads:
+                try:
+                    threads[row.thread_id] = repository._get_thread(row.thread_id)
+                except ThreadRepositoryError:
+                    threads[row.thread_id] = None
+            turn = turns.get(row.source_turn_id)
+            if (
+                threads[row.thread_id] is None
+                or turn is None
+                or turn.thread_id != row.thread_id
+            ):
+                continue
+            snapshot = (turn.trusted_context or {}).get(WORK_FOCUS_SNAPSHOT_KEY)
+            intent = row.intent
+            if (
+                not isinstance(snapshot, dict)
+                or snapshot.get('schema_version') != 2
+                or any(
+                    snapshot.get(key) != value
+                    for key, value in (
+                        ('work_order_id', row.target_work_order_id),
+                        ('request_id', intent.get('request_id')),
+                        ('request_version', intent.get('request_version')),
+                    )
+                )
+            ):
+                continue
+            key = (row.target_work_order_id, intent['request_id'])
+            if key not in focuses:
+                try:
+                    focuses[key] = authorized_focus(owner.pk, *key)
+                except WorkFocusError:
+                    focuses[key] = None
+            live = focuses[key]
+            if live is not None and all(
+                live.get(k) == snapshot.get(k) for k in ('machine_id', 'boundary_hash')
+            ):
+                visible.append(row)
+        except (KeyError, TypeError, ValueError):
+            continue
+    return visible

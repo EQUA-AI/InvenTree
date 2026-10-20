@@ -160,14 +160,16 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(plan.getByText('access: No', { exact: true })).toBeVisible();
     await expect(plan.getByText(/\{\"access\":/)).toHaveCount(0);
     await plan
-      .getByRole('button', { name: 'Scope version 1 · Superseded' })
+      .getByRole('button', { name: 'All retained scope versions (2)' })
       .click();
     await expect(plan.getByText('Synthetic task version 1')).toBeVisible();
     await expect(
       plan.getByText(/no physical-authority provider/)
     ).toBeVisible();
     await expect(
-      plan.getByText(/no provider records which dependencies/)
+      plan.getByText(
+        /No record links a scope revision to affected dependencies/
+      )
     ).toBeVisible();
     await expect(plan.getByText('Synthetic access constraint')).toBeVisible();
     await expect(

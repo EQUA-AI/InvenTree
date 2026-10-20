@@ -46,6 +46,17 @@ class WorkOrder(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
     precisely because one job can be in more than one state at once.
     """
 
+    def delete(self, *args, **kwargs):
+        """Check retained references before the attachment mixin removes files."""
+        from django.db import router
+        from django.db.models.deletion import Collector
+
+        collector = Collector(
+            using=kwargs.get('using') or router.db_for_write(type(self), instance=self)
+        )
+        collector.collect([self])
+        return super().delete(*args, **kwargs)
+
     STATUS_BACKLOG = 'backlog'
     STATUS_IN_PROGRESS = 'in-progress'
     STATUS_REVIEW = 'review'

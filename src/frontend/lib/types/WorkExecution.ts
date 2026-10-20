@@ -159,6 +159,12 @@ export interface InvestigationArtifact {
     | 'check_result';
   payload: Record<string, unknown>;
   attachment: number | null;
+  attachment_snapshot?: {
+    id: number;
+    filename: string | null;
+    link: string | null;
+    comment: string;
+  } | null;
   supersedes: number | null;
   recorded_by: number;
   recorded_by_name: string | null;
@@ -209,6 +215,8 @@ export interface InvestigationRequest {
   resolution: string;
   created_by: number;
   updated_by: number;
+  updated_by_name?: string | null;
+  created_by_name?: string | null;
   created_at: string;
   updated_at: string;
   artifacts: InvestigationArtifact[];
@@ -278,6 +286,57 @@ export interface PackageScope {
   approved_by: string | null;
   approved_at: string;
   note: string;
+  superseded_at?: string | null;
+  failure_codes?: string[];
+}
+
+export interface ScopeRequestSnapshot {
+  version: number;
+  purpose: string;
+  next_check: string;
+  status: InvestigationRequest['status'];
+  owner_name: string | null;
+  next_checkpoint: string | null;
+  required_artifacts: InvestigationRequest['required_artifacts'];
+  blocked_reason: string;
+  source_finding?: number | null;
+  source_proposal?: InvestigationRequest['source_proposal'];
+  resolution?: string;
+  priority?: number | null;
+}
+
+/** Native history is retained; the missing dependency graph stays explicit. */
+export interface ScopeRevisionReview {
+  rule: 'scope_revision.v1';
+  state:
+    | 'no_scope'
+    | 'original'
+    | 'revised'
+    | 'no_current_scope'
+    | 'conflicting_scope';
+  current_scope_id: number | null;
+  comparisons: {
+    before_scope_id: number;
+    after_scope_id: number;
+    basis: 'retained_version_order';
+  }[];
+  dependency_impact: {
+    kind: 'tasks' | 'materials' | 'resources' | 'permissions' | 'criteria';
+    available: false;
+    reason: string;
+  }[];
+  evidence_validity: { available: false; reason: 'no_scope_evidence_links' };
+  request_revisions: {
+    event_id: number;
+    request_id: number;
+    before: ScopeRequestSnapshot;
+    after: ScopeRequestSnapshot;
+    retained_evidence_ids: number[];
+    recorded_by: string | null;
+    recorded_at: string;
+    scope_link: null;
+    revision_reason: null;
+  }[];
 }
 
 export interface PackageDeviation {
@@ -304,6 +363,45 @@ export interface PreparedPackage {
   can_record_deviation: boolean;
   physical_authority: { available: false; reason: 'no_provider' };
   affected_dependencies: { available: false; reason: 'no_provider' };
+  revision_review?: ScopeRevisionReview;
+}
+
+/** Hold/resume record provenance is separate from site acceptance/permission. */
+export interface WorkContinuity {
+  rule: 'work_continuity.v1';
+  lifecycle_version: number;
+  current_hold: {
+    reason: string | null;
+    recorded_by: string | null;
+    recorded_at: string | null;
+    event_id: number | null;
+  } | null;
+  history: {
+    event_id: number;
+    action: 'hold' | 'resume';
+    from_status: string;
+    to_status: string;
+    reason: string | null;
+    recorded_by: string | null;
+    recorded_at: string;
+    lifecycle_version: number | null;
+  }[];
+  commands: {
+    hold: boolean;
+    resume: boolean;
+    unavailable_reason:
+      | 'api_disabled'
+      | 'permission_required'
+      | 'packet_owns_lifecycle'
+      | null;
+  };
+  assignment_acceptance: {
+    available: false;
+    reason: 'no_site_acceptance_provider';
+  };
+  accepted_handover: { available: false; reason: 'no_provider' };
+  physical_service_state: { available: false; reason: 'no_provider' };
+  cross_crew_restrictions: { available: false; reason: 'no_provider' };
 }
 
 export interface VerificationTest {

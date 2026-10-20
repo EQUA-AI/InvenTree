@@ -385,7 +385,7 @@ for (const scheme of ['light', 'dark'] as const) {
     ).toHaveCount(0);
     await expect(
       diagnose.getByText(
-        /Chat does not save finding corrections, resolutions or agreed checks/
+        /Chat does not save finding corrections or resolutions/
       )
     ).toBeVisible();
     await expect(

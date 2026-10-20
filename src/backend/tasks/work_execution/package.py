@@ -23,6 +23,10 @@ def _scopes(packet):
             'approved_by': person(scope.approved_by),
             'approved_at': scope.approved_at.isoformat(),
             'note': scope.approval_note,
+            'failure_codes': scope.failure_codes,
+            'superseded_at': scope.superseded_at.isoformat()
+            if scope.superseded_at
+            else None,
         }
         for scope in packet.approved_scopes.select_related('approved_by').order_by(
             '-version', '-pk'
@@ -54,7 +58,10 @@ def _application(application, part_names):
 
 def project(work_order, actor=None) -> dict:
     """Read the scoped parent's saved package and native deviations only."""
+    from .scope_revision import project as revision_review
+
     enabled = procedures_enabled()
+    scopes = _scopes(packet_of(work_order))
     applications = (
         list(
             work_order.procedure_applications.select_related('applied_by').order_by(
@@ -77,7 +84,8 @@ def project(work_order, actor=None) -> dict:
         part_names = dict(Part.objects.filter(pk__in=ids).values_list('pk', 'name'))
     return {
         'rule': 'prepared_package.v1',
-        'scopes': _scopes(packet_of(work_order)),
+        'scopes': scopes,
+        'revision_review': revision_review(work_order, scopes),
         'procedures_state': 'read' if enabled else 'not_enabled',
         'applications': [
             _application(application, part_names) for application in applications

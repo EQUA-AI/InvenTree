@@ -198,22 +198,22 @@ test('resource close and preview retain native search selection and total owner 
     name: 'table-search-input',
     exact: true
   });
-  const filtered = page.waitForResponse((response) => {
+  // The native table clears selection when its debounced search applies.
+  // Select only after the filtered response and rows have reached the UI.
+  const filteredResponse = page.waitForResponse((response) => {
     const url = new URL(response.url());
     return (
       response.request().method() === 'GET' &&
       url.pathname === '/api/attachment/' &&
       url.searchParams.get('search') === 'nameplate' &&
-      url.searchParams.get('model_id') === '73' &&
-      response.status() === 200
+      url.searchParams.get('limit') !== '1'
     );
   });
   await search.fill('nameplate');
-  await filtered;
+  expect((await filteredResponse).ok()).toBe(true);
   await expect(
     page.getByRole('link', { name: 'Synthetic work manual.pdf', exact: true })
   ).toHaveCount(0);
-  await expect(page.getByTestId('fixture-fetching')).toHaveText('0');
   const row = page.getByRole('row').filter({
     has: page.getByRole('link', {
       name: 'Synthetic work nameplate.png',

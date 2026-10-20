@@ -522,6 +522,11 @@ def delete_work_order(
 
         _require_version(work_order, expected_version)
 
+        if work_order.investigation_requests.exists():
+            raise ProtectedWorkOrder(
+                'This Work has retained investigation requests and evidence and cannot be deleted.'
+            )
+
         record = WorkOrderDeletionRecord.objects.create(
             work_order_pk=work_order.pk,
             reference=work_order.reference or '',
@@ -580,6 +585,12 @@ def _snapshot(work_order: WorkOrder) -> dict[str, Any]:
         'reference': work_order.reference,
         'created_at': work_order.created_at.isoformat(),
         'deleted_snapshot_at': timezone.now().isoformat(),
+        'investigation_retention': {
+            'policy': 'refuse_deletion_with_requests',
+            'request_ids': list(
+                work_order.investigation_requests.values_list('pk', flat=True)
+            ),
+        },
     }
 
 

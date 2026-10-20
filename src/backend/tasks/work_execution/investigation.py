@@ -152,9 +152,10 @@ def _intervention(packet) -> dict | None:
     scopes = list(
         packet.approved_scopes.select_related('approved_by').order_by('-version')
     )
-    current = next((scope for scope in scopes if scope.superseded_at is None), None)
-    if current is None:
+    candidates = [scope for scope in scopes if scope.superseded_at is None]
+    if len(candidates) != 1 or candidates[0].pk != scopes[0].pk:
         return None
+    current = candidates[0]
     return {
         'scope_id': current.pk,
         'version': current.version,

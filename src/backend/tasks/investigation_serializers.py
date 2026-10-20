@@ -31,6 +31,8 @@ class InvestigationRequestSerializer(serializers.ModelSerializer):
     """Canonical identity and attribution visible to an authorized Work reader."""
 
     owner_name = serializers.SerializerMethodField()
+    updated_by_name = serializers.SerializerMethodField()
+    created_by_name = serializers.SerializerMethodField()
     artifacts = serializers.SerializerMethodField()
 
     class Meta:
@@ -45,6 +47,18 @@ class InvestigationRequestSerializer(serializers.ModelSerializer):
 
         return person(obj.owner)
 
+    def get_created_by_name(self, obj):
+        """Name the recorded creator using the native person label."""
+        from tasks.work_execution.common import person
+
+        return person(obj.created_by)
+
+    def get_updated_by_name(self, obj):
+        """Display the recorded updater without treating a user id as a name."""
+        from tasks.work_execution.common import person
+
+        return person(obj.updated_by)
+
     def get_artifacts(self, obj):
         """Saved evidence retains its own ids and attribution."""
         return InvestigationArtifactSerializer(
@@ -54,6 +68,30 @@ class InvestigationRequestSerializer(serializers.ModelSerializer):
             ),
             many=True,
         ).data
+
+
+class InvestigationRequestRevisionSerializer(InvestigationRequestSerializer):
+    """Retain native P43 comparisons without copying the growing evidence history."""
+
+    class Meta(InvestigationRequestSerializer.Meta):
+        """Only the request facts consumed by the native scope revision projection."""
+
+        fields = (
+            'id',
+            'work_order',
+            'version',
+            'purpose',
+            'next_check',
+            'status',
+            'owner_name',
+            'next_checkpoint',
+            'required_artifacts',
+            'blocked_reason',
+            'source_finding',
+            'source_proposal',
+            'resolution',
+            'priority',
+        )
 
 
 class InvestigationArtifactSerializer(serializers.ModelSerializer):
@@ -90,6 +128,12 @@ class RequestFieldsSerializer(StrictFieldsSerializer):
     source_proposal = serializers.JSONField(allow_null=True, required=False)
     blocked_reason = serializers.CharField(allow_blank=True, required=False)
     resolution = serializers.CharField(allow_blank=True, required=False)
+
+    def validate_required_artifacts(self, value):
+        """Nested replacements are complete even when the request is partial."""
+        validator = RequiredArtifactSerializer(data=value, many=True)
+        validator.is_valid(raise_exception=True)
+        return validator.validated_data
 
 
 class ArtifactFieldsSerializer(StrictFieldsSerializer):

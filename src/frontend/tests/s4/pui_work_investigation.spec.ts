@@ -44,6 +44,7 @@ const request = (id = 401): InvestigationRequest => ({
   resolution: '',
   created_by: 9,
   updated_by: 9,
+  updated_by_name: 'Synthetic technician',
   created_at: '2026-10-19T09:00:00Z',
   updated_at: '2026-10-19T09:05:00Z',
   artifacts: [
@@ -111,10 +112,48 @@ test('saved queue preserves purpose, typed requirements and laboratory identity'
   await expect(card.getByText(/Sample: SYN-SAMPLE-8/)).toBeVisible();
   await expect(card.getByText(/Method: Synthetic microscopy/)).toBeVisible();
   await expect(card.getByText(/Result status: pending/)).toBeVisible();
-  await expect(card.getByText(/Particles: Not recorded count/)).toBeVisible();
+  await expect(
+    card.getByText('Results: Particles: Not recorded', { exact: true })
+  ).toBeVisible();
+  await expect(card.getByText(/Not recorded count\/mL/)).toHaveCount(0);
+  await expect(
+    card.getByText(/Next checkpoint: 2026-10-20 11:00/)
+  ).toBeVisible();
+  await expect(
+    card.getByText(/Saved: 2026-10-19 12:05.*Updated by: Synthetic technician/)
+  ).toBeVisible();
+  await expect(card.getByText(/Observed at: 2026-10-19 10:00/)).toBeVisible();
+  await expect(card.getByText(/2026-10-\d\dT/)).toHaveCount(0);
   await expect(panel.locator('input,textarea,select,form')).toHaveCount(0);
   await expectNoPageOverflow(page);
   await capturePanel(page, info.outputPath('request-queue-light.png'));
+  await openExecutionPanel(page, 'diagnose', 'dark');
+  await expect(
+    panelRegion(page, 'Diagnose').getByText(/Updated by: Synthetic technician/)
+  ).toHaveCount(2);
+  await expectNoPageOverflow(page);
+  await capturePanel(page, info.outputPath('request-queue-dark.png'));
+});
+
+test('missing updater and checkpoint remain unrecorded while zero keeps its unit', async ({
+  page
+}, info) => {
+  const row = request();
+  row.updated_by_name = null;
+  row.next_checkpoint = null;
+  row.artifacts[0].payload.results = [
+    { name: 'Particles', value: 0, unit: 'count/mL' }
+  ];
+  await setup(page, [row]);
+  await openExecutionPanel(page, 'diagnose');
+  const card = panelRegion(page, 'Diagnose').getByTestId(
+    'investigation-request-401'
+  );
+  await expect(card.getByText(/Updated by: Not recorded/)).toBeVisible();
+  await expect(card.getByText(/Next checkpoint: Not recorded/)).toBeVisible();
+  await expect(card.getByText(/Particles: 0 count\/mL/)).toBeVisible();
+  await expect(card.getByText(/Updated by: 9/)).toHaveCount(0);
+  await capturePanel(page, info.outputPath('request-missing-updater.png'));
 });
 
 test('request-scoped chat acknowledges the exact revision and preserves return identity across rounds', async ({
@@ -255,7 +294,9 @@ test('older server cannot silently downgrade a request to Work-only chat', async
     page.getByRole('textbox', { name: 'Message', exact: true })
   ).toHaveValue('Keep this draft for request 401');
   await expect(
-    page.getByRole('alert').filter({ hasText: 'Work order not confirmed' })
+    page
+      .getByRole('alert')
+      .filter({ hasText: 'Investigation request not confirmed' })
   ).toBeVisible();
 });
 
@@ -399,6 +440,76 @@ for (const scheme of ['light', 'dark'] as const) {
   }, info) => {
     await setup(page);
     const proposal = publicationProposal();
+    const acknowledgements: Record<string, unknown>[] = [];
+    await page.route(/\/api\/ai\/threads(?:\?|$)/, (route) =>
+      route.fulfill({
+        json: {
+          threads: [],
+          shared_threads: [],
+          has_more: false,
+          capabilities: {
+            thread_scope: true,
+            work_focus: true,
+            investigation_request_focus: true
+          }
+        }
+      })
+    );
+    await page.route('**/api/ai/threads/*/work-focus', (route) => {
+      const body = route.request().postDataJSON();
+      acknowledgements.push(body);
+      if (body.request_version !== 4)
+        return route.fulfill({
+          status: 400,
+          json: { detail: 'Stale request revision' }
+        });
+      return route.fulfill({
+        json: {
+          schema_version: 1,
+          thread_id: new URL(route.request().url()).pathname.split('/').at(-2),
+          focus: {
+            schema_version: 2,
+            kind: 'work_order',
+            work_order_id: 73,
+            lifecycle_version: 7,
+            machine_id: 18,
+            request_id: 401,
+            request_version: 4
+          },
+          receipt: 'new-request-receipt',
+          expires_in: 300
+        }
+      });
+    });
+    await page.route('**/api/ai/chat/stream', (route) => {
+      const body = route.request().postDataJSON();
+      return route.fulfill({
+        contentType: 'text/event-stream',
+        body: sseBody([
+          {
+            type: 'RUN_STARTED',
+            threadId: body.thread_id,
+            runId: 'after-approval'
+          },
+          {
+            type: 'TEXT_MESSAGE_START',
+            messageId: 'updated-request-response',
+            role: 'assistant'
+          },
+          {
+            type: 'TEXT_MESSAGE_CONTENT',
+            messageId: 'updated-request-response',
+            delta: 'Continuing request at revision 4.'
+          },
+          { type: 'TEXT_MESSAGE_END', messageId: 'updated-request-response' },
+          {
+            type: 'RUN_FINISHED',
+            threadId: body.thread_id,
+            runId: 'after-approval'
+          }
+        ])
+      });
+    });
     let state = 'proposed';
     const writes: { path: string; body: unknown }[] = [];
     await page.route('**/api/aichat/proposals/**', async (route) => {
@@ -417,6 +528,9 @@ for (const scheme of ['light', 'dark'] as const) {
               request_id: 401,
               artifact_id: 502,
               recorded_by: 9,
+              recorded_by_name: 'Synthetic technician',
+              work_order_id: 73,
+              request_version: 4,
               attachment_id: 801
             }
           }
@@ -434,7 +548,10 @@ for (const scheme of ['light', 'dark'] as const) {
                         command: 'investigation.artifact',
                         request_id: 401,
                         artifact_id: 502,
-                        recorded_by: 9
+                        recorded_by: 9,
+                        recorded_by_name: 'Synthetic technician',
+                        work_order_id: 73,
+                        request_version: 4
                       }
                     : null
               }
@@ -448,6 +565,9 @@ for (const scheme of ['light', 'dark'] as const) {
       .click();
     await page.getByRole('tab', { name: 'Approvals', exact: true }).click();
     const card = page.getByTestId('chat-action-proposal');
+    await expect(
+      card.getByText('Publish investigation evidence: WO-73', { exact: true })
+    ).toBeVisible();
     await expect(card.getByText('Request 401 · revision 3')).toBeVisible();
     await expect(
       card.getByText(/Description: Synthetic technician report/)
@@ -472,7 +592,7 @@ for (const scheme of ['light', 'dark'] as const) {
       .click();
     await expect(
       card.getByText(
-        /Saved evidence 502 for request 401.*recorded by technician 9/
+        /Saved evidence 502 for request 401.*Recorded by: Synthetic technician/
       )
     ).toBeVisible();
     expect(writes).toEqual([
@@ -493,6 +613,22 @@ for (const scheme of ['light', 'dark'] as const) {
       fullPage: false,
       animations: 'disabled'
     });
+    await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+    await page
+      .getByRole('textbox', { name: 'Message', exact: true })
+      .fill('Continue after approval');
+    await page.getByLabel('send-ai-chat-message').click();
+    await expect(
+      page.getByText('Continuing request at revision 4.', { exact: true })
+    ).toBeVisible();
+    expect(acknowledgements).toEqual([
+      {
+        work_order_id: 73,
+        expected_version: 7,
+        request_id: 401,
+        request_version: 4
+      }
+    ]);
   });
 }
 
@@ -631,5 +767,56 @@ for (const outcome of [
       fullPage: false,
       animations: 'disabled'
     });
+  });
+}
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`retained file and reopened blockers stay truthful (${scheme})`, async ({
+    page
+  }, info) => {
+    const pending = request();
+    pending.status = 'pending_external';
+    pending.owner = null;
+    pending.owner_name = null;
+    pending.blocked_reason = 'Awaiting named laboratory result';
+    pending.artifacts[0].payload.results = [
+      {
+        name: 'Particles',
+        value: null,
+        unit: 'count/mL',
+        qualification: 'Sample handling supplied by technician'
+      }
+    ];
+    pending.artifacts[0].attachment_snapshot = {
+      id: 801,
+      filename: 'original.pdf',
+      link: '',
+      comment: 'Original report'
+    };
+    const reopened = request(402);
+    reopened.status = 'open';
+    reopened.blocked_reason = 'Old blocker must not appear as current';
+    await setup(page, [pending, reopened]);
+    await openExecutionPanel(page, 'diagnose', scheme);
+    const card = page.getByTestId('investigation-request-401');
+    await expect(
+      card.getByText('Pending external — unresolved').first()
+    ).toBeVisible();
+    await expect(card.getByText(/Owner: Not recorded/)).toBeVisible();
+    await expect(card.getByText(/internal coordinator/)).toHaveCount(0);
+    await expect(
+      card.getByText(/Sample handling supplied by technician/)
+    ).toBeVisible();
+    await expect(
+      card.getByText(/Original Work attachment 801 is no longer available/)
+    ).toBeVisible();
+    await expect(
+      page.getByText('Old blocker must not appear as current')
+    ).toHaveCount(0);
+    await expectNoPageOverflow(page);
+    await capturePanel(
+      page,
+      info.outputPath(`retained-reopened-${scheme}.png`)
+    );
   });
 }

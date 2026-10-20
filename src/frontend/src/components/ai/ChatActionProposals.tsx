@@ -33,6 +33,7 @@ import {
 } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
+import { useAIChatState } from '../../states/AIChatState';
 import { useVoiceDecisionState } from '../../states/VoiceDecisionState';
 import { InvestigationArtifactReview } from '../aichat/InvestigationArtifactReview';
 
@@ -201,6 +202,22 @@ export function ProposalCard({
         if (!result.ok) {
           setError(describeFailure(result));
         } else if (publication && verb === 'confirm') {
+          const receipt = response.data?.receipt;
+          if (
+            receipt?.command === 'investigation.artifact' &&
+            typeof proposal.work_order_id === 'number' &&
+            receipt.work_order_id === proposal.work_order_id &&
+            receipt.request_id === proposal.preview.request_id &&
+            typeof receipt.request_version === 'number'
+          ) {
+            useAIChatState
+              .getState()
+              .advanceRequestFocus(
+                proposal.work_order_id,
+                receipt.request_id,
+                receipt.request_version
+              );
+          }
           void queryClient.invalidateQueries({
             queryKey: ['work-order', proposal.work_order_id]
           });
@@ -237,6 +254,7 @@ export function ProposalCard({
       proposal.id,
       proposal.preview_hash,
       proposal.work_order_id,
+      proposal.preview.request_id,
       onChanged,
       onPublicationError,
       irreversible,
@@ -271,7 +289,8 @@ export function ProposalCard({
           <Group gap='xs' wrap='nowrap' style={{ flex: 1, minWidth: 160 }}>
             {actionIcon(proposal.action_type)}
             <Text fw={600} size='sm'>
-              {label}: {target}?
+              {label}: {target}
+              {publication ? '' : '?'}
             </Text>
           </Group>
           <Badge color={STATE_COLORS[proposal.state] ?? 'gray'} size='sm'>
@@ -394,7 +413,7 @@ export function ProposalCard({
             c={publication ? undefined : 'teal'}
           >
             {publication
-              ? `Saved evidence ${String(proposal.receipt.artifact_id)} for request ${String(proposal.receipt.request_id)} · recorded by technician ${String(proposal.receipt.recorded_by)}. Return to Diagnose to continue with the updated request.`
+              ? t`Saved evidence ${String(proposal.receipt.artifact_id)} for request ${String(proposal.receipt.request_id)} · Recorded by: ${typeof proposal.receipt.recorded_by_name === 'string' && proposal.receipt.recorded_by_name.trim() ? proposal.receipt.recorded_by_name : t`Not recorded`}. Continue here or return to Diagnose.`
               : `Executed: ${receiptSummary(proposal.receipt)}`}
           </Text>
         )}
