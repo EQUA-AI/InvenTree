@@ -1,0 +1,107 @@
+.workspace {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: var(--mantine-spacing-md);
+}
+
+.navigation {
+  overflow-x: auto;
+}
+
+.tabList {
+  flex-wrap: nowrap;
+  min-width: max-content;
+}
+
+.boundary {
+  display: none;
+}
+
+@media (max-width: 47.99em) {
+  .workspace {
+    padding: var(--mantine-spacing-sm);
+    padding-bottom: calc(var(--work-navigation-height, 160px) + var(--mantine-spacing-md));
+  }
+
+  .workspace :where(button, a, input, textarea, select, [tabindex]) {
+    scroll-margin-top: 100px;
+    scroll-margin-bottom: calc(var(--work-navigation-height, 160px) + var(--mantine-spacing-md));
+  }
+
+  .workspace :global(.mantine-Button-root) {
+    min-height: 44px;
+    height: auto;
+    padding-block: 8px;
+    padding-inline: 12px;
+    max-width: 100%;
+  }
+
+  .workspace :global(.mantine-Button-label) {
+    white-space: normal;
+    text-align: start;
+  }
+
+  .workflow {
+    min-width: 0;
+    scroll-margin-top: 80px;
+  }
+
+  .navigation {
+    position: fixed;
+    z-index: 100;
+    inset-inline: 0;
+    bottom: 0;
+    padding-inline-start: max(8px, env(safe-area-inset-left));
+    padding-inline-end: max(8px, env(safe-area-inset-right));
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    background: var(--mantine-color-body);
+    border-top: 1px solid var(--mantine-color-default-border);
+    box-shadow: 0 -3px 12px rgb(0 0 0 / 8%);
+  }
+
+  .boundary {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    min-height: 44px;
+    padding-block: 6px;
+    color: var(--mantine-color-text);
+  }
+
+  .boundary svg {
+    flex-shrink: 0;
+  }
+
+  .tabList {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    min-width: 0;
+    gap: 2px;
+  }
+
+  .tabList::before {
+    display: none;
+  }
+
+  .tab {
+    min-height: 44px;
+    grid-column: span 3;
+    min-width: 0;
+    padding: 6px 2px;
+    font-size: var(--mantine-font-size-xs);
+    border: 1px solid transparent;
+    border-radius: var(--mantine-radius-sm);
+    white-space: normal;
+    line-height: 1.3;
+  }
+
+  .tab:nth-child(n + 5) {
+    grid-column: span 4;
+  }
+
+  .tab[data-active] {
+    color: var(--mantine-primary-color-light-color);
+    background: var(--mantine-primary-color-light);
+    border-color: var(--mantine-primary-color-filled);
+  }
+}

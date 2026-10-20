@@ -2653,6 +2653,16 @@ function AIChatSessionDrawer({
               {/* C2: the truthful, read-only analysis context — reports
                 server-confirmed scope only, with no menu attached. */}
               <AnalysisContextLine scope={activeScope} />
+              {(workFocusHint || messages.at(-1)?.workFocus) && (
+                <Text
+                  hiddenFrom='sm'
+                  size='xs'
+                  mb={4}
+                  data-testid='ai-chat-physical-boundary'
+                >
+                  {t`Physical authority not supplied. Chat does not authorize work.`}
+                </Text>
+              )}
 
               <Paper
                 radius='xl'
