@@ -70,6 +70,7 @@ export interface CloseoutPartUsageRow {
 }
 
 export interface CloseoutReadingRow {
+  focus_revision?: string;
   phase?: string;
   recorded_by?: number;
   recorded_by_name?: string | null;

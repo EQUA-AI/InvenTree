@@ -8,6 +8,7 @@
 		"tests/s1/pui_work_list.spec.ts",
 		"tests/s1/pui_work_panels.spec.ts",
 		"tests/s1/pui_work_attachments.spec.ts",
-		"tests/s1/pui_work_materials.spec.ts"
+		"tests/s1/pui_work_materials.spec.ts",
+		"tests/s1/pui_reference_focus.spec.ts"
 	]
 }

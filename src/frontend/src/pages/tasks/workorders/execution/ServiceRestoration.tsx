@@ -1,3 +1,4 @@
+import { displayAuthority } from '@lib/types/CanonicalDisplay';
 import type { WorkOrderOverview } from '@lib/types/WorkOrderOverview';
 import { t } from '@lingui/core/macro';
 import { Anchor, Badge, Group, SimpleGrid, Stack, Text } from '@mantine/core';
@@ -21,6 +22,7 @@ export function ServiceRestoration({
     return `?${next}`;
   };
   const closeout = workOrder.structured_closeout;
+  const service = displayAuthority();
   const verification = workOrder.verification_return;
   const tests =
     verification?.rule === 'verification_return.v1' &&
@@ -62,7 +64,11 @@ export function ServiceRestoration({
           {recordedTime(closeout.completed_at)}
         </Text>
       )}
-      <Group gap='xs'>
+      <Text
+        size='xs'
+        c='dimmed'
+      >{t`Authority and service records: Not recorded`}</Text>
+      <Group gap='xs' data-service-state={service.state}>
         {[
           t`Condition controlled: unknown`,
           t`Asset repair: unconfirmed`,

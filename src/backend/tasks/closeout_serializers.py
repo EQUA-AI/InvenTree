@@ -249,7 +249,14 @@ class PartUsageResolveSerializer(serializers.Serializer):
 class CloseoutReadingSerializer(serializers.ModelSerializer):
     """Read-only reading row."""
 
+    focus_revision = serializers.SerializerMethodField()
     recorded_by_name = serializers.SerializerMethodField()
+
+    def get_focus_revision(self, obj):
+        """Exact reading revision for signed conversational focus."""
+        from aichat.services.work_focus import reading_revision
+
+        return reading_revision(obj)
 
     def get_recorded_by_name(self, obj):
         """The recorded person's display name, when available."""
@@ -261,6 +268,7 @@ class CloseoutReadingSerializer(serializers.ModelSerializer):
         model = CloseoutReading
         fields = (
             'id',
+            'focus_revision',
             'work_order',
             'step_execution',
             'label',

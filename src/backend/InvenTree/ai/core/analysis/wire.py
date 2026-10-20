@@ -108,19 +108,41 @@ SCOPE_ERROR_CODES: tuple[str, ...] = (
 # ``aichat.services.work_focus``; ``test_work_focus_wire.py`` pins these.
 
 
+class ComponentFocusReference(BaseModel):
+    """Exact canonical reference position, optionally one native slot."""
+
+    model_config = ConfigDict(extra="forbid")
+    machine_id: int
+    rule: Literal["reference_positions.v1"]
+    position_id: str
+    slot_code: str | None
+    revision: str
+
+
+class EvidenceFocusReference(BaseModel):
+    """Exact readable native evidence item and its source revision."""
+
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["attachment", "closeout_reading", "media"]
+    id: int
+    revision: str
+
+
 class WorkFocusIdentity(BaseModel):
     """The verified ids a focused turn, its answer and the model carry."""
 
     model_config = ConfigDict(extra="forbid")
 
     schema_version: int
-    kind: Literal["work_order"]
-    work_order_id: int
+    kind: Literal["work_order", "reference_position"]
+    work_order_id: int | None
     #: The Work's native ``lifecycle_version`` when the focus was confirmed.
-    lifecycle_version: int
+    lifecycle_version: int | None
     machine_id: int | None
     request_id: int | None = None
     request_version: int | None = None
+    component: ComponentFocusReference | None = None
+    evidence: EvidenceFocusReference | None = None
 
 
 class WorkFocusAcknowledgeRequest(BaseModel):
@@ -128,10 +150,12 @@ class WorkFocusAcknowledgeRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    work_order_id: int
-    expected_version: int
+    work_order_id: int | None = None
+    expected_version: int | None = None
     request_id: int | None = None
     request_version: int | None = None
+    component: ComponentFocusReference | None = None
+    evidence: EvidenceFocusReference | None = None
 
 
 class WorkFocusAcknowledgement(BaseModel):

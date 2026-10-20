@@ -1,3 +1,4 @@
+import { displayCloseout, displayReading } from '@lib/types/CanonicalDisplay';
 import type {
   CloseoutAmendment,
   CloseoutCapture,
@@ -22,6 +23,7 @@ import {
 import dayjs from 'dayjs';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { openGlobalAIChatAboutWork } from '../../../states/AIChatState';
 import { ContinueInvestigation } from './execution/ContinueInvestigation';
 import { narrativeExcerpts } from './storyProvenance';
 
@@ -72,6 +74,7 @@ export function PreparedCloseout({
   reconciliation?: ReactNode;
   updateAction?: ReactNode;
 }>) {
+  captures = captures?.map((row) => displayCloseout(row).record);
   const values = accepted ?? fields;
   const labels: Record<string, string> = {
     cause: t`Cause`,
@@ -292,10 +295,30 @@ export function PreparedCloseout({
             <Text size='sm'>{t`No closeout readings recorded.`}</Text>
           ) : (
             readings.map((row) => (
-              <Text key={row.id} size='sm'>
-                {row.label}: {row.raw_text || t`Not recorded`} {row.unit} ·{' '}
-                {row.verification_state}
-              </Text>
+              <Group key={row.id} gap='xs' wrap='wrap'>
+                <Text size='sm'>
+                  {row.label}: {row.raw_text || t`Not recorded`} {row.unit} ·{' '}
+                  {row.verification_state}
+                </Text>
+                {displayReading(row).focus && (
+                  <Button
+                    size='compact-xs'
+                    variant='subtle'
+                    disabled={error || loading}
+                    onClick={() => {
+                      const evidence = displayReading(row).focus;
+                      if (evidence)
+                        openGlobalAIChatAboutWork({
+                          workOrderId: workOrder.id,
+                          lifecycleVersion: workOrder.lifecycle_version,
+                          evidence,
+                          label: `${workOrder.reference} · ${row.label}`,
+                          returnPath: `/maintenance/work-orders/${workOrder.id}?work_panel=closeout`
+                        });
+                    }}
+                  >{t`Ask about this reading`}</Button>
+                )}
+              </Group>
             ))
           )}
           <Title order={5}>{t`Report preview`}</Title>

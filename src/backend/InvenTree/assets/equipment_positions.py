@@ -19,6 +19,8 @@ nothing for itself: absence is reported, not filled in from a neighbour.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections import defaultdict
 
 from tasks.dashboard_metrics import OPEN
@@ -63,6 +65,48 @@ def _work_row(work: WorkOrder) -> dict:
         'lifecycle_status': work.lifecycle_status,
         'affected_component_ref': work.affected_component_ref,
         'owner': (owner.get_full_name() or owner.username) if owner else None,
+    }
+
+
+def position_reference(machine, position_id, slot_code=None, *, slots=None):
+    """Identify the owner-approved reference mapping, never a fitted part."""
+    if machine.asset_type != 'pump' or position_id not in POSITION_FAMILIES:
+        raise ValueError('invalid_position')
+    family = POSITION_FAMILIES[position_id]
+    if slots is None:
+        slots = (
+            list(
+                AssetComponent.objects
+                .filter(machine=machine, part__IPN=CATALOGUE_PREFIX + family)
+                .order_by('pk')
+                .values('pk', 'code', 'part_id', 'status', 'provenance')
+            )
+            if family
+            else []
+        )
+    slots = sorted(slots, key=lambda slot: slot['pk'])
+    if slot_code is not None and not any(s['code'] == slot_code for s in slots):
+        raise ValueError('invalid_position')
+    revision = hashlib.sha256(
+        json.dumps(
+            [
+                REFERENCE_POSITIONS_RULE,
+                machine.pk,
+                machine.client_id,
+                position_id,
+                family,
+                slots,
+            ],
+            sort_keys=True,
+            default=str,
+        ).encode()
+    ).hexdigest()
+    return {
+        'machine_id': machine.pk,
+        'rule': REFERENCE_POSITIONS_RULE,
+        'position_id': position_id,
+        'slot_code': slot_code,
+        'revision': revision,
     }
 
 
@@ -142,10 +186,27 @@ def machine_positions(actor, machine, *, now=None) -> dict:
         jobs.sort(key=lambda work: (work.created_at, work.pk), reverse=True)
         positions.append({
             'id': position,
+            'focus_revision': position_reference(
+                machine,
+                position,
+                slots=[
+                    {
+                        'pk': slot.pk,
+                        'code': slot.code,
+                        'part_id': slot.part_id,
+                        'status': slot.status,
+                        'provenance': slot.provenance,
+                    }
+                    for slot in slots
+                ],
+            )['revision']
+            if machine.asset_type == 'pump'
+            else None,
             'family': family,
             'family_name': parts[family].name if family in parts else None,
             'components': [
                 {
+                    'id': slot.pk,
                     'code': slot.code,
                     'name': slot.name,
                     'status': slot.status,

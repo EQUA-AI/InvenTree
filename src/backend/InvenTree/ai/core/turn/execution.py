@@ -44,16 +44,29 @@ def _effective_pinned_workflow(run: TurnRun) -> str | None:
 
     if run.server_pinned_workflow is not None:
         return run.server_pinned_workflow
+    uploaded_files = run.metadata.get("uploaded_files")
+    has_uploads = isinstance(uploaded_files, list) and bool(uploaded_files)
     if (
         run.modality != TurnModality.VOICE
         and isinstance(run.work_focus, dict)
-        and run.work_focus.get("schema_version") == 2
+        and run.work_focus.get("schema_version") in {2, 3}
+        and (
+            run.work_focus.get("request_id") is not None
+            or (
+                run.work_focus.get("schema_version") == 3
+                and not has_uploads
+                and (
+                    run.work_focus.get("component") is not None
+                    or run.work_focus.get("evidence") is not None
+                )
+            )
+        )
     ):
-        # Keep request evidence in the existing assistant's reviewed proposal
-        # flow, including uploads. This pin grants no write authority.
+        # Request focus explicitly names uploads for technician publication.
+        # Other reference text uses lookup only without uploads: attached
+        # files must still reach the existing file-analysis workflow.
         return "wf8"
-    uploaded_files = run.metadata.get("uploaded_files")
-    if isinstance(uploaded_files, list) and uploaded_files:
+    if has_uploads:
         # `_turn_metadata` authorized these paths against the durable thread.
         # Client context is nested separately and can never reach this branch.
         return "wf6"

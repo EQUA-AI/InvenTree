@@ -1,3 +1,4 @@
+import { displayWork } from '@lib/types/CanonicalDisplay';
 import type { CloseoutWorkOrder } from '@lib/types/Closeout';
 import type { BoardCard } from '@lib/types/Tasks';
 import type { WorkOrderOverview } from '@lib/types/WorkOrderOverview';
@@ -12,11 +13,11 @@ export function projectCloseoutWorkOrder(
     'id' | 'reference' | 'title' | 'lifecycle_status' | 'lifecycle_version'
   >
 ): CloseoutWorkOrder {
-  return {
+  return displayWork({
     id: workOrder.id,
     reference: workOrder.reference ?? `WO-${workOrder.id}`,
     title: workOrder.title,
     lifecycle_status: workOrder.lifecycle_status,
     lifecycle_version: workOrder.lifecycle_version
-  };
+  }).record;
 }

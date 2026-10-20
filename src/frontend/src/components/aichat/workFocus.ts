@@ -8,6 +8,8 @@
  * treated as a confirmation.
  */
 import type {
+  ComponentFocusReference,
+  EvidenceFocusReference,
   WorkFocusAcknowledgement,
   WorkFocusIdentity,
   WorkFocusState
@@ -41,6 +43,7 @@ export interface ChatWorkFocus {
    * reloaded. Absent for a live answer and for an older server.
    */
   state?: WorkFocusState;
+  references?: Partial<Record<'component' | 'evidence', WorkFocusState>>;
 }
 
 const WORK_FOCUS_STATES: readonly WorkFocusState[] = [
@@ -66,40 +69,104 @@ function positiveId(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 }
 
-/** The verified ids of a focus, or null for anything else. */
+const REVISION = /^[a-f0-9]{64}$/;
+const POSITIONS = [
+  'machine',
+  'motor',
+  'bearing',
+  'coupling',
+  'seal',
+  'impeller',
+  'pump',
+  'discharge',
+  'base'
+];
+
+export function parseComponentFocus(
+  value: unknown
+): ComponentFocusReference | null {
+  const c = record(value);
+  return c &&
+    Object.keys(c).length === 5 &&
+    positiveId(c.machine_id) &&
+    c.rule === 'reference_positions.v1' &&
+    typeof c.position_id === 'string' &&
+    POSITIONS.includes(c.position_id) &&
+    (c.slot_code === null ||
+      (typeof c.slot_code === 'string' && !!c.slot_code)) &&
+    typeof c.revision === 'string' &&
+    REVISION.test(c.revision)
+    ? {
+        machine_id: c.machine_id,
+        rule: 'reference_positions.v1',
+        position_id: c.position_id,
+        slot_code: c.slot_code as string | null,
+        revision: c.revision
+      }
+    : null;
+}
+export function parseEvidenceFocus(
+  value: unknown
+): EvidenceFocusReference | null {
+  const e = record(value);
+  return e &&
+    Object.keys(e).length === 3 &&
+    ['attachment', 'closeout_reading', 'media'].includes(e.kind as string) &&
+    positiveId(e.id) &&
+    typeof e.revision === 'string' &&
+    REVISION.test(e.revision)
+    ? {
+        kind: e.kind as EvidenceFocusReference['kind'],
+        id: e.id,
+        revision: e.revision
+      }
+    : null;
+}
+/** The exact versioned identity; unknown fields and partial coordinates fail closed. */
 export function parseWorkFocusIdentity(
   value: unknown
 ): WorkFocusIdentity | null {
-  const focus = record(value);
+  const f = record(value);
   if (
-    !focus ||
-    Object.keys(focus).length !==
-      (focus.schema_version === 2
-        ? IDENTITY_KEYS.length + 2
-        : IDENTITY_KEYS.length) ||
-    !IDENTITY_KEYS.every((key) => key in focus) ||
-    ![1, 2].includes(focus.schema_version as number) ||
-    (focus.schema_version === 2 &&
-      (!positiveId(focus.request_id) || !positiveId(focus.request_version))) ||
-    focus.kind !== 'work_order' ||
-    !positiveId(focus.work_order_id) ||
-    !positiveId(focus.lifecycle_version) ||
-    !(focus.machine_id === null || positiveId(focus.machine_id))
+    !f ||
+    ![1, 2, 3].includes(f.schema_version as number) ||
+    !IDENTITY_KEYS.every((k) => k in f)
   )
     return null;
-  return {
-    schema_version: focus.schema_version as number,
-    ...(focus.schema_version === 2
-      ? {
-          request_id: focus.request_id as number,
-          request_version: focus.request_version as number
-        }
-      : {}),
-    kind: 'work_order',
-    work_order_id: focus.work_order_id,
-    lifecycle_version: focus.lifecycle_version,
-    machine_id: focus.machine_id
-  };
+  const v3 = f.schema_version === 3;
+  const request = f.schema_version === 2 || (v3 && 'request_id' in f);
+  const component =
+    v3 && 'component' in f ? parseComponentFocus(f.component) : undefined;
+  const evidence =
+    v3 && 'evidence' in f ? parseEvidenceFocus(f.evidence) : undefined;
+  const keys = [
+    ...IDENTITY_KEYS,
+    ...(request ? ['request_id', 'request_version'] : []),
+    ...(v3 && 'component' in f ? ['component'] : []),
+    ...(v3 && 'evidence' in f ? ['evidence'] : [])
+  ];
+  if (
+    Object.keys(f).length !== keys.length ||
+    !Object.keys(f).every((k) => keys.includes(k)) ||
+    (request &&
+      (!positiveId(f.request_id) || !positiveId(f.request_version))) ||
+    (v3 &&
+      ((!component && !evidence) || component === null || evidence === null)) ||
+    !(f.machine_id === null || positiveId(f.machine_id)) ||
+    (component && component.machine_id !== f.machine_id) ||
+    (f.kind === 'work_order'
+      ? !positiveId(f.work_order_id) || !positiveId(f.lifecycle_version)
+      : !(
+          v3 &&
+          f.kind === 'reference_position' &&
+          component &&
+          f.work_order_id === null &&
+          f.lifecycle_version === null &&
+          !request
+        ))
+  )
+    return null;
+  return f as unknown as WorkFocusIdentity;
 }
 
 /**
@@ -109,10 +176,12 @@ export function parseWorkFocusIdentity(
 export function parseWorkFocusAcknowledgement(
   value: unknown,
   threadId: string,
-  workOrderId: number,
-  expectedVersion: number,
+  workOrderId: number | null,
+  expectedVersion: number | null,
   requestId?: number,
-  requestVersion?: number
+  requestVersion?: number,
+  component?: ComponentFocusReference,
+  evidence?: EvidenceFocusReference
 ): WorkFocusAcknowledgement | null {
   const payload = record(value);
   const focus = parseWorkFocusIdentity(payload?.focus);
@@ -126,6 +195,13 @@ export function parseWorkFocusAcknowledgement(
     focus.lifecycle_version !== expectedVersion ||
     (focus.request_id ?? undefined) !== requestId ||
     (focus.request_version ?? undefined) !== requestVersion ||
+    JSON.stringify(
+      focus.component ? parseComponentFocus(focus.component) : undefined
+    ) !==
+      JSON.stringify(component ? parseComponentFocus(component) : undefined) ||
+    JSON.stringify(
+      focus.evidence ? parseEvidenceFocus(focus.evidence) : undefined
+    ) !== JSON.stringify(evidence ? parseEvidenceFocus(evidence) : undefined) ||
     typeof payload.receipt !== 'string' ||
     payload.receipt.length === 0 ||
     payload.receipt.length > MAX_RECEIPT_LENGTH ||
@@ -153,10 +229,11 @@ const WORK_ROUTE = /^\/maintenance\/work-orders\/(\d+)\/?(?:\?[^#]*)?$/;
  * Work's default view, so a stored path can never redirect elsewhere.
  */
 export function workFocusReturnPath(
-  workOrderId: number,
+  workOrderId: number | null,
   launchPath?: string | null,
   requestId?: number | null
 ): string {
+  if (workOrderId === null) return '/';
   const canonical = `/maintenance/work-orders/${workOrderId}`;
   const match = launchPath ? WORK_ROUTE.exec(launchPath) : null;
   if (positiveId(requestId))
@@ -178,18 +255,39 @@ export function workFocusReturnPath(
  */
 export function reloadedWorkFocus(
   value: unknown,
-  stateValue?: unknown
+  stateValue?: unknown,
+  referenceValues?: unknown
 ): ChatWorkFocus | null {
   const identity = parseWorkFocusIdentity(value);
   if (!identity) return null;
   const state = parseWorkFocusState(stateValue);
+  const references = Object.fromEntries(
+    Object.entries(record(referenceValues) ?? {}).filter(
+      ([key, state]) =>
+        ['component', 'evidence'].includes(key) && parseWorkFocusState(state)
+    )
+  );
   return {
     identity,
-    returnPath: workFocusReturnPath(
-      identity.work_order_id,
-      null,
-      identity.request_id
-    ),
-    ...(state ? { state } : {})
+    returnPath: focusReturnPath(identity),
+    ...(state ? { state } : {}),
+    ...(Object.keys(references).length ? { references } : {})
   };
+}
+
+/** Return only to a canonical Work/request or the selected reference position. */
+export function focusReturnPath(
+  identity: WorkFocusIdentity,
+  launchPath?: string
+): string {
+  if (identity.work_order_id !== null)
+    return workFocusReturnPath(
+      identity.work_order_id,
+      launchPath,
+      identity.request_id
+    );
+  const c = identity.component;
+  return c
+    ? `/machines/machine/${c.machine_id}/equipment/?position=${encodeURIComponent(c.position_id)}${launchPath?.includes('view=schematic') ? '&view=schematic' : ''}`
+    : '/';
 }

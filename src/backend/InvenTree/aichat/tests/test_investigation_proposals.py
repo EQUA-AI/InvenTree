@@ -67,7 +67,7 @@ class InvestigationProposalTests(TestCase):
         self.addCleanup(self.media.disable)
         self.turn = self.begin()
 
-    def begin(self, metadata=None, key='evidence-turn'):
+    def begin(self, metadata=None, key='evidence-turn', component=None, evidence=None):
         """The source snapshot is created through the same signed flow as chat."""
         self.row.refresh_from_db()
         receipt = self.repository.acknowledge_work_focus(
@@ -76,6 +76,8 @@ class InvestigationProposalTests(TestCase):
             expected_version=self.work.lifecycle_version,
             request_id=self.row.pk,
             request_version=self.row.version,
+            **({'component': component} if component is not None else {}),
+            **({'evidence': evidence} if evidence is not None else {}),
         )
         return self.repository.begin_turn(
             self.thread.pk,
@@ -144,6 +146,122 @@ class InvestigationProposalTests(TestCase):
             key=f'file-{name}',
         )
         return file_id
+
+    def test_schema_three_request_focus_preserves_explicit_publication(self):
+        """Adding a reference selection never bypasses or breaks approval."""
+        from aichat.tests import test_component_evidence_focus as reference_tests
+
+        component = reference_tests.ComponentEvidenceFocusTests.component(self)
+        self.turn = self.begin(component=component, key='component-publication')
+        proposal = self.create()
+        self.assertFalse(InvestigationArtifact.objects.exists())
+        receipt = self.approve(proposal).receipt
+        self.assertEqual(InvestigationArtifact.objects.count(), 1)
+        self.assertEqual(receipt['request_id'], self.row.pk)
+        self.assertEqual(
+            InvestigationArtifact.objects.get().source_turn_id, self.turn.pk
+        )
+
+    def test_changed_schema_three_reference_refuses_publication(self):
+        """Full reference reauthorization remains required at approval."""
+        from aichat.tests import test_component_evidence_focus as reference_tests
+
+        component = reference_tests.ComponentEvidenceFocusTests.component(self)
+        self.turn = self.begin(component=component, key='stale-component-publication')
+        proposal = self.create()
+        self.machine.active = False
+        self.machine.save(update_fields=['active'])
+        with self.assertRaises(proposals.ProposalNotFound):
+            self.approve(proposal)
+        self.assertFalse(InvestigationArtifact.objects.exists())
+
+    def test_schema_three_reference_loss_preserves_read_and_reject_not_approval(self):
+        """Child source loss never hides a readable Work/request proposal."""
+        from django.core.files.storage import default_storage
+
+        from aichat.services.investigation_proposals import authorize
+        from aichat.tests.test_component_evidence_focus import (
+            ComponentEvidenceFocusTests,
+        )
+        from common.attachment_revision import attachment_revision
+        from common.models import Attachment
+
+        for damage in ('attachment_deleted', 'media_replaced', 'machine_inactive'):
+            with self.subTest(damage=damage):
+                self.machine.active = True
+                self.machine.save(update_fields=['active'])
+                component = ComponentEvidenceFocusTests.component(self)
+                if damage == 'media_replaced':
+                    attachment, _, evidence = ComponentEvidenceFocusTests.media_source(
+                        self
+                    )
+                else:
+                    attachment = Attachment.objects.create(
+                        model_type='workorder',
+                        model_id=self.work.pk,
+                        link='https://example.invalid/record',
+                    )
+                    evidence = {
+                        'kind': 'attachment',
+                        'id': attachment.pk,
+                        'revision': attachment_revision(attachment),
+                    }
+                self.turn = self.begin(
+                    component=component, evidence=evidence, key=damage
+                )
+                proposal = self.create(idempotency_key=damage)
+                if damage == 'attachment_deleted':
+                    attachment.delete()
+                elif damage == 'media_replaced':
+                    with default_storage.open(
+                        attachment.attachment.name, 'wb'
+                    ) as stream:
+                        stream.write(b'Replaced media')
+                else:
+                    self.machine.active = False
+                    self.machine.save(update_fields=['active'])
+                with mock.patch(
+                    'aichat.services.investigation_proposals.refresh_focus',
+                    side_effect=AssertionError('read/reject checked child reference'),
+                ):
+                    authorize(proposal, self.actor, current=False)
+                    self.assertEqual(
+                        proposals.get_owned_proposal(
+                            owner=self.actor,
+                            scope_hash=self.scope_hash,
+                            proposal_id=proposal.pk,
+                        ).pk,
+                        proposal.pk,
+                    )
+                    self.assertIn(
+                        proposal.pk,
+                        [
+                            p.pk
+                            for p in proposals.list_owned_proposals(
+                                owner=self.actor, scope_hash=self.scope_hash
+                            )
+                        ],
+                    )
+                    rejected = proposals.reject_proposal(
+                        owner=self.actor,
+                        scope_hash=self.scope_hash,
+                        proposal_id=proposal.pk,
+                    )
+                    self.assertEqual(rejected.state, 'rejected')
+                # Full revalidation is still required for publication, even
+                # though reads/rejection remain available.
+                with self.assertRaises(proposals.ProposalNotFound):
+                    authorize(proposal, self.actor, current=True)
+        self.grant.delete()
+        with self.assertRaises(proposals.ProposalNotFound):
+            authorize(proposal, self.actor, current=False)
+        self.assertEqual(
+            proposals.list_owned_proposals(
+                owner=self.actor, scope_hash=self.scope_hash
+            ),
+            [],
+        )
+        self.assertFalse(InvestigationArtifact.objects.exists())
 
     def test_approval_executes_once_and_replay_returns_saved_result(self):
         """Proposal and repeated approval retain one artifact/event and real recorder."""

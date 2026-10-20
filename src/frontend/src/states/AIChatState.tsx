@@ -1,3 +1,7 @@
+import type {
+  ComponentFocusReference,
+  EvidenceFocusReference
+} from '@lib/types/AimmsWire.generated';
 import { create } from 'zustand';
 import { queryClient } from '../App';
 import { clearChatIndices } from '../functions/chatThreadCache';
@@ -28,9 +32,11 @@ export interface AIChatRoutingHint {
  * The label and path are display and navigation data, never authority.
  */
 export interface AIChatWorkFocusHint {
-  workOrderId: number;
+  workOrderId: number | null;
   /** The Work's native `lifecycle_version` as the launching page showed it. */
-  lifecycleVersion: number;
+  lifecycleVersion: number | null;
+  component?: ComponentFocusReference;
+  evidence?: EvidenceFocusReference;
   requestId?: number;
   requestVersion?: number;
   /** What the launching page showed, e.g. "WO-73 · Replace seal". */
