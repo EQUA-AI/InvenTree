@@ -18,7 +18,7 @@ export function ExecutionFact({
       <Text size='xs' c='dimmed'>
         {label}
       </Text>
-      <Text size='sm' style={{ overflowWrap: 'anywhere' }}>
+      <Text component='div' size='sm' style={{ overflowWrap: 'anywhere' }}>
         {children === null || children === undefined || children === ''
           ? t`Not recorded`
           : children}

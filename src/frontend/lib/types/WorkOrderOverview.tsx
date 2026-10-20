@@ -5,6 +5,7 @@
  * section from this one read rather than a request per section.
  */
 
+import type { OperationalAuthority } from './OperationalAuthority';
 import type { BoardCard, WorkOrder } from './Tasks';
 import type {
   HandledActions,
@@ -64,6 +65,9 @@ export interface RepairGate {
   is_mandatory: boolean;
   requires_photo: boolean;
   requires_second_person: boolean;
+  /** Evaluated by the native gate, including recorded authority expiry. */
+  is_satisfied?: boolean;
+  unsatisfied_reason?: string;
 }
 
 export interface OverviewFinding {
@@ -172,6 +176,7 @@ export interface WorkOrderOverview extends WorkOrder {
   /** R6 S4 projections (`tasks/work_execution`); absent on older servers. */
   handled_actions?: HandledActions;
   investigation?: Investigation;
+  operational_authority?: OperationalAuthority;
   prepared_package?: PreparedPackage;
   verification_return?: VerificationReturn;
   time_assignment?: TimeAssignment;

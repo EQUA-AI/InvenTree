@@ -30,24 +30,45 @@ def _event(event):
     }
 
 
-def project(work_order) -> dict:
+def project(work_order, actor=None) -> dict:
     """Project saved procedure results, lockout records and source limitations."""
     from repair.models import LockoutPoint
     from tasks.models import WorkOrderStepExecution
+    from tasks.services.operational_authority import records
+
+    authority = records(work_order, actor=actor)
+
+    def fact(kind):
+        rows = [row for row in authority if row['kind'] == kind]
+        return {
+            'available': True,
+            'recorded': bool(rows),
+            'current_records': [row for row in rows if row['current']],
+            'reason': '' if rows else 'not_recorded',
+            'records': rows,
+        }
 
     enabled = procedures_enabled()
     executions = (
-        list(
-            WorkOrderStepExecution.objects
-            .filter(
-                application__work_order=work_order,
-                step_snapshot__step_type__in=TEST_TYPES,
+        [
+            row
+            for row in work_order._authority_executions
+            if row.step_snapshot.get('step_type') in TEST_TYPES
+        ]
+        if enabled and hasattr(work_order, '_authority_executions')
+        else (
+            list(
+                WorkOrderStepExecution.objects
+                .filter(
+                    application__work_order=work_order,
+                    step_snapshot__step_type__in=TEST_TYPES,
+                )
+                .select_related('application', 'completed_by')
+                .order_by('application__sequence', 'sequence', 'pk')
             )
-            .select_related('application', 'completed_by')
-            .order_by('application__sequence', 'sequence', 'pk')
+            if enabled
+            else []
         )
-        if enabled
-        else []
     )
     events = (
         list(
@@ -119,9 +140,9 @@ def project(work_order) -> dict:
         ]
         if packet
         else [],
-        'technical_acceptance': {'available': False, 'reason': 'no_provider'},
+        'technical_acceptance': fact('test_acceptance'),
         'controlled_test_authority': {'available': False, 'reason': 'no_provider'},
-        'operating_permission': {'available': False, 'reason': 'no_provider'},
-        'observed_return': {'available': False, 'reason': 'no_provider'},
-        'service_state': {'available': False, 'reason': 'no_provider'},
+        'operating_permission': fact('operating_permission'),
+        'observed_return': fact('observed_return'),
+        'service_state': fact('service_state'),
     }

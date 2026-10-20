@@ -6,6 +6,7 @@ from tasks.serializers import WorkOrderPartSerializer
 
 from InvenTree.serializers import InvenTreeIsoDateTimeModelSerializerMixin
 
+from .authority_models import gate_reason_for_actor
 from .models import (
     ApprovedRepairScope,
     LockoutPoint,
@@ -159,7 +160,10 @@ class RepairPacketGateSerializer(
 
     def get_unsatisfied_reason(self, obj) -> str:
         """Return the current blocking reason for UI/tooltips."""
-        return obj.unsatisfied_reason()
+        request = self.context.get('request')
+        return gate_reason_for_actor(
+            obj, request.user if request else None, obj.unsatisfied_reason()
+        )
 
 
 class RepairPacketEvidenceSerializer(
@@ -405,6 +409,16 @@ class RepairPacketSerializer(
     def get_unsatisfied_safety_gates(self, obj) -> list:
         """Return safety gate blockers in a compact UI-friendly shape."""
         return [
-            {'pk': gate.pk, 'name': gate.name, 'reason': reason}
+            {
+                'pk': gate.pk,
+                'name': gate.name,
+                'reason': gate_reason_for_actor(
+                    gate,
+                    self.context['request'].user
+                    if self.context.get('request')
+                    else None,
+                    reason,
+                ),
+            }
             for gate, reason in obj.unsatisfied_blocking_gates()
         ]

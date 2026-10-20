@@ -1,16 +1,25 @@
 import { t } from '@lingui/core/macro';
 import { Alert, Badge, Card, Group, Stack, Table, Text } from '@mantine/core';
 import { IconCircleCheck, IconLock, IconShieldLock } from '@tabler/icons-react';
+import { useEffect, useState } from 'react';
 
+import type { AuthorityRecord } from '@lib/types/OperationalAuthority';
 import type { RepairGate } from '@lib/types/WorkOrderOverview';
 
 const SATISFIED_STATUSES = new Set(['confirmed', 'verified', 'waived']);
 
-function gateStatusColor(status: string): string {
+export function gateStatusColor(gate: RepairGate, expired: boolean): string {
+  const status = gate.status;
+  if (gate.is_blocking && (gate.is_satisfied === false || expired))
+    return 'red';
   if (status === 'waived') {
     return 'orange';
   }
-  return SATISFIED_STATUSES.has(status) ? 'green' : 'red';
+  return SATISFIED_STATUSES.has(status)
+    ? gate.is_satisfied === true
+      ? 'green'
+      : 'gray'
+    : 'red';
 }
 
 /**
@@ -24,10 +33,26 @@ function gateStatusColor(status: string): string {
  * took responsibility for skipping it, and that should stay visible.
  */
 export function WorkOrderSafetyReadiness({
-  gates
-}: Readonly<{ gates: RepairGate[] }>) {
+  gates,
+  physical
+}: Readonly<{ gates: RepairGate[]; physical?: AuthorityRecord[] }>) {
+  const { expired } = useGateAuthorityClock(gates, physical);
+  const blockingReason = (gate: RepairGate) =>
+    expired(gate) && gate.is_satisfied !== false
+      ? t`Recorded authority expired. Refresh current gate checks.`
+      : gate.unsatisfied_reason;
   const blocking = gates.filter(
-    (gate) => gate.is_blocking && !SATISFIED_STATUSES.has(gate.status)
+    (gate) =>
+      gate.is_blocking &&
+      (gate.is_satisfied === false ||
+        expired(gate) ||
+        !SATISFIED_STATUSES.has(gate.status))
+  );
+  const unknown = gates.filter(
+    (gate) =>
+      gate.is_blocking &&
+      typeof gate.is_satisfied !== 'boolean' &&
+      SATISFIED_STATUSES.has(gate.status)
   );
   const waived = gates.filter((gate) => gate.status === 'waived');
 
@@ -39,7 +64,12 @@ export function WorkOrderSafetyReadiness({
             <IconShieldLock size={18} />
             <Text fw={600}>{t`Safety and readiness`}</Text>
           </Group>
-          {blocking.length === 0 ? (
+          {blocking.length === 0 && unknown.length > 0 ? (
+            <Badge
+              color='gray'
+              variant='light'
+            >{t`Gate readiness not evaluated`}</Badge>
+          ) : blocking.length === 0 ? (
             <Badge
               color='green'
               variant='light'
@@ -60,8 +90,28 @@ export function WorkOrderSafetyReadiness({
 
         {blocking.length > 0 && (
           <Alert color='red' variant='light'>
-            {t`This repair cannot start until these gates are satisfied through the safety flow.`}
+            <Stack gap='xs'>
+              <Text size='sm'>{t`This repair cannot start until these gates are satisfied through the safety flow.`}</Text>
+              {blocking.map((gate) =>
+                blockingReason(gate) ? (
+                  <Text
+                    key={gate.id}
+                    size='sm'
+                    style={{ overflowWrap: 'anywhere' }}
+                  >
+                    {gate.name}: {blockingReason(gate)}
+                  </Text>
+                ) : null
+              )}
+            </Stack>
           </Alert>
+        )}
+
+        {unknown.length > 0 && (
+          <Alert
+            color='gray'
+            variant='light'
+          >{t`Current gate checks are not supplied. A recorded gate status alone does not establish physical authority.`}</Alert>
         )}
 
         {waived.length > 0 && (
@@ -99,11 +149,17 @@ export function WorkOrderSafetyReadiness({
                     </Table.Td>
                     <Table.Td>
                       <Badge
-                        color={gateStatusColor(gate.status)}
+                        color={gateStatusColor(gate, expired(gate))}
                         variant='light'
                       >
                         {gate.status}
                       </Badge>
+                      {(gate.is_satisfied === false || expired(gate)) &&
+                        blockingReason(gate) && (
+                          <Text size='xs' c='red'>
+                            {blockingReason(gate)}
+                          </Text>
+                        )}
                     </Table.Td>
                     <Table.Td>
                       <Text size='sm'>
@@ -133,3 +189,44 @@ export function WorkOrderSafetyReadiness({
 }
 
 export default WorkOrderSafetyReadiness;
+
+export function useGateAuthorityClock(
+  gates: RepairGate[],
+  physical?: AuthorityRecord[]
+) {
+  const [now, setNow] = useState(Date.now);
+  // A saved evaluation can lose readiness as time passes. Only remove a
+  // positive claim here; becoming effective still requires a fresh native check.
+  useEffect(() => {
+    const expiry = Math.min(
+      ...(physical ?? [])
+        .filter(
+          (row) => row.current && gates.some((gate) => gate.id === row.gate_id)
+        )
+        .map((row) => Date.parse(row.effective_until ?? ''))
+        .filter((time) => Number.isFinite(time) && time > now)
+    );
+    const refreshClock = () => setNow(Date.now());
+    const timer = Number.isFinite(expiry)
+      ? window.setTimeout(
+          refreshClock,
+          Math.min(2_147_483_647, Math.max(0, expiry - Date.now()))
+        )
+      : undefined;
+    document.addEventListener('visibilitychange', refreshClock);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', refreshClock);
+    };
+  }, [physical, gates, now]);
+  const expired = (gate: RepairGate) =>
+    (physical ?? []).some(
+      (row) =>
+        row.current &&
+        row.gate_id === gate.id &&
+        row.effective_until &&
+        Date.parse(row.effective_until) <= now
+    );
+
+  return { expired };
+}

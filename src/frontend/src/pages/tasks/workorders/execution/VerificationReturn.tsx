@@ -17,6 +17,7 @@ import {
   executionBadgeStyles,
   recordedTime
 } from './ExecutionFacts';
+import { AuthorityRecorder, AuthorityRecords } from './OperationalAuthority';
 import { StepCriteria } from './PreparedPackage';
 import { ServiceRestoration } from './ServiceRestoration';
 import { recordedValue, testEvaluation } from './verificationProjection';
@@ -162,9 +163,16 @@ export function VerificationReturn({
         ) : (
           value.tests.map((test) => <TestResult key={test.id} test={test} />)
         )}
-        <ExecutionFact
-          label={t`Responsible technical acceptance`}
-        >{t`Not available — no equipment-test acceptance record is supplied.`}</ExecutionFact>
+        <ExecutionFact label={t`Responsible technical acceptance`}>
+          {workOrder.operational_authority ? (
+            <AuthorityRecords
+              value={workOrder.operational_authority}
+              kinds={['test_acceptance']}
+            />
+          ) : (
+            t`Not available — no equipment-test acceptance record is supplied.`
+          )}
+        </ExecutionFact>
       </ExecutionSection>
       <ExecutionSection title={t`Controlled test permission`}>
         <Text size='sm'>{t`Awaiting test authority — authority, permitted test scope, conditions, owner and effective time are not supplied.`}</Text>
@@ -199,14 +207,32 @@ export function VerificationReturn({
           c='dimmed'
         >{t`A restored lockout point is one source record. It does not clear independent restrictions or establish job-wide release.`}</Text>
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
-          <ExecutionFact
-            label={t`Operating permission`}
-          >{t`Not recorded — awaiting operating authority.`}</ExecutionFact>
-          <ExecutionFact
-            label={t`Observed operating return`}
-          >{t`Awaiting operations record of return.`}</ExecutionFact>
+          <ExecutionFact label={t`Operating permission`}>
+            {workOrder.operational_authority ? (
+              <AuthorityRecords
+                value={workOrder.operational_authority}
+                kinds={['operating_permission']}
+              />
+            ) : (
+              t`Not recorded — awaiting operating authority.`
+            )}
+          </ExecutionFact>
+          <ExecutionFact label={t`Observed operating return`}>
+            {workOrder.operational_authority ? (
+              <AuthorityRecords
+                value={workOrder.operational_authority}
+                kinds={['observed_return']}
+              />
+            ) : (
+              t`Awaiting operations record of return.`
+            )}
+          </ExecutionFact>
         </SimpleGrid>
       </ExecutionSection>
+      <AuthorityRecorder
+        value={workOrder.operational_authority}
+        mode='verification'
+      />
       <ServiceRestoration workOrder={workOrder} />
       <ExecutionSection title={t`Recorded verification`}>
         <ExecutionFact label={t`Verification summary`}>

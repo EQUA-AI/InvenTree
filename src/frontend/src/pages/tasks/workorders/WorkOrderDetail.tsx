@@ -62,7 +62,11 @@ import { MonitoringContinuity } from '../../assets/health/MonitoringContinuity';
 import { InvestigationSection } from '../../maintenance/workorders/components/InvestigationSection';
 import { WorkOrderAlertContext } from '../../maintenance/workorders/components/WorkOrderAlertContext';
 import { WorkOrderProblemPanel } from '../../maintenance/workorders/components/WorkOrderProblemPanel';
-import { WorkOrderSafetyReadiness } from '../../maintenance/workorders/components/WorkOrderSafetyReadiness';
+import {
+  WorkOrderSafetyReadiness,
+  gateStatusColor,
+  useGateAuthorityClock
+} from '../../maintenance/workorders/components/WorkOrderSafetyReadiness';
 import { CloseoutLink } from './CloseoutLink';
 import { CloseoutPanel, WorkCloseoutReadings } from './CloseoutPanel';
 import { WorkAttachmentResource } from './WorkAttachmentResource';
@@ -276,6 +280,7 @@ function WorkOrderWorkspace({
           <WorkContinuityConstraints workOrder={workOrder} />
           <PreparedPackage
             value={workOrder.prepared_package}
+            authority={workOrder.operational_authority}
             workOrderId={workOrder.id}
           />
           {workOrder.repair_packet ? (
@@ -287,8 +292,14 @@ function WorkOrderWorkspace({
                     approvedScope={workOrder.repair_packet.approved_scope}
                   />
                 )}
-              <WorkOrderSafetyReadiness gates={workOrder.repair_packet.gates} />
-              <RepairPacketCard packet={workOrder.repair_packet} />
+              <WorkOrderSafetyReadiness
+                gates={workOrder.repair_packet.gates}
+                physical={workOrder.operational_authority?.physical}
+              />
+              <RepairPacketCard
+                packet={workOrder.repair_packet}
+                physical={workOrder.operational_authority?.physical}
+              />
             </>
           ) : (
             <Alert
@@ -752,8 +763,13 @@ function DependenciesTable({
 }
 
 function RepairPacketCard({
-  packet
-}: Readonly<{ packet: RepairPacketOverview }>) {
+  packet,
+  physical
+}: Readonly<{
+  packet: RepairPacketOverview;
+  physical?: import('@lib/types/OperationalAuthority').AuthorityRecord[];
+}>) {
+  const { expired } = useGateAuthorityClock(packet.gates, physical);
   const likelyCause =
     typeof packet.diagnosis.likely_cause === 'string'
       ? packet.diagnosis.likely_cause
@@ -792,7 +808,7 @@ function RepairPacketCard({
       <Text size='sm' fw={600}>{t`Safety gates`}</Text>
       <SimpleGrid cols={{ base: 1, md: 2 }}>
         {packet.gates.map((gate) => (
-          <Group key={gate.id} justify='space-between' wrap='nowrap'>
+          <Group key={gate.id} justify='space-between' wrap='wrap'>
             <Stack gap={0}>
               <Text size='sm'>{gate.name}</Text>
               <Text size='xs' c='dimmed'>
@@ -803,7 +819,7 @@ function RepairPacketCard({
             </Stack>
             <StateBadge
               value={gate.status}
-              color={gate.status === 'confirmed' ? 'green' : 'orange'}
+              color={gateStatusColor(gate, expired(gate))}
             />
           </Group>
         ))}

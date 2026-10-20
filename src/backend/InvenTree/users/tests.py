@@ -198,6 +198,71 @@ class RuleSetModelTest(TestCase):
         # There should now not be any permissions assigned to this group
         self.assertEqual(group.permissions.count(), 0)
 
+    def test_operating_role_migration_preserves_only_existing_grants(self):
+        """Migration never promotes ungranted groups or erases an existing grant."""
+        from importlib import import_module
+        from types import SimpleNamespace
+
+        from django.contrib.auth.models import Permission
+        from django.db import connection
+
+        existing = Group.objects.create(name='Existing operations grant')
+        untouched = Group.objects.create(name='No operations grant')
+        existing.permissions.add(
+            Permission.objects.get(
+                content_type__app_label='tasks', codename='record_operating_authority'
+            )
+        )
+        migration = import_module('users.migrations.0025_operating_authority_role')
+        migration.preserve_operating_grants(
+            apps, SimpleNamespace(connection=connection)
+        )
+        self.assertTrue(
+            existing.rule_sets.get(name='work_order').can_record_operating_authority
+        )
+        self.assertFalse(
+            untouched.rule_sets.get(name='work_order').can_record_operating_authority
+        )
+        existing.save(update_fields=['name'])
+        self.assertTrue(
+            existing.permissions.filter(codename='record_operating_authority').exists()
+        )
+
+    def test_operating_authority_is_an_independent_ruleset_capability(self):
+        """Native role administration can grant/revoke operations without maintenance."""
+        from users.serializers import RuleSetSerializer
+
+        self.assertEqual(
+            RULESET_CUSTOM_PERMISSIONS['work_order']['can_record_operating_authority'],
+            ('tasks_operationalauthorityrecord', 'record_operating_authority'),
+        )
+        self.assertTrue(
+            {
+                'repair_gateauthorityrecord',
+                'tasks_operationalauthorityrecord',
+                'tasks_investigationrequest',
+                'tasks_investigationartifact',
+            }.issubset(set(G_RULESETS_IG))
+        )
+        group = Group.objects.create(name='Named operations role')
+        rule = group.rule_sets.get(name='work_order')
+        permission = {
+            'content_type__app_label': 'tasks',
+            'codename': 'record_operating_authority',
+        }
+        self.assertFalse(rule.can_record_operating_authority)
+        self.assertFalse(group.permissions.filter(**permission).exists())
+        rule.can_record_operating_authority = True
+        rule.save()
+        self.assertTrue(group.permissions.filter(**permission).exists())
+        self.assertTrue(RuleSetSerializer(rule).data['can_record_operating_authority'])
+        self.assertFalse(
+            group.permissions.filter(codename='execute_workorder').exists()
+        )
+        rule.can_record_operating_authority = False
+        rule.save()
+        self.assertFalse(group.permissions.filter(**permission).exists())
+
     def test_closeout_permission_assign(self):
         """Named closeout actions are synchronized by the work-order ruleset."""
         group = Group.objects.create(name='Closeout technicians')
