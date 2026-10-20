@@ -49,7 +49,8 @@ export function PreparedCloseout({
   accountUnavailable = false,
   manualAccepted = false,
   sourceCapture,
-  reconciliation
+  reconciliation,
+  updateAction
 }: Readonly<{
   workOrder: CloseoutWorkOrder;
   updateStatus: string;
@@ -69,6 +70,7 @@ export function PreparedCloseout({
   manualAccepted?: boolean;
   sourceCapture?: CloseoutCapture | null;
   reconciliation?: ReactNode;
+  updateAction?: ReactNode;
 }>) {
   const values = accepted ?? fields;
   const labels: Record<string, string> = {
@@ -171,88 +173,6 @@ export function PreparedCloseout({
       {error && (
         <Alert color='red'>{t`Some closeout sources could not be read. Missing information is unknown; refresh before updating.`}</Alert>
       )}
-      <Card withBorder data-testid='closeout-story'>
-        <Stack gap='sm'>
-          <Title order={4}>{t`Technician story & insights`}</Title>
-          {captures === undefined ? (
-            <Text>{t`Story sources are not available yet.`}</Text>
-          ) : captures.length === 0 ? (
-            <Text>{t`No saved technician story. Add the finding, work and reasoning, failed approaches, practical advice and unresolved follow-up in the existing assistant or native capture below.`}</Text>
-          ) : (
-            captures.map((capture) => (
-              <Stack key={capture.id} gap={4}>
-                <Group gap='xs'>
-                  <Badge variant='light'>
-                    {capture.source_type === 'voice'
-                      ? t`Voice transcript`
-                      : t`Typed account`}
-                  </Badge>
-                  <Text size='sm'>
-                    {t`Capture`} {capture.id} · {capture.status} · {t`Revision`}{' '}
-                    {capture.revision ?? t`Not recorded`}
-                  </Text>
-                </Group>
-                <Text size='xs' c='dimmed'>
-                  {t`Recorded by`} {fact(capture.created_by_name)} ·{' '}
-                  {when(capture.created_at)}
-                </Text>
-                <Text
-                  style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
-                >
-                  {capture.narrative}
-                </Text>
-                {capture.source_type === 'typed' && (
-                  <Text size='xs'>
-                    {t`Voice unavailable reason`}:{' '}
-                    {capture.voice_unavailable_reason ||
-                      t`Not supplied for this capture`}
-                  </Text>
-                )}
-                {capture.transcript_reference && (
-                  <Text size='xs' style={{ overflowWrap: 'anywhere' }}>
-                    {t`Transcript reference`}: {capture.transcript_reference}
-                  </Text>
-                )}
-                <details>
-                  <summary>{t`Retained story revisions`}</summary>
-                  {capture.revisions?.length ? (
-                    [...capture.revisions]
-                      .sort((a, b) => a.revision - b.revision)
-                      .map((row) => (
-                        <Card key={row.id} withBorder mt='xs' padding='sm'>
-                          <Text size='sm'>
-                            {t`Revision`} {row.revision} · {t`Recorded by`}{' '}
-                            {fact(row.created_by_name)} · {when(row.created_at)}
-                          </Text>
-                          <Text style={{ whiteSpace: 'pre-wrap' }}>
-                            {row.narrative}
-                          </Text>
-                        </Card>
-                      ))
-                  ) : (
-                    <Text size='sm'>{t`Earlier revisions are not supplied by this server.`}</Text>
-                  )}
-                </details>
-              </Stack>
-            ))
-          )}
-          <Text
-            size='xs'
-            c='dimmed'
-          >{t`Topic coverage and reviewed reusable lessons are not supplied. A story or extraction is not an approved procedure. Audio playback and timing are unavailable without a linked media source.`}</Text>
-          <ContinueInvestigation
-            workOrder={workOrder}
-            panel='closeout'
-            label={t`Complete missing story`}
-            caption={false}
-            variant='light'
-          />
-          <Text
-            size='xs'
-            c='dimmed'
-          >{t`Carries this Work to the existing assistant; naming a story there does not save a closeout capture automatically.`}</Text>
-        </Stack>
-      </Card>
       <Card withBorder data-testid='closeout-account'>
         <Stack gap='sm'>
           <Group justify='space-between'>
@@ -409,6 +329,7 @@ export function PreparedCloseout({
             onClick={download}
             disabled={error || loading}
           >{t`Download account (.txt)`}</Button>
+          {updateAction}
           {accepted && (
             <details>
               <summary>{t`Original accepted snapshot`}</summary>
@@ -462,6 +383,88 @@ export function PreparedCloseout({
               )}
             </>
           )}
+        </Stack>
+      </Card>
+      <Card withBorder data-testid='closeout-story'>
+        <Stack gap='sm'>
+          <Title order={4}>{t`Technician story & insights`}</Title>
+          {captures === undefined ? (
+            <Text>{t`Story sources are not available yet.`}</Text>
+          ) : captures.length === 0 ? (
+            <Text>{t`No saved technician story. Add the finding, work and reasoning, failed approaches, practical advice and unresolved follow-up in the existing assistant or native capture below.`}</Text>
+          ) : (
+            captures.map((capture) => (
+              <Stack key={capture.id} gap={4}>
+                <Group gap='xs'>
+                  <Badge variant='light'>
+                    {capture.source_type === 'voice'
+                      ? t`Voice transcript`
+                      : t`Typed account`}
+                  </Badge>
+                  <Text size='sm'>
+                    {t`Capture`} {capture.id} · {capture.status} · {t`Revision`}{' '}
+                    {capture.revision ?? t`Not recorded`}
+                  </Text>
+                </Group>
+                <Text size='xs' c='dimmed'>
+                  {t`Recorded by`} {fact(capture.created_by_name)} ·{' '}
+                  {when(capture.created_at)}
+                </Text>
+                <Text
+                  style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
+                >
+                  {capture.narrative}
+                </Text>
+                {capture.source_type === 'typed' && (
+                  <Text size='xs'>
+                    {t`Voice unavailable reason`}:{' '}
+                    {capture.voice_unavailable_reason ||
+                      t`Not supplied for this capture`}
+                  </Text>
+                )}
+                {capture.transcript_reference && (
+                  <Text size='xs' style={{ overflowWrap: 'anywhere' }}>
+                    {t`Transcript reference`}: {capture.transcript_reference}
+                  </Text>
+                )}
+                <details>
+                  <summary>{t`Retained story revisions`}</summary>
+                  {capture.revisions?.length ? (
+                    [...capture.revisions]
+                      .sort((a, b) => a.revision - b.revision)
+                      .map((row) => (
+                        <Card key={row.id} withBorder mt='xs' padding='sm'>
+                          <Text size='sm'>
+                            {t`Revision`} {row.revision} · {t`Recorded by`}{' '}
+                            {fact(row.created_by_name)} · {when(row.created_at)}
+                          </Text>
+                          <Text style={{ whiteSpace: 'pre-wrap' }}>
+                            {row.narrative}
+                          </Text>
+                        </Card>
+                      ))
+                  ) : (
+                    <Text size='sm'>{t`Earlier revisions are not supplied by this server.`}</Text>
+                  )}
+                </details>
+              </Stack>
+            ))
+          )}
+          <Text
+            size='xs'
+            c='dimmed'
+          >{t`Topic coverage and reviewed reusable lessons are not supplied. A story or extraction is not an approved procedure. Audio playback and timing are unavailable without a linked media source.`}</Text>
+          <ContinueInvestigation
+            workOrder={workOrder}
+            panel='closeout'
+            label={t`Complete missing story`}
+            caption={false}
+            variant='light'
+          />
+          <Text
+            size='xs'
+            c='dimmed'
+          >{t`Carries this Work to the existing assistant; naming a story there does not save a closeout capture automatically.`}</Text>
         </Stack>
       </Card>
     </Stack>

@@ -58,10 +58,12 @@ import PageTitle from '../../../components/nav/PageTitle';
 
 import { useApi } from '../../../contexts/ApiContext';
 import { openGlobalAIChatAboutWork } from '../../../states/AIChatState';
+import { MonitoringContinuity } from '../../assets/health/MonitoringContinuity';
 import { InvestigationSection } from '../../maintenance/workorders/components/InvestigationSection';
 import { WorkOrderAlertContext } from '../../maintenance/workorders/components/WorkOrderAlertContext';
 import { WorkOrderProblemPanel } from '../../maintenance/workorders/components/WorkOrderProblemPanel';
 import { WorkOrderSafetyReadiness } from '../../maintenance/workorders/components/WorkOrderSafetyReadiness';
+import { CloseoutLink } from './CloseoutLink';
 import { CloseoutPanel, WorkCloseoutReadings } from './CloseoutPanel';
 import { WorkAttachmentResource } from './WorkAttachmentResource';
 import { WorkMaterialsPanel } from './WorkMaterialsPanel';
@@ -181,12 +183,14 @@ function WorkOrderWorkspace({
       label: t`Work`,
       content: (
         <Stack gap='md'>
+          <CloseoutLink />
           {workOrder.repair_packet && (
             <WorkOrderProblemPanel packet={workOrder.repair_packet} />
           )}
           <ServiceRestoration workOrder={workOrder} />
           <HandledByAimms value={workOrder.handled_actions} />
           <TimeAssignment workOrder={workOrder} />
+          <MonitoringContinuity workOrder={workOrder} />
           <SectionCard
             title={t`Board cards`}
             icon={<IconLayoutKanban size={18} />}
@@ -302,6 +306,7 @@ function WorkOrderWorkspace({
               closeout={workOrder.structured_closeout}
             />
           )}
+          <MonitoringContinuity workOrder={workOrder} />
           {workOrder.canonical_commands_enabled && !workOrder.repair_packet ? (
             <CloseoutPanel
               workOrder={projectCloseoutWorkOrder(workOrder)}
@@ -314,7 +319,7 @@ function WorkOrderWorkspace({
                 <Text>{t`This work order is completed through its owning repair packet.`}</Text>
                 <Anchor
                   component={Link}
-                  to={`/repair/packets/${workOrder.repair_packet.id}/`}
+                  to={`/repair/packets/${workOrder.repair_packet.id}/closeout/`}
                 >{t`Open ${workOrder.repair_packet.reference}`}</Anchor>
               </Stack>
             </Alert>
@@ -328,9 +333,12 @@ function WorkOrderWorkspace({
       name: 'history',
       label: t`History`,
       content: (
-        <SectionCard title={t`Activity`} icon={<IconHistory size={18} />}>
-          <EventTimeline events={workOrder.events} />
-        </SectionCard>
+        <Stack gap='md'>
+          <MonitoringContinuity workOrder={workOrder} />
+          <SectionCard title={t`Activity`} icon={<IconHistory size={18} />}>
+            <EventTimeline events={workOrder.events} />
+          </SectionCard>
+        </Stack>
       )
     }
   ];

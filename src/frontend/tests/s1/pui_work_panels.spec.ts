@@ -388,7 +388,7 @@ test('packet work keeps qualified evidence safety and completion authority witho
   await tabs.getByRole('tab', { name: 'Closeout', exact: true }).click();
   await expect(
     page.getByRole('link', { name: 'Open RP-901', exact: true })
-  ).toHaveAttribute('href', '/repair/packets/901/');
+  ).toHaveAttribute('href', '/repair/packets/901/closeout/');
   await expect(page.getByText('Narrative', { exact: true })).toHaveCount(0);
   expect(
     requests.filter((request) =>

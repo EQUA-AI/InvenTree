@@ -4,15 +4,13 @@ import { t } from '@lingui/core/macro';
 import {
   Accordion,
   Alert,
-  Anchor,
   Badge,
   Group,
   SimpleGrid,
   Stack,
   Text
 } from '@mantine/core';
-import { Link, useSearchParams } from 'react-router-dom';
-import { workPanelParams } from '../workPanelState';
+import { CloseoutLink } from '../CloseoutLink';
 import {
   ExecutionFact,
   ExecutionSection,
@@ -124,11 +122,11 @@ function TestResult({ test }: Readonly<{ test: VerificationTest }>) {
 export function VerificationReturn({
   workOrder
 }: Readonly<{ workOrder: WorkOrderOverview }>) {
-  const [params] = useSearchParams();
   const value = workOrder.verification_return;
   const supplied = value?.rule === 'verification_return.v1';
   return (
     <Stack gap='md' data-testid='verification-return'>
+      <CloseoutLink />
       <ExecutionSection title={t`Physical verification`}>
         {!supplied ? (
           <Text size='sm'>{t`Physical test criteria and attempts are not supplied by this server. Not evaluated.`}</Text>
@@ -193,11 +191,6 @@ export function VerificationReturn({
           {recordedTime(workOrder.structured_closeout?.verified_at)}
         </ExecutionFact>
         <Alert color='gray'>{t`A recorded summary or completed work order does not establish permission to operate.`}</Alert>
-        <Anchor
-          component={Link}
-          to={`?${workPanelParams(params, 'closeout')}`}
-          size='sm'
-        >{t`Open Closeout`}</Anchor>
       </ExecutionSection>
     </Stack>
   );

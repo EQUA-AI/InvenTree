@@ -1,6 +1,14 @@
 import type { CloseoutReadiness } from '@lib/types/Closeout';
 import { t } from '@lingui/core/macro';
-import { Alert, Anchor, Button, Group, Stack, Text } from '@mantine/core';
+import {
+  Alert,
+  Anchor,
+  Button,
+  Group,
+  Loader,
+  Stack,
+  Text
+} from '@mantine/core';
 import dayjs from 'dayjs';
 import { Link } from 'react-router-dom';
 import type { UpdateState } from './workRecordUpdate';
@@ -57,10 +65,7 @@ export function WorkRecordUpdate({
     value ? dayjs(value).format('DD MMM YYYY, HH:mm') : t`Time unavailable`;
   return (
     <Stack gap='sm' mt='md' data-testid='work-record-update' aria-live='polite'>
-      <Text
-        size='sm'
-        c='dimmed'
-      >{t`Updates the internal AIMMS maintenance record. Physical return and external-system acknowledgement are separate.`}</Text>
+      <Text size='sm'>{t`Updates the internal AIMMS maintenance record. Physical return and external-system acknowledgement are separate.`}</Text>
       {state.status === 'confirmed' ? (
         <Alert color='green'>
           {t`Record updated`} ·{' '}
@@ -125,7 +130,14 @@ export function WorkRecordUpdate({
             </>
           )}
           {state.status === 'pending' ? (
-            <Button loading disabled>
+            <Button
+              disabled
+              mih={44}
+              leftSection={
+                <Loader size='xs' color='currentColor' aria-hidden />
+              }
+              styles={{ root: { color: 'var(--mantine-color-text)' } }}
+            >
               {state.reconciling ? t`Checking update status…` : t`Updating…`}
             </Button>
           ) : state.status === 'uncertain' ? (
@@ -205,7 +217,8 @@ export function WorkRecordUpdate({
             </Alert>
           ) : (
             <Button
-              color='green'
+              color='blue.9'
+              mih={44}
               onClick={onSubmit}
               disabled={
                 !eligible || locked || !readiness?.ready || loading || completed

@@ -164,6 +164,10 @@ test('a work-owned packet opens its native closeout form with no standalone comp
   await page.goto(
     '/playwright/s0-native.html?surface=packet&entry=/repair/packets/901/'
   );
+  await expect(
+    page.getByRole('button', { name: 'Close Repair', exact: true })
+  ).toBeHidden();
+  await page.getByRole('link', { name: 'Open Closeout', exact: true }).click();
   await page.getByRole('button', { name: 'Close Repair', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(
@@ -219,6 +223,10 @@ test('packet closeout sends its own versioned contract and retains text after re
   await page.goto(
     '/playwright/s0-native.html?surface=packet&entry=/repair/packets/901/'
   );
+  await expect(
+    page.getByRole('button', { name: 'Close Repair', exact: true })
+  ).toBeHidden();
+  await page.getByRole('link', { name: 'Open Closeout', exact: true }).click();
   await page.getByRole('button', { name: 'Close Repair', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Action taken').fill('Synthetic action');

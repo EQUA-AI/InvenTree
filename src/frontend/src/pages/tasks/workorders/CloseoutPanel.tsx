@@ -513,96 +513,102 @@ export function CloseoutPanel({
           amendmentsQuery.isError
         }
         changed={changedFields}
+        updateAction={
+          <>
+            {!accepted && (
+              <fieldset
+                disabled={mutationLocked}
+                style={{ border: 0, padding: 0, margin: 0 }}
+              >
+                <Group mt='md'>
+                  <NumberInput
+                    label={t`Downtime (minutes)`}
+                    description={t`Leave blank when unknown`}
+                    min={0}
+                    value={downtime}
+                    onChange={(value) =>
+                      setDowntime(typeof value === 'number' ? value : '')
+                    }
+                  />
+                  <Checkbox
+                    label={t`Follow-up required`}
+                    checked={followUpRequired}
+                    onChange={(event) =>
+                      setFollowUpRequired(event.currentTarget.checked)
+                    }
+                  />
+                </Group>
+                {followUpRequired && (
+                  <Textarea
+                    label={t`Follow-up`}
+                    value={followUp}
+                    onChange={(event) => setFollowUp(event.currentTarget.value)}
+                    autosize
+                    minRows={2}
+                  />
+                )}
+              </fieldset>
+            )}
+            <WorkRecordUpdate
+              onRecovery={(next) => {
+                setCaptureEditing(true);
+                setStep(next);
+              }}
+              state={update.state}
+              latest={Object.fromEntries(
+                ['cause', ...REQUIRED_FIELDS].map((field) => [
+                  field,
+                  savedFieldValue(proposalQuery.data, field)
+                ])
+              )}
+              version={workOrder.lifecycle_version}
+              readiness={readiness}
+              loading={readinessQuery.isPending || readinessQuery.isFetching}
+              eligible={accountReady && update.available}
+              completed={workOrder.lifecycle_status === 'completed'}
+              completedAt={accepted?.completed_at}
+              completedId={accepted?.id}
+              onSubmit={complete}
+              onReconcile={() => void update.execute()}
+              onReview={() => {
+                void update
+                  .reviewLatest()
+                  .then((version) => setReviewedVersion(version ?? null));
+              }}
+              reviewed={
+                reviewedVersion != null &&
+                reviewedVersion === workOrder.lifecycle_version &&
+                !capturesQuery.isFetching &&
+                !capturesQuery.isError &&
+                !proposalQuery.isFetching &&
+                !proposalQuery.isError
+              }
+              onUseReviewed={() => {
+                const retained =
+                  update.state.status !== 'idle'
+                    ? update.state.intent.payload
+                    : {};
+                // Local edits win for fields without a newer saved human decision.
+                // Saved decisions are displayed in the comparison and remain authoritative.
+                const recovered = reviewedAccountValues(
+                  proposalQuery.data,
+                  retained,
+                  fieldValues
+                );
+                void update.releaseRefused().then((released) => {
+                  if (released) {
+                    setFieldValues(recovered);
+                    setReviewedVersion(null);
+                  }
+                });
+              }}
+              locked={busy || dictateOpen}
+            />
+          </>
+        }
         reconciliation={
           execution && <CloseoutReconciliation workOrder={execution} />
         }
-      />
-      {!accepted && (
-        <fieldset
-          disabled={mutationLocked}
-          style={{ border: 0, padding: 0, margin: 0 }}
-        >
-          <Group mt='md'>
-            <NumberInput
-              label={t`Downtime (minutes)`}
-              description={t`Leave blank when unknown`}
-              min={0}
-              value={downtime}
-              onChange={(value) =>
-                setDowntime(typeof value === 'number' ? value : '')
-              }
-            />
-            <Checkbox
-              label={t`Follow-up required`}
-              checked={followUpRequired}
-              onChange={(event) =>
-                setFollowUpRequired(event.currentTarget.checked)
-              }
-            />
-          </Group>
-          {followUpRequired && (
-            <Textarea
-              label={t`Follow-up`}
-              value={followUp}
-              onChange={(event) => setFollowUp(event.currentTarget.value)}
-              autosize
-              minRows={2}
-            />
-          )}
-        </fieldset>
-      )}
-      <WorkRecordUpdate
-        onRecovery={(next) => {
-          setCaptureEditing(true);
-          setStep(next);
-        }}
-        state={update.state}
-        latest={Object.fromEntries(
-          ['cause', ...REQUIRED_FIELDS].map((field) => [
-            field,
-            savedFieldValue(proposalQuery.data, field)
-          ])
-        )}
-        version={workOrder.lifecycle_version}
-        readiness={readiness}
-        loading={readinessQuery.isPending || readinessQuery.isFetching}
-        eligible={accountReady && update.available}
-        completed={workOrder.lifecycle_status === 'completed'}
-        completedAt={accepted?.completed_at}
-        completedId={accepted?.id}
-        onSubmit={complete}
-        onReconcile={() => void update.execute()}
-        onReview={() => {
-          void update
-            .reviewLatest()
-            .then((version) => setReviewedVersion(version ?? null));
-        }}
-        reviewed={
-          reviewedVersion != null &&
-          reviewedVersion === workOrder.lifecycle_version &&
-          !capturesQuery.isFetching &&
-          !capturesQuery.isError &&
-          !proposalQuery.isFetching &&
-          !proposalQuery.isError
-        }
-        onUseReviewed={() => {
-          const retained =
-            update.state.status !== 'idle' ? update.state.intent.payload : {};
-          // Local edits win for fields without a newer saved human decision.
-          // Saved decisions are displayed in the comparison and remain authoritative.
-          const recovered = reviewedAccountValues(
-            proposalQuery.data,
-            retained,
-            fieldValues
-          );
-          void update.releaseRefused().then((released) => {
-            if (released) {
-              setFieldValues(recovered);
-              setReviewedVersion(null);
-            }
-          });
-        }}
-        locked={busy || dictateOpen}
       />
       {effectsQuery.data && effectsQuery.data.length > 0 && (
         <details>
@@ -732,7 +738,13 @@ function NarrativeStep({
             {t`Revision`} {capture.revision ?? '-'}
           </Text>
         </Group>
-        <Textarea value={capture.narrative} readOnly autosize minRows={4} />
+        <Textarea
+          aria-label={t`Saved capture narrative`}
+          value={capture.narrative}
+          readOnly
+          autosize
+          minRows={4}
+        />
         {capture.status === 'open' && (
           <Group>
             <Button

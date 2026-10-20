@@ -18,6 +18,7 @@ import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import { useApi } from '../../contexts/ApiContext';
 import { FaultOccurrences } from './faults/FaultOccurrences';
+import { MonitoringContinuityNotice } from './health/MonitoringContinuity';
 import { OccurrenceInvestigation } from './investigation/OccurrenceInvestigation';
 
 interface CountRow {
@@ -102,6 +103,7 @@ export default function FaultHistoryPanel({
 }: Readonly<{ machineId: number }>) {
   return (
     <Stack gap='lg'>
+      <MonitoringContinuityNotice />
       <FaultHistoryRollup machineId={machineId} />
       <Divider />
       <FaultOccurrences

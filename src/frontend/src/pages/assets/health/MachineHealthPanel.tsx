@@ -32,6 +32,7 @@ import { AlarmHistory } from './AlarmHistory';
 import { AnomalyList } from './AnomalyList';
 import { HealthSourceStatusTable } from './HealthSourceStatus';
 import { HealthSummaryPanel } from './HealthSummary';
+import { MonitoringContinuityNotice } from './MonitoringContinuity';
 import { RetainedHealthEvidence } from './RetainedHealthEvidence';
 import { SignalEvidence } from './SignalEvidence';
 import { SignalTable } from './SignalTable';
@@ -227,6 +228,7 @@ export function MachineHealthPanel({
         </Button>
       </Group>
 
+      <MonitoringContinuityNotice />
       {!summary.configured ? (
         <Alert
           color='blue'

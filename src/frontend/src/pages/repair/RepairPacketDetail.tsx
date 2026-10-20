@@ -12,7 +12,7 @@ import {
   IconStethoscope
 } from '@tabler/icons-react';
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { ModelType } from '@lib/enums/ModelType';
@@ -146,11 +146,12 @@ export default function RepairPacketDetail() {
       items.push(
         <Button
           key='closeout'
+          component={Link}
+          to={`/repair/packets/${packet.pk}/closeout/`}
           variant='light'
           leftSection={<IconFlagCheck size={16} />}
-          onClick={() => setCloseoutOpen(true)}
         >
-          {t`Close Repair`}
+          {t`Open Closeout`}
         </Button>
       );
     }
@@ -173,7 +174,7 @@ export default function RepairPacketDetail() {
     }
     return items;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [packet?.status, nextTransition, ownsWorkOrder]);
+  }, [packet?.pk, packet?.status, nextTransition, ownsWorkOrder]);
 
   const packetData = packet as RepairPacket | undefined;
 
@@ -278,7 +279,16 @@ export default function RepairPacketDetail() {
         name: 'closeout',
         label: t`Closeout`,
         icon: <IconFlagCheck />,
-        content: <JsonPanel data={packetData?.closeout} />
+        content: (
+          <Stack gap='md'>
+            <JsonPanel data={packetData?.closeout} />
+            {packet?.status === 'executing' && ownsWorkOrder && (
+              <Button variant='light' onClick={() => setCloseoutOpen(true)}>
+                {t`Close Repair`}
+              </Button>
+            )}
+          </Stack>
+        )
       },
       {
         name: 'events',
