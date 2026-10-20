@@ -762,12 +762,21 @@ class AttachmentSerializer(
 ):
     """Serializer class for the Attachment model."""
 
+    expected_revision = serializers.SerializerMethodField()
+
+    def get_expected_revision(self, obj) -> str:
+        """Return the metadata revision required for Work edits."""
+        from common.attachment_revision import attachment_revision
+
+        return attachment_revision(obj)
+
     class Meta:
         """Serializer metaclass."""
 
         model = common_models.Attachment
         fields = [
             'pk',
+            'expected_revision',
             'attachment',
             'thumbnail',
             'filename',

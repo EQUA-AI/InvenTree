@@ -117,7 +117,10 @@ export default function WorkOrderDetail() {
   if (workOrderQuery.isLoading) {
     return <Loader mt='xl' />;
   }
-  if (workOrderQuery.isError || !workOrderQuery.data) {
+  const denied = [401, 403, 404].includes(
+    (workOrderQuery.error as any)?.response?.status
+  );
+  if (denied || !workOrderQuery.data) {
     return (
       <Alert
         color='red'
@@ -138,10 +141,32 @@ export default function WorkOrderDetail() {
   }
 
   return (
-    <WorkOrderWorkspace
-      key={workOrderQuery.data.id}
-      workOrder={workOrderQuery.data}
-    />
+    <>
+      {workOrderQuery.isError && (
+        <Alert color='orange' title={t`Latest Work unavailable`} m='md'>
+          <Text size='sm'>{t`Last-known record is shown. Drafts are retained. Refresh before relying on its current state.`}</Text>
+          <Text size='xs'>
+            {t`Last-known Work version`}:{' '}
+            {workOrderQuery.data.lifecycle_version}
+            {' · '}
+            {t`Last received in this browser`}:{' '}
+            {workOrderQuery.dataUpdatedAt > 0
+              ? formatDateTime(
+                  new Date(workOrderQuery.dataUpdatedAt).toISOString()
+                )
+              : t`Time not recorded`}
+          </Text>
+          <Button
+            variant='light'
+            onClick={() => void workOrderQuery.refetch()}
+          >{t`Retry Work`}</Button>
+        </Alert>
+      )}
+      <WorkOrderWorkspace
+        key={workOrderQuery.data.id}
+        workOrder={workOrderQuery.data}
+      />
+    </>
   );
 }
 

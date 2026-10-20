@@ -1,6 +1,7 @@
 import { t } from '@lingui/core/macro';
 import {
   Alert,
+  Anchor,
   Badge,
   Card,
   Group,
@@ -17,6 +18,7 @@ import {
   IconHelpCircle
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
+import { Link } from 'react-router-dom';
 
 import type {
   AnalysisStatus,
@@ -77,8 +79,9 @@ function relationVisual(relation: EvidenceRelation) {
  * *cause* preliminary, because that part is ours and remains unverified.
  */
 export function PreliminaryResultsPanel({
-  results
-}: Readonly<{ results: PreliminaryResults }>) {
+  results,
+  machineId
+}: Readonly<{ results: PreliminaryResults; machineId?: number }>) {
   const status = statusVisual(results.status);
   const provisional = !results.verified_by_user;
   // Named rather than a boolean so the source name narrows to a string wherever
@@ -171,7 +174,17 @@ export function PreliminaryResultsPanel({
                     <Text size='sm'>{item.observation}</Text>
                     {item.snapshot_id && (
                       <Text size='xs' c='dimmed'>
-                        {t`Snapshot ${item.snapshot_id.slice(0, 8)}`}
+                        {machineId ? (
+                          <Anchor
+                            component={Link}
+                            size='xs'
+                            to={`/machines/machine/${machineId}/health/?snapshot=${encodeURIComponent(item.snapshot_id)}`}
+                          >
+                            {t`Snapshot ${item.snapshot_id.slice(0, 8)}`}
+                          </Anchor>
+                        ) : (
+                          t`Snapshot ${item.snapshot_id.slice(0, 8)}`
+                        )}
                         {item.stale ? ` · ${t`stale at capture`}` : ''}
                       </Text>
                     )}

@@ -370,9 +370,18 @@ test('review regression: manual draft and later edits survive stale review with 
   await page
     .getByRole('button', { name: 'Update maintenance record', exact: true })
     .click();
+  // Edit the remounted recovery form after the actual stale response.
+  // A fill racing the asynchronous pending render can target the old node.
+  await expect(page.getByTestId('prepared-closeout')).toHaveAttribute(
+    'data-update-status',
+    'stale'
+  );
   await page
     .getByRole('textbox', { name: 'Result', exact: true })
     .fill('Reviewed manual result');
+  await expect(
+    page.getByRole('textbox', { name: 'Result', exact: true })
+  ).toHaveValue('Reviewed manual result');
   await page
     .getByRole('button', { name: 'Review latest record', exact: true })
     .click();

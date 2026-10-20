@@ -404,6 +404,12 @@ test.describe('R6 P12 Fault History: occurrences, retained evidence and owning w
       await expect(snapshot).toContainText('27 Jul 2025');
       await expect(snapshot).toContainText('Captured by Synthetic Technician');
       await expect(snapshot).toContainText('System actor: historian-import');
+      await expect(
+        snapshot.getByRole('link', { name: 'Open exact retained snapshot' })
+      ).toHaveAttribute(
+        'href',
+        '/machines/machine/18/health/?snapshot=a3f1c2d4-0000-4000-8000-000000000001'
+      );
       await expect(page.getByTestId('fault-occurrences')).toContainText(
         'Recorded plant times'
       );

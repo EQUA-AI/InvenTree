@@ -136,6 +136,7 @@ class CloseoutHTTPFlowTest(CloseoutEnvMixin, TestCase):
             {
                 'expected_version': self.work_order.lifecycle_version,
                 'idempotency_key': 'http-dec',
+                'expected_decision_version': listed.data[0]['decision_version'],
                 'decisions': [
                     {
                         'field_path': name,

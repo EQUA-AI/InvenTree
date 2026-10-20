@@ -201,6 +201,7 @@ test('resource close and preview retain native search selection and total owner 
   const filtered = page.waitForResponse((response) => {
     const url = new URL(response.url());
     return (
+      response.request().method() === 'GET' &&
       url.pathname === '/api/attachment/' &&
       url.searchParams.get('search') === 'nameplate' &&
       url.searchParams.get('model_id') === '73' &&
@@ -212,6 +213,7 @@ test('resource close and preview retain native search selection and total owner 
   await expect(
     page.getByRole('link', { name: 'Synthetic work manual.pdf', exact: true })
   ).toHaveCount(0);
+  await expect(page.getByTestId('fixture-fetching')).toHaveText('0');
   const row = page.getByRole('row').filter({
     has: page.getByRole('link', {
       name: 'Synthetic work nameplate.png',

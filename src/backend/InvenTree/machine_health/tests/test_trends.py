@@ -644,6 +644,25 @@ class TrendsBatchReadTest(HealthEnvMixin, TestCase):
 class MeasuredCadenceTest(TestCase):
     """The cadence a chart breaks its line against."""
 
+    def test_one_close_pair_does_not_fragment_a_slower_source(self):
+        """An extra write among minute readings is not a one-second cadence."""
+        self.assertEqual(self.cadence_at([0, 1, 61, 121, 181, 241, 301]), 60.0)
+
+    def test_health_and_performance_use_the_same_cadence(self):
+        """Both adapters measure the same unsorted, duplicate-containing record."""
+        from machine_health.services.series import _measured_cadence
+
+        for offsets in ([0, 1, 61, 121, 181], [0, 5, 595], [65, 0, 5, 5, 70, 130, 135, 195]):
+            with self.subTest(offsets=offsets):
+                self.assertEqual(
+                    _measured_cadence([{
+                        'available': True,
+                        'count': len(offsets),
+                        'samples': [{'t': offset * 1000} for offset in offsets],
+                    }]),
+                    self.cadence_at(offsets),
+                )
+
     def test_one_silence_cannot_stretch_a_three_reading_cadence(self):
         """An outage is not the interval, even with just two gaps."""
         self.assertEqual(self.cadence_at([0, 5, 595]), 5.0)

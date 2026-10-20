@@ -18,6 +18,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../../../contexts/ApiContext';
+import { snapshotReasonLabel } from '../faults/occurrenceLabels';
 import { fullInstant } from './SignalEvidence';
 import { qualityLabel } from './common';
 
@@ -155,6 +156,17 @@ export function RetainedHealthEvidence({
                   {snapshot.stale ? ` · ${t`Stale when captured`}` : ''}
                 </Text>
                 <Text size='sm'>{t`Source: ${String(snapshot.source_references.source ?? t`Not recorded`)} · anomaly: ${snapshot.anomaly ?? t`Not recorded`}`}</Text>
+                <Text size='sm'>{snapshotReasonLabel(snapshot.reason)}</Text>
+                <Text size='sm'>
+                  {snapshot.captured_by_name
+                    ? t`Captured by ${snapshot.captured_by_name}`
+                    : !snapshot.system_actor
+                      ? t`Recorder not recorded`
+                      : null}
+                </Text>
+                {snapshot.system_actor && (
+                  <Text size='sm'>{t`System actor: ${snapshot.system_actor}`}</Text>
+                )}
                 <Text
                   size='xs'
                   style={{ overflowWrap: 'anywhere' }}

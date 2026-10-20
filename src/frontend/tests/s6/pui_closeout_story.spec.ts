@@ -134,7 +134,18 @@ test('P45 typed fallback records its reason with the attributed native capture',
           body: route.request().postDataJSON()
         });
         saved = true;
-        return route.fulfill({ json: { metadata: { capture_id: 13 } } });
+        const body = route.request().postDataJSON();
+        return route.fulfill({
+          status: 201,
+          json: {
+            work_order_id: 73,
+            command: 'closeout_capture',
+            event_id: 112,
+            lifecycle_version: body.expected_version,
+            metadata: { capture_id: 13 },
+            idempotency_key: body.idempotency_key
+          }
+        });
       }
       return route.fulfill({
         json: saved

@@ -6,6 +6,7 @@ import json.decoder
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import FieldDoesNotExist, ValidationError
+from django.db import transaction
 from django.db.models import Q
 from django.http import JsonResponse
 from django.http.response import HttpResponse
@@ -1000,8 +1001,10 @@ class AttachmentDetail(AttachmentMixin, RetrieveUpdateDestroyAPI):
 
         return super().retrieve(request, *args, **kwargs)
 
+    @transaction.atomic
     def update(self, request, *args, **kwargs):
-        """Update an existing attachment object."""
+        """Update an existing attachment object, serializing Work metadata edits."""
+        self.queryset = self.get_queryset().select_for_update()
         attachment = self.get_object()
 
         if not attachment.check_permission('change', request.user):
@@ -1011,6 +1014,20 @@ class AttachmentDetail(AttachmentMixin, RetrieveUpdateDestroyAPI):
 
         partial = kwargs.pop('partial', False)
         data = self.clean_data(request.data)
+        expected = data.pop('expected_revision', None)
+        if attachment.model_type == 'workorder':
+            from common.attachment_revision import attachment_revision
+
+            if expected != attachment_revision(attachment):
+                return Response(
+                    {
+                        'code': 'STALE_VERSION',
+                        'detail': _(
+                            'Review the latest attachment metadata before saving.'
+                        ),
+                    },
+                    status=409,
+                )
 
         # Extract filename first
         filename = data.pop('filename', None)

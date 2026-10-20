@@ -43,6 +43,23 @@ class RetainedEvidenceReadTests(HealthEnvMixin, InvenTreeAPITestCase):
         self.assertEqual(snapshot['id'], str(self.snapshot.pk))
         self.assertEqual(snapshot['content_hash'], self.snapshot.content_hash)
 
+    def test_citation_names_the_human_and_system_recorder_and_reason(self):
+        """Retained provenance survives opening the exact Health citation."""
+        captured = capture_current_signal(
+            self.binding, reason=SnapshotReason.MANUAL_REPAIR,
+            actor=self.user, system_actor='review-fixture', now=timezone.now()
+        )
+        response = self.get(self.url(snapshot=captured.pk), expected_code=200)
+        [snapshot] = response.data['results']
+        self.assertEqual(snapshot['captured_by_name'], self.user.get_full_name() or self.user.get_username())
+        self.assertEqual(snapshot['system_actor'], 'review-fixture')
+        self.assertEqual(snapshot['reason'], SnapshotReason.MANUAL_REPAIR)
+
+    def test_missing_recorder_is_null(self):
+        """Legacy evidence without a recorder must not invent one."""
+        response = self.get(self.url(), expected_code=200)
+        self.assertIsNone(response.data['results'][0]['captured_by_name'])
+
     def test_old_citation_is_not_lost_behind_the_fifty_recent_limit(self):
         """A historical link still resolves after more than fifty captures."""
         for _index in range(51):

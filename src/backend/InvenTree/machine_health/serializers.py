@@ -193,6 +193,13 @@ class HealthEvidenceSnapshotSerializer(
 ):
     """An immutable evidence snapshot, as cited by a preliminary result."""
 
+    captured_by_name = serializers.SerializerMethodField()
+
+    def get_captured_by_name(self, snapshot) -> str | None:
+        """Name the recorded actor without inventing one for legacy captures."""
+        actor = snapshot.created_by
+        return (actor.get_full_name() or actor.get_username()) if actor else None
+
     class Meta:
         """Serializer metadata."""
 
@@ -216,6 +223,7 @@ class HealthEvidenceSnapshotSerializer(
             'source_references',
             'content_hash',
             'system_actor',
+            'captured_by_name',
         )
         read_only_fields = fields
 

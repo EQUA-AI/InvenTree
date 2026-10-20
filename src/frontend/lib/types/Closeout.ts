@@ -11,6 +11,7 @@ export interface CloseoutCapture {
   status: string;
   source_type: string;
   revision: number | null;
+  decision_version?: string;
   narrative: string;
   transcript_reference?: string | null;
   voice_unavailable_reason?: string;
@@ -40,6 +41,7 @@ export interface CloseoutProposalField {
 
 export interface CloseoutProposal {
   id: number;
+  decision_version?: string;
   extractor: string;
   fields: Record<string, CloseoutProposalField>;
   part_candidates: { text: string }[];
@@ -63,6 +65,7 @@ export interface CloseoutPartUsageRow {
   issued_quantity: string | null;
   used_quantity: string | null;
   disposition: string;
+  variance_reason?: string;
   version: number;
 }
 

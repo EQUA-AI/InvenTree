@@ -103,8 +103,8 @@ class HealthSummaryTest(HealthEnvMixin, TestCase):
         self.assertEqual(row['quality'], SignalQuality.BAD)
         self.assertFalse(row['stale'])
         self.assertEqual(row['state'], HealthState.UNKNOWN)
-        self.assertNotEqual(
-            health_summary(self.machine, now=self.now)['state'], HealthState.CRITICAL
+        self.assertEqual(
+            health_summary(self.machine, now=self.now)['state'], HealthState.UNKNOWN
         )
 
     def test_every_signal_stale_reads_offline(self):
