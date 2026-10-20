@@ -21,17 +21,29 @@ import dayjs from 'dayjs';
 import {
   type ReactElement,
   type ReactNode,
+  useEffect,
   useMemo,
   useRef,
   useState
 } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import type { MachineSignal, SignalTrend } from '@lib/types/MachineHealth';
 
 import { useApi } from '../../../contexts/ApiContext';
+import {
+  type InvestigationSelection,
+  InvestigationSlices
+} from '../investigation/InvestigationSlices';
+import { LinkedEvidence } from '../investigation/LinkedEvidence';
+import {
+  type InvestigationWindow,
+  displayLinkedWindow
+} from '../investigation/windows';
 import { timeTicks } from '../performance/format';
+import { HealthHistoryProvenance } from './HealthHistoryProvenance';
 import {
   type PreparedTrend,
   type TrendRow,
@@ -62,6 +74,7 @@ interface DataRange {
   hours_probed?: number;
   source_name?: string;
   reason?: string;
+  display_shift_seconds?: number;
 }
 
 const CUSTOM = 'custom';
@@ -138,7 +151,7 @@ function customWindowError(
   const seconds = end.diff(start, 'second');
   if (seconds > MAX_WINDOW_SECONDS) {
     const hours = (seconds / 3600).toFixed(1);
-    return t`That window is ${hours} hours long. These signals are sampled every few seconds, so a window may not exceed ${MAX_WINDOW_SECONDS / 3600} hours.`;
+    return t`That window is ${hours} hours long. Health's source reader accepts at most ${MAX_WINDOW_SECONDS / 3600} hours per read.`;
   }
 
   return null;
@@ -269,9 +282,31 @@ export function SignalTrendChart({
   bindingId: string | null;
   onBindingChange: (value: string | null) => void;
   onInspect: (trigger: HTMLElement) => void;
-  evidence?: (prepared: PreparedTrend, available: boolean) => ReactNode;
+  evidence?: (
+    prepared: PreparedTrend,
+    available: boolean,
+    provenance: ReactNode
+  ) => ReactNode;
 }>) {
   const api = useApi();
+  const [params, setParams] = useSearchParams();
+  const [investigationOpen, setInvestigationOpen] = useState(false);
+  const [caseSelection, setCaseSelection] = useState<{
+    key: string;
+    selection: InvestigationSelection;
+  } | null>(null);
+  const clearLinked = () => {
+    setSelectedSlice(null);
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        for (const key of ['history_from', 'history_to', 'history_clock'])
+          next.delete(key);
+        return next;
+      },
+      { replace: true }
+    );
+  };
 
   // Only signals that can be charted at all. A status code has no numeric axis.
   const selectable = useMemo(
@@ -289,7 +324,7 @@ export function SignalTrendChart({
   // edges can only be found by probing partitions - far too slow for a page.
   const rangeQuery = useQuery<DataRange>({
     queryKey: ['machine-health-data-range', machineId],
-    staleTime: 60 * 60 * 1000,
+    staleTime: params.get('history_clock') === 'recorded' ? 0 : 60 * 60 * 1000,
     queryFn: async () => {
       const response = await api.get(
         apiUrl(ApiEndpoints.machine_health_data_range, machineId)
@@ -297,7 +332,44 @@ export function SignalTrendChart({
       return response.data;
     }
   });
+  const recordedLinkKey =
+    params.get('history_clock') === 'recorded'
+      ? `${params.get('history_from')}:${params.get('history_to')}`
+      : null;
+  const { refetch: refreshRange } = rangeQuery;
+  useEffect(() => {
+    if (recordedLinkKey) void refreshRange();
+  }, [recordedLinkKey, refreshRange]);
   const dataRange = rangeQuery.data;
+  const linked = displayLinkedWindow(
+    params,
+    rangeQuery.isFetching || rangeQuery.isError
+      ? undefined
+      : dataRange?.display_shift_seconds
+  );
+  // Only a recorded-clock link depends on the offset: a fresh offset converts
+  // it again. Manual and display-clock reads keep their slice when the source
+  // extent arrives or refreshes.
+  const linkKey = `${params.get('history_from')}:${params.get('history_to')}:${params.get('history_clock')}:${params.get('history_clock') === 'recorded' ? dataRange?.display_shift_seconds : ''}`;
+  const [selectedSlice, setSelectedSlice] = useState<{
+    linkKey: string;
+    window: InvestigationWindow;
+  } | null>(null);
+  const slice =
+    selectedSlice?.linkKey === linkKey ? selectedSlice.window : null;
+  const needsSlice =
+    !slice &&
+    !!linked.window &&
+    linked.window.to - linked.window.from > MAX_WINDOW_SECONDS * 1000;
+  const blockedLink = linked.present && (!linked.window || needsSlice);
+  const fixedWindow = slice ?? linked.window;
+  const fixedRange =
+    fixedWindow && !needsSlice
+      ? {
+          from: new Date(fixedWindow.from).toISOString(),
+          to: new Date(fixedWindow.to).toISOString()
+        }
+      : null;
 
   // Ten minutes, not an hour. Each snapshot is a whole-station document of
   // ~55KB that the source must fetch and parse, so an hour is ~720 of them -
@@ -324,6 +396,10 @@ export function SignalTrendChart({
     return from && to ? { from, to } : null;
   }, [isCustom, rangeError, customFrom, customTo]);
 
+  const investigating = linked.present || !!slice;
+  const requestedRange = investigating ? fixedRange : customRange;
+  const sampleBudget = 4320;
+
   const windowSeconds = useMemo(() => {
     if (!isCustom) {
       return Number(rangeSeconds);
@@ -335,8 +411,9 @@ export function SignalTrendChart({
 
   // A window that starts on an earlier day needs its date on the axis.
   const withDate = useMemo(
-    () => !!customRange && !dayjs(customRange.from).isSame(dayjs(), 'day'),
-    [customRange]
+    () =>
+      !!requestedRange && !dayjs(requestedRange.from).isSame(dayjs(), 'day'),
+    [requestedRange?.from]
   );
 
   const selectedIsMapped = selectable.some(
@@ -348,14 +425,19 @@ export function SignalTrendChart({
       machineId,
       bindingId,
       rangeSeconds,
-      customRange?.from ?? null,
-      customRange?.to ?? null
+      requestedRange?.from ?? null,
+      requestedRange?.to ?? null,
+      sampleBudget
     ],
     // A custom window is only requested once it is complete and legal; an
     // incomplete one is a half-filled form, not a failed read.
-    enabled: selectedIsMapped && (!isCustom || customRange != null),
+    enabled:
+      selectedIsMapped &&
+      !blockedLink &&
+      (investigating || !isCustom || customRange != null),
+    retry: false,
     staleTime: 60 * 1000,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       // Relative to now, and resolved at fetch time rather than at render so a
       // chart left open does not keep asking for the window it was mounted in.
       //
@@ -365,7 +447,7 @@ export function SignalTrendChart({
       // request to anchor this would delay the first plot for an answer it
       // already has; that request only bounds the custom pickers.
       const end = Date.now();
-      const window = customRange ?? {
+      const window = requestedRange ?? {
         from: new Date(end - windowSeconds * 1000).toISOString(),
         to: new Date(end).toISOString()
       };
@@ -375,8 +457,10 @@ export function SignalTrendChart({
           params: {
             binding: bindingId,
             from: window.from,
-            to: window.to
+            to: window.to,
+            max_samples: sampleBudget
           },
+          signal,
           // This is the widest read in the panel - the range picker goes to the
           // service limit of six hours - and the global default is 5s. The
           // server bounds the window; the client just has to wait for it.
@@ -387,7 +471,10 @@ export function SignalTrendChart({
     }
   });
 
-  const trend = selectedIsMapped ? trendQuery.data : undefined;
+  const trend =
+    selectedIsMapped && !blockedLink && !trendQuery.isError
+      ? trendQuery.data
+      : undefined;
 
   // Every reading at its own time, through the reading the row graphs share:
   // undrawable readings stay as nulls where they happened and silences longer
@@ -405,9 +492,94 @@ export function SignalTrendChart({
     );
   }
 
+  const caseKey = `${linked.window?.from ?? 'manual'}:${linked.window?.to ?? 'manual'}`;
+  const provenance = (
+    <HealthHistoryProvenance
+      trend={trend}
+      loading={!blockedLink && trendQuery.isFetching}
+      failed={trendQuery.isError && !blockedLink}
+      fixed={!!requestedRange}
+      blocked={blockedLink}
+      window={requestedRange}
+      targetSource={
+        selectable.find((item) => String(item.binding_id) === bindingId)
+          ?.source_name
+      }
+    />
+  );
+  const historyStatus = (
+    trendQuery.error as { response?: { status?: number } } | null
+  )?.response?.status;
+  const historyDenied = historyStatus === 403 || historyStatus === 401;
   const content = (
     <Paper withBorder radius='md' p='md'>
       <Stack gap='sm'>
+        {params.has('occurrence') && <LinkedEvidence machineId={machineId} />}
+        {provenance}
+        {blockedLink && (
+          <Alert
+            color='yellow'
+            title={
+              linked.clockUnknown
+                ? t`Recorded clock unknown`
+                : needsSlice
+                  ? t`Choose a six-hour slice`
+                  : t`Invalid investigation window`
+            }
+          >
+            {linked.clockUnknown
+              ? t`The recorded-to-display clock offset is unavailable or still loading. No selected history is read until the clock is known.`
+              : needsSlice
+                ? t`This linked span exceeds Health's 6 h read limit. Choose and explicitly read a slice below; the span is not silently shortened.`
+                : t`Linked bounds must be valid, increasing and at most 24 h. No history was requested from this link.`}
+            {linked.clockUnknown && (
+              <Button
+                size='xs'
+                variant='subtle'
+                onClick={() => rangeQuery.refetch()}
+              >{t`Retry source extent`}</Button>
+            )}
+            <Button
+              size='xs'
+              variant='subtle'
+              onClick={clearLinked}
+            >{t`Use current range controls`}</Button>
+          </Alert>
+        )}
+        <Button
+          variant='subtle'
+          size='xs'
+          aria-expanded={investigationOpen || needsSlice}
+          onClick={() => setInvestigationOpen((value) => !value)}
+        >{t`Case span investigation`}</Button>
+        {(investigationOpen || needsSlice) && (
+          <InvestigationSlices
+            key={caseKey}
+            selection={
+              caseSelection?.key === caseKey
+                ? caseSelection.selection
+                : undefined
+            }
+            onSelectionChange={(selection) =>
+              setCaseSelection({ key: caseKey, selection })
+            }
+            initial={
+              linked.window ?? {
+                from: requestedRange
+                  ? Date.parse(requestedRange.from)
+                  : Date.now() - 600000,
+                to: requestedRange ? Date.parse(requestedRange.to) : Date.now()
+              }
+            }
+            maxWindowMs={MAX_WINDOW_SECONDS * 1000}
+            onRead={(window) => {
+              setInvestigationOpen(true);
+              // Keep the case span and its form identity separate from the read
+              // slice, including when no investigation arrived in the URL.
+              setSelectedSlice({ linkKey, window });
+            }}
+          />
+        )}
         <Group gap='sm' align='flex-end' wrap='wrap'>
           {!expanded && (
             <Button
@@ -441,9 +613,24 @@ export function SignalTrendChart({
           />
           <Select
             label={t`Range`}
-            value={rangeSeconds}
-            onChange={(value) => setRangeSeconds(value ?? '600')}
+            value={investigating ? 'investigation' : rangeSeconds}
+            onChange={(value) => {
+              if (value === 'investigation') return;
+              clearLinked();
+              setRangeSeconds(value ?? '600');
+            }}
             data={[
+              ...(investigating
+                ? [
+                    {
+                      value: 'investigation',
+                      // A slice read from a span typed here was not linked.
+                      label: linked.present
+                        ? t`Linked investigation window`
+                        : t`Selected case slice`
+                    }
+                  ]
+                : []),
               ...RANGES.map((range) => ({
                 value: range.value,
                 label: range.label()
@@ -453,7 +640,7 @@ export function SignalTrendChart({
             allowDeselect={false}
             style={{ minWidth: 170 }}
           />
-          {isCustom && (
+          {isCustom && !investigating && (
             <>
               <DateTimePicker
                 label={t`From`}
@@ -497,7 +684,7 @@ export function SignalTrendChart({
           )}
           {dataRange?.available && (
             <Tooltip
-              label={t`This source holds readings from ${formatRangeEdge(dataRange.from)} to ${formatRangeEdge(dataRange.to)}. Windows outside that hold nothing.`}
+              label={t`Reported source extent: ${formatRangeEdge(dataRange.from)} to ${formatRangeEdge(dataRange.to)}. Extent metadata does not establish samples or completeness in any selected window.`}
             >
               <Badge variant='light' color='gray'>
                 {t`Data to ${formatRangeEdge(dataRange.to)}`}
@@ -515,17 +702,36 @@ export function SignalTrendChart({
           </Alert>
         )}
 
-        {rangeError && (
+        {rangeError && !investigating && (
           <Alert color='gray' title={t`Choose a window to read`}>
             {rangeError}
           </Alert>
         )}
 
-        {trendQuery.isLoading && <Loader size='sm' />}
+        {!blockedLink && trendQuery.isFetching && (
+          <Loader size='sm' aria-label={t`Reading signal history`} />
+        )}
+        {!blockedLink && trendQuery.isFetching && trend && (
+          <Text size='xs'>{t`Updating the selected source window; the previous read remains visible.`}</Text>
+        )}
 
-        {trendQuery.isError && (
-          <Alert color='red' title={t`Could not load the trend`}>
-            {t`The request for this window failed. No data is shown rather than a partial line.`}
+        {trendQuery.isError && !blockedLink && (
+          <Alert
+            color='red'
+            title={
+              historyDenied
+                ? t`History access denied`
+                : t`Could not load the trend`
+            }
+          >
+            {historyDenied
+              ? t`This source window could not be read in your current scope. No history or empty record is inferred.`
+              : t`The request for this window failed. No data is shown rather than a partial line.`}
+            <Button
+              size='xs'
+              variant='subtle'
+              onClick={() => trendQuery.refetch()}
+            >{t`Retry history`}</Button>
           </Alert>
         )}
 
@@ -589,7 +795,7 @@ export function SignalTrendChart({
             ) : null}
           </Stack>
         )}
-        {evidence?.(prepared, !!trend?.available)}
+        {evidence?.(prepared, !!trend?.available, provenance)}
       </Stack>
     </Paper>
   );

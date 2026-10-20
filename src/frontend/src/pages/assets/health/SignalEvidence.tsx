@@ -28,6 +28,7 @@ import type {
 } from '@lib/types/MachineHealth';
 
 import { useApi } from '../../../contexts/ApiContext';
+import { SignalHistoryLink } from './SignalHistoryLink';
 import {
   HealthStateBadge,
   SeverityBadge,
@@ -36,7 +37,7 @@ import {
   sourceTypeLabel,
   unassociatedAnomalyText
 } from './common';
-import { anomaliesForSignal } from './signalContext';
+import { anomaliesForSignal, recordedAnomalyBounds } from './signalContext';
 import type { PreparedTrend } from './trendSamples';
 
 /** The id the row Inspect controls point at with aria-controls. */
@@ -88,6 +89,29 @@ function Missing({ children }: Readonly<{ children: ReactNode }>) {
   );
 }
 
+function AnomalyHistoryLink({
+  anomaly,
+  machineId,
+  bindingId
+}: Readonly<{
+  anomaly: MachineAnomaly;
+  machineId: number;
+  bindingId: number;
+}>) {
+  const bounds = recordedAnomalyBounds(anomaly);
+  return bounds ? (
+    <SignalHistoryLink
+      machineId={machineId}
+      bindingId={bindingId}
+      {...bounds}
+      clock='recorded'
+      occurrence={anomaly.pk}
+    />
+  ) : (
+    <Missing>{t`Occurrence clock offset unavailable; source window cannot be linked.`}</Missing>
+  );
+}
+
 function snapshotReason(reason: string): string {
   switch (reason) {
     case 'manual_repair':
@@ -132,6 +156,7 @@ export function SignalEvidence({
   anomalies,
   prepared,
   trendAvailable,
+  historyContext,
   headingRef,
   focusToken,
   onClose
@@ -144,6 +169,7 @@ export function SignalEvidence({
   /** The chart's reading of its current window, for the window label. */
   prepared: PreparedTrend | null;
   trendAvailable: boolean;
+  historyContext?: ReactNode;
   headingRef: RefObject<HTMLHeadingElement | null>;
   /** Changes each time the panel is opened from a trigger, to move focus. */
   focusToken: number;
@@ -339,6 +365,7 @@ export function SignalEvidence({
               </Stack>
             </Fact>
             <Fact label={t`Chart window`}>
+              {historyContext}
               {prepared && trendAvailable ? (
                 <Text size='sm'>
                   {t`Selected history window, read from the source: ${fullInstant(prepared.start) ?? '—'} to ${fullInstant(prepared.end) ?? '—'}`}
@@ -372,6 +399,11 @@ export function SignalEvidence({
               <Text size='xs' c='dimmed'>
                 {t`First observed ${fullInstant(anomaly.first_observed_at) ?? '—'}`}
               </Text>
+              <AnomalyHistoryLink
+                machineId={machineId}
+                bindingId={bindingId}
+                anomaly={anomaly}
+              />
               {anomaly.work_order ? (
                 <Anchor
                   component={Link}
@@ -422,6 +454,15 @@ export function SignalEvidence({
                   >{t`Open exact retained snapshot`}</Anchor>
                 </Text>
               </Group>
+              <SignalHistoryLink
+                machineId={machineId}
+                bindingId={bindingId}
+                from={snapshot.window_start}
+                to={snapshot.window_end}
+                clock='recorded'
+                occurrence={snapshot.anomaly}
+                snapshot={snapshot.id}
+              />
               <Text size='xs' c='dimmed'>
                 {t`Window ${fullInstant(snapshot.window_start) ?? '—'} to ${fullInstant(snapshot.window_end) ?? '—'}`}
                 {' · '}
