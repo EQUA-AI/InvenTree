@@ -5,7 +5,6 @@ import {
   Alert,
   Anchor,
   Badge,
-  Box,
   Button,
   Card,
   Divider,
@@ -19,6 +18,7 @@ import {
   Timeline,
   Title
 } from '@mantine/core';
+import { useElementSize, useMediaQuery } from '@mantine/hooks';
 import {
   IconAlertTriangle,
   IconArrowLeft,
@@ -32,7 +32,13 @@ import {
 } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { type ReactNode, useEffect, useState } from 'react';
+import {
+  type CSSProperties,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState
+} from 'react';
 import {
   Link,
   useLocation,
@@ -67,6 +73,7 @@ import { CloseoutLink } from './CloseoutLink';
 import { CloseoutPanel, WorkCloseoutReadings } from './CloseoutPanel';
 import { WorkAttachmentResource } from './WorkAttachmentResource';
 import { WorkMaterialsPanel } from './WorkMaterialsPanel';
+import { WorkPanelNavigation } from './WorkPanelNavigation';
 import { DiagnoseProjection } from './execution/DiagnoseProjection';
 import { PreparedPackage } from './execution/PreparedPackage';
 import { RoutineWork } from './execution/RoutineWork';
@@ -80,6 +87,7 @@ import {
   WorkContinuityConstraints,
   WorkContinuityHistory
 } from './execution/WorkContinuity';
+import classes from './workCompanion.module.css';
 import {
   type WorkPanel,
   workPanelParams,
@@ -184,6 +192,19 @@ function WorkOrderWorkspace({
   const location = useLocation();
   const [params, setParams] = useSearchParams();
   const activePanel = workPanelState(params);
+  const isPhone = useMediaQuery('(max-width: 47.99em)');
+  const { ref: navigationRef, height: navigationHeight } =
+    useElementSize<HTMLDivElement>();
+  const workflowRef = useRef<HTMLDivElement>(null);
+  const previousPanel = useRef(activePanel);
+  useEffect(() => {
+    if (
+      previousPanel.current !== activePanel &&
+      window.matchMedia('(max-width: 47.99em)').matches
+    )
+      workflowRef.current?.scrollIntoView({ block: 'start' });
+    previousPanel.current = activePanel;
+  }, [activePanel]);
   // P02/P33: the one existing assistant, asked about this exact Work at the
   // lifecycle version shown here. The drawer acknowledges it with the server
   // before sending; this page grants nothing.
@@ -215,10 +236,10 @@ function WorkOrderWorkspace({
       label: t`Work`,
       content: (
         <Stack gap='md'>
-          <CloseoutLink />
-          <ScopeRevisionNotice workOrder={workOrder} />
-          <RoutineWork workOrder={workOrder} />
           <WorkBrief workOrder={workOrder} />
+          <ScopeRevisionNotice workOrder={workOrder} />
+          <CloseoutLink />
+          <RoutineWork workOrder={workOrder} />
           {workOrder.repair_packet && (
             <WorkOrderProblemPanel packet={workOrder.repair_packet} />
           )}
@@ -391,8 +412,77 @@ function WorkOrderWorkspace({
     }
   ];
 
+  // Keep secondary metadata after the phone workflow in both DOM and visual
+  // order. The source alert stays above it at every width; panel forms retain
+  // their native mounted state when the breakpoint changes.
+  const recordDetails = (
+    <Accordion variant='contained'>
+      <Accordion.Item value='record-details'>
+        <Accordion.Control>{t`Record details`}</Accordion.Control>
+        <Accordion.Panel>
+          <Stack gap='md'>
+            {workOrder.description && (
+              <Text size='sm'>{workOrder.description}</Text>
+            )}
+            <Divider />
+            <SimpleGrid cols={{ base: 2, md: 4 }}>
+              <InfoItem
+                label={t`Board stage`}
+                value={humanize(workOrder.status)}
+              />
+              <InfoItem
+                label={t`Type`}
+                value={humanize(workOrder.work_order_type)}
+              />
+              <InfoItem label={t`Assignee`} value={assigneeLabel(workOrder)} />
+              <InfoItem
+                label={t`Estimated effort`}
+                value={formatMinutes(workOrder.estimated_minutes)}
+              />
+              <InfoItem
+                label={t`Scheduled start`}
+                value={formatDateTime(workOrder.scheduled_start)}
+              />
+              <InfoItem
+                label={t`Scheduled end`}
+                value={formatDateTime(workOrder.scheduled_end)}
+              />
+              <InfoItem
+                label={t`Due date`}
+                value={formatDate(workOrder.due_date)}
+              />
+              <InfoItem
+                label={t`Actual start`}
+                value={formatDateTime(workOrder.actual_started_at)}
+              />
+              <InfoItem
+                label={t`Actual completion`}
+                value={formatDateTime(workOrder.actual_completed_at)}
+              />
+              <InfoItem label={t`Reference`} value={workOrder.reference} />
+              <InfoItem
+                label={t`Created`}
+                value={formatDateTime(workOrder.created_at)}
+              />
+              <InfoItem
+                label={t`Last updated`}
+                value={formatDateTime(workOrder.updated_at)}
+              />
+            </SimpleGrid>
+          </Stack>
+        </Accordion.Panel>
+      </Accordion.Item>
+    </Accordion>
+  );
+
   return (
-    <Stack gap='md' p='md'>
+    <Stack
+      gap='md'
+      className={classes.workspace}
+      style={
+        { '--work-navigation-height': `${navigationHeight}px` } as CSSProperties
+      }
+    >
       <PageTitle title={`${workOrder.reference} - ${workOrder.title}`} />
       <Group justify='space-between' align='flex-start'>
         <Group
@@ -455,68 +545,11 @@ function WorkOrderWorkspace({
         <WorkOrderAlertContext alert={workOrder.source_alert} />
       )}
 
-      <Accordion variant='contained'>
-        <Accordion.Item value='record-details'>
-          <Accordion.Control>{t`Record details`}</Accordion.Control>
-          <Accordion.Panel>
-            <Stack gap='md'>
-              {workOrder.description && (
-                <Text size='sm'>{workOrder.description}</Text>
-              )}
-              <Divider />
-              <SimpleGrid cols={{ base: 2, md: 4 }}>
-                <InfoItem
-                  label={t`Board stage`}
-                  value={humanize(workOrder.status)}
-                />
-                <InfoItem
-                  label={t`Type`}
-                  value={humanize(workOrder.work_order_type)}
-                />
-                <InfoItem
-                  label={t`Assignee`}
-                  value={assigneeLabel(workOrder)}
-                />
-                <InfoItem
-                  label={t`Estimated effort`}
-                  value={formatMinutes(workOrder.estimated_minutes)}
-                />
-                <InfoItem
-                  label={t`Scheduled start`}
-                  value={formatDateTime(workOrder.scheduled_start)}
-                />
-                <InfoItem
-                  label={t`Scheduled end`}
-                  value={formatDateTime(workOrder.scheduled_end)}
-                />
-                <InfoItem
-                  label={t`Due date`}
-                  value={formatDate(workOrder.due_date)}
-                />
-                <InfoItem
-                  label={t`Actual start`}
-                  value={formatDateTime(workOrder.actual_started_at)}
-                />
-                <InfoItem
-                  label={t`Actual completion`}
-                  value={formatDateTime(workOrder.actual_completed_at)}
-                />
-                <InfoItem label={t`Reference`} value={workOrder.reference} />
-                <InfoItem
-                  label={t`Created`}
-                  value={formatDateTime(workOrder.created_at)}
-                />
-                <InfoItem
-                  label={t`Last updated`}
-                  value={formatDateTime(workOrder.updated_at)}
-                />
-              </SimpleGrid>
-            </Stack>
-          </Accordion.Panel>
-        </Accordion.Item>
-      </Accordion>
+      {!isPhone && recordDetails}
 
       <Tabs
+        ref={workflowRef}
+        className={classes.workflow}
         value={activePanel}
         keepMounted
         keepMountedMode='display-none'
@@ -526,18 +559,11 @@ function WorkOrderWorkspace({
             setParams((previous) => workPanelParams(previous, panel.name));
         }}
       >
-        <Box style={{ overflowX: 'auto' }}>
-          <Tabs.List
-            aria-label={t`Work workflow`}
-            style={{ flexWrap: 'nowrap', minWidth: 'max-content' }}
-          >
-            {panels.map((panel) => (
-              <Tabs.Tab key={panel.name} value={panel.name}>
-                {panel.label}
-              </Tabs.Tab>
-            ))}
-          </Tabs.List>
-        </Box>
+        <WorkPanelNavigation
+          panels={panels}
+          reference={workOrder.reference || t`Work order ${workOrder.id}`}
+          navigationRef={navigationRef}
+        />
         {!activePanel && (
           <Alert mt='md' color='red' title={t`Work panel unavailable`}>
             <Stack gap='xs'>
@@ -555,6 +581,7 @@ function WorkOrderWorkspace({
           </Tabs.Panel>
         ))}
       </Tabs>
+      {isPhone && recordDetails}
     </Stack>
   );
 }
