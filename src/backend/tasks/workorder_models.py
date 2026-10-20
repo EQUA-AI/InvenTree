@@ -189,3 +189,33 @@ class WorkOrderDeletionRecord(models.Model):
     def __str__(self) -> str:
         """Readable identity for admin and logs."""
         return f'Deleted WO {self.work_order_pk} ({self.reference or self.title})'
+
+
+class WorkHandover(models.Model):
+    """Each assignment proposal retains responsibility until explicit acceptance."""
+
+    work_order = models.ForeignKey(
+        'tasks.WorkOrder', on_delete=models.CASCADE, related_name='handovers'
+    )
+    previous_owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+'
+    )
+    incoming_owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+'
+    )
+    proposed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+'
+    )
+    proposed_version = models.PositiveIntegerField()
+    proposed_at = models.DateTimeField(auto_now_add=True)
+    accepted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+'
+    )
+    accepted_at = models.DateTimeField(null=True)
+    accepted_version = models.PositiveIntegerField(null=True)
+
+    withdrawn_at = models.DateTimeField(null=True)
+    previous_owner_name = models.CharField(max_length=320, blank=True)
+    incoming_owner_name = models.CharField(max_length=320, blank=True)
+    proposed_by_name = models.CharField(max_length=320, blank=True)
+    accepted_by_name = models.CharField(max_length=320, blank=True)

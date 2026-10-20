@@ -42,35 +42,39 @@ from aichat.services import proposals
 #: it to _NOT_YET_GOVERNED), or the partition assertion below fails.
 UI_MUTATION_COMMANDS = {
     # tasks/api.py — board / calendar / timeline command endpoints
-    'create_work_order',            # WorkOrderCreate
-    'update_work_order_plan',       # WorkOrderUpdate
-    'schedule_work_order',          # WorkOrderSchedule (move)
-    'resize_work_order',            # WorkOrderResize
-    'delete_work_order',            # WorkOrderDelete (governed delete)
-    'create_child',                 # WorkOrderCreateChild
-    'generate_procurement_child',   # WorkOrderGenerateProcurement
-    'apply_schedule_batch',         # WorkOrderScheduleOptimize / batch apply
-    'create_dependency',            # WorkOrderDependencyCreate
-    'delete_dependency',            # WorkOrderDependencyDelete
+    'create_work_order',  # WorkOrderCreate
+    'update_work_order_plan',  # WorkOrderUpdate
+    'schedule_work_order',  # WorkOrderSchedule (move)
+    'resize_work_order',  # WorkOrderResize
+    'delete_work_order',  # WorkOrderDelete (governed delete)
+    'create_child',  # WorkOrderCreateChild
+    'generate_procurement_child',  # WorkOrderGenerateProcurement
+    'apply_schedule_batch',  # WorkOrderScheduleOptimize / batch apply
+    'create_dependency',  # WorkOrderDependencyCreate
+    'delete_dependency',  # WorkOrderDependencyDelete
     # tasks/workorder_api.py — lifecycle command endpoints
-    'transition_work_order',        # WorkOrderTransition (incl. column moves)
-    'assign_work_order',            # WorkOrderAssign
-    'hold_work_order',              # WorkOrderHold
-    'resume_work_order',            # WorkOrderResume
-    'cancel_work_order',            # WorkOrderCancel
-    'complete_work_order',          # WorkOrderComplete
+    'transition_work_order',  # WorkOrderTransition (incl. column moves)
+    'assign_work_order',  # WorkOrderAssign
+    'accept_handover',  # WorkOrderAcceptHandover (incoming UI only)
+    'hold_work_order',  # WorkOrderHold
+    'resume_work_order',  # WorkOrderResume
+    'cancel_work_order',  # WorkOrderCancel
+    'complete_work_order',  # WorkOrderComplete
     # repair/api.py — maintenance intake and packet-owned lifecycle
-    'create_repair_work_package',   # RepairWorkPackageCreate (maintenance intake)
-    'start_repair_packet',          # RepairPacketStart
-    'close_repair_packet',          # RepairPacketClose
+    'create_repair_work_package',  # RepairWorkPackageCreate (maintenance intake)
+    'start_repair_packet',  # RepairPacketStart
+    'close_repair_packet',  # RepairPacketClose
     # voice/api.py — reviewed closeout capture lifecycle
-    'create_capture',               # CaptureListCreateView
-    'accept_revision',              # CaptureAcceptView
-    'handoff_capture',              # CaptureCommitView
+    'create_capture',  # CaptureListCreateView
+    'accept_revision',  # CaptureAcceptView
+    'handoff_capture',  # CaptureCommitView
     # tasks/procedure_execution_api.py — step execution
-    'complete_step',                # StepExecutionComplete
+    'complete_step',  # StepExecutionComplete
     # aichat proposal confirmation / approval — reviewed stock movements
     'stock_commands.execute',
+    # Native memory settings proposals and typed investigation requests.
+    'memory_commands.execute',  # aichat/memory_api.py, confirmed proposal
+    'investigation_requests.command',  # tasks/investigation_api.py
 }
 
 #: UI mutations that do not yet have a governed ``ProposalAction``. Each entry
@@ -84,6 +88,7 @@ _NOT_YET_GOVERNED: dict[str, str] = {}
 #: authored in the UI form; there is no meaningful model-framed proposal for it,
 #: so it is excluded from parity by design rather than left as a pending gap.
 _UI_ONLY_COMMANDS = {
+    'accept_handover': 'incoming owner explicitly accepts in the Work UI',
     'complete_work_order': 'completion requires a UI-authored closeout capture',
     'close_repair_packet': 'closeout requires a UI-authored structured closeout',
     # Not a gap and never to be governed: the plan is explicit that AI may not
@@ -104,8 +109,12 @@ class UiCommandParityInvariant(SimpleTestCase):
         ui_only = set(_UI_ONLY_COMMANDS)
 
         # The three classes are mutually exclusive.
-        self.assertEqual(governed & gap, set(), 'a command cannot be both governed and a gap')
-        self.assertEqual(governed & ui_only, set(), 'a governed command cannot be UI-only')
+        self.assertEqual(
+            governed & gap, set(), 'a command cannot be both governed and a gap'
+        )
+        self.assertEqual(
+            governed & ui_only, set(), 'a governed command cannot be UI-only'
+        )
         self.assertEqual(gap & ui_only, set(), 'a gap cannot also be UI-only')
         # Together they account for exactly the UI surface — nothing unclassified,
         # nothing invented. A new endpoint or a stale entry breaks this.
@@ -126,17 +135,25 @@ class UiCommandParityInvariant(SimpleTestCase):
 
     def test_governed_command_names_resolve_to_callable_services(self):
         """Each governed command is a real command-service callable, not a typo."""
-        from tasks.services import procedure_execution, scheduling
+        from tasks.services import (
+            investigation_requests,
+            procedure_execution,
+            scheduling,
+        )
         from tasks.services import work_orders as wo
-        from voice.services import capture
 
-        from aichat.services import stock_commands
+        from aichat.services import memory_commands, stock_commands
         from repair import work_packages
+        from voice.services import capture
 
         # The canonical command modules. A governed action must dispatch into
         # one of these; nothing else is a write path AI may reach.
         modules = (scheduling, wo, work_packages, capture, procedure_execution)
-        qualified_commands = {'stock_commands.execute': stock_commands.execute}
+        qualified_commands = {
+            'stock_commands.execute': stock_commands.execute,
+            'memory_commands.execute': memory_commands.execute,
+            'investigation_requests.command': investigation_requests.command,
+        }
 
         for command in proposals.ACTION_COMMAND.values():
             resolved = next(

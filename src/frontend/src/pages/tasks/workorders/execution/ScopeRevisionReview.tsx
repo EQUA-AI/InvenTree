@@ -67,7 +67,11 @@ export function ScopeRevisionNotice({
       color='orange'
       title={
         current
-          ? t`Scope version ${current.version} · dependency impact not recorded`
+          ? review?.selective_reassessment?.items.some(
+              (row) => row.scope_id === review.current_scope_id
+            )
+            ? t`Scope version ${current.version} · review bound dependencies`
+            : t`Scope version ${current.version} · dependency impact not recorded`
           : review
             ? t`Effective scope needs review`
             : t`Scope revision impact not supplied`
@@ -75,7 +79,13 @@ export function ScopeRevisionNotice({
       data-testid='scope-revision-notice'
     >
       <Stack gap={6}>
-        <Text size='sm'>{t`Saved scope records and request revisions remain available for review. The record does not identify which tasks, materials, resources, permissions or tests are affected. Changed physical work needs its own applicable authority; an earlier approval cannot cover it automatically.`}</Text>
+        <Text size='sm'>
+          {review?.selective_reassessment?.items.some(
+            (row) => row.scope_id === review.current_scope_id
+          )
+            ? t`Recorded component and procedure bindings identify mapped dependencies. Evidence stays with its original binding; reassessment and unavailable evidence are shown below. Obsolete scope is not executable. Changed physical work needs its own applicable authority.`
+            : t`Saved scope records and request revisions remain available for review. The record does not identify which tasks, materials, resources, permissions or tests are affected. Changed physical work needs its own applicable authority; an earlier approval cannot cover it automatically.`}
+        </Text>
         <Anchor
           component={Link}
           size='sm'
@@ -133,6 +143,9 @@ function ScopeFacts({
         <ExecutionFact label={t`Saved approval note`}>
           {scope.note}
         </ExecutionFact>
+        {!scope.current && (
+          <Text fw={600} size='sm'>{t`Obsolete scope · not executable`}</Text>
+        )}
         {!scope.current && (
           <ExecutionFact label={t`Superseded at`}>
             {recordedTime(scope.superseded_at)}
@@ -285,8 +298,29 @@ export function ScopeRevisionReview({
   return (
     <Stack gap='sm' id='scope-revisions' data-testid='scope-revision-review'>
       <Alert color='orange' title={t`Affected readiness is not established`}>
-        {t`No record links a scope revision to affected dependencies or evidence validity. Review changed work through its owning process; prior approvals keep their original boundary.`}
+        {review?.selective_reassessment?.items.some(
+          (row) => row.scope_id === review.current_scope_id
+        )
+          ? t`Review the recorded component and procedure bindings below. This projection does not grant physical authority or replace execution permission checks.`
+          : t`No record links a scope revision to affected dependencies or evidence validity. Review changed work through its owning process; prior approvals keep their original boundary.`}
       </Alert>
+      {review?.selective_reassessment?.unmapped_changes && (
+        <Alert
+          color='orange'
+          data-testid='unmapped-scope-change'
+        >{t`An unbound scope line changed. Its applicability to tasks, materials, tests and permissions is unknown; recorded bindings do not identify the full impact.`}</Alert>
+      )}
+      {review?.selective_reassessment && (
+        <Text size='sm'>
+          {t`Changed components`}:{' '}
+          {review.selective_reassessment.changed_component_refs.join(', ') ||
+            t`Not recorded`}{' '}
+          · {t`Changed procedure revisions`}:{' '}
+          {review.selective_reassessment.changed_procedure_revision_ids.join(
+            ', '
+          ) || t`Not recorded`}
+        </Text>
+      )}
       <Text size='sm' fw={600}>
         {current
           ? t`Latest current scope: version ${current.version}`
@@ -294,13 +328,64 @@ export function ScopeRevisionReview({
             ? t`No approved scope recorded`
             : t`Effective scope not established by this projection`}
       </Text>
+      {review?.selective_reassessment &&
+        review.selective_reassessment.items.length > 0 && (
+          <Stack gap='xs' data-testid='selective-reassessment'>
+            <Text
+              fw={600}
+              size='sm'
+            >{t`Component and procedure reassessment`}</Text>
+            <Text size='sm'>{t`Only dependencies bound to a revised component or procedure need reassessment. Other bound dependencies retain only their recorded native evidence. Missing or unvalidated evidence stays unknown. Superseded scope is not executable; these mappings do not grant physical permission.`}</Text>
+            <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }} spacing='xs'>
+              {review.selective_reassessment.items.map((row, index) => (
+                <Paper
+                  withBorder
+                  p='xs'
+                  key={`${row.scope_id}:${row.line_sequence ?? index}:${row.binding_index ?? index}:${row.kind}:${row.id}`}
+                >
+                  <Stack gap={4}>
+                    <Text size='sm' fw={600}>
+                      {impactLabel(row.kind)} · {row.id} · {t`Scope`}:{' '}
+                      {row.scope_id}
+                    </Text>
+                    <Text size='sm'>
+                      {row.state === 'reassess'
+                        ? t`Reassessment required · not executable`
+                        : row.state === 'retained'
+                          ? t`Evidence retained for this binding`
+                          : row.state === 'effective_unknown'
+                            ? t`Effective scope unknown · not executable`
+                            : row.state === 'evidence_unknown'
+                              ? t`Evidence not established · not executable`
+                              : row.state === 'obsolete'
+                                ? t`Obsolete scope · not executable`
+                                : t`Applicability not mapped · not executable`}
+                    </Text>
+                    <Text size='sm'>
+                      {t`Retained evidence IDs`}:{' '}
+                      {row.retained_evidence_ids.length
+                        ? row.retained_evidence_ids.join(', ')
+                        : t`Not recorded`}
+                    </Text>
+                  </Stack>
+                </Paper>
+              ))}
+            </SimpleGrid>
+          </Stack>
+        )}
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing='xs'>
         {['tasks', 'materials', 'resources', 'permissions', 'criteria'].map(
           (kind) => (
             <Paper key={kind} withBorder p='xs'>
-              <ExecutionFact
-                label={impactLabel(kind)}
-              >{t`Affected records not recorded`}</ExecutionFact>
+              <ExecutionFact label={impactLabel(kind)}>
+                {review?.selective_reassessment?.items.some(
+                  (row) =>
+                    row.kind === kind &&
+                    row.scope_id === review.current_scope_id
+                )
+                  ? t`Recorded bindings shown above; prior evidence stays with its binding.`
+                  : t`Affected records not recorded`}
+              </ExecutionFact>
             </Paper>
           )
         )}

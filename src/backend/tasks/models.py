@@ -137,6 +137,20 @@ class WorkOrder(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
     estimated_minutes = models.PositiveIntegerField(null=True, blank=True)
     lifecycle_version = models.PositiveIntegerField(default=1)
     hold_reason = models.TextField(blank=True)
+    recurrence_of = models.ForeignKey(
+        'self',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='corrective_recurrences',
+    )
+    recurrence_occurrence = models.OneToOneField(
+        'assets.MachineAnomaly',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='recurrence_work',
+    )
 
     # ``parent`` and ``card_kind`` used to live here, so a subtask or a
     # procurement task was a second work order with its own WO- number for what
@@ -802,6 +816,7 @@ from tasks.procedure_models import (  # noqa: F401
     WorkOrderStepExecution,
 )
 from tasks.workorder_models import (  # noqa: F401
+    WorkHandover,
     WorkOrderCloseout,
     WorkOrderCommand,
     WorkOrderDeletionRecord,

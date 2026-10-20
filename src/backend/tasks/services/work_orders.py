@@ -409,10 +409,66 @@ def assign_work_order(
     if not readiness.ready:
         raise ReadinessBlocked(readiness)
 
+    from django.contrib.auth import get_user_model
+
+    from tasks.models import WorkHandover
+
+    incoming = (
+        get_user_model().objects.filter(pk=assigned_to_id, is_active=True).first()
+    )
+    if assigned_to_id is not None and incoming is None:
+        raise WorkOrderCommandError('Incoming owner must be active.')
+    pending = work_order.handovers.order_by('-pk').first()
+    assignment_changed = work_order.assigned_to_id != assigned_to_id
     old_assignee_id = work_order.assigned_to_id
+    responsible_owner_id = (
+        (
+            pending.incoming_owner_id
+            if pending.accepted_at
+            else pending.previous_owner_id
+        )
+        if pending
+        else old_assignee_id
+    )
+    if pending is None and responsible_owner_id is None:
+        last_assignment = (
+            work_order.events.filter(event_type='ASSIGNED').order_by('-pk').first()
+        )
+        if last_assignment:
+            responsible_owner_id = (
+                last_assignment.metadata.get('result_metadata') or {}
+            ).get('responsible_owner_id')
     work_order.assigned_to_id = assigned_to_id
     work_order.lifecycle_version += 1
     work_order.save(update_fields=['assigned_to', 'lifecycle_version', 'updated_at'])
+    from tasks.work_execution.common import person
+
+    responsible = get_user_model().objects.filter(pk=responsible_owner_id).first()
+    # A deleted actor's historical id cannot be resurrected as a live FK or owner.
+    responsible_owner_id = responsible.pk if responsible else None
+    disposition = 'unchanged'
+    if assignment_changed:
+        if pending and pending.accepted_at is None and pending.withdrawn_at is None:
+            pending.withdrawn_at = timezone.now()
+            pending.save(update_fields=['withdrawn_at'])
+        disposition = (
+            'released'
+            if assigned_to_id is None
+            else 'restored'
+            if assigned_to_id == responsible_owner_id
+            else 'proposed'
+        )
+    if assignment_changed and disposition == 'proposed':
+        WorkHandover.objects.create(
+            work_order=work_order,
+            previous_owner_id=responsible_owner_id,
+            incoming_owner_id=assigned_to_id,
+            proposed_by=actor,
+            proposed_version=work_order.lifecycle_version,
+            previous_owner_name=person(responsible) or '',
+            incoming_owner_name=person(incoming) or '',
+            proposed_by_name=person(actor) or '',
+        )
     return _append_result(
         work_order=work_order,
         actor=actor,
@@ -427,6 +483,9 @@ def assign_work_order(
         result_metadata={
             'previous_assigned_to_id': old_assignee_id,
             'assigned_to_id': assigned_to_id,
+            'responsibility_disposition': disposition,
+            'responsible_owner_id': responsible_owner_id,
+            'responsible_owner_name': person(responsible),
         },
     )
 
@@ -508,4 +567,82 @@ def cancel_work_order(
         correlation_id=correlation_id or uuid.uuid4(),
         command='cancel',
         required_permission=TRANSITION_WORKORDER,
+    )
+
+
+@transaction.atomic
+def accept_handover(
+    *,
+    work_order_id,
+    actor,
+    expected_version,
+    idempotency_key,
+    reason='',
+    correlation_id=None,
+):
+    """Only the incoming owner can accept; retries retain the original receipt."""
+    from django.core.exceptions import PermissionDenied
+
+    work = _locked_work_order(work_order_id)
+    if not getattr(actor, 'is_active', False):
+        raise PermissionDenied('Active incoming owner required.')
+    _require_scope(actor, work)
+    require_permission(actor, EXECUTE_WORKORDER)
+    if (
+        type(expected_version) is not int
+        or not isinstance(idempotency_key, str)
+        or not idempotency_key.strip()
+        or len(idempotency_key) > 128
+    ):
+        raise WorkOrderCommandError(
+            'A version and stable idempotency key are required.'
+        )
+    payload = {'expected_version': expected_version, 'reason': reason}
+    request_hash = _canonical_hash('accept_handover', actor, payload)
+    replay = _replay_or_none(work, idempotency_key, request_hash)
+    if replay:
+        return replay
+    _require_version(work, expected_version)
+    handover = work.handovers.order_by('-pk').first()
+    if (
+        handover is None
+        or handover.withdrawn_at is not None
+        or handover.incoming_owner_id != actor.pk
+        or work.assigned_to_id != actor.pk
+    ):
+        raise PermissionDenied('Only the proposed incoming owner may accept handover.')
+    if handover.accepted_at is not None:
+        raise CommandConflict('HANDOVER_ALREADY_ACCEPTED')
+    work.lifecycle_version += 1
+    work.save(update_fields=['lifecycle_version', 'updated_at'])
+    from tasks.work_execution.common import person
+
+    handover.accepted_by_name = person(actor) or ''
+    handover.accepted_by = actor
+    handover.accepted_at = timezone.now()
+    handover.accepted_version = work.lifecycle_version
+    handover.save(
+        update_fields=[
+            'accepted_by',
+            'accepted_at',
+            'accepted_version',
+            'accepted_by_name',
+        ]
+    )
+    return _append_result(
+        work_order=work,
+        actor=actor,
+        command='accept_handover',
+        event_type='HANDOVER_ACCEPTED',
+        from_status=work.lifecycle_status,
+        to_status=work.lifecycle_status,
+        reason=reason,
+        correlation_id=correlation_id or uuid.uuid4(),
+        idempotency_key=idempotency_key,
+        request_hash=request_hash,
+        result_metadata={
+            'handover_id': handover.pk,
+            'accepted_by': actor.pk,
+            'accepted_at': handover.accepted_at.isoformat(),
+        },
     )

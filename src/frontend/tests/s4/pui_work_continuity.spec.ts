@@ -8,6 +8,7 @@ import {
 import { revisionWork } from './scopeRevisionFixtures';
 import {
   capturePanel,
+  captureProcessSection,
   expectNoPageOverflow,
   mockAssistantOpen,
   mockExecutionWork,
@@ -430,4 +431,209 @@ test('request discussion preserves its saved identity and older servers stay exp
     })
   ).toHaveCount(0);
   await capturePanel(page, info.outputPath('continuity-older-server.png'));
+});
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`O15 incoming owner explicitly accepts handover (${scheme})`, async ({
+    page
+  }, info) => {
+    const work = continuityWork(true, false);
+    work.assigned_to = 11;
+    work.assigned_to_name = 'Synthetic incoming technician';
+    work.assigned_to_username = 'synthetic-incoming';
+    if (work.time_assignment)
+      work.time_assignment.assigned_to = 'Synthetic incoming technician';
+    work.work_continuity!.accepted_handover = {
+      available: true,
+      id: 19,
+      state: 'pending',
+      previous_owner: 'Synthetic outgoing technician',
+      incoming_owner: 'Synthetic incoming technician',
+      responsible_owner: 'Synthetic outgoing technician',
+      proposed_by: 'Synthetic supervisor',
+      proposed_at: '2026-10-20T08:00:00Z',
+      proposed_version: work.lifecycle_version,
+      accepted_by: null,
+      accepted_at: null,
+      accepted_version: null,
+      can_accept: true
+    };
+    const requests = await mockExecutionWork(page, work);
+    const posted: unknown[] = [];
+    await page.route(
+      '**/api/tasks/work-orders/73/accept_handover/',
+      async (route) => {
+        const body = route.request().postDataJSON();
+        posted.push(body);
+        const version = work.lifecycle_version + 1;
+        work.lifecycle_version = version;
+        work.work_continuity!.accepted_handover = {
+          ...(work.work_continuity!.accepted_handover as Extract<
+            NonNullable<typeof work.work_continuity>['accepted_handover'],
+            { available: true }
+          >),
+          state: 'accepted',
+          responsible_owner: 'Synthetic incoming technician',
+          accepted_by: 'Synthetic incoming technician',
+          accepted_at: '2026-10-20T09:00:00Z',
+          accepted_version: version,
+          can_accept: false
+        };
+        await route.fulfill({
+          json: {
+            work_order_id: 73,
+            command: 'accept_handover',
+            idempotency_key: body.idempotency_key,
+            event_id: 99,
+            lifecycle_status: 'on_hold',
+            lifecycle_version: version,
+            metadata: { handover_id: 19 }
+          }
+        });
+      }
+    );
+    await openExecutionPanel(page, 'work', scheme);
+    const section = page.getByTestId('handover-acceptance');
+    await expect(
+      section.getByText('Responsible owner: Synthetic outgoing technician')
+    ).toBeVisible();
+    expect(onlyReads(requests)).toBe(true);
+    await section.scrollIntoViewIfNeeded();
+    await section.screenshot({
+      path: info.outputPath(`o15-handover-pending-${scheme}.png`)
+    });
+    await page.screenshot({
+      path: info.outputPath(`o15-handover-pending-viewport-${scheme}.png`)
+    });
+    await section
+      .getByRole('button', { name: 'Accept handover', exact: true })
+      .click();
+    await expect(
+      section.getByText('Handover accepted', { exact: true })
+    ).toBeVisible();
+    await expect(
+      section.getByText('Responsible owner: Synthetic incoming technician')
+    ).toBeVisible();
+    await expect(
+      section.getByRole('button', { name: 'Accept handover', exact: true })
+    ).toHaveCount(0);
+    expect(posted).toHaveLength(1);
+    await expectNoPageOverflow(page);
+    await section.screenshot({
+      path: info.outputPath(`o15-handover-accepted-${scheme}.png`)
+    });
+    await page.reload();
+    await expect(
+      page
+        .getByTestId('handover-acceptance')
+        .getByText('Handover accepted', { exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByTestId('time-handover-record').first()
+    ).toContainText('Incoming handover acceptance is recorded.');
+    const current = work.work_continuity!.accepted_handover;
+    if (!current.available) throw new Error('Expected native handover');
+    work.lifecycle_version += 1;
+    work.assigned_to = 19;
+    work.assigned_to_name = 'Synthetic next incoming';
+    work.assigned_to_username = 'synthetic-next-incoming';
+    if (work.time_assignment)
+      work.time_assignment.assigned_to = 'Synthetic next incoming';
+    work.work_continuity!.accepted_handover = {
+      ...current,
+      proposed_version: work.lifecycle_version,
+      proposed_at: '2026-10-20T10:00:00Z',
+      id: 20,
+      state: 'pending',
+      incoming_owner: 'Synthetic next incoming',
+      responsible_owner: 'Synthetic incoming technician',
+      accepted_by: null,
+      accepted_at: null,
+      accepted_version: null,
+      can_accept: false
+    };
+    await page.reload();
+    await expect(
+      section.getByText('Handover awaiting acceptance', { exact: true })
+    ).toBeVisible();
+    await expect(
+      section.getByText('Acceptance confirmed in the saved Work record.')
+    ).toHaveCount(0);
+    await expect(
+      page.getByTestId('time-handover-record').first()
+    ).toContainText('Current incoming handover acceptance is not recorded.');
+    await captureProcessSection(
+      page,
+      section,
+      info.outputPath(`review-handover-later-pending-${scheme}.png`)
+    );
+    expect(posted).toHaveLength(1);
+  });
+}
+
+test('O15 uncertain handover reconciles the same original intent after reload', async ({
+  page
+}) => {
+  const work = continuityWork();
+  work.work_continuity!.accepted_handover = {
+    available: true,
+    id: 19,
+    state: 'pending',
+    previous_owner: 'Outgoing',
+    incoming_owner: 'Incoming',
+    responsible_owner: 'Outgoing',
+    proposed_by: 'Supervisor',
+    proposed_at: '2026-10-20T08:00:00Z',
+    proposed_version: work.lifecycle_version,
+    accepted_by: null,
+    accepted_at: null,
+    accepted_version: null,
+    can_accept: true
+  };
+  await mockExecutionWork(page, work);
+  const bodies: Record<string, unknown>[] = [];
+  await page.route(
+    '**/api/tasks/work-orders/73/accept_handover/',
+    async (route) => {
+      const body = route.request().postDataJSON();
+      bodies.push(body);
+      if (bodies.length === 1) return route.abort('failed');
+      const version = work.lifecycle_version + 1;
+      work.lifecycle_version = version;
+      const handover = work.work_continuity!.accepted_handover;
+      if (!handover.available) throw new Error('Expected handover');
+      work.work_continuity!.accepted_handover = {
+        ...handover,
+        state: 'accepted',
+        responsible_owner: 'Incoming',
+        accepted_by: 'Incoming',
+        accepted_at: '2026-10-20T09:00:00Z',
+        accepted_version: version,
+        can_accept: false
+      };
+      await route.fulfill({
+        json: {
+          work_order_id: 73,
+          command: 'accept_handover',
+          idempotency_key: body.idempotency_key,
+          event_id: 99,
+          lifecycle_status: work.lifecycle_status,
+          lifecycle_version: version,
+          metadata: { handover_id: 19 }
+        }
+      });
+    }
+  );
+  await openExecutionPanel(page);
+  await page
+    .getByRole('button', { name: 'Accept handover', exact: true })
+    .click();
+  await expect(page.getByText(/Acceptance outcome unknown/)).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Check original acceptance' }).click();
+  await expect(
+    page.getByText('Acceptance confirmed in the saved Work record.')
+  ).toBeVisible();
+  expect(bodies).toHaveLength(2);
+  expect(bodies[1]).toEqual(bodies[0]);
 });

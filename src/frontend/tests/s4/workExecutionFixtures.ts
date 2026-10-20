@@ -1,4 +1,4 @@
-import { type Page, expect } from '@playwright/test';
+import { type Locator, type Page, expect } from '@playwright/test';
 import type { InvestigationRequest } from '../../lib/types/WorkExecution';
 
 import type { WorkOrderOverview } from '../../lib/types/WorkOrderOverview';
@@ -143,4 +143,22 @@ export function savedRequest(id = 401): InvestigationRequest {
     updated_at: '2026-10-20T08:00:00Z',
     artifacts: []
   };
+}
+
+/** Preserve the native sticky header without covering the section in evidence. */
+export async function captureProcessSection(
+  page: Page,
+  section: Locator,
+  path: string
+) {
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path, fullPage: true, animations: 'disabled' });
+  await section.evaluate((element) =>
+    element.scrollIntoView({ block: 'start' })
+  );
+  await page.evaluate(() => window.scrollBy(0, -96));
+  await page.screenshot({
+    path: path.replace('.png', '-viewport.png'),
+    animations: 'disabled'
+  });
 }

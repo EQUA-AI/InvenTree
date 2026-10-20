@@ -79,5 +79,5 @@ def project(work_order) -> dict:
         'coverage': 'unknown',
         'correction': {'available': False, 'reason': 'no_provider'},
         'assignment_factors': {'available': False, 'reason': 'no_provider'},
-        'accepted_handover': {'available': False, 'reason': 'no_provider'},
+        'accepted_handover': {'available': False, 'reason': 'read_work_continuity'},
     }

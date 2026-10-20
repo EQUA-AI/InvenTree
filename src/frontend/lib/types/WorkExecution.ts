@@ -220,6 +220,13 @@ export interface InvestigationRequest {
   created_at: string;
   updated_at: string;
   artifacts: InvestigationArtifact[];
+  escalation?: {
+    group: string;
+    reason?: string;
+    state: 'active' | 'resolved';
+    recorded_by: string | null;
+    recorded_at: string | null;
+  } | null;
 }
 export interface InvestigationRequests {
   available: boolean;
@@ -326,10 +333,33 @@ export interface ScopeRevisionReview {
   }[];
   dependency_impact: {
     kind: 'tasks' | 'materials' | 'resources' | 'permissions' | 'criteria';
-    available: false;
+    available: boolean;
     reason: string;
   }[];
   evidence_validity: { available: false; reason: 'no_scope_evidence_links' };
+  selective_reassessment?: {
+    rule: 'component_procedure_bindings.v1';
+    changed_component_refs: string[];
+    changed_procedure_revision_ids: number[];
+    unmapped_changes: boolean;
+    items: {
+      kind: string;
+      id: string;
+      scope_id: number;
+      line_sequence?: number;
+      binding_index?: number;
+      state:
+        | 'obsolete'
+        | 'reassess'
+        | 'unmapped'
+        | 'retained'
+        | 'effective_unknown'
+        | 'evidence_unknown';
+      executable: boolean;
+      retained_evidence_ids: number[];
+    }[];
+    scope_execution: { scope_id: number; executable: boolean }[];
+  };
   request_revisions: {
     event_id: number;
     request_id: number;
@@ -403,7 +433,23 @@ export interface WorkContinuity {
     available: false;
     reason: 'no_site_acceptance_provider';
   };
-  accepted_handover: { available: false; reason: 'no_provider' };
+  accepted_handover:
+    | { available: false; reason: string }
+    | {
+        available: true;
+        id: number | null;
+        state: 'pending' | 'accepted' | 'released' | 'restored' | 'withdrawn';
+        previous_owner: string | null;
+        incoming_owner: string | null;
+        responsible_owner: string | null;
+        proposed_version: number;
+        proposed_by: string | null;
+        proposed_at: string;
+        accepted_by: string | null;
+        accepted_at: string | null;
+        accepted_version: number | null;
+        can_accept: boolean;
+      };
   physical_service_state: { available: false; reason: 'no_provider' };
   cross_crew_restrictions: { available: false; reason: 'no_provider' };
 }
@@ -483,5 +529,37 @@ export interface TimeAssignment {
   coverage: 'unknown';
   correction: { available: false; reason: 'no_provider' };
   assignment_factors: { available: false; reason: 'no_provider' };
-  accepted_handover: { available: false; reason: 'no_provider' };
+  /** Responsibility is supplied by work_continuity, not inferred from time. */
+  accepted_handover: { available: false; reason: string };
+}
+
+export interface RecurrencePolicy {
+  rule: 'recurrence_policy.v1';
+  days: number;
+  available: boolean;
+  reason?: string;
+  linked_from?: { id: number; reference: string | null } | null;
+  prior_work_id?: number;
+  prior_version?: number;
+  can_create?: boolean;
+  can_reopen?: boolean;
+  closure_acceptance?: 'accepted' | 'awaiting_verification' | 'unknown';
+  items: {
+    occurrence_id: number;
+    title: string;
+    observed_at: string;
+    component_ref: string;
+    action:
+      | 'create_linked'
+      | 'reopen'
+      | 'linked'
+      | 'already_reopened'
+      | 'reopen_unavailable'
+      | 'ineligible'
+      | 'unowned_during_rework';
+    work_order_id: number | null;
+    unavailable_reason?: string | null;
+    closure_acceptance?: 'accepted' | 'awaiting_verification' | 'unknown';
+    reopen_blocked_reason?: string | null;
+  }[];
 }

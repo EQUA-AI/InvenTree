@@ -13,13 +13,13 @@ import {
 } from './continuityCommand';
 
 /** Existing scoped Hold/Resume commands, with one retained operation on uncertainty. */
-export function useContinuityCommand(workOrderId: number) {
+export function useContinuityCommand(workOrderId: number, channel = '') {
   const api = useApi();
   const queryClient = useQueryClient();
   const userId = useUserState((state) => state.user?.pk);
   const generation = useUserState((state) => state.authGeneration);
   const host = useLocalState((state) => state.getHost());
-  const storageKey = `aimms-work-continuity:${JSON.stringify([host, userId, workOrderId])}`;
+  const storageKey = `aimms-work-continuity:${JSON.stringify([host, userId, workOrderId])}${channel}`;
   const boundary = `${storageKey}:${generation}`;
   const active = useRef(boundary);
   active.current = boundary;

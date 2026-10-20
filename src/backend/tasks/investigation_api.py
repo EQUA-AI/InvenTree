@@ -12,6 +12,7 @@ from tasks.investigation_serializers import InvestigationRequestSerializer
 from tasks.scope import scoped_work_orders
 from tasks.services.investigation_requests import (
     command,
+    escalation_options,
     project_requests,
     request_queryset,
 )
@@ -31,6 +32,8 @@ class WorkInvestigationRequests(APIView):
     def get(self, request, pk, request_id=None):
         """Unknown or foreign Work/request ids return the same 404."""
         work = get_object_or_404(scoped_work_orders(request.user), pk=pk)
+        if request.query_params.get('escalation_owners') == '1':
+            return Response(escalation_options(work, request.user))
         if request_id is not None:
             row = get_object_or_404(request_queryset(), pk=request_id, work_order=work)
             return Response(InvestigationRequestSerializer(row).data)

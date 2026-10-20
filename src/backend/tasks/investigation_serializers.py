@@ -31,6 +31,7 @@ class InvestigationRequestSerializer(serializers.ModelSerializer):
     """Canonical identity and attribution visible to an authorized Work reader."""
 
     owner_name = serializers.SerializerMethodField()
+    escalation = serializers.SerializerMethodField()
     updated_by_name = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
     artifacts = serializers.SerializerMethodField()
@@ -40,6 +41,20 @@ class InvestigationRequestSerializer(serializers.ModelSerializer):
 
         model = InvestigationRequest
         fields = '__all__'
+
+    def get_escalation(self, obj):
+        """A recorded routing decision is separate from delivery or acceptance."""
+        from tasks.work_execution.common import person
+
+        if not obj.escalation_group_id:
+            return None
+        return {
+            'group': obj.escalation_group.name,
+            'reason': obj.escalation_reason,
+            'state': 'resolved' if obj.status == 'resolved' else 'active',
+            'recorded_by': person(obj.escalated_by),
+            'recorded_at': obj.escalated_at,
+        }
 
     def get_owner_name(self, obj):
         """Use the same person label as other Work projections."""

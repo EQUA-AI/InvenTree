@@ -25,6 +25,7 @@ import {
   executionBadgeStyles,
   recordedTime
 } from './ExecutionFacts';
+import { HandoverAcceptance } from './HandoverAcceptance';
 import { investigationStatusLabel } from './InvestigationRequests';
 import { useContinuityCommand } from './useContinuityCommand';
 
@@ -421,13 +422,7 @@ export function WorkContinuity({
                 workOrder.assigned_to_name ??
                 workOrder.assigned_to_username}
             </ExecutionFact>
-            <ExecutionFact
-              label={t`Accepted incoming owner / accepted at`}
-            >{t`Not recorded`}</ExecutionFact>
-            <ExecutionFact
-              label={t`Site acceptance requirement / escalation owner`}
-            >{t`Not supplied`}</ExecutionFact>
-            <Text size='sm'>{t`Assignment, a read receipt and opening this brief or chat do not accept responsibility. No accepted-handover record or site acceptance action is supplied here. Continue through the existing site process.`}</Text>
+            <HandoverAcceptance workOrder={workOrder} />
           </Stack>
         </Paper>
       </SimpleGrid>
@@ -551,7 +546,7 @@ export function WorkContinuity({
                       {lifecycleLabel(dependency.card.lifecycle_status)} ·{' '}
                       {t`Work version`}:{' '}
                       {dependency.card.lifecycle_version ?? t`Not supplied`} ·{' '}
-                      {t`Owner`}:{' '}
+                      {t`Assignee`}:{' '}
                       {dependency.card.assigned_to_name || t`Not recorded`}
                     </Text>
                     <Text size='sm'>
@@ -656,7 +651,7 @@ export function WorkContinuityConstraints({
               {request.blocked_reason || t`Constraint reason not recorded`}
             </Text>
             <Text size='sm'>
-              {t`Owner`}: {request.owner_name || t`Not recorded`} ·{' '}
+              {t`Assignee`}: {request.owner_name || t`Not recorded`} ·{' '}
               {t`Checkpoint`}: {recordedTime(request.next_checkpoint)}
             </Text>
           </Stack>

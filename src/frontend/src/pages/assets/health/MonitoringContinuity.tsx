@@ -19,6 +19,7 @@ import dayjs from 'dayjs';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useApi } from '../../../contexts/ApiContext';
+import { RecurrenceActions } from '../../tasks/workorders/execution/RecurrenceActions';
 import { workPanelParams } from '../../tasks/workorders/workPanelState';
 import {
   type OccurrencePage,
@@ -80,7 +81,7 @@ export function MonitoringContinuity({
           fw={600}
         >{t`Factual correction or renewed investigation`}</Text>
         <Text size='sm'>{t`Factual corrections use attributed amendments and retain the original accepted fields. Renewed physical investigation needs the existing authorized reopened or linked Work flow. An occurrence on the same machine does not establish a recurrence relationship.`}</Text>
-        <Text size='sm'>{t`Recurrence linkage and reopen policy are unavailable here. Prior accepted fields and original evidence remain inspectable; a complete immutable accepted report is not supplied by this server.`}</Text>
+        <RecurrenceActions workOrder={workOrder} />
         {workOrder.source_alert && (
           <Anchor
             component={Link}

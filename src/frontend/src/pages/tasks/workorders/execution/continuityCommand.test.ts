@@ -97,3 +97,43 @@ describe('hold/resume record command integrity', () => {
     expect(result).toEqual({ status: 'confirmed', intent, receipt });
   });
 });
+
+describe('explicit incoming handover receipt', () => {
+  const handover: ContinuityIntent = {
+    ...intent,
+    action: 'accept_handover',
+    fromStatus: 'on_hold',
+    handoverId: 19
+  };
+  const saved = {
+    ...receipt,
+    command: 'accept_handover',
+    metadata: { handover_id: 19 }
+  };
+  it('requires the exact handover identity and unchanged lifecycle status', () => {
+    expect(matchingContinuityReceipt(saved, handover)).toBe(true);
+    expect(
+      matchingContinuityReceipt(
+        { ...saved, metadata: { handover_id: 20 } },
+        handover
+      )
+    ).toBe(false);
+    expect(
+      matchingContinuityReceipt(
+        { ...saved, lifecycle_status: 'in_progress' },
+        handover
+      )
+    ).toBe(false);
+    expect(
+      matchingContinuityReceipt({ ...saved, metadata: {} }, handover)
+    ).toBe(false);
+  });
+  it('reload retains the original acceptance intent as uncertain', () => {
+    expect(
+      restoreContinuityCommand(
+        JSON.stringify({ status: 'pending', intent: handover }),
+        73
+      )
+    ).toEqual({ status: 'uncertain', intent: handover });
+  });
+});

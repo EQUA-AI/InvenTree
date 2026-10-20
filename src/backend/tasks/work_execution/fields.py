@@ -16,6 +16,7 @@ WORK_EXECUTION_FIELDS = (
     'time_assignment',
     'work_continuity',
     'routine_work',
+    'recurrence_policy',
 )
 
 
@@ -29,6 +30,7 @@ class WorkExecutionFieldsMixin(serializers.Serializer):
     time_assignment = serializers.SerializerMethodField()
     work_continuity = serializers.SerializerMethodField()
     routine_work = serializers.SerializerMethodField()
+    recurrence_policy = serializers.SerializerMethodField()
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_routine_work(self, obj) -> dict | None:
@@ -36,6 +38,14 @@ class WorkExecutionFieldsMixin(serializers.Serializer):
         from .routine import project
 
         return project(obj)
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_recurrence_policy(self, obj) -> dict:
+        """P50: read-only policy candidates; creation is an explicit command."""
+        from tasks.services.recurrence import project
+
+        request = self.context.get('request')
+        return project(obj, request.user if request else None)
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_work_continuity(self, obj) -> dict:
