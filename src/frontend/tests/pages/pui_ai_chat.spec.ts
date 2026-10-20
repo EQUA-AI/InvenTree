@@ -48,14 +48,14 @@ test('typed chat uses authoritative server history and renders ordered AG-UI eve
     page.getByText('Stale persisted local history', { exact: true })
   ).toHaveCount(0);
 
-  await page.getByLabel('select-ai-chat-thread').click();
+  await page.getByTestId('select-ai-chat-thread').click();
   await expect(
     page.getByText('Legacy local conversation', { exact: true })
   ).toHaveCount(0);
-  await page.getByLabel('select-ai-chat-thread').click();
+  await page.getByTestId('select-ai-chat-thread').click();
 
   await page.getByPlaceholder('Type a message...').fill('Inspect the pump');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
 
   await expect(
     page.getByText('Golden typed response', { exact: true })
@@ -159,7 +159,7 @@ test('tool activity strip shows the completed duration', async ({
   await page.reload();
   await openChat(page);
   await page.getByPlaceholder('Type a message...').fill('List work orders');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
 
   const activity = page.getByText('search_work_orders (429 ms)', {
     exact: true
@@ -329,7 +329,7 @@ test('auto wire waits for capability sync before its first send', async ({
   await expect(composer).toBeEnabled();
 
   await composer.fill('Use the advertised wire');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByText('Golden typed response', { exact: true })
   ).toBeVisible();
@@ -429,13 +429,13 @@ test('AG-UI endpoint removal falls back once and latches legacy', async ({
   await expect(composer).toBeEnabled();
 
   await composer.fill('First turn after flag removal');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByText('Legacy response 1', { exact: true })
   ).toBeVisible();
 
   await composer.fill('Second turn after flag removal');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByText('Legacy response 2', { exact: true })
   ).toBeVisible();
@@ -486,7 +486,7 @@ test('typed chat reuses its idempotency key and removes partial output on retry'
   await page.reload();
   await openChat(page);
   await page.getByPlaceholder('Type a message...').fill('Retry this turn');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
 
   await expect(
     page.getByText('Golden typed response', { exact: true })
@@ -538,10 +538,10 @@ test('typed chat cancellation is visible without persisting transcript bodies', 
   await page.reload();
   await openChat(page);
   await page.getByPlaceholder('Type a message...').fill('Cancel this turn');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await started;
 
-  await page.getByLabel('cancel-ai-chat-turn').click();
+  await page.getByTestId('cancel-ai-chat-turn').click();
   await expect(
     page.getByText('(Message cancelled)', { exact: true })
   ).toBeVisible();
@@ -598,12 +598,12 @@ test('upload metadata is credentialed and carried into the following typed turn'
     buffer: Buffer.from('manual')
   });
   await expect(page.getByText('manual.pdf', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('send-ai-chat-message')).toBeDisabled();
+  await expect(page.getByTestId('send-ai-chat-message')).toBeDisabled();
 
   await page
     .getByPlaceholder('Add a message about attached files...')
     .fill('Use the manual');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByText('Golden typed response', { exact: true })
   ).toBeVisible();
@@ -629,10 +629,12 @@ test('upload metadata is credentialed and carried into the following typed turn'
     buffer: Buffer.from('manual')
   });
   await expect(page.getByText('manual.pdf', { exact: true })).toBeVisible();
-  await page.getByLabel('select-ai-chat-thread').click();
-  await page.getByRole('menuitem', { name: 'new-ai-chat-thread' }).click();
+  await page.getByTestId('select-ai-chat-thread').click();
+  await page
+    .getByRole('menuitem', { name: 'New conversation', exact: true })
+    .click();
   await expect(page.getByText('manual.pdf', { exact: true })).toHaveCount(0);
-  await expect(page.getByLabel('send-ai-chat-message')).toBeDisabled();
+  await expect(page.getByTestId('send-ai-chat-message')).toBeDisabled();
 });
 
 test('thread rename and delete use credentialed server mutations', async ({
@@ -643,9 +645,9 @@ test('thread rename and delete use credentialed server mutations', async ({
 
   await page.reload();
   await openChat(page);
-  await page.getByLabel('select-ai-chat-thread').click();
+  await page.getByTestId('select-ai-chat-thread').click();
 
-  await page.getByLabel(`rename-ai-chat-thread-${threadId}`).click();
+  await page.getByTestId(`rename-ai-chat-thread-${threadId}`).click();
   const rename = page.getByRole('dialog', { name: 'Rename conversation' });
   await rename
     .getByLabel('Conversation title')
@@ -659,9 +661,9 @@ test('thread rename and delete use credentialed server mutations', async ({
   ).toBeVisible();
   await expect.poll(() => foundation.threadMutations.length).toBe(1);
 
-  const deleteButton = page.getByLabel(`delete-ai-chat-thread-${threadId}`);
+  const deleteButton = page.getByTestId(`delete-ai-chat-thread-${threadId}`);
   if (!(await deleteButton.isVisible())) {
-    await page.getByLabel('select-ai-chat-thread').click();
+    await page.getByTestId('select-ai-chat-thread').click();
   }
   await deleteButton.click();
   const deletion = page.getByRole('dialog', { name: 'Delete conversation?' });
@@ -700,7 +702,7 @@ test('scope banner shows unconfirmed and resets on a new thread', async ({
     'Scope unconfirmed'
   );
 
-  await page.getByLabel('new-ai-chat-thread').click();
+  await page.getByTestId('new-ai-chat-thread').click();
   await expect(page.getByTestId('ai-chat-scope-label')).toContainText(
     'Scope unconfirmed'
   );
@@ -750,7 +752,7 @@ test('machine hint becomes a server-side scope, never message text', async ({
 
   const composer = page.getByPlaceholder(/Type a message|Answer the question/);
   await composer.fill('What is wrong?');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
 
   await expect(
     page.getByText('Golden typed response', { exact: true })
@@ -817,7 +819,7 @@ test('scope version conflict refreshes and resends', async ({ browser }) => {
 
   const composer = page.getByPlaceholder(/Type a message|Answer the question/);
   await composer.fill('Check the inverter');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
 
   await expect(
     page.getByText(/The conversation scope changed/).first()
@@ -865,7 +867,7 @@ test('scope survives reload from the server', async ({ browser }) => {
 
   const composer = page.getByPlaceholder(/Type a message|Answer the question/);
   await composer.fill('Show recent work');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
 
   await expect(
     page.getByText('Golden typed response', { exact: true })
@@ -897,7 +899,7 @@ test('a spent daily token budget is terminal: one request, reset-time copy', asy
   await page.reload();
   await openChat(page);
   await page.getByPlaceholder('Type a message...').fill('Count the pumps');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
 
   await expect(page.getByText(/daily AI usage limit/i).first()).toBeVisible();
   await expect(page.getByText(/resets at/i).first()).toBeVisible();
@@ -928,7 +930,7 @@ test('a rate-window 429 retries bounded and then reports rate copy', async ({
   await page.reload();
   await openChat(page);
   await page.getByPlaceholder('Type a message...').fill('Count the pumps');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
 
   await expect(page.getByText(/too many requests/i).first()).toBeVisible({
     timeout: 15000
@@ -968,7 +970,7 @@ test('a capacity 503 retries after the server Retry-After and succeeds', async (
   await page.reload();
   await openChat(page);
   await page.getByPlaceholder('Type a message...').fill('Count the pumps');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
 
   await expect(
     page.getByText('Golden typed response', { exact: true })

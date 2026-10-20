@@ -21,6 +21,7 @@ import {
   IconX
 } from '@tabler/icons-react';
 import { type ReactNode, useCallback, useMemo, useState } from 'react';
+import { useWorkTableScroll } from '../../components/tables/WorkTableScroll';
 
 import { ActionButton } from '@lib/components/ActionButton';
 import { ProgressBar } from '@lib/components/ProgressBar';
@@ -30,7 +31,7 @@ import {
   RowEditAction
 } from '@lib/components/RowActions';
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
-import type { ModelType } from '@lib/enums/ModelType';
+import { ModelType } from '@lib/enums/ModelType';
 import { apiUrl } from '@lib/functions/Api';
 import useTable from '@lib/hooks/UseTable';
 import type { TableFilter } from '@lib/types/Filters';
@@ -76,7 +77,20 @@ function attachmentTableColumns(
                 attachment={record.attachment}
               />
               {attachmentPreviewItem(record, owner) && (
-                <Tooltip label={t`Preview ${record.filename}`}>
+                <Tooltip
+                  label={t`Preview ${record.filename}`}
+                  multiline={owner.model_type === ModelType.workorder}
+                  maw={
+                    owner.model_type === ModelType.workorder
+                      ? 'calc(100vw - 32px)'
+                      : undefined
+                  }
+                  styles={
+                    owner.model_type === ModelType.workorder
+                      ? { tooltip: { overflowWrap: 'anywhere' } }
+                      : undefined
+                  }
+                >
                   <ActionIcon
                     variant='subtle'
                     size='lg'
@@ -165,6 +179,9 @@ export function AttachmentTable({
   model_id: number;
   onChange?: () => void;
 }>): ReactNode {
+  const workScrollArea = useWorkTableScroll(
+    t`Work attachments table, scroll for all columns`
+  );
   const api = useApi();
   const user = useUserState();
   const globalSettings = useGlobalSettingsState();
@@ -480,6 +497,8 @@ export function AttachmentTable({
             tableState={table}
             columns={tableColumns}
             props={{
+              scrollAreaProps:
+                model_type === ModelType.workorder ? workScrollArea : undefined,
               noRecordsText: t`No attachments found`,
               enableSelection: canDelete,
               enableBulkDelete: canDelete,
@@ -488,6 +507,8 @@ export function AttachmentTable({
               tableActions: tableActions,
               tableFilters: tableFilters,
               rowActions: rowActions,
+              rowActionsTitle:
+                model_type === ModelType.workorder ? t`Actions` : undefined,
               params: {
                 model_type: model_type,
                 model_id: model_id

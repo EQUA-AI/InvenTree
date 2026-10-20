@@ -128,7 +128,7 @@ test.describe('R6 P12 machine Maintenance: Open work and Completed history', () 
     await expect(
       page.getByRole('heading', { name: 'WO-98: Synthetic job 98' })
     ).toBeVisible();
-    await page.getByRole('button', { name: 'work-order-back' }).click();
+    await page.getByTestId('work-order-back').click();
     await expect(page.getByTestId('destination')).toContainText(
       '/machines/machine/18/maintenance/'
     );

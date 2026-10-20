@@ -81,7 +81,7 @@ for (const { scheme, moved, missing } of [
     const row = page
       .getByRole('row')
       .filter({ hasText: 'Original attachment metadata' });
-    await row.getByRole('button', { name: /row-action-menu/ }).click();
+    await row.getByTestId(/row-action-menu/).click();
     await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
     const modal = page.getByRole('dialog', {
       name: 'Edit Attachment',

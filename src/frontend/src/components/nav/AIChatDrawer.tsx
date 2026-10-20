@@ -22,13 +22,16 @@ import {
   useComputedColorScheme,
   useMantineTheme
 } from '@mantine/core';
-import { useLocalStorage, useMediaQuery } from '@mantine/hooks';
+import {
+  useLocalStorage,
+  useMediaQuery,
+  useViewportSize
+} from '@mantine/hooks';
 import {
   IconArrowDown,
   IconBrain,
   IconCheck,
   IconChevronDown,
-  IconClipboardList,
   IconCopy,
   IconEye,
   IconFileExport,
@@ -123,7 +126,10 @@ import { VoiceExperienceControls } from '../ai/voice/VoiceExperienceControls';
 import { VOICE_SHORTCUT } from '../ai/voice/voiceShortcuts';
 import { voiceStartBlockReason } from '../ai/voice/voiceStartEligibility';
 import { AnalysisContextLine } from '../aichat/ActiveScopeBanner';
-import { AssistantSurface } from '../aichat/AssistantSurface';
+import {
+  AssistantSurface,
+  clampAssistantWidth
+} from '../aichat/AssistantSurface';
 import { CitationList } from '../aichat/CitationList';
 import { ClaimEvidence } from '../aichat/ClaimEvidence';
 import { ContextUsedDisclosure } from '../aichat/ContextUsedDisclosure';
@@ -280,7 +286,8 @@ function ThreadHistoryPanel({
         onChange={(event) => setQuery(event.currentTarget.value)}
         leftSection={<IconSearch size={14} />}
         rightSection={searching ? <Loader size='xs' /> : undefined}
-        aria-label='search-ai-chat-history'
+        aria-label={t`Search conversation history`}
+        data-testid='search-ai-chat-history'
       />
       {searchError && (
         <Alert color='red'>{t`Conversation search failed. Edit the search or retry loading more results.`}</Alert>
@@ -414,7 +421,8 @@ function ThreadSelector({
       >
         <Menu.Target>
           <UnstyledButton
-            aria-label='select-ai-chat-thread'
+            aria-label={t`Select conversation`}
+            data-testid='select-ai-chat-thread'
             disabled={disabled}
             px='sm'
             py={6}
@@ -450,7 +458,8 @@ function ThreadSelector({
 
           {/* New chat option */}
           <Menu.Item
-            aria-label='new-ai-chat-thread'
+            aria-label={t`New conversation`}
+            data-testid='new-ai-chat-thread'
             leftSection={<IconMessagePlus size={16} />}
             onClick={onNewThread}
             color='blue'
@@ -459,13 +468,15 @@ function ThreadSelector({
           </Menu.Item>
 
           <Menu.Item
-            aria-label='export-owned-ai-chat-threads'
+            aria-label={t`Export my conversations`}
+            data-testid='export-owned-ai-chat-threads'
             disabled={disabled}
             leftSection={<IconFileExport size={16} />}
             onClick={() => setExportOpen(true)}
           >{t`Export my saved conversations`}</Menu.Item>
           <Menu.Item
-            aria-label='delete-owned-ai-chat-threads'
+            aria-label={t`Delete my conversations`}
+            data-testid='delete-owned-ai-chat-threads'
             color='red'
             disabled={disabled || bulkDeletionDisabled}
             leftSection={<IconTrash size={16} />}
@@ -508,7 +519,8 @@ function ThreadSelector({
                   </Menu.Item>
                   <Group gap={2} wrap='nowrap'>
                     <ActionIcon
-                      aria-label={`rename-ai-chat-thread-${thread.id}`}
+                      aria-label={t`Rename conversation`}
+                      data-testid={`rename-ai-chat-thread-${thread.id}`}
                       size='xs'
                       variant='subtle'
                       color='gray'
@@ -521,7 +533,8 @@ function ThreadSelector({
                       thread.isPersisted &&
                       !thread.shared && (
                         <ActionIcon
-                          aria-label={`memory-ai-chat-thread-${thread.id}`}
+                          aria-label={t`Conversation memory`}
+                          data-testid={`memory-ai-chat-thread-${thread.id}`}
                           title={t`What this chat remembers`}
                           size='xs'
                           variant='subtle'
@@ -534,7 +547,8 @@ function ThreadSelector({
                       )}
                     {onShareThread && (
                       <ActionIcon
-                        aria-label={`share-ai-chat-thread-${thread.id}`}
+                        aria-label={t`Share conversation`}
+                        data-testid={`share-ai-chat-thread-${thread.id}`}
                         size='xs'
                         variant='subtle'
                         color='gray'
@@ -545,7 +559,8 @@ function ThreadSelector({
                       </ActionIcon>
                     )}
                     <ActionIcon
-                      aria-label={`delete-ai-chat-thread-${thread.id}`}
+                      aria-label={t`Delete conversation`}
+                      data-testid={`delete-ai-chat-thread-${thread.id}`}
                       size='xs'
                       variant='subtle'
                       color='red'
@@ -679,7 +694,8 @@ export function AIChatButton({
         variant='subtle'
         size='lg'
         radius='xl'
-        aria-label='open-ai-chat'
+        aria-label={t`Open assistant`}
+        data-testid='open-ai-chat'
         aria-expanded={opened}
         aria-controls='ai-chat-drawer'
         onMouseEnter={showTooltip}
@@ -810,7 +826,8 @@ function MessageActions({
         {({ copied, copy }) => (
           <Tooltip label={copied ? t`Copied!` : t`Copy`} withArrow>
             <ActionIcon
-              aria-label='copy-ai-chat-message'
+              aria-label={t`Copy message`}
+              data-testid='copy-ai-chat-message'
               size='xs'
               variant='subtle'
               color={copied ? 'teal' : 'gray'}
@@ -823,7 +840,8 @@ function MessageActions({
       </CopyButton>
       <Tooltip label={t`Good response`} withArrow>
         <ActionIcon
-          aria-label='rate-ai-chat-message-good'
+          aria-label={t`Rate response helpful`}
+          data-testid='rate-ai-chat-message-good'
           size='xs'
           variant='subtle'
           color={feedback === 'up' ? 'blue' : 'gray'}
@@ -834,7 +852,8 @@ function MessageActions({
       </Tooltip>
       <Tooltip label={t`Bad response`} withArrow>
         <ActionIcon
-          aria-label='rate-ai-chat-message-bad'
+          aria-label={t`Rate response unhelpful`}
+          data-testid='rate-ai-chat-message-bad'
           size='xs'
           variant='subtle'
           color={feedback === 'down' ? 'red' : 'gray'}
@@ -846,7 +865,8 @@ function MessageActions({
       {evidenceAnalysis && (
         <Tooltip label={t`Export as Markdown`} withArrow>
           <ActionIcon
-            aria-label='export-ai-chat-message'
+            aria-label={t`Export message`}
+            data-testid='export-ai-chat-message'
             size='xs'
             variant='subtle'
             color='gray'
@@ -859,7 +879,8 @@ function MessageActions({
       {onRegenerate && (
         <Tooltip label={t`Regenerate`} withArrow>
           <ActionIcon
-            aria-label='regenerate-ai-chat-message'
+            aria-label={t`Regenerate response`}
+            data-testid='regenerate-ai-chat-message'
             size='xs'
             variant='subtle'
             color='gray'
@@ -1387,6 +1408,7 @@ function AIChatSessionDrawer({
   const evidenceOpen = useEvidenceViewerState((state) => state.item !== null);
   const consentOpen = useVoiceSurfaceState((state) => state.consent);
   const narrow = useMediaQuery('(max-width: 48em)');
+  const viewport = useViewportSize();
   const location = useLocation();
   useEffect(() => {
     if (!opened) {
@@ -1499,12 +1521,12 @@ function AIChatSessionDrawer({
   const resizeStartWidth = useRef(DEFAULT_WIDTH);
   // U1: never let the panel exceed the viewport.
   const clampDrawerWidth = useCallback(
-    (width: number) =>
-      Math.min(
-        Math.max(MIN_WIDTH, width),
-        Math.max(MIN_WIDTH, window.innerWidth - 32)
-      ),
+    (width: number) => clampAssistantWidth(width, window.innerWidth),
     []
+  );
+  const renderedDrawerWidth = clampAssistantWidth(
+    drawerWidth,
+    viewport.width || window.innerWidth
   );
 
   // Mouse handlers for resize drag
@@ -1514,11 +1536,11 @@ function AIChatSessionDrawer({
       e.stopPropagation();
       isResizing.current = true;
       resizeStartX.current = e.clientX;
-      resizeStartWidth.current = drawerWidth;
+      resizeStartWidth.current = renderedDrawerWidth;
       document.body.style.cursor = 'col-resize';
       document.body.style.userSelect = 'none';
     },
-    [drawerWidth]
+    [renderedDrawerWidth]
   );
 
   useEffect(() => {
@@ -1551,10 +1573,10 @@ function AIChatSessionDrawer({
       const step = 24;
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
-        setDrawerWidth((width) => clampDrawerWidth(width + step));
+        setDrawerWidth(clampDrawerWidth(renderedDrawerWidth + step));
       } else if (event.key === 'ArrowRight') {
         event.preventDefault();
-        setDrawerWidth((width) => clampDrawerWidth(width - step));
+        setDrawerWidth(clampDrawerWidth(renderedDrawerWidth - step));
       } else if (event.key === 'Home') {
         event.preventDefault();
         setDrawerWidth(clampDrawerWidth(MIN_WIDTH));
@@ -1563,7 +1585,7 @@ function AIChatSessionDrawer({
         setDrawerWidth(clampDrawerWidth(MAX_WIDTH));
       }
     },
-    [setDrawerWidth, clampDrawerWidth]
+    [setDrawerWidth, clampDrawerWidth, renderedDrawerWidth]
   );
 
   // Empty-state suggestion prompts (U1): real buttons, translated label AND
@@ -2042,49 +2064,50 @@ function AIChatSessionDrawer({
           evidenceOpen ||
           memoryThreadId !== null
         }
-        width={drawerWidth}
+        width={renderedDrawerWidth}
         title={t`AI Assistant`}
         onClose={handleClose}
+        resizeHandle={
+          <Box
+            // biome-ignore lint/a11y/useSemanticElements: focusable window splitter — a real <hr> can't be dragged or keyboard-resized; this keeps the geometry and the ARIA separator values
+            onMouseDown={handleResizeMouseDown}
+            role='separator'
+            aria-orientation='vertical'
+            aria-label={t`Resize chat panel`}
+            aria-valuenow={renderedDrawerWidth}
+            aria-valuemin={clampDrawerWidth(MIN_WIDTH)}
+            aria-valuemax={clampDrawerWidth(MAX_WIDTH)}
+            tabIndex={0}
+            onKeyDown={handleResizeKeyDown}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: 6,
+              height: '100%',
+              cursor: 'col-resize',
+              zIndex: 1000,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'background 0.15s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--mantine-color-blue-1)';
+            }}
+            onMouseLeave={(e) => {
+              if (!isResizing.current) {
+                e.currentTarget.style.background = '';
+              }
+            }}
+          >
+            <IconGripVertical
+              size={12}
+              style={{ opacity: 0.4, pointerEvents: 'none' }}
+            />
+          </Box>
+        }
       >
-        {/* Resize handle on the left edge (mouse drag + keyboard, U1) */}
-        <Box
-          // biome-ignore lint/a11y/useSemanticElements: focusable window splitter — a real <hr> can't be dragged or keyboard-resized; this keeps the geometry and the ARIA separator values
-          onMouseDown={handleResizeMouseDown}
-          role='separator'
-          aria-orientation='vertical'
-          aria-label={t`Resize chat panel`}
-          aria-valuenow={drawerWidth}
-          aria-valuemin={MIN_WIDTH}
-          aria-valuemax={MAX_WIDTH}
-          tabIndex={0}
-          onKeyDown={handleResizeKeyDown}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: 6,
-            height: '100%',
-            cursor: 'col-resize',
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transition: 'background 0.15s ease'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'var(--mantine-color-blue-1)';
-          }}
-          onMouseLeave={(e) => {
-            if (!isResizing.current) {
-              e.currentTarget.style.background = '';
-            }
-          }}
-        >
-          <IconGripVertical
-            size={12}
-            style={{ opacity: 0.4, pointerEvents: 'none' }}
-          />
-        </Box>
         <Boundary label='AIChatDrawer'>
           {/* Header */}
           <Box
@@ -2125,7 +2148,8 @@ function AIChatSessionDrawer({
                   withArrow
                 >
                   <ActionIcon
-                    aria-label='sync-ai-chat-threads'
+                    aria-label={t`Sync conversations`}
+                    data-testid='sync-ai-chat-threads'
                     variant='subtle'
                     color='gray'
                     radius='xl'
@@ -2150,7 +2174,8 @@ function AIChatSessionDrawer({
                       color='gray'
                       radius='xl'
                       onClick={handleClearChat}
-                      aria-label='new-ai-chat-thread'
+                      aria-label={t`New conversation`}
+                      data-testid='new-ai-chat-thread'
                       disabled={isLoading}
                     >
                       <IconMessagePlus size={18} />
@@ -2159,7 +2184,8 @@ function AIChatSessionDrawer({
                 )}
                 <Tooltip label={t`Close`} withArrow>
                   <ActionIcon
-                    aria-label='close-ai-chat'
+                    aria-label={t`Close assistant`}
+                    data-testid='close-ai-chat'
                     variant='subtle'
                     color='gray'
                     radius='xl'
@@ -2277,6 +2303,7 @@ function AIChatSessionDrawer({
             offsetScrollbars
             scrollbarSize={6}
             viewportRef={scrollAreaRef}
+            mih='min(10rem, 30dvh)'
             data-testid='ai-chat-messages'
             viewportProps={{ ...VIEWPORT_MARKERS }}
           >
@@ -2531,7 +2558,8 @@ function AIChatSessionDrawer({
                       size='sm'
                       rightSection={
                         <ActionIcon
-                          aria-label={`remove-ai-chat-attachment-${f.file_id}`}
+                          aria-label={t`Remove attachment ${f.filename}`}
+                          data-testid={`remove-ai-chat-attachment-${f.file_id}`}
                           disabled={isApplyingScope}
                           size='xs'
                           variant='transparent'
@@ -2565,43 +2593,49 @@ function AIChatSessionDrawer({
                   gap='xs'
                   mb={4}
                   wrap='nowrap'
+                  align='flex-start'
                   data-testid='ai-chat-work-focus'
                   style={{ minWidth: 0 }}
                 >
-                  <Badge
-                    variant='light'
+                  <Box component='details' style={{ flex: 1, minWidth: 0 }}>
+                    <Text
+                      component='summary'
+                      size='sm'
+                      style={{ cursor: 'pointer' }}
+                    >
+                      {t`Work order ${workFocusHint.workOrderId}`}
+                      {workFocusHint.requestId
+                        ? ` · ${t`Request ${workFocusHint.requestId}`}`
+                        : ''}
+                    </Text>
+                    <Badge
+                      variant='light'
+                      color='teal'
+                      radius='sm'
+                      tt='none'
+                      mt='xs'
+                      styles={{
+                        root: { height: 'auto', maxWidth: '100%' },
+                        label: {
+                          lineHeight: 'var(--mantine-line-height)',
+                          whiteSpace: 'normal',
+                          overflow: 'visible',
+                          overflowWrap: 'anywhere'
+                        }
+                      }}
+                    >
+                      {workFocusHint.label}
+                    </Badge>
+                  </Box>
+                  <ActionIcon
+                    size='sm'
+                    variant='transparent'
                     color='teal'
-                    leftSection={<IconClipboardList size={12} />}
-                    title={workFocusHint.label}
-                    styles={
-                      workFocusHint.requestId
-                        ? {
-                            root: { height: 'auto' },
-                            label: {
-                              whiteSpace: 'normal',
-                              overflowWrap: 'anywhere'
-                            }
-                          }
-                        : undefined
-                    }
-                    style={{ maxWidth: '100%' }}
-                    rightSection={
-                      <ActionIcon
-                        size='xs'
-                        variant='transparent'
-                        color='teal'
-                        aria-label={t`Remove work order`}
-                        onClick={clearWorkFocus}
-                      >
-                        <IconX size={10} />
-                      </ActionIcon>
-                    }
+                    aria-label={t`Remove work order`}
+                    onClick={clearWorkFocus}
                   >
-                    {t`Asking about work order`}: {workFocusHint.label}
-                    {workFocusHint.requestId
-                      ? ` · Request ${workFocusHint.requestId}`
-                      : ''}
-                  </Badge>
+                    <IconX size={14} />
+                  </ActionIcon>
                 </Group>
               )}
               {workFocusHint && workFocusLaunchError && (
@@ -2632,7 +2666,8 @@ function AIChatSessionDrawer({
                         size='xs'
                         variant='transparent'
                         color='blue'
-                        aria-label='dismiss-routing-hint'
+                        aria-label={t`Remove machine context`}
+                        data-testid='dismiss-routing-hint'
                         onClick={clearRoutingHint}
                       >
                         <IconX size={10} />
@@ -2675,10 +2710,11 @@ function AIChatSessionDrawer({
                   transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
                 }}
               >
-                <Group gap='xs' align='flex-end' wrap='nowrap'>
+                <Group gap='xs' align='flex-end' wrap='wrap'>
                   <Tooltip label={t`Attach file`} withArrow>
                     <ActionIcon
-                      aria-label='attach-ai-chat-file'
+                      aria-label={t`Attach file`}
+                      data-testid='attach-ai-chat-file'
                       size='lg'
                       radius='xl'
                       variant='subtle'
@@ -2737,7 +2773,7 @@ function AIChatSessionDrawer({
                         flex: 1
                       }
                     }}
-                    style={{ flex: 1 }}
+                    style={{ flex: '1 1 100%', minWidth: 0, order: -1 }}
                   />
                   {/* C3: the mic START action sits inside the composer,
                     adjacent to text entry — one shared eligibility path. */}
@@ -2746,7 +2782,8 @@ function AIChatSessionDrawer({
                     {isLoading ? (
                       <Tooltip label={t`Stop generating`} withArrow>
                         <ActionIcon
-                          aria-label='cancel-ai-chat-turn'
+                          aria-label={t`Stop generating`}
+                          data-testid='cancel-ai-chat-turn'
                           size={44}
                           radius='xl'
                           variant='filled'
@@ -2757,9 +2794,10 @@ function AIChatSessionDrawer({
                         </ActionIcon>
                       </Tooltip>
                     ) : (
-                      <Tooltip label={t`Send message`} withArrow>
+                      <>
                         <ActionIcon
-                          aria-label='send-ai-chat-message'
+                          aria-label={t`Send message`}
+                          data-testid='send-ai-chat-message'
                           size={44}
                           radius='xl'
                           variant='filled'
@@ -2781,7 +2819,7 @@ function AIChatSessionDrawer({
                         >
                           <IconSend size={18} />
                         </ActionIcon>
-                      </Tooltip>
+                      </>
                     )}
                   </Group>
                 </Group>

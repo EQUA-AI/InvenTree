@@ -18,6 +18,7 @@ import type {
 import type { TableColumn } from '@lib/types/Tables';
 import { t } from '@lingui/core/macro';
 import { ActionIcon, Box, Stack } from '@mantine/core';
+import { assignRef } from '@mantine/hooks';
 import { IconArrowRight, IconClick } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -31,7 +32,14 @@ import {
   useDataTableColumns
 } from 'mantine-datatable';
 import type React from 'react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useApi } from '../../contexts/ApiContext';
 import {
@@ -95,6 +103,35 @@ export function InvenTreeTableInternal<T extends Record<string, any>>({
   searchParams,
   setSearchParams
 }: Readonly<InvenTreeTableRenderProps<T>>) {
+  const scrollViewport = useRef<HTMLDivElement>(null);
+  const forwardedViewport = useRef<{
+    node: HTMLDivElement | null;
+    target: React.Ref<HTMLDivElement> | undefined;
+    cleanup: ReturnType<typeof assignRef>;
+  } | null>(null);
+  const releaseViewport = () => {
+    const previous = forwardedViewport.current;
+    if (previous?.cleanup) previous.cleanup();
+    else if (previous) assignRef(previous.target, null);
+    forwardedViewport.current = null;
+  };
+  // DataTable owns ScrollArea.viewportRef. Forward its supported viewport ref
+  // so supplied accessibility observers receive the actual scrolling element.
+  useLayoutEffect(() => {
+    const target = props?.scrollAreaProps?.viewportRef;
+    if (
+      forwardedViewport.current?.node === scrollViewport.current &&
+      forwardedViewport.current?.target === target
+    )
+      return;
+    releaseViewport();
+    forwardedViewport.current = {
+      node: scrollViewport.current,
+      target,
+      cleanup: assignRef(target, scrollViewport.current)
+    };
+  });
+  useEffect(() => releaseViewport, []);
   const { userTheme } = useLocalState();
 
   const {
@@ -401,7 +438,7 @@ export function InvenTreeTableInternal<T extends Record<string, any>>({
     if (tableProps.rowActions) {
       cols.push({
         accessor: ACTIONS_COLUMN_ACCESSOR,
-        title: (
+        title: tableProps.rowActionsTitle ?? (
           <ActionIcon variant='transparent' size='sm'>
             <IconClick />
           </ActionIcon>
@@ -409,7 +446,7 @@ export function InvenTreeTableInternal<T extends Record<string, any>>({
         hidden: false,
         resizable: false,
         switchable: false,
-        width: 50,
+        width: tableProps.rowActionsTitle ? '6em' : 50,
         render: (record: any, index?: number | undefined) => (
           <RowActions
             actions={tableProps.rowActions?.(record) ?? []}
@@ -426,6 +463,7 @@ export function InvenTreeTableInternal<T extends Record<string, any>>({
     filters,
     fieldNames,
     tableProps.rowActions,
+    tableProps.rowActionsTitle,
     tableState.hiddenColumns,
     tableState.selectedRecords,
     tableState.filterSet.activeFilters
@@ -1038,6 +1076,8 @@ export function InvenTreeTableInternal<T extends Record<string, any>>({
         <Boundary label={`InvenTreeTable-${cacheKey}`}>
           <Box pos='relative'>
             <DataTable
+              scrollViewportRef={scrollViewport}
+              scrollAreaProps={tableProps.scrollAreaProps}
               className={
                 rotateTableHeaders ? 'rotate-table-headers' : undefined
               }

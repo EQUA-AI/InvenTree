@@ -23,6 +23,7 @@ import { useId, useRef, useState } from 'react';
 import { useApi } from '../../../../contexts/ApiContext';
 import { useLocalState } from '../../../../states/LocalState';
 import { useUserState } from '../../../../states/UserState';
+import { useActionFocus } from '../useActionFocus';
 import { recordedTime } from './ExecutionFacts';
 import {
   type ObservationIntent,
@@ -93,6 +94,8 @@ function ObservationDraft({
   const [needsReview, setNeedsReview] = useState(false);
   const [busy, setBusy] = useState(false);
   const saving = useRef(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const resultFocus = useActionFocus(busy);
   const contextChanged =
     captureContext.machine !== work.machine ||
     captureContext.component !==
@@ -277,8 +280,28 @@ function ObservationDraft({
     }
   };
   return (
-    <Stack gap='xs' data-testid={`native-observation-${request.id}`}>
+    <Stack
+      {...resultFocus.props}
+      aria-label={t`Manual observation for request ${request.id}`}
+      gap='xs'
+      data-testid={`native-observation-${request.id}`}
+      onKeyDown={(event) => {
+        const target = event.target as HTMLElement;
+        if (
+          target.closest(
+            '[data-mantine-stop-propagation], [data-expanded], [role=combobox][aria-expanded=true], [aria-haspopup=listbox][aria-expanded=true]'
+          )
+        )
+          return;
+        if (opened && event.key === 'Escape' && !event.defaultPrevented) {
+          event.stopPropagation();
+          setOpened(false);
+          trigger.current?.focus();
+        }
+      }}
+    >
       <Button
+        ref={trigger}
         variant='subtle'
         size='sm'
         h='auto'
@@ -302,11 +325,7 @@ function ObservationDraft({
               {work.reference} · {t`Request ${request.id}`} · v{base.request}
             </Text>
             {receipt ? (
-              <Alert
-                color='blue'
-                title={t`Observation saved`}
-                aria-live='polite'
-              >
+              <Alert color='blue' title={t`Observation saved`}>
                 <Stack gap='xs'>
                   <Text size='sm'>{t`Correlated to Work ${work.id} · Request ${request.id} · Evidence ${receipt.id}`}</Text>
                   <Text size='sm'>
@@ -402,11 +421,7 @@ function ObservationDraft({
                 {contextChanged && intent && (
                   <Alert color='orange'>{t`Capture context changed. The original outcome remains unknown; the original intent is retained but cannot be retried against a different asset.`}</Alert>
                 )}
-                {notice && (
-                  <Alert color='orange' aria-live='polite'>
-                    {notice}
-                  </Alert>
-                )}
+                {notice && <Alert color='orange'>{notice}</Alert>}
                 <Group gap='sm'>
                   <Button
                     size='sm'
@@ -420,7 +435,7 @@ function ObservationDraft({
                           !text.trim() ||
                           request.status === 'resolved'))
                     }
-                    onClick={save}
+                    onClick={() => resultFocus.run(save)}
                   >
                     {intent
                       ? t`Retry original save`
@@ -432,7 +447,7 @@ function ObservationDraft({
                       size='sm'
                       mih={44}
                       disabled={busy}
-                      onClick={reviewLatest}
+                      onClick={() => resultFocus.run(reviewLatest)}
                     >{t`Review latest request`}</Button>
                   )}
                 </Group>

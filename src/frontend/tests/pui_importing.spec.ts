@@ -135,7 +135,7 @@ test('Importing - BOM', async ({ browser }) => {
   // Edit a row
   await page
     .getByRole('row', { name: 'Select record 1 2 Thumbnail' })
-    .getByLabel('row-action-menu-')
+    .getByTestId('row-action-menu-')
     .click();
   await page.getByRole('menuitem', { name: 'Edit' }).click();
   await page.getByRole('textbox', { name: 'text-field-raw_amount' }).fill('12');
@@ -149,7 +149,7 @@ test('Importing - BOM', async ({ browser }) => {
   // Submit a row
   await page
     .getByRole('row', { name: 'Select record 1 2 Thumbnail' })
-    .getByLabel('row-action-menu-')
+    .getByTestId('row-action-menu-')
     .click();
 
   await page.getByRole('menuitem', { name: 'Accept' }).click();

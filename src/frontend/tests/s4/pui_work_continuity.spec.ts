@@ -411,9 +411,7 @@ test('request discussion preserves its saved identity and older servers stay exp
   await expect(page.getByTestId('ai-chat-work-focus')).toContainText(
     'Request 401'
   );
-  await page
-    .getByRole('button', { name: 'close-ai-chat', exact: true })
-    .click();
+  await page.getByTestId('close-ai-chat').click();
   delete overview.work_continuity;
   overview.investigation!.requests = {
     available: false,

@@ -161,7 +161,7 @@ test('Purchasing - Manufacturer Parts', async ({ browser }) => {
   await page.getByRole('cell', { name: 'CPF0402B100KE1' }).waitFor();
 
   // Check data exporter
-  await page.getByRole('button', { name: 'table-export-data' }).click();
+  await page.getByTestId('table-export-data').click();
   await page.getByText('Select export plugin').waitFor();
   await page
     .getByRole('combobox', { name: 'choice-field-export_plugin' })
@@ -623,7 +623,7 @@ test('Purchase Orders - Custom Location', async ({ browser }) => {
   // First, ensure that the row has sufficient quantity to receive
   // This is required to ensure the robustness of this test,
   // as the test data may be modified by other tests
-  await row.getByLabel(/row-action-menu-/i).click();
+  await row.getByTestId(/row-action-menu-/i).click();
   await page.getByRole('menuitem', { name: 'Edit' }).click();
 
   const quantityInput = page.getByRole('textbox', {
@@ -637,7 +637,7 @@ test('Purchase Orders - Custom Location', async ({ browser }) => {
 
   // Now, receive a single unit into a location *different* from the
   // order's default destination ("Mechanical Lab")
-  await row.getByLabel(/row-action-menu-/i).click();
+  await row.getByTestId(/row-action-menu-/i).click();
   await page.getByRole('menuitem', { name: 'Receive line item' }).click();
 
   await page.getByLabel('tree-field-location').fill('storage room a');

@@ -326,7 +326,7 @@ export function HandledByAimms({ value }: Readonly<{ value: unknown }>) {
         <Stack gap='xs'>
           <Group gap='xs'>
             <IconRobot size={18} />
-            <Title order={4}>{t`Handled by AIMMS`}</Title>
+            <Title order={2} size='h4'>{t`Handled by AIMMS`}</Title>
           </Group>
           <Text size='sm' c='dimmed'>
             {t`This server does not supply a record of AIMMS digital work for this work order. Nothing here means AIMMS did or did not act.`}
@@ -351,7 +351,7 @@ export function HandledByAimms({ value }: Readonly<{ value: unknown }>) {
         <Group justify='space-between' align='center' gap='xs'>
           <Group gap='xs'>
             <IconRobot size={18} />
-            <Title order={4} id='handled-by-aimms-title'>
+            <Title order={2} size='h4' id='handled-by-aimms-title'>
               {t`Handled by AIMMS`}
             </Title>
             {checked.length > 0 && (

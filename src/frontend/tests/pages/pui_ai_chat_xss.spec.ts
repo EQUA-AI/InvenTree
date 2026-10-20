@@ -68,7 +68,7 @@ test('hostile model markdown renders inert: no DOM injection, no unsafe hrefs', 
   await page.reload();
   await openChat(page);
   await page.getByPlaceholder('Type a message...').fill('show me the manual');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
 
   // The answer rendered (benign surrounding text is visible).
   await expect(page.getByText('stays text too')).toBeVisible();

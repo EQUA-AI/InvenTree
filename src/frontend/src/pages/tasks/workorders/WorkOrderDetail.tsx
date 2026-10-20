@@ -46,6 +46,7 @@ import {
   useParams,
   useSearchParams
 } from 'react-router-dom';
+import { WorkTableScroll } from '../../../components/tables/WorkTableScroll';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
@@ -87,6 +88,7 @@ import {
   WorkContinuityConstraints,
   WorkContinuityHistory
 } from './execution/WorkContinuity';
+import { useWorkAssistantClearance } from './useWorkAssistantClearance';
 import classes from './workCompanion.module.css';
 import {
   type WorkPanel,
@@ -193,6 +195,7 @@ function WorkOrderWorkspace({
   const [params, setParams] = useSearchParams();
   const activePanel = workPanelState(params);
   const isPhone = useMediaQuery('(max-width: 47.99em)');
+  const assistantSurface = useWorkAssistantClearance(isPhone);
   const { ref: navigationRef, height: navigationHeight } =
     useElementSize<HTMLDivElement>();
   const workflowRef = useRef<HTMLDivElement>(null);
@@ -256,9 +259,12 @@ function WorkOrderWorkspace({
               c='dimmed'
               mb='sm'
             >{t`Operational tasks retain their own recorded status and links.`}</Text>
-            <Table.ScrollContainer minWidth={640}>
+            <WorkTableScroll
+              minWidth={640}
+              label={t`Board cards table, scroll for all columns`}
+            >
               <CardsTable cards={workOrder.cards ?? []} />
-            </Table.ScrollContainer>
+            </WorkTableScroll>
           </SectionCard>
         </Stack>
       )
@@ -273,12 +279,15 @@ function WorkOrderWorkspace({
             workOrder={workOrder}
             nativeFindings={
               workOrder.repair_packet?.findings.length ? (
-                <Table.ScrollContainer minWidth={900}>
+                <WorkTableScroll
+                  minWidth={900}
+                  label={t`Investigation findings table, scroll for all columns`}
+                >
                   <InvestigationSection
                     findings={workOrder.repair_packet.findings}
                     approvedScope={null}
                   />
-                </Table.ScrollContainer>
+                </WorkTableScroll>
               ) : (
                 <Alert
                   color='gray'
@@ -477,10 +486,15 @@ function WorkOrderWorkspace({
 
   return (
     <Stack
+      ref={assistantSurface}
+      component='main'
+      aria-labelledby='work-order-title'
       gap='md'
-      className={classes.workspace}
+      className={`${classes.workspace} ${classes.surface}`}
       style={
-        { '--work-navigation-height': `${navigationHeight}px` } as CSSProperties
+        {
+          '--work-navigation-height': `${navigationHeight}px`
+        } as CSSProperties
       }
     >
       <PageTitle title={`${workOrder.reference} - ${workOrder.title}`} />
@@ -493,14 +507,21 @@ function WorkOrderWorkspace({
         >
           <ActionIcon
             variant='default'
-            aria-label='work-order-back'
+            aria-label={t`Back to work list`}
+            data-testid='work-order-back'
+            size={isPhone ? 44 : 28}
             style={{ flexShrink: 0 }}
             onClick={() => navigate(-1)}
           >
             <IconArrowLeft size={16} />
           </ActionIcon>
           <Stack gap={2} style={{ minWidth: 0 }}>
-            <Title order={3} style={{ overflowWrap: 'anywhere' }}>
+            <Title
+              id='work-order-title'
+              order={1}
+              size='h3'
+              style={{ overflowWrap: 'anywhere' }}
+            >
               {workOrder.reference}: {workOrder.title}
             </Title>
             <Text size='sm' c='dimmed'>
@@ -612,7 +633,9 @@ function SectionCard({
       <Stack gap='sm'>
         <Group gap='xs'>
           {icon}
-          <Title order={4}>{title}</Title>
+          <Title order={2} size='h4'>
+            {title}
+          </Title>
         </Group>
         {children}
       </Stack>
@@ -691,7 +714,10 @@ function PartsTable({ parts }: Readonly<{ parts: WorkOrderPart[] }>) {
     return <Text c='dimmed'>{t`No required parts.`}</Text>;
 
   return (
-    <Table.ScrollContainer minWidth={680}>
+    <WorkTableScroll
+      minWidth={680}
+      label={t`Required parts table, scroll for all columns`}
+    >
       <Table striped>
         <Table.Thead>
           <Table.Tr>
@@ -726,7 +752,7 @@ function PartsTable({ parts }: Readonly<{ parts: WorkOrderPart[] }>) {
           ))}
         </Table.Tbody>
       </Table>
-    </Table.ScrollContainer>
+    </WorkTableScroll>
   );
 }
 
@@ -738,14 +764,17 @@ function DependenciesTable({
   }
 
   return (
-    <Table.ScrollContainer minWidth={620}>
-      <Table>
+    <WorkTableScroll
+      minWidth={620}
+      label={t`Dependencies table, scroll for all columns`}
+    >
+      <Table className={classes.dependencyTable}>
         <Table.Thead>
           <Table.Tr>
-            <Table.Th>{t`Direction`}</Table.Th>
-            <Table.Th>{t`Work order`}</Table.Th>
-            <Table.Th>{t`Constraint`}</Table.Th>
-            <Table.Th>{t`Status`}</Table.Th>
+            <Table.Th w='16%'>{t`Direction`}</Table.Th>
+            <Table.Th w='44%'>{t`Work order`}</Table.Th>
+            <Table.Th w='16%'>{t`Constraint`}</Table.Th>
+            <Table.Th w='24%'>{t`Status`}</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
@@ -776,7 +805,7 @@ function DependenciesTable({
           ))}
         </Table.Tbody>
       </Table>
-    </Table.ScrollContainer>
+    </WorkTableScroll>
   );
 }
 

@@ -203,7 +203,7 @@ test('a question from a Work panel is acknowledged exactly, sent with its receip
   const observed = await mockWorkAssistant(page);
   const composer = await askFromWork(page, 'parts');
   await composer.fill('Which parts are still outstanding?');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
 
   await expect(
     page.getByText('Two parts are still to be issued for WO-73.', {
@@ -251,7 +251,7 @@ test('a refused acknowledgement sends nothing, keeps the draft, and the Work can
   const observed = await mockWorkAssistant(page, { reply: () => reply });
   const composer = await askFromWork(page, 'verify');
   await composer.fill('Is verification complete for this work?');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expectHeld(page, observed, 'Is verification complete for this work?');
   expect(observed.acknowledgements).toHaveLength(1);
   await page.screenshot({
@@ -261,7 +261,7 @@ test('a refused acknowledgement sends nothing, keeps the draft, and the Work can
 
   // Retrying asks again; it is still the user's same question.
   reply = 'confirm';
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByText('Two parts are still to be issued for WO-73.', {
       exact: true
@@ -278,7 +278,7 @@ test('removing a refused Work is the only way to send without it', async ({
   const observed = await mockWorkAssistant(page, { reply: () => 'refuse' });
   const composer = await askFromWork(page);
   await composer.fill('What is the next step?');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expectHeld(page, observed, 'What is the next step?');
 
   await page.getByRole('button', { name: 'Remove work order' }).click();
@@ -287,7 +287,7 @@ test('removing a refused Work is the only way to send without it', async ({
     page.getByRole('alert').filter({ hasText: 'Work order not confirmed' })
   ).toHaveCount(0);
   await expect(composer).toHaveValue('What is the next step?');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByText('Two parts are still to be issued for WO-73.', {
       exact: true
@@ -305,7 +305,7 @@ test('without the advertised capability nothing is acknowledged or sent', async 
   const observed = await mockWorkAssistant(page, { capable: false });
   const composer = await askFromWork(page);
   await composer.fill('Summarise this work.');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expectHeld(page, observed, 'Summarise this work.');
   await expect(
     page.getByText('this assistant cannot confirm a work order yet', {
@@ -323,7 +323,7 @@ test('a 200 naming another version is not an acknowledgement', async ({
   });
   const composer = await askFromWork(page);
   await composer.fill('Has this work changed?');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expectHeld(page, observed, 'Has this work changed?');
   expect(observed.acknowledgements).toHaveLength(1);
 });
@@ -346,7 +346,7 @@ test('repeated activation during acknowledgement asks once and sends once', asyn
   await composer.fill('Only once, please.');
   try {
     await page
-      .getByLabel('send-ai-chat-message')
+      .getByTestId('send-ai-chat-message')
       .evaluate((element: HTMLButtonElement) => {
         element.click();
         element.click();
@@ -354,7 +354,7 @@ test('repeated activation during acknowledgement asks once and sends once', asyn
     await expect.poll(() => attempts).toBe(1);
     // The composer and attachments hold still while the Work is confirmed.
     await expect(composer).toBeDisabled();
-    await expect(page.getByLabel('attach-ai-chat-file')).toBeDisabled();
+    await expect(page.getByTestId('attach-ai-chat-file')).toBeDisabled();
     expect(observed.sends).toHaveLength(0);
   } finally {
     release();
@@ -390,7 +390,7 @@ test('following the answer back returns to the same panel with the unsaved nativ
   await page.getByRole('button', { name: 'Ask about this work' }).click();
   const composer = page.getByRole('textbox', { name: 'Message', exact: true });
   await composer.fill('What is still needed before I can close this out?');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByText('Two parts are still to be issued for WO-73.', {
       exact: true
@@ -485,7 +485,7 @@ test.describe('reload', () => {
     });
     await page.clock.install({ time: new Date('2026-10-20T08:00:00Z') });
     await page.goto('/playwright/aichat-drawer.html?actor=reader');
-    await page.getByLabel('open-ai-chat').waitFor();
+    await page.getByTestId('open-ai-chat').waitFor();
     await page.clock.pauseAt(new Date('2026-10-20T08:01:00Z'));
     await openChat(page);
     const chip = page.getByTestId('ai-chat-message-work-focus');

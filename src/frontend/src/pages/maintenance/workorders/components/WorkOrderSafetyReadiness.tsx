@@ -1,6 +1,7 @@
 import { t } from '@lingui/core/macro';
 import { Alert, Badge, Card, Group, Stack, Table, Text } from '@mantine/core';
 import { IconCircleCheck, IconLock, IconShieldLock } from '@tabler/icons-react';
+import { WorkTableScroll } from '../../../../components/tables/WorkTableScroll';
 
 import type { RepairGate } from '@lib/types/WorkOrderOverview';
 
@@ -75,7 +76,10 @@ export function WorkOrderSafetyReadiness({
             {t`No safety gates are attached to this repair.`}
           </Text>
         ) : (
-          <Table.ScrollContainer minWidth={720}>
+          <WorkTableScroll
+            minWidth={720}
+            label={t`Safety gates table, scroll for all columns`}
+          >
             <Table striped>
               <Table.Thead>
                 <Table.Tr>
@@ -125,7 +129,7 @@ export function WorkOrderSafetyReadiness({
                 ))}
               </Table.Tbody>
             </Table>
-          </Table.ScrollContainer>
+          </WorkTableScroll>
         )}
       </Stack>
     </Card>

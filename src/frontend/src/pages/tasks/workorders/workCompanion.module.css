@@ -1,7 +1,75 @@
+.surface {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  margin-inline-end: var(--work-assistant-width, 0px);
+}
+
+.surface :global(.mantine-Button-root) {
+  max-width: 100%;
+  height: auto;
+  min-height: var(--button-height);
+  padding-block: 0.4em;
+}
+
+.surface :global(.mantine-Button-label) {
+  height: auto;
+  overflow: visible;
+  line-height: var(--mantine-line-height);
+  white-space: normal;
+  text-align: start;
+}
+
+.surface :global(.mantine-Badge-root) {
+  max-width: 100%;
+  height: auto;
+  min-height: var(--badge-height);
+  border-radius: var(--mantine-radius-sm);
+}
+
+.surface :global(.mantine-Badge-label) {
+  line-height: var(--mantine-line-height);
+  white-space: normal;
+  overflow: visible;
+}
+
+.surface :where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 3px;
+}
+
+.surface :where(a, button, input, textarea, select, summary, [tabindex]) {
+  scroll-margin-top: calc(var(--app-sticky-header-height, 0px) + var(--mantine-spacing-md));
+}
+
+.surface [data-work-scroll-viewport]:focus-visible {
+  outline-offset: -2px;
+}
+
+.surface [data-work-scroll-viewport] a {
+  /* Wrapped inline fragments can leave the link's focus box outside the
+     viewport after native focus scrolling. Keep one box for both axes and
+     the measured phone-dock scroll margin, without truncating its text. */
+  display: inline-block;
+  max-inline-size: calc(var(--work-scroll-width, 100vw) - 8px);
+}
+
 .workspace {
   min-width: 0;
   overflow-wrap: anywhere;
   padding: var(--mantine-spacing-md);
+  margin-inline-end: var(--work-assistant-width, 0px);
+}
+
+.dependencyTable {
+  table-layout: fixed;
+}
+
+.dependencyTable :global(.mantine-Badge-label) {
+  min-width: 0;
+}
+
+.workflow {
+  scroll-margin-top: calc(var(--app-sticky-header-height, 0px) + var(--mantine-spacing-md));
 }
 
 .navigation {
@@ -13,18 +81,22 @@
   min-width: max-content;
 }
 
+.navigation :focus-visible {
+  outline-offset: -3px;
+}
+
 .boundary {
   display: none;
 }
 
 @media (max-width: 47.99em) {
   .workspace {
+    margin-inline-end: 0;
     padding: var(--mantine-spacing-sm);
     padding-bottom: calc(var(--work-navigation-height, 160px) + var(--mantine-spacing-md));
   }
 
-  .workspace :where(button, a, input, textarea, select, [tabindex]) {
-    scroll-margin-top: 100px;
+  .workspace :where(button, a, input, textarea, select, summary, [tabindex]) {
     scroll-margin-bottom: calc(var(--work-navigation-height, 160px) + var(--mantine-spacing-md));
   }
 
@@ -43,7 +115,6 @@
 
   .workflow {
     min-width: 0;
-    scroll-margin-top: 80px;
   }
 
   .navigation {

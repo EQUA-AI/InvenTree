@@ -90,7 +90,7 @@ test('a refused machine context sends nothing and preserves the typed draft for 
   const composer = await openContext(page);
   await composer.fill('Keep this exact inspection question.');
   const chooser = page.waitForEvent('filechooser');
-  await page.getByLabel('attach-ai-chat-file').click();
+  await page.getByTestId('attach-ai-chat-file').click();
   await (await chooser).setFiles({
     name: 'inspection-note.csv',
     mimeType: 'text/csv',
@@ -99,7 +99,7 @@ test('a refused machine context sends nothing and preserves the typed draft for 
   await expect(
     page.getByText('inspection-note.csv', { exact: true })
   ).toBeVisible();
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expectBlocked(
     page,
     streamRequests,
@@ -135,7 +135,7 @@ test('a refused machine context sends nothing and preserves the typed draft for 
   }
   if (originalViewport) await page.setViewportSize(originalViewport);
   refused = false;
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByText('Golden typed response', { exact: true })
   ).toBeVisible();
@@ -163,7 +163,7 @@ for (const status of [404, 503]) {
     });
     const composer = await openContext(page);
     await composer.fill('Keep the bounded question.');
-    await page.getByLabel('send-ai-chat-message').click();
+    await page.getByTestId('send-ai-chat-message').click();
     await expectBlocked(page, streamRequests, 'Keep the bounded question.');
   });
 }
@@ -193,14 +193,14 @@ test('missing capability blocks the launch until the user explicitly removes the
   );
   const composer = await openContext(page);
   await composer.fill('Hello');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expectBlocked(page, streamRequests, 'Hello');
   expect(foundation.scopeMutations).toHaveLength(0);
-  await page.getByLabel('dismiss-routing-hint').click();
+  await page.getByTestId('dismiss-routing-hint').click();
   await expect(
     page.getByRole('alert').filter({ hasText: 'Machine context not confirmed' })
   ).toHaveCount(0);
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByText('Golden typed response', { exact: true })
   ).toBeVisible();
@@ -237,7 +237,7 @@ for (const mismatch of [
     });
     const composer = await openContext(page);
     await composer.fill('Retain exact context.');
-    await page.getByLabel('send-ai-chat-message').click();
+    await page.getByTestId('send-ai-chat-message').click();
     await expectBlocked(page, streamRequests, 'Retain exact context.');
   });
 }
@@ -260,7 +260,7 @@ test('a native version conflict refreshes and acknowledges the exact scope once 
   });
   const composer = await openContext(page);
   await composer.fill('Use the acknowledged scope.');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByText('Golden typed response', { exact: true })
   ).toBeVisible();
@@ -291,7 +291,7 @@ test('an unavailable conflict refresh does not guess version zero or resend', as
   });
   const composer = await openContext(page);
   await composer.fill('Do not guess the current version.');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expectBlocked(
     page,
     streamRequests,
@@ -319,14 +319,14 @@ test('repeated activation during acknowledgement produces only one scope mutatio
   await composer.fill('Only one send.');
   try {
     await page
-      .getByLabel('send-ai-chat-message')
+      .getByTestId('send-ai-chat-message')
       .evaluate((element: HTMLButtonElement) => {
         element.click();
         element.click();
       });
     await expect.poll(() => attempts).toBe(1);
     await expect(composer).toBeDisabled();
-    await expect(page.getByLabel('attach-ai-chat-file')).toBeDisabled();
+    await expect(page.getByTestId('attach-ai-chat-file')).toBeDisabled();
     expect(streamRequests).toHaveLength(0);
   } finally {
     releaseScope();
@@ -355,14 +355,14 @@ test('closing during acknowledgement cancels the old send without clearing the r
   });
   const composer = await openContext(page);
   await composer.fill('Do not send after closing.');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   try {
     await expect.poll(() => started).toBe(true);
-    await page.getByLabel('close-ai-chat').click();
+    await page.getByTestId('close-ai-chat').click();
   } finally {
     releaseScope();
   }
-  await page.getByLabel('open-ai-chat').click();
+  await page.getByTestId('open-ai-chat').click();
   await expect(composer).toHaveValue('Do not send after closing.');
   await expect(page.getByTestId('ai-chat-routing-hint')).toHaveCount(0);
   expect(streamRequests).toHaveLength(0);
@@ -398,7 +398,7 @@ test('a late canonical scope read cannot overwrite a newer acknowledged scope', 
   try {
     await expect.poll(() => started).toBe(true);
     await composer.fill('Confirm machine seven first.');
-    await page.getByLabel('send-ai-chat-message').click();
+    await page.getByTestId('send-ai-chat-message').click();
     await expect(
       page.getByText('Golden typed response', { exact: true })
     ).toBeVisible();
@@ -408,7 +408,7 @@ test('a late canonical scope read cannot overwrite a newer acknowledged scope', 
   }
   await scopeResponse;
   await composer.fill('Keep the confirmed scope for the next message.');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect.poll(() => streamRequests.length).toBe(2);
   expect(streamRequests[1].body?.expected_scope_version).toBe(3);
 });
@@ -427,7 +427,7 @@ test('a matching display name never hides a different canonical machine identity
   );
   await expect(page.getByTestId('ai-chat-routing-hint')).toBeVisible();
   await composer.fill('Use machine seven, not its namesake.');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByText('Golden typed response', { exact: true })
   ).toBeVisible();
