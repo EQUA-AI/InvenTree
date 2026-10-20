@@ -1,12 +1,13 @@
 import { i18n } from '@lingui/core';
 import { I18nProvider } from '@lingui/react';
 import { Button, Group, MantineProvider, Stack, Text } from '@mantine/core';
+import { useAIChatState } from '../src/states/AIChatState';
 import '@mantine/core/styles.css';
 import { QueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { Link, MemoryRouter, useLocation } from 'react-router-dom';
 
 import { ApiProvider } from '../src/contexts/ApiContext';
 
@@ -31,6 +32,7 @@ const client = new QueryClient({
  * navigation; they are not product chrome.
  */
 function Harness() {
+  const focus = useAIChatState((state) => state.workFocusHint);
   const [selected, setSelected] = useState<TwinPartId>('machine');
   const [mode, setMode] = useState<TwinMode>('assembled');
   const [labels, setLabels] = useState(true);
@@ -97,6 +99,10 @@ function Harness() {
       <Text data-testid='fixture-selected'>{selected}</Text>
       <Text data-testid='fixture-polls'>{polls}</Text>
       <FixtureLocation />
+      <Link to='?position=bearing'>Fixture return to bearing</Link>
+      <output hidden data-testid='fixture-reference-focus'>
+        {JSON.stringify(focus?.component ?? null)}
+      </output>
       {mounted &&
         (params.get('kind') === 'panel' ? (
           <EquipmentViewPanel

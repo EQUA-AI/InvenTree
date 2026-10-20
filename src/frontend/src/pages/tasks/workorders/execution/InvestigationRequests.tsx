@@ -1,3 +1,4 @@
+import { displayArtifact, displayRequest } from '@lib/types/CanonicalDisplay';
 import type {
   InvestigationRequest,
   InvestigationRequests as Requests
@@ -63,7 +64,7 @@ export function InvestigationRequests({
         title={t`Request queue unavailable`}
       >{t`The server did not supply the saved queue. Refresh the Work before continuing.`}</Alert>
     );
-  const items = requests.items;
+  const items = requests.items.map((row) => displayRequest(row).record);
   const unresolved = items.filter((r) => r.status !== 'resolved');
   const selected = items.find(
     (r) => String(r.id) === params.get('investigation_request')
@@ -218,7 +219,7 @@ export function InvestigationRequests({
             )}
             {r.artifacts.map((a) => (
               <Paper
-                key={a.id}
+                key={displayArtifact(a).source.id}
                 withBorder
                 p='xs'
                 data-testid={`investigation-artifact-${a.id}`}

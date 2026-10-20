@@ -79,7 +79,7 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 
 # Configure logging.
 #
@@ -1055,6 +1055,7 @@ async def list_threads(
             # P02/P33: Work-focus acknowledgement, the receipt on /chat and
             # /chat/stream, and the saved-turn focus read all exist.
             "work_focus": True,
+            "component_evidence_focus": True,
             "investigation_request_focus": True,
             # S10: evidence-set expansion endpoints exist while the gate is
             # not "off" (rows only exist once the executor writes them).
@@ -1176,6 +1177,9 @@ async def get_thread(
                     # owner-only like the route facts; a grantee sees null.
                     "work_focus": None if shared else message.metadata.get("work_focus"),
                     "work_focus_state": focus_states.get(message.pk),
+                    "work_focus_reference_states": getattr(focus_states, "references", {}).get(
+                        message.pk
+                    ),
                     "provenance": _persisted_provenance(message.metadata),
                     # S28: server-observed entity chips survive reload.
                     "entities": message.metadata.get("entities"),
@@ -1724,12 +1728,23 @@ async def set_thread_scope(thread_id: str, request: ThreadScopeUpdateRequest) ->
 class WorkFocusAcknowledgeRequest(BaseModel):
     """Ask to focus the next turn on one exact native Work record."""
 
-    work_order_id: StrictInt = Field(gt=0)
+    model_config = ConfigDict(extra="forbid")
+
+    work_order_id: StrictInt | None = Field(default=None, gt=0)
     #: The ``lifecycle_version`` the client is showing. A different current
     #: version is refused, so a stale page cannot focus a changed record.
-    expected_version: StrictInt = Field(gt=0)
+    expected_version: StrictInt | None = Field(default=None, gt=0)
     request_id: StrictInt | None = Field(default=None, gt=0)
     request_version: StrictInt | None = Field(default=None, gt=0)
+    component: dict[str, Any] | None = None
+    evidence: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def work_identity_pair(self):
+        """Standalone references omit both Work coordinates; Work keeps both."""
+        if (self.work_order_id is None) != (self.expected_version is None):
+            raise ValueError("Work identity requires both coordinates")
+        return self
 
 
 @app.post("/threads/{thread_id}/work-focus")
@@ -1754,6 +1769,11 @@ async def acknowledge_work_focus(
             thread_id,
             request.work_order_id,
             expected_version=request.expected_version,
+            **(
+                {"component": request.component, "evidence": request.evidence}
+                if request.component is not None or request.evidence is not None
+                else {}
+            ),
             **(
                 {"request_id": request.request_id, "request_version": request.request_version}
                 if request.request_id is not None or request.request_version is not None

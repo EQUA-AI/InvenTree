@@ -1,3 +1,4 @@
+import { displayUpdate } from '@lib/types/CanonicalDisplay';
 import type { CloseoutAmendment } from '@lib/types/Closeout';
 import type {
   StructuredCloseoutOverview,
@@ -1026,9 +1027,9 @@ export function CloseoutPanel({
         <details>
           <summary>{t`Recorded follow-up effects`}</summary>
           {effectsQuery.data.map((effect) => (
-            <Text size='sm' key={effect.id}>
-              {effect.effect_type} · {effect.status} · {t`Attempts`}:{' '}
-              {effect.attempts}
+            <Text size='sm' key={displayUpdate(effect).source.id}>
+              {effect.effect_type} · {displayUpdate(effect).state} ·{' '}
+              {t`Attempts`}: {effect.attempts}
             </Text>
           ))}
         </details>

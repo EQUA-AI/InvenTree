@@ -144,7 +144,7 @@ import type { EvidenceAnalysisAttachment } from '../aichat/evidenceAnalysis';
 import { composeAnswerMarkdown } from '../aichat/evidenceFormat';
 import { hintIsRedundant } from '../aichat/scopeContext';
 import type { ThreadDeleteResult } from '../aichat/threadDeletion';
-import { workFocusReturnPath } from '../aichat/workFocus';
+import { focusReturnPath } from '../aichat/workFocus';
 import RiskRadarDrawerBadge from '../riskradar/RiskRadarDrawerBadge';
 
 type AIChatDrawerTab = 'chat' | 'approvals' | 'history' | 'mail';
@@ -1312,6 +1312,7 @@ function AIChatSessionDrawer({
     scopeConflict,
     setThreadScope,
     workFocusCapable,
+    referenceFocusCapable,
     requestFocusCapable,
     acknowledgeWorkFocus,
     refreshThreadScope,
@@ -1753,6 +1754,8 @@ function AIChatSessionDrawer({
         // user's explicit choice to ask without it.
         if (
           !workFocusCapable ||
+          (!!(workFocusHint.component || workFocusHint.evidence) &&
+            !referenceFocusCapable) ||
           (workFocusHint.requestId !== undefined && !requestFocusCapable) ||
           activeThreadShared
         ) {
@@ -1769,7 +1772,9 @@ function AIChatSessionDrawer({
             workFocusHint.workOrderId,
             workFocusHint.lifecycleVersion,
             workFocusHint.requestId,
-            workFocusHint.requestVersion
+            workFocusHint.requestVersion,
+            workFocusHint.component,
+            workFocusHint.evidence
           );
         } catch {
           acknowledged = { ok: false, code: 'error' };
@@ -1798,11 +1803,7 @@ function AIChatSessionDrawer({
           workFocus: {
             identity,
             label: workFocusHint.label,
-            returnPath: workFocusReturnPath(
-              identity.work_order_id,
-              workFocusHint.returnPath,
-              identity.request_id
-            )
+            returnPath: focusReturnPath(identity, workFocusHint.returnPath)
           }
         });
         if (workFocusHint.requestId === undefined) clearWorkFocus();
@@ -1880,6 +1881,7 @@ function AIChatSessionDrawer({
       workFocusHint,
       requestFocusCapable,
       workFocusCapable,
+      referenceFocusCapable,
       acknowledgeWorkFocus,
       clearWorkFocus
     ]
@@ -2574,7 +2576,9 @@ function AIChatSessionDrawer({
                     leftSection={<IconClipboardList size={12} />}
                     title={workFocusHint.label}
                     styles={
-                      workFocusHint.requestId
+                      workFocusHint.requestId ||
+                      workFocusHint.component ||
+                      workFocusHint.evidence
                         ? {
                             root: { height: 'auto' },
                             label: {
@@ -2590,14 +2594,25 @@ function AIChatSessionDrawer({
                         size='xs'
                         variant='transparent'
                         color='teal'
-                        aria-label={t`Remove work order`}
+                        aria-label={
+                          workFocusHint.component
+                            ? t`Remove reference position`
+                            : workFocusHint.evidence
+                              ? t`Remove evidence`
+                              : t`Remove work order`
+                        }
                         onClick={clearWorkFocus}
                       >
                         <IconX size={10} />
                       </ActionIcon>
                     }
                   >
-                    {t`Asking about work order`}: {workFocusHint.label}
+                    {workFocusHint.component
+                      ? t`Asking about reference position`
+                      : workFocusHint.evidence
+                        ? t`Asking about recorded evidence`
+                        : t`Asking about work order`}
+                    : {workFocusHint.label}
                     {workFocusHint.requestId
                       ? ` · Request ${workFocusHint.requestId}`
                       : ''}
@@ -2610,15 +2625,19 @@ function AIChatSessionDrawer({
                   title={
                     workFocusHint.requestId !== undefined
                       ? t`Investigation request not confirmed`
-                      : t`Work order not confirmed`
+                      : workFocusHint.component || workFocusHint.evidence
+                        ? t`Reference not confirmed`
+                        : t`Work order not confirmed`
                   }
                 >
                   <Text size='sm'>
-                    {workFocusHint.requestId !== undefined
-                      ? t`No message was sent: this investigation request could not be confirmed at the shown revision. Your draft and attachments are kept. Retry sending, reload Diagnose if the request has changed, or remove the selection to ask without it.`
-                      : workFocusLaunchError === 'unsupported'
-                        ? t`No message was sent: this assistant cannot confirm a work order yet. Your draft and attachments are kept. Remove the work order to ask without it.`
-                        : t`No message was sent: the work order could not be confirmed as shown. Your draft and attachments are kept. Retry sending, reload the work order if it has changed, or remove the work order to ask without it.`}
+                    {workFocusHint.component || workFocusHint.evidence
+                      ? t`No message was sent: the exact reference could not be confirmed. Your draft and attachments are kept. Reload the source if it has changed, retry, or remove the selection to ask without it.`
+                      : workFocusHint.requestId !== undefined
+                        ? t`No message was sent: this investigation request could not be confirmed at the shown revision. Your draft and attachments are kept. Retry sending, reload Diagnose if the request has changed, or remove the selection to ask without it.`
+                        : workFocusLaunchError === 'unsupported'
+                          ? t`No message was sent: this assistant cannot confirm a work order yet. Your draft and attachments are kept. Remove the work order to ask without it.`
+                          : t`No message was sent: the work order could not be confirmed as shown. Your draft and attachments are kept. Retry sending, reload the work order if it has changed, or remove the work order to ask without it.`}
                   </Text>
                 </Alert>
               )}

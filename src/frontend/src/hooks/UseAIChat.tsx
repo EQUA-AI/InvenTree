@@ -1,3 +1,7 @@
+import type {
+  ComponentFocusReference,
+  EvidenceFocusReference
+} from '@lib/types/AimmsWire.generated';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { api, queryClient } from '../App';
@@ -568,6 +572,7 @@ interface ServerMessage {
   work_focus?: unknown;
   /** P02/P33: how that Work stands now for the owner (re-checked on read). */
   work_focus_state?: unknown;
+  work_focus_reference_states?: unknown;
   response_state?: string;
 }
 
@@ -722,7 +727,11 @@ async function fetchServerThread(
         // P02/P33: the answer's Work focus reloads as ids only; a malformed
         // value is dropped rather than shown as a link.
         workFocus:
-          reloadedWorkFocus(m.work_focus, m.work_focus_state) ?? undefined
+          reloadedWorkFocus(
+            m.work_focus,
+            m.work_focus_state,
+            m.work_focus_reference_states
+          ) ?? undefined
       })
     );
 
@@ -861,10 +870,12 @@ export type WorkFocusResult =
 async function requestWorkFocus(
   threadId: string,
   host: string,
-  workOrderId: number,
-  expectedVersion: number,
+  workOrderId: number | null,
+  expectedVersion: number | null,
   requestId?: number,
-  requestVersion?: number
+  requestVersion?: number,
+  component?: ComponentFocusReference,
+  evidence?: EvidenceFocusReference
 ): Promise<WorkFocusResult> {
   if ((requestId === undefined) !== (requestVersion === undefined))
     return { ok: false, code: 'invalid_work_focus_acknowledgement' };
@@ -881,6 +892,8 @@ async function requestWorkFocus(
         body: JSON.stringify({
           work_order_id: workOrderId,
           expected_version: expectedVersion,
+          ...(component ? { component } : {}),
+          ...(evidence ? { evidence } : {}),
           ...(requestId !== undefined
             ? { request_id: requestId, request_version: requestVersion }
             : {})
@@ -894,7 +907,9 @@ async function requestWorkFocus(
         workOrderId,
         expectedVersion,
         requestId,
-        requestVersion
+        requestVersion,
+        component,
+        evidence
       );
       return acknowledgement
         ? { ok: true, acknowledgement }
@@ -1117,6 +1132,7 @@ export function useAIChat(config: AIChatConfig = {}) {
   // P02/P33: the server advertises the Work-focus contract; without it a
   // Work launch sends nothing rather than a question without its Work.
   const [workFocusCapable, setWorkFocusCapable] = useState(false);
+  const [referenceFocusCapable, setReferenceFocusCapable] = useState(false);
   const [requestFocusCapable, setRequestFocusCapable] = useState(false);
   // S1: a send bounced on scope_version_conflict; the bounced turn is kept
   // for one-click resend once the refreshed scope has been reviewed.
@@ -1291,6 +1307,9 @@ export function useAIChat(config: AIChatConfig = {}) {
       // S1: the capability advertisement gates the whole scope feature.
       setScopeCapable(Boolean(serverData.capabilities?.thread_scope));
       setWorkFocusCapable(Boolean(serverData.capabilities?.work_focus));
+      setReferenceFocusCapable(
+        Boolean(serverData.capabilities?.component_evidence_focus)
+      );
       setRequestFocusCapable(
         Boolean(serverData.capabilities?.investigation_request_focus)
       );
@@ -2423,10 +2442,12 @@ export function useAIChat(config: AIChatConfig = {}) {
    */
   const acknowledgeWorkFocus = useCallback(
     async (
-      workOrderId: number,
-      expectedVersion: number,
+      workOrderId: number | null,
+      expectedVersion: number | null,
       requestId?: number,
-      requestVersion?: number
+      requestVersion?: number,
+      component?: ComponentFocusReference,
+      evidence?: EvidenceFocusReference
     ): Promise<WorkFocusResult> => {
       const threadId = activeThreadIdRef.current;
       const version = selectionVersionRef.current;
@@ -2441,7 +2462,9 @@ export function useAIChat(config: AIChatConfig = {}) {
         workOrderId,
         expectedVersion,
         requestId,
-        requestVersion
+        requestVersion,
+        component,
+        evidence
       );
       if (!currentSelection()) return { ok: false, code: 'error' };
       return result;
@@ -3559,7 +3582,9 @@ export function useAIChat(config: AIChatConfig = {}) {
         workFocus.identity.work_order_id,
         workFocus.identity.lifecycle_version,
         workFocus.identity.request_id ?? undefined,
-        workFocus.identity.request_version ?? undefined
+        workFocus.identity.request_version ?? undefined,
+        workFocus.identity.component ?? undefined,
+        workFocus.identity.evidence ?? undefined
       );
       if (!result.ok) {
         setError(
@@ -3620,6 +3645,7 @@ export function useAIChat(config: AIChatConfig = {}) {
     scopeCapable,
     // P02/P33: Work-focus acknowledgement for the active thread.
     workFocusCapable,
+    referenceFocusCapable,
     requestFocusCapable,
     acknowledgeWorkFocus,
     scopeConflict,

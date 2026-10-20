@@ -456,6 +456,8 @@ class CloseoutReadingList(CloseoutCommandView):
             CloseoutReading.objects
             .filter(work_order=work_order)
             .select_related('recorded_by')
+            # Each row's focus revision pins its evidence links.
+            .prefetch_related('evidence_links')
             .order_by('pk')
         )
         return Response(CloseoutReadingSerializer(rows, many=True).data)

@@ -284,14 +284,38 @@ class Command(BaseCommand):
         from ai.core.analysis.wire import (
             WORK_FOCUS_ERROR_CODES,
             WORK_FOCUS_STATES,
+            ComponentFocusReference,
+            EvidenceFocusReference,
             SavedTurnWorkFocus,
             WorkFocusAcknowledgement,
             WorkFocusAcknowledgeRequest,
             WorkFocusIdentity,
         )
 
-        sections.append(_emit_model_interface(WorkFocusIdentity))
-        sections.append(_emit_model_interface(WorkFocusAcknowledgeRequest))
+        sections.append(_emit_model_interface(ComponentFocusReference))
+        sections.append(_emit_model_interface(EvidenceFocusReference))
+        sections.append(
+            _emit_model_interface(
+                WorkFocusIdentity,
+                optional_fields={
+                    'request_id',
+                    'request_version',
+                    'component',
+                    'evidence',
+                },
+            )
+        )
+        sections.append(
+            _emit_model_interface(
+                WorkFocusAcknowledgeRequest,
+                optional_fields={
+                    'request_id',
+                    'request_version',
+                    'component',
+                    'evidence',
+                },
+            )
+        )
         sections.append(_emit_model_interface(WorkFocusAcknowledgement))
         sections.append(_emit_model_interface(SavedTurnWorkFocus))
         sections.append(
