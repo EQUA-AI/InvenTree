@@ -8,6 +8,7 @@ import { Alert, Badge, Group, List, Paper, Stack, Text } from '@mantine/core';
 import { useSearchParams } from 'react-router-dom';
 import { InvestigationArtifactReview } from '../../../../components/aichat/InvestigationArtifactReview';
 import { formatDate } from '../../../../defaults/formatters';
+import { OriginalMedia } from '../OriginalMedia';
 import { ContinueInvestigation } from './ContinueInvestigation';
 import { NativeObservationCapture } from './NativeObservationCapture';
 
@@ -232,6 +233,9 @@ export function InvestigationRequests({
                     <Text size='sm'>{t`Saved observation · Work ${workOrder.id} · Request ${r.id} · Evidence ${a.id}`}</Text>
                   )}
                   <InvestigationArtifactReview payload={a.payload} />
+                  {a.originals?.length ? (
+                    <OriginalMedia originals={a.originals} />
+                  ) : null}
                   <Text size='sm'>
                     {a.recorded_by_name || t`Recorder not recorded`} ·{' '}
                     {when(a.created_at)}

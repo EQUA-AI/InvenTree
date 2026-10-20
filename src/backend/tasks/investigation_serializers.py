@@ -1,5 +1,8 @@
 """Typed request/evidence boundaries for the investigation command service."""
 
+from django.utils.dateparse import parse_datetime
+from django.utils.timezone import is_aware
+
 from rest_framework import serializers
 
 from tasks.investigation_models import InvestigationArtifact, InvestigationRequest
@@ -97,6 +100,14 @@ class InvestigationRequestRevisionSerializer(InvestigationRequestSerializer):
 class InvestigationArtifactSerializer(serializers.ModelSerializer):
     """Append-only response; attachment is an id in the existing Work store."""
 
+    originals = serializers.SerializerMethodField()
+
+    def get_originals(self, obj):
+        """Immutable copies survive changes to the native Work attachment."""
+        from tasks.services.capture_originals import original_summary
+
+        return [original_summary(row) for row in obj.originals.all()]
+
     recorded_by_name = serializers.SerializerMethodField()
 
     class Meta:
@@ -153,6 +164,19 @@ class ArtifactFieldsSerializer(StrictFieldsSerializer):
         payload = attrs['payload']
         if not isinstance(payload, dict):
             raise serializers.ValidationError('Artifact payload must be an object.')
+        if 'recording_started_at' in payload:
+            serializers.DateTimeField().run_validation(payload['recording_started_at'])
+            raw = parse_datetime(str(payload['recording_started_at']))
+            if raw is None or not is_aware(raw):
+                raise serializers.ValidationError(
+                    'Recording start time must include a timezone.'
+                )
+        if 'recording_duration_ms' in payload:
+            value = payload['recording_duration_ms']
+            if type(value) is not int or value < 0:
+                raise serializers.ValidationError(
+                    'Recording duration must be nonnegative milliseconds.'
+                )
         required = {
             'observation': ('text',),
             'reading_set': ('readings', 'observed_at', 'conditions'),

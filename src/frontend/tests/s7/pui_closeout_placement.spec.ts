@@ -144,6 +144,14 @@ test('panel navigation retains the pending operation and its actual result in th
   page
 }, info) => {
   const { commands, setOverview } = await closeoutWork(page);
+  // This completion has no amendments; the shared fixture models an amended job.
+  await page.route(
+    '**/api/tasks/work-orders/73/closeout/amendments/',
+    (route) => {
+      expect(route.request().method()).toBe('GET');
+      return route.fulfill({ json: [] });
+    }
+  );
   let release: (() => void) | undefined;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
@@ -227,7 +235,19 @@ test('panel navigation retains the pending operation and its actual result in th
   await expect(status).toContainText('Record updated');
   await expect(status).toContainText('19 Oct 2026,');
   await expect(page.getByTestId('closeout-account')).toContainText(
-    'Accepted account'
+    'Completed account'
+  );
+  await expect(page.getByTestId('closeout-account')).toContainText(
+    'Completed by S0 synthetic fixture'
+  );
+  await expect(page.getByTestId('closeout-account')).toContainText(
+    'Acceptance: Not recorded'
+  );
+  await expect(page.getByTestId('closeout-account')).toContainText(
+    values.result
+  );
+  await expect(page.getByTestId('closeout-account')).not.toContainText(
+    'Accepted by'
   );
   await expect(
     page.getByRole('button', { name: 'Update maintenance record', exact: true })
@@ -237,5 +257,17 @@ test('panel navigation retains the pending operation and its actual result in th
   await containment(page);
   await status.screenshot({
     path: info.outputPath('account-confirmed-dark.png')
+  });
+  await page
+    .getByTestId('closeout-account')
+    .evaluate((element) =>
+      window.scrollTo(
+        0,
+        element.getBoundingClientRect().top + window.scrollY - 180
+      )
+    );
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('completed-account-dark.png')
   });
 });

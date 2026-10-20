@@ -121,6 +121,22 @@ REGISTRY: tuple[FlagEntry, ...] = (
     ),
     # --- Django plane (the historic settings.py bridge, order preserved) ---
     FlagEntry(
+        'AIMMS_CAPTURE_STORAGE_ALIAS',
+        'str',
+        'default',
+        'django',
+        config_key='aimms_capture_storage_alias',
+        description='Native storage alias for retained originals; migrate existing files before changing it',
+    ),
+    FlagEntry(
+        'AIMMS_CAPTURE_MAX_BYTES',
+        'int',
+        0,
+        'django',
+        config_key='aimms_capture_max_bytes',
+        description='Optional stricter capture byte limit; zero follows INVENTREE_UPLOAD_MAX_SIZE',
+    ),
+    FlagEntry(
         'AIMMS_WORK_ORDERS_ENABLED',
         'bool',
         False,

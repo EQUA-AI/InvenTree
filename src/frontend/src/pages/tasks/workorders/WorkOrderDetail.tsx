@@ -63,6 +63,7 @@ import { InvestigationSection } from '../../maintenance/workorders/components/In
 import { WorkOrderAlertContext } from '../../maintenance/workorders/components/WorkOrderAlertContext';
 import { WorkOrderProblemPanel } from '../../maintenance/workorders/components/WorkOrderProblemPanel';
 import { WorkOrderSafetyReadiness } from '../../maintenance/workorders/components/WorkOrderSafetyReadiness';
+import { AcceptedReport, AcceptedReportLinks } from './AcceptedReport';
 import { CloseoutLink } from './CloseoutLink';
 import { CloseoutPanel, WorkCloseoutReadings } from './CloseoutPanel';
 import { WorkAttachmentResource } from './WorkAttachmentResource';
@@ -345,6 +346,12 @@ function WorkOrderWorkspace({
       label: t`Closeout`,
       content: (
         <Stack gap='md'>
+          {workOrder.structured_closeout && (
+            <AcceptedReport
+              workId={workOrder.id}
+              reports={workOrder.structured_closeout.reports}
+            />
+          )}
           {(workOrder.maintenance_record || workOrder.structured_closeout) && (
             <CompletionCard
               maintenance={workOrder.maintenance_record}
@@ -379,6 +386,10 @@ function WorkOrderWorkspace({
       label: t`History`,
       content: (
         <Stack gap='md'>
+          <AcceptedReportLinks
+            reports={workOrder.structured_closeout?.reports}
+            title={t`Frozen closeout reports`}
+          />
           <MonitoringContinuity workOrder={workOrder} />
           <WorkContinuityHistory workOrder={workOrder} />
           <SectionCard title={t`Activity`} icon={<IconHistory size={18} />}>

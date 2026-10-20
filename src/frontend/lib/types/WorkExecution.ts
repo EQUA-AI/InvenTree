@@ -1,3 +1,4 @@
+import type { CaptureOriginal } from './Closeout';
 /**
  * R6 S4 Work execution projections carried by the work-order overview.
  *
@@ -148,6 +149,7 @@ export interface Investigation {
 }
 
 export interface InvestigationArtifact {
+  originals?: CaptureOriginal[];
   id: number;
   request: number;
   kind:

@@ -22,6 +22,7 @@ import {
 import dayjs from 'dayjs';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { OriginalMedia } from './OriginalMedia';
 import { ContinueInvestigation } from './execution/ContinueInvestigation';
 import { narrativeExcerpts } from './storyProvenance';
 
@@ -73,6 +74,9 @@ export function PreparedCloseout({
   updateAction?: ReactNode;
 }>) {
   const values = accepted ?? fields;
+  const verification = accepted?.verified_at
+    ? `${t`Verified by`} ${fact(accepted.verified_by_name)} · ${when(accepted.verified_at)}`
+    : t`Acceptance: Not recorded`;
   const labels: Record<string, string> = {
     cause: t`Cause`,
     action: t`Action taken`,
@@ -88,7 +92,7 @@ export function PreparedCloseout({
   const report = [
     `${workOrder.reference} · ${workOrder.title}`,
     accepted
-      ? `${t`Accepted account`} ${accepted.id} · ${when(accepted.completed_at)} · ${t`Accepted by`} ${fact(accepted.completed_by_name)}`
+      ? `${t`Completed account`} ${accepted.id} · ${when(accepted.completed_at)} · ${t`Completed by`} ${fact(accepted.completed_by_name)}\n${verification}`
       : `${t`Prepared account`} · ${t`Work version`} ${workOrder.lifecycle_version}`,
     ...Object.entries(labels).map(
       ([key, label]) =>
@@ -99,7 +103,9 @@ export function PreparedCloseout({
     `${t`Follow-up`}: ${fact(accepted ? accepted.follow_up : draftFollowUp)}`,
     `${t`Operating / service return`}: ${t`Not established by this account`}`,
     accepted
-      ? t`Accepted fields are preserved. Material and reading rows are current supporting records; a complete accepted report snapshot is not supplied by this server.`
+      ? accepted.reports?.length
+        ? t`This is the current account reference. Use the frozen closeout report above for the account and sources at completion.`
+        : t`Completed fields are preserved. Material and reading rows are current supporting records; a complete frozen report snapshot is not supplied by this server.`
       : t`Prepared draft; no record update has been submitted by preview or download.`,
     ...(sourceCapture
       ? Object.entries(proposal?.fields ?? {}).flatMap(([key, field]) =>
@@ -142,7 +148,7 @@ export function PreparedCloseout({
     ),
     ...(accepted?.original
       ? [
-          `${t`Original accepted snapshot`} · ${fact(accepted.content_hash)}\n${JSON.stringify(accepted.original)}`
+          `${t`Original completed account`} · ${fact(accepted.content_hash)}\n${JSON.stringify(accepted.original)}`
         ]
       : []),
     ...(readings ?? []).map(
@@ -179,7 +185,7 @@ export function PreparedCloseout({
             <Title order={4}>{t`Prepared maintenance account`}</Title>
             <Badge color={accepted ? 'green' : 'gray'}>
               {accepted
-                ? t`Accepted account`
+                ? t`Completed account`
                 : changed
                   ? t`Unsaved local changes`
                   : t`Prepared draft`}
@@ -187,9 +193,10 @@ export function PreparedCloseout({
           </Group>
           <Text size='xs' c='dimmed'>
             {accepted
-              ? `${t`Closeout id`}: ${accepted.id} · ${when(accepted.completed_at)} · ${t`Accepted by`} ${fact(accepted.completed_by_name)}`
+              ? `${t`Closeout id`}: ${accepted.id} · ${when(accepted.completed_at)} · ${t`Completed by`} ${fact(accepted.completed_by_name)}`
               : `${t`Work version`} ${workOrder.lifecycle_version} · ${t`Extraction is not a verified fact`}`}
           </Text>
+          {accepted && <Text size='sm'>{verification}</Text>}
           {Object.entries(labels).map(([key, label]) => {
             const decision =
               !accountLoading &&
@@ -300,10 +307,11 @@ export function PreparedCloseout({
           )}
           <Title order={5}>{t`Report preview`}</Title>
           {accepted && (
-            <Text
-              size='sm'
-              c='dimmed'
-            >{t`Accepted fields are preserved. Material and reading rows are current supporting records; a complete accepted report snapshot is not supplied by this server.`}</Text>
+            <Text size='sm' c='dimmed'>
+              {accepted.reports?.length
+                ? t`This is the current account reference. Use the frozen closeout report above for the account and sources at completion.`
+                : t`Completed fields are preserved. Material and reading rows are current supporting records; a complete frozen report snapshot is not supplied by this server.`}
+            </Text>
           )}
           <Text size='sm'>{t`The preview exports the displayed account and recorded source references. It does not update the maintenance record.`}</Text>
           {loading ? (
@@ -332,7 +340,7 @@ export function PreparedCloseout({
           {updateAction}
           {accepted && (
             <details>
-              <summary>{t`Original accepted snapshot`}</summary>
+              <summary>{t`Original completed account`}</summary>
               <Text size='xs' style={{ overflowWrap: 'anywhere' }}>
                 {t`Content reference`}: {fact(accepted.content_hash)}
               </Text>
@@ -422,6 +430,39 @@ export function PreparedCloseout({
                       t`Not supplied for this capture`}
                   </Text>
                 )}
+                <OriginalMedia originals={capture.originals} />
+                {!!capture.source_spans?.length && (
+                  <details>
+                    <summary>{t`Original source spans`}</summary>
+                    <Stack gap='xs' mt='xs'>
+                      {capture.source_spans.map((span) => (
+                        <Stack
+                          gap={3}
+                          key={`${span.original_id}-${span.transcript_revision}`}
+                          style={{ overflowWrap: 'anywhere' }}
+                        >
+                          <Text size='sm'>
+                            {t`Original media`}:{' '}
+                            {capture.originals?.find(
+                              (original) => original.id === span.original_id
+                            )?.filename ?? span.original_id}
+                          </Text>
+                          <Text size='xs'>
+                            {t`Transcript revision`}: {span.transcript_revision}
+                          </Text>
+                          <Text size='xs'>
+                            {span.segments.length
+                              ? t`${span.segments.length} supplied transcript segments are retained with this source.`
+                              : t`Audio segment timing was not supplied.`}
+                          </Text>
+                        </Stack>
+                      ))}
+                      <Text size='xs' c='dimmed'>
+                        {t`Exact story ranges and supplied segment references are retained in the snapshot export. Story character positions are not audio times.`}
+                      </Text>
+                    </Stack>
+                  </details>
+                )}
                 {capture.transcript_reference && (
                   <Text size='xs' style={{ overflowWrap: 'anywhere' }}>
                     {t`Transcript reference`}: {capture.transcript_reference}
@@ -453,7 +494,7 @@ export function PreparedCloseout({
           <Text
             size='xs'
             c='dimmed'
-          >{t`Topic coverage and reviewed reusable lessons are not supplied. A story or extraction is not an approved procedure. Audio playback and timing are unavailable without a linked media source.`}</Text>
+          >{t`Topic coverage and reviewed reusable lessons are not supplied. A story or extraction is not an approved procedure. Original media and supplied timing are shown with each saved story.`}</Text>
           <ContinueInvestigation
             workOrder={workOrder}
             panel='closeout'

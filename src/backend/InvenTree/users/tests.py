@@ -26,6 +26,17 @@ G_SCOPES = _roles.keys()
 class RuleSetModelTest(TestCase):
     """Some simplistic tests to ensure the RuleSet model is setup correctly."""
 
+    def test_scoped_closeout_and_investigation_records_have_no_generic_crud_role(self):
+        """Append-only evidence uses its native Work commands and read boundaries."""
+        for label in (
+            'tasks_captureoriginal',
+            'tasks_acceptedcloseoutreport',
+            'tasks_investigationrequest',
+            'tasks_investigationartifact',
+        ):
+            self.assertIn(label, G_RULESETS_IG)
+            self.assertFalse(any(label in models for models in G_RULESETS.values()))
+
     def test_ruleset_models(self):
         """Test that the role rulesets work as intended."""
         keys = G_RULESETS.keys()

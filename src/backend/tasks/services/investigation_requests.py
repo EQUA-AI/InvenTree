@@ -5,7 +5,7 @@ import uuid
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, Prefetch
 
 from rest_framework.exceptions import ValidationError
 
@@ -255,6 +255,32 @@ def command(
         artifact = InvestigationArtifact.objects.create(
             request=row, recorded_by=actor, **clean, **(provenance or {})
         )
+        payload = clean['payload']
+        retain_recording = clean['kind'] == 'observation' or any(
+            key in payload for key in ('recording_started_at', 'recording_duration_ms')
+        )
+        if attachment_id and attachment.attachment and retain_recording:
+            from django.utils.dateparse import parse_datetime
+
+            from tasks.services.capture_originals import retain_original
+
+            try:
+                with attachment.attachment.open('rb') as original_file:
+                    retain_original(
+                        work_order=work,
+                        actor=actor,
+                        artifact=artifact,
+                        file=original_file,
+                        content_type='',
+                        started_at=parse_datetime(payload['recording_started_at'])
+                        if payload.get('recording_started_at')
+                        else None,
+                        duration_ms=payload.get('recording_duration_ms'),
+                    )
+            except (ValueError, OSError) as exc:
+                raise ValidationError(
+                    'Original media could not be retained. Check the source file and upload limit.'
+                ) from exc
         artifact_id = artifact.pk
         # A technician's explicit inability/dispute is an unresolved outcome
         # of this request only. Later readings never silently clear it.
@@ -316,7 +342,14 @@ def request_queryset():
     """Bounded queries for full projections, independent of artifact count."""
     return InvestigationRequest.objects.select_related(
         'owner', 'updated_by', 'created_by'
-    ).prefetch_related('artifacts__recorded_by')
+    ).prefetch_related(
+        Prefetch(
+            'artifacts',
+            queryset=InvestigationArtifact.objects.select_related(
+                'recorded_by'
+            ).prefetch_related('originals'),
+        )
+    )
 
 
 def _response(metadata):

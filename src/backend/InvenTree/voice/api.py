@@ -1,4 +1,4 @@
-"""Authenticated REST endpoints for transcript-only capture (WS8 re-cut).
+"""Authenticated transcript capture with purpose-bound media consent.
 
 Mounted at /api/voice/. The pilot is single-tenant: the scope authority is
 the same deployment policy key the AI boundary uses; multi-customer needs
@@ -138,7 +138,12 @@ class CaptureListCreateView(APIView):
     def post(self, request):
         """Post."""
         data = request.data or {}
-        if data.get('consent_version') != _consent_version():
+        consent_version = data.get('consent_version')
+        media_consent = (
+            data.get('purpose') == 'closeout'
+            and consent_version == 'closeout-originals-v1'
+        )
+        if consent_version != _consent_version() and not media_consent:
             return Response(
                 {'error': 'VOICE_CONSENT_REQUIRED'}, status=status.HTTP_400_BAD_REQUEST
             )
@@ -168,7 +173,7 @@ class CaptureListCreateView(APIView):
                     purpose=str(data.get('purpose', '')),
                     work_order_id=work_order_id,
                     work_order_version=work_order_version,
-                    consent_version=_consent_version(),
+                    consent_version=consent_version,
                     idempotency_key=str(
                         data.get('idempotency_key') or f'ui:{uuid.uuid4()}'
                     )[:128],

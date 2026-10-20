@@ -317,6 +317,10 @@ def complete_work_order(
 
     work_order.save(update_fields=save_fields)
 
+    from tasks.services.accepted_reports import freeze_report
+
+    freeze_report(work_order=work_order, closeout=closeout_obj, actor=actor)
+
     return _append_result(
         work_order=work_order,
         actor=actor,

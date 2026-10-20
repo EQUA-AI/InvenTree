@@ -13,6 +13,77 @@ import {
 
 nativeBaseline();
 
+// The local entry 10:00 is asserted as 07:00Z, so pin the browser's zone.
+test.describe('O15 observation timing', () => {
+  test.use({ timezoneId: 'Asia/Riyadh' });
+  for (const scheme of ['light', 'dark'] as const) {
+    test(`O15 observation media retains supplied recording timing (${scheme})`, async ({
+      page
+    }, info) => {
+      const { row } = await setup(page);
+      let body: ObservationIntent | undefined;
+      await page.route('**/investigation-requests/401/', async (route) => {
+        body = route.request().postDataJSON();
+        const result = saved(row, body!);
+        result.request.artifacts[0].originals = [
+          {
+            id: 91,
+            filename: 'Synthetic observation.png',
+            content_type: 'image/png',
+            content_hash: 'd'.repeat(64),
+            byte_size: 12,
+            started_at: '2026-10-20T07:00:00Z',
+            duration_ms: 1200,
+            url: '/api/tasks/work-orders/73/capture-media/91/'
+          }
+        ];
+        await route.fulfill({
+          json: { request: result.request, artifact_id: result.artifact_id }
+        });
+      });
+      await open(page, scheme);
+      const editor = draft(page);
+      await editor
+        .getByRole('textbox', { name: 'Observed fact', exact: true })
+        .fill('Synthetic retained observation');
+      await editor
+        .getByLabel('Recording start time (local)', { exact: true })
+        .fill('2026-10-20T10:00');
+      await editor
+        .getByLabel('Recording duration (ms)', { exact: true })
+        .fill('1200');
+      await editor
+        .getByLabel('Existing Work attachment (optional)', { exact: true })
+        .click();
+      await page
+        .getByRole('option', {
+          name: 'Synthetic observation.png · 901',
+          exact: true
+        })
+        .click();
+      await editor
+        .getByRole('button', {
+          name: 'Save observation to request',
+          exact: true
+        })
+        .click();
+      await expect(editor).toContainText('Observation saved');
+      expect(body!.fields.payload).toMatchObject({
+        recording_started_at: '2026-10-20T07:00:00.000Z',
+        recording_duration_ms: 1200
+      });
+      await expect(editor).toContainText(
+        'Download original: Synthetic observation.png'
+      );
+      await expectNoPageOverflow(page);
+      await capturePanel(
+        page,
+        info.outputPath(`observation-original-${scheme}.png`)
+      );
+    });
+  }
+});
+
 async function setup(
   page: Page,
   status: InvestigationRequest['status'] = 'cannot_perform'

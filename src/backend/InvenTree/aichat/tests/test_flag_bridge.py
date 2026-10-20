@@ -15,6 +15,46 @@ from django.test import SimpleTestCase
 class FlagBridgeTests(SimpleTestCase):
     """Every bridged name exists with a fail-closed default."""
 
+    def test_capture_storage_and_size_settings_are_registered_bridged_and_read(self):
+        """Deployments can select a native alias and an optional stricter bound."""
+        from unittest.mock import patch
+
+        from django.core.files.storage import InMemoryStorage
+
+        from tasks.services.capture_storage import original_storage
+
+        from aimms_flags import django_flags
+        from InvenTree.config import get_setting
+
+        entries = {entry.env_name: entry for entry in django_flags()}
+        for name, value, kind in (
+            ('AIMMS_CAPTURE_STORAGE_ALIAS', 'retained_local', 'str'),
+            ('AIMMS_CAPTURE_MAX_BYTES', 4096, 'int'),
+        ):
+            entry = entries[name]
+            self.assertEqual(entry.kind, kind)
+            self.assertTrue(entry.config_key)
+            self.assertTrue(hasattr(settings, name))
+            with patch.dict('os.environ', {name: str(value)}):
+                self.assertEqual(
+                    get_setting(
+                        name,
+                        entry.config_key,
+                        entry.default,
+                        typecast=int if kind == 'int' else None,
+                    ),
+                    value,
+                )
+        with self.settings(
+            AIMMS_CAPTURE_STORAGE_ALIAS='retained_local',
+            STORAGES={
+                'retained_local': {
+                    'BACKEND': 'django.core.files.storage.InMemoryStorage'
+                }
+            },
+        ):
+            self.assertIsInstance(original_storage(), InMemoryStorage)
+
     def test_boolean_flags_exist_and_bridge_as_bools(self):
         """Feature booleans are declared and bridge as real bools.
 

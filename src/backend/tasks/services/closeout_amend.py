@@ -287,6 +287,11 @@ def _apply_amendment(work_order, closeout, amendment, actor):
             'applied_at',
         ]
     )
+    from tasks.services.accepted_reports import freeze_report
+
+    freeze_report(
+        work_order=work_order, closeout=closeout, actor=actor, amendment=amendment
+    )
     if getattr(settings, 'AIMMS_CLOSEOUT_WIZARD_ENABLED', False):
         CloseoutEffect.objects.get_or_create(
             effect_key=f'closeout:{closeout.pk}:notification:amendment:{amendment.pk}',

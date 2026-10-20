@@ -1,5 +1,7 @@
 """Serializers for the Closeout Automation API (Feature #15)."""
 
+import uuid
+
 from django.db.models import prefetch_related_objects
 
 from rest_framework import serializers
@@ -52,6 +54,55 @@ class CloseoutCaptureRevisionSerializer(serializers.ModelSerializer):
 class CloseoutCaptureSerializer(serializers.ModelSerializer):
     """Read-only capture resource with its current revision inline."""
 
+    originals = serializers.SerializerMethodField()
+    source_spans = serializers.SerializerMethodField()
+
+    def _voice_source(self, obj):
+        """The exact accepted voice revision and its originals, read once per capture."""
+        cache = self.__dict__.setdefault('_o15_voice_sources', {})
+        if obj.pk in cache:
+            return cache[obj.pk]
+        from voice.models import VoiceTranscriptRevision
+
+        revision, originals = None, []
+        try:
+            reference = uuid.UUID(obj.transcript_reference or '')
+        except (ValueError, TypeError, AttributeError):
+            reference = None
+        if reference:
+            revision = (
+                VoiceTranscriptRevision.objects
+                .select_related('capture')
+                .filter(pk=reference, capture__target_work_order_id=obj.work_order_id)
+                .first()
+            )
+            if revision:
+                originals = list(revision.capture.originals.all())
+        cache[obj.pk] = (revision, originals)
+        return cache[obj.pk]
+
+    def get_originals(self, obj):
+        """Dereference the exact accepted voice revision, never the current session."""
+        from tasks.services.capture_originals import original_summary
+
+        _revision, originals = self._voice_source(obj)
+        return [original_summary(row) for row in originals]
+
+    def get_source_spans(self, obj):
+        """Retain original segment coordinates; absent audio timing remains absent."""
+        revision, originals = self._voice_source(obj)
+        if revision is None:
+            return []
+        return [
+            {
+                'original_id': row.pk,
+                'transcript_revision': str(revision.pk),
+                'narrative_code_points': [0, len(revision.full_text)],
+                'segments': revision.segments,
+            }
+            for row in originals
+        ]
+
     revisions = CloseoutCaptureRevisionSerializer(many=True, read_only=True)
     decision_version = serializers.SerializerMethodField()
 
@@ -84,6 +135,8 @@ class CloseoutCaptureSerializer(serializers.ModelSerializer):
             'status',
             'source_type',
             'transcript_reference',
+            'originals',
+            'source_spans',
             'voice_unavailable_reason',
             'revision',
             'decision_version',

@@ -727,6 +727,9 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
         from .closeout_serializers import _actor_name
 
         fields = effective_closeout_overview(closeout)
+        from .services.accepted_reports import report_summary
+
+        reports = list(closeout.reports.order_by('revision'))
         return {
             'id': closeout.pk,
             'cause': fields['cause'],
@@ -736,12 +739,15 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
             'downtime_minutes': fields['downtime_minutes'],
             'follow_up_required': fields['follow_up_required'],
             'follow_up': fields['follow_up'],
+            'reports': [report_summary(report) for report in reports],
             'original': base_closeout_fields(closeout),
             'content_hash': closeout.content_hash,
             'completed_by': closeout.completed_by_id,
             'completed_by_name': _actor_name(closeout.completed_by),
             'completed_at': closeout.completed_at,
             'verified_at': closeout.verified_at,
+            'verified_by': closeout.verified_by_id,
+            'verified_by_name': _actor_name(closeout.verified_by),
             'amended': fields['amended'],
             'amendment_count': fields['amendment_count'],
         }
