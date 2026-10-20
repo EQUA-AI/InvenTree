@@ -545,3 +545,230 @@ def test_analysis_canonical_is_a_valid_incomplete_response() -> None:
     assert response.recommended_actions == []
     # Honest copy: says the analysis did not run; never fakes capability.
     assert "did not run" in response.detailed_response
+
+
+# ---------------------------------------------------------------------------
+# A1 routing-1: source-reported document facts -- narrow exact-prompt tracer.
+# ---------------------------------------------------------------------------
+
+A1_EXACT_PROMPT = (
+    "Read uploaded attachment 60, the Waterman SS-250 slide-gate datasheet "
+    "attached to machine 174 at Cedar Creek Houston. In its self-adjusting "
+    "seal-system description, what leakage limit does the manufacturer state, "
+    "under which head conditions, and how many operating cycles were tested "
+    "with what reported wear? Cite the exact PDF page and provide the source "
+    "citation so I can open it. Treat these as claims in an unapproved family "
+    "reference, not verified installed performance or operating instructions."
+)
+
+
+class TestSourceFactRouting:
+    def test_exact_handover_prompt_is_a_read_only_document_fact(self) -> None:
+        decision = classify_rules(A1_EXACT_PROMPT)
+        assert decision is not None
+        assert decision.intent is TaskIntent.MANUAL_FACT
+        assert decision.effect is EffectIntent.READ_ONLY
+        assert decision.source == "rules"
+
+    def test_known_good_source_question_stays_manual_fact(self) -> None:
+        decision = classify_rules("What leakage does attachment 60 state?")
+        assert decision is not None
+        assert decision.intent is TaskIntent.MANUAL_FACT
+        assert decision.effect is EffectIntent.READ_ONLY
+
+
+class TestSourceFactRoutingExpanded:
+    """A1 refinement: general source-fact shapes, no product/ID special cases."""
+
+    @pytest.mark.parametrize(
+        "prompt",
+        [
+            "How many cycles does the uploaded datasheet report testing?",
+            "Search uploaded attachment 60 and report the tested cycle count it states",
+            "Read uploaded attachment 60 and report the tested cycle count it states",
+            "What voltage does the attached datasheet specify?",
+            "Read attachment 61 and report the rated flow the datasheet gives",
+            "What overall length does the drawing for attachment 62 state?",
+            "How many operating hours does the attached datasheet report for the unit?",
+        ],
+    )
+    def test_source_reported_facts_are_manual_fact(self, prompt: str) -> None:
+        decision = classify_rules(prompt)
+        assert decision is not None
+        assert decision.intent is TaskIntent.MANUAL_FACT
+        assert decision.effect is EffectIntent.READ_ONLY
+
+    @pytest.mark.parametrize(
+        "prompt",
+        [
+            "Read uploaded attachment 60 and report the leakage limit it states",
+            "Search uploaded attachment 60 for the seal wear it reports",
+        ],
+    )
+    def test_imperative_read_and_search_prefixes_route_manual_fact(self, prompt: str) -> None:
+        decision = classify_rules(prompt)
+        assert decision is not None
+        assert decision.intent is TaskIntent.MANUAL_FACT
+
+    @pytest.mark.parametrize(
+        ("prompt", "expected"),
+        [
+            ("How many pumps were repaired last month?", TaskIntent.FLEET_AGGREGATE),
+            (
+                "How many teardowns occurred since the last manual revision?",
+                TaskIntent.FLEET_AGGREGATE,
+            ),
+            (
+                "Read the uploaded manual and report how many pumps were repaired last month.",
+                TaskIntent.FLEET_AGGREGATE,
+            ),
+            (
+                "How often was each pump inspected per the procedures?",
+                TaskIntent.FLEET_AGGREGATE,
+            ),
+            (
+                "How many teardowns did we do on the HX-200 since the last manual revision?",
+                TaskIntent.FLEET_AGGREGATE,
+            ),
+            (
+                "Per the datasheets, how often do these motors overheat across the fleet?",
+                TaskIntent.FLEET_AGGREGATE,
+            ),
+            (
+                "How often does the manual require maintenance on the HX-200?",
+                TaskIntent.MANUAL_FACT,
+            ),
+            ("Which manuals do you have for the inverters?", TaskIntent.SOURCE_INVENTORY),
+            (
+                "Did work order WO-1234 follow the service manual procedure?",
+                TaskIntent.MANUAL_WO_COMPARISON,
+            ),
+            (
+                "Which replacement part should we order for the cooling fan?",
+                TaskIntent.PART_ADVICE,
+            ),
+        ],
+    )
+    def test_aggregate_inventory_comparison_advice_contracts_unchanged(
+        self, prompt: str, expected: TaskIntent
+    ) -> None:
+        decision = classify_rules(prompt)
+        assert decision is not None
+        assert decision.intent is expected
+        assert decision.effect is EffectIntent.READ_ONLY
+
+    def test_explicit_effect_with_document_mention_stays_governed(self) -> None:
+        decision = classify_rules("Create a work order to replace the seal the manual describes.")
+        assert decision is not None
+        assert decision.intent is TaskIntent.GOVERNED_ACTION
+        assert decision.effect is EffectIntent.EFFECT_REQUEST
+
+
+# ---------------------------------------------------------------------------
+# A2 routing-2: reporting-subject discriminator -- a quantity a document
+# REPORTS is a source fact even beside record nouns and event words.
+# ---------------------------------------------------------------------------
+
+A2_REPORTED_SOURCE_PROMPTS = (
+    "How many operating hours does the maintenance datasheet report for the unit?",
+    "How many inspection cycles does the uploaded datasheet report testing?",
+)
+
+A2_EVENT_COUNT_PROMPTS = (
+    "How many pumps were repaired last month?",
+    "Read the uploaded manual and report how many pumps were repaired last month.",
+    "How many teardowns occurred since the last manual revision?",
+)
+
+
+class TestA2ReportingSubjectDiscriminator:
+    """A2: the reporting SUBJECT decides, not a record/event keyword veto.
+
+    The removed A1 fleet-event veto rejected any record noun ("maintenance")
+    or event word ("inspection") anywhere in the message, so maintenance
+    document titles and reported inspection-test quantities wrongly kept the
+    aggregate arm, whose packs carry no document tools.
+    """
+
+    @pytest.mark.parametrize("prompt", A2_REPORTED_SOURCE_PROMPTS)
+    def test_reported_subject_quantities_are_manual_fact(self, prompt: str) -> None:
+        decision = classify_rules(prompt)
+        assert decision is not None
+        assert decision.intent is TaskIntent.MANUAL_FACT
+        assert decision.effect is EffectIntent.READ_ONLY
+        assert decision.source == "rules"
+
+    def test_known_good_source_question_stays_manual_fact(self) -> None:
+        decision = classify_rules("What leakage does attachment 60 state?")
+        assert decision is not None
+        assert decision.intent is TaskIntent.MANUAL_FACT
+        assert decision.effect is EffectIntent.READ_ONLY
+
+    @pytest.mark.parametrize("prompt", A2_EVENT_COUNT_PROMPTS)
+    def test_genuine_event_counts_stay_fleet_aggregate(self, prompt: str) -> None:
+        decision = classify_rules(prompt)
+        assert decision is not None
+        assert decision.intent is TaskIntent.FLEET_AGGREGATE
+        assert decision.effect is EffectIntent.READ_ONLY
+
+    def test_explicit_effect_control_stays_governed(self) -> None:
+        decision = classify_rules("Create a work order to replace the seal the manual describes.")
+        assert decision is not None
+        assert decision.intent is TaskIntent.GOVERNED_ACTION
+        assert decision.effect is EffectIntent.EFFECT_REQUEST
+
+
+class TestA2SClauseBoundary:
+    @pytest.mark.parametrize(
+        "query",
+        [
+            pytest.param(
+                "Read the manual then report how many pumps were repaired last month.",
+                id="then",
+            ),
+            pytest.param(
+                "Read the manual but report how many teardowns occurred last month.",
+                id="but",
+            ),
+            pytest.param(
+                "Read the manual AND report how many pumps were repaired last month.",
+                id="uppercase_and",
+            ),
+            pytest.param(
+                "Read the manual while I report how many pumps were repaired last month.",
+                id="while_i",
+            ),
+            pytest.param(
+                "Read the manual before you report how many pumps were repaired last month.",
+                id="before_you",
+            ),
+            pytest.param(
+                "Read the manual then you report how many pumps were repaired last month.",
+                id="then_you",
+            ),
+        ],
+    )
+    def test_independent_instruction_is_not_source_report(self, query: str) -> None:
+        decision = classify_rules(query)
+        assert decision is not None
+        assert decision.intent is TaskIntent.FLEET_AGGREGATE
+        assert decision.effect is EffectIntent.READ_ONLY
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            pytest.param(
+                "How many operating hours does the maintenance datasheet explicitly report for the unit?",
+                id="explicit_modifier",
+            ),
+            pytest.param(
+                "How many inspection cycles does the datasheet for the unit report testing?",
+                id="for_unit",
+            ),
+        ],
+    )
+    def test_source_owned_qualifiers_remain_manual_fact(self, query: str) -> None:
+        decision = classify_rules(query)
+        assert decision is not None
+        assert decision.intent is TaskIntent.MANUAL_FACT
+        assert decision.effect is EffectIntent.READ_ONLY

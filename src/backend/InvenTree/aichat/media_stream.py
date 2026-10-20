@@ -221,4 +221,6 @@ class EvidenceMediaStreamView(APIView):
         response['Content-Length'] = str(end - start + 1)
         if status == 206:
             response['Content-Range'] = f'bytes {start}-{end}/{size}'
+        if content_type == 'application/pdf':
+            response['X-Frame-Options'] = 'SAMEORIGIN'
         return response

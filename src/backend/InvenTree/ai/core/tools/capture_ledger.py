@@ -193,6 +193,12 @@ def _manuals_citations(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 "model_type": str(citation.get("model_type") or ""),
                 "model_id": str(citation.get("model_id") or ""),
                 "segment_index": _stringify(citation.get("segment_index")),
+                # Citation locator: content hash of the cited source file and
+                # its original 1-based page number, preserved as a string (the
+                # builder maps page 2 -> index 1 downstream; no subtraction
+                # or validation here).
+                "source_sha256": str(citation.get("source_sha256") or ""),
+                "page_number": _stringify(citation.get("page_number")),
             })
     return citations
 

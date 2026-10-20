@@ -287,3 +287,360 @@ class EvidenceMediaStreamTests(TestCase):
         self.assertEqual(
             self.client.get(_url(pdf.pk))['Content-Type'], 'application/pdf'
         )
+
+
+@override_settings(
+    MEDIA_ROOT=_MEDIA_ROOT,
+    X_FRAME_OPTIONS='DENY',
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.granted_client_scope_resolver',
+    AIMMS_SINGLE_SITE_CLIENT_CODE='ungranted-pdf-fixture',
+)
+class EvidencePDFFramePolicyTests(TestCase):
+    """Cover the authorized successful-PDF SAMEORIGIN response policy."""
+
+    _PDF_B64 = 'JVBERi0xLjMKJeLjz9MKMSAwIG9iago8PAovUHJvZHVjZXIgKHB5cGRmKQo+PgplbmRvYmoKMiAwIG9iago8PAovVHlwZSAvUGFnZXMKL0NvdW50IDIKL0tpZHMgWyA0IDAgUiA2IDAgUiBdCj4+CmVuZG9iagozIDAgb2JqCjw8Ci9UeXBlIC9DYXRhbG9nCi9QYWdlcyAyIDAgUgo+PgplbmRvYmoKNCAwIG9iago8PAovVHlwZSAvUGFnZQovUmVzb3VyY2VzIDw8Ci9Gb250IDw8Ci9GMSA8PAovVHlwZSAvRm9udAovU3VidHlwZSAvVHlwZTEKL0Jhc2VGb250IC9IZWx2ZXRpY2EKPj4KPj4KPj4KL01lZGlhQm94IFsgMC4wIDAuMCAzMDAgMzAwIF0KL1BhcmVudCAyIDAgUgovQ29udGVudHMgNSAwIFIKPj4KZW5kb2JqCjUgMCBvYmoKPDwKL0xlbmd0aCA1Ngo+PgpzdHJlYW0KQlQgL0YxIDE2IFRmIDMwIDI1MCBUZCAoUERGIHBvbGljeSBmaXh0dXJlIHBhZ2UgMSkgVGogRVQKZW5kc3RyZWFtCmVuZG9iago2IDAgb2JqCjw8Ci9UeXBlIC9QYWdlCi9SZXNvdXJjZXMgPDwKL0ZvbnQgPDwKL0YxIDw8Ci9UeXBlIC9Gb250Ci9TdWJ0eXBlIC9UeXBlMQovQmFzZUZvbnQgL0hlbHZldGljYQo+Pgo+Pgo+PgovTWVkaWFCb3ggWyAwLjAgMC4wIDMwMCAzMDAgXQovUGFyZW50IDIgMCBSCi9Db250ZW50cyA3IDAgUgo+PgplbmRvYmoKNyAwIG9iago8PAovTGVuZ3RoIDU2Cj4+CnN0cmVhbQpCVCAvRjEgMTYgVGYgMzAgMjUwIFRkIChQREYgcG9saWN5IGZpeHR1cmUgcGFnZSAyKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCnhyZWYKMCA4CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAxNSAwMDAwMCBuIAowMDAwMDAwMDU0IDAwMDAwIG4gCjAwMDAwMDAxMTkgMDAwMDAgbiAKMDAwMDAwMDE2OCAwMDAwMCBuIAowMDAwMDAwMzQ5IDAwMDAwIG4gCjAwMDAwMDA0NTUgMDAwMDAgbiAKMDAwMDAwMDYzNiAwMDAwMCBuIAp0cmFpbGVyCjw8Ci9TaXplIDgKL1Jvb3QgMyAwIFIKL0luZm8gMSAwIFIKPj4Kc3RhcnR4cmVmCjc0MgolJUVPRgo='
+
+    @classmethod
+    def setUpTestData(cls):
+        """Persist the ordinary reader, grants, machines, and shared media fixtures."""
+        from base64 import b64decode
+
+        from django.contrib.auth import get_user_model
+        from django.contrib.auth.models import Group
+
+        from assets.models import AssetMachine, Client, ClientScopeGrant
+        from users.models import RuleSet
+
+        cls.pdf_bytes = b64decode(cls._PDF_B64)
+        cls.pdf_sha = hashlib.sha256(cls.pdf_bytes).hexdigest()
+        cls.image_bytes = _BODY[:512]
+        cls.video_bytes = _BODY
+        cls.markdown_bytes = b'# Reference\n'
+
+        user_model = get_user_model()
+        cls.reader = user_model.objects.create_user(
+            username='synthetic-pdf-policy-reader',
+            is_active=True,
+            is_staff=False,
+            is_superuser=False,
+            password=None,
+        )
+        cls.group = Group.objects.create(name='synthetic-pdf-policy-readers')
+        cls.reader.groups.add(cls.group)
+        RuleSet.objects.update_or_create(
+            group=cls.group, name='work_order', defaults={'can_view': True}
+        )
+        cls.rule = RuleSet.objects.get(group=cls.group, name='work_order')
+
+        cls.client_owned = Client.objects.create(
+            code='synthetic-pdf-policy-owned', name='Synthetic PDF Policy Owned Client'
+        )
+        cls.client_spare = Client.objects.create(
+            code='synthetic-pdf-policy-spare', name='Synthetic PDF Policy Spare Client'
+        )
+        cls.client_foreign = Client.objects.create(
+            code='synthetic-pdf-policy-foreign',
+            name='Synthetic PDF Policy Foreign Client',
+        )
+        cls.grant_owned = ClientScopeGrant.objects.create(
+            user=cls.reader, client=cls.client_owned
+        )
+        cls.grant_spare = ClientScopeGrant.objects.create(
+            user=cls.reader, client=cls.client_spare
+        )
+
+        cls.machine_owned = AssetMachine.objects.create(
+            client=cls.client_owned, name='synthetic-pdf-policy-machine-owned'
+        )
+        cls.machine_foreign = AssetMachine.objects.create(
+            client=cls.client_foreign, name='synthetic-pdf-policy-machine-foreign'
+        )
+
+        cls.pdf_owned = cls._make_native_attachment(
+            cls.machine_owned,
+            'synthetic-pdf-policy-owned.pdf',
+            cls.pdf_bytes,
+            AttachmentIngestPipeline.DOC,
+        )
+        cls.pdf_foreign = cls._make_native_attachment(
+            cls.machine_foreign,
+            'synthetic-pdf-policy-foreign.pdf',
+            cls.pdf_bytes,
+            AttachmentIngestPipeline.DOC,
+        )
+        cls.image_attachment = cls._make_native_attachment(
+            cls.machine_owned,
+            'synthetic-pdf-policy-control.png',
+            cls.image_bytes,
+            AttachmentIngestPipeline.IMAGE,
+        )
+        cls.video_attachment = cls._make_native_attachment(
+            cls.machine_owned,
+            'synthetic-pdf-policy-control.mp4',
+            cls.video_bytes,
+            AttachmentIngestPipeline.VIDEO,
+        )
+        cls.markdown_attachment = cls._make_native_attachment(
+            cls.machine_owned,
+            'synthetic-pdf-policy-control.md',
+            cls.markdown_bytes,
+            AttachmentIngestPipeline.DOC,
+        )
+
+    @classmethod
+    def _make_native_attachment(cls, machine, name, content, pipeline):
+        """Persist an assetmachine attachment with an indexed ingest row."""
+        with mock.patch('InvenTree.tasks.offload_task', return_value=True):
+            attachment = Attachment.objects.create(
+                model_type='assetmachine',
+                model_id=machine.pk,
+                attachment=SimpleUploadedFile(name, content),
+                comment='synthetic PDF policy fixture',
+            )
+            AttachmentIngest.objects.create(
+                attachment_id=attachment.pk,
+                model_type=attachment.model_type,
+                model_id=attachment.model_id,
+                source_sha256=hashlib.sha256(content).hexdigest(),
+                pipeline=pipeline,
+                state=AttachmentIngestState.INDEXED,
+            )
+        return attachment
+
+    def setUp(self):
+        """Verify native clickjacking middleware and log in the ordinary reader."""
+        from django.conf import settings
+
+        self.assertIn(
+            'django.middleware.clickjacking.XFrameOptionsMiddleware',
+            settings.MIDDLEWARE,
+        )
+        self.client.force_login(self.reader)
+
+    def _assert_pdf_transport(
+        self, response, *, length, content_type, etag, content_range
+    ):
+        """Assert the byte, cache, and security transport headers."""
+        self.assertEqual(response['Accept-Ranges'], 'bytes')
+        self.assertEqual(response['Cache-Control'], 'private, no-store')
+        self.assertEqual(response['X-Content-Type-Options'], 'nosniff')
+        if length is not None:
+            self.assertEqual(response['Content-Length'], str(length))
+        if content_type is not None:
+            self.assertEqual(response['Content-Type'], content_type)
+        if etag is not None:
+            self.assertEqual(response['ETag'], f'"{etag}"')
+        if content_range is not None:
+            self.assertEqual(response['Content-Range'], content_range)
+
+    def _find_values(self, payload, keys):
+        """Collect values stored under any of keys in nested JSON payloads."""
+        found = []
+        if isinstance(payload, dict):
+            for key, value in payload.items():
+                if key in keys:
+                    found.append(value)
+                found.extend(self._find_values(value, keys))
+        elif isinstance(payload, list):
+            for value in payload:
+                found.extend(self._find_values(value, keys))
+        return found
+
+    def test_pdf_get_sameorigin(self):
+        """Serve full PDF bytes with SAMEORIGIN framing."""
+        response = self.client.get(_url(self.pdf_owned.pk))
+        body = _body(response)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(body, self.pdf_bytes)
+        self._assert_pdf_transport(
+            response,
+            length=len(self.pdf_bytes),
+            content_type='application/pdf',
+            etag=self.pdf_sha,
+            content_range=None,
+        )
+        self.assertEqual(response['X-Frame-Options'], 'SAMEORIGIN')
+
+    def test_pdf_range_get_sameorigin(self):
+        """Serve an exact PDF byte range with SAMEORIGIN framing."""
+        response = self.client.get(_url(self.pdf_owned.pk), HTTP_RANGE='bytes=20-39')
+        body = _body(response)
+        self.assertEqual(response.status_code, 206)
+        self.assertEqual(len(body), 20)
+        self.assertEqual(body, self.pdf_bytes[20:40])
+        self._assert_pdf_transport(
+            response,
+            length=20,
+            content_type='application/pdf',
+            etag=self.pdf_sha,
+            content_range=f'bytes 20-39/{len(self.pdf_bytes)}',
+        )
+        self.assertEqual(response['X-Frame-Options'], 'SAMEORIGIN')
+
+    def test_pdf_head_sameorigin(self):
+        """Report full PDF headers on HEAD with SAMEORIGIN framing."""
+        response = self.client.head(_url(self.pdf_owned.pk))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b'')
+        self._assert_pdf_transport(
+            response,
+            length=len(self.pdf_bytes),
+            content_type='application/pdf',
+            etag=self.pdf_sha,
+            content_range=None,
+        )
+        self.assertEqual(response['X-Frame-Options'], 'SAMEORIGIN')
+
+    def test_pdf_range_head_sameorigin(self):
+        """Report ranged PDF headers on HEAD with SAMEORIGIN framing."""
+        response = self.client.head(_url(self.pdf_owned.pk), HTTP_RANGE='bytes=20-39')
+        self.assertEqual(response.status_code, 206)
+        self.assertEqual(response.content, b'')
+        self._assert_pdf_transport(
+            response,
+            length=20,
+            content_type='application/pdf',
+            etag=self.pdf_sha,
+            content_range=f'bytes 20-39/{len(self.pdf_bytes)}',
+        )
+        self.assertEqual(response['X-Frame-Options'], 'SAMEORIGIN')
+
+    def test_non_pdf_keeps_deny(self):
+        """Keep default DENY framing for shared non-PDF media bytes."""
+        markdown_types = ('text/markdown',)
+        controls = (
+            (self.image_attachment, self.image_bytes, 'image/png'),
+            (self.video_attachment, self.video_bytes, 'video/mp4'),
+            (self.markdown_attachment, self.markdown_bytes, None),
+        )
+        responses = []
+        for attachment, expected_bytes, expected_type in controls:
+            response = self.client.get(_url(attachment.pk))
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(_body(response), expected_bytes)
+            if expected_type is not None:
+                self.assertEqual(response['Content-Type'], expected_type)
+            else:
+                self.assertIn(response['Content-Type'], markdown_types)
+            responses.append(response)
+        for response in responses:
+            self.assertEqual(response['X-Frame-Options'], 'DENY')
+
+    def test_pdf_metadata_keeps_deny(self):
+        """Keep DENY framing on the PDF metadata JSON response."""
+        response = self.client.get(f'{_url(self.pdf_owned.pk)}metadata/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('json', response['Content-Type'])
+        payload = response.json()
+        self.assertEqual(payload['page_count'], 2)
+        self.assertEqual(payload['revision'], self.pdf_sha)
+        self.assertEqual(response['Cache-Control'], 'private, no-store')
+        self.assertEqual(response['X-Frame-Options'], 'DENY')
+
+    def test_anonymous_keeps_denial(self):
+        """Refuse anonymous PDF requests while keeping DENY framing."""
+        self.client.logout()
+        response = self.client.get(_url(self.pdf_owned.pk))
+        self.assertIn(response.status_code, (401, 403))
+        self.assertEqual(response['X-Frame-Options'], 'DENY')
+
+    def test_wrong_client_keeps_denial(self):
+        """Refuse foreign-client PDF bytes while serving owned PDF bytes."""
+        denied = self.client.get(_url(self.pdf_foreign.pk))
+        self.assertEqual(denied.status_code, 404)
+        response = self.client.get(_url(self.pdf_owned.pk))
+        self.assertEqual(response.status_code, 200)
+        body = _body(response)
+        self.assertNotEqual(body, b'')
+        self.assertEqual(body, self.pdf_bytes)
+        self.assertEqual(denied['X-Frame-Options'], 'DENY')
+
+    def test_revoked_role_keeps_denial(self):
+        """Refuse PDF bytes once the persisted role loses its view right."""
+        response = self.client.get(_url(self.pdf_owned.pk))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(_body(response), self.pdf_bytes)
+        self.rule.can_view = False
+        self.rule.save()
+        denied = self.client.get(_url(self.pdf_owned.pk))
+        self.assertEqual(denied.status_code, 404)
+        self.assertEqual(denied['X-Frame-Options'], 'DENY')
+
+    def test_revoked_client_keeps_denial(self):
+        """Refuse PDF bytes once the owned client grant is deleted."""
+        from assets.models import ClientScopeGrant
+
+        response = self.client.get(_url(self.pdf_owned.pk))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(_body(response), self.pdf_bytes)
+        self.grant_owned.delete()
+        self.assertTrue(
+            ClientScopeGrant.objects.filter(pk=self.grant_spare.pk).exists()
+        )
+        denied = self.client.get(_url(self.pdf_owned.pk))
+        self.assertEqual(denied.status_code, 404)
+        self.assertEqual(denied['X-Frame-Options'], 'DENY')
+
+    def test_stale_revision_keeps_denial(self):
+        """Refuse stale revision requests instead of substituting bytes."""
+        response = self.client.get(_url(self.pdf_owned.pk))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(_body(response), self.pdf_bytes)
+        denied = self.client.get(_url(self.pdf_owned.pk), {'revision': '0' * 64})
+        self.assertEqual(denied.status_code, 404)
+        self.assertNotEqual(denied.content, self.pdf_bytes)
+        self.assertEqual(denied['X-Frame-Options'], 'DENY')
+
+    def test_replaced_source_keeps_denial(self):
+        """Refuse replaced stored bytes that no longer match the ingest digest."""
+        attachment = self._make_native_attachment(
+            self.machine_owned,
+            'synthetic-pdf-policy-replaced.pdf',
+            self.pdf_bytes,
+            AttachmentIngestPipeline.DOC,
+        )
+        name = attachment.attachment.name
+        with default_storage.open(name, 'wb') as handle:
+            handle.write(b'replaced synthetic policy bytes')
+        denied = self.client.get(_url(attachment.pk))
+        self.assertEqual(denied.status_code, 404)
+        response = self.client.get(_url(self.pdf_owned.pk))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(_body(response), self.pdf_bytes)
+        self.assertEqual(denied['X-Frame-Options'], 'DENY')
+
+    def test_missing_file_keeps_denial(self):
+        """Refuse requests once the stored PDF file is deleted."""
+        attachment = self._make_native_attachment(
+            self.machine_owned,
+            'synthetic-pdf-policy-missing.pdf',
+            self.pdf_bytes,
+            AttachmentIngestPipeline.DOC,
+        )
+        name = attachment.attachment.name
+        default_storage.delete(name)
+        denied = self.client.get(_url(attachment.pk))
+        self.assertEqual(denied.status_code, 404)
+        response = self.client.get(_url(self.pdf_owned.pk))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(_body(response), self.pdf_bytes)
+        self.assertEqual(denied['X-Frame-Options'], 'DENY')
+
+    def test_invalid_range_keeps_deny(self):
+        """Keep DENY framing on unsatisfiable byte ranges."""
+        response = self.client.get(_url(self.pdf_owned.pk), HTTP_RANGE='bytes=9999999-')
+        self.assertEqual(response.status_code, 416)
+        self._assert_pdf_transport(
+            response,
+            length=None,
+            content_type=None,
+            etag=None,
+            content_range=f'bytes */{len(self.pdf_bytes)}',
+        )
+        self.assertEqual(response['X-Frame-Options'], 'DENY')
+
+    def test_unrelated_response_keeps_deny(self):
+        """Keep DENY framing on the unrelated live API root response."""
+        response = self.client.get('/api/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['X-Frame-Options'], 'DENY')
