@@ -18,18 +18,18 @@ P15,21,S1,current,Role-aware Work list with saved scope and pagination,P02,Front
 P16,22,S1,preserve,Board Calendar Timeline and gated Risk Radar,P15,Frontend maintenance,A01 A06,Ready for review
 P17,03,S1,current,Seven native work panels with clear field/action homes,P00 P02,Frontend maintenance,A01 A07 A18,In progress
 P18,24,S4,current,Recorded autonomous action progress and result links,P17,Frontend orchestration,A07,Ready for review
-P19,23,S4,current,Outcome-led Work and operational task variants,P17 P18 P01,Frontend maintenance,A07 A16 A17 A22,In progress
+P19,23,S4,current,Outcome-led Work and operational task variants,P17 P18 P01,Frontend maintenance,A07 A16 A17 A22,Blocked
 P20,25,S4,current,Chat-primary evidence-grounded Diagnose view,P17,Frontend reliability,A08 A17,Ready for review
 P21,29,S4,current,Effective plan and recorded physical authority,P17,Frontend maintenance and domain,A08 A17 A21 A22,Blocked
 P22,30,S4,current,In-stock requirements fit and material lifecycle,P13 P17 P01,Frontend inventory,A09,Ready for review
 P23,36,S4,current,Tests acceptance authority and separate operating/service return,P17 P01,Frontend verification and domain,A10 A22,Blocked
 P24,39,S6,current,Direct Closeout report and immutable accepted History,P17 P23,Frontend reporting,A11 A18,Blocked
 P25,40,S6,current,One versioned idempotent final-update controller,P02 P17 P23,Frontend and backend integration,A12 A14 A18,Ready for review
-P26,41,S7,current,Single final action hosted only in Closeout,P24 P25 P45 P46,Frontend maintenance,A12 A16 A18,Planned
+P26,41,S7,current,Single final action hosted only in Closeout,P24 P25 P45 P46,Frontend maintenance,A12 A16 A18,In progress
 P27,31,S4,preserve,Authoritative attributed time and assignment facts,P17,Frontend workforce and domain,A07 A11 A18 A21,Blocked
 P28,43,S1,current,Counted work Attachments resource with native ownership,P17,Frontend resources,A01 A13 A18,In progress
-P29,44,S4,preserve,Observation/capture recovery and shared evidence identity,P17,Frontend capture,A13 A17 A18,In progress
-P30,47,S7,current,Draft-preserving save and conflicting-record recovery,P17 P25 P29,Frontend platform,A14,In progress
+P29,44,S4,preserve,Observation/capture recovery and shared evidence identity,P17,Frontend capture,A13 A17 A18,Blocked
+P30,47,S7,current,Draft-preserving save and conflicting-record recovery,P17 P25 P29,Frontend platform,A14,Blocked
 P31,49,S8,current,Final responsive and accessible rendered acceptance,P06 P10 P19 P23 P26 P37 P38 P39 P47 P48,Frontend design,A15 A19 A20,Planned
 P32,04,S8,current,Final server permission source and feature-gate acceptance,P17 P26 P28 P41 P47 P48,Frontend and backend integration,A01 A14 A17 A20 A22,Planned
 P33,42,S1,current,Existing assistant scoped intent and persisted-result contract,P02 P04 P17,Frontend and existing chat owner,A01 A17 A20,In progress
@@ -42,14 +42,14 @@ P39,16,S5,current,Compatible comparisons and personal/shared display sets,P38,Fr
 P40,17,S5,current,Bounded case-span history and retained snapshot provenance,P09 P11 P12,Frontend telemetry and historian owner,A19 A23,In progress
 P41,26,S5,current,Multi-round compound investigation evidence via existing chat,P20 P29 P33,Frontend reliability and chat owner,A17,Ready for review
 P42,27,S5,current,Contradictions corrections cannot-perform and expert ownership,P41,Frontend reliability and domain,A17 A21,Blocked
-P43,28,S5,current,Changed scope reassesses only affected work dependencies,P21 P22 P23 P41,Frontend maintenance and domain,A17 A21 A22,In progress
-P44,32,S5,current,Holds accepted handover and multi-technician boundaries,P27 P41 P42 P43,Frontend workforce and domain,A17 A21,In progress
-P45,37,S6,current,Known-answer reuse and source-linked voice-first repair story,P17 P24 P29 P33,Frontend Closeout and capture/chat owner,A11 A18,Planned
-P46,38,S6,current,True material custody and attributed time/downtime reconciliation,P22 P24 P27,Frontend Closeout inventory and workforce,A07 A09 A11 A18,Planned
+P43,28,S5,current,Changed scope reassesses only affected work dependencies,P21 P22 P23 P41,Frontend maintenance and domain,A17 A21 A22,Blocked
+P44,32,S5,current,Holds accepted handover and multi-technician boundaries,P27 P41 P42 P43,Frontend workforce and domain,A17 A21,Blocked
+P45,37,S6,current,Known-answer reuse and source-linked voice-first repair story,P17 P24 P29 P33,Frontend Closeout and capture/chat owner,A11 A18,Blocked
+P46,38,S6,current,True material custody and attributed time/downtime reconciliation,P22 P24 P27,Frontend Closeout inventory and workforce,A07 A09 A11 A18,Blocked
 P47,45,S7,current,Complete seven-panel phone companion and existing chat,P17 P23 P24 P29 P33 P41 P45,Frontend mobile and chat owner,A15 A17 A18 A20 A21,Planned
 P48,46,S7,current,Actual glasses session media evidence and interruption recovery,P29 P33 P47,Frontend mobile and chat/device owner,A14 A20 A21,Planned
-P49,33,S6,current,Separate service restoration resilience and owned obligations,P21 P23 P24,Frontend maintenance operations and domain,A10 A22,Planned
-P50,34,S7,current,Continuous monitoring recurrence and immutable amendment links,P12 P40 P41 P45 P49,Frontend reliability telemetry and domain,A18 A22 A23,Planned
+P49,33,S6,current,Separate service restoration resilience and owned obligations,P21 P23 P24,Frontend maintenance operations and domain,A10 A22,Blocked
+P50,34,S7,current,Continuous monitoring recurrence and immutable amendment links,P12 P40 P41 P45 P49,Frontend reliability telemetry and domain,A18 A22 A23,Blocked
 P51,35,S6,current,Preventive inspection and calibration workspace variants,P17 P23 P41 P45,Frontend maintenance and domain,A17 A22,Planned
 L01,53,Later,later,Full sourcing RFQ and evidence-based offer comparison,P22,Procurement frontend and backend,Later procurement,Deferred
 L02,54,Later,later,Native procurement fulfillment and receipt/allocation linkage,L01,Procurement and inventory,Later procurement,Deferred
