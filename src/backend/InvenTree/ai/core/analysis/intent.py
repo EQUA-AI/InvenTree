@@ -180,7 +180,7 @@ _SOURCE_INVENTORY = re.compile(
 
 _QUESTION_SHAPE = re.compile(
     r"^\s*(?:what|which|where|when|how|does|do|is|are|can|tell me|show|list|"
-    r"find|give me|get)\b",
+    r"find|give me|get|read|search)\b",
     re.IGNORECASE,
 )
 
@@ -216,6 +216,31 @@ _PART_ADVICE = re.compile(
     re.IGNORECASE,
 )
 
+#: A1: source-attribution verbs — the stated quantity is a claim the
+#: document/source REPORTS ("what does the datasheet state?"), not an event
+#: that happened on the fleet.
+_DOC_FACT = re.compile(
+    r"\b(?:state|states|stated|report|reports|reported|reporting|"
+    r"specif(?:y|ies|ied)|give|gives|given|list|lists|show|shows|say|says|said|"  # codespell:ignore specif
+    r"declare|declares|declared|quote|quotes|quoted|cite|cites|cited|"
+    r"indicate|indicates|indicated|publish|publishes|published|"
+    r"contain|contains|contained|note|notes|noted|"
+    r"test|tests|tested|testing|measure|measures|measured|claim|claims|"
+    r"read|reads)\b",
+    re.IGNORECASE,
+)
+
+#: A1: who/what can be the SOURCE of a reported fact — document nouns and
+#: their producers ("the manufacturer state"), never a bare event noun.
+_DOC_FACT_SOURCE = re.compile(
+    rf"\b(?:{_DOC_NOUN}|manufacturer|vendor|supplier|oem|nameplate|label|"
+    r"attachment \d+)\b",
+    re.IGNORECASE,
+)
+
+#: A1: imperative Read/Search requests over documents ("Read attachment 60…").
+_DOC_READ_PREFIX = re.compile(r"^\s*(?:please\s+)?(?:read|search)\b", re.IGNORECASE)
+
 
 def _record_noun(text: str) -> bool:
     return re.search(rf"\b{_RECORD_NOUN}\b", text, re.IGNORECASE) is not None
@@ -233,6 +258,211 @@ def _rules_decision(intent: TaskIntent, reason: str) -> IntentDecision:
         reason_codes=(reason,),
         source="rules",
     )
+
+
+def _source_reported_fact(text: str) -> bool:
+    """True when a source is the subject of a reporting predicate within one clause."""
+
+    def _owned(prior, clause, window):
+        return not (
+            _AGGREGATE.search(prior)
+            and (
+                re.search(
+                    r"\b(?:that|which)\s+(?:(?!(?<![-\u2010\u2011])\b(?:am|is|are|was|were|be|been|being|and|or|but|nor|yet|so|then)\b(?![-\u2010\u2011]))[^\s,.;?!:]++\s*+)*+$",
+                    prior,
+                )
+                or re.search(
+                    r"\b(?:that|which)\s+(?:am|is|are|was|were|be|been|being)(?:n[\x27\u2019]t)?\s+(?:\w+ly\s+)?(?:listed|shown|described|mentioned|covered|reported)\s+(?:in|from)\s+(?:(?!(?<![-\u2010\u2011])\b(?:am|is|are|was|were|be|been|being|and|or|but|nor|yet|so|then)\b(?![-\u2010\u2011]))[^\s,.;?!:]++\s*+)*+$",
+                    prior,
+                )
+            )
+            and (
+                re.match(
+                    r"\s*(?:am|is|are|was|were|be|been|being)(?:n[\x27\u2019]t)?\s+(?!(?:listed|shown|described|mentioned|covered|reported)\b)\w+(?:ed|en)\b",
+                    clause,
+                )
+                or re.search(
+                    r"(?:describes?|described|mentions?|mentioned|covers?|covered)\b\s+(?:am|is|are|was|were|be|been|being)(?:n[\x27\u2019]t)?\s+(?!(?:listed|shown|described|mentioned|covered|reported)\b)\w+(?:ed|en)\b",
+                    window,
+                )
+                or re.search(
+                    r"\b(?:am|is|are|was|were|be|been|being)(?:n[\x27\u2019]t)?\s+(?:\w+ly\s+)?(?!(?:listed|shown|described|mentioned|covered|reported)\b)\w+\s+(?:that|which)\b(?:\s+(?:am|is|are|was|were|be|been|being)(?:n[\x27\u2019]t)?\s+(?:\w+ly\s+)?(?:listed|shown|described|mentioned|covered|reported)\s+(?:in|from)\b|\s*$|\s+(?:a|an|the|this|that|these|those|its|his|her|their|my|our|your|some|any|each|every|all|both|no)\b)",
+                    prior,
+                    flags=re.IGNORECASE,
+                )
+            )
+        )
+
+    for match in _DOC_FACT_SOURCE.finditer(text):
+        window = text[match.end() : match.end() + 80]
+        window = re.sub(
+            r"^\s*,?\s*\b(?:that|which)\s+(?:i|we|you)\s+(?:have\s+|had\s+)?"
+            r"uploaded\s*,?",
+            " ",
+            window,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+        clause = re.split(
+            r"[,.;?!:]|\b(?:and|or|but|nor|yet|so|then)\b",
+            window,
+            maxsplit=1,
+            flags=re.IGNORECASE,
+        )[0]
+        predicate = None
+        for candidate in _DOC_FACT.finditer(clause):
+            candidate_span = clause[: candidate.start()]
+            candidate_span = re.sub(
+                r"^\s*\b(?:that|which)\s+(?:i|we|you)\s+(?:have\s+|had\s+)?uploaded\b",
+                " ",
+                candidate_span,
+                flags=re.IGNORECASE,
+            )
+            adjunct = re.match(
+                r"\s*,?\s*\b(?<![-\u2010\u2011])(?:after|before|when|while|once|as|"
+                r"since|until)\b(?![\u2010\u2011-])\s+",
+                candidate_span,
+                flags=re.IGNORECASE,
+            )
+            if adjunct is not None:
+                adjunct_span = candidate_span[adjunct.end() :].strip()
+                nominal_atom = r"\w+(?:[-\u2010\u2011\x27\u2019]\w+)*"
+                nominal_subject = re.fullmatch(
+                    nominal_atom + r"(?:\s+" + nominal_atom + r")*",
+                    adjunct_span,
+                    flags=re.IGNORECASE,
+                )
+                # A reduced clause needs a verbal head and its own dependency frame.
+                # A participle-shaped word inside a complete subject NP is not a verb.
+                reduced_clause = re.match(
+                    r"(?:\w+ly\s+)*(?:"
+                    r"(?:being|having|to)\s+"
+                    r"|\w+(?:ed|en)\s+by\s+"
+                    r"|\w+ing\s+(?:by|in|on|at|with|without|for|from|into|through|"
+                    r"under|over|to|a|an|the|this|that|these|those|its|their|our)\s+"
+                    r")",
+                    adjunct_span,
+                    flags=re.IGNORECASE,
+                )
+                predicate_modifier = (
+                    re.fullmatch(r"\w+ing", candidate.group(0), flags=re.IGNORECASE) is not None
+                    and re.fullmatch(r"(?:\w+ly\s+)*\w+ly", adjunct_span, flags=re.IGNORECASE)
+                    is not None
+                )
+                if (
+                    nominal_subject is not None
+                    and not all(word.isdigit() for word in adjunct_span.split())
+                    and reduced_clause is None
+                    and not predicate_modifier
+                ):
+                    continue
+            predicate = candidate
+            break
+        if predicate is None:
+            prior = text[max(match.start() - 80, 0) : match.start()]
+            fallback = re.search(
+                r"\b(?:am|is|are|was|were|be|been|being)(?:n[\x27\u2019]t)?\s+(?:\w+ly\s+)?(?:listed|shown|described|mentioned|covered|reported)\s+(?:in|from)\s+(?:(?!(?<![-\u2010\u2011])\b(?:am|is|are|was|were|be|been|being|and|or|but|nor|yet|so|then)\b(?![-\u2010\u2011]))[^\s,.;?!:]++\s*+)*+$",
+                prior,
+                flags=re.IGNORECASE,
+            )
+            if fallback is not None:
+                governed = None
+                for marker in _AGGREGATE.finditer(prior):
+                    governed = marker
+                owner_sub = None
+                for owner_match in re.finditer(
+                    r"\b(?<![-\u2010\u2011])(?:after|before|when|while|once|as|since|until)\b"
+                    r"(?![\u2010\u2011-])",
+                    prior,
+                    flags=re.IGNORECASE,
+                ):
+                    owner_sub = owner_match
+                if owner_sub is not None and (
+                    governed is None or governed.start() <= owner_sub.end()
+                ):
+                    continue
+                return _owned(prior, clause, window)
+            predicate = re.match(
+                r"\s*(?:\d+\s+)?(?:\w+ly\s+)?"
+                r"(?:describes?|described|mentions?|mentioned|covers?|covered)\b",
+                clause,
+                flags=re.IGNORECASE,
+            )
+            if predicate is None:
+                continue
+        subject_span = clause[: predicate.start()]
+        subject_span = re.sub(
+            r"^\s*\b(?:that|which)\s+(?:i|we|you)\s+(?:have\s+|had\s+)?uploaded\b",
+            " ",
+            subject_span,
+            flags=re.IGNORECASE,
+        )
+        if re.search(r"\b(?:i|you|we)\b", subject_span, flags=re.IGNORECASE) is not None:
+            continue
+        prior = text[max(match.start() - 80, 0) : match.start()]
+        governed = None
+        for marker in _AGGREGATE.finditer(prior):
+            governed = marker
+        reporter = False
+        if governed is not None:
+            gap = prior[governed.end() :]
+            reporter = True
+            for determiner in re.finditer(
+                r"\b(?:a|an|the|this|that|these|those|its|his|her|their|"
+                r"my|our|your|some|any|each|every|all|both|no)\b",
+                gap,
+                flags=re.IGNORECASE,
+            ):
+                lead = gap[: determiner.start()].rstrip()
+                if not lead or re.search(r"\bof$", lead, flags=re.IGNORECASE):
+                    continue
+                break
+            else:
+                reporter = _DOC_FACT_SOURCE.fullmatch(match.group(0)) is not None and (
+                    re.fullmatch(_DOC_NOUN, match.group(0), flags=re.IGNORECASE) is None
+                    or re.fullmatch(
+                        _DOC_FACT_SOURCE,
+                        match.group(0) + (re.match(r"\s*\d+", window) or match).group(0),
+                    )
+                    is not None
+                )
+        reporter = (
+            reporter
+            and re.match(r"\s*" + _DOC_NOUN + r"\b", window, flags=re.IGNORECASE) is None
+            and re.search(
+                r"\b" + _DOC_NOUN + r"\s+(?:am|is|are|was|were|be|been|being)\b",
+                subject_span,
+                flags=re.IGNORECASE,
+            )
+            is None
+            and re.search(
+                r"\b" + _DOC_NOUN + r"\s+(?:from|in|of)\s+(?:\S+\s+)*$", gap, flags=re.IGNORECASE
+            )
+            is None
+        )
+        if (
+            not reporter
+            and re.search(r"\w+ing\b", predicate.group(0), flags=re.IGNORECASE) is None
+            and re.search(
+                r"\b(?:am|is|are|was|were|be|been|being)(?:n[\x27\u2019]t)?\b"
+                r"(?:(?!\bto\b)[\s\S])*\s*$",
+                subject_span,
+                flags=re.IGNORECASE,
+            )
+            is not None
+        ):
+            continue
+        owner_sub = None
+        for owner_match in re.finditer(
+            r"\b(?<![-\u2010\u2011])(?:after|before|when|while|once|as|since|until)\b(?![\u2010\u2011-])",
+            prior,
+            flags=re.IGNORECASE,
+        ):
+            owner_sub = owner_match
+        if owner_sub is not None and (governed is None or governed.start() <= owner_sub.end()):
+            continue
+        return _owned(prior, clause, window)
+    return False
 
 
 def classify_rules(text: str) -> IntentDecision | None:
@@ -306,6 +536,13 @@ def classify_rules(text: str) -> IntentDecision | None:
     # 2026-09-01).
     doc_prescription = has_docs and _DOC_PRESCRIPTION.search(content) is not None
     if _AGGREGATE.search(content) and (has_records or has_docs) and not doc_prescription:
+        # A1: a quantity the DOCUMENT reports/states ("how many cycles does
+        # the uploaded datasheet report testing?") is a source fact — the
+        # aggregate packs carry no document tools, so claiming it withheld
+        # search_attachment_docs. Source must be the subject of the fact; a
+        # bare document mention beside an event count changes nothing.
+        if has_docs and _source_reported_fact(content):
+            return _rules_decision(TaskIntent.MANUAL_FACT, "doc_fact_rules")
         return _rules_decision(TaskIntent.FLEET_AGGREGATE, "aggregate_rules")
     if _SOURCE_INVENTORY.search(content):
         return _rules_decision(TaskIntent.SOURCE_INVENTORY, "inventory_rules")

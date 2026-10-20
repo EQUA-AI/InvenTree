@@ -334,3 +334,124 @@ class TestTurnSeam:
         terminal = repository.terminal_calls[-1]
         assert "media_evidence" not in terminal["output_metadata"]
         assert self._media_events(terminal) == []
+
+
+class TestCapturedDocumentLocators:
+    """Capture ledger preserves citation revision and original physical page."""
+
+    @staticmethod
+    def _document(**overrides):
+        """Return one synthetic attachment-document citation with locator metadata."""
+        doc = _citation()
+        doc.update({
+            "access_class": "attachment_uploaded",
+            "source_sha256": "a" * 64,
+            "page_number": 2,
+            "attachment_id": "60",
+            "model_type": "assetmachine",
+            "model_id": "174",
+            "work_order_id": "",
+            "media_type": "document",
+        })
+        doc.update(overrides)
+        return doc
+
+    @staticmethod
+    def _captured(citations):
+        """Record citations through the real capture ledger and return its manuals citations."""
+        from ai.core.tools.capture_ledger import ToolCaptureLedger
+
+        ledger = ToolCaptureLedger()
+        ledger.record(
+            "documents.read:search_attachment_docs",
+            {"chunks": [{"citation": c} for c in citations]},
+        )
+        return ledger.manuals_citations()
+
+    def test_direct_builder_control(self):
+        """Direct builder maps sha and 1-based page before any capture."""
+        entry = build_media_evidence([self._document()])[0]
+        assert entry["source_revision"] == "a" * 64
+        assert entry["page_index"] == 1
+        assert entry["media_type"] == "document"
+        assert entry["model_type"] == "assetmachine"
+        assert entry["model_id"] == 174
+        assert entry["label"] == "Machine #174 · document · page 2"
+
+    @pytest.mark.parametrize(
+        "field,expected", [("source_sha256", "a" * 64), ("page_number", "2")], ids=["sha", "page"]
+    )
+    def test_capture_fields(self, field, expected):
+        """Ledger capture keeps source SHA and the original 1-based page string."""
+        captured = self._captured([self._document()])
+        assert captured[0].get(field) == expected
+
+    @pytest.mark.parametrize(
+        "field,expected",
+        [("source_revision", "a" * 64), ("page_index", 1)],
+        ids=["revision", "page-index"],
+    )
+    def test_captured_builder_fields(self, field, expected):
+        """Builder receives revision and page index from real captured citations."""
+        entry = build_media_evidence(self._captured([self._document()]))[0]
+        assert entry[field] == expected
+
+    def test_distinct_pages_and_revisions_survive(self):
+        """Distinct page/revision pairs survive capture; repeats still collapse."""
+        a, b = "a" * 64, "b" * 64
+        docs = [
+            self._document(source_sha256=a, page_number=1),
+            self._document(source_sha256=a, page_number=2),
+            self._document(source_sha256=a, page_number=1),
+            self._document(source_sha256=b, page_number=1),
+        ]
+        built = build_media_evidence(self._captured(docs))
+        assert [(e["source_revision"], e["page_index"]) for e in built] == [(a, 0), (a, 1), (b, 0)]
+
+    def test_duplicate_citation_collapses(self):
+        """An identical repeated citation still collapses to one evidence entry."""
+        built = build_media_evidence(self._captured([self._document(), self._document()]))
+        assert len(built) == 1
+
+    def test_distinct_pages_reach_cap(self):
+        """Distinct pages reach the media evidence cap in original page order."""
+        docs = [self._document(page_number=page) for page in range(1, MAX_MEDIA_EVIDENCE + 4)]
+        built = build_media_evidence(self._captured(docs))
+        assert len(built) == MAX_MEDIA_EVIDENCE
+        assert [e["page_index"] for e in built] == list(range(MAX_MEDIA_EVIDENCE))
+
+    @pytest.mark.parametrize(
+        "extra",
+        [{}, {"source_sha256": None, "page_number": None}, {"source_sha256": "", "page_number": 0}],
+        ids=["missing", "none", "zero"],
+    )
+    def test_legacy_missing_locator(self, extra):
+        """Legacy citations without locator metadata yield no invented revision/page."""
+        legacy = self._document()
+        legacy.pop("source_sha256", None)
+        legacy.pop("page_number", None)
+        legacy.update(extra)
+        entry = build_media_evidence(self._captured([legacy]))[0]
+        assert entry["source_revision"] is None
+        assert entry["page_index"] is None
+
+    def test_media_locator_control(self):
+        """Media evidence video coordinates survive capture unchanged."""
+        raw = [chunk["citation"] for chunk in _media_payload()["chunks"]]
+        built = build_media_evidence(self._captured(raw))
+        assert built == build_media_evidence(raw)
+        entry = next(e for e in built if e.get("segment_index") == 4)
+        assert entry["segment_index"] == 4
+        assert entry["timecode_start_s"] == pytest.approx(220.0, rel=0, abs=0)
+        assert entry["timecode_end_s"] == pytest.approx(280.0, rel=0, abs=0)
+
+    @pytest.mark.parametrize(
+        "field,expected",
+        [("source_revision", "a" * 64), ("page_index", 1)],
+        ids=["revision", "page-index"],
+    )
+    def test_turn_metadata_fields(self, field, expected):
+        """Turn seam terminal metadata carries revision and original page index."""
+        _, repository = TestTurnSeam._run_turn(payload={"chunks": [{"citation": self._document()}]})
+        entry = repository.terminal_calls[-1]["output_metadata"]["media_evidence"][0]
+        assert entry[field] == expected

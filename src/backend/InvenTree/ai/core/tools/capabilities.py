@@ -554,7 +554,8 @@ _WRITE_PATTERN = re.compile(
     r"completing|converting|counting|creating|deactivating|deleting|emailing|"
     r"generating|installing|issuing|marking|merging|moving|ordering|purchasing|"
     r"receiving|removing|restoring|returning|sending|serializing|setting|splitting|"
-    r"transferring|uninstalling|updating)\b",
+    r"transferring|uninstalling|updating"
+    r"|propose(?=\s+memory\s+action\b))\b",
     re.IGNORECASE,
 )
 
@@ -902,6 +903,129 @@ def _write_intent(text: str) -> str | None:
                 if _preceding_token(masked, of_idx) in _REQUEST_OF_HEADS:
                     return question_protects(match)
             return True
+        # Resolve the count head before interpreting its reporting-relative tail.
+        # Inspect bounded token offsets rather than copying overlapping windows.
+        if noun_context and match.group(0).lower() in _AMBIGUOUS_WRITE_VERBS:
+            lo = max(0, match.start() - 80)
+            end = match.start()
+            while end > lo and masked[end - 1].isspace():
+                end -= 1
+            begin = end
+            while begin > lo and not masked[begin - 1].isspace():
+                begin -= 1
+            clean_end = end
+            while clean_end > begin and masked[clean_end - 1] in ",.!?;:":
+                clean_end -= 1
+            pre = masked[begin:clean_end].lower()
+            if match.group(0).lower() == "count":
+                # A directly owning request cannot license a nominal compound.
+                for head in _REQUEST_FORM_RE.finditer(masked, lo, match.start()):
+                    if head.end() == end:
+                        return False
+                if end == 0 or clean_end < end or pre in ("then", "and"):
+                    return question_protects(match)
+            # Require a grammatical governor, not an arbitrary preceding modifier.
+            # Read and reporting predicates also own articleless nominal objects.
+            head_word = pre
+            head_begin = begin
+            head_owned = False
+            while head_word:
+                if (
+                    head_word
+                    in (
+                        "the",
+                        "a",
+                        "an",
+                        "any",
+                        "some",
+                        "no",
+                        "this",
+                        "that",
+                        "these",
+                        "those",
+                        "each",
+                        "every",
+                        "my",
+                        "our",
+                        "your",
+                        "their",
+                        "its",
+                        "his",
+                        "her",
+                        "of",
+                        "in",
+                        "on",
+                        "for",
+                        "from",
+                        "per",
+                        "about",
+                        "regarding",
+                        "with",
+                        "without",
+                        "read",
+                        "search",
+                        "report",
+                    )
+                    or head_word in _READ_LOOKUP_VERBS
+                ):
+                    head_owned = True
+                    break
+                if (
+                    head_word in ("to", "then", "and", "or", "but", "nor", "so", "please")
+                    or head_word in _SUBJECT_PRONOUNS
+                    or head_word in _DO_MODAL_AUX
+                    or head_word in _AMBIGUOUS_WRITE_VERBS
+                    or not all(character.isalnum() or character in "_-" for character in head_word)
+                ):
+                    break
+                head_end = head_begin
+                while head_end > lo and masked[head_end - 1].isspace():
+                    head_end -= 1
+                if head_end == lo:
+                    break
+                head_begin = head_end
+                while head_begin > lo and not masked[head_begin - 1].isspace():
+                    head_begin -= 1
+                head_word = masked[head_begin:head_end].lower()
+            if not head_owned:
+                # An object that resembles a reporting clause cannot own this head.
+                # Preserve R3 questions while preventing fallback to the R2 relative.
+                return question_protects(match)
+            stop = min(len(masked), match.end() + 80)
+            tail_pos = match.end()
+            while tail_pos < stop and masked[tail_pos].isspace():
+                tail_pos += 1
+            clause_end = tail_pos < stop and masked[tail_pos] in ",.!?;:"
+            at_text_end = tail_pos == len(masked) and stop - match.end() < 80
+            if (
+                clause_end
+                or at_text_end
+                or re.match(
+                    r"(?i)(?:(?:to|of|for|in|on|at|by|with|without|from|per|as|under|over|within|between|during|before|after|through|throughout|across|above|below|around|against|among|beyond|until|upon|that|which|whose|where|when|is|are|was|were)\b|[a-z]+(?:ed|ing)\b)",
+                    masked[tail_pos : stop if stop < tail_pos + 24 else tail_pos + 24],
+                )
+            ):
+                return True
+        # R2: a nominal count heads its noun phrase and takes a source-reporting
+        # relative clause directly after it ("the tested cycle count it states",
+        # "the stroke count it lists", "the cycle count the manual states"), so
+        # the count is a value the source reports. A genuine count command takes
+        # its object right after the verb ("count stock", "count it now") or
+        # joins a fresh clause ("then count stock"), where no reporting clause
+        # follows the count inside the same clause.
+        if (
+            noun_context
+            and match.group(0).lower() in _AMBIGUOUS_WRITE_VERBS
+            and re.compile(
+                r"[ \t]*(?:,[ \t]*)?(?:that[ \t]+|which[ \t]+)?"
+                r"(?:it|they|this|that|these|those"
+                r"|(?:the|this|these|those|a|an|its|their)[ \t]+\w+)[ \t]+"
+                r"(?:states?|reports?|lists?|shows?|mentions?|says?|contains?"
+                r"|gives?|provides?|indicates?|notes?|records?|specifies?"
+                r"|declares?|claims?|cites?|quotes?)\b"
+            ).match(masked, match.end())
+        ):
+            return True
         return question_protects(match)  # R3
 
     # Light-verb matches skip R1: the reversed form ("an order placed") is
@@ -922,7 +1046,7 @@ def _write_intent(text: str) -> str | None:
     # residual rebuild was quadratic on verb-dense input).
     strict_shape = _STRICT_READ_SHAPE_RE.search(masked) is not None
     for m in verb_matches:
-        if _NOUN_USE_RE.match(masked[m.end() :]) or strict_shape:
+        if _NOUN_USE_RE.match(masked, m.end()) or strict_shape:
             return None
     return verb_matches[0].group(0).lower()
 

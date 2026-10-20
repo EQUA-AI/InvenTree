@@ -328,8 +328,8 @@ def test_contract_manifest_is_stable_and_complete():
 
     assert first == second
     assert manifest_json() == manifest_json()
-    # Matches the catalog pin above: 96 entries (wf8 60 + specialist writes).
-    assert len(first) == 96
+    # Matches the catalog pin above: 97 entries (wf8 61 + specialist writes).
+    assert len(first) == 97
     assert all(record["module"] for record in first)
     assert all(record["qualname"] for record in first)
     assert all(len(record["contract_digest"]) == 64 for record in first)
@@ -1452,6 +1452,12 @@ async def test_wf8_agent_is_toolless_guarded_and_bounded(monkeypatch):
     class FakeClient:
         function_invocation_config = invocation_config
 
+        def __init__(self):
+            self.client = self
+
+        def with_options(self, **kwargs):
+            return self
+
     class FakeAgent:
         def __init__(self, **kwargs):
             captured.update(kwargs)
@@ -1753,3 +1759,5412 @@ def test_memory_proposals_require_native_permission_and_never_select_fact_execut
         "forget all my memories", authenticated=True, profile=ALL_VIEW_PROFILE
     )
     assert denied.tools == ()
+
+
+# ---------------------------------------------------------------------------
+# A1 routing-1: source-reported document facts must reach the real
+# search_attachment_docs callable and its real SDK input model.
+# ---------------------------------------------------------------------------
+
+A1_EXACT_PROMPT = (
+    "Read uploaded attachment 60, the Waterman SS-250 slide-gate datasheet "
+    "attached to machine 174 at Cedar Creek Houston. In its self-adjusting "
+    "seal-system description, what leakage limit does the manufacturer state, "
+    "under which head conditions, and how many operating cycles were tested "
+    "with what reported wear? Cite the exact PDF page and provide the source "
+    "citation so I can open it. Treat these as claims in an unapproved family "
+    "reference, not verified installed performance or operating instructions."
+)
+
+A1_ORDINARY_PROFILE = frozenset({("part", "view"), ("work_order", "view")})
+
+
+def _a1_lit(monkeypatch):
+    from types import SimpleNamespace as _NS
+
+    from ai.core import config as ai_config
+
+    monkeypatch.setattr(
+        ai_config,
+        "get_settings",
+        lambda: _NS(
+            single_site_policy_key="site-a",
+            feature_attachment_rag_retrieval=True,
+            feature_media_rag_retrieval=False,
+        ),
+    )
+    capability_catalog.cache_clear()
+
+
+def _a1_offered_callable(selection, tool_id: str):
+    """The ACTUAL selected callable for tool_id, matched by identity."""
+    catalog_tool = next(e.tool for e in capability_catalog() if e.tool_id == tool_id)
+    return next((tool for tool in selection.tools if tool is catalog_tool), None)
+
+
+def _a1_assert_sdk_strict_selector(selected) -> None:
+    from agent_framework import ai_function as sdk_ai_function
+
+    model = sdk_ai_function(selected).input_model
+    parsed = model.model_validate({"query": "source fact", "attachment_id": 60})
+    assert type(parsed.attachment_id) is int and parsed.attachment_id == 60
+    assert model.model_validate({"query": "source fact"}).attachment_id is None
+    assert (
+        model.model_validate({"query": "source fact", "attachment_id": None}).attachment_id is None
+    )
+    schema = model.model_json_schema()["properties"]["attachment_id"]
+    parts = schema.get("anyOf", [schema])
+    assert {"type": "null"} in parts
+    integer = next(part for part in parts if part.get("type") == "integer")
+    assert integer.get("exclusiveMinimum") == 0 or integer.get("minimum", 0) >= 1
+
+
+def test_a1_exact_prompt_offers_search_attachment_docs_via_real_sdk(monkeypatch):
+    from ai.core.analysis.intent import EffectIntent, TaskIntent, classify_rules
+
+    decision = classify_rules(A1_EXACT_PROMPT)
+    assert decision is not None
+    assert decision.intent is TaskIntent.MANUAL_FACT
+    assert decision.effect is EffectIntent.READ_ONLY
+    _a1_lit(monkeypatch)
+    try:
+        selection = select_capabilities(
+            A1_EXACT_PROMPT,
+            profile=A1_ORDINARY_PROFILE,
+            authenticated=True,
+            task_intent=decision.intent.value,
+        )
+        assert "search_attachment_docs" in selection.tool_ids
+        selected = _a1_offered_callable(selection, "search_attachment_docs")
+        assert selected is not None, "search_attachment_docs callable not actually offered"
+        _a1_assert_sdk_strict_selector(selected)
+    finally:
+        capability_catalog.cache_clear()
+
+
+def test_a1_known_good_source_question_offers_attachment_tool(monkeypatch):
+    from ai.core.analysis.intent import classify_rules
+
+    query = "What leakage does attachment 60 state?"
+    decision = classify_rules(query)
+    assert decision is not None
+    _a1_lit(monkeypatch)
+    try:
+        selection = select_capabilities(
+            query,
+            profile=A1_ORDINARY_PROFILE,
+            authenticated=True,
+            task_intent=decision.intent.value,
+        )
+        assert decision.intent.value == "manual_fact"
+        assert "search_attachment_docs" in selection.tool_ids
+        selected = _a1_offered_callable(selection, "search_attachment_docs")
+        assert selected is not None
+        _a1_assert_sdk_strict_selector(selected)
+    finally:
+        capability_catalog.cache_clear()
+
+
+def test_a1_denied_profiles_gain_no_attachment_tool(monkeypatch):
+    from ai.core.analysis.intent import classify_rules
+
+    decision = classify_rules(A1_EXACT_PROMPT)
+    assert decision is not None
+    _a1_lit(monkeypatch)
+    try:
+        empty = select_capabilities(
+            A1_EXACT_PROMPT,
+            profile=frozenset(),
+            authenticated=True,
+            task_intent=decision.intent.value,
+        )
+        assert "search_attachment_docs" not in empty.tool_ids
+        unauth = select_capabilities(
+            A1_EXACT_PROMPT,
+            profile=A1_ORDINARY_PROFILE,
+            authenticated=False,
+            task_intent=decision.intent.value,
+        )
+        assert "search_attachment_docs" not in unauth.tool_ids
+    finally:
+        capability_catalog.cache_clear()
+
+
+def test_a1_source_fact_variants_offer_attachment_tool(monkeypatch):
+    from ai.core.analysis.intent import EffectIntent, TaskIntent, classify_rules
+
+    for prompt in (
+        "How many cycles does the uploaded datasheet report testing?",
+        "Read attachment 61 and report the rated flow the datasheet gives",
+        "Search attachment 62 for the operating hours the datasheet states",
+    ):
+        decision = classify_rules(prompt)
+        assert decision is not None, prompt
+        assert decision.intent is TaskIntent.MANUAL_FACT, prompt
+        assert decision.effect is EffectIntent.READ_ONLY, prompt
+        _a1_lit(monkeypatch)
+        try:
+            selection = select_capabilities(
+                prompt,
+                profile=A1_ORDINARY_PROFILE,
+                authenticated=True,
+                task_intent=decision.intent.value,
+            )
+            assert "search_attachment_docs" in selection.tool_ids, prompt
+            selected = _a1_offered_callable(selection, "search_attachment_docs")
+            assert selected is not None, prompt
+            _a1_assert_sdk_strict_selector(selected)
+        finally:
+            capability_catalog.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Search uploaded attachment 60 and report the tested cycle count it states",
+        "Read uploaded attachment 60 and report the tested cycle count it states",
+        "Read uploaded attachment 61 and report the tested stroke count it lists",
+    ],
+)
+def test_a3_noun_count_source_questions_offer_attachment_tool(monkeypatch, prompt):
+    """Nominal noun-count source questions must offer the attachment tool."""
+    from ai.core.analysis.intent import EffectIntent, TaskIntent, classify_rules
+
+    decision = classify_rules(prompt)
+    assert decision is not None
+    assert decision.intent is TaskIntent.MANUAL_FACT
+    assert decision.effect is EffectIntent.READ_ONLY
+    _a1_lit(monkeypatch)
+    try:
+        selection = select_capabilities(
+            prompt,
+            profile=A1_ORDINARY_PROFILE,
+            authenticated=True,
+            task_intent=decision.intent.value,
+        )
+        assert not selection.requires_specialist
+        assert "search_attachment_docs" in selection.tool_ids
+        selected = _a1_offered_callable(selection, "search_attachment_docs")
+        assert selected is not None
+        _a1_assert_sdk_strict_selector(selected)
+    finally:
+        capability_catalog.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Search uploaded attachment 60 and report the tested cycle count it states",
+        "Read uploaded attachment 60 and report the tested cycle count it states",
+    ],
+)
+@pytest.mark.parametrize(
+    ("authenticated", "profile"),
+    [(True, frozenset()), (False, A1_ORDINARY_PROFILE)],
+)
+def test_a3_count_source_denials_are_preserved(monkeypatch, prompt, authenticated, profile):
+    """Denied cohorts keep no attachment tool for nominal-count source questions."""
+    from ai.core.analysis.intent import classify_rules
+
+    decision = classify_rules(prompt)
+    _a1_lit(monkeypatch)
+    try:
+        selection = select_capabilities(
+            prompt,
+            profile=profile,
+            authenticated=authenticated,
+            task_intent=decision.intent.value if decision else None,
+        )
+        assert "search_attachment_docs" not in selection.tool_ids
+        assert _a1_offered_callable(selection, "search_attachment_docs") is None
+    finally:
+        capability_catalog.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Count stock in bin A-3",
+        "Count it now",
+        (
+            "Read uploaded attachment 60 and report the tested cycle count it states "
+            "then count stock in bin A-3"
+        ),
+        (
+            "Read uploaded attachment 60 and report the tested cycle count it states "
+            "then create a work order"
+        ),
+    ],
+)
+def test_a3_real_writes_remain_specialist(monkeypatch, prompt):
+    """A nominal count must not hide a later count command or decisive write."""
+    from ai.core.analysis.intent import classify_rules
+
+    decision = classify_rules(prompt)
+    _a1_lit(monkeypatch)
+    try:
+        selection = select_capabilities(
+            prompt,
+            profile=A1_ORDINARY_PROFILE,
+            authenticated=True,
+            task_intent=decision.intent.value if decision else None,
+        )
+        assert selection.requires_specialist
+        assert selection.reason == "write_or_external_effect_requires_specialist"
+        assert selection.tool_ids == ()
+        assert _a1_offered_callable(selection, "search_attachment_docs") is None
+    finally:
+        capability_catalog.cache_clear()
+
+
+def test_a1_fleet_aggregates_do_not_gain_the_attachment_tool(monkeypatch):
+    from ai.core.analysis.intent import TaskIntent, classify_rules
+
+    for prompt in (
+        "How many pumps were repaired last month?",
+        "How many teardowns occurred since the last manual revision?",
+    ):
+        decision = classify_rules(prompt)
+        assert decision is not None, prompt
+        assert decision.intent is TaskIntent.FLEET_AGGREGATE, prompt
+        _a1_lit(monkeypatch)
+        try:
+            selection = select_capabilities(
+                prompt,
+                profile=A1_ORDINARY_PROFILE,
+                authenticated=True,
+                task_intent=decision.intent.value,
+            )
+            assert "search_attachment_docs" not in selection.tool_ids, prompt
+            assert "documents.read" not in selection.pack_ids, prompt
+        finally:
+            capability_catalog.cache_clear()
+
+
+def test_a1_read_adjacent_event_count_stays_an_aggregate(monkeypatch):
+    """A Read-document-adjacent real event count keeps the aggregate intent.
+
+    The documents.read pack here is carried ONLY by the pre-existing
+    content-driven 'uploaded_document_content' broker rider (unchanged in
+    this lane); the typed intent stays fleet_aggregate and the genuine
+    aggregate packs are intact.
+    """
+    from ai.core.analysis.intent import TaskIntent, classify_rules
+
+    prompt = "Read the uploaded manual and report how many pumps were repaired last month."
+    decision = classify_rules(prompt)
+    assert decision is not None
+    assert decision.intent is TaskIntent.FLEET_AGGREGATE
+    _a1_lit(monkeypatch)
+    try:
+        selection = select_capabilities(
+            prompt,
+            profile=A1_ORDINARY_PROFILE,
+            authenticated=True,
+            task_intent=decision.intent.value,
+        )
+        assert not selection.requires_specialist
+        assert "analytics.read" in selection.pack_ids
+        assert "maintenance.read" in selection.pack_ids
+        assert "uploaded_document_content" in selection.signals
+    finally:
+        capability_catalog.cache_clear()
+
+
+def test_a1_source_inventory_keeps_its_contract(monkeypatch):
+    from ai.core.analysis.intent import TaskIntent, classify_rules
+
+    prompt = "Which manuals do you have for the inverters?"
+    decision = classify_rules(prompt)
+    assert decision is not None
+    assert decision.intent is TaskIntent.SOURCE_INVENTORY
+    _a1_lit(monkeypatch)
+    try:
+        selection = select_capabilities(
+            prompt,
+            profile=A1_ORDINARY_PROFILE,
+            authenticated=True,
+            task_intent=decision.intent.value,
+        )
+        baseline = select_capabilities(
+            prompt,
+            profile=A1_ORDINARY_PROFILE,
+            authenticated=True,
+            task_intent="source_inventory",
+        )
+        assert selection.pack_ids[0] == "sources.read"
+        assert selection.pack_ids == baseline.pack_ids
+        assert selection.tool_ids == baseline.tool_ids
+    finally:
+        capability_catalog.cache_clear()
+
+
+def test_a1_governed_effect_with_document_mention_stays_specialist(monkeypatch):
+    from ai.core.analysis.intent import TaskIntent, classify_rules
+
+    prompt = "Create a work order to replace the seal the manual describes."
+    decision = classify_rules(prompt)
+    assert decision is not None
+    assert decision.intent is TaskIntent.GOVERNED_ACTION
+    _a1_lit(monkeypatch)
+    try:
+        selection = select_capabilities(
+            prompt,
+            profile=A1_ORDINARY_PROFILE,
+            authenticated=True,
+            task_intent=decision.intent.value,
+        )
+        assert selection.requires_specialist
+        assert "search_attachment_docs" not in selection.tool_ids
+    finally:
+        capability_catalog.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Read the manual then count stock in bin A-3",
+        "Read the manual. Count stock in bin A-3",
+        "Read the manual and count stock in bin A-3",
+    ],
+)
+def test_a3r_clause_boundaries_keep_count_commands_specialist(monkeypatch, prompt):
+    """A genuine count command must not inherit nominal protection across clauses."""
+    from ai.core.analysis.intent import classify_rules
+
+    decision = classify_rules(prompt)
+    _a1_lit(monkeypatch)
+    try:
+        selection = select_capabilities(
+            prompt,
+            profile=A1_ORDINARY_PROFILE,
+            authenticated=True,
+            task_intent=decision.intent.value if decision else None,
+        )
+        assert selection.requires_specialist
+        assert selection.reason == "write_or_external_effect_requires_specialist"
+        assert selection.tool_ids == ()
+        assert _a1_offered_callable(selection, "search_attachment_docs") is None
+    finally:
+        capability_catalog.cache_clear()
+
+
+@pytest.mark.parametrize("repetitions", [64, 128])
+def test_a3b_write_detection_keeps_slice_allocation_linear(monkeypatch, repetitions):
+    """Per-match write detection must keep slice materialization linear in input."""
+    from ai.core.tools import capabilities
+
+    query = " ".join(["count"] * repetitions)
+    copied = []
+
+    class ObservedText(str):
+        def __getitem__(self, key):
+            value = super().__getitem__(key)
+            if isinstance(key, slice):
+                copied.append(len(value))
+            return value
+
+    original_mask = capabilities._mask_noun_phrases
+
+    def observed_mask(text, clauses=None):
+        return ObservedText(original_mask(text, clauses))
+
+    monkeypatch.setattr(capabilities, "_mask_noun_phrases", observed_mask)
+    assert capabilities._write_intent(query) == "count"
+    assert sum(copied) <= 8 * len(query)
+
+
+class TestA4RelativeQualifier:
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "How many cycles does the datasheet that we uploaded report testing?",
+            "How many cycles does the datasheet that I uploaded report testing?",
+        ],
+    )
+    def test_relative_upload_source_fact_offers_attachment_tool(self, monkeypatch, query):
+        from ai.core.analysis.intent import EffectIntent, TaskIntent, classify_rules
+
+        decision = classify_rules(query)
+        assert decision is not None
+        assert decision.intent == TaskIntent.MANUAL_FACT
+        assert decision.effect == EffectIntent.READ_ONLY
+        _a1_lit(monkeypatch)
+        try:
+            selected = select_capabilities(
+                query,
+                profile=A1_ORDINARY_PROFILE,
+                authenticated=True,
+                task_intent=decision.intent.value,
+            )
+            assert "search_attachment_docs" in selected.tool_ids
+            offered = _a1_offered_callable(selected, "search_attachment_docs")
+            assert offered is not None
+            _a1_assert_sdk_strict_selector(offered)
+        finally:
+            capability_catalog.cache_clear()
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "How many cycles does the datasheet that we uploaded report testing?",
+            "How many cycles does the datasheet that I uploaded report testing?",
+        ],
+    )
+    @pytest.mark.parametrize(
+        ("authenticated", "profile"),
+        [
+            (True, frozenset()),
+            (False, A1_ORDINARY_PROFILE),
+        ],
+    )
+    def test_relative_upload_denials_remain_closed(
+        self, monkeypatch, query, authenticated, profile
+    ):
+        from ai.core.analysis.intent import classify_rules
+
+        decision = classify_rules(query)
+        assert decision is not None
+        _a1_lit(monkeypatch)
+        try:
+            selected = select_capabilities(
+                query,
+                profile=profile,
+                authenticated=authenticated,
+                task_intent=decision.intent.value,
+            )
+            assert "search_attachment_docs" not in selected.tool_ids
+            assert _a1_offered_callable(selected, "search_attachment_docs") is None
+        finally:
+            capability_catalog.cache_clear()
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "Read the datasheet that we uploaded while I report how many pumps were repaired last month.",
+            "Read the datasheet that I uploaded before you report how many teardowns occurred last month.",
+        ],
+    )
+    def test_relative_upload_does_not_hide_independent_reporting_subject(self, query):
+        from ai.core.analysis.intent import EffectIntent, TaskIntent, classify_rules
+
+        decision = classify_rules(query)
+        assert decision is not None
+        assert decision.intent == TaskIntent.FLEET_AGGREGATE
+        assert decision.effect == EffectIntent.READ_ONLY
+
+
+class TestA5SourceRelativeGrammar:
+    @pytest.mark.parametrize(
+        "clause",
+        [
+            "that I uploaded",
+            "that I have uploaded",
+            "that I had uploaded",
+            "that we uploaded",
+            "that we have uploaded",
+            "that we had uploaded",
+            "that you uploaded",
+            "that you have uploaded",
+            "that you had uploaded",
+            "which I uploaded",
+            "which I have uploaded",
+            "which I had uploaded",
+            "which we uploaded",
+            "which we have uploaded",
+            "which we had uploaded",
+            "which you uploaded",
+            "which you have uploaded",
+            "which you had uploaded",
+        ],
+    )
+    def test_source_owned_relative_grammar(self, monkeypatch, clause):
+        query = f"How many cycles does the datasheet {clause} report testing?"
+        TestA4RelativeQualifier().test_relative_upload_source_fact_offers_attachment_tool(
+            monkeypatch,
+            query,
+        )
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "How many cycles does the datasheet that you uploaded report testing?",
+            "How many cycles does the datasheet that I have uploaded report testing?",
+            "How many cycles does the datasheet that we have uploaded report testing?",
+            "How many cycles does the datasheet which I uploaded report testing?",
+        ],
+    )
+    @pytest.mark.parametrize(
+        ("authenticated", "profile"),
+        [
+            (True, frozenset()),
+            (False, A1_ORDINARY_PROFILE),
+        ],
+    )
+    def test_relative_grammar_denials(self, monkeypatch, query, authenticated, profile):
+        TestA4RelativeQualifier().test_relative_upload_denials_remain_closed(
+            monkeypatch,
+            query,
+            authenticated,
+            profile,
+        )
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "Read the datasheet that we have uploaded while I report how many pumps were repaired last month.",
+            "Read the datasheet which you have uploaded before we report how many teardowns occurred last month.",
+            "Read the manual which I had uploaded AND report how many pumps were repaired last month.",
+            "Read the manual that you had uploaded then report how many teardowns occurred last month.",
+        ],
+    )
+    def test_relative_grammar_independent_subject(self, query):
+        TestA4RelativeQualifier().test_relative_upload_does_not_hide_independent_reporting_subject(
+            query,
+        )
+
+
+class TestA6SourceOwnership:
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "How many documents were read last month?",
+            "How many revisions were published since 2020?",
+            "How many procedures were tested in the audit?",
+        ],
+    )
+    def test_document_subject_event_counts(self, query):
+        TestA4RelativeQualifier().test_relative_upload_does_not_hide_independent_reporting_subject(
+            query
+        )
+
+    @pytest.mark.parametrize(
+        "clause",
+        [
+            "which I uploaded",
+            "which I have uploaded",
+            "which I had uploaded",
+            "which we uploaded",
+            "which we have uploaded",
+            "which we had uploaded",
+            "which you uploaded",
+            "which you have uploaded",
+            "which you had uploaded",
+        ],
+    )
+    def test_comma_source_owned_relative_grammar(self, monkeypatch, clause):
+        query = f"How many cycles does the datasheet, {clause}, report testing?"
+        TestA4RelativeQualifier().test_relative_upload_source_fact_offers_attachment_tool(
+            monkeypatch, query
+        )
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "How many cycles does the datasheet, which we uploaded, report testing?",
+            "How many cycles does the datasheet, which I have uploaded, report testing?",
+        ],
+    )
+    @pytest.mark.parametrize(
+        ("authenticated", "profile"), [(True, frozenset()), (False, A1_ORDINARY_PROFILE)]
+    )
+    def test_comma_grammar_denials(self, monkeypatch, query, authenticated, profile):
+        TestA4RelativeQualifier().test_relative_upload_denials_remain_closed(
+            monkeypatch, query, authenticated, profile
+        )
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "Read the datasheet, which we uploaded, while I report how many pumps were repaired last month.",
+            "Read the datasheet, which you have uploaded, before we report how many teardowns occurred last month.",
+            "Read the manual, which I had uploaded, AND report how many pumps were repaired last month.",
+            "Read the manual, which you had uploaded, then report how many teardowns occurred last month.",
+        ],
+    )
+    def test_comma_grammar_independent_subject(self, query):
+        TestA4RelativeQualifier().test_relative_upload_does_not_hide_independent_reporting_subject(
+            query
+        )
+
+
+class TestA6RVoiceOwnership:
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "How many documents were previously read last month?",
+            "How many documents were recently read last month?",
+            "How many documents were actually read last month?",
+            "How many documents were not read last month?",
+            "How many revisions were previously published since 2020?",
+            "How many revisions were recently published since 2020?",
+            "How many revisions were actually published since 2020?",
+            "How many revisions were not published since 2020?",
+            "How many procedures were previously tested in the audit?",
+            "How many procedures were recently tested in the audit?",
+            "How many procedures were actually tested in the audit?",
+            "How many procedures were not tested in the audit?",
+        ],
+    )
+    def test_passive_event_modifiers(self, query):
+        TestA6SourceOwnership().test_document_subject_event_counts(query)
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "Read the datasheet and report how many cycles the manufacturer is reporting.",
+            "Read the datasheet and report how many cycles the manufacturer was reporting.",
+            "Read the datasheet and report how many cycles the manufacturer has been reporting.",
+        ],
+    )
+    def test_active_progressive_source_fact(self, monkeypatch, query):
+        TestA4RelativeQualifier().test_relative_upload_source_fact_offers_attachment_tool(
+            monkeypatch, query
+        )
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "Read the datasheet and report how many cycles the manufacturer is actively reporting.",
+            "Read the datasheet and report how many cycles the manufacturer was actively reporting.",
+            "Read the datasheet and report how many cycles the manufacturer has been actively reporting.",
+        ],
+    )
+    def test_active_modifier_source_control(self, monkeypatch, query):
+        TestA4RelativeQualifier().test_relative_upload_source_fact_offers_attachment_tool(
+            monkeypatch, query
+        )
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "Read the datasheet and report how many cycles the manufacturer is reporting.",
+            "Read the datasheet and report how many cycles the manufacturer has been reporting.",
+        ],
+    )
+    @pytest.mark.parametrize(
+        ("authenticated", "profile"), [(True, frozenset()), (False, A1_ORDINARY_PROFILE)]
+    )
+    def test_progressive_source_denials(self, monkeypatch, query, authenticated, profile):
+        TestA4RelativeQualifier().test_relative_upload_denials_remain_closed(
+            monkeypatch, query, authenticated, profile
+        )
+
+
+class TestA6R3GeneralOwnership:
+    @pytest.mark.parametrize(
+        ("noun", "verb", "tail"),
+        [
+            ("documents", "read", "last month"),
+            ("revisions", "published", "since 2020"),
+            ("procedures", "tested", "in the audit"),
+        ],
+    )
+    @pytest.mark.parametrize("prefix", ["How many ", "How many of the ", "What number of "])
+    @pytest.mark.parametrize("modifier", ["never", "already", "often", "always", "just", "once"])
+    def test_counted_source_passive_modifiers(self, noun, verb, tail, prefix, modifier):
+        query = f"{prefix}{noun} were {modifier} {verb} {tail}?"
+        TestA6SourceOwnership().test_document_subject_event_counts(query)
+
+    @pytest.mark.parametrize(
+        ("noun", "verb", "tail"),
+        [
+            ("documents", "read", "last month"),
+            ("revisions", "published", "since 2020"),
+            ("procedures", "tested", "in the audit"),
+        ],
+    )
+    @pytest.mark.parametrize("auxiliary", ["weren't", "were seldom", "were also", "were not"])
+    def test_counted_source_contraction_controls(self, noun, verb, tail, auxiliary):
+        query = f"How many {noun} {auxiliary} {verb} {tail}?"
+        TestA6SourceOwnership().test_document_subject_event_counts(query)
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "Read the datasheet and report how many cycles the manufacturer is reporting.",
+            "Read the datasheet and report how many cycles the manufacturer was reporting.",
+            "Read the datasheet and report how many cycles the manufacturer has been reporting.",
+            "Read the datasheet and report how many cycles the manufacturer is often reporting.",
+            "Read the datasheet and report how many cycles the manufacturer was often reporting.",
+            "Read the datasheet and report how many cycles the manufacturer has been often reporting.",
+            "Read the datasheet and report how many cycles the manufacturer is able to report.",
+        ],
+    )
+    def test_active_source_reporting_controls(self, monkeypatch, query):
+        TestA4RelativeQualifier().test_relative_upload_source_fact_offers_attachment_tool(
+            monkeypatch, query
+        )
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "Read the datasheet and report how many cycles the manufacturer is reporting.",
+            "Read the datasheet and report how many cycles the manufacturer is able to report.",
+        ],
+    )
+    @pytest.mark.parametrize(
+        ("authenticated", "profile"), [(True, frozenset()), (False, A1_ORDINARY_PROFILE)]
+    )
+    def test_source_permission_denials(self, monkeypatch, query, authenticated, profile):
+        TestA4RelativeQualifier().test_relative_upload_denials_remain_closed(
+            monkeypatch, query, authenticated, profile
+        )
+
+
+class TestA6R4QuantityOwnership:
+    @pytest.mark.parametrize("auxiliary", ["is", "was", "has been"])
+    @pytest.mark.parametrize(
+        "complement",
+        [
+            "confident it tested",
+            "certain it tested",
+            "confident it can report",
+            "certain that it tested",
+        ],
+    )
+    def test_nested_source_claims(self, monkeypatch, auxiliary, complement):
+        query = f"Read the datasheet and report how many cycles the manufacturer {auxiliary} {complement}."
+        TestA4RelativeQualifier().test_relative_upload_source_fact_offers_attachment_tool(
+            monkeypatch, query
+        )
+
+    @pytest.mark.parametrize(
+        ("noun", "verb", "tail"),
+        [
+            ("documents", "read", "last month"),
+            ("revisions", "published", "since 2020"),
+            ("procedures", "tested", "in the audit"),
+        ],
+    )
+    @pytest.mark.parametrize("quantifier", ["How many ", "How many of these "])
+    @pytest.mark.parametrize("head_modifier", ["archived ", "previously uploaded ", "new "])
+    def test_modified_quantity_heads(self, noun, verb, tail, quantifier, head_modifier):
+        query = f"{quantifier}{head_modifier}{noun} were already {verb} {tail}?"
+        TestA6SourceOwnership().test_document_subject_event_counts(query)
+
+    @pytest.mark.parametrize(
+        "modifier", ["frequently", "ever", "not often", "hardly ever", "already", "seldom"]
+    )
+    def test_quantified_patient_preserved(self, modifier):
+        query = f"How many archived documents were {modifier} read last month?"
+        TestA6SourceOwnership().test_document_subject_event_counts(query)
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "Read the datasheet and report how many cycles the manufacturer is confident it tested.",
+            "Read the datasheet and report how many cycles the manufacturer is able to report.",
+        ],
+    )
+    @pytest.mark.parametrize(
+        ("authenticated", "profile"), [(True, frozenset()), (False, A1_ORDINARY_PROFILE)]
+    )
+    def test_nested_source_denials(self, monkeypatch, query, authenticated, profile):
+        TestA4RelativeQualifier().test_relative_upload_denials_remain_closed(
+            monkeypatch, query, authenticated, profile
+        )
+
+
+class TestA6R4RLocalOwnership:
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "How many cycles does attachment 60 report testing?",
+            "Read the datasheet and report how many cycles OEM reports testing.",
+            "How many cycles can attachment 60 report?",
+            "Read attachment 60 and report how many cycles OEM states it tested.",
+        ],
+    )
+    def test_quantifier_does_not_own_independent_reporter(self, monkeypatch, query):
+        TestA4RelativeQualifier().test_relative_upload_source_fact_offers_attachment_tool(
+            monkeypatch, query
+        )
+
+    @pytest.mark.parametrize("repetitions", [64, 128])
+    def test_quantity_head_observation_is_local(self, monkeypatch, repetitions):
+        from ai.core.analysis import intent as intent_module
+
+        pattern = intent_module._AGGREGATE
+        spans = []
+        sliced = []
+        enumerated = [0]
+
+        class ObservedText(str):
+            def __getitem__(self, key):
+                if isinstance(key, slice):
+                    sliced.append(len(range(*key.indices(len(self)))))
+                return super().__getitem__(key)
+
+        class RegexObserver:
+            def __getattr__(self, name):
+                target = getattr(pattern, name)
+                if name not in {"search", "finditer", "match", "fullmatch", "findall"}:
+                    return target
+
+                def observe(value, pos=0, endpos=None):
+                    end = len(value) if endpos is None else min(len(value), endpos)
+                    spans.append(max(0, end - pos))
+                    result = target(value, pos, end)
+                    if name == "finditer":
+
+                        def counted():
+                            for match in result:
+                                enumerated[0] += 1
+                                yield match
+
+                        return counted()
+                    if name == "findall":
+                        enumerated[0] += len(result)
+                    else:
+                        enumerated[0] += int(result is not None)
+                    return result
+
+                return observe
+
+        raw = "How many documents were read last month? " * repetitions
+        assert intent_module._source_reported_fact(raw) is False
+        query = ObservedText(raw)
+        monkeypatch.setattr(intent_module, "_AGGREGATE", RegexObserver())
+        assert intent_module._source_reported_fact(query) is False
+        assert max(spans, default=0) <= 80
+        assert max(sliced, default=0) <= 80
+        assert sum(sliced) <= repetitions * 240
+        assert enumerated[0] <= repetitions * 3
+
+
+class TestM1NamedProposalOwnership:
+    @pytest.mark.parametrize(
+        "query", ["propose memory action", "Please propose memory action.", "PROPOSE MEMORY ACTION"]
+    )
+    @pytest.mark.parametrize(
+        "profile", [frozenset(), ALL_VIEW_PROFILE, frozenset({("ai_memory", "write")})]
+    )
+    def test_named_memory_action_requires_specialist_without_tools(self, query, profile):
+        selected = select_capabilities(query, profile=profile, authenticated=True)
+        assert selected.requires_specialist is True
+        assert selected.pack_ids == ()
+        assert selected.tool_ids == ()
+        assert selected.tools == ()
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "Propose a maintenance plan.",
+            "What does propose memory action do?",
+            "Show the proposed memory action history.",
+        ],
+    )
+    def test_read_and_advice_proposals_stay_non_specialist(self, query):
+        selected = select_capabilities(query, profile=ALL_VIEW_PROFILE, authenticated=True)
+        assert selected.requires_specialist is False
+
+    @pytest.mark.parametrize(
+        ("authenticated", "profile", "expected"),
+        [
+            (True, frozenset({("ai_memory", "write")}), ("propose_memory_action",)),
+            (True, ALL_VIEW_PROFILE, ()),
+            (False, frozenset({("ai_memory", "write")}), ()),
+        ],
+    )
+    def test_native_memory_permission_and_proposal_boundary(self, authenticated, profile, expected):
+        selected = select_capabilities(
+            "forget all my memories", profile=profile, authenticated=authenticated
+        )
+        assert selected.tool_ids == expected
+        assert tuple(tool_name(tool) for tool in selected.tools) == expected
+        assert selected.requires_specialist is False
+
+
+class TestA6R5NominalOwnership:
+    @pytest.mark.parametrize("auxiliary", ["is", "was", "has been"])
+    @pytest.mark.parametrize(
+        "subject", ["the factory", "the laboratory", "the team", "its engineers"]
+    )
+    def test_nominal_embedded_source_claim(self, monkeypatch, auxiliary, subject):
+        query = f"Read the datasheet and report how many cycles the manufacturer {auxiliary} confident {subject} tested."
+        TestA4RelativeQualifier().test_relative_upload_source_fact_offers_attachment_tool(
+            monkeypatch, query
+        )
+
+
+class TestA6R6ArticlelessOwnership:
+    @pytest.mark.parametrize("source", ["OEM", "attachment 60", "the OEM", "the attachment 60"])
+    @pytest.mark.parametrize("auxiliary", ["is", "was", "has been"])
+    @pytest.mark.parametrize("subject", ["it", "the factory"])
+    def test_articleless_and_determined_nested_reporters(
+        self, monkeypatch, source, auxiliary, subject
+    ):
+        query = f"Read the datasheet and report how many cycles {source} {auxiliary} confident {subject} tested."
+        TestA4RelativeQualifier().test_relative_upload_source_fact_offers_attachment_tool(
+            monkeypatch, query
+        )
+
+
+class TestA6R9IndexedSourceOwnership:
+    @pytest.mark.parametrize(
+        ("query", "aggregate"),
+        [
+            pytest.param(
+                "How many of the documents 1 through 10 were read last month?",
+                True,
+                id="indexed-patient-documents",
+            ),
+            pytest.param(
+                "How many of these archived documents 1 through 10 were read last month?",
+                True,
+                id="indexed-modified-patient-documents",
+            ),
+            pytest.param(
+                "How many of these archived documents numbered 1 through 10 were read last month?",
+                True,
+                id="explicitly-numbered-control-documents",
+            ),
+            pytest.param(
+                "How many of these archived documents were read last month?",
+                True,
+                id="unindexed-control-documents",
+            ),
+            pytest.param(
+                "How many of the revisions 1 through 10 were published since 2020?",
+                True,
+                id="indexed-patient-revisions",
+            ),
+            pytest.param(
+                "How many of these new revisions 1 through 10 were published since 2020?",
+                True,
+                id="indexed-modified-patient-revisions",
+            ),
+            pytest.param(
+                "How many of these new revisions numbered 1 through 10 were published since 2020?",
+                True,
+                id="explicitly-numbered-control-revisions",
+            ),
+            pytest.param(
+                "How many of these new revisions were published since 2020?",
+                True,
+                id="unindexed-control-revisions",
+            ),
+            pytest.param(
+                "How many of the procedures 1 through 10 were tested in the audit?",
+                True,
+                id="indexed-patient-procedures",
+            ),
+            pytest.param(
+                "How many of these previously uploaded procedures 1 through 10 were tested in the audit?",
+                True,
+                id="indexed-modified-patient-procedures",
+            ),
+            pytest.param(
+                "How many of these previously uploaded procedures numbered 1 through 10 were tested in the audit?",
+                True,
+                id="explicitly-numbered-control-procedures",
+            ),
+            pytest.param(
+                "How many of these previously uploaded procedures were tested in the audit?",
+                True,
+                id="unindexed-control-procedures",
+            ),
+            pytest.param(
+                "Read the datasheet and report how many cycles attachment 61 is confident the factory tested.",
+                False,
+                id="indexed-reporter-61",
+            ),
+            pytest.param(
+                "Read the datasheet and report how many cycles attachment 75 is confident the factory tested.",
+                False,
+                id="indexed-reporter-75",
+            ),
+        ],
+    )
+    def test_complete_indexed_source_ownership(self, monkeypatch, query, aggregate):
+        if aggregate:
+            from ai.core.analysis.intent import classify_rules
+
+            TestA6SourceOwnership().test_document_subject_event_counts(query)
+            decision = classify_rules(query)
+            assert decision is not None
+            _a1_lit(monkeypatch)
+            try:
+                selected = select_capabilities(
+                    query,
+                    profile=frozenset({("part", "view"), ("work_order", "view")}),
+                    authenticated=True,
+                    task_intent=decision.intent.value,
+                )
+                assert not selected.requires_specialist
+                assert "query_database" in selected.tool_ids
+                assert _a1_offered_callable(selected, "query_database") is not None
+            finally:
+                capability_catalog.cache_clear()
+        else:
+            TestA4RelativeQualifier().test_relative_upload_source_fact_offers_attachment_tool(
+                monkeypatch, query
+            )
+
+
+class TestA6R10SourcePhraseRoles:
+    @pytest.mark.parametrize(
+        ("query", "aggregate"),
+        [
+            pytest.param(
+                "How many OEM documents were read last month?", True, id="prenominal-oem-plain"
+            ),
+            pytest.param(
+                "How many of the OEM documents were read last month?",
+                True,
+                id="prenominal-oem-partitive",
+            ),
+            pytest.param(
+                "How many archived OEM documents were read last month?",
+                True,
+                id="prenominal-oem-modified",
+            ),
+            pytest.param(
+                "How many documents from OEM were read last month?", True, id="pp-oem-from-bare"
+            ),
+            pytest.param(
+                "How many documents from the OEM were read last month?",
+                True,
+                id="pp-oem-from-determined",
+            ),
+            pytest.param(
+                "How many documents in OEM were read last month?", True, id="pp-oem-in-bare"
+            ),
+            pytest.param(
+                "How many documents in the OEM were read last month?",
+                True,
+                id="pp-oem-in-determined",
+            ),
+            pytest.param(
+                "Read the datasheet and report how many cycles OEM is confident it tested.",
+                False,
+                id="reporter-oem-pronoun",
+            ),
+            pytest.param(
+                "Read the datasheet and report how many cycles OEM is confident the factory tested.",
+                False,
+                id="reporter-oem-nominal",
+            ),
+            pytest.param(
+                "How many manufacturer documents were read last month?",
+                True,
+                id="prenominal-manufacturer-plain",
+            ),
+            pytest.param(
+                "How many of the manufacturer documents were read last month?",
+                True,
+                id="prenominal-manufacturer-partitive",
+            ),
+            pytest.param(
+                "How many archived manufacturer documents were read last month?",
+                True,
+                id="prenominal-manufacturer-modified",
+            ),
+            pytest.param(
+                "How many documents from manufacturer were read last month?",
+                True,
+                id="pp-manufacturer-from-bare",
+            ),
+            pytest.param(
+                "How many documents from the manufacturer were read last month?",
+                True,
+                id="pp-manufacturer-from-determined",
+            ),
+            pytest.param(
+                "How many documents in manufacturer were read last month?",
+                True,
+                id="pp-manufacturer-in-bare",
+            ),
+            pytest.param(
+                "How many documents in the manufacturer were read last month?",
+                True,
+                id="pp-manufacturer-in-determined",
+            ),
+            pytest.param(
+                "Read the datasheet and report how many cycles manufacturer is confident it tested.",
+                False,
+                id="reporter-manufacturer-pronoun",
+            ),
+            pytest.param(
+                "Read the datasheet and report how many cycles manufacturer is confident the factory tested.",
+                False,
+                id="reporter-manufacturer-nominal",
+            ),
+            pytest.param(
+                "How many vendor documents were read last month?",
+                True,
+                id="prenominal-vendor-plain",
+            ),
+            pytest.param(
+                "How many of the vendor documents were read last month?",
+                True,
+                id="prenominal-vendor-partitive",
+            ),
+            pytest.param(
+                "How many archived vendor documents were read last month?",
+                True,
+                id="prenominal-vendor-modified",
+            ),
+            pytest.param(
+                "How many documents from vendor were read last month?",
+                True,
+                id="pp-vendor-from-bare",
+            ),
+            pytest.param(
+                "How many documents from the vendor were read last month?",
+                True,
+                id="pp-vendor-from-determined",
+            ),
+            pytest.param(
+                "How many documents in vendor were read last month?", True, id="pp-vendor-in-bare"
+            ),
+            pytest.param(
+                "How many documents in the vendor were read last month?",
+                True,
+                id="pp-vendor-in-determined",
+            ),
+            pytest.param(
+                "Read the datasheet and report how many cycles vendor is confident it tested.",
+                False,
+                id="reporter-vendor-pronoun",
+            ),
+            pytest.param(
+                "Read the datasheet and report how many cycles vendor is confident the factory tested.",
+                False,
+                id="reporter-vendor-nominal",
+            ),
+            pytest.param(
+                "How many documents from attachment 61 were read last month?",
+                True,
+                id="pp-indexed-from-bare",
+            ),
+            pytest.param(
+                "How many documents from the attachment 61 were read last month?",
+                True,
+                id="pp-indexed-from-determined",
+            ),
+            pytest.param(
+                "How many documents in attachment 61 were read last month?",
+                True,
+                id="pp-indexed-in-bare",
+            ),
+            pytest.param(
+                "How many documents in the attachment 61 were read last month?",
+                True,
+                id="pp-indexed-in-determined",
+            ),
+        ],
+    )
+    def test_source_phrase_role(self, monkeypatch, query, aggregate):
+        if aggregate:
+            from ai.core.analysis.intent import classify_rules
+
+            TestA6SourceOwnership().test_document_subject_event_counts(query)
+            decision = classify_rules(query)
+            assert decision is not None
+            _a1_lit(monkeypatch)
+            try:
+                selected = select_capabilities(
+                    query,
+                    profile=frozenset({("part", "view"), ("work_order", "view")}),
+                    authenticated=True,
+                    task_intent=decision.intent.value,
+                )
+                assert not selected.requires_specialist
+                assert "query_database" in selected.tool_ids
+                assert _a1_offered_callable(selected, "query_database") is not None
+            finally:
+                capability_catalog.cache_clear()
+        else:
+            TestA4RelativeQualifier().test_relative_upload_source_fact_offers_attachment_tool(
+                monkeypatch, query
+            )
+
+
+class TestA6R11VariableSourcePhrases:
+    @pytest.mark.parametrize(
+        ("noun", "verb", "tail"),
+        [
+            ("documents", "read", "last month"),
+            ("revisions", "published", "since 2020"),
+            ("procedures", "tested", "in the audit"),
+        ],
+    )
+    @pytest.mark.parametrize("source", ["OEM", "manufacturer", "vendor"])
+    @pytest.mark.parametrize("quantifier", ["How many ", "How many of the "])
+    @pytest.mark.parametrize("modifier", ["technical ", "maintenance "])
+    @pytest.mark.parametrize("outer", ["", "archived "])
+    def test_source_before_modified_counted_head(
+        self, monkeypatch, noun, verb, tail, source, quantifier, modifier, outer
+    ):
+        query = f"{quantifier}{outer}{source} {modifier}{noun} were {verb} {tail}?"
+        TestA6R9IndexedSourceOwnership().test_complete_indexed_source_ownership(
+            monkeypatch, query, True
+        )
+
+    @pytest.mark.parametrize(
+        ("noun", "verb", "tail"),
+        [
+            ("documents", "read", "last month"),
+            ("revisions", "published", "since 2020"),
+            ("procedures", "tested", "in the audit"),
+        ],
+    )
+    @pytest.mark.parametrize("source", ["OEM", "manufacturer", "attachment 61"])
+    @pytest.mark.parametrize("preposition", ["from", "in", "of"])
+    @pytest.mark.parametrize("qualifier", ["", "the ", "the original ", "the current equipment "])
+    def test_prepositional_source_width(
+        self, monkeypatch, noun, verb, tail, source, preposition, qualifier
+    ):
+        query = f"How many of the {noun} {preposition} {qualifier}{source} were {verb} {tail}?"
+        TestA6R9IndexedSourceOwnership().test_complete_indexed_source_ownership(
+            monkeypatch, query, True
+        )
+
+    @pytest.mark.parametrize("source", ["OEM", "manufacturer", "vendor"])
+    @pytest.mark.parametrize("auxiliary", ["is", "was", "has been"])
+    @pytest.mark.parametrize("subject", ["it", "the factory", "the manual"])
+    @pytest.mark.parametrize("adverb", ["", "usually "])
+    def test_reporter_complement_and_auxiliary(
+        self, monkeypatch, source, auxiliary, subject, adverb
+    ):
+        verb = "reported" if subject == "the manual" else "tested"
+        query = f"Read the datasheet and report how many cycles {source} {adverb}{auxiliary} confident {subject} {verb}."
+        TestA4RelativeQualifier().test_relative_upload_source_fact_offers_attachment_tool(
+            monkeypatch, query
+        )
+
+
+class TestB2CountHeadOwnership:
+    @pytest.mark.parametrize(
+        "prefix", ["Count", "Please count", "Read the manual then count", "Read the manual. Count"]
+    )
+    @pytest.mark.parametrize("determiner", ["these", "those"])
+    @pytest.mark.parametrize("noun", ["records", "lists", "claims", "notes"])
+    @pytest.mark.parametrize("tail", ["", " before the audit", " to verify the kit"])
+    def test_imperative_count_keeps_specialist(self, monkeypatch, prefix, determiner, noun, tail):
+        prompt = f"{prefix} {determiner} {noun}{tail}."
+        test_a3_real_writes_remain_specialist(monkeypatch, prompt)
+
+    @pytest.mark.parametrize("prefix", ["Read", "Search"])
+    @pytest.mark.parametrize("noun", ["cycle", "stroke"])
+    @pytest.mark.parametrize("modifier", ["", "tested "])
+    @pytest.mark.parametrize("determiner", ["the ", ""])
+    def test_clause_final_nominal_count_stays_readable(
+        self, monkeypatch, prefix, noun, modifier, determiner
+    ):
+        query = f"{prefix} uploaded attachment 60 and report {determiner}{modifier}{noun} count."
+        TestA4RelativeQualifier().test_relative_upload_source_fact_offers_attachment_tool(
+            monkeypatch, query
+        )
+
+    @pytest.mark.parametrize("prefix", ["Read", "Search"])
+    @pytest.mark.parametrize("noun", ["cycle", "stroke"])
+    @pytest.mark.parametrize("relative", ["those records list", "these reports specify"])
+    @pytest.mark.parametrize("determiner", ["the ", ""])
+    def test_nominal_relative_count_stays_readable(
+        self, monkeypatch, prefix, noun, relative, determiner
+    ):
+        from ai.core.analysis.intent import classify_rules
+        from ai.core.tools import capabilities
+
+        query = f"{prefix} uploaded attachment 60 and report {determiner}{noun} count {relative}."
+        decision = classify_rules(query)
+        _a1_lit(monkeypatch)
+        try:
+            selection = select_capabilities(
+                query,
+                profile=A1_ORDINARY_PROFILE,
+                authenticated=True,
+                task_intent=decision.intent.value if decision else None,
+            )
+            assert capabilities._write_intent(query) is None
+            assert not selection.requires_specialist
+            assert selection.tool_ids
+        finally:
+            capability_catalog.cache_clear()
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "Read uploaded attachment 60 and report the tested cycle count.",
+            "Search uploaded attachment 60 and report the stroke count.",
+        ],
+    )
+    @pytest.mark.parametrize(
+        ("authenticated", "profile"), [(True, frozenset()), (False, A1_ORDINARY_PROFILE)]
+    )
+    def test_nominal_count_denials_stay_closed(self, monkeypatch, query, authenticated, profile):
+        TestA4RelativeQualifier().test_relative_upload_denials_remain_closed(
+            monkeypatch, query, authenticated, profile
+        )
+
+    @pytest.mark.parametrize(
+        "prompt",
+        [
+            "Read uploaded attachment 60 and report the tested cycle count it states then count those claims.",
+            "Read uploaded attachment 60 and report the tested cycle count. Then count these records.",
+            "Read uploaded attachment 60 and report tested cycle count it states then count those claims.",
+            "Read uploaded attachment 60 and report tested cycle count. Then count these records.",
+            "Count stock in bin A-3.",
+        ],
+    )
+    def test_mixed_count_and_stock_controls(self, monkeypatch, prompt):
+        test_a3_real_writes_remain_specialist(monkeypatch, prompt)
+
+
+class TestB2RequestFormOwnership:
+    @pytest.mark.parametrize("prefix", ["Can you", "Could you please", "Would you"])
+    @pytest.mark.parametrize("determiner", ["these", "those"])
+    @pytest.mark.parametrize("noun", ["records", "lists", "claims", "notes"])
+    def test_request_keeps_specialist(self, monkeypatch, prefix, determiner, noun):
+        test_a3_real_writes_remain_specialist(monkeypatch, f"{prefix} count {determiner} {noun}?")
+
+
+class TestB2NominalQualifierOwnership:
+    @pytest.mark.parametrize("prefix", ["Read", "Search"])
+    @pytest.mark.parametrize("noun", ["cycle", "stroke"])
+    @pytest.mark.parametrize(
+        "qualifier", ["for this unit", "in the datasheet", "on physical page 2"]
+    )
+    def test_qualified_nominal_offers_source_tool(self, monkeypatch, prefix, noun, qualifier):
+        query = f"{prefix} uploaded attachment 60 and report the tested {noun} count {qualifier}."
+        TestA4RelativeQualifier().test_relative_upload_source_fact_offers_attachment_tool(
+            monkeypatch, query
+        )
+
+    @pytest.mark.parametrize(
+        "qualifier", ["for this unit", "in the datasheet", "on physical page 2"]
+    )
+    def test_imperative_count_remains_specialist(self, monkeypatch, qualifier):
+        test_a3_real_writes_remain_specialist(monkeypatch, f"Count those records {qualifier}.")
+
+    @pytest.mark.parametrize(
+        "qualifier", ["for this unit", "in the datasheet", "on physical page 2"]
+    )
+    @pytest.mark.parametrize(
+        "connector", [" then count those records", ". Then count these records"]
+    )
+    def test_qualified_nominal_preserves_later_count(self, monkeypatch, qualifier, connector):
+        query = (
+            f"Read uploaded attachment 60 and report the tested cycle count {qualifier}{connector}."
+        )
+        test_a3_real_writes_remain_specialist(monkeypatch, query)
+
+
+class TestB2GOOwnershipReassessment:
+    @pytest.mark.parametrize(
+        "query",
+        [
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested cycle count to verify the kit.",
+                id="source-0",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested cycle count, and verify the kit.",
+                id="source-1",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested cycle count.", id="source-2"
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested cycle count for this unit.",
+                id="source-3",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested cycle count in the datasheet.",
+                id="source-4",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested cycle count on physical page 2.",
+                id="source-5",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested cycle count that the vendor is reporting.",
+                id="source-6",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested stroke count for this unit.",
+                id="source-7",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested stroke count in the datasheet.",
+                id="source-8",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested stroke count on physical page 2.",
+                id="source-9",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested stroke count to verify the kit.",
+                id="source-10",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested stroke count, and verify the kit.",
+                id="source-11",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested stroke count that the vendor is reporting.",
+                id="source-12",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested cycle count for this unit.",
+                id="source-13",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested cycle count in the datasheet.",
+                id="source-14",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested cycle count on physical page 2.",
+                id="source-15",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested cycle count to verify the kit.",
+                id="source-16",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested cycle count, and verify the kit.",
+                id="source-17",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested cycle count that the vendor is reporting.",
+                id="source-18",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested stroke count for this unit.",
+                id="source-19",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested stroke count in the datasheet.",
+                id="source-20",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested stroke count on physical page 2.",
+                id="source-21",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested stroke count to verify the kit.",
+                id="source-22",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested stroke count, and verify the kit.",
+                id="source-23",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested stroke count that the vendor is reporting.",
+                id="source-24",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested cycle count for this unit.",
+                id="source-25",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested cycle count in the datasheet.",
+                id="source-26",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested cycle count on physical page 2.",
+                id="source-27",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested cycle count to verify the kit.",
+                id="source-28",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested cycle count, and verify the kit.",
+                id="source-29",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested cycle count that the vendor is reporting.",
+                id="source-30",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested stroke count for this unit.",
+                id="source-31",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested stroke count in the datasheet.",
+                id="source-32",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested stroke count on physical page 2.",
+                id="source-33",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested stroke count to verify the kit.",
+                id="source-34",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested stroke count, and verify the kit.",
+                id="source-35",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested stroke count that the vendor is reporting.",
+                id="source-36",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested cycle count for this unit.",
+                id="source-37",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested cycle count in the datasheet.",
+                id="source-38",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested cycle count on physical page 2.",
+                id="source-39",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested cycle count to verify the kit.",
+                id="source-40",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested cycle count, and verify the kit.",
+                id="source-41",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested cycle count that the vendor is reporting.",
+                id="source-42",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested stroke count for this unit.",
+                id="source-43",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested stroke count in the datasheet.",
+                id="source-44",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested stroke count on physical page 2.",
+                id="source-45",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested stroke count to verify the kit.",
+                id="source-46",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested stroke count, and verify the kit.",
+                id="source-47",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested stroke count that the vendor is reporting.",
+                id="source-48",
+            ),
+        ],
+    )
+    def test_nominal_source_exposes_real_callable(self, monkeypatch, query):
+        from ai.core.analysis.intent import classify_rules
+
+        decision = classify_rules(query)
+        _a1_lit(monkeypatch)
+        try:
+            selected = select_capabilities(
+                query,
+                profile=A1_ORDINARY_PROFILE,
+                authenticated=True,
+                task_intent=decision.intent.value if decision else None,
+            )
+            assert not selected.requires_specialist
+            assert "search_attachment_docs" in selected.tool_ids
+            offered = _a1_offered_callable(selected, "search_attachment_docs")
+            assert offered is not None
+            _a1_assert_sdk_strict_selector(offered)
+        finally:
+            capability_catalog.cache_clear()
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            pytest.param("Now count those records.", id="request-0"),
+            pytest.param("Just count those claims.", id="request-1"),
+            pytest.param("First count these lists.", id="request-2"),
+            pytest.param("Please also count those notes.", id="request-3"),
+            pytest.param("Start counting those records.", id="request-4"),
+            pytest.param("Would it be possible to count those records?", id="request-5"),
+            pytest.param("Please quickly count damaged records.", id="request-6"),
+            pytest.param("Read the manual then quickly count damaged records.", id="request-7"),
+            pytest.param("Quickly count damaged records.", id="request-8"),
+            pytest.param("Quickly count existing records.", id="request-9"),
+            pytest.param("Please carefully count pending records.", id="request-10"),
+            pytest.param("Read the manual and carefully count modified records.", id="request-11"),
+            pytest.param("Now count these records?", id="request-12"),
+            pytest.param("Now count these lists?", id="request-13"),
+            pytest.param("Now count these claims?", id="request-14"),
+            pytest.param("Now count these notes?", id="request-15"),
+            pytest.param("Now count those records?", id="request-16"),
+            pytest.param("Now count those lists?", id="request-17"),
+            pytest.param("Now count those claims?", id="request-18"),
+            pytest.param("Now count those notes?", id="request-19"),
+            pytest.param("Just count these records?", id="request-20"),
+            pytest.param("Just count these lists?", id="request-21"),
+            pytest.param("Just count these claims?", id="request-22"),
+            pytest.param("Just count these notes?", id="request-23"),
+            pytest.param("Just count those records?", id="request-24"),
+            pytest.param("Just count those lists?", id="request-25"),
+            pytest.param("Just count those claims?", id="request-26"),
+            pytest.param("Just count those notes?", id="request-27"),
+            pytest.param("First count these records?", id="request-28"),
+            pytest.param("First count these lists?", id="request-29"),
+            pytest.param("First count these claims?", id="request-30"),
+            pytest.param("First count these notes?", id="request-31"),
+            pytest.param("First count those records?", id="request-32"),
+            pytest.param("First count those lists?", id="request-33"),
+            pytest.param("First count those claims?", id="request-34"),
+            pytest.param("First count those notes?", id="request-35"),
+            pytest.param("Please also count these records?", id="request-36"),
+            pytest.param("Please also count these lists?", id="request-37"),
+            pytest.param("Please also count these claims?", id="request-38"),
+            pytest.param("Please also count these notes?", id="request-39"),
+            pytest.param("Please also count those records?", id="request-40"),
+            pytest.param("Please also count those lists?", id="request-41"),
+            pytest.param("Please also count those claims?", id="request-42"),
+            pytest.param("Please also count those notes?", id="request-43"),
+            pytest.param("Can you carefully count these records?", id="request-44"),
+            pytest.param("Can you carefully count these lists?", id="request-45"),
+            pytest.param("Can you carefully count these claims?", id="request-46"),
+            pytest.param("Can you carefully count these notes?", id="request-47"),
+            pytest.param("Can you carefully count those records?", id="request-48"),
+            pytest.param("Can you carefully count those lists?", id="request-49"),
+            pytest.param("Can you carefully count those claims?", id="request-50"),
+            pytest.param("Can you carefully count those notes?", id="request-51"),
+            pytest.param("Could you please quickly count these records?", id="request-52"),
+            pytest.param("Could you please quickly count these lists?", id="request-53"),
+            pytest.param("Could you please quickly count these claims?", id="request-54"),
+            pytest.param("Could you please quickly count these notes?", id="request-55"),
+            pytest.param("Could you please quickly count those records?", id="request-56"),
+            pytest.param("Could you please quickly count those lists?", id="request-57"),
+            pytest.param("Could you please quickly count those claims?", id="request-58"),
+            pytest.param("Could you please quickly count those notes?", id="request-59"),
+            pytest.param("Read the manual then quickly count these records?", id="request-60"),
+            pytest.param("Read the manual then quickly count these lists?", id="request-61"),
+            pytest.param("Read the manual then quickly count these claims?", id="request-62"),
+            pytest.param("Read the manual then quickly count these notes?", id="request-63"),
+            pytest.param("Read the manual then quickly count those records?", id="request-64"),
+            pytest.param("Read the manual then quickly count those lists?", id="request-65"),
+            pytest.param("Read the manual then quickly count those claims?", id="request-66"),
+            pytest.param("Read the manual then quickly count those notes?", id="request-67"),
+            pytest.param("Read the manual and carefully count these records?", id="request-68"),
+            pytest.param("Read the manual and carefully count these lists?", id="request-69"),
+            pytest.param("Read the manual and carefully count these claims?", id="request-70"),
+            pytest.param("Read the manual and carefully count these notes?", id="request-71"),
+            pytest.param("Read the manual and carefully count those records?", id="request-72"),
+            pytest.param("Read the manual and carefully count those lists?", id="request-73"),
+            pytest.param("Read the manual and carefully count those claims?", id="request-74"),
+            pytest.param("Read the manual and carefully count those notes?", id="request-75"),
+            pytest.param("Start counting these records?", id="request-76"),
+            pytest.param("Start counting these lists?", id="request-77"),
+            pytest.param("Start counting these claims?", id="request-78"),
+            pytest.param("Start counting these notes?", id="request-79"),
+            pytest.param("Start counting those records?", id="request-80"),
+            pytest.param("Start counting those lists?", id="request-81"),
+            pytest.param("Start counting those claims?", id="request-82"),
+            pytest.param("Start counting those notes?", id="request-83"),
+            pytest.param("Begin by counting these records?", id="request-84"),
+            pytest.param("Begin by counting these lists?", id="request-85"),
+            pytest.param("Begin by counting these claims?", id="request-86"),
+            pytest.param("Begin by counting these notes?", id="request-87"),
+            pytest.param("Begin by counting those records?", id="request-88"),
+            pytest.param("Begin by counting those lists?", id="request-89"),
+            pytest.param("Begin by counting those claims?", id="request-90"),
+            pytest.param("Begin by counting those notes?", id="request-91"),
+            pytest.param("Would it be possible to count these records?", id="request-92"),
+            pytest.param("Would it be possible to count these lists?", id="request-93"),
+            pytest.param("Would it be possible to count these claims?", id="request-94"),
+            pytest.param("Would it be possible to count these notes?", id="request-95"),
+            pytest.param("Would it be possible to count those lists?", id="request-96"),
+            pytest.param("Would it be possible to count those claims?", id="request-97"),
+            pytest.param("Would it be possible to count those notes?", id="request-98"),
+            pytest.param("Quickly count damaged notes.", id="request-99"),
+            pytest.param("Quickly count pending records.", id="request-100"),
+            pytest.param("Quickly count pending notes.", id="request-101"),
+            pytest.param("Please carefully count damaged records.", id="request-102"),
+            pytest.param("Please carefully count damaged notes.", id="request-103"),
+            pytest.param("Please carefully count pending notes.", id="request-104"),
+            pytest.param("Can you quickly count damaged records.", id="request-105"),
+            pytest.param("Can you quickly count damaged notes.", id="request-106"),
+            pytest.param("Can you quickly count pending records.", id="request-107"),
+            pytest.param("Can you quickly count pending notes.", id="request-108"),
+            pytest.param("Read the manual then quickly count damaged notes.", id="request-109"),
+            pytest.param("Read the manual then quickly count pending records.", id="request-110"),
+            pytest.param("Read the manual then quickly count pending notes.", id="request-111"),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested cycle count for this unit then quickly count damaged records.",
+                id="request-112",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested cycle count for this unit. Could you please count those notes.",
+                id="request-113",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested cycle count to verify the kit then quickly count damaged records.",
+                id="request-114",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested cycle count to verify the kit. Could you please count those notes.",
+                id="request-115",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested cycle count, and verify the kit then quickly count damaged records.",
+                id="request-116",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested cycle count, and verify the kit. Could you please count those notes.",
+                id="request-117",
+            ),
+        ],
+    )
+    def test_actual_count_request_keeps_specialist(self, monkeypatch, query):
+        test_a3_real_writes_remain_specialist(monkeypatch, query)
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested cycle count to verify the kit.",
+                id="source-0",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested cycle count, and verify the kit.",
+                id="source-1",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested cycle count.", id="source-2"
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested cycle count for this unit.",
+                id="source-3",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested cycle count in the datasheet.",
+                id="source-4",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested cycle count on physical page 2.",
+                id="source-5",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested cycle count that the vendor is reporting.",
+                id="source-6",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested stroke count for this unit.",
+                id="source-7",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested stroke count in the datasheet.",
+                id="source-8",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested stroke count on physical page 2.",
+                id="source-9",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested stroke count to verify the kit.",
+                id="source-10",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested stroke count, and verify the kit.",
+                id="source-11",
+            ),
+            pytest.param(
+                "Read uploaded attachment 60 and report the tested stroke count that the vendor is reporting.",
+                id="source-12",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested cycle count for this unit.",
+                id="source-13",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested cycle count in the datasheet.",
+                id="source-14",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested cycle count on physical page 2.",
+                id="source-15",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested cycle count to verify the kit.",
+                id="source-16",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested cycle count, and verify the kit.",
+                id="source-17",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested cycle count that the vendor is reporting.",
+                id="source-18",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested stroke count for this unit.",
+                id="source-19",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested stroke count in the datasheet.",
+                id="source-20",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested stroke count on physical page 2.",
+                id="source-21",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested stroke count to verify the kit.",
+                id="source-22",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested stroke count, and verify the kit.",
+                id="source-23",
+            ),
+            pytest.param(
+                "Search uploaded attachment 60 and report the tested stroke count that the vendor is reporting.",
+                id="source-24",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested cycle count for this unit.",
+                id="source-25",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested cycle count in the datasheet.",
+                id="source-26",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested cycle count on physical page 2.",
+                id="source-27",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested cycle count to verify the kit.",
+                id="source-28",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested cycle count, and verify the kit.",
+                id="source-29",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested cycle count that the vendor is reporting.",
+                id="source-30",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested stroke count for this unit.",
+                id="source-31",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested stroke count in the datasheet.",
+                id="source-32",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested stroke count on physical page 2.",
+                id="source-33",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested stroke count to verify the kit.",
+                id="source-34",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested stroke count, and verify the kit.",
+                id="source-35",
+            ),
+            pytest.param(
+                "Can you read uploaded attachment 60 and report the tested stroke count that the vendor is reporting.",
+                id="source-36",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested cycle count for this unit.",
+                id="source-37",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested cycle count in the datasheet.",
+                id="source-38",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested cycle count on physical page 2.",
+                id="source-39",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested cycle count to verify the kit.",
+                id="source-40",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested cycle count, and verify the kit.",
+                id="source-41",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested cycle count that the vendor is reporting.",
+                id="source-42",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested stroke count for this unit.",
+                id="source-43",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested stroke count in the datasheet.",
+                id="source-44",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested stroke count on physical page 2.",
+                id="source-45",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested stroke count to verify the kit.",
+                id="source-46",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested stroke count, and verify the kit.",
+                id="source-47",
+            ),
+            pytest.param(
+                "Could you please read uploaded attachment 60 and report the tested stroke count that the vendor is reporting.",
+                id="source-48",
+            ),
+        ],
+    )
+    @pytest.mark.parametrize(
+        ("authenticated", "profile"), [(True, frozenset()), (False, A1_ORDINARY_PROFILE)]
+    )
+    def test_nominal_source_denials_remain_closed(self, monkeypatch, query, authenticated, profile):
+        from ai.core.analysis.intent import classify_rules
+
+        decision = classify_rules(query)
+        _a1_lit(monkeypatch)
+        try:
+            selected = select_capabilities(
+                query,
+                profile=profile,
+                authenticated=authenticated,
+                task_intent=decision.intent.value if decision else None,
+            )
+            assert "search_attachment_docs" not in selected.tool_ids
+            assert _a1_offered_callable(selected, "search_attachment_docs") is None
+        finally:
+            capability_catalog.cache_clear()
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            pytest.param("How many documents were read last month?", id="event-0"),
+            pytest.param("How many revisions were published since 2020?", id="event-1"),
+            pytest.param("How many procedures were tested in the audit?", id="event-2"),
+        ],
+    )
+    def test_document_event_aggregation_preserved(self, monkeypatch, query):
+        from ai.core.analysis.intent import EffectIntent, TaskIntent, classify_rules
+
+        decision = classify_rules(query)
+        assert decision is not None
+        assert decision.intent is TaskIntent.FLEET_AGGREGATE
+        assert decision.effect is EffectIntent.READ_ONLY
+        _a1_lit(monkeypatch)
+        try:
+            selected = select_capabilities(
+                query,
+                profile=A1_ORDINARY_PROFILE,
+                authenticated=True,
+                task_intent=decision.intent.value,
+            )
+            assert not selected.requires_specialist
+            assert "search_attachment_docs" not in selected.tool_ids
+        finally:
+            capability_catalog.cache_clear()
+
+
+class TestFinalSubordinateSourceOwnership:
+    """Public intent/selection/SDK/grant boundary, not a helper-only property."""
+
+    @pytest.mark.parametrize(
+        ("query", "expected_intent"),
+        [
+            pytest.param(
+                "How many pumps were repaired after the manual noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-0-0-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired after the manual reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-0-0-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired after the datasheet noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-0-1-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired after the datasheet reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-0-1-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired after the procedure noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-0-2-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired after the procedure reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-0-2-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired under unusual operating conditions under unusual operating conditions under unusual operating conditions under unusual operating conditions after the manual noted the backlog?",
+                "fleet_aggregate",
+                id="s1-long-event-0",
+            ),
+            pytest.param(
+                "How many cycles does the manual report testing after the audit?",
+                "manual_fact",
+                id="s1-tail-source-0-0",
+            ),
+            pytest.param(
+                "How many cycles does the datasheet report testing after the audit?",
+                "manual_fact",
+                id="s1-tail-source-0-1",
+            ),
+            pytest.param(
+                "How many cycles does the procedure report testing after the audit?",
+                "manual_fact",
+                id="s1-tail-source-0-2",
+            ),
+            pytest.param(
+                "How many pumps were repaired before the manual noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-1-0-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired before the manual reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-1-0-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired before the datasheet noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-1-1-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired before the datasheet reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-1-1-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired before the procedure noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-1-2-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired before the procedure reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-1-2-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired under unusual operating conditions under unusual operating conditions under unusual operating conditions under unusual operating conditions before the manual noted the backlog?",
+                "fleet_aggregate",
+                id="s1-long-event-1",
+            ),
+            pytest.param(
+                "How many cycles does the manual report testing before the audit?",
+                "manual_fact",
+                id="s1-tail-source-1-0",
+            ),
+            pytest.param(
+                "How many cycles does the datasheet report testing before the audit?",
+                "manual_fact",
+                id="s1-tail-source-1-1",
+            ),
+            pytest.param(
+                "How many cycles does the procedure report testing before the audit?",
+                "manual_fact",
+                id="s1-tail-source-1-2",
+            ),
+            pytest.param(
+                "How many pumps were repaired when the manual noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-2-0-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired when the manual reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-2-0-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired when the datasheet noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-2-1-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired when the datasheet reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-2-1-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired when the procedure noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-2-2-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired when the procedure reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-2-2-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired under unusual operating conditions under unusual operating conditions under unusual operating conditions under unusual operating conditions when the manual noted the backlog?",
+                "fleet_aggregate",
+                id="s1-long-event-2",
+            ),
+            pytest.param(
+                "How many cycles does the manual report testing when the audit?",
+                "manual_fact",
+                id="s1-tail-source-2-0",
+            ),
+            pytest.param(
+                "How many cycles does the datasheet report testing when the audit?",
+                "manual_fact",
+                id="s1-tail-source-2-1",
+            ),
+            pytest.param(
+                "How many cycles does the procedure report testing when the audit?",
+                "manual_fact",
+                id="s1-tail-source-2-2",
+            ),
+            pytest.param(
+                "How many pumps were repaired while the manual noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-3-0-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired while the manual reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-3-0-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired while the datasheet noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-3-1-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired while the datasheet reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-3-1-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired while the procedure noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-3-2-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired while the procedure reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-3-2-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired under unusual operating conditions under unusual operating conditions under unusual operating conditions under unusual operating conditions while the manual noted the backlog?",
+                "fleet_aggregate",
+                id="s1-long-event-3",
+            ),
+            pytest.param(
+                "How many cycles does the manual report testing while the audit?",
+                "manual_fact",
+                id="s1-tail-source-3-0",
+            ),
+            pytest.param(
+                "How many cycles does the datasheet report testing while the audit?",
+                "manual_fact",
+                id="s1-tail-source-3-1",
+            ),
+            pytest.param(
+                "How many cycles does the procedure report testing while the audit?",
+                "manual_fact",
+                id="s1-tail-source-3-2",
+            ),
+            pytest.param(
+                "How many pumps were repaired once the manual noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-4-0-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired once the manual reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-4-0-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired once the datasheet noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-4-1-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired once the datasheet reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-4-1-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired once the procedure noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-4-2-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired once the procedure reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-4-2-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired under unusual operating conditions under unusual operating conditions under unusual operating conditions under unusual operating conditions once the manual noted the backlog?",
+                "fleet_aggregate",
+                id="s1-long-event-4",
+            ),
+            pytest.param(
+                "How many cycles does the manual report testing once the audit?",
+                "manual_fact",
+                id="s1-tail-source-4-0",
+            ),
+            pytest.param(
+                "How many cycles does the datasheet report testing once the audit?",
+                "manual_fact",
+                id="s1-tail-source-4-1",
+            ),
+            pytest.param(
+                "How many cycles does the procedure report testing once the audit?",
+                "manual_fact",
+                id="s1-tail-source-4-2",
+            ),
+            pytest.param(
+                "How many pumps were repaired as the manual noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-5-0-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired as the manual reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-5-0-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired as the datasheet noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-5-1-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired as the datasheet reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-5-1-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired as the procedure noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-5-2-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired as the procedure reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-5-2-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired under unusual operating conditions under unusual operating conditions under unusual operating conditions under unusual operating conditions as the manual noted the backlog?",
+                "fleet_aggregate",
+                id="s1-long-event-5",
+            ),
+            pytest.param(
+                "How many cycles does the manual report testing as the audit?",
+                "manual_fact",
+                id="s1-tail-source-5-0",
+            ),
+            pytest.param(
+                "How many cycles does the datasheet report testing as the audit?",
+                "manual_fact",
+                id="s1-tail-source-5-1",
+            ),
+            pytest.param(
+                "How many cycles does the procedure report testing as the audit?",
+                "manual_fact",
+                id="s1-tail-source-5-2",
+            ),
+            pytest.param(
+                "How many pumps were repaired since the manual noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-6-0-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired since the manual reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-6-0-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired since the datasheet noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-6-1-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired since the datasheet reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-6-1-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired since the procedure noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-6-2-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired since the procedure reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-6-2-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired under unusual operating conditions under unusual operating conditions under unusual operating conditions under unusual operating conditions since the manual noted the backlog?",
+                "fleet_aggregate",
+                id="s1-long-event-6",
+            ),
+            pytest.param(
+                "How many cycles does the manual report testing since the audit?",
+                "manual_fact",
+                id="s1-tail-source-6-0",
+            ),
+            pytest.param(
+                "How many cycles does the datasheet report testing since the audit?",
+                "manual_fact",
+                id="s1-tail-source-6-1",
+            ),
+            pytest.param(
+                "How many cycles does the procedure report testing since the audit?",
+                "manual_fact",
+                id="s1-tail-source-6-2",
+            ),
+            pytest.param(
+                "How many pumps were repaired until the manual noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-7-0-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired until the manual reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-7-0-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired until the datasheet noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-7-1-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired until the datasheet reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-7-1-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired until the procedure noted the backlog?",
+                "fleet_aggregate",
+                id="s1-event-7-2-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired until the procedure reported the tested cycle count?",
+                "fleet_aggregate",
+                id="s1-event-7-2-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired under unusual operating conditions under unusual operating conditions under unusual operating conditions under unusual operating conditions until the manual noted the backlog?",
+                "fleet_aggregate",
+                id="s1-long-event-7",
+            ),
+            pytest.param(
+                "How many cycles does the manual report testing until the audit?",
+                "manual_fact",
+                id="s1-tail-source-7-0",
+            ),
+            pytest.param(
+                "How many cycles does the datasheet report testing until the audit?",
+                "manual_fact",
+                id="s1-tail-source-7-1",
+            ),
+            pytest.param(
+                "How many cycles does the procedure report testing until the audit?",
+                "manual_fact",
+                id="s1-tail-source-7-2",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the manual report testing?",
+                "manual_fact",
+                id="s1-prefix-source-0",
+            ),
+            pytest.param(
+                "How many cycles does the manual that we uploaded report testing?",
+                "manual_fact",
+                id="s1-relative-source-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the datasheet report testing?",
+                "manual_fact",
+                id="s1-prefix-source-1",
+            ),
+            pytest.param(
+                "How many cycles does the datasheet that we uploaded report testing?",
+                "manual_fact",
+                id="s1-relative-source-1",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the procedure report testing?",
+                "manual_fact",
+                id="s1-prefix-source-2",
+            ),
+            pytest.param(
+                "How many cycles does the procedure that we uploaded report testing?",
+                "manual_fact",
+                id="s1-relative-source-2",
+            ),
+            pytest.param(
+                "How many archived documents were not read last month?",
+                "fleet_aggregate",
+                id="s1-public-event-variant-0-0",
+            ),
+            pytest.param(
+                "How many archived procedures were not read last month?",
+                "fleet_aggregate",
+                id="s1-public-event-variant-0-1",
+            ),
+            pytest.param(
+                "How many archived revisions were not read last month?",
+                "fleet_aggregate",
+                id="s1-public-event-variant-0-2",
+            ),
+            pytest.param(
+                "How many archived documents were once read last month?",
+                "fleet_aggregate",
+                id="s1-public-event-variant-1-0",
+            ),
+            pytest.param(
+                "How many archived procedures were once read last month?",
+                "fleet_aggregate",
+                id="s1-public-event-variant-1-1",
+            ),
+            pytest.param(
+                "How many archived revisions were once read last month?",
+                "fleet_aggregate",
+                id="s1-public-event-variant-1-2",
+            ),
+            pytest.param(
+                "How many archived documents were hardly ever read last month?",
+                "fleet_aggregate",
+                id="s1-public-event-variant-2-0",
+            ),
+            pytest.param(
+                "How many archived procedures were hardly ever read last month?",
+                "fleet_aggregate",
+                id="s1-public-event-variant-2-1",
+            ),
+            pytest.param(
+                "How many archived revisions were hardly ever read last month?",
+                "fleet_aggregate",
+                id="s1-public-event-variant-2-2",
+            ),
+            pytest.param(
+                "How many archived documents were actually read last month?",
+                "fleet_aggregate",
+                id="s1-public-event-variant-3-0",
+            ),
+            pytest.param(
+                "How many archived procedures were actually read last month?",
+                "fleet_aggregate",
+                id="s1-public-event-variant-3-1",
+            ),
+            pytest.param(
+                "How many archived revisions were actually read last month?",
+                "fleet_aggregate",
+                id="s1-public-event-variant-3-2",
+            ),
+            pytest.param(
+                "How many archived documents were often read last month?",
+                "fleet_aggregate",
+                id="s1-public-event-variant-4-0",
+            ),
+            pytest.param(
+                "How many archived procedures were often read last month?",
+                "fleet_aggregate",
+                id="s1-public-event-variant-4-1",
+            ),
+            pytest.param(
+                "How many archived revisions were often read last month?",
+                "fleet_aggregate",
+                id="s1-public-event-variant-4-2",
+            ),
+            pytest.param(
+                "How many archived documents were recently read last month?",
+                "fleet_aggregate",
+                id="s1-public-event-variant-5-0",
+            ),
+            pytest.param(
+                "How many archived procedures were recently read last month?",
+                "fleet_aggregate",
+                id="s1-public-event-variant-5-1",
+            ),
+            pytest.param(
+                "How many archived revisions were recently read last month?",
+                "fleet_aggregate",
+                id="s1-public-event-variant-5-2",
+            ),
+            pytest.param(
+                "How many pumps were repaired after the audit was completed?",
+                "fleet_aggregate",
+                id="s1-event-no-source-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired before the audit was completed?",
+                "fleet_aggregate",
+                id="s1-event-no-source-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired when the audit was completed?",
+                "fleet_aggregate",
+                id="s1-event-no-source-2",
+            ),
+            pytest.param(
+                "How many pumps were repaired while the audit was completed?",
+                "fleet_aggregate",
+                id="s1-event-no-source-3",
+            ),
+            pytest.param(
+                "How many pumps were repaired once the audit was completed?",
+                "fleet_aggregate",
+                id="s1-event-no-source-4",
+            ),
+            pytest.param(
+                "How many pumps were repaired as the audit was completed?",
+                "fleet_aggregate",
+                id="s1-event-no-source-5",
+            ),
+            pytest.param(
+                "How many pumps were repaired since the audit was completed?",
+                "fleet_aggregate",
+                id="s1-event-no-source-6",
+            ),
+            pytest.param(
+                "How many pumps were repaired until the audit was completed?",
+                "fleet_aggregate",
+                id="s1-event-no-source-7",
+            ),
+        ],
+    )
+    def test_subordinate_ownership_public_boundary(self, monkeypatch, query, expected_intent):
+        from agent_framework import ai_function as sdk_ai_function
+        from ai.core.analysis.intent import classify_rules
+        from pydantic import ValidationError
+
+        decision = classify_rules(query)
+        _a1_lit(monkeypatch)
+        try:
+            selected = select_capabilities(
+                query,
+                profile=A1_ORDINARY_PROFILE,
+                authenticated=True,
+                task_intent=decision.intent.value if decision else None,
+            )
+            document_tool = _a1_offered_callable(selected, "search_attachment_docs")
+            records_tool = _a1_offered_callable(selected, "query_database")
+            if expected_intent == "manual_fact":
+                assert document_tool is not None
+                assert "search_attachment_docs" in selected.tool_ids
+                _a1_assert_sdk_strict_selector(document_tool)
+                model = sdk_ai_function(document_tool).input_model
+                for bad in (True, 0, -1, 60.0, "60"):
+                    with pytest.raises(ValidationError):
+                        model.model_validate({"query": "source fact", "attachment_id": bad})
+            else:
+                assert document_tool is None
+                assert "search_attachment_docs" not in selected.tool_ids
+                assert records_tool is not None
+                assert "query_database" in selected.tool_ids
+            assert decision is not None and decision.intent.value == expected_intent
+            assert decision.effect.value == "read_only"
+            assert not selected.requires_specialist
+            for authenticated, profile in ((True, frozenset()), (False, A1_ORDINARY_PROFILE)):
+                denied = select_capabilities(
+                    query,
+                    profile=profile,
+                    authenticated=authenticated,
+                    task_intent=decision.intent.value,
+                )
+                assert "search_attachment_docs" not in denied.tool_ids
+                assert "query_database" not in denied.tool_ids
+                assert _a1_offered_callable(denied, "search_attachment_docs") is None
+                assert _a1_offered_callable(denied, "query_database") is None
+        finally:
+            capability_catalog.cache_clear()
+
+
+class TestFinalCompoundSourceOwnership:
+    """Hyphenated source words are not subordinate-event ownership."""
+
+    @pytest.mark.parametrize(
+        ("query", "expected_intent"),
+        [
+            pytest.param(
+                "How many cycles does the as-built manual report testing?",
+                "manual_fact",
+                id="h1-compound-0-0-0-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the as-built manual report testing?",
+                "manual_fact",
+                id="h1-compound-0-0-0-1",
+            ),
+            pytest.param(
+                "How many cycles does the as-built datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-0-0-1-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the as-built datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-0-0-1-1",
+            ),
+            pytest.param(
+                "How many cycles does the as\u2010built manual report testing?",
+                "manual_fact",
+                id="h1-compound-0-1-0-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the as\u2010built manual report testing?",
+                "manual_fact",
+                id="h1-compound-0-1-0-1",
+            ),
+            pytest.param(
+                "How many cycles does the as\u2010built datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-0-1-1-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the as\u2010built datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-0-1-1-1",
+            ),
+            pytest.param(
+                "How many cycles does the as\u2011built manual report testing?",
+                "manual_fact",
+                id="h1-compound-0-2-0-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the as\u2011built manual report testing?",
+                "manual_fact",
+                id="h1-compound-0-2-0-1",
+            ),
+            pytest.param(
+                "How many cycles does the as\u2011built datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-0-2-1-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the as\u2011built datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-0-2-1-1",
+            ),
+            pytest.param(
+                "How many cycles does the once-only manual report testing?",
+                "manual_fact",
+                id="h1-compound-1-0-0-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the once-only manual report testing?",
+                "manual_fact",
+                id="h1-compound-1-0-0-1",
+            ),
+            pytest.param(
+                "How many cycles does the once-only datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-1-0-1-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the once-only datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-1-0-1-1",
+            ),
+            pytest.param(
+                "How many cycles does the once\u2010only manual report testing?",
+                "manual_fact",
+                id="h1-compound-1-1-0-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the once\u2010only manual report testing?",
+                "manual_fact",
+                id="h1-compound-1-1-0-1",
+            ),
+            pytest.param(
+                "How many cycles does the once\u2010only datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-1-1-1-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the once\u2010only datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-1-1-1-1",
+            ),
+            pytest.param(
+                "How many cycles does the once\u2011only manual report testing?",
+                "manual_fact",
+                id="h1-compound-1-2-0-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the once\u2011only manual report testing?",
+                "manual_fact",
+                id="h1-compound-1-2-0-1",
+            ),
+            pytest.param(
+                "How many cycles does the once\u2011only datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-1-2-1-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the once\u2011only datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-1-2-1-1",
+            ),
+            pytest.param(
+                "How many cycles does the after-action manual report testing?",
+                "manual_fact",
+                id="h1-compound-2-0-0-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the after-action manual report testing?",
+                "manual_fact",
+                id="h1-compound-2-0-0-1",
+            ),
+            pytest.param(
+                "How many cycles does the after-action datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-2-0-1-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the after-action datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-2-0-1-1",
+            ),
+            pytest.param(
+                "How many cycles does the after\u2010action manual report testing?",
+                "manual_fact",
+                id="h1-compound-2-1-0-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the after\u2010action manual report testing?",
+                "manual_fact",
+                id="h1-compound-2-1-0-1",
+            ),
+            pytest.param(
+                "How many cycles does the after\u2010action datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-2-1-1-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the after\u2010action datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-2-1-1-1",
+            ),
+            pytest.param(
+                "How many cycles does the after\u2011action manual report testing?",
+                "manual_fact",
+                id="h1-compound-2-2-0-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the after\u2011action manual report testing?",
+                "manual_fact",
+                id="h1-compound-2-2-0-1",
+            ),
+            pytest.param(
+                "How many cycles does the after\u2011action datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-2-2-1-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the after\u2011action datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-2-2-1-1",
+            ),
+            pytest.param(
+                "How many cycles does the before-use manual report testing?",
+                "manual_fact",
+                id="h1-compound-3-0-0-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the before-use manual report testing?",
+                "manual_fact",
+                id="h1-compound-3-0-0-1",
+            ),
+            pytest.param(
+                "How many cycles does the before-use datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-3-0-1-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the before-use datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-3-0-1-1",
+            ),
+            pytest.param(
+                "How many cycles does the before\u2010use manual report testing?",
+                "manual_fact",
+                id="h1-compound-3-1-0-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the before\u2010use manual report testing?",
+                "manual_fact",
+                id="h1-compound-3-1-0-1",
+            ),
+            pytest.param(
+                "How many cycles does the before\u2010use datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-3-1-1-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the before\u2010use datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-3-1-1-1",
+            ),
+            pytest.param(
+                "How many cycles does the before\u2011use manual report testing?",
+                "manual_fact",
+                id="h1-compound-3-2-0-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the before\u2011use manual report testing?",
+                "manual_fact",
+                id="h1-compound-3-2-0-1",
+            ),
+            pytest.param(
+                "How many cycles does the before\u2011use datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-3-2-1-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles does the before\u2011use datasheet report testing?",
+                "manual_fact",
+                id="h1-compound-3-2-1-1",
+            ),
+        ],
+    )
+    def test_compound_source_public_boundary(self, monkeypatch, query, expected_intent):
+        from agent_framework import ai_function as sdk_ai_function
+        from ai.core.analysis.intent import classify_rules
+        from pydantic import ValidationError
+
+        decision = classify_rules(query)
+        _a1_lit(monkeypatch)
+        try:
+            selected = select_capabilities(
+                query,
+                profile=A1_ORDINARY_PROFILE,
+                authenticated=True,
+                task_intent=decision.intent.value if decision else None,
+            )
+            document_tool = _a1_offered_callable(selected, "search_attachment_docs")
+            records_tool = _a1_offered_callable(selected, "query_database")
+            if expected_intent == "manual_fact":
+                assert document_tool is not None
+                assert "search_attachment_docs" in selected.tool_ids
+                _a1_assert_sdk_strict_selector(document_tool)
+                model = sdk_ai_function(document_tool).input_model
+                for bad in (True, 0, -1, 60.0, "60"):
+                    with pytest.raises(ValidationError):
+                        model.model_validate({"query": "source fact", "attachment_id": bad})
+            else:
+                assert document_tool is None
+                assert "search_attachment_docs" not in selected.tool_ids
+                assert records_tool is not None
+                assert "query_database" in selected.tool_ids
+            assert decision is not None and decision.intent.value == expected_intent
+            assert decision.effect.value == "read_only"
+            assert not selected.requires_specialist
+            for authenticated, profile in ((True, frozenset()), (False, A1_ORDINARY_PROFILE)):
+                denied = select_capabilities(
+                    query,
+                    profile=profile,
+                    authenticated=authenticated,
+                    task_intent=decision.intent.value,
+                )
+                assert "search_attachment_docs" not in denied.tool_ids
+                assert "query_database" not in denied.tool_ids
+                assert _a1_offered_callable(denied, "search_attachment_docs") is None
+                assert _a1_offered_callable(denied, "query_database") is None
+        finally:
+            capability_catalog.cache_clear()
+
+
+class TestFinalPassiveSourceAttribution:
+    """Real selection/SDK/grant plus preserved explicit-comparison boundaries."""
+
+    @pytest.mark.parametrize(
+        ("query", "expected_intent"),
+        [
+            pytest.param(
+                "How many cycles are listed in the datasheet?",
+                "manual_fact",
+                id="p1-passive-0-0-0-0",
+            ),
+            pytest.param(
+                "How many cycles are listed in the datasheet on physical page 2?",
+                "manual_fact",
+                id="p1-passive-0-0-0-1",
+            ),
+            pytest.param(
+                "How many cycles are clearly listed in the datasheet?",
+                "manual_fact",
+                id="p1-passive-0-0-1-0",
+            ),
+            pytest.param(
+                "How many cycles are clearly listed in the datasheet on physical page 2?",
+                "manual_fact",
+                id="p1-passive-0-0-1-1",
+            ),
+            pytest.param(
+                "How many cycles does the datasheet list?", "manual_fact", id="p1-active-0-0"
+            ),
+            pytest.param(
+                "How many cycles are listed in uploaded attachment 60?",
+                "manual_fact",
+                id="p1-passive-0-1-0-0",
+            ),
+            pytest.param(
+                "How many cycles are listed in uploaded attachment 60 on physical page 2?",
+                "manual_fact",
+                id="p1-passive-0-1-0-1",
+            ),
+            pytest.param(
+                "How many cycles are clearly listed in uploaded attachment 60?",
+                "manual_fact",
+                id="p1-passive-0-1-1-0",
+            ),
+            pytest.param(
+                "How many cycles are clearly listed in uploaded attachment 60 on physical page 2?",
+                "manual_fact",
+                id="p1-passive-0-1-1-1",
+            ),
+            pytest.param(
+                "How many cycles does uploaded attachment 60 list?",
+                "manual_fact",
+                id="p1-active-0-1",
+            ),
+            pytest.param(
+                "How many documents were listed last month?",
+                "fleet_aggregate",
+                id="p1-patient-event-0",
+            ),
+            pytest.param(
+                "How many figures are shown in the datasheet?",
+                "manual_fact",
+                id="p1-passive-1-0-0-0",
+            ),
+            pytest.param(
+                "How many figures are shown in the datasheet on physical page 2?",
+                "manual_fact",
+                id="p1-passive-1-0-0-1",
+            ),
+            pytest.param(
+                "How many figures are clearly shown in the datasheet?",
+                "manual_fact",
+                id="p1-passive-1-0-1-0",
+            ),
+            pytest.param(
+                "How many figures are clearly shown in the datasheet on physical page 2?",
+                "manual_fact",
+                id="p1-passive-1-0-1-1",
+            ),
+            pytest.param(
+                "How many figures does the datasheet show?", "manual_fact", id="p1-active-1-0"
+            ),
+            pytest.param(
+                "How many figures are shown in uploaded attachment 60?",
+                "manual_fact",
+                id="p1-passive-1-1-0-0",
+            ),
+            pytest.param(
+                "How many figures are shown in uploaded attachment 60 on physical page 2?",
+                "manual_fact",
+                id="p1-passive-1-1-0-1",
+            ),
+            pytest.param(
+                "How many figures are clearly shown in uploaded attachment 60?",
+                "manual_fact",
+                id="p1-passive-1-1-1-0",
+            ),
+            pytest.param(
+                "How many figures are clearly shown in uploaded attachment 60 on physical page 2?",
+                "manual_fact",
+                id="p1-passive-1-1-1-1",
+            ),
+            pytest.param(
+                "How many figures does uploaded attachment 60 show?",
+                "manual_fact",
+                id="p1-active-1-1",
+            ),
+            pytest.param(
+                "How many documents were shown last month?",
+                "fleet_aggregate",
+                id="p1-patient-event-1",
+            ),
+            pytest.param(
+                "How many features are described in the datasheet?",
+                "manual_fact",
+                id="p1-passive-2-0-0-0",
+            ),
+            pytest.param(
+                "How many features are described in the datasheet on physical page 2?",
+                "manual_fact",
+                id="p1-passive-2-0-0-1",
+            ),
+            pytest.param(
+                "How many features are clearly described in the datasheet?",
+                "manual_fact",
+                id="p1-passive-2-0-1-0",
+            ),
+            pytest.param(
+                "How many features are clearly described in the datasheet on physical page 2?",
+                "manual_fact",
+                id="p1-passive-2-0-1-1",
+            ),
+            pytest.param(
+                "How many features does the datasheet describe?", "manual_fact", id="p1-active-2-0"
+            ),
+            pytest.param(
+                "How many features are described in uploaded attachment 60?",
+                "manual_fact",
+                id="p1-passive-2-1-0-0",
+            ),
+            pytest.param(
+                "How many features are described in uploaded attachment 60 on physical page 2?",
+                "manual_fact",
+                id="p1-passive-2-1-0-1",
+            ),
+            pytest.param(
+                "How many features are clearly described in uploaded attachment 60?",
+                "manual_fact",
+                id="p1-passive-2-1-1-0",
+            ),
+            pytest.param(
+                "How many features are clearly described in uploaded attachment 60 on physical page 2?",
+                "manual_fact",
+                id="p1-passive-2-1-1-1",
+            ),
+            pytest.param(
+                "How many features does uploaded attachment 60 describe?",
+                "manual_fact",
+                id="p1-active-2-1",
+            ),
+            pytest.param(
+                "How many documents were described last month?",
+                "fleet_aggregate",
+                id="p1-patient-event-2",
+            ),
+            pytest.param(
+                "How many cycles are mentioned in the datasheet?",
+                "manual_fact",
+                id="p1-passive-3-0-0-0",
+            ),
+            pytest.param(
+                "How many cycles are mentioned in the datasheet on physical page 2?",
+                "manual_fact",
+                id="p1-passive-3-0-0-1",
+            ),
+            pytest.param(
+                "How many cycles are clearly mentioned in the datasheet?",
+                "manual_fact",
+                id="p1-passive-3-0-1-0",
+            ),
+            pytest.param(
+                "How many cycles are clearly mentioned in the datasheet on physical page 2?",
+                "manual_fact",
+                id="p1-passive-3-0-1-1",
+            ),
+            pytest.param(
+                "How many cycles does the datasheet mention?", "manual_fact", id="p1-active-3-0"
+            ),
+            pytest.param(
+                "How many cycles are mentioned in uploaded attachment 60?",
+                "manual_fact",
+                id="p1-passive-3-1-0-0",
+            ),
+            pytest.param(
+                "How many cycles are mentioned in uploaded attachment 60 on physical page 2?",
+                "manual_fact",
+                id="p1-passive-3-1-0-1",
+            ),
+            pytest.param(
+                "How many cycles are clearly mentioned in uploaded attachment 60?",
+                "manual_fact",
+                id="p1-passive-3-1-1-0",
+            ),
+            pytest.param(
+                "How many cycles are clearly mentioned in uploaded attachment 60 on physical page 2?",
+                "manual_fact",
+                id="p1-passive-3-1-1-1",
+            ),
+            pytest.param(
+                "How many cycles does uploaded attachment 60 mention?",
+                "manual_fact",
+                id="p1-active-3-1",
+            ),
+            pytest.param(
+                "How many documents were mentioned last month?",
+                "fleet_aggregate",
+                id="p1-patient-event-3",
+            ),
+            pytest.param(
+                "How many procedures are covered in the datasheet?",
+                "manual_fact",
+                id="p1-passive-4-0-0-0",
+            ),
+            pytest.param(
+                "How many procedures are covered in the datasheet on physical page 2?",
+                "manual_fact",
+                id="p1-passive-4-0-0-1",
+            ),
+            pytest.param(
+                "How many procedures are clearly covered in the datasheet?",
+                "manual_fact",
+                id="p1-passive-4-0-1-0",
+            ),
+            pytest.param(
+                "How many procedures are clearly covered in the datasheet on physical page 2?",
+                "manual_fact",
+                id="p1-passive-4-0-1-1",
+            ),
+            pytest.param(
+                "How many procedures does the datasheet cover?", "manual_fact", id="p1-active-4-0"
+            ),
+            pytest.param(
+                "How many procedures are covered in uploaded attachment 60?",
+                "manual_fact",
+                id="p1-passive-4-1-0-0",
+            ),
+            pytest.param(
+                "How many procedures are covered in uploaded attachment 60 on physical page 2?",
+                "manual_fact",
+                id="p1-passive-4-1-0-1",
+            ),
+            pytest.param(
+                "How many procedures are clearly covered in uploaded attachment 60?",
+                "manual_fact",
+                id="p1-passive-4-1-1-0",
+            ),
+            pytest.param(
+                "How many procedures are clearly covered in uploaded attachment 60 on physical page 2?",
+                "manual_fact",
+                id="p1-passive-4-1-1-1",
+            ),
+            pytest.param(
+                "How many procedures does uploaded attachment 60 cover?",
+                "manual_fact",
+                id="p1-active-4-1",
+            ),
+            pytest.param(
+                "How many documents were covered last month?",
+                "fleet_aggregate",
+                id="p1-patient-event-4",
+            ),
+            pytest.param(
+                "How many tests are reported in the datasheet?",
+                "manual_fact",
+                id="p1-passive-5-0-0-0",
+            ),
+            pytest.param(
+                "How many tests are reported in the datasheet on physical page 2?",
+                "manual_fact",
+                id="p1-passive-5-0-0-1",
+            ),
+            pytest.param(
+                "How many tests are clearly reported in the datasheet?",
+                "manual_fact",
+                id="p1-passive-5-0-1-0",
+            ),
+            pytest.param(
+                "How many tests are clearly reported in the datasheet on physical page 2?",
+                "manual_fact",
+                id="p1-passive-5-0-1-1",
+            ),
+            pytest.param(
+                "How many tests does the datasheet report?", "manual_fact", id="p1-active-5-0"
+            ),
+            pytest.param(
+                "How many tests are reported in uploaded attachment 60?",
+                "manual_fact",
+                id="p1-passive-5-1-0-0",
+            ),
+            pytest.param(
+                "How many tests are reported in uploaded attachment 60 on physical page 2?",
+                "manual_fact",
+                id="p1-passive-5-1-0-1",
+            ),
+            pytest.param(
+                "How many tests are clearly reported in uploaded attachment 60?",
+                "manual_fact",
+                id="p1-passive-5-1-1-0",
+            ),
+            pytest.param(
+                "How many tests are clearly reported in uploaded attachment 60 on physical page 2?",
+                "manual_fact",
+                id="p1-passive-5-1-1-1",
+            ),
+            pytest.param(
+                "How many tests does uploaded attachment 60 report?",
+                "manual_fact",
+                id="p1-active-5-1",
+            ),
+            pytest.param(
+                "How many documents were reported last month?",
+                "fleet_aggregate",
+                id="p1-patient-event-5",
+            ),
+            pytest.param(
+                "How many pumps were repaired per the datasheet?",
+                "fleet_aggregate",
+                id="p1-event-source-qualifier-0-0-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired according to the datasheet?",
+                "manual_wo_comparison",
+                id="p1-event-source-qualifier-0-0-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired per uploaded attachment 60?",
+                "fleet_aggregate",
+                id="p1-event-source-qualifier-0-1-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired according to uploaded attachment 60?",
+                "manual_wo_comparison",
+                id="p1-event-source-qualifier-0-1-1",
+            ),
+            pytest.param(
+                "How many pumps were inspected per the datasheet?",
+                "fleet_aggregate",
+                id="p1-event-source-qualifier-1-0-0",
+            ),
+            pytest.param(
+                "How many pumps were inspected according to the datasheet?",
+                "fleet_aggregate",
+                id="p1-event-source-qualifier-1-0-1",
+            ),
+            pytest.param(
+                "How many pumps were inspected per uploaded attachment 60?",
+                "fleet_aggregate",
+                id="p1-event-source-qualifier-1-1-0",
+            ),
+            pytest.param(
+                "How many pumps were inspected according to uploaded attachment 60?",
+                "fleet_aggregate",
+                id="p1-event-source-qualifier-1-1-1",
+            ),
+            pytest.param(
+                "How many documents were read per the datasheet?",
+                "fleet_aggregate",
+                id="p1-event-source-qualifier-2-0-0",
+            ),
+            pytest.param(
+                "How many documents were read according to the datasheet?",
+                "fleet_aggregate",
+                id="p1-event-source-qualifier-2-0-1",
+            ),
+            pytest.param(
+                "How many documents were read per uploaded attachment 60?",
+                "fleet_aggregate",
+                id="p1-event-source-qualifier-2-1-0",
+            ),
+            pytest.param(
+                "How many documents were read according to uploaded attachment 60?",
+                "fleet_aggregate",
+                id="p1-event-source-qualifier-2-1-1",
+            ),
+            pytest.param(
+                "How many procedures were tested per the datasheet?",
+                "fleet_aggregate",
+                id="p1-event-source-qualifier-3-0-0",
+            ),
+            pytest.param(
+                "How many procedures were tested according to the datasheet?",
+                "fleet_aggregate",
+                id="p1-event-source-qualifier-3-0-1",
+            ),
+            pytest.param(
+                "How many procedures were tested per uploaded attachment 60?",
+                "fleet_aggregate",
+                id="p1-event-source-qualifier-3-1-0",
+            ),
+            pytest.param(
+                "How many procedures were tested according to uploaded attachment 60?",
+                "fleet_aggregate",
+                id="p1-event-source-qualifier-3-1-1",
+            ),
+            pytest.param(
+                "How many revisions were published per the datasheet?",
+                "fleet_aggregate",
+                id="p1-event-source-qualifier-4-0-0",
+            ),
+            pytest.param(
+                "How many revisions were published according to the datasheet?",
+                "fleet_aggregate",
+                id="p1-event-source-qualifier-4-0-1",
+            ),
+            pytest.param(
+                "How many revisions were published per uploaded attachment 60?",
+                "fleet_aggregate",
+                id="p1-event-source-qualifier-4-1-0",
+            ),
+            pytest.param(
+                "How many revisions were published according to uploaded attachment 60?",
+                "fleet_aggregate",
+                id="p1-event-source-qualifier-4-1-1",
+            ),
+            pytest.param(
+                "How many work orders were closed per the datasheet?",
+                "fleet_aggregate",
+                id="p1-event-source-qualifier-5-0-0",
+            ),
+            pytest.param(
+                "How many work orders were closed according to the datasheet?",
+                "manual_wo_comparison",
+                id="p1-event-source-qualifier-5-0-1",
+            ),
+            pytest.param(
+                "How many work orders were closed per uploaded attachment 60?",
+                "fleet_aggregate",
+                id="p1-event-source-qualifier-5-1-0",
+            ),
+            pytest.param(
+                "How many work orders were closed according to uploaded attachment 60?",
+                "manual_wo_comparison",
+                id="p1-event-source-qualifier-5-1-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired after figures were listed in the manual?",
+                "fleet_aggregate",
+                id="p1-subordinate-passive-event-0",
+            ),
+            pytest.param(
+                "How many pumps were repaired before figures were listed in the manual?",
+                "fleet_aggregate",
+                id="p1-subordinate-passive-event-1",
+            ),
+            pytest.param(
+                "How many pumps were repaired when figures were listed in the manual?",
+                "fleet_aggregate",
+                id="p1-subordinate-passive-event-2",
+            ),
+            pytest.param(
+                "How many pumps were repaired while figures were listed in the manual?",
+                "fleet_aggregate",
+                id="p1-subordinate-passive-event-3",
+            ),
+            pytest.param(
+                "How many pumps were repaired once figures were listed in the manual?",
+                "fleet_aggregate",
+                id="p1-subordinate-passive-event-4",
+            ),
+            pytest.param(
+                "How many pumps were repaired as figures were listed in the manual?",
+                "fleet_aggregate",
+                id="p1-subordinate-passive-event-5",
+            ),
+            pytest.param(
+                "How many pumps were repaired since figures were listed in the manual?",
+                "fleet_aggregate",
+                id="p1-subordinate-passive-event-6",
+            ),
+            pytest.param(
+                "How many pumps were repaired until figures were listed in the manual?",
+                "fleet_aggregate",
+                id="p1-subordinate-passive-event-7",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles are listed in the datasheet?",
+                "manual_fact",
+                id="p1-prefix-passive-source-0",
+            ),
+            pytest.param(
+                "Before the audit, how many cycles are listed in uploaded attachment 60?",
+                "manual_fact",
+                id="p1-prefix-passive-source-1",
+            ),
+        ],
+    )
+    def test_passive_source_public_boundary(self, monkeypatch, query, expected_intent):
+        from agent_framework import ai_function as sdk_ai_function
+        from ai.core.analysis.intent import classify_rules
+        from pydantic import ValidationError
+
+        decision = classify_rules(query)
+        _a1_lit(monkeypatch)
+        try:
+            selected = select_capabilities(
+                query,
+                profile=A1_ORDINARY_PROFILE,
+                authenticated=True,
+                task_intent=decision.intent.value if decision else None,
+            )
+            document_tool = _a1_offered_callable(selected, "search_attachment_docs")
+            records_tool = _a1_offered_callable(selected, "query_database")
+            if expected_intent == "manual_fact":
+                assert document_tool is not None
+                assert "search_attachment_docs" in selected.tool_ids
+                _a1_assert_sdk_strict_selector(document_tool)
+                model = sdk_ai_function(document_tool).input_model
+                for bad in (True, 0, -1, 60.0, "60"):
+                    with pytest.raises(ValidationError):
+                        model.model_validate({"query": "source fact", "attachment_id": bad})
+            elif expected_intent == "manual_wo_comparison":
+                assert document_tool is None
+                assert records_tool is None
+                assert _a1_offered_callable(selected, "search_work_orders") is not None
+                assert _a1_offered_callable(selected, "search_manuals") is not None
+                assert {"search_work_orders", "search_manuals"} <= set(selected.tool_ids)
+            else:
+                assert document_tool is None
+                assert "search_attachment_docs" not in selected.tool_ids
+                assert records_tool is not None
+                assert "query_database" in selected.tool_ids
+            assert decision is not None and decision.intent.value == expected_intent
+            assert decision.effect.value == "read_only"
+            assert not selected.requires_specialist
+            for authenticated, profile in ((True, frozenset()), (False, A1_ORDINARY_PROFILE)):
+                denied = select_capabilities(
+                    query,
+                    profile=profile,
+                    authenticated=authenticated,
+                    task_intent=decision.intent.value,
+                )
+                assert "search_attachment_docs" not in denied.tool_ids
+                assert "query_database" not in denied.tool_ids
+                assert _a1_offered_callable(denied, "search_attachment_docs") is None
+                assert _a1_offered_callable(denied, "query_database") is None
+                assert "search_work_orders" not in denied.tool_ids
+                assert "search_manuals" not in denied.tool_ids
+                assert _a1_offered_callable(denied, "search_work_orders") is None
+                assert _a1_offered_callable(denied, "search_manuals") is None
+        finally:
+            capability_catalog.cache_clear()
+
+
+class TestFinalRelativeSourceOwnership:
+    """Actual classifier/selection/SDK/grants; relative predicate ownership."""
+
+    @pytest.mark.parametrize(
+        ("query", "expected_intent"),
+        [
+            pytest.param(
+                "How many pumps that are listed in the manual were repaired last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-0-0-0-0",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the datasheet were repaired last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-0-0-0-1",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the manual were inspected last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-0-0-1-0",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the datasheet were inspected last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-0-0-1-1",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the manual were tested last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-0-0-2-0",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the datasheet were tested last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-0-0-2-1",
+            ),
+            pytest.param(
+                "How many pumps that were listed in the manual were repaired last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-0-1-0-0",
+            ),
+            pytest.param(
+                "How many pumps that were listed in the datasheet were repaired last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-0-1-0-1",
+            ),
+            pytest.param(
+                "How many pumps that were listed in the manual were inspected last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-0-1-1-0",
+            ),
+            pytest.param(
+                "How many pumps that were listed in the datasheet were inspected last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-0-1-1-1",
+            ),
+            pytest.param(
+                "How many pumps that were listed in the manual were tested last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-0-1-2-0",
+            ),
+            pytest.param(
+                "How many pumps that were listed in the datasheet were tested last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-0-1-2-1",
+            ),
+            pytest.param(
+                "How many pumps which are listed in the manual were repaired last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-1-0-0-0",
+            ),
+            pytest.param(
+                "How many pumps which are listed in the datasheet were repaired last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-1-0-0-1",
+            ),
+            pytest.param(
+                "How many pumps which are listed in the manual were inspected last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-1-0-1-0",
+            ),
+            pytest.param(
+                "How many pumps which are listed in the datasheet were inspected last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-1-0-1-1",
+            ),
+            pytest.param(
+                "How many pumps which are listed in the manual were tested last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-1-0-2-0",
+            ),
+            pytest.param(
+                "How many pumps which are listed in the datasheet were tested last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-1-0-2-1",
+            ),
+            pytest.param(
+                "How many pumps which were listed in the manual were repaired last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-1-1-0-0",
+            ),
+            pytest.param(
+                "How many pumps which were listed in the datasheet were repaired last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-1-1-0-1",
+            ),
+            pytest.param(
+                "How many pumps which were listed in the manual were inspected last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-1-1-1-0",
+            ),
+            pytest.param(
+                "How many pumps which were listed in the datasheet were inspected last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-1-1-1-1",
+            ),
+            pytest.param(
+                "How many pumps which were listed in the manual were tested last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-1-1-2-0",
+            ),
+            pytest.param(
+                "How many pumps which were listed in the datasheet were tested last month?",
+                "fleet_aggregate",
+                id="r1-passive-relative-event-1-1-2-1",
+            ),
+            pytest.param(
+                "How many pumps that the manual describes were repaired last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-0-0-0-0",
+            ),
+            pytest.param(
+                "How many pumps that the datasheet describes were repaired last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-0-0-0-1",
+            ),
+            pytest.param(
+                "How many pumps that the manual describes were inspected last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-0-0-1-0",
+            ),
+            pytest.param(
+                "How many pumps that the datasheet describes were inspected last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-0-0-1-1",
+            ),
+            pytest.param(
+                "How many pumps that the manual mentions were repaired last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-0-1-0-0",
+            ),
+            pytest.param(
+                "How many pumps that the datasheet mentions were repaired last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-0-1-0-1",
+            ),
+            pytest.param(
+                "How many pumps that the manual mentions were inspected last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-0-1-1-0",
+            ),
+            pytest.param(
+                "How many pumps that the datasheet mentions were inspected last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-0-1-1-1",
+            ),
+            pytest.param(
+                "How many pumps that the manual covers were repaired last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-0-2-0-0",
+            ),
+            pytest.param(
+                "How many pumps that the datasheet covers were repaired last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-0-2-0-1",
+            ),
+            pytest.param(
+                "How many pumps that the manual covers were inspected last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-0-2-1-0",
+            ),
+            pytest.param(
+                "How many pumps that the datasheet covers were inspected last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-0-2-1-1",
+            ),
+            pytest.param(
+                "How many pumps which the manual describes were repaired last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-1-0-0-0",
+            ),
+            pytest.param(
+                "How many pumps which the datasheet describes were repaired last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-1-0-0-1",
+            ),
+            pytest.param(
+                "How many pumps which the manual describes were inspected last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-1-0-1-0",
+            ),
+            pytest.param(
+                "How many pumps which the datasheet describes were inspected last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-1-0-1-1",
+            ),
+            pytest.param(
+                "How many pumps which the manual mentions were repaired last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-1-1-0-0",
+            ),
+            pytest.param(
+                "How many pumps which the datasheet mentions were repaired last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-1-1-0-1",
+            ),
+            pytest.param(
+                "How many pumps which the manual mentions were inspected last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-1-1-1-0",
+            ),
+            pytest.param(
+                "How many pumps which the datasheet mentions were inspected last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-1-1-1-1",
+            ),
+            pytest.param(
+                "How many pumps which the manual covers were repaired last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-1-2-0-0",
+            ),
+            pytest.param(
+                "How many pumps which the datasheet covers were repaired last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-1-2-0-1",
+            ),
+            pytest.param(
+                "How many pumps which the manual covers were inspected last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-1-2-1-0",
+            ),
+            pytest.param(
+                "How many pumps which the datasheet covers were inspected last month?",
+                "fleet_aggregate",
+                id="r1-active-relative-event-1-2-1-1",
+            ),
+            pytest.param(
+                "How many cycles are listed in the manual?", "manual_fact", id="r1-source-fact-0-0"
+            ),
+            pytest.param(
+                "How many cycles are listed in the datasheet?",
+                "manual_fact",
+                id="r1-source-fact-0-1",
+            ),
+            pytest.param(
+                "How many figures are shown in the manual?", "manual_fact", id="r1-source-fact-1-0"
+            ),
+            pytest.param(
+                "How many figures are shown in the datasheet?",
+                "manual_fact",
+                id="r1-source-fact-1-1",
+            ),
+            pytest.param(
+                "How many features are described in the manual?",
+                "manual_fact",
+                id="r1-source-fact-2-0",
+            ),
+            pytest.param(
+                "How many features are described in the datasheet?",
+                "manual_fact",
+                id="r1-source-fact-2-1",
+            ),
+            pytest.param(
+                "How many cycles are mentioned in the manual?",
+                "manual_fact",
+                id="r1-source-fact-3-0",
+            ),
+            pytest.param(
+                "How many cycles are mentioned in the datasheet?",
+                "manual_fact",
+                id="r1-source-fact-3-1",
+            ),
+            pytest.param(
+                "How many procedures are covered in the manual?",
+                "manual_fact",
+                id="r1-source-fact-4-0",
+            ),
+            pytest.param(
+                "How many procedures are covered in the datasheet?",
+                "manual_fact",
+                id="r1-source-fact-4-1",
+            ),
+            pytest.param(
+                "How many tests are reported in the manual?", "manual_fact", id="r1-source-fact-5-0"
+            ),
+            pytest.param(
+                "How many tests are reported in the datasheet?",
+                "manual_fact",
+                id="r1-source-fact-5-1",
+            ),
+            pytest.param(
+                "How many pumps that passed inspection are listed in the manual?",
+                "manual_fact",
+                id="r1-counted-head-relative-fact-0-0-0",
+            ),
+            pytest.param(
+                "How many pumps that passed inspection are listed in the datasheet?",
+                "manual_fact",
+                id="r1-counted-head-relative-fact-0-0-1",
+            ),
+            pytest.param(
+                "How many pumps that were pressure-tested are listed in the manual?",
+                "manual_fact",
+                id="r1-counted-head-relative-fact-0-1-0",
+            ),
+            pytest.param(
+                "How many pumps that were pressure-tested are listed in the datasheet?",
+                "manual_fact",
+                id="r1-counted-head-relative-fact-0-1-1",
+            ),
+            pytest.param(
+                "How many pumps which passed inspection are listed in the manual?",
+                "manual_fact",
+                id="r1-counted-head-relative-fact-1-0-0",
+            ),
+            pytest.param(
+                "How many pumps which passed inspection are listed in the datasheet?",
+                "manual_fact",
+                id="r1-counted-head-relative-fact-1-0-1",
+            ),
+            pytest.param(
+                "How many pumps which were pressure-tested are listed in the manual?",
+                "manual_fact",
+                id="r1-counted-head-relative-fact-1-1-0",
+            ),
+            pytest.param(
+                "How many pumps which were pressure-tested are listed in the datasheet?",
+                "manual_fact",
+                id="r1-counted-head-relative-fact-1-1-1",
+            ),
+        ],
+    )
+    def test_relative_source_public_boundary(self, monkeypatch, query, expected_intent):
+        from agent_framework import ai_function as sdk_ai_function
+        from ai.core.analysis.intent import classify_rules
+        from pydantic import ValidationError
+
+        decision = classify_rules(query)
+        assert decision is not None
+        assert decision.intent.value == expected_intent
+        _a1_lit(monkeypatch)
+        try:
+            selected = select_capabilities(
+                query,
+                profile=A1_ORDINARY_PROFILE,
+                authenticated=True,
+                task_intent=decision.intent.value if decision else None,
+            )
+            document_tool = _a1_offered_callable(selected, "search_attachment_docs")
+            records_tool = _a1_offered_callable(selected, "query_database")
+            if expected_intent == "manual_fact":
+                assert document_tool is not None
+                assert "search_attachment_docs" in selected.tool_ids
+                _a1_assert_sdk_strict_selector(document_tool)
+                model = sdk_ai_function(document_tool).input_model
+                for bad in (True, 0, -1, 60.0, "60"):
+                    with pytest.raises(ValidationError):
+                        model.model_validate({"query": "source fact", "attachment_id": bad})
+            elif expected_intent == "manual_wo_comparison":
+                assert document_tool is None
+                assert records_tool is None
+                assert _a1_offered_callable(selected, "search_work_orders") is not None
+                assert _a1_offered_callable(selected, "search_manuals") is not None
+                assert {"search_work_orders", "search_manuals"} <= set(selected.tool_ids)
+            else:
+                assert document_tool is None
+                assert "search_attachment_docs" not in selected.tool_ids
+                assert records_tool is not None
+                assert "query_database" in selected.tool_ids
+            assert decision is not None and decision.intent.value == expected_intent
+            assert decision.effect.value == "read_only"
+            assert not selected.requires_specialist
+            for authenticated, profile in ((True, frozenset()), (False, A1_ORDINARY_PROFILE)):
+                denied = select_capabilities(
+                    query,
+                    profile=profile,
+                    authenticated=authenticated,
+                    task_intent=decision.intent.value,
+                )
+                assert "search_attachment_docs" not in denied.tool_ids
+                assert "query_database" not in denied.tool_ids
+                assert _a1_offered_callable(denied, "search_attachment_docs") is None
+                assert _a1_offered_callable(denied, "query_database") is None
+                assert "search_work_orders" not in denied.tool_ids
+                assert "search_manuals" not in denied.tool_ids
+                assert _a1_offered_callable(denied, "search_work_orders") is None
+                assert _a1_offered_callable(denied, "search_manuals") is None
+        finally:
+            capability_catalog.cache_clear()
+
+
+class TestFinalSourceModifierWidth:
+    """Source-NP modifier width across fact licensing and relative ownership."""
+
+    @pytest.mark.parametrize(
+        ("query", "expected_intent"),
+        [
+            pytest.param(
+                "How many cycles are listed in the manual?", "manual_fact", id="w1-fact-0-0-0"
+            ),
+            pytest.param(
+                "How many cycles are listed in the updated manual?",
+                "manual_fact",
+                id="w1-fact-0-0-1",
+            ),
+            pytest.param(
+                "How many cycles are listed in the newly updated manual?",
+                "manual_fact",
+                id="w1-fact-0-0-2",
+            ),
+            pytest.param(
+                "How many cycles are listed in the very recently updated manual?",
+                "manual_fact",
+                id="w1-fact-0-0-3",
+            ),
+            pytest.param(
+                "How many cycles are listed in the datasheet?", "manual_fact", id="w1-fact-0-1-0"
+            ),
+            pytest.param(
+                "How many cycles are listed in the updated datasheet?",
+                "manual_fact",
+                id="w1-fact-0-1-1",
+            ),
+            pytest.param(
+                "How many cycles are listed in the newly updated datasheet?",
+                "manual_fact",
+                id="w1-fact-0-1-2",
+            ),
+            pytest.param(
+                "How many cycles are listed in the very recently updated datasheet?",
+                "manual_fact",
+                id="w1-fact-0-1-3",
+            ),
+            pytest.param(
+                "How many figures are shown in the manual?", "manual_fact", id="w1-fact-1-0-0"
+            ),
+            pytest.param(
+                "How many figures are shown in the updated manual?",
+                "manual_fact",
+                id="w1-fact-1-0-1",
+            ),
+            pytest.param(
+                "How many figures are shown in the newly updated manual?",
+                "manual_fact",
+                id="w1-fact-1-0-2",
+            ),
+            pytest.param(
+                "How many figures are shown in the very recently updated manual?",
+                "manual_fact",
+                id="w1-fact-1-0-3",
+            ),
+            pytest.param(
+                "How many figures are shown in the datasheet?", "manual_fact", id="w1-fact-1-1-0"
+            ),
+            pytest.param(
+                "How many figures are shown in the updated datasheet?",
+                "manual_fact",
+                id="w1-fact-1-1-1",
+            ),
+            pytest.param(
+                "How many figures are shown in the newly updated datasheet?",
+                "manual_fact",
+                id="w1-fact-1-1-2",
+            ),
+            pytest.param(
+                "How many figures are shown in the very recently updated datasheet?",
+                "manual_fact",
+                id="w1-fact-1-1-3",
+            ),
+            pytest.param(
+                "How many features are described in the manual?", "manual_fact", id="w1-fact-2-0-0"
+            ),
+            pytest.param(
+                "How many features are described in the updated manual?",
+                "manual_fact",
+                id="w1-fact-2-0-1",
+            ),
+            pytest.param(
+                "How many features are described in the newly updated manual?",
+                "manual_fact",
+                id="w1-fact-2-0-2",
+            ),
+            pytest.param(
+                "How many features are described in the very recently updated manual?",
+                "manual_fact",
+                id="w1-fact-2-0-3",
+            ),
+            pytest.param(
+                "How many features are described in the datasheet?",
+                "manual_fact",
+                id="w1-fact-2-1-0",
+            ),
+            pytest.param(
+                "How many features are described in the updated datasheet?",
+                "manual_fact",
+                id="w1-fact-2-1-1",
+            ),
+            pytest.param(
+                "How many features are described in the newly updated datasheet?",
+                "manual_fact",
+                id="w1-fact-2-1-2",
+            ),
+            pytest.param(
+                "How many features are described in the very recently updated datasheet?",
+                "manual_fact",
+                id="w1-fact-2-1-3",
+            ),
+            pytest.param(
+                "How many cycles are mentioned in the manual?", "manual_fact", id="w1-fact-3-0-0"
+            ),
+            pytest.param(
+                "How many cycles are mentioned in the updated manual?",
+                "manual_fact",
+                id="w1-fact-3-0-1",
+            ),
+            pytest.param(
+                "How many cycles are mentioned in the newly updated manual?",
+                "manual_fact",
+                id="w1-fact-3-0-2",
+            ),
+            pytest.param(
+                "How many cycles are mentioned in the very recently updated manual?",
+                "manual_fact",
+                id="w1-fact-3-0-3",
+            ),
+            pytest.param(
+                "How many cycles are mentioned in the datasheet?", "manual_fact", id="w1-fact-3-1-0"
+            ),
+            pytest.param(
+                "How many cycles are mentioned in the updated datasheet?",
+                "manual_fact",
+                id="w1-fact-3-1-1",
+            ),
+            pytest.param(
+                "How many cycles are mentioned in the newly updated datasheet?",
+                "manual_fact",
+                id="w1-fact-3-1-2",
+            ),
+            pytest.param(
+                "How many cycles are mentioned in the very recently updated datasheet?",
+                "manual_fact",
+                id="w1-fact-3-1-3",
+            ),
+            pytest.param(
+                "How many procedures are covered in the manual?", "manual_fact", id="w1-fact-4-0-0"
+            ),
+            pytest.param(
+                "How many procedures are covered in the updated manual?",
+                "manual_fact",
+                id="w1-fact-4-0-1",
+            ),
+            pytest.param(
+                "How many procedures are covered in the newly updated manual?",
+                "manual_fact",
+                id="w1-fact-4-0-2",
+            ),
+            pytest.param(
+                "How many procedures are covered in the very recently updated manual?",
+                "manual_fact",
+                id="w1-fact-4-0-3",
+            ),
+            pytest.param(
+                "How many procedures are covered in the datasheet?",
+                "manual_fact",
+                id="w1-fact-4-1-0",
+            ),
+            pytest.param(
+                "How many procedures are covered in the updated datasheet?",
+                "manual_fact",
+                id="w1-fact-4-1-1",
+            ),
+            pytest.param(
+                "How many procedures are covered in the newly updated datasheet?",
+                "manual_fact",
+                id="w1-fact-4-1-2",
+            ),
+            pytest.param(
+                "How many procedures are covered in the very recently updated datasheet?",
+                "manual_fact",
+                id="w1-fact-4-1-3",
+            ),
+            pytest.param(
+                "How many tests are reported in the manual?", "manual_fact", id="w1-fact-5-0-0"
+            ),
+            pytest.param(
+                "How many tests are reported in the updated manual?",
+                "manual_fact",
+                id="w1-fact-5-0-1",
+            ),
+            pytest.param(
+                "How many tests are reported in the newly updated manual?",
+                "manual_fact",
+                id="w1-fact-5-0-2",
+            ),
+            pytest.param(
+                "How many tests are reported in the very recently updated manual?",
+                "manual_fact",
+                id="w1-fact-5-0-3",
+            ),
+            pytest.param(
+                "How many tests are reported in the datasheet?", "manual_fact", id="w1-fact-5-1-0"
+            ),
+            pytest.param(
+                "How many tests are reported in the updated datasheet?",
+                "manual_fact",
+                id="w1-fact-5-1-1",
+            ),
+            pytest.param(
+                "How many tests are reported in the newly updated datasheet?",
+                "manual_fact",
+                id="w1-fact-5-1-2",
+            ),
+            pytest.param(
+                "How many tests are reported in the very recently updated datasheet?",
+                "manual_fact",
+                id="w1-fact-5-1-3",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the manual were repaired last month?",
+                "fleet_aggregate",
+                id="w1-passive-relative-event-0-0-0",
+            ),
+            pytest.param(
+                "How many pumps that the manual describes were repaired last month?",
+                "fleet_aggregate",
+                id="w1-active-relative-event-0-0-0",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the updated manual were repaired last month?",
+                "fleet_aggregate",
+                id="w1-passive-relative-event-0-0-1",
+            ),
+            pytest.param(
+                "How many pumps that the updated manual describes were repaired last month?",
+                "fleet_aggregate",
+                id="w1-active-relative-event-0-0-1",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the newly updated manual were repaired last month?",
+                "fleet_aggregate",
+                id="w1-passive-relative-event-0-0-2",
+            ),
+            pytest.param(
+                "How many pumps that the newly updated manual describes were repaired last month?",
+                "fleet_aggregate",
+                id="w1-active-relative-event-0-0-2",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the very recently updated manual were repaired last month?",
+                "fleet_aggregate",
+                id="w1-passive-relative-event-0-0-3",
+            ),
+            pytest.param(
+                "How many pumps that the very recently updated manual describes were repaired last month?",
+                "fleet_aggregate",
+                id="w1-active-relative-event-0-0-3",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the datasheet were repaired last month?",
+                "fleet_aggregate",
+                id="w1-passive-relative-event-0-1-0",
+            ),
+            pytest.param(
+                "How many pumps that the datasheet describes were repaired last month?",
+                "fleet_aggregate",
+                id="w1-active-relative-event-0-1-0",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the updated datasheet were repaired last month?",
+                "fleet_aggregate",
+                id="w1-passive-relative-event-0-1-1",
+            ),
+            pytest.param(
+                "How many pumps that the updated datasheet describes were repaired last month?",
+                "fleet_aggregate",
+                id="w1-active-relative-event-0-1-1",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the newly updated datasheet were repaired last month?",
+                "fleet_aggregate",
+                id="w1-passive-relative-event-0-1-2",
+            ),
+            pytest.param(
+                "How many pumps that the newly updated datasheet describes were repaired last month?",
+                "fleet_aggregate",
+                id="w1-active-relative-event-0-1-2",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the very recently updated datasheet were repaired last month?",
+                "fleet_aggregate",
+                id="w1-passive-relative-event-0-1-3",
+            ),
+            pytest.param(
+                "How many pumps that the very recently updated datasheet describes were repaired last month?",
+                "fleet_aggregate",
+                id="w1-active-relative-event-0-1-3",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the manual were inspected last month?",
+                "fleet_aggregate",
+                id="w1-passive-relative-event-1-0-0",
+            ),
+            pytest.param(
+                "How many pumps that the manual describes were inspected last month?",
+                "fleet_aggregate",
+                id="w1-active-relative-event-1-0-0",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the updated manual were inspected last month?",
+                "fleet_aggregate",
+                id="w1-passive-relative-event-1-0-1",
+            ),
+            pytest.param(
+                "How many pumps that the updated manual describes were inspected last month?",
+                "fleet_aggregate",
+                id="w1-active-relative-event-1-0-1",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the newly updated manual were inspected last month?",
+                "fleet_aggregate",
+                id="w1-passive-relative-event-1-0-2",
+            ),
+            pytest.param(
+                "How many pumps that the newly updated manual describes were inspected last month?",
+                "fleet_aggregate",
+                id="w1-active-relative-event-1-0-2",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the very recently updated manual were inspected last month?",
+                "fleet_aggregate",
+                id="w1-passive-relative-event-1-0-3",
+            ),
+            pytest.param(
+                "How many pumps that the very recently updated manual describes were inspected last month?",
+                "fleet_aggregate",
+                id="w1-active-relative-event-1-0-3",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the datasheet were inspected last month?",
+                "fleet_aggregate",
+                id="w1-passive-relative-event-1-1-0",
+            ),
+            pytest.param(
+                "How many pumps that the datasheet describes were inspected last month?",
+                "fleet_aggregate",
+                id="w1-active-relative-event-1-1-0",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the updated datasheet were inspected last month?",
+                "fleet_aggregate",
+                id="w1-passive-relative-event-1-1-1",
+            ),
+            pytest.param(
+                "How many pumps that the updated datasheet describes were inspected last month?",
+                "fleet_aggregate",
+                id="w1-active-relative-event-1-1-1",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the newly updated datasheet were inspected last month?",
+                "fleet_aggregate",
+                id="w1-passive-relative-event-1-1-2",
+            ),
+            pytest.param(
+                "How many pumps that the newly updated datasheet describes were inspected last month?",
+                "fleet_aggregate",
+                id="w1-active-relative-event-1-1-2",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the very recently updated datasheet were inspected last month?",
+                "fleet_aggregate",
+                id="w1-passive-relative-event-1-1-3",
+            ),
+            pytest.param(
+                "How many pumps that the very recently updated datasheet describes were inspected last month?",
+                "fleet_aggregate",
+                id="w1-active-relative-event-1-1-3",
+            ),
+            pytest.param(
+                "How many pumps that passed inspection are listed in the manual?",
+                "manual_fact",
+                id="w1-relative-head-fact-0-0",
+            ),
+            pytest.param(
+                "How many pumps that passed inspection are listed in the updated manual?",
+                "manual_fact",
+                id="w1-relative-head-fact-0-1",
+            ),
+            pytest.param(
+                "How many pumps that passed inspection are listed in the newly updated manual?",
+                "manual_fact",
+                id="w1-relative-head-fact-0-2",
+            ),
+            pytest.param(
+                "How many pumps that passed inspection are listed in the very recently updated manual?",
+                "manual_fact",
+                id="w1-relative-head-fact-0-3",
+            ),
+            pytest.param(
+                "How many pumps that passed inspection are listed in the datasheet?",
+                "manual_fact",
+                id="w1-relative-head-fact-1-0",
+            ),
+            pytest.param(
+                "How many pumps that passed inspection are listed in the updated datasheet?",
+                "manual_fact",
+                id="w1-relative-head-fact-1-1",
+            ),
+            pytest.param(
+                "How many pumps that passed inspection are listed in the newly updated datasheet?",
+                "manual_fact",
+                id="w1-relative-head-fact-1-2",
+            ),
+            pytest.param(
+                "How many pumps that passed inspection are listed in the very recently updated datasheet?",
+                "manual_fact",
+                id="w1-relative-head-fact-1-3",
+            ),
+        ],
+    )
+    def test_source_width_public_boundary(self, monkeypatch, query, expected_intent):
+        from agent_framework import ai_function as sdk_ai_function
+        from ai.core.analysis.intent import classify_rules
+        from pydantic import ValidationError
+
+        decision = classify_rules(query)
+        assert decision is not None
+        assert decision.intent.value == expected_intent
+        _a1_lit(monkeypatch)
+        try:
+            selected = select_capabilities(
+                query,
+                profile=A1_ORDINARY_PROFILE,
+                authenticated=True,
+                task_intent=decision.intent.value if decision else None,
+            )
+            document_tool = _a1_offered_callable(selected, "search_attachment_docs")
+            records_tool = _a1_offered_callable(selected, "query_database")
+            if expected_intent == "manual_fact":
+                assert document_tool is not None
+                assert "search_attachment_docs" in selected.tool_ids
+                _a1_assert_sdk_strict_selector(document_tool)
+                model = sdk_ai_function(document_tool).input_model
+                for bad in (True, 0, -1, 60.0, "60"):
+                    with pytest.raises(ValidationError):
+                        model.model_validate({"query": "source fact", "attachment_id": bad})
+            elif expected_intent == "manual_wo_comparison":
+                assert document_tool is None
+                assert records_tool is None
+                assert _a1_offered_callable(selected, "search_work_orders") is not None
+                assert _a1_offered_callable(selected, "search_manuals") is not None
+                assert {"search_work_orders", "search_manuals"} <= set(selected.tool_ids)
+            else:
+                assert document_tool is None
+                assert "search_attachment_docs" not in selected.tool_ids
+                assert records_tool is not None
+                assert "query_database" in selected.tool_ids
+            assert decision is not None and decision.intent.value == expected_intent
+            assert decision.effect.value == "read_only"
+            assert not selected.requires_specialist
+            for authenticated, profile in ((True, frozenset()), (False, A1_ORDINARY_PROFILE)):
+                denied = select_capabilities(
+                    query,
+                    profile=profile,
+                    authenticated=authenticated,
+                    task_intent=decision.intent.value,
+                )
+                assert "search_attachment_docs" not in denied.tool_ids
+                assert "query_database" not in denied.tool_ids
+                assert _a1_offered_callable(denied, "search_attachment_docs") is None
+                assert _a1_offered_callable(denied, "query_database") is None
+                assert "search_work_orders" not in denied.tool_ids
+                assert "search_manuals" not in denied.tool_ids
+                assert _a1_offered_callable(denied, "search_work_orders") is None
+                assert _a1_offered_callable(denied, "search_manuals") is None
+        finally:
+            capability_catalog.cache_clear()
+
+
+class TestGenericSourceModifiers:
+    @pytest.mark.parametrize(
+        ("query", "expected_intent"),
+        [
+            pytest.param(
+                "How many cycles are listed in the large blue current manual?",
+                "manual_fact",
+                id="w1g-fact-0",
+            ),
+            pytest.param(
+                "How many pumps that the large blue current manual describes were repaired last month?",
+                "fleet_aggregate",
+                id="w1g-active-event-0",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the large blue current manual were repaired last month?",
+                "fleet_aggregate",
+                id="w1g-passive-event-0",
+            ),
+            pytest.param(
+                "How many pumps that passed inspection are listed in the large blue current manual?",
+                "manual_fact",
+                id="w1g-head-fact-0",
+            ),
+            pytest.param(
+                "How many cycles are listed in the large blue current datasheet?",
+                "manual_fact",
+                id="w1g-fact-1",
+            ),
+            pytest.param(
+                "How many pumps that the large blue current datasheet describes were repaired last month?",
+                "fleet_aggregate",
+                id="w1g-active-event-1",
+            ),
+            pytest.param(
+                "How many pumps that are listed in the large blue current datasheet were repaired last month?",
+                "fleet_aggregate",
+                id="w1g-passive-event-1",
+            ),
+            pytest.param(
+                "How many pumps that passed inspection are listed in the large blue current datasheet?",
+                "manual_fact",
+                id="w1g-head-fact-1",
+            ),
+        ],
+    )
+    def test_generic_source_modifiers(self, monkeypatch, query, expected_intent):
+        from agent_framework import ai_function as sdk_ai_function
+        from ai.core.analysis.intent import classify_rules
+        from pydantic import ValidationError
+
+        decision = classify_rules(query)
+        assert decision is not None
+        assert decision.intent.value == expected_intent
+        _a1_lit(monkeypatch)
+        try:
+            selected = select_capabilities(
+                query,
+                profile=A1_ORDINARY_PROFILE,
+                authenticated=True,
+                task_intent=decision.intent.value if decision else None,
+            )
+            document_tool = _a1_offered_callable(selected, "search_attachment_docs")
+            records_tool = _a1_offered_callable(selected, "query_database")
+            if expected_intent == "manual_fact":
+                assert document_tool is not None
+                assert "search_attachment_docs" in selected.tool_ids
+                _a1_assert_sdk_strict_selector(document_tool)
+                model = sdk_ai_function(document_tool).input_model
+                for bad in (True, 0, -1, 60.0, "60"):
+                    with pytest.raises(ValidationError):
+                        model.model_validate({"query": "source fact", "attachment_id": bad})
+            elif expected_intent == "manual_wo_comparison":
+                assert document_tool is None
+                assert records_tool is None
+                assert _a1_offered_callable(selected, "search_work_orders") is not None
+                assert _a1_offered_callable(selected, "search_manuals") is not None
+                assert {"search_work_orders", "search_manuals"} <= set(selected.tool_ids)
+            else:
+                assert document_tool is None
+                assert "search_attachment_docs" not in selected.tool_ids
+                assert records_tool is not None
+                assert "query_database" in selected.tool_ids
+            assert decision is not None and decision.intent.value == expected_intent
+            assert decision.effect.value == "read_only"
+            assert not selected.requires_specialist
+            for authenticated, profile in ((True, frozenset()), (False, A1_ORDINARY_PROFILE)):
+                denied = select_capabilities(
+                    query,
+                    profile=profile,
+                    authenticated=authenticated,
+                    task_intent=decision.intent.value,
+                )
+                assert "search_attachment_docs" not in denied.tool_ids
+                assert "query_database" not in denied.tool_ids
+                assert _a1_offered_callable(denied, "search_attachment_docs") is None
+                assert _a1_offered_callable(denied, "query_database") is None
+                assert "search_work_orders" not in denied.tool_ids
+                assert "search_manuals" not in denied.tool_ids
+                assert _a1_offered_callable(denied, "search_work_orders") is None
+                assert _a1_offered_callable(denied, "search_manuals") is None
+        finally:
+            capability_catalog.cache_clear()
+
+
+def test_source_modifier_punctuation_work_bound():
+    """A fixed short rejected modifier must not cause runaway backtracking."""
+    import signal
+
+    from ai.core.analysis.intent import classify_rules
+
+    def exceeded(_signum, _frame):
+        raise AssertionError("Short source-modifier punctuation exceeded one second")
+
+    previous = signal.signal(signal.SIGALRM, exceeded)
+    signal.setitimer(signal.ITIMER_REAL, 1.0)
+    try:
+        assert classify_rules("How many cycles are listed in " + "a" * 40 + ", manual?") is not None
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+
+
+@pytest.mark.parametrize(
+    "query,expected_intent",
+    [
+        ("How many pumps were repaired that are listed in the manual?", "fleet_aggregate"),
+        ("How many pumps that were repaired are listed in the manual?", "manual_fact"),
+        ("How many pumps were repaired that the manual lists?", "fleet_aggregate"),
+        ("How many pumps that were repaired does the manual list?", "manual_fact"),
+        ("How many pumps were repaired which are listed in the manual?", "fleet_aggregate"),
+        ("How many pumps which were repaired are listed in the manual?", "manual_fact"),
+        ("How many pumps were repaired which the manual lists?", "fleet_aggregate"),
+        ("How many pumps which were repaired does the manual list?", "manual_fact"),
+        ("How many pumps were inspected that are listed in the manual?", "fleet_aggregate"),
+        ("How many pumps that were inspected are listed in the manual?", "manual_fact"),
+        ("How many pumps were inspected that the manual lists?", "fleet_aggregate"),
+        ("How many pumps that were inspected does the manual list?", "manual_fact"),
+        ("How many pumps were inspected which are listed in the manual?", "fleet_aggregate"),
+        ("How many pumps which were inspected are listed in the manual?", "manual_fact"),
+        ("How many pumps were inspected which the manual lists?", "fleet_aggregate"),
+        ("How many pumps which were inspected does the manual list?", "manual_fact"),
+        ("How many pumps were replaced that are listed in the manual?", "fleet_aggregate"),
+        ("How many pumps that were replaced are listed in the manual?", "manual_fact"),
+        ("How many pumps were replaced that the manual lists?", "fleet_aggregate"),
+        ("How many pumps that were replaced does the manual list?", "manual_fact"),
+        ("How many pumps were replaced which are listed in the manual?", "fleet_aggregate"),
+        ("How many pumps which were replaced are listed in the manual?", "manual_fact"),
+        ("How many pumps were replaced which the manual lists?", "fleet_aggregate"),
+        ("How many pumps which were replaced does the manual list?", "manual_fact"),
+        ("How many pumps were recently repaired that are listed in the manual?", "fleet_aggregate"),
+        ("How many pumps that were recently repaired are listed in the manual?", "manual_fact"),
+        ("How many pumps were recently repaired that the manual lists?", "fleet_aggregate"),
+        ("How many pumps that were recently repaired does the manual list?", "manual_fact"),
+        (
+            "How many pumps were recently repaired which are listed in the manual?",
+            "fleet_aggregate",
+        ),
+        ("How many pumps which were recently repaired are listed in the manual?", "manual_fact"),
+        ("How many pumps were recently repaired which the manual lists?", "fleet_aggregate"),
+        ("How many pumps which were recently repaired does the manual list?", "manual_fact"),
+        ("How many pumps had been repaired that are listed in the manual?", "fleet_aggregate"),
+        ("How many pumps that had been repaired are listed in the manual?", "manual_fact"),
+        ("How many pumps had been repaired that the manual lists?", "fleet_aggregate"),
+        ("How many pumps that had been repaired does the manual list?", "manual_fact"),
+        ("How many pumps had been repaired which are listed in the manual?", "fleet_aggregate"),
+        ("How many pumps which had been repaired are listed in the manual?", "manual_fact"),
+        ("How many pumps had been repaired which the manual lists?", "fleet_aggregate"),
+        ("How many pumps which had been repaired does the manual list?", "manual_fact"),
+        ("How many pumps were built that are listed in the manual?", "fleet_aggregate"),
+        ("How many pumps that were built are listed in the manual?", "manual_fact"),
+        ("How many pumps were built that the manual lists?", "fleet_aggregate"),
+        ("How many pumps that were built does the manual list?", "manual_fact"),
+        ("How many pumps were built which are listed in the manual?", "fleet_aggregate"),
+        ("How many pumps which were built are listed in the manual?", "manual_fact"),
+        ("How many pumps were built which the manual lists?", "fleet_aggregate"),
+        ("How many pumps which were built does the manual list?", "manual_fact"),
+        ("How many pumps that are listed in the manual were repaired?", "fleet_aggregate"),
+        ("How many pumps that the manual describes were repaired?", "fleet_aggregate"),
+        ("How many pumps which are listed in the manual were repaired?", "fleet_aggregate"),
+        ("How many pumps which the manual describes were repaired?", "fleet_aggregate"),
+        ("How many pumps that are listed in the manual were inspected?", "fleet_aggregate"),
+        ("How many pumps that the manual describes were inspected?", "fleet_aggregate"),
+        ("How many pumps which are listed in the manual were inspected?", "fleet_aggregate"),
+        ("How many pumps which the manual describes were inspected?", "fleet_aggregate"),
+        ("How many pumps that are listed in the manual were replaced?", "fleet_aggregate"),
+        ("How many pumps that the manual describes were replaced?", "fleet_aggregate"),
+        ("How many pumps which are listed in the manual were replaced?", "fleet_aggregate"),
+        ("How many pumps which the manual describes were replaced?", "fleet_aggregate"),
+        ("How many pumps that are listed in the manual were closed?", "fleet_aggregate"),
+        ("How many pumps that the manual describes were closed?", "fleet_aggregate"),
+        ("How many pumps which are listed in the manual were closed?", "fleet_aggregate"),
+        ("How many pumps which the manual describes were closed?", "fleet_aggregate"),
+    ],
+    ids=[
+        "e1-event-before-repaired-that-listed",
+        "e1-fact-head-repaired-that-listed",
+        "e1-event-before-repaired-that-source-subject",
+        "e1-fact-head-repaired-that-source-subject",
+        "e1-event-before-repaired-which-listed",
+        "e1-fact-head-repaired-which-listed",
+        "e1-event-before-repaired-which-source-subject",
+        "e1-fact-head-repaired-which-source-subject",
+        "e1-event-before-inspected-that-listed",
+        "e1-fact-head-inspected-that-listed",
+        "e1-event-before-inspected-that-source-subject",
+        "e1-fact-head-inspected-that-source-subject",
+        "e1-event-before-inspected-which-listed",
+        "e1-fact-head-inspected-which-listed",
+        "e1-event-before-inspected-which-source-subject",
+        "e1-fact-head-inspected-which-source-subject",
+        "e1-event-before-replaced-that-listed",
+        "e1-fact-head-replaced-that-listed",
+        "e1-event-before-replaced-that-source-subject",
+        "e1-fact-head-replaced-that-source-subject",
+        "e1-event-before-replaced-which-listed",
+        "e1-fact-head-replaced-which-listed",
+        "e1-event-before-replaced-which-source-subject",
+        "e1-fact-head-replaced-which-source-subject",
+        "e1-event-before-adverb-that-listed",
+        "e1-fact-head-adverb-that-listed",
+        "e1-event-before-adverb-that-source-subject",
+        "e1-fact-head-adverb-that-source-subject",
+        "e1-event-before-adverb-which-listed",
+        "e1-fact-head-adverb-which-listed",
+        "e1-event-before-adverb-which-source-subject",
+        "e1-fact-head-adverb-which-source-subject",
+        "e1-event-before-perfect-that-listed",
+        "e1-fact-head-perfect-that-listed",
+        "e1-event-before-perfect-that-source-subject",
+        "e1-fact-head-perfect-that-source-subject",
+        "e1-event-before-perfect-which-listed",
+        "e1-fact-head-perfect-which-listed",
+        "e1-event-before-perfect-which-source-subject",
+        "e1-fact-head-perfect-which-source-subject",
+        "e1-event-before-irregular-that-listed",
+        "e1-fact-head-irregular-that-listed",
+        "e1-event-before-irregular-that-source-subject",
+        "e1-fact-head-irregular-that-source-subject",
+        "e1-event-before-irregular-which-listed",
+        "e1-fact-head-irregular-which-listed",
+        "e1-event-before-irregular-which-source-subject",
+        "e1-fact-head-irregular-which-source-subject",
+        "e1-event-after-repaired-that-listed",
+        "e1-event-after-repaired-that-source-subject",
+        "e1-event-after-repaired-which-listed",
+        "e1-event-after-repaired-which-source-subject",
+        "e1-event-after-inspected-that-listed",
+        "e1-event-after-inspected-that-source-subject",
+        "e1-event-after-inspected-which-listed",
+        "e1-event-after-inspected-which-source-subject",
+        "e1-event-after-replaced-that-listed",
+        "e1-event-after-replaced-that-source-subject",
+        "e1-event-after-replaced-which-listed",
+        "e1-event-after-replaced-which-source-subject",
+        "e1-event-after-closed-that-listed",
+        "e1-event-after-closed-that-source-subject",
+        "e1-event-after-closed-which-listed",
+        "e1-event-after-closed-which-source-subject",
+    ],
+)
+def test_event_head_before_document_relative(monkeypatch, query, expected_intent):
+    TestFinalRelativeSourceOwnership().test_relative_source_public_boundary(
+        monkeypatch, query, expected_intent
+    )
+
+
+class TestBoundedClauseOwnershipAdjuncts:
+    """A reporter in a subordinate clause must not become the source noun."""
+
+    @pytest.mark.parametrize(
+        ("query", "expected_intent"),
+        [
+            pytest.param(
+                "Read the manual while the foreman reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-while-foreman",
+            ),
+            pytest.param(
+                "Read the manual while the technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-while-technician",
+            ),
+            pytest.param(
+                "Read the manual while he reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-while-he",
+            ),
+            pytest.param(
+                "Read the manual while she reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-while-she",
+            ),
+            pytest.param(
+                "Read the manual while they report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-while-they",
+            ),
+            pytest.param(
+                "Read the manual while Alex reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-while-proper-name",
+            ),
+            pytest.param(
+                "Read the manual while I report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-while-i",
+            ),
+            pytest.param(
+                "Read the manual while we report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-while-we",
+            ),
+            pytest.param(
+                "Read the manual while you report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-while-you",
+            ),
+            pytest.param(
+                "Read the manual when the foreman reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-when-foreman",
+            ),
+            pytest.param(
+                "Read the manual when the technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-when-technician",
+            ),
+            pytest.param(
+                "Read the manual when he reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-when-he",
+            ),
+            pytest.param(
+                "Read the manual when she reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-when-she",
+            ),
+            pytest.param(
+                "Read the manual when they report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-when-they",
+            ),
+            pytest.param(
+                "Read the manual when Alex reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-when-proper-name",
+            ),
+            pytest.param(
+                "Read the manual when I report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-when-i",
+            ),
+            pytest.param(
+                "Read the manual when we report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-when-we",
+            ),
+            pytest.param(
+                "Read the manual when you report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-when-you",
+            ),
+            pytest.param(
+                "Read the manual before the foreman reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-before-foreman",
+            ),
+            pytest.param(
+                "Read the manual before the technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-before-technician",
+            ),
+            pytest.param(
+                "Read the manual before he reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-before-he",
+            ),
+            pytest.param(
+                "Read the manual before she reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-before-she",
+            ),
+            pytest.param(
+                "Read the manual before they report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-before-they",
+            ),
+            pytest.param(
+                "Read the manual before Alex reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-before-proper-name",
+            ),
+            pytest.param(
+                "Read the manual before I report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-before-i",
+            ),
+            pytest.param(
+                "Read the manual before we report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-before-we",
+            ),
+            pytest.param(
+                "Read the manual before you report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-before-you",
+            ),
+            pytest.param(
+                "Read the manual after the foreman reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-after-foreman",
+            ),
+            pytest.param(
+                "Read the manual after the technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-after-technician",
+            ),
+            pytest.param(
+                "Read the manual after he reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-after-he",
+            ),
+            pytest.param(
+                "Read the manual after she reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-after-she",
+            ),
+            pytest.param(
+                "Read the manual after they report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-after-they",
+            ),
+            pytest.param(
+                "Read the manual after Alex reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-after-proper-name",
+            ),
+            pytest.param(
+                "Read the manual after I report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-after-i",
+            ),
+            pytest.param(
+                "Read the manual after we report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-after-we",
+            ),
+            pytest.param(
+                "Read the manual after you report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-after-you",
+            ),
+            pytest.param(
+                "Read the manual once the foreman reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-once-foreman",
+            ),
+            pytest.param(
+                "Read the manual once the technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-once-technician",
+            ),
+            pytest.param(
+                "Read the manual once he reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-once-he",
+            ),
+            pytest.param(
+                "Read the manual once she reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-once-she",
+            ),
+            pytest.param(
+                "Read the manual once they report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-once-they",
+            ),
+            pytest.param(
+                "Read the manual once Alex reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-once-proper-name",
+            ),
+            pytest.param(
+                "Read the manual once I report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-once-i",
+            ),
+            pytest.param(
+                "Read the manual once we report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-once-we",
+            ),
+            pytest.param(
+                "Read the manual once you report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-once-you",
+            ),
+            pytest.param(
+                "Read the manual as the foreman reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-as-foreman",
+            ),
+            pytest.param(
+                "Read the manual as the technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-as-technician",
+            ),
+            pytest.param(
+                "Read the manual as he reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-as-he",
+            ),
+            pytest.param(
+                "Read the manual as she reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-as-she",
+            ),
+            pytest.param(
+                "Read the manual as they report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-as-they",
+            ),
+            pytest.param(
+                "Read the manual as Alex reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-as-proper-name",
+            ),
+            pytest.param(
+                "Read the manual as I report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-as-i",
+            ),
+            pytest.param(
+                "Read the manual as we report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-as-we",
+            ),
+            pytest.param(
+                "Read the manual as you report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-as-you",
+            ),
+            pytest.param(
+                "Read the manual since the foreman reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-since-foreman",
+            ),
+            pytest.param(
+                "Read the manual since the technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-since-technician",
+            ),
+            pytest.param(
+                "Read the manual since he reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-since-he",
+            ),
+            pytest.param(
+                "Read the manual since she reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-since-she",
+            ),
+            pytest.param(
+                "Read the manual since they report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-since-they",
+            ),
+            pytest.param(
+                "Read the manual since Alex reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-since-proper-name",
+            ),
+            pytest.param(
+                "Read the manual since I report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-since-i",
+            ),
+            pytest.param(
+                "Read the manual since we report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-since-we",
+            ),
+            pytest.param(
+                "Read the manual since you report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-since-you",
+            ),
+            pytest.param(
+                "Read the manual until the foreman reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-until-foreman",
+            ),
+            pytest.param(
+                "Read the manual until the technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-until-technician",
+            ),
+            pytest.param(
+                "Read the manual until he reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-until-he",
+            ),
+            pytest.param(
+                "Read the manual until she reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-until-she",
+            ),
+            pytest.param(
+                "Read the manual until they report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-until-they",
+            ),
+            pytest.param(
+                "Read the manual until Alex reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-until-proper-name",
+            ),
+            pytest.param(
+                "Read the manual until I report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-until-i",
+            ),
+            pytest.param(
+                "Read the manual until we report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-until-we",
+            ),
+            pytest.param(
+                "Read the manual until you report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-until-you",
+            ),
+            pytest.param(
+                "How many cycles does the manual state?",
+                "manual_fact",
+                id="co1-source-fact-control",
+            ),
+        ],
+    )
+    def test_adjunct_reporter_source_public_boundary(self, monkeypatch, query, expected_intent):
+        TestFinalRelativeSourceOwnership().test_relative_source_public_boundary(
+            monkeypatch, query, expected_intent
+        )
+
+
+class TestClauseOwnershipDesignPreservation:
+    """Preserve existing source content and caller boundaries during redesign."""
+
+    @pytest.mark.parametrize(
+        ("query", "expected_intent"),
+        [
+            pytest.param(
+                "How many pumps that the manual describes were repaired last month?",
+                "fleet_aggregate",
+                id="co1-preserve-p1-relative-attributive-event",
+            ),
+            pytest.param(
+                "How many pumps that the manual reports were repaired last month?",
+                "manual_fact",
+                id="co1-preserve-p1-relative-reporting-content",
+            ),
+            pytest.param(
+                "How many pumps does the manual report as repaired?",
+                "manual_fact",
+                id="co1-preserve-p1-source-reported-event",
+            ),
+            pytest.param(
+                "Read the manual and report how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co1-preserve-p2-independent-event-count",
+            ),
+            pytest.param(
+                "Read the manual and report what it reports.",
+                "manual_fact",
+                id="co1-preserve-p2-quoted-source-content",
+            ),
+            pytest.param(
+                "How many cycles do the manual and the datasheet report?",
+                "manual_fact",
+                id="co1-preserve-p3-coordinated-source-subject",
+            ),
+            pytest.param(
+                "How many tested cycles does the manual report?",
+                "manual_fact",
+                id="co1-preserve-p4-source-counted-tested-cycles",
+            ),
+        ],
+    )
+    def test_preserved_source_content_boundary(self, monkeypatch, query, expected_intent):
+        TestFinalRelativeSourceOwnership().test_relative_source_public_boundary(
+            monkeypatch, query, expected_intent
+        )
+
+
+class TestBoundedClauseOwnershipMorphology:
+    """A non-source NP does not become a source predicate by word suffix."""
+
+    @pytest.mark.parametrize(
+        ("query", "expected_intent"),
+        [
+            pytest.param(
+                "Read the manual while the acting foreman reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-while-acting",
+            ),
+            pytest.param(
+                "Read the manual while the retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-while-retired",
+            ),
+            pytest.param(
+                "Read the manual while Fred reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-while-name-ed",
+            ),
+            pytest.param(
+                "Read the manual when the acting foreman reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-when-acting",
+            ),
+            pytest.param(
+                "Read the manual when the retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-when-retired",
+            ),
+            pytest.param(
+                "Read the manual when Fred reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-when-name-ed",
+            ),
+            pytest.param(
+                "Read the manual before the acting foreman reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-before-acting",
+            ),
+            pytest.param(
+                "Read the manual before the retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-before-retired",
+            ),
+            pytest.param(
+                "Read the manual before Fred reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-before-name-ed",
+            ),
+            pytest.param(
+                "Read the manual after the acting foreman reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-after-acting",
+            ),
+            pytest.param(
+                "Read the manual after the retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-after-retired",
+            ),
+            pytest.param(
+                "Read the manual after Fred reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-after-name-ed",
+            ),
+            pytest.param(
+                "Read the manual once the acting foreman reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-once-acting",
+            ),
+            pytest.param(
+                "Read the manual once the retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-once-retired",
+            ),
+            pytest.param(
+                "Read the manual once Fred reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-once-name-ed",
+            ),
+            pytest.param(
+                "Read the manual as the acting foreman reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-as-acting",
+            ),
+            pytest.param(
+                "Read the manual as the retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-as-retired",
+            ),
+            pytest.param(
+                "Read the manual as Fred reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-as-name-ed",
+            ),
+            pytest.param(
+                "Read the manual since the acting foreman reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-since-acting",
+            ),
+            pytest.param(
+                "Read the manual since the retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-since-retired",
+            ),
+            pytest.param(
+                "Read the manual since Fred reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-since-name-ed",
+            ),
+            pytest.param(
+                "Read the manual until the acting foreman reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-until-acting",
+            ),
+            pytest.param(
+                "Read the manual until the retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-until-retired",
+            ),
+            pytest.param(
+                "Read the manual until Fred reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co2-until-name-ed",
+            ),
+        ],
+    )
+    def test_subject_morphology_public_boundary(self, monkeypatch, query, expected_intent):
+        TestFinalRelativeSourceOwnership().test_relative_source_public_boundary(
+            monkeypatch, query, expected_intent
+        )
+
+
+class TestBoundedClauseOwnershipCaseAndModifiers:
+    """Casing and harmless NP modifiers do not change grammatical ownership."""
+
+    @pytest.mark.parametrize(
+        ("query", "expected_intent"),
+        [
+            pytest.param(
+                "Read the manual while fred reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-while-lowercase-name",
+            ),
+            pytest.param(
+                "Read the manual while the senior retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-while-senior-retired",
+            ),
+            pytest.param(
+                "Read the manual while the recently retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-while-recently-retired",
+            ),
+            pytest.param(
+                "Read the manual when fred reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-when-lowercase-name",
+            ),
+            pytest.param(
+                "Read the manual when the senior retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-when-senior-retired",
+            ),
+            pytest.param(
+                "Read the manual when the recently retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-when-recently-retired",
+            ),
+            pytest.param(
+                "Read the manual before fred reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-before-lowercase-name",
+            ),
+            pytest.param(
+                "Read the manual before the senior retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-before-senior-retired",
+            ),
+            pytest.param(
+                "Read the manual before the recently retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-before-recently-retired",
+            ),
+            pytest.param(
+                "Read the manual after fred reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-after-lowercase-name",
+            ),
+            pytest.param(
+                "Read the manual after the senior retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-after-senior-retired",
+            ),
+            pytest.param(
+                "Read the manual after the recently retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-after-recently-retired",
+            ),
+            pytest.param(
+                "Read the manual once fred reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-once-lowercase-name",
+            ),
+            pytest.param(
+                "Read the manual once the senior retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-once-senior-retired",
+            ),
+            pytest.param(
+                "Read the manual once the recently retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-once-recently-retired",
+            ),
+            pytest.param(
+                "Read the manual as fred reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-as-lowercase-name",
+            ),
+            pytest.param(
+                "Read the manual as the senior retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-as-senior-retired",
+            ),
+            pytest.param(
+                "Read the manual as the recently retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-as-recently-retired",
+            ),
+            pytest.param(
+                "Read the manual since fred reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-since-lowercase-name",
+            ),
+            pytest.param(
+                "Read the manual since the senior retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-since-senior-retired",
+            ),
+            pytest.param(
+                "Read the manual since the recently retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-since-recently-retired",
+            ),
+            pytest.param(
+                "Read the manual until fred reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-until-lowercase-name",
+            ),
+            pytest.param(
+                "Read the manual until the senior retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-until-senior-retired",
+            ),
+            pytest.param(
+                "Read the manual until the recently retired technician reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co3-until-recently-retired",
+            ),
+        ],
+    )
+    def test_actor_np_case_and_modifiers_public_boundary(self, monkeypatch, query, expected_intent):
+        TestFinalRelativeSourceOwnership().test_relative_source_public_boundary(
+            monkeypatch, query, expected_intent
+        )
+
+
+class TestSourceOwnershipStructuralRegressions:
+    """PP subjects and genuine source qualifiers need grammatical ownership."""
+
+    @pytest.mark.parametrize(
+        ("query", "expected_intent"),
+        [
+            pytest.param(
+                "How many pumps does the manual after the revision list?",
+                "manual_fact",
+                id="co4-mi1-temporal-PP",
+            ),
+            pytest.param(
+                "How many cycles does the datasheet while undergoing revision report?",
+                "manual_fact",
+                id="co4-mi2-bare-reduced",
+            ),
+            pytest.param(
+                "How many cycles does the manual when recently updated state?",
+                "manual_fact",
+                id="co4-s3g-adverb-bare",
+            ),
+            pytest.param(
+                "Read the manual after Fred by the pump reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co4-s3g-after-name-PP",
+            ),
+            pytest.param(
+                "Read the manual as Fred by the pump reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co4-s3g-as-name-PP",
+            ),
+            pytest.param(
+                "How many cycles does the manual when inspected state?",
+                "manual_fact",
+                id="co4-s3g-bare-inspected",
+            ),
+            pytest.param(
+                "How many cycles does the manual once revised state?",
+                "manual_fact",
+                id="co4-s3g-bare-revised",
+            ),
+            pytest.param(
+                "How many cycles does the manual when updated state?",
+                "manual_fact",
+                id="co4-s3g-bare-updated",
+            ),
+            pytest.param(
+                "Read the manual before Fred by the pump reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co4-s3g-before-name-PP",
+            ),
+            pytest.param(
+                "Read the manual once Fred by the pump reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co4-s3g-once-name-PP",
+            ),
+            pytest.param(
+                "How many cycles does the manual once revised report?",
+                "manual_fact",
+                id="co4-s3g-revised-report",
+            ),
+            pytest.param(
+                "Read the manual since Fred by the pump reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co4-s3g-since-name-PP",
+            ),
+            pytest.param(
+                "Read the manual until Fred by the pump reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co4-s3g-until-name-PP",
+            ),
+            pytest.param(
+                "Read the manual when Fred by the pump reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co4-s3g-when-name-PP",
+            ),
+            pytest.param(
+                "Read the manual while Fred by the pump reports how many pumps were repaired last month.",
+                "fleet_aggregate",
+                id="co4-s3g-while-name-PP",
+            ),
+        ],
+    )
+    def test_structural_source_public_boundary(self, monkeypatch, query, expected_intent):
+        TestFinalRelativeSourceOwnership().test_relative_source_public_boundary(
+            monkeypatch, query, expected_intent
+        )
