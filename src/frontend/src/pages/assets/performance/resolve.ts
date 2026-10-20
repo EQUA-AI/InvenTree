@@ -106,7 +106,11 @@ export function resolveSignal(signal: MachineSignal): ResolvedParameter {
 export function resolveParameters(
   signals: readonly MachineSignal[]
 ): ResolvedParameter[] {
-  const resolved = signals.map(resolveSignal);
+  // Retired critical bindings remain in Health coverage as missing evidence;
+  // they are not current channels for Performance or saved display views.
+  const resolved = signals
+    .filter((signal) => signal.active !== false)
+    .map(resolveSignal);
   const categoryRank = new Map<ParameterCategory, number>();
   for (const [rank, category] of [
     'electrical',

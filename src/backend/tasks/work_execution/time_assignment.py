@@ -1,10 +1,4 @@
-"""P27: assignment events and elapsed wall time are never attributed labor.
-
-No authoritative person-work interval, coverage or correction provider exists.
-An assignment event may anchor elapsed wall time only when its recorded target
-still matches the typed assignee. Work timestamps or a held lifecycle cannot
-classify a person's time.
-"""
+"""Assignment wall time and recorded person-work remain separate facts."""
 
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -47,7 +41,12 @@ def project(work_order) -> dict:
         )
         else None
     )
+    from tasks.services.work_time import downtime_projection, time_projection
+
+    records = time_projection(work_order, observed_at)
     return {
+        'time_records': records,
+        'downtime_records': downtime_projection(work_order),
         'rule': 'time_assignment.v1',
         'observed_at': observed_at.isoformat(),
         'assigned_to': person(work_order.assigned_to),
@@ -75,9 +74,9 @@ def project(work_order) -> dict:
             }
             for event in events
         ],
-        'attributed_intervals': {'available': False, 'reason': 'no_provider'},
-        'coverage': 'unknown',
-        'correction': {'available': False, 'reason': 'no_provider'},
+        'attributed_intervals': {'available': True},
+        'coverage': records['coverage'],
+        'correction': {'available': True},
         'assignment_factors': {'available': False, 'reason': 'no_provider'},
         'accepted_handover': {'available': False, 'reason': 'no_provider'},
     }

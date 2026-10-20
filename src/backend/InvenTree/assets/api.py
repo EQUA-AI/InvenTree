@@ -472,6 +472,7 @@ assets_api_urls = [
             path('<int:pk>/', ClientDetail.as_view(), name='asset-client-detail'),
         ]),
     ),
+    path('recorded/', include('assets.record_urls')),
     path(
         'machines/',
         include([

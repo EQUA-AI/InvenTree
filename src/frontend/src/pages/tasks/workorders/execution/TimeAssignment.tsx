@@ -7,6 +7,7 @@ import {
   ExecutionSection,
   recordedTime
 } from './ExecutionFacts';
+import { RecordedWorkTime } from './RecordedWorkTime';
 
 function elapsed(value: number | null): string | null {
   if (value === null || !Number.isFinite(value) || value < 0) return null;
@@ -58,12 +59,8 @@ export function TimeAssignment({
         size='sm'
         c='dimmed'
       >{t`Elapsed assignment is wall time at the last server read, not labor or accepted responsibility. Actual start and completion are job timestamps, not person-work intervals.`}</Text>
-      <Text
-        fw={600}
-        size='sm'
-      >{t`Attributed time: unavailable · coverage unknown`}</Text>
-      <Text size='sm'>{t`No authoritative attributed intervals are supplied. Unclassified gaps and labor totals cannot be measured. Held work does not mean every person was waiting; capture duration and browser activity do not classify labor.`}</Text>
-      <Text size='sm'>{t`Assignment factors, accepted handover and an attributed interval correction path are not supplied. No assignment score, accepted owner or corrected time is inferred.`}</Text>
+      <RecordedWorkTime key={workOrder.id} workOrder={workOrder} />
+      <Text size='sm'>{t`Assignment factors and accepted handover are not inferred from person-work time.`}</Text>
       {value && (
         <Accordion variant='contained' keepMounted={false}>
           <Accordion.Item value='assignments'>

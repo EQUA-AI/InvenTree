@@ -88,6 +88,17 @@ def machine_positions(actor, machine, *, now=None) -> dict:
         .select_related('part')
         .order_by('code')
     )
+    from django.db.models import Prefetch, prefetch_related_objects
+
+    from users.permissions import check_user_role
+
+    from .recorded_facts import fit_projection, fit_queryset
+
+    if check_user_role(actor, 'stock', 'view'):
+        prefetch_related_objects(
+            components,
+            Prefetch('fits', queryset=fit_queryset(), to_attr='recorded_fits'),
+        )
     by_family = defaultdict(list)
     for component in components:
         by_family[component.part.IPN[len(CATALOGUE_PREFIX) :]].append(component)
@@ -146,6 +157,9 @@ def machine_positions(actor, machine, *, now=None) -> dict:
             'family_name': parts[family].name if family in parts else None,
             'components': [
                 {
+                    'fitted': fit_projection(slot.recorded_fits)
+                    if hasattr(slot, 'recorded_fits')
+                    else None,
                     'code': slot.code,
                     'name': slot.name,
                     'status': slot.status,

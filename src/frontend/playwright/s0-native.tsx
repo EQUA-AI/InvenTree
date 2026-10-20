@@ -28,6 +28,7 @@ import {
 import LayoutComponent from '../src/components/nav/Layout';
 import { ReturnLink } from '../src/components/nav/ReturnLink';
 import { ApiProvider } from '../src/contexts/ApiContext';
+import EquipmentRegistry from '../src/pages/assets/EquipmentRegistry';
 import MachineDetail from '../src/pages/assets/MachineDetail';
 import MachineIndex from '../src/pages/assets/MachineIndex';
 import PumpMimic from '../src/pages/assets/health/PumpMimic';
@@ -191,6 +192,7 @@ function NativeSurface() {
           element={<WorkOrderDetail />}
         />
         <Route path='/repair/packets/:id/*' element={<RepairPacketDetail />} />
+        <Route path='/machines/registry/' element={<EquipmentRegistry />} />
         <Route path='/machines/machine/:id/*' element={<MachineDetail />} />
         {/* R6 P13: the labelled way back a native Part page offers. */}
         <Route path='/part/:id/*' element={<ReturnLink />} />

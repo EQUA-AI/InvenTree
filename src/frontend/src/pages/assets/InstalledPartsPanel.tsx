@@ -45,7 +45,7 @@ export function InstalledPartsPanel({
         {station
           ? t`The components the equipment registry holds for this station and its pumps.`
           : t`The components the equipment registry holds for this pump.`}{' '}
-        {t`A draft was inferred from the station's source tags and has not been confirmed as fitted.`}{' '}
+        {t`Draft means the registry slot assignment still needs review. Fitted identity is recorded separately.`}{' '}
         <Anchor component={Link} to={registry} size='sm'>
           {t`Review in the equipment registry`}
         </Anchor>

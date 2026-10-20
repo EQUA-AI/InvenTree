@@ -5,6 +5,8 @@
  * state is written by connectors and deterministic detectors, never by the UI.
  */
 
+import type { CriticalDesignation } from './RecordedFacts';
+
 export type HealthState =
   | 'unknown'
   | 'normal'
@@ -68,6 +70,8 @@ export interface MachineSignalLimits {
 }
 
 export interface MachineSignal {
+  active?: boolean;
+  critical_designation?: CriticalDesignation | null;
   binding_id: number;
   source_id: number;
   source_name: string;

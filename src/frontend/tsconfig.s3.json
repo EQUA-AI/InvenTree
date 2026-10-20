@@ -1,6 +1,7 @@
 {
 	"extends": "./tsconfig.s0.json",
 	"files": [
+		"tests/s3/pui_critical_designation.spec.ts",
 		"playwright.s3.config.ts",
 		"tests/performance/fixtures.ts",
 		"tests/s3/performanceFixtures.ts",

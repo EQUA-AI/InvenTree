@@ -13,6 +13,7 @@ import type { MachineComponent } from '@lib/types/Assets';
 import type { TableFilter } from '@lib/types/Filters';
 import type { TableColumn } from '@lib/types/Tables';
 import { InvenTreeTable } from '../../components/tables/InvenTreeTable';
+import { FittedItemFact } from '../../pages/assets/FittedIdentity';
 import {
   REFERENCE_PARTS,
   referencePartLabel
@@ -151,20 +152,26 @@ export function MachineComponentTable({
         }
       },
       {
-        // Nothing records a fitted part, serial or lot against a slot yet;
-        // the catalogue part beside it is the family, not what is fitted.
+        // A successful empty fit read differs from a withheld/unavailable read.
         accessor: 'fitted_item',
         title: t`Fitted item`,
         sortable: false,
-        render: () => (
-          <Text
-            size='sm'
-            c='dimmed'
-            title={t`No fitted part, serial or lot is recorded for this slot.`}
-          >
-            {t`Not recorded`}
-          </Text>
-        )
+        render: (record) =>
+          showStock && record.fitted?.current ? (
+            <FittedItemFact fit={record.fitted.current} compact />
+          ) : (
+            <Text
+              size='sm'
+              c='dimmed'
+              title={
+                showStock && record.fitted
+                  ? t`No verified fitted identity is recorded for this slot.`
+                  : t`Fitted identity could not be read.`
+              }
+            >
+              {showStock && record.fitted ? t`Not recorded` : t`Not available`}
+            </Text>
+          )
       },
       {
         accessor: 'part_name',
@@ -209,7 +216,7 @@ export function MachineComponentTable({
             <Text size='xs' c='dimmed'>
               {record.status === 'verified'
                 ? t`Assignment verified`
-                : t`Fit not verified`}
+                : t`Slot assignment not verified`}
             </Text>
           </Stack>
         )

@@ -106,7 +106,11 @@ export function SignalTable({
   ];
 
   const bindingIds = useMemo(
-    () => signals.map((signal) => signal.binding_id).filter(Boolean),
+    () =>
+      signals
+        .filter((signal) => signal.active !== false)
+        .map((signal) => signal.binding_id)
+        .filter(Boolean),
     [signals]
   );
 
@@ -175,10 +179,11 @@ export function SignalTable({
           style={{ flex: '1 1 220px' }}
         />
       </Group>
-      <Text
-        size='xs'
-        c='dimmed'
-      >{t`${visibleSignals.length} of ${signals.length} mapped signals in this table. Condition and coverage above describe the whole machine.`}</Text>
+      <Text size='xs' c='dimmed'>
+        {signals.some((signal) => signal.active === false)
+          ? t`${visibleSignals.length} of ${signals.length} signal records in this table, including inactive retained bindings. Condition and coverage above describe the whole machine.`
+          : t`${visibleSignals.length} of ${signals.length} mapped signals in this table. Condition and coverage above describe the whole machine.`}
+      </Text>
       {selectedBinding &&
         !visibleSignals.some(
           (signal) => String(signal.binding_id) === selectedBinding
@@ -302,6 +307,12 @@ export function SignalTable({
                           ? ` · ${t`Draft inference`}`
                           : ''}
                       </Text>
+                    )}
+                    {signal.active === false && (
+                      <Text
+                        size='xs'
+                        c='orange'
+                      >{t`Inactive binding — retained for critical coverage review`}</Text>
                     )}
                     {signal.signal_kind && (
                       <Text size='xs' c='dimmed'>

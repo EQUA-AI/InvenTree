@@ -34,7 +34,7 @@ useUserState.setState({
   user: {
     pk: Number(params.get('actor') ?? 11),
     username: 'S3 synthetic fixture',
-    is_superuser: false,
+    is_superuser: params.get('role') === 'engineer',
     roles: { work_order: ['view'] },
     permissions: { assetmachine: ['view'], workorder: ['view'] }
   } as any

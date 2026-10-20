@@ -83,6 +83,14 @@ class ComponentSerializer(serializers.ModelSerializer):
     reference_position = serializers.SerializerMethodField()
     open_work = serializers.SerializerMethodField()
     stock = serializers.SerializerMethodField()
+    fitted = serializers.SerializerMethodField()
+
+    def get_fitted(self, obj):
+        """Only a stock-authorized list supplies fitted history."""
+        from .recorded_facts import fit_projection
+
+        rows = getattr(obj, 'recorded_fits', None)
+        return fit_projection(rows) if rows is not None else None
 
     def get_reference_position(self, obj) -> str | None:
         """The reference-model position for this slot's family, if any.
@@ -134,6 +142,7 @@ class ComponentSerializer(serializers.ModelSerializer):
             'reference_position',
             'open_work',
             'stock',
+            'fitted',
         ]
         read_only_fields = fields
 
@@ -514,6 +523,14 @@ def _with_parts_context(queryset, actor):
                 Value(Decimal(0)),
                 output_field=DecimalField(max_digits=15, decimal_places=5),
             )
+        )
+    if check_user_role(actor, 'stock', 'view'):
+        from django.db.models import Prefetch
+
+        from .recorded_facts import fit_queryset
+
+        queryset = queryset.prefetch_related(
+            Prefetch('fits', queryset=fit_queryset(), to_attr='recorded_fits')
         )
     return queryset
 

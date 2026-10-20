@@ -579,3 +579,181 @@ test('preliminary analysis citation opens its exact retained incident', async ({
     path: info.outputPath('diagnosis-exact-citation.png')
   });
 });
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`O15 designated critical coverage preserves unknown evidence (${scheme})`, async ({
+    page
+  }, info) => {
+    const designation = {
+      critical: true,
+      version: 2,
+      reason: 'Engineer reviewed critical flow',
+      recorded_by: 'Synthetic engineer',
+      recorded_at: '2026-10-18T08:00:00Z'
+    };
+    await openHealth(page, {
+      scheme,
+      signals: [
+        { ...HEALTH_SIGNALS[0], criticalDesignation: designation },
+        {
+          ...HEALTH_SIGNALS[0],
+          id: 299,
+          key: '/critical/missing',
+          name: 'Missing critical measurement',
+          value: null,
+          state: 'unknown',
+          criticalDesignation: designation
+        }
+      ],
+      summary: { state: 'normal' }
+    });
+    await expect(
+      page.getByText('2 designated · 1 usable now · 1 evaluated now', {
+        exact: true
+      })
+    ).toBeVisible();
+    await expect(
+      page.getByText(/Unassessed or missing evidence remains unknown/)
+    ).toBeVisible();
+    await page.getByRole('button', { name: /Inspect.*Discharge flow/ }).click();
+    await expect(
+      page.getByText('Engineer reviewed critical flow · Synthetic engineer', {
+        exact: false
+      })
+    ).toBeVisible();
+    await expect(page.getByTestId('fixture-fetching')).toHaveText('0', {
+      timeout: 60000
+    });
+    const sourceTable = page.getByRole('table', { name: 'Source connections' });
+    const sourceType = sourceTable.getByText('SCADA', { exact: true });
+    expect(
+      await sourceType.evaluate(
+        (node) => node.scrollWidth <= node.clientWidth + 1
+      )
+    ).toBe(true);
+    const connected = sourceTable.getByText('Connected', { exact: true });
+    await expect(connected).toBeVisible();
+    expect(
+      await connected.evaluate(
+        (node) => node.scrollWidth <= node.clientWidth + 1
+      )
+    ).toBe(true);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth
+      )
+    ).toBe(true);
+    await page.screenshot({
+      path: info.outputPath(`o15-critical-${scheme}.png`),
+      fullPage: true,
+      animations: 'disabled'
+    });
+  });
+}
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`O15 review remapped critical evidence and identify inactive bindings (${scheme})`, async ({
+    page
+  }, info) => {
+    const decision = {
+      critical: true,
+      version: 1,
+      reason: 'Required before remap',
+      recorded_by: 'Synthetic engineer',
+      recorded_at: '2026-10-18T08:00:00Z'
+    };
+    const batch: string[] = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.pathname.endsWith('/trends/') && url.searchParams.has('bindings'))
+        batch.push(url.searchParams.get('bindings')!);
+    });
+    await openHealth(page, {
+      scheme,
+      signals: [
+        HEALTH_SIGNALS[0],
+        {
+          ...HEALTH_SIGNALS[0],
+          id: 299,
+          key: '/changed/meaning',
+          name: 'Remapped critical flow',
+          criticalDesignation: {
+            ...decision,
+            applies_current: false,
+            review_required: true
+          }
+        },
+        {
+          ...HEALTH_SIGNALS[0],
+          id: 398,
+          name: 'Retired critical flow',
+          active: false,
+          value: null,
+          state: 'unknown',
+          criticalDesignation: { ...decision, applies_current: true }
+        }
+      ]
+    });
+    await expect(
+      page.getByText('2 designated · 0 usable now · 0 evaluated now', {
+        exact: true
+      })
+    ).toBeVisible();
+    await expect(
+      page.getByText('Critical coverage incomplete', { exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByText('Designated critical coverage', { exact: true })
+    ).toHaveCount(0);
+    await expect(
+      page.getByText(
+        'Inactive binding — retained for critical coverage review',
+        { exact: true }
+      )
+    ).toBeVisible();
+    await page
+      .getByRole('button', {
+        name: 'Inspect signal: Remapped critical flow',
+        exact: true
+      })
+      .click();
+    await expect(
+      page.getByText('Designation review required — binding meaning changed', {
+        exact: true
+      })
+    ).toBeVisible();
+    await expect(
+      page.getByText(/Required before remap · Synthetic engineer/)
+    ).toBeVisible();
+    await expect(page.getByTestId('fixture-fetching')).toHaveText('0', {
+      timeout: 60000
+    });
+    expect(batch.length).toBeGreaterThan(0);
+    expect(batch.every((ids) => !ids.split(',').includes('398'))).toBe(true);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth
+      )
+    ).toBe(true);
+    await expect(
+      page.getByText(
+        /3 of 3 signal records in this table, including inactive retained bindings/
+      )
+    ).toBeVisible();
+    const evidence = page.locator('#health-signal-evidence');
+    await expect(
+      evidence.getByText(/Selected history window, read from the source:/)
+    ).toBeVisible({ timeout: 60000 });
+    await expect(
+      evidence.getByText(
+        'No snapshot of this signal in the latest 50 machine snapshots.',
+        { exact: true }
+      )
+    ).toBeVisible({ timeout: 60000 });
+    await page.screenshot({
+      path: info.outputPath(`o15-review-critical-${scheme}.png`),
+      fullPage: true,
+      animations: 'disabled'
+    });
+  });
+}
