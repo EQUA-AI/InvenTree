@@ -27,6 +27,7 @@ from InvenTree.mixins import ListCreateAPI, RetrieveUpdateDestroyAPI
 from tasks.json_lookups import filter_json_array_contains
 
 from .attention import attention_filter, order_by_attention
+from .calibration_api import CalibrationTraceabilityCommand
 from .closeout_api import (
     CloseoutAmendmentDecide,
     CloseoutAmendmentList,
@@ -1488,6 +1489,11 @@ kanban_api_urls = [
             path('list/', WorkOrderTableList.as_view(), name='kanban-work-order-table'),
             path(
                 'persona/', WorkOrderPersona.as_view(), name='kanban-work-order-persona'
+            ),
+            path(
+                '<int:pk>/calibration-traceability/<int:reading>/',
+                CalibrationTraceabilityCommand.as_view(),
+                name='work-calibration-traceability',
             ),
             path(
                 '<int:pk>/investigation-requests/',

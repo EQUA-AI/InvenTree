@@ -3,7 +3,8 @@
 from decimal import Decimal
 
 from django.conf import settings
-from django.db import models
+from django.core.exceptions import ValidationError
+from django.db import models, transaction
 from django.utils.translation import gettext_lazy as _
 
 import InvenTree.models
@@ -214,6 +215,7 @@ class WorkOrder(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
         """Readable identity for admin and logs."""
         return self.title
 
+    @transaction.atomic
     def save(self, *args, **kwargs):
         """Persist, then give a new job its reference and its tracking card.
 
@@ -229,6 +231,27 @@ class WorkOrder(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
         only and touch only this job's rows, so neither can race another writer.
         """
         creating = self._state.adding
+        update_fields = kwargs.get('update_fields')
+        if not creating and (
+            update_fields is None or 'work_order_type' in update_fields
+        ):
+            original_type = (
+                type(self)
+                .objects.select_for_update()
+                .filter(pk=self.pk)
+                .values_list('work_order_type', flat=True)
+                .first()
+            )
+            if (
+                original_type is not None
+                and original_type != self.work_order_type
+                and self.calibration_traceability.exists()
+            ):
+                raise ValidationError({
+                    'work_order_type': _(
+                        'Work type cannot change while recorded calibration traceability exists.'
+                    )
+                })
 
         super().save(*args, **kwargs)
 
@@ -747,6 +770,7 @@ class WorkOrderPart(models.Model):
 # Re-export split work-order models for compatibility with ``tasks.models`` imports.
 # Re-export job-kit models for compatibility with ``tasks.models`` imports.
 # Re-export closeout-automation models for compatibility with ``tasks.models``.
+from tasks.calibration_models import CalibrationTraceability  # noqa: F401
 from tasks.closeout_models import (  # noqa: F401
     ACTIVE_CAPTURE_STATUSES,
     CloseoutAmendment,

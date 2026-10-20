@@ -337,6 +337,14 @@ def update_work_order_plan(
         raise WorkOrderCommandError('No updatable planning fields supplied.')
 
     def apply(work_order):
+        if (
+            'work_order_type' in allowed
+            and allowed['work_order_type'] != work_order.work_order_type
+            and work_order.calibration_traceability.exists()
+        ):
+            raise NotMutable(
+                'Work type cannot change while recorded calibration traceability exists.'
+            )
         for key, value in allowed.items():
             setattr(work_order, key, value)
         return {'updated_fields': sorted(allowed)}, list(allowed)
@@ -560,6 +568,8 @@ def delete_work_order(
 
 def _snapshot(work_order: WorkOrder) -> dict[str, Any]:
     """Serialize the durable fields of a card for forensic recovery."""
+    from tasks.services.calibration import project as calibration_traceability
+
     return {
         'title': work_order.title,
         'description': work_order.description,
@@ -585,6 +595,7 @@ def _snapshot(work_order: WorkOrder) -> dict[str, Any]:
         'reference': work_order.reference,
         'created_at': work_order.created_at.isoformat(),
         'deleted_snapshot_at': timezone.now().isoformat(),
+        'calibration_traceability': dict(calibration_traceability(work_order)),
         'investigation_retention': {
             'policy': 'refuse_deletion_with_requests',
             'request_ids': list(

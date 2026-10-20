@@ -11,6 +11,7 @@ import {
 } from '@mantine/core';
 import { Link, useSearchParams } from 'react-router-dom';
 import { workPanelParams } from '../workPanelState';
+import { CalibrationTraceability } from './CalibrationTraceability';
 import { ContinueInvestigation } from './ContinueInvestigation';
 import {
   ExecutionSection,
@@ -208,6 +209,17 @@ export function RoutineWork({
                   {reading.recorded_by_name ?? t`Not recorded`} ·{' '}
                   {t`Reading recorded at`}: {recordedTime(reading.recorded_at)}
                 </Text>
+                {work.work_order_type === 'calibration' && (
+                  <CalibrationTraceability
+                    workId={work.id}
+                    readingId={reading.id}
+                    workVersion={work.lifecycle_version}
+                    revisions={reading.calibration_traceability}
+                    canRecord={
+                      value.calibration_traceability_can_record === true
+                    }
+                  />
+                )}
               </Stack>
             ))
           )}
@@ -215,7 +227,7 @@ export function RoutineWork({
       )}
       {work.work_order_type === 'calibration' && (
         <Alert color='gray' title={t`Calibration traceability incomplete`}>
-          <Text size='sm'>{t`As-found/as-left designation, reference instrument identity, certificate, calibration validity and test conditions are not supplied.`}</Text>
+          <Text size='sm'>{t`As-found/as-left designation and test conditions are not supplied. Reference instrument and certificate facts appear only when explicitly recorded for each reading.`}</Text>
           {value?.readings_state === 'read' && value.readings.length > 0 && (
             <Text size='sm'>{t`Returned before/after readings and any recorded limits do not establish calibration acceptance.`}</Text>
           )}
