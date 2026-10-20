@@ -95,11 +95,19 @@ function ScopedPreferences({
           disabled={!name.trim()}
           onClick={() => {
             const view = { ...current, name: name.trim() };
-            const saved = persist(
-              [...views.filter((item) => item.name !== view.name), view].slice(
-                -20
-              )
-            );
+            if (views.some((item) => item.name === view.name)) {
+              setNotice(
+                t`A view named ${view.name} already exists. Choose another name or explicitly delete that saved view first.`
+              );
+              return;
+            }
+            if (views.length >= 20) {
+              setNotice(
+                t`All 20 view slots are in use. Delete a saved view before saving another. Existing views were kept.`
+              );
+              return;
+            }
+            const saved = persist([...views, view]);
             if (!saved) return;
             setSelected(view.name);
             setNotice(t`Display view saved in this browser.`);
@@ -139,7 +147,7 @@ function ScopedPreferences({
         >{t`Delete view`}</Button>
       </SimpleGrid>
       {notice && (
-        <Text component='output' size='xs'>
+        <Text component='output' size='xs' style={{ overflowWrap: 'anywhere' }}>
           {notice}
         </Text>
       )}

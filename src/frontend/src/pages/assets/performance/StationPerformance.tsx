@@ -24,7 +24,9 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { HistoryProvenance } from '../investigation/HistoryProvenance';
 import { InvestigationSlices } from '../investigation/InvestigationSlices';
 import { LinkedEvidence } from '../investigation/LinkedEvidence';
-import { linkedWindow } from '../investigation/windows';
+import { displayLinkedWindow } from '../investigation/windows';
+import { HistoryReadStack } from './HistoryReadContext';
+import { failedHistoryTargets } from './historyBatches';
 
 import { useApi } from '../../../contexts/ApiContext';
 import type { MimicData } from '../health/PumphouseMimic';
@@ -116,14 +118,22 @@ export function StationPerformance({
   const scheme = useComputedColorScheme('light');
   const now = useClock();
   const [params, setParams] = useSearchParams();
-  const linked = linkedWindow(params);
+  const dataRange = useDataRange(
+    station.pk,
+    params.get('history_clock') === 'recorded'
+  );
+  const linked = displayLinkedWindow(
+    params,
+    dataRange.isFetching || dataRange.isError
+      ? undefined
+      : dataRange.data?.display_shift_seconds
+  );
   const invalidLink = linked.present && !linked.window;
   const range = useWindowState(
     linked.window ? { kind: 'absolute', ...linked.window } : undefined
   );
   const [investigationOpen, setInvestigationOpen] = useState(false);
   const signalsQuery = useMachineSignals(station.pk, range.live);
-  const dataRange = useDataRange(station.pk);
 
   // The bay list, read once; the mimic already knows which slots exist.
   const baysQuery = useQuery<MimicData>({
@@ -171,10 +181,9 @@ export function StationPerformance({
   const series = useMemo(() => indexSeries(response), [response]);
   const byKey = useMemo(() => {
     const map = new Map<string, SeriesEntry>();
-    for (const entry of response?.series ?? [])
-      map.set(entry.external_key, entry);
+    for (const entry of series.values()) map.set(entry.external_key, entry);
     return map;
-  }, [response]);
+  }, [series]);
   const window = useMemo(
     () => windowInfoFrom(response, range.window, now),
     [response, range.window, now]
@@ -351,8 +360,16 @@ export function StationPerformance({
     // A bay the source could not serve is named, not silently dropped: the
     // card used to lose its line, or vanish when no bay had history.
     const read = !!response && !seriesQuery.isError && !seriesQuery.isLoading;
+    const failedTargets = failedHistoryTargets(response);
+    const failed = read
+      ? items
+          .filter((item) => failedTargets.keys.has(pick(bayKeys(item.key))))
+          .map((item) => item.label)
+      : [];
     const unmapped = read
-      ? items.filter((item) => !item.entry).map((item) => item.label)
+      ? items
+          .filter((item) => !item.entry && !failed.includes(item.label))
+          .map((item) => item.label)
       : [];
     const missing = read
       ? items
@@ -369,7 +386,7 @@ export function StationPerformance({
           )
         ]
       : [];
-    return { lines, rows, unit, missing, unmapped, details, apart };
+    return { lines, rows, unit, missing, unmapped, details, apart, failed };
   };
 
   const power = useMemo(
@@ -438,6 +455,8 @@ export function StationPerformance({
     }[];
     const lines: TrendSeries[] = items.map((item) => ({
       key: item.key,
+      bindingIds: [item.p.signal.binding_id],
+      externalKeys: [item.p.signal.external_key],
       label: item.p.label,
       color: item.color,
       unit: item.p.signal.unit,
@@ -556,13 +575,14 @@ export function StationPerformance({
   // cards emptied and the page looked merely quiet.
   const unavailable =
     response?.series.filter((entry) => !entry.available) ?? [];
+  const failedTargets = failedHistoryTargets(response);
   const failedAll =
     !!response &&
     response.series.length > 0 &&
     unavailable.length === response.series.length;
 
   return (
-    <Stack gap='lg'>
+    <HistoryReadStack response={response} gap='lg'>
       <Group justify='space-between' align='flex-start' wrap='wrap' gap='md'>
         <Stack gap={4} style={{ flex: 1, minWidth: 320 }}>
           <TimeRangeControl
@@ -599,8 +619,24 @@ export function StationPerformance({
       </Group>
 
       {invalidLink && (
-        <Alert color='yellow' title={t`Invalid investigation window`}>
-          {t`The linked window must have valid increasing timestamps and be no longer than 24 h. No history has been requested from this link.`}
+        <Alert
+          color='yellow'
+          title={
+            linked.clockUnknown
+              ? t`Recorded clock unknown`
+              : t`Invalid investigation window`
+          }
+        >
+          {linked.clockUnknown
+            ? t`The recorded-to-display clock offset is unavailable or still loading. No history read is made until the clock is known. Retry the source extent or choose a display-clock range.`
+            : t`The linked window must have valid increasing timestamps and be no longer than 24 h. No history has been requested from this link.`}
+          {linked.clockUnknown && (
+            <Button
+              size='xs'
+              variant='subtle'
+              onClick={() => dataRange.refetch()}
+            >{t`Retry source extent`}</Button>
+          )}
           <Button
             size='xs'
             variant='subtle'
@@ -610,6 +646,7 @@ export function StationPerformance({
                   const next = new URLSearchParams(previous);
                   next.delete('history_from');
                   next.delete('history_to');
+                  next.delete('history_clock');
                   return next;
                 },
                 { replace: true }
@@ -714,6 +751,9 @@ export function StationPerformance({
                 title={t`Active power by bay`}
                 description={
                   [
+                    power.failed.length > 0
+                      ? t`History read failed for ${power.failed.join(', ')}; coverage unknown.`
+                      : '',
                     power.unmapped.length > 0
                       ? t`No power channel mapped for ${power.unmapped.join(', ')}.`
                       : '',
@@ -739,6 +779,9 @@ export function StationPerformance({
                 title={t`Discharge flow by bay`}
                 description={
                   [
+                    flow.failed.length > 0
+                      ? t`History read failed for ${flow.failed.join(', ')}; coverage unknown.`
+                      : '',
                     flow.unmapped.length > 0
                       ? t`No flow channel mapped for ${flow.unmapped.join(', ')}.`
                       : '',
@@ -764,17 +807,17 @@ export function StationPerformance({
           {bays.length > 0 && (
             <Paper withBorder radius='md' p={0}>
               {/* Scrolls sideways rather than squeezing: at phone width the
-                  State column shrank its badges to "R…" and "I…". */}
+                State column shrank its badges to "R…" and "I…". */}
               <Table.ScrollContainer minWidth={720} type='native'>
                 <Table striped highlightOnHover>
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>{t`Bay`}</Table.Th>
                       {/* A badge's clipped label has no minimum width of its own, so
-                        the column keeps one or the table squeezes it. */}
+                      the column keeps one or the table squeezes it. */}
                       <Table.Th miw={96}>{t`State`}</Table.Th>
                       {/* The unit belongs to the column, not to every cell in
-                        it; right-aligned, the decimal points line up. */}
+                      it; right-aligned, the decimal points line up. */}
                       <Table.Th ta='right'>
                         {t`Active power`}
                         {table.powerUnit ? ` (${table.powerUnit})` : ''}
@@ -798,6 +841,10 @@ export function StationPerformance({
                     {table.rows.map((row) => {
                       const { bay, power: p, flow: f, speed: s, peak } = row;
                       const st = row.status;
+                      const rowKeys = bayKeys(bay.key);
+                      const failedCell = (
+                        <Text size='xs'>{t`History read failed`}</Text>
+                      );
                       const newest = Math.max(
                         ...[p, f, s, st].map((x) => x?.t ?? 0)
                       );
@@ -848,47 +895,57 @@ export function StationPerformance({
                                     : t`Unknown`}
                             </Badge>
                             {/* Without a status reading in the window the
-                                state is the station's present word for the
-                                bay - not something this window recorded. */}
+                              state is the station's present word for the
+                              bay - not something this window recorded. */}
+                            {failedTargets.keys.has(rowKeys.status) &&
+                              failedCell}
                             {(st?.v === null || st?.v === undefined) && (
                               <Text size='xs' c='dimmed'>
                                 {Number.isFinite(mimicGeneratedAt)
-                                  ? t`Station mimic state at ${mimicLabel}, not from this window`
-                                  : t`Station mimic read at ${mimicLabel}, observation time not recorded; not from this window`}
+                                  ? t`Station mimic read at ${mimicLabel}; not an observation time; not from this window`
+                                  : t`Station mimic response time unavailable; browser read at ${mimicLabel}; not an observation time; not from this window`}
                               </Text>
                             )}
                           </Table.Td>
                           <Table.Td ta='right'>
-                            {cell(
-                              p?.v,
-                              table.powerDp,
-                              row.units.power,
-                              table.powerUnit
-                            )}
+                            {failedTargets.keys.has(rowKeys.power)
+                              ? failedCell
+                              : cell(
+                                  p?.v,
+                                  table.powerDp,
+                                  row.units.power,
+                                  table.powerUnit
+                                )}
                           </Table.Td>
                           <Table.Td ta='right'>
-                            {cell(
-                              f?.v,
-                              table.flowDp,
-                              row.units.flow,
-                              table.flowUnit
-                            )}
+                            {failedTargets.keys.has(rowKeys.flow)
+                              ? failedCell
+                              : cell(
+                                  f?.v,
+                                  table.flowDp,
+                                  row.units.flow,
+                                  table.flowUnit
+                                )}
                           </Table.Td>
                           <Table.Td ta='right'>
-                            {cell(
-                              s?.v,
-                              table.speedDp,
-                              row.units.speed,
-                              table.speedUnit
-                            )}
+                            {failedTargets.keys.has(rowKeys.speed)
+                              ? failedCell
+                              : cell(
+                                  s?.v,
+                                  table.speedDp,
+                                  row.units.speed,
+                                  table.speedUnit
+                                )}
                           </Table.Td>
                           <Table.Td ta='right'>
-                            {cell(
-                              peak?.max,
-                              table.powerDp,
-                              row.units.power,
-                              table.powerUnit
-                            )}
+                            {failedTargets.keys.has(rowKeys.power)
+                              ? failedCell
+                              : cell(
+                                  peak?.max,
+                                  table.powerDp,
+                                  row.units.power,
+                                  table.powerUnit
+                                )}
                           </Table.Td>
                           <Table.Td>
                             <Text size='xs' c='dimmed'>
@@ -914,7 +971,7 @@ export function StationPerformance({
           )}
         </Stack>
       </div>
-    </Stack>
+    </HistoryReadStack>
   );
 }
 
@@ -950,6 +1007,7 @@ function BayComparison({
     rows: ReturnType<typeof alignRows>;
     unit: string;
     apart: { key: string; unit: string; lines: TrendSeries[] }[];
+    failed: string[];
   };
   window: ReturnType<typeof windowInfoFrom>;
   syncId: string;
@@ -957,6 +1015,11 @@ function BayComparison({
 }>) {
   const chart = (lines: TrendSeries[], unit: string) => (
     <TrendChart
+      emptyText={
+        data.failed.length > 0
+          ? t`History read failed; coverage unknown.`
+          : undefined
+      }
       rows={data.rows}
       series={lines}
       windowStart={window.start}

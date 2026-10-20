@@ -45,6 +45,7 @@ test('limits that cannot be judged now say evaluation is unavailable', async ({
   page
 }) => {
   await openPerformance(page, {
+    harness: 's3',
     signals: [
       power,
       winding(1, { stale: true, state: 'unknown' }),
@@ -64,6 +65,7 @@ test('calm is claimed only when every judged reading is in limits, and says how 
 }, testInfo) => {
   for (const scheme of ['light', 'dark'] as const) {
     await openPerformance(page, {
+      harness: 's3',
       signals: [power, speed, winding(1), winding(2), winding(3)],
       scheme
     });
@@ -83,6 +85,7 @@ test('calm is claimed only when every judged reading is in limits, and says how 
   }
   // A reading outside its limits is still named, and calm is not claimed.
   await openPerformance(page, {
+    harness: 's3',
     signals: [power, winding(1, { state: 'warning' }), winding(2)]
   });
   await expect(strip(page).getByText(/1 warning: /)).toBeVisible();
@@ -104,6 +107,7 @@ test('reactive power shares the power axis only at the same magnitude, and power
 
   for (const scheme of ['light', 'dark'] as const) {
     await openPerformance(page, {
+      harness: 's3',
       signals: [power, reactive('MVar'), factor, speed],
       scheme
     });
@@ -125,6 +129,7 @@ test('reactive power shares the power axis only at the same magnitude, and power
 
   // kvar beside MW is a different magnitude: drawn apart, never rescaled.
   await openPerformance(page, {
+    harness: 's3',
     signals: [power, reactive('kvar'), factor, speed]
   });
   await expect(axis('Power and power factor', 'left')).toHaveText('MW');

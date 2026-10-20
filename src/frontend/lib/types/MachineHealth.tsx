@@ -275,6 +275,8 @@ export interface SeriesSample {
 }
 
 export interface SeriesEntry {
+  /** Frontend-derived from this entry's bounded batch, not a historian field. */
+  read_resolution_seconds?: number;
   binding_id: number;
   machine_id: number;
   external_key: string;
@@ -309,7 +311,15 @@ export interface SeriesLive {
  */
 export interface SeriesResponse {
   /** Frontend aggregation metadata; not asserted by the historian API. */
-  read_batches?: { target_count: number; failed: boolean }[];
+  read_batches?: {
+    target_count: number;
+    failed: boolean;
+    bindings: readonly number[];
+    keys: readonly string[];
+    resolution_seconds?: number;
+    cadence_seconds?: number | null;
+    display_shift_seconds?: number;
+  }[];
   machine: number;
   station: { pk: number; name: string } | null;
   window_start: string;

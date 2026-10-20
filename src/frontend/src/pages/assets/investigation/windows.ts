@@ -1,3 +1,10 @@
+import dayjs from 'dayjs';
+
+/** Mantine's local picker value is not an ECMAScript ISO date string. */
+export function pickerInstant(value: string | null): number {
+  return value ? dayjs(value).valueOf() : Number.NaN;
+}
+
 /** Existing single-window series contract. A case span is navigated in explicit
  * slices, never silently expanded into an unbounded source read. */
 export const MAX_HISTORY_WINDOW_MS = 24 * 3600_000;
@@ -58,13 +65,36 @@ export function investigationHref(
   machineId: number,
   span: InvestigationWindow,
   occurrence: number,
-  snapshot?: string
+  snapshot?: string,
+  clock: 'recorded' | 'display' = 'display'
 ) {
   const params = new URLSearchParams({
     history_from: new Date(span.from).toISOString(),
     history_to: new Date(span.to).toISOString(),
     occurrence: String(occurrence)
   });
+  params.set('history_clock', clock);
   if (snapshot) params.set('snapshot', snapshot);
   return `/machines/machine/${machineId}/performance/?${params}`;
+}
+
+/** Series reads accept display-clock bounds. Never guess an unknown offset. */
+export function displayLinkedWindow(params: URLSearchParams, shift?: number) {
+  const linked = linkedWindow(params);
+  const clock = params.get('history_clock') ?? 'display';
+  const clockUnknown =
+    linked.present &&
+    !!linked.window &&
+    clock === 'recorded' &&
+    !Number.isFinite(shift);
+  if (!linked.window || !linked.present)
+    return { ...linked, clockUnknown: false };
+  if (clockUnknown || !['recorded', 'display'].includes(clock))
+    return { ...linked, window: null, clockUnknown };
+  const delta = clock === 'recorded' ? shift! * 1000 : 0;
+  return {
+    ...linked,
+    window: boundedWindow(linked.window.from + delta, linked.window.to + delta),
+    clockUnknown: false
+  };
 }

@@ -111,16 +111,23 @@ test('P11-4 unconfirmed units count toward column majority', async ({
     page.locator('tbody tr').filter({ hasText: 'Pump 3' }).locator('td').nth(2)
   ).toContainText('MW');
 });
-test('P11-5 mimic fallback names its source time', async ({ page }) => {
-  await openStation(page, {
-    bays: BAYS.map((b) => (b.key === 'P2' ? { ...b, status: null } : b))
+for (const scheme of ['light', 'dark'] as const)
+  test(`P11-5 mimic fallback distinguishes response time from observation time in ${scheme}`, async ({
+    page
+  }, info) => {
+    await openStation(page, {
+      scheme,
+      bays: BAYS.map((b) => (b.key === 'P2' ? { ...b, status: null } : b))
+    });
+    const row = page.locator('tbody tr').filter({ hasText: 'Pump 2' });
+    await expect(row).toContainText(
+      /Station mimic read at .*26 Sep.*15:00.*not an observation time.*not from this window/
+    );
+    await expect(row).not.toContainText('Current, not from this window');
+    await row.screenshot({
+      path: info.outputPath(`mimic-read-time-${scheme}.png`)
+    });
   });
-  const row = page.locator('tbody tr').filter({ hasText: 'Pump 2' });
-  await expect(row).toContainText(
-    /Station mimic state at .*26 Sep.*15:00.*not from this window/
-  );
-  await expect(row).not.toContainText('Current, not from this window');
-});
 test('P11-6 split families keep caller caveats and explain heatmap threshold', async ({
   page
 }) => {
@@ -171,17 +178,38 @@ test('P11-8 failed pump read cannot show green Live', async ({ page }) => {
     page.locator('.mantine-Badge-root').filter({ hasText: /^Live$/ })
   ).toHaveCount(0);
 });
-test('P11-9 window announcement region exists before its text updates', async ({
-  page
-}) => {
-  await openPerformance(page, {
-    harness: 's3',
-    delaySeriesMs: (_url, index) => (index ? 3000 : 0)
+for (const scheme of ['light', 'dark'] as const)
+  test(`P11-9 window announcements contain state changes and keep moving clock text silent in ${scheme}`, async ({
+    page
+  }, info) => {
+    await openPerformance(page, {
+      harness: 's3',
+      scheme,
+      signals: [
+        signal('/dex/PUMP1_ACTIVE_POWER', 8.42, 'MW', 'Active power'),
+        signal('/dex/PUMP1_SPEED', 745, 'rpm', 'Shaft speed')
+      ],
+      delaySeriesMs: (_url, index) => (index ? 3000 : 0)
+    });
+    const region = page.locator('[data-window-status] [aria-live="polite"]');
+    await expect(region).toBeEmpty();
+    await expect(
+      page.locator('[data-window-status] [aria-live="off"]')
+    ).toContainText('Window on screen:');
+    const element = await region.elementHandle();
+    await page.getByText('6 h', { exact: true }).click();
+    await expect(region).toHaveText('Updating selected history window.');
+    await expect(
+      page.locator('[data-window-status] [aria-live="off"]')
+    ).toContainText('Charts still show the previous window');
+    expect(await element?.evaluate((el) => el.isConnected)).toBe(true);
+    await page.locator('[data-window-status]').screenshot({
+      path: info.outputPath(`window-announcement-${scheme}.png`),
+      animations: 'disabled'
+    });
+    await expect(page.getByTestId('fixture-fetching')).toHaveText('0');
+    await expect(region).toBeEmpty();
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await expect(page.getByTestId('fixture-fetching')).toHaveText('0');
+    await expect(region).toBeEmpty();
   });
-  const region = page.locator('[data-window-status] [aria-live="polite"]');
-  await expect(region).toContainText('Window on screen:');
-  const element = await region.elementHandle();
-  await page.getByText('6 h', { exact: true }).click();
-  await expect(region).toContainText('Charts still show the previous window');
-  expect(await element?.evaluate((el) => el.isConnected)).toBe(true);
-});

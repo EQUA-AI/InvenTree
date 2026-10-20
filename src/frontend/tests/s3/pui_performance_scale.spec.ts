@@ -127,3 +127,82 @@ test('large channel navigation in dark scheme', async ({ page }, info) => {
     )
   ).toBe(true);
 });
+
+for (const scheme of ['light', 'dark'] as const)
+  test(`complete batches with different measured cadences keep their native curves in ${scheme}`, async ({
+    page
+  }, info) => {
+    const signals = [
+      ...Array.from({ length: 200 }, (_, i) => ({
+        key: `/dex/PUMP1_EXTRA_CADENCE_${i}`,
+        name: `Extra cadence ${i}`,
+        value: i,
+        unit: 'bar'
+      })),
+      ...NATIVE_SIGNALS.filter((s) =>
+        /PUMP1_(ACTIVE_POWER|SPEED)$|WINDING_TEMPERATURED[1-4]$/.test(s.key)
+      )
+    ];
+    const requests = await openPerformance(page, {
+      harness: 's3',
+      scheme,
+      signals,
+      harnessParams: {
+        entry:
+          '/machines/machine/18/performance?history_from=2026-10-01T00:00:00Z&history_to=2026-10-01T00:05:00Z'
+      },
+      mapSeriesResponse: (response, url) =>
+        url.searchParams.get('bindings')?.split(',').includes('300')
+          ? {
+              ...response,
+              resolution_seconds: 20,
+              cadence_seconds: 20,
+              series: response.series.map((entry) => {
+                const samples = entry.samples.filter((_, i) => i % 4 === 0);
+                return { ...entry, samples, count: samples.length };
+              })
+            }
+          : response
+    });
+    await expect(page.getByTestId('fixture-fetching')).toHaveText('0');
+    expect(requests).toHaveLength(2);
+    await page
+      .getByRole('button', { name: 'Open Electrical', exact: true })
+      .click();
+    const section = page.locator('[data-section="Electrical"]');
+    const curve = section.locator('path.recharts-line-curve').first();
+    await expect(curve).toHaveAttribute('d', /L/);
+    const provenance = page.getByTestId('history-provenance');
+    await provenance
+      .locator('summary')
+      .filter({ hasText: 'Per-batch resolution and clock' })
+      .click();
+    await expect(provenance).toContainText(
+      'Resolution 5 s; measured cadence 5 s'
+    );
+    await expect(provenance).toContainText(
+      'Resolution 20 s; measured cadence 20 s'
+    );
+    await page
+      .getByRole('button', {
+        name: 'Open Motor winding temperature',
+        exact: true
+      })
+      .click();
+    const winding = page.locator('[data-section="Motor winding temperature"]');
+    await expect(
+      winding.locator('path.recharts-line-curve').first()
+    ).toHaveAttribute('d', /L/);
+    await section.screenshot({
+      path: info.outputPath(`batch-cadence-curve-${scheme}.png`),
+      animations: 'disabled'
+    });
+    await winding.screenshot({
+      path: info.outputPath(`batch-cadence-sensors-${scheme}.png`),
+      animations: 'disabled'
+    });
+    await provenance.screenshot({
+      path: info.outputPath(`batch-cadence-metadata-${scheme}.png`),
+      animations: 'disabled'
+    });
+  });

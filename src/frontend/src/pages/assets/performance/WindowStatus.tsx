@@ -69,13 +69,10 @@ export function WindowStatus({
           {t`Updating`}
         </Badge>
       )}
-      <Text
-        component='output'
-        size='xs'
-        c='dimmed'
-        aria-live='polite'
-        aria-atomic='true'
-      >
+      <Text component='output' size='xs' aria-live='polite' aria-atomic='true'>
+        {updating ? t`Updating selected history window.` : ''}
+      </Text>
+      <Text component='div' size='xs' c='dimmed' aria-live='off'>
         {updating
           ? t`Charts still show the previous window, ${formatWindow(start, end, now)} (${formatDuration(seconds)}), until the new one arrives.`
           : t`Window on screen: ${formatWindow(start, end, now)} (${formatDuration(seconds)}).`}{' '}

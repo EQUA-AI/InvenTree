@@ -22,6 +22,7 @@ import {
   alignRows,
   differenceSeries,
   gapThresholdMs,
+  resolutionForSeries,
   seriesStats,
   syntheticEntry
 } from '../series';
@@ -309,11 +310,16 @@ function SameScaleDifferenceCard({
             : shared
               ? t`ΔT ${pair.a.index} (${pair.b.definition.label()})`
               : t`ΔT ${pair.a.index}`;
-        const samples = differenceSeries(
-          series.get(pair.a.signal.binding_id),
-          series.get(pair.b.signal.binding_id)
-        );
-        const entry = syntheticEntry(label, unit, samples);
+        const a = series.get(pair.a.signal.binding_id);
+        const b = series.get(pair.b.signal.binding_id);
+        const samples = differenceSeries(a, b);
+        const entry = {
+          ...syntheticEntry(label, unit, samples),
+          read_resolution_seconds: Math.max(
+            resolutionForSeries([a], window.resolutionSeconds),
+            resolutionForSeries([b], window.resolutionSeconds)
+          )
+        };
         const current =
           typeof pair.a.signal.value === 'number' &&
           typeof pair.b.signal.value === 'number'
@@ -321,6 +327,7 @@ function SameScaleDifferenceCard({
             : null;
         return {
           key: `delta-${i}`,
+          bindingIds: [pair.a.signal.binding_id, pair.b.signal.binding_id],
           label,
           entry,
           current,
@@ -328,7 +335,7 @@ function SameScaleDifferenceCard({
           color: colors[i]
         };
       }),
-    [pairs, series, unit, colors]
+    [pairs, series, unit, colors, window.resolutionSeconds]
   );
 
   const rows = useMemo(
@@ -341,6 +348,7 @@ function SameScaleDifferenceCard({
   );
   const lines: TrendSeries[] = computed.map((c) => ({
     key: c.key,
+    bindingIds: c.bindingIds,
     label: c.label,
     color: c.color,
     unit,

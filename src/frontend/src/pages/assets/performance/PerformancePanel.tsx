@@ -18,7 +18,9 @@ import { useSearchParams } from 'react-router-dom';
 import { HistoryProvenance } from '../investigation/HistoryProvenance';
 import { InvestigationSlices } from '../investigation/InvestigationSlices';
 import { LinkedEvidence } from '../investigation/LinkedEvidence';
-import { linkedWindow } from '../investigation/windows';
+import { displayLinkedWindow } from '../investigation/windows';
+import { HistoryReadStack } from './HistoryReadContext';
+import { failedHistoryTargets } from './historyBatches';
 
 import type { SeriesEntry } from '@lib/types/MachineHealth';
 
@@ -116,6 +118,7 @@ export function useWindowState(
           const next = new URLSearchParams(previous);
           next.delete('history_from');
           next.delete('history_to');
+          next.delete('history_clock');
           return next;
         },
         { replace: true }
@@ -140,7 +143,7 @@ export function useWindowState(
     kind: 'relative',
     seconds: PRESET_SECONDS[preset]
   };
-  const window: WindowSpec = zoom ?? base;
+  const window: WindowSpec = initial ?? zoom ?? base;
 
   const onPreset = useCallback(
     (next: RangePreset) => {
@@ -240,13 +243,21 @@ function PumpPerformance({
 }: Readonly<{ machine: PerformanceMachine }>) {
   const now = useClock();
   const [params, setParams] = useSearchParams();
-  const linked = linkedWindow(params);
+  const dataRange = useDataRange(
+    machine.pk,
+    params.get('history_clock') === 'recorded'
+  );
+  const linked = displayLinkedWindow(
+    params,
+    dataRange.isFetching || dataRange.isError
+      ? undefined
+      : dataRange.data?.display_shift_seconds
+  );
   const invalidLink = linked.present && !linked.window;
   const range = useWindowState(
     linked.window ? { kind: 'absolute', ...linked.window } : undefined
   );
   const signalsQuery = useMachineSignals(machine.pk, range.live);
-  const dataRange = useDataRange(machine.pk);
   const [investigationOpen, setInvestigationOpen] = useState(false);
   const [comparisonOpen, setComparisonOpen] = useState(false);
   const [comparisonMounted, setComparisonMounted] = useState(false);
@@ -382,13 +393,16 @@ function PumpPerformance({
 
   const unavailable =
     response?.series.filter((entry) => !entry.available) ?? [];
-  const failedAll = response
-    ? unavailable.length === response.series.length &&
-      response.series.length > 0
-    : false;
+  const failedTargets = failedHistoryTargets(response);
+  const failedCount = failedTargets.bindings.size + failedTargets.keys.size;
+  const coveredCount = response?.series.length ?? 0;
+  const failedAll =
+    !!response &&
+    coveredCount + failedCount > 0 &&
+    unavailable.length + failedCount === coveredCount + failedCount;
 
   return (
-    <Stack gap='lg'>
+    <HistoryReadStack response={response} gap='lg'>
       <Group justify='space-between' align='flex-start' wrap='wrap' gap='md'>
         <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
           <TimeRangeControl
@@ -425,8 +439,24 @@ function PumpPerformance({
       </Group>
 
       {invalidLink && (
-        <Alert color='yellow' title={t`Invalid investigation window`}>
-          {t`The linked window must have valid increasing timestamps and be no longer than 24 h. No history has been requested from this link.`}
+        <Alert
+          color='yellow'
+          title={
+            linked.clockUnknown
+              ? t`Recorded clock unknown`
+              : t`Invalid investigation window`
+          }
+        >
+          {linked.clockUnknown
+            ? t`The recorded-to-display clock offset is unavailable or still loading. No history read is made until the clock is known. Retry the source extent or choose a display-clock range.`
+            : t`The linked window must have valid increasing timestamps and be no longer than 24 h. No history has been requested from this link.`}
+          {linked.clockUnknown && (
+            <Button
+              size='xs'
+              variant='subtle'
+              onClick={() => dataRange.refetch()}
+            >{t`Retry source extent`}</Button>
+          )}
           <Button
             size='xs'
             variant='subtle'
@@ -436,6 +466,7 @@ function PumpPerformance({
                   const next = new URLSearchParams(previous);
                   next.delete('history_from');
                   next.delete('history_to');
+                  next.delete('history_clock');
                   return next;
                 },
                 { replace: true }
@@ -522,7 +553,7 @@ function PumpPerformance({
       <KpiStrip tiles={tiles} now={now} />
 
       {/* Counts are of this machine's own signals; the station context read
-          alongside them is not something this pump has limits on. */}
+        alongside them is not something this pump has limits on. */}
       <UnusualStrip parameters={parameters} response={response} />
 
       {seriesQuery.isError && (
@@ -541,7 +572,9 @@ function PumpPerformance({
           icon={<IconAlertTriangle size={16} />}
           title={t`The source could not serve this window`}
         >
-          {unavailable[0]?.detail ??
+          {(failedCount > 0
+            ? t`History read failed for some requested targets; coverage is unknown.`
+            : unavailable[0]?.detail) ??
             t`No history is available for this window.`}
         </Alert>
       )}
@@ -660,7 +693,7 @@ function PumpPerformance({
           {t`Read live from ${response.series[0]?.source_name ?? t`the source`}. Every window chart here is a bounded read of the source's own history; retained evidence is identified separately.`}
         </Text>
       )}
-    </Stack>
+    </HistoryReadStack>
   );
 }
 
@@ -726,6 +759,7 @@ function UnusualStrip({
   const warning = parameters.filter((p) => p.signal.state === 'warning');
   const unavailable =
     response?.series.filter((entry) => !entry.available) ?? [];
+  const failedTargets = failedHistoryTargets(response);
 
   return (
     <Paper withBorder radius='md' p='sm'>
@@ -759,14 +793,29 @@ function UnusualStrip({
             {t`${poor.length} with poor quality`}
           </Badge>
         )}
+        {failedTargets.bindings.size + failedTargets.keys.size > 0 && (
+          <Badge
+            color='yellow'
+            variant='light'
+          >{t`${failedTargets.bindings.size + failedTargets.keys.size} history targets could not be read; coverage unknown`}</Badge>
+        )}
         {unavailable.length > 0 && (
           <Badge color='gray' variant='light'>
             {t`${unavailable.length} without history in this window`}
           </Badge>
         )}
         {evaluation.verdict.kind === 'calm' && (
-          <Badge color='green' variant='light'>
-            {t`Nothing outside configured limits`}
+          <Badge
+            color={
+              failedTargets.bindings.size + failedTargets.keys.size > 0
+                ? 'gray'
+                : 'green'
+            }
+            variant='light'
+          >
+            {failedTargets.bindings.size + failedTargets.keys.size > 0
+              ? t`Current evaluated readings within limits; history coverage incomplete`
+              : t`Nothing outside configured limits`}
           </Badge>
         )}
         {evaluation.verdict.kind === 'no-limits' && (

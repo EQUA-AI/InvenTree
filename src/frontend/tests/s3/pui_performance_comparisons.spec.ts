@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { nativeBaseline } from '../s0/guards';
-import { openPerformance } from './performanceFixtures';
+import { NATIVE_SIGNALS, openPerformance } from './performanceFixtures';
 nativeBaseline();
 async function choose(page: import('@playwright/test').Page, name: string) {
   await page
@@ -13,7 +13,13 @@ for (const scheme of ['light', 'dark'] as const)
   test(`compatible channels overlay, incompatible units stay separate and personal views restore in ${scheme}`, async ({
     page
   }, info) => {
-    const requests = await openPerformance(page, { harness: 's3', scheme });
+    const requests = await openPerformance(page, {
+      harness: 's3',
+      scheme,
+      signals: NATIVE_SIGNALS.filter((signal) =>
+        /PUMP1_SPEED$|WINDING_TEMPERATURED[12]$/.test(signal.key)
+      )
+    });
     await page
       .getByRole('button', {
         name: 'Comparisons and display views',
@@ -83,58 +89,136 @@ test('blocked browser storage never reports a saved view', async ({ page }) => {
   await page.getByRole('button', { name: 'Save view', exact: true }).click();
   await expect(page.getByText(/Display view could not be saved/)).toBeVisible();
 });
-test('machine comparisons use a permitted same-type candidate and independent aligned reads', async ({
-  page
-}) => {
-  await page.route('**/api/assets/machines/**', (route) =>
-    route.fulfill({
-      json: {
-        count: 2,
-        results: [
-          { pk: 18, name: 'Current pump', asset_type: 'pump' },
-          { pk: 19, name: 'Permitted pump', asset_type: 'pump' }
-        ]
+for (const scheme of ['light', 'dark'] as const)
+  test(`machine comparisons disclose different plant periods and disable shared cursors in ${scheme}`, async ({
+    page
+  }, info) => {
+    await page.route('**/api/assets/machines/**', (route) =>
+      route.fulfill({
+        json: {
+          count: 2,
+          results: [
+            { pk: 18, name: 'Current pump', asset_type: 'pump' },
+            { pk: 19, name: 'Permitted pump', asset_type: 'pump' }
+          ]
+        }
+      })
+    );
+    await page.route(
+      '**/api/machine-health/machines/19/health/signals/**',
+      async (route) => {
+        const { signalRows, SIGNALS } = await import('../performance/fixtures');
+        return route.fulfill({ json: { results: signalRows(SIGNALS) } });
       }
-    })
-  );
-  await page.route(
-    '**/api/machine-health/machines/19/health/signals/**',
-    async (route) => {
-      const { signalRows, SIGNALS } = await import('../performance/fixtures');
-      return route.fulfill({ json: { results: signalRows(SIGNALS) } });
-    }
-  );
-  const requests: URL[] = [];
-  await page.route(
-    '**/api/machine-health/machines/19/health/series/**',
-    async (route) => {
-      const { seriesFor } = await import('../performance/fixtures');
-      const url = new URL(route.request().url());
-      requests.push(url);
-      return route.fulfill({ json: { ...seriesFor(url), machine: 19 } });
-    }
-  );
+    );
+    const requests: URL[] = [];
+    await page.route(
+      '**/api/machine-health/machines/19/health/series/**',
+      async (route) => {
+        const { seriesFor } = await import('../performance/fixtures');
+        const url = new URL(route.request().url());
+        requests.push(url);
+        return route.fulfill({
+          json: {
+            ...seriesFor(url),
+            machine: 19,
+            display_shifted: true,
+            display_shift_seconds: 86400
+          }
+        });
+      }
+    );
+    await openPerformance(page, { harness: 's3', scheme });
+    await page
+      .getByRole('button', {
+        name: 'Comparisons and display views',
+        exact: true
+      })
+      .click();
+    await choose(page, 'Shaft speed');
+    await page
+      .getByRole('combobox', { name: 'Comparison mode', exact: true })
+      .click();
+    await page
+      .getByRole('option', { name: 'Another permitted machine', exact: true })
+      .click();
+    await page
+      .getByRole('combobox', { name: 'Comparison machine', exact: true })
+      .click();
+    await page
+      .getByRole('option', { name: 'Permitted pump', exact: true })
+      .click();
+    await expect.poll(() => requests.length).toBe(1);
+    await expect(
+      page.getByText(/Duty, load and configuration remain unverified/)
+    ).toBeVisible();
+    const alert = page
+      .getByRole('alert')
+      .filter({ hasText: 'Different plant periods:' });
+    await expect(alert).toContainText(
+      'Crosshairs are not synchronized between machines.'
+    );
+    const plots = page
+      .getByTestId('comparison-workbench')
+      .locator('[data-trend-sync]');
+    await expect(plots).toHaveCount(2);
+    const ids = await plots.evaluateAll((items) =>
+      items.map((item) => item.getAttribute('data-trend-sync'))
+    );
+    expect(ids[0]).not.toBe(ids[1]);
+    await alert.screenshot({
+      path: info.outputPath(`clock-alignment-${scheme}.png`),
+      animations: 'disabled'
+    });
+  });
+test('saved view capacity and duplicate names preserve every existing view', async ({
+  page
+}, info) => {
   await openPerformance(page, { harness: 's3' });
+  const views = Array.from({ length: 20 }, (_, i) => ({
+    name: i === 0 ? 'x'.repeat(80) : `Saved ${i + 1}`,
+    search: `original ${i}`,
+    section: 'all',
+    bindings: [1]
+  }));
+  const key = 'aimms-performance-views:v1:s3-synthetic:11:18';
+  await page.evaluate(
+    ({ key, views }) => localStorage.setItem(key, JSON.stringify(views)),
+    { key, views }
+  );
+  await page.reload();
   await page
     .getByRole('button', { name: 'Comparisons and display views', exact: true })
     .click();
-  await choose(page, 'Shaft speed');
-  await page
-    .getByRole('combobox', { name: 'Comparison mode', exact: true })
-    .click();
-  await page
-    .getByRole('option', { name: 'Another permitted machine', exact: true })
-    .click();
-  await page
-    .getByRole('combobox', { name: 'Comparison machine', exact: true })
-    .click();
-  await page
-    .getByRole('option', { name: 'Permitted pump', exact: true })
-    .click();
-  await expect.poll(() => requests.length).toBe(1);
+  await page.getByLabel('View name', { exact: true }).fill('Twenty first');
+  await page.getByRole('button', { name: 'Save view', exact: true }).click();
+  await expect(page.getByText(/All 20 view slots are in use/)).toBeVisible();
+  expect(
+    await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), key)
+  ).toEqual(views);
+  await page.getByTestId('comparison-workbench').screenshot({
+    path: info.outputPath('view-capacity-light.png'),
+    animations: 'disabled'
+  });
+  await page.getByLabel('View name', { exact: true }).fill(views[0].name);
+  await page.getByRole('button', { name: 'Save view', exact: true }).click();
   await expect(
-    page.getByText(/Duty, load and configuration remain unverified/)
+    page.getByText(
+      `A view named ${views[0].name} already exists. Choose another name or explicitly delete that saved view first.`,
+      { exact: true }
+    )
   ).toBeVisible();
+  expect(
+    await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), key)
+  ).toEqual(views);
+  const panel = page.getByTestId('comparison-workbench');
+  expect(
+    await panel.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)
+  ).toBe(true);
+  await panel.screenshot({
+    path: info.outputPath('view-duplicate-long-light.png'),
+    animations: 'disabled'
+  });
 });
 for (const scheme of ['light', 'dark'] as const)
   test(`comparison controls contained in ${scheme}`, async ({ page }, info) => {

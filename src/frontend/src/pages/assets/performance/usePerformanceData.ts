@@ -170,13 +170,16 @@ export interface DataRange {
   to?: string;
   reason?: string;
   source_name?: string;
+  source_from?: string;
+  source_to?: string;
+  display_shift_seconds?: number;
 }
 
-export function useDataRange(machineId: number) {
+export function useDataRange(machineId: number, recordedLink = false) {
   const api = useApi();
   return useQuery<DataRange>({
     queryKey: ['machine-health-data-range', machineId],
-    staleTime: 60 * 60 * 1000,
+    staleTime: recordedLink ? 0 : 60 * 60 * 1000,
     queryFn: async () => {
       const response = await api.get(
         apiUrl(ApiEndpoints.machine_health_data_range, machineId)

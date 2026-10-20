@@ -30,6 +30,8 @@ export function lineFor(
   stepped = false
 ): TrendSeries {
   return {
+    bindingIds: [parameter.signal.binding_id],
+    externalKeys: [parameter.signal.external_key],
     key: parameter.id,
     label: parameter.label,
     color,

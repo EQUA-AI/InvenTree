@@ -136,11 +136,11 @@ test('station values say they are the window’s, and a paused window is not the
         /Each bay's newest usable reading in the window on screen \(.*\); window peak over the same span\./
       )
     ).toBeVisible();
-    // Pump 2 has no status reading in the window: its state is the
-    // station's present word for it, and says so.
+    // Pump 2 has no status reading in the window. The mimic's response
+    // timestamp is separate from any source observation timestamp.
     const row = page.locator('tbody tr').filter({ hasText: 'Pump 2' });
     await expect(row).toContainText(
-      /Station mimic state at .*not from this window/
+      /Station mimic read at .*not an observation time.*not from this window/
     );
     await page.screenshot({
       path: testInfo.outputPath(`station-window-labels-${scheme}.png`),

@@ -26,6 +26,7 @@ import {
 } from 'react';
 import { ReferenceArea } from 'recharts';
 
+import { useHistoryReadFailures } from './HistoryReadContext';
 import {
   formatInstant,
   formatTick,
@@ -40,6 +41,8 @@ import { type ChartRow, axisDomain } from './series';
  * how to print its values. Units differ per line, so the tooltip asks each.
  */
 export interface TrendSeries {
+  bindingIds?: readonly number[];
+  externalKeys?: readonly string[];
   key: string;
   label: string;
   color: string;
@@ -118,6 +121,24 @@ export function ChartTitleProvider({
  * shares a crosshair makes the charts re-synchronise each other without end.)
  */
 export function TrendChart(props: Readonly<TrendChartProps>) {
+  const failures = useHistoryReadFailures();
+  const failed = props.series.filter(
+    (line) =>
+      line.bindingIds?.some((id) => failures.bindings.has(id)) ||
+      line.externalKeys?.some((key) => failures.keys.has(key))
+  );
+  const failureText = failed.length
+    ? t`History read failed for ${failed.map((line) => line.label).join(', ')}; coverage unknown.`
+    : undefined;
+  const chartProps = {
+    ...props,
+    emptyText:
+      failureText ??
+      props.emptyText ??
+      (failures.missing
+        ? t`History has not been returned for this window.`
+        : undefined)
+  };
   const [fullscreen, setFullscreen] = useState(false);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
 
@@ -206,9 +227,21 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
   );
 
   return (
-    <Stack gap={6}>
+    <Stack gap={6} data-trend-sync={props.syncId}>
       {header}
-      <ChartBody {...props} series={visible} referenceLines={referenceLines} />
+      {failureText &&
+        props.rows.some((row) =>
+          visible.some((line) => typeof row[line.key] === 'number')
+        ) && (
+          <Text size='xs' c='dimmed'>
+            {failureText}
+          </Text>
+        )}
+      <ChartBody
+        {...chartProps}
+        series={visible}
+        referenceLines={referenceLines}
+      />
       <Modal
         opened={fullscreen}
         onClose={() => setFullscreen(false)}
@@ -217,8 +250,16 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
       >
         <Stack gap={6}>
           {chips}
+          {failureText &&
+            props.rows.some((row) =>
+              visible.some((line) => typeof row[line.key] === 'number')
+            ) && (
+              <Text size='xs' c='dimmed'>
+                {failureText}
+              </Text>
+            )}
           <ChartBody
-            {...props}
+            {...chartProps}
             series={visible}
             referenceLines={referenceLines}
             height={Math.max(420, window.innerHeight - 200)}
@@ -427,7 +468,7 @@ function ChartBody({
   if (!plotted) {
     return (
       <Paper withBorder radius='sm' p='md' h={height}>
-        <Text size='sm' c='dimmed'>
+        <Text size='sm' c={emptyText ? undefined : 'dimmed'}>
           {emptyText ?? t`No readings in this window.`}
         </Text>
       </Paper>
