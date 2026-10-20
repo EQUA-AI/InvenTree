@@ -4,8 +4,8 @@ import type { VerificationTest } from '@lib/types/WorkExecution';
 export function testEvaluation(
   test: VerificationTest
 ): 'failed' | 'recorded_pass' | 'not_evaluated' | 'not_applicable' {
-  if (test.status === 'failed' || test.passed === false) return 'failed';
   if (test.status === 'not_applicable') return 'not_applicable';
+  if (test.status === 'failed' || test.passed === false) return 'failed';
   const step = test.step;
   const hasBound = [step.min_value, step.max_value].some(
     (value) => value !== null && value !== '' && Number.isFinite(Number(value))

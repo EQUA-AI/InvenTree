@@ -17,14 +17,27 @@ class TimeAssignmentProjectionTest(TestCase):
 
     def setUp(self):
         """Create a typed current assignee and a recorded assignment event."""
-        self.actor = get_user_model().objects.create_user(username='assignment-recorder')
-        self.work = WorkOrder.objects.create(title='Time fixture', assigned_to=self.actor, lifecycle_status='on_hold')
-        self.event = WorkOrderEvent.objects.create(work_order=self.work, event_type='ASSIGNED', actor=self.actor, reason='Recorded specialist allocation', correlation_id=uuid.uuid4(), metadata={'assigned_to_id': self.actor.pk, 'previous_assigned_to_id': None})
+        self.actor = get_user_model().objects.create_user(
+            username='assignment-recorder'
+        )
+        self.work = WorkOrder.objects.create(
+            title='Time fixture', assigned_to=self.actor, lifecycle_status='on_hold'
+        )
+        self.event = WorkOrderEvent.objects.create(
+            work_order=self.work,
+            event_type='ASSIGNED',
+            actor=self.actor,
+            reason='Recorded specialist allocation',
+            correlation_id=uuid.uuid4(),
+            metadata={'assigned_to_id': self.actor.pk, 'previous_assigned_to_id': None},
+        )
 
     def test_elapsed_is_anchored_to_matching_assignment_at_server_read(self):
         """Only the exact assignment event anchors static elapsed wall time."""
         observed = self.event.created_at + datetime.timedelta(minutes=90)
-        with patch('tasks.work_execution.time_assignment.timezone.now', return_value=observed):
+        with patch(
+            'tasks.work_execution.time_assignment.timezone.now', return_value=observed
+        ):
             value = project(self.work)
         self.assertEqual(value['elapsed_assignment_seconds'], 5400)
         self.assertEqual(value['assignment_reason'], 'Recorded specialist allocation')
@@ -36,7 +49,11 @@ class TimeAssignmentProjectionTest(TestCase):
 
     def test_legacy_assignment_has_no_invented_anchor(self):
         """Creation or actual-start time is not an assignment timestamp."""
-        legacy = WorkOrder.objects.create(title='Legacy', assignee='Recorded legacy label', actual_started_at=timezone.now())
+        legacy = WorkOrder.objects.create(
+            title='Legacy',
+            assignee='Recorded legacy label',
+            actual_started_at=timezone.now(),
+        )
         value = project(legacy)
         self.assertIsNone(value['elapsed_assignment_seconds'])
         self.assertIsNone(value['assignment_event_at'])
@@ -50,14 +67,66 @@ class TimeAssignmentProjectionTest(TestCase):
 
     def test_latest_malformed_or_future_event_does_not_fall_back(self):
         """Invalid latest provenance keeps elapsed time unknown."""
+        earlier = WorkOrderEvent.objects.create(
+            work_order=self.work,
+            event_type='ASSIGNED',
+            actor=self.actor,
+            correlation_id=uuid.uuid4(),
+            metadata={'assigned_to_id': self.actor.pk},
+        )
+        WorkOrderEvent.objects.filter(pk=earlier.pk).update(
+            created_at=self.event.created_at - datetime.timedelta(hours=1)
+        )
         for target in (True, str(self.actor.pk)):
-            self.event.metadata['assigned_to_id'] = target
-            self.event.save(update_fields=['metadata'])
-            self.assertIsNone(project(self.work)['elapsed_assignment_seconds'])
+            with self.subTest(target=target):
+                self.event.metadata['assigned_to_id'] = target
+                self.event.save(update_fields=['metadata'])
+                value = project(self.work)
+                self.assertIsNone(value['elapsed_assignment_seconds'])
+                self.assertIsNone(value['assignment_event_at'])
         self.event.metadata['assigned_to_id'] = self.actor.pk
         self.event.save(update_fields=['metadata'])
-        with patch('tasks.work_execution.time_assignment.timezone.now', return_value=self.event.created_at - datetime.timedelta(seconds=1)):
-            self.assertIsNone(project(self.work)['elapsed_assignment_seconds'])
+        with patch(
+            'tasks.work_execution.time_assignment.timezone.now',
+            return_value=self.event.created_at - datetime.timedelta(seconds=1),
+        ):
+            value = project(self.work)
+            self.assertIsNone(value['elapsed_assignment_seconds'])
+            self.assertIsNone(value['assignment_event_at'])
+
+    def test_assignment_history_resolves_both_names_in_one_batch(self):
+        """Audit targets use recorded native identities without one lookup per event."""
+        previous = get_user_model().objects.create_user(
+            username='previous-assignee', first_name='Earlier', last_name='Technician'
+        )
+        self.actor.first_name = 'Current'
+        self.actor.last_name = 'Technician'
+        self.actor.save(update_fields=['first_name', 'last_name'])
+        self.event.metadata['previous_assigned_to_id'] = previous.pk
+        self.event.save(update_fields=['metadata'])
+        WorkOrderEvent.objects.create(
+            work_order=self.work,
+            event_type='ASSIGNED',
+            actor=self.actor,
+            correlation_id=uuid.uuid4(),
+            metadata={'assigned_to_id': previous.pk},
+        )
+        with self.assertNumQueries(2):
+            rows = {row['id']: row for row in project(self.work)['events']}
+        self.assertEqual(rows[self.event.pk]['assigned_to_name'], 'Current Technician')
+        self.assertEqual(
+            rows[self.event.pk]['previous_assigned_to_name'], 'Earlier Technician'
+        )
+
+    def test_missing_or_malformed_assignment_names_are_not_guessed(self):
+        """A bool, text id or deleted target does not name an unrelated person."""
+        for target in (True, str(self.actor.pk), self.actor.pk + 100000):
+            with self.subTest(target=target):
+                self.event.metadata['previous_assigned_to_id'] = target
+                self.event.save(update_fields=['metadata'])
+                self.assertIsNone(
+                    project(self.work)['events'][0]['previous_assigned_to_name']
+                )
 
     def test_blank_reason_does_not_generate_factors_or_handover(self):
         """Assignment and reading a page cannot accept incoming responsibility."""

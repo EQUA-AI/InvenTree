@@ -41,6 +41,9 @@ function preparedPackage(
         change_summary: 'Synthetic applied package',
         snapshot_hash: 'a'.repeat(64),
         drift_status: 'current',
+        drift_basis: 'catalogue_at_read',
+        current_catalogue_code: 'SYN-PROC',
+        current_catalogue_name: 'Synthetic current catalogue procedure',
         applied_by: 'Synthetic technician',
         applied_at: '2026-10-18T12:00:00Z',
         steps: [
@@ -98,6 +101,55 @@ function preparedPackage(
 }
 
 for (const scheme of ['light', 'dark'] as const) {
+  test(`catalogue drift is evaluated and catalogue names never replace applied instructions (${scheme})`, async ({
+    page
+  }, info) => {
+    const value = preparedPackage({ scopes: [] });
+    const application = value.applications[0];
+    // An older provider's default is not evidence of an actual comparison.
+    delete application.drift_basis;
+    const requests = await mockExecutionWork(page, {
+      ...workOrder(),
+      prepared_package: value
+    });
+    await openExecutionPanel(page, 'plan', scheme);
+    const plan = panelRegion(page, 'Plan & Safety');
+    await expect(
+      plan.getByText('Drift not evaluated', { exact: true })
+    ).toBeVisible();
+    await expect(
+      plan.getByText(/SYN-PROC · Synthetic current catalogue procedure/)
+    ).toBeVisible();
+    await expect(plan.getByText(/Procedure 11/)).toHaveCount(0);
+    await capturePanel(
+      page,
+      info.outputPath(`package-drift-unknown-${scheme}.png`)
+    );
+    application.drift_basis = 'catalogue_at_read';
+    application.drift_status = 'different_revision';
+    await page.getByRole('button', { name: 'Refresh fixture' }).click();
+    await expect(
+      plan.getByText('A different revision is current in the catalogue.', {
+        exact: true
+      })
+    ).toBeVisible();
+    await plan
+      .getByRole('button', { name: 'Instructions and sourced criteria (1)' })
+      .click();
+    await expect(
+      plan.getByText('Use the saved synthetic instruction')
+    ).toBeVisible();
+    await expect(
+      plan.getByText('Applied procedure · revision 3', { exact: true })
+    ).toBeVisible();
+    await expectNoPageOverflow(page);
+    expect(onlyReads(requests)).toBe(true);
+    await capturePanel(
+      page,
+      info.outputPath(`package-drift-changed-${scheme}.png`)
+    );
+  });
+
   test(`saved package retains sourced criteria revisions and unknown authority (${scheme})`, async ({
     page
   }, info) => {
@@ -209,45 +261,114 @@ test('missing package and disabled procedure source do not establish readiness',
   await capturePanel(page, info.outputPath('package-disabled.png'));
 });
 
-test('native deviation save retains the draft on uncertain response without resubmitting', async ({
+test('definite deviation refusals retain an editable draft and allow a corrected explicit save', async ({
   page
 }, info) => {
-  const requests = await mockExecutionWork(page, {
-    ...workOrder(),
-    prepared_package: preparedPackage({
-      can_record_deviation: true,
-      scopes: []
-    })
+  const value = preparedPackage({ can_record_deviation: true, scopes: [] });
+  await mockExecutionWork(page, { ...workOrder(), prepared_package: value });
+  const replies = [400, 403, 404, 201];
+  let calls = 0;
+  await page.route('**/api/tasks/work-orders/73/deviations/', (route) => {
+    const status = replies[calls++];
+    return route.fulfill({
+      status,
+      json:
+        status === 201
+          ? { id: 99 }
+          : { detail: `Synthetic native refusal ${status}` }
+    });
   });
-  await page.route('**/api/tasks/work-orders/73/deviations/', (route) =>
-    route.fulfill({
-      status: 503,
-      json: { detail: 'Synthetic unavailable response' }
-    })
-  );
   await openExecutionPanel(page, 'plan');
-  const plan = panelRegion(page, 'Plan & Safety');
-  await plan
+  await page
     .getByRole('button', { name: 'Record a changed condition' })
     .click();
-  await plan
-    .getByRole('textbox', { name: 'Changed condition and reason' })
-    .fill('Synthetic unavailable access — retain this draft');
-  await plan
-    .getByRole('button', { name: 'Save deviation', exact: true })
-    .click();
-  await expect(plan.getByText(/Save not confirmed/)).toBeVisible();
-  await expect(plan.getByRole('textbox')).toHaveValue(
-    'Synthetic unavailable access — retain this draft'
-  );
+  const text = page.getByRole('textbox', {
+    name: 'Changed condition and reason'
+  });
+  const save = page.getByRole('button', {
+    name: 'Save deviation',
+    exact: true
+  });
+  for (const status of [400, 403, 404]) {
+    await text.fill(`Synthetic corrected condition after ${status}`);
+    await save.click();
+    await expect(
+      page.getByText(
+        'Save refused. No deviation was saved by this attempt. Your text is retained.'
+      )
+    ).toBeVisible();
+    await expect(
+      page.getByText(`Synthetic native refusal ${status}`, { exact: true })
+    ).toBeVisible();
+    await expect(text).toBeEditable();
+    await expect(text).toHaveValue(
+      `Synthetic corrected condition after ${status}`
+    );
+    await expect(save).toBeEnabled();
+    await expect(page.getByText(/this request may have saved/)).toHaveCount(0);
+  }
+  await capturePanel(page, info.outputPath('deviation-refused-light.png'));
+  await save.click();
   await expect(
-    plan.getByRole('button', { name: 'Save deviation', exact: true })
-  ).toBeDisabled();
-  expect(requests.filter((request) => request.method === 'POST')).toEqual([
-    { method: 'POST', path: '/api/tasks/work-orders/73/deviations/' }
-  ]);
-  await capturePanel(page, info.outputPath('deviation-retained.png'));
+    page.getByText('Deviation saved to this work order.')
+  ).toBeVisible();
+  expect(calls).toBe(4);
 });
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`native deviation save retains the draft on uncertain response without resubmitting (${scheme})`, async ({
+    page
+  }, info) => {
+    const requests = await mockExecutionWork(page, {
+      ...workOrder(),
+      prepared_package: preparedPackage({
+        can_record_deviation: true,
+        scopes: []
+      })
+    });
+    await page.route('**/api/tasks/work-orders/73/deviations/', (route) =>
+      route.fulfill({
+        status: 503,
+        json: { detail: 'Synthetic unavailable response' }
+      })
+    );
+    await openExecutionPanel(page, 'plan', scheme);
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-mantine-color-scheme',
+      scheme
+    );
+    const plan = panelRegion(page, 'Plan & Safety');
+    await plan
+      .getByRole('button', { name: 'Record a changed condition' })
+      .click();
+    await plan
+      .getByRole('textbox', { name: 'Changed condition and reason' })
+      .fill('Synthetic unavailable access — retain this draft');
+    await plan
+      .getByRole('button', { name: 'Save deviation', exact: true })
+      .click();
+    await expect(plan.getByText(/Save not confirmed/)).toBeVisible();
+    await expect(plan.getByRole('textbox')).toHaveValue(
+      'Synthetic unavailable access — retain this draft'
+    );
+    await expect(plan.getByRole('textbox')).toBeEnabled();
+    await expect(plan.getByRole('textbox')).not.toBeEditable();
+    await expect(
+      plan.getByRole('button', { name: 'Save deviation', exact: true })
+    ).toBeDisabled();
+    expect(requests.filter((request) => request.method === 'POST')).toEqual([
+      { method: 'POST', path: '/api/tasks/work-orders/73/deviations/' }
+    ]);
+    await capturePanel(
+      page,
+      info.outputPath(
+        scheme === 'light'
+          ? 'deviation-retained.png'
+          : 'deviation-retained-dark.png'
+      )
+    );
+  });
+}
 
 test('confirmed native deviation saves once and refreshes its owning overview', async ({
   page

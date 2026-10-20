@@ -1,4 +1,5 @@
 import { type Page, expect } from '@playwright/test';
+import type { InvestigationRequest } from '../../lib/types/WorkExecution';
 
 import type { WorkOrderOverview } from '../../lib/types/WorkOrderOverview';
 
@@ -38,12 +39,13 @@ export async function openExecutionPanel(
   page: Page,
   panel = 'work',
   scheme: 'light' | 'dark' = 'light',
-  partReader = false
+  partReader = false,
+  role: 'viewer' | 'editor' = 'viewer'
 ) {
   const params = new URLSearchParams({
     surface: 'maintenance-shell',
     sprint: 's1',
-    role: 'viewer',
+    role,
     work_access: 'reader',
     scheme,
     entry: `/maintenance/work-orders/73/?work_panel=${panel}`
@@ -116,3 +118,29 @@ export async function mockAssistantOpen(page: Page) {
 }
 
 export const WORK_LABEL = 'WO-73 · Synthetic job 73';
+
+export function savedRequest(id = 401): InvestigationRequest {
+  return {
+    id,
+    work_order: 73,
+    schema_version: 1,
+    version: 3,
+    purpose: 'Synthetic decision about retained observation',
+    next_check: 'Review the recorded measurement',
+    priority: 1,
+    required_artifacts: [],
+    status: 'cannot_perform',
+    owner: null,
+    owner_name: null,
+    next_checkpoint: null,
+    source_finding: null,
+    source_proposal: null,
+    blocked_reason: 'Accessible point not available in the recorded window',
+    resolution: '',
+    created_by: 9,
+    updated_by: 9,
+    created_at: '2026-10-20T08:00:00Z',
+    updated_at: '2026-10-20T08:00:00Z',
+    artifacts: []
+  };
+}

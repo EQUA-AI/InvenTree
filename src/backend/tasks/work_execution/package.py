@@ -30,6 +30,34 @@ def _scopes(packet):
     ]
 
 
+def _drift_status(application):
+    """Compare the immutable applied identity with the catalogue at this read."""
+    from tasks.models import ProcedureRevisionStatus
+
+    revision = application.revision
+    procedure = revision.procedure
+    snapshot = application.snapshot
+    identities = (
+        (snapshot.get('procedure_id'), procedure.pk),
+        (snapshot.get('revision_id'), revision.pk),
+        (snapshot.get('revision', {}).get('revision'), revision.revision),
+    )
+    if any(
+        type(recorded) is not int or recorded != actual
+        for recorded, actual in identities
+    ):
+        return 'not_evaluated'
+    if procedure.current_revision_id is None:
+        return 'not_evaluated'
+    if procedure.current_revision_id != revision.pk:
+        return 'different_revision'
+    if not procedure.active:
+        return 'procedure_inactive'
+    if revision.status != ProcedureRevisionStatus.PUBLISHED:
+        return 'revision_not_published'
+    return 'current'
+
+
 def _application(application, part_names):
     snapshot = application.snapshot
     return {
@@ -40,7 +68,11 @@ def _application(application, part_names):
         'revision': snapshot.get('revision', {}).get('revision'),
         'change_summary': snapshot.get('revision', {}).get('change_summary'),
         'snapshot_hash': application.snapshot_hash,
-        'drift_status': application.drift_status,
+        # The model's legacy default is not a recorded comparison.
+        'drift_status': _drift_status(application),
+        'drift_basis': 'catalogue_at_read',
+        'current_catalogue_code': application.revision.procedure.code or None,
+        'current_catalogue_name': application.revision.procedure.name or None,
         'applied_by': person(application.applied_by),
         'applied_at': application.applied_at.isoformat(),
         'steps': snapshot.get('steps', []),
@@ -57,9 +89,9 @@ def project(work_order, actor=None) -> dict:
     enabled = procedures_enabled()
     applications = (
         list(
-            work_order.procedure_applications.select_related('applied_by').order_by(
-                'sequence', 'pk'
-            )
+            work_order.procedure_applications.select_related(
+                'applied_by', 'revision__procedure'
+            ).order_by('sequence', 'pk')
         )
         if enabled
         else []

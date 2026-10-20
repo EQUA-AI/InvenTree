@@ -9,6 +9,8 @@
 		"tests/s4/pui_work_package.spec.ts",
 		"tests/s4/pui_work_verify.spec.ts",
 		"tests/s4/pui_work_time.spec.ts",
-        "tests/s4/pui_work_investigation.spec.ts"
+        "tests/s4/pui_work_investigation.spec.ts",
+        "tests/s4/pui_work_outcome.spec.ts",
+        "tests/s4/pui_work_observation.spec.ts"
 	]
 }

@@ -10,7 +10,6 @@ from assets.models import AssetMachine, get_default_client
 from InvenTree.unit_test import InvenTreeAPITestCase
 from part.models import Part
 from repair.models import ApprovedRepairScope, RepairPacket
-from tasks.work_execution.package import project
 from tasks.models import (
     Procedure,
     ProcedureRevision,
@@ -18,6 +17,7 @@ from tasks.models import (
     WorkOrderDeviation,
     WorkOrderProcedureApplication,
 )
+from tasks.work_execution.package import project
 
 
 @override_settings(
@@ -43,14 +43,20 @@ class PreparedPackageTest(InvenTreeAPITestCase):
             code='PACKAGE', name='Mutable catalogue name', created_by=self.user
         )
         self.revision = ProcedureRevision.objects.create(
-            procedure=self.procedure, revision=2, work_order_type='corrective',
+            procedure=self.procedure,
+            revision=2,
+            work_order_type='corrective',
             created_by=self.user,
         )
         self.application = WorkOrderProcedureApplication.objects.create(
-            work_order=self.work, revision=self.revision, applied_by=self.user,
-            idempotency_key='package-fixture', snapshot_hash='a' * 64,
+            work_order=self.work,
+            revision=self.revision,
+            applied_by=self.user,
+            idempotency_key='package-fixture',
+            snapshot_hash='a' * 64,
             snapshot={
-                'procedure_id': self.procedure.pk, 'revision_id': self.revision.pk,
+                'procedure_id': self.procedure.pk,
+                'revision_id': self.revision.pk,
                 'revision': {'revision': 1, 'change_summary': 'Saved original'},
                 'steps': [{'title': 'Original instruction', 'min_value': '0'}],
                 'resources': [{'kind': 'tool', 'quantity': '1'}],
@@ -75,23 +81,97 @@ class PreparedPackageTest(InvenTreeAPITestCase):
         self.assertFalse(package['physical_authority']['available'])
         self.assertFalse(package['affected_dependencies']['available'])
 
+    def test_new_current_revision_changes_comparison_without_editing_application(self):
+        """Publishing a newer catalogue revision cannot leave the old package current."""
+        self.revision.status = 'published'
+        self.revision.published_by = self.user
+        self.revision.published_at = timezone.now()
+        self.revision.save(update_fields=['status', 'published_by', 'published_at'])
+        self.application.snapshot['revision']['revision'] = self.revision.revision
+        self.application.save(update_fields=['snapshot'])
+        self.procedure.current_revision = self.revision
+        self.procedure.save(update_fields=['current_revision'])
+        before = self.application.snapshot.copy()
+        self.assertEqual(
+            self.overview().data['prepared_package']['applications'][0]['drift_status'],
+            'current',
+        )
+        self.revision.status = 'superseded'
+        self.revision.save(update_fields=['status'])
+        newer = ProcedureRevision.objects.create(
+            procedure=self.procedure,
+            revision=3,
+            status='published',
+            work_order_type='corrective',
+            created_by=self.user,
+            published_by=self.user,
+            published_at=timezone.now(),
+        )
+        self.procedure.current_revision = newer
+        self.procedure.save(update_fields=['current_revision'])
+        row = self.overview().data['prepared_package']['applications'][0]
+        self.assertEqual(row['drift_status'], 'different_revision')
+        self.assertEqual(row['drift_basis'], 'catalogue_at_read')
+        self.application.refresh_from_db()
+        self.assertEqual(self.application.snapshot, before)
+        self.assertEqual(self.application.drift_status, 'current')
+
+    def test_default_or_inconsistent_catalogue_state_is_not_current(self):
+        """An unevaluated default and inconsistent snapshot never supply reassurance."""
+        row = self.overview().data['prepared_package']['applications'][0]
+        self.assertEqual(row['drift_status'], 'not_evaluated')
+        self.procedure.current_revision = self.revision
+        self.procedure.save(update_fields=['current_revision'])
+        self.assertEqual(
+            self.overview().data['prepared_package']['applications'][0]['drift_status'],
+            'not_evaluated',
+        )
+        self.application.snapshot['revision']['revision'] = self.revision.revision
+        self.application.save(update_fields=['snapshot'])
+        self.assertEqual(
+            self.overview().data['prepared_package']['applications'][0]['drift_status'],
+            'revision_not_published',
+        )
+
+    def test_catalogue_name_is_separate_from_the_applied_snapshot(self):
+        """The current catalogue label aids reading without changing saved content."""
+        before = self.application.snapshot.copy()
+        self.procedure.code = 'RENAMED-PACKAGE'
+        self.procedure.name = 'Current catalogue procedure title'
+        self.procedure.save(update_fields=['code', 'name'])
+        row = self.overview().data['prepared_package']['applications'][0]
+        self.assertEqual(row['current_catalogue_code'], self.procedure.code)
+        self.assertEqual(row['current_catalogue_name'], self.procedure.name)
+        self.application.refresh_from_db()
+        self.assertEqual(self.application.snapshot, before)
+
     def test_scope_revisions_and_unresolved_deviation_are_retained(self):
         """Both scope versions and a deviation retain actors and reason."""
         ApprovedRepairScope.objects.create(
-            packet=self.packet, version=1, verified_cause='Original basis',
+            packet=self.packet,
+            version=1,
+            verified_cause='Original basis',
             superseded_at=timezone.now(),
         )
         ApprovedRepairScope.objects.create(
-            packet=self.packet, version=2, verified_cause='Changed basis',
-            approved_by=self.user, approval_note='Retained reason',
+            packet=self.packet,
+            version=2,
+            verified_cause='Changed basis',
+            approved_by=self.user,
+            approval_note='Retained reason',
         )
         WorkOrderDeviation.objects.create(
-            work_order=self.work, category='changed_condition',
-            reason='Access unavailable', actor=self.user,
-            expected={'access': True}, actual={'access': False},
+            work_order=self.work,
+            category='changed_condition',
+            reason='Access unavailable',
+            actor=self.user,
+            expected={'access': True},
+            actual={'access': False},
         )
         package = self.overview().data['prepared_package']
-        self.assertEqual([scope['current'] for scope in package['scopes']], [True, False])
+        self.assertEqual(
+            [scope['current'] for scope in package['scopes']], [True, False]
+        )
         self.assertEqual(package['scopes'][0]['note'], 'Retained reason')
         deviation = package['deviations'][0]
         self.assertEqual(deviation['reason'], 'Access unavailable')
@@ -132,7 +212,9 @@ class PreparedPackageTest(InvenTreeAPITestCase):
         part = Part.objects.create(name='Calibrated vibration instrument')
         self.application.snapshot['resources'][0]['part_id'] = part.pk
         self.application.save()
-        resource = self.overview().data['prepared_package']['applications'][0]['resources'][0]
+        resource = self.overview().data['prepared_package']['applications'][0][
+            'resources'
+        ][0]
         self.assertEqual(resource['part_id'], part.pk)
         self.assertEqual(resource['part_name'], part.name)
         self.application.refresh_from_db()

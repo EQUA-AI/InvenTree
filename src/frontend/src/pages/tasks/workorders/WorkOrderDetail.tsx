@@ -66,10 +66,10 @@ import { CloseoutPanel, WorkCloseoutReadings } from './CloseoutPanel';
 import { WorkAttachmentResource } from './WorkAttachmentResource';
 import { WorkMaterialsPanel } from './WorkMaterialsPanel';
 import { DiagnoseProjection } from './execution/DiagnoseProjection';
-import { HandledByAimms } from './execution/HandledByAimms';
 import { PreparedPackage } from './execution/PreparedPackage';
 import { TimeAssignment } from './execution/TimeAssignment';
 import { VerificationReturn } from './execution/VerificationReturn';
+import { WorkBrief } from './execution/WorkBrief';
 import {
   type WorkPanel,
   workPanelParams,
@@ -180,15 +180,20 @@ function WorkOrderWorkspace({
       label: t`Work`,
       content: (
         <Stack gap='md'>
+          <WorkBrief workOrder={workOrder} />
           {workOrder.repair_packet && (
             <WorkOrderProblemPanel packet={workOrder.repair_packet} />
           )}
-          <HandledByAimms value={workOrder.handled_actions} />
           <TimeAssignment workOrder={workOrder} />
           <SectionCard
             title={t`Board cards`}
             icon={<IconLayoutKanban size={18} />}
           >
+            <Text
+              size='sm'
+              c='dimmed'
+              mb='sm'
+            >{t`Operational tasks retain their own recorded status and links.`}</Text>
             <Table.ScrollContainer minWidth={640}>
               <CardsTable cards={workOrder.cards ?? []} />
             </Table.ScrollContainer>

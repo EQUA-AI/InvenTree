@@ -7,6 +7,7 @@ import { t } from '@lingui/core/macro';
 import { Alert, Badge, Group, List, Paper, Stack, Text } from '@mantine/core';
 import { useSearchParams } from 'react-router-dom';
 import { ContinueInvestigation } from './ContinueInvestigation';
+import { NativeObservationCapture } from './NativeObservationCapture';
 
 function statusLabel(status: InvestigationRequest['status']): string {
   return (
@@ -62,8 +63,8 @@ export function InvestigationRequests({
     return (
       <Alert
         color='gray'
-        title={t`No saved investigation request`}
-      >{t`This server keeps no investigation request with an owner, status or due time, so there is no request queue to show. Checks are agreed in the assistant.`}</Alert>
+        title={t`Saved requests not available`}
+      >{t`Saved requests are not supplied by this server. Use the existing assistant for discussion; opening chat does not save a request.`}</Alert>
     );
   if (!Array.isArray(requests.items))
     return (
@@ -185,9 +186,20 @@ export function InvestigationRequests({
               >{t`Required artifacts and conditions not recorded`}</Text>
             )}
             {r.blocked_reason && (
-              <Alert color='orange' title={statusLabel(r.status)}>
+              <Alert
+                color={r.status === 'resolved' ? 'gray' : 'orange'}
+                title={
+                  r.status === 'resolved'
+                    ? t`Recorded blocked reason`
+                    : statusLabel(r.status)
+                }
+              >
                 <Text size='sm'>{r.blocked_reason}</Text>
-                <Text size='xs'>{t`This decision remains unresolved until addressed. Other findings and unrelated work retain their own status.`}</Text>
+                <Text size='xs'>
+                  {r.status === 'resolved'
+                    ? t`This earlier blocked reason is retained with the resolved request. Other findings and unrelated work retain their own status.`
+                    : t`This decision remains unresolved until addressed. Other findings and unrelated work retain their own status.`}
+                </Text>
               </Alert>
             )}
             {r.source_finding && (
@@ -220,6 +232,9 @@ export function InvestigationRequests({
                       ? ` · ${t`Corrects evidence ${a.supersedes}`}`
                       : ''}
                   </Text>
+                  {a.kind === 'observation' && (
+                    <Text size='sm'>{t`Saved observation · Work ${workOrder.id} · Request ${r.id} · Evidence ${a.id}`}</Text>
+                  )}
                   {Object.entries(a.payload).map(([key, value]) => (
                     <Text key={key} size='sm'>
                       <Text span fw={500}>
@@ -255,6 +270,7 @@ export function InvestigationRequests({
               variant='light'
               label={t`Discuss request ${r.id}`}
             />
+            <NativeObservationCapture workOrder={workOrder} request={r} />
           </Stack>
         </Paper>
       ))}

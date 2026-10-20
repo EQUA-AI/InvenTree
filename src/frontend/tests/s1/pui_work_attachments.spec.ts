@@ -192,7 +192,18 @@ test('resource close and preview retain native search selection and total owner 
     name: 'table-search-input',
     exact: true
   });
+  const filtered = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.pathname === '/api/attachment/' &&
+      url.searchParams.get('search') === 'nameplate'
+    );
+  });
   await search.fill('nameplate');
+  await filtered;
+  await expect(
+    page.getByRole('link', { name: 'Synthetic work manual.pdf', exact: true })
+  ).toHaveCount(0);
   const row = page.getByRole('row').filter({
     has: page.getByRole('link', {
       name: 'Synthetic work nameplate.png',

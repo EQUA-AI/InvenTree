@@ -1664,12 +1664,46 @@ function AIChatSessionDrawer({
     }
   }, [messages, activeThreadId, loadingEarlier]);
 
-  // Focus input when drawer opens
+  // Opening focus is a one-shot convenience. A delayed callback must never
+  // reclaim focus after the reader moves into an answer or another control.
+  const composerFocusCleanup = useRef<() => void>(() => {});
+  const requestComposerFocus = useCallback(() => {
+    composerFocusCleanup.current();
+    const originalFocus = document.activeElement;
+    const cancel = () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('focusin', onFocus, true);
+      document.removeEventListener('keydown', cancel, true);
+      document.removeEventListener('pointerdown', cancel, true);
+    };
+    const onFocus = (event: FocusEvent) => {
+      if (
+        event.target !== inputRef.current &&
+        event.target !== originalFocus &&
+        event.target !== document.body
+      )
+        cancel();
+    };
+    const timer = window.setTimeout(() => {
+      cancel();
+      const active = document.activeElement;
+      if (
+        active === originalFocus ||
+        active === document.body ||
+        active === inputRef.current
+      )
+        inputRef.current?.focus();
+    }, 100);
+    document.addEventListener('focusin', onFocus, true);
+    document.addEventListener('keydown', cancel, true);
+    document.addEventListener('pointerdown', cancel, true);
+    composerFocusCleanup.current = cancel;
+  }, []);
+
   useEffect(() => {
-    if (opened && inputRef.current) {
-      setTimeout(() => inputRef.current?.focus(), 100);
-    }
-  }, [opened]);
+    if (opened) requestComposerFocus();
+    return () => composerFocusCleanup.current();
+  }, [opened, requestComposerFocus]);
 
   // U1: consume the Ask/scan intent ONCE — select Chat and focus the
   // composer. Never an effect that keeps forcing the tab.
@@ -1677,9 +1711,9 @@ function AIChatSessionDrawer({
     if (opened && chatOpenIntent === 'chat') {
       useAIChatState.getState().consumeChatOpenIntent();
       setActiveTab('chat');
-      setTimeout(() => inputRef.current?.focus(), 100);
+      requestComposerFocus();
     }
-  }, [opened, chatOpenIntent, setActiveTab]);
+  }, [opened, chatOpenIntent, setActiveTab, requestComposerFocus]);
 
   // S2: a scope PUT seeded by the routing hint is in flight before a send.
   const [isApplyingScope, setIsApplyingScope] = useState(false);
@@ -2646,6 +2680,7 @@ function AIChatSessionDrawer({
                   </Tooltip>
                   <Textarea
                     ref={inputRef}
+                    data-autofocus
                     aria-label={t`Message`}
                     placeholder={
                       activeThreadShared

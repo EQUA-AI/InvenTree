@@ -24,6 +24,10 @@ import { recordedValue, testEvaluation } from './verificationProjection';
 
 function TestResult({ test }: Readonly<{ test: VerificationTest }>) {
   const evaluation = testEvaluation(test);
+  // Older providers may expose values/notes left behind by a disposition.
+  const notApplicable = evaluation === 'not_applicable';
+  const actual = notApplicable ? null : recordedValue(test.value);
+  const note = notApplicable ? test.disposition_reason : test.note;
   const label =
     evaluation === 'failed'
       ? t`Failed — recorded result`
@@ -54,14 +58,20 @@ function TestResult({ test }: Readonly<{ test: VerificationTest }>) {
       <StepCriteria step={test.step} />
       <SimpleGrid cols={{ base: 1, sm: 3 }}>
         <ExecutionFact label={t`Actual recorded value`}>
-          {recordedValue(test.value) === null
-            ? null
-            : `${recordedValue(test.value)} ${test.step.unit}`.trim()}
+          {actual === null ? null : `${actual} ${test.step.unit}`.trim()}
         </ExecutionFact>
-        <ExecutionFact label={t`Result recorded by`}>
+        <ExecutionFact
+          label={
+            notApplicable ? t`Disposition recorded by` : t`Result recorded by`
+          }
+        >
           {test.recorded_by}
         </ExecutionFact>
-        <ExecutionFact label={t`Result recorded at`}>
+        <ExecutionFact
+          label={
+            notApplicable ? t`Disposition recorded at` : t`Result recorded at`
+          }
+        >
           {recordedTime(test.recorded_at)}
         </ExecutionFact>
         <ExecutionFact
@@ -77,15 +87,13 @@ function TestResult({ test }: Readonly<{ test: VerificationTest }>) {
       {evaluation === 'not_evaluated' && (
         <Text size='sm'>{t`The saved result does not establish a pass against applicable criteria. A completed step or an unbounded numeric check is not accepted equipment verification.`}</Text>
       )}
-      {(test.note || test.disposition_reason) && (
-        <Text size='sm'>{test.disposition_reason || test.note}</Text>
-      )}
+      {note && <Text size='sm'>{note}</Text>}
       <Accordion variant='contained'>
         <Accordion.Item value='attempts'>
           <Accordion.Control>{t`Retained attempt events (${test.events.length})`}</Accordion.Control>
           <Accordion.Panel>
             <Stack gap='sm'>
-              <Text size='sm'>{t`Earlier outcomes are retained. Previous values and complete attempt conditions were not retained by the native writer; the current reading is never substituted for them.`}</Text>
+              <Text size='sm'>{t`Earlier outcomes, recorders, times and any recorded attempt notes are retained. Previous values and complete test conditions are not available here; the current reading is never substituted for them.`}</Text>
               {test.events.map((event) => (
                 <Stack key={event.id} gap={2}>
                   <Text size='sm' fw={600}>
@@ -103,6 +111,23 @@ function TestResult({ test }: Readonly<{ test: VerificationTest }>) {
                     {event.version ?? t`Not recorded`}
                   </Text>
                   {event.reason && <Text size='sm'>{event.reason}</Text>}
+                  {event.recorded_note && (
+                    <Text
+                      size='sm'
+                      style={{
+                        whiteSpace: 'pre-wrap',
+                        overflowWrap: 'anywhere'
+                      }}
+                    >
+                      {t`Recorded attempt note`}: {event.recorded_note}
+                    </Text>
+                  )}
+                  {event.recorded_note_truncated && (
+                    <Text
+                      size='xs'
+                      c='dimmed'
+                    >{t`First 4000 characters shown; the full note remains in the native event record.`}</Text>
+                  )}
                   <Text size='sm'>{t`Historical value: not available`}</Text>
                   {event.evidence_ids.length > 0 && (
                     <Text size='sm'>

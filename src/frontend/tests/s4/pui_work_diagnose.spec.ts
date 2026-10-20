@@ -173,7 +173,7 @@ test('Diagnose projects the saved investigation with its qualification and gaps'
   ).toBeVisible();
   // Proposed checks are not dressed up as saved requests.
   const next = diagnose.getByTestId('diagnose-next-check');
-  await expect(next.getByText('No saved investigation request')).toBeVisible();
+  await expect(next.getByText('Saved requests not available')).toBeVisible();
   await expect(
     next.getByText('Measure DE envelope acceleration')
   ).toBeVisible();
@@ -322,7 +322,7 @@ test('standalone work says no investigation is saved and keeps chat primary', as
     )
   ).toBeVisible();
   await expect(
-    diagnose.getByText('No saved investigation request')
+    diagnose.getByText('Saved requests not available')
   ).toBeVisible();
   await expect(
     diagnose.getByRole('button', { name: 'Continue investigation' })
@@ -385,7 +385,7 @@ for (const scheme of ['light', 'dark'] as const) {
     ).toHaveCount(0);
     await expect(
       diagnose.getByText(
-        /Chat does not save finding corrections, resolutions or agreed checks/
+        /Chat does not save finding corrections or resolutions/
       )
     ).toBeVisible();
     await expect(

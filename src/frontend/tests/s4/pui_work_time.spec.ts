@@ -16,7 +16,7 @@ function assignment(extra: Partial<TimeAssignment> = {}): TimeAssignment {
   return {
     rule: 'time_assignment.v1',
     observed_at: '2026-10-18T13:00:00Z',
-    assigned_to: 'Synthetic technician',
+    assigned_to: 'Synthetic current assignee',
     legacy_assignee: null,
     assignment_event_at: '2026-10-18T12:00:00Z',
     elapsed_assignment_seconds: 3600,
@@ -29,7 +29,9 @@ function assignment(extra: Partial<TimeAssignment> = {}): TimeAssignment {
         recorded_at: '2026-10-18T12:00:00Z',
         reason: 'Synthetic recorded specialist allocation',
         assigned_to_id: 17,
-        previous_assigned_to_id: 16
+        previous_assigned_to_id: 16,
+        assigned_to_name: 'Synthetic current assignee',
+        previous_assigned_to_name: 'Synthetic previous assignee'
       }
     ],
     attributed_intervals: { available: false, reason: 'no_provider' },
@@ -47,6 +49,9 @@ for (const scheme of ['light', 'dark'] as const) {
     const requests = await mockExecutionWork(page, {
       ...workOrder(),
       lifecycle_status: 'on_hold',
+      assigned_to: 17,
+      assigned_to_name: 'Synthetic current assignee',
+      assigned_to_username: 'synthetic-assignee',
       time_assignment: assignment()
     });
     await openExecutionPanel(page, 'work', scheme);
@@ -76,6 +81,19 @@ for (const scheme of ['light', 'dark'] as const) {
       )
     ).toBeVisible();
     await expect(
+      time.getByText(
+        'Assignee recorded in this event: Synthetic current assignee',
+        { exact: true }
+      )
+    ).toBeVisible();
+    await expect(
+      time.getByText(
+        'Previous assignee recorded in this event: Synthetic previous assignee',
+        { exact: true }
+      )
+    ).toBeVisible();
+    await expect(time.getByText('Native assignee record')).toHaveCount(0);
+    await expect(
       time.getByRole('button', {
         name: /Start time|Working|Waiting|Away|Accept|Correct time/
       })
@@ -85,6 +103,42 @@ for (const scheme of ['light', 'dark'] as const) {
     expect(onlyReads(requests)).toBe(true);
   });
 }
+test('missing audit names stay unknown instead of exposing raw assignee ids', async ({
+  page
+}, info) => {
+  const value = assignment({
+    assigned_to: null,
+    assignment_event_at: null,
+    elapsed_assignment_seconds: null,
+    assignment_reason: null,
+    assignment_recorded_by: null
+  });
+  value.events[0].assigned_to_name = null;
+  value.events[0].previous_assigned_to_name = null;
+  await mockExecutionWork(page, { ...workOrder(), time_assignment: value });
+  await openExecutionPanel(page);
+  const time = page.getByTestId('time-assignment');
+  await time
+    .getByRole('button', { name: 'Recorded assignment changes (1)' })
+    .click();
+  await expect(
+    time.getByText('Assignee recorded in this event: Not recorded', {
+      exact: true
+    })
+  ).toBeVisible();
+  await expect(
+    time.getByText('Previous assignee recorded in this event: Not recorded', {
+      exact: true
+    })
+  ).toBeVisible();
+  await expect(
+    time.getByText(/Native assignee record|Unassigned in this event/)
+  ).toHaveCount(0);
+  await capturePanel(
+    page,
+    info.outputPath('time-assignment-missing-names.png')
+  );
+});
 test('legacy or missing assignment provenance stays unknown', async ({
   page
 }, info) => {

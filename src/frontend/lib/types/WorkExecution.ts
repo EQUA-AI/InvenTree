@@ -250,6 +250,10 @@ export interface PackageApplication {
   change_summary: string | null;
   snapshot_hash: string;
   drift_status: string;
+  /** Comparison made at this read, rather than the legacy stored default. */
+  drift_basis?: 'catalogue_at_read';
+  current_catalogue_code?: string | null;
+  current_catalogue_name?: string | null;
   applied_by: string | null;
   applied_at: string;
   steps: PackageStep[];
@@ -326,6 +330,8 @@ export interface VerificationTest {
     recorded_by: string | null;
     recorded_at: string;
     reason: string;
+    recorded_note?: string | null;
+    recorded_note_truncated?: boolean;
     evidence_ids: number[];
     historical_value_available: false;
   }[];
@@ -335,7 +341,9 @@ export interface VerificationReturn {
   rule: 'verification_return.v1';
   procedures_state: 'read' | 'not_enabled';
   tests: VerificationTest[];
-  attempt_history: 'outcomes_only_previous_values_not_retained';
+  attempt_history:
+    | 'outcomes_only_previous_values_not_retained'
+    | 'events_and_notes_previous_values_not_retained';
   lockouts: {
     id: number;
     device: string;
@@ -370,6 +378,8 @@ export interface TimeAssignment {
     reason: string | null;
     assigned_to_id: number | null;
     previous_assigned_to_id: number | null;
+    assigned_to_name?: string | null;
+    previous_assigned_to_name?: string | null;
   }[];
   attributed_intervals: { available: false; reason: 'no_provider' };
   coverage: 'unknown';

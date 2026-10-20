@@ -77,6 +77,22 @@ class InvestigationRequestTests(InvestigationProjectionTest):
             indexes['tasks_inv_work_status_idx']['columns'], ['work_order_id', 'status']
         )
 
+    def test_overview_supplies_recorded_component_for_native_capture(self):
+        """Capture reuses the Work's own component fields rather than inferring fit."""
+        self.work_order.affected_component = 'Synthetic retained coupling'
+        self.work_order.affected_component_ref = 'SYN-COUPLING-18'
+        self.work_order.save(
+            update_fields=['affected_component', 'affected_component_ref']
+        )
+        overview = self.get(
+            reverse('kanban-card-overview', kwargs={'pk': self.work_order.pk}),
+            expected_code=200,
+        ).data
+        self.assertEqual(overview['affected_component'], 'Synthetic retained coupling')
+        self.assertEqual(overview['affected_component_ref'], 'SYN-COUPLING-18')
+        self.work_order.refresh_from_db()
+        self.assertEqual(self.work_order.lifecycle_version, 1)
+
     def test_choice_constraints_reject_unknown_orm_status_and_kind(self):
         """TextChoices and database checks protect non-serializer write paths."""
         self.apply()
