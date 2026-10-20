@@ -147,6 +147,7 @@ export interface HealthEvidenceSnapshot {
   source_references: Record<string, unknown>;
   content_hash: string;
   system_actor: string;
+  captured_by_name?: string | null;
 }
 
 export type AnalysisStatus =

@@ -1,8 +1,12 @@
 import { expect, test } from '@playwright/test';
-import type { HealthEvidenceSnapshot } from '../../lib/types/MachineHealth';
+import type {
+  HealthEvidenceSnapshot,
+  PreliminaryResults
+} from '../../lib/types/MachineHealth';
 import { nativeBaseline } from '../s0/guards';
 import {
   HEALTH_SIGNALS,
+  NOW,
   anomaly,
   openHealth,
   signalTable,
@@ -192,6 +196,38 @@ for (const scheme of ['light', 'dark'] as const) {
       await expect(
         page.getByRole('button', { name: 'Signal cards', exact: true })
       ).toBeVisible();
+      await expect(
+        table.getByRole('button', { name: /^Details for/ })
+      ).toHaveCount(0);
+      await expect(
+        normal.getByRole('cell', { name: /Warning below/ })
+      ).toBeVisible();
+      const sourceType = normal.locator(
+        '#signal-201-source .mantine-Badge-label'
+      );
+      const sourceLabelSize = await sourceType.evaluate((el) => ({
+        scroll: el.scrollWidth,
+        client: el.clientWidth
+      }));
+      expect(sourceLabelSize.scroll).toBeLessThanOrEqual(
+        sourceLabelSize.client
+      );
+      const allColumns = page.getByRole('region', {
+        name: 'Signal readings; scroll for all columns',
+        exact: true
+      });
+      await allColumns.screenshot({
+        path: info.outputPath(`all-columns-${scheme}.png`)
+      });
+      await allColumns.evaluate((el) => {
+        el.scrollLeft = el.scrollWidth;
+      });
+      await allColumns.screenshot({
+        path: info.outputPath(`all-columns-context-${scheme}.png`)
+      });
+      await allColumns.evaluate((el) => {
+        el.scrollLeft = 0;
+      });
       await page
         .getByRole('button', { name: 'Signal cards', exact: true })
         .click();
@@ -310,6 +346,8 @@ test('retained exact entry preserves fault evidence beside a normal current asse
   await expect(retained).toContainText('380 m3/h');
   await expect(retained).toContainText('Original source');
   await expect(retained).toContainText(snapshot.content_hash);
+  await expect(retained).toContainText('System actor: detector');
+  await expect(retained).toContainText('Captured for the repair raised for it');
   await retained.screenshot({
     path: info.outputPath('retained-versus-current.png')
   });
@@ -359,4 +397,185 @@ test('missing retained citation and failed current reads never become empty heal
   await expect(
     page.getByText('No active anomalies are recorded', { exact: false })
   ).toHaveCount(0);
+  await expect(
+    page.getByText('Showing 0 active anomaly records', { exact: false })
+  ).toHaveCount(0);
+});
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`zero evaluated signals keep an Unknown condition (${scheme})`, async ({
+    page
+  }, info) => {
+    await openHealth(page, {
+      scheme,
+      signals: HEALTH_SIGNALS.map((signal) => ({
+        ...signal,
+        limits: {},
+        state: 'unknown'
+      })),
+      summary: { state: 'unknown' }
+    });
+    const condition = page
+      .getByText('Condition', { exact: true })
+      .locator('..');
+    await expect(
+      condition
+        .locator('.mantine-Badge-label')
+        .getByText('Unknown', { exact: true })
+    ).toBeVisible();
+    await expect(
+      condition
+        .locator('.mantine-Badge-label')
+        .getByText('Normal', { exact: true })
+    ).toHaveCount(0);
+    await expect(
+      page.getByText('6 mapped · 6 usable now · 0 evaluated now', {
+        exact: true
+      })
+    ).toBeVisible();
+    await expect(
+      signalTable(page).getByText('Not assessed: limits not configured', {
+        exact: true
+      })
+    ).toHaveCount(6);
+    await condition.locator('../../..').screenshot({
+      path: info.outputPath(`unknown-summary-${scheme}.png`)
+    });
+  });
+}
+
+for (const newest of ['future', 'expired', 'current'] as const) {
+  test(`last observation freshness follows its own ${newest} row`, async ({
+    page
+  }, info) => {
+    const newestAt = new Date(
+      NOW + (newest === 'future' ? 10800000 : -20000)
+    ).toISOString();
+    await openHealth(page, {
+      signals: [
+        {
+          ...HEALTH_SIGNALS[0],
+          observedAt: newestAt,
+          stale: newest !== 'current',
+          state: newest === 'current' ? 'normal' : 'unknown',
+          freshnessSeconds: newest === 'expired' ? 10 : 300
+        },
+        {
+          ...HEALTH_SIGNALS[1],
+          observedAt: new Date(NOW - 30000).toISOString(),
+          stale: newest === 'current',
+          freshnessSeconds: newest === 'current' ? 10 : 300
+        }
+      ],
+      summary: {
+        last_observed_at: newestAt,
+        state: newest === 'current' ? 'normal' : 'unknown'
+      }
+    });
+    const observation = page
+      .getByText('Last observation', { exact: true })
+      .locator('..');
+    await expect(observation.getByText('Stale', { exact: true })).toHaveCount(
+      newest === 'current' ? 0 : 1
+    );
+    await observation.screenshot({
+      path: info.outputPath(`newest-${newest}.png`)
+    });
+  });
+}
+
+test('retained recorder uses the human name and states missing provenance', async ({
+  page
+}, info) => {
+  await openHealth(page, {
+    snapshots: [
+      {
+        ...snapshot,
+        captured_by_name: 'Recorded Technician',
+        system_actor: 'analysis-worker'
+      }
+    ],
+    entrySearch: `?snapshot=${snapshot.id}`
+  });
+  const retained = page.getByRole('region', {
+    name: 'Retained evidence',
+    exact: true
+  });
+  await expect(retained).toContainText('Captured by Recorded Technician');
+  await expect(retained).toContainText('System actor: analysis-worker');
+  await retained.screenshot({ path: info.outputPath('retained-recorder.png') });
+  await page.route(
+    '**/api/machine-health/machines/18/health/snapshots/**',
+    (route) =>
+      route.fulfill({
+        json: {
+          count: 1,
+          results: [{ ...snapshot, captured_by_name: null, system_actor: '' }]
+        }
+      })
+  );
+  await page.reload();
+  await expect(retained).toContainText('Recorder not recorded');
+});
+
+test('preliminary analysis citation opens its exact retained incident', async ({
+  page
+}, info) => {
+  await openHealth(page, { anomalies: [anomaly()], snapshots: [snapshot] });
+  const results: PreliminaryResults = {
+    status: 'available',
+    authority: 'derived',
+    authority_source: null,
+    likely_cause: 'Fixture observation only',
+    failure_mode: null,
+    confidence: 0.5,
+    confidence_label: 'Fixture',
+    alternatives: [],
+    evidence: [
+      {
+        snapshot_id: snapshot.id,
+        observation: 'Fault-time flow was retained',
+        relation: 'supports',
+        stale: false
+      }
+    ],
+    confirm_tests: [],
+    data_window: {
+      start: snapshot.window_start,
+      end: snapshot.window_end,
+      snapshot_count: 1
+    },
+    freshness: { stale: false, stale_signal_count: 0 },
+    quality: { summary: 'good', bad_signal_count: 0 },
+    provider: 'fixture',
+    model_or_rule_version: 'fixture',
+    generated_at: null,
+    verified_by_user: false,
+    verified_at: null,
+    amendments: [],
+    schema_version: 1
+  };
+  await page.route(
+    '**/api/machine-health/machines/18/health/anomalies/44/preliminary-analysis/',
+    (route) => route.fulfill({ json: { preliminary_results: results } })
+  );
+  await page.getByRole('button', { name: 'Analyze', exact: true }).click();
+  const citation = page.getByRole('link', {
+    name: 'Snapshot 9ae91736',
+    exact: true
+  });
+  await expect(citation).toHaveAttribute(
+    'href',
+    `/machines/machine/18/health/?snapshot=${snapshot.id}`
+  );
+  await citation.click();
+  const retained = page.getByRole('region', {
+    name: 'Retained evidence',
+    exact: true
+  });
+  await expect(retained).toContainText(snapshot.content_hash);
+  await expect(retained).toContainText('380 m3/h');
+  await retained.screenshot({
+    path: info.outputPath('diagnosis-exact-citation.png')
+  });
 });

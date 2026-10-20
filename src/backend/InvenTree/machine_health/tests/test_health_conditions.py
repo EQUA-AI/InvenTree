@@ -156,3 +156,50 @@ class HealthConditionsTests(TestCase):
         self.assertEqual(len(all_machines), len(few) + 1)  # + station clock
         self.assertLessEqual(len(all_machines), 3)
         self.assertEqual(health_conditions([], now=self.now), {})
+
+    def test_fresh_unbounded_signals_are_unknown_in_batch_and_summary(self):
+        """Activation leaves limits disarmed; usable is not evaluated."""
+        machine = self.machines[0]
+        MachineSignalBinding.objects.filter(machine=machine).update(
+            normal_max=None, warn_max=None, critical_max=None
+        )
+        for condition in (
+            health_conditions([machine], now=self.now)[machine.pk],
+            health_summary(machine, now=self.now),
+        ):
+            self.assertEqual(condition['state'], 'unknown')
+            self.assertFalse(condition['degraded_data'])
+            self.assertEqual(condition['stale_signal_count'], 0)
+
+    def test_only_bad_quality_is_unknown_in_batch_and_summary(self):
+        """A fresh but unusable value cannot establish Normal either."""
+        machine = self.machines[0]
+        MachineSignalState.objects.filter(binding__machine=machine).update(quality='bad')
+        for condition in (
+            health_conditions([machine], now=self.now)[machine.pk],
+            health_summary(machine, now=self.now),
+        ):
+            self.assertEqual(condition['state'], 'unknown')
+            self.assertTrue(condition['degraded_data'])
+
+    def test_anomaly_still_speaks_when_signals_are_not_evaluated(self):
+        """Unknown signals must not hide a supplied active anomaly."""
+        machine = self.machines[2]
+        MachineSignalBinding.objects.filter(machine=machine).update(
+            normal_max=None, warn_max=None, critical_max=None
+        )
+        self.assertEqual(health_summary(machine, now=self.now)['state'], 'critical')
+
+    def test_info_anomaly_does_not_establish_normal_without_evaluated_signals(self):
+        """An informational record is not a signal classification."""
+        machine = self.machines[2]
+        MachineSignalBinding.objects.filter(machine=machine).update(
+            normal_max=None, warn_max=None, critical_max=None
+        )
+        MachineAnomaly.objects.filter(machine=machine).update(severity='info')
+        for condition in (
+            health_conditions([machine], now=self.now)[machine.pk],
+            health_summary(machine, now=self.now),
+        ):
+            self.assertEqual(condition['state'], 'unknown')
+            self.assertEqual(condition['anomaly_counts']['info'], 1)

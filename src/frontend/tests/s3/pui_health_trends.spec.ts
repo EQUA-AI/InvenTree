@@ -306,6 +306,26 @@ test('an unmeasured interval names the server default and the actual break thres
   await expect(trendCard(page)).not.toContainText("source's 5-second cadence");
 });
 
+test('one close pair among minute readings keeps row and expanded charts continuous', async ({
+  page
+}, info) => {
+  await openHealth(page, {
+    signals: [{ ...HEALTH_SIGNALS[0], trend: 'close-pair' }]
+  });
+  expect(subpaths(await rowGraphPath(page, 'Discharge flow'))).toHaveLength(1);
+  await expect(curve(page)).toHaveCount(1);
+  expect(subpaths((await curve(page).getAttribute('d'))!)).toHaveLength(1);
+  await page.getByRole('button', { name: 'Expand chart', exact: true }).click();
+  const modal = page.getByRole('dialog', { name: 'Expanded signal trend' });
+  await expect(modal.locator('.recharts-area-curve')).toHaveCount(1);
+  expect(
+    subpaths((await modal.locator('.recharts-area-curve').getAttribute('d'))!)
+  ).toHaveLength(1);
+  await modal.screenshot({
+    path: info.outputPath('close-pair-continuous.png')
+  });
+});
+
 test('a failed read says it failed, in the rows and in the chart', async ({
   page
 }) => {

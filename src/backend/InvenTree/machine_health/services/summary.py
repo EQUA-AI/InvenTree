@@ -38,7 +38,8 @@ from machine_health.services.display_time import display_shift, to_display
 _SEVERITY_STATE = {
     AnomalySeverity.CRITICAL: HealthState.CRITICAL,
     AnomalySeverity.WARNING: HealthState.WARNING,
-    AnomalySeverity.INFO: HealthState.NORMAL,
+    # An informational record does not assess the machine's signals.
+    AnomalySeverity.INFO: HealthState.UNKNOWN,
 }
 
 _STATE_RANK = {
@@ -258,7 +259,9 @@ def _condition(rows, severity_counts) -> dict:
     if len(stale_rows) == len(rows):
         state = HealthState.OFFLINE
     else:
-        state = HealthState.NORMAL
+        # Fresh/usable is not an assessment: activation can leave every limit
+        # disarmed. Only an actual row classification can establish Normal.
+        state = HealthState.UNKNOWN
         for row in rows:
             if not row['stale']:
                 state = _worse(state, row['state'])

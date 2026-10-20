@@ -216,8 +216,9 @@ function Outcome({ occurrence }: Readonly<{ occurrence: FaultOccurrence }>) {
 }
 
 function RetainedSnapshotCard({
-  snapshot
-}: Readonly<{ snapshot: RetainedSnapshot }>) {
+  snapshot,
+  machineId
+}: Readonly<{ snapshot: RetainedSnapshot; machineId: number }>) {
   const samples = snapshot.samples ?? [];
   const sameInstant = snapshot.window_start === snapshot.window_end;
   return (
@@ -288,6 +289,13 @@ function RetainedSnapshotCard({
           {snapshot.source_name ?? t`Source not recorded`} · {t`content hash`}{' '}
           {snapshot.content_hash.slice(0, 12)}
         </Text>
+        <Anchor
+          component={Link}
+          size='sm'
+          to={`/machines/machine/${machineId}/health/?snapshot=${encodeURIComponent(snapshot.id)}`}
+        >
+          {t`Open exact retained snapshot`}
+        </Anchor>
         <Text size='xs' c='dimmed'>
           {snapshot.captured_by_name
             ? t`Captured by ${snapshot.captured_by_name}`
@@ -454,7 +462,11 @@ function OccurrenceAccount({
             </Text>
           )}
           {occurrence.snapshots.map((snapshot) => (
-            <RetainedSnapshotCard key={snapshot.id} snapshot={snapshot} />
+            <RetainedSnapshotCard
+              key={snapshot.id}
+              snapshot={snapshot}
+              machineId={machineId}
+            />
           ))}
         </Stack>
       ) : (

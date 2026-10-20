@@ -26,9 +26,7 @@ read a sibling's - that is a different machine's telemetry.
 from __future__ import annotations
 
 import logging
-import statistics
 from datetime import timedelta
-from itertools import pairwise
 
 from django.db.models import Q
 from django.utils import timezone
@@ -46,7 +44,7 @@ from machine_health.connectors.base import (
     get_connector,
 )
 from machine_health.services.display_time import display_shift, to_display, to_source
-from machine_health.services.trends import plottable, status_numbers
+from machine_health.services.trends import measured_interval, plottable, status_numbers
 
 logger = logging.getLogger('inventree')
 
@@ -332,7 +330,7 @@ def _resolution(mode, span, points, series) -> float:
 
 
 def _measured_cadence(series) -> float | None:
-    """Median gap between consecutive samples, from the fullest series."""
+    """The shared robust interval estimate, from the fullest series."""
     fullest = max(
         (entry for entry in series if entry.get('available')),
         key=lambda entry: entry['count'],
@@ -340,9 +338,7 @@ def _measured_cadence(series) -> float | None:
     )
     if fullest is None or fullest['count'] < 3:
         return None
-    stamps = [sample['t'] for sample in fullest['samples']]
-    gaps = [later - earlier for earlier, later in pairwise(stamps)]
-    return round(statistics.median(gaps) / 1000, 3)
+    return measured_interval([sample['t'] / 1000 for sample in fullest['samples']])
 
 
 def _live(status) -> dict:

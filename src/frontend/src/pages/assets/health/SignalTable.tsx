@@ -341,27 +341,36 @@ export function SignalTable({
                 {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
                 <Table.Td role='cell' data-label={t`Current condition`}>
                   <Text size='sm'>{conditionText(signal)}</Text>
-                  <Button
-                    hiddenFrom='sm'
-                    variant='subtle'
-                    size='compact-sm'
-                    mt='xs'
-                    aria-label={t`Details for ${signal.display_name}`}
-                    aria-expanded={!!detailsOpen[signal.binding_id]}
-                    aria-controls={['anomalies', 'quality', 'source', 'limits']
-                      .map((detail) => `signal-${signal.binding_id}-${detail}`)
-                      .join(' ')}
-                    onClick={() =>
-                      setDetailsOpen((open) => ({
-                        ...open,
-                        [signal.binding_id]: !open[signal.binding_id]
-                      }))
-                    }
-                  >
-                    {detailsOpen[signal.binding_id]
-                      ? t`Hide details`
-                      : t`Show details`}
-                  </Button>
+                  {mobileCards && (
+                    <Button
+                      hiddenFrom='sm'
+                      variant='subtle'
+                      size='compact-sm'
+                      mt='xs'
+                      aria-label={t`Details for ${signal.display_name}`}
+                      aria-expanded={!!detailsOpen[signal.binding_id]}
+                      aria-controls={[
+                        'anomalies',
+                        'quality',
+                        'source',
+                        'limits'
+                      ]
+                        .map(
+                          (detail) => `signal-${signal.binding_id}-${detail}`
+                        )
+                        .join(' ')}
+                      onClick={() =>
+                        setDetailsOpen((open) => ({
+                          ...open,
+                          [signal.binding_id]: !open[signal.binding_id]
+                        }))
+                      }
+                    >
+                      {detailsOpen[signal.binding_id]
+                        ? t`Hide details`
+                        : t`Show details`}
+                    </Button>
+                  )}
                 </Table.Td>
                 {/* biome-ignore lint/a11y/useSemanticElements: Explicit native role survives the phone CSS layout. */}
                 <Table.Td
@@ -388,7 +397,7 @@ export function SignalTable({
                   id={`signal-${signal.binding_id}-source`}
                   data-label={t`Source`}
                 >
-                  <Group gap={6} wrap='nowrap'>
+                  <Group gap={6} wrap='wrap'>
                     <SourceTypeBadge type={signal.source_type} />
                     <Text size='xs'>{signal.source_name}</Text>
                   </Group>

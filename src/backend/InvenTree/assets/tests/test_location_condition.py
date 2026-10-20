@@ -132,6 +132,16 @@ class LocationConditionTests(TestCase):
             rows = self.rows()
         self.assertEqual({row['condition'] for row in rows.values()}, {None})
 
+    def test_fresh_unbounded_machine_is_unknown_on_the_index(self):
+        """Usable readings after activation do not imply an assessed condition."""
+        MachineSignalBinding.objects.filter(machine=self.mapped).update(
+            normal_max=None, warn_max=None, critical_max=None
+        )
+        condition = self.rows()['Mapped pump']['condition']
+        self.assertEqual(condition['state'], 'unknown')
+        self.assertFalse(condition['degraded_data'])
+        self.assertEqual(condition['stale_signal_count'], 0)
+
     def test_rows_outside_the_health_scope_get_no_condition(self):
         """The list never judges a machine its Health tab would refuse."""
         with mock.patch(

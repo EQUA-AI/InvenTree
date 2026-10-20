@@ -197,7 +197,10 @@ export function AnomalyList({
             </Group>
 
             {results[anomaly.pk] && (
-              <PreliminaryResultsPanel results={results[anomaly.pk]} />
+              <PreliminaryResultsPanel
+                results={results[anomaly.pk]}
+                machineId={anomaly.machine}
+              />
             )}
 
             {anomaly.acknowledged_by_name && (

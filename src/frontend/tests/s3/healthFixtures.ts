@@ -41,6 +41,7 @@ export type TrendShape =
   | 'sparse'
   | 'flapping'
   | 'two-readings'
+  | 'close-pair'
   | 'bad'
   | 'mostly-bad'
   | {
@@ -52,6 +53,8 @@ export type TrendShape =
     };
 
 export interface HealthSignalSpec {
+  observedAt?: string | null;
+  freshnessSeconds?: number;
   component?: MachineSignal['component'];
   id: number;
   key: string;
@@ -174,6 +177,12 @@ export function recordFor(
         quality: 'good'
       }));
     }
+    case 'close-pair':
+      return [0, 1, 61, 121, 181, 241, 301].map((seconds) => ({
+        observed_at: iso(from + seconds * 1000),
+        value: base,
+        quality: 'good'
+      }));
     case 'bad':
     case 'mostly-bad':
       return every(from, to, wave).map((sample, index) => ({
@@ -256,15 +265,22 @@ export function trendFor(
         (Date.parse(sample.observed_at) -
           Date.parse(samples[index].observed_at)) /
         1000
-    );
+    )
+    .filter((gap) => gap > 0)
+    .sort((a, b) => a - b);
+  const median = (values: number[]) =>
+    values.length % 2
+      ? values[Math.floor(values.length / 2)]
+      : (values[values.length / 2 - 1] + values[values.length / 2]) / 2;
+  const cadence = gaps.length
+    ? median(gaps.filter((gap) => gap <= median(gaps)))
+    : null;
   return {
     ...envelope,
     available: true,
     truncated: false,
     cadence_seconds:
-      options.cadence === false || samples.length < 3
-        ? null
-        : Math.min(...gaps),
+      options.cadence === false || samples.length < 3 ? null : cadence,
     samples
   };
 }
@@ -282,11 +298,16 @@ export function signalRow(spec: HealthSignalSpec) {
     signal_kind: spec.kind ?? '',
     unit: spec.unit,
     value: spec.value,
-    observed_at: spec.value === null ? null : iso(NOW - 20_000),
+    observed_at:
+      spec.observedAt !== undefined
+        ? spec.observedAt
+        : spec.value === null
+          ? null
+          : iso(NOW - 20_000),
     received_at: spec.value === null ? null : iso(NOW - 18_000),
     quality: spec.quality ?? (spec.value === null ? 'unknown' : 'good'),
     stale: spec.stale ?? false,
-    freshness_threshold_seconds: 300,
+    freshness_threshold_seconds: spec.freshnessSeconds ?? 300,
     state: spec.state ?? 'unknown',
     limits: {
       normal_min: null,

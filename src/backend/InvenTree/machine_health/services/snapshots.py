@@ -135,7 +135,7 @@ def snapshots_for_machine(machine, *, limit: int = 50, snapshot_id=None):
     snapshots = (
         HealthEvidenceSnapshot.objects
         .filter(machine=machine)
-        .select_related('binding', 'source', 'anomaly')
+        .select_related('binding', 'source', 'anomaly', 'created_by')
         .order_by('-captured_at')
     )
     if snapshot_id is not None:

@@ -34,6 +34,12 @@ export function HealthSummaryPanel({
 }>) {
   const counts = summary.anomaly_counts;
   const coverage = signals ? healthCoverage(signals) : null;
+  const newestRows = signals?.filter(
+    (signal) =>
+      signal.observed_at &&
+      summary.last_observed_at &&
+      Date.parse(signal.observed_at) === Date.parse(summary.last_observed_at)
+  );
 
   return (
     <Stack gap='sm'>
@@ -56,11 +62,14 @@ export function HealthSummaryPanel({
             </Text>
             <ObservedAt
               observedAt={summary.last_observed_at}
-              stale={
-                summary.signal_count > 0 &&
-                summary.stale_signal_count === summary.signal_count
-              }
+              stale={newestRows?.some((signal) => signal.stale) ?? false}
             />
+            {summary.last_observed_at && !newestRows?.length && (
+              <Text
+                size='xs'
+                c='dimmed'
+              >{t`Observation freshness unavailable`}</Text>
+            )}
           </Stack>
 
           <Stack gap={4}>

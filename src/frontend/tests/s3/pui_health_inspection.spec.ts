@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { nativeBaseline } from '../s0/guards';
 import {
   HEALTH_SIGNALS,
+  NOW,
   openHealth,
   signalRow,
   signalTable,
@@ -174,6 +175,93 @@ test('custom range form survives expand, inspect and close', async ({
   await expect(
     trendCard(page).getByRole('combobox', { name: 'Range' })
   ).toHaveValue('Custom range…');
+});
+
+test('row evidence expanded into a dialog restores focus inside the dialog', async ({
+  page
+}, info) => {
+  await openHealth(page);
+  await signalTable(page)
+    .getByRole('button', {
+      name: 'Inspect signal: Discharge flow',
+      exact: true
+    })
+    .click();
+  await page.getByRole('button', { name: 'Expand chart', exact: true }).click();
+  const modal = page.getByRole('dialog', { name: 'Expanded signal trend' });
+  await expect(
+    modal.getByRole('region', { name: 'Signal evidence: Discharge flow' })
+  ).toBeVisible();
+  await modal.getByRole('button', { name: 'Close signal evidence' }).click();
+  await expect(
+    modal.getByRole('button', { name: 'Inspect selected signal', exact: true })
+  ).toBeFocused();
+  await modal.screenshot({ path: info.outputPath('row-expand-focus.png') });
+});
+
+test('freshness distinguishes absent, future and expired observations with seconds budgets', async ({
+  page
+}, info) => {
+  await openHealth(page, {
+    signals: [
+      {
+        ...HEALTH_SIGNALS[0],
+        id: 201,
+        name: 'Never observed',
+        value: null,
+        state: 'unknown',
+        stale: true
+      },
+      {
+        ...HEALTH_SIGNALS[0],
+        id: 202,
+        name: 'Future observation',
+        state: 'unknown',
+        observedAt: new Date(NOW + 10800000).toISOString(),
+        stale: true
+      },
+      {
+        ...HEALTH_SIGNALS[0],
+        id: 203,
+        name: 'Expired observation',
+        state: 'unknown',
+        observedAt: new Date(NOW - 40000).toISOString(),
+        stale: true,
+        freshnessSeconds: 30
+      },
+      {
+        ...HEALTH_SIGNALS[0],
+        id: 204,
+        name: 'Current observation',
+        freshnessSeconds: 30
+      }
+    ]
+  });
+  for (const [name, wording] of [
+    ['Never observed', 'No observation time; freshness unavailable'],
+    ['Future observation', 'Observation dated after now; not current'],
+    ['Expired observation', 'Stale: older than the 30 s freshness budget'],
+    ['Current observation', 'Within the 30 s freshness budget']
+  ]) {
+    await signalTable(page)
+      .getByRole('button', { name: `Inspect signal: ${name}`, exact: true })
+      .click();
+    const evidence = page.getByRole('region', {
+      name: `Signal evidence: ${name}`,
+      exact: true
+    });
+    await expect(evidence).toContainText(wording);
+    await expect(evidence).toContainText('No snapshot of this signal');
+    await expect(trendCard(page).locator('.recharts-area-curve')).toHaveCount(
+      1
+    );
+    await evidence.screenshot({
+      path: info.outputPath(`freshness-${name.replaceAll(' ', '-')}.png`)
+    });
+    await evidence
+      .getByRole('button', { name: 'Close signal evidence' })
+      .click();
+  }
 });
 
 test('a removed selected binding never falls back to another signal on refresh', async ({

@@ -263,10 +263,12 @@ export function MachineHealthPanel({
             </Anchor>
           )}
         </Group>
-        <Text
-          size='sm'
-          c='dimmed'
-        >{t`Showing ${anomalies.length} active anomaly records on this machine (maximum 200); summary counts cover the machine's active set.`}</Text>
+        {!anomaliesQuery.isError && (
+          <Text
+            size='sm'
+            c='dimmed'
+          >{t`Showing ${anomalies.length} active anomaly records on this machine (maximum 200); summary counts cover the machine's active set.`}</Text>
+        )}
         {!anomalyAssociationKnown && !anomaliesQuery.isError && (
           <Alert color='yellow'>{t`The active anomaly list is incomplete. Row association cannot establish an absence of anomalies.`}</Alert>
         )}
@@ -341,11 +343,15 @@ export function MachineHealthPanel({
                       onClose={() => {
                         setEvidenceOpen(false);
                         requestAnimationFrame(() =>
-                          (evidenceTrigger.current?.isConnected
-                            ? evidenceTrigger.current
-                            : document.getElementById(
-                                'inspect-selected-health-signal'
-                              )
+                          (
+                            document.querySelector<HTMLButtonElement>(
+                              '[role="dialog"] #inspect-selected-health-signal'
+                            ) ??
+                            (evidenceTrigger.current?.isConnected
+                              ? evidenceTrigger.current
+                              : document.getElementById(
+                                  'inspect-selected-health-signal'
+                                ))
                           )?.focus()
                         );
                       }}

@@ -42,6 +42,10 @@ import type { PreparedTrend } from './trendSamples';
 /** The id the row Inspect controls point at with aria-controls. */
 export const SIGNAL_EVIDENCE_ID = 'health-signal-evidence';
 
+function freshnessBudget(seconds: number) {
+  return seconds < 60 ? t`${seconds} s` : t`${seconds / 60} min`;
+}
+
 /** A full instant with its zone, so no time is read on the wrong clock. */
 export function fullInstant(value: string | number | null | undefined) {
   if (value === null || value === undefined) {
@@ -279,11 +283,14 @@ export function SignalEvidence({
             </Fact>
             <Fact label={t`Freshness`}>
               <Text size='sm'>
-                {signal.stale
-                  ? t`Stale: older than the ${Math.round(signal.freshness_threshold_seconds / 60)} min freshness budget`
-                  : signal.observed_at
-                    ? t`Within the ${Math.round(signal.freshness_threshold_seconds / 60)} min freshness budget`
-                    : t`No observation time; freshness unavailable`}
+                {!signal.observed_at ||
+                !Number.isFinite(Date.parse(signal.observed_at))
+                  ? t`No observation time; freshness unavailable`
+                  : Date.parse(signal.observed_at) > Date.now()
+                    ? t`Observation dated after now; not current`
+                    : signal.stale
+                      ? t`Stale: older than the ${freshnessBudget(signal.freshness_threshold_seconds)} freshness budget`
+                      : t`Within the ${freshnessBudget(signal.freshness_threshold_seconds)} freshness budget`}
               </Text>
             </Fact>
             <Fact label={t`Quality`}>

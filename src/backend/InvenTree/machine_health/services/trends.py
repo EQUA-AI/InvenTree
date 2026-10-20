@@ -20,6 +20,7 @@ cannot pull a historian dry or hang the worker pool.
 from __future__ import annotations
 
 import logging
+import statistics
 from itertools import pairwise
 
 from django.utils import timezone
@@ -85,22 +86,26 @@ def plottable(value, statuses: dict):
 
 
 def measured_cadence(readings) -> float | None:
-    """Shortest positive observed interval, or None below three readings.
+    """Robust lower interval estimate from this binding's observed times."""
+    return measured_interval([reading.observed_at.timestamp() for reading in readings])
+
+
+def measured_interval(timestamps) -> float | None:
+    """Median of positive gaps at or below the overall median, in seconds.
 
     Silences must not stretch the interval they are checked against, even
-    when they make up half or more of the gaps. This is an estimate from the
-    returned record, not a configured source sampling rate. Ignore duplicate
-    timestamps; an entirely simultaneous record has no measurable interval.
+    when they make up half the gaps; a single close pair among regular reads
+    must not set the cadence either. This is an estimate, not a configured
+    sampling rate. Ignore duplicate timestamps and require three readings.
     """
-    stamps = sorted(reading.observed_at for reading in readings)
+    stamps = sorted(timestamps)
     if len(stamps) < 3:
         return None
-    gaps = [
-        (later - earlier).total_seconds()
-        for earlier, later in pairwise(stamps)
-        if later > earlier
-    ]
-    return round(min(gaps), 3) if gaps else None
+    gaps = [later - earlier for earlier, later in pairwise(stamps) if later > earlier]
+    if not gaps:
+        return None
+    midpoint = statistics.median(gaps)
+    return round(statistics.median(gap for gap in gaps if gap <= midpoint), 3)
 
 
 class TrendError(Exception):
