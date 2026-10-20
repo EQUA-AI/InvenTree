@@ -39,6 +39,17 @@ class InvestigationRequest(models.Model):
         related_name='+',
     )
     next_checkpoint = models.DateTimeField(null=True, blank=True)
+    escalation_group = models.ForeignKey(
+        'auth.Group', null=True, blank=True, on_delete=models.PROTECT, related_name='+'
+    )
+    escalated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='+',
+    )
+    escalated_at = models.DateTimeField(null=True, blank=True)
     source_finding = models.ForeignKey(
         'repair.RepairInvestigationFinding',
         null=True,
@@ -47,6 +58,7 @@ class InvestigationRequest(models.Model):
         related_name='investigation_requests',
     )
     source_proposal = models.JSONField(null=True, blank=True)
+    escalation_reason = models.TextField(blank=True)
     blocked_reason = models.TextField(blank=True)
     resolution = models.TextField(blank=True)
     created_by = models.ForeignKey(

@@ -176,4 +176,5 @@ export interface WorkOrderOverview extends WorkOrder {
   verification_return?: VerificationReturn;
   time_assignment?: TimeAssignment;
   work_continuity?: WorkContinuity;
+  recurrence_policy?: import('./WorkExecution').RecurrencePolicy;
 }

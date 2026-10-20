@@ -2,10 +2,12 @@
 
 import uuid
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Max
+from django.utils import timezone
 
 from rest_framework.exceptions import ValidationError
 
@@ -152,11 +154,57 @@ def command(
     version_before = row.version if row else None
     revision_before = None
     artifact_through_id = None
-    if operation == 'revise' and row is not None:
+    if operation in ('revise', 'escalate') and row is not None:
         revision_before = dict(InvestigationRequestRevisionSerializer(row).data)
         artifact_through_id = row.artifacts.aggregate(last=Max('pk'))['last']
     artifact_id = None
-    if operation in ('create', 'revise'):
+    if operation == 'escalate' and row is not None:
+        from django.contrib.auth.models import Group
+
+        from rest_framework import serializers
+
+        if not isinstance(fields, dict) or set(fields) != {
+            'owner_id',
+            'next_checkpoint',
+            'blocked_reason',
+        }:
+            raise ValidationError(
+                'Escalation requires exactly one owner, checkpoint and reason.'
+            )
+        if row.status == 'resolved':
+            raise ValidationError('A resolved request cannot be escalated.')
+        owner_id = serializers.IntegerField(min_value=1).run_validation(
+            fields['owner_id']
+        )
+        checkpoint = serializers.DateTimeField().run_validation(
+            fields['next_checkpoint']
+        )
+        reason = serializers.CharField(allow_blank=False).run_validation(
+            fields['blocked_reason']
+        )
+        group = Group.objects.filter(
+            name=getattr(settings, 'AIMMS_EXPERT_GROUP_NAME', 'Reliability engineers')
+        ).first()
+        if (
+            group is None
+            or not group.user_set.filter(pk=owner_id, is_active=True).exists()
+        ):
+            raise ValidationError(
+                'Choose one active member of the configured expert group.'
+            )
+        _linked_person(owner_id, work)
+        if checkpoint <= timezone.now():
+            raise ValidationError('Choose a future checkpoint.')
+        row.owner_id = owner_id
+        row.next_checkpoint = checkpoint
+        row.escalation_reason = reason
+        row.escalation_group = group
+        row.escalated_by = actor
+        row.escalated_at = timezone.now()
+        row.version += 1
+        row.updated_by = actor
+        row.save()
+    elif operation in ('create', 'revise'):
         if (operation == 'create') != (row is None):
             raise ValidationError('Create needs no request; revise needs a request.')
         validator = RequestFieldsSerializer(data=fields, partial=operation == 'revise')
@@ -180,6 +228,17 @@ def command(
             raise ValidationError(
                 'Resolution requires an attributed owner and explanation.'
             )
+        if row.escalation_group_id:
+            if (
+                row.owner_id is None
+                or row.next_checkpoint is None
+                or not row.escalation_group.user_set.filter(
+                    pk=row.owner_id, is_active=True
+                ).exists()
+            ):
+                raise ValidationError(
+                    'Escalation must retain one group owner and checkpoint.'
+                )
         if clean.get('status') == 'open':
             row.blocked_reason = ''
         if row.status == 'resolved':
@@ -284,10 +343,24 @@ def command(
         raise ValidationError('Unsupported investigation command.')
     metadata = {
         'request_id': row.pk,
+        'work_order_id': work.pk,
+        'operation': operation,
+        'idempotency_key': idempotency_key,
+        'expected_version': expected_version,
         'version_before': version_before,
         'version_after': row.version,
         'status': row.status,
     }
+    if operation == 'escalate':
+        metadata['escalation'] = {
+            'group_id': row.escalation_group_id,
+            'group': row.escalation_group.name,
+            'owner_id': row.owner_id,
+            'next_checkpoint': row.next_checkpoint.isoformat(),
+            'recorded_by': actor.pk,
+            'recorded_at': row.escalated_at.isoformat(),
+            'reason': row.escalation_reason,
+        }
     if artifact_id is not None:
         metadata['artifact_id'] = artifact_id
     if revision_before is not None:
@@ -315,7 +388,7 @@ def command(
 def request_queryset():
     """Bounded queries for full projections, independent of artifact count."""
     return InvestigationRequest.objects.select_related(
-        'owner', 'updated_by', 'created_by'
+        'owner', 'updated_by', 'created_by', 'escalation_group', 'escalated_by'
     ).prefetch_related('artifacts__recorded_by')
 
 
@@ -339,4 +412,29 @@ def project_requests(work_order):
         'available': True,
         'reason': '',
         'items': InvestigationRequestSerializer(rows, many=True).data,
+    }
+
+
+def escalation_options(work, actor):
+    """Only currently authorized native Work readers are offered as owners."""
+    from django.contrib.auth.models import Group
+
+    from tasks.work_execution.common import person
+
+    _change_actor(actor)
+    name = getattr(settings, 'AIMMS_EXPERT_GROUP_NAME', 'Reliability engineers')
+    group = Group.objects.filter(name=name).first()
+    owners = []
+    if group:
+        for candidate in group.user_set.filter(is_active=True).order_by('pk'):
+            try:
+                _linked_person(candidate.pk, work)
+            except ValidationError:
+                continue
+            owners.append({'id': candidate.pk, 'name': person(candidate)})
+    return {
+        'group': name,
+        'available': group is not None,
+        'reason': '' if group else 'group_not_configured',
+        'owners': owners,
     }

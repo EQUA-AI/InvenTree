@@ -117,6 +117,7 @@ from .serializers import (
 from .services import schedule_planner, scheduling
 from .services.conflicts import detect_conflicts
 from .workorder_api import (
+    WorkOrderAcceptHandover,
     WorkOrderAssign,
     WorkOrderCancel,
     WorkOrderComplete,
@@ -989,6 +990,9 @@ class WorkOrderCreateCommand(_CommandView):
             key: data[key]
             for key in (
                 'description',
+                'recurrence_of',
+                'recurrence_occurrence',
+                'prior_version',
                 'priority',
                 'work_order_type',
                 'assignee',
@@ -1008,10 +1012,12 @@ class WorkOrderCreateCommand(_CommandView):
         except scheduling.WorkOrderCommandError as exc:
             return _command_error_response(exc)
 
-        return Response(
-            self._work_order_payload(result.work_order_id),
-            status=status.HTTP_201_CREATED,
-        )
+        payload = self._work_order_payload(result.work_order_id)
+        if data.get('recurrence_of') is not None:
+            from dataclasses import asdict
+
+            payload['process_receipt'] = asdict(result)
+        return Response(payload, status=status.HTTP_201_CREATED)
 
 
 class WorkOrderUpdateCommand(_CommandView):
@@ -1681,6 +1687,11 @@ tasks_api_urls = [
                 '<int:pk>/transition/',
                 WorkOrderTransition.as_view(),
                 name='work-order-transition',
+            ),
+            path(
+                '<int:pk>/accept_handover/',
+                WorkOrderAcceptHandover.as_view(),
+                name='work-order-accept-handover',
             ),
             path(
                 '<int:pk>/assign/', WorkOrderAssign.as_view(), name='work-order-assign'

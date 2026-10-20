@@ -1533,3 +1533,11 @@ AGENT_EMAIL_MICROSOFT_CLIENT_ID = os.environ.get(
 AGENT_EMAIL_MICROSOFT_CLIENT_SECRET = os.environ.get(
     'INVENTREE_AGENT_EMAIL_MICROSOFT_CLIENT_SECRET', ''
 )
+
+# O15 process policies; deployments can override these Django settings.
+AIMMS_EXPERT_GROUP_NAME = get_setting(
+    'AIMMS_EXPERT_GROUP_NAME', 'aimms.expert_group_name', 'Reliability engineers'
+)
+AIMMS_RECURRENCE_DAYS = int(
+    get_setting('AIMMS_RECURRENCE_DAYS', 'aimms.recurrence_days', 30)
+)

@@ -31,6 +31,7 @@ from .services.work_orders import (
     StaleVersion,
     WorkOrderCommandError,
     WorkOrderScopeError,
+    accept_handover,
     assign_work_order,
     cancel_work_order,
     hold_work_order,
@@ -39,6 +40,7 @@ from .services.work_orders import (
 )
 from .workorder_serializers import (
     AssignCommandSerializer,
+    BaseCommandSerializer,
     CompleteCommandSerializer,
     HoldCommandSerializer,
     ResumeCommandSerializer,
@@ -284,6 +286,13 @@ class WorkOrderAssign(WorkOrderCommandView):
 
     serializer_class = AssignCommandSerializer
     service = staticmethod(assign_work_order)
+
+
+class WorkOrderAcceptHandover(WorkOrderCommandView):
+    """Record the incoming owner's explicit acceptance."""
+
+    serializer_class = BaseCommandSerializer
+    service = staticmethod(accept_handover)
 
 
 class WorkOrderHold(WorkOrderCommandView):

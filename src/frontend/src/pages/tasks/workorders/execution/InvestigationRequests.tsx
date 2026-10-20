@@ -9,6 +9,7 @@ import { useSearchParams } from 'react-router-dom';
 import { InvestigationArtifactReview } from '../../../../components/aichat/InvestigationArtifactReview';
 import { formatDate } from '../../../../defaults/formatters';
 import { ContinueInvestigation } from './ContinueInvestigation';
+import { ExpertEscalation } from './ExpertEscalation';
 import { NativeObservationCapture } from './NativeObservationCapture';
 
 export function investigationStatusLabel(
@@ -198,6 +199,7 @@ export function InvestigationRequests({
                   </Text>
                 </Alert>
               )}
+            <ExpertEscalation workOrder={workOrder} request={r} />
             {r.source_finding && (
               <Text size='sm'>
                 {t`Source finding`}: {r.source_finding}

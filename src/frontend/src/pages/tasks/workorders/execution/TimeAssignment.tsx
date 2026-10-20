@@ -20,6 +20,9 @@ export function TimeAssignment({
   const value: Projection | undefined = supplied
     ? workOrder.time_assignment
     : undefined;
+  const handover = workOrder.work_continuity?.accepted_handover?.available
+    ? workOrder.work_continuity.accepted_handover
+    : value?.accepted_handover;
   return (
     <ExecutionSection
       title={t`Assignment and person-work time`}
@@ -63,7 +66,28 @@ export function TimeAssignment({
         size='sm'
       >{t`Attributed time: unavailable · coverage unknown`}</Text>
       <Text size='sm'>{t`No authoritative attributed intervals are supplied. Unclassified gaps and labor totals cannot be measured. Held work does not mean every person was waiting; capture duration and browser activity do not classify labor.`}</Text>
-      <Text size='sm'>{t`Assignment factors, accepted handover and an attributed interval correction path are not supplied. No assignment score, accepted owner or corrected time is inferred.`}</Text>
+      {handover?.available ? (
+        <Stack gap={2} data-testid='time-handover-record'>
+          <Text size='sm'>
+            {handover.state === 'accepted'
+              ? t`Incoming handover acceptance is recorded.`
+              : t`Current incoming handover acceptance is not recorded.`}
+          </Text>
+          <Text size='sm'>
+            {t`Responsible owner`}:{' '}
+            {handover.responsible_owner || t`Not recorded`}
+          </Text>
+          {handover.state === 'accepted' && (
+            <Text size='sm'>
+              {handover.accepted_by} · {recordedTime(handover.accepted_at)} · v
+              {handover.accepted_version}
+            </Text>
+          )}
+          <Text size='sm'>{t`Assignment factors and an attributed interval correction path are not supplied. No assignment score or corrected time is inferred.`}</Text>
+        </Stack>
+      ) : (
+        <Text size='sm'>{t`Assignment factors, accepted handover and an attributed interval correction path are not supplied. No assignment score, accepted owner or corrected time is inferred.`}</Text>
+      )}
       {value && (
         <Accordion variant='contained' keepMounted={false}>
           <Accordion.Item value='assignments'>

@@ -223,6 +223,14 @@ REGISTRY: tuple[FlagEntry, ...] = (
         description='Model override for closeout extraction',
     ),
     FlagEntry(
+        'AIMMS_CLOSEOUT_VERIFY_POLICY',
+        'str',
+        'off',
+        'django',
+        config_key='aimms_closeout_verify_policy',
+        description='Native supervisor closure verification; off leaves acceptance unknown',
+    ),
+    FlagEntry(
         'AIMMS_CLOSEOUT_WIZARD_ENABLED',
         'bool',
         False,

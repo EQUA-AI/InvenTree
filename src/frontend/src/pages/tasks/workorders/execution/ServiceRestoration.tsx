@@ -47,7 +47,7 @@ export function ServiceRestoration({
         <ExecutionFact label={t`Maintenance record`}>
           {closeout
             ? t`Updated · Closeout ${closeout.id}`
-            : t`No accepted closeout supplied`}
+            : t`No closeout supplied`}
         </ExecutionFact>
         <ExecutionFact label={t`Saved physical test outcomes`}>
           {tests
@@ -57,7 +57,7 @@ export function ServiceRestoration({
       </SimpleGrid>
       {closeout && (
         <Text size='xs' c='dimmed'>
-          {t`Accepted account source`}: {closeout.id} ·{' '}
+          {t`Recorded closeout source`}: {closeout.id} ·{' '}
           {closeout.completed_by_name || t`Recorder unavailable`} ·{' '}
           {recordedTime(closeout.completed_at)}
         </Text>
