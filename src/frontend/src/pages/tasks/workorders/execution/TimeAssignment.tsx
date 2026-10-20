@@ -83,8 +83,12 @@ export function TimeAssignment({
                       {recordedTime(event.recorded_at)}
                     </Text>
                     <Text size='xs'>
-                      {t`Native assignee record`}:{' '}
-                      {event.assigned_to_id ?? t`Unassigned in this event`}
+                      {t`Assignee recorded in this event`}:{' '}
+                      {event.assigned_to_name ?? t`Not recorded`}
+                    </Text>
+                    <Text size='xs'>
+                      {t`Previous assignee recorded in this event`}:{' '}
+                      {event.previous_assigned_to_name ?? t`Not recorded`}
                     </Text>
                   </Stack>
                 ))}

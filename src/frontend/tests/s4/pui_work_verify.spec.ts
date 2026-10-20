@@ -51,7 +51,8 @@ function verification(
         version: 2,
         recorded_by: 'Synthetic technician',
         recorded_at: '2026-10-18T11:00:00Z',
-        reason: 'Synthetic failed first attempt',
+        reason: '',
+        recorded_note: 'Synthetic failed first attempt',
         evidence_ids: [100],
         historical_value_available: false
       },
@@ -64,6 +65,17 @@ function verification(
         reason: 'Synthetic correction then retest',
         evidence_ids: [],
         historical_value_available: false
+      },
+      {
+        id: 93,
+        event_type: 'STEP_COMPLETED',
+        version: 4,
+        recorded_by: 'Synthetic technician',
+        recorded_at: '2026-10-18T12:00:00Z',
+        reason: '',
+        recorded_note: 'Synthetic saved observation',
+        evidence_ids: [],
+        historical_value_available: false
       }
     ]
   };
@@ -71,7 +83,7 @@ function verification(
     rule: 'verification_return.v1',
     procedures_state: 'read',
     tests: [result],
-    attempt_history: 'outcomes_only_previous_values_not_retained',
+    attempt_history: 'events_and_notes_previous_values_not_retained',
     lockouts: [
       {
         id: 61,
@@ -94,6 +106,102 @@ function verification(
   };
 }
 for (const scheme of ['light', 'dark'] as const) {
+  test(`not applicable withholds prior readings while attempt notes keep their recorder (${scheme})`, async ({
+    page
+  }, info) => {
+    const value = verification();
+    value.lockouts = [];
+    const template = value.tests[0];
+    value.tests = [false, true].map((passed, index) => ({
+      ...template,
+      id: index + 1,
+      version: 3,
+      status: 'not_applicable',
+      // Legacy projections can still expose fields the native writer retained.
+      passed,
+      value: { number: passed ? '0.8' : '9.2' },
+      note: passed
+        ? 'Original passing-attempt observation'
+        : 'Original failed-attempt observation',
+      recorded_by: 'Synthetic supervisor',
+      recorded_at: '2026-10-18T13:00:00Z',
+      disposition_reason: 'Synthetic applicability decision',
+      step: {
+        ...template.step,
+        title: `Synthetic disposed check ${index + 1}`
+      },
+      events: [
+        {
+          ...template.events[0],
+          id: index + 91,
+          event_type: passed ? 'STEP_COMPLETED' : 'STEP_FAILED',
+          reason: '',
+          recorded_by: 'Synthetic original technician',
+          recorded_note: passed
+            ? 'Original passing-attempt observation'
+            : 'Original failed-attempt observation'
+        },
+        {
+          id: index + 101,
+          event_type: 'STEP_NOT_APPLICABLE',
+          version: 3,
+          reason: 'Synthetic applicability decision',
+          recorded_by: 'Synthetic supervisor',
+          recorded_at: '2026-10-18T13:00:00Z',
+          evidence_ids: [],
+          historical_value_available: false
+        }
+      ]
+    }));
+    const requests = await mockExecutionWork(page, {
+      ...workOrder(),
+      verification_return: value
+    });
+    await openExecutionPanel(page, 'verify', scheme);
+    const verify = panelRegion(page, 'Verify & Return');
+    await expect(
+      verify.getByText('Recorded not applicable', { exact: true })
+    ).toHaveCount(2);
+    await expect(
+      verify.getByText('Disposition recorded by', { exact: true })
+    ).toHaveCount(2);
+    await expect(verify.getByText(/9\.2 mm\/s|0\.8 mm\/s/)).toHaveCount(0);
+    await expect(
+      verify.getByText('Original failed-attempt observation', { exact: true })
+    ).toHaveCount(0);
+    await expect(
+      verify.getByText('Original passing-attempt observation', { exact: true })
+    ).toHaveCount(0);
+    await expect(
+      verify.getByText('Failed — recorded result', { exact: true })
+    ).toHaveCount(0);
+    for (const id of [1, 2]) {
+      await page
+        .getByTestId(`verification-test-${id}`)
+        .getByRole('button', { name: 'Retained attempt events (2)' })
+        .click();
+    }
+    await expect(
+      verify.getByText('Original failed-attempt observation')
+    ).toBeVisible();
+    await expect(
+      verify.getByText('Original passing-attempt observation')
+    ).toBeVisible();
+    await expect(
+      verify.getByText(/^Synthetic original technician/)
+    ).toHaveCount(2);
+    await expect(
+      verify.getByText('Synthetic supervisor', { exact: true })
+    ).toHaveCount(2);
+    await expect(verify.getByText('Failed attempt retained')).toBeVisible();
+    await expectNoPageOverflow(page);
+    expect(onlyReads(requests)).toBe(true);
+    await capturePanel(
+      page,
+      info.outputPath(`verification-not-applicable-${scheme}.png`)
+    );
+  });
+
   test(`verification retains failure after a later result and separates authority (${scheme})`, async ({
     page
   }, info) => {
@@ -111,15 +219,18 @@ for (const scheme of ['light', 'dark'] as const) {
       verify.getByText('Recorded pass — acceptance separate')
     ).toBeVisible();
     await verify
-      .getByRole('button', { name: 'Retained attempt events (2)' })
+      .getByRole('button', { name: 'Retained attempt events (3)' })
       .click();
     await expect(verify.getByText('Failed attempt retained')).toBeVisible();
+    await expect(
+      verify.getByText('Synthetic failed first attempt')
+    ).toBeVisible();
     await expect(
       verify.getByText('Synthetic correction then retest')
     ).toBeVisible();
     await expect(
       verify.getByText('Historical value: not available')
-    ).toHaveCount(2);
+    ).toHaveCount(3);
     await expect(verify.getByText(/Awaiting test authority/)).toBeVisible();
     await expect(
       verify.getByText(/awaiting operating authority/)

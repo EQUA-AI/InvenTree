@@ -465,6 +465,44 @@ test.describe('reload', () => {
     machine_id: 18
   });
 
+  test('opening focus respects a reader who moves to a saved answer before timers finish', async ({
+    page
+  }) => {
+    await prepareDrawerFixture(page, {
+      voice: false,
+      foundation: {
+        threadDetailMessages: [
+          {
+            id: 'changed-answer',
+            role: 'assistant',
+            content: 'Saved answer for keyboard review',
+            timestamp: '2026-10-19T00:02:00Z',
+            work_focus: identity(74),
+            work_focus_state: 'changed'
+          }
+        ]
+      }
+    });
+    await page.clock.install({ time: new Date('2026-10-20T08:00:00Z') });
+    await page.goto('/playwright/aichat-drawer.html?actor=reader');
+    await page.getByLabel('open-ai-chat').waitFor();
+    await page.clock.pauseAt(new Date('2026-10-20T08:01:00Z'));
+    await openChat(page);
+    const chip = page.getByTestId('ai-chat-message-work-focus');
+    await expect(chip).toBeVisible();
+    // Let the modal establish its initial focus, but leave the delayed
+    // composer focus pending while the reader navigates the saved answer.
+    await page.clock.runFor(1);
+    await chip.getByRole('link').focus();
+    await page.keyboard.press('Tab');
+    const explanation = chip.getByLabel(
+      /^Changed since this answer\. This work order's status/
+    );
+    await expect(explanation).toBeFocused();
+    await page.clock.runFor(1000);
+    await expect(explanation).toBeFocused();
+  });
+
   test('a reloaded answer says how its Work stands now and keeps only valid links', async ({
     page
   }, testInfo) => {

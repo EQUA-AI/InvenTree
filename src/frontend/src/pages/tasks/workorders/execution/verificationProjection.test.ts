@@ -69,6 +69,13 @@ describe('saved verification qualification', () => {
     expect(
       testEvaluation({ ...result, status: 'not_applicable', passed: null })
     ).toBe('not_applicable'));
+  it.each([false, true])(
+    'keeps not applicable distinct from a retained prior evaluation (%s)',
+    (passed) =>
+      expect(
+        testEvaluation({ ...result, status: 'not_applicable', passed })
+      ).toBe('not_applicable')
+  );
   it('keeps a reopened failure unresolved', () =>
     expect(
       testEvaluation({ ...result, status: 'pending', passed: null, value: {} })

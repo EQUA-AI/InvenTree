@@ -26,6 +26,7 @@ import type {
   PackageStep
 } from '@lib/types/WorkExecution';
 import { useApi } from '../../../../contexts/ApiContext';
+import { extractErrorMessage } from '../../../../functions/api';
 import { useUserState } from '../../../../states/UserState';
 import { workPanelParams } from '../workPanelState';
 import {
@@ -92,12 +93,26 @@ function Application({
 }: Readonly<{ application: PackageApplication }>) {
   const user = useUserState();
   const linkParts = user.hasViewRole(UserRoles.part);
+  const drift =
+    application.drift_basis === 'catalogue_at_read'
+      ? application.drift_status
+      : 'not_evaluated';
+  const driftLabel =
+    drift === 'current'
+      ? t`Applied revision matches the current published catalogue revision.`
+      : drift === 'different_revision'
+        ? t`A different revision is current in the catalogue.`
+        : drift === 'revision_not_published'
+          ? t`Applied revision is not currently published.`
+          : drift === 'procedure_inactive'
+            ? t`The linked procedure is inactive in the catalogue.`
+            : t`Drift not evaluated`;
   return (
     <Stack gap='sm'>
       <Group gap='xs'>
         <Text
           fw={600}
-        >{t`Procedure ${application.procedure_id ?? t`Not recorded`} · revision ${application.revision ?? t`Not recorded`}`}</Text>
+        >{t`Applied procedure · revision ${application.revision ?? t`Not recorded`}`}</Text>
         <Badge styles={executionBadgeStyles} color='gray'>
           {application.primary
             ? t`Primary application`
@@ -105,15 +120,19 @@ function Application({
         </Badge>
       </Group>
       <Text size='sm'>
+        {t`Current catalogue name`}:{' '}
+        {application.current_catalogue_code || t`Code not recorded`} ·{' '}
+        {application.current_catalogue_name || t`Name not recorded`}
+      </Text>
+      <Text size='sm'>
         {t`Applied by`} {application.applied_by ?? t`Not recorded`} ·{' '}
         {recordedTime(application.applied_at)}
       </Text>
-      <Text size='sm'>
-        {t`Recorded drift status`}:{' '}
-        {application.drift_status || t`Not recorded`}
-      </Text>
-      {application.drift_status !== 'current' && (
-        <Alert color='orange'>{t`The applied package is not recorded as current. Its original instructions are retained; readiness and authority must be checked through the native flow.`}</Alert>
+      <ExecutionFact label={t`Catalogue comparison at this read`}>
+        {driftLabel}
+      </ExecutionFact>
+      {drift !== 'current' && (
+        <Alert color='orange'>{t`Review the catalogue difference or missing comparison through the native flow. The original applied instructions are retained; this comparison does not establish readiness or authority.`}</Alert>
       )}
       {application.change_summary && (
         <Text size='sm'>{application.change_summary}</Text>
@@ -238,10 +257,12 @@ function DeviationEntry({ workOrderId }: Readonly<{ workOrderId: number }>) {
   const [outcome, setOutcome] = useState<
     'saved' | 'uncertain' | 'refused' | null
   >(null);
+  const [refusal, setRefusal] = useState('');
   async function save() {
     if (busy || !reason.trim()) return;
     setBusy(true);
     setOutcome(null);
+    setRefusal('');
     try {
       const response = await api.post(
         `/api/tasks/work-orders/${workOrderId}/deviations/`,
@@ -256,13 +277,31 @@ function DeviationEntry({ workOrderId }: Readonly<{ workOrderId: number }>) {
       await queryClient.invalidateQueries({
         queryKey: ['work-order', workOrderId]
       });
-    } catch (error: any) {
-      const status = error?.response?.status;
-      setOutcome(
-        status >= 400 && status < 500 && ![408, 429].includes(status)
-          ? 'refused'
-          : 'uncertain'
-      );
+    } catch (error) {
+      const status = (error as { response?: { status?: number } } | null)
+        ?.response?.status;
+      if (
+        status &&
+        status >= 400 &&
+        status < 500 &&
+        ![408, 429].includes(status)
+      ) {
+        const message: unknown = extractErrorMessage({
+          error,
+          field: 'reason'
+        });
+        setRefusal(
+          typeof message === 'string'
+            ? message
+            : Array.isArray(message) &&
+                message.every((part) => typeof part === 'string')
+              ? message.join('; ')
+              : t`The native service refused this attempt.`
+        );
+        setOutcome('refused');
+      } else {
+        setOutcome('uncertain');
+      }
     } finally {
       setBusy(false);
     }
@@ -280,7 +319,7 @@ function DeviationEntry({ workOrderId }: Readonly<{ workOrderId: number }>) {
               onChange={(event) => {
                 setReason(event.currentTarget.value);
               }}
-              disabled={busy || outcome === 'uncertain'}
+              readOnly={busy || outcome === 'uncertain'}
               autosize
               minRows={3}
             />
@@ -291,7 +330,10 @@ function DeviationEntry({ workOrderId }: Readonly<{ workOrderId: number }>) {
               <Alert color='orange'>{t`Save not confirmed. Your text is retained. Check the latest native deviations before submitting again; this request may have saved.`}</Alert>
             )}
             {outcome === 'refused' && (
-              <Alert color='red'>{t`Save refused. Your text is retained. Check access and required fields before submitting again.`}</Alert>
+              <Alert color='red'>
+                <Text size='sm'>{t`Save refused. No deviation was saved by this attempt. Your text is retained.`}</Text>
+                <Text size='sm'>{refusal}</Text>
+              </Alert>
             )}
             <Button
               style={{ alignSelf: 'flex-start' }}

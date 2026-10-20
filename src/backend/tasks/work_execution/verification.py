@@ -1,14 +1,33 @@
 """P23: physical result records are separate from operating/service authority.
 
 The procedure writer overwrites current values on retest. Its append-only
-events retain outcomes, actors and times, but not the previous values. Keep
-those events without filling the old attempt with today's reading.
+events retain outcomes, actors, times and attempt notes, but not previous
+values. Keep each note with its own event without substituting today's reading.
 """
 
 from .common import packet_of, person, procedures_enabled
 
 TEST_TYPES = ('measurement', 'inspection', 'verification')
 STEP_EVENTS = ('STEP_COMPLETED', 'STEP_FAILED', 'STEP_REOPENED', 'STEP_NOT_APPLICABLE')
+NOTE_LIMIT = 4000
+
+
+def _event(event):
+    """Retain each attempt's authored note with its own recorder and time."""
+    note = event.metadata.get('note')
+    return {
+        'id': event.pk,
+        'event_type': event.event_type,
+        'version': event.metadata.get('version'),
+        'recorded_by': person(event.actor),
+        'recorded_at': event.created_at.isoformat(),
+        'reason': event.reason,
+        'recorded_note': note[:NOTE_LIMIT] if isinstance(note, str) else None,
+        'recorded_note_truncated': isinstance(note, str) and len(note) > NOTE_LIMIT,
+        'evidence_ids': event.metadata.get('evidence_ids', []),
+        # Original values were never stored in these events.
+        'historical_value_available': False,
+    }
 
 
 def project(work_order) -> dict:
@@ -54,33 +73,29 @@ def project(work_order) -> dict:
                 'step': execution.step_snapshot,
                 'version': execution.version,
                 'status': execution.status,
-                'value': execution.value,
-                'passed': execution.passed,
-                'note': execution.note,
+                # The native N/A writer retains these old measurement fields
+                # while replacing completed_by/at with the disposition actor/time.
+                'value': None
+                if execution.status == 'not_applicable'
+                else execution.value,
+                'passed': None
+                if execution.status == 'not_applicable'
+                else execution.passed,
+                'note': '' if execution.status == 'not_applicable' else execution.note,
                 'disposition_reason': execution.disposition_reason,
                 'recorded_by': person(execution.completed_by),
                 'recorded_at': execution.completed_at.isoformat()
                 if execution.completed_at
                 else None,
                 'events': [
-                    {
-                        'id': event.pk,
-                        'event_type': event.event_type,
-                        'version': event.metadata.get('version'),
-                        'recorded_by': person(event.actor),
-                        'recorded_at': event.created_at.isoformat(),
-                        'reason': event.reason,
-                        'evidence_ids': event.metadata.get('evidence_ids', []),
-                        # Original values were never stored in these events.
-                        'historical_value_available': False,
-                    }
+                    _event(event)
                     for event in events
                     if event.metadata.get('step_execution_id') == execution.pk
                 ],
             }
             for execution in executions
         ],
-        'attempt_history': 'outcomes_only_previous_values_not_retained',
+        'attempt_history': 'events_and_notes_previous_values_not_retained',
         'lockouts': [
             {
                 'id': point.pk,

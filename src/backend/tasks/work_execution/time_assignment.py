@@ -6,6 +6,7 @@ still matches the typed assignee. Work timestamps or a held lifecycle cannot
 classify a person's time.
 """
 
+from django.contrib.auth import get_user_model
 from django.utils import timezone
 
 from .common import person
@@ -20,6 +21,20 @@ def project(work_order) -> dict:
         .select_related('actor')
         .order_by('-created_at', '-pk')
     )
+    target_ids = {
+        event.metadata.get(key)
+        for event in events
+        for key in ('assigned_to_id', 'previous_assigned_to_id')
+        if type(event.metadata.get(key)) is int and event.metadata[key] > 0
+    }
+    names = {
+        user.pk: person(user)
+        for user in get_user_model().objects.filter(pk__in=target_ids)
+    }
+
+    def name_for(target):
+        return names.get(target) if type(target) is int else None
+
     latest = events[0] if events else None
     target = latest.metadata.get('assigned_to_id') if latest else None
     anchor = (
@@ -52,6 +67,10 @@ def project(work_order) -> dict:
                 'assigned_to_id': event.metadata.get('assigned_to_id'),
                 'previous_assigned_to_id': event.metadata.get(
                     'previous_assigned_to_id'
+                ),
+                'assigned_to_name': name_for(event.metadata.get('assigned_to_id')),
+                'previous_assigned_to_name': name_for(
+                    event.metadata.get('previous_assigned_to_id')
                 ),
             }
             for event in events

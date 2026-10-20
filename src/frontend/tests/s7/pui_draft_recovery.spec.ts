@@ -441,8 +441,12 @@ test('deviation refusal allows correction but lost response locks original draft
     .getByRole('button', { name: 'Save deviation', exact: true })
     .click();
   await expect(
-    page.getByText('Save refused. Your text is retained.', { exact: false })
+    page.getByText(
+      'Save refused. No deviation was saved by this attempt. Your text is retained.',
+      { exact: true }
+    )
   ).toBeVisible();
+  await expect(page.getByText('Refused', { exact: true })).toBeVisible();
   await field.fill('Corrected changed condition');
   await page
     .getByRole('button', { name: 'Save deviation', exact: true })

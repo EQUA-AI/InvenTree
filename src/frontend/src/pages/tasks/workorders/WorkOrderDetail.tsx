@@ -68,12 +68,12 @@ import { CloseoutPanel, WorkCloseoutReadings } from './CloseoutPanel';
 import { WorkAttachmentResource } from './WorkAttachmentResource';
 import { WorkMaterialsPanel } from './WorkMaterialsPanel';
 import { DiagnoseProjection } from './execution/DiagnoseProjection';
-import { HandledByAimms } from './execution/HandledByAimms';
 import { PreparedPackage } from './execution/PreparedPackage';
 import { ScopeRevisionNotice } from './execution/ScopeRevisionReview';
 import { ServiceRestoration } from './execution/ServiceRestoration';
 import { TimeAssignment } from './execution/TimeAssignment';
 import { VerificationReturn } from './execution/VerificationReturn';
+import { WorkBrief } from './execution/WorkBrief';
 import {
   WorkContinuity,
   WorkContinuityConstraints,
@@ -216,18 +216,23 @@ function WorkOrderWorkspace({
         <Stack gap='md'>
           <CloseoutLink />
           <ScopeRevisionNotice workOrder={workOrder} />
+          <WorkBrief workOrder={workOrder} />
           {workOrder.repair_packet && (
             <WorkOrderProblemPanel packet={workOrder.repair_packet} />
           )}
           <ServiceRestoration workOrder={workOrder} />
           <WorkContinuity workOrder={workOrder} />
-          <HandledByAimms value={workOrder.handled_actions} />
           <TimeAssignment workOrder={workOrder} />
           <MonitoringContinuity workOrder={workOrder} />
           <SectionCard
             title={t`Board cards`}
             icon={<IconLayoutKanban size={18} />}
           >
+            <Text
+              size='sm'
+              c='dimmed'
+              mb='sm'
+            >{t`Operational tasks retain their own recorded status and links.`}</Text>
             <Table.ScrollContainer minWidth={640}>
               <CardsTable cards={workOrder.cards ?? []} />
             </Table.ScrollContainer>

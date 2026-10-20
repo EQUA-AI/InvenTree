@@ -102,6 +102,9 @@ test('fifty jobs paginate on the server and open the exact owning work with nati
 test('a chosen My work scope persists only as this actor and host preference', async ({
   page
 }) => {
+  // Three full shell navigations share the Docker browser on a loaded host.
+  // This budget leaves the scope/persistence assertions unchanged.
+  test.setTimeout(90_000);
   const fixture = await mockWorkList(page);
   await openWorkList(page);
   // Keyboard choice: Needs attention now sits between the two original

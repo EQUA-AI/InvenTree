@@ -527,6 +527,8 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
 
         fields = (
             *WorkOrderBoardSerializer.Meta.fields,
+            'affected_component',
+            'affected_component_ref',
             'cards',
             'dependencies',
             'events',

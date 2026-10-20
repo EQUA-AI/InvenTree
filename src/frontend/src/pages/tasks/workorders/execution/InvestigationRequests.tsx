@@ -9,6 +9,7 @@ import { useSearchParams } from 'react-router-dom';
 import { InvestigationArtifactReview } from '../../../../components/aichat/InvestigationArtifactReview';
 import { formatDate } from '../../../../defaults/formatters';
 import { ContinueInvestigation } from './ContinueInvestigation';
+import { NativeObservationCapture } from './NativeObservationCapture';
 
 export function investigationStatusLabel(
   status: InvestigationRequest['status']
@@ -51,8 +52,8 @@ export function InvestigationRequests({
     return (
       <Alert
         color='gray'
-        title={t`No saved investigation request`}
-      >{t`This server does not supply saved investigation requests. Discussion in chat does not establish a saved check, owner, status or checkpoint here.`}</Alert>
+        title={t`Saved requests not available`}
+      >{t`Saved requests are not supplied by this server. Use the existing assistant for discussion; opening chat does not save a request.`}</Alert>
     );
   if (!Array.isArray(requests.items))
     return (
@@ -175,15 +176,26 @@ export function InvestigationRequests({
               >{t`Required artifacts and conditions not recorded`}</Text>
             )}
             {r.blocked_reason &&
-              ['cannot_perform', 'pending_external', 'disputed'].includes(
-                r.status
-              ) && (
+              [
+                'cannot_perform',
+                'pending_external',
+                'disputed',
+                'resolved'
+              ].includes(r.status) && (
                 <Alert
-                  color='orange'
-                  title={investigationStatusLabel(r.status)}
+                  color={r.status === 'resolved' ? 'gray' : 'orange'}
+                  title={
+                    r.status === 'resolved'
+                      ? t`Recorded blocked reason`
+                      : investigationStatusLabel(r.status)
+                  }
                 >
                   <Text size='sm'>{r.blocked_reason}</Text>
-                  <Text size='xs'>{t`This decision remains unresolved until addressed. Other findings and unrelated work retain their own status.`}</Text>
+                  <Text size='xs'>
+                    {r.status === 'resolved'
+                      ? t`This earlier blocked reason is retained with the resolved request. Other findings and unrelated work retain their own status.`
+                      : t`This decision remains unresolved until addressed. Other findings and unrelated work retain their own status.`}
+                  </Text>
                 </Alert>
               )}
             {r.source_finding && (
@@ -216,6 +228,9 @@ export function InvestigationRequests({
                       ? ` · ${t`Corrects evidence ${a.supersedes}`}`
                       : ''}
                   </Text>
+                  {a.kind === 'observation' && (
+                    <Text size='sm'>{t`Saved observation · Work ${workOrder.id} · Request ${r.id} · Evidence ${a.id}`}</Text>
+                  )}
                   <InvestigationArtifactReview payload={a.payload} />
                   <Text size='sm'>
                     {a.recorded_by_name || t`Recorder not recorded`} ·{' '}
@@ -237,6 +252,7 @@ export function InvestigationRequests({
               variant='light'
               label={t`Discuss request ${r.id}`}
             />
+            <NativeObservationCapture workOrder={workOrder} request={r} />
           </Stack>
         </Paper>
       ))}
