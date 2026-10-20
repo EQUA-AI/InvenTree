@@ -107,7 +107,7 @@ for (const type of ['preventive', 'inspection', 'calibration']) {
           'Calibration traceability incomplete'
         );
         await expect(section).toContainText(
-          'As-found/as-left designation, reference instrument identity'
+          'As-found/as-left designation and test conditions are not supplied.'
         );
         await expect(section).toContainText(
           'Returned before/after readings and any recorded limits do not establish calibration acceptance.'

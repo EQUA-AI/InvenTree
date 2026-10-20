@@ -1033,8 +1033,37 @@ class AttachmentDetail(AttachmentMixin, RetrieveUpdateDestroyAPI):
         filename = data.pop('filename', None)
 
         # Run other validation / updates first, before attempting to rename the file
+        # Native model validation mutates serializer.instance in memory. Retain
+        # the locked original before validating any proposed ownership/link.
+        original_identity = {
+            field: getattr(attachment, field)
+            for field in ('model_type', 'model_id', 'link')
+        }
+        original_basename = attachment.basename
         serializer = self.get_serializer(attachment, data=data, partial=partial)
         serializer.is_valid(raise_exception=True)
+        from tasks.calibration_models import CalibrationTraceability
+
+        # The row lock above serializes this with calibration's certificate
+        # snapshot. A generic attachment editor must not substitute audit bytes.
+        if CalibrationTraceability.objects.filter(
+            certificate_id=attachment.pk
+        ).exists():
+            changes = serializer.validated_data
+            if (
+                'attachment' in changes
+                or any(
+                    changes.get(field, original_identity[field])
+                    != original_identity[field]
+                    for field in ('model_type', 'model_id', 'link')
+                )
+                or (filename and filename != original_basename)
+            ):
+                raise ValidationError({
+                    'attachment': _(
+                        'A recorded calibration certificate cannot be renamed, replaced or moved. Upload a separate certificate for an authorized correction.'
+                    )
+                })
         self.perform_update(serializer)
 
         # User is attempting to rename the file

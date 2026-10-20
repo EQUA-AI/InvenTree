@@ -79,6 +79,17 @@ class RuleSetModelTest(TestCase):
         self.assertEqual(len(extra), 0, 'See INVE-E5 in the docs')
         self.assertEqual(len(empty), 0, 'See INVE-E5 in the docs')
 
+    def test_governed_execution_records_have_no_generic_crud_ruleset(self):
+        """Append-only Work records use their command permissions, not generic CRUD."""
+        for table in (
+            'tasks_calibrationtraceability',
+            'tasks_investigationrequest',
+            'tasks_investigationartifact',
+        ):
+            with self.subTest(table=table):
+                self.assertIn(table, G_RULESETS_IG)
+                self.assertFalse(any(table in models for models in G_RULESETS.values()))
+
     def test_model_names(self):
         """Test that each model defined in the rulesets is valid, based on the database schema!"""
         available_models = apps.get_models()

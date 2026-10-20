@@ -430,6 +430,7 @@ def get_ruleset_ignore() -> list[str]:
         'repair_safetygatetemplate',
         'tasks_acceptedcloseoutreport',
         'tasks_captureoriginal',
+        'tasks_calibrationtraceability',
         'tasks_closeoutamendment',
         'tasks_closeoutcapture',
         'tasks_closeoutcapturerevision',

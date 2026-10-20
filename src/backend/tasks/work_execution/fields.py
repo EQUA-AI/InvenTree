@@ -61,7 +61,8 @@ class WorkExecutionFieldsMixin(serializers.Serializer):
         """P51: existing type-specific tasks and reading records."""
         from .routine import project
 
-        return project(obj)
+        request = self.context.get('request')
+        return project(obj, actor=request.user if request else None)
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_recurrence_policy(self, obj) -> dict:
