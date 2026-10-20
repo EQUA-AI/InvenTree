@@ -1220,7 +1220,7 @@ function NarrativeStep({
   }
   return (
     <Stack gap='sm' mt='md'>
-      <Text size='sm'>{t`Use Dictate for the default voice-transcript path, or record a typed equivalent and why voice cannot be used. This deployment does not store original audio.`}</Text>
+      <Text size='sm'>{t`Use Dictate for the default voice-transcript path, or record a typed equivalent and why voice cannot be used. Attach original audio in Dictate before accepting the transcript.`}</Text>
       <TextInput
         label={t`Why voice is unavailable or unusable`}
         description={t`Retained with the typed story and its recorder. Required for a new typed fallback.`}

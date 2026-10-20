@@ -1,7 +1,9 @@
 """Transcript-only governed capture (WS8/WS10 per the 2026-07-15 re-cut).
 
-No audio is ever stored: revisions arrive from the realtime transcription
+Transcript revisions arrive from the realtime transcription
 path (or a human correction) and every correction appends an immutable row.
+Separately consented original media belongs to the scoped Work store, never
+to transcript metadata or a general live-voice session.
 Acceptance binds one exact revision by hash. Destination handoffs fail
 closed until their canonical substrate exists — the Repair intake service
 (WS11) for ``fault_intake`` and the live Feature #15 ``CloseoutCapture``

@@ -816,6 +816,7 @@ from tasks.procedure_models import (  # noqa: F401
     WorkOrderProcedureApplication,
     WorkOrderStepExecution,
 )
+from tasks.report_models import AcceptedCloseoutReport, CaptureOriginal  # noqa: F401
 from tasks.time_models import WorkDowntime, WorkTimeInterval  # noqa: F401
 from tasks.workorder_models import (  # noqa: F401
     WorkHandover,

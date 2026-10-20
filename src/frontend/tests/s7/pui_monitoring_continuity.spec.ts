@@ -223,7 +223,10 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(page.getByTestId('closeout-account')).toContainText(
       'Corrected recorded result'
     );
-    await page.getByText('Original accepted snapshot', { exact: true }).click();
+    await page.getByText('Original completed account', { exact: true }).click();
+    await expect(page.getByTestId('prepared-closeout')).not.toContainText(
+      'Accepted by'
+    );
     await expect(page.getByTestId('closeout-account')).toContainText(
       values.result
     );

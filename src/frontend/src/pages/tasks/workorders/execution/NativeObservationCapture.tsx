@@ -12,6 +12,7 @@ import {
   Button,
   Collapse,
   Group,
+  NumberInput,
   Select,
   Stack,
   Text,
@@ -23,6 +24,7 @@ import { useId, useRef, useState } from 'react';
 import { useApi } from '../../../../contexts/ApiContext';
 import { useLocalState } from '../../../../states/LocalState';
 import { useUserState } from '../../../../states/UserState';
+import { OriginalMedia } from '../OriginalMedia';
 import { recordedTime } from './ExecutionFacts';
 import {
   type ObservationIntent,
@@ -72,6 +74,10 @@ function ObservationDraft({
   const id = useId();
   const [text, setText] = useState('');
   const [observedAt, setObservedAt] = useState('');
+  const [recordingStart, setRecordingStart] = useState('');
+  const [recordingDuration, setRecordingDuration] = useState<string | number>(
+    ''
+  );
   const [conditions, setConditions] = useState('');
   const [attachment, setAttachment] = useState<string | null>(null);
   const [captureContext] = useState({
@@ -147,6 +153,12 @@ function ObservationDraft({
         kind: 'observation',
         payload: {
           text,
+          ...(recordingStart
+            ? { recording_started_at: new Date(recordingStart).toISOString() }
+            : {}),
+          ...(recordingDuration !== ''
+            ? { recording_duration_ms: Number(recordingDuration) }
+            : {}),
           ...(observedAt ? { observed_at: observedAt } : {}),
           ...(conditions ? { conditions } : {})
         },
@@ -314,6 +326,9 @@ function ObservationDraft({
                     · {recordedTime(receipt.created_at)}
                   </Text>
                   <Text size='sm'>{String(receipt.payload.text)}</Text>
+                  {receipt.originals?.length ? (
+                    <OriginalMedia originals={receipt.originals} />
+                  ) : null}
                   <Text size='sm'>{t`The request remains a separate decision. No diagnosis or completion was promoted automatically.`}</Text>
                   <Button
                     variant='default'
@@ -358,6 +373,24 @@ function ObservationDraft({
                   value={conditions}
                   readOnly={busy || !!intent}
                   onChange={(event) => setConditions(event.currentTarget.value)}
+                />
+                <Text size='sm'>{t`Saving with an uploaded Work file retains an original copy with its content hash and any supplied recording timing, even if the Work attachment later changes.`}</Text>
+                <TextInput
+                  type='datetime-local'
+                  label={t`Recording start time (local)`}
+                  value={recordingStart}
+                  onChange={(event) =>
+                    setRecordingStart(event.currentTarget.value)
+                  }
+                  disabled={busy || !!intent}
+                />
+                <NumberInput
+                  label={t`Recording duration (ms)`}
+                  min={0}
+                  allowDecimal={false}
+                  value={recordingDuration}
+                  onChange={setRecordingDuration}
+                  disabled={busy || !!intent}
                 />
                 <Select
                   label={t`Existing Work attachment (optional)`}

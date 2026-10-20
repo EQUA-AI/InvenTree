@@ -3,17 +3,23 @@ import {
   Alert,
   Badge,
   Button,
+  FileInput,
   Group,
   Modal,
+  NumberInput,
   Stack,
   Text,
+  TextInput,
   Textarea
 } from '@mantine/core';
 import { IconAlertTriangle, IconMicrophone } from '@tabler/icons-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { VoiceConsentDisclosure } from '../../../components/ai/voice/VoiceConsentDialog';
+import type { CaptureOriginal } from '@lib/types/Closeout';
+import { useApi } from '../../../contexts/ApiContext';
 import { useVoiceCapture } from '../../../hooks/useVoiceCapture';
+import { OriginalMedia } from './OriginalMedia';
+import { useOriginalRecording } from './useOriginalRecording';
 
 /**
  * B4 (S32b): dictate a closeout narrative through the governed voice-capture
@@ -21,7 +27,7 @@ import { useVoiceCapture } from '../../../hooks/useVoiceCapture';
  * then commit, which hands the exact accepted revision to the closeout
  * wizard server-side (accept_voice_handoff). The transcript text itself
  * comes from the technician's device dictation or keyboard; this flow's job
- * is provenance, not audio: the narrative lands with source_type=voice and
+ * is provenance and original media: the narrative lands with source_type=voice and
  * a transcript_reference bound to the accepted revision's content hash.
  */
 export default function DictateCloseoutModal({
@@ -38,15 +44,80 @@ export default function DictateCloseoutModal({
   onCommitted: () => void;
 }>) {
   const voice = useVoiceCapture();
+  const api = useApi();
+  const [original, setOriginal] = useState<File | null>(null);
+  const [started, setStarted] = useState('');
+  const [duration, setDuration] = useState<string | number>('');
+  const [savedOriginal, setSavedOriginal] = useState<CaptureOriginal | null>(
+    null
+  );
+  const [mediaError, setMediaError] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [recordedStart, setRecordedStart] = useState('');
+  const localGeneration = useRef(0);
+  const recording = useOriginalRecording((file, began, elapsed) => {
+    setOriginal(file);
+    setStarted('');
+    setRecordedStart(began);
+    setDuration(elapsed);
+    setSavedOriginal(null);
+  });
+  const discardLocal = () => {
+    localGeneration.current++;
+    recording.reset();
+    setOriginal(null);
+    setStarted('');
+    setRecordedStart('');
+    setDuration('');
+    setMediaError('');
+    setSavedOriginal(null);
+    setUploading(false);
+  };
+  const upload = async () => {
+    if (!original || !voice.capture) return;
+    const generation = localGeneration.current;
+    setUploading(true);
+    setMediaError('');
+    const body = new FormData();
+    body.append('file', original);
+    body.append('voice_capture', voice.capture.id);
+    body.append('expected_version', String(workOrderVersion));
+    if (started || recordedStart)
+      body.append(
+        'started_at',
+        started ? new Date(started).toISOString() : recordedStart
+      );
+    if (duration !== '') body.append('duration_ms', String(duration));
+    try {
+      const { data } = await api.post(
+        `/api/tasks/work-orders/${workOrderId}/capture-media/`,
+        body,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+      if (!Number.isInteger(data.id) || !data.content_hash || !data.url)
+        throw new Error('Invalid media receipt');
+      if (localGeneration.current === generation) setSavedOriginal(data);
+    } catch {
+      if (localGeneration.current === generation)
+        setMediaError(
+          t`Original media was not confirmed saved. Keep the file and retry before accepting.`
+        );
+    } finally {
+      if (localGeneration.current === generation) setUploading(false);
+    }
+  };
   const [transcript, setTranscript] = useState('');
 
   useEffect(() => {
+    discardLocal();
+    // Dismissing dictation discards local media, but keeps the transcript draft
+    // for the existing failed-review recovery flow.
     if (!opened) {
       voice.reset();
     }
     // voice.reset is stable per render of the hook; intentionally omitted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opened]);
+  }, [opened, workOrderId]);
 
   const state = voice.capture?.state ?? null;
   const latestRevision = voice.capture?.revisions?.length
@@ -54,6 +125,7 @@ export default function DictateCloseoutModal({
     : null;
 
   const begin = useCallback(() => {
+    discardLocal();
     void voice.create('closeout', workOrderId, workOrderVersion);
   }, [voice, workOrderId, workOrderVersion]);
 
@@ -62,10 +134,10 @@ export default function DictateCloseoutModal({
   }, [voice, transcript]);
 
   const acceptAndHandOff = useCallback(async () => {
-    if (!latestRevision) return;
+    if (!latestRevision || (original && !savedOriginal)) return;
     await voice.acceptRevision(latestRevision);
     await voice.commit();
-  }, [voice, latestRevision]);
+  }, [voice, latestRevision, original, savedOriginal]);
 
   useEffect(() => {
     if (state === 'committed') {
@@ -79,7 +151,8 @@ export default function DictateCloseoutModal({
     <Modal
       opened={opened}
       onClose={async () => {
-        if (voice.busy) return;
+        if (voice.busy || uploading) return;
+        recording.reset();
         if (state && state !== 'committed' && state !== 'canceled') {
           await voice.cancel();
         }
@@ -103,7 +176,9 @@ export default function DictateCloseoutModal({
 
         {!state && (
           <>
-            <VoiceConsentDisclosure />
+            <Text size='sm'>{t`Recording starts only when you choose Record microphone. The recording stays on this device until you choose Save original media. Recording stops when you stop it, close this screen or hide this tab.`}</Text>
+            <Text size='sm'>{t`Saving keeps the original media on the server with its content hash and any supplied recording time and duration. Saved originals are retained, including if you later cancel transcript review.`}</Text>
+            <Text size='sm'>{t`Accept and hand off shares the reviewed transcript and its saved original with people allowed to read this Work. This screen does not automatically transcribe audio or enable memory.`}</Text>
             <Text size='sm'>
               {t`Dictation goes on the record: the exact transcript you accept becomes the closeout narrative, with voice provenance attached. You will review it before anything is extracted.`}
             </Text>
@@ -126,6 +201,73 @@ export default function DictateCloseoutModal({
               <Badge color='grape'>{t`Voice capture`}</Badge>
               <Badge variant='light'>{state}</Badge>
             </Group>
+            <Text size='sm'>{t`Keep the original recording on the server before accepting. Keyboard dictation supplies text only; attach the recording when available. Upload does not transcribe audio.`}</Text>
+            {!savedOriginal && (
+              <>
+                <Group>
+                  <Button
+                    variant='light'
+                    disabled={uploading || recording.starting}
+                    onClick={() =>
+                      recording.recording
+                        ? recording.stop()
+                        : void recording.start()
+                    }
+                  >
+                    {recording.recording
+                      ? t`Stop recording`
+                      : t`Record microphone`}
+                  </Button>
+                </Group>
+                {recording.failed && (
+                  <Alert color='orange'>{t`Microphone recording is unavailable. Attach an existing recording, or use the typed fallback with a reason.`}</Alert>
+                )}
+                <FileInput
+                  label={t`Original recording or capture media`}
+                  value={original}
+                  clearable
+                  clearButtonProps={{ 'aria-label': t`Clear local media` }}
+                  onChange={(file) => {
+                    // A chosen file never inherits an earlier recording's timing.
+                    discardLocal();
+                    setOriginal(file);
+                  }}
+                  disabled={uploading}
+                />
+                {(original || recording.recording || recording.starting) && (
+                  <Button
+                    variant='subtle'
+                    disabled={uploading}
+                    onClick={discardLocal}
+                  >{t`Discard local recording`}</Button>
+                )}
+                <TextInput
+                  type='datetime-local'
+                  label={t`Recording start time (local)`}
+                  value={started}
+                  onChange={(event) => setStarted(event.currentTarget.value)}
+                  disabled={uploading}
+                />
+                <NumberInput
+                  label={t`Recording duration (ms)`}
+                  min={0}
+                  allowDecimal={false}
+                  value={duration}
+                  onChange={setDuration}
+                  disabled={uploading}
+                />
+                <Button
+                  variant='light'
+                  onClick={() => void upload()}
+                  loading={uploading}
+                  disabled={
+                    !original || recording.recording || recording.starting
+                  }
+                >{t`Save original media`}</Button>
+              </>
+            )}
+            {mediaError && <Alert color='red'>{mediaError}</Alert>}
+            {savedOriginal && <OriginalMedia originals={[savedOriginal]} />}
             <Textarea
               label={t`Transcript`}
               description={t`Dictate with your device microphone (keyboard dictation) or type; review every word — this exact text is what gets accepted.`}
@@ -148,6 +290,12 @@ export default function DictateCloseoutModal({
               {state === 'review' && latestRevision && (
                 <Button
                   color='green'
+                  disabled={
+                    uploading ||
+                    recording.recording ||
+                    recording.starting ||
+                    (!!original && !savedOriginal)
+                  }
                   loading={voice.busy}
                   data-testid='dictate-accept'
                   onClick={() => void acceptAndHandOff()}

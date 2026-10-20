@@ -1,3 +1,4 @@
+import type { AcceptedReportSummary } from './Closeout';
 /**
  * TypeScript types for the complete work-order overview.
  *
@@ -142,6 +143,7 @@ export interface MaintenanceRecordOverview {
 }
 
 export interface StructuredCloseoutOverview {
+  reports?: AcceptedReportSummary[];
   original?: Record<string, unknown>;
   content_hash?: string;
   completed_by?: number | null;
@@ -156,6 +158,8 @@ export interface StructuredCloseoutOverview {
   follow_up: string;
   completed_at: string;
   verified_at: string | null;
+  verified_by?: number | null;
+  verified_by_name?: string | null;
   /**
    * Values reflect the latest applied closeout amendment, not the immutable
    * base row; `amended` makes the governed correction visible.

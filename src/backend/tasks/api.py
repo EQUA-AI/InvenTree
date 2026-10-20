@@ -99,6 +99,7 @@ from .procedure_execution_api import (
     StepExecutionReopen,
     WorkOrderDeviationList,
 )
+from .report_api import WorkAcceptedReport, WorkCaptureMedia, WorkCaptureMediaUpload
 from .scope import (
     ScopeError,
     require_work_order_scope,
@@ -1852,6 +1853,12 @@ tasks_api_urls = [
                 '<int:pk>/job-kit/substitutions/<int:substitution>/decide/',
                 JobKitSubstitutionDecide.as_view(),
                 name='work-order-job-kit-substitution-decide',
+            ),
+            path('<int:pk>/capture-media/', WorkCaptureMediaUpload.as_view()),
+            path('<int:pk>/capture-media/<int:media_id>/', WorkCaptureMedia.as_view()),
+            path(
+                '<int:pk>/closeout/reports/<int:report_id>/',
+                WorkAcceptedReport.as_view(),
             ),
             path(
                 '<int:pk>/closeout/captures/',

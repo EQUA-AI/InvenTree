@@ -363,11 +363,15 @@ test('parts disposition and reason survive step switches and a stale row', async
 
 test('failed transcript review survives dismissing and reopening dictation', async ({
   page
-}) => {
+}, info) => {
   await closeoutWork(page, { captures: [] });
+  const revisions: string[] = [];
   await page.route('**/api/voice/captures/**', (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path.endsWith('/revise/')) return route.abort('failed');
+    if (path.endsWith('/revise/')) {
+      revisions.push(route.request().postDataJSON().full_text);
+      return route.abort('failed');
+    }
     return route.fulfill({
       json: {
         id: 'synthetic-voice',
@@ -398,10 +402,35 @@ test('failed transcript review survives dismissing and reopening dictation', asy
   await expect(
     page.getByText('Your transcript draft is retained.', { exact: false })
   ).toBeVisible();
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('transcript-draft-retained-light.png')
+  });
   await page.getByTestId('dictate-consent').click();
   await expect(page.getByTestId('dictate-transcript')).toHaveValue(
     'Retained transcript after review failure'
   );
+  const modal = page.getByTestId('dictate-closeout-modal');
+  await expect(
+    modal.getByRole('button', { name: 'Save original media', exact: true })
+  ).toBeDisabled();
+  await expect(
+    modal.getByLabel('Recording start time (local)', { exact: true })
+  ).toHaveValue('');
+  await expect(
+    modal.getByLabel('Recording duration (ms)', { exact: true })
+  ).toHaveValue('');
+  await page.getByTestId('dictate-transcript').scrollIntoViewIfNeeded();
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('transcript-draft-resumed-light.png')
+  });
+  await page.getByTestId('dictate-submit-revision').click();
+  await expect.poll(() => revisions.length).toBe(2);
+  expect(revisions).toEqual([
+    'Retained transcript after review failure',
+    'Retained transcript after review failure'
+  ]);
 });
 
 test('deviation refusal allows correction but lost response locks original draft', async ({
