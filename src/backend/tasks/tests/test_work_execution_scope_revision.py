@@ -150,6 +150,19 @@ class ScopeRevisionProjectionTest(InvenTreeAPITestCase):
         self.assertEqual(revision['after']['source_finding'], finding.pk)
         self.assertIsNone(revision['scope_link'])
         self.assertIsNone(revision['revision_reason'])
+        row.refresh_from_db()
+        apply(
+            'artifact',
+            {'kind': 'observation', 'payload': {'text': 'Later evidence'}},
+            'later-evidence',
+            row,
+        )
+        self.assertEqual(
+            self.package()['revision_review']['request_revisions'][0][
+                'retained_evidence_ids'
+            ],
+            [artifact.pk],
+        )
         self.assertEqual(
             InvestigationArtifact.objects.get(pk=artifact.pk).payload,
             {'text': 'Retained observation'},

@@ -2571,11 +2571,20 @@ function AIChatSessionDrawer({
                 </Group>
               )}
               {workFocusHint && workFocusLaunchError && (
-                <Alert color='red' title={t`Work order not confirmed`}>
+                <Alert
+                  color='red'
+                  title={
+                    workFocusHint.requestId !== undefined
+                      ? t`Investigation request not confirmed`
+                      : t`Work order not confirmed`
+                  }
+                >
                   <Text size='sm'>
-                    {workFocusLaunchError === 'unsupported'
-                      ? t`No message was sent: this assistant cannot confirm a work order yet. Your draft and attachments are kept. Remove the work order to ask without it.`
-                      : t`No message was sent: the work order could not be confirmed as shown. Your draft and attachments are kept. Retry sending, reload the work order if it has changed, or remove the work order to ask without it.`}
+                    {workFocusHint.requestId !== undefined
+                      ? t`No message was sent: this investigation request could not be confirmed at the shown revision. Your draft and attachments are kept. Retry sending, reload Diagnose if the request has changed, or remove the selection to ask without it.`
+                      : workFocusLaunchError === 'unsupported'
+                        ? t`No message was sent: this assistant cannot confirm a work order yet. Your draft and attachments are kept. Remove the work order to ask without it.`
+                        : t`No message was sent: the work order could not be confirmed as shown. Your draft and attachments are kept. Retry sending, reload the work order if it has changed, or remove the work order to ask without it.`}
                   </Text>
                 </Alert>
               )}

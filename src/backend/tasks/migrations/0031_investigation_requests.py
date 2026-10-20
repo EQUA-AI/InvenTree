@@ -30,7 +30,7 @@ class Migration(migrations.Migration):
                     'work_order',
                     models.ForeignKey(
                         'tasks.workorder',
-                        on_delete=models.CASCADE,
+                        on_delete=models.PROTECT,
                         related_name='investigation_requests',
                     ),
                 ),
@@ -165,13 +165,14 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 ('payload', models.JSONField()),
+                ('attachment_snapshot', models.JSONField(null=True, blank=True)),
                 (
                     'attachment',
                     models.ForeignKey(
                         'common.Attachment',
                         null=True,
                         blank=True,
-                        on_delete=models.PROTECT,
+                        on_delete=models.SET_NULL,
                         related_name='+',
                     ),
                 ),
@@ -181,7 +182,7 @@ class Migration(migrations.Migration):
                         'tasks.investigationartifact',
                         null=True,
                         blank=True,
-                        on_delete=models.PROTECT,
+                        on_delete=models.RESTRICT,
                         related_name='corrections',
                     ),
                 ),

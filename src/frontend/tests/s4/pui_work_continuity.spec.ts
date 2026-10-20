@@ -223,7 +223,8 @@ test('uncertain hold survives reload and a reconciliation refusal retains the or
   await expect(
     page.getByRole('button', { name: 'Hold work record', exact: true })
   ).toHaveCount(0);
-  expect(bodies).toHaveLength(2);
+  // The uncertain wording is already shown before the check; wait for it.
+  await expect.poll(() => bodies.length).toBe(2);
   expect(bodies[1]).toEqual(bodies[0]);
   await capturePanel(page, info.outputPath('continuity-uncertain-dark.png'));
   await page

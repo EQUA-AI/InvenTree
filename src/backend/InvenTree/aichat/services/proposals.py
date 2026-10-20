@@ -963,9 +963,10 @@ def get_owned_proposal(*, owner, scope_hash: str, proposal_id) -> ChatActionProp
             id=proposal_id, owner=owner, scope_hash=scope_hash
         )
         if proposal.action_type == 'investigation.artifact':
-            from aichat.services.investigation_proposals import authorize
+            from aichat.services.investigation_proposals import visible_proposals
 
-            authorize(proposal, owner, current=False)
+            if not visible_proposals([proposal], owner):
+                raise ProposalNotFound('no such proposal')
         return proposal
     except Exception as exc:  # DoesNotExist / ValidationError / ValueError
         raise ProposalNotFound('no such proposal') from exc
@@ -978,17 +979,17 @@ def list_owned_proposals(*, owner, scope_hash: str, limit: int = 20):
             : max(1, limit)
         ]
     )
-    visible = []
-    for row in rows:
-        if row.action_type == 'investigation.artifact':
-            from aichat.services.investigation_proposals import authorize
+    from aichat.services.investigation_proposals import visible_proposals
 
-            try:
-                authorize(row, owner, current=False)
-            except ProposalError:
-                continue
-        visible.append(row)
-    return visible
+    allowed = {
+        r.pk
+        for r in visible_proposals(
+            [r for r in rows if r.action_type == 'investigation.artifact'], owner
+        )
+    }
+    return [
+        r for r in rows if r.action_type != 'investigation.artifact' or r.pk in allowed
+    ]
 
 
 def reject_proposal(*, owner, scope_hash: str, proposal_id) -> ChatActionProposal:

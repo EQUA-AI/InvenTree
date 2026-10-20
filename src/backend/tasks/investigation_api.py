@@ -10,7 +10,11 @@ import InvenTree.permissions
 from tasks.investigation_models import InvestigationRequest
 from tasks.investigation_serializers import InvestigationRequestSerializer
 from tasks.scope import scoped_work_orders
-from tasks.services.investigation_requests import command, project_requests
+from tasks.services.investigation_requests import (
+    command,
+    project_requests,
+    request_queryset,
+)
 from tasks.services.work_orders import WorkOrderCommandError
 
 
@@ -28,9 +32,7 @@ class WorkInvestigationRequests(APIView):
         """Unknown or foreign Work/request ids return the same 404."""
         work = get_object_or_404(scoped_work_orders(request.user), pk=pk)
         if request_id is not None:
-            row = get_object_or_404(
-                InvestigationRequest, pk=request_id, work_order=work
-            )
+            row = get_object_or_404(request_queryset(), pk=request_id, work_order=work)
             return Response(InvestigationRequestSerializer(row).data)
         return Response(project_requests(work))
 

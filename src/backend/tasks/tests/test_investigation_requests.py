@@ -109,6 +109,10 @@ class InvestigationRequestTests(InvestigationProjectionTest):
             project_requests(self.work_order)['items'][0]['updated_by_name'],
             'Taylor Reed',
         )
+        self.assertEqual(
+            project_requests(self.work_order)['items'][0]['created_by_name'],
+            'Taylor Reed',
+        )
         self.user.first_name = ''
         self.user.last_name = ''
         self.user.save(update_fields=['first_name', 'last_name'])
@@ -118,13 +122,13 @@ class InvestigationRequestTests(InvestigationProjectionTest):
         )
 
     def test_revision_preserves_before_after_and_rejects_stale(self):
-        """Request revision is independent of Work lifecycle, with audit snapshots."""
+        """Request revision has a compact audit receipt independent of Work lifecycle."""
         self.apply()
         row = InvestigationRequest.objects.get()
         result = self.apply(
             'revise', {'next_check': 'Second instrument'}, row, key='revise'
         )
-        self.assertEqual(result['before']['next_check'], 'Record readings')
+        self.assertEqual((result['version_before'], result['version_after']), (1, 2))
         self.assertEqual(result['request']['version'], 2)
         with self.assertRaises(StaleVersion):
             self.apply('revise', {'next_check': 'Stale'}, row, key='stale')
@@ -175,10 +179,90 @@ class InvestigationRequestTests(InvestigationProjectionTest):
         """Same client/machine does not prove ownership of evidence or finding."""
         self.apply()
         row = InvestigationRequest.objects.get()
+        from django.contrib.auth.models import Group
+
+        from assets.models import Client, ClientScopeGrant
+        from repair.models import RepairInvestigationFinding, RepairPacket
+        from users.models import RuleSet
+
+        other_work = WorkOrder.objects.create(
+            title='Real other Work', machine=self.machine
+        )
+        other_packet = RepairPacket.objects.create(
+            machine=self.machine, work_order=other_work, fault_summary='Other'
+        )
+        other_packet.diagnosis = {
+            'confirm_tests': ['Foreign named check'],
+            'generated_at': '2026-10-19T09:00:00Z',
+        }
+        other_packet.save(update_fields=['diagnosis'])
+        foreign_finding = RepairInvestigationFinding.objects.create(
+            packet=other_packet,
+            finding_key='foreign',
+            category='measurement',
+            observation='Other Work finding',
+        )
+        sibling = InvestigationRequest.objects.create(
+            work_order=self.work_order,
+            purpose='Sibling',
+            next_check='Sibling',
+            created_by=self.user,
+            updated_by=self.user,
+        )
+        foreign_artifact = InvestigationArtifact.objects.create(
+            request=sibling,
+            kind='observation',
+            payload={'text': 'Sibling artifact'},
+            recorded_by=self.user,
+        )
         with self.assertRaises(ValidationError):
             self.apply(
-                'revise', {'source_finding_id': 999999}, row, key='foreign-finding'
+                'revise',
+                {'source_finding_id': foreign_finding.pk},
+                row,
+                key='foreign-finding',
             )
+        with self.assertRaises(ValidationError):
+            self.apply(
+                'revise',
+                {
+                    'source_proposal': {
+                        'packet_id': other_packet.pk,
+                        'check': 'Foreign named check',
+                        'generated_at': '2026-10-19T09:00:00Z',
+                    }
+                },
+                row,
+                key='foreign-proposal',
+            )
+        # Distinct people keep the native role cache from masking the scope check.
+        with self.assertRaises(ValidationError):
+            self.apply('revise', {'owner_id': self.tech.pk}, row, key='viewless-owner')
+        from django.contrib.auth import get_user_model
+
+        from users.permissions import check_user_role
+
+        scoped_owner = get_user_model().objects.create_user(
+            username='foreign-scope-owner'
+        )
+        group = Group.objects.create(name='Foreign owner readers')
+        scoped_owner.groups.add(group)
+        RuleSet.objects.update_or_create(
+            group=group, name='work_order', defaults={'can_view': True}
+        )
+        client = Client.objects.create(name='Foreign owner', code='foreign-owner')
+        ClientScopeGrant.objects.create(user=scoped_owner, client=client)
+        self.assertTrue(check_user_role(scoped_owner, 'work_order', 'view'))
+        with override_settings(
+            AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.granted_client_scope_resolver'
+        ):
+            with self.assertRaises(ValidationError):
+                self.apply(
+                    'revise',
+                    {'owner_id': scoped_owner.pk},
+                    row,
+                    key='out-of-scope-owner',
+                )
         with self.assertRaises(ValidationError):
             self.apply(
                 'revise',
@@ -198,7 +282,7 @@ class InvestigationRequestTests(InvestigationProjectionTest):
                 {
                     'kind': 'observation',
                     'payload': {'text': 'Correction'},
-                    'supersedes_id': 99999,
+                    'supersedes_id': foreign_artifact.pk,
                 },
                 row,
                 key='wrong-original',
@@ -421,7 +505,9 @@ class InvestigationRequestTests(InvestigationProjectionTest):
             row.refresh_from_db()
         other = Attachment.objects.create(
             model_type='workorder',
-            model_id=self.work_order.pk + 1000,
+            model_id=WorkOrder.objects.create(
+                title='Real other Work', machine=self.machine
+            ).pk,
             is_image=True,
             link='https://example.invalid/foreign',
         )
@@ -466,3 +552,301 @@ class InvestigationRequestTests(InvestigationProjectionTest):
         response = self.post(url, data, expected_code=200)
         self.assertEqual(self.post(url, data, expected_code=200).data, response.data)
         self.assertEqual(InvestigationRequest.objects.count(), 1)
+
+    def test_partial_revision_requires_complete_nested_requirements(self):
+        """Partial applies to the request, never to an individual requirement."""
+        self.apply()
+        row = InvestigationRequest.objects.get()
+        for item in (
+            {},
+            {'unit': 'g'},
+            {'kind': 'reading_set'},
+            {'description': 'Missing kind'},
+        ):
+            with self.subTest(item=item), self.assertRaises(ValidationError):
+                self.apply('revise', {'required_artifacts': [item]}, row, key=str(item))
+        row.refresh_from_db()
+        self.assertEqual(row.version, 1)
+        InvestigationRequest.objects.filter(pk=row.pk).update(required_artifacts=[{}])
+        row.refresh_from_db()
+        with self.assertRaises(ValidationError):
+            self.apply(
+                'revise',
+                {
+                    'status': 'resolved',
+                    'resolution': 'Review',
+                    'owner_id': self.user.pk,
+                },
+                row,
+                key='malformed-resolution',
+            )
+
+    def test_each_required_reading_claims_a_distinct_current_artifact(self):
+        """One reading set cannot satisfy both listed measurement requirements."""
+        self.apply()
+        row = InvestigationRequest.objects.get()
+        requirements = [
+            *row.required_artifacts,
+            {'kind': 'reading_set', 'description': 'NDE temperature', 'unit': 'C'},
+        ]
+        self.apply(
+            'revise', {'required_artifacts': requirements}, row, key='two-required'
+        )
+        row.refresh_from_db()
+        fields = {
+            'kind': 'reading_set',
+            'payload': {
+                'readings': [{'name': 'DE envelope', 'value': 1, 'unit': 'g'}],
+                'conditions': 'Accessible',
+                'observed_at': '2026-10-19T09:00:00Z',
+            },
+        }
+        self.apply('artifact', fields, row, key='first-required')
+        row.refresh_from_db()
+        resolution = {
+            'status': 'resolved',
+            'resolution': 'Owner reviewed',
+            'owner_id': self.user.pk,
+        }
+        with self.assertRaises(ValidationError):
+            self.apply('revise', resolution, row, key='missing-second')
+        fields['payload']['readings'] = [
+            {'name': 'NDE temperature', 'value': 24, 'unit': 'C'}
+        ]
+        self.apply('artifact', fields, row, key='second-required')
+        row.refresh_from_db()
+        self.apply('revise', resolution, row, key='both-present')
+
+    def test_event_metadata_stays_compact_and_detail_queries_stay_constant(self):
+        """Growing evidence does not copy prior payloads into every audit event."""
+        from django.test.utils import CaptureQueriesContext
+
+        from tasks.services.investigation_requests import project_requests
+
+        self.apply()
+        row = InvestigationRequest.objects.get()
+        for i in range(8):
+            self.apply(
+                'artifact',
+                {'kind': 'observation', 'payload': {'text': 'x' * 1000}},
+                row,
+                key=f'compact-{i}',
+            )
+            row.refresh_from_db()
+        metadata = (
+            WorkOrderEvent.objects.order_by('-pk').first().metadata['result_metadata']
+        )
+        self.assertNotIn('request', metadata)
+        self.assertNotIn('before', metadata)
+        self.assertEqual(metadata['version_after'], 9)
+        with CaptureQueriesContext(connection) as queries:
+            project_requests(self.work_order)
+        self.assertLessEqual(len(queries), 3)
+        self.apply(
+            'revise', {'next_check': 'Revised check'}, row, key='compact-revision'
+        )
+        revision = (
+            WorkOrderEvent.objects
+            .order_by('-pk')
+            .first()
+            .metadata['result_metadata']['request_revision']
+        )
+        self.assertNotIn('artifacts', revision['before'])
+        self.assertNotIn('artifacts', revision['after'])
+        self.assertEqual(
+            revision['artifact_through_id'], row.artifacts.order_by('-pk').first().pk
+        )
+
+    def test_native_attachment_delete_retains_evidence_snapshot(self):
+        """Native file deletion succeeds while the attributed evidence stays saved."""
+        from common.models import Attachment
+
+        self.assignRole('work_order.delete')
+        self.apply()
+        row = InvestigationRequest.objects.get()
+        saved = Attachment.objects.create(
+            model_type='workorder',
+            model_id=self.work_order.pk,
+            link='https://example.invalid/retained-report',
+            comment='Saved description',
+        )
+        attachment_id = saved.pk
+        self.apply(
+            'artifact',
+            {
+                'kind': 'report',
+                'attachment_id': saved.pk,
+                'payload': {
+                    'description': 'Retained',
+                    'source': 'Technician',
+                    'status': 'final',
+                },
+            },
+            row,
+            key='retained-file',
+        )
+        self.delete(
+            reverse('api-attachment-detail', kwargs={'pk': saved.pk}), expected_code=204
+        )
+        artifact = InvestigationArtifact.objects.get()
+        self.assertIsNone(artifact.attachment_id)
+        self.assertEqual(artifact.attachment_snapshot['id'], attachment_id)
+        self.assertEqual(
+            artifact.attachment_snapshot['link'],
+            'https://example.invalid/retained-report',
+        )
+        self.assertEqual(artifact.payload['description'], 'Retained')
+
+    def test_work_deletion_refuses_before_any_files_are_removed(self):
+        """Fileless, attached and corrected evidence all retain the same protection."""
+        from unittest import mock
+
+        from common.models import Attachment
+        from tasks.services.scheduling import ProtectedWorkOrder, delete_work_order
+
+        self.apply()
+        row = InvestigationRequest.objects.get()
+        first = InvestigationArtifact.objects.create(
+            request=row,
+            kind='observation',
+            payload={'text': 'Original'},
+            recorded_by=self.user,
+        )
+        InvestigationArtifact.objects.create(
+            request=row,
+            kind='observation',
+            payload={'text': 'Corrected'},
+            recorded_by=self.user,
+            supersedes=first,
+        )
+        Attachment.objects.create(
+            model_type='workorder',
+            model_id=self.work_order.pk,
+            link='https://example.invalid/unrelated',
+        )
+        with mock.patch.object(
+            Attachment, 'delete', side_effect=AssertionError('file deletion began')
+        ):
+            with self.assertRaisesMessage(ProtectedWorkOrder, 'investigation'):
+                delete_work_order(
+                    work_order_id=self.work_order.pk,
+                    actor=self.user,
+                    expected_version=1,
+                    idempotency_key='retain-investigation',
+                )
+        self.assertEqual(row.artifacts.count(), 2)
+
+    def test_reopen_clears_current_blocker_but_retains_original_outcome(self):
+        """An explicit reopen removes the active warning without erasing its evidence."""
+        self.apply()
+        row = InvestigationRequest.objects.get()
+        self.apply(
+            'artifact',
+            {
+                'kind': 'check_result',
+                'payload': {
+                    'text': 'Instrument unavailable',
+                    'status': 'cannot_perform',
+                },
+            },
+            row,
+            key='unavailable',
+        )
+        row.refresh_from_db()
+        self.apply('revise', {'status': 'open'}, row, key='reopen')
+        row.refresh_from_db()
+        self.assertEqual((row.status, row.blocked_reason), ('open', ''))
+        self.assertEqual(row.artifacts.get().payload['text'], 'Instrument unavailable')
+
+    def test_detail_get_query_count_does_not_grow_with_artifacts(self):
+        """The actual detail endpoint uses the same prefetched projection as the queue."""
+        from django.test.utils import CaptureQueriesContext
+
+        self.apply()
+        row = InvestigationRequest.objects.get()
+        url = reverse(
+            'work-investigation-request',
+            kwargs={'pk': self.work_order.pk, 'request_id': row.pk},
+        )
+        InvestigationArtifact.objects.create(
+            request=row,
+            kind='observation',
+            payload={'text': 'Baseline'},
+            recorded_by=self.user,
+        )
+        # Warm authorization caches and compare nonempty queues on both reads.
+        self.get(url, expected_code=200)
+        with CaptureQueriesContext(connection) as small:
+            self.get(url, expected_code=200)
+        for i in range(8):
+            InvestigationArtifact.objects.create(
+                request=row,
+                kind='observation',
+                payload={'text': str(i)},
+                recorded_by=self.user,
+            )
+        with CaptureQueriesContext(connection) as large:
+            self.get(url, expected_code=200)
+        self.assertLessEqual(len(large), len(small))
+
+    def test_native_work_delete_returns_409_and_direct_delete_preflights(self):
+        """Even an empty saved request protects Work before attachment deletion."""
+        from unittest import mock
+
+        from django.db.models.deletion import ProtectedError
+
+        from common.models import Attachment
+
+        self.assignRole('work_order.delete')
+        self.apply()
+        Attachment.objects.create(
+            model_type='workorder',
+            model_id=self.work_order.pk,
+            link='https://example.invalid/native-unrelated',
+        )
+        with mock.patch.object(
+            Attachment, 'delete', side_effect=AssertionError('file deletion began')
+        ):
+            self.post(
+                reverse('kanban-command-delete', kwargs={'pk': self.work_order.pk}),
+                {'expected_version': 1, 'idempotency_key': 'native-retain'},
+                expected_code=409,
+            )
+            with self.assertRaises(ProtectedError):
+                self.work_order.delete()
+            with self.assertRaises(ProtectedError):
+                WorkOrder.objects.filter(pk=self.work_order.pk).delete()
+
+    def test_missing_reading_text_never_resolves_but_zero_is_recorded(self):
+        """Blank/whitespace results are unknown; a supplied zero remains evidence."""
+        self.apply()
+        row = InvestigationRequest.objects.get()
+        resolution = {
+            'status': 'resolved',
+            'resolution': 'Owner reviewed',
+            'owner_id': self.user.pk,
+        }
+        for index, value in enumerate(('', '   ', None, 0)):
+            self.apply(
+                'artifact',
+                {
+                    'kind': 'reading_set',
+                    'payload': {
+                        'readings': [
+                            {'name': 'DE envelope', 'value': value, 'unit': 'g'}
+                        ],
+                        'conditions': 'Technician supplied',
+                        'observed_at': '2026-10-19T09:00:00Z',
+                    },
+                },
+                row,
+                key=f'missing-value-{index}',
+            )
+            row.refresh_from_db()
+            if value == 0:
+                self.apply('revise', resolution, row, key='recorded-zero')
+            else:
+                with self.assertRaises(ValidationError):
+                    self.apply('revise', resolution, row, key=f'unknown-{index}')
+        row.refresh_from_db()
+        self.assertEqual(row.status, 'resolved')

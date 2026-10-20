@@ -6,7 +6,10 @@ approved scope or a reason for changing it. Neither chronology nor matching
 prose proves those missing relationships.
 """
 
+from collections import defaultdict
 from itertools import pairwise
+
+from tasks.investigation_models import InvestigationArtifact
 
 from .common import person
 
@@ -30,6 +33,7 @@ REQUEST_FIELDS = (
 def _request_revisions(work_order):
     allowed = set(work_order.investigation_requests.values_list('pk', flat=True))
     revisions = []
+    artifact_ids = None
     for event in (
         work_order.events
         .filter(event_type='investigation_revise')
@@ -41,7 +45,11 @@ def _request_revisions(work_order):
         result = metadata.get('result_metadata') or {}
         if not isinstance(result, dict):
             continue
-        before, after = result.get('before'), result.get('request')
+        compact = result.get('request_revision')
+        if isinstance(compact, dict):
+            before, after = compact.get('before'), compact.get('after')
+        else:
+            before, after = result.get('before'), result.get('request')
         if not isinstance(before, dict) or not isinstance(after, dict):
             continue
         request_id = after.get('id')
@@ -52,16 +60,36 @@ def _request_revisions(work_order):
             or any(row.get('work_order') != work_order.pk for row in (before, after))
         ):
             continue
+        if isinstance(compact, dict):
+            if artifact_ids is None:
+                artifact_ids = defaultdict(list)
+                for request_pk, artifact_pk in (
+                    InvestigationArtifact.objects
+                    .filter(request_id__in=allowed)
+                    .order_by('pk')
+                    .values_list('request_id', 'pk')
+                ):
+                    artifact_ids[request_pk].append(artifact_pk)
+            through = compact.get('artifact_through_id')
+            if through is not None and (type(through) is not int or through < 1):
+                continue
+            retained = [
+                pk
+                for pk in artifact_ids[request_id]
+                if type(through) is int and pk <= through
+            ]
+        else:
+            retained = [
+                item['id']
+                for item in before.get('artifacts', [])
+                if isinstance(item, dict) and type(item.get('id')) is int
+            ]
         revisions.append({
             'event_id': event.pk,
             'request_id': request_id,
             'before': {key: before.get(key) for key in REQUEST_FIELDS},
             'after': {key: after.get(key) for key in REQUEST_FIELDS},
-            'retained_evidence_ids': [
-                item['id']
-                for item in before.get('artifacts', [])
-                if isinstance(item, dict) and type(item.get('id')) is int
-            ],
+            'retained_evidence_ids': retained,
             'recorded_by': person(event.actor),
             'recorded_at': event.created_at.isoformat(),
             'scope_link': None,

@@ -159,6 +159,12 @@ export interface InvestigationArtifact {
     | 'check_result';
   payload: Record<string, unknown>;
   attachment: number | null;
+  attachment_snapshot?: {
+    id: number;
+    filename: string | null;
+    link: string | null;
+    comment: string;
+  } | null;
   supersedes: number | null;
   recorded_by: number;
   recorded_by_name: string | null;
@@ -210,6 +216,7 @@ export interface InvestigationRequest {
   created_by: number;
   updated_by: number;
   updated_by_name?: string | null;
+  created_by_name?: string | null;
   created_at: string;
   updated_at: string;
   artifacts: InvestigationArtifact[];

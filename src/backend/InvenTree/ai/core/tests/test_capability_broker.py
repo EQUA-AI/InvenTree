@@ -1801,3 +1801,31 @@ def test_request_focus_exposes_only_reviewed_evidence_proposal_and_native_reads(
         ).tool_ids
         == ()
     )
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "What does the bearing manual say?",
+        "Search the uploaded documents for the bearing procedure",
+        "Show machine telemetry for this pump",
+        "What do you remember about this pump?",
+        "Remember this approved observation",
+    ],
+)
+def test_request_focus_extends_normal_query_capabilities(query):
+    """Evidence gathering retains manuals, documents, machine and memory routing."""
+    profile = frozenset(
+        (role, verb)
+        for role in ("work_order", "machine", "assetmachine", "part", "aichat", "memory")
+        for verb in ("view", "change", "add", "delete")
+    )
+    normal = select_capabilities(query, profile=profile, authenticated=True)
+    focused = select_capabilities(
+        query,
+        profile=profile,
+        authenticated=True,
+        context={"work_focus": {"schema_version": 2, "request_id": 401}},
+    )
+    assert set(normal.tool_ids).issubset(focused.tool_ids)
+    assert "propose_investigation_artifact" in focused.tool_ids

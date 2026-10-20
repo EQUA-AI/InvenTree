@@ -18,7 +18,7 @@ export function investigationStatusLabel(
       open: t`Open`,
       answered: t`Evidence received — decision unresolved`,
       cannot_perform: t`Cannot perform — unresolved`,
-      pending_external: t`Pending external — internal coordinator`,
+      pending_external: t`Pending external — unresolved`,
       disputed: t`Disputed — unresolved`,
       resolved: t`Resolved`
     }[status] ?? t`Status not recorded`
@@ -174,12 +174,18 @@ export function InvestigationRequests({
                 c='dimmed'
               >{t`Required artifacts and conditions not recorded`}</Text>
             )}
-            {r.blocked_reason && (
-              <Alert color='orange' title={investigationStatusLabel(r.status)}>
-                <Text size='sm'>{r.blocked_reason}</Text>
-                <Text size='xs'>{t`This decision remains unresolved until addressed. Other findings and unrelated work retain their own status.`}</Text>
-              </Alert>
-            )}
+            {r.blocked_reason &&
+              ['cannot_perform', 'pending_external', 'disputed'].includes(
+                r.status
+              ) && (
+                <Alert
+                  color='orange'
+                  title={investigationStatusLabel(r.status)}
+                >
+                  <Text size='sm'>{r.blocked_reason}</Text>
+                  <Text size='xs'>{t`This decision remains unresolved until addressed. Other findings and unrelated work retain their own status.`}</Text>
+                </Alert>
+              )}
             {r.source_finding && (
               <Text size='sm'>
                 {t`Source finding`}: {r.source_finding}
@@ -214,6 +220,9 @@ export function InvestigationRequests({
                   <Text size='sm'>
                     {a.recorded_by_name || t`Recorder not recorded`} ·{' '}
                     {when(a.created_at)}
+                    {!a.attachment && a.attachment_snapshot
+                      ? ` · ${t`Original Work attachment ${a.attachment_snapshot.id} is no longer available; evidence details retained`}`
+                      : ''}
                     {a.attachment
                       ? ` · ${t`Work attachment ${a.attachment}`}`
                       : ''}
