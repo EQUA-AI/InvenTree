@@ -4,10 +4,10 @@ from datetime import datetime, timezone as dt_timezone
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from assets.models import AssetMachine
+from assets.models import AssetMachine, get_default_client
 from tasks.models import WorkOrder
 from tasks.services.conflicts import detect_conflicts
 
@@ -109,13 +109,18 @@ class DetectConflictsTest(TestCase):
         self.assertEqual(len(machine_warnings), 3)
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class ScheduleWindowConflictApiTest(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_superuser(
             username='conf-sup', email='cs@example.com', password='pw'
         )
         self.client.force_login(self.user)
-        self.machine = AssetMachine.objects.create(name='Conf Press')
+        self.machine = AssetMachine.objects.create(
+            name='Conf Press', client=get_default_client()
+        )
 
     def test_window_surfaces_machine_conflict_as_warning(self):
         for start, end in [(9, 12), (11, 14)]:

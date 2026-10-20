@@ -161,7 +161,11 @@ class PacketReceiptTest(packet_tests.PacketCloseoutApiTest):
         from tasks.models import WorkOrder
 
         first = self.post(self.url, self.body(), expected_code=200).data
-        other = WorkOrder.objects.create(title='Other', customer=self.customer)
+        # Repointing stays within a valid packet/Work machine boundary. P32
+        # deliberately withholds mismatched persisted packets before replay.
+        other = WorkOrder.objects.create(
+            title='Other', customer=self.customer, machine=self.machine
+        )
         self.packet.work_order = other
         self.packet.save(update_fields=['work_order'])
         replay = self.post(self.url, self.body(), expected_code=200).data

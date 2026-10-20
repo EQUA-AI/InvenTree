@@ -200,8 +200,8 @@ class S0PacketCompletionContractTest(CloseoutEnvMixin, TestCase):
         self.assertEqual(changed.status_code, 400)
         self.assertEqual(changed.data['code'], 'IDEMPOTENCY_CONFLICT')
 
-    def test_current_packet_safety_can_refuse_an_already_committed_replay(self):
-        """An outer refusal is not proof that the original command failed."""
+    def test_committed_packet_receipt_survives_changed_safety(self):
+        """P26 reconciles the original receipt without executing today's gates."""
         first = self.client.post(self.url, self.intent, format='json')
         self.assertEqual(first.status_code, 200)
         gate = RepairPacketGate.objects.create(
@@ -217,10 +217,38 @@ class S0PacketCompletionContractTest(CloseoutEnvMixin, TestCase):
             status=LockoutPoint.PointStatus.VERIFIED,
         )
         replay = self.client.post(self.url, self.intent, format='json')
-        self.assertEqual(replay.status_code, 400)
-        self.assertEqual(replay.data['code'], 'REPAIR_CLOSEOUT_INVALID')
+        self.assertEqual(replay.status_code, 200)
+        for field in ('event_id', 'work_order_id', 'lifecycle_version', 'metadata'):
+            self.assertEqual(replay.data[field], first.data[field])
+        self.assertEqual(
+            self.packet.events.filter(event_type='return_to_service').count(), 1
+        )
         self.work_order.refresh_from_db()
         self.assertEqual(self.work_order.lifecycle_status, WorkOrderLifecycle.COMPLETED)
         self.assertEqual(
             WorkOrderCloseout.objects.filter(work_order=self.work_order).count(), 1
         )
+
+    def test_current_packet_safety_still_refuses_a_new_completion(self):
+        """A replay receipt never grants permission for a new unsafe update."""
+        gate = RepairPacketGate.objects.create(
+            packet=self.packet,
+            name='Synthetic LOTO',
+            gate_type='loto',
+            status=GateStatus.CONFIRMED,
+        )
+        LockoutPoint.objects.create(
+            gate=gate,
+            energy_source=LockoutPoint.EnergySource.ELECTRICAL,
+            isolation_device='Synthetic isolation',
+            status=LockoutPoint.PointStatus.VERIFIED,
+        )
+        response = self.client.post(self.url, self.intent, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['code'], 'REPAIR_CLOSEOUT_INVALID')
+        self.assertFalse(WorkOrderCloseout.objects.exists())
+        self.assertFalse(
+            self.packet.events.filter(event_type='return_to_service').exists()
+        )
+        self.work_order.refresh_from_db()
+        self.assertEqual(self.work_order.lifecycle_status, WorkOrderLifecycle.VERIFYING)

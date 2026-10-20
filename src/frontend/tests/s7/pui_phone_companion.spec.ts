@@ -7,6 +7,15 @@ import { phoneAssistant } from './phoneCompanionFixtures';
 
 nativeBaseline();
 
+test.beforeEach(async ({ page }) => {
+  // The native user-store import also loads the Gantt library stylesheet.
+  // Linux requests its optional Roboto font; keep that known CDN read offline.
+  await page.route(
+    /^https:\/\/cdn\.svar\.dev\/fonts\/roboto\/regular\.woff2?$/,
+    (route) => route.fulfill({ status: 503, body: '' })
+  );
+});
+
 const panels = [
   'Work',
   'Diagnose',
@@ -49,6 +58,26 @@ async function uncovered(page: Page, control: Locator) {
   expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(dock!.y);
   // A real pointer must reach the control, not the fixed navigation over it.
   await control.click({ trial: true });
+}
+
+async function completionAccess(page: Page, allowed = true) {
+  // Native CRUD roles do not grant the separate completion permission (P32).
+  await page.evaluate(async (allowed) => {
+    const modulePath = '/src/states/UserState.tsx';
+    const { useUserState } = await import(modulePath);
+    const state = useUserState.getState();
+    // Set the fixture actor's grants like s0-native's initialization. Calling
+    // setUser would also reset the unrelated chat session and move focus.
+    useUserState.setState({
+      user: {
+        ...state.user,
+        permissions: {
+          ...state.user?.permissions,
+          workorder: allowed ? ['view', 'complete'] : ['view']
+        }
+      }
+    });
+  }, allowed);
 }
 
 for (const width of [390, 360]) {
@@ -138,6 +167,9 @@ for (const width of [360, 390]) {
     const fixture = await closeoutWork(page);
     await openExecutionPanel(page, 'closeout', scheme);
     const downtime = page.getByLabel('Downtime (minutes)', { exact: true });
+    await expect(downtime).toBeDisabled();
+    await completionAccess(page);
+    await expect(downtime).toBeEnabled();
     await uncovered(page, downtime);
     await expect(downtime).toHaveValue('');
     const controls = page
@@ -180,6 +212,17 @@ for (const width of [360, 390]) {
       .getByRole('button', { name: 'work-order-back', exact: true })
       .boundingBox();
     expect(back!.width).toBe(back!.height);
+    await completionAccess(page, false);
+    await expect(downtime).toBeDisabled();
+    await expect(
+      page.getByRole('checkbox', { name: 'Follow-up required', exact: true })
+    ).toBeDisabled();
+    await expect(
+      page.getByRole('button', {
+        name: 'Update maintenance record',
+        exact: true
+      })
+    ).toBeDisabled();
     expect(fixture.commands).toHaveLength(0);
   });
 
@@ -356,6 +399,7 @@ test('ready phone account exposes one uncovered native final update and a readab
   await page.setViewportSize({ width: 360, height: 844 });
   const fixture = await closeoutWork(page);
   await openExecutionPanel(page, 'closeout', 'light');
+  await completionAccess(page);
   const account = page.getByTestId('closeout-account');
   const update = account.getByRole('button', {
     name: 'Update maintenance record',
@@ -596,6 +640,7 @@ test('phone navigation reflows long identities and enlarged text without coverin
     '/playwright/s0-native.html?surface=maintenance-shell&sprint=s1&role=editor&work_access=reader&scheme=dark&entry=/maintenance/work-orders/73/?work_panel=closeout'
   );
   await expect(page.getByTestId('prepared-closeout')).toBeVisible();
+  await completionAccess(page);
   await page.evaluate(() => {
     document.documentElement.style.fontSize = '24px';
   });
