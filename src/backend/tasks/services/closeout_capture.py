@@ -39,6 +39,7 @@ from tasks.services.closeout_extraction import (
     resolve_extractor,
     validate_extraction_output,
 )
+from tasks.services.finalization import is_packet_finalization
 from tasks.services.work_orders import (
     WorkOrderCommandError,
     _append_result,
@@ -198,10 +199,13 @@ def create_capture(
     idempotency_key,
     correlation_id=None,
     voice_unavailable_reason='',
+    packet_finalization=None,
 ):
     """Create a typed narrative capture against an active work order."""
     _require_wizard()
     work_order = _locked_work_order(work_order_id)
+    if not is_packet_finalization(packet_finalization, work_order):
+        _require_no_packet(work_order)
     narrative = narrative or ''
     payload = {
         'work_order_id': work_order_id,
@@ -219,7 +223,6 @@ def create_capture(
     _require_version(work_order, expected_version)
     require_permission(actor, CAPTURE_CLOSEOUT)
     _require_scope(actor, work_order)
-    _require_no_packet(work_order)
     _require_capture_eligible(work_order)
     _validate_narrative(narrative)
     if (
@@ -274,10 +277,13 @@ def revise_capture(
     expected_version,
     idempotency_key,
     correlation_id=None,
+    packet_finalization=None,
 ):
     """Append a new immutable narrative revision; prior proposals stay bound."""
     _require_wizard()
     work_order = _locked_work_order(work_order_id)
+    if not is_packet_finalization(packet_finalization, work_order):
+        _require_no_packet(work_order)
     narrative = narrative or ''
     payload = {
         'work_order_id': work_order_id,
@@ -344,10 +350,13 @@ def abandon_capture(
     idempotency_key,
     reason='',
     correlation_id=None,
+    packet_finalization=None,
 ):
     """Explicitly abandon an in-flight capture; rows remain auditable."""
     _require_wizard()
     work_order = _locked_work_order(work_order_id)
+    if not is_packet_finalization(packet_finalization, work_order):
+        _require_no_packet(work_order)
     payload = {
         'work_order_id': work_order_id,
         'capture_id': capture_id,
@@ -440,15 +449,33 @@ def _live_proposal(revision) -> CloseoutProposal | None:
     )
 
 
-def _revert_capture_to_open(capture_id):
+def _revert_capture_to_open(work_order_id, capture_id, actor, packet_finalization):
+    # Cleanup is a mutation too: never reach around a changed packet owner.
     with transaction.atomic():
-        capture = CloseoutCapture.objects.select_for_update().get(pk=capture_id)
+        work_order = _extraction_work(work_order_id, actor, packet_finalization)
+        capture = _locked_capture(work_order, capture_id)
         if capture.status == CloseoutCaptureStatus.EXTRACTING:
             capture.status = CloseoutCaptureStatus.OPEN
             capture.save(update_fields=['status'])
 
 
-def request_extraction(*, work_order_id, capture_id, actor):
+def _extraction_work(work_order_id, actor, packet_finalization):
+    """Packet first, then Work, in each short extraction transaction."""
+    from tasks.services.finalization import PacketFinalization
+
+    if isinstance(packet_finalization, PacketFinalization):
+        from repair.services import _capture_packet
+
+        _capture_packet(packet_finalization.packet_id, work_order_id)
+    work_order = _locked_work_order(work_order_id)
+    if not is_packet_finalization(packet_finalization, work_order):
+        _require_no_packet(work_order)
+    require_permission(actor, CAPTURE_CLOSEOUT)
+    _require_scope(actor, work_order)
+    return work_order
+
+
+def request_extraction(*, work_order_id, capture_id, actor, packet_finalization=None):
     """Run schema-only extraction for the capture's current revision.
 
     Idempotent per revision: an existing live proposal is returned unchanged.
@@ -457,9 +484,7 @@ def request_extraction(*, work_order_id, capture_id, actor):
     """
     _require_wizard()
     with transaction.atomic():
-        work_order = _locked_work_order(work_order_id)
-        require_permission(actor, CAPTURE_CLOSEOUT)
-        _require_scope(actor, work_order)
+        work_order = _extraction_work(work_order_id, actor, packet_finalization)
         capture = _locked_capture(work_order, capture_id)
         revision = capture.current_revision
         if revision is None:
@@ -487,23 +512,24 @@ def request_extraction(*, work_order_id, capture_id, actor):
         raw_output = extractor(narrative, shape)
         model_provenance = _extraction_model_provenance(raw_output)
     except WorkOrderCommandError:
-        _revert_capture_to_open(capture_id)
+        _revert_capture_to_open(work_order_id, capture_id, actor, packet_finalization)
         raise
     except Exception as exc:
-        _revert_capture_to_open(capture_id)
+        _revert_capture_to_open(work_order_id, capture_id, actor, packet_finalization)
         raise ExtractionUnavailable('The closeout extractor call failed') from exc
 
     try:
         document = validate_extraction_output(raw_output, narrative)
     except WorkOrderCommandError:
-        _revert_capture_to_open(capture_id)
+        _revert_capture_to_open(work_order_id, capture_id, actor, packet_finalization)
         raise
     document['warnings'] = _merge_warnings(
         document['warnings'], coaching_warnings(work_order, narrative)
     )
 
     with transaction.atomic():
-        capture = CloseoutCapture.objects.select_for_update().get(pk=capture_id)
+        work_order = _extraction_work(work_order_id, actor, packet_finalization)
+        capture = _locked_capture(work_order, capture_id)
         existing = _live_proposal(revision)
         if existing is not None:
             return existing
@@ -649,10 +675,13 @@ def record_decisions(
     idempotency_key,
     correlation_id=None,
     expected_decision_version=None,
+    packet_finalization=None,
 ):
     """Record a batch of explicit per-field human promotion decisions."""
     _require_wizard()
     work_order = _locked_work_order(work_order_id)
+    if not is_packet_finalization(packet_finalization, work_order):
+        _require_no_packet(work_order)
     payload = {
         'work_order_id': work_order_id,
         'capture_id': capture_id,
@@ -740,7 +769,7 @@ def record_decisions(
 
 
 @transaction.atomic
-def accept_voice_handoff(*, voice_capture):
+def accept_voice_handoff(*, voice_capture, packet_finalization=None):
     """Snapshot one accepted Voice transcript revision into a closeout capture.
 
     Dereferences, authorizes, and copies the exact accepted revision once
@@ -763,7 +792,8 @@ def accept_voice_handoff(*, voice_capture):
     work_order = _locked_work_order(voice_capture.target_work_order_id)
     require_permission(actor, CAPTURE_CLOSEOUT)
     _require_scope(actor, work_order)
-    _require_no_packet(work_order)
+    if not is_packet_finalization(packet_finalization, work_order):
+        _require_no_packet(work_order)
 
     transcript_reference = str(revision.pk)
     existing = CloseoutCapture.objects.filter(

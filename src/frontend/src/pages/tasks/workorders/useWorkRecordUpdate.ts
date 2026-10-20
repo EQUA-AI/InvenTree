@@ -12,31 +12,38 @@ import {
   type UpdateIntent,
   type UpdateState,
   matchingReceipt,
-  restoreUpdate,
-  updateFailure
+  restoreOwnedUpdate,
+  updateFailure,
+  updateStorageKey
 } from './workRecordUpdate';
 
-/** One final action for standalone Closeout, including exact-operation recovery. */
+/** One Closeout controller; each retained intent keeps its native owner/endpoint. */
 export function useWorkRecordUpdate(
   workOrderId: number,
-  invalidate: () => void
+  invalidate: () => void,
+  packetId?: number
 ) {
   const api = useApi();
   const queryClient = useQueryClient();
   const userId = useUserState((s) => s.user?.pk);
   const generation = useUserState((s) => s.authGeneration);
   const host = useLocalState((s) => s.getHost());
-  const storageKey = `aimms-closeout-operation:${JSON.stringify([host, userId, workOrderId])}`;
-  const boundary = `${storageKey}:${generation}`;
+  const storageKey = updateStorageKey(host, userId, workOrderId, packetId);
+  const boundary = `${storageKey}:${generation}:${packetId ?? 'standalone'}`;
   const activeBoundary = useRef(boundary);
   activeBoundary.current = boundary;
   const read = useCallback(() => {
     try {
-      return restoreUpdate(localStorage.getItem(storageKey), workOrderId);
+      const retained =
+        localStorage.getItem(storageKey) ??
+        (packetId == null
+          ? null
+          : localStorage.getItem(updateStorageKey(host, userId, workOrderId)));
+      return restoreOwnedUpdate(retained, workOrderId, packetId);
     } catch {
       return { status: 'idle' } as UpdateState;
     }
-  }, [storageKey, workOrderId]);
+  }, [storageKey, workOrderId, host, userId, packetId]);
   const [state, setState] = useState<UpdateState>(read);
   const inFlight = useRef(false);
   useEffect(() => {
@@ -97,10 +104,24 @@ export function useWorkRecordUpdate(
           return;
         }
         try {
-          const response = await api.post(
-            apiUrl(ApiEndpoints.work_order_complete, workOrderId),
-            intent.payload
-          );
+          const { expected_version, idempotency_key, capture_id, ...closeout } =
+            intent.payload;
+          const response =
+            intent.packetId != null
+              ? await api.post(
+                  apiUrl(ApiEndpoints.repair_packet_close, intent.packetId),
+                  {
+                    expected_version,
+                    idempotency_key,
+                    work_order_id: intent.workOrderId,
+                    ...(capture_id != null ? { capture_id } : {}),
+                    closeout
+                  }
+                )
+              : await api.post(
+                  apiUrl(ApiEndpoints.work_order_complete, workOrderId),
+                  intent.payload
+                );
           if (!current()) return;
           if (
             response.status !== 200 ||
@@ -145,19 +166,13 @@ export function useWorkRecordUpdate(
           }
         } catch (error: any) {
           if (!current()) return;
-          const classification = updateFailure(
+          // These owner/version refusals occur strictly after exact replay.
+          // Earlier scope/permission failures cannot establish noncommit.
+          const status = updateFailure(
             error?.response?.status,
-            error?.response?.data?.code
+            error?.response?.data?.code,
+            stored.status === 'uncertain' || stored.status === 'pending'
           );
-          // Exact replay precedes the monotonic version check in the service.
-          // STALE_VERSION proves this key did not commit and cannot commit later.
-          // Scope/permission refusals can occur before replay and stay uncertain.
-          const recovering =
-            stored.status === 'uncertain' || stored.status === 'pending';
-          const status =
-            recovering && classification !== 'stale'
-              ? 'uncertain'
-              : classification;
           publish({
             status,
             intent,
@@ -223,14 +238,16 @@ export function useWorkRecordUpdate(
       )
         return false;
       try {
-        localStorage.removeItem(storageKey);
+        if (packetId == null) localStorage.removeItem(storageKey);
+        else
+          localStorage.setItem(storageKey, JSON.stringify({ status: 'idle' }));
         setState({ status: 'idle' });
         return true;
       } catch {
         return false;
       }
     });
-  }, [state, storageKey, read, boundary]);
+  }, [state, storageKey, read, boundary, packetId]);
   return {
     state,
     execute,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import asdict
 
 from django.http import Http404
 from django.shortcuts import get_object_or_404
@@ -13,7 +14,11 @@ from rest_framework.views import APIView
 from tasks.models import WorkOrderCommand
 from tasks.scope import ScopeError, scoped_machines, scoped_work_orders
 from tasks.services import scheduling
-from tasks.services.work_orders import ReadinessBlocked, WorkOrderCommandError
+from tasks.services.work_orders import (
+    ReadinessBlocked,
+    WorkOrderCommandError,
+    WorkOrderScopeError,
+)
 
 import InvenTree.permissions
 from InvenTree.filters import SEARCH_ORDER_FILTER
@@ -358,6 +363,23 @@ class RepairPacketClose(APIView):
     ]
     role_required = 'work_order.change'
 
+    def get(self, request, pk):
+        """Read the owning packet's completion readiness, without submitting."""
+        from tasks.workorder_serializers import WorkOrderReadinessSerializer
+
+        packet = _get_packet(request.user, pk)
+        try:
+            readiness = services.packet_close_readiness(packet, actor=request.user)
+        except (ScopeError, WorkOrderScopeError):
+            raise Http404 from None
+        except (services.RepairCloseoutError, WorkOrderCommandError) as exc:
+            return Response({'code': exc.code, 'detail': str(exc)}, status=400)
+        return Response({
+            **WorkOrderReadinessSerializer(readiness).data,
+            'packet_id': packet.pk,
+            'work_order_id': packet.work_order_id,
+        })
+
     def post(self, request, pk):
         """Close the packet and complete its work order atomically."""
         packet = _get_packet(request.user, pk)
@@ -373,15 +395,67 @@ class RepairPacketClose(APIView):
                 status=400,
             )
 
+        key = data.get('idempotency_key')
+        if key is not None and (
+            not isinstance(key, str) or not key.strip() or len(key) > 128
+        ):
+            return Response(
+                {
+                    'code': 'COMMAND_INVALID',
+                    'detail': 'A non-empty operation key of at most 128 characters is required.',
+                },
+                status=400,
+            )
+        if not isinstance(data.get('closeout') or {}, dict) or not isinstance(
+            data.get('reason', ''), str
+        ):
+            return Response(
+                {
+                    'code': 'COMMAND_INVALID',
+                    'detail': 'Closeout must be an object and reason must be text.',
+                },
+                status=400,
+            )
+        capture_id = data.get('capture_id')
+        if capture_id is not None and (
+            not isinstance(capture_id, int)
+            or isinstance(capture_id, bool)
+            or capture_id < 1
+        ):
+            return Response(
+                {
+                    'code': 'CAPTURE_INVALID',
+                    'detail': 'An integer capture_id is required.',
+                },
+                status=400,
+            )
+        work_order_id = data.get('work_order_id')
+        if work_order_id is not None and (
+            not isinstance(work_order_id, int)
+            or isinstance(work_order_id, bool)
+            or work_order_id < 1
+        ):
+            return Response(
+                {
+                    'code': 'COMMAND_INVALID',
+                    'detail': 'An integer work_order_id is required.',
+                },
+                status=400,
+            )
+
         try:
             result = services.close_repair_packet(
                 packet,
                 actor=request.user,
                 closeout=data.get('closeout') or {},
                 expected_version=expected_version,
-                idempotency_key=data.get('idempotency_key') or uuid.uuid4().hex,
+                idempotency_key=key or uuid.uuid4().hex,
                 reason=data.get('reason', ''),
+                capture_id=capture_id,
+                expected_work_order_id=work_order_id,
             )
+        except (ScopeError, WorkOrderScopeError):
+            raise Http404 from None
         except services.RepairCloseoutError as exc:
             return Response({'code': exc.code, 'detail': str(exc)}, status=400)
         except WorkOrderCommandError as exc:
@@ -394,6 +468,7 @@ class RepairPacketClose(APIView):
         payload['ok'] = True
         payload['work_order_id'] = result.work_order_id
         payload['lifecycle_status'] = result.lifecycle_status
+        payload.update(asdict(result))
         return Response(payload)
 
 

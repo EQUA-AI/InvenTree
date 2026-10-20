@@ -520,6 +520,7 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
     maintenance_record = serializers.SerializerMethodField()
     structured_closeout = serializers.SerializerMethodField()
     canonical_commands_enabled = serializers.SerializerMethodField()
+    closeout_wizard_enabled = serializers.SerializerMethodField()
     source_alert = serializers.SerializerMethodField()
 
     class Meta(WorkOrderBoardSerializer.Meta):
@@ -536,6 +537,7 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
             'maintenance_record',
             'structured_closeout',
             'canonical_commands_enabled',
+            'closeout_wizard_enabled',
             'source_alert',
             *WORK_EXECUTION_FIELDS,
         )
@@ -750,3 +752,11 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
     def get_canonical_commands_enabled(obj) -> bool:
         """Report whether the feature-gated command surface is enabled."""
         return bool(getattr(settings, 'AIMMS_WORK_ORDERS_ENABLED', False))
+
+    @staticmethod
+    def get_closeout_wizard_enabled(obj) -> bool:
+        """Expose the effective wizard gate without inferring availability from 404."""
+        return bool(
+            getattr(settings, 'AIMMS_WORK_ORDERS_ENABLED', False)
+            and getattr(settings, 'AIMMS_CLOSEOUT_WIZARD_ENABLED', False)
+        )

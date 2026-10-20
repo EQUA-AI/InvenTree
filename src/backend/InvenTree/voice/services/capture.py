@@ -288,7 +288,17 @@ def handoff_capture(*, capture: VoiceCaptureSession):
         from tasks.services import closeout_capture as closeout_service
 
         try:
-            closeout_row = closeout_service.accept_voice_handoff(voice_capture=capture)
+            from repair.models import RepairPacket
+            from repair.services import packet_voice_closeout
+
+            packet = RepairPacket.objects.filter(
+                work_order_id=capture.target_work_order_id
+            ).first()
+            closeout_row = (
+                packet_voice_closeout(packet_id=packet.pk, voice_capture=capture)
+                if packet is not None
+                else closeout_service.accept_voice_handoff(voice_capture=capture)
+            )
         except closeout_service.VoiceHandoffUnavailable as exc:
             raise DestinationUnavailable(str(exc)) from exc
         except closeout_service.WorkOrderCommandError as exc:

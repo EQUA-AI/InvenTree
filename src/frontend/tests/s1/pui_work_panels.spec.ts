@@ -335,6 +335,9 @@ test('packet work keeps qualified evidence safety and completion authority witho
     ...packetWork(),
     canonical_commands_enabled: true
   });
+  await page.route('**/api/repair/packets/901/close/', (route) =>
+    route.fulfill({ status: 403, json: { code: 'PERMISSION_DENIED' } })
+  );
   await openWork(page, 'diagnose', 'dark');
   const tabs = page.getByRole('tablist', {
     name: 'Work workflow',
@@ -386,15 +389,14 @@ test('packet work keeps qualified evidence safety and completion authority witho
     page.getByText(/does not establish permission to operate/)
   ).toBeVisible();
   await tabs.getByRole('tab', { name: 'Closeout', exact: true }).click();
+  await expect(page.getByTestId('prepared-closeout')).toBeVisible();
   await expect(
-    page.getByRole('link', { name: 'Open RP-901', exact: true })
-  ).toHaveAttribute('href', '/repair/packets/901/closeout/');
-  await expect(page.getByText('Narrative', { exact: true })).toHaveCount(0);
-  expect(
-    requests.filter((request) =>
-      request.path.includes('/api/tasks/work-orders/')
-    )
-  ).toHaveLength(0);
+    page.getByRole('button', { name: 'Update maintenance record', exact: true })
+  ).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(requests.filter((request) => request.method === 'POST')).toHaveLength(
+    0
+  );
   await tabs.getByRole('tab', { name: 'History', exact: true }).click();
   await expect(
     page.getByText('Retained audit reason', { exact: true })

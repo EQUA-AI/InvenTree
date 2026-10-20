@@ -176,6 +176,7 @@ RESERVED_SERVICE_ARGUMENTS = frozenset({
     'actor',
     'correlation_id',
     'packet_finalization',
+    'packet_intent',
     'work_order_id',
 })
 
