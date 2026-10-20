@@ -1,5 +1,8 @@
 import { type Locator, type Page, expect } from '@playwright/test';
-import type { InvestigationRequest } from '../../lib/types/WorkExecution';
+import type {
+  InvestigationRequest,
+  TimeAssignment
+} from '../../lib/types/WorkExecution';
 
 import type { WorkOrderOverview } from '../../lib/types/WorkOrderOverview';
 
@@ -40,7 +43,7 @@ export async function openExecutionPanel(
   panel = 'work',
   scheme: 'light' | 'dark' = 'light',
   partReader = false,
-  role: 'viewer' | 'editor' = 'viewer'
+  role: 'viewer' | 'editor' | 'supervisor' = 'viewer'
 ) {
   const params = new URLSearchParams({
     surface: 'maintenance-shell',
@@ -161,4 +164,27 @@ export async function captureProcessSection(
     path: path.replace('.png', '-viewport.png'),
     animations: 'disabled'
   });
+}
+
+/** Complete native projection; absence of records does not invent totals. */
+export function timeAssignment(
+  overrides: Partial<TimeAssignment> = {}
+): TimeAssignment {
+  return {
+    rule: 'time_assignment.v1',
+    observed_at: '2026-10-20T08:00:00Z',
+    assigned_to: null,
+    legacy_assignee: null,
+    assignment_event_at: null,
+    elapsed_assignment_seconds: null,
+    assignment_reason: null,
+    assignment_recorded_by: null,
+    events: [],
+    attributed_intervals: { available: true },
+    coverage: 'unknown',
+    correction: { available: true },
+    assignment_factors: { available: false, reason: 'no_provider' },
+    accepted_handover: { available: false, reason: 'no_provider' },
+    ...overrides
+  };
 }

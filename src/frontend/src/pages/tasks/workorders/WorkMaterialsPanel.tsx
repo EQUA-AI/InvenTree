@@ -23,6 +23,7 @@ import { getDetailUrl } from '@lib/functions/Navigation';
 import { api } from '../../../App';
 import { returnState } from '../../../components/nav/returnPath';
 import { useUserState } from '../../../states/UserState';
+import { FittedItemFact } from '../../assets/FittedIdentity';
 import {
   type MaterialReadout,
   type MaterialRequirement,
@@ -141,15 +142,33 @@ function UsageLine({
   usage,
   units
 }: Readonly<{ usage: MaterialUsage; units?: string }>) {
+  const canReadStock = useUserState((state) =>
+    state.hasViewRole(UserRoles.stock)
+  );
   return (
-    <Text size='xs' c='dimmed'>
-      {t`Closeout record`}: {t`issued`} {amount(usage.issued_quantity, units)},{' '}
-      {t`used`} {amount(usage.used_quantity, units)}
-      {usage.disposition ? ` · ${usage.disposition.replaceAll('_', ' ')}` : ''}
-      {` · ${usage.state}`}
-      {usage.resolved_by ? ` · ${t`resolved by`} ${usage.resolved_by}` : ''}
-      {usage.variance_reason ? ` · ${usage.variance_reason}` : ''}
-    </Text>
+    <Stack gap='xs'>
+      <Text size='xs' c='dimmed'>
+        {t`Closeout record`}: {t`issued`} {amount(usage.issued_quantity, units)}
+        , {t`used`} {amount(usage.used_quantity, units)}
+        {usage.disposition
+          ? ` · ${usage.disposition.replaceAll('_', ' ')}`
+          : ''}
+        {` · ${usage.state}`}
+        {usage.resolved_by ? ` · ${t`resolved by`} ${usage.resolved_by}` : ''}
+        {usage.variance_reason ? ` · ${usage.variance_reason}` : ''}
+      </Text>
+      {canReadStock && usage.fitted_record && (
+        <>
+          <Text size='sm' fw={600}>
+            {usage.fitted_record.verified_at &&
+            !usage.fitted_record.retracted_at
+              ? t`Recorded fitted identity`
+              : t`Installation requires review — not current fit`}
+          </Text>
+          <FittedItemFact fit={usage.fitted_record} />
+        </>
+      )}
+    </Stack>
   );
 }
 
@@ -489,7 +508,7 @@ export function WorkMaterialsPanel({
         </Stack>
       )}
       <Text size='xs' c='dimmed'>
-        {t`Fitted on the machine is not recorded separately from use.`}
+        {t`Fitted identity requires an exact registry slot and a recorded serial or lot. Material use alone does not establish a fitted item.`}
       </Text>
     </Stack>
   );

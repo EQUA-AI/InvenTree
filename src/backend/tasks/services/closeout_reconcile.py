@@ -147,6 +147,9 @@ def refresh_closeout_reconciliation(*, work_order_id, actor, correlation_id=None
             _sync_row_from_allocation(row, allocation)
             row.version = row.version + 1 if not was_created else row.version
             row.save()
+            from assets.recorded_facts import promote_usage
+
+            promote_usage(row, actor)
             if not was_created:
                 updated += 1
 
@@ -196,7 +199,7 @@ def add_walkup_usage(
     if quantity <= 0:
         raise ReconciliationError('Walk-up quantity must be positive')
 
-    return CloseoutPartUsage.objects.create(
+    row = CloseoutPartUsage.objects.create(
         work_order=work_order,
         part_id=stock_item.part_id,
         stock_item=stock_item,
@@ -208,6 +211,10 @@ def add_walkup_usage(
         resolved_by=actor,
         state=CloseoutPartUsageState.RECONCILED,
     )
+    from assets.recorded_facts import promote_usage
+
+    promote_usage(row, actor)
+    return row
 
 
 @transaction.atomic
@@ -319,6 +326,9 @@ def resolve_part_usage(
     row.state = CloseoutPartUsageState.RECONCILED
     row.version += 1
     row.save()
+    from assets.recorded_facts import promote_usage
+
+    promote_usage(row, actor, installed_decision=True)
     return row
 
 

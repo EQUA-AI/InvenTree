@@ -1,6 +1,5 @@
 import { t } from '@lingui/core/macro';
 import {
-  Alert,
   Button,
   Select,
   SimpleGrid,
@@ -12,6 +11,7 @@ import { useLocalStorage } from '@mantine/hooks';
 import { useState } from 'react';
 import { useLocalState } from '../../../states/LocalState';
 import { useUserState } from '../../../states/UserState';
+import { SharedDisplayViews } from './SharedDisplayViews';
 import {
   type DisplayView,
   displayViewKey,
@@ -34,6 +34,7 @@ export function DisplayPreferences({
   return (
     <ScopedPreferences
       key={JSON.stringify([host, actor, machineId])}
+      machineId={machineId}
       scope={displayViewKey(host, actor, machineId)}
       current={current}
       onRestore={onRestore}
@@ -41,10 +42,12 @@ export function DisplayPreferences({
   );
 }
 function ScopedPreferences({
+  machineId,
   scope,
   current,
   onRestore
 }: Readonly<{
+  machineId: number;
   scope: string;
   current: Omit<DisplayView, 'name'>;
   onRestore: (view: DisplayView) => void;
@@ -151,11 +154,11 @@ function ScopedPreferences({
           {notice}
         </Text>
       )}
-      <Alert
-        color='gray'
-        variant='light'
-        title={t`Shared sets unavailable`}
-      >{t`No curated shared-view provider is registered. Personal browser views are not shared or synchronized across devices.`}</Alert>
+      <SharedDisplayViews
+        machineId={machineId}
+        current={current}
+        onRestore={onRestore}
+      />
     </Stack>
   );
 }

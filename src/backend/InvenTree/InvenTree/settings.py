@@ -982,7 +982,7 @@ CORS_ALLOWED_ORIGIN_REGEXES = get_setting(
     typecast=list,
 )
 
-_allowed_headers = (*default_cors_headers, 'traceparent')
+_allowed_headers = (*default_cors_headers, 'traceparent', 'x-aimms-reconcile-only')
 # Allow extra CORS headers in DEBUG mode
 # Required for serving /static/ and /media/ files
 if DEBUG:

@@ -2110,6 +2110,7 @@ def read_diagnostic_health_summary(
         signal_claim = json.dumps(
             {
                 'signal': row['display_name'],
+                'active': row['active'],
                 'value': row['value'],
                 'unit': row['unit'],
                 'quality': row['quality'],

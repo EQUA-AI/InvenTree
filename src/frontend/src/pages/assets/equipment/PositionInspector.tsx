@@ -22,6 +22,7 @@ import { getDetailUrl } from '@lib/functions/Navigation';
 import { useUserState } from '../../../states/UserState';
 
 import type { SignalQuality } from '@lib/types/MachineHealth';
+import { FittedItemFact } from '../FittedIdentity';
 import { HealthStateBadge, ObservedAt, qualityLabel } from '../health/common';
 import { formatValue } from '../performance/format';
 import type {
@@ -93,7 +94,10 @@ function ComponentSlot({ slot }: Readonly<{ slot: PositionComponent }>) {
         {slot.code}
         {slot.provenance ? ` · ${slot.provenance}` : ''}
       </Text>
-      {/* The catalogue family record; what is fitted is not recorded. */}
+      {user.hasViewRole(UserRoles.stock) && slot.fitted?.current && (
+        <FittedItemFact fit={slot.fitted.current} />
+      )}
+      {/* The catalogue family stays separate from the recorded fitted instance. */}
       {user.hasViewRole(UserRoles.part) && (
         <Anchor
           component={Link}

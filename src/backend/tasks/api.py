@@ -23,6 +23,7 @@ import InvenTree.permissions
 from InvenTree.filters import SEARCH_ORDER_FILTER
 from InvenTree.mixins import ListCreateAPI, RetrieveUpdateDestroyAPI
 from tasks.json_lookups import filter_json_array_contains
+from tasks.time_api import WorkTime
 
 from .attention import attention_filter, order_by_attention
 from .authority_api import WorkOperationalAuthority
@@ -1687,6 +1688,7 @@ tasks_api_urls = [
         'work-orders/',
         include([
             path('', WorkOrderList.as_view(), name='work-order-list'),
+            path('<int:pk>/time/', WorkTime.as_view(), name='work-order-time'),
             path('<int:pk>/', WorkOrderDetail.as_view(), name='work-order-detail'),
             path(
                 '<int:pk>/readiness/',

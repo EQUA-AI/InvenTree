@@ -327,6 +327,28 @@ export function SignalEvidence({
             <Fact label={t`State`}>
               <HealthStateBadge state={signal.state} size='sm' />
             </Fact>
+            <Fact label={t`Critical designation`}>
+              <Text size='sm'>
+                {signal.critical_designation?.review_required ||
+                signal.critical_designation?.applies_current === false
+                  ? t`Designation review required — binding meaning changed`
+                  : signal.critical_designation?.critical
+                    ? t`Designated critical`
+                    : t`Not designated`}
+              </Text>
+              {signal.critical_designation && (
+                <Text size='xs' c='dimmed'>
+                  {signal.critical_designation.reason} ·{' '}
+                  {signal.critical_designation.recorded_by ?? t`Not recorded`} ·{' '}
+                  {fullInstant(signal.critical_designation.recorded_at)}
+                </Text>
+              )}
+              <Anchor
+                component={Link}
+                to='/machines/registry/'
+                size='sm'
+              >{t`Review designations in registry`}</Anchor>
+            </Fact>
             <Fact label={t`Limits`}>
               {limits ? (
                 <Stack gap={0}>

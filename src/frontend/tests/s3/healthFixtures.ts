@@ -54,6 +54,8 @@ export type TrendShape =
     };
 
 export interface HealthSignalSpec {
+  active?: boolean;
+  criticalDesignation?: MachineSignal['critical_designation'];
   observedAt?: string | null;
   freshnessSeconds?: number;
   component?: MachineSignal['component'];
@@ -289,6 +291,8 @@ export function trendFor(
 /** The signals endpoint's row for one spec. */
 export function signalRow(spec: HealthSignalSpec) {
   return {
+    active: spec.active ?? true,
+    critical_designation: spec.criticalDesignation ?? null,
     binding_id: spec.id,
     component: spec.component ?? null,
     source_id: 1,
@@ -412,8 +416,10 @@ export async function openHealth(
       json: {
         state: 'normal',
         configured: true,
-        signal_count: specs.length,
-        stale_signal_count: specs.filter((spec) => spec.stale).length,
+        signal_count: specs.filter((spec) => spec.active !== false).length,
+        stale_signal_count: specs.filter(
+          (spec) => spec.active !== false && spec.stale
+        ).length,
         degraded_data: specs.some(
           (spec) => spec.stale || (spec.quality && spec.quality !== 'good')
         ),
@@ -431,7 +437,8 @@ export async function openHealth(
             last_error_at: null,
             last_error_code: '',
             freshness_threshold_seconds: 300,
-            mapped_tag_count: specs.length
+            mapped_tag_count: specs.filter((spec) => spec.active !== false)
+              .length
           }
         ],
         ...options.summary

@@ -73,7 +73,11 @@ def _tracking(ids):
 
 
 def _usage_row(row, visible):
+    from assets.recorded_facts import fit_row
+
+    fit = getattr(row, 'componentfit', None) if visible else None
     return {
+        'fitted_record': fit_row(fit) if fit else None,
         'id': row.pk,
         'part': _part(row.part),
         'stock_item': _stock(row.stock_item, visible),
@@ -119,11 +123,17 @@ def material_readout(actor, work_order) -> dict:
     visible = check_user_role(actor, 'stock', 'view')
     kits_enabled = bool(getattr(settings, 'AIMMS_JOB_KITS_ENABLED', False))
 
+    usage_query = CloseoutPartUsage.objects.filter(work_order=work_order)
+    if visible:
+        usage_query = usage_query.select_related(
+            'componentfit__recorded_by',
+            'componentfit__verified_by',
+            'componentfit__retracted_by',
+        )
     usage = list(
-        CloseoutPartUsage.objects
-        .filter(work_order=work_order)
-        .select_related('part', 'stock_item__location', 'resolved_by')
-        .order_by('pk')
+        usage_query.select_related(
+            'part', 'stock_item__location', 'resolved_by'
+        ).order_by('pk')
     )
     usage_by_allocation = {}
     loose_usage = []

@@ -40,3 +40,22 @@ def closeout_of(work_order):
         return work_order.structured_closeout
     except Exception:  # RelatedObjectDoesNotExist
         return None
+
+
+def record_instant(value):
+    """Require an explicit zone for entered physical/event timestamps."""
+    from django.utils import timezone
+    from django.utils.dateparse import parse_datetime
+
+    from rest_framework import serializers
+    from rest_framework.exceptions import ValidationError
+
+    try:
+        parsed = parse_datetime(value) if isinstance(value, str) else None
+    except ValueError:
+        parsed = None
+    if parsed is None or timezone.is_naive(parsed):
+        raise ValidationError(
+            'Provide an ISO timestamp with an explicit timezone offset.'
+        )
+    return serializers.DateTimeField().run_validation(value)

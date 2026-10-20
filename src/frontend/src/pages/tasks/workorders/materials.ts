@@ -5,6 +5,8 @@
  * recorder or stage is "not recorded", never filled in from a neighbour.
  */
 
+import type { FittedRecord } from '@lib/types/RecordedFacts';
+
 export interface MaterialPart {
   pk: number;
   name: string;
@@ -23,6 +25,7 @@ export interface MaterialStock {
 }
 
 export interface MaterialUsage {
+  fitted_record?: FittedRecord | null;
   id: number;
   part: MaterialPart | null;
   stock_item: MaterialStock | null;

@@ -64,14 +64,22 @@ def signal_rows(machine, *, now=None):
     bindings = list(
         MachineSignalBinding.objects
         .select_related('source', 'state', 'dictionary_point__component')
-        .filter(machine=machine, active=True)
+        .prefetch_related('designations__recorded_by')
+        .filter(machine=machine)
         .order_by('display_name')
     )
     station = machine if machine.asset_type == 'pumphouse' else machine.parent
+    from assets.recorded_facts import current_designation
+
+    bindings = [
+        binding
+        for binding in bindings
+        if binding.active or (current_designation(binding) or {}).get('critical')
+    ]
     return _binding_rows(bindings, station, now)
 
 
-def _binding_rows(bindings, station, now):
+def _binding_rows(bindings, station, now, *, include_designation=True):
     """Signal rows for one machine's active bindings, for every reader."""
     rows = []
     shift = (
@@ -81,7 +89,7 @@ def _binding_rows(bindings, station, now):
     )
 
     for binding in bindings:
-        state = getattr(binding, 'state', None)
+        state = getattr(binding, 'state', None) if binding.active else None
         threshold = binding.source.freshness_threshold_seconds
         observed_at = to_display(state.observed_at, shift) if state else None
         # Too old and dated-in-the-future are both "not a current reading". A
@@ -99,7 +107,13 @@ def _binding_rows(bindings, station, now):
         # while the same row displayed "Unusable or unknown" beside it.
         usable = not stale and quality == SignalQuality.GOOD
 
+        from assets.recorded_facts import current_designation
+
         rows.append({
+            'critical_designation': current_designation(binding)
+            if include_designation
+            else None,
+            'active': binding.active,
             'binding_id': binding.pk,
             'source_id': binding.source_id,
             'source_name': binding.source.name,
@@ -215,7 +229,9 @@ def health_conditions(machines, *, now=None) -> dict:
             else parents.get(machine.parent_id)
         )
         conditions[machine.pk] = _condition(
-            _binding_rows(bindings.get(machine.pk, []), station, now),
+            _binding_rows(
+                bindings.get(machine.pk, []), station, now, include_designation=False
+            ),
             severities.get(machine.pk, []),
         )
     return conditions

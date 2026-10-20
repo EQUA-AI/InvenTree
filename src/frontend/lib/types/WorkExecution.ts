@@ -6,6 +6,8 @@
  * says the fact is not supplied rather than showing an empty success.
  */
 
+import type { DowntimeRecord, TimeRecords } from './RecordedFacts';
+
 /** Which record families a projection read, so empty is never "none". */
 export interface ProjectionSource {
   key: string;
@@ -543,6 +545,8 @@ export interface VerificationReturn {
 }
 
 export interface TimeAssignment {
+  time_records?: TimeRecords;
+  downtime_records?: DowntimeRecord[];
   rule: 'time_assignment.v1';
   observed_at: string;
   assigned_to: string | null;
@@ -561,9 +565,9 @@ export interface TimeAssignment {
     assigned_to_name?: string | null;
     previous_assigned_to_name?: string | null;
   }[];
-  attributed_intervals: { available: false; reason: 'no_provider' };
-  coverage: 'unknown';
-  correction: { available: false; reason: 'no_provider' };
+  attributed_intervals: { available: boolean; reason?: 'no_provider' };
+  coverage: 'unknown' | 'partial';
+  correction: { available: boolean; reason?: 'no_provider' };
   assignment_factors: { available: false; reason: 'no_provider' };
   /** Responsibility is supplied by work_continuity, not inferred from time. */
   accepted_handover: { available: false; reason: string };

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { nativeBaseline } from '../s0/guards';
-import { NATIVE_SIGNALS, openPerformance } from './performanceFixtures';
+import { NATIVE_SIGNALS, openPausedPerformance } from './performanceFixtures';
 nativeBaseline();
 async function choose(page: import('@playwright/test').Page, name: string) {
   await page
@@ -13,7 +13,7 @@ for (const scheme of ['light', 'dark'] as const)
   test(`compatible channels overlay, incompatible units stay separate and personal views restore in ${scheme}`, async ({
     page
   }, info) => {
-    const requests = await openPerformance(page, {
+    const requests = await openPausedPerformance(page, {
       harness: 's3',
       scheme,
       signals: NATIVE_SIGNALS.filter((signal) =>
@@ -67,7 +67,7 @@ for (const scheme of ['light', 'dark'] as const)
       .click();
     await expect(page.locator('[data-comparison-group]')).toHaveCount(2);
     await expect(
-      page.getByText('Shared sets unavailable', { exact: true })
+      page.getByText('Shared display views', { exact: true })
     ).toBeVisible();
     await page.getByTestId('comparison-workbench').scrollIntoViewIfNeeded();
     await page.getByTestId('comparison-workbench').screenshot({
@@ -76,7 +76,7 @@ for (const scheme of ['light', 'dark'] as const)
     });
   });
 test('blocked browser storage never reports a saved view', async ({ page }) => {
-  await openPerformance(page, { harness: 's3' });
+  await openPausedPerformance(page, { harness: 's3' });
   await page
     .getByRole('button', { name: 'Comparisons and display views', exact: true })
     .click();
@@ -128,7 +128,7 @@ for (const scheme of ['light', 'dark'] as const)
         });
       }
     );
-    await openPerformance(page, { harness: 's3', scheme });
+    await openPausedPerformance(page, { harness: 's3', scheme });
     await page
       .getByRole('button', {
         name: 'Comparisons and display views',
@@ -174,7 +174,7 @@ for (const scheme of ['light', 'dark'] as const)
 test('saved view capacity and duplicate names preserve every existing view', async ({
   page
 }, info) => {
-  await openPerformance(page, { harness: 's3' });
+  await openPausedPerformance(page, { harness: 's3' });
   const views = Array.from({ length: 20 }, (_, i) => ({
     name: i === 0 ? 'x'.repeat(80) : `Saved ${i + 1}`,
     search: `original ${i}`,
@@ -222,7 +222,7 @@ test('saved view capacity and duplicate names preserve every existing view', asy
 });
 for (const scheme of ['light', 'dark'] as const)
   test(`comparison controls contained in ${scheme}`, async ({ page }, info) => {
-    await openPerformance(page, { harness: 's3', scheme });
+    await openPausedPerformance(page, { harness: 's3', scheme });
     await page
       .getByRole('button', {
         name: 'Comparisons and display views',
@@ -261,7 +261,7 @@ for (const scheme of ['light', 'dark'] as const)
 test('before and after use independent bounded windows and query identities', async ({
   page
 }, info) => {
-  const requests = await openPerformance(page, { harness: 's3' });
+  const requests = await openPausedPerformance(page, { harness: 's3' });
   await page
     .getByRole('button', { name: 'Comparisons and display views', exact: true })
     .click();
@@ -304,3 +304,81 @@ test('before and after use independent bounded windows and query identities', as
     animations: 'disabled'
   });
 });
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`O15 shared views retain creator and engineer default provenance (${scheme})`, async ({
+    page
+  }, info) => {
+    const commands: Record<string, unknown>[] = [];
+    let view = {
+      id: 9,
+      name: 'Engineer operating set',
+      config: { search: '', section: 'all', bindings: [100] },
+      owner_id: 99,
+      owner: 'Synthetic creator',
+      is_default: true,
+      version: 1,
+      recorded_at: '2026-10-18T08:00:00Z',
+      updated_by: 'Synthetic engineer',
+      updated_at: '2026-10-18T09:00:00Z'
+    };
+    await page.route(
+      '**/api/assets/recorded/18/performance-views/',
+      async (route) => {
+        if (route.request().method() === 'POST') {
+          const body = route.request().postDataJSON();
+          commands.push(body);
+          view = {
+            ...view,
+            is_default: body.fields.is_default,
+            version: 2,
+            updated_by: 'Synthetic engineer',
+            updated_at: '2026-10-20T08:00:00Z'
+          };
+          await route.fulfill({ json: view });
+        } else await route.fulfill({ json: { results: [view] } });
+      }
+    );
+    await page.clock.setFixedTime(new Date('2026-10-20T08:00:00Z'));
+    await openPausedPerformance(page, {
+      harness: 's3',
+      scheme,
+      harnessParams: { role: 'engineer' },
+      signals: [NATIVE_SIGNALS[0]]
+    });
+    await page
+      .getByRole('button', {
+        name: 'Comparisons and display views',
+        exact: true
+      })
+      .click();
+    const shared = page.getByTestId('shared-display-views');
+    await shared.getByRole('button', { name: 'Read shared views' }).click();
+    await expect(shared).toContainText('Synthetic creator');
+    await expect(shared).toContainText('Synthetic engineer');
+    await expect(shared).toContainText('Engineer default');
+    await shared.getByRole('button', { name: 'Restore shared view' }).click();
+    await expect(
+      shared.getByRole('button', { name: 'Delete shared view' })
+    ).toHaveCount(0);
+    await page.getByTestId('fixture-fetching').waitFor({ state: 'visible' });
+    await expect(page.getByTestId('fixture-fetching')).toHaveText('0');
+    await shared
+      .getByRole('button', { name: 'Remove from defaults' })
+      .scrollIntoViewIfNeeded();
+    await shared.getByRole('button', { name: 'Remove from defaults' }).click();
+    await expect(
+      shared.getByRole('button', { name: 'Add to defaults' })
+    ).toBeVisible();
+    expect(commands).toHaveLength(1);
+    expect(commands[0]).toMatchObject({
+      operation: 'curate',
+      expected_version: 1,
+      fields: { id: 9, is_default: false }
+    });
+    await shared.screenshot({
+      path: info.outputPath(`o15-shared-views-${scheme}.png`),
+      animations: 'disabled'
+    });
+  });
+}

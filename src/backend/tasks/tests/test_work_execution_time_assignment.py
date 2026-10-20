@@ -42,7 +42,7 @@ class TimeAssignmentProjectionTest(TestCase):
         self.assertEqual(value['elapsed_assignment_seconds'], 5400)
         self.assertEqual(value['assignment_reason'], 'Recorded specialist allocation')
         self.assertEqual(value['assignment_recorded_by'], 'assignment-recorder')
-        self.assertFalse(value['attributed_intervals']['available'])
+        self.assertTrue(value['attributed_intervals']['available'])
         self.assertEqual(value['coverage'], 'unknown')
         self.assertNotIn('waiting_minutes', value)
         self.assertNotIn('labor_minutes', value)
@@ -111,7 +111,7 @@ class TimeAssignmentProjectionTest(TestCase):
             correlation_id=uuid.uuid4(),
             metadata={'assigned_to_id': previous.pk},
         )
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(4):
             rows = {row['id']: row for row in project(self.work)['events']}
         self.assertEqual(rows[self.event.pk]['assigned_to_name'], 'Current Technician')
         self.assertEqual(
@@ -134,7 +134,7 @@ class TimeAssignmentProjectionTest(TestCase):
         self.event.save(update_fields=['reason'])
         value = project(self.work)
         self.assertIsNone(value['assignment_reason'])
-        for key in ('assignment_factors', 'accepted_handover', 'correction'):
+        for key in ('assignment_factors', 'accepted_handover'):
             self.assertFalse(value[key]['available'])
 
     def test_read_does_not_create_assignment_or_time_records(self):
@@ -145,3 +145,5 @@ class TimeAssignmentProjectionTest(TestCase):
         self.work.refresh_from_db()
         self.assertEqual(self.work.lifecycle_version, version)
         self.assertEqual(self.work.events.count(), 1)
+        self.assertEqual(self.work.time_intervals.count(), 0)
+        self.assertEqual(self.work.downtime_records.count(), 0)

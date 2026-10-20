@@ -1,4 +1,5 @@
 import type { HealthState } from '@lib/types/MachineHealth';
+import type { FitProjection } from '@lib/types/RecordedFacts';
 
 import type { TwinPartId } from './twinScene.mjs';
 
@@ -12,6 +13,7 @@ import type { TwinPartId } from './twinScene.mjs';
 
 export interface PositionComponent {
   id?: number;
+  fitted?: FitProjection | null;
   code: string;
   name: string;
   status: 'draft' | 'verified';

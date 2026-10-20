@@ -7,6 +7,7 @@ import {
   ExecutionSection,
   recordedTime
 } from './ExecutionFacts';
+import { RecordedWorkTime } from './RecordedWorkTime';
 
 function elapsed(value: number | null): string | null {
   if (value === null || !Number.isFinite(value) || value < 0) return null;
@@ -61,11 +62,7 @@ export function TimeAssignment({
         size='sm'
         c='dimmed'
       >{t`Elapsed assignment is wall time at the last server read, not labor or accepted responsibility. Actual start and completion are job timestamps, not person-work intervals.`}</Text>
-      <Text
-        fw={600}
-        size='sm'
-      >{t`Attributed time: unavailable · coverage unknown`}</Text>
-      <Text size='sm'>{t`No authoritative attributed intervals are supplied. Unclassified gaps and labor totals cannot be measured. Held work does not mean every person was waiting; capture duration and browser activity do not classify labor.`}</Text>
+      <RecordedWorkTime key={workOrder.id} workOrder={workOrder} />
       {handover?.available ? (
         <Stack gap={2} data-testid='time-handover-record'>
           <Text size='sm'>
@@ -83,10 +80,10 @@ export function TimeAssignment({
               {handover.accepted_version}
             </Text>
           )}
-          <Text size='sm'>{t`Assignment factors and an attributed interval correction path are not supplied. No assignment score or corrected time is inferred.`}</Text>
+          <Text size='sm'>{t`Assignment factors are not supplied. No assignment score is inferred, and accepted handover is not inferred from person-work time.`}</Text>
         </Stack>
       ) : (
-        <Text size='sm'>{t`Assignment factors, accepted handover and an attributed interval correction path are not supplied. No assignment score, accepted owner or corrected time is inferred.`}</Text>
+        <Text size='sm'>{t`Assignment factors and accepted handover are not inferred from person-work time.`}</Text>
       )}
       {value && (
         <Accordion variant='contained' keepMounted={false}>

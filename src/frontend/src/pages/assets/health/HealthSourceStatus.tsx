@@ -1,5 +1,5 @@
 import { t } from '@lingui/core/macro';
-import { Badge, Group, Paper, Stack, Table, Text } from '@mantine/core';
+import { Badge, Box, Group, Paper, Stack, Table, Text } from '@mantine/core';
 import { IconCircleCheck, IconPlugConnectedX } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 
@@ -27,7 +27,7 @@ export function HealthSourceStatusTable({
 
   return (
     <Paper withBorder radius='md' p={0} style={{ overflowX: 'auto' }}>
-      <Table striped>
+      <Table striped miw={720} aria-label={t`Source connections`}>
         <Table.Thead>
           <Table.Tr>
             <Table.Th>{t`Source`}</Table.Th>
@@ -43,13 +43,17 @@ export function HealthSourceStatusTable({
             <Table.Tr key={source.source_id}>
               <Table.Td>
                 <Group gap={6} wrap='nowrap'>
-                  <SourceTypeBadge type={source.source_type} />
+                  <Box w='max-content' style={{ flexShrink: 0 }}>
+                    <SourceTypeBadge type={source.source_type} />
+                  </Box>
                   <Text size='sm'>{source.name}</Text>
                 </Group>
               </Table.Td>
               <Table.Td>
                 {source.healthy ? (
                   <Badge
+                    w='max-content'
+                    maw='none'
                     color='green'
                     variant='light'
                     leftSection={<IconCircleCheck size={14} />}
@@ -58,6 +62,8 @@ export function HealthSourceStatusTable({
                   </Badge>
                 ) : (
                   <Badge
+                    w='max-content'
+                    maw='none'
                     color='red'
                     variant='light'
                     leftSection={<IconPlugConnectedX size={14} />}
@@ -70,7 +76,7 @@ export function HealthSourceStatusTable({
                 <Text size='sm'>
                   {source.last_success_at
                     ? dayjs(source.last_success_at).format('MMM D, HH:mm')
-                    : t`Never`}
+                    : t`Not recorded`}
                 </Text>
               </Table.Td>
               <Table.Td>

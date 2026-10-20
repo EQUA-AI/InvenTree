@@ -1,6 +1,7 @@
 {
 	"extends": "./tsconfig.s0.json",
 	"files": [
+		"tests/s4/pui_work_time_recording.spec.ts",
 		"playwright.s4.config.ts",
 		"tests/s1/workListFixtures.ts",
 		"tests/s4/workExecutionFixtures.ts",

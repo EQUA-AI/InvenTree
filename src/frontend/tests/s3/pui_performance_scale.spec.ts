@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { nativeBaseline } from '../s0/guards';
-import { NATIVE_SIGNALS, openPerformance } from './performanceFixtures';
+import { NATIVE_SIGNALS, openPausedPerformance } from './performanceFixtures';
 
 nativeBaseline();
 for (const scheme of ['light', 'dark'] as const)
@@ -17,7 +17,7 @@ for (const scheme of ['light', 'dark'] as const)
           unit: 'bar'
         }))
       ];
-      const requests = await openPerformance(page, {
+      const requests = await openPausedPerformance(page, {
         signals,
         harness: 's3',
         scheme
@@ -94,7 +94,7 @@ for (const scheme of ['light', 'dark'] as const)
     });
 
 test('large channel navigation in dark scheme', async ({ page }, info) => {
-  await openPerformance(page, { harness: 's3', scheme: 'dark' });
+  await openPausedPerformance(page, { harness: 's3', scheme: 'dark' });
   await page
     .getByLabel('Find a channel', { exact: true })
     .fill('WINDING_TEMPERATURED1');
@@ -143,7 +143,7 @@ for (const scheme of ['light', 'dark'] as const)
         /PUMP1_(ACTIVE_POWER|SPEED)$|WINDING_TEMPERATURED[1-4]$/.test(s.key)
       )
     ];
-    const requests = await openPerformance(page, {
+    const requests = await openPausedPerformance(page, {
       harness: 's3',
       scheme,
       signals,
