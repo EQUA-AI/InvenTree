@@ -44,6 +44,7 @@ const request = (id = 401): InvestigationRequest => ({
   resolution: '',
   created_by: 9,
   updated_by: 9,
+  updated_by_name: 'Synthetic technician',
   created_at: '2026-10-19T09:00:00Z',
   updated_at: '2026-10-19T09:05:00Z',
   artifacts: [
@@ -111,10 +112,48 @@ test('saved queue preserves purpose, typed requirements and laboratory identity'
   await expect(card.getByText(/Sample: SYN-SAMPLE-8/)).toBeVisible();
   await expect(card.getByText(/Method: Synthetic microscopy/)).toBeVisible();
   await expect(card.getByText(/Result status: pending/)).toBeVisible();
-  await expect(card.getByText(/Particles: Not recorded count/)).toBeVisible();
+  await expect(
+    card.getByText('Results: Particles: Not recorded', { exact: true })
+  ).toBeVisible();
+  await expect(card.getByText(/Not recorded count\/mL/)).toHaveCount(0);
+  await expect(
+    card.getByText(/Next checkpoint: 2026-10-20 11:00/)
+  ).toBeVisible();
+  await expect(
+    card.getByText(/Saved: 2026-10-19 12:05.*Updated by: Synthetic technician/)
+  ).toBeVisible();
+  await expect(card.getByText(/Observed at: 2026-10-19 10:00/)).toBeVisible();
+  await expect(card.getByText(/2026-10-\d\dT/)).toHaveCount(0);
   await expect(panel.locator('input,textarea,select,form')).toHaveCount(0);
   await expectNoPageOverflow(page);
   await capturePanel(page, info.outputPath('request-queue-light.png'));
+  await openExecutionPanel(page, 'diagnose', 'dark');
+  await expect(
+    panelRegion(page, 'Diagnose').getByText(/Updated by: Synthetic technician/)
+  ).toHaveCount(2);
+  await expectNoPageOverflow(page);
+  await capturePanel(page, info.outputPath('request-queue-dark.png'));
+});
+
+test('missing updater and checkpoint remain unrecorded while zero keeps its unit', async ({
+  page
+}, info) => {
+  const row = request();
+  row.updated_by_name = null;
+  row.next_checkpoint = null;
+  row.artifacts[0].payload.results = [
+    { name: 'Particles', value: 0, unit: 'count/mL' }
+  ];
+  await setup(page, [row]);
+  await openExecutionPanel(page, 'diagnose');
+  const card = panelRegion(page, 'Diagnose').getByTestId(
+    'investigation-request-401'
+  );
+  await expect(card.getByText(/Updated by: Not recorded/)).toBeVisible();
+  await expect(card.getByText(/Next checkpoint: Not recorded/)).toBeVisible();
+  await expect(card.getByText(/Particles: 0 count\/mL/)).toBeVisible();
+  await expect(card.getByText(/Updated by: 9/)).toHaveCount(0);
+  await capturePanel(page, info.outputPath('request-missing-updater.png'));
 });
 
 test('request-scoped chat acknowledges the exact revision and preserves return identity across rounds', async ({
@@ -448,6 +487,9 @@ for (const scheme of ['light', 'dark'] as const) {
       .click();
     await page.getByRole('tab', { name: 'Approvals', exact: true }).click();
     const card = page.getByTestId('chat-action-proposal');
+    await expect(
+      card.getByText('Publish investigation evidence: WO-73', { exact: true })
+    ).toBeVisible();
     await expect(card.getByText('Request 401 · revision 3')).toBeVisible();
     await expect(
       card.getByText(/Description: Synthetic technician report/)

@@ -1,21 +1,27 @@
 import { t } from '@lingui/core/macro';
 import { Stack, Text } from '@mantine/core';
+import { formatDate } from '../../defaults/formatters';
 
-const labels: Record<string, string> = {
-  text: 'Observation',
-  description: 'Description',
-  readings: 'Readings',
-  results: 'Results',
-  observed_at: 'Observed at',
-  conditions: 'Conditions',
-  sample: 'Sample',
-  method: 'Method',
-  source: 'Source',
-  status: 'Result status'
-};
+function label(key: string): string {
+  const labels: Record<string, string> = {
+    text: t`Observation`,
+    description: t`Description`,
+    readings: t`Readings`,
+    results: t`Results`,
+    observed_at: t`Observed at`,
+    conditions: t`Conditions`,
+    sample: t`Sample`,
+    method: t`Method`,
+    source: t`Source`,
+    status: t`Result status`
+  };
+  return labels[key] ?? key;
+}
 
-function valueText(value: unknown): string {
-  if (value == null) return t`Not recorded`;
+function valueText(value: unknown, key?: string): string {
+  if (value == null || value === '') return t`Not recorded`;
+  if (key === 'observed_at' && typeof value === 'string')
+    return formatDate(value, { showTime: true });
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
 }
@@ -31,7 +37,7 @@ export function InvestigationArtifactReview({
       {Object.entries(payload).map(([key, value]) => (
         <Text key={key} size='sm'>
           <Text span fw={600}>
-            {labels[key] ?? key}:{' '}
+            {label(key)}:{' '}
           </Text>
           {Array.isArray(value)
             ? value.map((row, i) => {
@@ -49,8 +55,10 @@ export function InvestigationArtifactReview({
                   );
                   return (
                     <Text component='span' display='block' key={i}>
-                      {String(row.name)}: {valueText(row.value)}{' '}
-                      {String(row.unit)}
+                      {String(row.name)}: {valueText(row.value)}
+                      {row.value != null && row.value !== '' && row.unit
+                        ? ` ${String(row.unit)}`
+                        : ''}
                       {Object.keys(extra).length
                         ? ` · ${valueText(extra)}`
                         : ''}
@@ -63,7 +71,7 @@ export function InvestigationArtifactReview({
                   </Text>
                 );
               })
-            : valueText(value)}
+            : valueText(value, key)}
         </Text>
       ))}
     </Stack>

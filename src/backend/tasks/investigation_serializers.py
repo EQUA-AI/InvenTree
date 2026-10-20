@@ -31,6 +31,7 @@ class InvestigationRequestSerializer(serializers.ModelSerializer):
     """Canonical identity and attribution visible to an authorized Work reader."""
 
     owner_name = serializers.SerializerMethodField()
+    updated_by_name = serializers.SerializerMethodField()
     artifacts = serializers.SerializerMethodField()
 
     class Meta:
@@ -44,6 +45,12 @@ class InvestigationRequestSerializer(serializers.ModelSerializer):
         from tasks.work_execution.common import person
 
         return person(obj.owner)
+
+    def get_updated_by_name(self, obj):
+        """Display the recorded updater without treating a user id as a name."""
+        from tasks.work_execution.common import person
+
+        return person(obj.updated_by)
 
     def get_artifacts(self, obj):
         """Saved evidence retains its own ids and attribution."""

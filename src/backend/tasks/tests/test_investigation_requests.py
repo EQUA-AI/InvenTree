@@ -97,6 +97,26 @@ class InvestigationRequestTests(InvestigationProjectionTest):
         with self.assertRaises(IdempotencyConflict):
             self.apply(fields={'purpose': 'Different'})
 
+    def test_queue_names_the_recorded_updater_with_native_username_fallback(self):
+        """The read projection returns a display name, never a numeric label."""
+        from tasks.services.investigation_requests import project_requests
+
+        self.user.first_name = 'Taylor'
+        self.user.last_name = 'Reed'
+        self.user.save(update_fields=['first_name', 'last_name'])
+        self.apply()
+        self.assertEqual(
+            project_requests(self.work_order)['items'][0]['updated_by_name'],
+            'Taylor Reed',
+        )
+        self.user.first_name = ''
+        self.user.last_name = ''
+        self.user.save(update_fields=['first_name', 'last_name'])
+        self.assertEqual(
+            project_requests(self.work_order)['items'][0]['updated_by_name'],
+            self.user.username,
+        )
+
     def test_revision_preserves_before_after_and_rejects_stale(self):
         """Request revision is independent of Work lifecycle, with audit snapshots."""
         self.apply()

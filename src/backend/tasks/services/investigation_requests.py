@@ -275,9 +275,9 @@ def command(
 
 def project_requests(work_order):
     """A successful empty queue is distinct from an unavailable provider."""
-    rows = work_order.investigation_requests.select_related('owner').prefetch_related(
-        'artifacts__recorded_by'
-    )
+    rows = work_order.investigation_requests.select_related(
+        'owner', 'updated_by'
+    ).prefetch_related('artifacts__recorded_by')
     return {
         'available': True,
         'reason': '',

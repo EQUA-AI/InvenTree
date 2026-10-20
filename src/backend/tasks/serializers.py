@@ -462,6 +462,7 @@ class WorkOrderSummarySerializer(serializers.ModelSerializer):
             'status',
             'priority',
             'lifecycle_status',
+            'lifecycle_version',
             'work_order_type',
             'machine',
             'machine_name',
@@ -491,9 +492,11 @@ def _is_preliminary(diagnosis) -> bool:
 
 def _approved_scope_projection(packet) -> dict | None:
     """Return the approved scope currently in force for a packet."""
-    scope = packet.approved_scopes.filter(superseded_at__isnull=True).first()
-    if scope is None:
+    scopes = list(packet.approved_scopes.all().order_by('-version', '-pk'))
+    candidates = [scope for scope in scopes if scope.superseded_at is None]
+    if len(candidates) != 1 or candidates[0].pk != scopes[0].pk:
         return None
+    scope = candidates[0]
     return {
         'id': scope.pk,
         'version': scope.version,

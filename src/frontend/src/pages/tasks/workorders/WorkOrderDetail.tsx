@@ -68,8 +68,14 @@ import { WorkMaterialsPanel } from './WorkMaterialsPanel';
 import { DiagnoseProjection } from './execution/DiagnoseProjection';
 import { HandledByAimms } from './execution/HandledByAimms';
 import { PreparedPackage } from './execution/PreparedPackage';
+import { ScopeRevisionNotice } from './execution/ScopeRevisionReview';
 import { TimeAssignment } from './execution/TimeAssignment';
 import { VerificationReturn } from './execution/VerificationReturn';
+import {
+  WorkContinuity,
+  WorkContinuityConstraints,
+  WorkContinuityHistory
+} from './execution/WorkContinuity';
 import {
   type WorkPanel,
   workPanelParams,
@@ -180,9 +186,11 @@ function WorkOrderWorkspace({
       label: t`Work`,
       content: (
         <Stack gap='md'>
+          <ScopeRevisionNotice workOrder={workOrder} />
           {workOrder.repair_packet && (
             <WorkOrderProblemPanel packet={workOrder.repair_packet} />
           )}
+          <WorkContinuity workOrder={workOrder} />
           <HandledByAimms value={workOrder.handled_actions} />
           <TimeAssignment workOrder={workOrder} />
           <SectionCard
@@ -200,24 +208,27 @@ function WorkOrderWorkspace({
       name: 'diagnose',
       label: t`Diagnose`,
       content: (
-        <DiagnoseProjection
-          workOrder={workOrder}
-          nativeFindings={
-            workOrder.repair_packet?.findings.length ? (
-              <Table.ScrollContainer minWidth={900}>
-                <InvestigationSection
-                  findings={workOrder.repair_packet.findings}
-                  approvedScope={null}
-                />
-              </Table.ScrollContainer>
-            ) : (
-              <Alert
-                color='gray'
-                title={t`No findings in this overview`}
-              >{t`Recorded findings are not supplied here. This does not establish a cause or mean that all evidence sources have been checked.`}</Alert>
-            )
-          }
-        />
+        <Stack gap='md'>
+          <ScopeRevisionNotice workOrder={workOrder} />
+          <DiagnoseProjection
+            workOrder={workOrder}
+            nativeFindings={
+              workOrder.repair_packet?.findings.length ? (
+                <Table.ScrollContainer minWidth={900}>
+                  <InvestigationSection
+                    findings={workOrder.repair_packet.findings}
+                    approvedScope={null}
+                  />
+                </Table.ScrollContainer>
+              ) : (
+                <Alert
+                  color='gray'
+                  title={t`No findings in this overview`}
+                >{t`Recorded findings are not supplied here. This does not establish a cause or mean that all evidence sources have been checked.`}</Alert>
+              )
+            }
+          />
+        </Stack>
       )
     },
     {
@@ -225,6 +236,8 @@ function WorkOrderWorkspace({
       label: t`Plan & Safety`,
       content: (
         <Stack gap='md'>
+          <ScopeRevisionNotice workOrder={workOrder} />
+          <WorkContinuityConstraints workOrder={workOrder} />
           <PreparedPackage
             value={workOrder.prepared_package}
             workOrderId={workOrder.id}
@@ -264,6 +277,7 @@ function WorkOrderWorkspace({
           title={t`Parts for this job`}
           icon={<IconPackage size={18} />}
         >
+          <ScopeRevisionNotice workOrder={workOrder} />
           {/* R6 P22: requirement → reservation → issue → use, each recorded. */}
           <WorkMaterialsPanel
             workOrderId={workOrder.id}
@@ -279,6 +293,7 @@ function WorkOrderWorkspace({
       // R6 P23 projection, then the shared native closeout readings (P24).
       content: (
         <Stack gap='md'>
+          <ScopeRevisionNotice workOrder={workOrder} />
           <VerificationReturn workOrder={workOrder} />
           {workOrder.canonical_commands_enabled && !workOrder.repair_packet && (
             <WorkCloseoutReadings
@@ -325,9 +340,12 @@ function WorkOrderWorkspace({
       name: 'history',
       label: t`History`,
       content: (
-        <SectionCard title={t`Activity`} icon={<IconHistory size={18} />}>
-          <EventTimeline events={workOrder.events} />
-        </SectionCard>
+        <Stack gap='md'>
+          <WorkContinuityHistory workOrder={workOrder} />
+          <SectionCard title={t`Activity`} icon={<IconHistory size={18} />}>
+            <EventTimeline events={workOrder.events} />
+          </SectionCard>
+        </Stack>
       )
     }
   ];

@@ -11,7 +11,8 @@ import type {
   Investigation,
   PreparedPackage,
   TimeAssignment,
-  VerificationReturn
+  VerificationReturn,
+  WorkContinuity
 } from './WorkExecution';
 
 export interface WorkOrderSummary {
@@ -22,6 +23,7 @@ export interface WorkOrderSummary {
   status: string;
   priority: string;
   lifecycle_status: string;
+  lifecycle_version?: number;
   work_order_type: string;
   machine: number | null;
   machine_name: string | null;
@@ -172,4 +174,5 @@ export interface WorkOrderOverview extends WorkOrder {
   prepared_package?: PreparedPackage;
   verification_return?: VerificationReturn;
   time_assignment?: TimeAssignment;
+  work_continuity?: WorkContinuity;
 }

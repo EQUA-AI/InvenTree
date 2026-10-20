@@ -6,9 +6,13 @@ import type { WorkOrderOverview } from '@lib/types/WorkOrderOverview';
 import { t } from '@lingui/core/macro';
 import { Alert, Badge, Group, List, Paper, Stack, Text } from '@mantine/core';
 import { useSearchParams } from 'react-router-dom';
+import { InvestigationArtifactReview } from '../../../../components/aichat/InvestigationArtifactReview';
+import { formatDate } from '../../../../defaults/formatters';
 import { ContinueInvestigation } from './ContinueInvestigation';
 
-function statusLabel(status: InvestigationRequest['status']): string {
+export function investigationStatusLabel(
+  status: InvestigationRequest['status']
+): string {
   return (
     {
       open: t`Open`,
@@ -20,7 +24,7 @@ function statusLabel(status: InvestigationRequest['status']): string {
     }[status] ?? t`Status not recorded`
   );
 }
-function kindLabel(kind: string): string {
+export function investigationKindLabel(kind: string): string {
   return (
     (
       {
@@ -34,23 +38,8 @@ function kindLabel(kind: string): string {
     )[kind] ?? kind
   );
 }
-function factLabel(key: string): string {
-  return (
-    (
-      {
-        sample: t`Sample`,
-        method: t`Method`,
-        observed_at: t`Observed at`,
-        source: t`Source`,
-        status: t`Result status`,
-        results: t`Results`,
-        readings: t`Readings`,
-        conditions: t`Conditions`,
-        description: t`Description`,
-        text: t`Observation`
-      } as Record<string, string>
-    )[key] ?? key
-  );
+function when(value: string | null | undefined): string {
+  return value ? formatDate(value, { showTime: true }) : t`Not recorded`;
 }
 
 export function InvestigationRequests({
@@ -63,7 +52,7 @@ export function InvestigationRequests({
       <Alert
         color='gray'
         title={t`No saved investigation request`}
-      >{t`This server keeps no investigation request with an owner, status or due time, so there is no request queue to show. Checks are agreed in the assistant.`}</Alert>
+      >{t`This server does not supply saved investigation requests. Discussion in chat does not establish a saved check, owner, status or checkpoint here.`}</Alert>
     );
   if (!Array.isArray(requests.items))
     return (
@@ -151,7 +140,7 @@ export function InvestigationRequests({
                   label: { whiteSpace: 'normal' }
                 }}
               >
-                {statusLabel(r.status)}
+                {investigationStatusLabel(r.status)}
               </Badge>
             </Group>
             <Text size='sm' fw={600}>
@@ -162,18 +151,19 @@ export function InvestigationRequests({
             </Text>
             <Text size='sm'>
               {t`Owner`}: {r.owner_name || t`Not recorded`} ·{' '}
-              {t`Next checkpoint`}: {r.next_checkpoint || t`Not recorded`}
+              {t`Next checkpoint`}: {when(r.next_checkpoint)}
             </Text>
             <Text size='sm'>
               {t`Priority`}: {r.priority ?? t`Not recorded`} · {t`Saved`}:{' '}
-              {r.updated_at} · {t`Updated by`}: {r.updated_by}
+              {when(r.updated_at)} · {t`Updated by`}:{' '}
+              {r.updated_by_name || t`Not recorded`}
             </Text>
             {r.required_artifacts.length > 0 ? (
               <List size='sm' spacing={3}>
                 {r.required_artifacts.map((a, i) => (
                   <List.Item key={`${r.id}-${i}`}>
-                    {kindLabel(a.kind)} · {a.description} · {t`Unit`}:{' '}
-                    {a.unit || t`Not recorded`} · {t`Conditions`}:{' '}
+                    {investigationKindLabel(a.kind)} · {a.description} ·{' '}
+                    {t`Unit`}: {a.unit || t`Not recorded`} · {t`Conditions`}:{' '}
                     {a.conditions || t`Not recorded`}
                   </List.Item>
                 ))}
@@ -185,7 +175,7 @@ export function InvestigationRequests({
               >{t`Required artifacts and conditions not recorded`}</Text>
             )}
             {r.blocked_reason && (
-              <Alert color='orange' title={statusLabel(r.status)}>
+              <Alert color='orange' title={investigationStatusLabel(r.status)}>
                 <Text size='sm'>{r.blocked_reason}</Text>
                 <Text size='xs'>{t`This decision remains unresolved until addressed. Other findings and unrelated work retain their own status.`}</Text>
               </Alert>
@@ -198,7 +188,7 @@ export function InvestigationRequests({
             {r.source_proposal && (
               <Text size='sm'>
                 {t`Source proposal`}: {r.source_proposal.check} ·{' '}
-                {r.source_proposal.generated_at || t`Time not recorded`}
+                {when(r.source_proposal.generated_at)}
               </Text>
             )}
             {r.resolution && (
@@ -215,32 +205,15 @@ export function InvestigationRequests({
               >
                 <Stack gap={2}>
                   <Text size='sm' fw={600}>
-                    {t`Evidence ${a.id}`} · {kindLabel(a.kind)}
+                    {t`Evidence ${a.id}`} · {investigationKindLabel(a.kind)}
                     {a.supersedes
                       ? ` · ${t`Corrects evidence ${a.supersedes}`}`
                       : ''}
                   </Text>
-                  {Object.entries(a.payload).map(([key, value]) => (
-                    <Text key={key} size='sm'>
-                      <Text span fw={500}>
-                        {factLabel(key)}:{' '}
-                      </Text>
-                      {Array.isArray(value)
-                        ? value
-                            .map((v) =>
-                              typeof v === 'object' && v
-                                ? `${String(v.name ?? '')}: ${v.value === null || v.value === undefined ? t`Not recorded` : String(v.value)} ${String(v.unit ?? '')}`
-                                : String(v)
-                            )
-                            .join('; ')
-                        : value === null
-                          ? t`Not recorded`
-                          : String(value)}
-                    </Text>
-                  ))}
+                  <InvestigationArtifactReview payload={a.payload} />
                   <Text size='sm'>
                     {a.recorded_by_name || t`Recorder not recorded`} ·{' '}
-                    {a.created_at}
+                    {when(a.created_at)}
                     {a.attachment
                       ? ` · ${t`Work attachment ${a.attachment}`}`
                       : ''}

@@ -271,7 +271,8 @@ export function ProposalCard({
           <Group gap='xs' wrap='nowrap' style={{ flex: 1, minWidth: 160 }}>
             {actionIcon(proposal.action_type)}
             <Text fw={600} size='sm'>
-              {label}: {target}?
+              {label}: {target}
+              {publication ? '' : '?'}
             </Text>
           </Group>
           <Badge color={STATE_COLORS[proposal.state] ?? 'gray'} size='sm'>
