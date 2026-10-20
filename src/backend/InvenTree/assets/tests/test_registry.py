@@ -569,7 +569,7 @@ class RegistryTests(InvenTreeAPITestCase):
             {'client_id': self.tenant.pk, 'customer_id': 99, 'site_key': None}
         ]
         with self.settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=mixed):
-            self.assertEqual(self.client.get('/api/assets/registry/').data['count'], 0)
+            self.assertEqual(self.client.get('/api/assets/registry/').status_code, 403)
 
     def test_view_only_cannot_import(self):
         """Read authority permits preview, not import or anonymous access."""

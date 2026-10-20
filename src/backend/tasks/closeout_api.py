@@ -19,9 +19,11 @@ from django.http import Http404
 
 from rest_framework import status
 from rest_framework.generics import get_object_or_404
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import SAFE_METHODS, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from InvenTree.permissions import RolePermission
 
 from .closeout_models import (
     CloseoutAmendment,
@@ -97,10 +99,21 @@ class CloseoutEnabledMixin(WorkOrderEnabledMixin):
         return super().dispatch(request, *args, **kwargs)
 
 
+class CloseoutReadPermission(RolePermission):
+    """Require native Work view for reads; services authorize each command."""
+
+    def has_permission(self, request, view):
+        """Keep capture, review, reconcile and complete permissions independent."""
+        return request.method not in SAFE_METHODS or super().has_permission(
+            request, view
+        )
+
+
 class CloseoutCommandView(CloseoutEnabledMixin, APIView):
     """Shared scope-first parent lookup and stable error translation."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CloseoutReadPermission]
+    role_required = 'work_order'
 
     def get_work_order(self, request, pk):
         """Resolve the parent work order scope-safely (404 on any mismatch)."""
@@ -261,7 +274,8 @@ class CloseoutCaptureExtract(CloseoutCommandView):
 class CloseoutCaptureProposal(CloseoutEnabledMixin, APIView):
     """Return the live proposal (with decisions) for a capture."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CloseoutReadPermission]
+    role_required = 'work_order'
 
     def get(self, request, pk, cap):
         """Scope-first read of the current proposal."""
@@ -465,7 +479,8 @@ class CloseoutReadingDisposition(CloseoutCommandView):
 class CloseoutEffectList(CloseoutEnabledMixin, APIView):
     """Effect ledger with retry state for the work order's closeout."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CloseoutReadPermission]
+    role_required = 'work_order'
     pagination_class = WorkOrderPagination
 
     def get(self, request, pk):

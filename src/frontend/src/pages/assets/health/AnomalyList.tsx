@@ -19,6 +19,9 @@ import {
 import dayjs from 'dayjs';
 import { Link } from 'react-router-dom';
 
+import { UserRoles } from '@lib/enums/Roles';
+import { useUserState } from '../../../states/UserState';
+
 import type {
   MachineAnomaly,
   PreliminaryResults
@@ -68,6 +71,9 @@ export function AnomalyList({
   analyzing: number | null;
   results: Record<number, PreliminaryResults>;
 }>) {
+  const user = useUserState();
+  const canChange = user.hasChangeRole(UserRoles.work_order);
+  const canAdd = user.hasAddRole(UserRoles.work_order);
   if (anomalies.length === 0) {
     return (
       <Paper withBorder radius='md' p='md'>
@@ -109,6 +115,7 @@ export function AnomalyList({
                   variant='subtle'
                   leftSection={<IconStethoscope size={14} />}
                   loading={analyzing === anomaly.pk}
+                  disabled={!canChange}
                   onClick={() => onAnalyze(anomaly)}
                 >
                   {t`Analyze`}
@@ -119,6 +126,7 @@ export function AnomalyList({
                     variant='subtle'
                     leftSection={<IconCheck size={14} />}
                     loading={acknowledging === anomaly.pk}
+                    disabled={!canChange}
                     onClick={() => onAcknowledge(anomaly)}
                   >
                     {t`Acknowledge`}
@@ -140,6 +148,7 @@ export function AnomalyList({
                     variant='light'
                     leftSection={<IconTool size={14} />}
                     onClick={() => onCreateRepair(anomaly)}
+                    disabled={!canAdd}
                   >
                     {t`Create repair`}
                   </Button>
@@ -151,6 +160,7 @@ export function AnomalyList({
                     color='gray'
                     leftSection={<IconBellOff size={14} />}
                     onClick={() => onDismiss(anomaly)}
+                    disabled={!canChange}
                   >
                     {t`Dismiss`}
                   </Button>

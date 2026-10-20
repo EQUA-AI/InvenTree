@@ -12,6 +12,9 @@ import { IconExternalLink } from '@tabler/icons-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { UserRoles } from '@lib/enums/Roles';
+import { useUserState } from '../../../../states/UserState';
+
 import { WorkOrderCreateModal } from '../../../maintenance/components/WorkOrderCreateModal';
 import { type AlarmAction, AlarmNoteModal } from './AlarmNoteModal';
 import { type Display, conditionText } from './MimicReadings';
@@ -41,6 +44,9 @@ export function AlarmTable({
   /** Called once an alarm's state has changed, so the page re-reads. */
   onAcknowledged?: () => void;
 }>) {
+  const user = useUserState();
+  const canChange = user.hasChangeRole(UserRoles.work_order);
+  const canAdd = user.hasAddRole(UserRoles.work_order);
   const [noting, setNoting] = useState<{
     action: AlarmAction;
     alarm: MimicAlarm;
@@ -117,6 +123,7 @@ export function AlarmTable({
                       )}
                       {raised && alarm.anomaly_status === 'open' && (
                         <Button
+                          disabled={!canChange}
                           size='compact-sm'
                           variant='light'
                           onClick={() =>
@@ -128,6 +135,7 @@ export function AlarmTable({
                       )}
                       {raised && !dismissed && (
                         <Button
+                          disabled={!canAdd}
                           size='compact-sm'
                           variant='light'
                           color='orange'
@@ -138,6 +146,7 @@ export function AlarmTable({
                       )}
                       {raised && !dismissed && (
                         <Button
+                          disabled={!canChange}
                           size='compact-sm'
                           variant='subtle'
                           color='gray'

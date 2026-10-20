@@ -3,10 +3,10 @@
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from assets.models import AssetMachine
+from assets.models import AssetMachine, get_default_client
 from company.models import Company
 from part.models import Part
 from stock.models import StockItem
@@ -81,10 +81,7 @@ class ProcurementChildTest(TestCase):
         )
         self.machine = AssetMachine.objects.create(name='Proc Press')
         self.parent = WorkOrder.objects.create(
-            title='Needs parts',
-            status='backlog',
-            priority='low',
-            machine=self.machine,
+            title='Needs parts', status='backlog', priority='low', machine=self.machine
         )
         self.short_part = Part.objects.create(
             name='Rare', description='r', component=True
@@ -133,10 +130,7 @@ class ProcurementChildTest(TestCase):
 
         self.assertEqual(first.pk, second.pk)
         self.assertEqual(
-            self.parent.cards.filter(
-                card_kind=KanbanCard.KIND_PROCUREMENT
-            ).count(),
-            1,
+            self.parent.cards.filter(card_kind=KanbanCard.KIND_PROCUREMENT).count(), 1
         )
 
 
@@ -175,13 +169,18 @@ class CloseoutBlockedByChildTest(TestCase):
         self.assertEqual(incomplete.get().title, 'open child')
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class ChildCardApiTest(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_superuser(
             username='child-sup', email='cs@example.com', password='pw'
         )
         self.client.force_login(self.user)
-        self.machine = AssetMachine.objects.create(name='Child API Press')
+        self.machine = AssetMachine.objects.create(
+            name='Child API Press', client=get_default_client()
+        )
         self.parent = WorkOrder.objects.create(
             title='Parent', status='backlog', priority='low', machine=self.machine
         )
@@ -189,7 +188,11 @@ class ChildCardApiTest(TestCase):
     def test_create_child_via_api(self):
         response = self.client.post(
             reverse('kanban-command-create-child', kwargs={'pk': self.parent.pk}),
-            data={'title': 'Subtask', 'card_kind': 'subtask'},
+            data={
+                'title': 'Subtask',
+                'card_kind': 'subtask',
+                'idempotency_key': f'test-{self._testMethodName}',
+            },
             content_type='application/json',
         )
 
@@ -202,8 +205,7 @@ class ChildCardApiTest(TestCase):
     def test_generate_procurement_via_api_with_no_shortfall(self):
         response = self.client.post(
             reverse(
-                'kanban-command-generate-procurement',
-                kwargs={'pk': self.parent.pk},
+                'kanban-command-generate-procurement', kwargs={'pk': self.parent.pk}
             )
         )
         self.assertEqual(response.status_code, 200)

@@ -186,6 +186,12 @@ def _require_no_packet(work_order):
         raise CommandConflict(PACKET_OWNS_LIFECYCLE)
 
 
+def require_work_order_machine_change(work_order, machine_id):
+    """Keep a packet-owned Work attached to its packet's asset."""
+    if machine_id != work_order.machine_id:
+        _require_no_packet(work_order)
+
+
 def _append_result(
     *,
     work_order,

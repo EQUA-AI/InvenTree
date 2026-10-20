@@ -14,6 +14,7 @@ from tasks.models import WorkOrderCommand
 from tasks.scope import ScopeError, scoped_machines, scoped_work_orders
 from tasks.services import scheduling
 from tasks.services.work_orders import ReadinessBlocked, WorkOrderCommandError
+from tasks.workorder_mutations import ObjectInputMixin, object_data, parent_id
 
 import InvenTree.permissions
 from InvenTree.filters import SEARCH_ORDER_FILTER
@@ -105,10 +106,31 @@ def _require_packet_candidate(actor, serializer):
         raise Http404 from exc
 
 
-class ScopedRepairPacketMixin:
+class ScopedRepairPacketMixin(ObjectInputMixin):
     """Apply the same packet boundary to list, detail and direct updates."""
 
     role_required = 'work_order'
+
+    def get_serializer(self, *args, **kwargs):
+        """Authorize raw parent identifiers before FK validation discloses them."""
+        instance = args[0] if args else kwargs.get('instance')
+        if 'data' in kwargs:
+            data = object_data(kwargs['data'])
+            work_id = parent_id(
+                data, 'work_order', getattr(instance, 'work_order_id', None)
+            )
+            machine_id = parent_id(
+                data, 'machine', getattr(instance, 'machine_id', None)
+            )
+            if work_id is not None:
+                work = get_object_or_404(
+                    scoped_work_orders(self.request.user), pk=work_id
+                )
+                if machine_id is not None and str(machine_id) != str(work.machine_id):
+                    raise Http404
+            elif machine_id is not None:
+                get_object_or_404(scoped_machines(self.request.user), pk=machine_id)
+        return super().get_serializer(*args, **kwargs)
 
     def get_queryset(self):
         """Filter before lookup, search, ordering or pagination."""
@@ -431,7 +453,15 @@ class RepairPacketFindings(APIView):
         if snapshot_id:
             from assets.health_models import HealthEvidenceSnapshot
 
-            snapshot = get_object_or_404(HealthEvidenceSnapshot, pk=snapshot_id)
+            snapshot = get_object_or_404(
+                HealthEvidenceSnapshot,
+                pk=snapshot_id,
+                machine_id=(
+                    packet.work_order.machine_id
+                    if packet.work_order_id
+                    else packet.machine_id
+                ),
+            )
 
         try:
             finding, created = investigation.record_finding(

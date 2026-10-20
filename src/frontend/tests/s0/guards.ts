@@ -1,7 +1,18 @@
 import { writeFile } from 'node:fs/promises';
 import { type Page, expect, test } from '@playwright/test';
 
-export function nativeBaseline(surface?: string) {
+/** Match every protected/external read without routing local Vite modules. */
+export function protectedRequests(origin: string): RegExp {
+  const escaped = origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(
+    `^(?:${escaped}/(?:api|media|static)(?:/|\\?|$)|(?!${escaped}(?:/|$)).+)`
+  );
+}
+
+export function nativeBaseline(
+  surface?: string,
+  options: { routeLocalSources?: boolean } = {}
+) {
   const unexpected = new Map<Page, string[]>();
   const errors = new Map<Page, string[]>();
 
@@ -11,7 +22,15 @@ export function nativeBaseline(surface?: string) {
     unexpected.set(page, requests);
     errors.set(page, pageErrors);
     page.on('pageerror', (error) => pageErrors.push(error.message));
-    await page.route('**/*', async (route) => {
+    const origin = new URL(baseURL!).origin;
+    const matcher =
+      (options.routeLocalSources === false ||
+        process.env.AIMMS_ROUTE_LOCAL_SOURCES === '0') &&
+      !surface &&
+      !process.env.AIMMS_SOURCE_REVISION
+        ? protectedRequests(origin)
+        : '**/*';
+    await page.route(matcher, async (route) => {
       const url = new URL(route.request().url());
       if (
         url.origin !== new URL(baseURL!).origin ||

@@ -20,7 +20,7 @@ from InvenTree.mixins import ListAPI, ListCreateAPI, RetrieveUpdateAPI
 
 from .models import WorkOrder, WorkOrderEvent
 from .permissions import PLAN_WORKORDER, VIEW_WORKORDER_AUDIT, require_permission
-from .scope import ScopeError, require_work_order_scope, scoped_work_orders
+from .scope import ScopeError, scoped_work_orders
 from .services.closeout import complete_work_order
 from .services.readiness import evaluate_work_order_readiness
 from .services.work_orders import (
@@ -37,6 +37,10 @@ from .services.work_orders import (
     hold_work_order,
     resume_work_order,
     transition_work_order,
+)
+from .workorder_mutations import (
+    WorkOrderMachineInputMixin,
+    require_work_order_candidate,
 )
 from .workorder_serializers import (
     AssignCommandSerializer,
@@ -91,7 +95,7 @@ def _work_order_queryset(actor):
     )
 
 
-class WorkOrderList(WorkOrderEnabledMixin, ListCreateAPI):
+class WorkOrderList(WorkOrderEnabledMixin, WorkOrderMachineInputMixin, ListCreateAPI):
     """List scoped work orders or create planning metadata."""
 
     serializer_class = WorkOrderSerializer
@@ -105,19 +109,15 @@ class WorkOrderList(WorkOrderEnabledMixin, ListCreateAPI):
     def perform_create(self, serializer):
         """Require planning authority and prove scope before persistence."""
         require_permission(self.request.user, PLAN_WORKORDER)
-        candidate = WorkOrder(
-            requested_by=self.request.user, **serializer.validated_data
-        )
-        try:
-            require_work_order_scope(self.request.user, candidate)
-        except ScopeError as exc:
-            raise Http404 from exc
+        require_work_order_candidate(self.request.user, serializer)
         # The reference is assigned by WorkOrder.save(), so every creation path
         # produces the same identifier.
         serializer.save(requested_by=self.request.user)
 
 
-class WorkOrderDetail(WorkOrderEnabledMixin, RetrieveUpdateAPI):
+class WorkOrderDetail(
+    WorkOrderEnabledMixin, WorkOrderMachineInputMixin, RetrieveUpdateAPI
+):
     """Retrieve or update non-command planning metadata."""
 
     serializer_class = WorkOrderSerializer
@@ -130,13 +130,7 @@ class WorkOrderDetail(WorkOrderEnabledMixin, RetrieveUpdateAPI):
     def perform_update(self, serializer):
         """Require planning authority and retain the resulting scope."""
         require_permission(self.request.user, PLAN_WORKORDER)
-        candidate = serializer.instance
-        for field, value in serializer.validated_data.items():
-            setattr(candidate, field, value)
-        try:
-            require_work_order_scope(self.request.user, candidate)
-        except ScopeError as exc:
-            raise Http404 from exc
+        require_work_order_candidate(self.request.user, serializer)
         serializer.save()
 
 

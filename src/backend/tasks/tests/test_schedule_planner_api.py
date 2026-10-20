@@ -42,6 +42,7 @@ class SchedulePlanApiTest(TestCase):
         response = self.client.post(
             reverse('kanban-schedule-plan'),
             data={
+                'idempotency_key': f'planner-{self._testMethodName}',
                 'candidate_ids': [a.id, b.id],
                 'horizon_start': '2026-08-03T09:00:00Z',
             },
@@ -80,6 +81,7 @@ class SchedulePlanApiTest(TestCase):
         response = self.client.post(
             reverse('kanban-schedule-optimize'),
             data={
+                'idempotency_key': f'planner-{self._testMethodName}',
                 'candidate_ids': [a.id, b.id],
                 'horizon_start': '2026-08-03T09:00:00Z',
             },

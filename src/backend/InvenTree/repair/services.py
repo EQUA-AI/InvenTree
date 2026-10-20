@@ -1263,11 +1263,10 @@ def list_diagnostic_record_roots(
 ) -> list[dict]:
     """Record roots this actor may read for a diagnostic turn.
 
-    Returns the active machines in the actor's maintenance (client) scope plus
-    their non-terminal repair packets, each with its current optimistic-read
-    revision. Machines are identified by their owning client — the same
-    boundary ``_diagnostic_scoped_entity`` enforces per entity, so the listed
-    roots and the per-read ACL cannot disagree. Fail-closed: an
+    Returns active machines in the actor's client scope and non-terminal
+    packets in their linked Work scope (or standalone machine scope), each
+    with its optimistic-read revision. Packet discovery uses the same scoped
+    queryset as per-read authorization and the packet API. Fail-closed: an
     unauthenticated/unscoped actor or a scope error yields an empty list, so
     the reasoning path exposes no diagnostic tools.
     """
@@ -1275,17 +1274,14 @@ def list_diagnostic_record_roots(
 
     from assets.models import AssetMachine
     from repair.models import TERMINAL_PACKET_STATUSES
+    from repair.scope import scoped_repair_packets
 
     try:
         scopes = scope_for_actor(actor)
     except ScopeError:
         return []
     client_ids = {scope.client_id for scope in scopes if scope.client_id is not None}
-    if not client_ids:
-        return []
-
     roots: list[dict] = []
-    machine_ids: list[int] = []
     machines = (
         AssetMachine.objects
         .filter(client_id__in=client_ids, active=True)
@@ -1296,7 +1292,6 @@ def list_diagnostic_record_roots(
         revision = _diagnostic_revision(machine)
         if not revision:
             continue
-        machine_ids.append(machine.pk)
         roots.append({
             'entity_type': 'machine',
             'entity_id': machine.pk,
@@ -1309,25 +1304,23 @@ def list_diagnostic_record_roots(
             'display_name': str(machine.name or '')[:255],
         })
 
-    if machine_ids:
-        packets = (
-            RepairPacket.objects
-            .filter(machine_id__in=machine_ids)
-            .exclude(status__in=TERMINAL_PACKET_STATUSES)
-            .only('pk', 'machine_id', 'updated_at')
-            .order_by('-updated_at')[:packet_limit]
-        )
-        for packet in packets:
-            revision = _diagnostic_revision(packet)
-            if not revision or not packet.machine_id:
-                continue
-            roots.append({
-                'entity_type': 'repair_packet',
-                'entity_id': packet.pk,
-                'expected_revision': revision,
-                'linked_machine_id': packet.machine_id,
-                'authorization_class': 'maintenance_scope',
-            })
+    packets = (
+        scoped_repair_packets(actor)
+        .exclude(status__in=TERMINAL_PACKET_STATUSES)
+        .only('pk', 'machine_id', 'updated_at')
+        .order_by('-updated_at')[:packet_limit]
+    )
+    for packet in packets:
+        revision = _diagnostic_revision(packet)
+        if not revision or not packet.machine_id:
+            continue
+        roots.append({
+            'entity_type': 'repair_packet',
+            'entity_id': packet.pk,
+            'expected_revision': revision,
+            'linked_machine_id': packet.machine_id,
+            'authorization_class': 'maintenance_scope',
+        })
     return roots
 
 
@@ -1351,22 +1344,14 @@ def _diagnostic_scoped_entity(actor, entity_type: str, entity_id: int):
             return None
         client_id = entity.client_id
     elif entity_type == 'repair_packet':
-        try:
-            entity = (
-                RepairPacket.objects
-                .select_related('machine')
-                .only(
-                    'pk',
-                    'machine_id',
-                    'machine__pk',
-                    'machine__client_id',
-                    'updated_at',
-                )
-                .get(pk=entity_id)
-            )
-        except RepairPacket.DoesNotExist:
-            return None
-        client_id = entity.machine.client_id if entity.machine_id else None
+        from repair.scope import scoped_repair_packets
+
+        return (
+            scoped_repair_packets(actor)
+            .only('pk', 'machine_id', 'updated_at')
+            .filter(pk=entity_id)
+            .first()
+        )
     else:
         return None
 

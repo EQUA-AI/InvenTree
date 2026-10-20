@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import uuid
-
 from django.db import transaction
 from django.db.models import Q
 from django.http import Http404
@@ -116,6 +114,7 @@ from .serializers import (
 )
 from .services import schedule_planner, scheduling
 from .services.conflicts import detect_conflicts
+from .services.work_orders import CommandConflict
 from .workorder_api import (
     WorkOrderAcceptHandover,
     WorkOrderAssign,
@@ -128,6 +127,12 @@ from .workorder_api import (
     WorkOrderReadiness,
     WorkOrderResume,
     WorkOrderTransition,
+)
+from .workorder_mutations import (
+    WorkOrderMachineInputMixin,
+    object_data,
+    parent_id,
+    require_work_order_candidate,
 )
 
 
@@ -224,22 +229,7 @@ class WorkOrderBoardFilter(FilterSet):
         return queryset
 
 
-def _require_candidate_scope(actor, serializer):
-    """Authorize the proposed boundary before creating or changing a job."""
-    instance = serializer.instance
-    candidate = WorkOrder(
-        machine=serializer.validated_data.get(
-            'machine', getattr(instance, 'machine', None)
-        ),
-        customer_id=getattr(instance, 'customer_id', None),
-    )
-    try:
-        require_work_order_scope(actor, candidate)
-    except ScopeError as exc:
-        raise Http404 from exc
-
-
-class ScopedWorkOrderMixin:
+class ScopedWorkOrderMixin(WorkOrderMachineInputMixin):
     """Keep legacy work reads and direct edits inside the canonical boundary."""
 
     def get_queryset(self):
@@ -250,12 +240,12 @@ class ScopedWorkOrderMixin:
 
     def perform_create(self, serializer):
         """Check the new machine's owning scope before writing."""
-        _require_candidate_scope(self.request.user, serializer)
+        require_work_order_candidate(self.request.user, serializer)
         super().perform_create(serializer)
 
     def perform_update(self, serializer):
         """Check the resulting boundary as well as the scoped original object."""
-        _require_candidate_scope(self.request.user, serializer)
+        require_work_order_candidate(self.request.user, serializer)
         super().perform_update(serializer)
 
 
@@ -907,6 +897,7 @@ class KanbanColumnReorder(APIView):
 def _command_error_response(exc):
     """Map a WorkOrderCommandError to an HTTP response with its stable code."""
     conflict = (
+        CommandConflict,
         scheduling.StaleVersion,
         scheduling.IdempotencyConflict,
         scheduling.NotMutable,
@@ -919,12 +910,22 @@ def _command_error_response(exc):
         if isinstance(exc, conflict)
         else status.HTTP_400_BAD_REQUEST
     )
-    return Response({'code': code, 'detail': str(exc)}, status=http_status)
+    detail = (
+        'A repair packet owns this Work lifecycle; its machine cannot be changed.'
+        if isinstance(exc, CommandConflict)
+        else str(exc)
+    )
+    return Response({'code': code, 'detail': detail}, status=http_status)
 
 
 def _idempotency_key(request):
-    """Use the caller's key, or mint one so a missing key still executes once."""
-    return request.data.get('idempotency_key') or uuid.uuid4().hex
+    """Require a stable caller intent so an uncertain retry cannot duplicate it."""
+    key = request.data.get('idempotency_key')
+    if not isinstance(key, str) or not key.strip() or len(key) > 128:
+        raise ValidationError({
+            'idempotency_key': 'A stable key of at most 128 characters is required.'
+        })
+    return key
 
 
 def _parse_dt(value, field):
@@ -1028,17 +1029,20 @@ class WorkOrderUpdateCommand(_CommandView):
     def post(self, request, pk):
         """Apply a versioned planning update."""
         work_order = get_object_or_404(scoped_work_orders(request.user), pk=pk)
-        fields = request.data.get('fields', {})
+        data = object_data(request.data)
+        fields = dict(object_data(data.get('fields', {})))
 
         # Accept ``machine`` as an alias for ``machine_id``.
         if 'machine' in fields and 'machine_id' not in fields:
             fields['machine_id'] = fields.pop('machine')
         if 'machine_id' in fields:
-            from assets.models import AssetMachine
-
+            fields['machine_id'] = parent_id(fields, 'machine_id')
+        if 'machine_id' in fields and fields['machine_id'] != work_order.machine_id:
             candidate = WorkOrder(
                 customer_id=work_order.customer_id,
-                machine=get_object_or_404(AssetMachine, pk=fields['machine_id']),
+                machine=get_object_or_404(
+                    scoped_machines(request.user), pk=fields['machine_id']
+                ),
             )
             try:
                 require_work_order_scope(request.user, candidate)

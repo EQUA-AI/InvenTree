@@ -62,6 +62,7 @@ import type {
 } from '@lib/types/Closeout';
 
 import { useApi } from '../../../contexts/ApiContext';
+import { useUserState } from '../../../states/UserState';
 
 export type { CloseoutWorkOrder } from '@lib/types/Closeout';
 
@@ -95,6 +96,17 @@ export function CloseoutPanel({
   execution?: WorkOrderOverview;
 }>) {
   const api = useApi();
+  const user = useUserState((state) => state.user);
+  const canCapture =
+    !!user?.is_superuser || !!user?.permissions?.closeout?.includes('capture');
+  const canReview =
+    !!user?.is_superuser || !!user?.permissions?.closeout?.includes('review');
+  const canReconcile =
+    !!user?.is_superuser ||
+    !!user?.permissions?.closeout_parts?.includes('reconcile');
+  const canComplete =
+    !!user?.is_superuser ||
+    !!user?.permissions?.workorder?.includes('complete');
   const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
   const [captureEditing, setCaptureEditing] = useState(false);
@@ -301,7 +313,13 @@ export function CloseoutPanel({
       captureId
     };
   const createCapture = () => {
-    if (mutationLocked || capture || !narrative.trim() || !voiceReason.trim())
+    if (
+      !canCapture ||
+      mutationLocked ||
+      capture ||
+      !narrative.trim() ||
+      !voiceReason.trim()
+    )
       return;
     void captureSave.save({
       url: apiUrl(ApiEndpoints.work_order_closeout_captures, woId),
@@ -321,7 +339,7 @@ export function CloseoutPanel({
 
   const extract = () =>
     runCommand(async () => {
-      if (!capture) return;
+      if (!canCapture || !capture) return;
       await api.post(
         apiUrl(ApiEndpoints.work_order_closeout_capture_extract, woId, {
           capId: capture.id
@@ -341,7 +359,7 @@ export function CloseoutPanel({
   );
 
   const submitDecisions = () => {
-    if (mutationLocked || !capture || !base().decision) return;
+    if (!canReview || mutationLocked || !capture || !base().decision) return;
     const fields = Object.fromEntries(
       ['cause', ...REQUIRED_FIELDS].map((field) => [
         field,
@@ -450,6 +468,7 @@ export function CloseoutPanel({
 
   const refreshPartUsage = () =>
     runCommand(async () => {
+      if (!canCapture) return;
       await api.post(
         apiUrl(ApiEndpoints.work_order_closeout_part_usage_refresh, woId),
         {}
@@ -461,7 +480,7 @@ export function CloseoutPanel({
     disposition: string,
     reason: string
   ) => {
-    if (mutationLocked || partFailure) return;
+    if (!canReconcile || mutationLocked || partFailure) return;
     setBusy(true);
     try {
       await api.post(
@@ -525,6 +544,7 @@ export function CloseoutPanel({
     !readingsQuery.isError;
   const complete = () => {
     if (
+      !canComplete ||
       !accountReady ||
       mutationLocked ||
       !readinessQuery.data?.ready ||
@@ -588,12 +608,14 @@ export function CloseoutPanel({
                 <Group>
                   <Button
                     color='grape'
-                    disabled={mutationLocked || !!narrative.trim()}
+                    disabled={
+                      !canCapture || mutationLocked || !!narrative.trim()
+                    }
                     onClick={() => setDictateOpen(true)}
                   >{t`Start voice-transcript capture`}</Button>
                   <Button
                     variant='default'
-                    disabled={mutationLocked}
+                    disabled={!canCapture || mutationLocked}
                     onClick={() => {
                       setCaptureEditing(true);
                       setStep(0);
@@ -822,7 +844,7 @@ export function CloseoutPanel({
           <>
             {!accepted && (
               <fieldset
-                disabled={mutationLocked}
+                disabled={!canComplete || mutationLocked}
                 style={{ border: 0, padding: 0, margin: 0 }}
               >
                 <Group mt='md'>
@@ -913,7 +935,9 @@ export function CloseoutPanel({
                   }
                 });
               }}
-              locked={busy || dictateOpen || captureSave.state != null}
+              locked={
+                !canComplete || busy || dictateOpen || captureSave.state != null
+              }
             />
           </>
         }
@@ -982,6 +1006,7 @@ export function CloseoutPanel({
                     onExtract={extract}
                     onDictate={() => setDictateOpen(true)}
                     busy={mutationLocked}
+                    canCapture={canCapture}
                     saving={busy || captureSave.state?.status === 'pending'}
                     loading={capturesQuery.isLoading}
                   />
@@ -1008,7 +1033,11 @@ export function CloseoutPanel({
                       }));
                     }}
                     onSubmit={submitDecisions}
-                    busy={mutationLocked || (capture != null && !decisionToken)}
+                    busy={
+                      (capture ? !canReview : !canComplete) ||
+                      mutationLocked ||
+                      (capture != null && !decisionToken)
+                    }
                     saving={busy || captureSave.state?.status === 'pending'}
                   />
                 </Stepper.Step>
@@ -1031,6 +1060,8 @@ export function CloseoutPanel({
                     }
                     onRefresh={refreshPartUsage}
                     onResolve={resolveRow}
+                    canRefresh={canCapture}
+                    canResolve={canReconcile}
                     busy={mutationLocked || partFailure != null}
                     saving={busy}
                   />
@@ -1053,6 +1084,7 @@ function NarrativeStep({
   onExtract,
   onDictate,
   busy,
+  canCapture,
   saving,
   loading
 }: Readonly<{
@@ -1065,6 +1097,7 @@ function NarrativeStep({
   onExtract: () => void;
   onDictate: () => void;
   busy: boolean;
+  canCapture: boolean;
   saving: boolean;
   loading: boolean;
 }>) {
@@ -1093,7 +1126,7 @@ function NarrativeStep({
             <Button
               onClick={onExtract}
               loading={saving}
-              disabled={busy}
+              disabled={busy || !canCapture}
               leftSection={<IconSparkles size={16} />}
             >
               {t`Extract structured draft`}
@@ -1131,7 +1164,9 @@ function NarrativeStep({
         <Button
           onClick={onCreate}
           loading={saving}
-          disabled={busy || !narrative.trim() || !voiceReason.trim()}
+          disabled={
+            !canCapture || busy || !narrative.trim() || !voiceReason.trim()
+          }
         >
           {t`Capture narrative`}
         </Button>
@@ -1141,7 +1176,7 @@ function NarrativeStep({
           variant='filled'
           color='grape'
           onClick={onDictate}
-          disabled={busy || !!narrative.trim()}
+          disabled={!canCapture || busy || !!narrative.trim()}
           data-testid='dictate-closeout'
         >
           {t`Dictate`}
@@ -1255,6 +1290,8 @@ function PartsStep({
   rows,
   onRefresh,
   onResolve,
+  canRefresh,
+  canResolve,
   busy,
   saving,
   drafts,
@@ -1271,6 +1308,8 @@ function PartsStep({
   ) => void;
   onRefresh: () => void;
   onResolve: (row: PartUsageRow, disposition: string, reason: string) => void;
+  canRefresh: boolean;
+  canResolve: boolean;
   busy: boolean;
   saving: boolean;
 }>) {
@@ -1281,7 +1320,7 @@ function PartsStep({
           variant='light'
           onClick={onRefresh}
           loading={saving}
-          disabled={busy}
+          disabled={!canRefresh || busy}
           leftSection={<IconRefresh size={16} />}
         >
           {t`Refresh from custody truth`}
@@ -1329,6 +1368,7 @@ function PartsStep({
                     ) : (
                       <Group gap='xs' wrap='nowrap'>
                         <Select
+                          disabled={!canResolve || busy}
                           size='xs'
                           placeholder={t`Disposition`}
                           data={
@@ -1349,6 +1389,7 @@ function PartsStep({
                           }
                         />
                         <TextInput
+                          disabled={!canResolve || busy}
                           size='xs'
                           placeholder={t`Reason`}
                           value={drafts[row.id]?.reason ?? ''}
@@ -1359,7 +1400,9 @@ function PartsStep({
                         <Button
                           size='xs'
                           variant='light'
-                          disabled={!drafts[row.id]?.disposition || busy}
+                          disabled={
+                            !canResolve || !drafts[row.id]?.disposition || busy
+                          }
                           onClick={() =>
                             onResolve(
                               row,
@@ -1483,6 +1526,9 @@ export function WorkCloseoutReadings({
   readOnly = false
 }: Readonly<{ workOrderId: number; readOnly?: boolean }>) {
   const api = useApi();
+  const user = useUserState((state) => state.user);
+  const canCapture =
+    !!user?.is_superuser || !!user?.permissions?.closeout?.includes('capture');
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<'refused' | 'uncertain' | null>(null);
@@ -1496,7 +1542,7 @@ export function WorkCloseoutReadings({
       ).data
   });
   const runCommand = async (fn: () => Promise<void>) => {
-    if (busy || failure === 'uncertain') return;
+    if (!canCapture || busy || failure === 'uncertain') return;
     setBusy(true);
     setFailure(null);
     try {
@@ -1544,7 +1590,7 @@ export function WorkCloseoutReadings({
             onClick={() => void query.refetch()}
           >{t`Retry`}</Button>
         </Alert>
-      ) : readOnly ? (
+      ) : readOnly || !canCapture ? (
         <Stack gap='xs'>
           {query.data.map((row) => (
             <Text key={row.id} size='sm'>
@@ -1552,10 +1598,11 @@ export function WorkCloseoutReadings({
               {row.verification_state}
             </Text>
           ))}
-          <Text
-            size='xs'
-            c='dimmed'
-          >{t`This work is completed. Further physical investigation requires the supported linked or reopened work flow.`}</Text>
+          <Text size='xs' c='dimmed'>
+            {readOnly
+              ? t`This work is completed. Further physical investigation requires the supported linked or reopened work flow.`
+              : t`Closeout capture permission is required to record readings.`}
+          </Text>
         </Stack>
       ) : (
         <ReadingsStep

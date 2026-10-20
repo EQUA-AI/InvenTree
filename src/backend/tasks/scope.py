@@ -83,6 +83,15 @@ def scope_for_actor(actor) -> set[MaintenanceScope]:
         raise ScopeError('Maintenance actor scope is unresolved')
 
     scopes = {_coerce_scope(value) for value in values}
+    if any(
+        scope.customer_id is not None and scope.client_id is not None
+        for scope in scopes
+    ):
+        # A mixed value matches neither canonical record scope. Do not turn it
+        # into customer authority in Work lists or client authority in search.
+        raise ScopeError(
+            'Maintenance actor scope has ambiguous customer/client identity'
+        )
     if not scopes or any(not scope.is_resolved for scope in scopes):
         raise ScopeError('Maintenance actor scope is unresolved')
     return scopes

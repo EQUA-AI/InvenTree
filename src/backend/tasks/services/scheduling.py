@@ -59,6 +59,7 @@ from tasks.services.work_orders import (
     _locked_work_order,
     _replay_or_none,
     _require_version,
+    require_work_order_machine_change,
 )
 from tasks.services.working_time import add_working_minutes, working_minutes_between
 
@@ -467,6 +468,8 @@ def update_work_order_plan(
         raise WorkOrderCommandError('No updatable planning fields supplied.')
 
     def apply(work_order):
+        if 'machine_id' in allowed:
+            require_work_order_machine_change(work_order, allowed['machine_id'])
         for key, value in allowed.items():
             setattr(work_order, key, value)
         return {'updated_fields': sorted(allowed)}, list(allowed)
