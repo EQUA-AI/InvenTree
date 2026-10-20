@@ -106,3 +106,29 @@ describe('consumer-specific source limits', () => {
     expect(sliceCount(span, 0)).toBe(0);
   });
 });
+
+it('keeps a bounded recorded event window and the canonical Machines return scope together', async () => {
+  const { investigationHref } = await import('./windows');
+  const url = new URL(
+    investigationHref(
+      18,
+      {
+        from: Date.parse('2026-10-12T01:44:05Z'),
+        to: Date.parse('2026-10-12T02:44:05Z')
+      },
+      901,
+      undefined,
+      'recorded',
+      new URLSearchParams(
+        'from=sites&location=12&scope=direct&search=pump&page=2&view=schematic'
+      )
+    ),
+    'https://example.invalid'
+  );
+  expect(url.searchParams.get('occurrence')).toBe('901');
+  expect(url.searchParams.get('history_clock')).toBe('recorded');
+  expect(url.searchParams.get('history_from')).toBe('2026-10-12T01:44:05.000Z');
+  expect(url.searchParams.get('from')).toBe('sites');
+  expect(url.searchParams.get('page')).toBe('2');
+  expect(url.searchParams.has('view')).toBe(false);
+});

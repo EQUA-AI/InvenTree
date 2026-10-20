@@ -13,7 +13,7 @@ import { type ReactNode, useRef, useState } from 'react';
 import type { PartState } from './MimicParts';
 import { type ReadingSection, ReadingSections } from './MimicReadings';
 import { MimicSchematic } from './MimicSchematic';
-import { displayFor, stateLabel } from './format';
+import { displayFor, expandPointer, stateLabel, usable } from './format';
 import type { MimicData, MimicPoint } from './types';
 
 /** The panel a drawing sits on: a shade off the page, in either theme. */
@@ -42,6 +42,19 @@ export function UnitMimic({
   const list = useRef<HTMLDivElement>(null);
   const bay = data.bays.find((b) => b.key === unit);
   const display = displayFor(data, unit);
+  const flowElement = data.layout.elements.find(
+    (element) => element.id === 'pump-flow' && element.view === 'unit'
+  );
+  const flow = flowElement
+    ? data.points[expandPointer(flowElement.pointer, unit)]
+    : undefined;
+  const flowValue =
+    usable(flow) &&
+    flow.quality === 'good' &&
+    typeof flow.value === 'number' &&
+    Number.isFinite(flow.value)
+      ? display(flow)
+      : null;
 
   const numbers = new Map(
     (data.layout.parts ?? []).map((part, index) => [part.code, index + 1])
@@ -89,7 +102,12 @@ export function UnitMimic({
     const target = [
       ...(list.current?.querySelectorAll('[data-section]') ?? [])
     ].find((node) => node.getAttribute('data-section') === keys[0]);
-    target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target?.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'instant'
+        : 'smooth',
+      block: 'center'
+    });
   };
 
   return (
@@ -123,7 +141,23 @@ export function UnitMimic({
         </Group>
         <Group gap='sm'>{actions}</Group>
       </Group>
-      <Paper withBorder radius='md' p='sm' bg={PANEL}>
+      <Group
+        component='fieldset'
+        bd={0}
+        p={0}
+        m={0}
+        miw={0}
+        gap='sm'
+        aria-label={t`Process data availability`}
+      >
+        <Text size='sm'>
+          {t`Discharge flow`}: {flowValue ?? t`Unavailable`}
+          {flowValue && !flow?.unit ? ` · ${t`Unit unavailable`}` : ''}
+        </Text>
+        <Text size='sm'>{t`Flow direction: unavailable`}</Text>
+        <Text size='sm'>{t`Communication status: unavailable`}</Text>
+      </Group>
+      <Paper withBorder radius='sm' p='sm' bg={PANEL}>
         <MimicSchematic
           data={data}
           unit={unit}
@@ -136,6 +170,10 @@ export function UnitMimic({
           </Text>
         )}
       </Paper>
+      <Text
+        size='xs'
+        c='dimmed'
+      >{t`Open a reading group for values, units, quality and observation times.`}</Text>
       <TextInput
         label={t`Filter unit readings`}
         value={search}

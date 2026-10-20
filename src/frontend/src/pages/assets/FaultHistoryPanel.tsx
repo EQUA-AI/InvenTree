@@ -6,10 +6,12 @@ import {
   Divider,
   Group,
   Loader,
+  Paper,
   SimpleGrid,
   Stack,
   Table,
-  Text
+  Text,
+  Title
 } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
@@ -20,6 +22,7 @@ import { useApi } from '../../contexts/ApiContext';
 import { FaultOccurrences } from './faults/FaultOccurrences';
 import { MonitoringContinuityNotice } from './health/MonitoringContinuity';
 import { OccurrenceInvestigation } from './investigation/OccurrenceInvestigation';
+import operations from './operations.module.css';
 
 interface CountRow {
   code?: string;
@@ -94,8 +97,8 @@ function CountTable({
 }
 
 /**
- * R6 UI08 Fault History: the native rollup first, then each recorded
- * occurrence with its retained evidence and owning work (P12). The two load
+ * R6 UI08 Fault History: occurrences and their retained evidence lead;
+ * the native maintenance rollup follows. The two load
  * independently, so one failing never hides the other.
  */
 export default function FaultHistoryPanel({
@@ -103,9 +106,19 @@ export default function FaultHistoryPanel({
 }: Readonly<{ machineId: number }>) {
   return (
     <Stack gap='lg'>
-      <MonitoringContinuityNotice />
-      <FaultHistoryRollup machineId={machineId} />
-      <Divider />
+      <Paper
+        component='section'
+        aria-label={t`Fault investigation context`}
+        className={operations.band}
+      >
+        <Stack gap={4}>
+          <Title order={4}>{t`Alarm and fault investigation`}</Title>
+          <Text size='sm'>{t`Resolved does not always mean cleared: read the recorded resolution reason. Acknowledged conditions remain active.`}</Text>
+          <Text
+            className={operations.caveat}
+          >{t`Recorded occurrences and retained evidence. Current telemetry does not replace an event record.`}</Text>
+        </Stack>
+      </Paper>
       <FaultOccurrences
         machineId={machineId}
         renderInvestigation={(occurrence) => (
@@ -115,6 +128,12 @@ export default function FaultHistoryPanel({
           />
         )}
       />
+      <Divider
+        label={t`Maintenance history · recorded aggregates`}
+        labelPosition='left'
+      />
+      <FaultHistoryRollup machineId={machineId} />
+      <MonitoringContinuityNotice />
     </Stack>
   );
 }

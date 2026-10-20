@@ -226,7 +226,7 @@ export async function mockExplorer(page: Page) {
       json: machines.find((machine) => machine.pk === machinePk)
     });
   });
-  return { requests, state };
+  return { requests, state, location, child, machines };
 }
 
 export async function openExplorer(

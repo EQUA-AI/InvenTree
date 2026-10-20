@@ -1,3 +1,4 @@
+import { UserRoles } from '@lib/enums/Roles';
 import { t } from '@lingui/core/macro';
 import {
   ActionIcon,
@@ -8,9 +9,13 @@ import {
   Text,
   Tooltip
 } from '@mantine/core';
-import { IconExternalLink } from '@tabler/icons-react';
+import { IconChartLine, IconExternalLink } from '@tabler/icons-react';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useGlobalSettingsState } from '../../../../states/SettingsStates';
+import { useUserState } from '../../../../states/UserState';
+import { machinePanelHref } from '../../locations/locationTree';
+import { observedTime } from './observedTime';
 
 import { WorkOrderCreateModal } from '../../../maintenance/components/WorkOrderCreateModal';
 import { type AlarmAction, AlarmNoteModal } from './AlarmNoteModal';
@@ -41,6 +46,13 @@ export function AlarmTable({
   /** Called once an alarm's state has changed, so the page re-reads. */
   onAcknowledged?: () => void;
 }>) {
+  const [params] = useSearchParams();
+  const user = useUserState();
+  const plantTimezone = useGlobalSettingsState((s) =>
+    s.getSetting('AIMMS_PLANT_TIMEZONE')
+  );
+  const canChange = user.hasChangeRole(UserRoles.work_order);
+  const canAdd = user.hasAddRole(UserRoles.work_order);
   const [noting, setNoting] = useState<{
     action: AlarmAction;
     alarm: MimicAlarm;
@@ -49,22 +61,25 @@ export function AlarmTable({
 
   return (
     <>
+      <Text size='sm'>{t`Acknowledgement records that someone saw the application alarm; it does not clear the condition.`}</Text>
       <Table.ScrollContainer minWidth={960}>
         <Table striped>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t`Signal`}</Table.Th>
-              <Table.Th>{t`Value`}</Table.Th>
-              <Table.Th>{t`Observed at`}</Table.Th>
-              <Table.Th>{t`Condition`}</Table.Th>
               <Table.Th>{t`Alarm`}</Table.Th>
+              <Table.Th>{t`Value`}</Table.Th>
+              <Table.Th>{t`Condition`}</Table.Th>
+              <Table.Th>{t`Observed at`}</Table.Th>
               <Table.Th />
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
             {alarms.map((alarm) => {
               const raised = alarm.anomaly !== null && !!alarm.machine;
-              const dismissed = alarm.anomaly_status === 'suppressed';
+              const responding = ['open', 'acknowledged'].includes(
+                alarm.anomaly_status ?? ''
+              );
               return (
                 <Table.Tr
                   key={`${alarm.machine ?? ''}:${alarm.pointer}`}
@@ -82,19 +97,20 @@ export function AlarmTable({
                     </Text>
                   </Table.Td>
                   <Table.Td>
+                    <AlarmStatus alarm={alarm} />
+                  </Table.Td>
+                  <Table.Td>
                     {display(alarm)}
                     {alarm.reason && (
                       <Text size='xs'>{reasonLabel(alarm.reason)}</Text>
                     )}
                   </Table.Td>
+                  <Table.Td>{conditionText(alarm)}</Table.Td>
                   <Table.Td style={{ whiteSpace: 'nowrap' }}>
                     {alarm.observed_at
-                      ? new Date(alarm.observed_at).toLocaleString()
+                      ? (observedTime(alarm.observed_at, plantTimezone) ??
+                        t`Time unavailable`)
                       : t`No reading`}
-                  </Table.Td>
-                  <Table.Td>{conditionText(alarm)}</Table.Td>
-                  <Table.Td>
-                    <AlarmStatus alarm={alarm} />
                   </Table.Td>
                   <Table.Td style={{ whiteSpace: 'nowrap' }}>
                     <Group
@@ -115,18 +131,37 @@ export function AlarmTable({
                           </ActionIcon>
                         </Tooltip>
                       )}
-                      {raised && alarm.anomaly_status === 'open' && (
-                        <Button
-                          size='compact-sm'
-                          variant='light'
-                          onClick={() =>
-                            setNoting({ action: 'acknowledge', alarm })
-                          }
-                        >
-                          {t`Acknowledge`}
-                        </Button>
+                      {raised && (
+                        <Tooltip label={t`Open event and trend`}>
+                          <ActionIcon
+                            component={Link}
+                            to={machinePanelHref(
+                              alarm.machine!,
+                              'fault-history',
+                              params,
+                              { occurrence: String(alarm.anomaly) }
+                            )}
+                            variant='subtle'
+                            aria-label={t`Open event and trend`}
+                          >
+                            <IconChartLine size={16} />
+                          </ActionIcon>
+                        </Tooltip>
                       )}
-                      {raised && !dismissed && (
+                      {canChange &&
+                        raised &&
+                        alarm.anomaly_status === 'open' && (
+                          <Button
+                            size='compact-sm'
+                            variant='light'
+                            onClick={() =>
+                              setNoting({ action: 'acknowledge', alarm })
+                            }
+                          >
+                            {t`Acknowledge`}
+                          </Button>
+                        )}
+                      {canAdd && raised && responding && (
                         <Button
                           size='compact-sm'
                           variant='light'
@@ -136,7 +171,7 @@ export function AlarmTable({
                           {t`Create repair`}
                         </Button>
                       )}
-                      {raised && !dismissed && (
+                      {canChange && raised && responding && (
                         <Button
                           size='compact-sm'
                           variant='subtle'
@@ -204,31 +239,56 @@ function AlarmStatus({ alarm }: Readonly<{ alarm: MimicAlarm }>) {
     // Outside its limits on this reading, but not an alarm until the detector
     // has seen enough to raise one: the next evaluation, or a second detector
     // in its vote group agreeing.
-    return (
-      <Text size='sm' c='dimmed'>
-        {t`Not raised yet`}
-      </Text>
-    );
+    return <Text size='sm'>{t`Not raised yet`}</Text>;
   }
   const severity =
     alarm.severity === 'critical'
       ? t`critical`
       : alarm.severity === 'warning'
         ? t`warning`
-        : alarm.severity;
+        : alarm.severity || t`Severity unavailable`;
+  const color =
+    alarm.severity === 'critical'
+      ? 'red'
+      : alarm.severity === 'warning'
+        ? 'yellow'
+        : 'gray';
   if (alarm.anomaly_status === 'suppressed') {
     return (
-      <Badge variant='outline' color='gray' miw='max-content'>
+      <Badge
+        data-alarm-status='suppressed'
+        variant='outline'
+        color='gray'
+        c='var(--mantine-color-text)'
+        miw='max-content'
+      >
         {t`Dismissed`}
       </Badge>
     );
   }
+  if (
+    alarm.anomaly_status !== 'open' &&
+    alarm.anomaly_status !== 'acknowledged'
+  )
+    return <Text size='sm'>{t`Alarm state unavailable`}</Text>;
   return alarm.anomaly_status === 'acknowledged' ? (
-    <Badge variant='light' color='gray' miw='max-content'>
+    <Badge
+      data-alarm-status={alarm.anomaly_status}
+      variant='light'
+      color={color}
+      c='var(--mantine-color-text)'
+      miw='max-content'
+    >
       {t`Acknowledged`} · {severity}
     </Badge>
   ) : (
-    <Badge variant='light' color='red' miw='max-content'>
+    <Badge
+      data-alarm-status={alarm.anomaly_status}
+      variant='light'
+      color={color}
+      c='var(--mantine-color-text)'
+      miw='max-content'
+    >
       {t`Open`} · {severity}
     </Badge>
   );

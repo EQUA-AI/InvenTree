@@ -7,21 +7,22 @@ import {
   Breadcrumbs,
   Button,
   Checkbox,
+  Divider,
   Grid,
   Group,
   Loader,
   Pagination,
   Paper,
   Select,
-  SimpleGrid,
   Stack,
   Switch,
   Table,
   Text,
   TextInput,
-  Title
+  Title,
+  useMantineTheme
 } from '@mantine/core';
-import { useDebouncedValue } from '@mantine/hooks';
+import { useDebouncedValue, useMediaQuery } from '@mantine/hooks';
 import { IconMapPin, IconPlus, IconSearch } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
@@ -30,6 +31,8 @@ import { MachineAlarmBadges } from '../../../components/items/MachineAlarmBadges
 import { useApi } from '../../../contexts/ApiContext';
 import { useUserState } from '../../../states/UserState';
 import { HealthStateBadge } from '../health/common';
+import operations from '../operations.module.css';
+import { MachinePageSummary } from './MachinePageSummary';
 
 import { machineOpenWorkHref } from '../maintenance/machineWorkViews';
 import { LocationBrowser, locationKindLabel } from './LocationBrowser';
@@ -194,6 +197,15 @@ export function ScopedMachineList({
   });
   return (
     <Stack>
+      {query.data && !query.isError && !searchPending && !pageOutOfRange && (
+        <MachinePageSummary
+          rows={query.data.results}
+          total={query.data.count}
+          updatedAt={query.dataUpdatedAt}
+          updating={query.isFetching}
+        />
+      )}
+
       <Group justify='space-between'>
         <Group>
           <TextInput
@@ -281,6 +293,10 @@ export function ScopedMachineList({
       )}
       {query.data && !query.isError && !searchPending && !pageOutOfRange && (
         <>
+          <Text
+            size='xs'
+            c='dimmed'
+          >{t`Scroll the table for location and asset details.`}</Text>
           {/* Below this the table scrolls in place (phones); a 1280px
               desktop still shows every column without scrolling. */}
           <Table.ScrollContainer minWidth={1000}>
@@ -304,9 +320,6 @@ export function ScopedMachineList({
                     </Table.Th>
                   )}
                   <Table.Th>{t`Machine`}</Table.Th>
-                  <Table.Th>{t`Physical location`}</Table.Th>
-                  <Table.Th>{t`Manufacturer / model`}</Table.Th>
-                  <Table.Th>{t`Active record`}</Table.Th>
                   {/* Short status labels must read whole on a phone; the
                       table scrolls sideways rather than truncating them. */}
                   <Table.Th style={{ minWidth: STATUS_COLUMN_WIDTH }}>
@@ -319,6 +332,9 @@ export function ScopedMachineList({
                     {t`Work`}
                   </Table.Th>
                   <Table.Th>{t`Criticality`}</Table.Th>
+                  <Table.Th>{t`Physical location`}</Table.Th>
+                  <Table.Th>{t`Manufacturer / model`}</Table.Th>
+                  <Table.Th>{t`Active record`}</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -352,6 +368,26 @@ export function ScopedMachineList({
                         </Text>
                       )}
                     </Table.Td>
+                    <MachineConditionCell value={machine.condition} />
+                    <Table.Td data-alarms={machine.open_alarms ?? undefined}>
+                      {typeof machine.open_alarms !== 'number' ||
+                      !Number.isSafeInteger(machine.open_alarms) ||
+                      machine.open_alarms < 0 ? (
+                        <Text size='sm' c='dimmed'>{t`Unavailable`}</Text>
+                      ) : machine.open_alarms > 0 ? (
+                        <MachineAlarmBadges
+                          open={machine.open_alarms}
+                          critical={machine.open_critical_alarms}
+                        />
+                      ) : (
+                        '—'
+                      )}
+                    </Table.Td>
+                    <MachineWorkCell
+                      value={machine.open_work}
+                      href={machineDetailHref(machine.pk, rowScope)}
+                    />
+                    <MachineCriticalityCell value={machine.criticality} />
                     <Table.Td>
                       {machine.physical_location ? (
                         <Anchor
@@ -378,22 +414,6 @@ export function ScopedMachineList({
                         .join(' / ') || '—'}
                     </Table.Td>
                     <Table.Td>{machine.active ? t`Yes` : t`No`}</Table.Td>
-                    <MachineConditionCell value={machine.condition} />
-                    <Table.Td data-alarms={machine.open_alarms ?? undefined}>
-                      {machine.open_alarms ? (
-                        <MachineAlarmBadges
-                          open={machine.open_alarms}
-                          critical={machine.open_critical_alarms}
-                        />
-                      ) : (
-                        '—'
-                      )}
-                    </Table.Td>
-                    <MachineWorkCell
-                      value={machine.open_work}
-                      href={machineDetailHref(machine.pk, rowScope)}
-                    />
-                    <MachineCriticalityCell value={machine.criticality} />
                   </Table.Tr>
                 ))}
               </Table.Tbody>
@@ -750,6 +770,8 @@ export function LocationWorkspace({
     parent?: LocationNode;
   } | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const theme = useMantineTheme();
+  const wide = useMediaQuery(`(min-width: ${theme.breakpoints.lg})`);
 
   const context = useQuery<LocationContext>({
     queryKey: ['asset-locations', identity, 'context'],
@@ -791,13 +813,28 @@ export function LocationWorkspace({
                 ? t`All Machines`
                 : t`Unassigned machines`}
           </Title>
-          <Text size='sm' c='dimmed'>
-            {view === 'sites'
-              ? t`Organize physical locations and see where maintenance is needed.`
-              : t`Physical placement is separate from the legacy location label.`}
-          </Text>
+          {(view !== 'sites' || !selected) && (
+            <Text size='sm' c='dimmed'>
+              {view === 'sites'
+                ? t`Organize physical locations and see where maintenance is needed.`
+                : t`Physical placement is separate from the legacy location label.`}
+            </Text>
+          )}
         </Box>
         <Group>
+          {view === 'sites' && context.data && !context.isError && (
+            <Button
+              style={{ display: wide ? 'none' : undefined }}
+              variant='default'
+              leftSection={<IconMapPin size={16} />}
+              aria-expanded={mobileOpen}
+              aria-controls='machine-location-browser'
+              onClick={() => setMobileOpen((open) => !open)}
+            >
+              {t`Choose location`}
+            </Button>
+          )}
+
           <Button
             variant='default'
             onClick={() =>
@@ -812,6 +849,9 @@ export function LocationWorkspace({
           )}
         </Group>
       </Group>
+      {(view !== 'sites' || !selected) && (
+        <Text size='xs' c='dimmed'>{t`Plant timezone: Unavailable`}</Text>
+      )}
       {context.isPending && <Loader size='sm' />}
       {context.isError && (
         <Alert
@@ -832,22 +872,13 @@ export function LocationWorkspace({
           />
         ) : (
           <>
-            <Button
-              className={classes.chooseLocation}
-              variant='default'
-              leftSection={<IconMapPin size={16} />}
-              aria-expanded={mobileOpen}
-              aria-controls='machine-location-browser'
-              onClick={() => setMobileOpen((open) => !open)}
-            >
-              {t`Choose location`}
-            </Button>
             <Grid>
               <Grid.Col
                 id='machine-location-browser'
                 className={classes.browser}
                 data-mobile-open={mobileOpen ? 'true' : 'false'}
-                span={{ base: 12, md: 3 }}
+                data-wide={wide ? 'true' : 'false'}
+                span={{ base: 12, lg: 3 }}
               >
                 <LocationBrowser
                   selected={selected}
@@ -856,7 +887,7 @@ export function LocationWorkspace({
                   workspaces={workspaces}
                 />
               </Grid.Col>
-              <Grid.Col span={{ base: 12, md: 9 }}>
+              <Grid.Col span={{ base: 12, lg: 9 }}>
                 <Stack>
                   {rawLocation && !locationId && (
                     <Alert color='red'>{t`The location link is invalid.`}</Alert>
@@ -883,8 +914,8 @@ export function LocationWorkspace({
                           ))}
                         </Breadcrumbs>
                       </nav>
-                      <Paper withBorder p='md'>
-                        <Stack gap='sm'>
+                      <Paper withBorder p='sm' radius='sm'>
+                        <Stack gap={6}>
                           <Group justify='space-between'>
                             <Group>
                               <Title order={3}>{selected.name}</Title>
@@ -916,81 +947,81 @@ export function LocationWorkspace({
                             </Group>
                           </Group>
                           {selected.description && (
-                            <Text>{selected.description}</Text>
+                            <Text size='sm'>{selected.description}</Text>
                           )}
-                          <Text size='sm' c='dimmed'>
-                            {t`Timezone`}:{' '}
-                            {selected.effective_timezone ?? t`Not configured`}
+                          <Text size='xs' c='dimmed'>
+                            {t`Location timezone`}:{' '}
+                            {selected.effective_timezone ?? t`Not configured`} ·{' '}
+                            {t`Plant timezone: Unavailable`}
                           </Text>
-                          <Switch
-                            label={t`Include sublocations`}
-                            checked={!direct}
-                            onChange={(event) =>
-                              setParams((previous) => {
-                                const next = machineListParams(previous, {
-                                  page: 1
-                                });
-                                if (event.currentTarget.checked)
-                                  next.delete('scope');
-                                else next.set('scope', 'direct');
-                                return next;
-                              })
-                            }
-                          />
-                          <Text size='sm' c='dimmed'>
-                            {direct
-                              ? t`Includes only machines placed directly at this location.`
-                              : t`Includes machines placed at this location and all of its sublocations.`}
-                          </Text>
+                          <Group gap='sm'>
+                            <Switch
+                              label={t`Include sublocations`}
+                              checked={!direct}
+                              onChange={(event) =>
+                                setParams((previous) => {
+                                  const next = machineListParams(previous, {
+                                    page: 1
+                                  });
+                                  if (event.currentTarget.checked)
+                                    next.delete('scope');
+                                  else next.set('scope', 'direct');
+                                  return next;
+                                })
+                              }
+                            />
+                            <Text size='xs' c='dimmed'>
+                              {direct
+                                ? t`Includes only machines placed directly at this location.`
+                                : t`Includes machines placed at this location and all of its sublocations.`}
+                            </Text>
+                          </Group>
+                          <Divider />
+                          <div className={operations.metrics}>
+                            <div className={operations.metric}>
+                              <Text
+                                className={operations.label}
+                              >{t`Machines in this view`}</Text>
+                              <Text
+                                className={operations.value}
+                                data-testid='machine-count-view'
+                              >
+                                {summary.view ?? t`Unavailable`}
+                              </Text>
+                              <Text size='xs' c='dimmed'>
+                                {summary.showDirectBreakdown
+                                  ? t`Including sublocations`
+                                  : t`Direct here`}
+                              </Text>
+                            </div>
+                            {summary.showDirectBreakdown && (
+                              <div className={operations.metric}>
+                                <Text
+                                  className={operations.label}
+                                >{t`Direct at this location`}</Text>
+                                <Text
+                                  className={operations.value}
+                                  data-testid='machine-count-direct'
+                                >
+                                  {summary.direct ?? t`Unavailable`}
+                                </Text>
+                              </div>
+                            )}
+                            <div className={operations.metric}>
+                              <Text
+                                className={operations.label}
+                              >{t`Open work orders now`}</Text>
+                              <Text className={operations.value}>
+                                {countOrders ?? t`Unavailable`}
+                              </Text>
+                              <Text
+                                size='xs'
+                                c='dimmed'
+                              >{t`Drafts excluded; work orders counted once.`}</Text>
+                            </div>
+                          </div>
                         </Stack>
                       </Paper>
-                      <SimpleGrid cols={{ base: 1, sm: 3 }}>
-                        <Paper withBorder p='md'>
-                          <Text size='sm' c='dimmed'>
-                            {t`Machines in this view`}
-                          </Text>
-                          <Text
-                            size='xl'
-                            fw={700}
-                            data-testid='machine-count-view'
-                          >
-                            {summary.view ?? '—'}
-                          </Text>
-                          <Text size='xs' c='dimmed'>
-                            {summary.showDirectBreakdown
-                              ? t`Including sublocations`
-                              : t`Direct here`}
-                          </Text>
-                        </Paper>
-                        {summary.showDirectBreakdown && (
-                          <Paper withBorder p='md'>
-                            <Text size='sm' c='dimmed'>
-                              {t`Direct at this location`}
-                            </Text>
-                            <Text
-                              size='xl'
-                              fw={700}
-                              data-testid='machine-count-direct'
-                            >
-                              {summary.direct ?? '—'}
-                            </Text>
-                            <Text size='xs' c='dimmed'>
-                              {t`Direct here`}
-                            </Text>
-                          </Paper>
-                        )}
-                        <Paper withBorder p='md'>
-                          <Text size='sm' c='dimmed'>
-                            {t`Open work orders now`}
-                          </Text>
-                          <Text size='xl' fw={700}>
-                            {countOrders ?? '—'}
-                          </Text>
-                          <Text size='xs' c='dimmed'>
-                            {t`Drafts excluded; work orders counted once.`}
-                          </Text>
-                        </Paper>
-                      </SimpleGrid>
                       {summary.locationTotalsOnly && (
                         <Text
                           size='xs'

@@ -193,7 +193,7 @@ function WorkLinks({
 
 function Outcome({ occurrence }: Readonly<{ occurrence: FaultOccurrence }>) {
   return (
-    <Stack gap={2}>
+    <Stack gap={2} style={{ minWidth: 0, maxWidth: '100%' }}>
       <Badge
         variant={occurrence.active ? 'light' : 'outline'}
         color={occurrence.active ? 'orange' : 'gray'}
@@ -207,7 +207,7 @@ function Outcome({ occurrence }: Readonly<{ occurrence: FaultOccurrence }>) {
         </Text>
       )}
       {occurrence.resolution_note && (
-        <Text size='xs' c='dimmed' lineClamp={3}>
+        <Text size='xs' c='dimmed'>
           {occurrence.resolution_note}
         </Text>
       )}
@@ -695,8 +695,10 @@ export function FaultOccurrences({
                 data-occurrence={occurrence.id}
               >
                 <Stack gap='xs'>
-                  <Group justify='space-between' gap='xs' wrap='nowrap'>
-                    <SeverityBadge severity={occurrence.severity} />
+                  <Group justify='space-between' gap='xs' align='flex-start'>
+                    <div style={{ flexShrink: 0 }}>
+                      <SeverityBadge severity={occurrence.severity} />
+                    </div>
                     <Outcome occurrence={occurrence} />
                   </Group>
                   <Text size='sm' fw={600} style={{ overflowWrap: 'anywhere' }}>

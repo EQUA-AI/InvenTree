@@ -84,7 +84,14 @@ export function summarize(points: MimicPoint[], display: Display = valueText) {
 function VerdictBadge({ verdict }: Readonly<{ verdict: Verdict }>) {
   if (verdict === null) {
     return (
-      <Badge variant='outline' color='gray'>{t`No threshold configured`}</Badge>
+      <Badge
+        variant='outline'
+        color='gray'
+        h='auto'
+        styles={{
+          label: { whiteSpace: 'normal', lineHeight: 1.4, paddingBlock: 3 }
+        }}
+      >{t`No threshold configured`}</Badge>
     );
   }
   const look: Record<string, { color: string; label: string }> = {
@@ -234,8 +241,8 @@ export function ReadingSections({
             data-section={section.key}
           >
             <Accordion.Control aria-label={section.title}>
-              <Group justify='space-between' wrap='nowrap' gap='sm'>
-                <Stack gap={2}>
+              <Group justify='space-between' wrap='wrap' gap='sm'>
+                <Stack gap={2} style={{ flex: '1 1 220px', minWidth: 0 }}>
                   <Group gap={8} wrap='nowrap'>
                     {section.number !== undefined && (
                       <Badge
@@ -261,7 +268,7 @@ export function ReadingSections({
                     ].join(' · ') || t`No reading`}
                   </Text>
                 </Stack>
-                <Group gap='xs' wrap='nowrap'>
+                <Group gap='xs' wrap='wrap'>
                   {unavailable > 0 && (
                     <Badge variant='light' color='gray'>
                       {t`${unavailable} unavailable`}

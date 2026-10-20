@@ -1,19 +1,17 @@
-/* The component list sits below the model: one column on a phone, three
-   columns flowing downward from 576 px, so it stays compact and still reads
-   in tree order. The inspector has the column beside the model. */
-.list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 2px;
+/* Size the native component list by its actual column, preserving tree order. */
+.components { container-type: inline-size; }
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+@container (min-width: 36em) {
+  .list { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(5, auto); grid-auto-flow: column; column-gap: var(--mantine-spacing-sm); }
+}
+@container (min-width: 54em) {
+  .list { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(3, auto); }
 }
 
-@media (min-width: 36em) {
-  .list {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-template-rows: repeat(3, auto);
-    grid-auto-flow: column;
-    column-gap: var(--mantine-spacing-sm);
-  }
+/* Preserve a useful 560px model and 280px inspector within the native rail. */
+.modelLayout { container-type: inline-size; }
+.modelColumns { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--mantine-spacing-sm); }
+.modelColumns > div { min-width: 0; }
+@container (min-width: 54em) {
+  .modelColumns { grid-template-columns: minmax(560px, 2fr) minmax(280px, 1fr); }
 }

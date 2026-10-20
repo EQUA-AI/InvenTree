@@ -408,3 +408,34 @@ describe('workspaceLabel', () => {
     expect(workspaceLabel(1, [workspaces[0]])).toBeNull();
   });
 });
+
+describe('machine panel origin', () => {
+  it('preserves native list context while replacing panel-specific state', async () => {
+    const { machinePanelHref } = await import('./locationTree');
+    const href = machinePanelHref(
+      18,
+      'fault-history',
+      new URLSearchParams(
+        'from=sites&location=12&scope=direct&search=pump&has_alarms=true&criticality=high&page=2&view=schematic&occurrence=1'
+      ),
+      { occurrence: '901' }
+    );
+    const url = new URL(href, 'https://example.invalid');
+    expect(url.pathname).toBe('/machines/machine/18/fault-history/');
+    expect(url.searchParams.get('from')).toBe('sites');
+    expect(url.searchParams.get('page')).toBe('2');
+    expect(url.searchParams.get('location')).toBe('12');
+    expect(url.searchParams.get('occurrence')).toBe('901');
+    expect(url.searchParams.has('view')).toBe(false);
+  });
+  it('does not promote invalid origin or unknown query fields', async () => {
+    const { machinePanelHref } = await import('./locationTree');
+    expect(
+      machinePanelHref(
+        18,
+        'performance',
+        new URLSearchParams('from=bad&location=-1&page=0&command=start')
+      )
+    ).toBe('/machines/machine/18/performance/');
+  });
+});

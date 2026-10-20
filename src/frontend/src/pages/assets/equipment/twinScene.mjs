@@ -22,7 +22,6 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 const VERSION = '1.0.0';
 const TAU = Math.PI * 2;
-const INDIGO = new THREE.Color('#5260c9');
 const MODES = new Set(['assembled', 'cutaway', 'exploded']);
 const PARTS = Object.freeze([
   { id: 'machine', number: 0, label: 'Complete pump train', parent: null, description: 'Conceptual vertical dry-installed centrifugal pump assembly.' },
@@ -122,12 +121,13 @@ function bevelBoxGeometry(width, height, depth, bevel = .018) {
   return geometry;
 }
 
-function buildPumpModel() {
+function buildPumpModel(accent) {
+  const selectionColor = new THREE.Color(accent);
   const root = new THREE.Group();
   root.name = 'Conceptual vertical centrifugal pump';
   const geometries = new Set(), materials = new Set(), textures = new Set();
   const materialCache = new Map(), parts = new Map(), pickMeshes = [], movable = [], modeObjects = [];
-  const edgeMaterial = new THREE.LineBasicMaterial({ color: INDIGO, transparent: true, opacity: .68, depthWrite: false, toneMapped: false });
+  const edgeMaterial = new THREE.LineBasicMaterial({ color: selectionColor, transparent: true, opacity: .68, depthWrite: false, toneMapped: false });
   materials.add(edgeMaterial);
   const edgeCache = new Map();
   const cylinderCache = new Map(), ringCache = new Map(), boxCache = new Map(), torusCache = new Map();
@@ -488,9 +488,9 @@ function buildPumpModel() {
     for (const mat of materialCache.values()) {
       const selected = id !== 'machine' && mat.userData.partId === id;
       mat.color.copy(mat.userData.baseColor);
-      if (selected) mat.color.lerp(INDIGO, .22);
+      if (selected) mat.color.lerp(selectionColor, .22);
       mat.emissive.copy(mat.userData.baseEmissive); mat.emissiveIntensity = 1;
-      if (selected) { mat.emissive.copy(INDIGO); mat.emissiveIntensity = .095; }
+      if (selected) { mat.emissive.copy(selectionColor); mat.emissiveIntensity = .095; }
     }
     for (const mesh of pickMeshes) {
       if (!mesh.userData.outline) continue;
@@ -522,7 +522,7 @@ function buildPumpModel() {
     root.clear(); parts.clear(); pickMeshes.length = 0;
   }
   applyMode('assembled');
-  return { root, parts, pickMeshes, markers, materials, geometries, textures, applyMode, select, bounds, dispose };
+  return { root, parts, pickMeshes, markers, materials, geometries, textures, applyMode, select, setAccent(value) { selectionColor.set(value); edgeMaterial.color.copy(selectionColor); }, bounds, dispose };
 }
 
 function fallbackElement(stage, message) {
@@ -544,15 +544,16 @@ function create(host, options = {}) {
   const positionChanged = typeof getComputedStyle === 'function' && getComputedStyle(host).position === 'static';
   if (positionChanged) host.style.position = 'relative';
   const stage = document.createElement('div'); stage.className = 'aimms-twin-scene';
-  Object.assign(stage.style, { position: 'absolute', inset: '0', overflow: 'hidden', isolation: 'isolate', background: '#f4f6fa' });
+  Object.assign(stage.style, { position: 'absolute', inset: '0', overflow: 'hidden', isolation: 'isolate', background: 'var(--mantine-color-body, #f4f6fa)', color: 'var(--mantine-primary-color-filled)' });
   host.appendChild(stage);
+  const surface = () => getComputedStyle(stage).backgroundColor;
   const reportError = error => { if (typeof options.onError === 'function') options.onError(error); };
   const emptyState = () => ({ ready: false, selected, mode, labels, conceptual: true, cameraState: null, camera: null, error: failure?.message || null });
 
   try {
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'low-power', preserveDrawingBuffer: false, stencil: false });
     renderer.setPixelRatio(Math.min(Math.max(window.devicePixelRatio || 1, 1), 1.75));
-    renderer.setClearColor('#f4f6fa', 1);
+    renderer.setClearColor(surface(), 1);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.14;
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -561,9 +562,9 @@ function create(host, options = {}) {
     canvas.setAttribute('aria-label', 'Conceptual vertical pump train. Drag to rotate. Scroll or use plus and minus to zoom. Arrow keys rotate. R resets the view. Select numbered components or use the component list.');
     Object.assign(canvas.style, { display: 'block', width: '100%', height: '100%', touchAction: 'none', outlineOffset: '-4px' }); stage.append(canvas);
     const style = document.createElement('style');
-    style.textContent = '.aimms-twin-canvas:focus-visible{outline:3px solid #6570d6}.aimms-twin-hotspot:focus-visible{outline:3px solid #6570d6;outline-offset:3px}.aimms-twin-hotspot:hover{box-shadow:0 0 0 4px #5260c91a,0 2px 6px #1c35551f!important}.aimms-twin-hotspot[aria-pressed="true"]{background:#5260c9!important;color:#fff!important;border-color:#5260c9!important}.aimms-twin-hotspot[hidden]{display:none!important}';
+    style.textContent = '.aimms-twin-canvas:focus-visible{outline:3px solid var(--mantine-primary-color-filled)}.aimms-twin-hotspot:focus-visible{outline:3px solid var(--mantine-primary-color-filled);outline-offset:3px}.aimms-twin-hotspot:hover{box-shadow:0 0 0 4px var(--mantine-primary-color-light),0 2px 6px #1c35551f!important}.aimms-twin-hotspot[aria-pressed="true"]{background:var(--mantine-primary-color-8)!important;color:var(--mantine-primary-color-contrast)!important;border-color:var(--mantine-primary-color-filled)!important}.aimms-twin-hotspot[hidden]{display:none!important}';
     stage.append(style);
-    scene = new THREE.Scene(); scene.background = new THREE.Color('#f4f6fa');
+    scene = new THREE.Scene(); scene.background = new THREE.Color(surface());
     camera = new THREE.PerspectiveCamera(34, 1, .05, 70);
     controls = new OrbitControls(camera, canvas); controls.enableDamping = false; controls.enablePan = true; controls.screenSpacePanning = true;
     controls.minDistance = 1.8; controls.maxDistance = 23; controls.minPolarAngle = .045; controls.maxPolarAngle = Math.PI * .535;
@@ -587,9 +588,9 @@ function create(host, options = {}) {
     }
     makeEnvironment();
 
-    model = buildPumpModel(); scene.add(model.root); model.applyMode(mode); model.select(selected);
+    model = buildPumpModel(getComputedStyle(stage).color); scene.add(model.root); model.applyMode(mode); model.select(selected);
     const floorGeometry = new THREE.PlaneGeometry(32, 32); externalGeometries.add(floorGeometry);
-    const floorMaterial = new THREE.MeshStandardMaterial({ color: '#eef2f6', metalness: .03, roughness: .95, envMapIntensity: .15 }); externalMaterials.add(floorMaterial);
+    const floorMaterial = new THREE.MeshStandardMaterial({ color: surface(), metalness: .03, roughness: .95, envMapIntensity: .15 }); externalMaterials.add(floorMaterial);
     const floor = new THREE.Mesh(floorGeometry, floorMaterial); floor.rotation.x = -Math.PI / 2; floor.position.y = -.008; floor.receiveShadow = true; scene.add(floor);
     const grid = new THREE.GridHelper(15, 30, '#c1ccd8', '#d4dde6'); grid.position.y = -.004; grid.material.transparent = true; grid.material.opacity = .28; grid.material.depthWrite = false;
     externalGeometries.add(grid.geometry); externalMaterials.add(grid.material); scene.add(grid);
@@ -613,11 +614,16 @@ function create(host, options = {}) {
     for (const marker of model.markers) {
       const button = document.createElement('button'); button.type = 'button'; button.className = 'aimms-twin-hotspot'; button.textContent = String(marker.number);
       button.setAttribute('aria-label', `${marker.number}. Select ${marker.label.toLowerCase()}`); button.title = marker.label; button.setAttribute('aria-pressed', String(selected === marker.id));
-      Object.assign(button.style, { position: 'absolute', transform: 'translate(-50%,-50%)', width: '25px', height: '25px', borderRadius: '50%', border: '1px solid #b7c5d7', background: '#ffffff', color: '#4d627c', font: '600 11px/1 system-ui, sans-serif', display: 'grid', placeItems: 'center', boxShadow: '0 1px 5px #1c355514', cursor: 'pointer', pointerEvents: 'auto', padding: '0' });
+      Object.assign(button.style, { position: 'absolute', transform: 'translate(-50%,-50%)', width: '25px', height: '25px', borderRadius: '50%', border: '1px solid var(--mantine-color-default-border)', background: 'var(--mantine-color-body)', color: 'var(--mantine-color-text)', font: '600 11px/1 system-ui, sans-serif', display: 'grid', placeItems: 'center', boxShadow: '0 1px 5px #1c355514', cursor: 'pointer', pointerEvents: 'auto', padding: '0' });
       const line = document.createElementNS('http://www.w3.org/2000/svg', 'line'); line.setAttribute('stroke-width', '1'); line.setAttribute('stroke', '#92a1b9'); line.setAttribute('opacity', '.55'); svg.append(line);
       const click = event => { event.stopPropagation(); choose(marker.id); }; button.addEventListener('click', click); cleanupListeners.push(() => button.removeEventListener('click', click));
       layer.append(button); hotspotNodes.set(marker.id, { button, line });
     }
+    const themeObserver = new MutationObserver(() => {
+      scene.background.set(surface()); floorMaterial.color.set(surface()); model.setAccent(getComputedStyle(stage).color); model.select(selected); invalidate();
+    });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-mantine-color-scheme'] });
+    cleanupListeners.push(() => themeObserver.disconnect());
     const raycaster = new THREE.Raycaster(), pointer = new THREE.Vector2(), scratch = new THREE.Vector3();
     const cameraDirection = new THREE.Vector3(), screenDirection = new THREE.Vector3();
 
@@ -655,7 +661,7 @@ function create(host, options = {}) {
         projected.push(item);
         const node = hotspotNodes.get(marker.id), show = visible && labels && options.hotspots !== false && !contextLost;
         node.button.hidden = !show; node.button.style.left = `${x}px`; node.button.style.top = `${y}px`; node.button.setAttribute('aria-pressed', String(item.selected));
-        node.line.style.display = show ? '' : 'none'; node.line.setAttribute('x1', String(anchorX)); node.line.setAttribute('y1', String(anchorY)); node.line.setAttribute('x2', String(x)); node.line.setAttribute('y2', String(y)); node.line.setAttribute('stroke', item.selected ? '#5260c9' : '#92a1b9');
+        node.line.style.display = show ? '' : 'none'; node.line.setAttribute('x1', String(anchorX)); node.line.setAttribute('y1', String(anchorY)); node.line.setAttribute('x2', String(x)); node.line.setAttribute('y2', String(y)); node.line.setAttribute('stroke', item.selected ? 'var(--mantine-primary-color-filled)' : 'var(--mantine-color-dimmed)');
       }
       raycaster.far = Infinity; lastProjected = projected;
       if (typeof options.onProject === 'function') options.onProject(projected.map(item => ({ ...item, world: [...item.world] })), { width, height, mode, selected });

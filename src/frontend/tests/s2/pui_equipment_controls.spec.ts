@@ -1,9 +1,11 @@
 import { type Page, expect, test } from '@playwright/test';
+import { nativeThemeFixtures } from '../s8/themeFixtures';
 
 import { nativeBaseline } from '../s0/guards';
 import { mockPositions } from './equipmentFixtures';
 
 nativeBaseline();
+nativeThemeFixtures();
 
 // Equipment view reads the machine's position records once it mounts.
 test.beforeEach(async ({ page }) => {
@@ -231,6 +233,9 @@ for (const size of [
     test.skip(testInfo.project.name !== 's2-desktop', 'desktop layouts');
     await page.setViewportSize({ width: size.width, height: size.height });
     await openPanel(page);
+    await expect(
+      page.getByRole('tablist', { name: 'panel-tabs-asset-machine-detail' })
+    ).toBeVisible();
     const view = (await canvas(page).boundingBox())!;
     const list = (await page
       .getByRole('list', { name: 'Model components' })

@@ -1,0 +1,29 @@
+/* Native Mantine tokens keep operational surfaces aligned in both schemes. */
+.band {
+  border: 1px solid var(--mantine-color-default-border);
+  border-left: 3px solid var(--mantine-primary-color-filled);
+  background: var(--mantine-color-body);
+  border-radius: var(--mantine-radius-sm);
+  padding: var(--mantine-spacing-sm) var(--mantine-spacing-md);
+  min-width: 0;
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--mantine-spacing-sm);
+}
+.metric {
+  border-left: 1px solid var(--mantine-color-default-border);
+  padding-left: var(--mantine-spacing-sm);
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+.metric:first-child { border-left: 0; padding-left: 0; }
+.label { color: var(--mantine-color-text); font-size: var(--mantine-font-size-xs); }
+.value { font-size: var(--mantine-font-size-xl); font-weight: 650; line-height: 1.4; }
+.caveat { color: var(--mantine-color-text); font-size: var(--mantine-font-size-sm); overflow-wrap: anywhere; }
+.metadata { color: var(--mantine-color-dimmed); font-size: var(--mantine-font-size-xs); overflow-wrap: anywhere; }
+@media (max-width: 36em) {
+  .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .metric:nth-child(odd) { border-left: 0; padding-left: 0; }
+}

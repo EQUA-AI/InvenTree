@@ -1,12 +1,20 @@
 import { type Page, expect, test } from '@playwright/test';
+import { nativeThemeFixtures } from '../s8/themeFixtures';
 
 import { nativeBaseline } from '../s0/guards';
 import { mockPositions, positionsFixture } from './equipmentFixtures';
 
 nativeBaseline();
+nativeThemeFixtures();
 
-async function openPanel(page: Page, scheme: 'light' | 'dark' = 'light') {
-  await page.goto(`/playwright/s2-equipment.html?kind=panel&scheme=${scheme}`);
+async function openPanel(
+  page: Page,
+  scheme: 'light' | 'dark' = 'light',
+  pauseScheduledPolling = false
+) {
+  await page.goto(
+    `/playwright/s2-equipment.html?kind=panel&scheme=${scheme}${pauseScheduledPolling ? '&polling=paused' : ''}`
+  );
   await expect(page.locator('[data-scene-phase="ready"]')).toBeVisible();
 }
 
@@ -66,7 +74,12 @@ test('another position changes only the bound context, from one read', async ({
   page
 }) => {
   const positions = await mockPositions(page);
-  await openPanel(page);
+  // Retain exactly one read while exercising selection. A scheduled 30s
+  // refresh is a different behavior and must not depend on runner speed.
+  await openPanel(page, 'light', true);
+  await expect(
+    page.getByText('scheduled polling paused for selection test')
+  ).toBeVisible();
   const panel = inspector(page);
   // Impeller: no family, so nothing of the bearing's appears.
   await pick(page, 'bearing');
@@ -220,7 +233,7 @@ test('records the reader may not see say so, with no retry that cannot help', as
 test('a Parts slot opens the model on its own position', async ({ page }) => {
   await mockPositions(page);
   await page.goto(
-    `/playwright/s2-equipment.html?kind=panel&entry=${encodeURIComponent('/fixture?position=bearing')}`
+    `/playwright/s2-equipment.html?kind=panel&entry=${encodeURIComponent('/machines/machine/18/equipment/?position=bearing')}`
   );
   await expect(page.locator('[data-scene-phase="ready"]')).toBeVisible();
   await expect(
@@ -237,7 +250,7 @@ test('an unknown position in the link falls back to the whole machine', async ({
 }) => {
   await mockPositions(page);
   await page.goto(
-    `/playwright/s2-equipment.html?kind=panel&entry=${encodeURIComponent('/fixture?position=gearbox')}`
+    `/playwright/s2-equipment.html?kind=panel&entry=${encodeURIComponent('/machines/machine/18/equipment/?position=gearbox')}`
   );
   await expect(page.locator('[data-scene-phase="ready"]')).toBeVisible();
   await expect(page.locator('[data-position="machine"]')).toHaveAttribute(

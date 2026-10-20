@@ -3,7 +3,6 @@ import {
   ActionIcon,
   Badge,
   Button,
-  Grid,
   Group,
   NavLink,
   Paper,
@@ -11,6 +10,7 @@ import {
   Stack,
   Switch,
   Text,
+  Title,
   Tooltip
 } from '@mantine/core';
 import {
@@ -27,6 +27,7 @@ import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import { useApi } from '../../../contexts/ApiContext';
 
+import operations from '../operations.module.css';
 import { EquipmentScene, type EquipmentSceneHandle } from './EquipmentScene';
 import { PositionInspector } from './PositionInspector';
 import classes from './equipment.module.css';
@@ -67,7 +68,7 @@ function ComponentList({
   onSelect: (id: TwinPartId) => void;
 }>) {
   return (
-    <Paper withBorder radius='md' p='xs'>
+    <Paper withBorder radius='sm' p='xs' className={classes.components}>
       <Text size='xs' fw={600} c='dimmed' px='xs' pb={4}>
         {t`Components`}
       </Text>
@@ -214,41 +215,43 @@ function ModelView({
         </Group>
       </Group>
 
-      <Grid gap='sm'>
-        <Grid.Col span={{ base: 12, lg: 8 }}>
-          <Stack gap={6}>
-            <EquipmentScene
-              ref={scene}
-              modelKey={`reference-pump:${machine.pk}`}
+      <div className={classes.modelLayout}>
+        <div className={classes.modelColumns}>
+          <div>
+            <Stack gap={6}>
+              <EquipmentScene
+                ref={scene}
+                modelKey={`reference-pump:${machine.pk}`}
+                selected={selected}
+                mode={mode}
+                labels={labels}
+                onSelect={setSelected}
+              />
+              <Text size='xs' c='dimmed'>
+                {t`Drag to rotate. Scroll zooms once the model has focus, or hold Ctrl. Arrow keys rotate; + and − zoom.`}
+              </Text>
+              {mode === 'cutaway' && (
+                <Text size='xs' c='dimmed' data-mode-note='cutaway'>
+                  {t`Cutaway shows reference internals, not this machine's verified design.`}
+                </Text>
+              )}
+              {mode === 'exploded' && (
+                <Text size='xs' c='dimmed' data-mode-note='exploded'>
+                  {t`Exploded for orientation only; not a disassembly procedure.`}
+                </Text>
+              )}
+              <ComponentList selected={selected} onSelect={setSelected} />
+            </Stack>
+          </div>
+          <div>
+            <PositionInspector
+              machineId={machine.pk}
               selected={selected}
-              mode={mode}
-              labels={labels}
-              onSelect={setSelected}
+              query={positions}
             />
-            <Text size='xs' c='dimmed'>
-              {t`Drag to rotate. Scroll zooms once the model has focus, or hold Ctrl. Arrow keys rotate; + and − zoom.`}
-            </Text>
-            {mode === 'cutaway' && (
-              <Text size='xs' c='dimmed' data-mode-note='cutaway'>
-                {t`Cutaway shows reference internals, not this machine's verified design.`}
-              </Text>
-            )}
-            {mode === 'exploded' && (
-              <Text size='xs' c='dimmed' data-mode-note='exploded'>
-                {t`Exploded for orientation only; not a disassembly procedure.`}
-              </Text>
-            )}
-            <ComponentList selected={selected} onSelect={setSelected} />
-          </Stack>
-        </Grid.Col>
-        <Grid.Col span={{ base: 12, lg: 4 }}>
-          <PositionInspector
-            machineId={machine.pk}
-            selected={selected}
-            query={positions}
-          />
-        </Grid.Col>
-      </Grid>
+          </div>
+        </div>
+      </div>
 
       <Group justify='space-between' gap='xs' wrap='wrap'>
         <Group gap='xs'>
@@ -332,6 +335,31 @@ export function EquipmentViewPanel({
 
   return (
     <Stack gap='sm'>
+      <Paper
+        className={operations.band}
+        component='section'
+        aria-label={t`Equipment context`}
+      >
+        <Group justify='space-between' gap='xs'>
+          <Stack gap={2}>
+            <Title order={4}>
+              {view === 'model'
+                ? t`Inspect equipment positions`
+                : t`Process readings`}
+            </Title>
+            <Text className={operations.caveat}>
+              {view === 'model'
+                ? t`Reference model · geometry unverified`
+                : t`Reference schematic · physical arrangement unverified`}
+            </Text>
+          </Stack>
+          <Badge
+            color='gray'
+            variant='outline'
+            c='var(--mantine-color-text)'
+          >{t`Reference view`}</Badge>
+        </Group>
+      </Paper>
       {schematic && (
         <SegmentedControl
           aria-label={t`Equipment view`}

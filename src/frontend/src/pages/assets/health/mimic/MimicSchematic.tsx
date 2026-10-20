@@ -254,7 +254,6 @@ function Bays({
         const style = stateStyle(bay.state);
         const alarm = alarmColor(bay.alarm);
         const chosen = selected === bay.key;
-        const flowing = bay.state === 'running';
         const reading = power
           ? bay.points[expandPointer(power.pointer, bay.key)]
           : undefined;
@@ -324,12 +323,8 @@ function Bays({
             <path
               d={`M${centre} ${bottom}V${pumpY + radius}M${centre + radius} ${pumpY}h${radius * 0.45}V${top}`}
               fill='none'
-              stroke={
-                flowing
-                  ? 'var(--mantine-color-blue-filled)'
-                  : 'var(--mimic-line)'
-              }
-              strokeWidth={flowing ? 2.5 : 1.5}
+              stroke='var(--mimic-line)'
+              strokeWidth={1.5}
             />
             {/* Shaft, motor above, pump below. */}
             <line
@@ -460,6 +455,7 @@ export function MimicSchematic({
           '--mimic-state-line': state.line,
           ...partOutlines(parts, active),
           width: '100%',
+          maxHeight: unit ? 'min(58vh, 540px)' : undefined,
           aspectRatio: `${width} / ${height}`,
           display: 'block',
           margin: '0 auto',

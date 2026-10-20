@@ -69,13 +69,11 @@
   <!-- Suction: bellmouth and pipe into the casing. -->
   <path d="M262 442l-22-9v38l22-9z" fill="var(--mimic-water, #d0ebff)"/>
   <path d="M262 442h242v20H262z" fill="var(--mimic-water, #d0ebff)"/>
-  <path d="M370 452h34m-9-6l9 6l-9 6" stroke-width="1.6"/>
 
   <!-- Discharge line, and the two valves on it. -->
   <g id="part-discharge" data-part="PS-DISCHARGE" stroke="var(--mimic-part-discharge, var(--mimic-line, #495057))">
     <path d="M592 422h246v20H592z" fill="var(--mimic-water, #d0ebff)"/>
-    <path d="M838 417l26 15l-26 15z" fill="var(--mimic-water, #d0ebff)"/>
-    <path d="M618 432h34m-9-6l9 6l-9 6" stroke-width="1.6"/>
+    <path d="M838 422h26v20h-26z" fill="var(--mimic-water, #d0ebff)"/>
   </g>
   <g id="part-eopd-valve" data-part="PS-EOPD-VALVE" stroke="var(--mimic-part-eopd-valve, var(--mimic-line, #495057))">
     <path d="M690 416l18 16l-18 16zM726 416l-18 16l18 16z" fill="var(--mimic-surface, #f8f9fa)"/>

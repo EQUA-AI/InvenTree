@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.s0.json",
+  "files": [
+    "playwright.s8.config.ts",
+    "tests/s8/designFixtures.ts",
+    "tests/s8/pui_design.spec.ts",
+    "tests/s8/pui_captures.spec.ts",
+    "playwright/s8-design.tsx",
+    "tests/s8/pui_review.spec.ts",
+    "playwright/FixtureTheme.tsx",
+    "playwright/MachineFixtureRail.tsx",
+    "tests/s8/pui_state_captures.spec.ts",
+    "tests/s8/themeFixtures.ts"
+  ]
+}
