@@ -158,9 +158,11 @@ class WorkOrder(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
         max_length=24,
         blank=True,
         default='',
+        # A database default too, so code that predates the column can insert.
+        db_default='',
         choices=[('recurrence', 'Recurrence'), ('routine_finding', 'Routine finding')],
     )
-    corrective_finding = models.TextField(blank=True)
+    corrective_finding = models.TextField(blank=True, default='', db_default='')
     corrective_reading = models.ForeignKey(
         'tasks.CloseoutReading',
         null=True,
