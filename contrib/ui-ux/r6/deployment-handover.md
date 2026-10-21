@@ -22,10 +22,10 @@ final image as described in sections 3.3 and 7 before rolling out.
 
 | Record | Value |
 |---|---|
-| Migrated at (UTC) | TO FILL |
-| Applied count after | TO FILL |
-| showmigrations result (nothing pending) | TO FILL |
-| Backup file name | TO FILL |
+| Migrated at (UTC) | 21 October 2026, 07:32:23 to 07:35:33 (17 migrations, from `inventTree-aniket` at `c86ac0229`) |
+| Applied count after | 984 (was 967; last applied before: `assets 0022_var_unit`, 13 October) |
+| showmigrations result (nothing pending) | Nothing pending. Lineage guard before migrating: "17 migration(s) to apply ... every applied migration is one this code knows" |
+| Backup file name | `inventree-20261021.dump` (pg_dump -Fc, read-only, 141 MB, taken 04:35–04:41 UTC on 21 October, before the migration; held by the owner) |
 
 A read-only `pg_dump -Fc` backup of Azure was taken on 21 October 2026 before
 the migration and is held by the owner locally. Record only its file name above;
@@ -570,7 +570,7 @@ az containerapp exec -n "$APP" -g "$RG" --command "python src/backend/InvenTree/
 ```
 
 Expect every migration marked `[X]`, including the coordinator's new tasks 0041
-and users 0026 defaults (exact names in the migration record; section 7). Run the
+and users 0026 defaults (`0041_db_defaults_for_old_code` and `0026_ruleset_operating_authority_db_default`; section 7). Run the
 read-only lineage check in section 7.2 and require no pending or unknown migrations,
 even if the startup flag is unset. If exec will not take arguments, use
 `--command /bin/bash`. In Multiple mode add `--revision "$NEW_REV"` to `exec`, so
@@ -753,11 +753,11 @@ The coordinator also applies new **expand-only database-default migrations**:
 
 | Migration | Exact final migration name | Purpose |
 |---|---|---|
-| tasks 0041 | to be confirmed by the coordinator's migration record | Add database defaults for the three tasks columns below. |
-| users 0026 | to be confirmed by the coordinator's migration record | Add a database default for the ruleset column below. |
+| tasks 0041 | `0041_db_defaults_for_old_code` | Database default `''` on `tasks_workorder.corrective_finding`, `tasks_workorder.corrective_origin_kind`, `tasks_closeoutcapture.voice_unavailable_reason` and `tasks_investigationrequest.escalation_reason`. |
+| users 0026 | `0026_ruleset_operating_authority_db_default` | Database default `false` on `users_ruleset.can_record_operating_authority`. |
 
-These migration files are not visible in this checkout. Confirm their exact names
-and inclusion in the final image from the coordinator's migration record.
+Both are on `inventTree-aniket` (merge `c86ac0229`) and were applied to Azure on
+21 October 2026; the final image must be built from a commit that contains them.
 They make these four NOT NULL columns safe for inserts from the old web app and
 the old worker, which remain running until deployment:
 
@@ -777,8 +777,7 @@ rows. This is an expectation, not the completed migration record. Use the
 coordinator's actual count and exact names in the hand-over table. Expected leaves
 are aichat `0054_investigation_proposal_action`, assets
 `0023_registry_recorded_facts`, repair `0012_operational_authority`, tasks 0041
-and users 0026 (exact final names to be confirmed by the coordinator's migration
-record). `showmigrations` from the final image must show nothing pending.
+and users 0026 (`0041_db_defaults_for_old_code`, `0026_ruleset_operating_authority_db_default`). `showmigrations` from the final image must show nothing pending.
 
 **Historical rehearsal limit.** Only the first 4 migrations were timed on a local
 copy: guard plus migration took 172.8 s, and seven business-table row counts were
@@ -842,7 +841,7 @@ az containerapp exec -n "$APP" -g "$RG" --command "python src/backend/InvenTree/
 - [ ] `GET /api/` returns 200.
 - [ ] `GET /api/system/health/` responds.
 - [ ] `GET /health/ai-ready` returns `ready`, or 503 `not_ready` if the AI plane is not configured. **UNCONFIRMED** on aimms-dev.
-- [ ] `showmigrations` marks every migration `[X]`, including tasks 0041 and users 0026 (exact names from the coordinator's record); nothing is pending.
+- [ ] `showmigrations` marks every migration `[X]`, including tasks 0041 and users 0026 (`0041_db_defaults_for_old_code`, `0026_ruleset_operating_authority_db_default`); nothing is pending.
 - [ ] Lineage check prints `lineage ok: nothing to apply.` with no unknown or leftover migration notes.
 - [ ] In the container, `ls contrib/cosmos/review contrib/cosmos/limits` lists 14 files and 1 (the counts at `a858aadec` from `git ls-tree`; re-count on the final SHA). Plan 13.3's "nine files and one" is the count at `11cec10e5` and is stale. The Dockerfile copies both directories (COPY lines 186 and 192) and `.dockerignore` excludes none of these files.
 - [ ] Boot log has one `AIMMS switchboard:` line with the section 5 values.
