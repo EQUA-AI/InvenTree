@@ -32,6 +32,9 @@ MAX_FINDINGS_PER_PACKET = 200
 
 #: Likewise for the ordered scope a crew is expected to work through.
 MAX_SCOPE_LINES = 100
+MAX_DEPENDENCIES = 50
+MAX_EVIDENCE_IDS = 50
+MAX_BINDING_ID = 64
 
 
 class InvestigationError(Exception):
@@ -61,12 +64,165 @@ def _normalized_scope_lines(raw) -> list[dict]:
         if not action:
             raise InvestigationError(f'Scope line {index} is empty.')
 
-        lines.append({'sequence': index + 1, 'action': action[:500]})
+        line = {'sequence': index + 1, 'action': action[:500]}
+        if isinstance(entry, dict):
+            component = entry.get('affected_component_ref')
+            revision = entry.get('procedure_revision_id')
+            if component is not None:
+                if (
+                    not isinstance(component, str)
+                    or not component.strip()
+                    or len(component) > 64
+                ):
+                    raise InvestigationError(
+                        'A component binding needs an exact nonempty reference.'
+                    )
+                line['affected_component_ref'] = component.strip()
+            if revision is not None:
+                if type(revision) is not int or revision < 1:
+                    raise InvestigationError(
+                        'A procedure revision binding needs a positive integer.'
+                    )
+                line['procedure_revision_id'] = revision
+            if 'dependencies' in entry:
+                dependencies = entry['dependencies']
+                if not isinstance(dependencies, list):
+                    raise InvestigationError('dependencies must be a list.')
+                if len(dependencies) > MAX_DEPENDENCIES:
+                    raise InvestigationError('Too many scope dependencies.')
+                normalized = []
+                seen = set()
+                for raw_binding in dependencies:
+                    binding = (
+                        dict(raw_binding)
+                        if isinstance(raw_binding, dict)
+                        else raw_binding
+                    )
+                    if (
+                        not isinstance(binding, dict)
+                        or set(binding)
+                        - {
+                            'kind',
+                            'id',
+                            'affected_component_ref',
+                            'procedure_revision_id',
+                            'evidence_ids',
+                        }
+                        or binding.get('kind')
+                        not in (
+                            'tasks',
+                            'materials',
+                            'resources',
+                            'permissions',
+                            'criteria',
+                        )
+                        or not isinstance(binding.get('id'), str)
+                        or not binding['id'].strip()
+                        or len(binding['id']) > MAX_BINDING_ID
+                    ):
+                        raise InvestigationError(
+                            'Each dependency requires a typed stable identity.'
+                        )
+                    if 'affected_component_ref' in binding and (
+                        not isinstance(binding['affected_component_ref'], str)
+                        or not binding['affected_component_ref'].strip()
+                        or len(binding['affected_component_ref']) > 64
+                    ):
+                        raise InvestigationError(
+                            'Dependency component reference must be nonempty text.'
+                        )
+                    if 'procedure_revision_id' in binding and (
+                        type(binding['procedure_revision_id']) is not int
+                        or binding['procedure_revision_id'] < 1
+                    ):
+                        raise InvestigationError(
+                            'Dependency procedure revision must be a positive integer.'
+                        )
+                    if 'evidence_ids' in binding and (
+                        not isinstance(binding['evidence_ids'], list)
+                        or len(binding['evidence_ids']) > MAX_EVIDENCE_IDS
+                        or any(
+                            type(pk) is not int or pk < 1
+                            for pk in binding['evidence_ids']
+                        )
+                    ):
+                        raise InvestigationError(
+                            'Evidence identities must be positive integers.'
+                        )
+                    binding['id'] = binding['id'].strip()
+                    if (binding['kind'], binding['id']) in seen:
+                        raise InvestigationError(
+                            'Duplicate dependency identity on one line.'
+                        )
+                    seen.add((binding['kind'], binding['id']))
+                    if 'affected_component_ref' in binding:
+                        binding['affected_component_ref'] = binding[
+                            'affected_component_ref'
+                        ].strip()
+                    normalized.append(binding)
+                line['dependencies'] = normalized
+        lines.append(line)
 
     if not lines:
         raise InvestigationError('An approved scope needs at least one line.')
 
     return lines
+
+
+def _validate_scope_bindings(packet, lines):
+    """Resolve authored identities to this machine, applied procedures and Work artifacts.
+
+    evidence_ids names immutable InvestigationArtifact rows. Repair finding ids
+    have a different namespace and cannot be inferred from an integer alone.
+    """
+    from tasks.investigation_models import InvestigationArtifact
+    from tasks.models import WorkOrderProcedureApplication
+
+    from assets.registry_models import AssetComponent
+
+    components = set(
+        AssetComponent.objects.filter(machine_id=packet.machine_id).values_list(
+            'code', flat=True
+        )
+    )
+    revisions = (
+        set(
+            WorkOrderProcedureApplication.objects.filter(
+                work_order_id=packet.work_order_id
+            ).values_list('revision_id', flat=True)
+        )
+        if packet.work_order_id
+        else set()
+    )
+    evidence = (
+        set(
+            InvestigationArtifact.objects.filter(
+                request__work_order_id=packet.work_order_id
+            ).values_list('pk', flat=True)
+        )
+        if packet.work_order_id
+        else set()
+    )
+    for line in lines:
+        for row in [line, *line.get('dependencies', [])]:
+            if (
+                row.get('affected_component_ref') is not None
+                and row['affected_component_ref'] not in components
+            ):
+                raise InvestigationError(
+                    'Component binding must resolve on this packet machine.'
+                )
+            if (
+                row.get('procedure_revision_id') is not None
+                and row['procedure_revision_id'] not in revisions
+            ):
+                raise InvestigationError(
+                    'Procedure revision must be applied to this Work.'
+                )
+            if any(pk not in evidence for pk in row.get('evidence_ids', [])):
+                raise InvestigationError(
+                    'Evidence must be an immutable investigation artifact of this Work.'
+                )
 
 
 @transaction.atomic
@@ -187,6 +343,7 @@ def approve_repair_scope(
     what an approver agreed to stays reconstructable after the plan changes.
     """
     lines = _normalized_scope_lines(scope_lines)
+    _validate_scope_bindings(packet, lines)
 
     if failure_codes is not None and not isinstance(failure_codes, list):
         raise InvestigationError('failure_codes must be a list.')

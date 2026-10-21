@@ -1,3 +1,4 @@
+import { displayAction } from '@lib/types/CanonicalDisplay';
 import { t } from '@lingui/core/macro';
 import {
   Alert,
@@ -182,19 +183,22 @@ function when(value: string | null): string {
 }
 
 function sourceRecord(row: HandledAction): string {
-  switch (row.source.record) {
+  const source = displayAction(row).source;
+  const sourceId = source.id;
+  if (sourceId === null || source.record === null) return t`Not recorded`;
+  switch (source.record) {
     case 'repair_packet_generation_run':
-      return t`Repair packet preparation run #${row.source.id}`;
+      return t`Repair packet preparation run #${sourceId}`;
     case 'repair_packet_event':
-      return t`Repair packet event #${row.source.id}`;
+      return t`Repair packet event #${sourceId}`;
     case 'closeout_proposal':
-      return t`Closeout extraction #${row.source.id}`;
+      return t`Closeout extraction #${sourceId}`;
     case 'closeout_capture':
-      return t`Closeout narrative #${row.source.id}`;
+      return t`Closeout narrative #${sourceId}`;
     case 'closeout_effect':
-      return t`Closeout follow-up #${row.source.id}`;
+      return t`Closeout follow-up #${sourceId}`;
     default:
-      return `${row.source.record} #${row.source.id}`;
+      return `${source.record} #${sourceId}`;
   }
 }
 
@@ -326,7 +330,7 @@ export function HandledByAimms({ value }: Readonly<{ value: unknown }>) {
         <Stack gap='xs'>
           <Group gap='xs'>
             <IconRobot size={18} />
-            <Title order={4}>{t`Handled by AIMMS`}</Title>
+            <Title order={2} size='h4'>{t`Handled by AIMMS`}</Title>
           </Group>
           <Text size='sm' c='dimmed'>
             {t`This server does not supply a record of AIMMS digital work for this work order. Nothing here means AIMMS did or did not act.`}
@@ -351,7 +355,7 @@ export function HandledByAimms({ value }: Readonly<{ value: unknown }>) {
         <Group justify='space-between' align='center' gap='xs'>
           <Group gap='xs'>
             <IconRobot size={18} />
-            <Title order={4} id='handled-by-aimms-title'>
+            <Title order={2} size='h4' id='handled-by-aimms-title'>
               {t`Handled by AIMMS`}
             </Title>
             {checked.length > 0 && (

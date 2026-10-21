@@ -96,7 +96,7 @@ export function WorkAttachmentResource({
         <Paper withBorder p='md'>
           <Stack gap='md'>
             <Group justify='space-between'>
-              <Title order={4}>{t`Work attachments`}</Title>
+              <Title order={2} size='h4'>{t`Work attachments`}</Title>
               <Button
                 variant='subtle'
                 onClick={close}

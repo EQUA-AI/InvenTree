@@ -5,7 +5,8 @@ import type {
   HealthState,
   MachineAnomaly,
   MachineSignal,
-  SignalQuality
+  SignalQuality,
+  SignalTrend
 } from '../../lib/types/MachineHealth';
 import { mockMachine } from '../s0/machineFixtures';
 
@@ -53,6 +54,8 @@ export type TrendShape =
     };
 
 export interface HealthSignalSpec {
+  active?: boolean;
+  criticalDesignation?: MachineSignal['critical_designation'];
   observedAt?: string | null;
   freshnessSeconds?: number;
   component?: MachineSignal['component'];
@@ -288,6 +291,8 @@ export function trendFor(
 /** The signals endpoint's row for one spec. */
 export function signalRow(spec: HealthSignalSpec) {
   return {
+    active: spec.active ?? true,
+    critical_designation: spec.criticalDesignation ?? null,
     binding_id: spec.id,
     component: spec.component ?? null,
     source_id: 1,
@@ -332,6 +337,12 @@ export interface HealthFixtureOptions {
   batchStatus?: number;
   /** Fail the full chart's read. */
   chartStatus?: number;
+  chartOverrides?: Partial<SignalTrend>;
+  chartHandler?: (route: Route, url: URL) => Promise<void>;
+  dataRange?: Record<string, unknown>;
+  dataRangeStatus?: number;
+  /** Hold extent metadata independently of current and selected trend reads. */
+  dataRangeReady?: Promise<void>;
   snapshots?: HealthEvidenceSnapshot[];
   snapshotsStatus?: number;
   anomaliesStatus?: number;
@@ -371,6 +382,7 @@ export function anomaly(
     signals: [],
     first_observed_at: iso(NOW - 3_600_000),
     last_observed_at: iso(NOW - 3_000_000),
+    display_shift_seconds: 0,
     acknowledged_at: null,
     acknowledged_by_name: null,
     acknowledgement_note: '',
@@ -404,8 +416,10 @@ export async function openHealth(
       json: {
         state: 'normal',
         configured: true,
-        signal_count: specs.length,
-        stale_signal_count: specs.filter((spec) => spec.stale).length,
+        signal_count: specs.filter((spec) => spec.active !== false).length,
+        stale_signal_count: specs.filter(
+          (spec) => spec.active !== false && spec.stale
+        ).length,
         degraded_data: specs.some(
           (spec) => spec.stale || (spec.quality && spec.quality !== 'good')
         ),
@@ -423,7 +437,8 @@ export async function openHealth(
             last_error_at: null,
             last_error_code: '',
             freshness_threshold_seconds: 300,
-            mapped_tag_count: specs.length
+            mapped_tag_count: specs.filter((spec) => spec.active !== false)
+              .length
           }
         ],
         ...options.summary
@@ -448,15 +463,19 @@ export async function openHealth(
       json: { count: rows.length, results: rows }
     });
   });
-  await page.route(`${health}/data-range/**`, (route: Route) =>
-    route.fulfill({
+  await page.route(`${health}/data-range/**`, async (route: Route) => {
+    await options.dataRangeReady;
+    return route.fulfill({
+      status: options.dataRangeStatus ?? 200,
       json: {
         available: true,
         from: iso(NOW - 10 * 86_400_000),
-        to: iso(NOW)
+        to: iso(NOW),
+        display_shift_seconds: 0,
+        ...options.dataRange
       }
-    })
-  );
+    });
+  });
   await page.route(`${health}/trends/**`, (route: Route) => {
     const url = new URL(route.request().url());
     requests.batch.push(url);
@@ -481,6 +500,7 @@ export async function openHealth(
   await page.route(`${health}/trend/**`, (route: Route) => {
     const url = new URL(route.request().url());
     requests.chart.push(url);
+    if (options.chartHandler) return options.chartHandler(route, url);
     if (options.chartStatus) {
       return route.fulfill({
         status: options.chartStatus,
@@ -494,15 +514,18 @@ export async function openHealth(
     const to = Date.parse(url.searchParams.get('to') ?? '');
     return route.fulfill({
       json: spec
-        ? trendFor(
-            {
-              ...spec,
-              trend: spec.trend === 'missing' ? 'steady' : spec.trend
-            },
-            from,
-            to,
-            { cadence: options.cadence ?? true }
-          )
+        ? {
+            ...trendFor(
+              {
+                ...spec,
+                trend: spec.trend === 'missing' ? 'steady' : spec.trend
+              },
+              from,
+              to,
+              { cadence: options.cadence ?? true }
+            ),
+            ...options.chartOverrides
+          }
         : { detail: 'Unknown binding' },
       status: spec ? 200 : 400
     });
@@ -525,6 +548,16 @@ export async function openHealth(
     surface: 'machine',
     entry,
     scheme: options.scheme ?? 'light'
+  });
+  // Match Performance's diagnostic wrapping, including a reopened canonical
+  // entry. A style added only after this goto disappears on the next document.
+  await page.addInitScript(() => {
+    document.addEventListener('DOMContentLoaded', () => {
+      const style = document.createElement('style');
+      style.textContent =
+        '[data-testid="destination"] { overflow-wrap: anywhere; }';
+      document.head.appendChild(style);
+    });
   });
   await page.goto(`/playwright/s0-native.html?${query}`);
   await expect(

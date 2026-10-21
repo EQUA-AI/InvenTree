@@ -57,6 +57,28 @@ def _closeout_hash(payload):
     ).hexdigest()
 
 
+def completion_request_hash(
+    *,
+    work_order_id,
+    actor,
+    expected_version,
+    closeout,
+    capture_id=None,
+    packet_intent=None,
+):
+    """Identify the exact completion, including its packet-owned intent."""
+    payload = {
+        'work_order_id': work_order_id,
+        'expected_version': expected_version,
+        'closeout_hash': _closeout_hash(dict(closeout or {})),
+    }
+    if capture_id is not None:
+        payload['capture_id'] = capture_id
+    if packet_intent is not None:
+        payload['packet_intent'] = packet_intent
+    return _canonical_hash('complete_work_order', actor, payload)
+
+
 def _closeout_details(closeout):
     parts = []
     if closeout.get('cause'):
@@ -181,6 +203,7 @@ def complete_work_order(
     capture_id=None,
     correlation_id=None,
     packet_finalization=None,
+    packet_intent=None,
 ):
     """Complete a work order with structured closeout and asset-history writeback.
 
@@ -204,16 +227,14 @@ def complete_work_order(
     work_order = _locked_work_order(work_order_id)
     closeout = dict(closeout or {})
     closeout_hash = _closeout_hash(closeout)
-    payload = {
-        'work_order_id': work_order_id,
-        'expected_version': expected_version,
-        'closeout_hash': closeout_hash,
-    }
-    if capture_id is not None:
-        # Only widen the canonical payload when the new argument is used, so
-        # pre-existing stored command hashes keep replaying byte-identically.
-        payload['capture_id'] = capture_id
-    request_hash = _canonical_hash('complete_work_order', actor, payload)
+    request_hash = completion_request_hash(
+        work_order_id=work_order_id,
+        actor=actor,
+        expected_version=expected_version,
+        closeout=closeout,
+        capture_id=capture_id,
+        packet_intent=packet_intent,
+    )
     replay = _replay_or_none(work_order, idempotency_key, request_hash)
     if replay:
         return replay
@@ -243,6 +264,23 @@ def complete_work_order(
     if missing:
         raise CloseoutError(f'Closeout requires: {", ".join(missing)}')
 
+    from tasks.workorder_serializers import CompleteCommandSerializer
+
+    serializer = CompleteCommandSerializer(
+        data={
+            **closeout,
+            'expected_version': expected_version,
+            'idempotency_key': idempotency_key,
+        }
+    )
+    if not serializer.is_valid():
+        raise CloseoutError(str(serializer.errors))
+    closeout = {
+        name: value
+        for name, value in serializer.validated_data.items()
+        if name in closeout
+    }
+
     readiness = evaluate_work_order_readiness(
         work_order,
         action='complete',
@@ -258,21 +296,80 @@ def complete_work_order(
         capture = _validated_capture(work_order, capture_id, closeout)
 
     now = timezone.now()
-    closeout_obj, _created = WorkOrderCloseout.objects.update_or_create(
-        work_order=work_order,
-        defaults={
-            'cause': closeout.get('cause', ''),
-            'action': closeout['action'],
-            'result': closeout['result'],
-            'verification_summary': closeout['verification_summary'],
-            'downtime_minutes': closeout.get('downtime_minutes'),
-            'follow_up_required': bool(closeout.get('follow_up_required', False)),
-            'follow_up': closeout.get('follow_up', ''),
-            'completed_by': actor,
-            'completed_at': now,
-            'content_hash': closeout_hash,
-        },
-    )
+    previous_closeout = WorkOrderCloseout.objects.filter(work_order=work_order).first()
+    if (
+        previous_closeout
+        and work_order.events.filter(event_type='RECURRENCE_REOPENED').exists()
+    ):
+        if (
+            previous_closeout.verified_at is not None
+            or previous_closeout.verified_by_id is not None
+        ):
+            raise CloseoutError(
+                'Accepted closure remains immutable; create linked work.'
+            )
+        from django.forms.models import model_to_dict
+
+        from tasks.services.recurrence import reopen_blocker
+
+        if reopen_blocker(work_order):
+            raise CloseoutError(
+                'A retained closure revision is required for dependent provenance.'
+            )
+
+        retained = model_to_dict(previous_closeout)
+        # The normal immutable save guard remains in place. Only this locked,
+        # audited reclosure path can replace an unaccepted execution result.
+        values = {
+            key: closeout.get(key, default)
+            for key, default in [
+                ('cause', ''),
+                ('action', ''),
+                ('result', ''),
+                ('verification_summary', ''),
+                ('downtime_minutes', None),
+                ('follow_up_required', False),
+                ('follow_up', ''),
+            ]
+        }
+        values.update(
+            completed_by=actor,
+            completed_at=now,
+            content_hash=closeout_hash,
+            version=previous_closeout.version + 1,
+        )
+        WorkOrderCloseout.objects.filter(
+            pk=previous_closeout.pk, verified_at__isnull=True, verified_by__isnull=True
+        ).update(**values)
+        work_order.events.create(
+            event_type='RECLOSURE_RETAINED',
+            from_status=work_order.lifecycle_status,
+            to_status=work_order.lifecycle_status,
+            actor=actor,
+            reason='Previous unaccepted closure retained before reclosure',
+            correlation_id=correlation_id or uuid.uuid4(),
+            metadata={
+                'previous_closeout': json.loads(json.dumps(retained, default=str))
+            },
+        )
+        previous_closeout.refresh_from_db()
+        closeout_obj = previous_closeout
+    else:
+        closeout_obj, _created = WorkOrderCloseout.objects.update_or_create(
+            work_order=work_order,
+            defaults={
+                'cause': closeout.get('cause', ''),
+                'action': closeout['action'],
+                'result': closeout['result'],
+                'verification_summary': closeout['verification_summary'],
+                'downtime_minutes': closeout.get('downtime_minutes'),
+                'follow_up_required': bool(closeout.get('follow_up_required', False)),
+                'follow_up': closeout.get('follow_up', ''),
+                'completed_by': actor,
+                'completed_at': now,
+                'content_hash': closeout_hash,
+            },
+        )
 
     if work_order.machine_id:
         performed_by = actor.get_full_name() or actor.get_username()
@@ -317,6 +414,10 @@ def complete_work_order(
 
     work_order.save(update_fields=save_fields)
 
+    from tasks.services.accepted_reports import freeze_report
+
+    freeze_report(work_order=work_order, closeout=closeout_obj, actor=actor)
+
     return _append_result(
         work_order=work_order,
         actor=actor,
@@ -328,5 +429,8 @@ def complete_work_order(
         correlation_id=correlation_id or uuid.uuid4(),
         idempotency_key=idempotency_key,
         request_hash=request_hash,
-        result_metadata={'closeout_id': closeout_obj.pk},
+        result_metadata={
+            'closeout_id': closeout_obj.pk,
+            **({'packet_id': packet_intent['packet_id']} if packet_intent else {}),
+        },
     )

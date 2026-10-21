@@ -114,9 +114,29 @@ export function HealthSummaryPanel({
             size='xs'
             c='dimmed'
           >{t`Usable means a current observation with good source quality. Evaluated means the server classified that signal against configured limits. Neither establishes overall equipment health.`}</Text>
-          <Alert color='yellow' title={t`Critical coverage unavailable`}>
-            {t`No critical-signal designation is supplied. Critical limits do not identify which signals are critical. Missing critical evidence cannot be ruled out, even when the current assessment is Normal.`}
-          </Alert>
+          {coverage?.criticalCoverage ? (
+            <Alert
+              color={
+                coverage.criticalCoverage.evaluated <
+                coverage.criticalCoverage.designated
+                  ? 'yellow'
+                  : 'blue'
+              }
+              title={
+                coverage.criticalCoverage.evaluated <
+                coverage.criticalCoverage.designated
+                  ? t`Critical coverage incomplete`
+                  : t`Designated critical coverage`
+              }
+            >
+              <Text size='sm'>{t`${coverage.criticalCoverage.designated} designated · ${coverage.criticalCoverage.usable} usable now · ${coverage.criticalCoverage.evaluated} evaluated now`}</Text>
+              <Text size='sm'>{t`Coverage is limited to engineer-designated bindings. Unassessed or missing evidence remains unknown; coverage does not establish equipment health.`}</Text>
+            </Alert>
+          ) : (
+            <Alert color='yellow' title={t`Critical coverage unavailable`}>
+              {t`No critical-signal designation is supplied. Critical limits do not identify which signals are critical. Missing critical evidence cannot be ruled out, even when the current assessment is Normal.`}
+            </Alert>
+          )}
         </Stack>
       </Paper>
 

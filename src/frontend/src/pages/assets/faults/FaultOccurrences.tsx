@@ -617,7 +617,9 @@ export function FaultOccurrences({
         )
       ).data
   });
-  const clock = useDisplayClock(query.data?.plant_timezone);
+  // A failed refresh retains React Query data; it cannot support current list claims.
+  const list = query.isSuccess ? query.data : undefined;
+  const clock = useDisplayClock(list?.plant_timezone);
   const triggers = useRef(new Map<number, HTMLButtonElement | null>());
   const openedEvidence = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -645,9 +647,9 @@ export function FaultOccurrences({
   };
   const lastPage = Math.max(
     1,
-    Math.ceil((query.data?.count ?? 0) / OCCURRENCE_PAGE_SIZE)
+    Math.ceil((list?.count ?? 0) / OCCURRENCE_PAGE_SIZE)
   );
-  const outOfRange = !!query.data && state.page > lastPage;
+  const outOfRange = !!list && state.page > lastPage;
   useEffect(() => {
     if (query.isSuccess && !query.isFetching && outOfRange)
       update({ page: lastPage }, true);
@@ -662,6 +664,7 @@ export function FaultOccurrences({
         triggers.current.set(occurrence.id, node);
       }}
       size='compact-xs'
+      className={operations.phoneTarget}
       variant='subtle'
       w='fit-content'
       aria-expanded={state.open === occurrence.id}
@@ -695,7 +698,7 @@ export function FaultOccurrences({
             <Button
               size='compact-xs'
               variant='subtle'
-              className={operations.link}
+              className={`${operations.link} ${operations.phoneTarget}`}
               onClick={() => toggle(state.open!)}
             >{t`Close evidence`}</Button>
           </Group>
@@ -807,9 +810,9 @@ export function FaultOccurrences({
             </Group>
           </Alert>
         )}
-        {query.data && (
+        {list && (
           <Text size='sm' className={operations.meta} component='output'>
-            {plural(query.data.count, {
+            {plural(list.count, {
               one: '# occurrence',
               other: '# occurrences'
             })}
@@ -822,7 +825,7 @@ export function FaultOccurrences({
             {t`newest first`}
           </Text>
         )}
-        {query.data && query.data.count === 0 && (
+        {list && list.count === 0 && (
           <Paper withBorder p='md'>
             <Text size='sm' className={operations.meta}>
               {state.status === 'all'
@@ -833,11 +836,11 @@ export function FaultOccurrences({
             </Text>
           </Paper>
         )}
-        {query.data &&
-          query.data.results.length > 0 &&
+        {list &&
+          list.results.length > 0 &&
           (phone ? (
             <Stack gap='xs'>
-              {query.data.results.map((occurrence) => (
+              {list.results.map((occurrence) => (
                 <Paper
                   key={occurrence.id}
                   withBorder
@@ -860,11 +863,19 @@ export function FaultOccurrences({
                     </Text>
                     <EventIdentity occurrence={occurrence} />
                     <SimpleGrid cols={2} spacing='xs'>
-                      <Field label={t`Occurred`}>
+                      <Field label={t`First observed`}>
                         <Text size='sm'>
                           {when(occurrence.first_observed_at, clock)}
                         </Text>
                       </Field>
+                      {occurrence.last_observed_at !==
+                        occurrence.first_observed_at && (
+                        <Field label={t`Last observed`}>
+                          <Text size='sm'>
+                            {when(occurrence.last_observed_at, clock)}
+                          </Text>
+                        </Field>
+                      )}
                       <Field label={t`Component`}>
                         <Components occurrence={occurrence} />
                       </Field>
@@ -906,7 +917,7 @@ export function FaultOccurrences({
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {query.data.results.map((occurrence) => (
+                  {list.results.map((occurrence) => (
                     <OccurrenceRows
                       key={occurrence.id}
                       occurrence={occurrence}
@@ -919,8 +930,8 @@ export function FaultOccurrences({
             </Table.ScrollContainer>
           ))}
         {state.open !== null &&
-          query.data &&
-          !query.data.results.some((row) => row.id === state.open) &&
+          list &&
+          !list.results.some((row) => row.id === state.open) &&
           expanded}
         {lastPage > 1 && (
           <Group justify='flex-end'>

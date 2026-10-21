@@ -159,7 +159,7 @@ test('Sales Orders - Auto Allocate', async ({ browser }) => {
   // Check that the allocated stock has been released
   await page
     .getByRole('region', { name: 'Line Items', exact: true })
-    .getByLabel('table-refresh')
+    .getByTestId('table-refresh')
     .click();
   await page.getByText('0 / 10').first().waitFor();
 });
@@ -282,7 +282,7 @@ test('Sales Orders - Shipments - Tags', async ({ browser }) => {
 
   // Filter by tag
   await clearTableFilters(page);
-  await page.getByRole('button', { name: 'table-select-filters' }).click();
+  await page.getByTestId('table-select-filters').click();
   await page.getByRole('button', { name: 'Add Filter' }).click();
   await page.getByRole('combobox', { name: 'Filter' }).fill('tag');
   await page.getByRole('option', { name: 'Tags' }).click();

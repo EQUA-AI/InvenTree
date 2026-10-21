@@ -1,3 +1,29 @@
+export interface CaptureOriginal {
+  id: number;
+  filename: string;
+  content_type: string;
+  content_hash: string;
+  byte_size: number;
+  started_at: string | null;
+  duration_ms: number | null;
+  url: string;
+}
+export interface AcceptedReportSummary {
+  id: number;
+  revision: number;
+  url: string;
+  content_hash: string;
+  completed_by: number;
+  completed_by_name: string;
+  completed_at: string;
+  frozen_by: number;
+  frozen_by_name: string;
+  frozen_at: string;
+  verified_by: number | null;
+  verified_by_name: string | null;
+  verified_at: string | null;
+  amendment_id: number | null;
+}
 export interface CloseoutWorkOrder {
   id: number;
   reference: string;
@@ -7,6 +33,13 @@ export interface CloseoutWorkOrder {
 }
 
 export interface CloseoutCapture {
+  originals?: CaptureOriginal[];
+  source_spans?: {
+    original_id: number;
+    transcript_revision: string;
+    narrative_code_points: [number, number];
+    segments: unknown[];
+  }[];
   id: number;
   status: string;
   source_type: string;
@@ -70,6 +103,7 @@ export interface CloseoutPartUsageRow {
 }
 
 export interface CloseoutReadingRow {
+  focus_revision?: string;
   phase?: string;
   recorded_by?: number;
   recorded_by_name?: string | null;

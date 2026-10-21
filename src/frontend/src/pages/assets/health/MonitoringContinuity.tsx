@@ -18,6 +18,8 @@ import { isAxiosError } from 'axios';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useApi } from '../../../contexts/ApiContext';
+import { AcceptedReportLinks } from '../../tasks/workorders/AcceptedReport';
+import { RecurrenceActions } from '../../tasks/workorders/execution/RecurrenceActions';
 import { workPanelParams } from '../../tasks/workorders/workPanelState';
 import {
   type OccurrencePage,
@@ -85,7 +87,12 @@ export function MonitoringContinuity({
           fw={600}
         >{t`Factual correction or renewed investigation`}</Text>
         <Text size='sm'>{t`Factual corrections use attributed amendments and retain the original accepted fields. Renewed physical investigation needs the existing authorized reopened or linked Work flow. An occurrence on the same machine does not establish a recurrence relationship.`}</Text>
-        <Text size='sm'>{t`Recurrence linkage and reopen policy are unavailable here. Prior accepted fields and original evidence remain inspectable; a complete immutable accepted report is not supplied by this server.`}</Text>
+        <RecurrenceActions workOrder={workOrder} />
+        <Text size='sm'>
+          {workOrder.structured_closeout?.reports?.length
+            ? t`Frozen reports below preserve the account and sources at completion or an attributed amendment.`
+            : t`No frozen report is recorded for this completion. Prior completed fields and original evidence remain inspectable.`}
+        </Text>
         {workOrder.source_alert && (
           <Anchor
             className={operations.link}
@@ -94,6 +101,7 @@ export function MonitoringContinuity({
             size='sm'
           >{t`Original occurrence for this Work`}</Anchor>
         )}
+        <AcceptedReportLinks reports={workOrder.structured_closeout?.reports} />
         <Group>
           <Anchor
             className={operations.link}

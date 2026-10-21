@@ -397,21 +397,39 @@ export type ScopeErrorCode =
 
 // --- Work focus (aichat.services.work_focus / ai.core.analysis.wire) ---
 
+export interface ComponentFocusReference {
+  machine_id: number;
+  rule: 'reference_positions.v1';
+  position_id: string;
+  slot_code: string | null;
+  revision: string;
+}
+
+export interface EvidenceFocusReference {
+  kind: 'attachment' | 'closeout_reading' | 'media';
+  id: number;
+  revision: string;
+}
+
 export interface WorkFocusIdentity {
   schema_version: number;
-  kind: 'work_order';
-  work_order_id: number;
-  lifecycle_version: number;
+  kind: 'work_order' | 'reference_position';
+  work_order_id: number | null;
+  lifecycle_version: number | null;
   machine_id: number | null;
   request_id?: number | null;
   request_version?: number | null;
+  component?: ComponentFocusReference | null;
+  evidence?: EvidenceFocusReference | null;
 }
 
 export interface WorkFocusAcknowledgeRequest {
-  work_order_id: number;
-  expected_version: number;
+  work_order_id: number | null;
+  expected_version: number | null;
   request_id?: number | null;
   request_version?: number | null;
+  component?: ComponentFocusReference | null;
+  evidence?: EvidenceFocusReference | null;
 }
 
 export interface WorkFocusAcknowledgement {

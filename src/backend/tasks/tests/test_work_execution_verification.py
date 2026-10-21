@@ -232,7 +232,12 @@ class VerificationProjectionTest(TestCase):
             'observed_return',
             'service_state',
         ):
-            self.assertFalse(result[key]['available'])
+            if key == 'controlled_test_authority':
+                self.assertFalse(result[key]['available'])
+            else:
+                self.assertTrue(result[key]['available'])
+                self.assertFalse(result[key]['recorded'])
+                self.assertEqual(result[key]['current_records'], [])
 
     @override_settings(AIMMS_PROCEDURES_ENABLED=False)
     def test_disabled_procedures_withhold_tests(self):
@@ -261,7 +266,9 @@ class VerificationProjectionTest(TestCase):
         )
         result = project(self.work)
         self.assertEqual(result['lockouts'][0]['status'], 'restored')
-        self.assertFalse(result['observed_return']['available'])
+        self.assertTrue(result['observed_return']['available'])
+        self.assertFalse(result['observed_return']['recorded'])
+        self.assertEqual(result['observed_return']['current_records'], [])
 
     def test_overview_projection_does_not_change_test_or_event(self):
         """Reading twice records neither a test nor an acceptance."""

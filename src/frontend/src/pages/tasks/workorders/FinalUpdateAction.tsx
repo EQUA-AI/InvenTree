@@ -11,6 +11,7 @@ import {
 } from '@mantine/core';
 import dayjs from 'dayjs';
 import { Link } from 'react-router-dom';
+import { useActionFocus } from './useActionFocus';
 import type { UpdateState } from './workRecordUpdate';
 
 /** The action and report both consume this controller's single operation state. */
@@ -49,6 +50,7 @@ export function WorkRecordUpdate({
   version: number;
   onRecovery: (step: number) => void;
 }>) {
+  const resultFocus = useActionFocus(state.status === 'pending');
   const labels = {
     cause: t`Cause`,
     action: t`Action taken`,
@@ -64,7 +66,13 @@ export function WorkRecordUpdate({
   const when = (value?: string | null) =>
     value ? dayjs(value).format('DD MMM YYYY, HH:mm') : t`Time unavailable`;
   return (
-    <Stack gap='sm' mt='md' data-testid='work-record-update' aria-live='polite'>
+    <Stack
+      {...resultFocus.props}
+      aria-label={t`Maintenance record update`}
+      gap='sm'
+      mt='md'
+      data-testid='work-record-update'
+    >
       <Text size='sm'>{t`Updates the internal AIMMS maintenance record. Physical return and external-system acknowledgement are separate.`}</Text>
       {state.status === 'confirmed' ? (
         <Alert color='green'>
@@ -149,7 +157,7 @@ export function WorkRecordUpdate({
                 </Text>
                 <Button
                   variant='light'
-                  onClick={onReconcile}
+                  onClick={() => resultFocus.run(onReconcile)}
                   disabled={locked}
                 >{t`Check original update`}</Button>
               </Stack>
@@ -195,20 +203,20 @@ export function WorkRecordUpdate({
                 <Group>
                   <Button
                     variant='light'
-                    onClick={onReview}
+                    onClick={() => resultFocus.run(onReview)}
                     disabled={locked}
                   >{t`Review latest record`}</Button>
                   {state.status === 'failed' && (
                     <Button
                       variant='light'
-                      onClick={onReconcile}
+                      onClick={() => resultFocus.run(onReconcile)}
                       disabled={locked}
                     >{t`Retry original update`}</Button>
                   )}
                   {reviewed && (
                     <Button
                       variant='default'
-                      onClick={onUseReviewed}
+                      onClick={() => resultFocus.run(onUseReviewed)}
                       disabled={locked || completed}
                     >{t`Use reviewed account for a new update`}</Button>
                   )}
@@ -219,7 +227,7 @@ export function WorkRecordUpdate({
             <Button
               color='blue.9'
               mih={44}
-              onClick={onSubmit}
+              onClick={() => resultFocus.run(onSubmit)}
               disabled={
                 !eligible || locked || !readiness?.ready || loading || completed
               }

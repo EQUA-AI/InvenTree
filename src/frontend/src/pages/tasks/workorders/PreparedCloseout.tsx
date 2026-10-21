@@ -1,3 +1,4 @@
+import { displayCloseout, displayReading } from '@lib/types/CanonicalDisplay';
 import type {
   CloseoutAmendment,
   CloseoutCapture,
@@ -22,6 +23,8 @@ import {
 import dayjs from 'dayjs';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { openGlobalAIChatAboutWork } from '../../../states/AIChatState';
+import { OriginalMedia } from './OriginalMedia';
 import { ContinueInvestigation } from './execution/ContinueInvestigation';
 import { narrativeExcerpts } from './storyProvenance';
 
@@ -45,6 +48,7 @@ export function PreparedCloseout({
   partUsage,
   draftDowntime,
   draftFollowUp,
+  sourcesEnabled = true,
   accountLoading = false,
   accountUnavailable = false,
   manualAccepted = false,
@@ -65,6 +69,7 @@ export function PreparedCloseout({
   partUsage?: CloseoutPartUsageRow[];
   draftDowntime: number | '';
   draftFollowUp: string;
+  sourcesEnabled?: boolean;
   accountLoading?: boolean;
   accountUnavailable?: boolean;
   manualAccepted?: boolean;
@@ -72,7 +77,11 @@ export function PreparedCloseout({
   reconciliation?: ReactNode;
   updateAction?: ReactNode;
 }>) {
+  captures = captures?.map((row) => displayCloseout(row).record);
   const values = accepted ?? fields;
+  const verification = accepted?.verified_at
+    ? `${t`Verified by`} ${fact(accepted.verified_by_name)} · ${when(accepted.verified_at)}`
+    : t`Acceptance: Not recorded`;
   const labels: Record<string, string> = {
     cause: t`Cause`,
     action: t`Action taken`,
@@ -88,7 +97,7 @@ export function PreparedCloseout({
   const report = [
     `${workOrder.reference} · ${workOrder.title}`,
     accepted
-      ? `${t`Accepted account`} ${accepted.id} · ${when(accepted.completed_at)} · ${t`Accepted by`} ${fact(accepted.completed_by_name)}`
+      ? `${t`Completed account`} ${accepted.id} · ${when(accepted.completed_at)} · ${t`Completed by`} ${fact(accepted.completed_by_name)}\n${verification}`
       : `${t`Prepared account`} · ${t`Work version`} ${workOrder.lifecycle_version}`,
     ...Object.entries(labels).map(
       ([key, label]) =>
@@ -99,7 +108,9 @@ export function PreparedCloseout({
     `${t`Follow-up`}: ${fact(accepted ? accepted.follow_up : draftFollowUp)}`,
     `${t`Operating / service return`}: ${t`Not established by this account`}`,
     accepted
-      ? t`Accepted fields are preserved. Material and reading rows are current supporting records; a complete accepted report snapshot is not supplied by this server.`
+      ? accepted.reports?.length
+        ? t`This is the current account reference. Use the frozen closeout report above for the account and sources at completion.`
+        : t`Completed fields are preserved. Material and reading rows are current supporting records; a complete frozen report snapshot is not supplied by this server.`
       : t`Prepared draft; no record update has been submitted by preview or download.`,
     ...(sourceCapture
       ? Object.entries(proposal?.fields ?? {}).flatMap(([key, field]) =>
@@ -142,7 +153,7 @@ export function PreparedCloseout({
     ),
     ...(accepted?.original
       ? [
-          `${t`Original accepted snapshot`} · ${fact(accepted.content_hash)}\n${JSON.stringify(accepted.original)}`
+          `${t`Original completed account`} · ${fact(accepted.content_hash)}\n${JSON.stringify(accepted.original)}`
         ]
       : []),
     ...(readings ?? []).map(
@@ -176,10 +187,10 @@ export function PreparedCloseout({
       <Card withBorder data-testid='closeout-account'>
         <Stack gap='sm'>
           <Group justify='space-between'>
-            <Title order={4}>{t`Prepared maintenance account`}</Title>
+            <Title order={2} size='h4'>{t`Prepared maintenance account`}</Title>
             <Badge color={accepted ? 'green' : 'gray'}>
               {accepted
-                ? t`Accepted account`
+                ? t`Completed account`
                 : changed
                   ? t`Unsaved local changes`
                   : t`Prepared draft`}
@@ -187,9 +198,10 @@ export function PreparedCloseout({
           </Group>
           <Text size='xs' c='dimmed'>
             {accepted
-              ? `${t`Closeout id`}: ${accepted.id} · ${when(accepted.completed_at)} · ${t`Accepted by`} ${fact(accepted.completed_by_name)}`
+              ? `${t`Closeout id`}: ${accepted.id} · ${when(accepted.completed_at)} · ${t`Completed by`} ${fact(accepted.completed_by_name)}`
               : `${t`Work version`} ${workOrder.lifecycle_version} · ${t`Extraction is not a verified fact`}`}
           </Text>
+          {accepted && <Text size='sm'>{verification}</Text>}
           {Object.entries(labels).map(([key, label]) => {
             const decision =
               !accountLoading &&
@@ -251,7 +263,7 @@ export function PreparedCloseout({
             size='sm'
             c='dimmed'
           >{t`This account does not establish permission to operate or service return.`}</Text>
-          <Title order={5}>{t`Materials and time`}</Title>
+          <Title order={3} size='h5'>{t`Materials and time`}</Title>
           <Anchor
             component={Link}
             to='?work_panel=parts'
@@ -285,29 +297,54 @@ export function PreparedCloseout({
             >{t`Optional time and follow-up edits are an unsaved draft.`}</Text>
           )}
           {reconciliation}
-          <Title order={5}>{t`Saved readings and attempts`}</Title>
+          <Title order={3} size='h5'>{t`Saved readings and attempts`}</Title>
           {readings === undefined ? (
             <Text size='sm'>{t`Reading records are not available.`}</Text>
           ) : readings.length === 0 ? (
             <Text size='sm'>{t`No closeout readings recorded.`}</Text>
           ) : (
             readings.map((row) => (
-              <Text key={row.id} size='sm'>
-                {row.label}: {row.raw_text || t`Not recorded`} {row.unit} ·{' '}
-                {row.verification_state}
-              </Text>
+              <Group key={row.id} gap='xs' wrap='wrap'>
+                <Text size='sm'>
+                  {row.label}: {row.raw_text || t`Not recorded`} {row.unit} ·{' '}
+                  {row.verification_state}
+                </Text>
+                {displayReading(row).focus && (
+                  <Button
+                    size='compact-xs'
+                    variant='subtle'
+                    disabled={error || loading}
+                    onClick={() => {
+                      const evidence = displayReading(row).focus;
+                      if (evidence)
+                        openGlobalAIChatAboutWork({
+                          workOrderId: workOrder.id,
+                          lifecycleVersion: workOrder.lifecycle_version,
+                          evidence,
+                          label: `${workOrder.reference} · ${row.label}`,
+                          returnPath: `/maintenance/work-orders/${workOrder.id}?work_panel=closeout`
+                        });
+                    }}
+                  >{t`Ask about this reading`}</Button>
+                )}
+              </Group>
             ))
           )}
-          <Title order={5}>{t`Report preview`}</Title>
+          <Title order={3} size='h5'>{t`Report preview`}</Title>
           {accepted && (
-            <Text
-              size='sm'
-              c='dimmed'
-            >{t`Accepted fields are preserved. Material and reading rows are current supporting records; a complete accepted report snapshot is not supplied by this server.`}</Text>
+            <Text size='sm' c='dimmed'>
+              {accepted.reports?.length
+                ? t`This is the current account reference. Use the frozen closeout report above for the account and sources at completion.`
+                : t`Completed fields are preserved. Material and reading rows are current supporting records; a complete frozen report snapshot is not supplied by this server.`}
+            </Text>
           )}
           <Text size='sm'>{t`The preview exports the displayed account and recorded source references. It does not update the maintenance record.`}</Text>
           {loading ? (
-            <Text size='sm'>{t`Loading report sources… Preview is unavailable until the account, materials, readings and amendments have been read.`}</Text>
+            <Text size='sm'>
+              {sourcesEnabled
+                ? t`Loading report sources… Preview is unavailable until the account, materials, readings and amendments have been read.`
+                : t`Report sources are not enabled. Preview and download are unavailable.`}
+            </Text>
           ) : (
             <details>
               <summary>{t`Read report`}</summary>
@@ -332,7 +369,7 @@ export function PreparedCloseout({
           {updateAction}
           {accepted && (
             <details>
-              <summary>{t`Original accepted snapshot`}</summary>
+              <summary>{t`Original completed account`}</summary>
               <Text size='xs' style={{ overflowWrap: 'anywhere' }}>
                 {t`Content reference`}: {fact(accepted.content_hash)}
               </Text>
@@ -353,7 +390,7 @@ export function PreparedCloseout({
           )}
           {accepted && (
             <>
-              <Title order={5}>{t`Attributed amendments`}</Title>
+              <Title order={3} size='h5'>{t`Attributed amendments`}</Title>
               {amendments === undefined ? (
                 <Text>{t`Amendments could not yet be read.`}</Text>
               ) : amendments.length === 0 ? (
@@ -387,7 +424,7 @@ export function PreparedCloseout({
       </Card>
       <Card withBorder data-testid='closeout-story'>
         <Stack gap='sm'>
-          <Title order={4}>{t`Technician story & insights`}</Title>
+          <Title order={2} size='h4'>{t`Technician story & insights`}</Title>
           {captures === undefined ? (
             <Text>{t`Story sources are not available yet.`}</Text>
           ) : captures.length === 0 ? (
@@ -422,6 +459,39 @@ export function PreparedCloseout({
                       t`Not supplied for this capture`}
                   </Text>
                 )}
+                <OriginalMedia originals={capture.originals} />
+                {!!capture.source_spans?.length && (
+                  <details>
+                    <summary>{t`Original source spans`}</summary>
+                    <Stack gap='xs' mt='xs'>
+                      {capture.source_spans.map((span) => (
+                        <Stack
+                          gap={3}
+                          key={`${span.original_id}-${span.transcript_revision}`}
+                          style={{ overflowWrap: 'anywhere' }}
+                        >
+                          <Text size='sm'>
+                            {t`Original media`}:{' '}
+                            {capture.originals?.find(
+                              (original) => original.id === span.original_id
+                            )?.filename ?? span.original_id}
+                          </Text>
+                          <Text size='xs'>
+                            {t`Transcript revision`}: {span.transcript_revision}
+                          </Text>
+                          <Text size='xs'>
+                            {span.segments.length
+                              ? t`${span.segments.length} supplied transcript segments are retained with this source.`
+                              : t`Audio segment timing was not supplied.`}
+                          </Text>
+                        </Stack>
+                      ))}
+                      <Text size='xs' c='dimmed'>
+                        {t`Exact story ranges and supplied segment references are retained in the snapshot export. Story character positions are not audio times.`}
+                      </Text>
+                    </Stack>
+                  </details>
+                )}
                 {capture.transcript_reference && (
                   <Text size='xs' style={{ overflowWrap: 'anywhere' }}>
                     {t`Transcript reference`}: {capture.transcript_reference}
@@ -453,7 +523,7 @@ export function PreparedCloseout({
           <Text
             size='xs'
             c='dimmed'
-          >{t`Topic coverage and reviewed reusable lessons are not supplied. A story or extraction is not an approved procedure. Audio playback and timing are unavailable without a linked media source.`}</Text>
+          >{t`Topic coverage and reviewed reusable lessons are not supplied. A story or extraction is not an approved procedure. Original media and supplied timing are shown with each saved story.`}</Text>
           <ContinueInvestigation
             workOrder={workOrder}
             panel='closeout'

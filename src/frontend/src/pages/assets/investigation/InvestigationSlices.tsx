@@ -20,26 +20,43 @@ import {
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
+export interface InvestigationSelection {
+  from: string | null;
+  to: string | null;
+  span: InvestigationWindow;
+  index: number;
+}
+
 /** A reusable selector only: advancing never prefetches a whole case span. */
 export function InvestigationSlices({
   initial,
   onRead,
-  maxWindowMs = MAX_HISTORY_WINDOW_MS
+  maxWindowMs = MAX_HISTORY_WINDOW_MS,
+  selection,
+  onSelectionChange
 }: Readonly<{
   initial: InvestigationWindow;
   onRead: (window: InvestigationWindow) => void;
   /** Use the actual consuming endpoint limit (Health trends: 6 h). */
   maxWindowMs?: number;
+  /** An expanding chart can own the form so moving into a modal keeps it. */
+  selection?: InvestigationSelection;
+  onSelectionChange?: (selection: InvestigationSelection) => void;
 }>) {
   const clock = useDisplayClock();
-  const [from, setFrom] = useState<string | null>(
-    dayjs(initial.from).tz(clock.zone).format('YYYY-MM-DD HH:mm:ss')
-  );
-  const [to, setTo] = useState<string | null>(
-    dayjs(initial.to).tz(clock.zone).format('YYYY-MM-DD HH:mm:ss')
-  );
-  const [span, setSpan] = useState(initial);
-  const [index, setIndex] = useState(0);
+  const [local, setLocal] = useState<InvestigationSelection>(() => ({
+    from: dayjs(initial.from).tz(clock.zone).format('YYYY-MM-DD HH:mm:ss'),
+    to: dayjs(initial.to).tz(clock.zone).format('YYYY-MM-DD HH:mm:ss'),
+    span: initial,
+    index: 0
+  }));
+  const state = selection ?? local;
+  const { from, to, span, index } = state;
+  const update = (patch: Partial<InvestigationSelection>) => {
+    const next = { ...state, ...patch };
+    setLocal(next);
+    onSelectionChange?.(next);
+  };
   const start = from ? dayjs.tz(from, clock.zone).valueOf() : Number.NaN;
   const end = to ? dayjs.tz(to, clock.zone).valueOf() : Number.NaN;
   const valid = validSpan(start, end);
@@ -62,21 +79,20 @@ export function InvestigationSlices({
           valueFormat='D MMM YYYY HH:mm'
           label={t`Case span from (${clock.zone})`}
           value={from}
-          onChange={setFrom}
+          onChange={(from) => update({ from })}
         />
         <DateTimePicker
           classNames={{ input: operations.input }}
           valueFormat='D MMM YYYY HH:mm'
           label={t`Case span to (${clock.zone})`}
           value={to}
-          onChange={setTo}
+          onChange={(to) => update({ to })}
         />
         <Button
           variant='light'
           disabled={!valid}
           onClick={() => {
-            setSpan({ from: start, to: end });
-            setIndex(0);
+            update({ span: { from: start, to: end }, index: 0 });
           }}
         >{t`Set case span`}</Button>
       </SimpleGrid>
@@ -95,13 +111,13 @@ export function InvestigationSlices({
               variant='default'
               size='xs'
               disabled={index === 0}
-              onClick={() => setIndex((value) => value - 1)}
+              onClick={() => update({ index: index - 1 })}
             >{t`Previous slice`}</Button>
             <Button
               variant='default'
               size='xs'
               disabled={index + 1 >= count}
-              onClick={() => setIndex((value) => value + 1)}
+              onClick={() => update({ index: index + 1 })}
             >{t`Next slice`}</Button>
             <Button
               color='var(--mantine-primary-color-7)'

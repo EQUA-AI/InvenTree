@@ -1,3 +1,4 @@
+import type { AcceptedReportSummary } from './Closeout';
 /**
  * TypeScript types for the complete work-order overview.
  *
@@ -5,6 +6,8 @@
  * section from this one read rather than a request per section.
  */
 
+import type { OperationalAuthority } from './OperationalAuthority';
+import type { RoutineWork } from './RoutineWork';
 import type { BoardCard, WorkOrder } from './Tasks';
 import type {
   HandledActions,
@@ -64,6 +67,9 @@ export interface RepairGate {
   is_mandatory: boolean;
   requires_photo: boolean;
   requires_second_person: boolean;
+  /** Evaluated by the native gate, including recorded authority expiry. */
+  is_satisfied?: boolean;
+  unsatisfied_reason?: string;
 }
 
 export interface OverviewFinding {
@@ -137,6 +143,7 @@ export interface MaintenanceRecordOverview {
 }
 
 export interface StructuredCloseoutOverview {
+  reports?: AcceptedReportSummary[];
   original?: Record<string, unknown>;
   content_hash?: string;
   completed_by?: number | null;
@@ -151,6 +158,8 @@ export interface StructuredCloseoutOverview {
   follow_up: string;
   completed_at: string;
   verified_at: string | null;
+  verified_by?: number | null;
+  verified_by_name?: string | null;
   /**
    * Values reflect the latest applied closeout amendment, not the immutable
    * base row; `amended` makes the governed correction visible.
@@ -169,11 +178,16 @@ export interface WorkOrderOverview extends WorkOrder {
   maintenance_record: MaintenanceRecordOverview | null;
   structured_closeout: StructuredCloseoutOverview | null;
   canonical_commands_enabled: boolean;
+  closeout_wizard_enabled?: boolean;
   /** R6 S4 projections (`tasks/work_execution`); absent on older servers. */
   handled_actions?: HandledActions;
   investigation?: Investigation;
+  operational_authority?: OperationalAuthority;
   prepared_package?: PreparedPackage;
   verification_return?: VerificationReturn;
   time_assignment?: TimeAssignment;
   work_continuity?: WorkContinuity;
+  routine_work?: RoutineWork | null;
+  routine_origin?: import('./RoutineWork').RoutineOrigin | null;
+  recurrence_policy?: import('./WorkExecution').RecurrencePolicy;
 }

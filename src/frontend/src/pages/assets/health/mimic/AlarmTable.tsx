@@ -1,4 +1,3 @@
-import { UserRoles } from '@lib/enums/Roles';
 import { t } from '@lingui/core/macro';
 import {
   ActionIcon,
@@ -17,6 +16,8 @@ import { machinePanelHref } from '../../locations/locationTree';
 import operations from '../../operations.module.css';
 import { AlarmStateBadge, SeverityBadge } from '../common';
 import { formatInstant, useDisplayClock } from './observedTime';
+
+import { UserRoles } from '@lib/enums/Roles';
 
 import { WorkOrderCreateModal } from '../../../maintenance/components/WorkOrderCreateModal';
 import { type AlarmAction, AlarmNoteModal } from './AlarmNoteModal';
@@ -61,8 +62,12 @@ export function AlarmTable({
   return (
     <>
       <Text size='sm'>{t`Acknowledgement records that someone saw the application alarm; it does not clear the condition.`}</Text>
-      <Table.ScrollContainer minWidth={720}>
-        <Table striped>
+      <Table.ScrollContainer
+        minWidth={0}
+        type='native'
+        className={operations.alarmScroll}
+      >
+        <Table striped className={operations.alarmTable}>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t`Signal`}</Table.Th>
@@ -95,23 +100,28 @@ export function AlarmTable({
                       {alarm.pointer}
                     </Text>
                   </Table.Td>
-                  <Table.Td>
+                  <Table.Td data-label={t`Alarm`}>
                     <AlarmStatus alarm={alarm} />
                   </Table.Td>
-                  <Table.Td>
+                  <Table.Td data-label={t`Value`}>
                     {display(alarm)}
                     {alarm.reason && (
                       <Text size='xs'>{reasonLabel(alarm.reason)}</Text>
                     )}
                   </Table.Td>
-                  <Table.Td>{conditionText(alarm)}</Table.Td>
-                  <Table.Td style={{ whiteSpace: 'nowrap' }}>
+                  <Table.Td data-label={t`Condition`}>
+                    {conditionText(alarm)}
+                  </Table.Td>
+                  <Table.Td
+                    data-label={t`Observed at`}
+                    style={{ whiteSpace: 'nowrap' }}
+                  >
                     {alarm.observed_at
                       ? (formatInstant(alarm.observed_at, clock) ??
                         t`Time unavailable`)
                       : t`No reading`}
                   </Table.Td>
-                  <Table.Td style={{ whiteSpace: 'nowrap' }}>
+                  <Table.Td className={operations.alarmActions}>
                     <Group
                       gap='sm'
                       wrap='wrap'
@@ -152,6 +162,7 @@ export function AlarmTable({
                         alarm.anomaly_status === 'open' && (
                           <Button
                             size='compact-sm'
+                            className={operations.phoneTarget}
                             variant='default'
                             aria-label={t`Acknowledge ${alarm.label}`}
                             onClick={() =>
@@ -163,10 +174,11 @@ export function AlarmTable({
                         )}
                       {canAdd && raised && responding && (
                         <Button
+                          disabled={!canAdd}
                           size='compact-sm'
                           variant='light'
                           aria-label={t`Create repair for ${alarm.label}`}
-                          className={operations.link}
+                          className={`${operations.link} ${operations.phoneTarget}`}
                           onClick={() => setRepairing(alarm)}
                         >
                           {t`Create repair`}
@@ -174,7 +186,9 @@ export function AlarmTable({
                       )}
                       {canChange && raised && responding && (
                         <Button
+                          disabled={!canChange}
                           size='compact-sm'
+                          className={operations.phoneTarget}
                           variant='subtle'
                           color='gray'
                           aria-label={t`Dismiss ${alarm.label}`}

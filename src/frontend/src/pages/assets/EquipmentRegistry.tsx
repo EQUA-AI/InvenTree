@@ -28,6 +28,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../App';
 import { showApiErrorMessage } from '../../functions/notifications';
 import { useUserState } from '../../states/UserState';
+import { CriticalSignalReview } from './CriticalSignalReview';
 import { StationLiveSource, useStationLiveStatus } from './StationLiveSource';
 
 type Equipment = {
@@ -436,6 +437,7 @@ export default function EquipmentRegistry() {
               <Tabs.Tab value='equipment'>{t`Equipment`}</Tabs.Tab>
               <Tabs.Tab value='components'>{t`Components`}</Tabs.Tab>
               <Tabs.Tab value='dictionary'>{t`Dictionary and review`}</Tabs.Tab>
+              <Tabs.Tab value='critical'>{t`Critical signals`}</Tabs.Tab>
               <Tabs.Tab value='import'>{t`Preview and import`}</Tabs.Tab>
             </Tabs.List>
             <Tabs.Panel value='equipment' pt='md'>
@@ -705,6 +707,14 @@ export default function EquipmentRegistry() {
                   onChange={setPage}
                 />
               </Stack>
+            </Tabs.Panel>
+            <Tabs.Panel value='critical' pt='md'>
+              {tab === 'critical' && selectedId && (
+                <CriticalSignalReview
+                  key={selectedId}
+                  machineId={Number(selectedId)}
+                />
+              )}
             </Tabs.Panel>
             <Tabs.Panel value='import' pt='md'>
               <Stack>

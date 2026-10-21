@@ -589,6 +589,8 @@ def test_public_focus_is_the_wire_identity() -> None:
     assert set(wire.WorkFocusIdentity.model_fields) == set(PUBLIC) | {
         "request_id",
         "request_version",
+        "component",
+        "evidence",
     }
     assert wire.WorkFocusIdentity.model_validate(PUBLIC).model_dump(exclude_none=True) == PUBLIC
     with pytest.raises(ValidationError):
@@ -679,7 +681,7 @@ def test_request_focus_wire_keeps_ids_and_hides_the_signed_boundary():
     assert public["request_id"] == 401
     assert public["request_version"] == 3
     assert "boundary_hash" not in public
-    assert wire.WorkFocusIdentity.model_validate(public).model_dump() == public
+    assert wire.WorkFocusIdentity.model_validate(public).model_dump(exclude_unset=True) == public
 
 
 def test_request_uploads_stay_in_existing_assistant_and_labels_have_no_path():
@@ -733,3 +735,37 @@ def test_investigation_tool_source_is_isolated_across_concurrent_turns():
 
     assert asyncio.run(exercise()) == [("thread_1", "turn_1"), ("thread_2", "turn_2")]
     assert _source.get() is None
+
+
+@pytest.mark.parametrize("reference", ["component", "evidence"])
+def test_reference_uploads_reach_file_analysis_and_text_stays_on_lookup(reference):
+    """Optional reference focus must not swallow an otherwise supported upload."""
+    from ai.core.turn.execution import _effective_pinned_workflow
+
+    run = SimpleNamespace(
+        server_pinned_workflow=None,
+        modality="text",
+        work_focus={
+            **PUBLIC,
+            "schema_version": 3,
+            reference: (
+                {
+                    "machine_id": 18,
+                    "rule": "reference_positions.v1",
+                    "position_id": "bearing",
+                    "slot_code": None,
+                    "revision": "a" * 64,
+                }
+                if reference == "component"
+                else {"kind": "closeout_reading", "id": 51, "revision": "b" * 64}
+            ),
+        },
+        metadata={},
+    )
+    assert _effective_pinned_workflow(run) == "wf8"
+    run.metadata["uploaded_files"] = [{"file_id": "thread/report.pdf"}]
+    assert _effective_pinned_workflow(run) == "wf6"
+    run.work_focus.update(request_id=401, request_version=3)
+    assert _effective_pinned_workflow(run) == "wf8"
+    run.server_pinned_workflow = "wf7"
+    assert _effective_pinned_workflow(run) == "wf7"

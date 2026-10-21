@@ -8,20 +8,25 @@ these tests pin the API-level requirement that delivers the user-facing behaviou
 """
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from assets.models import AssetMachine
+from assets.models import AssetMachine, Client, get_default_client
 from tasks.models import WorkOrder
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class MachineRequiredOnCreateTest(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_superuser(
             username='m-sup', email='m@example.com', password='pw'
         )
         self.client.force_login(self.user)
-        self.machine = AssetMachine.objects.create(name='Required Press')
+        self.machine = AssetMachine.objects.create(
+            name='Required Press', client=get_default_client()
+        )
         self.list_url = reverse('kanban-card-list')
 
     def _create(self, **extra):
@@ -51,10 +56,19 @@ class MachineRequiredOnCreateTest(TestCase):
         self.assertIn('machine', response.json())
 
     def test_create_with_an_unknown_machine_is_rejected(self):
+        # P32 authorizes before FK validation: missing and foreign IDs must be
+        # indistinguishable, while both remain rejected without creating Work.
         response = self._create(machine=999999)
+        foreign = AssetMachine.objects.create(
+            name='Foreign Press',
+            client=Client.objects.create(name='Foreign client', code='foreign'),
+        )
+        denied = self._create(machine=foreign.pk)
 
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('machine', response.json())
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(denied.status_code, 404)
+        self.assertEqual(response.json(), denied.json())
+        self.assertEqual(WorkOrder.objects.count(), 0)
 
     def test_partial_update_does_not_require_resending_the_machine(self):
         """A machineless PATCH of an existing card must still work.
@@ -87,7 +101,9 @@ class MachineRequiredOnCreateTest(TestCase):
             priority='low',
             machine=self.machine,
         )
-        other = AssetMachine.objects.create(name='Other Press')
+        other = AssetMachine.objects.create(
+            name='Other Press', client=get_default_client()
+        )
 
         response = self.client.patch(
             reverse('kanban-card-detail', kwargs={'pk': work_order.pk}),

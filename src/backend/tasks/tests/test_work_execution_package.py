@@ -78,7 +78,9 @@ class PreparedPackageTest(InvenTreeAPITestCase):
         self.assertEqual(application['steps'][0]['title'], 'Original instruction')
         self.assertEqual(application['steps'][0]['min_value'], '0')
         self.assertEqual(application['resources'][0]['quantity'], '1')
-        self.assertFalse(package['physical_authority']['available'])
+        self.assertTrue(package['physical_authority']['available'])
+        self.assertFalse(package['physical_authority']['recorded'])
+        self.assertEqual(package['physical_authority']['current_records'], [])
         self.assertFalse(package['affected_dependencies']['available'])
 
     def test_new_current_revision_changes_comparison_without_editing_application(self):

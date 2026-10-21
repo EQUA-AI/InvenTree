@@ -36,6 +36,7 @@ export interface RuleSet {
   can_assign_workorder: boolean;
   can_transition_workorder: boolean;
   can_execute_workorder: boolean;
+  can_record_operating_authority: boolean;
   can_complete_workorder: boolean;
   can_view_workorder_audit: boolean;
   can_author_procedure: boolean;
@@ -65,6 +66,7 @@ type NamedPermissionField =
   | 'can_assign_workorder'
   | 'can_transition_workorder'
   | 'can_execute_workorder'
+  | 'can_record_operating_authority'
   | 'can_complete_workorder'
   | 'can_view_workorder_audit'
   | 'can_author_procedure'
@@ -92,6 +94,7 @@ const NAMED_PERMISSION_FIELDS: NamedPermissionField[] = [
   'can_assign_workorder',
   'can_transition_workorder',
   'can_execute_workorder',
+  'can_record_operating_authority',
   'can_complete_workorder',
   'can_view_workorder_audit',
   'can_author_procedure',
@@ -215,6 +218,10 @@ export function RoleTable({
         {
           field: 'can_execute_workorder',
           label: t`Can execute work orders`
+        },
+        {
+          field: 'can_record_operating_authority',
+          label: t`Can record operating authority and service state`
         },
         {
           field: 'can_complete_workorder',

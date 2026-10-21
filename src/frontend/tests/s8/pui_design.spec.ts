@@ -56,6 +56,11 @@ test('missing condition leaves stale-signal coverage unavailable instead of zero
     'Stale-signal coverage unavailable for 25 machines'
   );
   await expect(summary).not.toContainText('Stale signals on 0 machines');
+  for (const name of ['Critical · 0', 'Warning · 0']) {
+    const count = summary.getByRole('button', { name, exact: true });
+    await expect(count).toBeDisabled();
+    await readable(count);
+  }
 });
 
 test('an empty station has zero recorded machines without a healthy or connected verdict', async ({

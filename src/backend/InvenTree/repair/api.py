@@ -3,17 +3,26 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import asdict
 
+from django.db import transaction
+from django.db.models.deletion import ProtectedError
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.urls import include, path
 
+from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from tasks.models import WorkOrderCommand
 from tasks.scope import ScopeError, scoped_machines, scoped_work_orders
 from tasks.services import scheduling
-from tasks.services.work_orders import ReadinessBlocked, WorkOrderCommandError
+from tasks.services.work_orders import (
+    ReadinessBlocked,
+    WorkOrderCommandError,
+    WorkOrderScopeError,
+)
+from tasks.workorder_mutations import ObjectInputMixin, object_data, parent_id
 
 import InvenTree.permissions
 from InvenTree.filters import SEARCH_ORDER_FILTER
@@ -21,6 +30,7 @@ from InvenTree.mixins import ListCreateAPI, RetrieveUpdateDestroyAPI
 
 from . import investigation, services
 from .models import (
+    AuthorityOwnershipError,
     LockoutPoint,
     PacketStatus,
     RepairInvestigationFinding,
@@ -105,10 +115,38 @@ def _require_packet_candidate(actor, serializer):
         raise Http404 from exc
 
 
-class ScopedRepairPacketMixin:
+class PacketAuthorityConflict(APIException):
+    """Return a reviewable conflict, never a server error or discarded history."""
+
+    status_code = 409
+    default_code = 'packet_authority_conflict'
+
+
+class ScopedRepairPacketMixin(ObjectInputMixin):
     """Apply the same packet boundary to list, detail and direct updates."""
 
     role_required = 'work_order'
+
+    def get_serializer(self, *args, **kwargs):
+        """Authorize raw parent identifiers before FK validation discloses them."""
+        instance = args[0] if args else kwargs.get('instance')
+        if 'data' in kwargs:
+            data = object_data(kwargs['data'])
+            work_id = parent_id(
+                data, 'work_order', getattr(instance, 'work_order_id', None)
+            )
+            machine_id = parent_id(
+                data, 'machine', getattr(instance, 'machine_id', None)
+            )
+            if work_id is not None:
+                work = get_object_or_404(
+                    scoped_work_orders(self.request.user), pk=work_id
+                )
+                if machine_id is not None and str(machine_id) != str(work.machine_id):
+                    raise Http404
+            elif machine_id is not None:
+                get_object_or_404(scoped_machines(self.request.user), pk=machine_id)
+        return super().get_serializer(*args, **kwargs)
 
     def get_queryset(self):
         """Filter before lookup, search, ordering or pagination."""
@@ -121,7 +159,10 @@ class ScopedRepairPacketMixin:
     def perform_update(self, serializer):
         """Check the proposed owner as well as the scoped original packet."""
         _require_packet_candidate(self.request.user, serializer)
-        super().perform_update(serializer)
+        try:
+            super().perform_update(serializer)
+        except AuthorityOwnershipError as exc:
+            raise PacketAuthorityConflict(str(exc)) from exc
 
 
 class RepairPacketList(ScopedRepairPacketMixin, ListCreateAPI):
@@ -154,6 +195,23 @@ class RepairPacketDetail(ScopedRepairPacketMixin, RetrieveUpdateDestroyAPI):
         InvenTree.permissions.IsAuthenticatedOrReadScope,
         InvenTree.permissions.RolePermission,
     ]
+
+    def perform_destroy(self, instance):
+        """Protected authority history must not turn an ordinary DELETE into 500."""
+        from .authority_models import GateAuthorityRecord
+
+        with transaction.atomic():
+            packet = RepairPacket.objects.select_for_update().get(pk=instance.pk)
+            if GateAuthorityRecord.objects.filter(gate__packet=packet).exists():
+                raise PacketAuthorityConflict(
+                    'Packet cannot be deleted because its gates have retained authority history.'
+                )
+            try:
+                super().perform_destroy(packet)
+            except ProtectedError as exc:
+                raise PacketAuthorityConflict(
+                    'Packet cannot be deleted because retained records reference it.'
+                ) from exc
 
 
 class RepairPacketAction(APIView):
@@ -358,6 +416,23 @@ class RepairPacketClose(APIView):
     ]
     role_required = 'work_order.change'
 
+    def get(self, request, pk):
+        """Read the owning packet's completion readiness, without submitting."""
+        from tasks.workorder_serializers import WorkOrderReadinessSerializer
+
+        packet = _get_packet(request.user, pk)
+        try:
+            readiness = services.packet_close_readiness(packet, actor=request.user)
+        except (ScopeError, WorkOrderScopeError):
+            raise Http404 from None
+        except (services.RepairCloseoutError, WorkOrderCommandError) as exc:
+            return Response({'code': exc.code, 'detail': str(exc)}, status=400)
+        return Response({
+            **WorkOrderReadinessSerializer(readiness).data,
+            'packet_id': packet.pk,
+            'work_order_id': packet.work_order_id,
+        })
+
     def post(self, request, pk):
         """Close the packet and complete its work order atomically."""
         packet = _get_packet(request.user, pk)
@@ -373,15 +448,67 @@ class RepairPacketClose(APIView):
                 status=400,
             )
 
+        key = data.get('idempotency_key')
+        if key is not None and (
+            not isinstance(key, str) or not key.strip() or len(key) > 128
+        ):
+            return Response(
+                {
+                    'code': 'COMMAND_INVALID',
+                    'detail': 'A non-empty operation key of at most 128 characters is required.',
+                },
+                status=400,
+            )
+        if not isinstance(data.get('closeout') or {}, dict) or not isinstance(
+            data.get('reason', ''), str
+        ):
+            return Response(
+                {
+                    'code': 'COMMAND_INVALID',
+                    'detail': 'Closeout must be an object and reason must be text.',
+                },
+                status=400,
+            )
+        capture_id = data.get('capture_id')
+        if capture_id is not None and (
+            not isinstance(capture_id, int)
+            or isinstance(capture_id, bool)
+            or capture_id < 1
+        ):
+            return Response(
+                {
+                    'code': 'CAPTURE_INVALID',
+                    'detail': 'An integer capture_id is required.',
+                },
+                status=400,
+            )
+        work_order_id = data.get('work_order_id')
+        if work_order_id is not None and (
+            not isinstance(work_order_id, int)
+            or isinstance(work_order_id, bool)
+            or work_order_id < 1
+        ):
+            return Response(
+                {
+                    'code': 'COMMAND_INVALID',
+                    'detail': 'An integer work_order_id is required.',
+                },
+                status=400,
+            )
+
         try:
             result = services.close_repair_packet(
                 packet,
                 actor=request.user,
                 closeout=data.get('closeout') or {},
                 expected_version=expected_version,
-                idempotency_key=data.get('idempotency_key') or uuid.uuid4().hex,
+                idempotency_key=key or uuid.uuid4().hex,
                 reason=data.get('reason', ''),
+                capture_id=capture_id,
+                expected_work_order_id=work_order_id,
             )
+        except (ScopeError, WorkOrderScopeError):
+            raise Http404 from None
         except services.RepairCloseoutError as exc:
             return Response({'code': exc.code, 'detail': str(exc)}, status=400)
         except WorkOrderCommandError as exc:
@@ -394,6 +521,7 @@ class RepairPacketClose(APIView):
         payload['ok'] = True
         payload['work_order_id'] = result.work_order_id
         payload['lifecycle_status'] = result.lifecycle_status
+        payload.update(asdict(result))
         return Response(payload)
 
 
@@ -431,7 +559,15 @@ class RepairPacketFindings(APIView):
         if snapshot_id:
             from assets.health_models import HealthEvidenceSnapshot
 
-            snapshot = get_object_or_404(HealthEvidenceSnapshot, pk=snapshot_id)
+            snapshot = get_object_or_404(
+                HealthEvidenceSnapshot,
+                pk=snapshot_id,
+                machine_id=(
+                    packet.work_order.machine_id
+                    if packet.work_order_id
+                    else packet.machine_id
+                ),
+            )
 
         try:
             finding, created = investigation.record_finding(

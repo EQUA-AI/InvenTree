@@ -16,6 +16,7 @@ import { ModelType } from '@lib/enums/ModelType';
 import { getDetailUrl } from '@lib/functions/Navigation';
 import type { MachineComponent } from '@lib/types/Assets';
 import { returnState } from '../../components/nav/returnPath';
+import { FittedIdentity } from '../../pages/assets/FittedIdentity';
 import {
   REFERENCE_PARTS,
   referencePartLabel
@@ -125,9 +126,12 @@ export function ComponentSlotDetail({
             )}
           </Fact>
           <Fact label={t`Fitted item`}>
-            {missing(
-              t`Not recorded: no fitted part, serial, lot, quantity or fitted date is recorded for this slot, and no replacement history.`
-            )}
+            <FittedIdentity
+              key={record.pk}
+              machineId={record.machine}
+              slotId={record.pk}
+              value={record.fitted}
+            />
           </Fact>
           <Fact label={t`Catalogue part`}>
             <Group gap='xs'>
@@ -154,7 +158,7 @@ export function ComponentSlotDetail({
               <Text size='sm'>
                 {record.status === 'verified'
                   ? t`Assignment verified`
-                  : t`Fit not verified`}
+                  : t`Slot assignment not verified`}
               </Text>
             </Group>
             <Text size='sm'>{record.provenance}</Text>

@@ -9,6 +9,8 @@ function label(key: string): string {
     readings: t`Readings`,
     results: t`Results`,
     observed_at: t`Observed at`,
+    recording_started_at: t`Recording started`,
+    recording_duration_ms: t`Recording duration (ms)`,
     conditions: t`Conditions`,
     sample: t`Sample`,
     method: t`Method`,
@@ -20,7 +22,10 @@ function label(key: string): string {
 
 function valueText(value: unknown, key?: string): string {
   if (value == null || value === '') return t`Not recorded`;
-  if (key === 'observed_at' && typeof value === 'string')
+  if (
+    (key === 'observed_at' || key === 'recording_started_at') &&
+    typeof value === 'string'
+  )
     return formatDate(value, { showTime: true });
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);

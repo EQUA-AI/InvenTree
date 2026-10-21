@@ -54,3 +54,51 @@
   align-items: start;
   gap: var(--mantine-spacing-xs);
 }
+
+/* Phone targets keep their desktop sizes outside the narrow viewport. */
+.mimicFocusRing { visibility: hidden; pointer-events: none; }
+.mimicPart:focus-visible > .mimicFocusRing { visibility: visible; }
+.alarmTable { min-width: 720px; }
+.alarmActions { white-space: nowrap; }
+@media (max-width: 48em) {
+  .phoneTarget { min-height: 44px; min-width: 44px; height: auto; }
+  .phoneActions { gap: 8px; }
+  .phoneActions > .phoneTarget { padding-inline: 4px; }
+  .alarmScroll { overflow: visible; padding-bottom: 8px; }
+  .alarmTable { min-width: 0; width: 100%; }
+  .alarmTable thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .alarmTable tbody { display: grid; gap: 12px; }
+  .alarmTable tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); border: 1px solid var(--mantine-color-default-border); border-radius: var(--mantine-radius-default); }
+  .alarmTable td { min-width: 0; overflow-wrap: anywhere; }
+  .alarmTable td[data-label]::before { content: attr(data-label); display: block; font-size: var(--mantine-font-size-xs); color: var(--mantine-color-text); }
+  .alarmTable td:first-child, .alarmTable td:nth-child(2), .alarmTable td:nth-child(5), .alarmTable td:last-child { grid-column: 1 / -1; }
+  .alarmActions { white-space: normal; }
+  .alarmActions :where(button, a) { scroll-margin-block: 12px; }
+  .alarmActions a { min-width: 44px; min-height: 44px; }
+}
+
+@media (max-width: 48em) {
+  .conditionCounts { gap: 8px; }
+  .pumpStatus { row-gap: 4px; }
+  .pumpActions { gap: 4px 8px; }
+  .pumpAlarmSummary { display: grid; grid-template-columns: minmax(0, 1fr) max-content; gap: 4px 8px; width: 100%; }
+  .pumpAlarmSummary .pumpAlarmCounts { height: auto; min-height: 44px; font-size: var(--mantine-font-size-xs); }
+  .pumpAlarmCounts :global(.mantine-Badge-label) { white-space: normal; line-height: 1.2; }
+  .pumpAlarmSummary > p { grid-column: 1 / -1; }
+  .pumpAlarmSummary .phoneAlarmLink { grid-column: 2; grid-row: 1; }
+  .phoneAlarmLink { min-height: 44px; display: inline-flex; align-items: center; }
+}
+
+@media (min-width: 48.01em) {
+  .conditionCounts { display: contents; }
+  .conditionCounts .phoneTarget { height: 18px; min-height: 18px; padding-inline: 7px; }
+  .phoneSummary .alarmFilter { height: 20px; }
+}
+
+/* Zero is a readable page fact even when there is no row to navigate to. */
+.conditionCounts .phoneTarget:disabled {
+  color: var(--mantine-color-text);
+  background: var(--mantine-color-body);
+  border-color: var(--mantine-color-default-border);
+  opacity: 1;
+}

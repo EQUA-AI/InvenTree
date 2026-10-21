@@ -399,6 +399,8 @@ export function ScopedMachineList({
                             <Table.Tr
                               key={machine.pk}
                               data-machine={machine.pk}
+                              id={`machine-row-${machine.pk}`}
+                              tabIndex={-1}
                             >
                               {canChange && (
                                 <Table.Td>
@@ -496,6 +498,8 @@ export function ScopedMachineList({
                       p='sm'
                       data-machine-card={machine.pk}
                       data-machine={machine.pk}
+                      id={`machine-row-${machine.pk}`}
+                      tabIndex={-1}
                     >
                       <Anchor
                         className={operations.link}
@@ -1153,10 +1157,11 @@ export function LocationWorkspace({
                               </Badge>
                             </Group>
                           </Group>
-                          <Group gap={4}>
+                          <Group gap={4} className={operations.phoneActions}>
                             <Button
                               hiddenFrom='lg'
                               size='compact-xs'
+                              className={operations.phoneTarget}
                               variant='default'
                               aria-expanded={mobileOpen}
                               aria-controls='machine-location-browser'
@@ -1164,6 +1169,7 @@ export function LocationWorkspace({
                             >{t`Choose location`}</Button>
                             <Button
                               size='compact-xs'
+                              className={operations.phoneTarget}
                               variant='default'
                               onClick={() =>
                                 queryClient.invalidateQueries({
@@ -1175,13 +1181,14 @@ export function LocationWorkspace({
                               hiddenFrom='sm'
                               size='compact-xs'
                               variant='subtle'
-                              className={operations.link}
+                              className={`${operations.link} ${operations.phoneTarget}`}
                               aria-expanded={detailsOpen}
                               onClick={() => setDetailsOpen((value) => !value)}
                             >{t`Location details`}</Button>
                             {context.data.can_add && !selected.archived && (
                               <Button
                                 size='compact-xs'
+                                className={operations.phoneTarget}
                                 variant='default'
                                 onClick={() => setEditing({ parent: selected })}
                               >{t`Add sublocation`}</Button>
@@ -1189,6 +1196,7 @@ export function LocationWorkspace({
                             {context.data.can_change && (
                               <Button
                                 size='compact-xs'
+                                className={operations.phoneTarget}
                                 variant='default'
                                 onClick={() => setEditing({ node: selected })}
                               >{t`Edit location`}</Button>

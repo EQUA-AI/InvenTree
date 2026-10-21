@@ -3,6 +3,7 @@ import { t } from '@lingui/core/macro';
 import { Anchor, Stack, Text, Title } from '@mantine/core';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { RecordedDowntime } from './RecordedDowntime';
 import { WorkMaterialsPanel } from './WorkMaterialsPanel';
 import { TimeAssignment } from './execution/TimeAssignment';
 
@@ -14,7 +15,10 @@ export function CloseoutReconciliation({
   return (
     <Stack gap='sm' data-testid='closeout-reconciliation'>
       <Stack gap='sm'>
-        <Title order={5}>{t`Material custody, time and downtime`}</Title>
+        <Title
+          order={3}
+          size='h5'
+        >{t`Material custody, time and downtime`}</Title>
         <Text size='sm'>{t`Usage and custody are separate records. A reservation or a reconciled usage row does not prove fitted identity or stock release.`}</Text>
         <details
           onToggle={(event) => {
@@ -42,15 +46,16 @@ export function CloseoutReconciliation({
           component={Link}
           to='?work_panel=parts'
         >{t`Open Parts and native inventory records`}</Anchor>
-        <Text
-          size='sm'
-          fw={600}
-        >{t`Attributed time: unavailable · coverage unknown`}</Text>
+        <Text size='sm' fw={600}>
+          {workOrder.time_assignment?.time_records?.intervals.length
+            ? t`Recorded person-work intervals available · coverage partial`
+            : t`Attributed time: unavailable · coverage unknown`}
+        </Text>
         <details>
           <summary>{t`Read assignment provenance and native time`}</summary>
           <TimeAssignment workOrder={workOrder} />
         </details>
-        <Text size='sm'>{t`Service downtime: unavailable — no sourced outage interval or service-impact measure is supplied. Optional account minutes are technician-entered account data, not a verified service outage.`}</Text>
+        <RecordedDowntime key={workOrder.id} workOrder={workOrder} />
       </Stack>
     </Stack>
   );

@@ -101,6 +101,13 @@ export async function closeoutWork(
     sourceError?: boolean;
   } = {}
 ) {
+  // These two optional stylesheet fonts stay unavailable without external traffic.
+  for (const extension of ['woff2', 'woff']) {
+    await page.route(
+      `https://cdn.svar.dev/fonts/roboto/regular.${extension}`,
+      (route) => route.fulfill({ status: 503, body: '' })
+    );
+  }
   await mockWorkList(page);
   const commands: Command[] = [];
   const reads: string[] = [];

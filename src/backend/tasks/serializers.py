@@ -492,7 +492,11 @@ def _is_preliminary(diagnosis) -> bool:
 
 def _approved_scope_projection(packet) -> dict | None:
     """Return the approved scope currently in force for a packet."""
-    scopes = list(packet.approved_scopes.all().order_by('-version', '-pk'))
+    scopes = (
+        packet._authority_scopes
+        if hasattr(packet, '_authority_scopes')
+        else list(packet.approved_scopes.all().order_by('-version', '-pk'))
+    )
     candidates = [scope for scope in scopes if scope.superseded_at is None]
     if len(candidates) != 1 or candidates[0].pk != scopes[0].pk:
         return None
@@ -520,6 +524,7 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
     maintenance_record = serializers.SerializerMethodField()
     structured_closeout = serializers.SerializerMethodField()
     canonical_commands_enabled = serializers.SerializerMethodField()
+    closeout_wizard_enabled = serializers.SerializerMethodField()
     source_alert = serializers.SerializerMethodField()
 
     class Meta(WorkOrderBoardSerializer.Meta):
@@ -536,6 +541,7 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
             'maintenance_record',
             'structured_closeout',
             'canonical_commands_enabled',
+            'closeout_wizard_enabled',
             'source_alert',
             *WORK_EXECUTION_FIELDS,
         )
@@ -602,21 +608,26 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
         ]
         return [*incoming, *outgoing]
 
-    @staticmethod
-    def get_events(obj) -> list:
+    def get_events(self, obj) -> list:
         """Return append-only lifecycle audit events."""
         from .workorder_serializers import WorkOrderEventSerializer
 
         return WorkOrderEventSerializer(
-            obj.events.all().order_by('-created_at'), many=True
+            obj.events.all().order_by('-created_at'), many=True, context=self.context
         ).data
 
-    @staticmethod
-    def get_repair_packet(obj) -> dict | None:
+    def get_repair_packet(self, obj) -> dict | None:
         """Return repair diagnosis and safety context when present."""
+        from repair.authority_models import gate_reason_for_actor
+        from tasks.services.operational_authority import read_gates
+
         packet = getattr(obj, 'repair_packet', None)
         if packet is None:
             return None
+        actor = (
+            self.context.get('request').user if self.context.get('request') else None
+        )
+
         return {
             'id': packet.pk,
             'reference': packet.reference,
@@ -659,8 +670,13 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
                     'is_mandatory': gate.is_mandatory,
                     'requires_photo': gate.requires_photo,
                     'requires_second_person': gate.requires_second_person,
+                    'is_satisfied': (gate_blocking_reason := gate.unsatisfied_reason())
+                    == '',
+                    'unsatisfied_reason': gate_reason_for_actor(
+                        gate, actor, gate_blocking_reason
+                    ),
                 }
-                for gate in packet.gates.all().order_by('sequence', 'created_at')
+                for gate in read_gates(packet)
             ],
         }
 
@@ -727,6 +743,9 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
         from .closeout_serializers import _actor_name
 
         fields = effective_closeout_overview(closeout)
+        from .services.accepted_reports import report_summary
+
+        reports = list(closeout.reports.order_by('revision'))
         return {
             'id': closeout.pk,
             'cause': fields['cause'],
@@ -736,12 +755,15 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
             'downtime_minutes': fields['downtime_minutes'],
             'follow_up_required': fields['follow_up_required'],
             'follow_up': fields['follow_up'],
+            'reports': [report_summary(report) for report in reports],
             'original': base_closeout_fields(closeout),
             'content_hash': closeout.content_hash,
             'completed_by': closeout.completed_by_id,
             'completed_by_name': _actor_name(closeout.completed_by),
             'completed_at': closeout.completed_at,
             'verified_at': closeout.verified_at,
+            'verified_by': closeout.verified_by_id,
+            'verified_by_name': _actor_name(closeout.verified_by),
             'amended': fields['amended'],
             'amendment_count': fields['amendment_count'],
         }
@@ -750,3 +772,11 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
     def get_canonical_commands_enabled(obj) -> bool:
         """Report whether the feature-gated command surface is enabled."""
         return bool(getattr(settings, 'AIMMS_WORK_ORDERS_ENABLED', False))
+
+    @staticmethod
+    def get_closeout_wizard_enabled(obj) -> bool:
+        """Expose the effective wizard gate without inferring availability from 404."""
+        return bool(
+            getattr(settings, 'AIMMS_WORK_ORDERS_ENABLED', False)
+            and getattr(settings, 'AIMMS_CLOSEOUT_WIZARD_ENABLED', False)
+        )

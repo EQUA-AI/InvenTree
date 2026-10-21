@@ -1,7 +1,18 @@
 import { writeFile } from 'node:fs/promises';
 import { type Page, expect, test } from '@playwright/test';
 
-export function nativeBaseline(surface?: string) {
+/** Match every protected/external read without routing local Vite modules. */
+export function protectedRequests(origin: string): RegExp {
+  const escaped = origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(
+    `^(?:${escaped}/(?:api|media|static)(?:/|\\?|$)|(?!${escaped}(?:/|$)).+)`
+  );
+}
+
+export function nativeBaseline(
+  surface?: string,
+  options: { routeLocalSources?: boolean } = {}
+) {
   const unexpected = new Map<Page, string[]>();
   const errors = new Map<Page, string[]>();
 
@@ -11,7 +22,30 @@ export function nativeBaseline(surface?: string) {
     unexpected.set(page, requests);
     errors.set(page, pageErrors);
     page.on('pageerror', (error) => pageErrors.push(error.message));
-    await page.route('**/*', async (route) => {
+    const origin = new URL(baseURL!).origin;
+    const sourceRevision = process.env.AIMMS_SOURCE_REVISION;
+    const isSource = (url: URL) =>
+      /^\/(src|lib|playwright)\/.+\.[cm]?[jt]sx?$/.test(url.pathname);
+    const escapedOrigin = origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const intercepted = new RegExp(
+      [
+        `^(?!${escapedOrigin}(?:/|$))`,
+        `^${escapedOrigin}/(?:api|media|static)(?:/|\\?|$)`,
+        ...(surface ? [`^${escapedOrigin}/(?:\\?|$)`] : []),
+        ...(sourceRevision
+          ? [
+              `^${escapedOrigin}/(?:src|lib|playwright)/.+\\.[cm]?[jt]sx?(?:\\?|$)`
+            ]
+          : [])
+      ].join('|')
+    );
+    // Allowed local assets need no interception. Keep every request that can
+    // affect the guard, fixture redirect or explicit source refresh routed.
+    // (P32's routeLocalSources option is kept for callers; this narrowed
+    // matcher already routes only protected, external, redirect and
+    // source-refresh requests.)
+    void options;
+    await page.route(intercepted, async (route) => {
       const url = new URL(route.request().url());
       // Native Gantt CSS supplies these optional remote font fallbacks.
       // Fulfil them locally with no bytes; every other external read still fails.
@@ -47,11 +81,7 @@ export function nativeBaseline(surface?: string) {
       }
       // An explicitly reused local harness can outlive its file watcher. Ask
       // Vite for a fresh source transform without changing API fixture routing.
-      const sourceRevision = process.env.AIMMS_SOURCE_REVISION;
-      if (
-        sourceRevision &&
-        /^\/(src|playwright)\/.+\.[cm]?[jt]sx?$/.test(url.pathname)
-      ) {
+      if (sourceRevision && isSource(url)) {
         url.searchParams.set('r6_source_revision', sourceRevision);
         await route.continue({ url: url.href });
         return;

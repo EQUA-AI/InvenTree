@@ -1,6 +1,7 @@
 /** One immutable completion intent; retry/reconciliation always reuses it. */
 export interface UpdateIntent {
   workOrderId: number;
+  packetId?: number;
   payload: {
     expected_version: number;
     idempotency_key: string;
@@ -21,7 +22,7 @@ export interface UpdateReceipt {
   event_id: number;
   lifecycle_status: string;
   lifecycle_version: number;
-  metadata: { closeout_id: number };
+  metadata: { closeout_id: number; packet_id?: number };
 }
 export type UpdateState =
   | { status: 'idle' }
@@ -51,6 +52,7 @@ export function matchingReceipt(
     row.idempotency_key === intent.payload.idempotency_key &&
     row.lifecycle_status === 'completed' &&
     row.lifecycle_version === intent.payload.expected_version + 1 &&
+    (intent.packetId == null || row.metadata?.packet_id === intent.packetId) &&
     Number.isSafeInteger(row.event_id) &&
     row.event_id > 0 &&
     Number.isSafeInteger(row.metadata?.closeout_id) &&
@@ -77,6 +79,8 @@ export function restoreUpdate(
     if (
       !intent ||
       intent.workOrderId !== workOrderId ||
+      (intent.packetId != null &&
+        (!Number.isSafeInteger(intent.packetId) || intent.packetId < 1)) ||
       !Number.isSafeInteger(intent.payload?.expected_version) ||
       intent.payload.expected_version < 1 ||
       typeof intent.payload.idempotency_key !== 'string' ||
@@ -98,10 +102,18 @@ export function restoreUpdate(
 
 export function updateFailure(
   status?: number,
-  code?: string
+  code?: string,
+  recovering = false
 ): 'failed' | 'stale' | 'uncertain' {
-  if (code === 'STALE_VERSION') return 'stale';
-  if (code === 'IDEMPOTENCY_CONFLICT') return 'uncertain';
+  if (
+    [
+      'STALE_VERSION',
+      'PACKET_WORK_ORDER_CHANGED',
+      'PACKET_OWNS_LIFECYCLE'
+    ].includes(code ?? '')
+  )
+    return 'stale';
+  if (recovering || code === 'IDEMPOTENCY_CONFLICT') return 'uncertain';
   // Transports, gateways and unknown responses cannot prove a rollback.
   return status != null &&
     status >= 400 &&
@@ -111,4 +123,25 @@ export function updateFailure(
     status !== 429
     ? 'failed'
     : 'uncertain';
+}
+
+/** Packet ownership is part of the durable operation's browser boundary. */
+export function updateStorageKey(
+  host: string,
+  userId: number | undefined,
+  workOrderId: number,
+  packetId?: number
+): string {
+  return `aimms-closeout-operation:${JSON.stringify(packetId == null ? [host, userId, workOrderId] : [host, userId, workOrderId, packetId])}`;
+}
+
+export function restoreOwnedUpdate(
+  raw: string | null,
+  workOrderId: number,
+  packetId?: number
+): UpdateState {
+  const state = restoreUpdate(raw, workOrderId);
+  return state.status === 'idle' || state.intent.packetId === packetId
+    ? state
+    : { status: 'idle' };
 }

@@ -11,10 +11,34 @@
 
 This file is the durable resumption point. Do not depend on the preceding chat, redo all research, or infer completion from source inspection.
 
+## Design-review repair checkpoint — 21 October 2026
+
+The merged-machine design fixes and targeted regression coverage are implemented. See `reports/S8-01.md` (“Design review fixes”) for per-item causes, changes and actual checks. Final engineering checks pass: all nine TypeScript projects, full Vitest 724 tests / 73 files, prek on all 31 changed/untracked files, tracking and diff checks. Lingui extract/compile passed with all 117 locale files restored bytewise. **Sandbox S2 failed on software-rendering start-up time; macOS GPU S0/S2/S3/S8 verification by the coordinator is pending.** The coordinator stopped the task-owned browser container and Vite; do not start replacements. Renderer experiments in product/fixture code, test gates, routing and scratch launch/tracing configuration are reverted; original readiness assertions, timeouts and rendering remain. The merge stays uncommitted with every original unmerged entry; no Git write commands. No other worktree/container, ports 15221–15226 or Azure connection used. S8-01/P31 remain In progress and P32 Ready for review; no deployment or product acceptance is inferred.
+
+## Merge-resolution checkpoint — 21 October 2026
+
+On `r6/design-pass`, the coordinator-started merge from `inventTree-aniket` has all ten source conflicts resolved, with no Git index writes. `reports/S8-01.md` (“Merge with the integrated line”) records each decision and verification; `s8.md` tracks the merge slice. The backlog retains the integrated ticket statuses. D02/D19/D20/D21 now distinguish source preservation from pending browser replay. Next: coordinator reviews, stages and commits the resolutions, then runs the host GPU suites and inspects fresh renders. Historical screenshots were inspected only as layout context; this session started no server, ran no Playwright, and touched no other worktree/container or Azure resource. No product or deployment acceptance is inferred.
+
+## Latest checkpoint — 21 October 2026, early morning (Claude Code coordinating Codex and Hyperagent)
+
+Read this first; older sections below are history.
+
+**Integrated line:** `inventTree-aniket` now merges every R6 batch: P51, P47, build/guard fixes, O15 process (P42-P44, P50), P40 Health, P32 permission matrix, P26 packet receipt, P02 canonical context and focus, O15 authority (B1-B3), O15 data (D1-D5), O15 media (E1-E2), O20 calibration, O21 routine-fault link, P31 Work-side responsive/accessibility pass, plus integration fixes (integration-1, integration-2). Tasks migrations 0033-0038 are joined by 0039_merge_r6_parallel and 0040_merge_r6_o21 (local only, never applied to Azure). `sprint-backlog.csv` statuses are updated to this state.
+
+**Still on branches, not merged:** `r6/design-pass` (S8-01 part 1 machine screens, Hyperagent round-1 fixes in progress), `r6/design-pass-2` (S8-01 part 2 Health/Performance, committed bfa6e8638, Hyperagent round-1 fixes in progress), `r6/work-uplift` (Work-workspace uplift for the Hyperagent gate, in progress).
+
+**Hyperagent gate (O22):** both Mantine & InvenTree Frontend Engineer agents must score each screen batch 95+/100. Round-1 scores: Work workspace Opus 38 / Gemini 58; machine screens Opus 46 / Gemini 64; Health and Performance Opus 44 / Gemini 74. Reconciled fix specs: session scratchpad `hyper/<batch>/synthesis.md` or `fix-spec.md`. Rescoring follows each fix round.
+
+**Verification notes:** host checks run on macOS Chromium on the GPU via git-excluded `playwright.gpu-*.config.ts` wrappers with a Vite warm-up. Three pixel-equality 3D control cases in S2 are renderer-sensitive on this Mac and also fail without R6 changes. Backend on the merged line: `tasks repair assets machine_health users` plus focus suites; the remaining 3 alarm-notification failures and 6 onboarding errors ("Invalid physical unit") reproduce identically on the pre-R6 base. The offline runner now mounts repository data read-only (contrib/cosmos, contrib/pump-cassandra, the dev compose file, mimic SVGs).
+
+**Owner decisions waiting:** (1) customer-attributed Work is unreachable under the production scope resolver (1,393 of 1,550 orders in the Azure copy; 3 orders have neither customer nor machine) - decide before deployment; (2) deployment hand-over (O19) to someone with Container App and registry access, at 1 vCPU / 2 GiB (O18), with a backup first and the Azure Files share for E1; (3) the owner's manual review of the three review branches (A6) before any pull request. P34 also needs the real spare's details (O23) and P36 the deployed build; P48 waits on hardware (A5).
+
+**Next:** finish the three branches above, merge them, rescore with Hyperagent until both agents reach 95, then the full replay of every sprint (P35) and the three review branches.
+
 ## Read order and authoritative state
 
 1. Root `AGENTS.md` and `CONTRIBUTING.md`.
-   Apply `designprompt1.md` to all AIMMS UI screen development: relevant installed skills, native architecture, premium operational UX, inspected renders, real test evidence and no Figma.
+   Apply `masterdesignprompt.md` (owner's master design prompt, 20 October) and `designprompt1.md` to all AIMMS UI screen development: relevant installed skills, native architecture, premium operational UX, inspected renders, real test evidence and no Figma.
 2. This handoff, `owner-approval.md` (current delegated decisions), `s1.md` (active implementation) and `s0.md` / `s0-review.md` (remaining P02 work and historical evidence).
 3. `plan.md` (approved direction), `sprint-backlog.csv` (all 58 work items), `screen-plan.csv` (all 95 states).
 4. `contracts.csv` (D01–D26 actual providers and unresolved owner decisions).
@@ -244,6 +268,8 @@ Native Details/header and all existing chart/control/route/permission capabiliti
 - **2026-10-18 — approved Biome follow-up:** user explicitly approves the temporary pinned installation. Biome 1.9.4 checks all 17 changed JS/TS/JSON files clean after formatter/import-only cleanup in eleven files. S0 types, all 37 units and all 91 browser cases pass again; tracking remains valid. S0-20 Done, but remaining S0 coverage/owner/scope/design gates and S1 Planned are unchanged. No dependency/lockfile/rule changes, backend mutation or policy approval is inferred.
 
 - **2026-10-18 — requested closure pass:** implemented targeted canonical legacy/resource/packet scope and native packet action-role checks; 21 normal-user session regressions. Fixed stale RBAC expectation and shared phone containment without replacing Details/Header. Final366 backend/95 browser/44 unit/S0 types pass; Biome 24 clean, Ruff 26 formatted/no introduced diagnostics with 60 inherited test docstring findings disclosed. Completed agent engineering/design review and one-stream planning/decision package. P01/P04 Ready for review; P00/P02 and human/domain/chat/completion/media/hardware/capacity decisions remain open; S1 Planned. No commit/push/PR, existing DB/service/Azure/OT change or product acceptance.
+
+- **2026-10-20 — master design prompt (O16):** the owner's master design prompt is saved as `masterdesignprompt.md` and applies to every AIMMS screen with `designprompt1.md`; S8 gains a master design pass (S8-01 in `s8.md`) over the station overview, pump Health and Performance, Equipment view and alarms/fault history, after the current runs merge and before P36.
 
 - **2026-10-20 — third merge, final replay (overnight, Codex builds / Claude reviews):** merged at `d693591fe`: P19 P29 (S4), P43 P44 (S5), P45 P46 P49 (S6), P26 P30 P50 (S7) and the 42 fixes from `wave1-review.md`. Final host replay: backend 937 run - 934 passed, 2 SQLite skips, 1 error in repair.test_generation.InProcessEvidenceIntegrationTest ('Cannot operate on a closed database'; identical on the pre-R6 base fe0d73a4a, so an offline-SQLite runner limitation, not a regression); units 620/620; browser S0 95/95, S1 180/180, S2 75 + 3 skipped by design, S3 228/228, S4 158/158, S6 80/80, S7 64/64, native drawer 17/17 (evidence data/devscratch/r6-merge/2026-10-20b/). Built and tested but Blocked on named missing providers: P12 P13 P19 P21 P23 P24 P27 P29 P30 P37 P39 P42 P43 P44 P45 P46 P49 P50; Ready for review: P09 P10 P11 P18 P20 P22 P25 P38 P41; In progress: P26 (receipt/readiness integration), P40 (Health adoption). Not started: S7 P47 (phone companion) and P48 (glasses hardware), S8 P31 P32 P34 P35 P36. Local migrations not applied anywhere: tasks 0031 0032, repair 0011, aichat 0054 - applying them to Azure Postgres needs the owner's permission. Codex weekly limit reached 90% overnight (resets 26 October, 13:55).
 

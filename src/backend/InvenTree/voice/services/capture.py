@@ -1,7 +1,9 @@
 """Transcript-only governed capture (WS8/WS10 per the 2026-07-15 re-cut).
 
-No audio is ever stored: revisions arrive from the realtime transcription
+Transcript revisions arrive from the realtime transcription
 path (or a human correction) and every correction appends an immutable row.
+Separately consented original media belongs to the scoped Work store, never
+to transcript metadata or a general live-voice session.
 Acceptance binds one exact revision by hash. Destination handoffs fail
 closed until their canonical substrate exists — the Repair intake service
 (WS11) for ``fault_intake`` and the live Feature #15 ``CloseoutCapture``
@@ -288,7 +290,17 @@ def handoff_capture(*, capture: VoiceCaptureSession):
         from tasks.services import closeout_capture as closeout_service
 
         try:
-            closeout_row = closeout_service.accept_voice_handoff(voice_capture=capture)
+            from repair.models import RepairPacket
+            from repair.services import packet_voice_closeout
+
+            packet = RepairPacket.objects.filter(
+                work_order_id=capture.target_work_order_id
+            ).first()
+            closeout_row = (
+                packet_voice_closeout(packet_id=packet.pk, voice_capture=capture)
+                if packet is not None
+                else closeout_service.accept_voice_handoff(voice_capture=capture)
+            )
         except closeout_service.VoiceHandoffUnavailable as exc:
             raise DestinationUnavailable(str(exc)) from exc
         except closeout_service.WorkOrderCommandError as exc:

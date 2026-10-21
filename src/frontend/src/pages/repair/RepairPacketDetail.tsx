@@ -11,7 +11,7 @@ import {
   IconShieldLock,
   IconStethoscope
 } from '@tabler/icons-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
@@ -31,7 +31,6 @@ import { useApi } from '../../contexts/ApiContext';
 import { useInstance } from '../../hooks/UseInstance';
 import { DiagnosisPanel } from './components/DiagnosisPanel';
 import { InvestigationPanel } from './components/InvestigationPanel';
-import { PacketCloseoutModal } from './components/PacketCloseoutModal';
 import { SafetyPanel } from './components/safety/SafetyPanel';
 
 /** Renders a structured JSON blob (diagnosis / closeout). */
@@ -82,8 +81,6 @@ export default function RepairPacketDetail() {
     ],
     []
   );
-
-  const [closeoutOpen, setCloseoutOpen] = useState(false);
 
   // Closing a packet that owns a work order is a structured closeout, not a bare
   // status change: the server refuses the plain advance path for those packets.
@@ -282,10 +279,17 @@ export default function RepairPacketDetail() {
         content: (
           <Stack gap='md'>
             <JsonPanel data={packetData?.closeout} />
-            {packet?.status === 'executing' && ownsWorkOrder && (
-              <Button variant='light' onClick={() => setCloseoutOpen(true)}>
-                {t`Close Repair`}
-              </Button>
+            {ownsWorkOrder && (
+              <Stack gap='xs'>
+                <Text size='sm'>{t`Review the prepared maintenance account and update status in Work Closeout. The repair packet owns the final command.`}</Text>
+                <Button
+                  variant='light'
+                  component={Link}
+                  to={`/maintenance/work-orders/${packetData?.work_order}/?work_panel=closeout`}
+                >
+                  {t`Open Work Closeout`}
+                </Button>
+              </Stack>
             )}
           </Stack>
         )
@@ -337,16 +341,6 @@ export default function RepairPacketDetail() {
           model={ModelType.repairpacket}
           id={packet?.pk ?? null}
         />
-        {packet?.pk && (
-          <PacketCloseoutModal
-            opened={closeoutOpen}
-            onClose={() => setCloseoutOpen(false)}
-            packetId={packet.pk}
-            workOrderVersion={packetData?.work_order_lifecycle_version ?? null}
-            workOrderReference={packetData?.work_order_reference ?? null}
-            onClosed={() => instanceQuery.refetch?.()}
-          />
-        )}
       </Stack>
     </InstanceDetail>
   );

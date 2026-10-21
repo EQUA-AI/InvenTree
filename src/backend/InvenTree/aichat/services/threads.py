@@ -32,9 +32,12 @@ from aichat.models import (
 )
 from aichat.services.work_focus import (
     WORK_FOCUS_SNAPSHOT_KEY,
+    FocusStates,
     WorkFocusError,
-    authorized_focus,
+    authorized_subject,
+    focus_subject,
     issue_receipt,
+    reference_states,
     resolve_receipt,
 )
 
@@ -632,11 +635,13 @@ class ThreadRepository:
     def acknowledge_work_focus(
         self,
         thread_id: str,
-        work_order_id: int,
+        work_order_id: int | None,
         *,
-        expected_version: int,
+        expected_version: int | None,
         request_id: int | None = None,
         request_version: int | None = None,
+        component: dict | None = None,
+        evidence: dict | None = None,
     ) -> dict[str, Any]:
         """Issue an owner-bound receipt without changing analysis scope."""
         with transaction.atomic():
@@ -649,6 +654,8 @@ class ThreadRepository:
                 expected_version,
                 request_id=request_id,
                 request_version=request_version,
+                component=component,
+                evidence=evidence,
             )
 
     def verify_work_focus(self, thread_id: str, receipt: str) -> dict[str, Any]:
@@ -681,26 +688,36 @@ class ThreadRepository:
             thread=thread, output_message_id__in=ids
         ).values_list('output_message_id', 'trusted_context')
         live: dict[Any, dict[str, Any] | None] = {}
-        states: dict[str, str] = {}
+        reference_cache = {}
+        states = FocusStates()
         for message_id, stored in rows:
             snapshot = (stored or {}).get(WORK_FOCUS_SNAPSHOT_KEY)
             if not isinstance(snapshot, dict):
                 continue
             work_order_id = snapshot.get('work_order_id')
-            cache_key = (work_order_id, snapshot.get('request_id'))
-            if cache_key not in live:
-                try:
-                    live[cache_key] = authorized_focus(
-                        self.actor_id, work_order_id, snapshot.get('request_id')
+            cache_key = json.dumps(snapshot, sort_keys=True)
+            subject_key = (
+                work_order_id,
+                snapshot.get('request_id'),
+                snapshot.get('machine_id') if work_order_id is None else None,
+            )
+            if snapshot.get('schema_version') == 3:
+                if cache_key not in reference_cache:
+                    reference_cache[cache_key] = reference_states(
+                        self.actor_id, snapshot
                     )
+                states.references[message_id] = reference_cache[cache_key]
+            if subject_key not in live:
+                try:
+                    live[subject_key] = authorized_subject(self.actor_id, snapshot)
                 except WorkFocusError:
-                    live[cache_key] = None
-            current = live[cache_key]
+                    live[subject_key] = None
+            current = live[subject_key]
             states[message_id] = (
                 'unavailable'
                 if current is None
                 else 'current'
-                if current == snapshot
+                if current == focus_subject(snapshot)
                 else 'changed'
             )
         return states
@@ -718,14 +735,19 @@ class ThreadRepository:
             return None
         if not isinstance(snapshot, dict):
             raise WorkFocusError('work_focus_rejected')
-        current = authorized_focus(
-            self.actor_id, snapshot.get('work_order_id'), snapshot.get('request_id')
-        )
+        current = authorized_subject(self.actor_id, snapshot)
+        references = reference_states(self.actor_id, snapshot)
         return {
             'thread_id': thread.pk,
             'turn_id': turn.pk,
             'focus': snapshot,
-            'stale': current != snapshot,
+            'stale': current != focus_subject(snapshot)
+            or any(state != 'current' for state in references.values()),
+            **(
+                {'reference_states': references}
+                if snapshot.get('schema_version') == 3
+                else {}
+            ),
         }
 
     def _turn_thread_id(self, turn_id: str) -> str:

@@ -13,8 +13,8 @@ import {
 import { notifications } from '@mantine/notifications';
 import { IconInfoCircle, IconRefresh } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
@@ -64,14 +64,34 @@ export function MachineHealthPanel({
   mimicHref?: string | null;
 }>) {
   const api = useApi();
+  const [params, setParams] = useSearchParams();
+  const linkedBinding = params.get('binding');
   const queryClient = useQueryClient();
-  const [selectedBinding, setSelectedBinding] = useState<string | null>(null);
+  const [selectedBinding, setSelectedBinding] = useState<string | null>(
+    linkedBinding
+  );
+  useEffect(() => {
+    if (linkedBinding !== null) setSelectedBinding(linkedBinding);
+  }, [linkedBinding]);
+  const selectBinding = (value: string | null) => {
+    setSelectedBinding(value);
+    if (linkedBinding !== null)
+      setParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          if (value) next.set('binding', value);
+          else next.delete('binding');
+          return next;
+        },
+        { replace: true }
+      );
+  };
   const [evidenceToken, setEvidenceToken] = useState(0);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const evidenceHeading = useRef<HTMLHeadingElement>(null);
   const evidenceTrigger = useRef<HTMLElement | null>(null);
   const inspectSignal = (binding: number, trigger: HTMLElement) => {
-    setSelectedBinding(String(binding));
+    selectBinding(String(binding));
     evidenceTrigger.current = trigger;
     setEvidenceOpen(true);
     setEvidenceToken((token) => token + 1);
@@ -211,7 +231,9 @@ export function MachineHealthPanel({
   }
 
   const bindingId =
-    selectedBinding ?? (signals[0] ? String(signals[0].binding_id) : null);
+    linkedBinding ??
+    selectedBinding ??
+    (signals[0] ? String(signals[0].binding_id) : null);
   const signal = signals.find((row) => String(row.binding_id) === bindingId);
 
   return (
@@ -323,13 +345,13 @@ export function MachineHealthPanel({
             machineId={machineId}
             signals={signals}
             bindingId={bindingId}
-            onBindingChange={setSelectedBinding}
+            onBindingChange={selectBinding}
             onInspect={(trigger) =>
               bindingId && inspectSignal(Number(bindingId), trigger)
             }
             evidence={
               evidenceOpen && bindingId
-                ? (prepared, available) => (
+                ? (prepared, available, provenance) => (
                     <SignalEvidence
                       machineId={machineId}
                       bindingId={Number(bindingId)}
@@ -339,6 +361,7 @@ export function MachineHealthPanel({
                       )}
                       anomalies={anomalyAssociationKnown ? anomalies : null}
                       prepared={prepared}
+                      historyContext={provenance}
                       trendAvailable={available}
                       headingRef={evidenceHeading}
                       focusToken={evidenceToken}

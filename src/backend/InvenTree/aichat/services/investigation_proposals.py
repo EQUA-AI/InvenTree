@@ -18,7 +18,8 @@ from aichat.services.threads import ThreadRepository, ThreadRepositoryError
 from aichat.services.work_focus import (
     WORK_FOCUS_SNAPSHOT_KEY,
     WorkFocusError,
-    authorized_focus,
+    authorized_subject,
+    refresh_focus,
 )
 
 ACTION = 'investigation.artifact'
@@ -43,7 +44,10 @@ def source(owner, *, work_order_id, intent, thread_id, source_turn_id, current=T
                 'Investigation source unavailable. Nothing was saved.'
             )
         snapshot = (turn.trusted_context or {}).get(WORK_FOCUS_SNAPSHOT_KEY)
-        if not isinstance(snapshot, dict) or snapshot.get('schema_version') != 2:
+        if not isinstance(snapshot, dict) or snapshot.get('schema_version') not in {
+            2,
+            3,
+        }:
             raise proposals.ProposalNotFound(
                 'Request focus unavailable. Nothing was saved.'
             )
@@ -58,7 +62,11 @@ def source(owner, *, work_order_id, intent, thread_id, source_turn_id, current=T
             raise proposals.ProposalNotFound(
                 'Investigation source unavailable. Nothing was saved.'
             )
-        live = authorized_focus(owner.pk, work_order_id, intent['request_id'])
+        live = (
+            refresh_focus(owner.pk, snapshot)
+            if current
+            else authorized_subject(owner.pk, snapshot)
+        )
     except PermissionDenied as exc:
         raise proposals.CapabilityDenied(
             'Work change permission required. Nothing was saved.'
@@ -435,7 +443,7 @@ def visible_proposals(rows, owner):
             intent = row.intent
             if (
                 not isinstance(snapshot, dict)
-                or snapshot.get('schema_version') != 2
+                or snapshot.get('schema_version') not in {2, 3}
                 or any(
                     snapshot.get(key) != value
                     for key, value in (
@@ -449,7 +457,7 @@ def visible_proposals(rows, owner):
             key = (row.target_work_order_id, intent['request_id'])
             if key not in focuses:
                 try:
-                    focuses[key] = authorized_focus(owner.pk, *key)
+                    focuses[key] = authorized_subject(owner.pk, snapshot)
                 except WorkFocusError:
                     focuses[key] = None
             live = focuses[key]

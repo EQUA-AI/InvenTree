@@ -8,7 +8,8 @@ For AIMMS R6 UI/UX work, start with [the agent handoff](contrib/ui-ux/r6/HANDOFF
 Preserve all local changes and keep the sprint execution ledgers, backlog and
 contract evidence current. Read the latest checkpoint before historical notes;
 partial source/fixture checks do not establish sprint or deployment acceptance.
-For every AIMMS UI screen implementation, apply
+For every AIMMS UI screen implementation, apply the
+[master design prompt](contrib/ui-ux/r6/masterdesignprompt.md) and
 [designprompt1](contrib/ui-ux/r6/designprompt1.md), including native architecture,
 relevant available skills, rendered screenshot inspection and actual verification.
 No Figma.

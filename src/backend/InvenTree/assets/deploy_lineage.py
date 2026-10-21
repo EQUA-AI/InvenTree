@@ -29,9 +29,9 @@ is what a rollback looks like, and a rolled-back image has to be able to start.
 Both together means this code is about to add to a history it has not seen all
 of.
 
-Exits non-zero on a refusal, having changed nothing. One refusal would be
-false: if upstream ever deletes the ``replaces`` list from a squashed migration,
-the names it replaced become unknown here. Nothing on disk does that today.
+Exits non-zero on a refusal, having changed nothing. Upstream squashes can
+retire names that are no longer in any on-disk ``replaces`` list. Only the
+explicit, historically verified names below are exempt from that comparison.
 """
 
 from __future__ import annotations
@@ -42,6 +42,27 @@ from dataclasses import dataclass
 
 from django.db import connection as default_connection
 from django.db.migrations.executor import MigrationExecutor
+
+# Upstream c26db6a790a35f26da7556e27ec7cce01db0593b (2026-09-11,
+# "Squash migrations", #12830) removed these records from the on-disk history.
+# In its parent, the build names are members of the nested squash
+# 0021_auto_20201020_0908_squashed_0026_auto_20201023_1228. The replacement
+# 0017_auto_20200426_0612_squashed_0058_buildline_consumed lists that squash,
+# but does not expand its six members.
+# The part name is a parent of 0062_merge_20210105_0056 in the same parent
+# commit. The new part squash, 0061_auto_20210103_2313_squashed_0142_...
+# (remove_part_last_stocktake_remove_partstocktake_note_and_more), lists the
+# merge and its other parent, but omits this parent. These are exact upstream
+# identities, not app-wide or migration-number exemptions for fork history.
+RETIRED_UPSTREAM_MIGRATIONS = frozenset({
+    ('build', '0021_auto_20201020_0908'),
+    ('build', '0022_auto_20201020_0953'),
+    ('build', '0023_auto_20201020_1009'),
+    ('build', '0024_auto_20201020_1144'),
+    ('build', '0025_auto_20201020_1248'),
+    ('build', '0026_auto_20201023_1228'),
+    ('part', '0061_auto_20210104_2331'),
+})
 
 
 @dataclass(frozen=True)
@@ -70,7 +91,8 @@ def lineage(connection=None) -> Lineage:
     migration it also records every migration the squash replaced, so their
     names stay in the table after the files are deleted. They are accounted
     for - by the ``replaces`` list of a migration that is on disk - and are
-    excluded here.
+    excluded here. The explicit retired-upstream set covers older names whose
+    replacement or merge ancestry was removed by a later upstream squash.
     """
     executor = MigrationExecutor(connection or default_connection)
     loader = executor.loader
@@ -82,7 +104,12 @@ def lineage(connection=None) -> Lineage:
         for key in (migration.replaces or [])
     }
     apps_shipped = {app_label for app_label, _name in on_disk}
-    stray = sorted(set(loader.applied_migrations) - on_disk - replaced)
+    stray = sorted(
+        set(loader.applied_migrations)
+        - on_disk
+        - replaced
+        - RETIRED_UPSTREAM_MIGRATIONS
+    )
 
     # The same plan the boot gate and ``migrate`` compute.
     plan = executor.migration_plan(loader.graph.leaf_nodes())

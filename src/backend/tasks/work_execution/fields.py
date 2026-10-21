@@ -15,11 +15,38 @@ WORK_EXECUTION_FIELDS = (
     'verification_return',
     'time_assignment',
     'work_continuity',
+    'routine_work',
+    'recurrence_policy',
+    'operational_authority',
+    'routine_origin',
 )
 
 
 class WorkExecutionFieldsMixin(serializers.Serializer):
     """Read-only projections the seven Work panels render from the overview."""
+
+    def to_representation(self, instance):
+        """One source snapshot for displayed facts and their recording context."""
+        from tasks.services.operational_authority import (
+            capture_read_sources,
+            clear_read_sources,
+        )
+
+        capture_read_sources(instance)
+        try:
+            return super().to_representation(instance)
+        finally:
+            clear_read_sources(instance)
+
+    operational_authority = serializers.SerializerMethodField()
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_operational_authority(self, obj) -> dict:
+        """O15: recorded authority and role-gated commands, never lifecycle inference."""
+        from tasks.services.operational_authority import project
+
+        request = self.context.get('request')
+        return project(obj, request.user if request else None)
 
     handled_actions = serializers.SerializerMethodField()
     investigation = serializers.SerializerMethodField()
@@ -27,6 +54,33 @@ class WorkExecutionFieldsMixin(serializers.Serializer):
     verification_return = serializers.SerializerMethodField()
     time_assignment = serializers.SerializerMethodField()
     work_continuity = serializers.SerializerMethodField()
+    routine_work = serializers.SerializerMethodField()
+    recurrence_policy = serializers.SerializerMethodField()
+    routine_origin = serializers.SerializerMethodField()
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_routine_origin(self, obj) -> dict | None:
+        """O21: only disclose the source routine Work to its authorized reader."""
+        from tasks.services.routine_findings import origin
+
+        request = self.context.get('request')
+        return origin(obj, request.user if request else None)
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_routine_work(self, obj) -> dict | None:
+        """P51: existing type-specific tasks and reading records."""
+        from .routine import project
+
+        request = self.context.get('request')
+        return project(obj, actor=request.user if request else None)
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_recurrence_policy(self, obj) -> dict:
+        """P50: read-only policy candidates; creation is an explicit command."""
+        from tasks.services.recurrence import project
+
+        request = self.context.get('request')
+        return project(obj, request.user if request else None)
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_work_continuity(self, obj) -> dict:
@@ -48,7 +102,8 @@ class WorkExecutionFieldsMixin(serializers.Serializer):
         """P23: recorded test results without inferred operating authority."""
         from .verification import project
 
-        return project(obj)
+        request = self.context.get('request')
+        return project(obj, actor=request.user if request else None)
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_prepared_package(self, obj) -> dict:

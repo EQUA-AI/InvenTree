@@ -31,6 +31,8 @@ export const NATIVE_SIGNALS: readonly SignalSpec[] = [
  * Health reads the panel makes are answered; anything else fails the guard.
  */
 type PerformanceOptions = {
+  /** Await the actual initial history response for non-loading scenarios. */
+  settleInitialRead?: boolean;
   signals?: readonly SignalSpec[];
   scheme?: 'light' | 'dark';
   /** The S3 harness: a router whose location the tests can read. */
@@ -122,6 +124,16 @@ export async function openPerformance(
   options: PerformanceOptions = {}
 ) {
   const requests = await mockPerformance(page, options);
+  const initialRead = options.settleInitialRead
+    ? page
+        .waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname ===
+            `/api/machine-health/machines/${MACHINE}/health/series/`,
+          { timeout: 60000 }
+        )
+        .catch((error: Error) => error)
+    : undefined;
   if (options.harness === 's3') {
     const query = new URLSearchParams({
       machine: String(MACHINE),
@@ -138,6 +150,13 @@ export async function openPerformance(
     });
     await page.goto(`/playwright/s0-native.html?${query}`);
   }
+  if (initialRead) {
+    const response = await initialRead;
+    if (response instanceof Error) throw response;
+    await expect(page.getByTestId('fixture-fetching')).toHaveText('0', {
+      timeout: 60000
+    });
+  }
   await expect(page.getByText('Anything unusual?')).toBeVisible();
   return requests;
 }
@@ -151,4 +170,27 @@ export function signal(
   extra: Partial<SignalSpec> = {}
 ): SignalSpec {
   return { key, value, unit, name, ...extra };
+}
+
+/** Retained-control tests pause intentional polling before measuring new reads. */
+export async function openPausedPerformance(
+  page: Page,
+  options: Parameters<typeof openPerformance>[1] = {}
+) {
+  const requests = await openPerformance(page, {
+    ...options,
+    settleInitialRead: true
+  });
+  const live = page.getByRole('switch', { name: 'Live', exact: true });
+  if (await live.isChecked()) {
+    await page
+      .locator('label')
+      .filter({ hasText: /^Live$/ })
+      .click();
+    await expect(live).not.toBeChecked();
+  }
+  await expect(page.getByTestId('fixture-fetching')).toHaveText('0', {
+    timeout: 60000
+  });
+  return requests;
 }

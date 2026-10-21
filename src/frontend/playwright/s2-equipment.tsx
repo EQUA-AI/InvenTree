@@ -1,11 +1,18 @@
 import { i18n } from '@lingui/core';
 import { Button, Group, Stack, Text } from '@mantine/core';
+import { useAIChatState } from '../src/states/AIChatState';
 import '@mantine/core/styles.css';
 import { QueryClient, focusManager } from '@tanstack/react-query';
 import axios from 'axios';
 import { useContext, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import {
+  Link,
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation
+} from 'react-router-dom';
 import { EquipmentViewControls } from '../src/pages/assets/equipment/ViewControls';
 
 import { ApiProvider } from '../src/contexts/ApiContext';
@@ -50,6 +57,7 @@ function FixtureSchematic() {
 }
 
 function Harness() {
+  const focus = useAIChatState((state) => state.workFocusHint);
   const [selected, setSelected] = useState<TwinPartId>('machine');
   const [mode, setMode] = useState<TwinMode>('assembled');
   const [labels, setLabels] = useState(true);
@@ -119,6 +127,10 @@ function Harness() {
       <Text data-testid='fixture-selected'>{selected}</Text>
       <Text data-testid='fixture-polls'>{polls}</Text>
       <FixtureLocation />
+      <Link to='?position=bearing'>Fixture return to bearing</Link>
+      <output hidden data-testid='fixture-reference-focus'>
+        {JSON.stringify(focus?.component ?? null)}
+      </output>
       {mounted &&
         (params.get('kind') === 'panel' ? (
           <Routes>

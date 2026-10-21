@@ -2,6 +2,7 @@ import { t } from '@lingui/core/macro';
 import {
   Alert,
   Anchor,
+  Box,
   Button,
   Group,
   Loader,
@@ -39,16 +40,45 @@ export default function PumpMimic({
   const clock = useDisplayClock(data?.plant_timezone);
   const controls = useContext(EquipmentViewControls);
   const bay = data?.bays.find((b) => b.key === unit);
-  const alarms = (data?.alarms ?? []).filter((a) => a.machine === bay?.machine);
+  const alarms = bay?.machine
+    ? (data?.alarms ?? []).filter((a) => a.machine === bay.machine)
+    : [];
+  const activeAlarms = alarms.filter(
+    (alarm) =>
+      alarm.anomaly !== null &&
+      ['open', 'acknowledged'].includes(alarm.anomaly_status ?? '')
+  );
+  const critical = activeAlarms.filter(
+    (alarm) => alarm.severity === 'critical'
+  ).length;
+  const warning = activeAlarms.filter(
+    (alarm) => alarm.severity === 'warning'
+  ).length;
+  const other = activeAlarms.length - critical - warning;
+  // The mimic lists supplied breach details; a standing bay alarm can outlive
+  // a usable reading and therefore have no row in this response.
+  const missingAlarmDetails =
+    !!bay?.alarm && !activeAlarms.some((alarm) => alarm.severity === bay.alarm);
+  const worst =
+    bay?.alarm === 'critical' || critical > 0
+      ? 'critical'
+      : bay?.alarm === 'warning' || warning > 0
+        ? 'warning'
+        : null;
+  const worstLabel = worst === 'critical' ? t`Critical` : t`Warning`;
   return (
     <DisplayClockContext value={clock}>
-      <Stack ref={ref} gap='sm' mih={160}>
+      <Stack ref={ref} gap='sm' mih={160} className={operations.phoneStack}>
         <Paper
           component='section'
           aria-labelledby='schematic-title'
           className={operations.band}
         >
-          <Group justify='space-between' gap='xs'>
+          <Group
+            justify='space-between'
+            gap='xs'
+            className={operations.pumpStatus}
+          >
             {data && !query.isError ? (
               <UnitMimicHeader
                 data={data}
@@ -61,20 +91,90 @@ export default function PumpMimic({
                 id='schematic-title'
               >{t`Process readings`}</Title>
             )}
-            <Group gap='sm'>
+            {data && !query.isError && (
+              <Group
+                gap='xs'
+                aria-label={t`Active alarm summary`}
+                component='fieldset'
+                bd={0}
+                p={0}
+                m={0}
+                miw={0}
+                className={operations.pumpAlarmSummary}
+              >
+                {!bay?.machine ? (
+                  <StatusBadge
+                    color='gray'
+                    className={operations.pumpAlarmCounts}
+                    miw={0}
+                  >{t`Active alarms unavailable · pump mapping not supplied`}</StatusBadge>
+                ) : missingAlarmDetails ? (
+                  <StatusBadge
+                    color={worst === 'critical' ? 'red' : 'yellow'}
+                    className={operations.pumpAlarmCounts}
+                    miw={0}
+                  >
+                    {t`Active alarm`} · {worstLabel} · {t`Count unavailable`}
+                  </StatusBadge>
+                ) : (
+                  <StatusBadge
+                    color={
+                      worst === 'critical'
+                        ? 'red'
+                        : worst === 'warning'
+                          ? 'yellow'
+                          : 'gray'
+                    }
+                    className={operations.pumpAlarmCounts}
+                    miw={0}
+                  >
+                    <Box component='span' visibleFrom='sm'>
+                      {t`Active alarms shown`}: {activeAlarms.length} ·{' '}
+                      {t`Critical`}: {critical} · {t`Warning`}: {warning}
+                    </Box>
+                    <Box component='span' hiddenFrom='sm'>
+                      <Box component='span' display='block'>
+                        {t`Active alarms shown`}: {activeAlarms.length}
+                      </Box>
+                      <Box component='span' display='block'>
+                        {t`Critical`}: {critical} · {t`Warning`}: {warning}
+                      </Box>
+                    </Box>
+                  </StatusBadge>
+                )}
+                {other > 0 && (
+                  <Text size='sm'>
+                    {t`Severity unavailable`}: {other}
+                  </Text>
+                )}
+                <Anchor
+                  href='#pump-threshold-alarms'
+                  className={`${operations.link} ${operations.phoneAlarmLink}`}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    const target = document.getElementById(
+                      'pump-threshold-alarms'
+                    );
+                    target?.focus({ preventScroll: true });
+                    target?.scrollIntoView({ block: 'start' });
+                  }}
+                >{t`Open alarms`}</Anchor>
+              </Group>
+            )}
+            <Group gap='sm' className={operations.pumpActions}>
               {controls}
-              <Anchor
-                className={operations.link}
-                component={Link}
-                to={`/machines/machine/${stationId}/mimic`}
-                size='sm'
-              >{t`Open station mimic`}</Anchor>
               <Button
                 variant='default'
                 size='xs'
                 loading={query.isFetching}
                 onClick={() => query.refetch()}
               >{t`Refresh`}</Button>
+              <Anchor
+                className={operations.link}
+                component={Link}
+                to={`/machines/machine/${stationId}/mimic`}
+                size='sm'
+              >{t`Open station mimic`}</Anchor>
             </Group>
           </Group>
           <Text
@@ -156,15 +256,30 @@ export default function PumpMimic({
                 >{t`Open station mimic`}</Anchor>
               }
             />
-            <Title order={5}>{t`Threshold alarms`}</Title>
-            {alarms.length ? (
+            <Title
+              order={5}
+              id='pump-threshold-alarms'
+              tabIndex={-1}
+            >{t`Threshold alarms`}</Title>
+            {missingAlarmDetails && bay?.machine && (
+              <Text size='sm'>{t`Active alarm details are unavailable in this response. The bay's active severity remains recorded.`}</Text>
+            )}
+            {!bay?.machine ? (
+              <Text>{t`Alarm scope unavailable for this pump.`}</Text>
+            ) : alarms.length ? (
               <AlarmTable
                 alarms={alarms}
                 display={displayFor(data, unit)}
                 onAcknowledged={() => query.refetch()}
               />
             ) : (
-              <Text>{t`No active alarms from configured thresholds.`}</Text>
+              <Text>
+                {missingAlarmDetails
+                  ? t`Active alarm details unavailable.`
+                  : bay.alarm === null
+                    ? t`No active alarms from configured thresholds.`
+                    : t`No active alarm details supplied.`}
+              </Text>
             )}
           </>
         )}

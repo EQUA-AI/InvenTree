@@ -50,8 +50,8 @@ test('a session reset stops further bulk pages and discards late progress', asyn
   await expect(
     page.getByText('Durable server history', { exact: true })
   ).toBeVisible();
-  await page.getByLabel('select-ai-chat-thread').click();
-  await page.getByLabel('delete-owned-ai-chat-threads').click();
+  await page.getByTestId('select-ai-chat-thread').click();
+  await page.getByTestId('delete-owned-ai-chat-threads').click();
   const modal = page.getByRole('dialog', {
     name: 'Delete my saved conversations?'
   });
@@ -129,9 +129,9 @@ test('bulk deletion cancels safely, retries a lost page and keeps its original s
     page.getByText('Durable server history', { exact: true })
   ).toBeVisible();
   const openDeletion = async () => {
-    const entry = page.getByLabel('delete-owned-ai-chat-threads');
+    const entry = page.getByTestId('delete-owned-ai-chat-threads');
     if (!(await entry.isVisible()))
-      await page.getByLabel('select-ai-chat-thread').click();
+      await page.getByTestId('select-ai-chat-thread').click();
     await entry.click();
     return page.getByRole('dialog', { name: 'Delete my saved conversations?' });
   };
@@ -217,8 +217,8 @@ test('bulk deletion rejects an invalid success receipt and stops after a bounded
   await expect(
     page.getByText('Durable server history', { exact: true })
   ).toBeVisible();
-  await page.getByLabel('select-ai-chat-thread').click();
-  await page.getByLabel('delete-owned-ai-chat-threads').click();
+  await page.getByTestId('select-ai-chat-thread').click();
+  await page.getByTestId('delete-owned-ai-chat-threads').click();
   const modal = page.getByRole('dialog', {
     name: 'Delete my saved conversations?'
   });

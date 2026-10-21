@@ -5,6 +5,8 @@
  * state is written by connectors and deterministic detectors, never by the UI.
  */
 
+import type { CriticalDesignation } from './RecordedFacts';
+
 export type HealthState =
   | 'unknown'
   | 'normal'
@@ -68,6 +70,8 @@ export interface MachineSignalLimits {
 }
 
 export interface MachineSignal {
+  active?: boolean;
+  critical_designation?: CriticalDesignation | null;
   binding_id: number;
   source_id: number;
   source_name: string;
@@ -120,6 +124,8 @@ export interface MachineAnomaly {
   acknowledgement_note: string;
   /** Whether the two observation times were moved onto the presented clock. */
   display_shifted?: boolean;
+  /** Offset used when serializing the observation times, not the current offset. */
+  display_shift_seconds?: number | null;
   resolved_at: string | null;
   resolution_note: string;
   work_order: number | null;

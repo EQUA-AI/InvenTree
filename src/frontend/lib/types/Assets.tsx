@@ -2,6 +2,8 @@
  * TypeScript types for the Assets (Equipment Machines) feature.
  */
 
+import type { FitProjection } from './RecordedFacts';
+
 export interface AssetMachine {
   pk: number;
   name: string;
@@ -49,6 +51,7 @@ export interface MachinePart {
  * identified - from the station's source tags, until someone verifies it.
  */
 export interface MachineComponent {
+  fitted?: FitProjection | null;
   pk: number;
   uuid: string;
   /** The pump or station that owns the component. */

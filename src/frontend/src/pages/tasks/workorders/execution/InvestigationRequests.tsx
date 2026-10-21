@@ -1,3 +1,4 @@
+import { displayArtifact, displayRequest } from '@lib/types/CanonicalDisplay';
 import type {
   InvestigationRequest,
   InvestigationRequests as Requests
@@ -8,7 +9,9 @@ import { Alert, Badge, Group, List, Paper, Stack, Text } from '@mantine/core';
 import { useSearchParams } from 'react-router-dom';
 import { InvestigationArtifactReview } from '../../../../components/aichat/InvestigationArtifactReview';
 import { formatDate } from '../../../../defaults/formatters';
+import { OriginalMedia } from '../OriginalMedia';
 import { ContinueInvestigation } from './ContinueInvestigation';
+import { ExpertEscalation } from './ExpertEscalation';
 import { NativeObservationCapture } from './NativeObservationCapture';
 
 export function investigationStatusLabel(
@@ -62,7 +65,7 @@ export function InvestigationRequests({
         title={t`Request queue unavailable`}
       >{t`The server did not supply the saved queue. Refresh the Work before continuing.`}</Alert>
     );
-  const items = requests.items;
+  const items = requests.items.map((row) => displayRequest(row).record);
   const unresolved = items.filter((r) => r.status !== 'resolved');
   const selected = items.find(
     (r) => String(r.id) === params.get('investigation_request')
@@ -198,6 +201,7 @@ export function InvestigationRequests({
                   </Text>
                 </Alert>
               )}
+            <ExpertEscalation workOrder={workOrder} request={r} />
             {r.source_finding && (
               <Text size='sm'>
                 {t`Source finding`}: {r.source_finding}
@@ -216,7 +220,7 @@ export function InvestigationRequests({
             )}
             {r.artifacts.map((a) => (
               <Paper
-                key={a.id}
+                key={displayArtifact(a).source.id}
                 withBorder
                 p='xs'
                 data-testid={`investigation-artifact-${a.id}`}
@@ -232,6 +236,9 @@ export function InvestigationRequests({
                     <Text size='sm'>{t`Saved observation · Work ${workOrder.id} · Request ${r.id} · Evidence ${a.id}`}</Text>
                   )}
                   <InvestigationArtifactReview payload={a.payload} />
+                  {a.originals?.length ? (
+                    <OriginalMedia originals={a.originals} />
+                  ) : null}
                   <Text size='sm'>
                     {a.recorded_by_name || t`Recorder not recorded`} ·{' '}
                     {when(a.created_at)}

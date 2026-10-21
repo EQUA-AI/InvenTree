@@ -17,6 +17,7 @@ import {
 } from '@mantine/core';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { useActionFocus } from '../useActionFocus';
 import { workPanelParams } from '../workPanelState';
 import { ContinueInvestigation } from './ContinueInvestigation';
 import {
@@ -25,6 +26,7 @@ import {
   executionBadgeStyles,
   recordedTime
 } from './ExecutionFacts';
+import { HandoverAcceptance } from './HandoverAcceptance';
 import { investigationStatusLabel } from './InvestigationRequests';
 import { useContinuityCommand } from './useContinuityCommand';
 
@@ -51,6 +53,7 @@ function HoldResumeRecord({
   const controller = useContinuityCommand(workOrder.id);
   const [reason, setReason] = useState('');
   const { state } = controller;
+  const resultFocus = useActionFocus(state.status === 'pending');
   const confirmedEventId =
     state.status === 'confirmed' ? state.receipt.event_id : null;
   useEffect(() => {
@@ -78,7 +81,12 @@ function HoldResumeRecord({
         )
       : null;
   return (
-    <Stack gap='sm' data-testid='hold-resume-record'>
+    <Stack
+      {...resultFocus.props}
+      aria-label={t`Hold and resume record`}
+      gap='sm'
+      data-testid='hold-resume-record'
+    >
       <Text size='sm' fw={600}>{t`Hold / resume work record`}</Text>
       <Text size='sm'>{t`These actions update this Work record through its existing permissions and server checks. Physical conditions, operating permission and site ownership acceptance remain separate.`}</Text>
       {state.status === 'confirmed' && (
@@ -162,15 +170,17 @@ function HoldResumeRecord({
               (action === 'hold' && !reason.trim())
             }
             onClick={() => {
-              void controller.execute({
-                workOrderId: workOrder.id,
-                action,
-                payload: {
-                  expected_version: workOrder.lifecycle_version,
-                  idempotency_key: crypto.randomUUID(),
-                  reason: reason.trim()
-                }
-              });
+              void resultFocus.run(() =>
+                controller.execute({
+                  workOrderId: workOrder.id,
+                  action,
+                  payload: {
+                    expected_version: workOrder.lifecycle_version,
+                    idempotency_key: crypto.randomUUID(),
+                    reason: reason.trim()
+                  }
+                })
+              );
             }}
           >
             {action === 'hold' ? t`Hold work record` : t`Resume work record`}
@@ -183,7 +193,7 @@ function HoldResumeRecord({
           mih={44}
           style={{ alignSelf: 'flex-start' }}
           onClick={() => {
-            void controller.execute();
+            void resultFocus.run(() => controller.execute());
           }}
         >{t`Check original operation`}</Button>
       )}
@@ -194,7 +204,7 @@ function HoldResumeRecord({
           style={{ alignSelf: 'flex-start' }}
           onClick={() => {
             setReason(state.intent.payload.reason);
-            void controller.reviewRefusal();
+            void resultFocus.run(() => controller.reviewRefusal());
           }}
         >{t`Review latest Work before retrying`}</Button>
       )}
@@ -421,13 +431,7 @@ export function WorkContinuity({
                 workOrder.assigned_to_name ??
                 workOrder.assigned_to_username}
             </ExecutionFact>
-            <ExecutionFact
-              label={t`Accepted incoming owner / accepted at`}
-            >{t`Not recorded`}</ExecutionFact>
-            <ExecutionFact
-              label={t`Site acceptance requirement / escalation owner`}
-            >{t`Not supplied`}</ExecutionFact>
-            <Text size='sm'>{t`Assignment, a read receipt and opening this brief or chat do not accept responsibility. No accepted-handover record or site acceptance action is supplied here. Continue through the existing site process.`}</Text>
+            <HandoverAcceptance workOrder={workOrder} />
           </Stack>
         </Paper>
       </SimpleGrid>
@@ -551,7 +555,7 @@ export function WorkContinuity({
                       {lifecycleLabel(dependency.card.lifecycle_status)} ·{' '}
                       {t`Work version`}:{' '}
                       {dependency.card.lifecycle_version ?? t`Not supplied`} ·{' '}
-                      {t`Owner`}:{' '}
+                      {t`Assignee`}:{' '}
                       {dependency.card.assigned_to_name || t`Not recorded`}
                     </Text>
                     <Text size='sm'>
@@ -656,7 +660,7 @@ export function WorkContinuityConstraints({
               {request.blocked_reason || t`Constraint reason not recorded`}
             </Text>
             <Text size='sm'>
-              {t`Owner`}: {request.owner_name || t`Not recorded`} ·{' '}
+              {t`Assignee`}: {request.owner_name || t`Not recorded`} ·{' '}
               {t`Checkpoint`}: {recordedTime(request.next_checkpoint)}
             </Text>
           </Stack>

@@ -1933,7 +1933,8 @@ def select_capabilities(
     focus = (context or {}).get("work_focus")
     if (
         isinstance(focus, dict)
-        and focus.get("schema_version") == 2
+        and focus.get("schema_version") in {2, 3}
+        and focus.get("request_id") is not None
         and type(focus.get("request_id")) is int
     ):
         # Request publication extends the shared assistant's normal query routing.

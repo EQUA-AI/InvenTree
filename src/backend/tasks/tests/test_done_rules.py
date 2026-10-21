@@ -4,10 +4,10 @@ from datetime import datetime, timezone as dt_timezone
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from assets.models import AssetMachine
+from assets.models import AssetMachine, get_default_client
 from tasks.models import WorkOrder, KanbanColumn, WorkOrderLifecycle
 from tasks.services import scheduling
 
@@ -85,13 +85,18 @@ class DoneCardImmutabilityTest(TestCase):
         self.assertIsNotNone(work_order.scheduled_start)
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class ManualDoneMoveTest(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_superuser(
             username='move-sup', email='m@example.com', password='pw'
         )
         self.client.force_login(self.user)
-        self.machine = AssetMachine.objects.create(name='Move Press')
+        self.machine = AssetMachine.objects.create(
+            name='Move Press', client=get_default_client()
+        )
         self.work_order = WorkOrder.objects.create(
             title='Move WO', status='backlog', priority='low', machine=self.machine
         )

@@ -136,6 +136,35 @@ class HealthDiagnosticReadTest(TestCase):
             expected_revision=services._diagnostic_revision(self.machine),
         )
 
+    def test_retained_inactive_critical_evidence_is_identified_as_inactive(self):
+        """Diagnostics keeps inactive provenance with retained unknown coverage."""
+        import json
+
+        from assets.record_models import SignalDesignation
+        from assets.recorded_facts import binding_signature
+
+        self._set_signal(3.0)
+        SignalDesignation.objects.create(
+            binding=self.binding,
+            version=1,
+            critical=True,
+            binding_signature=binding_signature(self.binding),
+            reason='Needed',
+            recorded_by=self.actor,
+        )
+        self.binding.active = False
+        self.binding.save(update_fields=['active'])
+        result = self._read_summary()
+        rows = [
+            json.loads(e['claim'])
+            for e in result['evidence']
+            if e['source_type'] == 'machine_signal_state'
+        ]
+        self.assertEqual(len(rows), 1)
+        self.assertFalse(rows[0]['active'])
+        self.assertIsNone(rows[0]['value'])
+        self.assertEqual(rows[0]['state'], 'unknown')
+
     def test_summary_reports_condition_with_freshness(self):
         """A fresh reading is cited with its quality and staleness."""
         self._set_signal(3.0)

@@ -28,6 +28,8 @@ import { isAxiosError } from 'axios';
 import dayjs from 'dayjs';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { WorkTableScroll } from '../../components/tables/WorkTableScroll';
+import { useWorkAssistantClearance } from '../tasks/workorders/useWorkAssistantClearance';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { UserRoles } from '@lib/enums/Roles';
@@ -36,6 +38,7 @@ import type { WorkOrder } from '@lib/types/Tasks';
 import { useApi } from '../../contexts/ApiContext';
 import { useLocalState } from '../../states/LocalState';
 import { useUserState } from '../../states/UserState';
+import classes from '../tasks/workorders/workCompanion.module.css';
 import {
   WORK_LIST_PAGE_SIZE,
   type WorkAttentionReason,
@@ -174,6 +177,7 @@ function ScopedWorkList({
   const api = useApi();
   const [params, setParams] = useSearchParams();
   const phone = useMediaQuery('(max-width: 48em)');
+  const assistantSurface = useWorkAssistantClearance(phone);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [savedScope, saveScope] = useLocalStorage<WorkListScope | null>({
     key: workListPreferenceKey(host, actorId),
@@ -313,10 +317,16 @@ function ScopedWorkList({
     state.workType
   ].filter(Boolean).length;
   return (
-    <Stack gap='md'>
+    <Stack
+      ref={assistantSurface}
+      component='main'
+      aria-labelledby='work-list-title'
+      className={classes.surface}
+      gap='md'
+    >
       <Group justify='space-between' align='flex-start'>
         <Stack gap={4}>
-          <Title order={3}>{t`Work list`}</Title>
+          <Title id='work-list-title' order={1} size='h3'>{t`Work list`}</Title>
           <Text
             size='sm'
             c='dimmed'
@@ -396,6 +406,7 @@ function ScopedWorkList({
           opened={filtersOpen}
           onClose={() => setFiltersOpen(false)}
           title={t`Work filters`}
+          closeButtonProps={{ 'aria-label': t`Close Work filters` }}
         >
           <Stack gap='md'>
             <WorkFilterFields state={state} onChange={update} />
@@ -448,7 +459,10 @@ function ScopedWorkList({
         (visible.results.length ? (
           <>
             <Text size='xs'>{t`Schedule times are shown in your local timezone. Assignment does not indicate acceptance.`}</Text>
-            <Table.ScrollContainer minWidth={900}>
+            <WorkTableScroll
+              minWidth={900}
+              label={t`Work orders table, scroll for all columns`}
+            >
               <Table
                 highlightOnHover
                 horizontalSpacing='md'
@@ -496,12 +510,7 @@ function ScopedWorkList({
                           >
                             {work.reference ?? t`Work order ${work.id}`}
                           </Anchor>
-                          <Text
-                            size='sm'
-                            fw={500}
-                            lineClamp={2}
-                            title={work.title}
-                          >
+                          <Text size='sm' fw={500} title={work.title}>
                             {work.title}
                           </Text>
                           <Text size='sm' c='dimmed'>
@@ -563,11 +572,19 @@ function ScopedWorkList({
                   ))}
                 </Table.Tbody>
               </Table>
-            </Table.ScrollContainer>
+            </WorkTableScroll>
             {lastPage > 1 && (
               <Group justify='flex-end'>
                 <nav aria-label={t`Work results pagination`}>
                   <Pagination
+                    getControlProps={(control) => ({
+                      'aria-label': {
+                        first: t`First page`,
+                        previous: t`Previous page`,
+                        next: t`Next page`,
+                        last: t`Last page`
+                      }[control]
+                    })}
                     value={state.page}
                     total={lastPage}
                     onChange={(page) => update({ page })}
@@ -579,7 +596,7 @@ function ScopedWorkList({
         ) : (
           <Paper withBorder p='lg'>
             <Stack gap='sm'>
-              <Title order={4}>{t`No work in this view`}</Title>
+              <Title order={2} size='h4'>{t`No work in this view`}</Title>
               <Text size='sm' c='dimmed'>
                 {state.scope === 'mine'
                   ? t`No assigned work matches this view.`

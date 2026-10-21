@@ -2,6 +2,7 @@ import { t } from '@lingui/core/macro';
 import { Text } from '@mantine/core';
 import { type KeyboardEvent, useState } from 'react';
 
+import operations from '../../operations.module.css';
 import { type Display, summarize } from './MimicReadings';
 import { usable } from './format';
 import type { LayoutPart, MimicData, MimicPoint } from './types';
@@ -222,12 +223,14 @@ export function MimicParts({
           <g
             key={part.id}
             data-part={part.code}
+            data-verdict={state.verdict}
             onMouseEnter={() => onActive(part.code)}
             onMouseLeave={() => onActive(null)}
             style={{ cursor: empty ? 'default' : 'pointer' }}
           >
             <g
               // biome-ignore lint/a11y/useSemanticElements: an SVG has no button element to draw with; this is one in role, focus and keys
+              className={operations.mimicPart}
               role='button'
               tabIndex={0}
               aria-label={`${state.number}. ${state.name}`}
@@ -258,6 +261,19 @@ export function MimicParts({
                 }
                 strokeWidth={1.2}
                 strokeDasharray={empty && !lit ? '4 3' : undefined}
+              />
+              <rect
+                className={operations.mimicFocusRing}
+                data-focus-ring
+                x={x - 4}
+                y={y - 4}
+                width={ENTRY.width + 8}
+                height={ENTRY.height + 8}
+                rx={9}
+                fill='none'
+                stroke='var(--mantine-color-text)'
+                strokeWidth={3}
+                vectorEffect='non-scaling-stroke'
               />
               {marker(x + 17, y + 18, 9.5)}
               {[

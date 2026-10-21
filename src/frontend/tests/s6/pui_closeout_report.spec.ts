@@ -282,7 +282,7 @@ test('accepted report retains original snapshot and attributed amendment; Histor
     ]
   });
   await openCloseout(page, 'dark');
-  await page.getByText('Original accepted snapshot', { exact: true }).click();
+  await page.getByText('Original completed account', { exact: true }).click();
   await expect(page.getByTestId('prepared-closeout')).toContainText(
     values.result
   );
@@ -386,11 +386,13 @@ test('review regression: accepted consumed capture retains field recorders and c
   });
   await openCloseout(page);
   const account = page.getByTestId('prepared-closeout');
-  await expect(account).toContainText('Accepted by Synthetic Technician');
+  await expect(account).toContainText('Completed by Synthetic Technician');
+  await expect(account).toContainText('Acceptance: Not recorded');
+  await expect(account).not.toContainText('Accepted by');
   await expect(account.getByText(/Saved decision: accepted/)).toHaveCount(3);
   await page.getByText('Read report', { exact: true }).click();
   await expect(account.locator('pre')).toContainText(
-    'Accepted by Synthetic Technician'
+    'Completed by Synthetic Technician'
   );
   await expect(account.locator('pre')).toContainText(
     'Saved decision: Action taken'
@@ -560,7 +562,7 @@ test('accepted export waits for the fresh consumed-capture link instead of cache
     .getByRole('button', { name: 'Refresh fixture', exact: true })
     .click();
   const account = page.getByTestId('prepared-closeout');
-  await expect(account).toContainText('Accepted by Synthetic Technician');
+  await expect(account).toContainText('Completed by Synthetic Technician');
   await expect(account).toContainText('Corrected the recorded observation');
   await expect(page.getByTestId('fixture-fetching')).toHaveText('1');
   await expect(

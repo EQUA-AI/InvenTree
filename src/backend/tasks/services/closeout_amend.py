@@ -77,6 +77,19 @@ def _closeout_for(work_order):
     return closeout
 
 
+def _require_completed_closure(work_order, error_type, operation):
+    """A retained account during rework is history, not a writable closure."""
+    latest = (
+        work_order.events
+        .filter(event_type__in=('COMPLETED', 'RECURRENCE_REOPENED'))
+        .order_by('-pk')
+        .values_list('event_type', flat=True)
+        .first()
+    )
+    if work_order.lifecycle_status != 'completed' or latest == 'RECURRENCE_REOPENED':
+        raise error_type(f'Only a completed Work closure can be {operation}.')
+
+
 def base_closeout_fields(closeout) -> dict:
     """The original completed field values, as a plain dict."""
     return {name: getattr(closeout, name) for name in AMENDABLE_FIELDS}
@@ -137,7 +150,7 @@ def verify_closeout(
 ):
     """One-shot supervisor verification of a completed closeout."""
     policy = str(getattr(settings, 'AIMMS_CLOSEOUT_VERIFY_POLICY', 'off'))
-    if policy == 'off':
+    if policy not in ('optional', 'supervisor'):
         raise VerificationError('Closeout verification is disabled by policy')
     work_order = _locked_work_order(work_order_id)
     payload = {'work_order_id': work_order_id, 'expected_version': expected_version}
@@ -149,6 +162,7 @@ def verify_closeout(
     _require_version(work_order, expected_version)
     require_permission(actor, VERIFY_CLOSEOUT)
     _require_scope(actor, work_order)
+    _require_completed_closure(work_order, VerificationError, 'accepted')
     closeout = _closeout_for(work_order)
     separation = bool(getattr(settings, 'AIMMS_CLOSEOUT_VERIFY_SEPARATION', True))
     if separation and closeout.completed_by_id == actor.pk:
@@ -216,6 +230,7 @@ def propose_amendment(
     _require_version(work_order, expected_version)
     require_permission(actor, AMEND_CLOSEOUT)
     _require_scope(actor, work_order)
+    _require_completed_closure(work_order, AmendmentError, 'amended')
     closeout = _closeout_for(work_order)
     if not (reason or '').strip():
         raise AmendmentError('An amendment requires a reason')
@@ -287,6 +302,11 @@ def _apply_amendment(work_order, closeout, amendment, actor):
             'applied_at',
         ]
     )
+    from tasks.services.accepted_reports import freeze_report
+
+    freeze_report(
+        work_order=work_order, closeout=closeout, actor=actor, amendment=amendment
+    )
     if getattr(settings, 'AIMMS_CLOSEOUT_WIZARD_ENABLED', False):
         CloseoutEffect.objects.get_or_create(
             effect_key=f'closeout:{closeout.pk}:notification:amendment:{amendment.pk}',
@@ -328,6 +348,7 @@ def decide_amendment(
 
     _require_version(work_order, expected_version)
     _require_scope(actor, work_order)
+    _require_completed_closure(work_order, AmendmentError, 'amended')
     closeout = _closeout_for(work_order)
     amendment = (
         CloseoutAmendment.objects

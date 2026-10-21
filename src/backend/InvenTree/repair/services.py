@@ -13,6 +13,7 @@ import hashlib
 import json
 import re
 import uuid
+from dataclasses import asdict, replace
 from typing import Any
 
 from django.db import transaction
@@ -1085,6 +1086,25 @@ def start_repair_packet(
     return result
 
 
+def _scoped_locked_packet_work(actor, work_order_id):
+    """Authorize Work without a lock before acquiring its scoped row lock."""
+    from tasks.scope import scoped_work_orders
+    from tasks.services.work_orders import WorkOrderScopeError, _require_scope
+
+    queryset = scoped_work_orders(actor).select_related('machine', 'assigned_to')
+    # A scope miss, nonexistent Work and unresolved scope have the same refusal.
+    candidate = queryset.filter(pk=work_order_id).first()
+    if candidate is None:
+        raise WorkOrderScopeError('Work unavailable')
+    _require_scope(actor, candidate)
+    try:
+        work_order = queryset.select_for_update(of=('self',)).get(pk=work_order_id)
+    except queryset.model.DoesNotExist:
+        raise WorkOrderScopeError('Work unavailable') from None
+    _require_scope(actor, work_order)
+    return work_order
+
+
 @transaction.atomic
 def close_repair_packet(
     packet: RepairPacket,
@@ -1094,6 +1114,8 @@ def close_repair_packet(
     expected_version: int,
     idempotency_key: str,
     reason: str = '',
+    capture_id: int | None = None,
+    expected_work_order_id: int | None = None,
 ):
     """Finalize a packet-owned repair: one closeout, one history row, one commit.
 
@@ -1108,17 +1130,95 @@ def close_repair_packet(
     Returns the work-order ``CommandResult``. Replaying the same
     ``idempotency_key`` returns the original result without writing again.
     """
-    from tasks.services.closeout import complete_work_order
+    from tasks.permissions import COMPLETE_WORKORDER, require_permission
+    from tasks.services.closeout import complete_work_order, completion_request_hash
     from tasks.services.finalization import PacketFinalization
+    from tasks.services.work_orders import (
+        CommandConflict,
+        IdempotencyConflict,
+        WorkOrderScopeError,
+        _replay_or_none,
+        _require_version,
+    )
 
     locked = RepairPacket.objects.select_for_update().get(pk=packet.pk)
     from_status = locked.status
 
-    if locked.work_order_id is None:
+    # Only this packet's current or historical Work may be named by a caller.
+    # Legacy return events have a Work id even when they have no operation key.
+    if (
+        expected_work_order_id is not None
+        and expected_work_order_id != locked.work_order_id
+    ):
+        if not locked.events.filter(
+            event_type=RepairPacketEvent.EventType.RETURN_TO_SERVICE,
+            metadata__work_order_id=expected_work_order_id,
+        ).exists():
+            raise WorkOrderScopeError('Work unavailable')
+
+    prior_packet_event = locked.events.filter(
+        event_type=RepairPacketEvent.EventType.RETURN_TO_SERVICE,
+        metadata__idempotency_key=idempotency_key,
+    ).first()
+    prior_work_id = (
+        prior_packet_event.metadata.get('work_order_id') if prior_packet_event else None
+    )
+    if prior_work_id is not None and expected_work_order_id not in (
+        None,
+        prior_work_id,
+    ):
+        raise IdempotencyConflict('This packet operation names a different Work')
+    target_work_id = prior_work_id or expected_work_order_id or locked.work_order_id
+    if target_work_id is None:
         raise RepairCloseoutError(
             'This packet has no work order, so it cannot create maintenance '
             'history. Link or generate one first.'
         )
+
+    require_permission(actor, COMPLETE_WORKORDER)
+    work_order = _scoped_locked_packet_work(actor, target_work_id)
+    packet_intent = {'packet_id': locked.pk, 'reason': reason}
+    hash_arguments = {
+        'work_order_id': work_order.pk,
+        'actor': actor,
+        'expected_version': expected_version,
+        'closeout': closeout,
+        'capture_id': capture_id,
+    }
+    try:
+        replay = _replay_or_none(
+            work_order,
+            idempotency_key,
+            completion_request_hash(**hash_arguments, packet_intent=packet_intent),
+        )
+    except IdempotencyConflict:
+        # Earlier packet commands hashed the Work fields only. Their own durable
+        # packet event supplies the missing owner/reason binding, never current UI.
+        replay = _replay_or_none(
+            work_order, idempotency_key, completion_request_hash(**hash_arguments)
+        )
+        if (
+            not replay
+            or not locked.events.filter(
+                event_type=RepairPacketEvent.EventType.RETURN_TO_SERVICE,
+                metadata__correlation_id=str(replay.correlation_id),
+                metadata__work_order_id=work_order.pk,
+                reason=reason,
+            ).exists()
+        ):
+            raise IdempotencyConflict(
+                'The original packet intent does not match'
+            ) from None
+        replay = replace(
+            replay, metadata={**(replay.metadata or {}), 'packet_id': locked.pk}
+        )
+    if replay:
+        packet.status = locked.status
+        return replay
+    if work_order.pk != locked.work_order_id:
+        raise CommandConflict('PACKET_WORK_ORDER_CHANGED')
+    # An exact stale replay proves non-commit even if today's packet gates changed.
+    _require_version(work_order, expected_version)
 
     if locked.status == PacketStatus.CLOSED:
         # Already returned to service; fall through to the work-order command so
@@ -1139,6 +1239,8 @@ def close_repair_packet(
         expected_version=expected_version,
         idempotency_key=idempotency_key,
         closeout=closeout,
+        capture_id=capture_id,
+        packet_intent=packet_intent,
         packet_finalization=PacketFinalization(packet_id=locked.pk),
     )
 
@@ -1155,12 +1257,168 @@ def close_repair_packet(
             metadata={
                 'work_order_id': locked.work_order_id,
                 'correlation_id': str(result.correlation_id),
+                'idempotency_key': idempotency_key,
             },
         )
 
     # Reflect the new state on the caller's instance.
     packet.status = locked.status
     return result
+
+
+@transaction.atomic
+def packet_close_readiness(packet, *, actor):
+    """Preview the owning packet's close boundary using the native readiness.
+
+    The packet capability is only minted under the packet-then-Work locks, as in
+    the close command; this preview writes nothing and the command re-evaluates.
+    """
+    from tasks.services.finalization import PacketFinalization
+    from tasks.services.readiness import ReadinessBlocker, evaluate_work_order_readiness
+
+    current = RepairPacket.objects.select_for_update().get(pk=packet.pk)
+    if current.work_order_id is None:
+        raise RepairCloseoutError('This packet has no work order to close.')
+    work_order = _scoped_locked_packet_work(actor, current.work_order_id)
+    readiness = evaluate_work_order_readiness(
+        work_order,
+        action='complete',
+        actor=actor,
+        expected_version=work_order.lifecycle_version,
+        packet_finalization=PacketFinalization(packet_id=current.pk),
+    )
+    blockers = list(readiness.blockers)
+    # Every packet refusal is listed; one never hides another.
+    messages = []
+    if not is_valid_packet_transition(current.status, PacketStatus.CLOSED):
+        messages.append(f'Illegal transition {current.status} -> {PacketStatus.CLOSED}')
+    ok, gate_message = current.can_return_to_service()
+    if not ok:
+        messages.append(gate_message)
+    blockers.extend(
+        ReadinessBlocker(
+            code='PACKET_CLOSEOUT_BLOCKED',
+            message=message,
+            source='repair_packet',
+            object_type='RepairPacket',
+            object_id=str(current.pk),
+        )
+        for message in messages
+    )
+    snapshot_hash = hashlib.sha256(
+        json.dumps(
+            {
+                'work_readiness': readiness.snapshot_hash,
+                'packet_id': current.pk,
+                'packet_status': current.status,
+                'blockers': [asdict(row) for row in blockers],
+            },
+            sort_keys=True,
+        ).encode()
+    ).hexdigest()
+    packet.work_order_id = work_order.pk
+    return replace(
+        readiness,
+        ready=not blockers,
+        blockers=tuple(blockers),
+        snapshot_hash=snapshot_hash,
+    )
+
+
+def _capture_packet(packet_id, work_order_id):
+    """Lock the packet before Work and refuse a changed or unrelated owner."""
+    from tasks.services.work_orders import CommandConflict
+
+    packet = RepairPacket.objects.select_for_update().filter(pk=packet_id).first()
+    if packet is None or packet.work_order_id != work_order_id:
+        raise CommandConflict('PACKET_OWNS_LIFECYCLE')
+    return packet
+
+
+@transaction.atomic
+def packet_closeout_capture(*, packet_id, work_order_id, actor, **arguments):
+    """Create typed capture through the packet that owns this Work."""
+    from tasks.services.closeout_capture import create_capture
+    from tasks.services.finalization import PacketFinalization
+
+    packet = _capture_packet(packet_id, work_order_id)
+    return create_capture(
+        work_order_id=work_order_id,
+        actor=actor,
+        packet_finalization=PacketFinalization(packet_id=packet.pk),
+        **arguments,
+    )
+
+
+@transaction.atomic
+def packet_closeout_decisions(*, packet_id, work_order_id, actor, **arguments):
+    """Accept field decisions without reaching around packet ownership."""
+    from tasks.services.closeout_capture import record_decisions
+    from tasks.services.finalization import PacketFinalization
+
+    packet = _capture_packet(packet_id, work_order_id)
+    return record_decisions(
+        work_order_id=work_order_id,
+        actor=actor,
+        packet_finalization=PacketFinalization(packet_id=packet.pk),
+        **arguments,
+    )
+
+
+@transaction.atomic
+def packet_closeout_revise(*, packet_id, work_order_id, actor, **arguments):
+    """Revise only through the capture Work's locked packet owner."""
+    from tasks.services.closeout_capture import revise_capture
+    from tasks.services.finalization import PacketFinalization
+
+    packet = _capture_packet(packet_id, work_order_id)
+    return revise_capture(
+        work_order_id=work_order_id,
+        actor=actor,
+        packet_finalization=PacketFinalization(packet_id=packet.pk),
+        **arguments,
+    )
+
+
+@transaction.atomic
+def packet_closeout_abandon(*, packet_id, work_order_id, actor, **arguments):
+    """Abandon only through the capture Work's locked packet owner."""
+    from tasks.services.closeout_capture import abandon_capture
+    from tasks.services.finalization import PacketFinalization
+
+    packet = _capture_packet(packet_id, work_order_id)
+    return abandon_capture(
+        work_order_id=work_order_id,
+        actor=actor,
+        packet_finalization=PacketFinalization(packet_id=packet.pk),
+        **arguments,
+    )
+
+
+def packet_closeout_extract(*, packet_id, work_order_id, actor, **arguments):
+    """Check ownership in each extraction phase without locking across the model."""
+    from tasks.services.closeout_capture import request_extraction
+    from tasks.services.finalization import PacketFinalization
+
+    return request_extraction(
+        work_order_id=work_order_id,
+        actor=actor,
+        packet_finalization=PacketFinalization(packet_id=packet_id),
+        **arguments,
+    )
+
+
+@transaction.atomic
+def packet_voice_closeout(*, packet_id, voice_capture):
+    """Snapshot voice only under its target Work's actual packet owner."""
+    from tasks.services.closeout_capture import accept_voice_handoff
+    from tasks.services.finalization import PacketFinalization
+
+    packet = _capture_packet(packet_id, voice_capture.target_work_order_id)
+    return accept_voice_handoff(
+        voice_capture=voice_capture,
+        packet_finalization=PacketFinalization(packet_id=packet.pk),
+    )
 
 
 def run_generation_by_id(packet_id: int, params: dict[str, Any] | None = None) -> None:
@@ -1263,11 +1521,10 @@ def list_diagnostic_record_roots(
 ) -> list[dict]:
     """Record roots this actor may read for a diagnostic turn.
 
-    Returns the active machines in the actor's maintenance (client) scope plus
-    their non-terminal repair packets, each with its current optimistic-read
-    revision. Machines are identified by their owning client — the same
-    boundary ``_diagnostic_scoped_entity`` enforces per entity, so the listed
-    roots and the per-read ACL cannot disagree. Fail-closed: an
+    Returns active machines in the actor's client scope and non-terminal
+    packets in their linked Work scope (or standalone machine scope), each
+    with its optimistic-read revision. Packet discovery uses the same scoped
+    queryset as per-read authorization and the packet API. Fail-closed: an
     unauthenticated/unscoped actor or a scope error yields an empty list, so
     the reasoning path exposes no diagnostic tools.
     """
@@ -1275,17 +1532,14 @@ def list_diagnostic_record_roots(
 
     from assets.models import AssetMachine
     from repair.models import TERMINAL_PACKET_STATUSES
+    from repair.scope import scoped_repair_packets
 
     try:
         scopes = scope_for_actor(actor)
     except ScopeError:
         return []
     client_ids = {scope.client_id for scope in scopes if scope.client_id is not None}
-    if not client_ids:
-        return []
-
     roots: list[dict] = []
-    machine_ids: list[int] = []
     machines = (
         AssetMachine.objects
         .filter(client_id__in=client_ids, active=True)
@@ -1296,7 +1550,6 @@ def list_diagnostic_record_roots(
         revision = _diagnostic_revision(machine)
         if not revision:
             continue
-        machine_ids.append(machine.pk)
         roots.append({
             'entity_type': 'machine',
             'entity_id': machine.pk,
@@ -1309,25 +1562,23 @@ def list_diagnostic_record_roots(
             'display_name': str(machine.name or '')[:255],
         })
 
-    if machine_ids:
-        packets = (
-            RepairPacket.objects
-            .filter(machine_id__in=machine_ids)
-            .exclude(status__in=TERMINAL_PACKET_STATUSES)
-            .only('pk', 'machine_id', 'updated_at')
-            .order_by('-updated_at')[:packet_limit]
-        )
-        for packet in packets:
-            revision = _diagnostic_revision(packet)
-            if not revision or not packet.machine_id:
-                continue
-            roots.append({
-                'entity_type': 'repair_packet',
-                'entity_id': packet.pk,
-                'expected_revision': revision,
-                'linked_machine_id': packet.machine_id,
-                'authorization_class': 'maintenance_scope',
-            })
+    packets = (
+        scoped_repair_packets(actor)
+        .exclude(status__in=TERMINAL_PACKET_STATUSES)
+        .only('pk', 'machine_id', 'updated_at')
+        .order_by('-updated_at')[:packet_limit]
+    )
+    for packet in packets:
+        revision = _diagnostic_revision(packet)
+        if not revision or not packet.machine_id:
+            continue
+        roots.append({
+            'entity_type': 'repair_packet',
+            'entity_id': packet.pk,
+            'expected_revision': revision,
+            'linked_machine_id': packet.machine_id,
+            'authorization_class': 'maintenance_scope',
+        })
     return roots
 
 
@@ -1351,22 +1602,14 @@ def _diagnostic_scoped_entity(actor, entity_type: str, entity_id: int):
             return None
         client_id = entity.client_id
     elif entity_type == 'repair_packet':
-        try:
-            entity = (
-                RepairPacket.objects
-                .select_related('machine')
-                .only(
-                    'pk',
-                    'machine_id',
-                    'machine__pk',
-                    'machine__client_id',
-                    'updated_at',
-                )
-                .get(pk=entity_id)
-            )
-        except RepairPacket.DoesNotExist:
-            return None
-        client_id = entity.machine.client_id if entity.machine_id else None
+        from repair.scope import scoped_repair_packets
+
+        return (
+            scoped_repair_packets(actor)
+            .only('pk', 'machine_id', 'updated_at')
+            .filter(pk=entity_id)
+            .first()
+        )
     else:
         return None
 
@@ -1867,6 +2110,7 @@ def read_diagnostic_health_summary(
         signal_claim = json.dumps(
             {
                 'signal': row['display_name'],
+                'active': row['active'],
                 'value': row['value'],
                 'unit': row['unit'],
                 'quality': row['quality'],

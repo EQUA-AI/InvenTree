@@ -298,9 +298,11 @@ def activate_station(station, source, *, expected_hash, deactivate=False, now=No
     )
     if deactivate:
         checkpoints.filter(source=source).update(active=False)
-        MachineSignalBinding.objects.filter(
-            source=source, dictionary_point__station=station
-        ).delete()
+        _retire_bindings(
+            MachineSignalBinding.objects.filter(
+                source=source, dictionary_point__station=station
+            )
+        )
         return live_status(station)
     if (
         not source.active
@@ -326,9 +328,11 @@ def activate_station(station, source, *, expected_hash, deactivate=False, now=No
             'This source station already belongs to another registered station.'
         )
     points = _approved_points(station)
-    MachineSignalBinding.objects.filter(
-        source=source, dictionary_point__station=station
-    ).exclude(dictionary_point__in=points).delete()
+    _retire_bindings(
+        MachineSignalBinding.objects.filter(
+            source=source, dictionary_point__station=station
+        ).exclude(dictionary_point__in=points)
+    )
     for point in points:
         _refresh_binding(point, source)
     if checkpoint is None:
@@ -344,3 +348,18 @@ def activate_station(station, source, *, expected_hash, deactivate=False, now=No
         checkpoint.station, checkpoint.active = station, True
         checkpoint.save(update_fields=['station', 'active', 'updated_at'])
     return live_status(station)
+
+
+def _retire_bindings(queryset):
+    """Retain bindings cited by engineering decisions or confirmed downtime."""
+    from django.db.models import Q
+
+    retained = list(
+        queryset
+        .filter(Q(designations__isnull=False) | Q(workdowntime__isnull=False))
+        .values_list('pk', flat=True)
+        .distinct()
+    )
+    MachineSignalState.objects.filter(binding_id__in=retained).delete()
+    queryset.filter(pk__in=retained).update(active=False)
+    queryset.exclude(pk__in=retained).delete()

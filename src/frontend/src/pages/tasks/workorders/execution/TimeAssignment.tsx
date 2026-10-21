@@ -7,6 +7,7 @@ import {
   ExecutionSection,
   recordedTime
 } from './ExecutionFacts';
+import { RecordedWorkTime } from './RecordedWorkTime';
 
 function elapsed(value: number | null): string | null {
   if (value === null || !Number.isFinite(value) || value < 0) return null;
@@ -20,6 +21,9 @@ export function TimeAssignment({
   const value: Projection | undefined = supplied
     ? workOrder.time_assignment
     : undefined;
+  const handover = workOrder.work_continuity?.accepted_handover?.available
+    ? workOrder.work_continuity.accepted_handover
+    : value?.accepted_handover;
   return (
     <ExecutionSection
       title={t`Assignment and person-work time`}
@@ -58,12 +62,29 @@ export function TimeAssignment({
         size='sm'
         c='dimmed'
       >{t`Elapsed assignment is wall time at the last server read, not labor or accepted responsibility. Actual start and completion are job timestamps, not person-work intervals.`}</Text>
-      <Text
-        fw={600}
-        size='sm'
-      >{t`Attributed time: unavailable · coverage unknown`}</Text>
-      <Text size='sm'>{t`No authoritative attributed intervals are supplied. Unclassified gaps and labor totals cannot be measured. Held work does not mean every person was waiting; capture duration and browser activity do not classify labor.`}</Text>
-      <Text size='sm'>{t`Assignment factors, accepted handover and an attributed interval correction path are not supplied. No assignment score, accepted owner or corrected time is inferred.`}</Text>
+      <RecordedWorkTime key={workOrder.id} workOrder={workOrder} />
+      {handover?.available ? (
+        <Stack gap={2} data-testid='time-handover-record'>
+          <Text size='sm'>
+            {handover.state === 'accepted'
+              ? t`Incoming handover acceptance is recorded.`
+              : t`Current incoming handover acceptance is not recorded.`}
+          </Text>
+          <Text size='sm'>
+            {t`Responsible owner`}:{' '}
+            {handover.responsible_owner || t`Not recorded`}
+          </Text>
+          {handover.state === 'accepted' && (
+            <Text size='sm'>
+              {handover.accepted_by} · {recordedTime(handover.accepted_at)} · v
+              {handover.accepted_version}
+            </Text>
+          )}
+          <Text size='sm'>{t`Assignment factors are not supplied. No assignment score is inferred, and accepted handover is not inferred from person-work time.`}</Text>
+        </Stack>
+      ) : (
+        <Text size='sm'>{t`Assignment factors and accepted handover are not inferred from person-work time.`}</Text>
+      )}
       {value && (
         <Accordion variant='contained' keepMounted={false}>
           <Accordion.Item value='assignments'>

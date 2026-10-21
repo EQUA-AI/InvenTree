@@ -1,6 +1,5 @@
 import { expect, test } from '@playwright/test';
 import { nativeBaseline } from '../s0/guards';
-import { repairPacket } from '../s0/workFixtures';
 import {
   accepted,
   closeoutWork,
@@ -9,6 +8,10 @@ import {
   story,
   values
 } from '../s6/closeoutFixtures';
+import {
+  openPacketCloseout,
+  packetCloseoutWork
+} from './packetReceiptFixtures';
 
 nativeBaseline();
 
@@ -109,27 +112,26 @@ for (const scheme of ['light', 'dark'] as const) {
   test(`packet finalization stays with its own Closeout contract, ${scheme}`, async ({
     page
   }, info) => {
-    await page.route('**/api/repair/packets/901/', (route) =>
-      route.fulfill({ json: repairPacket() })
-    );
-    await page.goto(
-      `/playwright/s0-native.html?surface=packet&scheme=${scheme}&entry=/repair/packets/901/`
-    );
-    await expect(
-      page.getByRole('button', { name: 'Close Repair', exact: true })
-    ).toBeHidden();
-    await page
-      .getByRole('link', { name: 'Open Closeout', exact: true })
-      .click();
-    await expect(
-      page.getByRole('button', { name: 'Close Repair', exact: true })
-    ).toBeVisible();
+    const { commands, reads } = await packetCloseoutWork(page);
+    await openPacketCloseout(page, scheme, async () => {
+      await expect(
+        page.getByRole('link', { name: 'Open Work Closeout', exact: true })
+      ).toBeVisible();
+      await containment(page);
+      await page.screenshot({
+        path: info.outputPath(`packet-navigation-${scheme}.png`),
+        fullPage: true
+      });
+    });
     await expect(
       page.getByRole('button', {
         name: 'Update maintenance record',
         exact: true
       })
-    ).toHaveCount(0);
+    ).toBeEnabled();
+    expect(reads).toContain('/api/repair/packets/901/close/');
+    expect(reads.some((path) => path.endsWith('/readiness/'))).toBe(false);
+    expect(commands).toHaveLength(0);
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await containment(page);
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -144,6 +146,14 @@ test('panel navigation retains the pending operation and its actual result in th
   page
 }, info) => {
   const { commands, setOverview } = await closeoutWork(page);
+  // This completion has no amendments; the shared fixture models an amended job.
+  await page.route(
+    '**/api/tasks/work-orders/73/closeout/amendments/',
+    (route) => {
+      expect(route.request().method()).toBe('GET');
+      return route.fulfill({ json: [] });
+    }
+  );
   let release: (() => void) | undefined;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
@@ -227,7 +237,19 @@ test('panel navigation retains the pending operation and its actual result in th
   await expect(status).toContainText('Record updated');
   await expect(status).toContainText('19 Oct 2026,');
   await expect(page.getByTestId('closeout-account')).toContainText(
-    'Accepted account'
+    'Completed account'
+  );
+  await expect(page.getByTestId('closeout-account')).toContainText(
+    'Completed by S0 synthetic fixture'
+  );
+  await expect(page.getByTestId('closeout-account')).toContainText(
+    'Acceptance: Not recorded'
+  );
+  await expect(page.getByTestId('closeout-account')).toContainText(
+    values.result
+  );
+  await expect(page.getByTestId('closeout-account')).not.toContainText(
+    'Accepted by'
   );
   await expect(
     page.getByRole('button', { name: 'Update maintenance record', exact: true })
@@ -237,5 +259,17 @@ test('panel navigation retains the pending operation and its actual result in th
   await containment(page);
   await status.screenshot({
     path: info.outputPath('account-confirmed-dark.png')
+  });
+  await page
+    .getByTestId('closeout-account')
+    .evaluate((element) =>
+      window.scrollTo(
+        0,
+        element.getBoundingClientRect().top + window.scrollY - 180
+      )
+    );
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('completed-account-dark.png')
   });
 });

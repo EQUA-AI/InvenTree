@@ -1,4 +1,6 @@
 import { type Page, expect, test } from '@playwright/test';
+import type { RecurrencePolicy } from '../../lib/types/WorkExecution';
+import type { FaultOccurrence } from '../../src/pages/assets/faults/occurrenceModel';
 import { nativeBaseline } from '../s0/guards';
 import { openHealth } from '../s3/healthFixtures';
 import {
@@ -7,6 +9,11 @@ import {
   openFaultHistory
 } from '../s3/machineWorkFixtures';
 import {
+  captureProcessSection,
+  openExecutionPanel
+} from '../s4/workExecutionFixtures';
+import {
+  accepted,
   closeoutWork,
   containment,
   openCloseout,
@@ -79,6 +86,7 @@ async function monitoring(
     disabled?: boolean;
     empty?: boolean;
     longIdentity?: boolean;
+    occurrence?: FaultOccurrence;
   } = {}
 ) {
   const reads: URL[] = [];
@@ -141,7 +149,7 @@ async function monitoring(
                       title: 'LongSourceTitle'.repeat(30),
                       external_id: 'LongSourceAlarm'.repeat(30)
                     }
-                  : deviation
+                  : (options.occurrence ?? deviation)
               ]
         }
       });
@@ -215,7 +223,10 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(page.getByTestId('closeout-account')).toContainText(
       'Corrected recorded result'
     );
-    await page.getByText('Original accepted snapshot', { exact: true }).click();
+    await page.getByText('Original completed account', { exact: true }).click();
+    await expect(page.getByTestId('prepared-closeout')).not.toContainText(
+      'Accepted by'
+    );
     await expect(page.getByTestId('closeout-account')).toContainText(
       values.result
     );
@@ -385,3 +396,569 @@ test('long source identities remain readable within the phone and desktop', asyn
   await containment(page);
   await capture(page, info.outputPath('monitoring-long-source.png'));
 });
+
+for (const scheme of ['light', 'dark'] as const) {
+  for (const action of ['create_linked', 'reopen'] as const) {
+    test(`O15 same-component recurrence ${action} is explicit (${scheme})`, async ({
+      page
+    }, info) => {
+      const { commands, setOverview } = await closeoutWork(page, {
+        completed: true,
+        ...(action === 'reopen' ? { captures: [] } : {})
+      });
+      const componentRef = occurrences[1].components[0].code;
+      const observedAt = deviation.first_observed_at;
+      const freshOccurrence: FaultOccurrence = {
+        ...deviation,
+        id: 904,
+        severity: 'warning',
+        status: 'open',
+        active: true,
+        first_observed_at: observedAt,
+        external_id: 'SYN-REC-904',
+        title: 'Synthetic same-component deviation',
+        evidence_summary:
+          'Synthetic retained component deviation; interpretation unresolved',
+        metrics: {},
+        signals: occurrences[1].signals,
+        components: occurrences[1].components,
+        work: [],
+        repair_packet: null,
+        snapshots: [
+          {
+            ...deviation.snapshots[0],
+            signal_label: 'DE bearing temperature',
+            unit: 'degC',
+            binding: 100,
+            quality: 'uncertain'
+          }
+        ]
+      };
+      const policy = {
+        rule: 'recurrence_policy.v1' as const,
+        days: 30,
+        available: true,
+        prior_work_id: 73,
+        prior_version: 8,
+        can_create: true,
+        can_reopen: action === 'reopen',
+        closure_acceptance:
+          action === 'reopen'
+            ? ('awaiting_verification' as const)
+            : ('unknown' as const),
+        items: [
+          {
+            occurrence_id: 904,
+            title: freshOccurrence.title,
+            observed_at: observedAt,
+            component_ref: componentRef,
+            action,
+            closure_acceptance:
+              action === 'reopen'
+                ? ('awaiting_verification' as const)
+                : ('unknown' as const),
+            work_order_id: null as number | null
+          }
+        ]
+      };
+      setOverview({
+        affected_component_ref: componentRef,
+        affected_component: freshOccurrence.components[0].name,
+        structured_closeout: {
+          ...accepted!,
+          verified_at: null,
+          amended: action === 'create_linked',
+          amendment_count: action === 'create_linked' ? 1 : 0,
+          result: action === 'reopen' ? values.result : accepted!.result
+        },
+        recurrence_policy: policy
+      });
+      await monitoring(page, { occurrence: freshOccurrence });
+      const posted: Record<string, unknown>[] = [];
+      await page.route(
+        '**/api/kanban/work-orders/commands/create/',
+        async (route) => {
+          const body = route.request().postDataJSON();
+          posted.push(body);
+          const linked = action === 'create_linked';
+          const id = linked ? 80 : 73;
+          freshOccurrence.work = [
+            {
+              id,
+              reference: `WO-${id}`,
+              title: 'Synthetic recurrence response',
+              lifecycle_status: linked ? 'draft' : 'in_progress',
+              priority: 'medium',
+              work_order_type: 'corrective',
+              affected_component: 'Drive-end bearing',
+              actual_completed_at: null,
+              relation: 'owning'
+            }
+          ];
+          if (!linked)
+            setOverview({
+              lifecycle_status: 'in_progress',
+              lifecycle_version: 9,
+              actual_completed_at: null
+            });
+          if (linked) {
+            policy.items[0].work_order_id = 80;
+            (policy.items[0] as { action: string }).action = 'linked';
+          } else
+            (policy.items[0] as { action: string }).action = 'already_reopened';
+          await route.fulfill({
+            status: 201,
+            json: {
+              id,
+              process_receipt: {
+                command: 'create',
+                work_order_id: id,
+                event_id: 101,
+                idempotency_key: body.idempotency_key,
+                lifecycle_version: linked ? 1 : 9,
+                metadata: {
+                  occurrence_id: 904,
+                  ...(linked ? { recurrence_of: 73 } : {})
+                }
+              }
+            }
+          });
+        }
+      );
+      await openExecutionPanel(page, 'closeout', scheme, false, 'editor');
+      const disclosure = visibleContinuity(page);
+      await disclosure.locator('summary').click();
+      const section = disclosure.getByTestId('recurrence-policy');
+      await expect(
+        section.getByText('Same-component recurrence policy · 30 days')
+      ).toBeVisible();
+      expect(posted).toHaveLength(0);
+      expect(commands).toHaveLength(0);
+      await captureProcessSection(
+        page,
+        section,
+        info.outputPath(`o15-recurrence-${action}-${scheme}.png`)
+      );
+      await section
+        .getByRole('button', {
+          name:
+            action === 'reopen'
+              ? 'Reopen unaccepted Work'
+              : 'Create linked corrective work',
+          exact: true
+        })
+        .click();
+      await expect(
+        section.getByText(
+          action === 'reopen'
+            ? 'Work reopened; the previous unaccepted closure is retained.'
+            : 'Linked corrective Work 80 created; the previous closure is unchanged.'
+        )
+      ).toBeVisible();
+      expect(posted).toHaveLength(1);
+      expect(posted[0].recurrence_of).toBe(73);
+      expect(posted[0].recurrence_occurrence).toBe(904);
+      const account = page.getByTestId('closeout-account');
+      if (action === 'create_linked') {
+        await expect(account).toContainText(accepted!.result);
+        await page
+          .getByText('Original completed account', { exact: true })
+          .click();
+        await expect(
+          account.getByText(`Result: ${values.result}`, { exact: true })
+        ).toBeVisible();
+      } else {
+        await expect(
+          account.getByText(values.result, { exact: true }).first()
+        ).toBeVisible();
+      }
+      await containment(page);
+    });
+  }
+}
+
+test('review refused recurrence survives reload and can be reviewed then retried', async ({
+  page
+}, info) => {
+  const { setOverview } = await closeoutWork(page, { completed: true });
+  const policy = {
+    rule: 'recurrence_policy.v1' as const,
+    days: 30,
+    available: true,
+    closure_acceptance: 'unknown' as const,
+    can_create: true,
+    can_reopen: false,
+    items: [
+      {
+        occurrence_id: 904,
+        title: 'Synthetic retry deviation',
+        observed_at: deviation.first_observed_at,
+        component_ref: 'PS-MOTOR-DE-BRG:1',
+        action: 'create_linked' as 'create_linked' | 'linked',
+        work_order_id: null as number | null,
+        closure_acceptance: 'unknown' as const,
+        reopen_blocked_reason: 'closure_revision_required'
+      }
+    ]
+  };
+  setOverview({ recurrence_policy: policy });
+  await monitoring(page);
+  const bodies: Record<string, any>[] = [];
+  await page.route(
+    '**/api/kanban/work-orders/commands/create/',
+    async (route) => {
+      const body = route.request().postDataJSON();
+      bodies.push(body);
+      if (bodies.length === 1) {
+        setOverview({ lifecycle_version: 9 });
+        return route.fulfill({
+          status: 409,
+          json: {
+            code: 'STALE_VERSION',
+            detail: 'Work changed; review latest recurrence.'
+          }
+        });
+      }
+      policy.items[0].action = 'linked';
+      policy.items[0].work_order_id = 80;
+      await route.fulfill({
+        status: 201,
+        json: {
+          id: 80,
+          reference: 'WO-80',
+          process_receipt: {
+            command: 'create',
+            work_order_id: 80,
+            event_id: 111,
+            idempotency_key: body.idempotency_key,
+            lifecycle_version: 1,
+            metadata: {
+              recurrence_of: 73,
+              occurrence_id: 904,
+              closure_acceptance: 'unknown',
+              outcome: 'linked_created'
+            }
+          }
+        }
+      });
+    }
+  );
+  await openExecutionPanel(page, 'closeout', 'light', false, 'editor');
+  const disclosure = visibleContinuity(page);
+  await disclosure.locator('summary').click();
+  const section = disclosure.getByTestId('recurrence-policy');
+  await expect(
+    section.getByText(/Closure acceptance is not recorded/)
+  ).toBeVisible();
+  await expect(
+    section.getByText(/Retained closure evidence prevents reopening/)
+  ).toBeVisible();
+  await section
+    .getByRole('button', { name: 'Create linked corrective work', exact: true })
+    .click();
+  await expect(
+    section.getByText('Work changed; review latest recurrence.')
+  ).toBeVisible();
+  await page.reload();
+  await disclosure.locator('summary').click();
+  await expect(
+    section.getByRole('button', {
+      name: 'Create linked corrective work',
+      exact: true
+    })
+  ).toHaveCount(0);
+  await section
+    .getByRole('button', { name: 'Review latest recurrence', exact: true })
+    .click();
+  await section
+    .getByRole('button', { name: 'Create linked corrective work', exact: true })
+    .click();
+  await expect(
+    section.getByText(
+      'Linked corrective Work WO-80 created; the previous closure is unchanged.'
+    )
+  ).toBeVisible();
+  expect(bodies).toHaveLength(2);
+  expect(bodies[1].prior_version).toBe(9);
+  expect(bodies[1].idempotency_key).not.toBe(bodies[0].idempotency_key);
+  await section
+    .getByRole('button', { name: 'Review latest recurrence', exact: true })
+    .click();
+  await expect(
+    section.getByRole('link', {
+      name: 'Linked corrective Work: 80',
+      exact: true
+    })
+  ).toBeVisible();
+  expect(bodies).toHaveLength(2);
+  await expect(section).toContainText(
+    'Linked corrective Work is already recorded for this deviation.'
+  );
+  await expect(
+    section.getByText(
+      'Closure acceptance is not recorded. This does not permit reopening; create linked corrective work.',
+      { exact: true }
+    )
+  ).toHaveCount(0);
+  await captureProcessSection(
+    page,
+    section,
+    info.outputPath('review-recurrence-refusal-recovered-light.png')
+  );
+});
+
+function followupPolicy(title: string, canCreate = true): RecurrencePolicy {
+  return {
+    rule: 'recurrence_policy.v1',
+    days: 30,
+    available: true,
+    can_create: canCreate,
+    can_reopen: false,
+    closure_acceptance: 'unknown',
+    items: [
+      {
+        occurrence_id: 904,
+        title,
+        component_ref: 'PS-MOTOR-DE-BRG:1',
+        observed_at: deviation.first_observed_at,
+        action: 'create_linked',
+        closure_acceptance: 'unknown',
+        work_order_id: null
+      }
+    ]
+  };
+}
+
+for (const scheme of ['light', 'dark'] as const) {
+  for (const canCreate of [true, false]) {
+    test(`followup2 long recurrence title and ${canCreate ? 'linked response' : 'viewer role'} (${scheme})`, async ({
+      page
+    }, info) => {
+      const { setOverview } = await closeoutWork(page, { completed: true });
+      const title = 'Synthetic source deviation '.repeat(10).slice(0, 255);
+      expect(title).toHaveLength(255);
+      const policy = followupPolicy(title, canCreate);
+      setOverview({
+        structured_closeout: { ...accepted!, verified_at: null },
+        recurrence_policy: policy
+      });
+      await monitoring(page);
+      const bodies: Record<string, any>[] = [];
+      await page.route(
+        '**/api/kanban/work-orders/commands/create/',
+        async (route) => {
+          const body = route.request().postDataJSON();
+          bodies.push(body);
+          expect(Array.from(body.title)).toHaveLength(200);
+          expect(body.title).toBe(title.slice(0, 200));
+          policy.items[0].action = 'linked';
+          policy.items[0].work_order_id = 80;
+          await route.fulfill({
+            status: 201,
+            json: {
+              id: 80,
+              reference: 'WO-80',
+              process_receipt: {
+                command: 'create',
+                work_order_id: 80,
+                event_id: 119,
+                idempotency_key: body.idempotency_key,
+                lifecycle_version: 1,
+                metadata: {
+                  recurrence_of: 73,
+                  occurrence_id: 904,
+                  closure_acceptance: 'unknown'
+                }
+              }
+            }
+          });
+        }
+      );
+      await openExecutionPanel(
+        page,
+        'closeout',
+        scheme,
+        false,
+        canCreate ? 'editor' : 'viewer'
+      );
+      const disclosure = visibleContinuity(page);
+      await disclosure.locator('summary').click();
+      const section = disclosure.getByTestId('recurrence-policy');
+      await expect(section).toContainText(title);
+      const create = section.getByRole('button', {
+        name: 'Create linked corrective work',
+        exact: true
+      });
+      if (canCreate) {
+        await create.click();
+        await expect(
+          section.getByRole('link', {
+            name: 'Linked corrective Work: 80',
+            exact: true
+          })
+        ).toBeVisible();
+        await expect(section).toContainText(
+          'Linked corrective Work is already recorded for this deviation.'
+        );
+        await expect(
+          section.getByText(
+            'Closure acceptance is not recorded. This does not permit reopening; create linked corrective work.',
+            { exact: true }
+          )
+        ).toHaveCount(0);
+        await expect(create).toHaveCount(0);
+        expect(bodies).toHaveLength(1);
+      } else {
+        await expect(section).toContainText(
+          'A Work creation role is required for linked corrective work.'
+        );
+        await expect(
+          section.getByText(
+            'Closure acceptance is not recorded. This does not permit reopening; create linked corrective work.',
+            { exact: true }
+          )
+        ).toHaveCount(0);
+        await expect(create).toHaveCount(0);
+        expect(bodies).toHaveLength(0);
+      }
+      await containment(page);
+      await captureProcessSection(
+        page,
+        section,
+        info.outputPath(
+          `followup2-title-${canCreate ? 'linked' : 'viewer'}-${scheme}.png`
+        )
+      );
+    });
+  }
+
+  test(`followup2 stale panel review preserves the newer uncertain recurrence (${scheme})`, async ({
+    page
+  }, info) => {
+    const { setOverview } = await closeoutWork(page, { completed: true });
+    const policy = followupPolicy('Synthetic retained-operation deviation');
+    setOverview({ recurrence_policy: policy });
+    await monitoring(page);
+    const bodies: Record<string, any>[] = [];
+    await page.route(
+      '**/api/kanban/work-orders/commands/create/',
+      async (route) => {
+        const body = route.request().postDataJSON();
+        bodies.push(body);
+        if (bodies.length === 1) {
+          setOverview({ lifecycle_version: 9 });
+          return route.fulfill({
+            status: 409,
+            json: { detail: 'Synthetic first operation refused.' }
+          });
+        }
+        if (bodies.length === 2) return route.abort('failed');
+        policy.items[0].action = 'linked';
+        policy.items[0].work_order_id = 80;
+        return route.fulfill({
+          status: 201,
+          json: {
+            id: 80,
+            reference: 'WO-80',
+            process_receipt: {
+              command: 'create',
+              work_order_id: 80,
+              event_id: 120,
+              idempotency_key: body.idempotency_key,
+              lifecycle_version: 1,
+              metadata: { recurrence_of: 73, occurrence_id: 904 }
+            }
+          }
+        });
+      }
+    );
+    await openExecutionPanel(page, 'closeout', scheme, false, 'editor');
+    const disclosure = visibleContinuity(page);
+    await disclosure.locator('summary').click();
+    const section = disclosure.getByTestId('recurrence-policy');
+    const create = section.getByRole('button', {
+      name: 'Create linked corrective work',
+      exact: true
+    });
+    const review = section.getByRole('button', {
+      name: 'Review latest recurrence',
+      exact: true
+    });
+    await create.click();
+    await expect(section).toContainText('Synthetic first operation refused.');
+    await page.getByRole('tab', { name: 'History', exact: true }).click();
+    await disclosure.locator('summary').click();
+    await expect(review).toBeVisible();
+    await page.getByRole('tab', { name: 'Closeout', exact: true }).click();
+    await review.click();
+    await create.click();
+    await expect(section).toContainText('Recurrence outcome unknown.');
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1].idempotency_key).not.toBe(bodies[0].idempotency_key);
+    await page.getByRole('tab', { name: 'History', exact: true }).click();
+    // This mounted instance still shows K1; it must adopt K2 instead of clearing it.
+    await expect(review).toBeVisible();
+    await review.click();
+    await expect(section).toContainText('Recurrence outcome unknown.');
+    await expect(create).toHaveCount(0);
+    const retained = await page.evaluate(() => {
+      const key = Object.keys(localStorage).find(
+        (k) =>
+          k.startsWith('aimms-process:') && k.includes('"recurrence",73,904')
+      );
+      return key ? JSON.parse(localStorage.getItem(key)!) : null;
+    });
+    expect(retained.status).toBe('uncertain');
+    expect(retained.intent.payload).toEqual(bodies[1]);
+    const uncertainAlert = section.getByRole('alert');
+    const reconcile = uncertainAlert.getByRole('button', {
+      name: 'Check original recurrence command',
+      exact: true
+    });
+    await expect(reconcile).toBeVisible();
+    // Mantine Alert and button flex children must fit; page containment alone
+    // cannot catch content clipped by an alert's overflow:hidden.
+    expect(
+      await reconcile.evaluate((button) => {
+        const alert = button.closest('[role="alert"]')!;
+        const outer = alert.getBoundingClientRect();
+        const inner = button.getBoundingClientRect();
+        const label = button.querySelector('.mantine-Button-label')!;
+        return (
+          inner.left >= outer.left &&
+          inner.right <= outer.right &&
+          label.scrollWidth <= label.clientWidth + 1
+        );
+      })
+    ).toBe(true);
+    await containment(page);
+    await captureProcessSection(
+      page,
+      section,
+      info.outputPath(`followup2-stale-review-uncertain-${scheme}.png`)
+    );
+    await section
+      .getByRole('button', {
+        name: 'Check original recurrence command',
+        exact: true
+      })
+      .click();
+    await expect(section).toContainText(
+      'Linked corrective Work WO-80 created; the previous closure is unchanged.'
+    );
+    expect(bodies).toHaveLength(3);
+    expect(bodies[2]).toEqual(bodies[1]);
+    await expect(
+      section.getByText(
+        'Closure acceptance is not recorded. This does not permit reopening; create linked corrective work.',
+        { exact: true }
+      )
+    ).toHaveCount(0);
+    await containment(page);
+    await captureProcessSection(
+      page,
+      section,
+      info.outputPath(`followup2-stale-review-reconciled-${scheme}.png`)
+    );
+  });
+}

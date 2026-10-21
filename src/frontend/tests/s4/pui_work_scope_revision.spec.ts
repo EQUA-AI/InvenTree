@@ -3,6 +3,7 @@ import { nativeBaseline } from '../s0/guards';
 import { revisionWork } from './scopeRevisionFixtures';
 import {
   capturePanel,
+  captureProcessSection,
   expectNoPageOverflow,
   mockExecutionWork,
   onlyReads,
@@ -172,3 +173,155 @@ test('older server keeps saved versions and unavailable impact explicit', async 
     )
   ).toBeVisible();
 });
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`O15 only bound affected dependencies need reassessment (${scheme})`, async ({
+    page
+  }, info) => {
+    const work = revisionWork();
+    work.prepared_package!.revision_review!.selective_reassessment = {
+      rule: 'component_procedure_bindings.v1',
+      changed_component_refs: ['MOTOR-DE-BRG'],
+      changed_procedure_revision_ids: [],
+      unmapped_changes: false,
+      scope_execution: [
+        { scope_id: 201, executable: false },
+        { scope_id: 202, executable: true }
+      ],
+      items: [
+        {
+          kind: 'tasks',
+          id: 'bearing-inspection',
+          scope_id: 201,
+          state: 'obsolete',
+          executable: false,
+          retained_evidence_ids: [501]
+        },
+        {
+          kind: 'tasks',
+          id: 'bearing-inspection',
+          scope_id: 202,
+          state: 'reassess',
+          executable: false,
+          retained_evidence_ids: [501]
+        },
+        {
+          kind: 'materials',
+          id: 'casing-gasket',
+          scope_id: 202,
+          state: 'retained',
+          executable: true,
+          retained_evidence_ids: [502]
+        },
+        {
+          kind: 'criteria',
+          id: 'bearing-test',
+          scope_id: 202,
+          state: 'reassess',
+          executable: false,
+          retained_evidence_ids: [503]
+        },
+        {
+          kind: 'permissions',
+          id: 'casing-access',
+          scope_id: 202,
+          state: 'retained',
+          executable: true,
+          retained_evidence_ids: [504]
+        }
+      ]
+    };
+    const requests = await mockExecutionWork(page, work);
+    await openExecutionPanel(page, 'plan', scheme);
+    const mapping = page.getByTestId('selective-reassessment');
+    await expect(
+      mapping.getByText('Reassessment required · not executable', {
+        exact: true
+      })
+    ).toHaveCount(2);
+    await expect(
+      mapping.getByText('Evidence retained for this binding', { exact: true })
+    ).toHaveCount(2);
+    await expect(
+      mapping.getByText('Obsolete scope · not executable', { exact: true })
+    ).toBeVisible();
+    expect(onlyReads(requests)).toBe(true);
+    await expectNoPageOverflow(page);
+    await captureProcessSection(
+      page,
+      mapping,
+      info.outputPath(`o15-scope-mapping-${scheme}.png`)
+    );
+  });
+}
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`review unmapped changes and obsolete-only bindings stay explicit (${scheme})`, async ({
+    page
+  }, info) => {
+    const work = revisionWork();
+    const review = work.prepared_package!.revision_review!;
+    review.selective_reassessment = {
+      rule: 'component_procedure_bindings.v1',
+      changed_component_refs: ['MOTOR-DE-BRG'],
+      changed_procedure_revision_ids: [11],
+      unmapped_changes: true,
+      scope_execution: [
+        { scope_id: 201, executable: false },
+        { scope_id: 202, executable: true }
+      ],
+      items: [1, 2].map((sequence) => ({
+        kind: 'tasks',
+        id: 'repeated-lockout',
+        scope_id: 202,
+        line_sequence: sequence,
+        binding_index: 0,
+        state: 'evidence_unknown' as const,
+        executable: false,
+        retained_evidence_ids: []
+      }))
+    };
+    const errors: string[] = [];
+    page.on('console', (msg) => {
+      if (msg.type() === 'error') errors.push(msg.text());
+    });
+    await mockExecutionWork(page, work);
+    await openExecutionPanel(page, 'plan', scheme, false, 'editor');
+    const panel = page.getByTestId('scope-revision-review');
+    await expect(page.getByTestId('unmapped-scope-change')).toBeVisible();
+    await expect(
+      panel.getByText(/Changed components: MOTOR-DE-BRG/)
+    ).toBeVisible();
+    await expect(
+      panel.getByText('Evidence not established · not executable', {
+        exact: true
+      })
+    ).toHaveCount(2);
+    expect(
+      errors.filter((message) => /same key|unique.*key/i.test(message))
+    ).toEqual([]);
+    await captureProcessSection(
+      page,
+      panel,
+      info.outputPath(`review-scope-unmapped-${scheme}.png`)
+    );
+    review.selective_reassessment.items =
+      review.selective_reassessment.items.map((row) => ({
+        ...row,
+        scope_id: 201,
+        state: 'obsolete'
+      }));
+    await page.reload();
+    await expect(page.getByTestId('scope-revision-notice')).toContainText(
+      'dependency impact not recorded'
+    );
+    await expect(
+      panel.getByText('Affected records not recorded', { exact: true })
+    ).toHaveCount(5);
+    await captureProcessSection(
+      page,
+      panel,
+      info.outputPath(`review-scope-no-current-bindings-${scheme}.png`)
+    );
+  });
+}

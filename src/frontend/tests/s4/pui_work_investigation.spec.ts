@@ -233,7 +233,7 @@ test('request-scoped chat acknowledges the exact revision and preserves return i
   await page
     .getByRole('textbox', { name: 'Message', exact: true })
     .fill('First synthetic reading set');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByText('Synthetic response for saved request 401.', { exact: true })
   ).toBeVisible();
@@ -251,7 +251,7 @@ test('request-scoped chat acknowledges the exact revision and preserves return i
   await page
     .getByRole('textbox', { name: 'Message', exact: true })
     .fill('Second synthetic reading set');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByText('Synthetic response for saved request 401.', { exact: true })
   ).toHaveCount(2);
@@ -289,7 +289,7 @@ test('older server cannot silently downgrade a request to Work-only chat', async
   await page
     .getByRole('textbox', { name: 'Message', exact: true })
     .fill('Keep this draft for request 401');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByRole('textbox', { name: 'Message', exact: true })
   ).toHaveValue('Keep this draft for request 401');
@@ -617,7 +617,7 @@ for (const scheme of ['light', 'dark'] as const) {
     await page
       .getByRole('textbox', { name: 'Message', exact: true })
       .fill('Continue after approval');
-    await page.getByLabel('send-ai-chat-message').click();
+    await page.getByTestId('send-ai-chat-message').click();
     await expect(
       page.getByText('Continuing request at revision 4.', { exact: true })
     ).toBeVisible();
@@ -817,6 +817,188 @@ for (const scheme of ['light', 'dark'] as const) {
     await capturePanel(
       page,
       info.outputPath(`retained-reopened-${scheme}.png`)
+    );
+  });
+}
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`O15 persistent contradiction routes to one expert owner (${scheme})`, async ({
+    page
+  }, info) => {
+    const { continuityWork } = await import('./continuityFixtures');
+    const {
+      mockExecutionWork,
+      openExecutionPanel,
+      expectNoPageOverflow,
+      captureProcessSection
+    } = await import('./workExecutionFixtures');
+    const work = continuityWork();
+    const request = work.investigation!.requests.items![0];
+    request.status = 'disputed';
+    request.blocked_reason =
+      'Synthetic persistent contradiction between retained observations';
+    await mockExecutionWork(page, work);
+    await page.route(
+      '**/api/kanban/work-orders/73/investigation-requests/?escalation_owners=1',
+      (route) =>
+        route.fulfill({
+          json: {
+            group: 'Reliability engineers',
+            available: true,
+            owners: [{ id: 9, name: 'Synthetic reliability engineer' }]
+          }
+        })
+    );
+    const posted: unknown[] = [];
+    await page.route(
+      `**/api/kanban/work-orders/73/investigation-requests/${request.id}/`,
+      async (route) => {
+        const body = route.request().postDataJSON();
+        posted.push(body);
+        request.owner = 9;
+        request.owner_name = 'Synthetic reliability engineer';
+        request.next_checkpoint = body.fields.next_checkpoint;
+        request.escalation = {
+          group: 'Reliability engineers',
+          reason: body.fields.blocked_reason,
+          state: 'active',
+          recorded_by: 'Synthetic supervisor',
+          recorded_at: '2026-10-20T09:00:00Z'
+        };
+        request.version = body.request_version + 1;
+        await route.fulfill({
+          json: {
+            work_order_id: 73,
+            request_id: request.id,
+            operation: 'escalate',
+            idempotency_key: body.idempotency_key,
+            expected_version: body.expected_version,
+            version_before: body.request_version,
+            version_after: request.version,
+            request
+          }
+        });
+      }
+    );
+    await openExecutionPanel(page, 'diagnose', scheme, false, 'editor');
+    const section = page.getByTestId(`expert-escalation-${request.id}`);
+    await section
+      .getByRole('button', { name: 'Escalate to expert group', exact: true })
+      .click();
+    await section.getByLabel('Expert owner', { exact: true }).click();
+    await page
+      .getByRole('option', {
+        name: 'Synthetic reliability engineer',
+        exact: true
+      })
+      .click();
+    await section
+      .getByLabel('Next expert checkpoint (browser local time)')
+      .fill(new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 16));
+    await section
+      .getByRole('button', { name: 'Record expert escalation', exact: true })
+      .click();
+    await expect(
+      section.getByText('Expert escalation confirmed in the saved request.')
+    ).toBeVisible();
+    await expect(section.getByText(/Active — unresolved/)).toBeVisible();
+    await expect(
+      section.getByText(/Owner: Synthetic reliability engineer/)
+    ).toBeVisible();
+    await expect(
+      page
+        .getByTestId(`investigation-request-${request.id}`)
+        .getByText('Disputed — unresolved', { exact: true })
+        .first()
+    ).toBeVisible();
+    expect(posted).toHaveLength(1);
+    await expectNoPageOverflow(page);
+    await captureProcessSection(
+      page,
+      section,
+      info.outputPath(`o15-expert-${scheme}.png`)
+    );
+    request.owner = 12;
+    request.owner_name = 'Synthetic later expert';
+    request.version += 1;
+    request.next_checkpoint = '2026-11-02T09:00:00Z';
+    request.escalation = {
+      ...request.escalation!,
+      reason: 'Synthetic later routing decision',
+      recorded_by: 'Synthetic second supervisor',
+      recorded_at: '2026-10-21T10:00:00Z'
+    };
+    await page.reload();
+    await expect(
+      section.getByText(/Owner: Synthetic later expert/)
+    ).toBeVisible();
+    await expect(
+      section.getByText(/Synthetic second supervisor/)
+    ).toBeVisible();
+    await expect(
+      section.getByText('Expert escalation confirmed in the saved request.')
+    ).toHaveCount(0);
+    expect(posted).toHaveLength(1);
+    await expectNoPageOverflow(page);
+    await captureProcessSection(
+      page,
+      section,
+      info.outputPath(`followup2-expert-later-routing-${scheme}.png`)
+    );
+  });
+}
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`review missing expert group is configuration unavailable (${scheme})`, async ({
+    page
+  }, info) => {
+    const { continuityWork } = await import('./continuityFixtures');
+    const { mockExecutionWork, openExecutionPanel, captureProcessSection } =
+      await import('./workExecutionFixtures');
+    const work = continuityWork();
+    const request = work.investigation!.requests.items![0];
+    request.status = 'cannot_perform';
+    request.blocked_reason = 'Synthetic isolation unavailable';
+    await mockExecutionWork(page, work);
+    await page.route(
+      '**/api/kanban/work-orders/73/investigation-requests/?escalation_owners=1',
+      (route) =>
+        route.fulfill({
+          json: {
+            group: 'Missing site experts',
+            available: false,
+            reason: 'group_not_configured',
+            owners: []
+          }
+        })
+    );
+    await openExecutionPanel(page, 'diagnose', scheme, false, 'editor');
+    const section = page.getByTestId(`expert-escalation-${request.id}`);
+    await section
+      .getByRole('button', { name: 'Escalate to expert group', exact: true })
+      .click();
+    await expect(
+      section.getByText(/Expert group not configured/)
+    ).toBeVisible();
+    await expect(section.getByText(/No authorized active members/)).toHaveCount(
+      0
+    );
+    await expect(
+      section.getByRole('button', {
+        name: 'Record expert escalation',
+        exact: true
+      })
+    ).toHaveCount(0);
+    await expect(
+      page
+        .getByTestId(`investigation-request-${request.id}`)
+        .getByText('Cannot perform — unresolved', { exact: true })
+        .first()
+    ).toBeVisible();
+    await captureProcessSection(
+      page,
+      section,
+      info.outputPath(`review-expert-group-missing-${scheme}.png`)
     );
   });
 }

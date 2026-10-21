@@ -1,5 +1,7 @@
+import { displayComponent } from '@lib/types/CanonicalDisplay';
 import { t } from '@lingui/core/macro';
 import {
+  Accordion,
   ActionIcon,
   Button,
   Group,
@@ -25,6 +27,7 @@ import {
 import { type UseQueryResult, useQuery } from '@tanstack/react-query';
 import { type ReactNode, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { openGlobalAIChatAboutWork } from '../../../states/AIChatState';
 import { StatusBadge as Badge } from '../health/common';
 import { formatInstant, useDisplayClock } from '../health/mimic/observedTime';
 import { EquipmentViewControls } from './ViewControls';
@@ -404,13 +407,23 @@ export function EquipmentViewPanel({
   const [params, setParams] = useSearchParams();
   const view: EquipmentView =
     schematic && params.get('view') === 'schematic' ? 'schematic' : 'model';
-  // R6 P13: a Parts slot opens here with its position (`?position=bearing`).
-  const [selected, setSelected] = useState<TwinPartId>(() => {
-    const asked = params.get('position');
-    return REFERENCE_PARTS.some((part) => part.id === asked)
-      ? (asked as TwinPartId)
-      : 'machine';
-  });
+  // Parts and saved-answer links select the same position even when this
+  // panel stays mounted. Replace selection in the URL without making every
+  // model click a browser-history entry; view/mode switches retain it.
+  const asked = params.get('position');
+  const selected: TwinPartId = REFERENCE_PARTS.some((part) => part.id === asked)
+    ? (asked as TwinPartId)
+    : 'machine';
+  const setSelected = (id: TwinPartId) =>
+    setParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        if (id === 'machine') next.delete('position');
+        else next.set('position', id);
+        return next;
+      },
+      { replace: true }
+    );
   const [mode, setMode] = useState<TwinMode>('assembled');
   const [labels, setLabels] = useState(true);
   const choose = (next: EquipmentView) =>
@@ -424,6 +437,11 @@ export function EquipmentViewPanel({
       { replace: true }
     );
 
+  const position = positions.data?.positions.find((p) => p.id === selected);
+  const component =
+    !positions.isError && position && positions.data?.machine === machine.pk
+      ? displayComponent(machine.pk, positions.data.rule, position)
+      : null;
   const theme = useMantineTheme();
   const clock = useDisplayClock();
   const controls = schematic ? (
@@ -491,7 +509,18 @@ export function EquipmentViewPanel({
           </Paper>
         )}
         {view === 'schematic' ? (
-          <div data-equipment-view='schematic'>{schematic}</div>
+          <>
+            <div data-equipment-view='schematic'>{schematic}</div>
+            {/* The same keyboard list selects the position used by the launcher. */}
+            <Accordion variant='contained'>
+              <Accordion.Item value='reference-positions'>
+                <Accordion.Control>{t`Select a reference position`}</Accordion.Control>
+                <Accordion.Panel>
+                  <ComponentList selected={selected} onSelect={setSelected} />
+                </Accordion.Panel>
+              </Accordion.Item>
+            </Accordion>
+          </>
         ) : (
           <ModelView
             machine={machine}
@@ -503,6 +532,38 @@ export function EquipmentViewPanel({
             setLabels={setLabels}
             positions={positions}
           />
+        )}
+        <Group justify='space-between' wrap='wrap'>
+          <Stack gap={2}>
+            <Text size='sm' fw={600}>
+              {t`Selected reference position`}: {referencePartLabel(selected)}
+            </Text>
+            <Text
+              size='sm'
+              className={operations.caveat}
+            >{t`Reference model; physical part identity is not verified.`}</Text>
+          </Stack>
+          <Button
+            size='xs'
+            variant='light'
+            disabled={!component}
+            onClick={() => {
+              if (!component) return;
+              openGlobalAIChatAboutWork({
+                workOrderId: null,
+                lifecycleVersion: null,
+                component,
+                label: `${machine.name} · ${referencePartLabel(selected)}`,
+                returnPath: `/machines/machine/${machine.pk}/equipment/?position=${selected}${view === 'schematic' ? '&view=schematic' : ''}`
+              });
+            }}
+          >{t`Ask about this position`}</Button>
+        </Group>
+        {!component && (
+          <Text
+            size='sm'
+            className={operations.meta}
+          >{t`Position focus is unavailable until the current reference records are read.`}</Text>
         )}
       </Stack>
     </EquipmentViewControls>

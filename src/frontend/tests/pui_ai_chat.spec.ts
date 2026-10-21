@@ -18,7 +18,7 @@ test('AI Chat - Ask about this machine', async ({ browser }) => {
 
   // Drawer opens with the machine preloaded as a dismissible hint chip.
   await page.getByTestId('ai-chat-routing-hint').waitFor();
-  await page.getByLabel('dismiss-routing-hint').click();
+  await page.getByTestId('dismiss-routing-hint').click();
   await page.getByTestId('ai-chat-routing-hint').waitFor({ state: 'detached' });
 });
 
@@ -31,10 +31,10 @@ test('AI Chat - History search', async ({ browser }) => {
     password: 'inventree'
   });
 
-  await page.getByLabel('open-ai-chat').click();
+  await page.getByTestId('open-ai-chat').click();
   await page.getByRole('tab', { name: 'History' }).click();
 
-  const search = page.getByLabel('search-ai-chat-history');
+  const search = page.getByTestId('search-ai-chat-history');
   await search.waitFor();
   await search.fill('zz-no-thread-matches-this-zz');
   await page.getByText('No conversations match').waitFor();
@@ -96,7 +96,7 @@ test('AI Chat - Question card round trip', async ({ browser }) => {
     password: 'inventree'
   });
 
-  await page.getByLabel('open-ai-chat').click();
+  await page.getByTestId('open-ai-chat').click();
   const composer = page.getByPlaceholder(/Type a message|Answer the question/);
   await composer.fill('What does the manual say about the pump station?');
   await composer.press('Enter');

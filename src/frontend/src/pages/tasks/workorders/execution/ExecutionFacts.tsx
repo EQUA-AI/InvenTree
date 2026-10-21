@@ -18,7 +18,7 @@ export function ExecutionFact({
       <Text size='xs' c='dimmed'>
         {label}
       </Text>
-      <Text size='sm' style={{ overflowWrap: 'anywhere' }}>
+      <Text component='div' size='sm' style={{ overflowWrap: 'anywhere' }}>
         {children === null || children === undefined || children === ''
           ? t`Not recorded`
           : children}
@@ -40,7 +40,9 @@ export function ExecutionSection({
       style={{ overflowWrap: 'anywhere' }}
     >
       <Stack gap='sm'>
-        <Title order={4}>{title}</Title>
+        <Title order={2} size='h4'>
+          {title}
+        </Title>
         {children}
       </Stack>
     </Card>

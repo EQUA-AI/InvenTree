@@ -68,12 +68,11 @@ def _scoped_sessions(user):
 
     condition = Q(pk__in=[])
     for scope in scopes:
-        entry = (
-            Q(scope_customer_id=scope.customer_id)
-            if scope.customer_id is not None
-            else Q(scope_customer__isnull=True)
+        entry = Q(
+            scope_customer_id=scope.customer_id,
+            scope_client_id=scope.client_id,
+            scope_site_key=scope.site_key or '',
         )
-        entry &= Q(scope_site_key=scope.site_key or '')
         condition |= entry
 
     return PartVerificationSession.objects.filter(condition).select_related(

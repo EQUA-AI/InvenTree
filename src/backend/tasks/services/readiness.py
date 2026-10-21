@@ -299,7 +299,10 @@ def _closeout_recon_enforced() -> bool:
 
 def _closeout_capture_check(context):
     """Block completion while an in-flight capture lacks required decisions."""
-    if context.action != 'complete' or not _closeout_wizard_enabled():
+    if context.action != 'complete' or (
+        not _closeout_wizard_enabled()
+        and not is_packet_finalization(context.packet_finalization, context.work_order)
+    ):
         return []
 
     # Lazy import: the closeout services import this module's exception types.

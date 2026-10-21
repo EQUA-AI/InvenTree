@@ -4,10 +4,16 @@
     "playwright.s6.config.ts",
     "tests/s1/workListFixtures.ts",
     "tests/s6/closeoutFixtures.ts",
+    "tests/s6/pui_accepted_media.spec.ts",
     "tests/s6/pui_closeout_report.spec.ts",
     "tests/s6/pui_final_update.spec.ts",
     "tests/s6/pui_closeout_story.spec.ts",
     "tests/s6/pui_closeout_reconciliation.spec.ts",
-    "tests/s6/pui_service_restoration.spec.ts"
+    "tests/s6/pui_service_restoration.spec.ts",
+    "tests/s6/pui_routine_work.spec.ts",
+    "tests/s4/authorityFixtures.ts",
+    "tests/s6/pui_service_authority.spec.ts",
+    "tests/s6/pui_calibration_traceability.spec.ts",
+    "tests/s6/pui_routine_findings.spec.ts"
   ]
 }

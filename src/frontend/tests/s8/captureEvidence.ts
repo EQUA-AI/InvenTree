@@ -188,7 +188,8 @@ export async function captureEvidence(
   });
   const metadata = {
     synthetic: true,
-    renderer: 'Linux Chromium in r6-design-browser-15219',
+    renderer: process.env.AIMMS_RENDERER ?? 'Chromium · Playwright runner',
+    sourceRevision: process.env.AIMMS_SOURCE_REVISION ?? null,
     route: await page.url(),
     mount:
       'Real Layout, MachineIndex and MachineDetail with ThemeContext; intercepted fixture APIs; no app login or database',

@@ -1,6 +1,8 @@
 export interface ContinuityIntent {
   workOrderId: number;
-  action: 'hold' | 'resume';
+  action: 'hold' | 'resume' | 'accept_handover';
+  handoverId?: number;
+  fromStatus?: string;
   payload: {
     expected_version: number;
     idempotency_key: string;
@@ -10,10 +12,11 @@ export interface ContinuityIntent {
 
 export interface ContinuityReceipt {
   work_order_id: number;
-  command: 'hold' | 'resume';
+  command: 'hold' | 'resume' | 'accept_handover';
   idempotency_key: string;
   event_id: number;
-  lifecycle_status: 'on_hold' | 'in_progress';
+  lifecycle_status: string;
+  metadata?: { handover_id?: number };
   lifecycle_version: number;
 }
 
@@ -43,7 +46,15 @@ export function matchingContinuityReceipt(
     row.idempotency_key === intent.payload.idempotency_key &&
     row.lifecycle_version === intent.payload.expected_version + 1 &&
     row.lifecycle_status ===
-      (intent.action === 'hold' ? 'on_hold' : 'in_progress') &&
+      (intent.action === 'accept_handover'
+        ? intent.fromStatus
+        : intent.action === 'hold'
+          ? 'on_hold'
+          : 'in_progress') &&
+    (intent.action !== 'accept_handover' ||
+      (row.metadata?.handover_id === intent.handoverId &&
+        Number.isSafeInteger(intent.handoverId) &&
+        intent.handoverId! > 0)) &&
     Number.isSafeInteger(row.event_id) &&
     row.event_id > 0
   );
@@ -68,13 +79,26 @@ export function restoreContinuityCommand(
     if (
       !intent ||
       intent.workOrderId !== workOrderId ||
-      !['hold', 'resume'].includes(intent.action) ||
+      !['hold', 'resume', 'accept_handover'].includes(intent.action) ||
       !Number.isSafeInteger(intent.payload?.expected_version) ||
       intent.payload.expected_version < 1 ||
       typeof intent.payload.idempotency_key !== 'string' ||
       !intent.payload.idempotency_key.trim() ||
       typeof intent.payload.reason !== 'string' ||
-      (intent.action === 'hold' && !intent.payload.reason.trim())
+      (intent.action === 'hold' && !intent.payload.reason.trim()) ||
+      (intent.action === 'accept_handover' &&
+        (!Number.isSafeInteger(intent.handoverId) ||
+          intent.handoverId! < 1 ||
+          ![
+            'draft',
+            'planned',
+            'ready',
+            'in_progress',
+            'on_hold',
+            'verifying',
+            'completed',
+            'canceled'
+          ].includes(intent.fromStatus ?? '')))
     )
       return { status: 'blocked' };
     if (row.status === 'confirmed')

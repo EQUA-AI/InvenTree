@@ -3,6 +3,11 @@ import { expect, test } from '@playwright/test';
 import { nativeBaseline } from './guards';
 import { boardCards, mockWork, repairPacket, workOrder } from './workFixtures';
 
+import {
+  openPacketCloseout,
+  packetCloseoutWork
+} from '../s7/packetReceiptFixtures';
+
 nativeBaseline();
 
 for (const card of boardCards) {
@@ -155,38 +160,20 @@ test('a denied overview shows scope recovery without rendering work data', async
   ).toHaveCount(0);
 });
 
-test('a work-owned packet opens its native closeout form with no standalone completion command', async ({
+test('a work-owned packet opens the shared prepared Closeout without a modal', async ({
   page
 }) => {
-  await page.route('**/api/repair/packets/901/', (route) =>
-    route.fulfill({ json: repairPacket() })
-  );
-  await page.goto(
-    '/playwright/s0-native.html?surface=packet&entry=/repair/packets/901/'
-  );
+  const { commands } = await packetCloseoutWork(page);
+  await openPacketCloseout(page);
+  await expect(page.getByTestId('closeout-account')).toBeVisible();
   await expect(
-    page.getByRole('button', { name: 'Close Repair', exact: true })
-  ).toBeHidden();
-  await page.getByRole('link', { name: 'Open Closeout', exact: true }).click();
-  await page.getByRole('button', { name: 'Close Repair', exact: true }).click();
-  const dialog = page.getByRole('dialog');
-  await expect(
-    dialog.getByText(
-      "This completes work order WO-73 and writes one permanent record to the machine's maintenance history."
-    )
-  ).toBeVisible();
-  for (const label of [
-    'Verified cause',
-    'Action taken',
-    'Result',
-    'Verification',
-    'Downtime (minutes)'
-  ]) {
-    await expect(dialog.getByLabel(label)).toBeVisible();
-  }
+    page.getByRole('button', { name: 'Update maintenance record', exact: true })
+  ).toBeEnabled();
   await expect(
     page.getByRole('button', { name: 'Close Packet', exact: true })
   ).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(commands).toHaveLength(0);
 });
 
 test('a packet without a work order keeps its distinct Close Packet action', async ({
@@ -209,47 +196,54 @@ test('a packet without a work order keeps its distinct Close Packet action', asy
 test('packet closeout sends its own versioned contract and retains text after rejection', async ({
   page
 }) => {
-  await page.route('**/api/repair/packets/901/', (route) =>
-    route.fulfill({ json: repairPacket() })
-  );
-  const commands: unknown[] = [];
+  const { commands } = await packetCloseoutWork(page, { captures: [] });
   await page.route('**/api/repair/packets/901/close/', (route) => {
-    commands.push(route.request().postDataJSON());
-    return route.fulfill({
-      status: 409,
-      json: { code: 'STALE_VERSION', detail: 'Synthetic stale version' }
+    if (route.request().method() === 'GET') return route.fallback();
+    commands.push({
+      path: '/api/repair/packets/901/close/',
+      body: route.request().postDataJSON(),
+      method: 'POST'
     });
+    return route.fulfill({ status: 409, json: { code: 'STALE_VERSION' } });
   });
-  await page.goto(
-    '/playwright/s0-native.html?surface=packet&entry=/repair/packets/901/'
-  );
-  await expect(
-    page.getByRole('button', { name: 'Close Repair', exact: true })
-  ).toBeHidden();
-  await page.getByRole('link', { name: 'Open Closeout', exact: true }).click();
-  await page.getByRole('button', { name: 'Close Repair', exact: true }).click();
-  const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('Action taken').fill('Synthetic action');
-  await dialog.getByLabel('Result', { exact: false }).fill('Synthetic result');
-  await dialog
-    .getByLabel('Verification', { exact: false })
-    .fill('Synthetic verification');
-  await dialog
-    .getByRole('button', { name: 'Close repair', exact: true })
+  await openPacketCloseout(page);
+  await page
+    .getByRole('button', {
+      name: 'What work was actually done, and why?',
+      exact: true
+    })
     .click();
-  await expect(
-    page.getByText('Could not close the repair', { exact: true })
-  ).toBeVisible();
-  await expect(dialog.getByLabel('Action taken')).toHaveValue(
-    'Synthetic action'
+  await page
+    .getByRole('textbox', { name: 'Action taken', exact: true })
+    .fill('Synthetic action');
+  await page
+    .getByRole('textbox', { name: 'Result', exact: true })
+    .fill('Synthetic result');
+  await page
+    .getByRole('textbox', { name: 'Verification summary', exact: true })
+    .fill('Synthetic verification');
+  await page
+    .getByRole('button', { name: 'Update maintenance record', exact: true })
+    .click();
+  await expect(page.getByTestId('prepared-closeout')).toHaveAttribute(
+    'data-update-status',
+    'stale'
   );
+  await expect(
+    page.getByRole('textbox', { name: 'Action taken', exact: true })
+  ).toHaveValue('Synthetic action');
   expect(commands).toEqual([
     expect.objectContaining({
-      expected_version: 7,
-      closeout: expect.objectContaining({
-        action: 'Synthetic action',
-        result: 'Synthetic result',
-        verification_summary: 'Synthetic verification'
+      path: '/api/repair/packets/901/close/',
+      body: expect.objectContaining({
+        expected_version: 7,
+        work_order_id: 73,
+        idempotency_key: expect.any(String),
+        closeout: expect.objectContaining({
+          action: 'Synthetic action',
+          result: 'Synthetic result',
+          verification_summary: 'Synthetic verification'
+        })
       })
     })
   ]);

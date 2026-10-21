@@ -93,3 +93,82 @@ describe('supported Health coverage', () => {
     });
   });
 });
+
+describe('engineer-designated coverage', () => {
+  it('counts only designated signals and leaves unassessed critical data visible', () => {
+    const critical = {
+      critical: true,
+      version: 1,
+      reason: 'Engineer review',
+      recorded_by: 'Engineer',
+      recorded_at: '2026-10-20T08:00:00Z'
+    };
+    expect(
+      healthCoverage([
+        signal({ critical_designation: critical }),
+        signal({ critical_designation: critical, state: 'unknown' }),
+        signal({ state: 'normal' })
+      ]).criticalCoverage
+    ).toEqual({ designated: 2, usable: 2, evaluated: 1 });
+  });
+  it('does not count revoked designations or thresholds', () => {
+    expect(
+      healthCoverage([
+        signal({
+          critical_designation: {
+            critical: false,
+            version: 2,
+            reason: 'Review revised',
+            recorded_by: 'Engineer',
+            recorded_at: '2026-10-20T08:00:00Z'
+          }
+        })
+      ]).criticalCoverage
+    ).toBeNull();
+  });
+});
+
+it('keeps retired designated critical signals in missing coverage without counting them as active mapping', () => {
+  const result = healthCoverage([
+    signal({
+      active: false,
+      stale: true,
+      state: 'unknown',
+      value: null,
+      critical_designation: {
+        critical: true,
+        version: 1,
+        reason: 'Required signal',
+        recorded_by: 'Engineer',
+        recorded_at: '2026-10-20T08:00:00Z'
+      }
+    })
+  ]);
+  expect(result.mapped).toBe(0);
+  expect(result.criticalCoverage).toEqual({
+    designated: 1,
+    usable: 0,
+    evaluated: 0
+  });
+});
+
+it('keeps a remapped critical decision missing until it is reviewed again', () => {
+  const result = healthCoverage([
+    signal({
+      critical_designation: {
+        critical: true,
+        version: 1,
+        reason: 'Before remap',
+        recorded_by: 'Engineer',
+        recorded_at: '2026-10-20T08:00:00Z',
+        applies_current: false,
+        review_required: true
+      }
+    })
+  ]);
+  expect(result.criticalCoverage).toEqual({
+    designated: 1,
+    usable: 0,
+    evaluated: 0
+  });
+});

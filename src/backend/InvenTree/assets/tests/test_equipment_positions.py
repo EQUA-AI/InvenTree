@@ -303,3 +303,25 @@ class EquipmentPositionsTests(TestCase):
             ['Replace DE bearing'],
         )
         self.assertEqual(body['machine_work'], {'count': 2})
+
+    def test_focus_revision_matches_live_reference_and_slots_have_native_ids(self):
+        """Slot sort order cannot make the API's exact focus revision stale."""
+        from assets.equipment_positions import position_reference
+
+        AssetComponent.objects.create(
+            machine=self.pump, part=self.motor.part, code='A:MOTOR', name='Second motor'
+        )
+        _, positions = self.read()
+        for position in positions.values():
+            self.assertEqual(
+                position['focus_revision'],
+                position_reference(self.pump, position['id'])['revision'],
+            )
+        self.assertEqual(positions['bearing']['components'][0]['id'], self.bearing.pk)
+
+    def test_non_pump_positions_preserve_read_without_claiming_focus_support(self):
+        """Station reads remain valid and do not mint pump reference receipts."""
+        from assets.equipment_positions import machine_positions
+
+        result = machine_positions(self.reader, self.station)
+        self.assertTrue(all(p['focus_revision'] is None for p in result['positions']))

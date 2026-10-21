@@ -221,6 +221,7 @@ for (const scheme of ['light', 'dark'] as const)
     const point = Object.values(data.points).find((p) => p.unit === 'kW')!;
     point.part_code = 'PS-MOTOR';
     point.thresholds_configured = true;
+    await openEquipment(page, true, scheme);
     for (const condition of [
       'normal',
       'warning',
@@ -228,11 +229,12 @@ for (const scheme of ['light', 'dark'] as const)
       'unknown'
     ] as const) {
       point.condition = condition;
-      await openEquipment(page, true, scheme);
+      await page.getByRole('button', { name: 'Refresh', exact: true }).click();
       const part = page
         .locator('g[data-part="PS-MOTOR"]')
         .filter({ has: page.locator('circle + text') });
       await expect(part).toHaveCount(1);
+      await expect(part).toHaveAttribute('data-verdict', condition);
       await expect(part.locator('[data-part-label]')).toHaveCount(3);
       await expect(
         part.locator('[data-part-label]').first().locator(':scope > *')

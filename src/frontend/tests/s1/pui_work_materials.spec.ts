@@ -163,7 +163,9 @@ test('each material stage keeps its own record and recorder', async ({
     'Available stock used for this job'
   );
   await expect(
-    page.getByText('Fitted on the machine is not recorded separately from use.')
+    page.getByText(
+      'Fitted identity requires an exact registry slot and a recorded serial or lot. Material use alone does not establish a fitted item.'
+    )
   ).toBeVisible();
   await expect(
     page.getByRole('link', { name: 'Mechanical Seal', exact: true })

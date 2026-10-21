@@ -4,6 +4,7 @@ import { IconBellRinging } from '@tabler/icons-react';
 import { StatusBadge } from '../health/common';
 import operations from '../operations.module.css';
 import type { LocatedMachine } from './locationTypes';
+import { machineCondition } from './machineCondition';
 import { pageFacts } from './pageFacts';
 
 export function MachinePageSummary({
@@ -34,18 +35,65 @@ export function MachinePageSummary({
           lh={1.2}
           fw={600}
         >{t`This page · ${rows.length} of ${total} machines`}</Text>
+        <Group
+          gap={4}
+          className={operations.conditionCounts}
+          aria-label={t`Condition totals`}
+          component='fieldset'
+          bd={0}
+          p={0}
+          m={0}
+          miw={0}
+        >
+          {(
+            [
+              ['critical', t`Critical`, facts.critical],
+              ['warning', t`Warning`, facts.warning],
+              ['unavailable', t`Unavailable`, facts.unavailable]
+            ] as const
+          ).map(([kind, label, count]) => (
+            <Button
+              key={kind}
+              size='compact-xs'
+              variant='default'
+              className={operations.phoneTarget}
+              disabled={count === 0}
+              aria-label={`${label} · ${count}`}
+              onClick={() => {
+                const row = rows.find((row) => {
+                  const condition = machineCondition(row.condition);
+                  return kind === 'unavailable'
+                    ? condition.kind === kind
+                    : condition.kind === 'assessed' && condition.state === kind;
+                });
+                const target =
+                  row && document.getElementById(`machine-row-${row.pk}`);
+                target?.focus({ preventScroll: true });
+                target?.scrollIntoView({ block: 'center' });
+              }}
+            >
+              {kind === 'unavailable' ? (
+                <>
+                  <Box
+                    component='span'
+                    visibleFrom='sm'
+                  >{t`Condition unavailable (not judged)`}</Box>
+                  <Box component='span' hiddenFrom='sm'>
+                    {label}
+                  </Box>
+                </>
+              ) : (
+                label
+              )}{' '}
+              · {count}
+            </Button>
+          ))}
+        </Group>
         <Box visibleFrom='sm' className={operations.inline}>
           {(
             [
-              [t`Critical`, facts.critical, 'red'],
-              [t`Warning`, facts.warning, 'yellow'],
               [t`Offline`, facts.offline, 'gray'],
               [t`Condition unknown (assessed)`, facts.unknown, 'gray'],
-              [
-                t`Condition unavailable (not judged)`,
-                facts.unavailable,
-                'gray'
-              ],
               [t`Normal`, facts.normal, 'green']
             ] as const
           ).map(([label, count, color]) => (
@@ -57,7 +105,7 @@ export function MachinePageSummary({
         <Button
           variant='default'
           size='compact-xs'
-          h={20}
+          className={`${operations.phoneTarget} ${operations.alarmFilter}`}
           aria-pressed={!!alarmsOnly}
           leftSection={<IconBellRinging size={13} />}
           onClick={onAlarmsChange}

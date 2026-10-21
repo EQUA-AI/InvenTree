@@ -8,6 +8,7 @@ import type { Page } from '@playwright/test';
  */
 export function positionsFixture(overrides: Record<string, unknown> = {}) {
   const slot = (ipn: string, name: string, status: 'draft' | 'verified') => ({
+    id: ipn.length,
     code: `${ipn}:1`,
     name,
     status,
@@ -81,7 +82,7 @@ export function positionsFixture(overrides: Record<string, unknown> = {}) {
         ...none
       },
       { id: 'base', family: null, family_name: null, ...none }
-    ],
+    ].map((position) => ({ ...position, focus_revision: 'a'.repeat(64) })),
     ...overrides
   };
 }

@@ -982,7 +982,7 @@ CORS_ALLOWED_ORIGIN_REGEXES = get_setting(
     typecast=list,
 )
 
-_allowed_headers = (*default_cors_headers, 'traceparent')
+_allowed_headers = (*default_cors_headers, 'traceparent', 'x-aimms-reconcile-only')
 # Allow extra CORS headers in DEBUG mode
 # Required for serving /static/ and /media/ files
 if DEBUG:
@@ -1532,4 +1532,12 @@ AGENT_EMAIL_MICROSOFT_CLIENT_ID = os.environ.get(
 )
 AGENT_EMAIL_MICROSOFT_CLIENT_SECRET = os.environ.get(
     'INVENTREE_AGENT_EMAIL_MICROSOFT_CLIENT_SECRET', ''
+)
+
+# O15 process policies; deployments can override these Django settings.
+AIMMS_EXPERT_GROUP_NAME = get_setting(
+    'AIMMS_EXPERT_GROUP_NAME', 'aimms.expert_group_name', 'Reliability engineers'
+)
+AIMMS_RECURRENCE_DAYS = int(
+    get_setting('AIMMS_RECURRENCE_DAYS', 'aimms.recurrence_days', 30)
 )

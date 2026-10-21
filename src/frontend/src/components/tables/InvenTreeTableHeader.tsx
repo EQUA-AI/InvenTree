@@ -271,14 +271,17 @@ export default function InvenTreeTableHeader({
             />
           )}
           {tableProps.enableRefresh && (
-            <ActionIcon variant='transparent' aria-label='table-refresh'>
+            <ActionIcon
+              variant='transparent'
+              aria-label={t`Refresh table`}
+              data-testid='table-refresh'
+              onClick={() => {
+                tableState.refreshTable();
+                tableState.clearSelectedRecords();
+              }}
+            >
               <Tooltip label={t`Refresh data`} position='top-end'>
-                <IconRefresh
-                  onClick={() => {
-                    tableState.refreshTable();
-                    tableState.clearSelectedRecords();
-                  }}
-                />
+                <IconRefresh />
               </Tooltip>
             </ActionIcon>
           )}
@@ -297,7 +300,9 @@ export default function InvenTreeTableHeader({
               <ActionIcon
                 disabled={hasCustomFilters}
                 variant='transparent'
-                aria-label='table-select-filters'
+                aria-label={t`Table filters`}
+                data-testid='table-select-filters'
+                onClick={() => setFiltersVisible(!filtersVisible)}
               >
                 <HoverCard
                   position='bottom-end'
@@ -313,9 +318,7 @@ export default function InvenTreeTableHeader({
                       position='top-end'
                       disabled={!!tableState.filterSet.activeFilters?.length}
                     >
-                      <IconFilter
-                        onClick={() => setFiltersVisible(!filtersVisible)}
-                      />
+                      <IconFilter />
                     </Tooltip>
                   </HoverCard.Target>
                   <HoverCard.Dropdown>
@@ -338,9 +341,14 @@ export default function InvenTreeTableHeader({
             </Indicator>
           )}
           {tableUrl && tableProps.enableDownload && (
-            <ActionIcon variant='transparent' aria-label='table-export-data'>
+            <ActionIcon
+              variant='transparent'
+              aria-label={t`Export table data`}
+              data-testid='table-export-data'
+              onClick={exportModal.open}
+            >
               <Tooltip label={t`Export data`} position='top-end'>
-                <IconDownload onClick={exportModal.open} />
+                <IconDownload />
               </Tooltip>
             </ActionIcon>
           )}
