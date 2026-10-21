@@ -840,12 +840,15 @@ class GeneralApiTests(InvenTreeAPITestCase):
 
                 self.assertIn('Failed to parse license file', str(log.output))
 
+    @override_settings(PLUGINS_ENABLED=True)
     def test_info_view(self):
         """Test that we can read the 'info-view' endpoint."""
         from plugin import PluginMixinEnum
         from plugin.models import PluginConfig
         from plugin.registry import registry
 
+        # Recollect under the restored plugin setting after this scoped test.
+        self.addCleanup(self.ensurePluginsLoaded, force=True)
         self.ensurePluginsLoaded()
 
         url = reverse('api-inventree-info')
@@ -897,6 +900,18 @@ class GeneralApiTests(InvenTreeAPITestCase):
         self.assertIn('bom-exporter', keys)
         self.assertIn('inventree-ui-notification', keys)
         self.assertIn('inventreelabel', keys)
+
+    @override_settings(PLUGINS_ENABLED=False)
+    def test_info_view_with_plugins_disabled(self):
+        """The info endpoint explicitly reports disabled plugin support."""
+        response = self.get(
+            reverse('api-inventree-info'), max_query_count=20, expected_code=200
+        )
+
+        self.assertFalse(response.json()['plugins_enabled'])
+        active_plugins = response.json()['active_plugins']
+        self.assertIs(type(active_plugins), bool)
+        self.assertFalse(active_plugins)
 
     def test_generic_metadata_lookup_field_injection(self):
         """The generic metadata endpoint must not accept arbitrary lookup expressions.

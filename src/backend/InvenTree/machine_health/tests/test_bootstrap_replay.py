@@ -22,6 +22,8 @@ from assets.health_models import HealthSource
 from assets.models import Client
 from assets.registry import import_dictionary, plan_dictionary, register_station
 from assets.registry_models import DictionaryPoint
+from common.models import CustomUnit
+from InvenTree.conversion import reload_unit_registry
 
 #: The smallest estate, so the test stays quick while exercising every rule.
 PACK = (
@@ -56,6 +58,13 @@ class BootstrapReplayTests(TestCase):
 
     def setUp(self):
         """Stand up the least that `import_dictionary` and the pack require."""
+        self.assertTrue(
+            CustomUnit.objects.filter(name='cusec').exists(),
+            'the cusec unit must come from the data migration',
+        )
+        # Startup precedes the migrated test database, and test rollbacks do
+        # not restore the process-wide unit registry.
+        reload_unit_registry()
         self.review = json.loads(PACK.read_text())
         # Step one of the bootstrap: the pack maps onto catalogue parts by IPN
         # and parameters by name, so without the catalogue every mapping in it
