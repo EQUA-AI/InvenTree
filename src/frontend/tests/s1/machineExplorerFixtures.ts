@@ -35,10 +35,10 @@ export async function mockExplorer(page: Page) {
   const machines = Array.from({ length: 110 }, (_, index) => ({
     pk: index + 1,
     name: `Synthetic pump ${String(index + 1).padStart(3, '0')}`,
-    active: true,
+    active: index !== 9,
     client: 1,
-    asset_type: 'machine',
-    parent: null,
+    asset_type: index === 0 ? 'pumphouse' : index === 3 ? 'pump' : 'machine',
+    parent: index === 3 ? 1 : null,
     source_key: '',
     location: '',
     manufacturer: 'Synthetic manufacturer',
@@ -50,6 +50,12 @@ export async function mockExplorer(page: Page) {
     barcode_hash: '',
     open_alarms: index < 50 || index >= 80 ? 1 : 0,
     open_critical_alarms: 0,
+    // Row 001 includes child alarms; row 004 has info only. Own warnings
+    // appear only on assessed Warning/Critical or unavailable rows.
+    open_warning_alarms:
+      (index < 50 || index >= 80) && (index % 5 === 1 || index % 5 === 2)
+        ? 1
+        : 0,
     // R6 UI01: synthetic open Work — busy, quiet and one unresolved row.
     open_work:
       index === 2
@@ -136,6 +142,7 @@ export async function mockExplorer(page: Page) {
     route.fulfill({
       json: {
         workspaces: [{ pk: 1, name: 'Synthetic workspace' }],
+        plant_timezone: null,
         can_add: false,
         can_change: false
       }
@@ -242,9 +249,22 @@ export async function openExplorer(
     entry
   });
   await page.goto(`/playwright/s0-native.html?${query}`);
+  await showExplorerControls(page);
   await expect(
     page.getByRole('textbox', { name: 'Search machines', exact: true })
   ).toBeVisible();
+}
+
+/** Reveal the same native controls an operator uses on phone. */
+export async function showExplorerControls(page: Page) {
+  for (const name of ['Filters', 'Location details']) {
+    const control = page.getByRole('button', { name, exact: true });
+    if (
+      (await control.isVisible()) &&
+      (await control.getAttribute('aria-expanded')) === 'false'
+    )
+      await control.click();
+  }
 }
 
 export function machineReturnLink(page: Page) {

@@ -527,7 +527,7 @@ function buildPumpModel(accent) {
 
 function fallbackElement(stage, message) {
   const element = document.createElement('div'); element.className = 'aimms-twin-fallback'; element.setAttribute('role', 'status');
-  Object.assign(element.style, { position: 'absolute', inset: '0', display: 'grid', placeContent: 'center', gap: '8px', padding: '30px', textAlign: 'center', color: '#41516a', background: '#f4f6fa', font: '13px/1.5 system-ui, sans-serif', zIndex: '6' });
+  Object.assign(element.style, { position: 'absolute', inset: '0', display: 'grid', placeContent: 'center', gap: '8px', padding: '30px', textAlign: 'center', color: 'var(--mantine-color-text)', background: 'var(--mantine-color-body)', font: 'inherit', zIndex: '6' });
   const title = document.createElement('strong'); title.textContent = '3D equipment view unavailable'; title.style.fontSize = '15px';
   const detail = document.createElement('span'); detail.textContent = message; detail.style.maxWidth = '320px';
   element.append(title, detail); stage.append(element); return element;
@@ -562,7 +562,7 @@ function create(host, options = {}) {
     canvas.setAttribute('aria-label', 'Conceptual vertical pump train. Drag to rotate. Scroll or use plus and minus to zoom. Arrow keys rotate. R resets the view. Select numbered components or use the component list.');
     Object.assign(canvas.style, { display: 'block', width: '100%', height: '100%', touchAction: 'none', outlineOffset: '-4px' }); stage.append(canvas);
     const style = document.createElement('style');
-    style.textContent = '.aimms-twin-canvas:focus-visible{outline:3px solid var(--mantine-primary-color-filled)}.aimms-twin-hotspot:focus-visible{outline:3px solid var(--mantine-primary-color-filled);outline-offset:3px}.aimms-twin-hotspot:hover{box-shadow:0 0 0 4px var(--mantine-primary-color-light),0 2px 6px #1c35551f!important}.aimms-twin-hotspot[aria-pressed="true"]{background:var(--mantine-primary-color-8)!important;color:var(--mantine-primary-color-contrast)!important;border-color:var(--mantine-primary-color-filled)!important}.aimms-twin-hotspot[hidden]{display:none!important}';
+    style.textContent = '.aimms-twin-canvas:focus-visible{outline:2px solid var(--mantine-color-text);box-shadow:0 0 0 4px var(--mantine-primary-color-7)}.aimms-twin-hotspot:focus-visible{outline:2px solid var(--mantine-color-text);box-shadow:0 0 0 4px var(--mantine-primary-color-7);outline-offset:3px}.aimms-twin-hotspot:hover{box-shadow:0 0 0 4px var(--mantine-primary-color-light),0 2px 6px #1c35551f!important}.aimms-twin-hotspot[aria-pressed="true"]{background:var(--mantine-primary-color-8)!important;color:var(--mantine-primary-color-contrast)!important;border-color:var(--mantine-color-text)!important}.aimms-twin-hotspot[hidden]{display:none!important}';
     stage.append(style);
     scene = new THREE.Scene(); scene.background = new THREE.Color(surface());
     camera = new THREE.PerspectiveCamera(34, 1, .05, 70);
@@ -590,9 +590,9 @@ function create(host, options = {}) {
 
     model = buildPumpModel(getComputedStyle(stage).color); scene.add(model.root); model.applyMode(mode); model.select(selected);
     const floorGeometry = new THREE.PlaneGeometry(32, 32); externalGeometries.add(floorGeometry);
-    const floorMaterial = new THREE.MeshStandardMaterial({ color: surface(), metalness: .03, roughness: .95, envMapIntensity: .15 }); externalMaterials.add(floorMaterial);
+    const floorMaterial = new THREE.MeshBasicMaterial({ color: surface(), toneMapped: false }); externalMaterials.add(floorMaterial);
     const floor = new THREE.Mesh(floorGeometry, floorMaterial); floor.rotation.x = -Math.PI / 2; floor.position.y = -.008; floor.receiveShadow = true; scene.add(floor);
-    const grid = new THREE.GridHelper(15, 30, '#c1ccd8', '#d4dde6'); grid.position.y = -.004; grid.material.transparent = true; grid.material.opacity = .28; grid.material.depthWrite = false;
+    const grid = new THREE.GridHelper(15, 30, getComputedStyle(stage).getPropertyValue('--mantine-color-default-border').trim(), getComputedStyle(stage).getPropertyValue('--mantine-color-default-border').trim()); grid.position.y = -.004; grid.material.transparent = true; grid.material.opacity = .28; grid.material.depthWrite = false;
     externalGeometries.add(grid.geometry); externalMaterials.add(grid.material); scene.add(grid);
     // A broad, soft contact patch makes the mounting feet read against the
     // floor even on implementations with coarse shadow filtering.
@@ -614,16 +614,19 @@ function create(host, options = {}) {
     for (const marker of model.markers) {
       const button = document.createElement('button'); button.type = 'button'; button.className = 'aimms-twin-hotspot'; button.textContent = String(marker.number);
       button.setAttribute('aria-label', `${marker.number}. Select ${marker.label.toLowerCase()}`); button.title = marker.label; button.setAttribute('aria-pressed', String(selected === marker.id));
-      Object.assign(button.style, { position: 'absolute', transform: 'translate(-50%,-50%)', width: '25px', height: '25px', borderRadius: '50%', border: '1px solid var(--mantine-color-default-border)', background: 'var(--mantine-color-body)', color: 'var(--mantine-color-text)', font: '600 11px/1 system-ui, sans-serif', display: 'grid', placeItems: 'center', boxShadow: '0 1px 5px #1c355514', cursor: 'pointer', pointerEvents: 'auto', padding: '0' });
+      Object.assign(button.style, { position: 'absolute', transform: 'translate(-50%,-50%)', width: '25px', height: '25px', borderRadius: '50%', border: '2px solid var(--mantine-color-text)', background: 'var(--mantine-color-body)', color: 'var(--mantine-color-text)', fontFamily: 'inherit', fontWeight: '600', fontSize: '11px', display: 'grid', placeItems: 'center', boxShadow: '0 1px 5px #1c355514', cursor: 'pointer', pointerEvents: 'auto', padding: '0' });
       const line = document.createElementNS('http://www.w3.org/2000/svg', 'line'); line.setAttribute('stroke-width', '1'); line.setAttribute('stroke', '#92a1b9'); line.setAttribute('opacity', '.55'); svg.append(line);
       const click = event => { event.stopPropagation(); choose(marker.id); }; button.addEventListener('click', click); cleanupListeners.push(() => button.removeEventListener('click', click));
       layer.append(button); hotspotNodes.set(marker.id, { button, line });
     }
-    const themeObserver = new MutationObserver(() => {
-      scene.background.set(surface()); floorMaterial.color.set(surface()); model.setAccent(getComputedStyle(stage).color); model.select(selected); invalidate();
-    });
-    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-mantine-color-scheme'] });
-    cleanupListeners.push(() => themeObserver.disconnect());
+    function setTheme() {
+      scene.background.set(surface()); floorMaterial.color.set(surface());
+      model.setAccent(getComputedStyle(stage).color); model.select(selected);
+      const edge = new THREE.Color(getComputedStyle(stage).getPropertyValue('--mantine-color-default-border').trim());
+      const colors = grid.geometry.getAttribute('color');
+      for (let i = 0; i < colors.count; i++) colors.setXYZ(i, edge.r, edge.g, edge.b);
+      colors.needsUpdate = true; invalidate();
+    }
     const raycaster = new THREE.Raycaster(), pointer = new THREE.Vector2(), scratch = new THREE.Vector3();
     const cameraDirection = new THREE.Vector3(), screenDirection = new THREE.Vector3();
 
@@ -661,7 +664,7 @@ function create(host, options = {}) {
         projected.push(item);
         const node = hotspotNodes.get(marker.id), show = visible && labels && options.hotspots !== false && !contextLost;
         node.button.hidden = !show; node.button.style.left = `${x}px`; node.button.style.top = `${y}px`; node.button.setAttribute('aria-pressed', String(item.selected));
-        node.line.style.display = show ? '' : 'none'; node.line.setAttribute('x1', String(anchorX)); node.line.setAttribute('y1', String(anchorY)); node.line.setAttribute('x2', String(x)); node.line.setAttribute('y2', String(y)); node.line.setAttribute('stroke', item.selected ? 'var(--mantine-primary-color-filled)' : 'var(--mantine-color-dimmed)');
+        node.line.style.display = show ? '' : 'none'; node.line.setAttribute('x1', String(anchorX)); node.line.setAttribute('y1', String(anchorY)); node.line.setAttribute('x2', String(x)); node.line.setAttribute('y2', String(y)); node.line.setAttribute('stroke', item.selected ? 'var(--mantine-primary-color-filled)' : 'var(--mantine-color-text)');
       }
       raycaster.far = Infinity; lastProjected = projected;
       if (typeof options.onProject === 'function') options.onProject(projected.map(item => ({ ...item, world: [...item.world] })), { width, height, mode, selected });
@@ -672,6 +675,7 @@ function create(host, options = {}) {
       try { renderer.render(scene, camera); }
       catch (cause) { fail(cause, 'RENDER_FAILED'); return; }
       projection();
+      options.onOccluded?.(lastProjected.filter(item => item.occluded).map(({id, number, label}) => ({id, number, label})));
       if (!ready) {
         ready = true; failure = null;
         if (typeof options.onReady === 'function') options.onReady({ version: VERSION, renderer: `Three.js r${THREE.REVISION}`, conceptual: true, parts: PARTS, mode, selected, cameraState: cameraState(), meshCount: model.pickMeshes.length, bounds: { min: model.bounds().min.toArray(), max: model.bounds().max.toArray() } });
@@ -774,6 +778,8 @@ function create(host, options = {}) {
     }
     return {
       destroy,
+      setTheme,
+      setRotate(value) { controls.enableRotate = Boolean(value); controls.enablePan = Boolean(value); canvas.style.touchAction = value ? 'none' : 'pan-y'; },
       select(id) { if (destroyed) return; selected = validPart(id); model.select(selected); invalidate(); },
       setMode(nextMode) { if (destroyed) return; const next = validMode(nextMode); if (next === mode) return; mode = next; model.applyMode(mode); fit(camera.position.clone().sub(controls.target)); },
       setLabels(value) { if (destroyed) return; labels = Boolean(value); invalidate(); },

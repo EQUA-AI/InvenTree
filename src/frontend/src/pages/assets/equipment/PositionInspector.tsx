@@ -2,7 +2,6 @@ import { t } from '@lingui/core/macro';
 import {
   Alert,
   Anchor,
-  Badge,
   Button,
   Divider,
   Group,
@@ -12,9 +11,14 @@ import {
   Text,
   Title
 } from '@mantine/core';
+import { IconFlag } from '@tabler/icons-react';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { Link } from 'react-router-dom';
+import { FreshnessLabel } from '../health/mimic/FreshnessLabel';
+import { formatInstant, useDisplayClock } from '../health/mimic/observedTime';
+import { machineOpenWorkHref } from '../maintenance/machineWorkViews';
+import operations from '../operations.module.css';
 
 import { ModelType } from '@lib/enums/ModelType';
 import { UserRoles } from '@lib/enums/Roles';
@@ -22,7 +26,11 @@ import { getDetailUrl } from '@lib/functions/Navigation';
 import { useUserState } from '../../../states/UserState';
 
 import type { SignalQuality } from '@lib/types/MachineHealth';
-import { HealthStateBadge, ObservedAt, qualityLabel } from '../health/common';
+import {
+  StatusBadge as Badge,
+  HealthStateBadge,
+  qualityLabel
+} from '../health/common';
 import { formatValue } from '../performance/format';
 import type {
   MachinePositions,
@@ -57,7 +65,7 @@ function Section({
 }: Readonly<{ title: string; children: React.ReactNode }>) {
   return (
     <Stack gap={4}>
-      <Text size='xs' fw={600} c='dimmed' tt='uppercase'>
+      <Text size='xs' fw={600} className={operations.meta} tt='uppercase'>
         {title}
       </Text>
       {children}
@@ -67,7 +75,7 @@ function Section({
 
 function Absent({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <Text size='sm' c='dimmed'>
+    <Text size='sm' className={operations.meta}>
       {children}
     </Text>
   );
@@ -89,13 +97,14 @@ function ComponentSlot({ slot }: Readonly<{ slot: PositionComponent }>) {
           {slot.status === 'verified' ? t`Verified` : t`Draft inference`}
         </Badge>
       </Group>
-      <Text size='xs' c='dimmed'>
+      <Text size='xs' className={operations.meta}>
         {slot.code}
         {slot.provenance ? ` · ${slot.provenance}` : ''}
       </Text>
       {/* The catalogue family record; what is fitted is not recorded. */}
       {user.hasViewRole(UserRoles.part) && (
         <Anchor
+          className={operations.link}
           component={Link}
           to={getDetailUrl(ModelType.part, slot.part.pk)}
           size='xs'
@@ -127,16 +136,26 @@ function Reading({ signal }: Readonly<{ signal: PositionSignal }>) {
       data-signal={signal.binding_id}
     >
       <Stack gap={0} style={{ minWidth: 0 }}>
-        <Text size='xs' c='dimmed' truncate>
+        <Text size='xs' className={operations.meta} truncate>
           {signal.display_name}
         </Text>
         {/* The value leads; its observation time follows, as on Health. */}
         <Text size='sm' fw={600}>
           {readingText(signal)}
         </Text>
-        <ObservedAt observedAt={signal.observed_at} stale={signal.stale} />
+        <FreshnessLabel
+          point={{
+            observed_at: signal.observed_at,
+            age_seconds: null,
+            reason: signal.stale ? 'stale' : null
+          }}
+        />
         {signal.quality !== 'good' && (
-          <Text size='xs' c='dimmed' data-quality={signal.quality}>
+          <Text
+            size='xs'
+            className={operations.meta}
+            data-quality={signal.quality}
+          >
             {t`Quality`}: {qualityLabel(signal.quality as SignalQuality)}
           </Text>
         )}
@@ -153,7 +172,8 @@ function WorkRows({ rows }: Readonly<{ rows: PositionWorkRow[] }>) {
         <Group key={row.id} gap='xs' wrap='nowrap' align='flex-start'>
           <Badge
             size='xs'
-            variant='light'
+            variant='outline'
+            leftSection={<IconFlag size={12} />}
             color={PRIORITY_COLORS[row.priority]}
             style={{ flexShrink: 0, marginTop: 3 }}
           >
@@ -161,6 +181,7 @@ function WorkRows({ rows }: Readonly<{ rows: PositionWorkRow[] }>) {
           </Badge>
           <Stack gap={0} style={{ minWidth: 0 }}>
             <Anchor
+              className={operations.link}
               component={Link}
               to={`/maintenance/work-orders/${row.id}/`}
               size='sm'
@@ -168,7 +189,7 @@ function WorkRows({ rows }: Readonly<{ rows: PositionWorkRow[] }>) {
             >
               {row.reference ?? t`Work order ${row.id}`}
             </Anchor>
-            <Text size='xs' c='dimmed' lineClamp={2}>
+            <Text size='xs' className={operations.meta} lineClamp={2}>
               {row.title}
             </Text>
           </Stack>
@@ -185,16 +206,23 @@ function WorkRows({ rows }: Readonly<{ rows: PositionWorkRow[] }>) {
  */
 function ParentWork({
   count,
+  machineId,
   other = false
-}: Readonly<{ count: number | null; other?: boolean }>) {
+}: Readonly<{ count: number | null; machineId: number; other?: boolean }>) {
   return (
-    <Text size='xs' c='dimmed' data-parent-work={count ?? 'unknown'}>
+    <Anchor
+      className={operations.link}
+      component={Link}
+      to={machineOpenWorkHref(`/machines/machine/${machineId}/`)}
+      size='sm'
+      data-parent-work={count ?? 'unknown'}
+    >
       {count === null
         ? t`Machine work could not be checked.`
         : other
           ? t`${count} other open on this machine (parent context, not this position's).`
           : t`${count} open on the whole machine (parent context, not this position's).`}
-    </Text>
+    </Anchor>
   );
 }
 
@@ -213,6 +241,7 @@ export function PositionInspector({
   selected: TwinPartId;
   query: UseQueryResult<MachinePositions>;
 }>) {
+  const clock = useDisplayClock();
   const summary = positionSummary(query.data, selected);
   const links = (
     <Group gap='xs'>
@@ -221,6 +250,7 @@ export function PositionInspector({
         to={`/machines/machine/${machineId}/health/`}
         size='compact-xs'
         variant='subtle'
+        className={operations.link}
       >
         {t`View Health`}
       </Button>
@@ -229,6 +259,7 @@ export function PositionInspector({
         to={`/machines/machine/${machineId}/parts/`}
         size='compact-xs'
         variant='subtle'
+        className={operations.link}
       >
         {t`View Parts`}
       </Button>
@@ -248,7 +279,7 @@ export function PositionInspector({
           <Title order={5}>{referencePartLabel(selected)}</Title>
           <Text
             size='xs'
-            c='dimmed'
+            className={operations.meta}
             data-family={summary && 'family' in summary ? summary.family : ''}
           >
             {selected === 'machine'
@@ -300,17 +331,20 @@ export function PositionInspector({
         ) : summary.kind === 'machine' ? (
           <Stack gap='sm'>
             <Section title={t`Work`}>
-              <Text
+              <Anchor
+                className={operations.link}
+                component={Link}
+                to={machineOpenWorkHref(`/machines/machine/${machineId}/`)}
                 size='sm'
                 data-machine-work={summary.machineWork ?? 'unknown'}
               >
                 {summary.machineWork === null
                   ? t`Work could not be checked.`
                   : t`${summary.machineWork} open on this machine`}
-              </Text>
+              </Anchor>
             </Section>
             <Absent>
-              {t`Select a component to see its own slot, readings and work.`}
+              {t`Select a component to see its own component records, readings and work.`}
             </Absent>
             {links}
           </Stack>
@@ -319,14 +353,14 @@ export function PositionInspector({
             <Absent>
               {t`Not bound: this reference position has no catalogue component family, so no records are shown for it.`}
             </Absent>
-            <ParentWork count={summary.machineWork} />
+            <ParentWork machineId={machineId} count={summary.machineWork} />
           </Stack>
         ) : summary.kind === 'no-slot' ? (
           <Stack gap='sm'>
             <Absent>
-              {t`No ${summary.familyName ?? summary.family} slot is recorded for this machine, so no readings or work are shown.`}
+              {t`No ${summary.familyName ?? summary.family} component is recorded for this machine, so no readings or work are shown.`}
             </Absent>
-            <ParentWork count={summary.machineWork} />
+            <ParentWork machineId={machineId} count={summary.machineWork} />
             {links}
           </Stack>
         ) : (
@@ -361,14 +395,22 @@ export function PositionInspector({
               ) : (
                 <Absent>{t`No open work on this component`}</Absent>
               )}
-              <ParentWork count={summary.parentWork} other />
+              <ParentWork
+                machineId={machineId}
+                count={summary.parentWork}
+                other
+              />
             </Section>
             {links}
           </Stack>
         )}
         {query.isSuccess && (
-          <Text size='xs' c='dimmed' data-records-read={query.dataUpdatedAt}>
-            {t`Records read at ${new Date(query.dataUpdatedAt).toLocaleTimeString()}`}
+          <Text
+            size='xs'
+            className={operations.meta}
+            data-records-read={query.dataUpdatedAt}
+          >
+            {t`Records read at ${formatInstant(query.dataUpdatedAt, clock) ?? t`Time unavailable`}`}
           </Text>
         )}
       </Stack>

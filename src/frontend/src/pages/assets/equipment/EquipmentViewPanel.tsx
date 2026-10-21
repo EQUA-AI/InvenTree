@@ -1,9 +1,9 @@
 import { t } from '@lingui/core/macro';
 import {
   ActionIcon,
-  Badge,
   Button,
   Group,
+  Menu,
   NavLink,
   Paper,
   SegmentedControl,
@@ -11,8 +11,11 @@ import {
   Switch,
   Text,
   Title,
-  Tooltip
+  Tooltip,
+  VisuallyHidden,
+  useMantineTheme
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import {
   IconFocusCentered,
   IconRefresh,
@@ -22,6 +25,9 @@ import {
 import { type UseQueryResult, useQuery } from '@tanstack/react-query';
 import { type ReactNode, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { StatusBadge as Badge } from '../health/common';
+import { formatInstant, useDisplayClock } from '../health/mimic/observedTime';
+import { EquipmentViewControls } from './ViewControls';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
@@ -68,8 +74,8 @@ function ComponentList({
   onSelect: (id: TwinPartId) => void;
 }>) {
   return (
-    <Paper withBorder radius='sm' p='xs' className={classes.components}>
-      <Text size='xs' fw={600} c='dimmed' px='xs' pb={4}>
+    <Paper withBorder p='xs' className={classes.components}>
+      <Text size='xs' fw={600} className={operations.meta} px='xs' pb={4}>
         {t`Components`}
       </Text>
       <ul aria-label={t`Model components`} className={classes.list}>
@@ -85,6 +91,7 @@ function ComponentList({
                 data-position={id}
                 onClick={() => onSelect(id)}
                 label={referencePartLabel(id)}
+                classNames={{ label: operations.meta }}
                 leftSection={
                   <Badge
                     size='sm'
@@ -97,7 +104,7 @@ function ComponentList({
                 }
                 style={{
                   paddingLeft: `calc(var(--mantine-spacing-xs) + ${referenceDepth(id) * 14}px)`,
-                  borderRadius: 'var(--mantine-radius-sm)'
+                  borderRadius: 'var(--mantine-radius-default)'
                 }}
               />
             </li>
@@ -139,12 +146,26 @@ function ModelView({
   positions
 }: Readonly<{ machine: { pk: number; name: string } } & ModelState>) {
   const scene = useRef<EquipmentSceneHandle>(null);
+  const theme = useMantineTheme();
+  const phone = useMediaQuery(`(max-width: ${theme.breakpoints.sm})`);
+  const [rotate, setRotate] = useState(false);
+  const [hiddenParts, setHiddenParts] = useState<
+    { id: TwinPartId; number: number; label: string }[]
+  >([]);
 
   return (
-    <Stack gap='sm'>
+    <Stack
+      gap='sm'
+      className={operations.phoneStack}
+      data-operational-panel='equipment'
+    >
       <Group justify='space-between' gap='sm' wrap='wrap'>
         <SegmentedControl
           aria-label={t`Model view mode`}
+          classNames={{ label: classes.viewModeLabel }}
+          transitionDuration={0}
+          color={`${theme.primaryColor}.7`}
+          fullWidth={phone}
           value={mode}
           onChange={(value) => setMode(value as TwinMode)}
           data={MODES.map((value) => ({
@@ -152,8 +173,8 @@ function ModelView({
             label: referenceModeLabel(value)
           }))}
         />
-        <Group gap='xs' wrap='wrap'>
-          <Text size='xs' c='dimmed'>
+        <Group gap='xs' wrap='wrap' visibleFrom='lg'>
+          <Text size='xs' className={operations.meta}>
             {t`Camera`}
           </Text>
           <Button.Group>
@@ -207,40 +228,109 @@ function ModelView({
             {t`Reset view`}
           </Button>
           <Switch
+            classNames={{ track: operations.input }}
             size='sm'
             label={t`Labels`}
             checked={labels}
             onChange={(event) => setLabels(event.currentTarget.checked)}
           />
         </Group>
+        <Group hiddenFrom='lg' gap='xs'>
+          <Menu>
+            <Menu.Target>
+              <Button size='xs' variant='default'>{t`View`}</Button>
+            </Menu.Target>
+            <Menu.Dropdown>
+              {(['iso', 'front', 'side', 'top'] as const).map((view) => (
+                <Menu.Item
+                  key={view}
+                  onClick={() => scene.current?.setView(view)}
+                >
+                  {viewLabel(view)}
+                </Menu.Item>
+              ))}
+              <Menu.Item
+                onClick={() => scene.current?.zoom(0.82)}
+              >{t`Zoom in`}</Menu.Item>
+              <Menu.Item
+                onClick={() => scene.current?.zoom(1.22)}
+              >{t`Zoom out`}</Menu.Item>
+              <Menu.Item
+                onClick={() => scene.current?.focus(selected)}
+              >{t`Focus selection`}</Menu.Item>
+              <Menu.Item
+                onClick={() => scene.current?.reset()}
+              >{t`Reset view`}</Menu.Item>
+              <Menu.Item onClick={() => setLabels(!labels)}>
+                {labels ? t`Hide labels` : t`Show labels`}
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
+          <Button
+            hiddenFrom='sm'
+            size='xs'
+            variant='default'
+            aria-pressed={rotate}
+            onClick={() => setRotate((value) => !value)}
+          >{t`Rotate model`}</Button>
+        </Group>
       </Group>
+      <VisuallyHidden component='output'>
+        {t`Selected`}: {referencePartLabel(selected)}
+      </VisuallyHidden>
 
-      <div className={classes.modelLayout}>
+      <div className={classes.modelLayout} data-model-layout>
         <div className={classes.modelColumns}>
           <div>
             <Stack gap={6}>
               <EquipmentScene
+                fitViewport
                 ref={scene}
                 modelKey={`reference-pump:${machine.pk}`}
                 selected={selected}
                 mode={mode}
                 labels={labels}
                 onSelect={setSelected}
+                rotate={!phone || rotate}
+                onOccluded={(parts) =>
+                  setHiddenParts((current) =>
+                    current.map((p) => p.id).join() ===
+                    parts.map((p) => p.id).join()
+                      ? current
+                      : parts
+                  )
+                }
               />
-              <Text size='xs' c='dimmed'>
+              <Text size='xs' className={operations.meta}>
                 {t`Drag to rotate. Scroll zooms once the model has focus, or hold Ctrl. Arrow keys rotate; + and − zoom.`}
               </Text>
               {mode === 'cutaway' && (
-                <Text size='xs' c='dimmed' data-mode-note='cutaway'>
+                <Text
+                  size='xs'
+                  className={operations.meta}
+                  data-mode-note='cutaway'
+                >
                   {t`Cutaway shows reference internals, not this machine's verified design.`}
                 </Text>
               )}
               {mode === 'exploded' && (
-                <Text size='xs' c='dimmed' data-mode-note='exploded'>
+                <Text
+                  size='xs'
+                  className={operations.meta}
+                  data-mode-note='exploded'
+                >
                   {t`Exploded for orientation only; not a disassembly procedure.`}
                 </Text>
               )}
-              <ComponentList selected={selected} onSelect={setSelected} />
+              <Text
+                className={operations.meta}
+                aria-live='polite'
+                data-hidden-markers
+              >
+                {hiddenParts.length
+                  ? t`Hidden in this view: ${hiddenParts.map((p) => `${referencePartLabel(p.id)} (${p.number})`).join(', ')} — use Cutaway or the component list.`
+                  : t`No components hidden in this view.`}
+              </Text>
             </Stack>
           </div>
           <div>
@@ -249,6 +339,7 @@ function ModelView({
               selected={selected}
               query={positions}
             />
+            <ComponentList selected={selected} onSelect={setSelected} />
           </div>
         </div>
       </div>
@@ -268,7 +359,7 @@ function ModelView({
             </Button>
           )}
         </Group>
-        <Text size='xs' c='dimmed'>
+        <Text size='xs' className={operations.meta}>
           {t`Reference model: conceptual geometry, not this machine's verified design.`}
         </Text>
       </Group>
@@ -333,59 +424,87 @@ export function EquipmentViewPanel({
       { replace: true }
     );
 
+  const theme = useMantineTheme();
+  const clock = useDisplayClock();
+  const controls = schematic ? (
+    <SegmentedControl
+      size='xs'
+      aria-label={t`Equipment view`}
+      classNames={{ label: classes.viewModeLabel }}
+      transitionDuration={0}
+      color={`${theme.primaryColor}.7`}
+      value={view}
+      onChange={(value) => choose(value as EquipmentView)}
+      data={[
+        { value: 'model', label: t`3D model` },
+        { value: 'schematic', label: t`Process schematic` }
+      ]}
+    />
+  ) : null;
   return (
-    <Stack gap='sm'>
-      <Paper
-        className={operations.band}
-        component='section'
-        aria-label={t`Equipment context`}
+    <EquipmentViewControls value={controls}>
+      <Stack
+        gap='sm'
+        className={operations.phoneStack}
+        data-operational-panel='equipment'
       >
-        <Group justify='space-between' gap='xs'>
-          <Stack gap={2}>
-            <Title order={4}>
-              {view === 'model'
-                ? t`Inspect equipment positions`
-                : t`Process readings`}
-            </Title>
-            <Text className={operations.caveat}>
-              {view === 'model'
-                ? t`Reference model · geometry unverified`
-                : t`Reference schematic · physical arrangement unverified`}
+        {view === 'model' && (
+          <Paper
+            className={operations.band}
+            component='section'
+            aria-labelledby='equipment-title'
+          >
+            <Group justify='space-between' gap={4}>
+              <Stack gap={2}>
+                <Title order={4} id='equipment-title'>
+                  {view === 'model'
+                    ? t`Inspect equipment positions`
+                    : t`Process readings`}
+                </Title>
+                <Text className={operations.caveat}>
+                  {view === 'model'
+                    ? t`Reference model · geometry unverified`
+                    : t`Reference schematic · physical arrangement unverified`}
+                </Text>
+              </Stack>
+              <Group gap={4}>
+                {controls}
+                <Button
+                  size='xs'
+                  variant='default'
+                  loading={positions.isFetching}
+                  onClick={() => positions.refetch()}
+                >{t`Refresh`}</Button>
+                <Badge
+                  color='gray'
+                  variant='outline'
+                  c='var(--mantine-color-text)'
+                >{t`Reference view`}</Badge>
+              </Group>
+            </Group>
+            <Text className={operations.meta}>
+              {t`Records read`}{' '}
+              {formatInstant(positions.dataUpdatedAt || null, clock) ??
+                t`Time unavailable`}{' '}
+              · {t`Times`}: {clock.label}
             </Text>
-          </Stack>
-          <Badge
-            color='gray'
-            variant='outline'
-            c='var(--mantine-color-text)'
-          >{t`Reference view`}</Badge>
-        </Group>
-      </Paper>
-      {schematic && (
-        <SegmentedControl
-          aria-label={t`Equipment view`}
-          w='fit-content'
-          value={view}
-          onChange={(value) => choose(value as EquipmentView)}
-          data={[
-            { value: 'model', label: t`3D model` },
-            { value: 'schematic', label: t`Process schematic` }
-          ]}
-        />
-      )}
-      {view === 'schematic' ? (
-        <div data-equipment-view='schematic'>{schematic}</div>
-      ) : (
-        <ModelView
-          machine={machine}
-          selected={selected}
-          setSelected={setSelected}
-          mode={mode}
-          setMode={setMode}
-          labels={labels}
-          setLabels={setLabels}
-          positions={positions}
-        />
-      )}
-    </Stack>
+          </Paper>
+        )}
+        {view === 'schematic' ? (
+          <div data-equipment-view='schematic'>{schematic}</div>
+        ) : (
+          <ModelView
+            machine={machine}
+            selected={selected}
+            setSelected={setSelected}
+            mode={mode}
+            setMode={setMode}
+            labels={labels}
+            setLabels={setLabels}
+            positions={positions}
+          />
+        )}
+      </Stack>
+    </EquipmentViewControls>
   );
 }

@@ -1,10 +1,10 @@
 /* The disclosure and Grid use the same breakpoint from useMantineTheme. */
-.browser[data-wide="false"][data-mobile-open="false"] { display: none; }
+
 
 /* Tree row: chevron + selectable label + type/code cues (M1). */
 .nodeLabel {
 	cursor: pointer;
-	border-radius: var(--mantine-radius-sm);
+	border-radius: var(--mantine-radius-default);
 	min-height: 28px;
 	flex-wrap: nowrap;
 }
@@ -36,3 +36,8 @@
 .chevron[data-expanded='true'] svg {
 	transform: rotate(90deg);
 }
+
+.nodeName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.nodeName { flex: 1; }
+.nodeLabel > p { flex-shrink: 0; white-space: nowrap; max-width: 4rem; overflow: hidden; text-overflow: ellipsis; }

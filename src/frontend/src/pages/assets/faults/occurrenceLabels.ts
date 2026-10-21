@@ -78,3 +78,45 @@ export function retainedValue(value: unknown, unit: string): string {
     return unit ? `${String(value)} ${unit}` : String(value);
   return JSON.stringify(value);
 }
+
+/** Detector fields have direction only when their names declare it. */
+export function metricLabel(
+  key: string,
+  value: unknown,
+  metrics: Record<string, unknown>
+): string | null {
+  if (value === null || key === 'unit' || key === 'dismissed') return null;
+  const unit =
+    typeof metrics.unit === 'string'
+      ? ` ${metrics.unit === 'degC' ? '°C' : metrics.unit}`
+      : '';
+  const labels: Record<string, string> = {
+    value: t`Value at detection`,
+    warn_min: t`Low warning limit`,
+    warn_max: t`High warning limit`,
+    critical_min: t`Low critical limit`,
+    critical_max: t`High critical limit`
+  };
+  if (labels[key]) return `${labels[key]} ${String(value)}${unit}`;
+  if (key === 'unchanged_for_seconds' && typeof value === 'number')
+    return t`Unchanged for ${shiftSpan(value) ?? `${value} s`}`;
+  if (key.startsWith('vote_')) {
+    if (key !== 'vote_confirmed') return null;
+    return t`Confirmed by ${String(value)} of ${String(metrics.vote_minimum ?? 'Unavailable')} detectors in ${String(metrics.vote_group ?? 'Unavailable')}`;
+  }
+  return `${key}: ${typeof value === 'object' ? JSON.stringify(value) : String(value)}`;
+}
+export function outsideOccurrenceSpan(
+  snapshot: { window_start: string | null; window_end: string | null },
+  occurrence: {
+    first_observed_at: string | null;
+    last_observed_at: string | null;
+  }
+): boolean {
+  return (
+    Date.parse(snapshot.window_end ?? '') <
+      Date.parse(occurrence.first_observed_at ?? '') ||
+    Date.parse(snapshot.window_start ?? '') >
+      Date.parse(occurrence.last_observed_at ?? '')
+  );
+}

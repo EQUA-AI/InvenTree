@@ -74,9 +74,12 @@ for (const screen of [
         // English must be readable; translation identifiers are invalid evidence.
         if (screen === 'machines') {
           await expect(
-            page.getByRole('heading', { name: 'By location', exact: true })
+            page.getByRole('heading', {
+              name: 'Synthetic maintenance site',
+              exact: true
+            })
           ).toBeVisible();
-          await expect(page.getByRole('table')).toBeVisible({
+          await expect(page.getByRole('table').first()).toBeVisible({
             timeout: 60_000
           });
           await expect(page.getByTestId('machine-count-view')).toHaveText(
@@ -108,12 +111,11 @@ for (const screen of [
           path: resolve(dir, `${phase}-${width}-${scheme}.png`),
           animations: 'disabled'
         });
-        if (width === 390)
-          await page.screenshot({
-            path: resolve(dir, `${phase}-${width}-${scheme}-full.png`),
-            fullPage: true,
-            animations: 'disabled'
-          });
+        await page.screenshot({
+          path: resolve(dir, `${phase}-${width}-${scheme}-full.png`),
+          fullPage: true,
+          animations: 'disabled'
+        });
         if (phase.startsWith('after'))
           expect(
             await page.evaluate(() => document.documentElement.scrollWidth)

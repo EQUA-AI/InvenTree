@@ -1,6 +1,9 @@
 import { t } from '@lingui/core/macro';
-import { Accordion, Badge, Group, Stack, Table, Text } from '@mantine/core';
+import { Accordion, Group, Stack, Table, Text } from '@mantine/core';
 import { useState } from 'react';
+import operations from '../../operations.module.css';
+import { StatusBadge as Badge } from '../common';
+import { formatInstant, useDisplayClock } from './observedTime';
 
 import {
   numberText,
@@ -126,6 +129,7 @@ export function PointTable({
   points,
   display = valueText
 }: Readonly<{ points: MimicPoint[]; display?: Display }>) {
+  const clock = useDisplayClock();
   return (
     <Table.ScrollContainer minWidth={650}>
       <Table striped>
@@ -143,7 +147,7 @@ export function PointTable({
             <Table.Tr key={point.pointer} data-point={point.pointer}>
               <Table.Td>
                 {point.label}
-                <Text size='xs' c='dimmed'>
+                <Text size='xs' className={operations.meta}>
                   {point.pointer}
                 </Text>
               </Table.Td>
@@ -154,7 +158,7 @@ export function PointTable({
                 )}
                 {/* A status given in words keeps the code it was read from. */}
                 {usable(point) && display(point) !== valueText(point) && (
-                  <Text size='xs' c='dimmed'>
+                  <Text size='xs' className={operations.meta}>
                     {t`Source code`}: {valueText(point)}
                   </Text>
                 )}
@@ -164,7 +168,8 @@ export function PointTable({
               </Table.Td>
               <Table.Td>
                 {point.observed_at
-                  ? new Date(point.observed_at).toLocaleString()
+                  ? (formatInstant(point.observed_at, clock) ??
+                    t`Time unavailable`)
                   : t`No reading`}
                 {point.age_seconds !== null && (
                   <Text size='xs'>
@@ -182,7 +187,7 @@ export function PointTable({
                     watching. Only the person reading it can tell which. */}
                 {point.unchanged_for_seconds !== null &&
                   point.unchanged_for_seconds > 0 && (
-                    <Text size='xs' c='dimmed'>
+                    <Text size='xs' className={operations.meta}>
                       {t`Unchanged for`}:{' '}
                       {unchangedLabel(point.unchanged_for_seconds)}
                     </Text>
@@ -240,9 +245,9 @@ export function ReadingSections({
             value={section.key}
             data-section={section.key}
           >
-            <Accordion.Control aria-label={section.title}>
+            <Accordion.Control>
               <Group justify='space-between' wrap='wrap' gap='sm'>
-                <Stack gap={2} style={{ flex: '1 1 220px', minWidth: 0 }}>
+                <Stack gap={2} flex='1 1 220px' miw={0}>
                   <Group gap={8} wrap='nowrap'>
                     {section.number !== undefined && (
                       <Badge
@@ -261,7 +266,7 @@ export function ReadingSections({
                       {section.title}
                     </Text>
                   </Group>
-                  <Text size='xs' c='dimmed'>
+                  <Text size='xs' className={operations.meta}>
                     {[
                       ...shown,
                       ...(more > 0 ? [t`and ${more} more`] : [])

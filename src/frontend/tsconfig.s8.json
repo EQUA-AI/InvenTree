@@ -10,6 +10,11 @@
     "playwright/FixtureTheme.tsx",
     "playwright/MachineFixtureRail.tsx",
     "tests/s8/pui_state_captures.spec.ts",
-    "tests/s8/themeFixtures.ts"
+    "tests/s8/themeFixtures.ts",
+    "tests/s8/pui_hyper.spec.ts",
+    "tests/s8/contrast.ts",
+    "tests/s8/pui_hyper_contrast.spec.ts",
+    "tests/s8/captureEvidence.ts",
+    "tests/s8/pui_focus_captures.spec.ts"
   ]
 }

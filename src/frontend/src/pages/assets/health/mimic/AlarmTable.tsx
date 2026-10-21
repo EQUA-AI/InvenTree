@@ -2,9 +2,9 @@ import { UserRoles } from '@lib/enums/Roles';
 import { t } from '@lingui/core/macro';
 import {
   ActionIcon,
-  Badge,
   Button,
   Group,
+  Stack,
   Table,
   Text,
   Tooltip
@@ -12,10 +12,11 @@ import {
 import { IconChartLine, IconExternalLink } from '@tabler/icons-react';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { useGlobalSettingsState } from '../../../../states/SettingsStates';
 import { useUserState } from '../../../../states/UserState';
 import { machinePanelHref } from '../../locations/locationTree';
-import { observedTime } from './observedTime';
+import operations from '../../operations.module.css';
+import { AlarmStateBadge, SeverityBadge } from '../common';
+import { formatInstant, useDisplayClock } from './observedTime';
 
 import { WorkOrderCreateModal } from '../../../maintenance/components/WorkOrderCreateModal';
 import { type AlarmAction, AlarmNoteModal } from './AlarmNoteModal';
@@ -48,9 +49,7 @@ export function AlarmTable({
 }>) {
   const [params] = useSearchParams();
   const user = useUserState();
-  const plantTimezone = useGlobalSettingsState((s) =>
-    s.getSetting('AIMMS_PLANT_TIMEZONE')
-  );
+  const clock = useDisplayClock();
   const canChange = user.hasChangeRole(UserRoles.work_order);
   const canAdd = user.hasAddRole(UserRoles.work_order);
   const [noting, setNoting] = useState<{
@@ -62,7 +61,7 @@ export function AlarmTable({
   return (
     <>
       <Text size='sm'>{t`Acknowledgement records that someone saw the application alarm; it does not clear the condition.`}</Text>
-      <Table.ScrollContainer minWidth={960}>
+      <Table.ScrollContainer minWidth={720}>
         <Table striped>
           <Table.Thead>
             <Table.Tr>
@@ -90,7 +89,7 @@ export function AlarmTable({
                     {alarm.label}
                     <Text
                       size='xs'
-                      c='dimmed'
+                      className={operations.meta}
                       style={{ wordBreak: 'break-all' }}
                     >
                       {alarm.pointer}
@@ -108,14 +107,14 @@ export function AlarmTable({
                   <Table.Td>{conditionText(alarm)}</Table.Td>
                   <Table.Td style={{ whiteSpace: 'nowrap' }}>
                     {alarm.observed_at
-                      ? (observedTime(alarm.observed_at, plantTimezone) ??
+                      ? (formatInstant(alarm.observed_at, clock) ??
                         t`Time unavailable`)
                       : t`No reading`}
                   </Table.Td>
                   <Table.Td style={{ whiteSpace: 'nowrap' }}>
                     <Group
                       gap='sm'
-                      wrap='nowrap'
+                      wrap='wrap'
                       justify='flex-end'
                       preventGrowOverflow={false}
                     >
@@ -125,14 +124,14 @@ export function AlarmTable({
                             component={Link}
                             to={`/machines/machine/${alarm.machine}/health`}
                             variant='subtle'
-                            aria-label={t`Open in Health`}
+                            aria-label={t`Open ${alarm.label} in Health`}
                           >
                             <IconExternalLink size={16} />
                           </ActionIcon>
                         </Tooltip>
                       )}
                       {raised && (
-                        <Tooltip label={t`Open event and trend`}>
+                        <Tooltip label={t`Open occurrence in Fault History`}>
                           <ActionIcon
                             component={Link}
                             to={machinePanelHref(
@@ -142,7 +141,7 @@ export function AlarmTable({
                               { occurrence: String(alarm.anomaly) }
                             )}
                             variant='subtle'
-                            aria-label={t`Open event and trend`}
+                            aria-label={t`Open occurrence for ${alarm.label}`}
                           >
                             <IconChartLine size={16} />
                           </ActionIcon>
@@ -153,7 +152,8 @@ export function AlarmTable({
                         alarm.anomaly_status === 'open' && (
                           <Button
                             size='compact-sm'
-                            variant='light'
+                            variant='default'
+                            aria-label={t`Acknowledge ${alarm.label}`}
                             onClick={() =>
                               setNoting({ action: 'acknowledge', alarm })
                             }
@@ -165,7 +165,8 @@ export function AlarmTable({
                         <Button
                           size='compact-sm'
                           variant='light'
-                          color='orange'
+                          aria-label={t`Create repair for ${alarm.label}`}
+                          className={operations.link}
                           onClick={() => setRepairing(alarm)}
                         >
                           {t`Create repair`}
@@ -176,6 +177,7 @@ export function AlarmTable({
                           size='compact-sm'
                           variant='subtle'
                           color='gray'
+                          aria-label={t`Dismiss ${alarm.label}`}
                           onClick={() =>
                             setNoting({ action: 'dismiss', alarm })
                           }
@@ -241,55 +243,13 @@ function AlarmStatus({ alarm }: Readonly<{ alarm: MimicAlarm }>) {
     // in its vote group agreeing.
     return <Text size='sm'>{t`Not raised yet`}</Text>;
   }
-  const severity =
-    alarm.severity === 'critical'
-      ? t`critical`
-      : alarm.severity === 'warning'
-        ? t`warning`
-        : alarm.severity || t`Severity unavailable`;
-  const color =
-    alarm.severity === 'critical'
-      ? 'red'
-      : alarm.severity === 'warning'
-        ? 'yellow'
-        : 'gray';
-  if (alarm.anomaly_status === 'suppressed') {
-    return (
-      <Badge
-        data-alarm-status='suppressed'
-        variant='outline'
-        color='gray'
-        c='var(--mantine-color-text)'
-        miw='max-content'
-      >
-        {t`Dismissed`}
-      </Badge>
-    );
-  }
-  if (
-    alarm.anomaly_status !== 'open' &&
-    alarm.anomaly_status !== 'acknowledged'
-  )
-    return <Text size='sm'>{t`Alarm state unavailable`}</Text>;
-  return alarm.anomaly_status === 'acknowledged' ? (
-    <Badge
-      data-alarm-status={alarm.anomaly_status}
-      variant='light'
-      color={color}
-      c='var(--mantine-color-text)'
-      miw='max-content'
-    >
-      {t`Acknowledged`} · {severity}
-    </Badge>
-  ) : (
-    <Badge
-      data-alarm-status={alarm.anomaly_status}
-      variant='light'
-      color={color}
-      c='var(--mantine-color-text)'
-      miw='max-content'
-    >
-      {t`Open`} · {severity}
-    </Badge>
+  return (
+    <Stack gap={4} align='flex-start'>
+      <AlarmStateBadge
+        status={alarm.anomaly_status}
+        severity={alarm.severity}
+      />
+      <SeverityBadge severity={alarm.severity} />
+    </Stack>
   );
 }

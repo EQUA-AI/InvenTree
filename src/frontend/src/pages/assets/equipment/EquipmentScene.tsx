@@ -1,5 +1,14 @@
 import { t } from '@lingui/core/macro';
-import { Box, Button, Paper, Skeleton, Stack, Text } from '@mantine/core';
+import {
+  Box,
+  Button,
+  Paper,
+  Skeleton,
+  Stack,
+  Text,
+  useComputedColorScheme,
+  useMantineTheme
+} from '@mantine/core';
 import {
   type Ref,
   useEffect,
@@ -8,6 +17,8 @@ import {
   useRef,
   useState
 } from 'react';
+import { StatusBadge } from '../health/common';
+import operations from '../operations.module.css';
 
 import type {
   TwinController,
@@ -54,6 +65,9 @@ export function EquipmentScene({
   mode,
   labels,
   onSelect,
+  rotate = true,
+  fitViewport = false,
+  onOccluded,
   ref
 }: Readonly<{
   modelKey: string;
@@ -62,17 +76,62 @@ export function EquipmentScene({
   labels: boolean;
   onSelect?: (id: TwinPartId) => void;
   ref?: Ref<EquipmentSceneHandle>;
+  rotate?: boolean;
+  fitViewport?: boolean;
+  onOccluded?: (
+    parts: { id: TwinPartId; number: number; label: string }[]
+  ) => void;
 }>) {
+  const scheme = useComputedColorScheme();
+  const theme = useMantineTheme();
+  const frame = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<string | number>(SCENE_HEIGHT);
   const host = useRef<HTMLDivElement>(null);
   const controller = useRef<TwinController | null>(null);
-  const latest = useRef({ selected, mode, labels, onSelect });
+  const latest = useRef({ selected, mode, labels, onSelect, onOccluded });
   // Kept current after each commit, so the scene's callbacks and a scene
   // created later both see the latest props without rebuilding it.
   useLayoutEffect(() => {
-    latest.current = { selected, mode, labels, onSelect };
+    latest.current = { selected, mode, labels, onSelect, onOccluded };
   });
   const [phase, setPhase] = useState<Phase>('loading');
   const [attempt, setAttempt] = useState(0);
+
+  useLayoutEffect(() => {
+    if (!fitViewport) return;
+    const layout = frame.current?.closest<HTMLElement>('[data-model-layout]');
+    const fit = () => {
+      // A side-by-side inspector needs no height concession. Fit only the
+      // stacked layout, so its inspector heading can remain above the fold.
+      if (
+        layout &&
+        layout.clientWidth >=
+          52 * Number.parseFloat(getComputedStyle(layout).fontSize)
+      ) {
+        setHeight(SCENE_HEIGHT);
+        return;
+      }
+      // Selection can change the inspector's height after the page scrolls.
+      // Keep the scene size tied to its document position, not scroll offset.
+      const top =
+        (frame.current?.getBoundingClientRect().top ?? 0) + window.scrollY;
+      setHeight(
+        Math.min(
+          Math.max(420, window.innerHeight * 0.58),
+          680,
+          Math.max(160, window.innerHeight - top - 140)
+        )
+      );
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    if (layout) observer.observe(layout);
+    window.addEventListener('resize', fit);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', fit);
+    };
+  }, [fitViewport]);
 
   useImperativeHandle(
     ref,
@@ -112,6 +171,7 @@ export function EquipmentScene({
           mode: initial.mode,
           labels: initial.labels,
           onSelect: (id) => latest.current.onSelect?.(id),
+          onOccluded: (parts) => latest.current.onOccluded?.(parts),
           onReady: () => {
             if (!cancelled) setPhase('ready');
           },
@@ -155,20 +215,43 @@ export function EquipmentScene({
     controller.current?.setLabels(labels);
   }, [labels]);
 
+  useEffect(() => {
+    controller.current?.setTheme();
+  }, [scheme, theme.primaryColor, phase]);
+  useEffect(() => {
+    controller.current?.setRotate(rotate);
+  }, [rotate, phase]);
+
   return (
     <Box
+      ref={frame}
       pos='relative'
-      h={SCENE_HEIGHT}
+      h={height}
       data-scene-phase={phase}
-      style={{ borderRadius: 'var(--mantine-radius-md)', overflow: 'hidden' }}
+      style={{
+        borderRadius: 'var(--mantine-radius-default)',
+        overflow: 'hidden'
+      }}
     >
       <Box ref={host} pos='absolute' inset={0} />
+      <Box
+        pos='absolute'
+        top={8}
+        left={8}
+        style={{ zIndex: 7, pointerEvents: 'none' }}
+      >
+        <StatusBadge
+          size='sm'
+          color='gray'
+          variant='outline'
+          bg='var(--mantine-color-body)'
+        >{t`Reference model · geometry unverified`}</StatusBadge>
+      </Box>
       {phase === 'loading' && (
         <Skeleton
           pos='absolute'
           inset={0}
           h='100%'
-          radius='md'
           aria-label={t`Loading 3D view`}
         />
       )}
@@ -177,7 +260,6 @@ export function EquipmentScene({
           pos='absolute'
           inset={0}
           withBorder
-          radius='md'
           p='lg'
           // A status the screen reader announces, not just a picture of one.
           component='output'
@@ -185,7 +267,7 @@ export function EquipmentScene({
         >
           <Stack gap='xs' align='center' maw={360} ta='center'>
             <Text fw={600}>{t`3D view unavailable`}</Text>
-            <Text size='sm' c='dimmed'>
+            <Text size='sm' className={operations.meta}>
               {t`The 3D renderer could not start in this browser. Nothing else on this machine depends on it.`}
             </Text>
             <Button

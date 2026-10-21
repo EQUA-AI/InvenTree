@@ -2,16 +2,23 @@ import { t } from '@lingui/core/macro';
 import { Alert, Button, Group, SimpleGrid, Stack, Text } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import dayjs from 'dayjs';
+import timezone from 'dayjs/plugin/timezone';
+import utc from 'dayjs/plugin/utc';
 import { useState } from 'react';
-import { clockLabel } from '../performance/WindowStatus';
+import { formatInstant, useDisplayClock } from '../health/mimic/observedTime';
+import operations from '../operations.module.css';
 import {
   type InvestigationWindow,
   MAX_HISTORY_WINDOW_MS,
-  pickerInstant,
   sliceAt,
   sliceCount,
   validSpan
 } from './windows';
+
+// Vite's dev CommonJS interop initializes dayjs at its import declaration.
+// Keep plugin initialization after all imports so it cannot read it in the TDZ.
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 /** A reusable selector only: advancing never prefetches a whole case span. */
 export function InvestigationSlices({
@@ -24,16 +31,17 @@ export function InvestigationSlices({
   /** Use the actual consuming endpoint limit (Health trends: 6 h). */
   maxWindowMs?: number;
 }>) {
+  const clock = useDisplayClock();
   const [from, setFrom] = useState<string | null>(
-    dayjs(initial.from).format('YYYY-MM-DD HH:mm:ss')
+    dayjs(initial.from).tz(clock.zone).format('YYYY-MM-DD HH:mm:ss')
   );
   const [to, setTo] = useState<string | null>(
-    dayjs(initial.to).format('YYYY-MM-DD HH:mm:ss')
+    dayjs(initial.to).tz(clock.zone).format('YYYY-MM-DD HH:mm:ss')
   );
   const [span, setSpan] = useState(initial);
   const [index, setIndex] = useState(0);
-  const start = pickerInstant(from);
-  const end = pickerInstant(to);
+  const start = from ? dayjs.tz(from, clock.zone).valueOf() : Number.NaN;
+  const end = to ? dayjs.tz(to, clock.zone).valueOf() : Number.NaN;
   const valid = validSpan(start, end);
   const limit = Math.min(maxWindowMs, MAX_HISTORY_WINDOW_MS);
   const count = sliceCount(span, limit);
@@ -43,18 +51,26 @@ export function InvestigationSlices({
       <Text fw={600} size='sm'>{t`Linked investigation windows`}</Text>
       <Text
         size='xs'
-        c='dimmed'
-      >{t`Choose the case span, then read one slice at a time (at most ${limit / 3600_000} h each). No background read of the entire span. Source availability is metadata, not proof of samples. Times in ${clockLabel()}.`}</Text>
+        className={operations.meta}
+      >{t`Choose the case span, then read one slice at a time (at most ${limit / 3600_000} h each). No background read of the entire span. Source availability is metadata, not proof of samples.`}</Text>
       <SimpleGrid
         cols={{ base: 1, sm: 2, lg: 3 }}
         style={{ alignItems: 'end' }}
       >
         <DateTimePicker
-          label={t`Case span from`}
+          classNames={{ input: operations.input }}
+          valueFormat='D MMM YYYY HH:mm'
+          label={t`Case span from (${clock.zone})`}
           value={from}
           onChange={setFrom}
         />
-        <DateTimePicker label={t`Case span to`} value={to} onChange={setTo} />
+        <DateTimePicker
+          classNames={{ input: operations.input }}
+          valueFormat='D MMM YYYY HH:mm'
+          label={t`Case span to (${clock.zone})`}
+          value={to}
+          onChange={setTo}
+        />
         <Button
           variant='light'
           disabled={!valid}
@@ -71,8 +87,8 @@ export function InvestigationSlices({
         <>
           <Text size='xs'>
             {t`Slice ${index + 1} of ${count}`}:{' '}
-            {new Date(slice.from).toLocaleString()} —{' '}
-            {new Date(slice.to).toLocaleString()}
+            {formatInstant(slice.from, clock) ?? t`Time unavailable`} —{' '}
+            {formatInstant(slice.to, clock) ?? t`Time unavailable`}
           </Text>
           <Group gap='xs'>
             <Button
@@ -88,6 +104,7 @@ export function InvestigationSlices({
               onClick={() => setIndex((value) => value + 1)}
             >{t`Next slice`}</Button>
             <Button
+              color='var(--mantine-primary-color-7)'
               size='xs'
               onClick={() => onRead(slice)}
             >{t`Read this slice`}</Button>

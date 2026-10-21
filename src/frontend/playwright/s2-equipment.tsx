@@ -3,9 +3,10 @@ import { Button, Group, Stack, Text } from '@mantine/core';
 import '@mantine/core/styles.css';
 import { QueryClient, focusManager } from '@tanstack/react-query';
 import axios from 'axios';
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { EquipmentViewControls } from '../src/pages/assets/equipment/ViewControls';
 
 import { ApiProvider } from '../src/contexts/ApiContext';
 import { useGlobalSettingsState } from '../src/states/SettingsStates';
@@ -38,6 +39,16 @@ const client = new QueryClient({
  * controls standing in for a parent's props, a telemetry refresh and
  * navigation; they are not product chrome.
  */
+function FixtureSchematic() {
+  const controls = useContext(EquipmentViewControls);
+  return (
+    <Stack>
+      {controls}
+      <Text data-testid='fixture-schematic'>Fixture process schematic</Text>
+    </Stack>
+  );
+}
+
 function Harness() {
   const [selected, setSelected] = useState<TwinPartId>('machine');
   const [mode, setMode] = useState<TwinMode>('assembled');
@@ -120,9 +131,7 @@ function Harness() {
                       machine={{ pk: 18, name: 'Synthetic pump' }}
                       schematic={
                         params.get('schematic') === 'yes' ? (
-                          <Text data-testid='fixture-schematic'>
-                            Fixture process schematic
-                          </Text>
+                          <FixtureSchematic />
                         ) : undefined
                       }
                     />

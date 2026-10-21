@@ -1,35 +1,37 @@
 import type { LocatedMachine } from './locationTypes';
 import { machineCondition } from './machineCondition';
 
-/** Facts about exactly the loaded page, never extrapolated to a station. */
+/** Mutually exclusive assessments of exactly this loaded page; stale overlaps. */
 export function pageFacts(rows: LocatedMachine[]) {
-  let alerts = 0;
-  let offline = 0;
-  let unknown = 0;
-  let stale = 0;
-  let alarmRows: number | null = 0;
+  const facts = {
+    critical: 0,
+    warning: 0,
+    offline: 0,
+    unknown: 0,
+    unavailable: 0,
+    normal: 0,
+    stale: 0,
+    alarmRows: 0 as number | null
+  };
   for (const row of rows) {
     const condition = machineCondition(row.condition);
-    if (condition.kind === 'unavailable' || condition.state === 'unknown')
-      unknown++;
-    else if (condition.state === 'offline') offline++;
-    else if (['warning', 'critical'].includes(condition.state)) alerts++;
+    if (condition.kind === 'unavailable') facts.unavailable++;
+    else facts[condition.state]++;
     if (
       condition.kind === 'assessed' &&
       row.condition &&
       row.condition.stale_signal_count > 0
     )
-      stale++;
-    // Station row counts already include child alarms: count rows, never sum events.
+      facts.stale++;
     const count = row.open_alarms;
     if (
-      alarmRows !== null &&
+      facts.alarmRows !== null &&
       typeof count === 'number' &&
       Number.isSafeInteger(count) &&
       count >= 0
     )
-      alarmRows += count > 0 ? 1 : 0;
-    else alarmRows = null;
+      facts.alarmRows += count > 0 ? 1 : 0;
+    else facts.alarmRows = null;
   }
-  return { alerts, offline, unknown, stale, alarmRows };
+  return facts;
 }

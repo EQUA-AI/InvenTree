@@ -16,6 +16,7 @@ import {
   locationKind,
   machineDetailHref,
   machineEmptyKind,
+  machinePanelHref,
   machineSourceView,
   machinesReturnHref,
   missingRevealEdge,
@@ -438,4 +439,25 @@ describe('machine panel origin', () => {
       )
     ).toBe('/machines/machine/18/performance/');
   });
+});
+
+it('preserves a panel query when URLSearchParams has no size accessor (Safari 16)', () => {
+  const descriptor = Object.getOwnPropertyDescriptor(
+    URLSearchParams.prototype,
+    'size'
+  );
+  try {
+    Object.defineProperty(URLSearchParams.prototype, 'size', {
+      configurable: true,
+      value: undefined
+    });
+    expect(
+      machinePanelHref(18, 'fault-history', new URLSearchParams(), {
+        occurrence: '901'
+      })
+    ).toBe('/machines/machine/18/fault-history/?occurrence=901');
+  } finally {
+    if (descriptor)
+      Object.defineProperty(URLSearchParams.prototype, 'size', descriptor);
+  }
 });

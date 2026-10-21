@@ -1,8 +1,8 @@
 import type { SeriesResponse } from '@lib/types/MachineHealth';
 import { t } from '@lingui/core/macro';
 import { Alert, Button, Group, Paper, Stack, Text } from '@mantine/core';
-import { formatDate } from '../../../defaults/formatters';
-import { clockLabel } from '../performance/WindowStatus';
+import { formatInstant, useDisplayClock } from '../health/mimic/observedTime';
+import operations from '../operations.module.css';
 import type { DataRange } from '../performance/usePerformanceData';
 
 export function HistoryProvenance({
@@ -22,6 +22,7 @@ export function HistoryProvenance({
   onRetry: () => void;
   currentDescription?: string;
 }>) {
+  const clock = useDisplayClock();
   const entries = response?.series ?? [];
   const unavailable = entries.filter((entry) => !entry.available);
   const empty = entries.filter(
@@ -31,7 +32,7 @@ export function HistoryProvenance({
     <Paper withBorder radius='md' p='sm' data-testid='history-provenance'>
       <Stack gap={4}>
         <Text fw={600} size='sm'>{t`History origin and limits`}</Text>
-        <Text size='xs' c='dimmed'>
+        <Text size='xs' className={operations.meta}>
           {currentDescription ??
             t`KPIs, current bars and the current-limit evaluation use each signal's latest observation, even for a fixed historical window. They are not the selected range. Window trends read source history; retained snapshots are separate evidence.`}
         </Text>
@@ -46,10 +47,12 @@ export function HistoryProvenance({
               {[...new Set(entries.map((entry) => entry.source_name))].join(
                 ', '
               ) || t`Not supplied`}
-              . {t`Window`}: {new Date(response.window_start).toLocaleString()}{' '}
-              — {new Date(response.window_end).toLocaleString()} (
-              {clockLabel(Date.parse(response.window_end))}).{' '}
-              {updating ? t`Previous window while updating.` : ''}
+              . {t`Window`}:{' '}
+              {formatInstant(response.window_start, clock) ??
+                t`Time unavailable`}{' '}
+              —{' '}
+              {formatInstant(response.window_end, clock) ?? t`Time unavailable`}
+              . {updating ? t`Previous window while updating.` : ''}
             </Text>
             <Text size='xs'>
               {response.read_batches && response.read_batches.length > 1 ? (
@@ -117,14 +120,14 @@ export function HistoryProvenance({
             {response.read_batches && response.read_batches.length > 1 && (
               <Text
                 size='xs'
-                c='dimmed'
+                className={operations.meta}
               >{t`${response.read_batches.length} bounded batches share these time bounds. Each may read overlapping source documents; batching does not imply flat source work or payload.`}</Text>
             )}
           </>
         )}
-        <Text size='xs' c='dimmed'>
+        <Text size='xs' className={operations.meta}>
           {extent?.available && extent.from && extent.to
-            ? t`Reported source extent: ${formatDate(extent.from, { showTime: true, showSeconds: true })} — ${formatDate(extent.to, { showTime: true, showSeconds: true })}. Availability within it is not guaranteed.`
+            ? t`Reported source extent: ${formatInstant(extent.from, clock) ?? t`Time unavailable`} — ${formatInstant(extent.to, clock) ?? t`Time unavailable`}. Availability within it is not guaranteed.`
             : t`Source extent unavailable. This does not prove that the source has no history.`}
         </Text>
         {failed && (

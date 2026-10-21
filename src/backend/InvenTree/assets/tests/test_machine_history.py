@@ -363,6 +363,13 @@ class FaultOccurrenceTests(TestCase):
         self.assertEqual(response.status_code, expected, response.content)
         return response.json()
 
+    def test_page_declares_only_the_explicit_plant_clock(self):
+        """An empty flag remains unavailable even when Django has a timezone."""
+        with self.settings(AIMMS_PLANT_TIMEZONE='', TIME_ZONE='Europe/London'):
+            self.assertIsNone(self.read()['plant_timezone'])
+        with self.settings(AIMMS_PLANT_TIMEZONE='Asia/Kolkata'):
+            self.assertEqual(self.read()['plant_timezone'], 'Asia/Kolkata')
+
     def test_occurrences_are_the_existing_anomalies_newest_first(self):
         """Ids are the anomalies' own; the source's alarm id and code are kept."""
         page = self.read()

@@ -10,35 +10,17 @@ import axios from 'axios';
 import { Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import LayoutComponent from '../src/components/nav/Layout';
 import { ApiProvider } from '../src/contexts/ApiContext';
-import { useGlobalSettingsState } from '../src/states/SettingsStates';
 import { useUserState } from '../src/states/UserState';
 import { FixtureTheme, prepareFixtureTheme } from './FixtureTheme';
-import { MachineFixtureRail } from './MachineFixtureRail';
 
 const Machines = lazy(() => import('../src/pages/assets/MachineIndex'));
-const Faults = lazy(() => import('../src/pages/assets/FaultHistoryPanel'));
-const Equipment = lazy(() =>
-  import('../src/pages/assets/equipment/EquipmentViewPanel').then((m) => ({
-    default: m.EquipmentViewPanel
-  }))
-);
-const Performance = lazy(() =>
-  import('../src/pages/assets/performance/PerformancePanel').then((m) => ({
-    default: m.PerformancePanel
-  }))
-);
-const Pump = lazy(() => import('../src/pages/assets/health/PumpMimic'));
+const MachineDetail = lazy(() => import('../src/pages/assets/MachineDetail'));
 const params = new URLSearchParams(window.location.search);
 prepareFixtureTheme(params);
 i18n.load('en', {});
 i18n.activate('en');
-useGlobalSettingsState.setState({
-  loaded: true,
-  lookup: params.has('plant_timezone')
-    ? { AIMMS_PLANT_TIMEZONE: params.get('plant_timezone')! }
-    : {}
-});
 useUserState.setState({
   is_authed: true,
   authStatus: 'authenticated',
@@ -70,36 +52,19 @@ createRoot(document.getElementById('root')!).render(
           params.get('entry') ?? '/machines/index/sites/?location=12'
         ]}
       >
-        <Stack p='md'>
+        <Stack gap={0}>
           <Text size='xs' c='dimmed'>
             S8 synthetic fixture · native panels · no live plant connection
           </Text>
           <Suspense fallback={<Text>Loading native panel…</Text>}>
             <Routes>
-              <Route path='/machines/index/*' element={<Machines />} />
-              <Route
-                path='/machines/machine/:id/*'
-                element={
-                  <MachineFixtureRail
-                    faults={<Faults machineId={18} />}
-                    equipment={
-                      <Equipment
-                        machine={{ pk: 18, name: 'Synthetic pump' }}
-                        schematic={<Pump stationId={17} unit='P1' />}
-                      />
-                    }
-                    performance={
-                      <Performance
-                        machine={{
-                          pk: 18,
-                          name: 'Synthetic pump',
-                          asset_type: 'pump'
-                        }}
-                      />
-                    }
-                  />
-                }
-              />
+              <Route element={<LayoutComponent />}>
+                <Route path='/machines/index/*' element={<Machines />} />
+                <Route
+                  path='/machines/machine/:id/*'
+                  element={<MachineDetail />}
+                />
+              </Route>
             </Routes>
           </Suspense>
         </Stack>

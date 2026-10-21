@@ -32,8 +32,20 @@ const chooseMode = (page: Page, mode: string) =>
     .getByText(mode, { exact: true })
     .click();
 // The switch's own input covers its label and takes the click.
-const toggleLabels = (page: Page) =>
-  page.getByRole('switch', { name: 'Labels' }).click();
+async function toggleLabels(page: Page) {
+  const toggle = page.getByRole('switch', { name: 'Labels' });
+  if (await toggle.isVisible()) return toggle.click();
+  const item = page.getByRole('menuitem', { name: /^(Show|Hide) labels$/ });
+  if (!(await item.isVisible())) await button(page, 'View').click();
+  await item.click();
+  await expect(item).toBeHidden();
+}
+async function clickControl(page: Page, name: string) {
+  const control = button(page, name);
+  if (await control.isVisible()) return control.click();
+  await button(page, 'View').click();
+  await page.getByRole('menuitem', { name, exact: true }).click();
+}
 
 /**
  * Where a part's hotspot anchors in the canvas, read from its leader line:
@@ -60,7 +72,31 @@ const anchorOf = (page: Page, label: string) =>
 /** The model as drawn, after the scene's next frame has landed. */
 async function frame(page: Page) {
   await page.waitForTimeout(350);
-  return canvas(page).screenshot({ animations: 'disabled' });
+  // Keep exact scene-pixel comparisons; omit only the new HTML provenance
+  // overlay, whose text rasterization changes when the page scrolls.
+  return canvas(page).screenshot({
+    animations: 'disabled',
+    style:
+      '[data-scene-phase] .mantine-Badge-root { visibility: hidden !important; }'
+  });
+}
+
+async function expectOriginal(page: Page, initial: Buffer) {
+  const restored = await frame(page);
+  expect(restored.readUInt32BE(16), 'camera reset keeps the canvas width').toBe(
+    initial.readUInt32BE(16)
+  );
+  expect(
+    restored.readUInt32BE(20),
+    'selection and scrolling keep the canvas height'
+  ).toBe(initial.readUInt32BE(20));
+  await test
+    .info()
+    .attach('initial-canvas', { body: initial, contentType: 'image/png' });
+  await test
+    .info()
+    .attach('restored-canvas', { body: restored, contentType: 'image/png' });
+  expect(restored.equals(initial)).toBe(true);
 }
 
 test('visual modes switch and switch back without losing the selection', async ({
@@ -90,7 +126,7 @@ test('visual modes switch and switch back without losing the selection', async (
   await chooseMode(page, 'Assembled');
   await button(page, 'Clear selection').click();
   // Back where it started: the same assembly from the same direction.
-  expect((await frame(page)).equals(initial)).toBe(true);
+  await expectOriginal(page, initial);
 });
 
 test('camera presets move the view and Reset returns it exactly, keeping the selection', async ({
@@ -100,21 +136,21 @@ test('camera presets move the view and Reset returns it exactly, keeping the sel
   const initial = await frame(page);
   const seen = [initial];
   for (const view of ['Front', 'Side', 'Top']) {
-    await button(page, view).click();
+    await clickControl(page, view);
     const shot = await frame(page);
     expect(seen.some((other) => other.equals(shot))).toBe(false);
     seen.push(shot);
   }
   await listItem(page, 'coupling').click();
-  await button(page, 'Zoom in').click();
-  await button(page, 'Reset view').click();
+  await clickControl(page, 'Zoom in');
+  await clickControl(page, 'Reset view');
   await expect(selection(page)).toHaveText('Selected: Flexible coupling');
   await button(page, 'Clear selection').click();
-  expect((await frame(page)).equals(initial)).toBe(true);
+  await expectOriginal(page, initial);
   // Overview is the same fitted view Reset returns to.
-  await button(page, 'Top').click();
-  await button(page, 'Overview').click();
-  expect((await frame(page)).equals(initial)).toBe(true);
+  await clickControl(page, 'Top');
+  await clickControl(page, 'Overview');
+  await expectOriginal(page, initial);
 });
 
 test('focus centres and fits a hidden internal part, keeping the selection', async ({
@@ -127,7 +163,7 @@ test('focus centres and fits a hidden internal part, keeping the selection', asy
   await chooseMode(page, 'Cutaway');
   const before = await anchorOf(page, 'Motor drive-end bearing');
   const overview = await frame(page);
-  await button(page, 'Focus selection').click();
+  await clickControl(page, 'Focus selection');
   const focused = await frame(page);
   expect(focused.equals(overview)).toBe(false);
   // Focus fits the part's bounds to the view: its anchor (a point on the
@@ -186,7 +222,8 @@ test('labels hide and return, and clearing the selection keeps the mode', async 
   await openPanel(page);
   await expect(hotspot(page, 'Electric motor')).toBeVisible();
   await toggleLabels(page);
-  await expect(page.getByRole('switch', { name: 'Labels' })).not.toBeChecked();
+  // The phone exposes the same state through the View menu.
+  await expect(hotspot(page, 'Electric motor')).toBeHidden();
   await expect(hotspot(page, 'Electric motor')).toBeHidden();
   await toggleLabels(page);
   await expect(hotspot(page, 'Electric motor')).toBeVisible();
@@ -227,7 +264,7 @@ for (const size of [
   { width: 1100, height: 800, beside: false },
   { width: 1920, height: 1080, beside: true }
 ])
-  test(`at ${size.width}x${size.height} the model keeps a useful size, the list sits below it and the inspector ${size.beside ? 'beside' : 'below'} it`, async ({
+  test(`at ${size.width}x${size.height} the model keeps a useful size, the list follows the inspector and the inspector ${size.beside ? 'beside' : 'below'} it`, async ({
     page
   }, testInfo) => {
     test.skip(testInfo.project.name !== 's2-desktop', 'desktop layouts');
@@ -244,10 +281,20 @@ for (const size of [
       .getByLabel('Selected position', { exact: true })
       .boundingBox())!;
     expect(view.width).toBeGreaterThanOrEqual(560);
-    expect(list.y).toBeGreaterThan(view.y + view.height - 1);
-    if (size.beside)
-      expect(inspector.x).toBeGreaterThan(view.x + view.width - 1);
-    else expect(inspector.y).toBeGreaterThan(list.y + list.height - 1);
+    const containerWidth = await page
+      .locator('[data-scene-phase]')
+      .locator('../..')
+      .locator('..')
+      .evaluate((el) => el.clientWidth);
+    if (containerWidth >= 832) {
+      expect(inspector.x).toBeGreaterThanOrEqual(view.x + view.width - 1);
+      expect(list.x).toBeGreaterThanOrEqual(view.x + view.width - 1);
+      expect(list.y).toBeGreaterThanOrEqual(inspector.y + inspector.height - 1);
+    } else {
+      expect(inspector.y).toBeGreaterThanOrEqual(view.y + view.height - 1);
+      expect(inspector.y).toBeLessThan(size.height);
+      expect(list.y).toBeGreaterThanOrEqual(inspector.y + inspector.height - 1);
+    }
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth)
     ).toBeLessThanOrEqual(size.width);

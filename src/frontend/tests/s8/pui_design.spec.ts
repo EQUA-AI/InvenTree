@@ -1,3 +1,4 @@
+import { writeFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import { nativeBaseline } from '../s0/guards';
 import { mockExplorer } from '../s1/machineExplorerFixtures';
@@ -7,6 +8,7 @@ import {
   occurrences
 } from '../s3/machineWorkFixtures';
 import { SIGNALS, mockPerformance } from '../s3/performanceFixtures';
+import { readable } from './contrast';
 import {
   mockEquipment,
   openEquipment,
@@ -24,20 +26,36 @@ test('Machines separates loaded-page counts, stale signals and unavailable opera
   await mockExplorer(page);
   await openExplorer(page, '/machines/index/sites/?location=12', 'dark');
   const summary = page.getByRole('region', { name: 'Loaded page summary' });
-  await expect(summary).toContainText('25 / 80');
+  await expect(summary).toContainText('25 of 80');
+  await expect(summary).toContainText('Stale signals on 10 machines');
   await expect(summary).toContainText(
-    '10 loaded machines report stale signals'
+    'Stale-signal coverage unavailable for 1 machine'
   );
-  await expect(summary).toContainText('communication status are unavailable');
-  await expect(page.getByText('Plant timezone: Unavailable')).toBeVisible();
+  await expect(summary).toContainText(
+    'Telemetry, run/stop and communication status unavailable here.'
+  );
+  await expect(page.getByText(/Times: your clock/)).toBeVisible();
   await expect(page.getByTestId('machine-count-view')).toHaveText('80');
   await expect(
     page.locator('td[data-condition="offline"]').first()
   ).toContainText('No current data');
   await expect(page.locator('td[data-condition="unavailable"]')).toHaveText(
-    'Not available'
+    'Condition unavailable · could not be checked'
   );
   await expect(summary).not.toContainText('Running');
+});
+
+test('missing condition leaves stale-signal coverage unavailable instead of zero', async ({
+  page
+}) => {
+  const fixture = await mockExplorer(page);
+  for (const machine of fixture.machines) machine.condition = null;
+  await openExplorer(page, '/machines/index/sites/?location=12');
+  const summary = page.getByRole('region', { name: 'Loaded page summary' });
+  await expect(summary).toContainText(
+    'Stale-signal coverage unavailable for 25 machines'
+  );
+  await expect(summary).not.toContainText('Stale signals on 0 machines');
 });
 
 test('an empty station has zero recorded machines without a healthy or connected verdict', async ({
@@ -51,12 +69,15 @@ test('an empty station has zero recorded machines without a healthy or connected
   fixture.location.counts.total_open_work_orders = 0;
   await openExplorer(page, '/machines/index/sites/?location=12');
   await expect(
-    page.getByText('No machines at this location or its sublocations.')
+    page.getByRole('heading', {
+      name: 'No machines at this location',
+      exact: true
+    })
   ).toBeVisible();
   const summary = page.getByRole('region', { name: 'Loaded page summary' });
-  await expect(summary).toContainText('0 / 0');
-  await expect(summary).toContainText('communication status are unavailable');
-  await expect(summary).not.toContainText('healthy');
+  await expect(summary).toHaveCount(0);
+  await expect(page.getByRole('columnheader')).toHaveCount(0);
+  await expect(page.getByText('0 / 0', { exact: true })).toHaveCount(0);
 });
 
 test('failed machine refresh hides previous summary and retains a retry', async ({
@@ -91,9 +112,15 @@ for (const state of ['running', 'stale', 'unknown']) {
     await expect(
       page.getByRole('img', { name: 'Pump unit schematic' })
     ).toBeVisible();
-    await expect(page.getByText('Flow direction: unavailable')).toBeVisible();
     await expect(
-      page.getByText('Communication status: unavailable')
+      page
+        .getByLabel('Process data')
+        .getByText('Flow direction', { exact: true })
+    ).toBeVisible();
+    await expect(
+      page
+        .getByLabel('Process data')
+        .getByText('Communication status', { exact: true })
     ).toBeVisible();
     await expect(
       page.getByText('Reference schematic · physical arrangement unverified')
@@ -101,10 +128,10 @@ for (const state of ['running', 'stale', 'unknown']) {
     if (state === 'stale')
       await expect(page.getByText('7.5 MW', { exact: true })).toHaveCount(0);
     await expect(
-      page.getByText('Open · warning', { exact: true })
+      page.getByText('Active · not acknowledged', { exact: true })
     ).toBeVisible();
     await expect(
-      page.getByText('Acknowledged · warning', { exact: true })
+      page.getByText('Active · acknowledged', { exact: true })
     ).toBeVisible();
     await expect(page.getByText('Dismissed', { exact: true })).toBeVisible();
     const unknown = page.locator('tr[data-anomaly="904"]');
@@ -127,19 +154,17 @@ test('polling failure is labelled as a polling error and hides the old readings'
   page
 }) => {
   const data = await mockEquipment(page);
-  data.last_error_code = 'connection_failed';
+  data.last_error_code = 'NETWORK';
   await openEquipment(page, true);
   await expect(
-    page.getByText('Last station polling error: connection_failed')
+    page.getByRole('alert').filter({ hasText: 'Polling error' })
   ).toBeVisible();
   await page.route('**/api/machine-health/station/17/mimic/**', (route) =>
     route.fulfill({ status: 503, json: {} })
   );
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(
-    page.getByText(
-      'Live readings are unavailable. Refresh to retry; cached values are hidden.'
-    )
+    page.getByText('Refresh to retry; cached values are hidden.')
   ).toBeVisible();
   await expect(
     page.getByRole('img', { name: 'Pump unit schematic' })
@@ -153,7 +178,7 @@ test('model reference label leads and keyboard selection keeps exact component r
   await openEquipment(page, false, 'dark');
   await expect(page.locator('[data-scene-phase="ready"]')).toBeVisible();
   await expect(
-    page.getByText('Reference model · geometry unverified')
+    page.getByText('Reference model · geometry unverified').first()
   ).toBeVisible();
   const bearing = page.locator('[data-position="bearing"]');
   await bearing.focus();
@@ -179,14 +204,14 @@ test('Fault History distinguishes active, acknowledged and resolved without asse
     'Active'
   );
   await expect(page.locator('[data-occurrence="900"]').first()).toContainText(
-    'Acknowledged, not resolved'
+    'Active · acknowledged'
   );
   await expect(page.locator('[data-occurrence="901"]').first()).toContainText(
     'Reading back inside its limits.'
   );
   await expect(
     page.getByText(
-      'Resolved does not always mean cleared: read the recorded resolution reason. Acknowledged conditions remain active.'
+      'Resolved does not always mean cleared. Acknowledged conditions remain active.'
     )
   ).toBeVisible();
 });
@@ -256,15 +281,22 @@ test('resolved without a clearing reading retains its full reason and does not a
       json: { ...occurrenceDetail(901), resolution_note: reason }
     })
   );
-  await openFaultHistory(page, { scheme: 'dark' });
-  const row = page.locator('[data-occurrence="901"]').first();
+  await openFaultHistory(page, { scheme: 'dark', query: '?occurrence=901' });
+  const row = page.getByTestId('occurrence-evidence');
   await expect(row).toContainText('Resolved');
   await expect(row).toContainText(reason);
   await expect(row.getByText('Cleared', { exact: true })).toHaveCount(0);
-  const reasonText = row.getByText(reason, { exact: true });
-  expect(
-    await reasonText.evaluate((el) => el.scrollHeight <= el.clientHeight + 1)
-  ).toBe(true);
+  const reasonText = row.getByText(reason, { exact: true }).first();
+  const showFull = row.getByRole('button', {
+    name: 'Show full note',
+    exact: true
+  });
+  if (await showFull.count()) await showFull.first().click();
+  await expect
+    .poll(() =>
+      reasonText.evaluate((el) => el.scrollHeight <= el.clientHeight + 1)
+    )
+    .toBe(true);
   for (const badge of await row.locator('.mantine-Badge-label').all()) {
     expect(
       await badge.evaluate((el) => el.scrollWidth <= el.clientWidth + 1),
@@ -286,17 +318,8 @@ test('a mapped numeric zero discharge flow is shown with its source unit without
   page
 }) => {
   const data = await mockEquipment(page, 'unknown');
-  data.layout.elements.push({
-    id: 'pump-flow',
-    pointer: '/pd/{pump}/dv',
-    view: 'unit',
-    role: 'value',
-    label: 'Discharge flow',
-    x: 606,
-    y: 518
-  });
   data.points['/pd/P1/dv'] = {
-    ...data.points['/dex/PUMP1_POWER'],
+    ...data.points['/pd/P1/dv'],
     pointer: '/pd/P1/dv',
     label: 'Discharge flow',
     value: 0,
@@ -306,9 +329,137 @@ test('a mapped numeric zero discharge flow is shown with its source unit without
   };
   await openEquipment(page, true);
   await expect(
-    page
-      .getByLabel('Process data availability')
-      .getByText('Discharge flow: 0 m^3/s', { exact: true })
+    page.getByLabel('Process data').getByText('0 m^3/s', { exact: true })
   ).toBeVisible();
-  await expect(page.getByText('Flow direction: unavailable')).toBeVisible();
+  await expect(
+    page.getByLabel('Process data').getByText('Flow direction', { exact: true })
+  ).toBeVisible();
 });
+
+// Exercise wider glyphs and taller default text lines without reducing any
+// production text size. This is a layout stress check, not a macOS renderer.
+for (const scheme of ['light', 'dark'] as const) {
+  for (const screen of ['machines', 'cutaway', 'resolved']) {
+    test(`${screen} first item survives wider font metrics in ${scheme}`, async ({
+      page
+    }, info) => {
+      const phone = info.project.name.endsWith('phone');
+      test.skip(
+        !phone && screen === 'machines',
+        'Machine card density applies on phone'
+      );
+      if (!phone) await page.setViewportSize({ width: 1440, height: 900 });
+      if (screen === 'machines') {
+        await mockExplorer(page);
+        await openExplorer(page, '/machines/index/sites/?location=12', scheme);
+      } else if (screen === 'cutaway') {
+        await mockEquipment(page);
+        await openEquipment(page, false, scheme);
+        const modes = page.locator('[aria-label="Model view mode"]');
+        // Check every selected/unselected label immediately after each change,
+        // including the formerly low-contrast intermediate selection colors.
+        for (const mode of ['Exploded', 'Assembled', 'Cutaway']) {
+          await modes.getByText(mode, { exact: true }).click();
+          for (const label of await modes.locator('label').all()) {
+            await readable(label, 14);
+          }
+        }
+        const views = page.locator('[aria-label="Equipment view"]');
+        for (const label of await views.locator('label').all()) {
+          await readable(label);
+        }
+      } else {
+        await mockFaultHistory(page);
+        await openFaultHistory(page, { scheme, query: '?occurrence=901' });
+      }
+      await page.addStyleTag({
+        content: `
+        :root {
+          --mantine-font-family: Arial, sans-serif !important;
+          --mantine-font-family-headings: Arial, sans-serif !important;
+          --mantine-line-height: 1.65 !important;
+        }
+        body { letter-spacing: 0.2px; }
+      `
+      });
+      await page.evaluate(() => document.fonts.ready);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      const first = !phone
+        ? screen === 'cutaway'
+          ? page.getByRole('list', { name: 'Model components' })
+          : page
+              .locator(
+                '[data-testid="occurrence-evidence"] [data-alarm-status]'
+              )
+              .first()
+        : screen === 'machines'
+          ? page.locator('[data-machine]').first()
+          : screen === 'cutaway'
+            ? page.locator('.aimms-twin-canvas')
+            : page.locator('[data-occurrence] [data-alarm-status]').first();
+      await expect(first).toBeVisible();
+      await expect
+        .poll(async () => {
+          const box = (await first.boundingBox())!;
+          // The first card is complete; the model and occurrence state begin
+          // in the first viewport, leaving the full model available to scroll.
+          return !phone
+            ? screen === 'cutaway'
+              ? box.y
+              : box.y + box.height
+            : screen === 'machines'
+              ? box.y + box.height
+              : screen === 'cutaway'
+                ? box.y + 80
+                : box.y + box.height;
+        })
+        .toBeLessThanOrEqual(phone ? 844 : 900);
+      if (phone && screen === 'resolved') {
+        const box = (await first.boundingBox())!;
+        expect(
+          box.y + box.height,
+          'At least 4px of phone fold headroom'
+        ).toBeLessThanOrEqual(840);
+      }
+      const caveats = page.locator('[class*="_caveat_"]');
+      for (const caveat of await caveats.all()) {
+        if (!(await caveat.isVisible())) continue;
+        expect(
+          await caveat.evaluate((el) =>
+            Number.parseFloat(getComputedStyle(el).fontSize)
+          )
+        ).toBeGreaterThanOrEqual(14);
+      }
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth)
+      ).toBeLessThanOrEqual(phone ? 390 : 1440);
+      await writeFile(
+        info.outputPath('font-density-metrics.json'),
+        JSON.stringify(
+          {
+            phone,
+            screen,
+            scheme,
+            first: await first.boundingBox(),
+            font: await first.evaluate((el) => ({
+              family: getComputedStyle(el).fontFamily,
+              size: getComputedStyle(el).fontSize,
+              lineHeight: getComputedStyle(el).lineHeight
+            }))
+          },
+          null,
+          2
+        )
+      );
+      await page.screenshot({
+        path: info.outputPath(`${screen}-${scheme}-wide-font.png`),
+        animations: 'disabled'
+      });
+      await page.screenshot({
+        path: info.outputPath(`${screen}-${scheme}-wide-font-full.png`),
+        fullPage: true,
+        animations: 'disabled'
+      });
+    });
+  }
+}

@@ -296,7 +296,8 @@ export function machinePanelHref(
   const [path, search = ''] = base.split('?');
   const query = new URLSearchParams(search);
   for (const [key, value] of Object.entries(extra)) query.set(key, value);
-  return `${path}${panel}/${query.size ? `?${query}` : ''}`;
+  const qs = query.toString();
+  return `${path}${panel}/${qs ? `?${qs}` : ''}`;
 }
 
 /**

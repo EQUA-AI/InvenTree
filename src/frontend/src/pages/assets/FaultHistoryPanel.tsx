@@ -6,12 +6,10 @@ import {
   Divider,
   Group,
   Loader,
-  Paper,
   SimpleGrid,
   Stack,
   Table,
-  Text,
-  Title
+  Text
 } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
@@ -20,7 +18,6 @@ import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import { useApi } from '../../contexts/ApiContext';
 import { FaultOccurrences } from './faults/FaultOccurrences';
-import { MonitoringContinuityNotice } from './health/MonitoringContinuity';
 import { OccurrenceInvestigation } from './investigation/OccurrenceInvestigation';
 import operations from './operations.module.css';
 
@@ -68,11 +65,11 @@ function CountTable({
         <Text fw={600} size='sm'>
           {title}
         </Text>
-        <Text size='xs' c='dimmed'>
+        <Text size='xs' className={operations.meta}>
           {source}
         </Text>
         {rows.length === 0 ? (
-          <Text size='xs' c='dimmed'>{t`No records`}</Text>
+          <Text size='xs' className={operations.meta}>{t`No records`}</Text>
         ) : (
           <Table withRowBorders={false} verticalSpacing={2}>
             <Table.Tbody>
@@ -106,19 +103,6 @@ export default function FaultHistoryPanel({
 }: Readonly<{ machineId: number }>) {
   return (
     <Stack gap='lg'>
-      <Paper
-        component='section'
-        aria-label={t`Fault investigation context`}
-        className={operations.band}
-      >
-        <Stack gap={4}>
-          <Title order={4}>{t`Alarm and fault investigation`}</Title>
-          <Text size='sm'>{t`Resolved does not always mean cleared: read the recorded resolution reason. Acknowledged conditions remain active.`}</Text>
-          <Text
-            className={operations.caveat}
-          >{t`Recorded occurrences and retained evidence. Current telemetry does not replace an event record.`}</Text>
-        </Stack>
-      </Paper>
       <FaultOccurrences
         machineId={machineId}
         renderInvestigation={(occurrence) => (
@@ -133,7 +117,6 @@ export default function FaultHistoryPanel({
         labelPosition='left'
       />
       <FaultHistoryRollup machineId={machineId} />
-      <MonitoringContinuityNotice />
     </Stack>
   );
 }
@@ -180,7 +163,7 @@ function FaultHistoryRollup({ machineId }: Readonly<{ machineId: number }>) {
         )}
       </Group>
       {maintenance.count > 0 && (
-        <Text size='xs' c='dimmed'>
+        <Text size='xs' className={operations.meta}>
           {t`First`} {maintenance.first_date} — {t`last`}{' '}
           {maintenance.last_date}
           {maintenance.gap_days.median != null && (
@@ -194,7 +177,7 @@ function FaultHistoryRollup({ machineId }: Readonly<{ machineId: number }>) {
       )}
       {data.declared.fault_codes.length > 0 && (
         <Group gap={4}>
-          <Text size='xs' c='dimmed'>
+          <Text size='xs' className={operations.meta}>
             {t`Declared fault codes`}:
           </Text>
           {data.declared.fault_codes.map((code) => (

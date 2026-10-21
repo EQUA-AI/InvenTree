@@ -27,6 +27,7 @@ clock. Dashboard display shifts never alter these historical evidence facts.
 
 from __future__ import annotations
 
+from django.conf import settings
 from django.db.models import Prefetch
 
 from tasks.dashboard_metrics import OPEN
@@ -328,6 +329,7 @@ def fault_occurrences(actor, machine, *, status='all', limit=None, offset=None):
         'rule': FAULT_OCCURRENCES_RULE,
         'machine': machine.pk,
         'status': status,
+        'plant_timezone': settings.AIMMS_PLANT_TIMEZONE or None,
         'count': count,
         'limit': limit,
         'offset': offset,

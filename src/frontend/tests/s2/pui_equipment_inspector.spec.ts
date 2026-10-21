@@ -54,8 +54,9 @@ test('a bound position shows its own slot, reading and work, and the rest as par
     await expect(panel.locator('[data-parent-work]')).toHaveText(
       "2 other open on this machine (parent context, not this position's)."
     );
-    // Every reading carries its own age, and the read itself its time.
-    await expect(reading).toContainText('ago');
+    // Positions does not supply server-relative age; never infer it from the browser.
+    await expect(reading).toContainText('age unavailable');
+    await expect(reading).toContainText('15:00:00');
     await expect(panel.locator('[data-records-read]')).toContainText(
       'Records read at'
     );
@@ -105,7 +106,7 @@ test('another position changes only the bound context, from one read', async ({
   // Casing: a family with no slot on this machine.
   await pick(page, 'pump');
   await expect(panel).toContainText(
-    'No Pump Casing and Spiral Case slot is recorded for this machine, so no readings or work are shown.'
+    'No Pump Casing and Spiral Case component is recorded for this machine, so no readings or work are shown.'
   );
   // A click on the model chooses the same position and the same records.
   await page
@@ -128,7 +129,7 @@ test('the whole machine shows its work and asks for a component', async ({
     '3 open on this machine'
   );
   await expect(panel).toContainText(
-    'Select a component to see its own slot, readings and work.'
+    'Select a component to see its own component records, readings and work.'
   );
 });
 

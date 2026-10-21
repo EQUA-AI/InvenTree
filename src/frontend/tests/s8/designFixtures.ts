@@ -1,18 +1,33 @@
+import { readFileSync } from 'node:fs';
 import type { Page } from '@playwright/test';
 import type { MimicData } from '../../src/pages/assets/health/mimic/types';
 import { mockMachine } from '../s0/machineFixtures';
 import { mockPositions } from '../s2/equipmentFixtures';
 
 export function schematicFixture(state = 'running'): MimicData {
+  const layout = JSON.parse(
+    readFileSync(
+      new URL(
+        '../../../backend/InvenTree/machine_health/layouts/pumphouse.layout.json',
+        import.meta.url
+      ),
+      'utf8'
+    )
+  );
   const point = {
-    pointer: '/dex/PUMP1_POWER',
+    pointer: '/dex/PUMP1_ACTIVE_POWER',
     label: 'Motor power',
     group: 'Motor',
     value: state === 'running' ? 7.5 : null,
-    unit: 'MW',
-    quality: 'good',
-    observed_at: '2026-10-20T08:00:00Z',
-    age_seconds: state === 'stale' ? 500 : 2,
+    unit: 'kW',
+    quality: state === 'unknown' ? 'unknown' : 'good',
+    observed_at:
+      state === 'unknown'
+        ? null
+        : state === 'stale'
+          ? '2026-10-20T07:51:42Z'
+          : '2026-10-20T08:00:00Z',
+    age_seconds: state === 'unknown' ? null : state === 'stale' ? 500 : 2,
     unchanged_for_seconds: null,
     reason:
       state === 'stale' ? 'stale' : state === 'unknown' ? 'no_data' : null,
@@ -25,23 +40,14 @@ export function schematicFixture(state = 'running'): MimicData {
     generated_at: '2026-10-20T08:00:02Z',
     enabled: true,
     source: { pk: 1, name: 'Synthetic SCADA' },
-    last_poll_at: null,
+    last_poll_at: '2026-10-20T08:00:00Z',
+    last_error_at: null,
+    last_success_at: '2026-10-20T08:00:00Z',
+    plant_timezone: null,
+    display_shifted: false,
+    display_shift_seconds: 0,
     last_error_code: '',
-    layout: {
-      version: 1,
-      review_status: 'provisional',
-      elements: [
-        {
-          id: 'pump-power',
-          pointer: '/dex/PUMP{pump_number}_POWER',
-          view: 'unit',
-          role: 'value',
-          label: 'Power',
-          x: 370,
-          y: 120
-        }
-      ]
-    },
+    layout,
     station_points: {},
     bays: [
       {
@@ -50,18 +56,49 @@ export function schematicFixture(state = 'running'): MimicData {
         name: 'Synthetic pump',
         active: true,
         state,
+        alarm: 'warning',
         points: {}
       }
     ],
     selected_unit: 'P1',
-    points: { [point.pointer]: point },
+    points: Object.fromEntries(
+      layout.elements
+        .filter((e: { view: string }) => e.view === 'unit')
+        .map(
+          (e: { pointer: string; role: string; id: string; label: string }) => {
+            const pointer = e.pointer
+              .replaceAll('{pump_number}', '1')
+              .replaceAll('{pump}', 'P1');
+            const [value, unit] =
+              e.role === 'status'
+                ? ['R', '']
+                : e.id === 'pump-flow'
+                  ? [0.4, 'm³/s']
+                  : e.id === 'pump-pressure'
+                    ? [3.2, 'bar']
+                    : e.id === 'pump-speed'
+                      ? [980, 'rpm']
+                      : [7.5, 'kW'];
+            return [
+              pointer,
+              {
+                ...point,
+                pointer,
+                label: e.label,
+                value: state === 'running' ? value : null,
+                unit
+              }
+            ];
+          }
+        )
+    ),
     totals: {},
     alarms: (['open', 'acknowledged', 'suppressed', null] as const).map(
       (status, index) => ({
         ...point,
         pointer: `/dex/ALARM${index}`,
         label: `Synthetic alarm ${index + 1}`,
-        value: 95,
+        value: state === 'running' ? 95 : null,
         unit: 'degC',
         condition: 'warning',
         thresholds_configured: true,
@@ -113,6 +150,8 @@ export async function openEquipment(
     await page
       .locator('[data-scene-phase="ready"]')
       .waitFor({ timeout: 60_000 });
+  else if (query.state === 'query-error')
+    await page.getByRole('alert').first().waitFor();
   else
     await page
       .getByText('Pump unit: P1', { exact: true })
@@ -138,7 +177,7 @@ export async function openExplorer(
     .getByText('Loading native panel…', { exact: true })
     .waitFor({ state: 'hidden', timeout: 30_000 });
   await page
-    .locator('table, [role="alert"]')
+    .locator('table, [role="alert"], h5')
     .first()
     .waitFor({ timeout: 30_000 });
 }

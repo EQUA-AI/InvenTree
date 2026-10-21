@@ -1,3 +1,4 @@
+import type { Locator } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 
 import { nativeBaseline } from '../s0/guards';
@@ -5,10 +6,16 @@ import {
   explorerParams,
   machineReturnLink,
   mockExplorer,
-  openExplorer
+  openExplorer,
+  showExplorerControls
 } from './machineExplorerFixtures';
 
 nativeBaseline();
+const column = (scope: Locator, name: string) =>
+  scope
+    .getByRole('columnheader', { name, exact: true })
+    .or(scope.getByText(name, { exact: true }))
+    .first();
 
 test('machine return restores direct location search alarms page and selected path', async ({
   page
@@ -27,7 +34,7 @@ test('machine return restores direct location search alarms page and selected pa
     page.getByRole('switch', { name: 'Include sublocations', exact: true })
   ).not.toBeChecked();
   const firstMachine = page
-    .getByRole('table')
+    .getByTestId('machine-results')
     .getByRole('link', { name: /^Synthetic pump/ })
     .first();
   await expect(firstMachine).toBeVisible();
@@ -44,11 +51,17 @@ test('machine return restores direct location search alarms page and selected pa
   await breadcrumb.focus();
   await breadcrumb.press('Enter');
   await expect(
+    page
+      .getByTestId('machine-results')
+      .getByRole('link', { name: machineName, exact: true })
+  ).toBeVisible();
+  await showExplorerControls(page);
+  await expect(
     page.getByRole('textbox', { name: 'Search machines', exact: true })
   ).toHaveValue('pump');
   await expect(
     page
-      .getByRole('table')
+      .getByTestId('machine-results')
       .getByRole('link', { name: machineName, exact: true })
   ).toBeVisible();
   await expect(page.getByTestId('machine-count-view')).toHaveText('60');
@@ -98,7 +111,7 @@ for (const source of ['machines', 'unassigned']) {
     const origin = `/machines/index/${source}/?search=pump&has_alarms=true&page=2`;
     await openExplorer(page, origin);
     const first = page
-      .getByRole('table')
+      .getByTestId('machine-results')
       .getByRole('link', { name: /^Synthetic pump/ })
       .first();
     await expect(first).toBeVisible();
@@ -112,7 +125,13 @@ for (const source of ['machines', 'unassigned']) {
     await back.click();
     await expect(
       page
-        .getByRole('table')
+        .getByTestId('machine-results')
+        .getByRole('link', { name: machineName, exact: true })
+    ).toBeVisible();
+    await showExplorerControls(page);
+    await expect(
+      page
+        .getByTestId('machine-results')
         .getByRole('link', { name: machineName, exact: true })
     ).toBeVisible();
     await expect(
@@ -186,12 +205,10 @@ test('filter and physical scope changes reset page without conflating alarm coun
   await expect(page.getByTestId('machine-count-view')).toHaveText('80');
   expect((await explorerParams(page)).has('page')).toBe(false);
   expect((await explorerParams(page)).has('scope')).toBe(false);
-  await expect(
-    page.getByText('Search this list by name, serial, or manufacturer.')
-  ).toBeVisible();
+  await expect(page.getByText('Name, serial or manufacturer')).toBeVisible();
   await expect(
     page.getByRole('columnheader', { name: 'Active record', exact: true })
-  ).toBeVisible();
+  ).toHaveCount(0);
   await page.screenshot({
     path: testInfo.outputPath('machines-dark-filtered.png'),
     fullPage: true,
@@ -235,6 +252,10 @@ test('location selection starts a fresh population while explicit history restor
     page.getByRole('heading', { name: 'Synthetic pump hall', exact: true })
   ).toBeVisible();
   await expect(
+    page.getByRole('region', { name: 'Loaded page summary' })
+  ).toContainText('20 of 20 machines');
+  await showExplorerControls(page);
+  await expect(
     page.getByRole('textbox', { name: 'Search machines', exact: true })
   ).toHaveValue('');
   await expect(
@@ -244,6 +265,10 @@ test('location selection starts a fresh population while explicit history restor
   expect((await explorerParams(page)).get('location')).toBe('21');
   expect((await explorerParams(page)).has('page')).toBe(false);
   await page.getByRole('button', { name: 'Fixture back', exact: true }).click();
+  await expect(
+    page.getByRole('region', { name: 'Loaded page summary' })
+  ).toContainText('of 50 machines');
+  await showExplorerControls(page);
   await expect(
     page.getByRole('textbox', { name: 'Search machines', exact: true })
   ).toHaveValue('pump');
@@ -261,6 +286,10 @@ test('location selection starts a fresh population while explicit history restor
   await page
     .getByRole('button', { name: 'Fixture forward', exact: true })
     .click();
+  await expect(
+    page.getByRole('region', { name: 'Loaded page summary' })
+  ).toContainText('20 of 20 machines');
+  await showExplorerControls(page);
   await expect(page.getByText('20 machines', { exact: true })).toBeVisible();
 });
 
@@ -279,7 +308,7 @@ for (const status of [403, 500]) {
     await expect(
       page.getByRole('alert').filter({ hasText: 'Machines unavailable' })
     ).toBeVisible();
-    await expect(page.getByRole('table')).toHaveCount(0);
+    await expect(page.getByTestId('machine-results')).toHaveCount(0);
     await expect(page.getByText('50 machines', { exact: true })).toHaveCount(0);
     await expect(page.getByText('0 machines', { exact: true })).toHaveCount(0);
     await expect(page.getByText('No machines match your search.')).toHaveCount(
@@ -304,7 +333,7 @@ test('an out-of-range returned page reconciles to the last real page without cha
   );
   await expect(
     page
-      .getByRole('table')
+      .getByTestId('machine-results')
       .getByRole('link', { name: 'Synthetic pump 026', exact: true })
   ).toBeVisible();
   expect((await explorerParams(page)).get('page')).toBe('2');
@@ -348,12 +377,10 @@ test('each machine shows its open Work apart from alarms, and an unknown count i
   await mockExplorer(page);
   for (const scheme of ['light', 'dark']) {
     await openExplorer(page, '/machines/index/machines/', scheme);
-    const table = page.getByRole('table');
-    await expect(
-      table.getByRole('columnheader', { name: 'Work', exact: true })
-    ).toBeVisible();
+    const table = page.getByTestId('machine-results');
+    await expect(column(table, 'Work')).toBeVisible();
     const row = (name: string) =>
-      table.getByRole('row').filter({ hasText: name });
+      table.locator('[data-machine]').filter({ hasText: name });
     // Busy: count and the highest native priority.
     const busy = row('Synthetic pump 001');
     await expect(busy.locator('td[data-open-work="2"]')).toContainText(
@@ -366,11 +393,11 @@ test('each machine shows its open Work apart from alarms, and an unknown count i
     // Unresolved scope reads as not available, never as a quiet dash.
     await expect(
       row('Synthetic pump 003').locator('td[data-open-work="unavailable"]')
-    ).toHaveText('Not available');
+    ).toHaveText('Unavailable · could not be checked');
     // Explicitly none.
     await expect(
       row('Synthetic pump 006').locator('td[data-open-work="0"]')
-    ).toHaveText('—');
+    ).toHaveText('0');
     // Alarms and Work stay different facts on the same row.
     await expect(busy.locator('td[data-alarms]')).toBeVisible();
     // Status labels read whole at every width: no truncated badge text.
@@ -401,13 +428,11 @@ test('criticality is the declared classification, apart from alarms and work pri
   await mockExplorer(page);
   for (const scheme of ['light', 'dark']) {
     await openExplorer(page, '/machines/index/machines/', scheme);
-    const table = page.getByRole('table');
-    await expect(
-      table.getByRole('columnheader', { name: 'Criticality', exact: true })
-    ).toBeVisible();
+    const table = page.getByTestId('machine-results');
+    await expect(column(table, 'Criticality')).toBeVisible();
     const cell = (name: string) =>
       table
-        .getByRole('row')
+        .locator('[data-machine]')
         .filter({ hasText: name })
         .locator('td[data-criticality]');
     await expect(cell('Synthetic pump 001')).toHaveText('Critical');
@@ -477,7 +502,11 @@ test('the criticality filter narrows on the server, resets the page and survives
   await page
     .getByRole('button', { name: 'Clear filters', exact: true })
     .click();
-  await expect(filter).toHaveValue('');
+  await expect(
+    page.getByRole('region', { name: 'Loaded page summary' })
+  ).toContainText('of 110 machines');
+  await showExplorerControls(page);
+  await expect(filter).toHaveValue('Any criticality');
   expect((await explorerParams(page)).has('criticality')).toBe(false);
   expect(fixture.requests.at(-1)!.params.has('criticality')).toBe(false);
 });
@@ -488,13 +517,11 @@ test('each machine shows its Health condition with coverage on its own line, and
   await mockExplorer(page);
   for (const scheme of ['light', 'dark']) {
     await openExplorer(page, '/machines/index/machines/', scheme);
-    const table = page.getByRole('table');
-    await expect(
-      table.getByRole('columnheader', { name: 'Condition', exact: true })
-    ).toBeVisible();
+    const table = page.getByTestId('machine-results');
+    await expect(column(table, 'Condition')).toBeVisible();
     const cell = (name: string) =>
       table
-        .getByRole('row')
+        .locator('[data-machine]')
         .filter({ hasText: name })
         .locator('td[data-condition]');
     // Full coverage: the state alone.
@@ -517,10 +544,12 @@ test('each machine shows its Health condition with coverage on its own line, and
       'data-condition',
       'unavailable'
     );
-    await expect(cell('Synthetic pump 003')).toHaveText('Not available');
+    await expect(cell('Synthetic pump 003')).toHaveText(
+      'Condition unavailable · could not be checked'
+    );
     // Condition, Alarms, Work and Criticality stay separate cells.
     const busy = table
-      .getByRole('row')
+      .locator('[data-machine]')
       .filter({ hasText: 'Synthetic pump 001' });
     for (const column of [
       'td[data-condition]',

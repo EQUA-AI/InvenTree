@@ -47,10 +47,18 @@ export default function MachineIndex() {
 
   return (
     <Stack className={classes.workspace}>
-      <PageDetail title={t`Machines`} actions={[]} />
-      <Button component={Link} to='/machines/registry/' w='fit-content'>
-        {t`Equipment Registry`}
-      </Button>
+      <PageDetail
+        title={t`Machines`}
+        actions={[
+          <Button
+            key='registry'
+            color='var(--mantine-primary-color-7)'
+            component={Link}
+            to='/machines/registry/'
+            w='fit-content'
+          >{t`Equipment Registry`}</Button>
+        ]}
+      />
       <PanelGroup
         pageKey='asset-machine-index'
         panels={panels}

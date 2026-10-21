@@ -1,60 +1,86 @@
-import { t } from '@lingui/core/macro';
-import { Group, Paper, Stack, Text } from '@mantine/core';
+import { plural, t } from '@lingui/core/macro';
+import { Box, Button, Group, Stack, Text } from '@mantine/core';
+import { IconBellRinging } from '@tabler/icons-react';
+import { StatusBadge } from '../health/common';
 import operations from '../operations.module.css';
 import type { LocatedMachine } from './locationTypes';
 import { pageFacts } from './pageFacts';
 
-/** A summary of loaded records with its own scope and read time. */
 export function MachinePageSummary({
   rows,
   total,
-  updatedAt,
-  updating
+  alarmsOnly,
+  onAlarmsChange
 }: Readonly<{
   rows: LocatedMachine[];
   total: number;
-  updatedAt: number;
-  updating: boolean;
+  updatedAt?: number;
+  updating?: boolean;
+  alarmsOnly?: boolean;
+  onAlarmsChange?: () => void;
 }>) {
   const facts = pageFacts(rows);
-  const metrics = [
-    [t`Loaded machines`, `${rows.length} / ${total}`],
-    [t`Health warning / critical`, facts.alerts],
-    [t`No current data`, facts.offline],
-    [t`Condition unknown`, facts.unknown],
-    [t`Rows with active alarms`, facts.alarmRows ?? t`Unavailable`]
-  ];
+  if (total === 0) return null;
   return (
-    <Paper
+    <Stack
+      gap={4}
+      className={operations.phoneSummary}
       component='section'
       aria-label={t`Loaded page summary`}
-      className={operations.band}
     >
-      <Stack gap='xs'>
-        <Group justify='space-between' gap='xs'>
-          <Text size='sm' fw={600}>{t`Loaded page · operational context`}</Text>
-          <Text className={operations.caveat}>
-            {updating ? t`Updating records…` : t`Records read`}{' '}
-            {updatedAt
-              ? `${new Date(updatedAt).toLocaleTimeString()} (${Intl.DateTimeFormat().resolvedOptions().timeZone})`
-              : t`Time unavailable`}
-          </Text>
-        </Group>
-        <div className={operations.metrics}>
-          {metrics.map(([label, value]) => (
-            <div key={label} className={operations.metric}>
-              <Text className={operations.label}>{label}</Text>
-              <Text className={operations.value}>{value}</Text>
-            </div>
+      <Group gap={2} component='output'>
+        <Text
+          size='sm'
+          lh={1.2}
+          fw={600}
+        >{t`This page · ${rows.length} of ${total} machines`}</Text>
+        <Box visibleFrom='sm' className={operations.inline}>
+          {(
+            [
+              [t`Critical`, facts.critical, 'red'],
+              [t`Warning`, facts.warning, 'yellow'],
+              [t`Offline`, facts.offline, 'gray'],
+              [t`Condition unknown (assessed)`, facts.unknown, 'gray'],
+              [
+                t`Condition unavailable (not judged)`,
+                facts.unavailable,
+                'gray'
+              ],
+              [t`Normal`, facts.normal, 'green']
+            ] as const
+          ).map(([label, count, color]) => (
+            <StatusBadge size='sm' key={label} color={color}>
+              {label} · {count}
+            </StatusBadge>
           ))}
-        </div>
-        <Text
-          className={operations.caveat}
-        >{t`Counts describe this page only; not the whole station. ${facts.stale} loaded machines report stale signals.`}</Text>
-        <Text
-          className={operations.caveat}
-        >{t`Telemetry timestamps, run / stop and communication status are unavailable in this list. Active record is an asset setting.`}</Text>
-      </Stack>
-    </Paper>
+        </Box>
+        <Button
+          variant='default'
+          size='compact-xs'
+          h={20}
+          aria-pressed={!!alarmsOnly}
+          leftSection={<IconBellRinging size={13} />}
+          onClick={onAlarmsChange}
+        >
+          {t`In alarm`}: {facts.alarmRows ?? t`Unavailable`} {t`rows`}
+        </Button>
+      </Group>
+      <Text className={operations.meta}>
+        {(facts.stale > 0 || facts.unavailable === 0) &&
+          t`Stale signals on ${facts.stale} machines (also counted above)`}
+        {facts.unavailable > 0 && (
+          <>
+            {facts.stale > 0 && ' · '}
+            {plural(facts.unavailable, {
+              one: 'Stale-signal coverage unavailable for # machine',
+              other: 'Stale-signal coverage unavailable for # machines'
+            })}
+          </>
+        )}
+      </Text>
+      <Text
+        className={operations.caveat}
+      >{t`Page counts only. Telemetry, run/stop and communication status unavailable here.`}</Text>
+    </Stack>
   );
 }

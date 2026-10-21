@@ -69,6 +69,11 @@ def run_inside(labels):
             '*.sqlite*',
         ),
     )
+    # Layout contract tests validate the checked-in SVGs as well as the JSON.
+    # Only these static assets are needed, never frontend config or credentials.
+    shutil.copytree(
+        '/source/mimic', workspace / 'src' / 'frontend' / 'src' / 'assets' / 'mimic'
+    )
     (workspace / 'VERSION').write_text('')
     (backend / 'InvenTree' / 's0_settings.py').write_text(
         'import InvenTree.settings as baseline\n'
@@ -155,6 +160,8 @@ def run_host(labels, image, output):
         '/tmp:rw,nosuid,size=2g',
         '--mount',
         f'type=bind,src={root / "src/backend"},dst=/source/backend,readonly',
+        '--mount',
+        f'type=bind,src={root / "src/frontend/src/assets/mimic"},dst=/source/mimic,readonly',
         '--mount',
         f'type=bind,src={Path(__file__).resolve()},dst=/s0/backend_baseline.py,readonly',
         '--mount',

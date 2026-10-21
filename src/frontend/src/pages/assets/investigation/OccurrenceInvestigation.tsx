@@ -1,7 +1,8 @@
 import { t } from '@lingui/core/macro';
-import { Anchor, Stack, Text } from '@mantine/core';
+import { Anchor, Spoiler, Stack, Text } from '@mantine/core';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { FaultOccurrence } from '../faults/occurrenceModel';
+import operations from '../operations.module.css';
 import { InvestigationSlices } from './InvestigationSlices';
 import {
   boundedWindow,
@@ -23,12 +24,21 @@ export function OccurrenceInvestigation({
   return (
     <Stack gap='xs' data-testid='occurrence-investigation'>
       <Text fw={600} size='sm'>{t`Investigate source history`}</Text>
-      <Text
-        size='xs'
-        c='dimmed'
-      >{t`A new historian read can differ from the retained evidence below. It does not replace, extend or recapture a snapshot. Source retention, resolution and permissions apply. Case and snapshot bounds use the recorded plant clock; Performance converts them only with a known display-clock offset.`}</Text>
+      <Spoiler
+        classNames={{ control: operations.link }}
+        maxHeight={22}
+        showLabel={t`Read history limits`}
+        hideLabel={t`Show less`}
+        maw='70ch'
+      >
+        <Text
+          size='xs'
+          className={operations.meta}
+        >{t`A new historian read can differ from the retained evidence below. It does not replace, extend or recapture a snapshot. Source retention, resolution and permissions apply. Case and snapshot bounds retain their recorded instants; Performance converts them only with a known display-clock offset.`}</Text>
+      </Spoiler>
       {context && (
         <Anchor
+          className={operations.link}
           component={Link}
           size='sm'
           to={investigationHref(
@@ -45,7 +55,7 @@ export function OccurrenceInvestigation({
       )}
       <Text
         size='xs'
-        c='dimmed'
+        className={operations.meta}
       >{t`The context window is a navigation choice, not the event duration. Performance shows available source samples and gaps.`}</Text>
       {validSpan(from, to) ? (
         <InvestigationSlices
@@ -74,6 +84,7 @@ export function OccurrenceInvestigation({
         return (
           span && (
             <Anchor
+              className={operations.link}
               component={Link}
               key={snapshot.id}
               size='xs'
