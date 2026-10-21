@@ -3,6 +3,7 @@ import {
   Alert,
   Badge,
   Card,
+  Divider,
   Group,
   Loader,
   SimpleGrid,
@@ -16,6 +17,9 @@ import { useQuery } from '@tanstack/react-query';
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import { useApi } from '../../contexts/ApiContext';
+import { FaultOccurrences } from './faults/FaultOccurrences';
+import { OccurrenceInvestigation } from './investigation/OccurrenceInvestigation';
+import operations from './operations.module.css';
 
 interface CountRow {
   code?: string;
@@ -61,11 +65,11 @@ function CountTable({
         <Text fw={600} size='sm'>
           {title}
         </Text>
-        <Text size='xs' c='dimmed'>
+        <Text size='xs' className={operations.meta}>
           {source}
         </Text>
         {rows.length === 0 ? (
-          <Text size='xs' c='dimmed'>{t`No records`}</Text>
+          <Text size='xs' className={operations.meta}>{t`No records`}</Text>
         ) : (
           <Table withRowBorders={false} verticalSpacing={2}>
             <Table.Tbody>
@@ -90,13 +94,39 @@ function CountTable({
 }
 
 /**
- * Deterministic fault-history rollup (C4): server-computed aggregates only —
- * maintenance cadence, approved-scope failure codes, and causes from
- * verified closeouts. Declared and observed provenance are labelled apart.
+ * R6 UI08 Fault History: occurrences and their retained evidence lead;
+ * the native maintenance rollup follows. The two load
+ * independently, so one failing never hides the other.
  */
 export default function FaultHistoryPanel({
   machineId
 }: Readonly<{ machineId: number }>) {
+  return (
+    <Stack gap='lg'>
+      <FaultOccurrences
+        machineId={machineId}
+        renderInvestigation={(occurrence) => (
+          <OccurrenceInvestigation
+            machineId={machineId}
+            occurrence={occurrence}
+          />
+        )}
+      />
+      <Divider
+        label={t`Maintenance history · recorded aggregates`}
+        labelPosition='left'
+      />
+      <FaultHistoryRollup machineId={machineId} />
+    </Stack>
+  );
+}
+
+/**
+ * Deterministic fault-history rollup (C4): server-computed aggregates only —
+ * maintenance cadence, approved-scope failure codes, and causes from
+ * verified closeouts. Declared and observed provenance are labelled apart.
+ */
+function FaultHistoryRollup({ machineId }: Readonly<{ machineId: number }>) {
   const api = useApi();
   const query = useQuery({
     queryKey: ['machine-fault-history', machineId],
@@ -133,7 +163,7 @@ export default function FaultHistoryPanel({
         )}
       </Group>
       {maintenance.count > 0 && (
-        <Text size='xs' c='dimmed'>
+        <Text size='xs' className={operations.meta}>
           {t`First`} {maintenance.first_date} — {t`last`}{' '}
           {maintenance.last_date}
           {maintenance.gap_days.median != null && (
@@ -147,7 +177,7 @@ export default function FaultHistoryPanel({
       )}
       {data.declared.fault_codes.length > 0 && (
         <Group gap={4}>
-          <Text size='xs' c='dimmed'>
+          <Text size='xs' className={operations.meta}>
             {t`Declared fault codes`}:
           </Text>
           {data.declared.fault_codes.map((code) => (

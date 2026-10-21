@@ -11,12 +11,13 @@ import uuid
 from decimal import Decimal
 from unittest import mock
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from tasks.models import WorkOrder, WorkOrderPart
 
 from approvals.models import ActionType, Approval, ApprovalStatus
+from assets.models import AssetMachine, get_default_client
 from InvenTree.unit_test import InvenTreeAPITestCase
 
 from .models import (
@@ -46,15 +47,26 @@ def _make_approval(status=ApprovalStatus.PENDING, **overrides):
     return Approval.objects.create(**data)
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class RepairPacketAPITest(InvenTreeAPITestCase):
     """HTTP API behaviour and the full lifecycle for repair packets."""
 
-    roles = 'all'
+    roles = [
+        'work_order.view',
+        'work_order.add',
+        'work_order.change',
+        'work_order.delete',
+    ]
 
     def setUp(self):
         """Start each test from a clean slate."""
         super().setUp()
         RepairPacket.objects.all().delete()
+        self.machine = AssetMachine.objects.create(
+            name='Packet API machine', client=get_default_client()
+        )
 
     def test_create_packet_via_api(self):
         """A packet can be created through the API and gets a reference."""
@@ -62,6 +74,7 @@ class RepairPacketAPITest(InvenTreeAPITestCase):
         resp = self.post(
             url,
             {
+                'machine': self.machine.pk,
                 'fault_summary': 'Pump tripping on overload',
                 'symptom': 'overload trip',
                 'criticality': 'high',
@@ -74,7 +87,9 @@ class RepairPacketAPITest(InvenTreeAPITestCase):
 
     def test_generate_moves_to_diagnosed(self):
         """The generate endpoint populates diagnosis and advances to diagnosed."""
-        packet = RepairPacket.objects.create(fault_summary='bearing noise')
+        packet = RepairPacket.objects.create(
+            machine=self.machine, fault_summary='bearing noise'
+        )
         url = reverse('repair-packet-generate', kwargs={'pk': packet.pk})
         # Lifecycle test, not a provider test: pin the offline provider so the
         # in-process AI turn (and its provider retry latency) never runs here.
@@ -85,7 +100,9 @@ class RepairPacketAPITest(InvenTreeAPITestCase):
 
     def test_full_lifecycle_via_api(self):
         """Drive a packet through diagnosed -> approved -> executing -> closed."""
-        packet = RepairPacket.objects.create(fault_summary='seal leak')
+        packet = RepairPacket.objects.create(
+            machine=self.machine, fault_summary='seal leak'
+        )
         gen = reverse('repair-packet-generate', kwargs={'pk': packet.pk})
         adv = reverse('repair-packet-advance', kwargs={'pk': packet.pk})
 
@@ -106,7 +123,7 @@ class RepairPacketAPITest(InvenTreeAPITestCase):
 
     def test_illegal_transition_returns_400(self):
         """An illegal transition is rejected with a 400 and ok=False."""
-        packet = RepairPacket.objects.create(fault_summary='x')
+        packet = RepairPacket.objects.create(machine=self.machine, fault_summary='x')
         adv = reverse('repair-packet-advance', kwargs={'pk': packet.pk})
         resp = self.post(adv, {'to': PacketStatus.EXECUTING}, expected_code=400)
         self.assertFalse(resp.data['ok'])
@@ -115,7 +132,7 @@ class RepairPacketAPITest(InvenTreeAPITestCase):
     def test_pending_gate_blocks_approval_via_api(self):
         """A pending safety gate blocks the diagnosed -> approved transition."""
         packet = RepairPacket.objects.create(
-            fault_summary='x', status=PacketStatus.DIAGNOSED
+            machine=self.machine, fault_summary='x', status=PacketStatus.DIAGNOSED
         )
         RepairPacketGate.objects.create(
             packet=packet, name='LOTO', status=GateStatus.PENDING
@@ -127,7 +144,7 @@ class RepairPacketAPITest(InvenTreeAPITestCase):
 
     def test_detail_includes_nested_sections(self):
         """The detail serializer embeds gates, parts and approvals sections."""
-        packet = RepairPacket.objects.create(fault_summary='x')
+        packet = RepairPacket.objects.create(machine=self.machine, fault_summary='x')
         RepairPacketGate.objects.create(packet=packet, name='LOTO')
         url = reverse('repair-packet-detail', kwargs={'pk': packet.pk})
         resp = self.get(url, expected_code=200)
@@ -139,7 +156,9 @@ class RepairPacketAPITest(InvenTreeAPITestCase):
 
     def test_search_by_reference(self):
         """The list endpoint is searchable by reference."""
-        packet = RepairPacket.objects.create(fault_summary='searchable fault')
+        packet = RepairPacket.objects.create(
+            machine=self.machine, fault_summary='searchable fault'
+        )
         url = reverse('repair-packet-list')
         resp = self.get(url, {'search': packet.reference}, expected_code=200)
         refs = [row['reference'] for row in resp.data]

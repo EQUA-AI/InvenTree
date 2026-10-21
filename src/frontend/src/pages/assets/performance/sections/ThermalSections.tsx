@@ -1,7 +1,6 @@
 import { t } from '@lingui/core/macro';
 import {
   Alert,
-  Badge,
   Group,
   SimpleGrid,
   Stack,
@@ -11,20 +10,24 @@ import {
 } from '@mantine/core';
 import { IconInfoCircle } from '@tabler/icons-react';
 import { useMemo } from 'react';
+import { StatusBadge } from '../../health/StatusBadge';
+import { MetaText } from '../../health/common';
 
 import type { SeriesEntry } from '@lib/types/MachineHealth';
 
 import { SensorGroupCard } from '../SensorGroupCard';
 import { TrendChart, type TrendSeries, familyColors } from '../TrendChart';
-import { formatRange, formatValue } from '../format';
+import { formatRange, formatValue, unitLabel } from '../format';
 import { type ResolvedParameter, withRole } from '../resolve';
 import {
   alignRows,
   differenceSeries,
   gapThresholdMs,
+  resolutionForSeries,
   seriesStats,
   syntheticEntry
 } from '../series';
+import { groupByScale, sameScale, unitText } from '../units';
 import { CardGrid, ChartCard, type SectionProps } from './common';
 
 /**
@@ -54,7 +57,7 @@ export function WindingSection({
           series={series}
           window={window}
           syncId={syncId}
-          hue='orange'
+          hue='indigo'
           heatmap
           comparison
           onZoom={onZoom}
@@ -71,7 +74,7 @@ export function WindingSection({
             series={series}
             window={window}
             syncId={syncId}
-            hue='red'
+            hue='violet'
             comparison
             onZoom={onZoom}
           />
@@ -83,7 +86,7 @@ export function WindingSection({
             series={series}
             window={window}
             syncId={syncId}
-            hue='gray'
+            hue='grape'
             onZoom={onZoom}
           />
         )}
@@ -122,10 +125,10 @@ export function VibrationSection({
         color='gray'
         variant='light'
         icon={<IconInfoCircle size={16} />}
-        title={t`No approved vibration channel`}
+        title={t`Unavailable · no vibration channel with a confirmed role and unit`}
       >
         <Text size='sm'>
-          {t`This pump's vibration tags are in the dictionary but have not passed review, because the source does not say whether they report displacement (µm) or velocity (mm/s). Until that is confirmed they are not shown as live readings, so this section has nothing it can honestly draw.`}
+          {t`Channels without a confirmed engineering role and unit cannot be used for vibration comparison.`}
         </Text>
       </Alert>
     );
@@ -212,11 +215,60 @@ function pairByIndex(
 }
 
 /**
+ * Pairs whose readings can be subtracted: the same unit on both sides. An
+ * outlet in degF minus an inlet in degC is not a temperature rise, so such a
+ * pair is named and left uncalculated rather than drawn.
+ */
+function subtractable(
+  pairs: { a: ResolvedParameter; b: ResolvedParameter }[]
+): {
+  pairs: { a: ResolvedParameter; b: ResolvedParameter }[];
+  refused: string[];
+} {
+  const ok = pairs.filter((p) => sameScale(p.a.signal.unit, p.b.signal.unit));
+  const refused = pairs
+    .filter((p) => !sameScale(p.a.signal.unit, p.b.signal.unit))
+    .map(
+      (p) =>
+        `${p.a.label} (${unitLabel(p.a.signal.unit)}) − ${p.b.label} (${unitLabel(p.b.signal.unit)})`
+    );
+  return { pairs: ok, refused };
+}
+
+function withRefusal(description: string, refused: string[]): string {
+  return refused.length > 0
+    ? `${description} ${t`Not calculated, because the paired units differ: ${refused.join('; ')}.`}`
+    : description;
+}
+
+/**
  * A calculated ΔT per pair, drawn as its own trend with the current values as
  * badges. Computed only where both sensors were read at the same instant, and
  * labelled as calculated wherever it appears.
  */
-function DifferenceCard({
+function DifferenceCard(
+  props: Readonly<Parameters<typeof SameScaleDifferenceCard>[0]>
+) {
+  const groups = groupByScale(props.pairs, (pair) => pair.a.signal.unit);
+  if (groups.length <= 1) return <SameScaleDifferenceCard {...props} />;
+  const units = groups.map((group) => unitLabel(unitText(group)));
+  return (
+    <Stack gap='md'>
+      <MetaText size='sm'>{t`Drawn apart: temperature rises in ${units.join(', ')} have separate axes; no conversion is assumed.`}</MetaText>
+      {groups.map((group, index) => (
+        <div key={group.key} data-difference-unit={unitText(group)}>
+          <SameScaleDifferenceCard
+            {...props}
+            pairs={group.items}
+            title={`${props.title} (${units[index]})`}
+          />
+        </div>
+      ))}
+    </Stack>
+  );
+}
+
+function SameScaleDifferenceCard({
   title,
   description,
   pairs,
@@ -256,11 +308,16 @@ function DifferenceCard({
             : shared
               ? t`ΔT ${pair.a.index} (${pair.b.definition.label()})`
               : t`ΔT ${pair.a.index}`;
-        const samples = differenceSeries(
-          series.get(pair.a.signal.binding_id),
-          series.get(pair.b.signal.binding_id)
-        );
-        const entry = syntheticEntry(label, unit, samples);
+        const a = series.get(pair.a.signal.binding_id);
+        const b = series.get(pair.b.signal.binding_id);
+        const samples = differenceSeries(a, b);
+        const entry = {
+          ...syntheticEntry(label, unit, samples),
+          read_resolution_seconds: Math.max(
+            resolutionForSeries([a], window.resolutionSeconds),
+            resolutionForSeries([b], window.resolutionSeconds)
+          )
+        };
         const current =
           typeof pair.a.signal.value === 'number' &&
           typeof pair.b.signal.value === 'number'
@@ -268,6 +325,7 @@ function DifferenceCard({
             : null;
         return {
           key: `delta-${i}`,
+          bindingIds: [pair.a.signal.binding_id, pair.b.signal.binding_id],
           label,
           entry,
           current,
@@ -275,7 +333,7 @@ function DifferenceCard({
           color: colors[i]
         };
       }),
-    [pairs, series, unit, colors]
+    [pairs, series, unit, colors, window.resolutionSeconds]
   );
 
   const rows = useMemo(
@@ -288,13 +346,20 @@ function DifferenceCard({
   );
   const lines: TrendSeries[] = computed.map((c) => ({
     key: c.key,
+    bindingIds: c.bindingIds,
     label: c.label,
     color: c.color,
     unit,
     decimals
   }));
 
-  if (pairs.length === 0) return null;
+  // Every pair refused for its units: the card stays to say so.
+  if (pairs.length === 0)
+    return (
+      <ChartCard title={title} description={description}>
+        <MetaText size='sm'>{t`No pair could be calculated.`}</MetaText>
+      </ChartCard>
+    );
 
   return (
     <ChartCard title={title} description={description}>
@@ -302,9 +367,10 @@ function DifferenceCard({
         {computed.map((c) => {
           const stats = seriesStats(c.entry);
           return (
-            <Badge
+            <StatusBadge
+              tone='neutral'
               key={c.key}
-              variant='light'
+              variant='outline'
               color={c.stale ? 'gray' : hue}
               size='sm'
               // A truncated badge loses the window range, which is the half
@@ -326,12 +392,12 @@ function DifferenceCard({
               {stats
                 ? ` (${t`window`} ${formatRange(stats.min, stats.max, decimals)})`
                 : ''}
-            </Badge>
+            </StatusBadge>
           );
         })}
-        <Badge variant='outline' color='gray' size='sm'>
+        <StatusBadge tone='neutral' variant='outline' color='gray' size='sm'>
           {t`Calculated`}
-        </Badge>
+        </StatusBadge>
       </Group>
       <TrendChart
         rows={rows}
@@ -361,15 +427,24 @@ export function CoolingSection({
 }: Readonly<SectionProps>) {
   const inlet = withRole(parameters, 'water_inlet');
   const outlet = withRole(parameters, 'water_outlet');
-  const water = withRole(parameters, 'water');
+  const waterRtd = withRole(parameters, 'water');
   const cold = withRole(parameters, 'cold_air');
   const hot = withRole(parameters, 'hot_air');
 
-  const waterPairs = useMemo(() => pairByIndex(outlet, inlet), [outlet, inlet]);
-  const airPairs = useMemo(() => pairByIndex(hot, cold), [hot, cold]);
+  const water = useMemo(
+    () => subtractable(pairByIndex(outlet, inlet)),
+    [outlet, inlet]
+  );
+  const air = useMemo(() => subtractable(pairByIndex(hot, cold)), [hot, cold]);
+  const waterPairs = water.pairs;
+  const airPairs = air.pairs;
 
   if (
-    inlet.length + outlet.length + water.length + cold.length + hot.length ===
+    inlet.length +
+      outlet.length +
+      waterRtd.length +
+      cold.length +
+      hot.length ===
     0
   ) {
     return null;
@@ -378,7 +453,7 @@ export function CoolingSection({
   return (
     <Stack gap='md'>
       {(inlet.length > 0 || outlet.length > 0) && (
-        <CardGrid cols={waterPairs.length > 0 ? 3 : 2}>
+        <CardGrid cols={waterPairs.length + water.refused.length > 0 ? 3 : 2}>
           {inlet.length > 0 && (
             <SensorGroupCard
               title={t`Cooling water inlet`}
@@ -398,15 +473,18 @@ export function CoolingSection({
               series={series}
               window={window}
               syncId={syncId}
-              hue='orange'
+              hue='indigo'
               comparison={outlet.length > 2}
               onZoom={onZoom}
             />
           )}
-          {waterPairs.length > 0 && (
+          {waterPairs.length + water.refused.length > 0 && (
             <DifferenceCard
               title={t`Cooling water rise (outlet − inlet)`}
-              description={t`How much heat the water carries away. Calculated from sensors paired by number, only where both were read at the same instant.`}
+              description={withRefusal(
+                t`How much heat the water carries away. Calculated from sensors paired by number, only where both were read at the same instant.`,
+                water.refused
+              )}
               pairs={waterPairs}
               series={series}
               window={window}
@@ -416,11 +494,11 @@ export function CoolingSection({
           )}
         </CardGrid>
       )}
-      {water.length > 0 && (
+      {waterRtd.length > 0 && (
         <SensorGroupCard
           title={t`Cooling water RTDs`}
           description={t`The dictionary does not say which of these are inlet and which outlet, so they are drawn as one family.`}
-          parameters={water}
+          parameters={waterRtd}
           series={series}
           window={window}
           syncId={syncId}
@@ -430,7 +508,7 @@ export function CoolingSection({
         />
       )}
       {(cold.length > 0 || hot.length > 0) && (
-        <CardGrid cols={airPairs.length > 0 ? 3 : 2}>
+        <CardGrid cols={airPairs.length + air.refused.length > 0 ? 3 : 2}>
           {cold.length > 0 && (
             <SensorGroupCard
               title={t`Cooling air, cold side`}
@@ -450,15 +528,18 @@ export function CoolingSection({
               series={series}
               window={window}
               syncId={syncId}
-              hue='red'
+              hue='violet'
               comparison={hot.length > 2}
               onZoom={onZoom}
             />
           )}
-          {airPairs.length > 0 && (
+          {airPairs.length + air.refused.length > 0 && (
             <DifferenceCard
               title={t`Air rise (hot − cold)`}
-              description={t`Calculated from hot and cold sensors paired by number.`}
+              description={withRefusal(
+                t`Calculated from hot and cold sensors paired by number.`,
+                air.refused
+              )}
               pairs={airPairs}
               series={series}
               window={window}
@@ -526,7 +607,7 @@ export function BearingSection({
             series={series}
             window={window}
             syncId={syncId}
-            hue='pink'
+            hue='blue'
             comparison
             onZoom={onZoom}
           />
@@ -539,7 +620,7 @@ export function BearingSection({
             series={series}
             window={window}
             syncId={syncId}
-            hue='teal'
+            hue='cyan'
             comparison
             onZoom={onZoom}
           />

@@ -13,7 +13,8 @@ import {
   Text,
   Title,
   Tooltip,
-  UnstyledButton
+  UnstyledButton,
+  useMantineTheme
 } from '@mantine/core';
 import {
   IconExclamationCircle,
@@ -53,7 +54,11 @@ import type {
   PanelType
 } from '@lib/types/Panel';
 import { t } from '@lingui/core/macro';
-import { useDocumentVisibility, useWindowEvent } from '@mantine/hooks';
+import {
+  useDocumentVisibility,
+  useMediaQuery,
+  useWindowEvent
+} from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import { useQuery } from '@tanstack/react-query';
 import { useShallow } from 'zustand/react/shallow';
@@ -99,10 +104,12 @@ export type PanelProps = {
  */
 function PanelTabComponent({
   expanded,
+  horizontal,
   panel,
   onClick
 }: {
   expanded: boolean;
+  horizontal: boolean;
   panel: PanelType;
   onClick: (event: any) => void;
 }) {
@@ -158,7 +165,7 @@ function PanelTabComponent({
       <Tabs.Tab
         p='xs'
         key={`panel-label-${panel.name}`}
-        w={'100%'}
+        w={horizontal ? 'auto' : '100%'}
         value={panel.name}
         leftSection={
           <Indicator
@@ -217,6 +224,8 @@ function BasePanelGroup({
   const navigate = useNavigate();
 
   const { panel } = useParams();
+  const theme = useMantineTheme();
+  const compact = useMediaQuery(`(max-width: ${theme.breakpoints.sm})`);
 
   const [expanded, setExpanded] = useState<boolean>(true);
 
@@ -397,14 +406,27 @@ function BasePanelGroup({
       <Paper p='sm' radius='xs' shadow='xs' aria-label={`${pageKey}`}>
         <Tabs
           value={currentPanel}
-          orientation='vertical'
+          orientation={compact ? 'horizontal' : 'vertical'}
           keepMounted={false}
           aria-label={`panel-group-${pageKey}`}
           classNames={{ tab: classes.selectedPanelTab }}
+          style={{ minWidth: 0, width: '100%' }}
         >
-          <Tabs.List justify='left' aria-label={`panel-tabs-${pageKey}`}>
+          <Tabs.List
+            justify='left'
+            aria-label={`panel-tabs-${pageKey}`}
+            style={
+              compact
+                ? { flexWrap: 'nowrap', overflowX: 'auto', maxWidth: '100%' }
+                : undefined
+            }
+          >
             {groupedPanels.map((group) => (
-              <Box key={`group-${group.id}`} w={'100%'}>
+              <Box
+                key={`group-${group.id}`}
+                w={compact ? 'max-content' : '100%'}
+                style={compact ? { display: 'flex', flexShrink: 0 } : undefined}
+              >
                 <Text
                   hidden={!group.label || !expanded}
                   c={vars.colors.primaryColors[7]}
@@ -421,7 +443,8 @@ function BasePanelGroup({
                     !panel.hidden && (
                       <PanelTabComponent
                         key={`panel-tab-${group.id}-${panel.name}`}
-                        expanded={expanded}
+                        expanded={compact || expanded}
+                        horizontal={compact}
                         panel={panel}
                         onClick={(event: any) =>
                           handlePanelChange(panel.name, event)
@@ -431,8 +454,8 @@ function BasePanelGroup({
                 )}
               </Box>
             ))}
-            {collapsible && <Divider />}
-            {collapsible && (
+            {collapsible && !compact && <Divider />}
+            {collapsible && !compact && (
               <Group wrap='nowrap' gap='xs'>
                 <Tooltip
                   position='right'
@@ -468,8 +491,9 @@ function BasePanelGroup({
                   )}`}
                   p='sm'
                   style={{
-                    overflowX: 'scroll',
-                    width: '100%'
+                    overflowX: 'auto',
+                    width: '100%',
+                    minWidth: 0
                   }}
                 >
                   <Stack gap='md'>

@@ -11,10 +11,10 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 
 from tasks.models import WorkOrder, WorkOrderLifecycle, WorkOrderType
-from tasks.scope import MaintenanceScope
+from tasks.scope import MaintenanceScope, ScopeError
 from tasks.services.work_orders import IllegalTransition
 
-from assets.models import AssetMachine
+from assets.models import AssetMachine, Client
 from company.models import Company
 from InvenTree.unit_test import InvenTreeAPITestCase
 
@@ -28,13 +28,17 @@ from .models import (
 )
 
 _GRANTED_CUSTOMER_IDS: list[int] = []
+_GRANTED_CLIENT_IDS: list[int] = []
 
 
 def _scope_resolver(actor):
-    """Return the customer scopes granted to the current test actor."""
+    """Return independent Work provenance and machine grants for this actor."""
     return {
         MaintenanceScope(customer_id=customer_id, site_key=None)
         for customer_id in _GRANTED_CUSTOMER_IDS
+    } | {
+        MaintenanceScope(customer_id=None, site_key=None, client_id=client_id)
+        for client_id in _GRANTED_CLIENT_IDS
     }
 
 
@@ -51,9 +55,15 @@ class StartRepairTest(TestCase):
         self.actor.maintenance_scopes = {
             MaintenanceScope(customer_id=self.customer.pk, site_key=None)
         }
-        # The work order carries the explicit customer, so the machine's own
-        # tenant identity is irrelevant to these tests.
-        self.machine = AssetMachine.objects.create(name=f'Blower {suffix}')
+        self.tenant = Client.objects.create(
+            name='Start repair client', code=f'start-repair-{suffix}'
+        )
+        self.actor.maintenance_scopes.add(
+            MaintenanceScope(customer_id=None, site_key=None, client_id=self.tenant.pk)
+        )
+        self.machine = AssetMachine.objects.create(
+            name=f'Blower {suffix}', client=self.tenant
+        )
         self.work_order = WorkOrder.objects.create(
             title='Bearing replacement',
             status=WorkOrder.STATUS_BACKLOG,
@@ -100,6 +110,20 @@ class StartRepairTest(TestCase):
         replay = self.start(key='same')
 
         self.assertEqual(first.event_id, replay.event_id)
+        self.assertEqual(self.packet.events.filter(event_type='advanced').count(), 1)
+
+    def test_shared_work_cannot_authorize_start_or_readiness_after_machine_revocation(
+        self,
+    ):
+        """O24 Work access cannot replay a start or inspect a foreign packet."""
+        self.start(key='same')
+        self.actor.maintenance_scopes = {
+            MaintenanceScope(customer_id=self.customer.pk, site_key=None)
+        }
+        with self.assertRaises(ScopeError):
+            self.start(key='same')
+        with self.assertRaises(ScopeError):
+            services.repair_start_readiness(self.packet, actor=self.actor)
         self.assertEqual(self.packet.events.filter(event_type='advanced').count(), 1)
 
     def test_unrestored_lockout_blocks_the_start(self):
@@ -190,10 +214,14 @@ class StartRepairApiTest(InvenTreeAPITestCase):
         )
         _GRANTED_CUSTOMER_IDS[:] = [self.customer.pk]
         self.addCleanup(_GRANTED_CUSTOMER_IDS.clear)
-
-        # The work order carries the explicit customer, so the machine's own
-        # tenant identity is irrelevant to these tests.
-        self.machine = AssetMachine.objects.create(name=f'Screen {suffix}')
+        self.tenant = Client.objects.create(
+            name='Start API client', code=f'start-api-{suffix}'
+        )
+        _GRANTED_CLIENT_IDS[:] = [self.tenant.pk]
+        self.addCleanup(_GRANTED_CLIENT_IDS.clear)
+        self.machine = AssetMachine.objects.create(
+            name=f'Screen {suffix}', client=self.tenant
+        )
         self.work_order = WorkOrder.objects.create(
             title='Chain replacement',
             status=WorkOrder.STATUS_BACKLOG,

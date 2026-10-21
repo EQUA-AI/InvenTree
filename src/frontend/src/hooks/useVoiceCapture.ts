@@ -5,7 +5,7 @@
  * revisions (from the realtime voice path or typed correction), accept the
  * exact reviewed revision by hash, cancel, and commit. Commit fails closed
  * with DESTINATION_UNAVAILABLE until the canonical destination substrate
- * (WS11 Repair intake / Feature #15) is live. No audio ever exists here.
+ * (WS11 Repair intake / Feature #15) is live. Closeout originals use a separate Work media route and purpose-specific consent.
  */
 
 import { useCallback, useState } from 'react';
@@ -108,7 +108,10 @@ export function useVoiceCapture(): UseVoiceCaptureResult {
       call(() =>
         api.post('/api/voice/captures/', {
           purpose,
-          consent_version: 'consent-v3-memory',
+          consent_version:
+            purpose === 'closeout'
+              ? 'closeout-originals-v1'
+              : 'consent-v3-memory',
           work_order_id: workOrderId,
           work_order_version: workOrderVersion
         })

@@ -1,7 +1,6 @@
 import { t } from '@lingui/core/macro';
-import { BarChart } from '@mantine/charts';
+import { ScatterChart } from '@mantine/charts';
 import {
-  Badge,
   Group,
   Paper,
   SimpleGrid,
@@ -11,6 +10,10 @@ import {
   useMantineTheme
 } from '@mantine/core';
 import { useMemo } from 'react';
+import { StatusBadge } from '../health/StatusBadge';
+import { MetaText } from '../health/common';
+import { hasLimits } from './evaluation';
+import { limitLines } from './limitLines';
 
 import type { SeriesEntry } from '@lib/types/MachineHealth';
 
@@ -21,15 +24,16 @@ import {
   type TrendSeries,
   familyColors
 } from './TrendChart';
-import { formatValue } from './format';
+import { formatValue, niceTicks, unitLabel } from './format';
 import type { ResolvedParameter } from './resolve';
 import {
   alignRows,
   gapThresholdMs,
   heatmapMatrix,
-  limitState,
+  resolutionForSeries,
   seriesStats
 } from './series';
+import { groupByScale, unitText } from './units';
 
 export interface WindowInfo {
   start: number;
@@ -55,6 +59,44 @@ export interface SensorGroupCardProps {
 }
 
 /**
+ * A family of like sensors, one card per scale (R6 A19.7).
+ *
+ * The family card assumes one unit: its axis, heatmap scale, bars and
+ * "highest now" all compare members with each other. A family whose
+ * dictionary units differ - a draft-tube pressure beside a draft-tube level,
+ * an RTD in degF among degC - is drawn as one card per unit, retaining forms supported by the unit group size, without ranking one reading on another's scale.
+ */
+export function SensorGroupCard(props: Readonly<SensorGroupCardProps>) {
+  const groups = useMemo(
+    () => groupByScale(props.parameters, (p) => p.signal.unit),
+    [props.parameters]
+  );
+  if (groups.length <= 1) return <SensorGroupCardBody {...props} />;
+  const units = groups.map((g) => unitLabel(unitText(g)));
+  return (
+    <Stack gap='md' data-units-split={groups.length}>
+      {groups.map((group, index) => (
+        <SensorGroupCardBody
+          key={group.key}
+          {...props}
+          parameters={group.items}
+          title={t`${props.title} (${units[index]})`}
+          description={[
+            props.description,
+            t`This family reports in ${units.join(', ')}; each unit has its own card, so no reading is compared on another's scale.`,
+            props.heatmap && group.items.length < 4
+              ? t`Heatmap not drawn: this unit group has fewer than four sensors.`
+              : ''
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        />
+      ))}
+    </Stack>
+  );
+}
+
+/**
  * A family of like sensors - twelve winding RTDs, ten thrust pads, four
  * cooling water inlets - in one card.
  *
@@ -64,7 +106,7 @@ export interface SensorGroupCardProps {
  * are enough of them, shows the whole family's history at once; the comparison
  * ranks their current readings. Everything derived is labelled calculated.
  */
-export function SensorGroupCard({
+function SensorGroupCardBody({
   title,
   parameters,
   series,
@@ -78,6 +120,10 @@ export function SensorGroupCard({
 }: Readonly<SensorGroupCardProps>) {
   const theme = useMantineTheme();
   const scheme = useComputedColorScheme('light');
+  const resolutionSeconds = resolutionForSeries(
+    parameters.map((p) => series.get(p.signal.binding_id)),
+    window.resolutionSeconds
+  );
   const unit = parameters[0]?.signal.unit ?? '';
   const decimals = parameters[0]?.definition.decimals ?? 1;
   const colors = useMemo(
@@ -89,6 +135,8 @@ export function SensorGroupCard({
     () =>
       parameters.map((p, i) => ({
         key: p.id,
+        bindingIds: [p.signal.binding_id],
+        externalKeys: [p.signal.external_key],
         label: p.label,
         color: colors[i],
         unit: p.signal.unit,
@@ -104,9 +152,9 @@ export function SensorGroupCard({
           key: p.id,
           entry: series.get(p.signal.binding_id)
         })),
-        gapThresholdMs(window.resolutionSeconds)
+        gapThresholdMs(resolutionSeconds)
       ),
-    [parameters, series, window.resolutionSeconds]
+    [parameters, series, resolutionSeconds]
   );
 
   // Current readings come from the signals (the machine's present state), the
@@ -121,12 +169,12 @@ export function SensorGroupCard({
             : null,
         stale: p.signal.stale,
         good: p.signal.quality === 'good',
-        state: limitState(
-          typeof p.signal.value === 'number' && p.signal.quality === 'good'
-            ? p.signal.value
-            : null,
-          p.signal.limits
-        )
+        state:
+          !p.signal.stale &&
+          p.signal.quality === 'good' &&
+          Object.values(p.signal.limits).some((value) => value != null)
+            ? p.signal.state
+            : 'unconfigured'
       })),
     [parameters]
   );
@@ -146,17 +194,24 @@ export function SensorGroupCard({
     const over = current.filter(
       (c) => c.state === 'warning' || c.state === 'critical'
     );
-    const configured = current.filter((c) => c.state !== 'unconfigured');
+    const configured = current.filter((c) =>
+      ['normal', 'warning', 'critical'].includes(c.state)
+    );
     return {
       highest,
       lowest,
       mean: values.reduce((a, b) => a + b, 0) / values.length,
       spread: (highest.value as number) - (lowest.value as number),
       over: over.length,
+      worst: over.some((entry) => entry.state === 'critical')
+        ? ('critical' as const)
+        : ('warning' as const),
+      breaches: over,
       configured: configured.length,
+      mappedLimits: parameters.filter((p) => hasLimits(p.signal)).length,
       live: live.length
     };
-  }, [current]);
+  }, [current, parameters]);
 
   // Reference lines only when the whole family shares one configured limit;
   // a line labelled "warn 125" over sensors with different limits would lie.
@@ -168,36 +223,16 @@ export function SensorGroupCard({
       const values = new Set(limits.map((l) => l[name]));
       return values.size === 1 ? limits[0][name] : null;
     };
-    const lines: ReferenceLine[] = [];
-    const warnMax = shared('warn_max');
-    const criticalMax = shared('critical_max');
-    const warnMin = shared('warn_min');
-    const criticalMin = shared('critical_min');
-    if (warnMax !== null)
-      lines.push({
-        y: warnMax,
-        label: t`Warn ${formatValue(warnMax, decimals, unit)}`,
-        color: 'yellow.7'
-      });
-    if (criticalMax !== null)
-      lines.push({
-        y: criticalMax,
-        label: t`Critical ${formatValue(criticalMax, decimals, unit)}`,
-        color: 'red.7'
-      });
-    if (warnMin !== null)
-      lines.push({
-        y: warnMin,
-        label: t`Warn ${formatValue(warnMin, decimals, unit)}`,
-        color: 'yellow.7'
-      });
-    if (criticalMin !== null)
-      lines.push({
-        y: criticalMin,
-        label: t`Critical ${formatValue(criticalMin, decimals, unit)}`,
-        color: 'red.7'
-      });
-    return lines;
+    return limitLines(
+      {
+        warn_max: shared('warn_max'),
+        warn_min: shared('warn_min'),
+        critical_max: shared('critical_max'),
+        critical_min: shared('critical_min')
+      },
+      unit,
+      decimals
+    );
   }, [parameters, decimals, unit]);
 
   const matrix = useMemo(
@@ -215,14 +250,12 @@ export function SensorGroupCard({
               48,
               Math.max(
                 12,
-                Math.floor(
-                  window.seconds / Math.max(window.resolutionSeconds, 1)
-                )
+                Math.floor(window.seconds / Math.max(resolutionSeconds, 1))
               )
             )
           )
         : null,
-    [heatmap, parameters, series, window]
+    [heatmap, parameters, series, window, resolutionSeconds]
   );
 
   const bars = useMemo(
@@ -231,15 +264,8 @@ export function SensorGroupCard({
         ? current
             .map((c) => ({
               sensor: c.parameter.label,
-              value: c.good ? c.value : null,
-              color:
-                c.state === 'critical'
-                  ? 'red.7'
-                  : c.state === 'warning'
-                    ? 'yellow.6'
-                    : c.stale
-                      ? 'gray.4'
-                      : `${hue}.6`
+              value: c.good && !c.stale ? c.value : null,
+              color: colors[0]
             }))
             .sort(
               (a, b) =>
@@ -277,18 +303,17 @@ export function SensorGroupCard({
     };
   }, [readable]);
 
-  // The chart colours a bar by its value alone, so the state colour is looked
-  // up by value; two sensors reading exactly alike share a colour, which is
-  // the least surprising outcome.
-  const barColors = useMemo(() => {
-    const map = new Map<number, string>();
-    for (const bar of bars) {
-      if (bar.value !== null && !map.has(bar.value))
-        map.set(bar.value, bar.color);
-    }
-    return map;
-  }, [bars]);
-
+  const dotValues = [
+    ...readable.map((point) => point.value as number),
+    ...referenceLines.map((line) => line.y)
+  ];
+  const dotMin = dotValues.length ? Math.min(...dotValues) : 0;
+  const dotMax = dotValues.length ? Math.max(...dotValues) : 1;
+  const dotTicks = niceTicks(
+    dotMin === dotMax ? dotMin - 1 : dotMin,
+    dotMin === dotMax ? dotMax + 1 : dotMax
+  );
+  const dotDomain: [number, number] = [dotTicks[0], dotTicks.at(-1)!];
   const windowStats = useMemo(() => {
     let max: { label: string; value: number } | null = null;
     for (const p of parameters) {
@@ -300,54 +325,104 @@ export function SensorGroupCard({
     return { max };
   }, [parameters, series]);
 
+  const breachedBounds =
+    summary?.breaches.flatMap((entry) =>
+      limitLines(entry.parameter.signal.limits, unit, decimals).filter(
+        (line) =>
+          line.severity === summary.worst &&
+          (line.direction === 'high'
+            ? (entry.value as number) > line.y
+            : (entry.value as number) < line.y)
+      )
+    ) ?? [];
+  const directions = new Set(breachedBounds.map((line) => line.direction));
+  const breachWord =
+    directions.size === 1
+      ? directions.has('high')
+        ? t`above`
+        : t`below`
+      : t`outside`;
   if (parameters.length === 0) {
     return null;
   }
 
   return (
-    <Paper withBorder radius='md' p='md'>
+    <Paper withBorder p='md'>
       <Stack gap='sm'>
         <Group justify='space-between' align='flex-start' wrap='wrap' gap='xs'>
           <Stack gap={2}>
             <Text fw={600}>{title}</Text>
-            {description && (
-              <Text size='xs' c='dimmed'>
-                {description}
-              </Text>
-            )}
+            {description && <MetaText size='xs'>{description}</MetaText>}
           </Stack>
           {summary && (
             <Group gap='xs' wrap='wrap'>
-              <Badge variant='light' color={hue} size='sm'>
+              <StatusBadge
+                tone='neutral'
+                variant='outline'
+                color='gray'
+                size='sm'
+              >
                 {t`Highest now: ${summary.highest.parameter.label} ${formatValue(summary.highest.value, decimals, unit, summary.spread)}`}
-              </Badge>
-              <Badge variant='light' color='gray' size='sm'>
+              </StatusBadge>
+              <StatusBadge
+                tone='neutral'
+                variant='outline'
+                color='gray'
+                size='sm'
+              >
                 {t`Mean ${formatValue(summary.mean, decimals, unit, summary.spread)}`}
-              </Badge>
+              </StatusBadge>
               {summary.live > 1 && (
-                <Badge variant='light' color='gray' size='sm'>
+                <StatusBadge
+                  tone='neutral'
+                  variant='outline'
+                  color='gray'
+                  size='sm'
+                >
                   {t`Spread ${formatValue(summary.spread, decimals, unit, summary.spread)} (calculated)`}
-                </Badge>
+                </StatusBadge>
               )}
               {windowStats.max && (
-                <Badge variant='light' color='gray' size='sm'>
+                <StatusBadge
+                  tone='neutral'
+                  variant='outline'
+                  color='gray'
+                  size='sm'
+                >
                   {t`Window peak ${formatValue(windowStats.max.value, decimals, unit)} (${windowStats.max.label})`}
-                </Badge>
+                </StatusBadge>
               )}
               {summary.configured > 0 ? (
-                <Badge
-                  variant='light'
-                  color={summary.over > 0 ? 'red' : 'green'}
+                <StatusBadge
+                  variant={summary.over > 0 ? 'filled' : 'outline'}
+                  color={
+                    summary.over > 0
+                      ? summary.worst === 'critical'
+                        ? 'red.9'
+                        : 'yellow.6'
+                      : 'green'
+                  }
+                  tone={summary.over > 0 ? summary.worst : 'normal'}
                   size='sm'
                 >
                   {summary.over > 0
-                    ? t`${summary.over} of ${summary.configured} over a limit`
+                    ? t`${summary.over} of ${summary.configured} ${breachWord} ${summary.worst} (${breachedBounds.map((line) => line.label).join(' · ') || t`breach boundary not supplied`})`
                     : t`${summary.configured} within limits`}
-                </Badge>
+                </StatusBadge>
               ) : (
-                <Badge variant='light' color='gray' size='sm'>
-                  {t`No limits configured`}
-                </Badge>
+                <StatusBadge
+                  tone='neutral'
+                  variant='outline'
+                  color='gray'
+                  size='sm'
+                >
+                  {parameters.some((p) => hasLimits(p.signal))
+                    ? t`Limits not assessed`
+                    : t`No limits configured`}
+                </StatusBadge>
+              )}
+              {summary.mappedLimits > summary.configured && (
+                <MetaText size='xs'>{t`${summary.configured} of ${summary.mappedLimits} configured sensors evaluated now`}</MetaText>
               )}
             </Group>
           )}
@@ -355,7 +430,11 @@ export function SensorGroupCard({
 
         <TrendChart
           rows={rows}
-          series={lines}
+          series={lines.map((line) => ({
+            ...line,
+            strokeWidth: summary?.highest.parameter.id === line.key ? 2.5 : 1.5,
+            endLabel: summary?.highest.parameter.id === line.key
+          }))}
           windowStart={window.start}
           windowEnd={window.end}
           windowSeconds={window.seconds}
@@ -392,63 +471,64 @@ export function SensorGroupCard({
                 <Text size='sm' fw={500}>
                   {t`Current reading by sensor`}
                 </Text>
-                <BarChart
-                  h={Math.max(
-                    120,
-                    readable.length * (barAxis.wraps ? 32 : 22) + 30
-                  )}
-                  data={readable.map((b) => ({
-                    sensor: b.sensor,
-                    value: b.value as number,
-                    color: b.color
-                  }))}
-                  dataKey='sensor'
-                  orientation='vertical'
-                  series={[
+                <ScatterChart
+                  textColor='var(--mantine-color-text)'
+                  h={Math.max(140, readable.length * 26 + 42)}
+                  data={[
                     {
-                      name: 'value',
-                      label: unit || t`Value`,
-                      color: `${hue}.6`
+                      name: t`Current readings`,
+                      color: colors[0],
+                      data: readable.map((point, index) => ({
+                        value: point.value as number,
+                        position: index
+                      }))
                     }
                   ]}
-                  getBarColor={(value) => barColors.get(value) ?? `${hue}.6`}
+                  dataKey={{ x: 'value', y: 'position' }}
+                  xAxisLabel={unitLabel(unit)}
+                  styles={{ axisLabel: { fill: 'var(--mantine-color-text)' } }}
                   withLegend={false}
-                  valueFormatter={(value: number) =>
-                    formatValue(value, decimals, unit, summary?.spread)
-                  }
-                  yAxisProps={{
-                    width: barAxis.width,
-                    interval: 0,
-                    tick: {
-                      transform: 'translate(-10, 0)',
-                      fill: 'currentColor',
-                      fontSize: 11,
-                      // Recharts decides where to wrap by measuring the name
-                      // in a span it styles from `style` alone - and only a
-                      // CSS string reaches that span. Given the size as a
-                      // prop, it measured every name at the body's 16px and
-                      // broke all of them onto two lines.
-                      style: { fontSize: '11px' },
-                      width: barAxis.text
-                    }
-                  }}
-                  // Bar length is the encoding, so the axis starts at zero; an
-                  // auto baseline made a 0.3 degC difference look like the
-                  // whole reading, and moved whenever a sensor dropped out.
-                  // Signed channels keep their negative side.
                   xAxisProps={{
-                    domain: [
-                      (min: number) => Math.min(0, min),
-                      (max: number) => Math.max(0, max)
-                    ]
+                    domain: dotDomain,
+                    ticks: dotTicks,
+                    tickFormatter: (value: number) =>
+                      formatValue(value, decimals, undefined, summary?.spread)
                   }}
-                  barProps={{ isAnimationActive: false, radius: 2 }}
+                  yAxisProps={{
+                    domain: [-0.5, readable.length - 0.5],
+                    ticks: readable.map((_, index) => index),
+                    width: barAxis.width,
+                    tickFormatter: (index: number) =>
+                      readable[index]?.sensor ?? '',
+                    interval: 0
+                  }}
+                  valueFormatter={{
+                    x: (value: number) =>
+                      formatValue(value, decimals, unit, summary?.spread),
+                    y: (index: number) => readable[index]?.sensor ?? ''
+                  }}
+                  referenceLines={referenceLines
+                    .filter(
+                      (line) => line.y >= dotDomain[0] && line.y <= dotDomain[1]
+                    )
+                    .map((line) => ({
+                      x: line.y,
+                      color:
+                        scheme === 'dark'
+                          ? `${line.severity === 'critical' ? 'red' : 'yellow'}.4`
+                          : line.color,
+                      label: {
+                        value: line.label,
+                        fill: 'var(--mantine-color-text)'
+                      }
+                    }))}
+                  scatterProps={{ isAnimationActive: false }}
                   tooltipAnimationDuration={0}
                 />
                 {unreadable.length > 0 && (
-                  <Text size='xs' c='dimmed'>
+                  <MetaText size='xs'>
                     {t`No usable current reading, so not plotted: ${unreadable.map((b) => b.sensor).join(', ')}`}
-                  </Text>
+                  </MetaText>
                 )}
               </Stack>
             )}

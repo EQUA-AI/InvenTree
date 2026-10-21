@@ -39,6 +39,17 @@ export interface WorkOrder {
   reference: string | null;
   lifecycle_status: string;
   lifecycle_version: number;
+  /**
+   * R6 UI10: why the row is in "Needs attention" (``needs_attention.v1``);
+   * null outside that scope.
+   */
+  attention_reasons?: string[] | null;
+  /**
+   * R6 P12: the work order's own recorded component. Only the paginated Work
+   * list and Work overview carry these; the Board's array does not.
+   */
+  affected_component?: string;
+  affected_component_ref?: string;
   actual_started_at: string | null;
   actual_completed_at: string | null;
   tags: string[];

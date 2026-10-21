@@ -1,6 +1,7 @@
 """Scoped APIs for physical locations and explicit machine transfers."""
 
-from django.db.models import Q
+from django.conf import settings
+from django.db.models import Count, Q
 from django.http import Http404
 from django.urls import path
 
@@ -12,12 +13,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from tasks.dashboard_metrics import OPEN
 from tasks.models import WorkOrder
-from tasks.scope import ScopeError, work_order_scope_filter
+from tasks.scope import ScopeError, machine_scope_filter, work_order_scope_filter
 
 from InvenTree.permissions import IsAuthenticatedOrReadScope, RolePermission
+from machine_health.services.summary import health_conditions
 from users.permissions import check_user_role
 
 from . import locations
+from .machine_profile import CRITICALITY_VALUES, declared_profile
 from .models import AssetLocation, AssetMachine, Client
 from .serializers import AssetMachineSerializer
 
@@ -119,6 +122,7 @@ class LocationContext(LocationView):
                     'pk', 'name'
                 )
             ),
+            'plant_timezone': settings.AIMMS_PLANT_TIMEZONE or None,
             'can_add': check_user_role(request.user, 'work_order', 'add'),
             'can_change': check_user_role(request.user, 'work_order', 'change'),
         })
@@ -225,6 +229,81 @@ class LocationDetail(LocationView):
         )
 
 
+#: Native Work priorities from lowest to highest (``WorkOrder.PRIORITY_*``).
+PRIORITY_RANK = {'low': 1, 'medium': 2, 'high': 3}
+
+
+def _open_work_by_machine(actor, machine_ids):
+    """Open Work per machine in the actor's canonical Work scope, or None.
+
+    One grouped query for the page, using the same open-status set, active
+    flag and scope predicate as the location counts above. ``None`` when the
+    actor's maintenance scope cannot be resolved: unknown is not zero.
+    """
+    if not machine_ids:
+        return {}
+    try:
+        scope = work_order_scope_filter(actor)
+    except ScopeError:
+        return None
+    rows = (
+        WorkOrder.objects
+        .filter(
+            scope, machine_id__in=machine_ids, is_active=True, lifecycle_status__in=OPEN
+        )
+        .values('machine_id', 'priority')
+        .annotate(count=Count('pk'))
+    )
+    by_machine = {}
+    for row in rows:
+        entry = by_machine.setdefault(
+            row['machine_id'], {'count': 0, 'highest_priority': None}
+        )
+        entry['count'] += row['count']
+        if PRIORITY_RANK.get(row['priority'], 0) > PRIORITY_RANK.get(
+            entry['highest_priority'], 0
+        ):
+            entry['highest_priority'] = row['priority']
+    return by_machine
+
+
+#: The parts of a machine's Health condition the Machines list shows.
+CONDITION_KEYS = (
+    'state',
+    'configured',
+    'signal_count',
+    'stale_signal_count',
+    'degraded_data',
+)
+
+
+def _condition_by_machine(actor, machines):
+    """Health condition per machine, judged as its Health tab judges it.
+
+    Only machines inside the Health tab's own machine scope are judged; any
+    other row gets no condition. ``None`` when that scope cannot be resolved:
+    an unknown condition is not a normal one.
+    """
+    if not machines:
+        return {}
+    try:
+        scope = machine_scope_filter(actor)
+    except ScopeError:
+        return None
+    allowed = set(
+        AssetMachine.objects.filter(
+            scope, pk__in=[machine.pk for machine in machines]
+        ).values_list('pk', flat=True)
+    )
+    conditions = health_conditions([
+        machine for machine in machines if machine.pk in allowed
+    ])
+    return {
+        pk: {key: condition[key] for key in CONDITION_KEYS}
+        for pk, condition in conditions.items()
+    }
+
+
 class LocationMachines(LocationView):
     """The same scoped machine population for all, unassigned and locations."""
 
@@ -266,6 +345,25 @@ class LocationMachines(LocationView):
                 | Q(serial__icontains=search)
                 | Q(manufacturer__icontains=search)
             )
+        criticality = request.query_params.get('criticality') or None
+        if criticality is not None:
+            if criticality not in CRITICALITY_VALUES:
+                raise ValidationError({
+                    'criticality': 'Use critical, high, medium or low.'
+                })
+            # R6 UI01: the stored key narrows the scan and the canonical
+            # profile reader decides, so a profile that no longer validates
+            # counts as not declared here exactly as on the dashboard.
+            candidates = rows.filter(profile__criticality=criticality).only(
+                'pk', 'profile'
+            )
+            rows = rows.filter(
+                pk__in=[
+                    machine.pk
+                    for machine in candidates
+                    if declared_profile(machine).get('criticality') == criticality
+                ]
+            )
         # The counts the machine list and the dashboard read, so that this
         # list cannot disagree with them. Imported here because assets.api
         # mounts this module's routes.
@@ -276,6 +374,14 @@ class LocationMachines(LocationView):
             rows = rows.filter(open_alarms__gt=0)
         pagination = LocationPagination()
         page = pagination.paginate_queryset(rows, request, view=self)
+        # R6 UI01: each row's open Work — count and highest priority — from the
+        # canonical Work scope. Null when that scope is unavailable.
+        open_work = _open_work_by_machine(
+            request.user, [machine.pk for machine in page]
+        )
+        # R6 UI01: each row's Health condition and coverage, or null when the
+        # reader's Health scope is unavailable or does not cover the machine.
+        conditions = _condition_by_machine(request.user, list(page))
         data = []
         for machine in page:
             node = graph.get(machine.physical_location_id)
@@ -285,6 +391,13 @@ class LocationMachines(LocationView):
                 if node
                 else None,
                 'placement_version': machine.placement_version,
+                'open_work': None
+                if open_work is None
+                else open_work.get(machine.pk, {'count': 0, 'highest_priority': None}),
+                # R6 UI01: the declared classification, never an alarm
+                # severity; null when nothing valid is declared.
+                'criticality': declared_profile(machine).get('criticality'),
+                'condition': None if conditions is None else conditions.get(machine.pk),
             })
         return pagination.get_paginated_response(data)
 

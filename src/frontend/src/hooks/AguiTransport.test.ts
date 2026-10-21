@@ -136,3 +136,29 @@ it('forwards the capture-time focus stamp in forwardedProps unchanged', async ()
       ?.forwardedProps?.expectedFocusVersion
   ).toBe(42);
 });
+
+it('sends the conversation focus stamp and Work receipt together without changing scope', async () => {
+  let requestBody: { forwardedProps?: Record<string, unknown> } | null = null;
+  vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
+    requestBody = JSON.parse(String(init.body));
+    return sseResponse([
+      { type: 'RUN_STARTED', threadId: 'thread-1', runId: 'run-1' },
+      { type: 'RUN_FINISHED', threadId: 'thread-1', runId: 'run-1' }
+    ]);
+  });
+  await runAguiTurn(
+    turn({
+      expectedScopeVersion: 7,
+      expectedFocusVersion: 42,
+      workFocusReceipt: 'signed-work-receipt'
+    })
+  );
+  expect(
+    (requestBody as unknown as { forwardedProps?: Record<string, unknown> })
+      ?.forwardedProps
+  ).toMatchObject({
+    expectedScopeVersion: 7,
+    expectedFocusVersion: 42,
+    workFocusReceipt: 'signed-work-receipt'
+  });
+});

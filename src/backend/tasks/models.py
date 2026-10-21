@@ -3,7 +3,8 @@
 from decimal import Decimal
 
 from django.conf import settings
-from django.db import models
+from django.core.exceptions import ValidationError
+from django.db import models, transaction
 from django.utils.translation import gettext_lazy as _
 
 import InvenTree.models
@@ -45,6 +46,17 @@ class WorkOrder(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
     and a work order may have several. Board position is a card's property
     precisely because one job can be in more than one state at once.
     """
+
+    def delete(self, *args, **kwargs):
+        """Check retained references before the attachment mixin removes files."""
+        from django.db import router
+        from django.db.models.deletion import Collector
+
+        collector = Collector(
+            using=kwargs.get('using') or router.db_for_write(type(self), instance=self)
+        )
+        collector.collect([self])
+        return super().delete(*args, **kwargs)
 
     STATUS_BACKLOG = 'backlog'
     STATUS_IN_PROGRESS = 'in-progress'
@@ -126,6 +138,45 @@ class WorkOrder(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
     estimated_minutes = models.PositiveIntegerField(null=True, blank=True)
     lifecycle_version = models.PositiveIntegerField(default=1)
     hold_reason = models.TextField(blank=True)
+    recurrence_of = models.ForeignKey(
+        'self',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='corrective_recurrences',
+    )
+    recurrence_occurrence = models.OneToOneField(
+        'assets.MachineAnomaly',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='recurrence_work',
+    )
+    # The existing linked-corrective relation also carries routine findings;
+    # these never participate in the recurrence window or reopen policy.
+    corrective_origin_kind = models.CharField(
+        max_length=24,
+        blank=True,
+        default='',
+        # A database default too, so code that predates the column can insert.
+        db_default='',
+        choices=[('recurrence', 'Recurrence'), ('routine_finding', 'Routine finding')],
+    )
+    corrective_finding = models.TextField(blank=True, default='', db_default='')
+    corrective_reading = models.ForeignKey(
+        'tasks.CloseoutReading',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='+',
+    )
+    corrective_step = models.ForeignKey(
+        'tasks.WorkOrderStepExecution',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='+',
+    )
 
     # ``parent`` and ``card_kind`` used to live here, so a subtask or a
     # procurement task was a second work order with its own WO- number for what
@@ -203,6 +254,7 @@ class WorkOrder(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
         """Readable identity for admin and logs."""
         return self.title
 
+    @transaction.atomic
     def save(self, *args, **kwargs):
         """Persist, then give a new job its reference and its tracking card.
 
@@ -218,6 +270,27 @@ class WorkOrder(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
         only and touch only this job's rows, so neither can race another writer.
         """
         creating = self._state.adding
+        update_fields = kwargs.get('update_fields')
+        if not creating and (
+            update_fields is None or 'work_order_type' in update_fields
+        ):
+            original_type = (
+                type(self)
+                .objects.select_for_update()
+                .filter(pk=self.pk)
+                .values_list('work_order_type', flat=True)
+                .first()
+            )
+            if (
+                original_type is not None
+                and original_type != self.work_order_type
+                and self.calibration_traceability.exists()
+            ):
+                raise ValidationError({
+                    'work_order_type': _(
+                        'Work type cannot change while recorded calibration traceability exists.'
+                    )
+                })
 
         super().save(*args, **kwargs)
 
@@ -736,6 +809,8 @@ class WorkOrderPart(models.Model):
 # Re-export split work-order models for compatibility with ``tasks.models`` imports.
 # Re-export job-kit models for compatibility with ``tasks.models`` imports.
 # Re-export closeout-automation models for compatibility with ``tasks.models``.
+from tasks.authority_models import OperationalAuthorityRecord  # noqa: F401
+from tasks.calibration_models import CalibrationTraceability  # noqa: F401
 from tasks.closeout_models import (  # noqa: F401
     ACTIVE_CAPTURE_STATUSES,
     CloseoutAmendment,
@@ -756,6 +831,10 @@ from tasks.closeout_models import (  # noqa: F401
     CloseoutReadingState,
     CloseoutSourceType,
     PartUsageDisposition,
+)
+from tasks.investigation_models import (  # noqa: F401
+    InvestigationArtifact,
+    InvestigationRequest,
 )
 from tasks.jobkit_models import (  # noqa: F401
     ACTIVE_ALLOCATION_STATUSES,
@@ -786,7 +865,10 @@ from tasks.procedure_models import (  # noqa: F401
     WorkOrderProcedureApplication,
     WorkOrderStepExecution,
 )
+from tasks.report_models import AcceptedCloseoutReport, CaptureOriginal  # noqa: F401
+from tasks.time_models import WorkDowntime, WorkTimeInterval  # noqa: F401
 from tasks.workorder_models import (  # noqa: F401
+    WorkHandover,
     WorkOrderCloseout,
     WorkOrderCommand,
     WorkOrderDeletionRecord,

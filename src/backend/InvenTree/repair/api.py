@@ -3,14 +3,26 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import asdict
 
+from django.db import transaction
+from django.db.models.deletion import ProtectedError
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.urls import include, path
 
+from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from tasks.models import WorkOrderCommand
+from tasks.scope import ScopeError, scoped_machines, scoped_work_orders
 from tasks.services import scheduling
-from tasks.services.work_orders import ReadinessBlocked, WorkOrderCommandError
+from tasks.services.work_orders import (
+    ReadinessBlocked,
+    WorkOrderCommandError,
+    WorkOrderScopeError,
+)
+from tasks.workorder_mutations import ObjectInputMixin, object_data, parent_id
 
 import InvenTree.permissions
 from InvenTree.filters import SEARCH_ORDER_FILTER
@@ -18,6 +30,7 @@ from InvenTree.mixins import ListCreateAPI, RetrieveUpdateDestroyAPI
 
 from . import investigation, services
 from .models import (
+    AuthorityOwnershipError,
     LockoutPoint,
     PacketStatus,
     RepairInvestigationFinding,
@@ -25,6 +38,7 @@ from .models import (
     RepairPacketGate,
     SafetyGateTemplate,
 )
+from .scope import require_repair_packet_scope, scoped_repair_packets
 from .serializers import (
     ApprovedRepairScopeSerializer,
     LockoutPointSerializer,
@@ -39,6 +53,7 @@ from .work_packages import (
     DuplicateRepairConflict,
     WorkPackageError,
     create_repair_work_package,
+    find_duplicate_repairs,
 )
 
 
@@ -73,12 +88,92 @@ class SafetyGateTemplateDetail(RetrieveUpdateDestroyAPI):
     permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
 
-class RepairPacketList(ListCreateAPI):
+def _get_packet(actor, packet_id):
+    """Resolve a packet only after its exact parent boundary is authorized."""
+    return get_object_or_404(
+        scoped_repair_packets(actor).select_related(
+            'work_order', 'work_order__machine', 'machine'
+        ),
+        pk=packet_id,
+    )
+
+
+def _require_packet_candidate(actor, serializer):
+    """Reject a proposed owner change before modifying either parent link."""
+    instance = serializer.instance
+    candidate = RepairPacket(
+        work_order=serializer.validated_data.get(
+            'work_order', getattr(instance, 'work_order', None)
+        ),
+        machine=serializer.validated_data.get(
+            'machine', getattr(instance, 'machine', None)
+        ),
+    )
+    try:
+        require_repair_packet_scope(actor, candidate)
+    except ScopeError as exc:
+        raise Http404 from exc
+
+
+class PacketAuthorityConflict(APIException):
+    """Return a reviewable conflict, never a server error or discarded history."""
+
+    status_code = 409
+    default_code = 'packet_authority_conflict'
+
+
+class ScopedRepairPacketMixin(ObjectInputMixin):
+    """Apply the same packet boundary to list, detail and direct updates."""
+
+    role_required = 'work_order'
+
+    def get_serializer(self, *args, **kwargs):
+        """Authorize raw parent identifiers before FK validation discloses them."""
+        instance = args[0] if args else kwargs.get('instance')
+        if 'data' in kwargs:
+            data = object_data(kwargs['data'])
+            work_id = parent_id(
+                data, 'work_order', getattr(instance, 'work_order_id', None)
+            )
+            machine_id = parent_id(
+                data, 'machine', getattr(instance, 'machine_id', None)
+            )
+            if work_id is not None:
+                work = get_object_or_404(
+                    scoped_work_orders(self.request.user), pk=work_id
+                )
+                if machine_id is not None and str(machine_id) != str(work.machine_id):
+                    raise Http404
+            elif machine_id is not None:
+                get_object_or_404(scoped_machines(self.request.user), pk=machine_id)
+        return super().get_serializer(*args, **kwargs)
+
+    def get_queryset(self):
+        """Filter before lookup, search, ordering or pagination."""
+        return (
+            super()
+            .get_queryset()
+            .filter(pk__in=scoped_repair_packets(self.request.user))
+        )
+
+    def perform_update(self, serializer):
+        """Check the proposed owner as well as the scoped original packet."""
+        _require_packet_candidate(self.request.user, serializer)
+        try:
+            super().perform_update(serializer)
+        except AuthorityOwnershipError as exc:
+            raise PacketAuthorityConflict(str(exc)) from exc
+
+
+class RepairPacketList(ScopedRepairPacketMixin, ListCreateAPI):
     """List and create repair packets."""
 
     queryset = RepairPacket.objects.all()
     serializer_class = RepairPacketSerializer
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
     filter_backends = SEARCH_ORDER_FILTER
     filterset_fields = ['status', 'criticality', 'machine', 'generation_status']
     search_fields = ['reference', 'fault_summary', 'symptom']
@@ -87,25 +182,55 @@ class RepairPacketList(ListCreateAPI):
 
     def perform_create(self, serializer):
         """Attach the requesting user as the creator."""
+        _require_packet_candidate(self.request.user, serializer)
         serializer.save(created_by=_request_user(self.request))
 
 
-class RepairPacketDetail(RetrieveUpdateDestroyAPI):
+class RepairPacketDetail(ScopedRepairPacketMixin, RetrieveUpdateDestroyAPI):
     """Retrieve, update, or delete a single repair packet."""
 
     queryset = RepairPacket.objects.all()
     serializer_class = RepairPacketSerializer
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+
+    def perform_destroy(self, instance):
+        """Protected authority history must not turn an ordinary DELETE into 500."""
+        from .authority_models import GateAuthorityRecord
+
+        with transaction.atomic():
+            packet = RepairPacket.objects.select_for_update().get(pk=instance.pk)
+            if GateAuthorityRecord.objects.filter(gate__packet=packet).exists():
+                raise PacketAuthorityConflict(
+                    'Packet cannot be deleted because its gates have retained authority history.'
+                )
+            try:
+                super().perform_destroy(packet)
+            except ProtectedError as exc:
+                raise PacketAuthorityConflict(
+                    'Packet cannot be deleted because retained records reference it.'
+                ) from exc
 
 
-class RepairPacketGenerate(APIView):
+class RepairPacketAction(APIView):
+    """Require native work-order view/change roles for scoped packet actions."""
+
+    permission_classes = [
+        InvenTree.permissions.IsAuthenticatedOrReadScope,
+        InvenTree.permissions.RolePermission,
+    ]
+    role_required = 'work_order'
+    rolemap = {'POST': 'change'}
+
+
+class RepairPacketGenerate(RepairPacketAction):
     """Run the AI generation layer to (re)generate diagnosis + parts + gates."""
-
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def post(self, request, pk):
         """Run generation for the packet, offloading to a background task if requested."""
-        packet = get_object_or_404(RepairPacket, pk=pk)
+        packet = _get_packet(request.user, pk)
         params = dict(request.data or {})
         if request.user.is_authenticated:
             params.setdefault('user_id', request.user.pk)
@@ -135,14 +260,12 @@ class RepairPacketGenerate(APIView):
             return False
 
 
-class RepairPacketGenerationStatus(APIView):
+class RepairPacketGenerationStatus(RepairPacketAction):
     """Return the current generation status + latest provenance run."""
-
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def get(self, request, pk):
         """Return the packet's generation status and its latest generation run."""
-        packet = get_object_or_404(RepairPacket, pk=pk)
+        packet = _get_packet(request.user, pk)
         run = packet.generation_runs.first()
         return Response({
             'generation_status': packet.generation_status,
@@ -153,54 +276,46 @@ class RepairPacketGenerationStatus(APIView):
         })
 
 
-class RepairPacketResolveGates(APIView):
+class RepairPacketResolveGates(RepairPacketAction):
     """Resolve applicable safety templates onto a packet."""
-
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def post(self, request, pk):
         """Resolve applicable safety gate templates onto the packet."""
-        packet = get_object_or_404(RepairPacket, pk=pk)
+        packet = _get_packet(request.user, pk)
         created = services.resolve_safety_gates(packet, actor=_request_user(request))
         data = RepairPacketSerializer(packet).data
         data['created'] = created
         return Response(data)
 
 
-class RepairPacketGateList(APIView):
+class RepairPacketGateList(RepairPacketAction):
     """Return the ordered safety gate checklist for a packet."""
-
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def get(self, request, pk):
         """Return the packet's safety gates ordered by sequence."""
-        packet = get_object_or_404(RepairPacket, pk=pk)
+        packet = _get_packet(request.user, pk)
         gates = packet.gates.order_by('sequence', 'created_at')
         return Response(RepairPacketGateSerializer(gates, many=True).data)
 
 
-class RepairPacketGateConfirm(APIView):
+class RepairPacketGateConfirm(RepairPacketAction):
     """Confirm a safety gate."""
-
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def post(self, request, pk, gate_pk):
         """Confirm the gate as completed by the requesting user."""
-        gate = _get_gate(pk, gate_pk)
+        gate = _get_gate(request.user, pk, gate_pk)
         ok, detail = services.confirm_gate(
             gate, user=_request_user(request), note=request.data.get('note', '')
         )
         return _gate_response(gate, ok, detail)
 
 
-class RepairPacketVerifyDiagnosis(APIView):
+class RepairPacketVerifyDiagnosis(RepairPacketAction):
     """Record technician verification of the packet's preliminary diagnosis."""
-
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def post(self, request, pk):
         """Mark the diagnosis verified by the requesting user."""
-        packet = get_object_or_404(RepairPacket, pk=pk)
+        packet = _get_packet(request.user, pk)
         ok, detail = services.verify_diagnosis(
             packet, user=_request_user(request), note=request.data.get('note', '')
         )
@@ -210,28 +325,24 @@ class RepairPacketVerifyDiagnosis(APIView):
         )
 
 
-class RepairPacketGateVerify(APIView):
+class RepairPacketGateVerify(RepairPacketAction):
     """Record second-person verification for a safety gate."""
-
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def post(self, request, pk, gate_pk):
         """Record second-person verification of the gate."""
-        gate = _get_gate(pk, gate_pk)
+        gate = _get_gate(request.user, pk, gate_pk)
         ok, detail = services.verify_gate(
             gate, user=_request_user(request), note=request.data.get('note', '')
         )
         return _gate_response(gate, ok, detail)
 
 
-class RepairPacketGateWaive(APIView):
+class RepairPacketGateWaive(RepairPacketAction):
     """Waive a safety gate with reason and authority."""
-
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def post(self, request, pk, gate_pk):
         """Waive the gate, recording the reason and approving authority."""
-        gate = _get_gate(pk, gate_pk)
+        gate = _get_gate(request.user, pk, gate_pk)
         ok, detail = services.waive_gate(
             gate,
             user=_request_user(request),
@@ -241,14 +352,12 @@ class RepairPacketGateWaive(APIView):
         return _gate_response(gate, ok, detail)
 
 
-class RepairPacketGateProof(APIView):
+class RepairPacketGateProof(RepairPacketAction):
     """Attach structured proof to a gate."""
-
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def post(self, request, pk, gate_pk):
         """Attach a structured evidence proof to the gate."""
-        gate = _get_gate(pk, gate_pk)
+        gate = _get_gate(request.user, pk, gate_pk)
         lockout_point = None
         if request.data.get('lockout_point'):
             lockout_point = get_object_or_404(
@@ -264,28 +373,24 @@ class RepairPacketGateProof(APIView):
         return Response(SafetyEvidenceProofSerializer(proof).data, status=201)
 
 
-class RepairPacketGateLockout(APIView):
+class RepairPacketGateLockout(RepairPacketAction):
     """Create or update a LOTO energy-control point."""
-
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def post(self, request, pk, gate_pk):
         """Create or update a LOTO energy-control point for the gate."""
-        gate = _get_gate(pk, gate_pk)
+        gate = _get_gate(request.user, pk, gate_pk)
         point = services.upsert_lockout_point(
             gate, dict(request.data or {}), user=_request_user(request)
         )
         return Response(LockoutPointSerializer(point).data)
 
 
-class RepairPacketAdvance(APIView):
+class RepairPacketAdvance(RepairPacketAction):
     """Attempt a lifecycle transition (enforces FSM + safety gates + revalidation)."""
-
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def post(self, request, pk):
         """Attempt to advance the packet to the requested lifecycle status."""
-        packet = get_object_or_404(RepairPacket, pk=pk)
+        packet = _get_packet(request.user, pk)
         to = request.data.get('to')
         reason = request.data.get('reason', '')
         ok, detail = services.advance_packet(
@@ -311,9 +416,26 @@ class RepairPacketClose(APIView):
     ]
     role_required = 'work_order.change'
 
+    def get(self, request, pk):
+        """Read the owning packet's completion readiness, without submitting."""
+        from tasks.workorder_serializers import WorkOrderReadinessSerializer
+
+        packet = _get_packet(request.user, pk)
+        try:
+            readiness = services.packet_close_readiness(packet, actor=request.user)
+        except (ScopeError, WorkOrderScopeError):
+            raise Http404 from None
+        except (services.RepairCloseoutError, WorkOrderCommandError) as exc:
+            return Response({'code': exc.code, 'detail': str(exc)}, status=400)
+        return Response({
+            **WorkOrderReadinessSerializer(readiness).data,
+            'packet_id': packet.pk,
+            'work_order_id': packet.work_order_id,
+        })
+
     def post(self, request, pk):
         """Close the packet and complete its work order atomically."""
-        packet = get_object_or_404(RepairPacket, pk=pk)
+        packet = _get_packet(request.user, pk)
         data = dict(request.data or {})
 
         expected_version = data.get('expected_version')
@@ -326,15 +448,67 @@ class RepairPacketClose(APIView):
                 status=400,
             )
 
+        key = data.get('idempotency_key')
+        if key is not None and (
+            not isinstance(key, str) or not key.strip() or len(key) > 128
+        ):
+            return Response(
+                {
+                    'code': 'COMMAND_INVALID',
+                    'detail': 'A non-empty operation key of at most 128 characters is required.',
+                },
+                status=400,
+            )
+        if not isinstance(data.get('closeout') or {}, dict) or not isinstance(
+            data.get('reason', ''), str
+        ):
+            return Response(
+                {
+                    'code': 'COMMAND_INVALID',
+                    'detail': 'Closeout must be an object and reason must be text.',
+                },
+                status=400,
+            )
+        capture_id = data.get('capture_id')
+        if capture_id is not None and (
+            not isinstance(capture_id, int)
+            or isinstance(capture_id, bool)
+            or capture_id < 1
+        ):
+            return Response(
+                {
+                    'code': 'CAPTURE_INVALID',
+                    'detail': 'An integer capture_id is required.',
+                },
+                status=400,
+            )
+        work_order_id = data.get('work_order_id')
+        if work_order_id is not None and (
+            not isinstance(work_order_id, int)
+            or isinstance(work_order_id, bool)
+            or work_order_id < 1
+        ):
+            return Response(
+                {
+                    'code': 'COMMAND_INVALID',
+                    'detail': 'An integer work_order_id is required.',
+                },
+                status=400,
+            )
+
         try:
             result = services.close_repair_packet(
                 packet,
                 actor=request.user,
                 closeout=data.get('closeout') or {},
                 expected_version=expected_version,
-                idempotency_key=data.get('idempotency_key') or uuid.uuid4().hex,
+                idempotency_key=key or uuid.uuid4().hex,
                 reason=data.get('reason', ''),
+                capture_id=capture_id,
+                expected_work_order_id=work_order_id,
             )
+        except (ScopeError, WorkOrderScopeError):
+            raise Http404 from None
         except services.RepairCloseoutError as exc:
             return Response({'code': exc.code, 'detail': str(exc)}, status=400)
         except WorkOrderCommandError as exc:
@@ -347,6 +521,7 @@ class RepairPacketClose(APIView):
         payload['ok'] = True
         payload['work_order_id'] = result.work_order_id
         payload['lifecycle_status'] = result.lifecycle_status
+        payload.update(asdict(result))
         return Response(payload)
 
 
@@ -367,7 +542,7 @@ class RepairPacketFindings(APIView):
 
     def get(self, request, pk):
         """Return the packet's findings in recorded order."""
-        packet = get_object_or_404(RepairPacket, pk=pk)
+        packet = _get_packet(request.user, pk)
         findings = packet.findings.select_related('snapshot').all()
         return Response({
             'count': findings.count(),
@@ -376,7 +551,7 @@ class RepairPacketFindings(APIView):
 
     def post(self, request, pk):
         """Record or update one finding, keyed stably within the packet."""
-        packet = get_object_or_404(RepairPacket, pk=pk)
+        packet = _get_packet(request.user, pk)
         data = dict(request.data or {})
 
         snapshot = None
@@ -384,7 +559,15 @@ class RepairPacketFindings(APIView):
         if snapshot_id:
             from assets.health_models import HealthEvidenceSnapshot
 
-            snapshot = get_object_or_404(HealthEvidenceSnapshot, pk=snapshot_id)
+            snapshot = get_object_or_404(
+                HealthEvidenceSnapshot,
+                pk=snapshot_id,
+                machine_id=(
+                    packet.work_order.machine_id
+                    if packet.work_order_id
+                    else packet.machine_id
+                ),
+            )
 
         try:
             finding, created = investigation.record_finding(
@@ -428,7 +611,7 @@ class RepairPacketApprovedScope(APIView):
 
     def get(self, request, pk):
         """Return every approved version, newest first."""
-        packet = get_object_or_404(RepairPacket, pk=pk)
+        packet = _get_packet(request.user, pk)
         scopes = packet.approved_scopes.all()
         return Response({
             'count': scopes.count(),
@@ -437,7 +620,7 @@ class RepairPacketApprovedScope(APIView):
 
     def post(self, request, pk):
         """Approve a scope, superseding any previous version."""
-        packet = get_object_or_404(RepairPacket, pk=pk)
+        packet = _get_packet(request.user, pk)
         data = dict(request.data or {})
 
         try:
@@ -473,12 +656,16 @@ class RepairPacketStart(APIView):
 
     def get(self, request, pk):
         """Explain whether this repair can start, and what is blocking it."""
-        packet = get_object_or_404(RepairPacket, pk=pk)
-        return Response(services.repair_start_readiness(packet, actor=request.user))
+        packet = _get_packet(request.user, pk)
+        try:
+            readiness = services.repair_start_readiness(packet, actor=request.user)
+        except (ScopeError, WorkOrderScopeError):
+            raise Http404 from None
+        return Response(readiness)
 
     def post(self, request, pk):
         """Transition the packet and its work order into execution."""
-        packet = get_object_or_404(RepairPacket, pk=pk)
+        packet = _get_packet(request.user, pk)
         data = dict(request.data or {})
 
         expected_version = data.get('expected_version')
@@ -499,18 +686,22 @@ class RepairPacketStart(APIView):
                 idempotency_key=data.get('idempotency_key') or uuid.uuid4().hex,
                 reason=data.get('reason', ''),
             )
+        except (ScopeError, WorkOrderScopeError):
+            raise Http404 from None
         except services.RepairStartError as exc:
             return Response({'code': exc.code, 'detail': str(exc)}, status=400)
         except ReadinessBlocked as exc:
             # The authoritative blocker list, so the UI shows the same reasons
             # the server used to refuse rather than a generic failure.
+            try:
+                readiness = services.repair_start_readiness(packet, actor=request.user)
+            except (ScopeError, WorkOrderScopeError):
+                raise Http404 from None
             return Response(
                 {
                     'code': 'READINESS_BLOCKED',
                     'detail': str(exc),
-                    'readiness': services.repair_start_readiness(
-                        packet, actor=request.user
-                    ),
+                    'readiness': readiness,
                 },
                 status=409,
             )
@@ -542,34 +733,42 @@ class MachineOpenRepairs(APIView):
 
     def get(self, request, machine_id):
         """Return every non-terminal packet-backed repair for the machine."""
+        accessible_packets = scoped_repair_packets(request.user).filter(
+            machine_id=machine_id, work_order__isnull=False
+        )
+        if not (
+            scoped_machines(request.user).filter(pk=machine_id).exists()
+            or accessible_packets.exists()
+        ):
+            raise Http404
         packets = (
-            RepairPacket.objects
-            .filter(machine_id=machine_id, work_order__isnull=False)
+            accessible_packets
             .exclude(status__in=[PacketStatus.CLOSED, PacketStatus.CANCELED])
             .select_related('work_order')
             .order_by('-created_at')
         )
 
-        results = [
-            {
-                **services.repair_start_readiness(packet, actor=request.user),
-                'fault_summary': packet.fault_summary,
-                'criticality': packet.criticality,
-                'work_order_title': packet.work_order.title,
-            }
-            for packet in packets
-        ]
+        try:
+            results = [
+                {
+                    **services.repair_start_readiness(packet, actor=request.user),
+                    'fault_summary': packet.fault_summary,
+                    'criticality': packet.criticality,
+                    'work_order_title': packet.work_order.title,
+                }
+                for packet in packets
+            ]
+        except (ScopeError, WorkOrderScopeError):
+            raise Http404 from None
         return Response({'count': len(results), 'results': results})
 
 
-class RepairPacketCancel(APIView):
+class RepairPacketCancel(RepairPacketAction):
     """Convenience endpoint to cancel a packet with a reason."""
-
-    permission_classes = [InvenTree.permissions.IsAuthenticatedOrReadScope]
 
     def post(self, request, pk):
         """Cancel the packet, recording the supplied reason."""
-        packet = get_object_or_404(RepairPacket, pk=pk)
+        packet = _get_packet(request.user, pk)
         reason = request.data.get('reason', '')
         ok, detail = services.advance_packet(
             packet, PacketStatus.CANCELED, _request_user(request), reason=reason
@@ -580,8 +779,9 @@ class RepairPacketCancel(APIView):
         return Response(data, status=200 if ok else 400)
 
 
-def _get_gate(packet_pk, gate_pk):
+def _get_gate(actor, packet_pk, gate_pk):
     """Load a gate constrained to its parent packet."""
+    _get_packet(actor, packet_pk)
     return get_object_or_404(RepairPacketGate, pk=gate_pk, packet_id=packet_pk)
 
 
@@ -613,6 +813,25 @@ class RepairWorkPackageCreate(APIView):
         """Validate the draft and execute the atomic create command."""
         data = dict(request.data or {})
         idempotency_key = data.pop('idempotency_key', None) or uuid.uuid4().hex
+        machine_id = data.get('machine_id', data.get('machine'))
+        if isinstance(machine_id, int) and not isinstance(machine_id, bool):
+            machine = get_object_or_404(scoped_machines(request.user), pk=machine_id)
+            prior = WorkOrderCommand.objects.filter(
+                command='create', idempotency_key=idempotency_key
+            ).first()
+            if prior is not None:
+                get_object_or_404(
+                    scoped_work_orders(request.user), pk=prior.work_order_id
+                )
+            else:
+                source = data.get('source')
+                anomaly_id = (
+                    source.get('anomaly_id') if isinstance(source, dict) else None
+                )
+                for duplicate in find_duplicate_repairs(machine, anomaly_id=anomaly_id):
+                    get_object_or_404(
+                        scoped_work_orders(request.user), pk=duplicate['work_order_id']
+                    )
 
         try:
             result = create_repair_work_package(

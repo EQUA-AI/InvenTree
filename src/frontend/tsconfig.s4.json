@@ -1,0 +1,23 @@
+{
+	"extends": "./tsconfig.s0.json",
+	"files": [
+		"tests/s4/pui_work_time_recording.spec.ts",
+		"playwright.s4.config.ts",
+		"tests/s1/workListFixtures.ts",
+		"tests/s4/workExecutionFixtures.ts",
+		"tests/s4/pui_work_handled.spec.ts",
+		"tests/s4/pui_work_diagnose.spec.ts",
+		"tests/s4/pui_work_package.spec.ts",
+		"tests/s4/pui_work_verify.spec.ts",
+		"tests/s4/pui_work_time.spec.ts",
+		"tests/s4/pui_work_investigation.spec.ts",
+		"tests/s4/scopeRevisionFixtures.ts",
+		"tests/s4/pui_work_scope_revision.spec.ts",
+		"tests/s4/continuityFixtures.ts",
+		"tests/s4/pui_work_continuity.spec.ts",
+		"tests/s4/pui_work_outcome.spec.ts",
+		"tests/s4/pui_work_observation.spec.ts",
+		"tests/s4/authorityFixtures.ts",
+		"tests/s4/pui_work_authority.spec.ts"
+	]
+}

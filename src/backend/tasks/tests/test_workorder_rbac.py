@@ -13,10 +13,10 @@ in particular pin the two things that would silently undo it:
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from assets.models import AssetMachine
+from assets.models import AssetMachine, get_default_client
 from tasks.models import WorkOrder
 from users.models import RuleSet
 from users.ruleset import RULESET_NAMES, RuleSetEnum
@@ -37,10 +37,12 @@ class WorkOrderRulesetRegistrationTest(TestCase):
     """The ruleset must be registered before anything can depend on it."""
 
     def test_ruleset_is_registered(self):
+        """Expose the work-order ruleset under its stable name."""
         self.assertIn(RuleSetEnum.WORK_ORDER, RULESET_NAMES)
         self.assertEqual(RuleSetEnum.WORK_ORDER, 'work_order')
 
     def test_ruleset_covers_work_order_and_asset_models(self):
+        """Retain the exact set of work and asset models governed by the role."""
         from users.ruleset import get_ruleset_models
 
         models = get_ruleset_models()[RuleSetEnum.WORK_ORDER]
@@ -54,6 +56,7 @@ class WorkOrderRulesetRegistrationTest(TestCase):
                 # board is governed by work-order authority rather than its own.
                 'tasks_kanbancard',
                 'assets_assetmachine',
+                'assets_assetlocation',
                 'assets_assetmaintenancerecord',
                 'assets_machinepart',
                 # The equipment registry describes the asset a job is performed
@@ -85,10 +88,14 @@ class WorkOrderRulesetRegistrationTest(TestCase):
         self.assertFalse(ruleset.can_delete)
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class WorkOrderPermissionEnforcementTest(TestCase):
     """Each HTTP method maps to the permission it should require."""
 
     def setUp(self):
+        """Create a role-controlled actor and explicitly client-owned work."""
         self.group = Group.objects.create(name='techs')
         self.user = get_user_model().objects.create_user(
             username='tech', email='tech@example.com', password='pw'
@@ -96,7 +103,9 @@ class WorkOrderPermissionEnforcementTest(TestCase):
         self.user.groups.add(self.group)
         self.client.force_login(self.user)
 
-        self.machine = AssetMachine.objects.create(name='RBAC Press')
+        self.machine = AssetMachine.objects.create(
+            name='RBAC Press', client=get_default_client()
+        )
         self.work_order = WorkOrder.objects.create(
             title='RBAC card', status='backlog', priority='low', machine=self.machine
         )
@@ -109,11 +118,13 @@ class WorkOrderPermissionEnforcementTest(TestCase):
         _grant(self.group, RuleSetEnum.WORK_ORDER, **permissions)
 
     def test_no_permissions_denies_reading(self):
+        """Reject a caller with no work-order view role."""
         self._set(can_view=False, can_add=False, can_change=False, can_delete=False)
 
         self.assertEqual(self.client.get(self.list_url).status_code, 403)
 
     def test_view_permission_allows_reading(self):
+        """Allow role-authorized reads inside the configured client scope."""
         self._set(can_view=True)
 
         self.assertEqual(self.client.get(self.list_url).status_code, 200)
@@ -134,6 +145,7 @@ class WorkOrderPermissionEnforcementTest(TestCase):
         self.assertIsNone(self.work_order.scheduled_start)
 
     def test_change_permission_allows_rescheduling(self):
+        """Require and honor change authority for a schedule edit."""
         self._set(can_view=True, can_change=True)
 
         response = self.client.patch(
@@ -147,6 +159,7 @@ class WorkOrderPermissionEnforcementTest(TestCase):
         self.assertIsNotNone(self.work_order.scheduled_start)
 
     def test_add_permission_is_required_to_create(self):
+        """Separate creation authority from permission to edit existing work."""
         self._set(can_view=True, can_add=False)
 
         payload = {
@@ -171,6 +184,7 @@ class WorkOrderPermissionEnforcementTest(TestCase):
         )
 
     def test_delete_permission_is_required_to_archive(self):
+        """Reject archive requests until delete authority is granted."""
         self._set(can_view=True, can_change=True, can_delete=False)
 
         self.assertEqual(self.client.delete(self.detail_url).status_code, 403)
@@ -206,7 +220,9 @@ class WorkOrderPermissionEnforcementTest(TestCase):
 
     def test_allocate_parts_is_gated_on_change_rather_than_add(self):
         """Re-checking stock allocation edits the card; it does not create one."""
-        url = reverse('kanban-card-allocate', kwargs={'work_order_pk': self.work_order.pk})
+        url = reverse(
+            'kanban-card-allocate', kwargs={'work_order_pk': self.work_order.pk}
+        )
 
         self._set(can_view=True, can_add=False, can_change=False)
         self.assertEqual(self.client.post(url).status_code, 403)
@@ -229,6 +245,7 @@ class WorkOrderPermissionEnforcementTest(TestCase):
         self.assertTrue(ruleset.can_view)
 
     def test_superuser_bypasses_the_ruleset(self):
+        """Keep elevated role behavior separate from object-scope filtering."""
         superuser = get_user_model().objects.create_superuser(
             username='rbac-sup', email='sup@example.com', password='pw'
         )
@@ -237,6 +254,7 @@ class WorkOrderPermissionEnforcementTest(TestCase):
         self.assertEqual(self.client.get(self.list_url).status_code, 200)
 
     def test_anonymous_access_is_still_denied(self):
+        """Require authentication before any role or object check."""
         self.client.logout()
 
         self.assertIn(self.client.get(self.list_url).status_code, (401, 403))
@@ -246,6 +264,7 @@ class AssetPermissionEnforcementTest(TestCase):
     """Machines and maintenance history share the work-order ruleset."""
 
     def setUp(self):
+        """Create an asset reader with independently controlled role grants."""
         self.group = Group.objects.create(name='asset-techs')
         self.user = get_user_model().objects.create_user(
             username='asset-tech', email='at@example.com', password='pw'
@@ -255,6 +274,7 @@ class AssetPermissionEnforcementTest(TestCase):
         self.machine = AssetMachine.objects.create(name='Asset RBAC Machine')
 
     def test_machines_require_view_permission(self):
+        """Reject machine collection reads without view authority."""
         url = reverse('asset-machine-list')
 
         _grant(self.group, RuleSetEnum.WORK_ORDER, can_view=False)
@@ -264,6 +284,7 @@ class AssetPermissionEnforcementTest(TestCase):
         self.assertEqual(self.client.get(url).status_code, 200)
 
     def test_editing_a_machine_requires_change_permission(self):
+        """A view-only operator cannot update a machine."""
         url = reverse('asset-machine-detail', kwargs={'pk': self.machine.pk})
 
         _grant(self.group, RuleSetEnum.WORK_ORDER, can_view=True, can_change=False)
@@ -305,6 +326,7 @@ class WorkOrderGrantMigrationTest(TestCase):
         module.grant_work_order_ruleset(apps, None)
 
     def test_grants_full_access_to_a_group_with_no_ruleset(self):
+        """Backfill the intended role for an existing group."""
         group = Group.objects.create(name='no-ruleset-yet')
         # The post_save signal back-fills rulesets, so remove it to reproduce the
         # pre-migration shape of a group that predates this ruleset entirely.
@@ -331,14 +353,13 @@ class WorkOrderGrantMigrationTest(TestCase):
         self.assertTrue(ruleset.can_change)
 
     def test_is_idempotent(self):
+        """Repeated backfill cannot create duplicate ruleset rows."""
         group = Group.objects.create(name='rerun')
 
         self._forward()
         self._forward()
 
-        self.assertEqual(
-            group.rule_sets.filter(name=RuleSetEnum.WORK_ORDER).count(), 1
-        )
+        self.assertEqual(group.rule_sets.filter(name=RuleSetEnum.WORK_ORDER).count(), 1)
 
     def test_a_granted_group_can_actually_use_the_api(self):
         """End to end: the migration's output is a working permission."""
@@ -351,6 +372,4 @@ class WorkOrderGrantMigrationTest(TestCase):
 
         self.client.force_login(user)
 
-        self.assertEqual(
-            self.client.get(reverse('kanban-card-list')).status_code, 200
-        )
+        self.assertEqual(self.client.get(reverse('kanban-card-list')).status_code, 200)

@@ -1,16 +1,27 @@
 import { t } from '@lingui/core/macro';
-import { Badge, Group, Paper, Stack, Text } from '@mantine/core';
+import {
+  ActionIcon,
+  Alert,
+  Badge,
+  Group,
+  Paper,
+  Stack,
+  Text,
+  Tooltip
+} from '@mantine/core';
 import { Dropzone } from '@mantine/dropzone';
 import { notifications } from '@mantine/notifications';
 import {
   IconCircleCheck,
   IconExclamationCircle,
   IconExternalLink,
+  IconEye,
   IconFileUpload,
   IconUpload,
   IconX
 } from '@tabler/icons-react';
 import { type ReactNode, useCallback, useMemo, useState } from 'react';
+import { useWorkTableScroll } from '../../components/tables/WorkTableScroll';
 
 import { ActionButton } from '@lib/components/ActionButton';
 import { ProgressBar } from '@lib/components/ProgressBar';
@@ -20,7 +31,7 @@ import {
   RowEditAction
 } from '@lib/components/RowActions';
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
-import type { ModelType } from '@lib/enums/ModelType';
+import { ModelType } from '@lib/enums/ModelType';
 import { apiUrl } from '@lib/functions/Api';
 import useTable from '@lib/hooks/UseTable';
 import type { TableFilter } from '@lib/types/Filters';
@@ -35,13 +46,22 @@ import {
   useDeleteApiFormModal,
   useEditApiFormModal
 } from '../../hooks/UseForm';
+import { useEvidenceViewerState } from '../../states/EvidenceViewerState';
 import { useGlobalSettingsState } from '../../states/SettingsStates';
 import { useUserState } from '../../states/UserState';
+import {
+  type AttachmentPreviewRecord,
+  attachmentPreviewItem
+} from './attachmentPreview';
+import { useAttachmentRecovery } from './useAttachmentRecovery';
 
 /**
  * Define set of columns to display for the attachment table
  */
-function attachmentTableColumns(): TableColumn[] {
+function attachmentTableColumns(
+  owner: { model_type: ModelType; model_id: number },
+  onPreview: (record: AttachmentPreviewRecord, trigger: HTMLElement) => void
+): TableColumn[] {
   return [
     {
       accessor: 'attachment',
@@ -51,10 +71,40 @@ function attachmentTableColumns(): TableColumn[] {
       render: (record: any) => {
         if (record.attachment) {
           return (
-            <AttachmentLink
-              thumbnail={record.thumbnail}
-              attachment={record.attachment}
-            />
+            <Group gap='xs' wrap='nowrap'>
+              <AttachmentLink
+                thumbnail={record.thumbnail}
+                attachment={record.attachment}
+              />
+              {attachmentPreviewItem(record, owner) && (
+                <Tooltip
+                  label={t`Preview ${record.filename}`}
+                  multiline={owner.model_type === ModelType.workorder}
+                  maw={
+                    owner.model_type === ModelType.workorder
+                      ? 'calc(100vw - 32px)'
+                      : undefined
+                  }
+                  styles={
+                    owner.model_type === ModelType.workorder
+                      ? { tooltip: { overflowWrap: 'anywhere' } }
+                      : undefined
+                  }
+                >
+                  <ActionIcon
+                    variant='subtle'
+                    size='lg'
+                    aria-label={t`Preview ${record.filename}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onPreview(record, event.currentTarget);
+                    }}
+                  >
+                    <IconEye size={18} />
+                  </ActionIcon>
+                </Tooltip>
+              )}
+            </Group>
           );
         } else if (record.link) {
           return <AttachmentLink attachment={record.link} external />;
@@ -122,11 +172,16 @@ function UploadProgress({
  */
 export function AttachmentTable({
   model_type,
-  model_id
+  model_id,
+  onChange
 }: Readonly<{
   model_type: ModelType;
   model_id: number;
+  onChange?: () => void;
 }>): ReactNode {
+  const workScrollArea = useWorkTableScroll(
+    t`Work attachments table, scroll for all columns`
+  );
   const api = useApi();
   const user = useUserState();
   const globalSettings = useGlobalSettingsState();
@@ -135,7 +190,18 @@ export function AttachmentTable({
   );
   const table = useTable(`${model_type}-attachments`);
 
-  const tableColumns = useMemo(() => attachmentTableColumns(), []);
+  const openEvidence = useEvidenceViewerState((state) => state.open);
+  const previewAttachment = useCallback(
+    (record: AttachmentPreviewRecord, trigger: HTMLElement) => {
+      const item = attachmentPreviewItem(record, { model_type, model_id });
+      if (item) openEvidence(item, trigger);
+    },
+    [model_type, model_id, openEvidence]
+  );
+  const tableColumns = useMemo(
+    () => attachmentTableColumns({ model_type, model_id }, previewAttachment),
+    [model_type, model_id, previewAttachment]
+  );
 
   const url = apiUrl(ApiEndpoints.attachment_list);
 
@@ -203,6 +269,7 @@ export function AttachmentTable({
           });
 
           table.refreshTable();
+          onChange?.();
 
           return response;
         })
@@ -233,6 +300,11 @@ export function AttachmentTable({
     number | undefined
   >(undefined);
 
+  const { onRevision, ...attachmentRecovery } = useAttachmentRecovery(
+    model_type === 'workorder',
+    url,
+    selectedAttachment
+  );
   const uploadFields: ApiFormFieldSet = useMemo(() => {
     const fields: ApiFormFieldSet = {
       model_type: {
@@ -248,6 +320,8 @@ export function AttachmentTable({
       link: {},
       comment: {}
     };
+    if (model_type === 'workorder' && selectedAttachment)
+      fields.expected_revision = { hidden: true, onValueChange: onRevision };
 
     if (attachmentType != 'link') {
       delete fields['link'];
@@ -267,18 +341,50 @@ export function AttachmentTable({
     }
 
     return fields;
-  }, [model_type, model_id, attachmentType, selectedAttachment]);
+  }, [model_type, model_id, attachmentType, selectedAttachment, onRevision]);
 
+  const [uploadFailure, setUploadFailure] = useState<
+    'refused' | 'uncertain' | null
+  >(null);
   const uploadAttachment = useCreateApiFormModal({
     url: url,
     title: t`Upload Attachment`,
     fields: uploadFields,
+    onOpen: () => setUploadFailure(null),
+    submitDisabled: model_type === 'workorder' && uploadFailure === 'uncertain',
+    hideErrorNotification: model_type === 'workorder',
+    preserveDraftOnRefresh: model_type === 'workorder',
+    preFormContent:
+      model_type === 'workorder' && uploadFailure ? (
+        <Alert color='orange'>
+          {uploadFailure === 'uncertain'
+            ? t`Attachment save not confirmed. This form keeps your file and metadata. Reconcile the Work attachments before another upload; this request may have saved.`
+            : t`Attachment save refused. Your file and metadata are retained. Check access and required fields before retrying.`}
+        </Alert>
+      ) : undefined,
+    onFormError: (error: any) => {
+      if (
+        model_type !== 'workorder' ||
+        (!error?.isAxiosError &&
+          !error?.response &&
+          typeof error?.status !== 'number')
+      )
+        return;
+      const status = error?.response?.status ?? error?.status;
+      setUploadFailure(
+        status >= 400 && status < 500 && ![408, 429].includes(status)
+          ? 'refused'
+          : 'uncertain'
+      );
+    },
     onFormSuccess: () => {
       table.refreshTable();
+      onChange?.();
     }
   });
 
   const editAttachment = useEditApiFormModal({
+    ...attachmentRecovery,
     url: url,
     pk: selectedAttachment,
     title: t`Edit Attachment`,
@@ -289,6 +395,7 @@ export function AttachmentTable({
       } else {
         table.refreshTable();
       }
+      onChange?.();
     }
   });
 
@@ -298,6 +405,7 @@ export function AttachmentTable({
     title: t`Delete Attachment`,
     onFormSuccess: () => {
       table.refreshTable();
+      onChange?.();
     }
   });
 
@@ -389,12 +497,18 @@ export function AttachmentTable({
             tableState={table}
             columns={tableColumns}
             props={{
+              scrollAreaProps:
+                model_type === ModelType.workorder ? workScrollArea : undefined,
               noRecordsText: t`No attachments found`,
               enableSelection: canDelete,
               enableBulkDelete: canDelete,
+              enableQueryFilters: false,
+              afterBulkDelete: onChange,
               tableActions: tableActions,
               tableFilters: tableFilters,
               rowActions: rowActions,
+              rowActionsTitle:
+                model_type === ModelType.workorder ? t`Actions` : undefined,
               params: {
                 model_type: model_type,
                 model_id: model_id

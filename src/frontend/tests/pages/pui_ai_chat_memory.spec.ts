@@ -252,8 +252,8 @@ async function mockMemoryRoutes(page: Page): Promise<MemoryObservations> {
  * so visibility is asserted on the dialog role it contains.
  */
 async function openMemoryModal(page: Page) {
-  await page.getByLabel('select-ai-chat-thread').click();
-  await page.getByLabel(`memory-ai-chat-thread-${threadId}`).click();
+  await page.getByTestId('select-ai-chat-thread').click();
+  await page.getByTestId(`memory-ai-chat-thread-${threadId}`).click();
   await expect(page.getByLabel('thread-memory-modal')).toHaveCount(1);
   const modal = page.getByRole('dialog', { name: 'What this chat remembers' });
   await expect(modal).toBeVisible();
@@ -272,34 +272,34 @@ test('memory affordance appears on owned persisted rows only, never on shared or
 
   await page.reload();
   await openChat(page);
-  await page.getByLabel('select-ai-chat-thread').click();
+  await page.getByTestId('select-ai-chat-thread').click();
 
   await expect(
-    page.getByLabel(`memory-ai-chat-thread-${threadId}`)
+    page.getByTestId(`memory-ai-chat-thread-${threadId}`)
   ).toBeVisible();
   await expect(
-    page.getByLabel(`memory-ai-chat-thread-${secondOwnedThreadId}`)
+    page.getByTestId(`memory-ai-chat-thread-${secondOwnedThreadId}`)
   ).toBeVisible();
 
   await expect(
     page.getByTestId(`shared-thread-${sharedThreadId}`)
   ).toBeVisible();
   await expect(
-    page.getByLabel(`memory-ai-chat-thread-${sharedThreadId}`)
+    page.getByTestId(`memory-ai-chat-thread-${sharedThreadId}`)
   ).toHaveCount(0);
   await expect(
-    page.getByLabel(`delete-ai-chat-thread-${sharedThreadId}`)
+    page.getByTestId(`delete-ai-chat-thread-${sharedThreadId}`)
   ).toHaveCount(0);
 
   await expect(
     page.getByText('Legacy local conversation', { exact: true })
   ).toHaveCount(0);
   await expect(
-    page.getByLabel('memory-ai-chat-thread-legacy-local-only')
+    page.getByTestId('memory-ai-chat-thread-legacy-local-only')
   ).toHaveCount(0);
   // Unscoped legacy browser history is never treated as an owned server row.
   await expect(
-    page.getByLabel('delete-ai-chat-thread-legacy-local-only')
+    page.getByTestId('delete-ai-chat-thread-legacy-local-only')
   ).toHaveCount(0);
 });
 
@@ -490,11 +490,11 @@ test('closing the modal during an in-flight correction never repaints; a re-open
     citation_keys: [],
     exclusions_count: 0
   };
-  const secondIcon = page.getByLabel(
+  const secondIcon = page.getByTestId(
     `memory-ai-chat-thread-${secondOwnedThreadId}`
   );
   if (!(await secondIcon.isVisible())) {
-    await page.getByLabel('select-ai-chat-thread').click();
+    await page.getByTestId('select-ai-chat-thread').click();
   }
   await secondIcon.click();
   const reopened = page.getByRole('dialog', {
@@ -751,7 +751,7 @@ test('the AG-UI aimms.contextUsed channel attaches a content-free disclosure to 
   await expect(page.getByTestId('context-used-disclosure')).toHaveCount(0);
 
   await page.getByPlaceholder('Type a message...').fill('What did you use?');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByText('Live AG-UI answer', { exact: true })
   ).toBeVisible();
@@ -794,7 +794,7 @@ test('the legacy STATE_DELTA context_used frame attaches the same disclosure, in
   await expect(page.getByTestId('context-used-disclosure')).toHaveCount(0);
 
   await page.getByPlaceholder('Type a message...').fill('What did you use?');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByText('Live legacy answer', { exact: true })
   ).toBeVisible();

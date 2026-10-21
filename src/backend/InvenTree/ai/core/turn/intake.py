@@ -36,6 +36,7 @@ async def begin(
     server_pinned_workflow: str | None,
     server_generation_target: dict[str, int] | None,
     expected_focus_version: int | None = None,
+    work_focus_receipt: str | None = None,
 ) -> TurnRun:
     """Validate the request and bind it to a durable thread + turn row.
 
@@ -90,6 +91,11 @@ async def begin(
     )
     if not created and getattr(thread, "title", None) == "":
         thread = await service._call_sync(repository.rename, thread.pk, content.strip()[:255])
+    # The Work-focus receipt is passed only when present, so repositories
+    # and turns without one keep their exact existing call and stored shape.
+    # It stays out of the fingerprint above: it expires and is reissued, and
+    # the repository compares the verified identity on replay instead.
+    focus_kwargs = {"work_focus_receipt": work_focus_receipt} if work_focus_receipt else {}
     begin_result = await service._call_sync(
         repository.begin_turn,
         thread.pk,
@@ -101,6 +107,7 @@ async def begin(
         request_fingerprint=fingerprint,
         correlation_id=correlation_id,
         expected_focus_version=expected_focus_version,
+        **focus_kwargs,
     )
 
     run = TurnRun(
@@ -123,6 +130,9 @@ async def begin(
         analysis_scope=begin_result.scope_snapshot,
         # Focus rides the same rule: original snapshot on replay.
         focus_snapshot=begin_result.focus_snapshot,
+        # The verified Work identity, server-side only; None when the turn
+        # was sent without a receipt. Replay carries the original turn's.
+        work_focus=getattr(begin_result, "work_focus_snapshot", None),
     )
 
     if begin_result.replayed:

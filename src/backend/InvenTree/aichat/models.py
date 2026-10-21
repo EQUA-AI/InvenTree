@@ -984,6 +984,7 @@ class ProposalAction(models.TextChoices):
     STOCK_REMOVE = 'stock.remove', 'Remove stock'
     STOCK_TRANSFER = 'stock.transfer', 'Transfer stock'
     STOCK_COUNT = 'stock.count', 'Count stock'
+    INVESTIGATION_ARTIFACT = 'investigation.artifact', 'Publish investigation evidence'
     PROCEDURE_COMPLETE = 'procedure.complete', 'Complete procedure step'
     CLOSEOUT_CONSENT = 'closeout.consent', 'Consent to closeout dictation'
     CLOSEOUT_ACCEPT = 'closeout.accept', 'Accept closeout note'

@@ -351,12 +351,7 @@ async function sendTyped(
       { exact: true }
     )
   ).toBeVisible();
-  await expect(
-    page.getByRole('button', {
-      name: 'cancel-ai-chat-turn',
-      exact: true
-    })
-  ).toHaveCount(0);
+  await expect(page.getByTestId('cancel-ai-chat-turn')).toHaveCount(0);
   await expect(composer).toBeEnabled();
 }
 
@@ -658,12 +653,7 @@ async function sendMachineTyped78(
       { exact: true }
     )
   ).toBeVisible();
-  await expect(
-    page.getByRole('button', {
-      name: 'cancel-ai-chat-turn',
-      exact: true
-    })
-  ).toHaveCount(0);
+  await expect(page.getByTestId('cancel-ai-chat-turn')).toHaveCount(0);
   await expect(composer).toBeEnabled();
 }
 
@@ -1000,12 +990,7 @@ async function sendTaskTyped83(
       exact: true
     })
   ).toBeVisible();
-  await expect(
-    page.getByRole('button', {
-      name: 'cancel-ai-chat-turn',
-      exact: true
-    })
-  ).toHaveCount(0);
+  await expect(page.getByTestId('cancel-ai-chat-turn')).toHaveCount(0);
   await expect(composer).toBeEnabled();
 }
 
@@ -1509,10 +1494,10 @@ async function runAcknowledgedBoundary87(
   });
   if (boundary === 'thread') {
     await page
-      .getByRole('button', { name: 'select-ai-chat-thread', exact: true })
+      .getByRole('button', { name: 'Select conversation', exact: true })
       .click();
     await page
-      .getByRole('menuitem', { name: 'new-ai-chat-thread', exact: true })
+      .getByRole('menuitem', { name: 'New conversation', exact: true })
       .click();
   } else {
     const before = await consumedSnapshot87(page);
@@ -1579,7 +1564,7 @@ async function runAcknowledgedBoundary87(
     // Exercise a real persisted-thread selection as well as creation. The
     // old server focus can be re-read, but its old hint must NOT be applied.
     await page
-      .getByRole('button', { name: 'select-ai-chat-thread', exact: true })
+      .getByRole('button', { name: 'Select conversation', exact: true })
       .click();
     await page.getByRole('menuitem', { name: /Server conversation/ }).click();
     await expect

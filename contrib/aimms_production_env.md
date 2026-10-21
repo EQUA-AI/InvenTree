@@ -127,6 +127,16 @@ aimms-experimental.
 Streaming applies to the legacy text rail only; validated evidence
 answers stay buffered structurally.
 
+Work-list first-use view (R6 UI10, `tasks/persona.py`). Name the groups that
+identify each persona; empty leaves everyone on the neutral All work view.
+Group names match exactly; a member of both is a supervisor. CRUD roles,
+staff and superuser status are never read as a persona.
+
+```
+AIMMS_WORK_SUPERVISOR_GROUPS=<group>,<group>   # first see Needs attention
+AIMMS_WORK_TECHNICIAN_GROUPS=<group>,<group>   # first see My work
+```
+
 ## Phase D — document + media RAG (gated on infra checklist)
 
 Checklist first: (1) ffmpeg/ffprobe in the image — `manage.py

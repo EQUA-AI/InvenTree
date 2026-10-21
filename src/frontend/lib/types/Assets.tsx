@@ -2,6 +2,8 @@
  * TypeScript types for the Assets (Equipment Machines) feature.
  */
 
+import type { FitProjection } from './RecordedFacts';
+
 export interface AssetMachine {
   pk: number;
   name: string;
@@ -28,6 +30,7 @@ export interface AssetMachine {
   /** Active alarms here and on the pumps below, when the list counted them. */
   open_alarms?: number | null;
   open_critical_alarms?: number | null;
+  open_warning_alarms?: number | null;
 }
 
 export interface MachinePart {
@@ -48,6 +51,7 @@ export interface MachinePart {
  * identified - from the station's source tags, until someone verifies it.
  */
 export interface MachineComponent {
+  fitted?: FitProjection | null;
   pk: number;
   uuid: string;
   /** The pump or station that owns the component. */
@@ -64,6 +68,12 @@ export interface MachineComponent {
   provenance: string;
   review_note: string;
   reviewed_at: string | null;
+  /** R6 P13: the reference 3D position this slot's family stands for (O11). */
+  reference_position?: string | null;
+  /** Open work naming this slot; null when the reader's Work scope is unknown. */
+  open_work?: { count: number } | null;
+  /** In-stock quantity of the catalogue Part; null without stock access. */
+  stock?: { quantity: number } | null;
 }
 
 export interface AssetMaintenanceRecord {
@@ -82,6 +92,8 @@ export interface AssetMaintenanceRecord {
   work_order_reference: string | null;
   work_order_title: string | null;
   work_order_type: string | null;
+  /** R6 P12: the linked work order's recorded component, when it has one. */
+  work_order_component?: string | null;
   lifecycle_status: string | null;
   actual_completed_at: string | null;
   downtime_minutes: number | null;

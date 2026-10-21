@@ -26,6 +26,17 @@ G_SCOPES = _roles.keys()
 class RuleSetModelTest(TestCase):
     """Some simplistic tests to ensure the RuleSet model is setup correctly."""
 
+    def test_scoped_closeout_and_investigation_records_have_no_generic_crud_role(self):
+        """Append-only evidence uses its native Work commands and read boundaries."""
+        for label in (
+            'tasks_captureoriginal',
+            'tasks_acceptedcloseoutreport',
+            'tasks_investigationrequest',
+            'tasks_investigationartifact',
+        ):
+            self.assertIn(label, G_RULESETS_IG)
+            self.assertFalse(any(label in models for models in G_RULESETS.values()))
+
     def test_ruleset_models(self):
         """Test that the role rulesets work as intended."""
         keys = G_RULESETS.keys()
@@ -67,6 +78,17 @@ class RuleSetModelTest(TestCase):
         self.assertEqual(len(missing), 0, 'See INVE-E5 in the docs')
         self.assertEqual(len(extra), 0, 'See INVE-E5 in the docs')
         self.assertEqual(len(empty), 0, 'See INVE-E5 in the docs')
+
+    def test_governed_execution_records_have_no_generic_crud_ruleset(self):
+        """Append-only Work records use their command permissions, not generic CRUD."""
+        for table in (
+            'tasks_calibrationtraceability',
+            'tasks_investigationrequest',
+            'tasks_investigationartifact',
+        ):
+            with self.subTest(table=table):
+                self.assertIn(table, G_RULESETS_IG)
+                self.assertFalse(any(table in models for models in G_RULESETS.values()))
 
     def test_model_names(self):
         """Test that each model defined in the rulesets is valid, based on the database schema!"""
@@ -197,6 +219,71 @@ class RuleSetModelTest(TestCase):
 
         # There should now not be any permissions assigned to this group
         self.assertEqual(group.permissions.count(), 0)
+
+    def test_operating_role_migration_preserves_only_existing_grants(self):
+        """Migration never promotes ungranted groups or erases an existing grant."""
+        from importlib import import_module
+        from types import SimpleNamespace
+
+        from django.contrib.auth.models import Permission
+        from django.db import connection
+
+        existing = Group.objects.create(name='Existing operations grant')
+        untouched = Group.objects.create(name='No operations grant')
+        existing.permissions.add(
+            Permission.objects.get(
+                content_type__app_label='tasks', codename='record_operating_authority'
+            )
+        )
+        migration = import_module('users.migrations.0025_operating_authority_role')
+        migration.preserve_operating_grants(
+            apps, SimpleNamespace(connection=connection)
+        )
+        self.assertTrue(
+            existing.rule_sets.get(name='work_order').can_record_operating_authority
+        )
+        self.assertFalse(
+            untouched.rule_sets.get(name='work_order').can_record_operating_authority
+        )
+        existing.save(update_fields=['name'])
+        self.assertTrue(
+            existing.permissions.filter(codename='record_operating_authority').exists()
+        )
+
+    def test_operating_authority_is_an_independent_ruleset_capability(self):
+        """Native role administration can grant/revoke operations without maintenance."""
+        from users.serializers import RuleSetSerializer
+
+        self.assertEqual(
+            RULESET_CUSTOM_PERMISSIONS['work_order']['can_record_operating_authority'],
+            ('tasks_operationalauthorityrecord', 'record_operating_authority'),
+        )
+        self.assertTrue(
+            {
+                'repair_gateauthorityrecord',
+                'tasks_operationalauthorityrecord',
+                'tasks_investigationrequest',
+                'tasks_investigationartifact',
+            }.issubset(set(G_RULESETS_IG))
+        )
+        group = Group.objects.create(name='Named operations role')
+        rule = group.rule_sets.get(name='work_order')
+        permission = {
+            'content_type__app_label': 'tasks',
+            'codename': 'record_operating_authority',
+        }
+        self.assertFalse(rule.can_record_operating_authority)
+        self.assertFalse(group.permissions.filter(**permission).exists())
+        rule.can_record_operating_authority = True
+        rule.save()
+        self.assertTrue(group.permissions.filter(**permission).exists())
+        self.assertTrue(RuleSetSerializer(rule).data['can_record_operating_authority'])
+        self.assertFalse(
+            group.permissions.filter(codename='execute_workorder').exists()
+        )
+        rule.can_record_operating_authority = False
+        rule.save()
+        self.assertFalse(group.permissions.filter(**permission).exists())
 
     def test_closeout_permission_assign(self):
         """Named closeout actions are synchronized by the work-order ruleset."""

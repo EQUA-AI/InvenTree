@@ -119,6 +119,7 @@
         "recharts": "^3.8.1",
         "remark-gfm": "^4.0.1",
         "styled-components": "^6.4.2",
+        "three": "0.186.1",
         "tiptap-extension-resizable-image": "^2.1.0",
         "undici": "^8.4.1",
         "zustand": "^5.0.14"

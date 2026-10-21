@@ -2,10 +2,10 @@
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from assets.models import AssetMachine
+from assets.models import AssetMachine, get_default_client
 from tasks.models import WorkOrder, WorkOrderDependency
 from tasks.tests.tz_support import iso
 from tasks.services import scheduling
@@ -143,13 +143,18 @@ class DependencyServiceTest(TestCase):
         )
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class DependencyApiTest(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_superuser(
             username='dep-sup', email='ds@example.com', password='pw'
         )
         self.client.force_login(self.user)
-        self.machine = AssetMachine.objects.create(name='Dep API Press')
+        self.machine = AssetMachine.objects.create(
+            name='Dep API Press', client=get_default_client()
+        )
         self.a = self._card('A')
         self.b = self._card('B')
 

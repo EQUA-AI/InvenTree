@@ -287,6 +287,21 @@ class OverviewEffectiveCloseoutTest(CompletedCloseoutMixin, TestCase):
         self.approver = self.make_scoped_user(
             'overview-sup', permissions=['verify_closeout', 'amend_closeout']
         )
+        # Session authentication reloads users, so the transient scope attributes
+        # used by the service fixtures do not survive into the overview request.
+        # Grant only these actors their existing customer scopes via the native
+        # resolver; unknown actors still resolve to no scope.
+        scopes_by_user = {
+            user.pk: user.maintenance_scopes
+            for user in (self.actor, self.requester, self.approver)
+        }
+        self.enterContext(
+            override_settings(
+                AIMMS_MAINTENANCE_SCOPE_RESOLVER=lambda actor: scopes_by_user.get(
+                    actor.pk, set()
+                )
+            )
+        )
         self.url = reverse(
             'kanban-card-overview', kwargs={'pk': self.work_order.pk}
         )

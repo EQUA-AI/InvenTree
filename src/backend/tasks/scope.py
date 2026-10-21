@@ -1,11 +1,14 @@
 """Fail-closed maintenance scope resolution.
 
-A maintenance record is reachable through exactly one of two identities:
+Machine and procedure boundaries use two distinct identities:
 
 * **client** - the tenant of this software. Machines are internal plant
   assets and carry only this identity;
 * **customer** - a sales relationship. It is a claim about a work order or a
   procedure, never about a machine.
+
+Customer-attributed Work and Work with neither customer nor machine are shared
+with every active Work viewer (O24). They grant no machine authority.
 
 A machine without a client is unreachable, by design: an empty identity must
 never read as "everyone's".
@@ -83,18 +86,49 @@ def scope_for_actor(actor) -> set[MaintenanceScope]:
         raise ScopeError('Maintenance actor scope is unresolved')
 
     scopes = {_coerce_scope(value) for value in values}
+    if any(
+        scope.customer_id is not None and scope.client_id is not None
+        for scope in scopes
+    ):
+        # A mixed value matches neither canonical record scope. Do not turn it
+        # into customer authority in Work lists or client authority in search.
+        raise ScopeError(
+            'Maintenance actor scope has ambiguous customer/client identity'
+        )
     if not scopes or any(not scope.is_resolved for scope in scopes):
         raise ScopeError('Maintenance actor scope is unresolved')
     return scopes
 
 
-def scope_for_work_order(work_order) -> MaintenanceScope:
-    """Resolve a work order's boundary from its own customer or its asset.
+def scoped_procedures(actor):
+    """The direct procedure reader's exact, currently resolved customer scope.
 
-    An explicit work-order customer wins: it is a sales claim about this job.
-    Otherwise the asset's client owns it. A work order with neither remains
-    unresolved and therefore unreachable.
+    Shared Work and machine-client grants confer no catalogue authority.
+    Site-only and unresolved grants cannot authorize a whole procedure.
     """
+    from .models import Procedure
+
+    try:
+        customer_ids = {
+            scope.customer_id
+            for scope in scope_for_actor(actor)
+            if scope.site_key is None and scope.customer_id is not None
+        }
+    except ScopeError:
+        return Procedure.objects.none()
+    return Procedure.objects.filter(customer_id__in=customer_ids)
+
+
+def scope_for_work_order(work_order) -> MaintenanceScope:
+    """Return the Work's provenance identity, not machine access authority.
+
+    Customer Work is shared under O24 regardless of this customer value.
+    Machineless, customerless Work has an empty provenance identity, also
+    shared. A machine-only job still requires its machine's resolved client.
+    The empty identity never becomes a valid actor or machine scope.
+    """
+    if work_order is None:
+        raise ScopeError('Work-order scope is unresolved: no work order supplied')
     explicit_customer_id = getattr(work_order, 'customer_id', None)
     machine = getattr(work_order, 'machine', None)
     machine_client_id = getattr(machine, 'client_id', None) if machine else None
@@ -107,15 +141,37 @@ def scope_for_work_order(work_order) -> MaintenanceScope:
         return MaintenanceScope(
             customer_id=None, site_key=None, client_id=machine_client_id
         )
-    raise ScopeError(
-        'Work-order scope is unresolved: its asset has neither a customer nor a client.'
-    )
+    if machine is None:
+        return MaintenanceScope(customer_id=None, site_key=None)
+    raise ScopeError('Work-order scope is unresolved: its machine has no client.')
+
+
+def _work_actor_scopes(actor) -> set[MaintenanceScope]:
+    """Require active authentication and Work view; resolve optional client grants.
+
+    Shared Work needs no client grant. An unresolved or ambiguous resolver
+    grants no machine-only Work, while the actor's Work role still authorizes
+    shared Work. A custom resolver cannot bypass the active/view checks.
+    """
+    from users.permissions import check_user_role
+
+    if actor is None or not getattr(actor, 'is_authenticated', False):
+        raise ScopeError('Maintenance actor is not authenticated')
+    if not getattr(actor, 'is_active', False) or not check_user_role(
+        actor, 'work_order', 'view'
+    ):
+        raise ScopeError('Maintenance actor requires active Work view authority')
+    try:
+        return scope_for_actor(actor)
+    except ScopeError:
+        return set()
 
 
 def require_work_order_scope(actor, work_order) -> MaintenanceScope:
-    """Require the work order's exact scope to be authorized for the actor."""
+    """Authorize shared Work or the exact client of machine-only Work."""
+    scopes = _work_actor_scopes(actor)
     scope = scope_for_work_order(work_order)
-    if scope not in scope_for_actor(actor):
+    if scope.customer_id is None and scope.is_resolved and scope not in scopes:
         raise ScopeError('Actor and work-order maintenance scopes do not match')
     return scope
 
@@ -148,6 +204,25 @@ def require_machine_scope(actor, machine) -> MaintenanceScope:
     if scope not in scope_for_actor(actor):
         raise ScopeError('Actor and machine maintenance scopes do not match')
     return scope
+
+
+def work_machine_authorized(actor, work_order) -> bool:
+    """Whether the actor holds machine scope for this Work's own machine.
+
+    O24 shares customer and unattributed Work, but a shared Work row is never
+    machine authority. Machine-scoped records reached *through* a Work (its
+    repair packet, source alert, maintenance record, telemetry, stock
+    identities) are projected only when this returns ``True``. Machineless
+    Work has no machine records, so it returns ``False``.
+    """
+    machine = getattr(work_order, 'machine', None) if work_order else None
+    if machine is None:
+        return False
+    try:
+        require_machine_scope(actor, machine)
+    except ScopeError:
+        return False
+    return True
 
 
 def enforce_machine_scope(actor, machine) -> None:
@@ -250,27 +325,44 @@ def maintenance_record_scope_filter(actor) -> Q:
 
 
 def work_order_scope_filter(actor) -> Q:
-    """Return a queryset predicate selecting exactly the actor's work orders.
+    """Select shared Work plus machine-only Work in the actor's client scope.
 
-    The set form of :func:`require_work_order_scope`, and never wider than it:
-    an explicit work-order customer is the order's whole boundary, otherwise
-    the asset's client owns it. The same fail-closed rules as
-    :func:`machine_scope_filter` apply -- ``pk__in=[]`` base so an actor whose
-    scopes contribute nothing matches no rows, and site-qualified grants are
-    skipped because a resolved work-order scope never carries a site key.
+    Exact set form of ``require_work_order_scope``: customer Work (on any
+    machine) and Work with neither customer nor machine are shared. A
+    customerless job on an unresolved/foreign machine stays withheld.
+    Site-qualified grants do not authorize machine-only Work.
 
     Raises:
-        ScopeError: When the actor's own scope cannot be resolved.
+        ScopeError: For unauthenticated, inactive or roleless actors.
     """
-    predicate = Q(pk__in=[])
-    for scope in scope_for_actor(actor):
-        if scope.site_key is not None:
-            continue
-        if scope.customer_id is not None:
-            predicate |= Q(customer_id=scope.customer_id)
-        elif scope.client_id is not None:
+    scopes = _work_actor_scopes(actor)
+    predicate = Q(customer__isnull=False) | Q(
+        customer__isnull=True, machine__isnull=True
+    )
+    for scope in scopes:
+        if scope.site_key is None and scope.client_id is not None:
             predicate |= Q(customer__isnull=True, machine__client_id=scope.client_id)
     return predicate
+
+
+def scoped_work_orders(actor):
+    """Return only shared or client-scoped Work authorized for this actor."""
+    from tasks.models import WorkOrder
+
+    try:
+        return WorkOrder.objects.filter(work_order_scope_filter(actor))
+    except ScopeError:
+        return WorkOrder.objects.none()
+
+
+def scoped_machines(actor):
+    """Return only machines authorized by the canonical client boundary."""
+    from assets.models import AssetMachine
+
+    try:
+        return AssetMachine.objects.filter(machine_scope_filter(actor))
+    except ScopeError:
+        return AssetMachine.objects.none()
 
 
 def client_codes_for_actor(actor) -> frozenset[str]:

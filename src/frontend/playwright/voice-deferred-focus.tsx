@@ -24,6 +24,7 @@ import type {
 } from '../lib/types/AimmsWire.generated';
 import { useAIChat } from '../src/hooks/UseAIChat';
 import { useUserState } from '../src/states/UserState';
+import { emptyThreadFocusPayload } from '../tests/pages/focus_fixture';
 
 useUserState.setState({
   is_authed: true,
@@ -101,6 +102,9 @@ const scopePayload = (threadId: string): ThreadScopePayload =>
 window.fetch = ((input: unknown, init?: RequestInit) => {
   const url = String(input);
   const method = (init?.method ?? 'GET').toUpperCase();
+  if (/\/threads\/[^/]+\/focus$/.test(url) && method === 'GET') {
+    return Promise.resolve(jsonResponse(emptyThreadFocusPayload, 200));
+  }
   const scopeMatch = url.match(/\/threads\/([^/]+)\/scope$/);
   if (scopeMatch) {
     const threadId = decodeURIComponent(scopeMatch[1]);

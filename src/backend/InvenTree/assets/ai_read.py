@@ -359,6 +359,7 @@ def machine_signals(machine) -> dict[str, Any]:
         value = row['value']
         signals.append({
             'binding_id': row['binding_id'],
+            'active': row['active'],
             'display_name': fence(row['display_name'], limit=200),
             'signal_kind': row['signal_kind'],
             'unit': fence(row['unit'], limit=32),

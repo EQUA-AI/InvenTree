@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 
 import { RelationChart } from '../RelationChart';
 import { familyColors } from '../TrendChart';
+import { reactiveSharesPowerAxis } from '../evaluation';
 import { withRole } from '../resolve';
 import { relationPoints } from '../series';
 import {
@@ -17,9 +18,14 @@ import {
 /**
  * Electrical performance: what the machine draws and how cleanly.
  *
- * Power and power factor share a chart because they are read together; current
+ * Power and power factor use separate synchronized charts; current
  * and voltage share one for the same reason. Relationships against speed and
  * pressure are drawn as patterns, not explanations.
+ *
+ * Power factor is dimensionless and has the right axis to itself. Reactive
+ * power joins active power on the left axis only when their units carry the
+ * same magnitude (MW with Mvar, kW with kvar); otherwise it is drawn on its
+ * own trend beside them. It never shares a scale with the power factor.
  */
 export function ElectricalSection({
   parameters,
@@ -61,7 +67,15 @@ export function ElectricalSection({
     [power, currents, series]
   );
 
-  const hasPower = power.length + reactive.length + factor.length > 0;
+  const sharedAxis = reactiveSharesPowerAxis(
+    power.map((p) => p.signal.unit),
+    reactive.map((p) => p.signal.unit)
+  );
+  // Reactive power with no active power to share with: it takes the left
+  // axis of its own card and the power factor keeps the right.
+  const ownReactiveCard = reactive.length > 0 && !sharedAxis;
+  const powerCard = sharedAxis ? [...power, ...reactive] : power;
+  const hasPower = powerCard.length + factor.length > 0;
   const hasSupply = currents.length + voltages.length > 0;
   const hasExcitation = excitationCurrent.length + excitationVoltage.length > 0;
 
@@ -70,35 +84,69 @@ export function ElectricalSection({
   }
 
   const currentColors = familyColors(currents.length, ['blue'], theme, scheme);
-  const voltageColors = familyColors(voltages.length, ['teal'], theme, scheme);
+  const voltageColors = familyColors(voltages.length, ['cyan'], theme, scheme);
 
   return (
     <Stack gap='md'>
       <CardGrid>
         {hasPower && (
+          <Stack gap='md'>
+            {powerCard.length > 0 && (
+              <ChartCard title={t`Power`}>
+                <ParameterTrend
+                  parameters={powerCard}
+                  lines={[
+                    ...power.map((p) => lineFor(p, 'blue.7')),
+                    ...(sharedAxis
+                      ? reactive.map((p) => lineFor(p, 'violet.6'))
+                      : [])
+                  ]}
+                  series={series}
+                  window={window}
+                  syncId={syncId}
+                  onZoom={onZoom}
+                  unit={
+                    sharedAxis
+                      ? `${power[0].signal.unit} / ${reactive[0].signal.unit}`
+                      : power[0]?.signal.unit
+                  }
+                />
+              </ChartCard>
+            )}
+            {factor.length > 0 && (
+              <ChartCard title={t`Power factor`}>
+                <ParameterTrend
+                  parameters={factor}
+                  lines={factor.map((parameter) =>
+                    lineFor(parameter, 'violet.6')
+                  )}
+                  series={series}
+                  window={window}
+                  syncId={syncId}
+                  onZoom={onZoom}
+                  unit={factor[0].signal.unit}
+                />
+              </ChartCard>
+            )}
+          </Stack>
+        )}
+        {ownReactiveCard && (
           <ChartCard
-            title={t`Power and power factor`}
+            title={t`Reactive power`}
             description={
-              power.length === 0 || reactive.length + factor.length === 0
-                ? undefined
-                : reactive.length > 0
-                  ? t`Active power on the left axis; reactive power and power factor on the right.`
-                  : t`Active power on the left axis; power factor on the right.`
+              power.length > 0
+                ? t`Drawn apart from active power: their units (${power[0].signal.unit || t`none`} and ${reactive[0].signal.unit || t`none`}) are not stated at the same magnitude.`
+                : undefined
             }
           >
             <ParameterTrend
-              parameters={[...power, ...reactive, ...factor]}
-              lines={[
-                ...power.map((p) => lineFor(p, 'blue.7')),
-                ...reactive.map((p) => lineFor(p, 'violet.6', 'right')),
-                ...factor.map((p) => lineFor(p, 'orange.6', 'right'))
-              ]}
+              parameters={reactive}
+              lines={reactive.map((p) => lineFor(p, 'violet.6'))}
               series={series}
               window={window}
               syncId={syncId}
               onZoom={onZoom}
-              unit={power[0]?.signal.unit}
-              rightUnit={factor[0] ? '' : reactive[0]?.signal.unit}
+              unit={reactive[0].signal.unit}
             />
           </ChartCard>
         )}
@@ -139,7 +187,7 @@ export function ElectricalSection({
               parameters={[...excitationCurrent, ...excitationVoltage]}
               lines={[
                 ...excitationCurrent.map((p) => lineFor(p, 'blue.6')),
-                ...excitationVoltage.map((p) => lineFor(p, 'teal.6', 'right'))
+                ...excitationVoltage.map((p) => lineFor(p, 'cyan.6', 'right'))
               ]}
               series={series}
               window={window}
@@ -154,7 +202,7 @@ export function ElectricalSection({
           <ChartCard title={t`Frequency`}>
             <ParameterTrend
               parameters={frequency}
-              lines={frequency.map((p) => lineFor(p, 'gray.7'))}
+              lines={frequency.map((p) => lineFor(p, 'cyan.7'))}
               series={series}
               window={window}
               syncId={syncId}

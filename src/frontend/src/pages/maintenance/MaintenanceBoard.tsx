@@ -62,6 +62,7 @@ import type {
 import { useApi } from '../../contexts/ApiContext';
 import { showApiErrorMessage } from '../../functions/notifications';
 import { openGlobalAIChat } from '../../states/AIChatState';
+import { boardCardIdentity } from '../tasks/workorders/workProjection';
 
 import {
   WorkOrderCreateModal,
@@ -214,8 +215,7 @@ const convertCardToTask = (
   card: BoardCard,
   workOrder: WorkOrder | undefined
 ): Task => ({
-  id: card.id,
-  workOrderId: card.work_order,
+  ...boardCardIdentity(card),
   cardKind: card.card_kind,
   title: card.title,
   description: card.description ?? '',
@@ -1586,7 +1586,7 @@ export default function MaintenanceBoard() {
                                     aria-label={t`Open work order detail`}
                                     onClick={() =>
                                       navigate(
-                                        `/maintenance/work-orders/${task.id}/`
+                                        `/maintenance/work-orders/${task.workOrderId}/`
                                       )
                                     }
                                     disabled={isDeleting}

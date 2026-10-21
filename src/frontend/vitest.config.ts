@@ -19,6 +19,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    setupFiles: ['./tests/unit/setup.ts'],
     include: ['src/**/*.test.ts'],
     exclude: ['tests/**', 'node_modules/**', 'dist/**'],
     passWithNoTests: false

@@ -14,17 +14,22 @@ from dataclasses import asdict
 
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
+from django.db.models import Prefetch, prefetch_related_objects
 from django.http import Http404
 
 from rest_framework import status
 from rest_framework.generics import get_object_or_404
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import SAFE_METHODS, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from InvenTree.permissions import RolePermission
+
 from .closeout_models import (
     CloseoutAmendment,
+    CloseoutCaptureRevision,
     CloseoutEffect,
+    CloseoutFieldDecision,
     CloseoutPartUsage,
     CloseoutReading,
 )
@@ -94,10 +99,21 @@ class CloseoutEnabledMixin(WorkOrderEnabledMixin):
         return super().dispatch(request, *args, **kwargs)
 
 
+class CloseoutReadPermission(RolePermission):
+    """Require native Work view for reads; services authorize each command."""
+
+    def has_permission(self, request, view):
+        """Keep capture, review, reconcile and complete permissions independent."""
+        return request.method not in SAFE_METHODS or super().has_permission(
+            request, view
+        )
+
+
 class CloseoutCommandView(CloseoutEnabledMixin, APIView):
     """Shared scope-first parent lookup and stable error translation."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CloseoutReadPermission]
+    role_required = 'work_order'
 
     def get_work_order(self, request, pk):
         """Resolve the parent work order scope-safely (404 on any mismatch)."""
@@ -168,9 +184,19 @@ class CloseoutCaptureList(CloseoutCommandView):
     def get(self, request, pk):
         """Return every capture for the work order, newest first."""
         work_order = self.get_work_order(request, pk)
-        captures = work_order.closeout_captures.select_related(
-            'current_revision'
-        ).order_by('-pk')
+        captures = (
+            work_order.closeout_captures
+            .select_related('current_revision', 'created_by')
+            .prefetch_related(
+                Prefetch(
+                    'revisions',
+                    queryset=CloseoutCaptureRevision.objects.select_related(
+                        'created_by'
+                    ),
+                )
+            )
+            .order_by('-pk')
+        )
         return Response(CloseoutCaptureSerializer(captures, many=True).data)
 
     def post(self, request, pk):
@@ -179,11 +205,21 @@ class CloseoutCaptureList(CloseoutCommandView):
         serializer = CaptureCreateCommandSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        service = create_capture
+        ownership = {}
+        packet = getattr(work_order, 'repair_packet', None)
+        if packet is not None:
+            from repair.services import packet_closeout_capture
+
+            service = packet_closeout_capture
+            ownership['packet_id'] = packet.pk
         result = self.run(
             request,
             work_order,
-            create_capture,
+            service,
+            **ownership,
             narrative=data['narrative'],
+            voice_unavailable_reason=data['voice_unavailable_reason'],
             expected_version=data['expected_version'],
             idempotency_key=data['idempotency_key'],
         )
@@ -201,11 +237,23 @@ class CloseoutCaptureDetail(CloseoutCommandView):
         serializer = CaptureReviseCommandSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        revise_service, abandon_service = revise_capture, abandon_capture
+        ownership = {}
+        packet = getattr(work_order, 'repair_packet', None)
+        if packet is not None:
+            from repair.services import packet_closeout_abandon, packet_closeout_revise
+
+            revise_service, abandon_service = (
+                packet_closeout_revise,
+                packet_closeout_abandon,
+            )
+            ownership['packet_id'] = packet.pk
         if data['abandon']:
             result = self.run(
                 request,
                 work_order,
-                abandon_capture,
+                abandon_service,
+                **ownership,
                 capture_id=cap,
                 expected_version=data['expected_version'],
                 idempotency_key=data['idempotency_key'],
@@ -220,7 +268,8 @@ class CloseoutCaptureDetail(CloseoutCommandView):
             result = self.run(
                 request,
                 work_order,
-                revise_capture,
+                revise_service,
+                **ownership,
                 capture_id=cap,
                 narrative=data.get('narrative', ''),
                 expected_revision=data['expected_revision'],
@@ -238,7 +287,15 @@ class CloseoutCaptureExtract(CloseoutCommandView):
     def post(self, request, pk, cap):
         """Run extraction and return the stored proposal."""
         work_order = self.get_work_order(request, pk)
-        result = self.run(request, work_order, request_extraction, capture_id=cap)
+        service = request_extraction
+        ownership = {}
+        packet = getattr(work_order, 'repair_packet', None)
+        if packet is not None:
+            from repair.services import packet_closeout_extract
+
+            service = packet_closeout_extract
+            ownership['packet_id'] = packet.pk
+        result = self.run(request, work_order, service, **ownership, capture_id=cap)
         if _is_response(result):
             return result
         return Response(CloseoutProposalSerializer(result).data)
@@ -247,7 +304,8 @@ class CloseoutCaptureExtract(CloseoutCommandView):
 class CloseoutCaptureProposal(CloseoutEnabledMixin, APIView):
     """Return the live proposal (with decisions) for a capture."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CloseoutReadPermission]
+    role_required = 'work_order'
 
     def get(self, request, pk, cap):
         """Scope-first read of the current proposal."""
@@ -262,6 +320,13 @@ class CloseoutCaptureProposal(CloseoutEnabledMixin, APIView):
         )
         if proposal is None:
             raise Http404
+        prefetch_related_objects(
+            [proposal],
+            Prefetch(
+                'decisions',
+                queryset=CloseoutFieldDecision.objects.select_related('decided_by'),
+            ),
+        )
         return Response(CloseoutProposalSerializer(proposal).data)
 
 
@@ -274,12 +339,22 @@ class CloseoutDecisionBatch(CloseoutCommandView):
         serializer = DecisionBatchCommandSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        service = record_decisions
+        ownership = {}
+        packet = getattr(work_order, 'repair_packet', None)
+        if packet is not None:
+            from repair.services import packet_closeout_decisions
+
+            service = packet_closeout_decisions
+            ownership['packet_id'] = packet.pk
         result = self.run(
             request,
             work_order,
-            record_decisions,
+            service,
+            **ownership,
             capture_id=cap,
             decisions=[dict(entry) for entry in data['decisions']],
+            expected_decision_version=data['expected_decision_version'],
             expected_version=data['expected_version'],
             idempotency_key=data['idempotency_key'],
         )
@@ -295,7 +370,11 @@ class CloseoutPartUsageList(CloseoutCommandView):
         """Return every usage row for the work order."""
         work_order = self.get_work_order(request, pk)
         rows = CloseoutPartUsage.objects.filter(work_order=work_order).order_by('pk')
-        return Response(CloseoutPartUsageSerializer(rows, many=True).data)
+        return Response(
+            CloseoutPartUsageSerializer(
+                rows, many=True, context={'request': request, 'work_order': work_order}
+            ).data
+        )
 
     def post(self, request, pk):
         """Add one walk-up usage row or narrative candidate."""
@@ -331,7 +410,10 @@ class CloseoutPartUsageList(CloseoutCommandView):
         if _is_response(result):
             return result
         return Response(
-            CloseoutPartUsageSerializer(result).data, status=status.HTTP_201_CREATED
+            CloseoutPartUsageSerializer(
+                result, context={'request': request, 'work_order': work_order}
+            ).data,
+            status=status.HTTP_201_CREATED,
         )
 
 
@@ -356,7 +438,11 @@ class CloseoutPartUsageResolve(CloseoutCommandView):
         )
         if _is_response(result):
             return result
-        return Response(CloseoutPartUsageSerializer(result).data)
+        return Response(
+            CloseoutPartUsageSerializer(
+                result, context={'request': request, 'work_order': work_order}
+            ).data
+        )
 
 
 class CloseoutPartUsageRefresh(CloseoutCommandView):
@@ -377,7 +463,14 @@ class CloseoutReadingList(CloseoutCommandView):
     def get(self, request, pk):
         """Return every reading for the work order."""
         work_order = self.get_work_order(request, pk)
-        rows = CloseoutReading.objects.filter(work_order=work_order).order_by('pk')
+        rows = (
+            CloseoutReading.objects
+            .filter(work_order=work_order)
+            .select_related('recorded_by')
+            # Each row's focus revision pins its evidence links.
+            .prefetch_related('evidence_links')
+            .order_by('pk')
+        )
         return Response(CloseoutReadingSerializer(rows, many=True).data)
 
     def post(self, request, pk):
@@ -438,7 +531,8 @@ class CloseoutReadingDisposition(CloseoutCommandView):
 class CloseoutEffectList(CloseoutEnabledMixin, APIView):
     """Effect ledger with retry state for the work order's closeout."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CloseoutReadPermission]
+    role_required = 'work_order'
     pagination_class = WorkOrderPagination
 
     def get(self, request, pk):
@@ -516,9 +610,12 @@ class CloseoutAmendmentList(CloseoutCommandView):
     def get(self, request, pk):
         """Return every amendment for the work order's closeout."""
         work_order = self.get_work_order(request, pk)
-        amendments = CloseoutAmendment.objects.filter(
-            closeout__work_order=work_order
-        ).order_by('pk')
+        amendments = (
+            CloseoutAmendment.objects
+            .filter(closeout__work_order=work_order)
+            .select_related('requested_by', 'decided_by')
+            .order_by('pk')
+        )
         return Response(CloseoutAmendmentSerializer(amendments, many=True).data)
 
     def post(self, request, pk):

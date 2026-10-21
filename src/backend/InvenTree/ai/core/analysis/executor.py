@@ -818,8 +818,42 @@ def _reauthorize(user: Any, store: EvidenceStore) -> bool:
             for work_order_id in work_order_ids:
                 if authorized_work_order(user, work_order_id) is None:
                     return False
+        application_facts = [
+            fact for fact in store.facts.values() if fact.source_class == "procedure_application"
+        ]
+        if application_facts:
+            from ai.core.analysis.evidence import _procedure_application_values
+            from tasks.ai_read import authorized_work_order, work_order_procedure_application
+            from tasks.procedure_models import WorkOrderProcedureApplication
+
+            for fact in application_facts:
+                application = WorkOrderProcedureApplication.objects.filter(
+                    pk=fact.source_id
+                ).first()
+                if application is None:
+                    return False
+                work_order = authorized_work_order(user, application.work_order_id)
+                if work_order is None:
+                    return False
+                projection = work_order_procedure_application(work_order, actor=user)
+                if (
+                    projection is None
+                    or str(projection["application_id"]) != fact.source_id
+                    or _procedure_application_values(projection) != fact.values
+                ):
+                    return False
+        # A native Work row carries only its machine identity/name. Its
+        # independent Work authority was rechecked above; O24 shares that
+        # provenance without granting any operational machine evidence.
         machine_ids = {
-            fact.machine_id for fact in store.facts.values() if fact.machine_id is not None
+            fact.machine_id
+            for fact in store.facts.values()
+            if fact.machine_id is not None
+            and not (
+                fact.source_class == "work_order"
+                and fact.kind == "record_field"
+                and fact.locator.get("field") == "work_order_row"
+            )
         }
         if machine_ids:
             from assets.ai_read import authorized_machine

@@ -412,7 +412,13 @@ async def maybe_handle(service: NormalizedTurnService, run: TurnRun) -> dict[str
     if command is not None:
         return await _handle_switch(service, run, command)
     if is_bare_anaphora(run.content):
+        work_focus = getattr(run, "work_focus", None)
         if not _snapshot_has_target(run):
+            if isinstance(work_focus, dict):
+                # The receipt was verified under begin_turn's row lock. A
+                # per-turn Work target is explicit even when the conversation
+                # has no persistent target; never guess from transcript text.
+                return None
             message = (
                 "Which machine, task or work order do you mean? "
                 "Say the target first, for example: talk about machine 3."
@@ -425,7 +431,47 @@ async def maybe_handle(service: NormalizedTurnService, run: TurnRun) -> dict[str
             )
             service._abandon_pending_question(thread_id=run.thread.pk)
             return _focus_canonical(service, run, message=message, workflow="focus_clarify")
+        if isinstance(work_focus, dict) and not _focus_matches_work(run):
+            # Both snapshots are independently authorized, but their recorded
+            # subjects disagree. Do not silently reinterpret a pronoun against
+            # either target or combine their record sets.
+            service._abandon_pending_question(thread_id=run.thread.pk)
+            return _focus_canonical(
+                service,
+                run,
+                message=(
+                    "The conversation target and this turn's Work target differ. "
+                    "Choose a matching target before asking about it."
+                ),
+                workflow="focus_clarify",
+            )
     return None
+
+
+def _focus_matches_work(run: TurnRun) -> bool:
+    """Whether the recorded targets share the exact narrowed identity.
+
+    Work-order and task focus retain their exact parent Work identity: a
+    different Work on the same machine cannot satisfy them. Machine focus
+    admits a Work only on that machine. Unknown relationships fail closed.
+    Neither hint changes the separate authorization or analysis-scope fences.
+    """
+    from ai.core.focus.contract import focus_from_stored
+
+    target = focus_from_stored((run.focus_snapshot or {}).get("focus"))
+    work = getattr(run, "work_focus", None)
+    if target is None or not isinstance(work, dict):
+        return False
+    if target.work_order_id is not None:
+        if target.work_order_id != work.get("work_order_id"):
+            return False
+        return target.machine_id is None or target.machine_id == work.get("machine_id")
+    if target.kind == KIND_WORK_ORDER:
+        return target.id == work.get("work_order_id") and (
+            target.machine_id is None or target.machine_id == work.get("machine_id")
+        )
+    machine_id = target.id if target.kind == KIND_MACHINE else target.machine_id
+    return machine_id is not None and machine_id == work.get("machine_id")
 
 
 def _snapshot_has_target(run: TurnRun) -> bool:

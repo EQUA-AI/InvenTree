@@ -1,22 +1,50 @@
-import { t } from '@lingui/core/macro';
-import { Badge, Group, Text } from '@mantine/core';
+import { plural, t } from '@lingui/core/macro';
+import {
+  Alert,
+  type AlertProps,
+  Anchor,
+  type AnchorProps,
+  Badge,
+  type BadgeProps,
+  Group,
+  Text,
+  type TextProps,
+  createPolymorphicComponent
+} from '@mantine/core';
 import {
   IconAlertTriangle,
+  IconBellCheck,
+  IconBellOff,
+  IconBellRinging,
   IconCircleCheck,
+  IconClockOff,
   IconHelpCircle,
-  IconPlugConnectedX,
+  IconHistory,
+  IconInfoCircle,
   IconUrgent
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
-import type { ReactNode } from 'react';
+import { type ReactNode, forwardRef } from 'react';
 
 import type {
   AnomalySeverity,
   HealthSourceType,
   HealthState,
+  MachineSignal,
   SignalQuality
 } from '@lib/types/MachineHealth';
+
+import { displayInstant } from '../displayClock';
+import monitoring from '../monitoring.module.css';
+import operations from '../operations.module.css';
+import { unitLabel } from '../performance/format';
+import { useNow } from '../useNow';
+import {
+  StatusBadge as MonitoringStatusBadge,
+  statusTone
+} from './StatusBadge';
+import { displayClock, formatInstant } from './mimic/observedTime';
 
 dayjs.extend(relativeTime);
 
@@ -58,8 +86,8 @@ export function healthStateVisual(state: HealthState): StateVisual {
     case 'offline':
       return {
         color: 'gray',
-        label: t`Offline`,
-        icon: <IconPlugConnectedX size={16} />
+        label: t`No current data`,
+        icon: <IconClockOff size={16} />
       };
     default:
       return {
@@ -70,7 +98,9 @@ export function healthStateVisual(state: HealthState): StateVisual {
   }
 }
 
-export function severityVisual(severity: AnomalySeverity): StateVisual {
+export function severityVisual(
+  severity: string | null | undefined
+): StateVisual {
   switch (severity) {
     case 'critical':
       return {
@@ -84,40 +114,171 @@ export function severityVisual(severity: AnomalySeverity): StateVisual {
         label: t`Warning`,
         icon: <IconAlertTriangle size={16} />
       };
-    default:
+    case 'info':
       return {
         color: 'blue',
         label: t`Info`,
+        icon: <IconInfoCircle size={16} />
+      };
+    default:
+      return {
+        color: 'gray',
+        label: t`Severity unavailable`,
         icon: <IconHelpCircle size={16} />
       };
   }
 }
 
-export function HealthStateBadge({
-  state,
-  size = 'md'
-}: Readonly<{ state: HealthState; size?: string }>) {
-  const visual = healthStateVisual(state);
+/** Shared badge contrast and vocabulary; palette remains native Mantine. */
+export function StatusBadge({
+  children,
+  variant = 'light',
+  leftSection,
+  color = 'gray',
+  maw = 'none',
+  miw = 'max-content',
+  ...props
+}: BadgeProps & { children: ReactNode; 'data-alarm-status'?: string }) {
   return (
     <Badge
+      {...props}
+      variant={variant}
+      color={
+        variant === 'filled' && !color.includes('.') ? `${color}.9` : color
+      }
+      autoContrast={variant === 'filled'}
+      c={variant === 'filled' ? undefined : 'var(--mantine-color-text)'}
+      tt='none'
+      maw={maw}
+      miw={miw}
+      leftSection={leftSection ?? <IconInfoCircle size={14} />}
+    >
+      {children}
+    </Badge>
+  );
+}
+export function alarmStateVisual(
+  status: string | null,
+  severity?: string | null
+) {
+  const color = severityVisual(severity).color;
+  switch (status) {
+    case 'open':
+      return {
+        label: t`Active · not acknowledged`,
+        color: severity === 'critical' ? 'red.9' : color,
+        variant: 'filled' as const,
+        icon: <IconBellRinging size={14} />
+      };
+    case 'acknowledged':
+      return {
+        label: t`Active · acknowledged`,
+        color,
+        variant: 'outline' as const,
+        icon: <IconBellCheck size={14} />
+      };
+    case 'resolved':
+      return {
+        label: t`Resolved`,
+        color: 'gray',
+        variant: 'outline' as const,
+        icon: <IconHistory size={14} />
+      };
+    case 'suppressed':
+      return {
+        label: t`Dismissed`,
+        color: 'gray',
+        variant: 'outline' as const,
+        icon: <IconBellOff size={14} />
+      };
+    default:
+      return {
+        label: t`Alarm state unavailable`,
+        color: 'gray',
+        variant: 'outline' as const,
+        icon: <IconHelpCircle size={14} />
+      };
+  }
+}
+export function AlarmStateBadge({
+  status,
+  severity
+}: { status: string | null; severity?: string | null }) {
+  const visual = alarmStateVisual(status, severity);
+  return (
+    <StatusBadge
+      data-alarm-status={status ?? 'unknown'}
       color={visual.color}
-      variant='light'
-      size={size}
+      variant={visual.variant}
       leftSection={visual.icon}
     >
       {visual.label}
-    </Badge>
+    </StatusBadge>
+  );
+}
+export function Unavailable({ reason }: { reason: string }) {
+  return (
+    <Text size='sm'>
+      {t`Unavailable`} · {reason}
+    </Text>
+  );
+}
+
+export function HealthStateBadge({
+  state,
+  size = 'md',
+  neutralNormal = false,
+  describedBy
+}: Readonly<{
+  state: HealthState;
+  size?: string;
+  neutralNormal?: boolean;
+  describedBy?: string;
+}>) {
+  const visual = healthStateVisual(state);
+  return (
+    <MonitoringStatusBadge
+      tone={state === 'normal' && neutralNormal ? 'neutral' : statusTone(state)}
+      aria-describedby={describedBy}
+      style={{ flexShrink: 0, maxWidth: 'none' }}
+      flex='0 0 auto'
+      maw='none'
+      miw='max-content'
+      color={
+        state === 'normal' && neutralNormal
+          ? 'gray'
+          : state === 'critical'
+            ? 'red.9'
+            : state === 'warning'
+              ? 'yellow.6'
+              : visual.color
+      }
+      variant={
+        state === 'critical' || state === 'warning' ? 'filled' : 'outline'
+      }
+      size={size}
+      leftSection={state === 'offline' ? visual.icon : undefined}
+    >
+      {visual.label}
+    </MonitoringStatusBadge>
   );
 }
 
 export function SeverityBadge({
   severity
-}: Readonly<{ severity: AnomalySeverity }>) {
+}: Readonly<{ severity: AnomalySeverity | string | null }>) {
   const visual = severityVisual(severity);
   return (
-    <Badge color={visual.color} variant='light' leftSection={visual.icon}>
+    <MonitoringStatusBadge
+      tone={statusTone(severity ?? '')}
+      leftSection={visual.icon}
+      color={visual.color}
+      variant={
+        severity === 'critical' || severity === 'warning' ? 'filled' : 'outline'
+      }
+    >
       {visual.label}
-    </Badge>
+    </MonitoringStatusBadge>
   );
 }
 
@@ -162,66 +323,188 @@ export function SourceTypeBadge({
     return null;
   }
   return (
-    <Badge variant='outline' color='gray'>
+    <MonitoringStatusBadge tone='neutral' variant='outline' color='gray'>
       {sourceTypeLabel(type)}
-    </Badge>
+    </MonitoringStatusBadge>
   );
 }
 
+export const MetaText = createPolymorphicComponent<'p', TextProps>(
+  forwardRef<HTMLParagraphElement, TextProps>(
+    ({ className, ...props }, ref) => (
+      <Text
+        ref={ref}
+        size='sm'
+        maw='70ch'
+        className={[monitoring.meta, className].filter(Boolean).join(' ')}
+        {...props}
+      />
+    )
+  )
+);
+export const MonitoringLink = createPolymorphicComponent<'a', AnchorProps>(
+  forwardRef<HTMLAnchorElement, AnchorProps>(({ className, ...props }, ref) => (
+    <Anchor
+      ref={ref}
+      className={[monitoring.link, className].filter(Boolean).join(' ')}
+      {...props}
+    />
+  ))
+);
+export function AttentionAlert(props: AlertProps) {
+  return (
+    <Alert
+      variant='outline'
+      color='yellow'
+      icon={<IconAlertTriangle size={16} />}
+      maw='70ch'
+      c='var(--mantine-color-text)'
+      {...props}
+      classNames={{ label: monitoring.attentionTitle }}
+    />
+  );
+}
+export function Unit({ code }: Readonly<{ code: string | null | undefined }>) {
+  return (
+    <abbr title={code || undefined} style={{ textDecoration: 'none' }}>
+      {unitLabel(code)}
+    </abbr>
+  );
+}
+/** Age is judged against the same observation and budget as the server flag. */
+export function freshnessFacts(
+  observedAt: string | number | null,
+  stale: boolean,
+  thresholdSeconds: number | null | undefined,
+  now: number
+) {
+  const time = displayInstant(observedAt);
+  if (!time) return null;
+  const ms =
+    typeof observedAt === 'number' ? observedAt : Date.parse(observedAt!);
+  const future = ms > now;
+  const seconds = Math.floor(Math.abs(now - ms) / 1000);
+  const age =
+    seconds < 60
+      ? `${seconds} s`
+      : seconds < 86400
+        ? `${Math.floor(seconds / 60)} min`
+        : `${Math.floor(seconds / 86400)} d`;
+  const budget =
+    thresholdSeconds == null
+      ? 'budget not supplied'
+      : `freshness budget ${thresholdSeconds} s`;
+  const serverFlag =
+    stale &&
+    (future || (thresholdSeconds != null && seconds <= thresholdSeconds));
+  return { time, age, budget, serverFlag, future };
+}
+export function FreshnessText({
+  observedAt,
+  stale,
+  thresholdSeconds,
+  now: suppliedNow
+}: Readonly<{
+  observedAt: string | number | null;
+  stale: boolean;
+  thresholdSeconds?: number | null;
+  now?: number;
+}>) {
+  const pageNow = useNow(1000, suppliedNow == null);
+  const fact = freshnessFacts(
+    observedAt,
+    stale,
+    thresholdSeconds,
+    suppliedNow ?? pageNow
+  );
+  if (!fact) return <MetaText>{t`Observation time unavailable`}</MetaText>;
+  return (
+    <Group gap={4} style={{ fontVariantNumeric: 'tabular-nums' }}>
+      {stale ? (
+        <MonitoringStatusBadge tone='stale' color='gray'>
+          {fact.serverFlag ? t`Stale (server flag)` : t`Stale`} ·{' '}
+          {fact.future
+            ? t`${fact.age} ahead of your clock`
+            : t`${fact.age} old`}{' '}
+          · {fact.budget}
+        </MonitoringStatusBadge>
+      ) : (
+        <MetaText>
+          {fact.time} ·{' '}
+          {fact.future
+            ? t`${fact.age} ahead of your clock`
+            : t`${fact.age} old`}
+        </MetaText>
+      )}
+    </Group>
+  );
+}
 /**
  * Render an observation time with how long ago it was.
  *
  * Freshness is never implied: a stale reading says so in words next to the
  * timestamp, so nobody reads an hours-old number as the machine's current state.
  */
-export function ObservedAt({
-  observedAt,
-  stale
-}: Readonly<{ observedAt: string | null; stale: boolean }>) {
+export function ObservedAt(props: Parameters<typeof FreshnessText>[0]) {
+  // Budget-aware callers retain the full server-flag and age explanation.
+  if ('thresholdSeconds' in props || 'now' in props) {
+    return <FreshnessText {...props} />;
+  }
+  const { observedAt, stale } = props;
   if (!observedAt) {
     return (
-      <Text size='sm' c='dimmed'>
+      <Text size='sm' className={operations.meta}>
         {t`No reading`}
       </Text>
     );
   }
 
   return (
-    <Group gap={6} wrap='nowrap'>
-      <Text size='sm'>{dayjs(observedAt).format('MMM D, HH:mm')}</Text>
-      <Text size='xs' c={stale ? undefined : 'dimmed'}>
+    <Group
+      gap={6}
+      wrap='wrap'
+      title={formatInstant(observedAt, displayClock()) ?? t`Time unavailable`}
+    >
+      <Text size='sm'>
+        {formatInstant(observedAt, displayClock()) ?? t`Time unavailable`}
+      </Text>
+      <Text size='xs' className={operations.meta}>
         {stale ? t`Stale` : dayjs(observedAt).fromNow()}
       </Text>
     </Group>
   );
 }
 
-/**
- * What to draw for one sample, or null when it cannot be drawn.
- *
- * The server sends `plot_value` for samples whose raw value is not a number but
- * still means something on an axis - a status code like "R" or "I", which it
- * maps from the plant's own status vocabulary so the two cannot drift apart.
- * Everything else non-numeric is left off rather than coerced: inventing a
- * number for a value nobody defined is worse than a gap in the line.
- *
- * Shared, and deliberately so. The chart and the sparkline each had their own
- * reading of a sample, and only the chart was taught about `plot_value`: a
- * status trace drew correctly in the chart while the sparkline beside it
- * filtered every sample out and reported "Too few samples" about data it had
- * been given in full.
- */
-export function numericValue(sample: {
-  value: unknown;
-  plot_value?: number | null;
-}): number | null {
-  if (typeof sample.plot_value === 'number') {
-    return sample.plot_value;
+/** Bounds follow the native classifier: a minimum is breached below, a maximum above. */
+export function formatSignalLimits(
+  signal: Pick<MachineSignal, 'limits' | 'unit'>
+): string | null {
+  const unit = ` ${unitLabel(signal.unit)}`;
+  const parts: string[] = [];
+  for (const [label, min, max] of [
+    [t`Normal`, signal.limits.normal_min, signal.limits.normal_max],
+    [t`Warning`, signal.limits.warn_min, signal.limits.warn_max],
+    [t`Critical`, signal.limits.critical_min, signal.limits.critical_max]
+  ] as const) {
+    if (label === t`Normal`) {
+      if (min !== null) parts.push(t`Normal minimum ${min}${unit}`);
+      if (max !== null) parts.push(t`Normal maximum ${max}${unit}`);
+    } else if (min !== null && max !== null) {
+      parts.push(t`${label} below ${min}${unit} or above ${max}${unit}`);
+    } else if (min !== null) {
+      parts.push(t`${label} below ${min}${unit}`);
+    } else if (max !== null) {
+      parts.push(t`${label} above ${max}${unit}`);
+    }
   }
-  const { value } = sample;
-  if (value === null || value === undefined || typeof value === 'boolean') {
-    return null;
-  }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  return parts.length ? parts.join(' · ') : null;
+}
+
+/** An unassociated machine anomaly cannot be ruled out for this signal. */
+export function unassociatedAnomalyText(count: number): string {
+  return plural(count, {
+    one: '# active machine anomaly does not name its signals; this signal may be affected.',
+    other:
+      '# active machine anomalies do not name their signals; this signal may be affected.'
+  });
 }

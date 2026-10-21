@@ -462,6 +462,52 @@ def _scope_resolvable(monkeypatch, value: bool):
     monkeypatch.setattr(invocation_guard, "_has_maintenance_scope", AsyncMock(return_value=value))
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tool_id",
+    [
+        "search_work_orders",
+        "get_work_order_overview",
+        "get_work_order_readiness",
+        "get_work_order_repair_state",
+        "get_work_order_history",
+        "get_work_order_closeout",
+    ],
+)
+async def test_work_reader_guard_admits_viewer_without_client_scope(monkeypatch, tool_id):
+    """The fresh Work role admits dispatch; native readers filter actual rows."""
+    _profile(monkeypatch, ("work_order", "view"))
+    _scope_resolvable(monkeypatch, False)
+    token = principal_context.set(_principal())
+    try:
+        with bind_capability_run(workflow="wf8", modality="text", selected_tools=[_tool(tool_id)]):
+            entry = await authorize_invocation(tool_id, {"work_order_id": 7})
+        assert entry.tool_id == tool_id
+    finally:
+        principal_context.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_machine_repair_reader_guard_still_requires_client_scope(monkeypatch):
+    """Sharing Work never makes a machine repair packet globally readable."""
+    _profile(monkeypatch, ("work_order", "view"))
+    _scope_resolvable(monkeypatch, False)
+    token = principal_context.set(_principal())
+    try:
+        with (
+            bind_capability_run(
+                workflow="wf8",
+                modality="text",
+                selected_tools=[_tool("get_open_repairs_for_machine")],
+            ),
+            pytest.raises(CapabilityAuthorizationError) as error,
+        ):
+            await authorize_invocation("get_open_repairs_for_machine", {"machine_id": 7})
+        assert error.value.reason_code == "maintenance_scope_unresolved"
+    finally:
+        principal_context.reset(token)
+
+
 async def _invoke_attachment(arguments):
     token = principal_context.set(_principal())
     try:
@@ -667,14 +713,13 @@ async def test_media_guard_denies_an_unconfigured_site_scope(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_media_guard_denies_an_unresolvable_scope(monkeypatch):
-    """client_codes derive from scope_for_actor, so no scope means no corpus."""
+async def test_media_guard_allows_work_viewer_without_resolved_client_scope(monkeypatch):
+    """O24 admits shared Work evidence; the corpus rechecks current owners."""
     _profile(monkeypatch, ("work_order", "view"))
     _scope_resolvable(monkeypatch, False)
-    with _media_catalog(monkeypatch), pytest.raises(CapabilityAuthorizationError) as error:
-        await _invoke_media({"query": "nameplate photo"})
-
-    assert error.value.reason_code == "maintenance_scope_unresolved"
+    with _media_catalog(monkeypatch):
+        entry = await _invoke_media({"query": "nameplate photo"})
+    assert entry.authorization.authorizer == "evidence_media_access"
 
 
 @pytest.mark.asyncio

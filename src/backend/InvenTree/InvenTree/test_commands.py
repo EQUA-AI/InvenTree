@@ -3,16 +3,15 @@
 import os
 import subprocess
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.db import IntegrityError
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 
 from opentelemetry.instrumentation.sqlite3 import SQLite3Instrumentor
-
-from InvenTree.config import get_testfolder_dir
 
 
 class CommandTestCase(TestCase):
@@ -38,7 +37,7 @@ class CommandTestCase(TestCase):
                             '--check',
                             '--dry-run',
                             '--verbosity',
-                            '0',
+                            '1',
                         ],
                         cwd=project_dir,
                         env=os.environ.copy(),
@@ -51,6 +50,7 @@ class CommandTestCase(TestCase):
                         self.fail(
                             'makemigrations reported schema changes '
                             f'for INVENTREE_CURRENCY_CODES={currency_codes}\n'
+                            f'return code: {result.returncode}\n'
                             f'stdout:\n{result.stdout}\n'
                             f'stderr:\n{result.stderr}'
                         )
@@ -132,7 +132,8 @@ class CommandTestCase(TestCase):
         data = serializers.serialize('json', entries)
         ContentType.objects.filter(pk__in=pks).delete()
 
-        tmp_file = get_testfolder_dir().joinpath('bulkloaddata_test.json')
+        fixture_dir = Path(self.enterContext(TemporaryDirectory()))
+        tmp_file = fixture_dir / 'bulkloaddata_test.json'
         tmp_file.write_text(data, encoding='utf-8')
 
         try:
@@ -226,7 +227,9 @@ class CommandTestCase(TestCase):
         # Plugins enabled
         with self.settings(PLUGINS_ENABLED=False):
             with self.assertLogs() as cm:
-                self.assertTrue(validate_restore(metadata))
+                self.assertTrue(
+                    validate_restore({**metadata, 'ivt_1_plugins_enabled': True})
+                )
         self.assertIn(
             'INVE-W13: Backup being restored was created with plugins enabled',
             str(cm[1]),
@@ -261,6 +264,10 @@ class CommandTestCase(TestCase):
             'INVE-W13: Backup being restored is over 120 days old', str(cm[1])
         )
 
+
+class BackupCommandTests(TransactionTestCase):
+    """Run commands which close database connections outside TestCase atomics."""
+
     def test_backup_command_e2e(self):
         """Test the backup command."""
         # we only test on sqlite, the environment in which we also run coverage
@@ -272,7 +279,8 @@ class CommandTestCase(TestCase):
             print('Disabling tracing for backup command test')
             SQLite3Instrumentor().uninstrument()
 
-        output_path = get_testfolder_dir().joinpath('backup.zip').resolve()
+        backup_dir = Path(self.enterContext(TemporaryDirectory()))
+        output_path = backup_dir / 'backup.zip'
 
         # Backup
         with self.assertLogs() as cm:

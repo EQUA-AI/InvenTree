@@ -64,11 +64,14 @@ def _database():
 
 
 def _user():
+    from ai.core.tests.focus_test_db import grant_work_view
     from django.contrib.auth import get_user_model
 
-    return get_user_model().objects.create_user(
+    user = get_user_model().objects.create_user(
         username=f"rv01-{uuid.uuid4().hex[:8]}", password="unused"
     )
+
+    return grant_work_view(user)
 
 
 def _principal(user) -> AIPrincipal:

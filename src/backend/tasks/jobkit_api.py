@@ -12,6 +12,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from InvenTree.permissions import RolePermission
+
 from .jobkit_models import JobKit, JobKitAllocation, JobKitShortage
 from .jobkit_serializers import (
     AddManualLineSerializer,
@@ -109,13 +111,18 @@ def _kit_version(work_order_id):
 class JobKitDetail(JobKitEnabledMixin, APIView):
     """Return the planned Job Kit and its ordered lines for a work order."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RolePermission]
+    role_required = 'work_order'
 
     def get(self, request, pk):
         """Resolve parent scope, then serialize the kit."""
         work_order = _scoped_work_order(request, pk)
         kit = _kit_or_404(work_order)
-        return Response(JobKitSerializer(kit).data)
+        return Response(
+            JobKitSerializer(
+                kit, context={'request': request, 'work_order': work_order}
+            ).data
+        )
 
 
 class JobKitBuild(JobKitEnabledMixin, APIView):
@@ -158,7 +165,12 @@ class JobKitBuild(JobKitEnabledMixin, APIView):
                 work_order.lifecycle_version,
                 status.HTTP_409_CONFLICT,
             )
-        return Response(JobKitSerializer(kit).data, status=status.HTTP_201_CREATED)
+        return Response(
+            JobKitSerializer(
+                kit, context={'request': request, 'work_order': work_order}
+            ).data,
+            status=status.HTTP_201_CREATED,
+        )
 
     @staticmethod
     def _error(exc, correlation_id, current_version, response_status):
@@ -301,7 +313,8 @@ class JobKitLineDetail(JobKitEnabledMixin, APIView):
 class JobKitShortageList(JobKitEnabledMixin, APIView):
     """List the shortages recorded against a Job Kit's lines."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RolePermission]
+    role_required = 'work_order'
     pagination_class = WorkOrderPagination
 
     def get(self, request, pk):
@@ -324,7 +337,8 @@ class JobKitShortageList(JobKitEnabledMixin, APIView):
 class JobKitEventList(JobKitEnabledMixin, APIView):
     """List the Job Kit audit events recorded on the work-order ledger."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RolePermission]
+    role_required = 'work_order'
     pagination_class = WorkOrderPagination
 
     def get(self, request, pk):
@@ -384,13 +398,19 @@ class JobKitReserve(JobKitEnabledMixin, APIView):
                 work_order.lifecycle_version,
                 status.HTTP_409_CONFLICT,
             )
-        return Response(JobKitSerializer(kit).data, status=status.HTTP_200_OK)
+        return Response(
+            JobKitSerializer(
+                kit, context={'request': request, 'work_order': work_order}
+            ).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class JobKitAllocationList(JobKitEnabledMixin, APIView):
     """List the real stock reservations for a Job Kit."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RolePermission]
+    role_required = 'work_order'
     pagination_class = WorkOrderPagination
 
     def get(self, request, pk):
@@ -406,7 +426,9 @@ class JobKitAllocationList(JobKitEnabledMixin, APIView):
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(rows, request, view=self)
         return paginator.get_paginated_response(
-            JobKitAllocationSerializer(page, many=True).data
+            JobKitAllocationSerializer(
+                page, many=True, context={'request': request, 'work_order': work_order}
+            ).data
         )
 
 
@@ -449,7 +471,9 @@ class JobKitAllocationRelease(JobKitEnabledMixin, APIView):
                 current_version=_kit_version(work_order.pk),
                 response_status=status.HTTP_404_NOT_FOUND,
             )
-        return Response(JobKitAllocationSerializer(released).data)
+        return Response(
+            JobKitAllocationSerializer(released, context={'request': request}).data
+        )
 
 
 class _JobKitCustodyCommand(JobKitEnabledMixin, APIView):
@@ -497,7 +521,9 @@ class _JobKitCustodyCommand(JobKitEnabledMixin, APIView):
                 current_version=_kit_version(work_order.pk),
                 response_status=status.HTTP_404_NOT_FOUND,
             )
-        return Response(JobKitAllocationSerializer(result).data)
+        return Response(
+            JobKitAllocationSerializer(result, context={'request': request}).data
+        )
 
 
 class JobKitAllocationStage(_JobKitCustodyCommand):
@@ -560,7 +586,11 @@ class JobKitRefresh(JobKitEnabledMixin, APIView):
                 current_version=_kit_version(work_order.pk),
                 response_status=status.HTTP_409_CONFLICT,
             )
-        return Response(JobKitSerializer(kit).data)
+        return Response(
+            JobKitSerializer(
+                kit, context={'request': request, 'work_order': work_order}
+            ).data
+        )
 
 
 class JobKitShortageLinkPO(JobKitEnabledMixin, APIView):

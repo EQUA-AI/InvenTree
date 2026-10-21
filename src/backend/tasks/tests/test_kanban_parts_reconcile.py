@@ -10,14 +10,18 @@ set, applied atomically.
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
+from assets.models import AssetMachine, get_default_client
 from part.models import Part
 from stock.models import StockItem
 from tasks.models import WorkOrder, WorkOrderPart
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class KanbanPartsReconcileTest(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_superuser(
@@ -26,22 +30,25 @@ class KanbanPartsReconcileTest(TestCase):
         self.client.force_login(self.user)
 
         self.work_order = WorkOrder.objects.create(
-            title='Parts WO', status='backlog', priority='low'
+            title='Parts WO',
+            status='backlog',
+            priority='low',
+            machine=AssetMachine.objects.create(
+                name='Parts machine', client=get_default_client()
+            ),
         )
         self.bearing = Part.objects.create(
             name='Bearing', description='b', component=True
         )
-        self.seal = Part.objects.create(
-            name='Seal', description='s', component=True
-        )
-        self.belt = Part.objects.create(
-            name='Belt', description='belt', component=True
-        )
+        self.seal = Part.objects.create(name='Seal', description='s', component=True)
+        self.belt = Part.objects.create(name='Belt', description='belt', component=True)
         StockItem.objects.create(part=self.bearing, quantity=Decimal('100'))
         StockItem.objects.create(part=self.seal, quantity=Decimal('100'))
         StockItem.objects.create(part=self.belt, quantity=Decimal('100'))
 
-        self.url = reverse('kanban-card-part-list', kwargs={'work_order_pk': self.work_order.pk})
+        self.url = reverse(
+            'kanban-card-part-list', kwargs={'work_order_pk': self.work_order.pk}
+        )
 
     def _put(self, parts):
         return self.client.put(self.url, data=parts, content_type='application/json')
@@ -118,7 +125,9 @@ class KanbanPartsReconcileTest(TestCase):
         response = self._put([])
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(WorkOrderPart.objects.filter(work_order=self.work_order).count(), 0)
+        self.assertEqual(
+            WorkOrderPart.objects.filter(work_order=self.work_order).count(), 0
+        )
 
     def test_response_reports_allocation(self):
         response = self._put([{'part': self.bearing.pk, 'quantity': 2}])
@@ -146,7 +155,9 @@ class KanbanPartsReconcileTest(TestCase):
         ])
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(WorkOrderPart.objects.filter(work_order=self.work_order).count(), 0)
+        self.assertEqual(
+            WorkOrderPart.objects.filter(work_order=self.work_order).count(), 0
+        )
 
     def test_unknown_part_is_rejected(self):
         response = self._put([{'part': 999999, 'quantity': 1}])
@@ -200,6 +211,9 @@ class KanbanPartsReconcileTest(TestCase):
         self.assertEqual(response.status_code, 403)
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class KanbanAllocatePartsStillWorksTest(TestCase):
     """The allocate endpoint was refactored onto the shared helper; pin it."""
 
@@ -209,7 +223,12 @@ class KanbanAllocatePartsStillWorksTest(TestCase):
         )
         self.client.force_login(self.user)
         self.work_order = WorkOrder.objects.create(
-            title='Alloc WO', status='backlog', priority='low'
+            title='Alloc WO',
+            status='backlog',
+            priority='low',
+            machine=AssetMachine.objects.create(
+                name='Allocation machine', client=get_default_client()
+            ),
         )
         self.part = Part.objects.create(name='P', description='p', component=True)
         StockItem.objects.create(part=self.part, quantity=Decimal('50'))
@@ -218,7 +237,9 @@ class KanbanAllocatePartsStillWorksTest(TestCase):
         )
 
     def test_allocate_reports_full_allocation(self):
-        url = reverse('kanban-card-allocate', kwargs={'work_order_pk': self.work_order.pk})
+        url = reverse(
+            'kanban-card-allocate', kwargs={'work_order_pk': self.work_order.pk}
+        )
 
         response = self.client.post(url)
 

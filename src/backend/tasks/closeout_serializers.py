@@ -1,10 +1,15 @@
 """Serializers for the Closeout Automation API (Feature #15)."""
 
+import uuid
+
+from django.db.models import prefetch_related_objects
+
 from rest_framework import serializers
 
 from .closeout_models import (
     CloseoutAmendment,
     CloseoutCapture,
+    CloseoutCaptureRevision,
     CloseoutEffect,
     CloseoutFieldDecision,
     CloseoutPartUsage,
@@ -14,8 +19,98 @@ from .closeout_models import (
 from .workorder_serializers import BaseCommandSerializer
 
 
+def _actor_name(actor):
+    """Use Work's full-name / username display convention, with no numeric fallback."""
+    return (actor.get_full_name().strip() or actor.get_username()) if actor else None
+
+
+class CloseoutCaptureRevisionSerializer(serializers.ModelSerializer):
+    """Original narratives remain addressable after revision and consumption."""
+
+    created_by_name = serializers.SerializerMethodField()
+
+    def get_created_by_name(self, obj):
+        """The recorded person's display name, when available."""
+        return _actor_name(obj.created_by)
+
+    class Meta:
+        """Read-only source snapshot and attribution."""
+
+        model = CloseoutCaptureRevision
+        fields = (
+            'id',
+            'revision',
+            'narrative',
+            'source_content_hash',
+            'work_order_version',
+            'supersedes',
+            'created_by',
+            'created_by_name',
+            'created_at',
+        )
+        read_only_fields = fields
+
+
 class CloseoutCaptureSerializer(serializers.ModelSerializer):
     """Read-only capture resource with its current revision inline."""
+
+    originals = serializers.SerializerMethodField()
+    source_spans = serializers.SerializerMethodField()
+
+    def _voice_source(self, obj):
+        """The exact accepted voice revision and its originals, read once per capture."""
+        cache = self.__dict__.setdefault('_o15_voice_sources', {})
+        if obj.pk in cache:
+            return cache[obj.pk]
+        from voice.models import VoiceTranscriptRevision
+
+        revision, originals = None, []
+        try:
+            reference = uuid.UUID(obj.transcript_reference or '')
+        except (ValueError, TypeError, AttributeError):
+            reference = None
+        if reference:
+            revision = (
+                VoiceTranscriptRevision.objects
+                .select_related('capture')
+                .filter(pk=reference, capture__target_work_order_id=obj.work_order_id)
+                .first()
+            )
+            if revision:
+                originals = list(revision.capture.originals.all())
+        cache[obj.pk] = (revision, originals)
+        return cache[obj.pk]
+
+    def get_originals(self, obj):
+        """Dereference the exact accepted voice revision, never the current session."""
+        from tasks.services.capture_originals import original_summary
+
+        _revision, originals = self._voice_source(obj)
+        return [original_summary(row) for row in originals]
+
+    def get_source_spans(self, obj):
+        """Retain original segment coordinates; absent audio timing remains absent."""
+        revision, originals = self._voice_source(obj)
+        if revision is None:
+            return []
+        return [
+            {
+                'original_id': row.pk,
+                'transcript_revision': str(revision.pk),
+                'narrative_code_points': [0, len(revision.full_text)],
+                'segments': revision.segments,
+            }
+            for row in originals
+        ]
+
+    revisions = CloseoutCaptureRevisionSerializer(many=True, read_only=True)
+    decision_version = serializers.SerializerMethodField()
+
+    def get_decision_version(self, obj) -> str:
+        """Return the source-bound decision snapshot token."""
+        from .services.closeout_capture import decision_version
+
+        return decision_version(obj)
 
     revision = serializers.IntegerField(
         source='current_revision.revision', read_only=True, default=None
@@ -23,6 +118,12 @@ class CloseoutCaptureSerializer(serializers.ModelSerializer):
     narrative = serializers.CharField(
         source='current_revision.narrative', read_only=True, default=''
     )
+
+    created_by_name = serializers.SerializerMethodField()
+
+    def get_created_by_name(self, obj):
+        """The recorded person's display name, when available."""
+        return _actor_name(obj.created_by)
 
     class Meta:
         """Serializer metadata."""
@@ -34,10 +135,16 @@ class CloseoutCaptureSerializer(serializers.ModelSerializer):
             'status',
             'source_type',
             'transcript_reference',
+            'originals',
+            'source_spans',
+            'voice_unavailable_reason',
             'revision',
+            'decision_version',
             'narrative',
+            'revisions',
             'completed_closeout',
             'created_by',
+            'created_by_name',
             'created_at',
         )
         read_only_fields = fields
@@ -47,6 +154,9 @@ class CaptureCreateCommandSerializer(BaseCommandSerializer):
     """Validate typed narrative capture intent."""
 
     narrative = serializers.CharField(allow_blank=False)
+    voice_unavailable_reason = serializers.CharField(
+        required=False, allow_blank=True, max_length=500, default=''
+    )
 
 
 class CaptureReviseCommandSerializer(BaseCommandSerializer):
@@ -60,6 +170,12 @@ class CaptureReviseCommandSerializer(BaseCommandSerializer):
 class CloseoutFieldDecisionSerializer(serializers.ModelSerializer):
     """Read-only decision row."""
 
+    decided_by_name = serializers.SerializerMethodField()
+
+    def get_decided_by_name(self, obj):
+        """The recorded person's display name, when available."""
+        return _actor_name(obj.decided_by)
+
     class Meta:
         """Serializer metadata."""
 
@@ -71,6 +187,7 @@ class CloseoutFieldDecisionSerializer(serializers.ModelSerializer):
             'decision',
             'final_value',
             'decided_by',
+            'decided_by_name',
             'decided_at',
         )
         read_only_fields = fields
@@ -80,6 +197,18 @@ class CloseoutProposalSerializer(serializers.ModelSerializer):
     """Bounded proposal resource; never a raw model dump."""
 
     decisions = CloseoutFieldDecisionSerializer(many=True, read_only=True)
+    decision_version = serializers.SerializerMethodField()
+
+    def to_representation(self, instance):
+        """Keep the revision token and visible decisions on one read snapshot."""
+        prefetch_related_objects([instance], 'decisions__decided_by')
+        return super().to_representation(instance)
+
+    def get_decision_version(self, obj) -> str:
+        """Return the revision of exactly these serialized decisions."""
+        from .services.closeout_capture import proposal_decision_version
+
+        return proposal_decision_version(obj)
 
     class Meta:
         """Serializer metadata."""
@@ -98,6 +227,7 @@ class CloseoutProposalSerializer(serializers.ModelSerializer):
             'status',
             'created_at',
             'decisions',
+            'decision_version',
         )
         read_only_fields = fields
 
@@ -114,10 +244,28 @@ class DecisionBatchCommandSerializer(BaseCommandSerializer):
     """Validate a batch of field decisions."""
 
     decisions = DecisionEntrySerializer(many=True, allow_empty=False)
+    expected_decision_version = serializers.CharField(max_length=64, min_length=64)
 
 
 class CloseoutPartUsageSerializer(serializers.ModelSerializer):
     """Read-only reconciliation row."""
+
+    def to_representation(self, instance):
+        """Use the Materials boundary for stock and stock-tracking identities."""
+        from .materials_readout import can_read_work_stock
+
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        work_order = self.context.get('work_order') or instance.work_order
+        visibility = self.context.setdefault('_stock_visibility', {})
+        if work_order.pk not in visibility:
+            visibility[work_order.pk] = bool(
+                request and can_read_work_stock(request.user, work_order)
+            )
+        if not visibility[work_order.pk]:
+            data['stock_item'] = None
+            data['stock_tracking_id'] = None
+        return data
 
     class Meta:
         """Serializer metadata."""
@@ -142,6 +290,14 @@ class CloseoutPartUsageSerializer(serializers.ModelSerializer):
             'version',
         )
         read_only_fields = fields
+
+
+class CloseoutPartUsageSnapshotSerializer(CloseoutPartUsageSerializer):
+    """Canonical Work evidence for immutable reports, independent of readers."""
+
+    def to_representation(self, instance):
+        """Preserve recorded fields; live stock-resource reads stay separate."""
+        return serializers.ModelSerializer.to_representation(self, instance)
 
 
 class PartUsageCreateSerializer(serializers.Serializer):
@@ -171,12 +327,26 @@ class PartUsageResolveSerializer(serializers.Serializer):
 class CloseoutReadingSerializer(serializers.ModelSerializer):
     """Read-only reading row."""
 
+    focus_revision = serializers.SerializerMethodField()
+    recorded_by_name = serializers.SerializerMethodField()
+
+    def get_focus_revision(self, obj):
+        """Exact reading revision for signed conversational focus."""
+        from aichat.services.work_focus import reading_revision
+
+        return reading_revision(obj)
+
+    def get_recorded_by_name(self, obj):
+        """The recorded person's display name, when available."""
+        return _actor_name(obj.recorded_by)
+
     class Meta:
         """Serializer metadata."""
 
         model = CloseoutReading
         fields = (
             'id',
+            'focus_revision',
             'work_order',
             'step_execution',
             'label',
@@ -192,6 +362,7 @@ class CloseoutReadingSerializer(serializers.ModelSerializer):
             'verification_state',
             'disposition_reason',
             'recorded_by',
+            'recorded_by_name',
             'recorded_at',
         )
         read_only_fields = fields
@@ -255,6 +426,17 @@ class CloseoutEffectSerializer(serializers.ModelSerializer):
 class CloseoutAmendmentSerializer(serializers.ModelSerializer):
     """Read-only amendment resource."""
 
+    requested_by_name = serializers.SerializerMethodField()
+    decided_by_name = serializers.SerializerMethodField()
+
+    def get_requested_by_name(self, obj):
+        """Name of the recorded requester."""
+        return _actor_name(obj.requested_by)
+
+    def get_decided_by_name(self, obj):
+        """Name of the recorded decider, if present."""
+        return _actor_name(obj.decided_by)
+
     class Meta:
         """Serializer metadata."""
 
@@ -266,10 +448,12 @@ class CloseoutAmendmentSerializer(serializers.ModelSerializer):
             'base_content_hash',
             'reason',
             'requested_by',
+            'requested_by_name',
             'status',
             'effective_snapshot',
             'effective_snapshot_hash',
             'decided_by',
+            'decided_by_name',
             'created_at',
             'applied_at',
         )

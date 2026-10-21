@@ -8,7 +8,7 @@ later regeneration cannot rewrite.
 import uuid
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from assets.health_models import (
@@ -17,7 +17,7 @@ from assets.health_models import (
     MachineSignalState,
     SourceType,
 )
-from assets.models import AssetMachine
+from assets.models import AssetMachine, get_default_client
 from InvenTree.unit_test import InvenTreeAPITestCase
 from machine_health.services.snapshots import capture_current_signal
 
@@ -224,6 +224,9 @@ class ApprovedScopeTest(TestCase):
         self.assertEqual(event.metadata['approved_scope_version'], 1)
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class InvestigationApiTest(InvenTreeAPITestCase):
     """HTTP contract for findings and approved scope."""
 
@@ -233,7 +236,7 @@ class InvestigationApiTest(InvenTreeAPITestCase):
         """Create a machine and a diagnosed packet."""
         super().setUp()
         self.machine = AssetMachine.objects.create(
-            name=f'Centrifuge {uuid.uuid4().hex[:6]}'
+            client=get_default_client(), name=f'Centrifuge {uuid.uuid4().hex[:6]}'
         )
         self.packet = RepairPacket.objects.create(
             machine=self.machine,

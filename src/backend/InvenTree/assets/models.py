@@ -423,4 +423,8 @@ from .location_models import AssetLocation as AssetLocation
 from .location_models import LocationParentHistory as LocationParentHistory
 from .location_models import MachineLocationTransfer as MachineLocationTransfer
 from .location_models import MachinePlacementHistory as MachinePlacementHistory
+from .record_models import ComponentFit as ComponentFit
+from .record_models import RegistryCommand as RegistryCommand
+from .record_models import SharedPerformanceView as SharedPerformanceView
+from .record_models import SignalDesignation as SignalDesignation
 from .registry_models import AssetComponent, DictionaryPoint  # noqa: F401

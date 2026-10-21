@@ -495,9 +495,7 @@ test('RV09 ordered fresh control: entry stamps exactly its own focus ack version
   await expect(
     page.getByText(`G2 RV09 acknowledged reply: ${FRESH_TEXT}`, { exact: true })
   ).toBeVisible();
-  await expect(
-    page.getByRole('button', { name: 'cancel-ai-chat-turn', exact: true })
-  ).toHaveCount(0);
+  await expect(page.getByTestId('cancel-ai-chat-turn')).toHaveCount(0);
   await expect(
     page.getByTestId('ai-chat-composer').getByRole('textbox')
   ).toBeEnabled();
@@ -567,10 +565,10 @@ async function hintSnapshot87(page: Page) {
 
 async function newThreadFromNativeMenu87(page: Page): Promise<string> {
   await page
-    .getByRole('button', { name: 'select-ai-chat-thread', exact: true })
+    .getByRole('button', { name: 'Select conversation', exact: true })
     .click();
   await page
-    .getByRole('menuitem', { name: 'new-ai-chat-thread', exact: true })
+    .getByRole('menuitem', { name: 'New conversation', exact: true })
     .click();
   await expect
     .poll(async () =>
@@ -631,9 +629,7 @@ async function expectFreshTerminal87(page: Page, text: string): Promise<void> {
   await expect(
     page.getByText(`G2 RV09 acknowledged reply: ${text}`, { exact: true })
   ).toBeVisible();
-  await expect(
-    page.getByRole('button', { name: 'cancel-ai-chat-turn', exact: true })
-  ).toHaveCount(0);
+  await expect(page.getByTestId('cancel-ai-chat-turn')).toHaveCount(0);
   await expect(
     page.getByTestId('ai-chat-composer').getByRole('textbox')
   ).toBeEnabled();

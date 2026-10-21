@@ -1701,6 +1701,7 @@ class NormalizedTurnService:
         server_pinned_workflow: str | None = None,
         server_generation_target: dict[str, int] | None = None,
         expected_focus_version: int | None = None,
+        work_focus_receipt: str | None = None,
     ) -> NormalizedTurnResult:
         """Root-span wrapper around :meth:`_process_turn` (S36).
 
@@ -1767,6 +1768,7 @@ class NormalizedTurnService:
                     server_pinned_workflow=server_pinned_workflow,
                     server_generation_target=server_generation_target,
                     expected_focus_version=expected_focus_version,
+                    work_focus_receipt=work_focus_receipt,
                 )
             except TurnAlreadyRunning:
                 # An idempotency conflict never executed anything: the
@@ -1817,6 +1819,7 @@ class NormalizedTurnService:
         server_pinned_workflow: str | None = None,
         server_generation_target: dict[str, int] | None = None,
         expected_focus_version: int | None = None,
+        work_focus_receipt: str | None = None,
     ) -> NormalizedTurnResult:
         """Process one idempotent turn through the common reasoning path.
 
@@ -1828,6 +1831,12 @@ class NormalizedTurnService:
         select its own execution tier, and a client-named target could point
         generation at another record. The target is information, not a grant:
         the workflow intersects it with the actor's authorized record roots.
+
+        ``work_focus_receipt`` is the signed, expiring Work acknowledgement a
+        client obtained from ``POST /threads/{id}/work-focus``. It is a bearer
+        token for this thread only and is never stored or fingerprinted: the
+        repository verifies it under the thread lock and stores the verified
+        identity instead.
         """
 
         from ai.core.turn import execution, finalize, intake, pending, routing
@@ -1845,6 +1854,7 @@ class NormalizedTurnService:
             server_pinned_workflow=server_pinned_workflow,
             server_generation_target=server_generation_target,
             expected_focus_version=expected_focus_version,
+            work_focus_receipt=work_focus_receipt,
         )
         if run.replayed_canonical is not None:
             await self._emit_replay(emitter, run.replayed_canonical, actor=actor)

@@ -1,0 +1,13 @@
+{
+	"extends": "./tsconfig.s0.json",
+	"files": [
+		"playwright.s2.config.ts",
+		"playwright/s2-equipment.tsx",
+		"tests/s2/pui_equipment_scene.spec.ts",
+		"tests/s2/pui_equipment_controls.spec.ts",
+		"tests/s2/pui_equipment_schematic.spec.ts",
+		"tests/s2/pui_equipment_inspector.spec.ts",
+		"tests/s2/equipmentFixtures.ts",
+		"tests/s2/pui_equipment_parts.spec.ts"
+	]
+}

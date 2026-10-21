@@ -95,6 +95,7 @@ export type ProposalActionType =
   | 'stock.remove'
   | 'stock.transfer'
   | 'stock.count'
+  | 'investigation.artifact'
   | 'procedure.complete'
   | 'closeout.consent'
   | 'closeout.accept'
@@ -125,6 +126,7 @@ export const PROPOSAL_ACTION_LABELS: Record<ProposalActionType, string> = {
   'stock.remove': 'Remove stock',
   'stock.transfer': 'Transfer stock',
   'stock.count': 'Count stock',
+  'investigation.artifact': 'Publish investigation evidence',
   'procedure.complete': 'Complete procedure step',
   'closeout.consent': 'Consent to closeout dictation',
   'closeout.accept': 'Accept closeout note',
@@ -482,6 +484,66 @@ export type FocusErrorCode =
   | 'focus_out_of_analysis_scope'
   | 'focus_decision_not_set_aside';
 
+// --- Work focus (aichat.services.work_focus / ai.core.analysis.wire) ---
+
+export interface ComponentFocusReference {
+  machine_id: number;
+  rule: 'reference_positions.v1';
+  position_id: string;
+  slot_code: string | null;
+  revision: string;
+}
+
+export interface EvidenceFocusReference {
+  kind: 'attachment' | 'closeout_reading' | 'media';
+  id: number;
+  revision: string;
+}
+
+export interface WorkFocusIdentity {
+  schema_version: number;
+  kind: 'work_order' | 'reference_position';
+  work_order_id: number | null;
+  lifecycle_version: number | null;
+  machine_id: number | null;
+  request_id?: number | null;
+  request_version?: number | null;
+  component?: ComponentFocusReference | null;
+  evidence?: EvidenceFocusReference | null;
+}
+
+export interface WorkFocusAcknowledgeRequest {
+  work_order_id: number | null;
+  expected_version: number | null;
+  request_id?: number | null;
+  request_version?: number | null;
+  component?: ComponentFocusReference | null;
+  evidence?: EvidenceFocusReference | null;
+}
+
+export interface WorkFocusAcknowledgement {
+  schema_version: number;
+  thread_id: string;
+  focus: WorkFocusIdentity;
+  receipt: string;
+  expires_in: number;
+}
+
+export interface SavedTurnWorkFocus {
+  thread_id: string;
+  turn_id: string;
+  focus: WorkFocusIdentity;
+  stale: boolean;
+}
+
+export type WorkFocusErrorCode =
+  | 'work_focus_rejected';
+
+export type WorkFocusState =
+  | 'current'
+  | 'changed'
+  | 'unavailable';
+
 // --- Quota / admission (ai.core.quota.wire) ---
 
 export type QuotaErrorCode =
@@ -681,6 +743,7 @@ export interface ChatRequest {
   correlation_id?: string | null;
   expected_scope_version?: number | null;
   expected_focus_version?: number | null;
+  work_focus_receipt?: string | null;
 }
 
 export interface ChatResponse {

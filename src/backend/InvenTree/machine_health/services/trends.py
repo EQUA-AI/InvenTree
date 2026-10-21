@@ -20,11 +20,14 @@ cannot pull a historian dry or hang the worker pool.
 from __future__ import annotations
 
 import logging
+import statistics
+from itertools import pairwise
 
 from django.utils import timezone
 
 from assets.health_models import MachineSignalBinding
 from machine_health.connectors.base import (
+    EXPECTED_SAMPLE_INTERVAL_SECONDS,
     MAX_TREND_SAMPLES,
     MAX_TREND_WINDOW_SECONDS,
     bounded_window,
@@ -80,6 +83,29 @@ def plottable(value, statuses: dict):
     if isinstance(value, (int, float)):
         return float(value)
     return statuses.get(str(value).strip())
+
+
+def measured_cadence(readings) -> float | None:
+    """Robust lower interval estimate from this binding's observed times."""
+    return measured_interval([reading.observed_at.timestamp() for reading in readings])
+
+
+def measured_interval(timestamps) -> float | None:
+    """Median of positive gaps at or below the overall median, in seconds.
+
+    Silences must not stretch the interval they are checked against, even
+    when they make up half the gaps; a single close pair among regular reads
+    must not set the cadence either. This is an estimate, not a configured
+    sampling rate. Ignore duplicate timestamps and require three readings.
+    """
+    stamps = sorted(timestamps)
+    if len(stamps) < 3:
+        return None
+    gaps = [later - earlier for earlier, later in pairwise(stamps) if later > earlier]
+    if not gaps:
+        return None
+    midpoint = statistics.median(gaps)
+    return round(statistics.median(gap for gap in gaps if gap <= midpoint), 3)
 
 
 class TrendError(Exception):
@@ -146,6 +172,9 @@ def read_trend(
         'limits': {
             'max_window_seconds': MAX_TREND_WINDOW_SECONDS,
             'max_samples': MAX_TREND_SAMPLES,
+            # Server-wide expected interval, also exposed by the series read.
+            # A fallback below three readings, not a measured per-source rate.
+            'expected_sample_interval_seconds': EXPECTED_SAMPLE_INTERVAL_SECONDS,
         },
     }
 
@@ -238,6 +267,7 @@ def read_trend(
         **base,
         'available': True,
         'truncated': len(readings) > len(trimmed),
+        'cadence_seconds': measured_cadence(trimmed),
         'samples': [
             {
                 'observed_at': to_display(reading.observed_at, shift).isoformat(),
@@ -316,6 +346,7 @@ def read_trends(
             'limits': {
                 'max_window_seconds': MAX_TREND_WINDOW_SECONDS,
                 'max_samples': MAX_TREND_SAMPLES,
+                'expected_sample_interval_seconds': EXPECTED_SAMPLE_INTERVAL_SECONDS,
             },
         }
 
@@ -395,6 +426,7 @@ def read_trends(
                 **envelope(binding),
                 'available': True,
                 'truncated': len(found) > len(trimmed),
+                'cadence_seconds': measured_cadence(trimmed),
                 'samples': [
                     {
                         'observed_at': to_display(

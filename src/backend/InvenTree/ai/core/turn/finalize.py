@@ -104,6 +104,12 @@ async def enrich_canonical(
     )
     if run.question_resolution is not None:
         canonical["question_resolution"] = run.question_resolution.audit_payload()
+    if run.work_focus is not None:
+        # P02/P33: the answer names the Work it was about, so a reload or a
+        # replay can return to that exact record (ids only).
+        from aichat.services.work_focus import public_focus
+
+        canonical["work_focus"] = public_focus(run.work_focus)
     if run.pre_speech_status:
         # A3: an unrelated reply set a pending write aside; the voice route
         # speaks this before the routed answer.
@@ -282,6 +288,8 @@ async def persist_terminal(
                 if canonical.get("question_resolution")
                 else {}
             ),
+            # P02/P33: the verified Work identity reloads with the answer.
+            **({"work_focus": canonical["work_focus"]} if canonical.get("work_focus") else {}),
             # S27: the grounding assessment persists with the turn so
             # the shadow soak can be audited from stored data alone.
             **({"grounding": canonical["grounding"]} if canonical.get("grounding") else {}),

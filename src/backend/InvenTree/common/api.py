@@ -6,6 +6,7 @@ import json.decoder
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import FieldDoesNotExist, ValidationError
+from django.db import transaction
 from django.db.models import Q
 from django.http import JsonResponse
 from django.http.response import HttpResponse
@@ -894,8 +895,57 @@ def get_viewable_attachment_model_types(user) -> set:
     return {
         model.__name__.lower()
         for model in attachment_model_types()
-        if check_user_permission(user, model, 'view', groups=groups)
+        if (
+            model.check_related_permission('view', user)
+            if model.__name__.lower() == 'workorderstepexecution'
+            else check_user_permission(user, model, 'view', groups=groups)
+        )
     }
+
+
+def _maintenance_attachment_scope(queryset, actor):
+    """Apply maintenance ownership without changing unrelated attachment types."""
+    from tasks.procedure_models import WorkOrderStepExecution
+    from tasks.scope import scoped_machines, scoped_work_orders
+
+    work_orders = scoped_work_orders(actor)
+    steps = WorkOrderStepExecution.objects.filter(
+        application__work_order__in=work_orders
+    )
+    return queryset.filter(
+        ~Q(model_type__in=('workorder', 'workorderstepexecution', 'assetmachine'))
+        | Q(model_type='workorder', model_id__in=work_orders)
+        | Q(model_type='workorderstepexecution', model_id__in=steps)
+        | Q(model_type='assetmachine', model_id__in=scoped_machines(actor))
+    )
+
+
+def _require_maintenance_attachment_owner(actor, serializer):
+    """Authorize a new or reassigned maintenance resource before persistence."""
+    from django.shortcuts import get_object_or_404
+
+    from tasks.scope import scoped_machines, scoped_work_orders
+
+    instance = serializer.instance
+    model_type = serializer.validated_data.get(
+        'model_type', getattr(instance, 'model_type', None)
+    )
+    model_id = serializer.validated_data.get(
+        'model_id', getattr(instance, 'model_id', None)
+    )
+    if model_type == 'workorder':
+        get_object_or_404(scoped_work_orders(actor), pk=model_id)
+    elif model_type == 'workorderstepexecution':
+        from tasks.procedure_models import WorkOrderStepExecution
+
+        get_object_or_404(
+            WorkOrderStepExecution.objects.filter(
+                application__work_order__in=scoped_work_orders(actor)
+            ),
+            pk=model_id,
+        )
+    elif model_type == 'assetmachine':
+        get_object_or_404(scoped_machines(actor), pk=model_id)
 
 
 class AttachmentMixin:
@@ -904,6 +954,15 @@ class AttachmentMixin:
     queryset = common.models.Attachment.objects.all()
     serializer_class = common.serializers.AttachmentSerializer
     permission_classes = [IsAuthenticatedOrReadScope]
+
+    def get_queryset(self):
+        """Keep maintenance attachment metadata inside its owner's scope."""
+        return _maintenance_attachment_scope(super().get_queryset(), self.request.user)
+
+    def perform_update(self, serializer):
+        """Check the proposed owner as well as the already-scoped original."""
+        _require_maintenance_attachment_owner(self.request.user, serializer)
+        super().perform_update(serializer)
 
 
 class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
@@ -925,6 +984,7 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
 
     def perform_create(self, serializer):
         """Save the user information when a file is uploaded."""
+        _require_maintenance_attachment_owner(self.request.user, serializer)
         serializer.save(upload_user=self.request.user)
 
     def validate_delete(self, queryset, request) -> None:
@@ -940,6 +1000,13 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
 
         for model_type in model_types:
             if model_class := attachment_model_class_from_label(model_type):
+                if (
+                    model_type == 'workorderstepexecution'
+                    and not model_class.check_related_permission('delete', request.user)
+                ):
+                    raise PermissionDenied(
+                        _('User does not have permission to delete these attachments')
+                    )
                 if not check_user_permission(request.user, model_class, 'delete'):
                     raise ValidationError(
                         _('User does not have permission to delete these attachments')
@@ -960,8 +1027,10 @@ class AttachmentDetail(AttachmentMixin, RetrieveUpdateDestroyAPI):
 
         return super().retrieve(request, *args, **kwargs)
 
+    @transaction.atomic
     def update(self, request, *args, **kwargs):
-        """Update an existing attachment object."""
+        """Update an existing attachment object, serializing Work metadata edits."""
+        self.queryset = self.get_queryset().select_for_update()
         attachment = self.get_object()
 
         if not attachment.check_permission('change', request.user):
@@ -971,13 +1040,56 @@ class AttachmentDetail(AttachmentMixin, RetrieveUpdateDestroyAPI):
 
         partial = kwargs.pop('partial', False)
         data = self.clean_data(request.data)
+        expected = data.pop('expected_revision', None)
+        if attachment.model_type == 'workorder':
+            from common.attachment_revision import attachment_revision
+
+            if expected != attachment_revision(attachment):
+                return Response(
+                    {
+                        'code': 'STALE_VERSION',
+                        'detail': _(
+                            'Review the latest attachment metadata before saving.'
+                        ),
+                    },
+                    status=409,
+                )
 
         # Extract filename first
         filename = data.pop('filename', None)
 
         # Run other validation / updates first, before attempting to rename the file
+        # Native model validation mutates serializer.instance in memory. Retain
+        # the locked original before validating any proposed ownership/link.
+        original_identity = {
+            field: getattr(attachment, field)
+            for field in ('model_type', 'model_id', 'link')
+        }
+        original_basename = attachment.basename
         serializer = self.get_serializer(attachment, data=data, partial=partial)
         serializer.is_valid(raise_exception=True)
+        from tasks.calibration_models import CalibrationTraceability
+
+        # The row lock above serializes this with calibration's certificate
+        # snapshot. A generic attachment editor must not substitute audit bytes.
+        if CalibrationTraceability.objects.filter(
+            certificate_id=attachment.pk
+        ).exists():
+            changes = serializer.validated_data
+            if (
+                'attachment' in changes
+                or any(
+                    changes.get(field, original_identity[field])
+                    != original_identity[field]
+                    for field in ('model_type', 'model_id', 'link')
+                )
+                or (filename and filename != original_basename)
+            ):
+                raise ValidationError({
+                    'attachment': _(
+                        'A recorded calibration certificate cannot be renamed, replaced or moved. Upload a separate certificate for an authorized correction.'
+                    )
+                })
         self.perform_update(serializer)
 
         # User is attempting to rename the file

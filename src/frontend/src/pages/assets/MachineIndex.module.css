@@ -10,13 +10,15 @@
 
 	.workspace [aria-label="panel-tabs-asset-machine-index"] > div:first-child {
 		display: flex;
+ overflow-x: auto;
+ max-width: 100%;
 	}
 
 	.workspace [aria-label="panel-tabs-asset-machine-index"] button[role="tab"] {
-		flex: 1 1 0;
-		min-width: 0;
+		flex: 0 0 auto;
+		min-width: max-content;
 		padding: var(--mantine-spacing-xs);
-		white-space: normal;
+		white-space: nowrap;
 		font-size: var(--mantine-font-size-xs);
 	}
 

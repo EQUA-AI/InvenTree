@@ -15,7 +15,7 @@ export const clickOnParamFilter = async (page: Page, name: string) => {
  * @param page - The page object
  */
 export const openFilterDrawer = async (page: Page) => {
-  await page.getByLabel('table-select-filters').click();
+  await page.getByTestId('table-select-filters').click();
 };
 
 /**
@@ -88,7 +88,7 @@ export const getRowFromCell = async (cell: Locator) => {
 export const clickOnRowMenu = async (cell: Locator) => {
   const row = await getRowFromCell(cell);
 
-  await row.getByLabel(/row-action-menu-/i).click();
+  await row.getByTestId(/row-action-menu-/i).click();
 };
 
 interface NavigateOptions {

@@ -93,7 +93,7 @@ test('one focused decision card is owned by Approvals and voice controls stay av
 
   // Close cleanup (retained policy): closing the drawer ends the session
   // and leaves no minimized indicator behind.
-  await page.getByLabel('close-ai-chat').click();
+  await page.getByTestId('close-ai-chat').click();
   await expect.poll(() => voice.sessionEnded).toBe(true);
   await expect(page.getByTestId('voice-minimized-indicator')).toHaveCount(0);
 });
@@ -315,9 +315,9 @@ test('retired HITL event never renders an approvable card', async ({
   });
 
   await loadDrawerFixture(page);
-  await page.getByLabel('select-ai-chat-thread').click();
+  await page.getByTestId('select-ai-chat-thread').click();
   await page.getByPlaceholder('Type a message...').fill('Delete the pump seal');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
 
   await expect(
     page.getByText('Golden typed response', { exact: true })

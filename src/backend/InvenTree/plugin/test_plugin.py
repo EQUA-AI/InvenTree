@@ -13,13 +13,13 @@ from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 
 import plugin.templatetags.plugin_extras as plugin_tags
 from InvenTree.unit_test import PluginRegistryMixin, TestQueryMixin
 from plugin import InvenTreePlugin, PluginMixinEnum
 from plugin.installer import install_plugin
-from plugin.registry import registry
+from plugin.registry import PluginsRegistry, registry
 from plugin.samples.integration.another_sample import (
     NoIntegrationPlugin,
     WrongIntegrationPlugin,
@@ -28,6 +28,41 @@ from plugin.samples.integration.sample import SampleIntegrationPlugin
 
 # Directory for testing plugins during CI
 PLUGIN_TEST_DIR = '_testfolder/test_plugins'
+
+
+class RegistryMixinOrderTests(SimpleTestCase):
+    """Removed plugin mixins must stop activating in every registry."""
+
+    def test_removed_mixin_does_not_persist_in_default_order(self):
+        """Activation must not retain a removed mixin in the shared defaults."""
+
+        class BaseProbe:
+            """A mixin activated by every registry."""
+
+            _activate_mixin = mock.Mock()
+
+        class ExtraProbe:
+            """A plugin mixin discovered only for the first activation."""
+
+            _activate_mixin = mock.Mock()
+
+        with (
+            mock.patch.object(PluginsRegistry, 'DEFAULT_MIXIN_ORDER', [BaseProbe]),
+            mock.patch.object(PluginsRegistry, 'discover_mixins'),
+        ):
+            first = PluginsRegistry()
+            first.mixin_modules = {'extra': {'cls': ExtraProbe}}
+            first._activate_plugins()
+
+            first.mixin_modules = {}
+            first._activate_plugins()
+
+            second = PluginsRegistry()
+            second._activate_plugins()
+
+            self.assertEqual(BaseProbe._activate_mixin.call_count, 3)
+            self.assertEqual(ExtraProbe._activate_mixin.call_count, 1)
+            self.assertEqual(PluginsRegistry.DEFAULT_MIXIN_ORDER, [BaseProbe])
 
 
 class PluginTagTests(PluginRegistryMixin, TestCase):

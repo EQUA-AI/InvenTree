@@ -167,7 +167,7 @@ test('an upload returning after A to B to A cannot attach or clear a new draft',
   await select(page, 'Conversation B');
   await expect(page.getByText('Answer B', { exact: true })).toBeVisible();
   await expect(page.getByPlaceholder('Type a message...')).toHaveValue('');
-  await expect(page.getByLabel('attach-ai-chat-file')).toBeEnabled();
+  await expect(page.getByTestId('attach-ai-chat-file')).toBeEnabled();
   await select(page, 'Conversation A');
   await expect(page.getByText('Answer A', { exact: true })).toBeVisible();
   await page
@@ -176,7 +176,7 @@ test('an upload returning after A to B to A cannot attach or clear a new draft',
   release();
   await expect.poll(() => finished).toBe(true);
   await expect(
-    page.getByLabel('remove-ai-chat-attachment-old-upload')
+    page.getByTestId('remove-ai-chat-attachment-old-upload')
   ).toHaveCount(0);
   await expect(page.getByPlaceholder('Type a message...')).toHaveValue(
     'New draft after returning'
@@ -196,8 +196,8 @@ for (const incomplete of [false, true]) {
     await second.goto(first.url());
     await openChat(second);
     await expect(second.getByText('Answer A', { exact: true })).toBeVisible();
-    await first.getByLabel('select-ai-chat-thread').click();
-    await first.getByLabel(`delete-ai-chat-thread-${threadId}`).click();
+    await first.getByTestId('select-ai-chat-thread').click();
+    await first.getByTestId(`delete-ai-chat-thread-${threadId}`).click();
     await first
       .getByRole('dialog', { name: 'Delete conversation?' })
       .getByRole('button', { name: 'Delete conversation', exact: true })
@@ -209,9 +209,9 @@ for (const incomplete of [false, true]) {
     await expect(second.getByPlaceholder('Type a message...')).toBeHidden();
     await openChat(second);
     await expect(second.getByText('Answer A', { exact: true })).toHaveCount(0);
-    await second.getByLabel('select-ai-chat-thread').click();
+    await second.getByTestId('select-ai-chat-thread').click();
     if (incomplete) {
-      await second.getByLabel(`delete-ai-chat-thread-${threadId}`).click();
+      await second.getByTestId(`delete-ai-chat-thread-${threadId}`).click();
       const retry = second.getByRole('dialog', {
         name: 'Finish deleting conversation'
       });
@@ -223,7 +223,7 @@ for (const incomplete of [false, true]) {
       await expect(retry).toBeHidden();
     } else {
       await expect(
-        second.getByLabel(`delete-ai-chat-thread-${threadId}`)
+        second.getByTestId(`delete-ai-chat-thread-${threadId}`)
       ).toHaveCount(0);
       await expect(
         second.getByText('Conversation B', { exact: true }).last()

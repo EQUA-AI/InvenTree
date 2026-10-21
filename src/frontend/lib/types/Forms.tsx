@@ -176,6 +176,9 @@ export interface ApiFormProps {
   focus?: string;
   initialData?: FieldValues;
   submitText?: string;
+  submitDisabled?: boolean;
+  hideErrorNotification?: boolean;
+  preserveDraftOnRefresh?: boolean;
   submitColor?: string;
   fetchInitialData?: boolean;
   ignorePermissionCheck?: boolean;

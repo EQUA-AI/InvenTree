@@ -3,6 +3,7 @@ import { Button, Stack, Text } from '@mantine/core';
 import {
   IconActivityHeartbeat,
   IconChartLine,
+  IconCube,
   IconHistory,
   IconInfoCircle,
   IconListCheck,
@@ -10,7 +11,7 @@ import {
   IconPlayerPlay,
   IconTool
 } from '@tabler/icons-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import AttachmentPanel from '../../components/panels/AttachmentPanel';
 
@@ -31,15 +32,16 @@ import { PageDetail } from '../../components/nav/PageDetail';
 import { PanelGroup } from '../../components/panels/PanelGroup';
 import { useInstance } from '../../hooks/UseInstance';
 import { openGlobalAIChat } from '../../states/AIChatState';
-import { MaintenanceRecordTable } from '../../tables/assets/MaintenanceRecordTable';
 import { WorkOrderCreateModal } from '../maintenance/components/WorkOrderCreateModal';
 import FaultHistoryPanel from './FaultHistoryPanel';
 import { InstalledPartsPanel } from './InstalledPartsPanel';
 import { StartRepairModal } from './StartRepairModal';
+import { EquipmentViewPanel } from './equipment/EquipmentViewPanel';
 import { MachineHealthPanel } from './health/MachineHealthPanel';
 import PumpMimic from './health/PumpMimic';
 import PumphouseMimic from './health/PumphouseMimic';
 import { machineTrail } from './machineTrail';
+import { MachineMaintenancePanel } from './maintenance/MachineMaintenancePanel';
 import { PerformancePanel } from './performance/PerformancePanel';
 
 import {
@@ -71,6 +73,47 @@ export default function MachineDetail() {
     pk: id,
     params: {}
   });
+
+  // R6 P08: a pump's process schematic is its station's mimic for its bay,
+  // and it lives inside Equipment view rather than as a competing tab.
+  const schematic =
+    machine?.pk &&
+    machine.asset_type === 'pump' &&
+    machine.parent &&
+    machine.source_key
+      ? {
+          stationId: machine.parent as number,
+          unit: machine.source_key as string
+        }
+      : null;
+
+  // The pump mimic tab became Equipment view's Process schematic; an old
+  // link to it lands there, keeping whatever else the link carried.
+  // Only once the loaded machine is the one in the URL: while another is
+  // still being fetched, the previous machine (say the pump a station link
+  // was followed from) is still in hand and must not be redirected to.
+  useEffect(() => {
+    if (
+      panel !== 'mimic' ||
+      machine?.asset_type !== 'pump' ||
+      !machine.pk ||
+      String(machine.pk) !== id
+    )
+      return;
+    const next = new URLSearchParams(searchParams);
+    if (schematic) next.set('view', 'schematic');
+    navigate(`/machines/machine/${machine.pk}/equipment/?${next}`, {
+      replace: true
+    });
+  }, [
+    panel,
+    id,
+    machine?.pk,
+    machine?.asset_type,
+    !!schematic,
+    searchParams,
+    navigate
+  ]);
 
   // The way back up: a pump's trail runs through the station it belongs to.
   const trail = useMemo(() => machineTrail(machine, panel), [machine, panel]);
@@ -169,6 +212,32 @@ export default function MachineDetail() {
           </Stack>
         ) : null
       },
+      // R6 UI03: a pump opens the reference 3D model, with its process
+      // schematic as the secondary view when it has one. The scene bundle
+      // loads only when this panel is shown.
+      ...(machine?.pk && machine.asset_type === 'pump'
+        ? [
+            {
+              name: 'equipment',
+              label: t`Equipment view`,
+              icon: <IconCube />,
+              content: (
+                <EquipmentViewPanel
+                  key={machine.pk}
+                  machine={machine}
+                  schematic={
+                    schematic ? (
+                      <PumpMimic
+                        stationId={schematic.stationId}
+                        unit={schematic.unit}
+                      />
+                    ) : undefined
+                  }
+                />
+              )
+            }
+          ]
+        : []),
       ...(machine?.asset_type === 'pumphouse'
         ? [
             {
@@ -181,24 +250,6 @@ export default function MachineDetail() {
             }
           ]
         : []),
-      // A pump's mimic is its station's, read for the one bay it occupies -
-      // so only a pump that names both has one.
-      ...(machine?.asset_type === 'pump' && machine.parent && machine.source_key
-        ? [
-            {
-              name: 'mimic',
-              label: t`Pump mimic`,
-              icon: <IconActivityHeartbeat />,
-              content: (
-                <PumpMimic
-                  key={machine.pk}
-                  stationId={machine.parent}
-                  unit={machine.source_key}
-                />
-              )
-            }
-          ]
-        : []),
       {
         // Health sits immediately after Details: an operator opening a machine
         // asks how it is doing before asking what it is made of.
@@ -207,12 +258,14 @@ export default function MachineDetail() {
         icon: <IconActivityHeartbeat />,
         content: machine?.pk ? (
           <MachineHealthPanel
+            key={machine.pk}
             machineId={machine.pk}
-            mimic={
-              machine.asset_type === 'pumphouse' ||
-              (machine.asset_type === 'pump' &&
-                !!machine.parent &&
-                !!machine.source_key)
+            mimicHref={
+              machine.asset_type === 'pumphouse'
+                ? `/machines/machine/${machine.pk}/mimic`
+                : schematic
+                  ? `/machines/machine/${machine.pk}/equipment/?view=schematic`
+                  : null
             }
           />
         ) : null
@@ -227,7 +280,8 @@ export default function MachineDetail() {
       },
       {
         name: 'parts',
-        label: t`Installed Parts`,
+        // R6 UI07: "Parts"; the native route key stays `parts`.
+        label: t`Parts`,
         icon: <IconListCheck />,
         content: machine?.pk ? <InstalledPartsPanel machine={machine} /> : null
       },
@@ -235,8 +289,9 @@ export default function MachineDetail() {
         name: 'maintenance',
         label: t`Maintenance`,
         icon: <IconTool />,
+        // R6 UI06: Open work and Completed history (P12).
         content: machine?.pk ? (
-          <MaintenanceRecordTable machineId={machine.pk} />
+          <MachineMaintenancePanel machineId={machine.pk} />
         ) : null
       },
       {
@@ -252,7 +307,14 @@ export default function MachineDetail() {
         model_id: machine?.pk
       })
     ];
-  }, [machine, detailsLeft, detailsRight, detailsDescription]);
+  }, [
+    machine,
+    schematic?.stationId,
+    schematic?.unit,
+    detailsLeft,
+    detailsRight,
+    detailsDescription
+  ]);
 
   return (
     <InstanceDetail query={instanceQuery}>
@@ -291,25 +353,38 @@ export default function MachineDetail() {
             </Button>,
             // Create repair plans work for this asset. Starting it is a
             // separate, readiness-gated transition and is not offered here.
-            <Button
-              key='create-repair'
-              leftSection={<IconTool size={16} />}
-              onClick={() => setCreateRepairOpen(true)}
-              disabled={!machine?.pk}
-            >
-              {t`Create repair`}
-            </Button>,
+            user.hasAddRole(UserRoles.work_order) && (
+              <Button
+                key='create-repair'
+                leftSection={<IconTool size={16} />}
+                onClick={() => setCreateRepairOpen(true)}
+                disabled={
+                  !machine?.pk || !user.hasAddRole(UserRoles.work_order)
+                }
+              >
+                {t`Create repair`}
+              </Button>
+            ),
             // Starting is a separate, readiness-gated transition. The modal
             // asks the server what is startable rather than deciding here.
-            <Button
-              key='start-repair'
-              variant='light'
-              leftSection={<IconPlayerPlay size={16} />}
-              onClick={() => setStartRepairOpen(true)}
-              disabled={!machine?.pk}
-            >
-              {t`Start repair`}
-            </Button>
+            user.hasChangeRole(UserRoles.work_order) &&
+              (user.isSuperuser() ||
+                user.user?.permissions?.workorder?.includes('execute')) && (
+                <Button
+                  key='start-repair'
+                  variant='light'
+                  leftSection={<IconPlayerPlay size={16} />}
+                  onClick={() => setStartRepairOpen(true)}
+                  disabled={
+                    !machine?.pk ||
+                    !user.hasChangeRole(UserRoles.work_order) ||
+                    (!user.isSuperuser() &&
+                      !user.user?.permissions?.workorder?.includes('execute'))
+                  }
+                >
+                  {t`Start repair`}
+                </Button>
+              )
           ]}
         />
         {machine?.pk && <MachinePlacementPath machineId={machine.pk} />}

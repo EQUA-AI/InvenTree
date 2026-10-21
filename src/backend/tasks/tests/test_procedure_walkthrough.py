@@ -3,7 +3,8 @@
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.contrib.auth.models import Group
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from ai.core.config import Settings
@@ -11,6 +12,7 @@ from ai.core.voice.procedure_walkthrough import (
     interpret_walkthrough_command,
     walkthrough_reply,
 )
+from assets.models import AssetMachine, Client
 from company.models import Company
 from tasks.models import (
     Procedure,
@@ -24,6 +26,7 @@ from tasks.models import (
 )
 from tasks.scope import MaintenanceScope
 from tasks.services.procedure_execution import apply_procedure_revision
+from users.models import RuleSet
 
 
 def _settings(**overrides):
@@ -161,20 +164,49 @@ class WalkthroughFlowTests(TestCase):
         self.assertEqual(reply.position, 0)
         self.assertEqual(reply.step_version, executions[0].version)
 
-    def test_out_of_scope_actor_sees_nothing(self):
-        """A scoped lookup never reveals another customer's procedure."""
+    @override_settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=None)
+    def test_customer_snapshot_is_shared_but_foreign_machine_work_is_hidden(self):
+        """An applied Work snapshot follows O24; machine-only Work stays scoped."""
         from tasks.scope import ScopeError
-        outsider = get_user_model().objects.create_superuser(
+
+        outsider = get_user_model().objects.create_user(
             username='b7-outsider', email='b7o@example.com', password='pw'
         )
-        other = Company.objects.create(name='B7 Other', is_customer=True)
+        group = Group.objects.create(name='B7 shared Work viewers')
+        RuleSet.objects.update_or_create(
+            group=group, name='work_order', defaults={'can_view': True}
+        )
+        outsider.groups.add(group)
+        client = Client.objects.create(name='B7 reader client', code='b7-reader')
         outsider.maintenance_scopes = {
-            MaintenanceScope(customer_id=other.pk, site_key=None)
+            MaintenanceScope(customer_id=None, site_key=None, client_id=client.pk)
         }
         with mock.patch(
             'ai.core.config.get_settings',
             return_value=_settings(FEATURE_GUIDED_PROCEDURES=True),
         ):
+            reply = walkthrough_reply(
+                actor=outsider, work_order_id=self.work_order.pk,
+                utterance='', position=0,
+            )
+            self.assertEqual(reply.total, 2)
+            self.assertIn('Isolate power. Lock out the main breaker.', reply.speak_text)
+            self.assertEqual(
+                WorkOrderStepExecution.objects.filter(status='pending').count(), 2
+            )
+            roleless = get_user_model().objects.create_user(username='b7-without-view')
+            roleless.maintenance_scopes = outsider.maintenance_scopes
+            with self.assertRaises(ScopeError):
+                walkthrough_reply(
+                    actor=roleless, work_order_id=self.work_order.pk,
+                    utterance='', position=0,
+                )
+            foreign = Client.objects.create(name='B7 foreign client', code='b7-foreign')
+            self.work_order.customer = None
+            self.work_order.machine = AssetMachine.objects.create(
+                name='B7 foreign pump', client=foreign
+            )
+            self.work_order.save(update_fields=['customer', 'machine'])
             with self.assertRaises(ScopeError):
                 walkthrough_reply(
                     actor=outsider,

@@ -97,6 +97,7 @@ class CapabilitySelection:
 
 
 _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
+    "investigation.proposals": (ToolEffect.WRITE, ("propose_investigation_artifact",), ()),
     "memory.proposals": (ToolEffect.WRITE, ("propose_memory_action",), ()),
     "parts.read": (
         ToolEffect.READ,
@@ -453,6 +454,7 @@ _DEFAULT_PACK_WORKFLOWS = frozenset({"wf8", "general"})
 _SPECIALIST_WORKFLOWS = frozenset({"wf2", "wf3", "wf4", "wf6"})
 _ALL_PACK_WORKFLOWS = _DEFAULT_PACK_WORKFLOWS | _SPECIALIST_WORKFLOWS
 _PACK_WORKFLOWS: dict[str, frozenset[str]] = {
+    "investigation.proposals": frozenset({"wf8"}),
     "memory.proposals": _DEFAULT_PACK_WORKFLOWS,
     "documents.read": _ALL_PACK_WORKFLOWS | frozenset({"wf9"}),
     "manuals.read": _ALL_PACK_WORKFLOWS | frozenset({"wf9"}),
@@ -1186,9 +1188,9 @@ _MACHINE_READ_TOOL_IDS = frozenset({
     "get_machine_attachments",
 })
 
-#: The maintenance pack shares the machines rationale and authorizer: a
-#: work_order:view grant says "may read jobs", never "may read *this* job",
-#: and tasks.ai_read re-checks the row itself on every call.
+#: Work readers recheck the canonical Work predicate on every call. O24
+#: permits shared Work without any client grant, so they must not inherit
+#: the machine-only precondition that requires a resolved client scope.
 _MAINTENANCE_READ_TOOL_IDS = frozenset({
     "search_work_orders",
     "get_work_order_overview",
@@ -1215,7 +1217,7 @@ def _authorization_policy(tool: Any, tool_id: str) -> AuthorizationPolicy:
             all_of=(("part", "view"),),
             authorizer="part_attachment_access",
         )
-    if tool_id in _MACHINE_READ_TOOL_IDS or tool_id in _MAINTENANCE_READ_TOOL_IDS:
+    if tool_id in _MACHINE_READ_TOOL_IDS or tool_id == "get_open_repairs_for_machine":
         # Deliberately NOT plain NATIVE_PERMISSION. A work_order:view grant is
         # global, while asset rows belong to a customer or a client -- so the
         # role says "may read assets", never "may read *this* asset". The
@@ -1228,6 +1230,11 @@ def _authorization_policy(tool: Any, tool_id: str) -> AuthorizationPolicy:
             kind=PolicyKind.RESOURCE_AUTHORIZER,
             all_of=(("work_order", "view"),),
             authorizer="machine_scope_access",
+        )
+    if tool_id in _MAINTENANCE_READ_TOOL_IDS:
+        return AuthorizationPolicy(
+            kind=PolicyKind.NATIVE_PERMISSION,
+            all_of=(("work_order", "view"),),
         )
     if tool_id == "search_manuals":
         # Site-scoped controlled-document retrieval. Deliberately NOT
@@ -1319,6 +1326,7 @@ def _catalog_tools() -> tuple[Any, ...]:
     from ai.core.integrations.controlled_document_corpus import CONTROLLED_CORPUS_TOOLS
     from ai.core.integrations.email.tools import EMAIL_TOOLS
     from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS, INVENTORY_TOOLS
+    from ai.core.integrations.investigation_tools import INVESTIGATION_PROPOSAL_TOOLS
     from ai.core.integrations.kanban_tools import BOARD_TASK_READ_TOOLS, KANBAN_TOOLS
     from ai.core.integrations.media_corpus import EVIDENCE_MEDIA_TOOLS
     from ai.core.integrations.memory_tools import MEMORY_ACTION_TOOLS
@@ -1339,6 +1347,7 @@ def _catalog_tools() -> tuple[Any, ...]:
         *EVIDENCE_MEDIA_TOOLS,
         *SOURCE_INVENTORY_TOOLS,
         *MEMORY_ACTION_TOOLS,
+        *INVESTIGATION_PROPOSAL_TOOLS,
         # Specialist rails (wf2/wf3/wf4/wf6) below; the wf8 prefix above keeps
         # the existing catalog order stable for the manifest.
         *INVENTORY_TOOLS,
@@ -2064,6 +2073,44 @@ def select_capabilities(
     carryover never runs for them, so a prior off-domain turn cannot pull an
     analysis question with it.
     """
+    focus = (context or {}).get("work_focus")
+    if (
+        isinstance(focus, dict)
+        and focus.get("schema_version") in {2, 3}
+        and focus.get("request_id") is not None
+        and type(focus.get("request_id")) is int
+    ):
+        # Request publication extends the shared assistant's normal query routing.
+        base = select_capabilities(
+            query,
+            lookup_type=lookup_type,
+            context={key: value for key, value in (context or {}).items() if key != "work_focus"},
+            profile=profile,
+            authenticated=authenticated,
+            task_intent=task_intent,
+        )
+        pack_ids = base.pack_ids or ("maintenance.read",)
+        riders = tuple(
+            entry
+            for entry in entries_for_packs(("investigation.proposals",))
+            if exposure_authorized(entry, profile, authenticated=authenticated)
+        )
+        reads = _authorized_read_entries(pack_ids, profile, authenticated=authenticated)
+        normal_entries = (
+            tuple(entry for entry in entries_for_packs(pack_ids) if entry.tool_id in base.tool_ids)
+            if base.tool_ids
+            else reads
+        )
+        entries = (*normal_entries, *riders)
+        return CapabilitySelection(
+            pack_ids=tuple(dict.fromkeys(entry.pack_id for entry in entries)),
+            tool_ids=tuple(entry.tool_id for entry in entries),
+            tools=tuple(entry.tool for entry in entries),
+            reason="investigation_request_review",
+            clarification_required=not bool(entries),
+            requires_specialist=base.requires_specialist,
+            signals=base.signals,
+        )
     normalized = " ".join(query.casefold().split())
     if re.search(r"\b(?:memory|memories)\b", normalized) and re.search(
         r"\b(?:remember|forget|delete|update|correct)\b", normalized

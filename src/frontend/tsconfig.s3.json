@@ -1,0 +1,28 @@
+{
+	"extends": "./tsconfig.s0.json",
+	"files": [
+		"tests/s3/pui_critical_designation.spec.ts",
+		"playwright.s3.config.ts",
+		"tests/performance/fixtures.ts",
+		"tests/s3/performanceFixtures.ts",
+		"tests/s3/pui_performance_native.spec.ts",
+		"tests/s3/pui_performance_evaluation.spec.ts",
+		"playwright/s3-performance.tsx",
+		"tests/s3/stationFixtures.ts",
+		"tests/s3/pui_performance_station.spec.ts",
+		"tests/s3/pui_performance_truthful.spec.ts",
+		"tests/s3/pui_performance_units.spec.ts",
+		"tests/s3/machineWorkFixtures.ts",
+		"tests/s3/pui_machine_work_history.spec.ts",
+		"tests/s3/healthFixtures.ts",
+        "tests/s3/pui_health_investigation.spec.ts",
+		"tests/s3/pui_health_native.spec.ts",
+		"tests/s3/pui_health_trends.spec.ts",
+ "tests/s3/pui_health_inspection.spec.ts",
+ "tests/s3/pui_health_condition.spec.ts",
+		"tests/s3/pui_performance_scale.spec.ts",
+		"tests/s3/pui_performance_comparisons.spec.ts",
+		"tests/s3/pui_performance_investigation.spec.ts",
+		"tests/s3/pui_performance_review.spec.ts"
+	]
+}

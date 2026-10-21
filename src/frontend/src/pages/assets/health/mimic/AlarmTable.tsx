@@ -1,16 +1,23 @@
 import { t } from '@lingui/core/macro';
 import {
   ActionIcon,
-  Badge,
   Button,
   Group,
+  Stack,
   Table,
   Text,
   Tooltip
 } from '@mantine/core';
-import { IconExternalLink } from '@tabler/icons-react';
+import { IconChartLine, IconExternalLink } from '@tabler/icons-react';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useUserState } from '../../../../states/UserState';
+import { machinePanelHref } from '../../locations/locationTree';
+import operations from '../../operations.module.css';
+import { AlarmStateBadge, SeverityBadge } from '../common';
+import { formatInstant, useDisplayClock } from './observedTime';
+
+import { UserRoles } from '@lib/enums/Roles';
 
 import { WorkOrderCreateModal } from '../../../maintenance/components/WorkOrderCreateModal';
 import { type AlarmAction, AlarmNoteModal } from './AlarmNoteModal';
@@ -41,6 +48,11 @@ export function AlarmTable({
   /** Called once an alarm's state has changed, so the page re-reads. */
   onAcknowledged?: () => void;
 }>) {
+  const [params] = useSearchParams();
+  const user = useUserState();
+  const clock = useDisplayClock();
+  const canChange = user.hasChangeRole(UserRoles.work_order);
+  const canAdd = user.hasAddRole(UserRoles.work_order);
   const [noting, setNoting] = useState<{
     action: AlarmAction;
     alarm: MimicAlarm;
@@ -49,22 +61,29 @@ export function AlarmTable({
 
   return (
     <>
-      <Table.ScrollContainer minWidth={960}>
-        <Table striped>
+      <Text size='sm'>{t`Acknowledgement records that someone saw the application alarm; it does not clear the condition.`}</Text>
+      <Table.ScrollContainer
+        minWidth={0}
+        type='native'
+        className={operations.alarmScroll}
+      >
+        <Table striped className={operations.alarmTable}>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t`Signal`}</Table.Th>
-              <Table.Th>{t`Value`}</Table.Th>
-              <Table.Th>{t`Observed at`}</Table.Th>
-              <Table.Th>{t`Condition`}</Table.Th>
               <Table.Th>{t`Alarm`}</Table.Th>
+              <Table.Th>{t`Value`}</Table.Th>
+              <Table.Th>{t`Condition`}</Table.Th>
+              <Table.Th>{t`Observed at`}</Table.Th>
               <Table.Th />
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
             {alarms.map((alarm) => {
               const raised = alarm.anomaly !== null && !!alarm.machine;
-              const dismissed = alarm.anomaly_status === 'suppressed';
+              const responding = ['open', 'acknowledged'].includes(
+                alarm.anomaly_status ?? ''
+              );
               return (
                 <Table.Tr
                   key={`${alarm.machine ?? ''}:${alarm.pointer}`}
@@ -75,31 +94,37 @@ export function AlarmTable({
                     {alarm.label}
                     <Text
                       size='xs'
-                      c='dimmed'
+                      className={operations.meta}
                       style={{ wordBreak: 'break-all' }}
                     >
                       {alarm.pointer}
                     </Text>
                   </Table.Td>
-                  <Table.Td>
+                  <Table.Td data-label={t`Alarm`}>
+                    <AlarmStatus alarm={alarm} />
+                  </Table.Td>
+                  <Table.Td data-label={t`Value`}>
                     {display(alarm)}
                     {alarm.reason && (
                       <Text size='xs'>{reasonLabel(alarm.reason)}</Text>
                     )}
                   </Table.Td>
-                  <Table.Td style={{ whiteSpace: 'nowrap' }}>
+                  <Table.Td data-label={t`Condition`}>
+                    {conditionText(alarm)}
+                  </Table.Td>
+                  <Table.Td
+                    data-label={t`Observed at`}
+                    style={{ whiteSpace: 'nowrap' }}
+                  >
                     {alarm.observed_at
-                      ? new Date(alarm.observed_at).toLocaleString()
+                      ? (formatInstant(alarm.observed_at, clock) ??
+                        t`Time unavailable`)
                       : t`No reading`}
                   </Table.Td>
-                  <Table.Td>{conditionText(alarm)}</Table.Td>
-                  <Table.Td>
-                    <AlarmStatus alarm={alarm} />
-                  </Table.Td>
-                  <Table.Td style={{ whiteSpace: 'nowrap' }}>
+                  <Table.Td className={operations.alarmActions}>
                     <Group
                       gap='sm'
-                      wrap='nowrap'
+                      wrap='wrap'
                       justify='flex-end'
                       preventGrowOverflow={false}
                     >
@@ -109,38 +134,64 @@ export function AlarmTable({
                             component={Link}
                             to={`/machines/machine/${alarm.machine}/health`}
                             variant='subtle'
-                            aria-label={t`Open in Health`}
+                            aria-label={t`Open ${alarm.label} in Health`}
                           >
                             <IconExternalLink size={16} />
                           </ActionIcon>
                         </Tooltip>
                       )}
-                      {raised && alarm.anomaly_status === 'open' && (
-                        <Button
-                          size='compact-sm'
-                          variant='light'
-                          onClick={() =>
-                            setNoting({ action: 'acknowledge', alarm })
-                          }
-                        >
-                          {t`Acknowledge`}
-                        </Button>
+                      {raised && (
+                        <Tooltip label={t`Open occurrence in Fault History`}>
+                          <ActionIcon
+                            component={Link}
+                            to={machinePanelHref(
+                              alarm.machine!,
+                              'fault-history',
+                              params,
+                              { occurrence: String(alarm.anomaly) }
+                            )}
+                            variant='subtle'
+                            aria-label={t`Open occurrence for ${alarm.label}`}
+                          >
+                            <IconChartLine size={16} />
+                          </ActionIcon>
+                        </Tooltip>
                       )}
-                      {raised && !dismissed && (
+                      {canChange &&
+                        raised &&
+                        alarm.anomaly_status === 'open' && (
+                          <Button
+                            size='compact-sm'
+                            className={operations.phoneTarget}
+                            variant='default'
+                            aria-label={t`Acknowledge ${alarm.label}`}
+                            onClick={() =>
+                              setNoting({ action: 'acknowledge', alarm })
+                            }
+                          >
+                            {t`Acknowledge`}
+                          </Button>
+                        )}
+                      {canAdd && raised && responding && (
                         <Button
+                          disabled={!canAdd}
                           size='compact-sm'
                           variant='light'
-                          color='orange'
+                          aria-label={t`Create repair for ${alarm.label}`}
+                          className={`${operations.link} ${operations.phoneTarget}`}
                           onClick={() => setRepairing(alarm)}
                         >
                           {t`Create repair`}
                         </Button>
                       )}
-                      {raised && !dismissed && (
+                      {canChange && raised && responding && (
                         <Button
+                          disabled={!canChange}
                           size='compact-sm'
+                          className={operations.phoneTarget}
                           variant='subtle'
                           color='gray'
+                          aria-label={t`Dismiss ${alarm.label}`}
                           onClick={() =>
                             setNoting({ action: 'dismiss', alarm })
                           }
@@ -204,32 +255,15 @@ function AlarmStatus({ alarm }: Readonly<{ alarm: MimicAlarm }>) {
     // Outside its limits on this reading, but not an alarm until the detector
     // has seen enough to raise one: the next evaluation, or a second detector
     // in its vote group agreeing.
-    return (
-      <Text size='sm' c='dimmed'>
-        {t`Not raised yet`}
-      </Text>
-    );
+    return <Text size='sm'>{t`Not raised yet`}</Text>;
   }
-  const severity =
-    alarm.severity === 'critical'
-      ? t`critical`
-      : alarm.severity === 'warning'
-        ? t`warning`
-        : alarm.severity;
-  if (alarm.anomaly_status === 'suppressed') {
-    return (
-      <Badge variant='outline' color='gray' miw='max-content'>
-        {t`Dismissed`}
-      </Badge>
-    );
-  }
-  return alarm.anomaly_status === 'acknowledged' ? (
-    <Badge variant='light' color='gray' miw='max-content'>
-      {t`Acknowledged`} · {severity}
-    </Badge>
-  ) : (
-    <Badge variant='light' color='red' miw='max-content'>
-      {t`Open`} · {severity}
-    </Badge>
+  return (
+    <Stack gap={4} align='flex-start'>
+      <AlarmStateBadge
+        status={alarm.anomaly_status}
+        severity={alarm.severity}
+      />
+      <SeverityBadge severity={alarm.severity} />
+    </Stack>
   );
 }

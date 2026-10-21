@@ -73,6 +73,15 @@ class AGUIForwardedProps(BaseModel):
         le=2**31 - 1,
         validation_alias=AliasChoices("expectedFocusVersion", "expected_focus_version"),
     )
+    # P02/P33: the signed Work-focus receipt, as on /chat and /chat/stream.
+    # Verified against the actor, thread, policy and live Work before the
+    # turn exists; never trusted, stored or fingerprinted.
+    work_focus_receipt: str | None = Field(
+        None,
+        min_length=1,
+        max_length=4096,
+        validation_alias=AliasChoices("workFocusReceipt", "work_focus_receipt"),
+    )
 
 
 class RunAgentInput(BaseModel):

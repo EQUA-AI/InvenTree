@@ -1,5 +1,9 @@
 import type { AssetMachine } from '@lib/types/Assets';
 
+import type { MachineConditionWire } from './machineCondition';
+import type { MachineCriticality } from './machineListState';
+import type { MachineOpenWork } from './machineWork';
+
 export const locationApi = '/api/assets/locations/';
 
 export interface LocationNode {
@@ -25,11 +29,19 @@ export interface LocationNode {
 }
 
 export interface LocatedMachine extends AssetMachine {
+  open_warning_alarms?: number | null;
   physical_location: LocationNode | null;
   placement_version: number;
+  /** R6 UI01: open Work in the reader's Work scope; null when unknown. */
+  open_work?: MachineOpenWork | null;
+  /** R6 UI01: declared criticality; null when nothing valid is declared. */
+  criticality?: MachineCriticality | null;
+  /** R6 UI01: Health condition and coverage; null when it cannot be judged. */
+  condition?: MachineConditionWire | null;
 }
 
 export interface LocationContext {
+  plant_timezone?: string | null;
   workspaces: { pk: number; name: string }[];
   can_add: boolean;
   can_change: boolean;

@@ -80,3 +80,25 @@ def ensure_island_tables() -> None:
             + ", ".join(unresolved)
         )
     _BOOTSTRAPPED = True
+
+
+def grant_work_view(user):
+    """Give a positive-control actor native Work view, retaining scope fences.
+
+    O24 requires this role before evaluating the actor's client grants. Real
+    stored rules keep these fixtures ordinary readers; no staff/superuser or
+    authorization mocking is involved. Revoking client access still denies
+    machine-only Work and its task focus.
+    """
+    from django.contrib.auth.management import create_permissions
+    from django.contrib.auth.models import Group
+    from users.models import RuleSet
+
+    # The lightweight island creates tables without migrate/post_migrate;
+    # native role saves still require the real model permission definitions.
+    for app_label in ("assets", "tasks"):
+        create_permissions(apps.get_app_config(app_label), verbosity=0)
+    group, _ = Group.objects.get_or_create(name=f"focus-work-view-{user.pk}")
+    RuleSet.objects.update_or_create(group=group, name="work_order", defaults={"can_view": True})
+    user.groups.add(group)
+    return user

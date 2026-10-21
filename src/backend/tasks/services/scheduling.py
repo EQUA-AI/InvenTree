@@ -7,12 +7,11 @@ Every command records a ``WorkOrderCommand`` (idempotency ledger) and a
 ``WorkOrderEvent`` (audit), reuses ``lifecycle_version`` as the optimistic
 concurrency token, and runs under a row lock.
 
-Scope note: unlike ``tasks.services.work_orders`` (the flagged canonical API),
-these commands do NOT impose customer scope via ``scope_for_actor``. The
-unflagged board they serve is gated by the ``work_order`` ruleset at the endpoint
-(RolePermission), and adding scope here would reject any actor without configured
-``maintenance_scopes`` — breaking ordinary board writes. Customer scoping stays a
-flagged-canonical-API concern until that surface is turned on.
+Creation and planning updates enforce native action/view roles and resulting
+Work scope inside their transactions. Newly attached machines require their own
+client scope (P32 contract B), locked before a creation or assignment; shared
+Work never supplies that authority. Other scheduling-family commands retain
+their existing endpoint/proposal authorization contracts.
 
 Deferred to S6 (semantics): working-time-aware span/duration math, done-column
 immutability, dependency commands, and same-machine conflict detection. The
@@ -29,6 +28,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import ProtectedError
 from django.utils import timezone
@@ -45,6 +45,7 @@ from tasks.models import (
     WorkOrderPart,
     WorkOrderType,
 )
+from tasks.scope import scoped_machines
 from tasks.services.calendars import spec_for_card
 
 # Reuse the canonical command primitives so the two services cannot drift on how
@@ -54,11 +55,14 @@ from tasks.services.work_orders import (
     IdempotencyConflict,
     StaleVersion,
     WorkOrderCommandError,
+    WorkOrderScopeError,
     _append_result,
     _canonical_hash,
     _locked_work_order,
     _replay_or_none,
+    _require_scope,
     _require_version,
+    require_work_order_machine_change,
 )
 from tasks.services.working_time import add_working_minutes, working_minutes_between
 
@@ -194,6 +198,28 @@ def _new_correlation(correlation_id: uuid.UUID | None) -> uuid.UUID:
     return correlation_id or uuid.uuid4()
 
 
+def _authorize_creation(actor, machine_id, *, lock=False):
+    """Authorize a new machine assignment independently of any shared Work.
+
+    Preview and intake preflights do not hold machine locks before existing Work
+    locks. The transactional writer repeats this check with ``lock=True`` after
+    locking any current Work/origin and before changing any record.
+    """
+    from users.permissions import check_user_role
+
+    if not check_user_role(actor, 'work_order', 'add'):
+        raise PermissionDenied('Work creation requires work_order.add')
+    machines = scoped_machines(actor)
+    if lock:
+        machines = machines.select_for_update()
+    machine = machines.filter(pk=machine_id).first()
+    if machine is None:
+        raise WorkOrderScopeError('no such machine')
+    _require_scope(actor, WorkOrder(machine=machine))
+    return machine
+
+
+@transaction.atomic
 def create_work_order(
     *,
     actor,
@@ -211,6 +237,49 @@ def create_work_order(
     """
     payload = {'title': title, 'machine_id': machine_id, **planning}
     request_hash = _canonical_hash('create', actor, payload)
+    _authorize_creation(actor, machine_id)
+
+    routine_intent = planning.get('corrective_origin_kind') == 'routine_finding'
+    origin_kind = planning.get('corrective_origin_kind')
+    if origin_kind not in (None, '', 'recurrence', 'routine_finding'):
+        raise InvalidSchedule('Unknown corrective origin kind.')
+    if not routine_intent and any(
+        planning.get(key) is not None
+        for key in ('corrective_finding', 'corrective_reading', 'corrective_step')
+    ):
+        raise InvalidSchedule('Routine finding requires an explicit routine origin.')
+    routine_source = None
+    if routine_intent:
+        from tasks.services.routine_findings import source
+
+        routine_source = source(
+            actor=actor, machine_id=machine_id, planning=planning, replay=True
+        )
+    recurrence_intent = not routine_intent and (
+        planning.get('recurrence_of') is not None
+        or planning.get('recurrence_occurrence') is not None
+    )
+    if origin_kind == 'recurrence' and not recurrence_intent:
+        raise InvalidSchedule('Recurrence requires its prior Work and occurrence.')
+    if recurrence_intent:
+        from django.core.exceptions import PermissionDenied
+
+        from rest_framework.exceptions import ValidationError
+
+        from users.models import RuleSet
+
+        for field in ('recurrence_of', 'recurrence_occurrence', 'prior_version'):
+            if type(planning.get(field)) is not int or planning[field] < 1:
+                raise ValidationError(
+                    'Recurrence requires exact prior Work, occurrence and version identities.'
+                )
+        if not actor.is_active or not (
+            actor.is_superuser
+            or RuleSet.objects.filter(
+                group__user=actor, name='work_order', can_add=True, can_view=True
+            ).exists()
+        ):
+            raise PermissionDenied('Work creation permission required.')
 
     prior = WorkOrderCommand.objects.filter(
         command='create', idempotency_key=idempotency_key
@@ -222,22 +291,149 @@ def create_work_order(
             )
         # The command is FK'd to the card it created, so the card is prior's
         # work_order — result_ref holds the event pk, not the card pk.
-        existing = WorkOrder.objects.filter(pk=prior.work_order_id).first()
-        if existing is None:
-            raise WorkOrderCommandError('Stored create result cannot be replayed')
+        try:
+            existing = _locked_work_order(prior.work_order_id)
+        except WorkOrder.DoesNotExist as exc:
+            raise WorkOrderCommandError(
+                'Stored create result cannot be replayed'
+            ) from exc
+        _authorize_creation(actor, machine_id, lock=True)
+        _require_scope(actor, existing)
+        if routine_intent:
+            from rest_framework.exceptions import ValidationError
+
+            from tasks.services.routine_findings import REFUSAL, visible_work
+
+            if (
+                existing.corrective_origin_kind != 'routine_finding'
+                or existing.recurrence_of_id != routine_source.pk
+                or not visible_work(actor).filter(pk=existing.pk).exists()
+            ):
+                raise ValidationError(REFUSAL)
+        if planning.get('recurrence_of'):
+            _require_scope(actor, existing)
+            return _replay_or_none(existing, idempotency_key, request_hash)
         return _result_for(existing, 'create', prior.correlation_id, idempotency_key)
+
+    maximum = WorkOrder._meta.get_field('title').max_length
+    if not isinstance(title, str) or len(title) > maximum:
+        raise WorkOrderCommandError(
+            f'Work title must be text of at most {maximum} characters.'
+        )
+    if routine_intent:
+        if not isinstance(title, str) or not title.strip():
+            raise InvalidSchedule('A corrective Work title is required.')
+        routine_source = source(actor=actor, machine_id=machine_id, planning=planning)
+    recurrence = None
+    if recurrence_intent:
+        from tasks.services.recurrence import (
+            acceptance_state,
+            closure_time,
+            decision,
+            eligible_prior,
+            reopen_blocker,
+        )
+
+        prior_work, occurrence = eligible_prior(
+            actor=actor,
+            machine_id=machine_id,
+            occurrence_id=planning.get('recurrence_occurrence'),
+            prior_id=planning.get('recurrence_of'),
+        )
+        _require_scope(actor, prior_work)
+        machine = _authorize_creation(actor, machine_id, lock=True)
+        if type(planning.get('prior_version')) is not int:
+            raise InvalidSchedule('Prior Work version is required.')
+        _require_version(prior_work, planning['prior_version'])
+        if decision(prior_work, occurrence) == 'reopen':
+            if blocker := reopen_blocker(prior_work):
+                raise NotMutable(blocker)
+            from tasks.services.investigation_requests import _change_actor
+
+            _change_actor(actor)
+            from tasks.permissions import EXECUTE_WORKORDER, require_permission
+
+            require_permission(actor, EXECUTE_WORKORDER)
+            retained_completed_at = closure_time(prior_work)
+            prior_work.actual_completed_at = None
+            prior_work.status = WorkOrder.STATUS_IN_PROGRESS
+            prior_work.lifecycle_status = WorkOrderLifecycle.IN_PROGRESS
+            prior_work.lifecycle_version += 1
+            prior_work.save(
+                update_fields=[
+                    'status',
+                    'actual_completed_at',
+                    'lifecycle_status',
+                    'lifecycle_version',
+                    'updated_at',
+                ]
+            )
+            prior_work.cards.filter(card_kind=KanbanCard.KIND_WORK_ORDER).update(
+                status=WorkOrder.STATUS_IN_PROGRESS
+            )
+            occurrence.work_order = prior_work
+            occurrence.save(update_fields=['work_order', 'updated_at'])
+            return _append_result(
+                work_order=prior_work,
+                actor=actor,
+                command='create',
+                event_type='RECURRENCE_REOPENED',
+                from_status='completed',
+                to_status='in_progress',
+                reason='Same-component deviation before closure acceptance',
+                correlation_id=_new_correlation(correlation_id),
+                idempotency_key=idempotency_key,
+                request_hash=request_hash,
+                result_metadata={
+                    'occurrence_id': occurrence.pk,
+                    'recurrence_policy': 'recurrence_policy.v1',
+                    'outcome': 'reopened',
+                    'closure_acceptance': acceptance_state(prior_work),
+                    'retained_completed_at': retained_completed_at.isoformat(),
+                },
+            )
+        recurrence = (prior_work, occurrence)
+
+    if not recurrence_intent:
+        machine = _authorize_creation(actor, machine_id, lock=True)
 
     fields = {key: value for key, value in planning.items() if key in _PLAN_FIELDS}
     fields.setdefault('status', WorkOrder.STATUS_BACKLOG)
     fields.setdefault('priority', WorkOrder.PRIORITY_MEDIUM)
     fields.setdefault('work_order_type', WorkOrderType.CORRECTIVE)
 
+    if recurrence:
+        fields.update(
+            corrective_origin_kind='recurrence',
+            recurrence_of=recurrence[0],
+            recurrence_occurrence=recurrence[1],
+            affected_component_ref=recurrence[0].affected_component_ref,
+            affected_component=recurrence[0].affected_component,
+            customer_id=recurrence[0].customer_id,
+            work_order_type=WorkOrderType.CORRECTIVE,
+        )
+        existing = WorkOrder.objects.filter(recurrence_occurrence=recurrence[1]).first()
+        if existing:
+            raise NotMutable('This deviation already has corrective work.')
+    if routine_source:
+        fields.update(
+            recurrence_of=routine_source,
+            corrective_origin_kind='routine_finding',
+            corrective_finding=planning['corrective_finding'].strip(),
+            corrective_reading_id=planning.get('corrective_reading'),
+            corrective_step_id=planning.get('corrective_step'),
+            customer_id=routine_source.customer_id,
+            work_order_type=WorkOrderType.CORRECTIVE,
+        )
     correlation_id = _new_correlation(correlation_id)
 
     with transaction.atomic():
-        work_order = WorkOrder.objects.create(
-            title=title, machine_id=machine_id, **fields
-        )
+        work_order = WorkOrder(title=title, machine=machine, **fields)
+        _require_scope(actor, work_order)
+        work_order.save()
+        if recurrence:
+            recurrence[1].work_order = work_order
+            recurrence[1].save(update_fields=['work_order', 'updated_at'])
         return _append_result(
             work_order=work_order,
             actor=actor,
@@ -249,6 +445,21 @@ def create_work_order(
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
             request_hash=request_hash,
+            result_metadata={
+                'outcome': 'linked_created',
+                'closure_acceptance': acceptance_state(recurrence[0]),
+                'recurrence_of': recurrence[0].pk,
+                'occurrence_id': recurrence[1].pk,
+            }
+            if recurrence
+            else {
+                'outcome': 'linked_created',
+                'origin_kind': 'routine_finding',
+                'routine_work_id': routine_source.pk,
+                'prior_version': planning['prior_version'],
+            }
+            if routine_source
+            else None,
         )
 
 
@@ -276,6 +487,7 @@ def _mutate(
     event_type: str,
     payload: dict[str, Any],
     apply,
+    authorize=None,
     reason: str = '',
     correlation_id: uuid.UUID | None = None,
 ) -> CommandResult:
@@ -291,6 +503,9 @@ def _mutate(
 
     with transaction.atomic():
         work_order = _locked_work_order(work_order_id)
+
+        if authorize is not None:
+            authorize(work_order)
 
         replay = _replay_or_none(work_order, idempotency_key, request_hash)
         if replay:
@@ -321,6 +536,33 @@ def _mutate(
         )
 
 
+def _authorize_plan_update(actor, work_order, fields):
+    """Require Work view/change, the existing Work, and its proposed machine.
+
+    This also authorizes the resulting Work before an idempotent replay can
+    return. A shared Work's unchanged machine identity remains permitted; only
+    a newly selected machine requires its own client grant.
+    """
+    from users.permissions import check_user_role
+
+    if not check_user_role(actor, 'work_order', 'change'):
+        raise PermissionDenied('Planning updates require work_order.change')
+    _require_scope(actor, work_order)
+    machine = work_order.machine
+    machine_id = fields.get('machine_id', work_order.machine_id)
+    if machine_id != work_order.machine_id:
+        if machine_id is None:
+            machine = None
+        else:
+            machine = (
+                scoped_machines(actor).select_for_update().filter(pk=machine_id).first()
+            )
+            if machine is None:
+                raise WorkOrderScopeError('no such machine')
+    candidate = WorkOrder(customer_id=work_order.customer_id, machine=machine)
+    _require_scope(actor, candidate)
+
+
 def update_work_order_plan(
     *,
     work_order_id: int,
@@ -330,15 +572,26 @@ def update_work_order_plan(
     fields: dict[str, Any],
     correlation_id: uuid.UUID | None = None,
 ) -> CommandResult:
-    """Update planning metadata (title, description, priority, machine, type, …)."""
+    """Update planning metadata under native Work view/change and scope checks."""
     allowed = {key: value for key, value in fields.items() if key in _PLAN_FIELDS}
 
     if not allowed:
         raise WorkOrderCommandError('No updatable planning fields supplied.')
 
     def apply(work_order):
+        if 'machine_id' in allowed:
+            require_work_order_machine_change(work_order, allowed['machine_id'])
+        if (
+            'work_order_type' in allowed
+            and allowed['work_order_type'] != work_order.work_order_type
+            and work_order.calibration_traceability.exists()
+        ):
+            raise NotMutable(
+                'Work type cannot change while recorded calibration traceability exists.'
+            )
         for key, value in allowed.items():
             setattr(work_order, key, value)
+        _require_scope(actor, work_order)
         return {'updated_fields': sorted(allowed)}, list(allowed)
 
     return _mutate(
@@ -350,6 +603,7 @@ def update_work_order_plan(
         event_type='PLAN_UPDATED',
         payload={'fields': allowed, 'expected_version': expected_version},
         apply=apply,
+        authorize=lambda work_order: _authorize_plan_update(actor, work_order, allowed),
         correlation_id=correlation_id,
     )
 
@@ -522,6 +776,11 @@ def delete_work_order(
 
         _require_version(work_order, expected_version)
 
+        if work_order.investigation_requests.exists():
+            raise ProtectedWorkOrder(
+                'This Work has retained investigation requests and evidence and cannot be deleted.'
+            )
+
         record = WorkOrderDeletionRecord.objects.create(
             work_order_pk=work_order.pk,
             reference=work_order.reference or '',
@@ -555,7 +814,20 @@ def delete_work_order(
 
 def _snapshot(work_order: WorkOrder) -> dict[str, Any]:
     """Serialize the durable fields of a card for forensic recovery."""
+    from tasks.services.calibration import project as calibration_traceability
+
     return {
+        'handovers': [
+            {
+                field.attname: (
+                    getattr(row, field.attname).isoformat()
+                    if hasattr(getattr(row, field.attname), 'isoformat')
+                    else getattr(row, field.attname)
+                )
+                for field in row._meta.fields
+            }
+            for row in work_order.handovers.order_by('pk')
+        ],
         'title': work_order.title,
         'description': work_order.description,
         'status': work_order.status,
@@ -565,6 +837,12 @@ def _snapshot(work_order: WorkOrder) -> dict[str, Any]:
         'work_order_type': work_order.work_order_type,
         'machine_id': work_order.machine_id,
         'customer_id': work_order.customer_id,
+        'recurrence_of_id': work_order.recurrence_of_id,
+        'recurrence_occurrence_id': work_order.recurrence_occurrence_id,
+        'corrective_origin_kind': work_order.corrective_origin_kind,
+        'corrective_finding': work_order.corrective_finding,
+        'corrective_reading_id': work_order.corrective_reading_id,
+        'corrective_step_id': work_order.corrective_step_id,
         'assigned_to_id': work_order.assigned_to_id,
         'assignee': work_order.assignee,
         'scheduled_start': (
@@ -580,6 +858,13 @@ def _snapshot(work_order: WorkOrder) -> dict[str, Any]:
         'reference': work_order.reference,
         'created_at': work_order.created_at.isoformat(),
         'deleted_snapshot_at': timezone.now().isoformat(),
+        'calibration_traceability': dict(calibration_traceability(work_order)),
+        'investigation_retention': {
+            'policy': 'refuse_deletion_with_requests',
+            'request_ids': list(
+                work_order.investigation_requests.values_list('pk', flat=True)
+            ),
+        },
     }
 
 

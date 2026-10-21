@@ -13,7 +13,7 @@ from django.utils import timezone
 
 from .ai_analytics import plant_timezone
 from .models import WorkOrder, WorkOrderPart
-from .scope import machine_scope_filter, work_order_scope_filter
+from .scope import ScopeError, machine_scope_filter, work_order_scope_filter
 
 OPEN = frozenset({'planned', 'ready', 'in_progress', 'on_hold', 'verifying'})
 METRICS = frozenset({
@@ -127,10 +127,17 @@ class MetricOptions:
         )
 
 
-def _machines(actor, options, *, apply_filters=True):
+def _machines(actor, options, *, apply_filters=True, allow_unresolved=False):
     from assets.models import AssetMachine
 
-    rows = AssetMachine.objects.filter(machine_scope_filter(actor))
+    try:
+        rows = AssetMachine.objects.filter(machine_scope_filter(actor))
+    except ScopeError:
+        if not allow_unresolved:
+            raise
+        # Shared Work needs no machine grant. Missing machine authority still
+        # withholds enrichment, machine filter matches and filter choices.
+        rows = AssetMachine.objects.none()
     if apply_filters and 'machine' in options.filters:
         rows = rows.filter(pk=options.filters['machine'])
     if apply_filters and 'client' in options.filters:
@@ -584,7 +591,8 @@ def _machine_metric(actor, o, machines):
 
 def dashboard_metric(actor, options):
     """Calculate a complete authorized metric and its matching paginated rows."""
-    machines = _machines(actor, options)
+    work_metric = options.metric not in MACHINE_METRICS
+    machines = _machines(actor, options, allow_unresolved=work_metric)
     rows, value, unit, missing, stats = (
         _machine_metric(actor, options, machines)
         if options.metric in MACHINE_METRICS
@@ -653,7 +661,9 @@ def dashboard_metric(actor, options):
         for row in rows[options.offset : options.offset + 25]
     ]
     next_offset = options.offset + len(page)
-    available_machines = _machines(actor, options, apply_filters=False)
+    available_machines = _machines(
+        actor, options, apply_filters=False, allow_unresolved=work_metric
+    )
     clients = {
         str(m['client_id']): m['client_label']
         for m in available_machines.values()

@@ -73,33 +73,28 @@ class WorkOrderAPITest(TestCase):
         """Return the canonical transition-command URL for a work order."""
         return f'/api/tasks/work-orders/{work_order.pk}/transition/'
 
-    def test_list_is_paginated_and_excludes_other_customer(self):
-        """Collection counts and rows must not leak another customer scope."""
+    def test_list_is_paginated_and_includes_other_customer(self):
+        """O24 shares all customer Work while preserving canonical pagination."""
         visible = self.make_card(title='Visible work order')
-        self.make_card(
-            title='Hidden work order',
-            customer=self.other_customer,
-        )
+        other = self.make_card(title='Shared work order', customer=self.other_customer)
 
         response = self.client.get(self.list_url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         payload = response.json()
         self.assertEqual(set(payload), {'count', 'next', 'previous', 'results'})
-        self.assertEqual(payload['count'], 1)
-        self.assertEqual([item['id'] for item in payload['results']], [visible.pk])
+        self.assertEqual(payload['count'], 2)
+        self.assertEqual(
+            {item['id'] for item in payload['results']}, {visible.pk, other.pk}
+        )
 
-    def test_client_grant_sees_only_customerless_orders_on_its_machines(self):
-        """A client grant reaches customer-NULL orders on that client's machines.
+    def test_client_grant_sees_shared_work_and_own_machine_only_work(self):
+        """A client grant reaches shared Work and its own machine-only jobs.
 
-        The explicit customer on a work order is its whole boundary, so a
-        client grant must not see it even when it sits on the client's own
-        machine; and another client's machines stay invisible entirely.
+        Foreign machine-only Work is still withheld.
         """
         suffix = uuid.uuid4().hex[:6]
-        tenant = Client.objects.create(
-            name=f'Tenant {suffix}', code=f'tenant-{suffix}'
-        )
+        tenant = Client.objects.create(name=f'Tenant {suffix}', code=f'tenant-{suffix}')
         other_tenant = Client.objects.create(
             name=f'Other tenant {suffix}', code=f'other-tenant-{suffix}'
         )
@@ -113,14 +108,11 @@ class WorkOrderAPITest(TestCase):
         visible = self.make_card(
             title='Client-owned work order', customer=None, machine=machine
         )
-        self.make_card(
-            title='Explicit customer wins over the machine client',
-            machine=machine,
+        other = self.make_card(
+            title='Shared customer Work on a client machine', machine=machine
         )
         self.make_card(
-            title='Another client machine order',
-            customer=None,
-            machine=foreign_machine,
+            title='Another client machine order', customer=None, machine=foreign_machine
         )
 
         actor = get_user_model().objects.create_superuser(
@@ -138,8 +130,10 @@ class WorkOrderAPITest(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         payload = response.json()
-        self.assertEqual(payload['count'], 1)
-        self.assertEqual([item['id'] for item in payload['results']], [visible.pk])
+        self.assertEqual(payload['count'], 2)
+        self.assertEqual(
+            {item['id'] for item in payload['results']}, {visible.pk, other.pk}
+        )
 
     def test_detail_returns_typed_work_order_fields(self):
         """The canonical detail exposes typed IDs, state, kind, and version."""
@@ -204,8 +198,12 @@ class WorkOrderAPITest(TestCase):
             'reason': 'Planning is complete',
         }
 
-        first = self.client.post(self.transition_url(work_order), command, format='json')
-        replay = self.client.post(self.transition_url(work_order), command, format='json')
+        first = self.client.post(
+            self.transition_url(work_order), command, format='json'
+        )
+        replay = self.client.post(
+            self.transition_url(work_order), command, format='json'
+        )
 
         self.assertEqual(first.status_code, status.HTTP_200_OK)
         self.assertEqual(replay.status_code, status.HTTP_200_OK)
@@ -219,8 +217,12 @@ class WorkOrderAPITest(TestCase):
         work_order.refresh_from_db()
         self.assertEqual(work_order.lifecycle_status, WorkOrderLifecycle.PLANNED)
         self.assertEqual(work_order.lifecycle_version, 2)
-        self.assertEqual(WorkOrderEvent.objects.filter(work_order=work_order).count(), 1)
-        self.assertEqual(WorkOrderCommand.objects.filter(work_order=work_order).count(), 1)
+        self.assertEqual(
+            WorkOrderEvent.objects.filter(work_order=work_order).count(), 1
+        )
+        self.assertEqual(
+            WorkOrderCommand.objects.filter(work_order=work_order).count(), 1
+        )
 
     def test_readiness_returns_structured_blockers(self):
         """Readiness reports every discovered blocker in the stable flat shape."""

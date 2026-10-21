@@ -3,9 +3,9 @@
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Permission
+from django.contrib.auth.models import Group, Permission
 
-from assets.models import AssetMachine
+from assets.models import AssetMachine, Client
 from company.models import Company
 from part.models import Part
 from stock.models import StockItem
@@ -18,6 +18,7 @@ from tasks.models import (
     WorkOrderType,
 )
 from tasks.scope import MaintenanceScope
+from users.models import RuleSet
 
 CLOSEOUT_FLAGS = {
     'AIMMS_WORK_ORDERS_ENABLED': True,
@@ -54,10 +55,12 @@ class CloseoutEnvMixin:
         self.actor = factory(
             username=username, email=f'{username}@example.com', password='pw'
         )
+        self.tenant = Client.objects.create(name=f'Closeout client {username}', code=f'closeout-{username}')
         self.actor.maintenance_scopes = {
-            MaintenanceScope(customer_id=self.customer.pk, site_key=None)
+            MaintenanceScope(customer_id=self.customer.pk, site_key=None),
+            MaintenanceScope(customer_id=None, site_key=None, client_id=self.tenant.pk),
         }
-        self.machine = AssetMachine.objects.create(name=f'Machine {username}')
+        self.machine = AssetMachine.objects.create(name=f'Machine {username}', client=self.tenant)
         self.work_order = WorkOrder.objects.create(
             title='Closeout work',
             status=WorkOrder.STATUS_REVIEW,
@@ -74,6 +77,11 @@ class CloseoutEnvMixin:
         user = get_user_model().objects.create_user(
             username=username, email=f'{username}@example.com', password='pw'
         )
+        readers, _ = Group.objects.get_or_create(name='Closeout fixture readers')
+        RuleSet.objects.update_or_create(
+            group=readers, name='work_order', defaults={'can_view': True}
+        )
+        user.groups.add(readers)
         for codename in permissions:
             user.user_permissions.add(
                 Permission.objects.get(
@@ -82,7 +90,8 @@ class CloseoutEnvMixin:
             )
         user = get_user_model().objects.get(pk=user.pk)
         user.maintenance_scopes = {
-            MaintenanceScope(customer_id=self.customer.pk, site_key=None)
+            MaintenanceScope(customer_id=self.customer.pk, site_key=None),
+            MaintenanceScope(customer_id=None, site_key=None, client_id=self.tenant.pk),
         }
         return user
 

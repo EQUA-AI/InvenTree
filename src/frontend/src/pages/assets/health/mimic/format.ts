@@ -66,7 +66,9 @@ export function usable(point?: MimicPoint): point is MimicPoint {
 }
 
 export function numberText(value: number, digits = 3) {
-  return value.toLocaleString(undefined, { maximumFractionDigits: digits });
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: digits
+  }).format(value);
 }
 
 export function valueText(point?: MimicPoint) {
@@ -147,4 +149,35 @@ export function byBayNumber(a: Bay, b: Bay) {
     return a.key.localeCompare(b.key);
   }
   return x - y;
+}
+
+/** A discharge number is supplied only by a usable, good, finite reading. */
+export function dischargeFlowReading(
+  data: MimicData,
+  unit: string
+): string | null {
+  const element = data.layout.elements.find(
+    (e) => e.id === 'pump-flow' && e.view === 'unit'
+  );
+  const point = element
+    ? data.points[expandPointer(element.pointer, unit)]
+    : undefined;
+  return usable(point) &&
+    point.quality === 'good' &&
+    typeof point.value === 'number' &&
+    Number.isFinite(point.value)
+    ? displayFor(data, unit)(point)
+    : null;
+}
+export function pollErrorLabel(code: string): string {
+  const labels: Record<string, string> = {
+    AUTH: t`Source authentication failed`,
+    NOT_FOUND: t`Source record not found`,
+    THROTTLED: t`Source request rate limited`,
+    NETWORK: t`Source network request failed`,
+    CONFIG: t`Source configuration error`,
+    SNAPSHOT: t`Source snapshot could not be read`,
+    INGEST: t`Source readings could not be ingested`
+  };
+  return labels[code] ?? t`Polling error`;
 }

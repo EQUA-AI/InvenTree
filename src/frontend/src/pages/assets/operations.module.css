@@ -1,0 +1,104 @@
+/* Native Mantine tokens keep operational surfaces aligned in both schemes. */
+.band {
+  border: 1px solid var(--mantine-color-default-border);
+  border-left: 3px solid var(--mantine-primary-color-filled);
+  background: var(--mantine-color-body);
+  border-radius: var(--mantine-radius-default);
+  padding: var(--mantine-spacing-xs) var(--mantine-spacing-sm);
+  min-width: 0;
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--mantine-spacing-sm);
+}
+.metric {
+  border-left: 1px solid var(--mantine-color-default-border);
+  padding-left: var(--mantine-spacing-sm);
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+.metric:first-child { border-left: 0; padding-left: 0; }
+.label { color: var(--mantine-color-text); font-size: var(--mantine-font-size-xs); }
+.value { font-size: var(--mantine-font-size-xl); font-weight: 650; line-height: 1.4; }
+.caveat { max-width: 70ch; color: var(--mantine-color-text); font-size: var(--mantine-font-size-sm); overflow-wrap: anywhere; }
+@media (max-width: 36em) {
+  .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .metric:nth-child(odd) { border-left: 0; padding-left: 0; }
+}
+.meta { color: var(--mantine-color-gray-7); font-size: var(--mantine-font-size-xs); overflow-wrap: anywhere; }
+:global([data-mantine-color-scheme='dark']) .meta { color: var(--mantine-color-dark-1); }
+.link { color: var(--mantine-primary-color-7); }
+:global([data-mantine-color-scheme='dark']) .link { color: var(--mantine-primary-color-4); }
+.input { border-color: var(--mantine-color-gray-6); }
+:global([data-mantine-color-scheme='dark']) .input { border-color: var(--mantine-color-dark-2); }
+.mimicPanel { background: var(--mantine-color-gray-0); --mimic-stale-line: var(--mantine-color-gray-7); --mimic-hatch-line: var(--mantine-color-gray-6); }
+:global([data-mantine-color-scheme='dark']) .mimicPanel { background: var(--mantine-color-dark-8); --mimic-stale-line: var(--mantine-color-dark-1); --mimic-hatch-line: var(--mantine-color-dark-2); }
+
+.inline { display: contents; }
+.cell { vertical-align: top; overflow-wrap: anywhere; }
+
+/* Keep the first operational item visible on small screens without reducing
+   text sizes or removing the provenance and availability explanations. */
+@media (max-width: 48em) {
+  .band { padding: 6px var(--mantine-spacing-xs); }
+  .band h4 { line-height: 1.25; }
+  .band .meta, .caveat { line-height: 1.4; }
+  .phoneStack { gap: 6px; }
+  .phoneOccurrences { gap: 3px; }
+  .phoneSummary { gap: 2px; }
+}
+.heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: start;
+  gap: var(--mantine-spacing-xs);
+}
+
+/* Phone targets keep their desktop sizes outside the narrow viewport. */
+.mimicFocusRing { visibility: hidden; pointer-events: none; }
+.mimicPart:focus-visible > .mimicFocusRing { visibility: visible; }
+.alarmTable { min-width: 720px; }
+.alarmActions { white-space: nowrap; }
+@media (max-width: 48em) {
+  .phoneTarget { min-height: 44px; min-width: 44px; height: auto; }
+  .phoneActions { gap: 8px; }
+  .phoneActions > .phoneTarget { padding-inline: 4px; }
+  .alarmScroll { overflow: visible; padding-bottom: 8px; }
+  .alarmTable { min-width: 0; width: 100%; }
+  .alarmTable thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .alarmTable tbody { display: grid; gap: 12px; }
+  .alarmTable tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); border: 1px solid var(--mantine-color-default-border); border-radius: var(--mantine-radius-default); }
+  .alarmTable td { min-width: 0; overflow-wrap: anywhere; }
+  .alarmTable td[data-label]::before { content: attr(data-label); display: block; font-size: var(--mantine-font-size-xs); color: var(--mantine-color-text); }
+  .alarmTable td:first-child, .alarmTable td:nth-child(2), .alarmTable td:nth-child(5), .alarmTable td:last-child { grid-column: 1 / -1; }
+  .alarmActions { white-space: normal; }
+  .alarmActions :where(button, a) { scroll-margin-block: 12px; }
+  .alarmActions a { min-width: 44px; min-height: 44px; }
+}
+
+@media (max-width: 48em) {
+  .conditionCounts { gap: 8px; }
+  .pumpStatus { row-gap: 4px; }
+  .pumpActions { gap: 4px 8px; }
+  .pumpAlarmSummary { display: grid; grid-template-columns: minmax(0, 1fr) max-content; gap: 4px 8px; width: 100%; }
+  .pumpAlarmSummary .pumpAlarmCounts { height: auto; min-height: 44px; font-size: var(--mantine-font-size-xs); }
+  .pumpAlarmCounts :global(.mantine-Badge-label) { white-space: normal; line-height: 1.2; }
+  .pumpAlarmSummary > p { grid-column: 1 / -1; }
+  .pumpAlarmSummary .phoneAlarmLink { grid-column: 2; grid-row: 1; }
+  .phoneAlarmLink { min-height: 44px; display: inline-flex; align-items: center; }
+}
+
+@media (min-width: 48.01em) {
+  .conditionCounts { display: contents; }
+  .conditionCounts .phoneTarget { height: 18px; min-height: 18px; padding-inline: 7px; }
+  .phoneSummary .alarmFilter { height: 20px; }
+}
+
+/* Zero is a readable page fact even when there is no row to navigate to. */
+.conditionCounts .phoneTarget:disabled {
+  color: var(--mantine-color-text);
+  background: var(--mantine-color-body);
+  border-color: var(--mantine-color-default-border);
+  opacity: 1;
+}

@@ -467,7 +467,7 @@ test('C2: no scope menu; read-only context states confirmed analysis scope', asy
   await loadDrawerFixture(page);
 
   // The menu, its trigger and its options are gone for every thread type.
-  await expect(page.getByLabel('change-ai-chat-scope')).toHaveCount(0);
+  await expect(page.getByTestId('change-ai-chat-scope')).toHaveCount(0);
   await expect(page.getByTestId('scope-option-fleet')).toHaveCount(0);
   await expect(page.getByTestId('scope-option-machine')).toHaveCount(0);
 
@@ -489,7 +489,7 @@ test('C2: machine Ask seeds the scope before the send and collapses the hint', a
 
   const composer = page.getByPlaceholder('Type a message...');
   await composer.fill('What is wrong?');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByText('Golden typed response', { exact: true })
   ).toBeVisible();
@@ -521,7 +521,7 @@ test('C2: dismissing the hint never clears a confirmed scope', async ({
   // Unconfirmed scope + hint: dismissal hides the chip only.
   await page.getByTestId('fixture-ask-machine').click();
   await expect(page.getByTestId('ai-chat-routing-hint')).toBeVisible();
-  await page.getByLabel('dismiss-routing-hint').click();
+  await page.getByTestId('dismiss-routing-hint').click();
   await expect(page.getByTestId('ai-chat-routing-hint')).toHaveCount(0);
   expect(foundation.scopeMutations).toHaveLength(0);
   await expect(page.getByTestId('ai-chat-analysis-context')).toContainText(
@@ -534,7 +534,7 @@ test('C2: dismissing the hint never clears a confirmed scope', async ({
   foundation.scope.machineIds = [7];
   foundation.scope.displayLabel = 'Pump A';
   await page.reload();
-  await page.getByLabel('open-ai-chat').click();
+  await page.getByTestId('open-ai-chat').click();
   await page.getByTestId('fixture-ask-machine').click();
   await expect(page.getByTestId('ai-chat-routing-hint')).toHaveCount(0);
   await expect(page.getByTestId('ai-chat-analysis-context')).toContainText(
@@ -597,7 +597,7 @@ test('C3: active voice strip stays reachable on every tab and close cleans up', 
   );
 
   // Closing the drawer ends voice (current explicit close policy).
-  await page.getByLabel('close-ai-chat').click();
+  await page.getByTestId('close-ai-chat').click();
   await expect.poll(() => voice?.sessionEnded).toBe(true);
   await expect(page.getByTestId('voice-minimized-indicator')).toHaveCount(0);
 });
@@ -753,7 +753,7 @@ test('U1: empty-state suggestions are semantic buttons and adapt to a machine hi
 
   // Machine hint → machine-relevant prompts.
   await page.reload();
-  await page.getByLabel('open-ai-chat').click();
+  await page.getByTestId('open-ai-chat').click();
   await page.getByTestId('fixture-ask-machine').click();
   await expect(
     page.getByRole('button', { name: 'Machine status' })
@@ -834,9 +834,9 @@ test('plan A: a failed machine selection blocks the typed send and preserves the
   );
   const composer = page.getByPlaceholder('Type a message...');
   await composer.fill('What is wrong?');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
-    page.getByText(/Could not confirm the machine context/)
+    page.getByRole('alert').filter({ hasText: 'Machine context not confirmed' })
   ).toBeVisible();
 
   // Nothing was sent unscoped; the draft, attachments and hint survive.
@@ -879,7 +879,9 @@ test('plan A: a thread switch during voice ends the old session before any rebin
 
   // Deliberate thread switch while the session is live: the old session is
   // torn down (DELETE) and its turn channel disappears with it.
-  await page.getByLabel('new-ai-chat-thread').click();
+  await page
+    .getByRole('button', { name: 'New conversation', exact: true })
+    .click();
   await expect.poll(() => voice?.sessionEnded).toBe(true);
   await expect(page.getByTestId('ai-chat-voice-active')).toHaveCount(0);
   expect(voice?.turns ?? []).toHaveLength(0);
@@ -1035,7 +1037,7 @@ test('plan C: a task target Ask commits focus before the typed send and never se
   await loadDrawerFixture(page);
   await page.getByTestId('fixture-ask-task').click();
   await page.getByPlaceholder('Type a message...').fill('What is left to do?');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect.poll(() => observed.streamPosts.length).toBe(1);
   await expect.poll(() => timeline.length).toBeGreaterThanOrEqual(2);
   // The exact focus ack precedes the submit; the turn carries its stamp.
@@ -1058,7 +1060,7 @@ test('plan C: a failed target selection blocks the typed send and preserves the 
   foundation.focus.rejectUpdates = true;
   const composer = page.getByPlaceholder('Type a message...');
   await composer.fill('What is its status?');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(page.getByText(/Could not confirm the target/)).toBeVisible();
   expect(observed.streamPosts).toHaveLength(0);
   // Fail closed: nothing was sent and the draft survives.

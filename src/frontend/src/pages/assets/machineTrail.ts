@@ -31,7 +31,9 @@ export interface MachineTrail {
  * one last *clicked*, and a pump's Performance tab is usually arrived at from
  * the station's table rather than clicked - so the way back would land on
  * whichever tab was clicked some time before, not on the table it came from.
- * A station has every tab a pump has.
+ * A station has every tab a pump has but one: a pump's Equipment view (3D
+ * model and its process schematic) corresponds to the station's own mimic,
+ * so the station crumb opens that instead of falling back to Details.
  *
  * A pump is registered as "<station> / Pump 01". Its own crumb drops the
  * station, which the crumb before it has just said.
@@ -63,8 +65,12 @@ export function machineTrail(
   const station = machine.parent_name;
   const prefix = `${station} / `;
 
+  const stationPage = `${getDetailUrl(ModelType.assetmachine, machine.parent)}${
+    panel === 'equipment' ? 'mimic' : (panel ?? '')
+  }`;
+
   return {
-    breadcrumbs: [{ name: station, url: pageOf(machine.parent) }],
+    breadcrumbs: [{ name: station, url: stationPage }],
     lastCrumb: [
       {
         ...self,

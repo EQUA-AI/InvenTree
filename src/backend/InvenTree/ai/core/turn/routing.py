@@ -48,9 +48,21 @@ async def _build_route_inner(service: NormalizedTurnService, run: TurnRun) -> No
         # binds to the focus snapshot RECORDED with this turn (the original
         # binding on replay) via the same "utterance — label" idiom the
         # question rail uses. Explicit references win and stay untouched.
-        from ai.core.focus.commands import continuity_content
+        from ai.core.focus.commands import continuity_content, is_bare_anaphora
 
-        run.routing_content = continuity_content(run.content, run.focus_snapshot)
+        work_focus = getattr(run, "work_focus", None)
+        if is_bare_anaphora(run.content) and isinstance(work_focus, dict):
+            # Preconditions already checked any conversation target against
+            # this verified per-turn target. Route to its more specific Work
+            # identity; the persistent focus and analysis scope stay unchanged.
+            work_order_id = work_focus.get("work_order_id")
+            machine_id = work_focus.get("machine_id")
+            if work_order_id is not None:
+                run.routing_content = f"{run.content} — work order {work_order_id}"
+            elif machine_id is not None:
+                run.routing_content = f"{run.content} — machine {machine_id}"
+        else:
+            run.routing_content = continuity_content(run.content, run.focus_snapshot)
 
     # S3: typed task/effect intent BEFORE diagnostic-context construction.
     # Skipped for already-refused turns (no wasted classifier call). The

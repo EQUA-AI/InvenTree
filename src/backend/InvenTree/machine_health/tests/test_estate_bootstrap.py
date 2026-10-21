@@ -23,6 +23,8 @@ from assets.health_models import HealthSource, MachineSignalBinding
 from assets.ingestion_models import IngestionCheckpoint
 from assets.models import AssetMachine, Client
 from assets.registry_models import DictionaryPoint
+from common.models import CustomUnit
+from InvenTree.conversion import reload_unit_registry
 from machine_health.connectors.cosmos_pumphouse import to_epoch_ms
 
 REVIEW_DIR = Path(__file__).resolve().parents[5] / 'contrib/cosmos/review'
@@ -46,6 +48,13 @@ class EstateBootstrapTests(TestCase):
 
     def setUp(self):
         """Everything section 14 says must exist before onboarding."""
+        self.assertTrue(
+            CustomUnit.objects.filter(name='cusec').exists(),
+            'the cusec unit must come from the data migration',
+        )
+        # Startup precedes the migrated test database, and test rollbacks do
+        # not restore the process-wide unit registry.
+        reload_unit_registry()
         call_command('load_pump_catalogue', stdout=StringIO())
         self.source = HealthSource.objects.create(
             name='Cosmos probe',

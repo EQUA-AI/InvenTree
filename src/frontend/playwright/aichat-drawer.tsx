@@ -33,7 +33,12 @@ import { useVoiceSurfaceState } from '../src/states/VoiceSessionState';
 useUserState.setState({
   is_authed: true,
   authStatus: 'authenticated',
-  user: { pk: 11, username: 'Drawer fixture', is_superuser: true } as any
+  user: {
+    pk: 11,
+    username: 'Drawer fixture',
+    is_superuser:
+      new URLSearchParams(window.location.search).get('actor') !== 'reader'
+  } as any
 });
 
 function DrawerFixture() {

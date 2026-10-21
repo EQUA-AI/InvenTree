@@ -194,15 +194,27 @@ class MaintenanceRecordProjectionTest(InvenTreeAPITestCase):
     @override_settings(
         AIMMS_WORK_ORDERS_ENABLED=True, AIMMS_MAINTENANCE_SCOPE_RESOLVER=_scope_resolver
     )
-    def test_out_of_scope_work_order_id_is_withheld(self):
-        """A caller outside the work order's scope gets no link and no id."""
+    def test_different_customer_scope_keeps_shared_work_link(self):
+        """A resolved reader sees customer Work regardless of customer value."""
         _GRANTED_CUSTOMER_IDS[:] = [
             Company.objects.create(name='Other utility', is_customer=True).pk
         ]
 
         row = self._rows()['Pump 2 seal and wear-ring repair']
 
-        # The row itself is still readable - only the link is withheld.
+        # Both history and linked shared Work remain readable.
+        self.assertEqual(row['summary'], 'Pump 2 seal and wear-ring repair')
+        self.assertEqual(row['work_order'], self.work_order.pk)
+        self.assertEqual(row['work_order_reference'], self.work_order.reference)
+        self.assertEqual(row['work_order_title'], self.work_order.title)
+        self.assertEqual(row['downtime_minutes'], 432)
+
+        # The boundary that remains: a machine-only job on a machine the reader
+        # holds no client scope for. The row stays readable; the link does not.
+        type(self.work_order).objects.filter(pk=self.work_order.pk).update(
+            customer=None
+        )
+        row = self._rows()['Pump 2 seal and wear-ring repair']
         self.assertEqual(row['summary'], 'Pump 2 seal and wear-ring repair')
         self.assertIsNone(row['work_order'])
         self.assertIsNone(row['work_order_reference'])

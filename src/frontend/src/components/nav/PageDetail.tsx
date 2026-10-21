@@ -146,14 +146,14 @@ export function PageDetail({
           <Group
             justify='space-between'
             gap='xs'
-            wrap='nowrap'
+            wrap='wrap'
             align='flex-start'
           >
             <Group
               justify='space-between'
               wrap='nowrap'
               align='flex-start'
-              style={{ flexGrow: 1 }}
+              style={{ flexGrow: 1, minWidth: 0, overflowWrap: 'anywhere' }}
             >
               <Group justify='start' wrap='nowrap' align='flex-start'>
                 {imageUrl && (
@@ -187,7 +187,13 @@ export function PageDetail({
               )}
             </Group>
             {computedActions.length > 0 && (
-              <Group gap={5} justify='right' wrap='nowrap' align='center'>
+              <Group
+                gap={5}
+                justify='right'
+                wrap='wrap'
+                align='center'
+                maw='100%'
+              >
                 {computedActions.map((action, idx) => (
                   <Fragment key={idx}>{action}</Fragment>
                 ))}

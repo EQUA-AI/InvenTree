@@ -23,7 +23,7 @@ from django.test import TestCase
 from tasks.models import WorkOrder
 from tasks.scope import MaintenanceScope
 
-from aichat.models import ProposalState
+from aichat.models import ChatActionProposal, ProposalState
 from aichat.services import proposals as svc
 from assets.models import AssetMachine, Client
 from part.models import Part
@@ -211,10 +211,12 @@ class RepairWorkPackageProposalTest(TestCase):
         """A boundary is never guessed for an unscoped record."""
         orphan = AssetMachine.objects.create(name=f'Orphan {uuid.uuid4().hex[:6]}')
 
-        with self.assertRaisesMessage(
-            svc.ProposalError, 'Machine scope is unresolved: it has no client.'
-        ):
+        # Unresolved, foreign and absent machines now share the command's
+        # non-enumerating refusal before live repair preview enrichment.
+        with self.assertRaisesMessage(svc.ProposalNotFound, 'no such machine'):
             self._propose(machine_id=orphan.pk)
+        self.assertFalse(ChatActionProposal.objects.exists())
+        self.assertFalse(WorkOrder.objects.exists())
 
     def test_invalid_draft_is_refused_before_any_row_is_written(self):
         """A malformed draft never becomes a pending proposal."""

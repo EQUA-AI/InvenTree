@@ -8,9 +8,9 @@ import type { Page, Route } from '@playwright/test';
  */
 
 export const MACHINE = 18;
-export const NOW = Date.parse('2026-09-26T12:00:00Z');
+export const NOW = Date.parse('2026-10-18T09:00:00Z');
 
-interface SignalSpec {
+export interface SignalSpec {
   key: string;
   value: number | string | null;
   unit: string;
@@ -19,6 +19,8 @@ interface SignalSpec {
     Record<'warn_max' | 'critical_max' | 'warn_min' | 'critical_min', number>
   >;
   stale?: boolean;
+  observedAt?: string | null;
+  freshnessSeconds?: number;
   state?: string;
   quality?: string;
 }
@@ -116,8 +118,8 @@ export const SIGNALS: SignalSpec[] = [
   }
 ];
 
-export function signalRows() {
-  return SIGNALS.map((spec, index) => ({
+export function signalRows(specs: readonly SignalSpec[] = SIGNALS) {
+  return specs.map((spec, index) => ({
     binding_id: 100 + index,
     source_id: 1,
     source_name: 'Fixture source',
@@ -128,11 +130,15 @@ export function signalRows() {
     unit: spec.unit,
     value: spec.value,
     observed_at:
-      spec.value === null ? null : new Date(NOW - 20_000).toISOString(),
+      spec.observedAt === undefined
+        ? spec.value === null
+          ? null
+          : new Date(NOW - 20_000).toISOString()
+        : spec.observedAt,
     received_at: new Date(NOW - 10_000).toISOString(),
     quality: spec.quality ?? (spec.value === null ? 'unknown' : 'good'),
     stale: spec.stale ?? false,
-    freshness_threshold_seconds: 300,
+    freshness_threshold_seconds: spec.freshnessSeconds ?? 300,
     state: spec.state ?? (spec.limits ? 'normal' : 'unknown'),
     limits: {
       normal_min: null,
@@ -146,7 +152,11 @@ export function signalRows() {
 }
 
 /** Build a series response for whatever the panel asked for. */
-export function seriesFor(url: URL, options: { fail?: boolean } = {}) {
+export function seriesFor(
+  url: URL,
+  options: { fail?: boolean } = {},
+  specs: readonly SignalSpec[] = SIGNALS
+) {
   const from = Date.parse(url.searchParams.get('from') ?? '');
   const to = Date.parse(url.searchParams.get('to') ?? '');
   const points = Number(url.searchParams.get('points') ?? 240);
@@ -159,7 +169,7 @@ export function seriesFor(url: URL, options: { fail?: boolean } = {}) {
   const complete = expected <= 240;
   const count = complete ? expected : points;
   const step = (to - from) / count;
-  const rows = signalRows();
+  const rows = signalRows(specs);
 
   const series = ids
     .map((id) => rows.find((row) => row.binding_id === id))
@@ -250,6 +260,7 @@ export async function mount(
   page: Page,
   options: { fail?: boolean; signalOverrides?: Record<string, number> } = {}
 ) {
+  await page.clock.setFixedTime(new Date(NOW));
   const requests: URL[] = [];
   await page.route(
     `**/api/machine-health/machines/${MACHINE}/health/signals/**`,
@@ -261,7 +272,20 @@ export async function mount(
         options.signalOverrides ?? {}
       )) {
         const row = rows.find((r) => r.external_key === key);
-        if (row) row.value = value;
+        if (row) {
+          row.value = value;
+          // Synthetic API mirrors the server classifier; the UI consumes this state.
+          const outside = (low: number | null, high: number | null) =>
+            (low != null && value < low) || (high != null && value > high);
+          row.state =
+            row.stale || row.quality !== 'good'
+              ? 'unknown'
+              : outside(row.limits.critical_min, row.limits.critical_max)
+                ? 'critical'
+                : outside(row.limits.warn_min, row.limits.warn_max)
+                  ? 'warning'
+                  : 'normal';
+        }
       }
       return route.fulfill({ json: { count: rows.length, results: rows } });
     }

@@ -5,6 +5,8 @@
  * state is written by connectors and deterministic detectors, never by the UI.
  */
 
+import type { CriticalDesignation } from './RecordedFacts';
+
 export type HealthState =
   | 'unknown'
   | 'normal'
@@ -68,12 +70,15 @@ export interface MachineSignalLimits {
 }
 
 export interface MachineSignal {
+  active?: boolean;
+  critical_designation?: CriticalDesignation | null;
   binding_id: number;
   source_id: number;
   source_name: string;
   source_type: HealthSourceType;
   /** The mapped pointer, e.g. `/dex/PUMP3_SPEED`; what a page groups by. */
   external_key: string;
+  component?: { code: string; name: string; status: string } | null;
   display_name: string;
   signal_kind: string;
   unit: string;
@@ -119,6 +124,8 @@ export interface MachineAnomaly {
   acknowledgement_note: string;
   /** Whether the two observation times were moved onto the presented clock. */
   display_shifted?: boolean;
+  /** Offset used when serializing the observation times, not the current offset. */
+  display_shift_seconds?: number | null;
   resolved_at: string | null;
   resolution_note: string;
   work_order: number | null;
@@ -146,6 +153,7 @@ export interface HealthEvidenceSnapshot {
   source_references: Record<string, unknown>;
   content_hash: string;
   system_actor: string;
+  captured_by_name?: string | null;
 }
 
 export type AnalysisStatus =
@@ -238,7 +246,21 @@ export interface SignalTrend {
   window_start: string;
   window_end: string;
   max_samples: number;
-  limits: { max_window_seconds: number; max_samples: number };
+  limits: {
+    max_window_seconds: number;
+    max_samples: number;
+    /** Server-wide expected interval in seconds; not a source-specific fact. */
+    expected_sample_interval_seconds?: number;
+  };
+  /**
+   * Shortest positive observed interval in seconds; null below three readings
+   * or with no positive gaps. An estimate from this read, not a configured
+   * source rate. Silences cannot stretch their own comparison interval.
+   */
+  cadence_seconds?: number | null;
+  /** Whether the times were moved onto the clock the dashboard shows. */
+  display_shifted?: boolean;
+  display_shift_seconds?: number;
   available: boolean;
   reason?: string;
   detail?: string;
@@ -259,6 +281,8 @@ export interface SeriesSample {
 }
 
 export interface SeriesEntry {
+  /** Frontend-derived from this entry's bounded batch, not a historian field. */
+  read_resolution_seconds?: number;
   binding_id: number;
   machine_id: number;
   external_key: string;
@@ -292,6 +316,16 @@ export interface SeriesLive {
  * them across the window. Nothing in either is averaged or interpolated.
  */
 export interface SeriesResponse {
+  /** Frontend aggregation metadata; not asserted by the historian API. */
+  read_batches?: {
+    target_count: number;
+    failed: boolean;
+    bindings: readonly number[];
+    keys: readonly string[];
+    resolution_seconds?: number;
+    cadence_seconds?: number | null;
+    display_shift_seconds?: number;
+  }[];
   machine: number;
   station: { pk: number; name: string } | null;
   window_start: string;

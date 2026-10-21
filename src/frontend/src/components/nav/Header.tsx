@@ -17,7 +17,9 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState
 } from 'react';
 import { useMatch, useNavigate } from 'react-router-dom';
@@ -214,8 +216,39 @@ export function Header() {
     }
   }, [userSettings]);
 
+  const headerRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const header = headerRef.current;
+    if (!header) return;
+    const style = document.documentElement.style;
+    const property = '--app-sticky-header-height';
+    const previous = style.getPropertyValue(property);
+    const measure = () => {
+      const computed = getComputedStyle(header);
+      const sticky = ['sticky', 'fixed'].includes(computed.position);
+      const height = sticky
+        ? header.getBoundingClientRect().height +
+          (Number.parseFloat(computed.top) || 0)
+        : 0;
+      style.setProperty(property, `${Math.ceil(height)}px`);
+    };
+    const resize = new ResizeObserver(measure);
+    resize.observe(header, { box: 'border-box' });
+    measure();
+    return () => {
+      resize.disconnect();
+      if (previous) style.setProperty(property, previous);
+      else style.removeProperty(property);
+    };
+  }, [headerStyle]);
+
   return (
-    <div className={classes.layoutHeader} style={headerStyle}>
+    <div
+      ref={headerRef}
+      data-app-header
+      className={classes.layoutHeader}
+      style={headerStyle}
+    >
       <SearchDrawer opened={searchDrawerOpened} onClose={closeSearchDrawer} />
       <NavigationDrawer opened={navDrawerOpened} close={closeNavDrawer} />
       <NotificationDrawer

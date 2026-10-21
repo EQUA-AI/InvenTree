@@ -11,7 +11,7 @@ import builtins
 import hashlib
 import json
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -29,6 +29,16 @@ from aichat.models import (
     TurnModality,
     TurnState,
     generate_thread_id,
+)
+from aichat.services.work_focus import (
+    WORK_FOCUS_SNAPSHOT_KEY,
+    FocusStates,
+    WorkFocusError,
+    authorized_subject,
+    focus_subject,
+    issue_receipt,
+    reference_states,
+    resolve_receipt,
 )
 
 logger = logging.getLogger(__name__)
@@ -120,6 +130,7 @@ class BeginTurnResult:
     #: is the ORIGINAL turn's stored snapshot — a later focus switch never
     #: rebinds a recorded utterance.
     focus_snapshot: dict[str, Any] | None = None
+    work_focus_snapshot: dict[str, Any] | None = None
 
 
 def scope_fingerprint(scope_key: str) -> str:
@@ -552,6 +563,7 @@ class ThreadRepository:
         request_fingerprint: str,
         correlation_id: str,
         expected_focus_version: int | None = None,
+        work_focus_receipt: str | None = None,
     ) -> BeginTurnResult:
         """Begin once, replay exactly, or reject a conflicting key reuse.
 
@@ -581,8 +593,18 @@ class ThreadRepository:
 
         from ai.core.focus import contract as focus_contract
 
+        if WORK_FOCUS_SNAPSHOT_KEY in trusted_context:
+            raise InvalidBoundary('Work focus requires a verified receipt')
+
         with transaction.atomic():
             thread = self._lock_thread(thread_id)
+            work_focus = (
+                resolve_receipt(
+                    self.actor_id, self.scope_hash, thread.pk, work_focus_receipt
+                )
+                if work_focus_receipt is not None
+                else None
+            )
             existing = (
                 ChatTurn.objects
                 .select_for_update()
@@ -595,11 +617,14 @@ class ThreadRepository:
                         'Idempotency key was used for a different request'
                     )
                 stored = existing.trusted_context or {}
+                if stored.get(WORK_FOCUS_SNAPSHOT_KEY) != work_focus:
+                    raise IdempotencyConflict('Turn Work focus does not match')
                 return BeginTurnResult(
                     turn=existing,
                     replayed=True,
                     scope_snapshot=stored.get(ANALYSIS_SCOPE_SNAPSHOT_KEY),
                     focus_snapshot=stored.get(FOCUS_SNAPSHOT_KEY),
+                    work_focus_snapshot=stored.get(WORK_FOCUS_SNAPSHOT_KEY),
                 )
 
             # Focus admission (same row lock as everything below): a turn
@@ -646,6 +671,8 @@ class ThreadRepository:
                     'version': thread.focus_version,
                 }
             stored_context = dict(trusted_context)
+            if work_focus is not None:
+                stored_context[WORK_FOCUS_SNAPSHOT_KEY] = work_focus
             if scope_snapshot is not None:
                 stored_context[ANALYSIS_SCOPE_SNAPSHOT_KEY] = scope_snapshot
             if focus_snapshot is not None:
@@ -674,7 +701,126 @@ class ThreadRepository:
                 replayed=False,
                 scope_snapshot=scope_snapshot,
                 focus_snapshot=focus_snapshot,
+                work_focus_snapshot=work_focus,
             )
+
+    def acknowledge_work_focus(
+        self,
+        thread_id: str,
+        work_order_id: int | None,
+        *,
+        expected_version: int | None,
+        request_id: int | None = None,
+        request_version: int | None = None,
+        component: dict | None = None,
+        evidence: dict | None = None,
+    ) -> dict[str, Any]:
+        """Issue an owner-bound receipt without changing analysis scope."""
+        with transaction.atomic():
+            thread = self._lock_thread(thread_id)
+            return issue_receipt(
+                self.actor_id,
+                self.scope_hash,
+                thread.pk,
+                work_order_id,
+                expected_version,
+                request_id=request_id,
+                request_version=request_version,
+                component=component,
+                evidence=evidence,
+            )
+
+    def verify_work_focus(self, thread_id: str, receipt: str) -> dict[str, Any]:
+        """Check a receipt before a turn starts; intake verifies it again.
+
+        A pure detector for the HTTP adapters, so a refused receipt fails the
+        request before any stream opens. It writes nothing and holds no lock;
+        ``begin_turn`` repeats the full check under the thread row lock.
+        """
+        thread = self._get_thread(thread_id)
+        return resolve_receipt(self.actor_id, self.scope_hash, thread.pk, receipt)
+
+    def work_focus_states(
+        self, thread_id: str, message_ids: Iterable[str]
+    ) -> dict[str, str]:
+        """How each answer's saved Work focus stands now (owner-only).
+
+        Keyed by the answer's message id; answers without a focus are absent.
+        Each distinct Work is re-authorized once for the whole page, through
+        the same live check a new receipt uses, and compared with the snapshot
+        stored when the question was asked — so a reloaded answer shows its
+        age instead of passing for current. Grantees never reach this: the
+        thread is resolved through the owner boundary.
+        """
+        thread = self._get_thread(thread_id)
+        ids = [message_id for message_id in message_ids if isinstance(message_id, str)]
+        if not ids:
+            return {}
+        rows = ChatTurn.objects.filter(
+            thread=thread, output_message_id__in=ids
+        ).values_list('output_message_id', 'trusted_context')
+        live: dict[Any, dict[str, Any] | None] = {}
+        reference_cache = {}
+        states = FocusStates()
+        for message_id, stored in rows:
+            snapshot = (stored or {}).get(WORK_FOCUS_SNAPSHOT_KEY)
+            if not isinstance(snapshot, dict):
+                continue
+            work_order_id = snapshot.get('work_order_id')
+            cache_key = json.dumps(snapshot, sort_keys=True)
+            subject_key = (
+                work_order_id,
+                snapshot.get('request_id'),
+                snapshot.get('machine_id') if work_order_id is None else None,
+            )
+            if snapshot.get('schema_version') == 3:
+                if cache_key not in reference_cache:
+                    reference_cache[cache_key] = reference_states(
+                        self.actor_id, snapshot
+                    )
+                states.references[message_id] = reference_cache[cache_key]
+            if subject_key not in live:
+                try:
+                    live[subject_key] = authorized_subject(self.actor_id, snapshot)
+                except WorkFocusError:
+                    live[subject_key] = None
+            current = live[subject_key]
+            states[message_id] = (
+                'unavailable'
+                if current is None
+                else 'current'
+                if current == focus_subject(snapshot)
+                else 'changed'
+            )
+        return states
+
+    def get_turn_work_focus(
+        self, thread_id: str, turn_id: str
+    ) -> dict[str, Any] | None:
+        """Read historical focus through current owner and native Work access."""
+        thread = self._get_thread(thread_id)
+        turn = ChatTurn.objects.filter(thread=thread, pk=turn_id).first()
+        if turn is None:
+            raise ThreadNotFound('Thread not found')
+        snapshot = (turn.trusted_context or {}).get(WORK_FOCUS_SNAPSHOT_KEY)
+        if snapshot is None:
+            return None
+        if not isinstance(snapshot, dict):
+            raise WorkFocusError('work_focus_rejected')
+        current = authorized_subject(self.actor_id, snapshot)
+        references = reference_states(self.actor_id, snapshot)
+        return {
+            'thread_id': thread.pk,
+            'turn_id': turn.pk,
+            'focus': snapshot,
+            'stale': current != focus_subject(snapshot)
+            or any(state != 'current' for state in references.values()),
+            **(
+                {'reference_states': references}
+                if snapshot.get('schema_version') == 3
+                else {}
+            ),
+        }
 
     def _turn_thread_id(self, turn_id: str) -> str:
         """Resolve a turn's parent id only through the complete boundary."""

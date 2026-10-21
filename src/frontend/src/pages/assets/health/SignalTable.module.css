@@ -1,0 +1,27 @@
+.table { width: 100%; min-width: 960px; table-layout: fixed; }
+.table th, .table td { vertical-align: top; padding-block: 2px; overflow-wrap: anywhere; }
+.table th:nth-child(1) { width: 19%; }
+.table th:nth-child(2) { width: 11%; text-align: right; }
+.table th:nth-child(3) { width: 16%; }
+.table th:nth-child(4) { width: 17%; }
+.table th:nth-child(5) { width: 19%; }
+.table th:nth-child(6) { width: 7%; }
+.table th:nth-child(7) { width: 11%; }
+.table tr[data-selected='true'] { box-shadow: inset 3px 0 var(--mantine-primary-color-7); border-top: 1px solid var(--mantine-primary-color-7); }
+:global([data-mantine-color-scheme='dark']) .table tr[data-selected='true'] { box-shadow: inset 3px 0 var(--mantine-primary-color-4); border-top-color: var(--mantine-primary-color-4); }
+@media (min-width: 48em) and (max-width: 89.99em) { .table :is(td, th):first-child { position: sticky; left: 0; background: var(--mantine-color-body); z-index: 1; } }
+@media (max-width: 47.99em) {
+ .table[data-cards='true'] { display: block; min-width: 0; width: 100%; }
+ .table[data-cards='true'] thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+ .table[data-cards='true'] tbody { display: block; }
+ .table[data-cards='true'] tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; padding: var(--mantine-spacing-sm); border-bottom: 1px solid var(--mantine-color-default-border); }
+ .table[data-cards='true'] td { display: block; border: 0; padding: 0; min-width: 0; overflow-wrap: anywhere; grid-column: 1 / -1; }
+ .table[data-cards='true'] td:nth-child(2), .table[data-cards='true'] td:nth-child(3) { grid-column: auto; }
+ .table[data-cards='true'] td::before { content: attr(data-label) / ""; display: block; font-size: var(--mantine-font-size-sm); font-weight: 500; margin-bottom: 4px; }
+ .table[data-cards='true'] .details td::before { display: none; }
+}
+
+.table td p { line-height: 1.2; }
+
+@media (min-width: 48em) and (max-width: 89.99em) { .table tr[data-selected='true'] td:first-child { background: var(--mantine-primary-color-light); box-shadow: inset 3px 0 var(--mantine-primary-color-7); } .table th:first-child { z-index: 3; } }
+:global([data-mantine-color-scheme='dark']) .table tr[data-selected='true'] td:first-child { box-shadow: inset 3px 0 var(--mantine-primary-color-4); }

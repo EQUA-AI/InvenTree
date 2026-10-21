@@ -24,6 +24,7 @@ export function WorkOrderAlertContext({
 
   return (
     <Alert
+      role='note'
       color={critical ? 'red' : 'yellow'}
       variant='light'
       icon={
@@ -52,25 +53,21 @@ export function WorkOrderAlertContext({
         )}
 
         <Group gap='lg' wrap='wrap'>
-          <Text size='xs' c='dimmed'>
+          <Text size='sm'>
             {t`First observed ${dayjs(alert.first_observed_at).format('MMM D, HH:mm')}`}
           </Text>
-          <Text size='xs' c='dimmed'>
+          <Text size='sm'>
             {t`Last observed ${dayjs(alert.last_observed_at).format('MMM D, HH:mm')}`}
           </Text>
-          <Text size='xs' c='dimmed'>
+          <Text size='sm'>
             {t`Detected by ${alert.detector || t`an unnamed rule`}`}
             {alert.detector_version ? ` v${alert.detector_version}` : ''}
           </Text>
           {alert.source_name && (
-            <Text size='xs' c='dimmed'>
-              {t`Source ${alert.source_name}`}
-            </Text>
+            <Text size='sm'>{t`Source ${alert.source_name}`}</Text>
           )}
           {alert.external_id && (
-            <Text size='xs' c='dimmed'>
-              {t`External ref ${alert.external_id}`}
-            </Text>
+            <Text size='sm'>{t`External ref ${alert.external_id}`}</Text>
           )}
         </Group>
 

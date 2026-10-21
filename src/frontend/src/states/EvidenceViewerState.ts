@@ -1,13 +1,13 @@
 import { create } from 'zustand';
-import type { MediaEvidenceItem } from '../hooks/UseAIChat';
+import type { MediaPreviewItem } from '../components/aichat/evidenceLocator';
 import { useAIChatState } from './AIChatState';
 import { voiceController } from './VoiceSessionState';
 
 let citationTrigger: HTMLElement | null = null;
 
 export const useEvidenceViewerState = create<{
-  item: MediaEvidenceItem | null;
-  open: (item: MediaEvidenceItem, trigger?: HTMLElement) => void;
+  item: MediaPreviewItem | null;
+  open: (item: MediaPreviewItem, trigger?: HTMLElement) => void;
   close: () => void;
 }>((set) => ({
   item: null,
@@ -37,7 +37,7 @@ export const useEvidenceViewerState = create<{
             : document.querySelector<HTMLElement>(
                 '[aria-controls="ai-chat-drawer"]'
               );
-        target?.focus();
+        target?.focus({ preventScroll: true });
       }, 0)
     );
   }

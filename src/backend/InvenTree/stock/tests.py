@@ -5,6 +5,7 @@ import threading
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import connection, transaction
 from django.db.models import Sum
@@ -1249,6 +1250,12 @@ class StockTest(StockTestBase):
         from common.settings import set_global_setting
 
         part = Part.objects.filter(virtual=False).first()
+        # TestCase rolls back database settings, but the currency helper also
+        # reads the cache. Do not leave this test's final currency behind.
+        self.addCleanup(
+            cache.delete,
+            InvenTreeSetting.create_cache_key('INVENTREE_DEFAULT_CURRENCY'),
+        )
 
         for currency in ['AUD', 'USD', 'JPY']:
             set_global_setting('INVENTREE_DEFAULT_CURRENCY', currency)
@@ -1391,6 +1398,11 @@ class TrackingEntryBatchTests(StockTestBase):
 
 class StockBarcodeTest(StockTestBase):
     """Run barcode tests for the stock app."""
+
+    def setUp(self):
+        """Load barcode plugins against the current test database."""
+        super().setUp()
+        self.ensurePluginsLoaded(force=True)
 
     def test_stock_item_barcode_basics(self):
         """Simple tests for the StockItem barcode integration."""
@@ -1790,8 +1802,13 @@ class TestResultTest(StockTestBase):
 
         self.assertTrue(item.passedAllRequiredTests())
 
+    @override_settings(PLUGINS_ENABLED=True)
     def test_duplicate_item_tests(self):
         """Test duplicate item behaviour."""
+        # This case exercises the real sample validator. Restore the registry
+        # after the temporary plugin setting has been removed.
+        self.addCleanup(self.ensurePluginsLoaded, force=True)
+        self.ensurePluginsLoaded(force=True)
         # Create an example stock item by copying one from the database (because we are lazy)
 
         from plugin.registry import registry

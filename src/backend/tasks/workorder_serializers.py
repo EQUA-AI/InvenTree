@@ -150,6 +150,54 @@ class CompleteCommandSerializer(BaseCommandSerializer):
 class WorkOrderEventSerializer(serializers.ModelSerializer):
     """Read-only work-order audit event serializer."""
 
+    metadata = serializers.SerializerMethodField()
+
+    def get_metadata(self, obj) -> dict:
+        """O21 source identities follow the same scope as the origin projection."""
+        metadata = obj.metadata if isinstance(obj.metadata, dict) else {}
+        result = metadata.get('result_metadata') or {}
+        if not isinstance(result, dict):
+            return metadata
+        request = self.context.get('request')
+        if obj.event_type == 'WORK_TIME_RECORDED':
+            from tasks.services.work_time import redact_machine_telemetry
+
+            metadata = {
+                **metadata,
+                'result_metadata': redact_machine_telemetry(
+                    result, obj.work_order, request.user if request else None
+                ),
+            }
+        if result.get('origin_kind') != 'routine_finding':
+            return metadata
+        from tasks.services.routine_findings import visible_work
+
+        if (
+            not visible_work(request.user if request else None)
+            .filter(pk=result.get('routine_work_id'))
+            .exists()
+        ):
+            return {
+                **metadata,
+                'result_metadata': {
+                    'origin_kind': 'routine_finding',
+                    'outcome': result.get('outcome'),
+                    'source_state': 'unavailable',
+                },
+            }
+        return metadata
+
+    def to_representation(self, instance):
+        """Generic Work audit access must not expose asset-scoped authority receipts."""
+        data = super().to_representation(instance)
+        if instance.event_type in ('authority_record', 'authority_verify'):
+            data['metadata'] = {
+                key: value
+                for key, value in data['metadata'].items()
+                if key != 'result_metadata'
+            }
+        return data
+
     class Meta:
         """Serializer metadata."""
 

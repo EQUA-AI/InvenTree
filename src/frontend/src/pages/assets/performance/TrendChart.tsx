@@ -25,13 +25,18 @@ import {
   useState
 } from 'react';
 import { ReferenceArea } from 'recharts';
+import { MetaText } from '../health/common';
+import { ThresholdKey } from './ThresholdKey';
+import { thresholdBands } from './thresholdBands';
 
+import { useHistoryReadFailures } from './HistoryReadContext';
 import {
   formatInstant,
   formatTick,
   formatValue,
   niceTicks,
-  timeTicks
+  timeTicks,
+  unitLabel
 } from './format';
 import { type ChartRow, axisDomain } from './series';
 
@@ -40,6 +45,8 @@ import { type ChartRow, axisDomain } from './series';
  * how to print its values. Units differ per line, so the tooltip asks each.
  */
 export interface TrendSeries {
+  bindingIds?: readonly number[];
+  externalKeys?: readonly string[];
   key: string;
   label: string;
   color: string;
@@ -48,9 +55,14 @@ export interface TrendSeries {
   yAxisId?: 'left' | 'right';
   /** Draw this line as steps: a status or a count changes, it does not drift. */
   stepped?: boolean;
+  strokeWidth?: number;
+  endLabel?: boolean;
 }
 
 export interface ReferenceLine {
+  yAxisId?: 'left' | 'right';
+  direction?: 'low' | 'high';
+  severity?: 'warning' | 'critical';
   y: number;
   label: string;
   color: string;
@@ -118,6 +130,24 @@ export function ChartTitleProvider({
  * shares a crosshair makes the charts re-synchronise each other without end.)
  */
 export function TrendChart(props: Readonly<TrendChartProps>) {
+  const failures = useHistoryReadFailures();
+  const failed = props.series.filter(
+    (line) =>
+      line.bindingIds?.some((id) => failures.bindings.has(id)) ||
+      line.externalKeys?.some((key) => failures.keys.has(key))
+  );
+  const failureText = failed.length
+    ? t`History read failed for ${failed.map((line) => line.label).join(', ')}; coverage unknown.`
+    : undefined;
+  const chartProps = {
+    ...props,
+    emptyText:
+      failureText ??
+      props.emptyText ??
+      (failures.missing
+        ? t`History has not been returned for this window.`
+        : undefined)
+  };
   const [fullscreen, setFullscreen] = useState(false);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
 
@@ -206,9 +236,17 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
   );
 
   return (
-    <Stack gap={6}>
+    <Stack gap={6} data-trend-sync={props.syncId}>
       {header}
-      <ChartBody {...props} series={visible} referenceLines={referenceLines} />
+      {failureText &&
+        props.rows.some((row) =>
+          visible.some((line) => typeof row[line.key] === 'number')
+        ) && <MetaText size='xs'>{failureText}</MetaText>}
+      <ChartBody
+        {...chartProps}
+        series={visible}
+        referenceLines={referenceLines}
+      />
       <Modal
         opened={fullscreen}
         onClose={() => setFullscreen(false)}
@@ -217,8 +255,12 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
       >
         <Stack gap={6}>
           {chips}
+          {failureText &&
+            props.rows.some((row) =>
+              visible.some((line) => typeof row[line.key] === 'number')
+            ) && <MetaText size='xs'>{failureText}</MetaText>}
           <ChartBody
-            {...props}
+            {...chartProps}
             series={visible}
             referenceLines={referenceLines}
             height={Math.max(420, window.innerHeight - 200)}
@@ -252,9 +294,15 @@ function ChartBody({
     end: number;
   } | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [includeLimits, setIncludeLimits] = useState(false);
 
   const plotted = useMemo(
-    () => rows.some((row) => series.some((s) => row[s.key] !== null)),
+    () =>
+      rows.some((row) =>
+        series.some(
+          (s) => typeof row[s.key] === 'number' && Number.isFinite(row[s.key])
+        )
+      ),
     [rows, series]
   );
 
@@ -268,6 +316,7 @@ function ChartBody({
         // Mantine's left axis is Recharts' default axis and has no id; only
         // the right one is named. A series told 'left' binds to nothing.
         yAxisId: s.yAxisId === 'right' && anyLeftAxis ? 'right' : undefined,
+        strokeWidth: s.strokeWidth,
         curveType: s.stepped || stepped ? 'stepAfter' : 'linear'
       })),
     [series, stepped, anyLeftAxis]
@@ -296,6 +345,10 @@ function ChartBody({
   // for the right axis - the left-axis parameter is not mapped on this pump -
   // they take the left axis instead, rather than leaving it labelled and empty.
   const withRight = anyLeftAxis && series.some((s) => s.yAxisId === 'right');
+  const lineAxis = (line: ReferenceLine) =>
+    line.yAxisId === 'right' && withRight
+      ? ('right' as const)
+      : ('left' as const);
   const leftUnit = anyLeftAxis ? unit : rightUnit;
 
   // Axis widths follow the widest tick label they will print, so the ticks
@@ -304,7 +357,7 @@ function ChartBody({
   // it rounds a range outwards ("-0.105" against a width fitting "-0.1"), and
   // the labels were clipped. The same walk collects each side's extremes,
   // which is what decides whether that side moved at all.
-  const axis = useMemo(() => {
+  const axisFor = (include: boolean) => {
     const side = (
       which: 'left' | 'right'
     ): {
@@ -325,6 +378,14 @@ function ChartBody({
           if (v === null || v === undefined || !Number.isFinite(v)) continue;
           if (v < min) min = v;
           if (v > max) max = v;
+        }
+      }
+      if (include) {
+        for (const line of referenceLines ?? []) {
+          if (lineAxis(line) === which && Number.isFinite(line.y)) {
+            min = Math.min(min, line.y);
+            max = Math.max(max, line.y);
+          }
         }
       }
       const widthFor = (labels: string[]) =>
@@ -371,7 +432,13 @@ function ChartBody({
       };
     };
     return { left: side('left'), right: side('right') };
-  }, [series, rows, withRight]);
+  };
+  const dataAxis = axisFor(false);
+  const axis = includeLimits ? axisFor(true) : dataAxis;
+  const hasOffScale = (referenceLines ?? []).some((line) => {
+    const own = dataAxis[lineAxis(line)].domain;
+    return line.y < Number(own[0]) || line.y > Number(own[1]);
+  });
 
   // An axis with no unit is not self-explanatory when there are two of them:
   // a power factor drawn opposite megawatts gave two identical numeric
@@ -382,7 +449,7 @@ function ChartBody({
       (s) => (s.yAxisId === 'right' && withRight ? 'right' : 'left') === which
     );
     const unitOf = which === 'right' ? rightUnit : leftUnit;
-    if (unitOf) return unitOf;
+    if (unitOf) return unitLabel(unitOf);
     return own.length === 1 ? own[0].label : '';
   };
   const leftTitle = titleFor('left');
@@ -426,8 +493,8 @@ function ChartBody({
 
   if (!plotted) {
     return (
-      <Paper withBorder radius='sm' p='md' h={height}>
-        <Text size='sm' c='dimmed'>
+      <Paper withBorder p='md' h={height}>
+        <Text size='sm' c={emptyText ? undefined : 'var(--mantine-color-text)'}>
           {emptyText ?? t`No readings in this window.`}
         </Text>
       </Paper>
@@ -440,17 +507,18 @@ function ChartBody({
           through ninety degrees ("V", "m") reads as a chevron or an E. */}
       {(leftTitle || rightTitle) && (
         <Group justify='space-between' gap='xs' px={4} mb={-4} wrap='nowrap'>
-          <Text size='xs' c='dimmed' truncate>
+          <MetaText size='xs' truncate data-axis-title='left'>
             {leftTitle}
-          </Text>
+          </MetaText>
           {withRight && (
-            <Text size='xs' c='dimmed' truncate>
+            <MetaText size='xs' truncate data-axis-title='right'>
               {rightTitle}
-            </Text>
+            </MetaText>
           )}
         </Group>
       )}
       <LineChart
+        textColor='var(--mantine-color-text)'
         h={height}
         data={rows}
         dataKey='t'
@@ -459,9 +527,36 @@ function ChartBody({
         withDots={false}
         connectNulls={false}
         strokeWidth={1.5}
+        lineProps={(item) => {
+          const original = byKey.get(item.name);
+          const last = rows.findLastIndex(
+            (row) =>
+              typeof row[item.name] === 'number' &&
+              Number.isFinite(row[item.name])
+          );
+          return {
+            strokeWidth: original?.strokeWidth ?? 1.5,
+            label: original?.endLabel
+              ? (props: any) =>
+                  props.index === last ? (
+                    <text
+                      x={Number(props.x) - 4}
+                      y={Number(props.y) - 8}
+                      textAnchor='end'
+                      fill='var(--mantine-color-text)'
+                      fontSize={11}
+                    >
+                      {original.label}
+                    </text>
+                  ) : (
+                    <g />
+                  )
+              : undefined
+          };
+        }}
         // The toggle chips already name and colour every line; a legend as
         // well wraps under a narrow card and runs into whatever follows.
-        withLegend={!toggleable && series.length > 1 && series.length <= 8}
+        withLegend={!toggleable && series.length <= 8}
         // The reserved band has to cover the 37px the legend renders. Its
         // order is the series order: Recharts sorts its legend by each item's
         // value, which is the series *key*, so the forebay card listed "Pumps
@@ -498,7 +593,11 @@ function ChartBody({
         }}
         referenceLines={referenceLines?.map((line) => ({
           y: line.y,
-          label: line.label,
+          yAxisId: line.yAxisId === 'right' && withRight ? 'right' : 0,
+          label: {
+            value: line.label,
+            fill: 'var(--mantine-color-text)'
+          },
           color: line.color
         }))}
         lineChartProps={{
@@ -536,6 +635,23 @@ function ChartBody({
           )
         }}
       >
+        {(['left', 'right'] as const).flatMap((side) =>
+          thresholdBands(
+            (referenceLines ?? []).filter((line) => lineAxis(line) === side),
+            Number(axis[side].domain[0]),
+            Number(axis[side].domain[1])
+          ).map((band) => (
+            <ReferenceArea
+              key={`${side}-${band.severity}-${band.from}-${band.to}`}
+              yAxisId={side === 'right' && withRight ? 'right' : 0}
+              y1={band.from}
+              y2={band.to}
+              fill={`var(--mantine-color-${band.severity === 'critical' ? 'red' : 'yellow'}-6)`}
+              fillOpacity={0.08}
+              strokeOpacity={0}
+            />
+          ))
+        )}
         {selection && selection.start !== selection.end && (
           <ReferenceArea
             x1={Math.min(selection.start, selection.end)}
@@ -547,6 +663,44 @@ function ChartBody({
           />
         )}
       </LineChart>
+      {(['left', 'right'] as const).map((side) => {
+        const own = (referenceLines ?? []).filter(
+          (line) => lineAxis(line) === side
+        );
+        return own.length ? (
+          <ThresholdKey
+            key={side}
+            lines={own}
+            unit={side === 'left' ? leftUnit : rightUnit}
+            low={Number(axis[side].domain[0])}
+            high={Number(axis[side].domain[1])}
+            include={includeLimits}
+            onInclude={setIncludeLimits}
+            hasOffScale={own.some(
+              (line) =>
+                line.y < Number(dataAxis[side].domain[0]) ||
+                line.y > Number(dataAxis[side].domain[1])
+            )}
+          />
+        ) : null;
+      })}
+      <Group gap='sm'>
+        {series
+          .filter(
+            (line) =>
+              !rows.some(
+                (row) =>
+                  typeof row[line.key] === 'number' &&
+                  Number.isFinite(row[line.key])
+              )
+          )
+          .map((line) => (
+            <MetaText
+              size='xs'
+              key={line.key}
+            >{t`${line.label}: no samples in window`}</MetaText>
+          ))}
+      </Group>
       {/* The row's height is reserved from the start, and clears the legend
           above it: mounted only once a drag finished, it grew the card under
           the cursor and started inside the legend's glyphs. */}
@@ -607,10 +761,10 @@ function TrendTooltip({
     return null;
   }
   return (
-    <Paper withBorder shadow='sm' radius='sm' p='xs' style={{ minWidth: 180 }}>
-      <Text size='xs' c='dimmed' mb={4}>
+    <Paper withBorder shadow='sm' p='xs' style={{ minWidth: 180 }}>
+      <MetaText size='xs' mb={4}>
         {formatInstant(instant)}
-      </Text>
+      </MetaText>
       <Stack gap={2}>
         {payload.map((item) => {
           const key = String(item.dataKey ?? item.name ?? '');
@@ -635,7 +789,7 @@ function TrendTooltip({
               <Text
                 size='xs'
                 fw={600}
-                c={value === null ? 'dimmed' : undefined}
+                c={value === null ? 'var(--mantine-color-text)' : undefined}
               >
                 {value === null
                   ? t`no reading`
@@ -747,23 +901,24 @@ function legibleShades(
  * each sensor keep its own line.
  */
 const RELATED_HUES: Record<string, string> = {
-  orange: 'red',
-  red: 'pink',
-  pink: 'grape',
-  grape: 'violet',
-  violet: 'indigo',
   indigo: 'blue',
   blue: 'cyan',
-  cyan: 'teal',
-  teal: 'green',
-  green: 'lime',
-  lime: 'yellow',
-  yellow: 'orange',
-  gray: 'dark'
+  cyan: 'violet',
+  violet: 'grape',
+  grape: 'indigo',
+  teal: 'blue'
 };
 
 function hueSequence(hues: string[]): string[] {
-  const order = [...hues];
+  const order = [
+    ...new Set(
+      hues.map((hue) =>
+        ['indigo', 'blue', 'cyan', 'violet', 'grape', 'teal'].includes(hue)
+          ? hue
+          : 'indigo'
+      )
+    )
+  ];
   const seen = new Set(order);
   for (let i = 0; i < order.length; i++) {
     const next = RELATED_HUES[order[i]];

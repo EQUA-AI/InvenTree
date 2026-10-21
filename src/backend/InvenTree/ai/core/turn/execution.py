@@ -45,7 +45,28 @@ def _effective_pinned_workflow(run: TurnRun) -> str | None:
     if run.server_pinned_workflow is not None:
         return run.server_pinned_workflow
     uploaded_files = run.metadata.get("uploaded_files")
-    if isinstance(uploaded_files, list) and uploaded_files:
+    has_uploads = isinstance(uploaded_files, list) and bool(uploaded_files)
+    if (
+        run.modality != TurnModality.VOICE
+        and isinstance(run.work_focus, dict)
+        and run.work_focus.get("schema_version") in {2, 3}
+        and (
+            run.work_focus.get("request_id") is not None
+            or (
+                run.work_focus.get("schema_version") == 3
+                and not has_uploads
+                and (
+                    run.work_focus.get("component") is not None
+                    or run.work_focus.get("evidence") is not None
+                )
+            )
+        )
+    ):
+        # Request focus explicitly names uploads for technician publication.
+        # Other reference text uses lookup only without uploads: attached
+        # files must still reach the existing file-analysis workflow.
+        return "wf8"
+    if has_uploads:
         # `_turn_metadata` authorized these paths against the durable thread.
         # Client context is nested separately and can never reach this branch.
         return "wf6"
@@ -424,6 +445,13 @@ def _assemble_workflow_context(
                 **focus_payload(target),
                 "focus_version": int(run.focus_snapshot.get("version") or 0),
             }
+    if run.work_focus is not None:
+        # P02/P33: the server-verified Work this question is about — ids
+        # only, from the receipt ``begin_turn`` verified. Information, not a
+        # grant: every tool that reads the Work re-authorizes the actor.
+        from aichat.services.work_focus import public_focus
+
+        workflow_context["work_focus"] = public_focus(run.work_focus)
     if bundle is not None:
         # M1 PR E (plan §9.3 row 5): the routing classifier reads TYPED
         # trusted fields and the builder's fenced thread summary — never
@@ -532,9 +560,11 @@ async def _run_legacy_workflow(service: NormalizedTurnService, run: TurnRun) -> 
         from contextlib import ExitStack as _ExitStack
 
         from ai.core.config import get_settings as _get_settings
+        from ai.core.integrations.investigation_tools import bind_investigation_source
         from ai.core.tool_events import bind_tool_event_sink
 
         with _ExitStack() as sink_stack:
+            sink_stack.enter_context(bind_investigation_source(run.thread.pk, run.turn.pk))
             if getattr(_get_settings(), "feature_tool_events", False):
                 sink_stack.enter_context(
                     bind_tool_event_sink(run.emitter, run.thread.pk, f"run:{run.turn.pk}")

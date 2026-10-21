@@ -22,7 +22,11 @@ import {
   useComputedColorScheme,
   useMantineTheme
 } from '@mantine/core';
-import { useLocalStorage, useMediaQuery } from '@mantine/hooks';
+import {
+  useLocalStorage,
+  useMediaQuery,
+  useViewportSize
+} from '@mantine/hooks';
 import { showNotification } from '@mantine/notifications';
 import {
   IconArrowDown,
@@ -126,7 +130,10 @@ import { VoiceExperienceControls } from '../ai/voice/VoiceExperienceControls';
 import { VOICE_SHORTCUT } from '../ai/voice/voiceShortcuts';
 import { voiceStartBlockReason } from '../ai/voice/voiceStartEligibility';
 import { AnalysisContextLine } from '../aichat/ActiveScopeBanner';
-import { AssistantSurface } from '../aichat/AssistantSurface';
+import {
+  AssistantSurface,
+  clampAssistantWidth
+} from '../aichat/AssistantSurface';
 import { CitationList } from '../aichat/CitationList';
 import { ClaimEvidence } from '../aichat/ClaimEvidence';
 import { ContextUsedDisclosure } from '../aichat/ContextUsedDisclosure';
@@ -146,6 +153,7 @@ import {
   ThreadActionsModal
 } from '../aichat/ThreadActionsModal';
 import { ThreadMemoryModal } from '../aichat/ThreadMemoryModal';
+import { WorkFocusChip } from '../aichat/WorkFocusChip';
 import {
   type ContextPreflight,
   type ContextTargetHint,
@@ -159,6 +167,7 @@ import type { EvidenceAnalysisAttachment } from '../aichat/evidenceAnalysis';
 import { composeAnswerMarkdown } from '../aichat/evidenceFormat';
 import { hintIsRedundant } from '../aichat/scopeContext';
 import type { ThreadDeleteResult } from '../aichat/threadDeletion';
+import { type ChatWorkFocus, focusReturnPath } from '../aichat/workFocus';
 import RiskRadarDrawerBadge from '../riskradar/RiskRadarDrawerBadge';
 
 type AIChatDrawerTab = 'chat' | 'approvals' | 'history' | 'mail';
@@ -294,7 +303,8 @@ function ThreadHistoryPanel({
         onChange={(event) => setQuery(event.currentTarget.value)}
         leftSection={<IconSearch size={14} />}
         rightSection={searching ? <Loader size='xs' /> : undefined}
-        aria-label='search-ai-chat-history'
+        aria-label={t`Search conversation history`}
+        data-testid='search-ai-chat-history'
       />
       {searchError && (
         <Alert color='red'>{t`Conversation search failed. Edit the search or retry loading more results.`}</Alert>
@@ -428,7 +438,8 @@ function ThreadSelector({
       >
         <Menu.Target>
           <UnstyledButton
-            aria-label='select-ai-chat-thread'
+            aria-label={t`Select conversation`}
+            data-testid='select-ai-chat-thread'
             disabled={disabled}
             px='sm'
             py={6}
@@ -464,7 +475,8 @@ function ThreadSelector({
 
           {/* New chat option */}
           <Menu.Item
-            aria-label='new-ai-chat-thread'
+            aria-label={t`New conversation`}
+            data-testid='new-ai-chat-thread'
             leftSection={<IconMessagePlus size={16} />}
             onClick={onNewThread}
             color='blue'
@@ -473,13 +485,15 @@ function ThreadSelector({
           </Menu.Item>
 
           <Menu.Item
-            aria-label='export-owned-ai-chat-threads'
+            aria-label={t`Export my conversations`}
+            data-testid='export-owned-ai-chat-threads'
             disabled={disabled}
             leftSection={<IconFileExport size={16} />}
             onClick={() => setExportOpen(true)}
           >{t`Export my saved conversations`}</Menu.Item>
           <Menu.Item
-            aria-label='delete-owned-ai-chat-threads'
+            aria-label={t`Delete my conversations`}
+            data-testid='delete-owned-ai-chat-threads'
             color='red'
             disabled={disabled || bulkDeletionDisabled}
             leftSection={<IconTrash size={16} />}
@@ -522,7 +536,8 @@ function ThreadSelector({
                   </Menu.Item>
                   <Group gap={2} wrap='nowrap'>
                     <ActionIcon
-                      aria-label={`rename-ai-chat-thread-${thread.id}`}
+                      aria-label={t`Rename conversation`}
+                      data-testid={`rename-ai-chat-thread-${thread.id}`}
                       size='xs'
                       variant='subtle'
                       color='gray'
@@ -535,7 +550,8 @@ function ThreadSelector({
                       thread.isPersisted &&
                       !thread.shared && (
                         <ActionIcon
-                          aria-label={`memory-ai-chat-thread-${thread.id}`}
+                          aria-label={t`Conversation memory`}
+                          data-testid={`memory-ai-chat-thread-${thread.id}`}
                           title={t`What this chat remembers`}
                           size='xs'
                           variant='subtle'
@@ -548,7 +564,8 @@ function ThreadSelector({
                       )}
                     {onShareThread && (
                       <ActionIcon
-                        aria-label={`share-ai-chat-thread-${thread.id}`}
+                        aria-label={t`Share conversation`}
+                        data-testid={`share-ai-chat-thread-${thread.id}`}
                         size='xs'
                         variant='subtle'
                         color='gray'
@@ -559,7 +576,8 @@ function ThreadSelector({
                       </ActionIcon>
                     )}
                     <ActionIcon
-                      aria-label={`delete-ai-chat-thread-${thread.id}`}
+                      aria-label={t`Delete conversation`}
+                      data-testid={`delete-ai-chat-thread-${thread.id}`}
                       size='xs'
                       variant='subtle'
                       color='red'
@@ -693,7 +711,8 @@ export function AIChatButton({
         variant='subtle'
         size='lg'
         radius='xl'
-        aria-label='open-ai-chat'
+        aria-label={t`Open assistant`}
+        data-testid='open-ai-chat'
         aria-expanded={opened}
         aria-controls='ai-chat-drawer'
         onMouseEnter={showTooltip}
@@ -824,7 +843,8 @@ function MessageActions({
         {({ copied, copy }) => (
           <Tooltip label={copied ? t`Copied!` : t`Copy`} withArrow>
             <ActionIcon
-              aria-label='copy-ai-chat-message'
+              aria-label={t`Copy message`}
+              data-testid='copy-ai-chat-message'
               size='xs'
               variant='subtle'
               color={copied ? 'teal' : 'gray'}
@@ -837,7 +857,8 @@ function MessageActions({
       </CopyButton>
       <Tooltip label={t`Good response`} withArrow>
         <ActionIcon
-          aria-label='rate-ai-chat-message-good'
+          aria-label={t`Rate response helpful`}
+          data-testid='rate-ai-chat-message-good'
           size='xs'
           variant='subtle'
           color={feedback === 'up' ? 'blue' : 'gray'}
@@ -848,7 +869,8 @@ function MessageActions({
       </Tooltip>
       <Tooltip label={t`Bad response`} withArrow>
         <ActionIcon
-          aria-label='rate-ai-chat-message-bad'
+          aria-label={t`Rate response unhelpful`}
+          data-testid='rate-ai-chat-message-bad'
           size='xs'
           variant='subtle'
           color={feedback === 'down' ? 'red' : 'gray'}
@@ -860,7 +882,8 @@ function MessageActions({
       {evidenceAnalysis && (
         <Tooltip label={t`Export as Markdown`} withArrow>
           <ActionIcon
-            aria-label='export-ai-chat-message'
+            aria-label={t`Export message`}
+            data-testid='export-ai-chat-message'
             size='xs'
             variant='subtle'
             color='gray'
@@ -873,7 +896,8 @@ function MessageActions({
       {onRegenerate && (
         <Tooltip label={t`Regenerate`} withArrow>
           <ActionIcon
-            aria-label='regenerate-ai-chat-message'
+            aria-label={t`Regenerate response`}
+            data-testid='regenerate-ai-chat-message'
             size='xs'
             variant='subtle'
             color='gray'
@@ -990,17 +1014,23 @@ function ChatMessageItem({
           )}
 
           {/* Message bubble (U1: theme-aware colors — no hardcoded
-            light-only grays; user bubbles keep WCAG-safe white on blue) */}
+            light-only grays; Work messages use the native contrast tokens) */}
           <Paper
             p='sm'
             radius='lg'
             style={{
               backgroundColor: isUser
-                ? theme.colors.blue[6]
+                ? message.workFocus
+                  ? 'var(--aimms-work-action-bg, var(--mantine-color-blue-8))'
+                  : theme.colors.blue[6]
                 : colorScheme === 'dark'
                   ? theme.colors.dark[6]
                   : theme.colors.gray[0],
-              color: isUser ? 'white' : undefined,
+              color: isUser
+                ? message.workFocus
+                  ? 'var(--aimms-work-action-text, #ffffff)'
+                  : 'white'
+                : undefined,
               maxWidth: '85%',
               borderTopRightRadius: isUser ? 4 : undefined,
               borderTopLeftRadius: !isUser ? 4 : undefined,
@@ -1091,6 +1121,12 @@ function ChatMessageItem({
                 resolution={questionResolution}
                 onAnswer={(text) => onQuestionAnswer?.(text)}
               />
+            )}
+            {/* P02/P33: the Work order this exchange was about — from the
+                acknowledgement on the question, from the saved turn on the
+                answer, so it survives reload. */}
+            {!message.isStreaming && message.workFocus && (
+              <WorkFocusChip focus={message.workFocus} />
             )}
             {/* Server-observed entity chips (S28): navigate to the records
                 this turn was actually about. */}
@@ -1282,6 +1318,7 @@ function AIChatSessionDrawer({
   opened: boolean;
   onClose: () => void;
 }>) {
+  const returnFocusTarget = useAIChatState((state) => state.returnFocusTarget);
   const theme = useMantineTheme();
   const {
     messages,
@@ -1322,6 +1359,10 @@ function AIChatSessionDrawer({
     refreshThreadScope,
     // Plan C: thread-focus capability + capture-time turn stamps
     focusCapable,
+    workFocusCapable,
+    referenceFocusCapable,
+    requestFocusCapable,
+    acknowledgeWorkFocus,
     resendLastTurn,
     aiHost,
     // Structured questions (S22/S23)
@@ -1352,6 +1393,13 @@ function AIChatSessionDrawer({
           }
         : undefined
       : undefined;
+  // P02/P33: a question asked from one Work order (never with a machine hint).
+  const pendingWorkFocus = useAIChatState((state) => state.workFocusHint);
+  const workFocusHint =
+    hintThreadId === null || hintThreadId === activeThreadId
+      ? pendingWorkFocus
+      : undefined;
+  const clearWorkFocus = useAIChatState((state) => state.clearWorkFocus);
   // U1: machine Ask/scan carries a one-shot "open the Chat tab" intent.
   const chatOpenIntent = useAIChatState((state) => state.chatOpenIntent);
 
@@ -1451,6 +1499,7 @@ function AIChatSessionDrawer({
   const evidenceOpen = useEvidenceViewerState((state) => state.item !== null);
   const consentOpen = useVoiceSurfaceState((state) => state.consent);
   const narrow = useMediaQuery('(max-width: 48em)');
+  const viewport = useViewportSize();
   const location = useLocation();
   useEffect(() => {
     if (!opened) {
@@ -1499,6 +1548,15 @@ function AIChatSessionDrawer({
   // C2: the routing hint collapses once the server-confirmed scope already
   // covers it (display decision only; authorization stays server-side).
   const hintRedundant = hintIsRedundant(activeScope, routingHint ?? undefined);
+  useEffect(() => {
+    if (
+      routingHint &&
+      scopeCapable &&
+      activeScope?.mode === 'explicit_assets' &&
+      activeScope.machineIds === undefined
+    )
+      void refreshThreadScope();
+  }, [routingHint, scopeCapable, activeScope, refreshThreadScope]);
   const [approvalView, setApprovalView] = useState<'open' | 'resolved'>('open');
   // U1: friendly page labels for the drawer's context line (never raw path).
   const pageContextLabels: Record<PageContextKind, string> = {
@@ -1554,12 +1612,12 @@ function AIChatSessionDrawer({
   const resizeStartWidth = useRef(DEFAULT_WIDTH);
   // U1: never let the panel exceed the viewport.
   const clampDrawerWidth = useCallback(
-    (width: number) =>
-      Math.min(
-        Math.max(MIN_WIDTH, width),
-        Math.max(MIN_WIDTH, window.innerWidth - 32)
-      ),
+    (width: number) => clampAssistantWidth(width, window.innerWidth),
     []
+  );
+  const renderedDrawerWidth = clampAssistantWidth(
+    drawerWidth,
+    viewport.width || window.innerWidth
   );
 
   // Mouse handlers for resize drag
@@ -1569,11 +1627,11 @@ function AIChatSessionDrawer({
       e.stopPropagation();
       isResizing.current = true;
       resizeStartX.current = e.clientX;
-      resizeStartWidth.current = drawerWidth;
+      resizeStartWidth.current = renderedDrawerWidth;
       document.body.style.cursor = 'col-resize';
       document.body.style.userSelect = 'none';
     },
-    [drawerWidth]
+    [renderedDrawerWidth]
   );
 
   useEffect(() => {
@@ -1606,10 +1664,10 @@ function AIChatSessionDrawer({
       const step = 24;
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
-        setDrawerWidth((width) => clampDrawerWidth(width + step));
+        setDrawerWidth(clampDrawerWidth(renderedDrawerWidth + step));
       } else if (event.key === 'ArrowRight') {
         event.preventDefault();
-        setDrawerWidth((width) => clampDrawerWidth(width - step));
+        setDrawerWidth(clampDrawerWidth(renderedDrawerWidth - step));
       } else if (event.key === 'Home') {
         event.preventDefault();
         setDrawerWidth(clampDrawerWidth(MIN_WIDTH));
@@ -1618,7 +1676,7 @@ function AIChatSessionDrawer({
         setDrawerWidth(clampDrawerWidth(MAX_WIDTH));
       }
     },
-    [setDrawerWidth, clampDrawerWidth]
+    [setDrawerWidth, clampDrawerWidth, renderedDrawerWidth]
   );
 
   // Empty-state suggestion prompts (U1): real buttons, translated label AND
@@ -1719,12 +1777,46 @@ function AIChatSessionDrawer({
     }
   }, [messages, activeThreadId, loadingEarlier]);
 
-  // Focus input when drawer opens
+  // Opening focus is a one-shot convenience. A delayed callback must never
+  // reclaim focus after the reader moves into an answer or another control.
+  const composerFocusCleanup = useRef<() => void>(() => {});
+  const requestComposerFocus = useCallback(() => {
+    composerFocusCleanup.current();
+    const originalFocus = document.activeElement;
+    const cancel = () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('focusin', onFocus, true);
+      document.removeEventListener('keydown', cancel, true);
+      document.removeEventListener('pointerdown', cancel, true);
+    };
+    const onFocus = (event: FocusEvent) => {
+      if (
+        event.target !== inputRef.current &&
+        event.target !== originalFocus &&
+        event.target !== document.body
+      )
+        cancel();
+    };
+    const timer = window.setTimeout(() => {
+      cancel();
+      const active = document.activeElement;
+      if (
+        active === originalFocus ||
+        active === document.body ||
+        active === inputRef.current
+      )
+        inputRef.current?.focus();
+    }, 100);
+    document.addEventListener('focusin', onFocus, true);
+    document.addEventListener('keydown', cancel, true);
+    document.addEventListener('pointerdown', cancel, true);
+    composerFocusCleanup.current = cancel;
+  }, []);
+
   useEffect(() => {
-    if (opened && inputRef.current) {
-      setTimeout(() => inputRef.current?.focus(), 100);
-    }
-  }, [opened]);
+    if (opened) requestComposerFocus();
+    return () => composerFocusCleanup.current();
+  }, [opened, requestComposerFocus]);
 
   // U1: consume the Ask/scan intent ONCE — select Chat and focus the
   // composer. Never an effect that keeps forcing the tab.
@@ -1732,12 +1824,40 @@ function AIChatSessionDrawer({
     if (opened && chatOpenIntent === 'chat') {
       useAIChatState.getState().consumeChatOpenIntent();
       setActiveTab('chat');
-      setTimeout(() => inputRef.current?.focus(), 100);
+      requestComposerFocus();
     }
-  }, [opened, chatOpenIntent, setActiveTab]);
+  }, [opened, chatOpenIntent, setActiveTab, requestComposerFocus]);
 
   // S2: a scope PUT seeded by the routing hint is in flight before a send.
   const [isApplyingScope, setIsApplyingScope] = useState(false);
+  const scopeSendFocus = useRef<Element | null>(null);
+  useLayoutEffect(() => {
+    if (isApplyingScope || isLoading || isSyncing) return;
+    const previous = scopeSendFocus.current;
+    scopeSendFocus.current = null;
+    if (
+      opened &&
+      previous &&
+      (document.activeElement === document.body ||
+        document.activeElement === previous)
+    )
+      inputRef.current?.focus();
+  }, [opened, isApplyingScope, isLoading, isSyncing]);
+
+  const scopeSendInFlight = useRef<symbol | null>(null);
+  const [scopeLaunchError, setScopeLaunchError] = useState(false);
+
+  // P02/P33: why a Work-focused send was held back, if it was.
+  const [workFocusLaunchError, setWorkFocusLaunchError] = useState<
+    'unsupported' | 'refused' | null
+  >(null);
+
+  useEffect(() => {
+    scopeSendInFlight.current = null;
+    setIsApplyingScope(false);
+    setScopeLaunchError(false);
+    setWorkFocusLaunchError(null);
+  }, [routingHint, pendingTargetHint, workFocusHint]);
 
   // Plan 3.1: the shared machine-context preflight. Typed send and every
   // voice entry path (microphone, consent completion, keyboard start and
@@ -1750,7 +1870,8 @@ function AIChatSessionDrawer({
       try {
         return await setThreadScope(scope);
       } finally {
-        setIsApplyingScope(false);
+        // A typed entry owns the busy state through its focus acknowledgement.
+        if (!scopeSendInFlight.current) setIsApplyingScope(false);
       }
     },
     [setThreadScope]
@@ -1798,7 +1919,13 @@ function AIChatSessionDrawer({
           activeThreadIdRef.current === threadId &&
           useAIChatState.getState().targetHint === hintAtEntry
       });
-      if (!outcome.ok && outcome.code !== 'context_changed') {
+      if (
+        !outcome.ok &&
+        outcome.code !== 'context_changed' &&
+        outcome.code !== 'in-flight' &&
+        // Typed machine refusals use the inline alert beside the kept draft.
+        !(context.entry === 'typed' && routingHint)
+      ) {
         const machine = targetHint?.kind === 'machine';
         showNotification({
           color: 'yellow',
@@ -1816,6 +1943,7 @@ function AIChatSessionDrawer({
     },
     [
       targetHint,
+      routingHint,
       scopeCapable,
       focusCapable,
       activeThreadShared,
@@ -1843,7 +1971,14 @@ function AIChatSessionDrawer({
   const handleSendMessage = useCallback(
     async (messageText?: string) => {
       const text = messageText || inputValue;
-      if (!text.trim() || isLoading || isSyncing || isApplyingScope) return;
+      if (
+        !text.trim() ||
+        isLoading ||
+        isSyncing ||
+        isApplyingScope ||
+        scopeSendInFlight.current
+      )
+        return;
       const version = composerVersionRef.current;
       const fileIds = attachedFiles.map((f) => f.file_id);
       // RV08: capture the pending hint identity, its owning thread and the
@@ -1853,45 +1988,147 @@ function AIChatSessionDrawer({
       const hintAtEntry = pendingAtEntry.targetHint;
       const threadAtEntry = activeThreadIdRef.current;
       const sessionAtEntry = pendingAtEntry.sessionGeneration;
-      // S2 + plan 3.1: the machine hint is now a SCOPE SEED, never message
-      // text — the shared preflight commits it as the thread's explicit
-      // assets scope before the first send. An explicit selection that
-      // cannot be confirmed BLOCKS this send (fail closed, per-turn
-      // authorization is still the real boundary); the draft and
-      // attachments are preserved and the typed text always goes out
-      // byte-identical when the send proceeds.
-      const outcome = await contextPreflight({
-        threadId: threadAtEntry,
-        entry: 'typed'
-      });
-      if (!outcome.ok) return;
-      if (version !== composerVersionRef.current) return;
-      // Closing or switching during the scope request cancels this send intent.
-      // The hint is bound to one thread and is cleared by those transitions.
-      const pendingNow = useAIChatState.getState();
-      if (
-        (routingAtEntry || hintAtEntry) &&
-        (pendingNow.routingHint !== routingAtEntry ||
-          pendingNow.targetHint !== hintAtEntry)
-      )
-        return;
-      sendMessage(
-        text,
-        fileIds.length > 0 ? fileIds : undefined,
-        outcome.focusVersion
-      );
-      // RV08: one acknowledged typed entry consumes the pending hint at its
-      // acknowledging owner — routing and target together, refused for a
-      // differently bound thread — so no later send can re-apply it.
-      if (
-        (routingAtEntry || hintAtEntry) &&
-        activeThreadIdRef.current === threadAtEntry &&
-        pendingNow.sessionGeneration === sessionAtEntry
-      ) {
-        useAIChatState.getState().consumeHint(threadAtEntry);
+      const workAtEntry = pendingAtEntry.workFocusHint;
+      // Capture admission and focus before the first await: React's busy
+      // state alone cannot exclude two activations in the same render.
+      const scopeAttempt =
+        routingAtEntry || hintAtEntry || workAtEntry
+          ? Symbol('context-send')
+          : null;
+      if (scopeAttempt) {
+        scopeSendInFlight.current = scopeAttempt;
+        scopeSendFocus.current = document.activeElement;
+        setIsApplyingScope(true);
       }
-      setInputValue('');
-      setAttachedFiles([]);
+      try {
+        // S2 + plan 3.1: the machine hint is now a SCOPE SEED, never message
+        // text — the shared preflight commits it as the thread's explicit
+        // assets scope before the first send. An explicit selection that
+        // cannot be confirmed BLOCKS this send (fail closed, per-turn
+        // authorization is still the real boundary); the draft and
+        // attachments are preserved and the typed text always goes out
+        // byte-identical when the send proceeds.
+        const outcome = await contextPreflight({
+          threadId: threadAtEntry,
+          entry: 'typed'
+        });
+        // A late acknowledgement or refusal belongs only to its original entry.
+        const pendingAfterPreflight = useAIChatState.getState();
+        if (
+          version !== composerVersionRef.current ||
+          activeThreadIdRef.current !== threadAtEntry ||
+          pendingAfterPreflight.sessionGeneration !== sessionAtEntry ||
+          pendingAfterPreflight.routingHint !== routingAtEntry ||
+          pendingAfterPreflight.targetHint !== hintAtEntry ||
+          pendingAfterPreflight.workFocusHint !== workAtEntry
+        )
+          return;
+        if (!outcome.ok) {
+          if (
+            routingAtEntry &&
+            outcome.code !== 'context_changed' &&
+            outcome.code !== 'in-flight'
+          ) {
+            setScopeLaunchError(true);
+            setInputValue(text);
+          }
+          return;
+        }
+        setScopeLaunchError(false);
+        let workTurnFocus:
+          | { receipt: string; workFocus: ChatWorkFocus }
+          | undefined;
+        if (workFocusHint) {
+          // P02/P33: the server must acknowledge this exact Work at the version
+          // the page showed before anything is sent. Every failure keeps the
+          // draft and attachments and sends nothing; removing the Work is the
+          // user's explicit choice to ask without it.
+          if (
+            !workFocusCapable ||
+            (!!(workFocusHint.component || workFocusHint.evidence) &&
+              !referenceFocusCapable) ||
+            (workFocusHint.requestId !== undefined && !requestFocusCapable) ||
+            activeThreadShared
+          ) {
+            setWorkFocusLaunchError('unsupported');
+            setInputValue(text);
+            return;
+          }
+          let acknowledged: Awaited<ReturnType<typeof acknowledgeWorkFocus>>;
+          try {
+            acknowledged = await acknowledgeWorkFocus(
+              workFocusHint.workOrderId,
+              workFocusHint.lifecycleVersion,
+              workFocusHint.requestId,
+              workFocusHint.requestVersion,
+              workFocusHint.component,
+              workFocusHint.evidence
+            );
+          } catch {
+            acknowledged = { ok: false, code: 'error' };
+          }
+          // Closing, switching or a new launch during the request voids it.
+          if (
+            version !== composerVersionRef.current ||
+            useAIChatState.getState().workFocusHint !== workFocusHint
+          )
+            return;
+          if (!acknowledged.ok) {
+            setWorkFocusLaunchError('refused');
+            setInputValue(text);
+            return;
+          }
+          setWorkFocusLaunchError(null);
+          const identity = acknowledged.acknowledgement.focus;
+          workTurnFocus = {
+            receipt: acknowledged.acknowledgement.receipt,
+            workFocus: {
+              identity,
+              label: workFocusHint.label,
+              returnPath: focusReturnPath(identity, workFocusHint.returnPath)
+            }
+          };
+        }
+        if (version !== composerVersionRef.current) return;
+        // Closing or switching during the scope request cancels this send intent.
+        // The hint is bound to one thread and is cleared by those transitions.
+        const pendingNow = useAIChatState.getState();
+        if (
+          pendingNow.sessionGeneration !== sessionAtEntry ||
+          activeThreadIdRef.current !== threadAtEntry ||
+          pendingNow.workFocusHint !== workAtEntry ||
+          ((routingAtEntry || hintAtEntry) &&
+            (pendingNow.routingHint !== routingAtEntry ||
+              pendingNow.targetHint !== hintAtEntry))
+        )
+          return;
+        sendMessage(
+          text,
+          fileIds.length > 0 ? fileIds : undefined,
+          workTurnFocus
+            ? { ...workTurnFocus, focusVersion: outcome.focusVersion }
+            : outcome.focusVersion
+        );
+        if (workFocusHint && workFocusHint.requestId === undefined)
+          clearWorkFocus();
+        // RV08: one acknowledged typed entry consumes the pending hint at its
+        // acknowledging owner — routing and target together, refused for a
+        // differently bound thread — so no later send can re-apply it.
+        if (
+          (routingAtEntry || hintAtEntry) &&
+          activeThreadIdRef.current === threadAtEntry &&
+          pendingNow.sessionGeneration === sessionAtEntry
+        ) {
+          useAIChatState.getState().consumeHint(threadAtEntry);
+        }
+        setInputValue('');
+        setAttachedFiles([]);
+      } finally {
+        if (scopeAttempt && scopeSendInFlight.current === scopeAttempt) {
+          scopeSendInFlight.current = null;
+          if (version === composerVersionRef.current) setIsApplyingScope(false);
+        }
+      }
     },
     [
       inputValue,
@@ -1900,7 +2137,14 @@ function AIChatSessionDrawer({
       isApplyingScope,
       contextPreflight,
       sendMessage,
-      attachedFiles
+      attachedFiles,
+      activeThreadShared,
+      workFocusHint,
+      requestFocusCapable,
+      workFocusCapable,
+      referenceFocusCapable,
+      acknowledgeWorkFocus,
+      clearWorkFocus
     ]
   );
 
@@ -1962,15 +2206,16 @@ function AIChatSessionDrawer({
   // owned thread — the composer is disabled on shared transcripts, so the
   // ask could never be sent there.
   useEffect(() => {
-    if (!opened || (!routingHint && !targetHint)) return;
+    if (!opened || (!routingHint && !targetHint && !workFocusHint)) return;
     if (activeThreadShared) {
       // Capture the FULL pending target BEFORE createNewThread(), whose
       // synchronous clearHint would otherwise empty this snapshot.
       const pending = useAIChatState.getState().targetHint;
       const id = createNewThread();
-      // Reopen with the FULL pending target — machine/task/work-order
-      // metadata intact — never a flattened routing-only hint.
-      if (pending) {
+      // Restore the exact launch contract after creating the owned thread.
+      if (workFocusHint) {
+        useAIChatState.getState().openWithWorkFocus(workFocusHint);
+      } else if (pending) {
         useAIChatState.getState().openWithTargetHint(pending);
       } else if (routingHint) {
         useAIChatState.getState().openWithHint(routingHint);
@@ -1983,6 +2228,7 @@ function AIChatSessionDrawer({
     opened,
     routingHint,
     targetHint,
+    workFocusHint,
     activeThreadShared,
     activeThreadId,
     createNewThread
@@ -2061,6 +2307,7 @@ function AIChatSessionDrawer({
     <>
       <AssistantSurface
         opened={opened}
+        returnFocusTarget={returnFocusTarget}
         modal={Boolean(narrow)}
         suspended={
           consentOpen ||
@@ -2068,49 +2315,50 @@ function AIChatSessionDrawer({
           evidenceOpen ||
           memoryThreadId !== null
         }
-        width={drawerWidth}
+        width={renderedDrawerWidth}
         title={t`AI Assistant`}
         onClose={handleClose}
+        resizeHandle={
+          <Box
+            // biome-ignore lint/a11y/useSemanticElements: focusable window splitter — a real <hr> can't be dragged or keyboard-resized; this keeps the geometry and the ARIA separator values
+            onMouseDown={handleResizeMouseDown}
+            role='separator'
+            aria-orientation='vertical'
+            aria-label={t`Resize chat panel`}
+            aria-valuenow={renderedDrawerWidth}
+            aria-valuemin={clampDrawerWidth(MIN_WIDTH)}
+            aria-valuemax={clampDrawerWidth(MAX_WIDTH)}
+            tabIndex={0}
+            onKeyDown={handleResizeKeyDown}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: 6,
+              height: '100%',
+              cursor: 'col-resize',
+              zIndex: 1000,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'background 0.15s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--mantine-color-blue-1)';
+            }}
+            onMouseLeave={(e) => {
+              if (!isResizing.current) {
+                e.currentTarget.style.background = '';
+              }
+            }}
+          >
+            <IconGripVertical
+              size={12}
+              style={{ opacity: 0.4, pointerEvents: 'none' }}
+            />
+          </Box>
+        }
       >
-        {/* Resize handle on the left edge (mouse drag + keyboard, U1) */}
-        <Box
-          // biome-ignore lint/a11y/useSemanticElements: focusable window splitter — a real <hr> can't be dragged or keyboard-resized; this keeps the geometry and the ARIA separator values
-          onMouseDown={handleResizeMouseDown}
-          role='separator'
-          aria-orientation='vertical'
-          aria-label={t`Resize chat panel`}
-          aria-valuenow={drawerWidth}
-          aria-valuemin={MIN_WIDTH}
-          aria-valuemax={MAX_WIDTH}
-          tabIndex={0}
-          onKeyDown={handleResizeKeyDown}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: 6,
-            height: '100%',
-            cursor: 'col-resize',
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transition: 'background 0.15s ease'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'var(--mantine-color-blue-1)';
-          }}
-          onMouseLeave={(e) => {
-            if (!isResizing.current) {
-              e.currentTarget.style.background = '';
-            }
-          }}
-        >
-          <IconGripVertical
-            size={12}
-            style={{ opacity: 0.4, pointerEvents: 'none' }}
-          />
-        </Box>
         <Boundary label='AIChatDrawer'>
           {/* Header */}
           <Box
@@ -2151,7 +2399,8 @@ function AIChatSessionDrawer({
                   withArrow
                 >
                   <ActionIcon
-                    aria-label='sync-ai-chat-threads'
+                    aria-label={t`Sync conversations`}
+                    data-testid='sync-ai-chat-threads'
                     variant='subtle'
                     color='gray'
                     radius='xl'
@@ -2176,7 +2425,8 @@ function AIChatSessionDrawer({
                       color='gray'
                       radius='xl'
                       onClick={handleClearChat}
-                      aria-label='new-ai-chat-thread'
+                      aria-label={t`New conversation`}
+                      data-testid='new-ai-chat-thread'
                       disabled={isLoading}
                     >
                       <IconMessagePlus size={18} />
@@ -2185,7 +2435,8 @@ function AIChatSessionDrawer({
                 )}
                 <Tooltip label={t`Close`} withArrow>
                   <ActionIcon
-                    aria-label='close-ai-chat'
+                    aria-label={t`Close assistant`}
+                    data-testid='close-ai-chat'
                     variant='subtle'
                     color='gray'
                     radius='xl'
@@ -2216,7 +2467,7 @@ function AIChatSessionDrawer({
                 >
                   <Tabs.List>
                     <Tabs.Tab value='chat'>{t`Chat`}</Tabs.Tab>
-                    <Tabs.Tab value='approvals'>
+                    <Tabs.Tab value='approvals' aria-label={t`Approvals`}>
                       <Group gap={6} wrap='nowrap'>
                         <Text size='sm'>{t`Approvals`}</Text>
                         {/* C1: an attention DOT — never a numeric aggregate
@@ -2303,6 +2554,7 @@ function AIChatSessionDrawer({
             offsetScrollbars
             scrollbarSize={6}
             viewportRef={scrollAreaRef}
+            mih='min(10rem, 30dvh)'
             data-testid='ai-chat-messages'
             viewportProps={{ ...VIEWPORT_MARKERS }}
           >
@@ -2455,7 +2707,10 @@ function AIChatSessionDrawer({
                     key={voiceDecision?.decision_id ?? 'none'}
                   />
                 )}
-                <ChatActionProposalList {...proposals} />
+                <ChatActionProposalList
+                  key={activeThreadId ?? 'new'}
+                  {...proposals}
+                />
                 {/* C1: resolved actions moved here from History behind a
                   truthful local filter. */}
                 <Text
@@ -2554,7 +2809,9 @@ function AIChatSessionDrawer({
                       size='sm'
                       rightSection={
                         <ActionIcon
-                          aria-label={`remove-ai-chat-attachment-${f.file_id}`}
+                          aria-label={t`Remove attachment ${f.filename}`}
+                          data-testid={`remove-ai-chat-attachment-${f.file_id}`}
+                          disabled={isApplyingScope}
                           size='xs'
                           variant='transparent'
                           color='blue'
@@ -2582,7 +2839,109 @@ function AIChatSessionDrawer({
                 onChange={handleFileSelect}
               />
 
-              {routingHint && !hintRedundant && (
+              {workFocusHint && (
+                <style>{`
+                #ai-chat-drawer { --mantine-color-dimmed: var(--aimms-work-dimmed); }
+                #ai-chat-drawer .mantine-Alert-title,
+                #ai-chat-drawer .mantine-Alert-message { color: var(--mantine-color-text); }
+                @media (max-width: 47.99em) {
+                  #ai-chat-drawer .mantine-ActionIcon-root,
+                  #ai-chat-drawer .mantine-CloseButton-root,
+                  #ai-chat-drawer a:not(:where(p, li, span, label, td, th, h1, h2, h3, h4, h5, h6) a) { min-width: 44px; min-height: 44px; }
+                  #ai-chat-drawer a:not(:where(p, li, span, label, td, th, h1, h2, h3, h4, h5, h6) a) { display: inline-flex; align-items: center; }
+                }
+              `}</style>
+              )}
+              {workFocusHint && (
+                <Group
+                  gap='xs'
+                  mb={4}
+                  wrap='nowrap'
+                  align='flex-start'
+                  data-testid='ai-chat-work-focus'
+                  style={{ minWidth: 0 }}
+                >
+                  <Box component='details' style={{ flex: 1, minWidth: 0 }}>
+                    <Text
+                      component='summary'
+                      size='sm'
+                      style={{ cursor: 'pointer' }}
+                    >
+                      {workFocusHint.component
+                        ? t`Asking about reference position`
+                        : workFocusHint.evidence
+                          ? t`Asking about recorded evidence`
+                          : workFocusHint.workOrderId != null
+                            ? t`Work order ${workFocusHint.workOrderId}`
+                            : t`Asking about work order`}
+                      {workFocusHint.requestId
+                        ? ` · ${t`Request ${workFocusHint.requestId}`}`
+                        : ''}
+                    </Text>
+                    <Badge
+                      variant='light'
+                      color='teal'
+                      radius='sm'
+                      tt='none'
+                      mt='xs'
+                      styles={{
+                        root: { height: 'auto', maxWidth: '100%' },
+                        label: {
+                          lineHeight: 'var(--mantine-line-height)',
+                          whiteSpace: 'normal',
+                          overflow: 'visible',
+                          overflowWrap: 'anywhere'
+                        }
+                      }}
+                    >
+                      {workFocusHint.component
+                        ? t`Asking about reference position`
+                        : workFocusHint.evidence
+                          ? t`Asking about recorded evidence`
+                          : t`Asking about work order`}
+                      : {workFocusHint.label}
+                    </Badge>
+                  </Box>
+                  <ActionIcon
+                    size='sm'
+                    variant='transparent'
+                    color='teal'
+                    aria-label={
+                      workFocusHint.component
+                        ? t`Remove reference position`
+                        : workFocusHint.evidence
+                          ? t`Remove evidence`
+                          : t`Remove work order`
+                    }
+                    onClick={clearWorkFocus}
+                  >
+                    <IconX size={14} />
+                  </ActionIcon>
+                </Group>
+              )}
+              {workFocusHint && workFocusLaunchError && (
+                <Alert
+                  color='red'
+                  title={
+                    workFocusHint.requestId !== undefined
+                      ? t`Investigation request not confirmed`
+                      : workFocusHint.component || workFocusHint.evidence
+                        ? t`Reference not confirmed`
+                        : t`Work order not confirmed`
+                  }
+                >
+                  <Text size='sm'>
+                    {workFocusHint.component || workFocusHint.evidence
+                      ? t`No message was sent: the exact reference could not be confirmed. Your draft and attachments are kept. Reload the source if it has changed, retry, or remove the selection to ask without it.`
+                      : workFocusHint.requestId !== undefined
+                        ? t`No message was sent: this investigation request could not be confirmed at the shown revision. Your draft and attachments are kept. Retry sending, reload Diagnose if the request has changed, or remove the selection to ask without it.`
+                        : workFocusLaunchError === 'unsupported'
+                          ? t`No message was sent: this assistant cannot confirm a work order yet. Your draft and attachments are kept. Remove the work order to ask without it.`
+                          : t`No message was sent: the work order could not be confirmed as shown. Your draft and attachments are kept. Retry sending, reload the work order if it has changed, or remove the work order to ask without it.`}
+                  </Text>
+                </Alert>
+              )}
+              {routingHint && (!hintRedundant || scopeLaunchError) && (
                 <Group gap='xs' mb={4} data-testid='ai-chat-routing-hint'>
                   <Badge
                     variant='light'
@@ -2592,7 +2951,8 @@ function AIChatSessionDrawer({
                         size='xs'
                         variant='transparent'
                         color='blue'
-                        aria-label='dismiss-routing-hint'
+                        aria-label={t`Remove machine context`}
+                        data-testid='dismiss-routing-hint'
                         onClick={clearRoutingHint}
                       >
                         <IconX size={10} />
@@ -2603,12 +2963,24 @@ function AIChatSessionDrawer({
                   </Badge>
                 </Group>
               )}
+              {routingHint && scopeLaunchError && (
+                <Alert color='red' title={t`Machine context not confirmed`}>
+                  <Text size='sm'>
+                    {t`No message was sent. Your draft and attachments are kept. Retry sending, or remove the machine selection before sending without that context.`}
+                  </Text>
+                </Alert>
+              )}
               {/* C2: the truthful, read-only analysis context — reports
                 server-confirmed scope only, with no menu attached. */}
               <AnalysisContextLine scope={activeScope} />
               {/* Plan C: the editable Talking about chip — server-confirmed
                 focus only, separate from the analysis scope above. */}
               <ConversationFocusControl />
+              {(workFocusHint || messages.at(-1)?.workFocus) && (
+                <Text size='xs' mb={4} data-testid='ai-chat-physical-boundary'>
+                  {t`Physical authority not supplied. Chat does not authorize work.`}
+                </Text>
+              )}
 
               <Paper
                 radius='xl'
@@ -2621,10 +2993,11 @@ function AIChatSessionDrawer({
                   transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
                 }}
               >
-                <Group gap='xs' align='flex-end' wrap='nowrap'>
+                <Group gap='xs' align='flex-end' wrap='wrap'>
                   <Tooltip label={t`Attach file`} withArrow>
                     <ActionIcon
-                      aria-label='attach-ai-chat-file'
+                      aria-label={t`Attach file`}
+                      data-testid='attach-ai-chat-file'
                       size='lg'
                       radius='xl'
                       variant='subtle'
@@ -2632,6 +3005,7 @@ function AIChatSessionDrawer({
                       onClick={() => fileInputRef.current?.click()}
                       disabled={
                         isLoading ||
+                        isApplyingScope ||
                         isUploading ||
                         isSyncing ||
                         activeThreadShared ||
@@ -2644,6 +3018,7 @@ function AIChatSessionDrawer({
                   </Tooltip>
                   <Textarea
                     ref={inputRef}
+                    data-autofocus
                     aria-label={t`Message`}
                     placeholder={
                       activeThreadShared
@@ -2662,6 +3037,7 @@ function AIChatSessionDrawer({
                     maxRows={4}
                     disabled={
                       isLoading ||
+                      isApplyingScope ||
                       isSyncing ||
                       activeThreadShared ||
                       activeThreadDeletionPending
@@ -2680,7 +3056,7 @@ function AIChatSessionDrawer({
                         flex: 1
                       }
                     }}
-                    style={{ flex: 1 }}
+                    style={{ flex: '1 1 100%', minWidth: 0, order: -1 }}
                   />
                   {/* C3: the mic START action sits inside the composer,
                     adjacent to text entry — one shared eligibility path. */}
@@ -2689,7 +3065,8 @@ function AIChatSessionDrawer({
                     {isLoading ? (
                       <Tooltip label={t`Stop generating`} withArrow>
                         <ActionIcon
-                          aria-label='cancel-ai-chat-turn'
+                          aria-label={t`Stop generating`}
+                          data-testid='cancel-ai-chat-turn'
                           size={44}
                           radius='xl'
                           variant='filled'
@@ -2700,9 +3077,10 @@ function AIChatSessionDrawer({
                         </ActionIcon>
                       </Tooltip>
                     ) : (
-                      <Tooltip label={t`Send message`} withArrow>
+                      <>
                         <ActionIcon
-                          aria-label='send-ai-chat-message'
+                          aria-label={t`Send message`}
+                          data-testid='send-ai-chat-message'
                           size={44}
                           radius='xl'
                           variant='filled'
@@ -2724,7 +3102,7 @@ function AIChatSessionDrawer({
                         >
                           <IconSend size={18} />
                         </ActionIcon>
-                      </Tooltip>
+                      </>
                     )}
                   </Group>
                 </Group>

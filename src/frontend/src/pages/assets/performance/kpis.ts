@@ -1,4 +1,5 @@
 import { t } from '@lingui/core/macro';
+import { unitLabel } from './format';
 
 import type {
   HealthState,
@@ -9,6 +10,7 @@ import type {
 import type { KpiTile } from './KpiStrip';
 import { type ResolvedParameter, withKey, withRole } from './resolve';
 import { usable } from './series';
+import { groupByScale, largestGroup, unitText } from './units';
 
 const MAX_TILES = 8;
 
@@ -46,6 +48,8 @@ function tileFor(
     stale: signal.stale,
     quality: signal.quality,
     limitsConfigured: hasLimits(signal),
+    limits: signal.limits,
+    freshnessSeconds: signal.freshness_threshold_seconds,
     // A limit verdict on an unusable reading is no verdict.
     state:
       hasLimits(signal) && signal.quality === 'good'
@@ -78,8 +82,14 @@ function highestTile(
   // Only good-quality readings compete: a pegged sensor reporting 3276.7 with
   // quality bad is the loudest number in the family and means nothing.
   const live = family.filter((p) => usableSignal(p.signal) && !p.signal.stale);
-  const pool =
+  const candidates =
     live.length > 0 ? live : family.filter((p) => usableSignal(p.signal));
+  // "Highest" only means something on one scale (R6 A19.7): an NDE channel
+  // in mm/s and a thrust channel in µm cannot be ranked against each other.
+  // The tile ranks the largest same-unit group and says what it left out.
+  const groups = groupByScale(candidates, (p) => p.signal.unit);
+  const pool = largestGroup(groups)?.items ?? [];
+  const uncompared = candidates.length - pool.length;
   if (pool.length === 0) {
     return {
       key,
@@ -97,7 +107,7 @@ function highestTile(
   const top = pool.reduce((a, b) =>
     (numeric(b.signal) as number) > (numeric(a.signal) as number) ? b : a
   );
-  const worst = pool
+  const worst = candidates
     .map((p) => (hasLimits(p.signal) ? p.signal.state : 'unconfigured'))
     .reduce<HealthState | 'unconfigured'>((acc, state) => {
       const rank = {
@@ -119,11 +129,35 @@ function highestTile(
     observedAt: instant(top.signal),
     stale: top.signal.stale,
     state: worst,
-    limitsConfigured: pool.some((p) => hasLimits(p.signal)),
+    limitsConfigured: candidates.some((p) => hasLimits(p.signal)),
+    limits: top.signal.limits,
+    freshnessSeconds: top.signal.freshness_threshold_seconds,
     series: series.get(top.signal.binding_id),
-    caption: top.signal.unit
-      ? t`Highest of ${pool.length}: ${top.label}`
-      : t`Highest of ${pool.length}: ${top.label} · unit unconfirmed, raw source value`
+    caption: [
+      top.signal.unit
+        ? t`Highest of ${pool.length}: ${top.label}`
+        : t`Highest of ${pool.length}: ${top.label} · unit unconfirmed, raw source value`,
+      uncompared > 0
+        ? t`${uncompared} in ${groups
+            .filter((g) => !g.items.includes(top))
+            .map((g) => unitLabel(unitText(g)))
+            .join(', ')} not compared`
+        : '',
+      ...candidates
+        .filter(
+          (p) =>
+            !pool.includes(p) &&
+            hasLimits(p.signal) &&
+            p.signal.state === worst &&
+            (worst === 'critical' || worst === 'warning')
+        )
+        .map(
+          (p) =>
+            t`${p.label} (${unitLabel(p.signal.unit)}) ${p.signal.state}, not compared`
+        )
+    ]
+      .filter(Boolean)
+      .join(' · ')
   };
 }
 
@@ -159,7 +193,7 @@ function statusTile(
     valueText: word,
     unit: '',
     decimals: 0,
-    observedAt: last?.t ?? instant(parameter.signal),
+    observedAt: instant(parameter.signal),
     stale: parameter.signal.stale,
     state: 'unconfigured',
     caption:
@@ -209,7 +243,7 @@ export function buildKpiTiles(
       t`Vibration`,
       vibration,
       series,
-      t`No approved vibration channel`
+      t`Unavailable · no vibration channel with a confirmed role and unit`
     )
   );
 

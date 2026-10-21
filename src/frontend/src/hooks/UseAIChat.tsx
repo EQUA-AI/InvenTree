@@ -1,8 +1,21 @@
+import type {
+  ComponentFocusReference,
+  EvidenceFocusReference
+} from '@lib/types/AimmsWire.generated';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { api, queryClient } from '../App';
 import { createFocusRefreshGate } from '../components/aichat/conversationFocus';
+import {
+  parseScopeAcknowledgement,
+  parseThreadScopePayload
+} from '../components/aichat/scopeAcknowledgement';
 import type { ThreadDeleteResult } from '../components/aichat/threadDeletion';
+import {
+  type ChatWorkFocus,
+  parseWorkFocusAcknowledgement,
+  reloadedWorkFocus
+} from '../components/aichat/workFocus';
 import { getCsrfCookie } from '../functions/auth';
 import {
   chatIndexKey,
@@ -212,7 +225,8 @@ import type {
   AnalysisScopeMode,
   AnalysisScopeUpdate,
   ThreadInfo,
-  ThreadScopePayload
+  ThreadScopePayload,
+  WorkFocusAcknowledgement
 } from '@lib/types/AimmsWire.generated';
 import {
   type ContextUsedRecord,
@@ -417,6 +431,12 @@ export interface ChatMessage {
    * envelope (legacy STATE_DELTA, AG-UI CUSTOM, reload projection).
    */
   contextUsed?: ContextUsedRecord;
+  /**
+   * P02/P33: the Work order this question or answer was about. The server
+   * acknowledged it before the send, and the answer reloads with the same
+   * ids. Display and navigation only; the Work page checks access again.
+   */
+  workFocus?: ChatWorkFocus;
 }
 
 /** S46: one tool call's lifecycle as shown in the activity strip. */
@@ -562,6 +582,11 @@ interface ServerMessage {
   evidence_analysis?: unknown;
   /** M2 PR 9: the persisted Context used record (owner-only keys stripped). */
   context_used?: unknown;
+  /** P02/P33: the verified Work ids an answer was about (owner-only). */
+  work_focus?: unknown;
+  /** P02/P33: how that Work stands now for the owner (re-checked on read). */
+  work_focus_state?: unknown;
+  work_focus_reference_states?: unknown;
   response_state?: string;
 }
 
@@ -712,7 +737,15 @@ async function fetchServerThread(
           normalizeEvidenceAnalysis(m.evidence_analysis) ?? undefined,
         // M2 PR 9: the Context used record reloads through the same
         // allow-list normalizer every live wire uses.
-        contextUsed: normalizeContextUsed(m.context_used) ?? undefined
+        contextUsed: normalizeContextUsed(m.context_used) ?? undefined,
+        // P02/P33: the answer's Work focus reloads as ids only; a malformed
+        // value is dropped rather than shown as a link.
+        workFocus:
+          reloadedWorkFocus(
+            m.work_focus,
+            m.work_focus_state,
+            m.work_focus_reference_states
+          ) ?? undefined
       })
     );
 
@@ -776,7 +809,7 @@ async function fetchThreadScope(
     if (!response.ok) {
       return null;
     }
-    return (await response.json()) as ThreadScopePayload;
+    return parseThreadScopePayload(await response.json(), threadId);
   } catch (error) {
     console.error('Error fetching thread scope:', error);
     return null;
@@ -791,6 +824,7 @@ type ScopeUpdateResult =
       code:
         | 'scope_version_conflict'
         | 'scope_update_rejected'
+        | 'invalid_scope_acknowledgement'
         | 'not_found'
         | 'error';
     };
@@ -820,10 +854,15 @@ async function updateThreadScope(
       }
     );
     if (response.ok) {
-      return {
-        ok: true,
-        payload: (await response.json()) as ThreadScopePayload
-      };
+      const payload = parseScopeAcknowledgement(
+        await response.json(),
+        threadId,
+        expectedVersion,
+        scope
+      );
+      return payload
+        ? { ok: true, payload }
+        : { ok: false, code: 'invalid_scope_acknowledgement' };
     }
     const body = await response.json().catch(() => ({}));
     const detail = typeof body?.detail === 'string' ? body.detail : '';
@@ -839,6 +878,83 @@ async function updateThreadScope(
     return { ok: false, code: 'error' };
   } catch (error) {
     console.error('Error updating thread scope:', error);
+    return { ok: false, code: 'error' };
+  }
+}
+
+/** P02/P33: machine-readable outcomes of a Work-focus acknowledgement. */
+export type WorkFocusResult =
+  | { ok: true; acknowledgement: WorkFocusAcknowledgement }
+  | {
+      ok: false;
+      code:
+        | 'work_focus_rejected'
+        | 'invalid_work_focus_acknowledgement'
+        | 'not_found'
+        | 'error';
+    };
+
+/**
+ * P02/P33: ask the server to acknowledge one exact Work at one exact
+ * lifecycle version for this thread. Refusals are generic by design; a 200
+ * that names another thread, Work or version is not an acknowledgement.
+ */
+async function requestWorkFocus(
+  threadId: string,
+  host: string,
+  workOrderId: number | null,
+  expectedVersion: number | null,
+  requestId?: number,
+  requestVersion?: number,
+  component?: ComponentFocusReference,
+  evidence?: EvidenceFocusReference
+): Promise<WorkFocusResult> {
+  if ((requestId === undefined) !== (requestVersion === undefined))
+    return { ok: false, code: 'invalid_work_focus_acknowledgement' };
+  try {
+    const response = await fetch(
+      `${host}/threads/${encodeURIComponent(threadId)}/work-focus`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...csrfHeaders()
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          work_order_id: workOrderId,
+          expected_version: expectedVersion,
+          ...(component ? { component } : {}),
+          ...(evidence ? { evidence } : {}),
+          ...(requestId !== undefined
+            ? { request_id: requestId, request_version: requestVersion }
+            : {})
+        })
+      }
+    );
+    if (response.ok) {
+      const acknowledgement = parseWorkFocusAcknowledgement(
+        await response.json().catch(() => null),
+        threadId,
+        workOrderId,
+        expectedVersion,
+        requestId,
+        requestVersion,
+        component,
+        evidence
+      );
+      return acknowledgement
+        ? { ok: true, acknowledgement }
+        : { ok: false, code: 'invalid_work_focus_acknowledgement' };
+    }
+    const body = await response.json().catch(() => ({}));
+    if (body?.detail === 'work_focus_rejected') {
+      return { ok: false, code: 'work_focus_rejected' };
+    }
+    if (response.status === 404) return { ok: false, code: 'not_found' };
+    return { ok: false, code: 'error' };
+  } catch (error) {
+    console.error('Error acknowledging work focus:', error);
     return { ok: false, code: 'error' };
   }
 }
@@ -1049,12 +1165,20 @@ export function useAIChat(config: AIChatConfig = {}) {
   // endpoints. An explicit selection is BLOCKED (never display-only) when
   // the backend cannot confirm it.
   const [focusCapable, setFocusCapable] = useState(false);
+  // P02/P33: the server advertises the Work-focus contract; without it a
+  // Work launch sends nothing rather than a question without its Work.
+  const [workFocusCapable, setWorkFocusCapable] = useState(false);
+  const [referenceFocusCapable, setReferenceFocusCapable] = useState(false);
+  const [requestFocusCapable, setRequestFocusCapable] = useState(false);
   // S1: a send bounced on scope_version_conflict; the bounced turn is kept
   // for one-click resend once the refreshed scope has been reviewed.
   const [scopeConflict, setScopeConflict] = useState(false);
-  const lastTurnRef = useRef<{ content: string; fileIds?: string[] } | null>(
-    null
-  );
+  const lastTurnRef = useRef<{
+    content: string;
+    fileIds?: string[];
+    // P02/P33: a focused turn resends only with a fresh acknowledgement.
+    workFocus?: ChatWorkFocus;
+  } | null>(null);
 
   // VOICE-H06: the hydration tracker fences awaited summary-scope reads
   // against newer scope observations (PUT acks, newer summaries, denials);
@@ -1276,6 +1400,13 @@ export function useAIChat(config: AIChatConfig = {}) {
           serverData.capabilities?.thread_focus ??
             serverData.capabilities?.thread_scope
         )
+      );
+      setWorkFocusCapable(Boolean(serverData.capabilities?.work_focus));
+      setReferenceFocusCapable(
+        Boolean(serverData.capabilities?.component_evidence_focus)
+      );
+      setRequestFocusCapable(
+        Boolean(serverData.capabilities?.investigation_request_focus)
       );
       setThreadCursor(serverData.next_cursor ?? null);
 
@@ -2157,12 +2288,17 @@ export function useAIChat(config: AIChatConfig = {}) {
    * Add a message to the chat
    */
   const addMessage = useCallback(
-    (role: ChatMessage['role'], content: string): ChatMessage => {
+    (
+      role: ChatMessage['role'],
+      content: string,
+      extra?: Pick<ChatMessage, 'workFocus'>
+    ): ChatMessage => {
       const message: ChatMessage = {
         id: generateMessageId(),
         role,
         content,
-        timestamp: new Date()
+        timestamp: new Date(),
+        ...extra
       };
       setMessages((prev) => [...prev, message]);
       return message;
@@ -2348,11 +2484,13 @@ export function useAIChat(config: AIChatConfig = {}) {
     useCallback(async (): Promise<ActiveThreadScope | null> => {
       const threadId = activeThreadIdRef.current;
       const version = selectionVersionRef.current;
+      const scopeVersion = activeScopeVersionRef.current;
       if (!threadId || !sessionIsCurrent()) return null;
       const payload = await fetchThreadScope(threadId, aiHost);
       const current =
         sessionIsCurrent() &&
         version === selectionVersionRef.current &&
+        scopeVersion === activeScopeVersionRef.current &&
         activeThreadIdRef.current === threadId;
       if (!current) return null;
       applyScopePayload(payload);
@@ -2393,11 +2531,12 @@ export function useAIChat(config: AIChatConfig = {}) {
         if (!currentSelection()) {
           return { ok: false, code: 'error' };
         }
+        if (!current) return { ok: false, code: 'error' };
         applyScopePayload(current);
         result = await updateThreadScope(
           threadId,
           aiHost,
-          current?.version ?? 0,
+          current.version,
           scope
         );
       }
@@ -2412,6 +2551,43 @@ export function useAIChat(config: AIChatConfig = {}) {
   );
 
   /**
+   * P02/P33: acknowledge one Work for the active thread before a focused
+   * send. A thread or session switch while the request is in flight voids
+   * the result, so a receipt can never be spent on a different selection.
+   */
+  const acknowledgeWorkFocus = useCallback(
+    async (
+      workOrderId: number | null,
+      expectedVersion: number | null,
+      requestId?: number,
+      requestVersion?: number,
+      component?: ComponentFocusReference,
+      evidence?: EvidenceFocusReference
+    ): Promise<WorkFocusResult> => {
+      const threadId = activeThreadIdRef.current;
+      const version = selectionVersionRef.current;
+      const currentSelection = () =>
+        sessionIsCurrent() &&
+        version === selectionVersionRef.current &&
+        activeThreadIdRef.current === threadId;
+      if (!threadId || !currentSelection()) return { ok: false, code: 'error' };
+      const result = await requestWorkFocus(
+        threadId,
+        aiHost,
+        workOrderId,
+        expectedVersion,
+        requestId,
+        requestVersion,
+        component,
+        evidence
+      );
+      if (!currentSelection()) return { ok: false, code: 'error' };
+      return result;
+    },
+    [aiHost, sessionIsCurrent]
+  );
+
+  /**
    * Send a message and get AI response
    * Handles AG-UI protocol events from Microsoft Agent Framework
    */
@@ -2419,7 +2595,16 @@ export function useAIChat(config: AIChatConfig = {}) {
     async (
       userContent: string,
       fileIds?: string[],
-      focusVersion?: number | null
+      // Both focus contracts travel on the same logical turn. Numeric
+      // callers retain the conversation focus capture-time stamp.
+      focusVersionOrWork?:
+        | number
+        | null
+        | {
+            receipt: string;
+            workFocus: ChatWorkFocus;
+            focusVersion?: number | null;
+          }
     ) => {
       if (
         !sessionIsCurrent() ||
@@ -2438,6 +2623,14 @@ export function useAIChat(config: AIChatConfig = {}) {
       // Plan C: the focus stamp is captured HERE with the utterance (before
       // any await) and kept for every transport retry of this logical turn —
       // never re-read at submission time.
+      const focus =
+        typeof focusVersionOrWork === 'object' && focusVersionOrWork !== null
+          ? focusVersionOrWork
+          : undefined;
+      const focusVersion =
+        typeof focusVersionOrWork === 'number'
+          ? focusVersionOrWork
+          : focus?.focusVersion;
       const expectedFocusVersion =
         focusVersion ?? useThreadFocusState.getState().version ?? undefined;
       // Client integration: a turn's focus echo is the ONLY thing allowed to
@@ -2462,7 +2655,11 @@ export function useAIChat(config: AIChatConfig = {}) {
       // S1: every send clears a standing conflict and becomes the turn a
       // later conflict would offer to resend.
       setScopeConflict(false);
-      lastTurnRef.current = { content: userContent, fileIds };
+      lastTurnRef.current = {
+        content: userContent,
+        fileIds,
+        workFocus: focus?.workFocus
+      };
       // S22: any send disarms the card — the server slot is consume-on-read,
       // so whatever this message is, the question cannot be answered later.
       // Remember which card this send answered so its frozen state reads
@@ -2478,7 +2675,11 @@ export function useAIChat(config: AIChatConfig = {}) {
       });
 
       // Add user message
-      addMessage('user', userContent.trim());
+      addMessage(
+        'user',
+        userContent.trim(),
+        focus ? { workFocus: focus.workFocus } : undefined
+      );
 
       // Create placeholder for assistant response
       const assistantMessage: ChatMessage = {
@@ -2486,7 +2687,8 @@ export function useAIChat(config: AIChatConfig = {}) {
         role: 'assistant',
         content: '',
         timestamp: new Date(),
-        isStreaming: true
+        isStreaming: true,
+        ...(focus ? { workFocus: focus.workFocus } : {})
       };
       setMessages((prev) => {
         const updated = [...prev, assistantMessage];
@@ -2522,7 +2724,9 @@ export function useAIChat(config: AIChatConfig = {}) {
           // Plan C: the capture-time focus stamp (omitted when never
           // observed; the backend mirrors it into the turn's recorded
           // binding and refuses stale stamps).
-          expected_focus_version: expectedFocusVersion
+          expected_focus_version: expectedFocusVersion,
+          // P02/P33: the signed acknowledgement, verified again server-side.
+          work_focus_receipt: focus?.receipt
         };
 
         // Use streaming endpoint for real-time AG-UI events
@@ -2564,6 +2768,7 @@ export function useAIChat(config: AIChatConfig = {}) {
                     idempotencyKey,
                     expectedScopeVersion: payload.expected_scope_version,
                     expectedFocusVersion,
+                    workFocusReceipt: payload.work_focus_receipt,
                     signal: abortControllerRef.current!.signal,
                     csrfToken: getCsrfCookie() || undefined,
                     callbacks: {
@@ -2821,6 +3026,19 @@ export function useAIChat(config: AIChatConfig = {}) {
               // and must surface distinctly — the generic throw below
               // discards the body, which carries exactly the code we need.
               // Any other 409 (idempotency conflict) keeps the old path.
+              // P02/P33: a refused Work-focus receipt is typed and final;
+              // the generic path below would discard the code.
+              if (response.status === 400) {
+                const body = await response.json().catch(() => ({}));
+                if (body?.detail === 'work_focus_rejected') {
+                  throw new AIRunError(
+                    'The work order could not be confirmed.',
+                    'work_focus_rejected'
+                  );
+                }
+                throw new Error('HTTP error! status: 400');
+              }
+
               if (response.status === 409) {
                 const body = await response.json().catch(() => ({}));
                 if (body?.detail === 'scope_version_conflict') {
@@ -3400,8 +3618,17 @@ export function useAIChat(config: AIChatConfig = {}) {
             err.failureClass === 'focus_version_conflict' ||
             (err.response?.status === 409 &&
               err.response?.data?.detail === 'focus_version_conflict');
+          // P02/P33: a receipt refused at send time (revoked or changed in
+          // the moment since it was acknowledged) produced no turn.
+          const workFocusRefused =
+            err.failureClass === 'work_focus_rejected' ||
+            (err.response?.status === 400 &&
+              err.response?.data?.detail === 'work_focus_rejected');
           let errorMsg = err.message || 'Failed to get AI response';
-          if (scopeConflictHit) {
+          if (workFocusRefused) {
+            errorMsg =
+              'The work order could not be confirmed, so this question was not answered. Open the work order and ask again.';
+          } else if (scopeConflictHit) {
             errorMsg =
               'The conversation scope changed. Review the scope and send again.';
             setScopeConflict(true);
@@ -3446,7 +3673,10 @@ export function useAIChat(config: AIChatConfig = {}) {
           // English would mix languages for non-English users (P8-W0e).
           updateMessage(
             assistantMessage.id,
-            err.localizedMessage || scopeConflictHit || focusConflictHit
+            err.localizedMessage ||
+              scopeConflictHit ||
+              focusConflictHit ||
+              workFocusRefused
               ? errorMsg
               : `Sorry, I encountered an error: ${errorMsg}`
           );
@@ -3565,10 +3795,36 @@ export function useAIChat(config: AIChatConfig = {}) {
    */
   const resendLastTurn = useCallback(() => {
     const last = lastTurnRef.current;
-    if (last) {
+    if (!last) return;
+    const workFocus = last.workFocus;
+    if (!workFocus) {
       void sendMessage(last.content, last.fileIds);
+      return;
     }
-  }, [sendMessage]);
+    // P02/P33: the earlier receipt is spent or expired. Acknowledge the same
+    // Work at the same version again; if that is refused, nothing is sent —
+    // a focused question never silently resends without its Work.
+    void (async () => {
+      const result = await acknowledgeWorkFocus(
+        workFocus.identity.work_order_id,
+        workFocus.identity.lifecycle_version,
+        workFocus.identity.request_id ?? undefined,
+        workFocus.identity.request_version ?? undefined,
+        workFocus.identity.component ?? undefined,
+        workFocus.identity.evidence ?? undefined
+      );
+      if (!result.ok) {
+        setError(
+          'The work order could not be confirmed, so the question was not sent again. Open the work order and ask again.'
+        );
+        return;
+      }
+      void sendMessage(last.content, last.fileIds, {
+        receipt: result.acknowledgement.receipt,
+        workFocus
+      });
+    })();
+  }, [acknowledgeWorkFocus, sendMessage, setError]);
 
   return {
     // Current thread state
@@ -3616,6 +3872,11 @@ export function useAIChat(config: AIChatConfig = {}) {
     scopeCapable,
     // Plan C: the thread-focus endpoints are confirmed available
     focusCapable,
+    // P02/P33: Work-focus acknowledgement for the active thread.
+    workFocusCapable,
+    referenceFocusCapable,
+    requestFocusCapable,
+    acknowledgeWorkFocus,
     scopeConflict,
     refreshThreadScope,
     setThreadScope,

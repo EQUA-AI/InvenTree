@@ -291,6 +291,19 @@ class RegistryTests(InvenTreeAPITestCase):
         self.assertEqual(pump.parent_id, self.station.pk)
         self.assertEqual(pump.location, 'Bay 1')
 
+    def test_info_alarms_are_not_counted_as_warnings(self):
+        """The additive warning count excludes info and resolved conditions."""
+        from assets.health_models import MachineAnomaly
+
+        now = timezone.now()
+        for severity, status in [('info', 'open'), ('warning', 'acknowledged'), ('warning', 'resolved')]:
+            MachineAnomaly.objects.create(machine=self.station, fingerprint=f'{severity}-{status}', title='Synthetic severity test', severity=severity, status=status, detector='threshold', first_observed_at=now, last_observed_at=now)
+        response = self.client.get(f'/api/assets/machines/{self.station.pk}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['open_alarms'], 2)
+        self.assertEqual(response.data['open_critical_alarms'], 0)
+        self.assertEqual(response.data['open_warning_alarms'], 1)
+
     def test_a_station_counts_the_alarms_on_its_pumps(self):
         """The machine list says where there is something to look at.
 
@@ -320,12 +333,16 @@ class RegistryTests(InvenTreeAPITestCase):
         anomaly(other, 'critical', status='resolved')
         anomaly(self.station, 'warning')
 
+
         rows = {
             row['pk']: row for row in self.client.get('/api/assets/machines/').data
         }
         self.assertEqual(rows[pump.pk]['open_alarms'], 2)
         self.assertEqual(rows[pump.pk]['open_critical_alarms'], 1)
         self.assertEqual(rows[other.pk]['open_alarms'], 0)
+        self.assertEqual(rows[other.pk]['open_warning_alarms'], 0)
+        self.assertEqual(rows[pump.pk]['open_warning_alarms'], 1)
+        self.assertEqual(rows[self.station.pk]['open_warning_alarms'], 2)
         self.assertEqual(rows[self.station.pk]['open_alarms'], 3)
         self.assertEqual(rows[self.station.pk]['open_critical_alarms'], 1)
 
@@ -569,7 +586,7 @@ class RegistryTests(InvenTreeAPITestCase):
             {'client_id': self.tenant.pk, 'customer_id': 99, 'site_key': None}
         ]
         with self.settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=mixed):
-            self.assertEqual(self.client.get('/api/assets/registry/').data['count'], 0)
+            self.assertEqual(self.client.get('/api/assets/registry/').status_code, 403)
 
     def test_view_only_cannot_import(self):
         """Read authority permits preview, not import or anonymous access."""

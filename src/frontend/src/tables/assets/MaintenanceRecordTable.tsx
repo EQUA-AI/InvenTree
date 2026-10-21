@@ -37,10 +37,16 @@ function formatDowntime(minutes: number | null) {
  * Each completed row links to the authoritative work order at
  * `/maintenance/work-orders/:id/`. Rows without a link are genuinely unowned
  * legacy history and are shown as such - never with a fabricated reference.
+ *
+ * `boundToMachine` (R6 P12, the Maintenance tab's Completed history view):
+ * the table belongs to this machine, so the page URL's own parameters - the
+ * Machines list's return state, the tab's view - are not read as filters on
+ * it. Its own search, sorting and pagination are unchanged.
  */
 export function MaintenanceRecordTable({
-  machineId
-}: Readonly<{ machineId: number }>) {
+  machineId,
+  boundToMachine = false
+}: Readonly<{ machineId: number; boundToMachine?: boolean }>) {
   const table = useTable('maintenance-record');
 
   const tableColumns: TableColumn<AssetMaintenanceRecord>[] = useMemo(() => {
@@ -63,7 +69,7 @@ export function MaintenanceRecordTable({
           if (!record.work_order) {
             return (
               <Text size='sm' c='dimmed'>
-                {t`Legacy record`}
+                {t`No work order you can open`}
               </Text>
             );
           }
@@ -90,9 +96,26 @@ export function MaintenanceRecordTable({
         defaultVisible: false
       },
       {
+        // R6 P12: the component the linked work order recorded.
+        accessor: 'work_order_component',
+        title: t`Component`,
+        sortable: false,
+        render: (record: AssetMaintenanceRecord) =>
+          record.work_order_component ? (
+            record.work_order_component
+          ) : (
+            <Text size='sm' c='dimmed'>
+              {record.work_order ? t`Not recorded` : t`Not available`}
+            </Text>
+          )
+      },
+      {
         accessor: 'work_order_type',
         title: t`Type`,
         sortable: false,
+        // The badge reads whole beside the added Component and Follow-up
+        // columns (R6 P12) instead of truncating to "CORRE…".
+        minWidth: 120,
         render: (record: AssetMaintenanceRecord) => {
           if (!record.work_order_type) {
             return '';
@@ -158,7 +181,8 @@ export function MaintenanceRecordTable({
         accessor: 'follow_up_required',
         title: t`Follow-up`,
         sortable: false,
-        defaultVisible: false,
+        // R6 UI06: residual conditions are shown where present.
+        defaultVisible: true,
         render: (record: AssetMaintenanceRecord) =>
           record.follow_up_required ? (
             <Group gap={4} wrap='nowrap'>
@@ -187,6 +211,7 @@ export function MaintenanceRecordTable({
         enableSearch: true,
         enablePagination: true,
         enableRefresh: true,
+        ...(boundToMachine ? { enableQueryFilters: false } : {}),
         params: {
           machine: machineId
         }

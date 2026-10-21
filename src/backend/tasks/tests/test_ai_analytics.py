@@ -229,13 +229,22 @@ class UnavailableShapeTests(AnalyticsTestCase):
             ai_analytics.aggregate_work_orders(self.actor, grouping='machine')
         )
 
-    def test_anonymous_and_unresolved_are_unavailable(self):
-        """No authenticated identity or no resolved scope: same silence."""
+    def test_anonymous_and_roleless_are_unavailable_but_no_grant_viewer_reads_shared(self):
+        """Work view authorizes shared analytics; identity and role remain mandatory."""
         self._assert_unavailable(
             ai_analytics.get_work_order_dataset_profile(AnonymousUser())
         )
-        self._assert_unavailable(
-            ai_analytics.aggregate_work_orders(self.unresolved, grouping='machine')
+        roleless = get_user_model().objects.create_user(username='analytics-roleless')
+        self._assert_unavailable(ai_analytics.aggregate_work_orders(roleless, grouping='machine'))
+        shared = ai_analytics.aggregate_work_orders(self.unresolved, grouping='machine')
+        self.assertTrue(shared['available'])
+        # Machine grouping reports machineless Work separately (Q17).
+        self.assertEqual(shared['population_count'], 1)
+        self.assertEqual(shared['unassigned_machine_count'], 1)
+        self.assertTrue(shared['complete_population'])
+        self.assertEqual(
+            ai_analytics.get_work_order_dataset_profile(self.unresolved)['population_count'],
+            2,
         )
 
 
@@ -243,14 +252,14 @@ class DatasetProfileTests(AnalyticsTestCase):
     """The profile describes the complete authorized population honestly."""
 
     def test_profile_counts_only_the_actors_population(self):
-        """Three client jobs for the actor; the foreign and customer jobs stay out."""
+        """Three client jobs plus two shared customer jobs; foreign machine-only Work stays out."""
         profile = ai_analytics.get_work_order_dataset_profile(self.actor)
         self.assertTrue(profile['available'])
-        self.assertEqual(profile['population_count'], 3)
+        self.assertEqual(profile['population_count'], 5)
         self.assertTrue(profile['complete_population'])
         self.assertEqual(profile['population_type'], 'work_orders')
-        self.assertEqual(profile['unassigned_machine_count'], 0)
-        self.assertEqual(profile['distinct_machine_count'], 2)
+        self.assertEqual(profile['unassigned_machine_count'], 1)
+        self.assertEqual(profile['distinct_machine_count'], 3)
         self.assertEqual(profile['work_order_type_counts']['preventive'], 1)
         self.assertEqual(profile['lifecycle_status_counts']['completed'], 2)
         self.assertEqual(profile['applied_filters']['date_field'], 'created_at')
@@ -261,8 +270,8 @@ class DatasetProfileTests(AnalyticsTestCase):
         profile = ai_analytics.get_work_order_dataset_profile(
             self.actor, date_field='actual_completed_at'
         )
-        self.assertEqual(profile['population_count'], 3)
-        self.assertEqual(profile['null_date_count'], 1)
+        self.assertEqual(profile['population_count'], 5)
+        self.assertEqual(profile['null_date_count'], 3)
         self.assertEqual(profile['date_min'], _dt(2026, 1, 15, 3).isoformat())
         self.assertEqual(profile['date_max'], _dt(2026, 2, 10, 9).isoformat())
 
@@ -275,7 +284,7 @@ class DatasetProfileTests(AnalyticsTestCase):
     def test_linked_record_never_inflates_the_work_order_population(self):
         """A7: the closeout-created record enriches, it is not a second event."""
         profile = ai_analytics.get_work_order_dataset_profile(self.actor)
-        self.assertEqual(profile['population_count'], 3)
+        self.assertEqual(profile['population_count'], 5)
         records = AssetMaintenanceRecord.objects.filter(
             maintenance_record_scope_filter(self.actor)
         )
@@ -289,7 +298,7 @@ class AggregateTests(AnalyticsTestCase):
         """Groups carry ids, fenced labels and server counts."""
         result = ai_analytics.aggregate_work_orders(self.actor, grouping='machine')
         self.assertTrue(result['available'])
-        self.assertEqual(result['population_count'], 3)
+        self.assertEqual(result['population_count'], 4)
         self.assertTrue(result['complete_population'])
         by_key = {row['key']: row for row in result['groups']}
         self.assertEqual(by_key[self.machine_one.pk]['group_count'], 2)
@@ -316,7 +325,7 @@ class AggregateTests(AnalyticsTestCase):
         )
         by_key = {row['key']: row['group_count'] for row in result['groups']}
         self.assertEqual(by_key['INV-7'], 2)
-        self.assertEqual(by_key[''], 1)
+        self.assertEqual(by_key[''], 3)
 
     def test_free_text_and_identity_groupings_are_structurally_absent(self):
         """The allow-list is the control: no enum member, no grouping."""
@@ -449,8 +458,8 @@ class TimelineTests(AnalyticsTestCase):
         result = ai_analytics.get_work_order_timeline(
             self.actor, bucket='month', date_field='actual_completed_at'
         )
-        self.assertEqual(result['null_date_count'], 1)
-        self.assertEqual(result['population_count'], 3)
+        self.assertEqual(result['null_date_count'], 3)
+        self.assertEqual(result['population_count'], 5)
         self.assertEqual(sum(row['group_count'] for row in result['buckets']), 2)
 
     def test_maintenance_record_series_uses_the_record_date(self):
@@ -554,9 +563,9 @@ class DurationTests(AnalyticsTestCase):
         """One 120-minute job; the untimed and half-timed are counted out."""
         result = ai_analytics.get_work_order_durations(self.actor)
         self.assertTrue(result['available'])
-        self.assertEqual(result['population_count'], 3)
+        self.assertEqual(result['population_count'], 5)
         self.assertEqual(result['qualifying_count'], 1)
-        self.assertEqual(result['excluded_missing_count'], 2)
+        self.assertEqual(result['excluded_missing_count'], 4)
         self.assertEqual(result['excluded_invalid_count'], 0)
         self.assertEqual(result['min_minutes'], 120.0)
         self.assertEqual(result['max_minutes'], 120.0)
@@ -661,4 +670,4 @@ class PageDateFieldTests(AnalyticsTestCase):
         """An unlisted selector can never reach the ORM."""
         page = ai_read.work_orders_page(self.actor, date_field='updated_at')
         self.assertEqual(page['applied_filters']['date_field'], 'created_at')
-        self.assertEqual(page['population_count'], 3)
+        self.assertEqual(page['population_count'], 5)

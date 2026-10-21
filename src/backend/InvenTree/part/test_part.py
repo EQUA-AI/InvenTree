@@ -8,11 +8,15 @@ from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 import part.settings
-from common.models import NotificationEntry, NotificationMessage
+from common.models import InvenTreeSetting, NotificationEntry, NotificationMessage
 from common.settings import get_global_setting, set_global_setting
 from InvenTree import version
 from InvenTree.templatetags import inventree_extras
-from InvenTree.unit_test import InvenTreeTestCase, addUserPermission
+from InvenTree.unit_test import (
+    InvenTreeTestCase,
+    PluginRegistryMixin,
+    addUserPermission,
+)
 
 from .models import (
     Part,
@@ -101,9 +105,14 @@ class TemplateTagTest(InvenTreeTestCase):
     def test_setting_object(self):
         """Test the 'setting_object' template tag."""
         # Normal
-        self.assertEqual(
-            inventree_extras.setting_object('PART_ALLOW_DUPLICATE_IPN').value, True
-        )
+        setting = inventree_extras.setting_object('PART_ALLOW_DUPLICATE_IPN')
+        self.assertIsInstance(setting, InvenTreeSetting)
+        self.assertEqual(setting.key, 'PART_ALLOW_DUPLICATE_IPN')
+        # Persisted settings use text storage; the native value must be boolean
+        # regardless of whether the returned model came from the DB or cache.
+        value = setting.to_native_value()
+        self.assertIs(type(value), bool)
+        self.assertTrue(value)
 
         # User
         self.assertEqual(
@@ -140,7 +149,7 @@ class TemplateTagTest(InvenTreeTestCase):
         )
 
 
-class PartTest(TestCase):
+class PartTest(PluginRegistryMixin, TestCase):
     """Tests for the Part model."""
 
     fixtures = ['category', 'part', 'location', 'part_pricebreaks']
@@ -156,6 +165,7 @@ class PartTest(TestCase):
 
     def test_barcode_mixin(self):
         """Test the barcode mixin functionality."""
+        self.ensurePluginsLoaded(force=True)
         self.assertEqual(Part.barcode_model_type(), 'part')
 
         p = Part.objects.get(pk=1)
@@ -281,6 +291,7 @@ class PartTest(TestCase):
 
     def test_barcode(self):
         """Test barcode format functionality."""
+        self.ensurePluginsLoaded(force=True)
         barcode = self.r1.format_barcode()
         self.assertEqual('INV-PA3', barcode)
 
@@ -947,6 +958,9 @@ class PartNotificationTest(InvenTreeTestCase):
 
     def test_low_stock_notification(self):
         """Test that a low stocknotification is generated."""
+        # Load delivery plugins against the migrated test database; startup
+        # collection may have run before its tables existed.
+        self.ensurePluginsLoaded(force=True)
         NotificationEntry.objects.all().delete()
         NotificationMessage.objects.all().delete()
 

@@ -11,11 +11,11 @@ import uuid
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from tasks.models import WorkOrder, WorkOrderLifecycle, WorkOrderPart, WorkOrderType
 
-from assets.models import AssetMachine
+from assets.models import AssetMachine, ClientScopeGrant, get_default_client
 from InvenTree.unit_test import InvenTreeAPITestCase
 from part.models import Part
 
@@ -111,6 +111,9 @@ class DraftValidationTest(TestCase):
         self.assertEqual(result['work_order_type'], WorkOrderType.CORRECTIVE)
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.granted_client_scope_resolver'
+)
 class CreateWorkPackageTest(TestCase):
     """The atomic create command."""
 
@@ -121,8 +124,10 @@ class CreateWorkPackageTest(TestCase):
             email='planner@example.com',
             password='test-password',
         )
+        self.tenant = get_default_client()
+        ClientScopeGrant.objects.create(user=self.actor, client=self.tenant)
         self.machine = AssetMachine.objects.create(
-            name=f'Blower-{uuid.uuid4().hex[:6]}'
+            name=f'Blower-{uuid.uuid4().hex[:6]}', client=self.tenant
         )
         self.part = Part.objects.create(
             name=f'Seal-{uuid.uuid4().hex[:6]}',
@@ -225,6 +230,9 @@ class CreateWorkPackageTest(TestCase):
         )
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class WorkPackageApiTest(InvenTreeAPITestCase):
     """HTTP contract for the maintenance work-package endpoint."""
 
@@ -237,7 +245,7 @@ class WorkPackageApiTest(InvenTreeAPITestCase):
         """Create the machine the drafts refer to."""
         super().setUp()
         self.machine = AssetMachine.objects.create(
-            name=f'Clarifier-{uuid.uuid4().hex[:6]}'
+            client=get_default_client(), name=f'Clarifier-{uuid.uuid4().hex[:6]}'
         )
 
     def test_create_returns_both_references_and_replay_flag(self):
@@ -266,12 +274,12 @@ class WorkPackageApiTest(InvenTreeAPITestCase):
         )
         self.assertEqual(response.data['code'], 'WORK_PACKAGE_INVALID')
 
-    def test_unknown_machine_returns_its_own_code(self):
-        """An unresolvable machine is distinguishable from a malformed draft."""
+    def test_unknown_machine_returns_scope_safe_not_found(self):
+        """Missing and inaccessible assets disclose no identity."""
         response = self.post(
-            self.url, {'machine_id': 987654, 'title': 'Ghost asset'}, expected_code=400
+            self.url, {'machine_id': 987654, 'title': 'Ghost asset'}, expected_code=404
         )
-        self.assertEqual(response.data['code'], 'UNKNOWN_MACHINE')
+        self.assertEqual(response.data['detail'].code, 'not_found')
 
 
 class WorkPackagePermissionTest(InvenTreeAPITestCase):

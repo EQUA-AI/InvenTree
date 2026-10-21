@@ -6,7 +6,7 @@ import { navigate } from '../helpers';
 import { doCachedLogin } from '../login';
 
 /**
- * The Installed Parts tab of a machine page.
+ * The Parts tab of a machine page (route `parts`; formerly "Installed Parts").
  *
  * A registered pump or station shows the components the equipment registry
  * holds for it; plain equipment shows the parts recorded as fitted, as before.

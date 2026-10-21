@@ -22,11 +22,15 @@ from machine_health.services.display_time import display_shift, to_display
 class MachineSignalSerializer(serializers.Serializer):
     """One mapped signal with its current value, freshness and limits."""
 
+    active = serializers.BooleanField(read_only=True)
+    critical_designation = serializers.JSONField(read_only=True, allow_null=True)
     binding_id = serializers.IntegerField(read_only=True)
     source_id = serializers.IntegerField(read_only=True)
     source_name = serializers.CharField(read_only=True)
     source_type = serializers.CharField(read_only=True)
     external_key = serializers.CharField(read_only=True)
+    #: ``{code, name, status}`` from the tag dictionary, or null when unrecorded.
+    component = serializers.JSONField(read_only=True, allow_null=True)
     display_name = serializers.CharField(read_only=True)
     signal_kind = serializers.CharField(read_only=True)
     unit = serializers.CharField(read_only=True)
@@ -191,6 +195,13 @@ class HealthEvidenceSnapshotSerializer(
 ):
     """An immutable evidence snapshot, as cited by a preliminary result."""
 
+    captured_by_name = serializers.SerializerMethodField()
+
+    def get_captured_by_name(self, snapshot) -> str | None:
+        """Name the recorded actor without inventing one for legacy captures."""
+        actor = snapshot.created_by
+        return (actor.get_full_name() or actor.get_username()) if actor else None
+
     class Meta:
         """Serializer metadata."""
 
@@ -214,6 +225,7 @@ class HealthEvidenceSnapshotSerializer(
             'source_references',
             'content_hash',
             'system_actor',
+            'captured_by_name',
         )
         read_only_fields = fields
 

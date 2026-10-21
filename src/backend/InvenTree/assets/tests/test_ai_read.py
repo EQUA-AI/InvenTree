@@ -319,6 +319,27 @@ class ProjectionTests(MachineAiReadTestCase):
         self.assertIn('last_success_at', source)
         self.assertIn('last_error_at', source)
 
+    def test_retained_inactive_critical_signal_exposes_its_active_flag(self):
+        """A retained coverage obligation is never described as live mapping."""
+        from assets.record_models import SignalDesignation
+        from assets.recorded_facts import binding_signature
+
+        SignalDesignation.objects.create(
+            binding=self.binding,
+            version=1,
+            critical=True,
+            binding_signature=binding_signature(self.binding),
+            reason='Needed',
+            recorded_by=self.actor,
+        )
+        self.binding.active = False
+        self.binding.save(update_fields=['active'])
+        rows = ai_read.machine_signals(self.machine)['signals']
+        self.assertEqual(len(rows), 1)
+        self.assertFalse(rows[0]['active'])
+        self.assertIsNone(rows[0]['value'])
+        self.assertEqual(rows[0]['state'], 'unknown')
+
     def test_signals_expose_limits_and_staleness(self):
         """A reading is meaningless without its limits and freshness."""
         signals = ai_read.machine_signals(self.machine)['signals']
@@ -526,8 +547,8 @@ class MachineFaultHistoryTests(MachineAiReadTestCase):
         self.assertEqual(causes, [{'cause': 'bearing wear', 'count': 2}])
         self.assertEqual(rollup['declared']['source'], 'operator-declared profile')
 
-    def test_unauthorized_work_orders_are_skipped(self):
-        """A closeout on a WO outside the actor's scope never aggregates."""
+    def test_shared_customer_work_closeouts_are_included(self):
+        """O24 includes a shared customer closeout on the authorized machine."""
         from company.models import Company
 
         closeout = self._verified_closeout('foreign cause')
@@ -538,7 +559,7 @@ class MachineFaultHistoryTests(MachineAiReadTestCase):
         closeout.work_order.save(update_fields=['customer'])
 
         rollup = ai_read.machine_fault_history(self.actor, self.machine, fenced=False)
-        self.assertEqual(rollup['observed']['verified_causes']['top'], [])
+        self.assertEqual(rollup['observed']['verified_causes']['top'], [{'cause': 'foreign cause', 'count': 1}])
 
     def test_overview_includes_fault_history_with_fencing(self):
         """The AI overview carries the rollup with fenced operator text."""

@@ -13,6 +13,7 @@ import {
   Stack,
   Text,
   TextInput,
+  Tooltip,
   Tree,
   type TreeNodeData,
   useTree
@@ -38,6 +39,7 @@ import {
   useRef,
   useState
 } from 'react';
+import operations from '../operations.module.css';
 
 import { useApi } from '../../../contexts/ApiContext';
 import {
@@ -423,14 +425,16 @@ export function LocationBrowser({
           <Box w={26} />
         )}
         <KindIcon size={16} aria-hidden />
-        <button type='button' className={classes.nodeName}>
-          {label}
-        </button>
-        <Text size='xs' c='dimmed'>
+        <Tooltip label={label}>
+          <button type='button' className={classes.nodeName}>
+            {label}
+          </button>
+        </Tooltip>
+        <Text size='xs' className={operations.meta}>
           {locationKindLabel(kind)}
         </Text>
         {location?.code ? (
-          <Text size='xs' c='dimmed'>
+          <Text size='xs' className={operations.meta}>
             {location.code}
           </Text>
         ) : null}
@@ -440,7 +444,7 @@ export function LocationBrowser({
           </Badge>
         )}
         {isRoot && workspace && (
-          <Text size='xs' c='dimmed'>
+          <Text size='xs' className={operations.meta}>
             {workspace}
           </Text>
         )}
@@ -467,8 +471,9 @@ export function LocationBrowser({
           <Text fw={600}>{t`Locations`}</Text>
         </Group>
         <TextInput
-          aria-label={t`Search locations`}
-          placeholder={t`Search names or codes`}
+          label={t`Search locations`}
+          description={t`Search names or codes`}
+          classNames={{ input: operations.input, description: operations.meta }}
           leftSection={<IconSearch size={16} />}
           value={search}
           onChange={(event) => {
@@ -485,6 +490,7 @@ export function LocationBrowser({
             {!searchQuery.isError &&
               searchQuery.data?.results.map((node) => (
                 <Anchor
+                  className={operations.link}
                   key={node.pk}
                   component='button'
                   ta='left'
@@ -497,10 +503,14 @@ export function LocationBrowser({
                 </Anchor>
               ))}
             {searchQuery.data?.count === 0 && (
-              <Text c='dimmed' size='sm'>{t`No matching locations`}</Text>
+              <Text
+                className={operations.meta}
+                size='sm'
+              >{t`No matching locations`}</Text>
             )}
             {(searchQuery.data?.count ?? 0) > 10 && (
               <Pagination
+                color='var(--mantine-primary-color-7)'
                 total={Math.ceil((searchQuery.data?.count ?? 0) / 10)}
                 value={searchPage}
                 onChange={setSearchPage}
@@ -511,6 +521,7 @@ export function LocationBrowser({
         ) : (
           <>
             <Anchor
+              className={operations.link}
               component='button'
               ta='left'
               onClick={() => onSelect(null)}
@@ -556,7 +567,7 @@ export function LocationBrowser({
             </div>
             {continuations.map((entry) => (
               <Group key={entry.parent} justify='space-between' gap='xs'>
-                <Text size='xs' c='dimmed'>
+                <Text size='xs' className={operations.meta}>
                   {entry.name}
                 </Text>
                 <Button
@@ -585,7 +596,7 @@ export function LocationBrowser({
               !branchesByParent.get('root')?.isFetching &&
               !branchesByParent.get('root')?.isError && (
                 <Text
-                  c='dimmed'
+                  className={operations.meta}
                   size='sm'
                 >{t`Create your first site to organize machines.`}</Text>
               )}

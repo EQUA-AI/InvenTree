@@ -7,17 +7,20 @@ neither read nor write a schedule. These tests cover exposing those fields and t
 ``min_date`` / ``max_date`` viewport filter the calendar and timeline query with.
 """
 
-from datetime import date, datetime, timedelta, timezone as dt_timezone
+from datetime import date, datetime, timedelta
+from datetime import timezone as dt_timezone
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import connection
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
-from assets.models import AssetMachine
+from assets.models import AssetMachine, get_default_client
+from company.models import Company
 from tasks.models import WorkOrder, WorkOrderLifecycle, WorkOrderType
+from tasks.scope import MaintenanceScope
 
 
 def _utc(year, month, day, hour=9, minute=0):
@@ -32,6 +35,9 @@ def _utc(year, month, day, hour=9, minute=0):
     return moment if settings.USE_TZ else moment.replace(tzinfo=None)
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class KanbanScheduleSerializerTest(TestCase):
     """The serializer round-trips planning metadata and guards the window."""
 
@@ -44,7 +50,9 @@ class KanbanScheduleSerializerTest(TestCase):
         self.user.save(update_fields=['first_name', 'last_name'])
         self.client.force_login(self.user)
 
-        self.machine = AssetMachine.objects.create(name='Press 7', location='Bay 4')
+        self.machine = AssetMachine.objects.create(
+            name='Press 7', location='Bay 4', client=get_default_client()
+        )
         self.work_order = WorkOrder.objects.create(
             title='Replace bearing',
             status='backlog',
@@ -102,13 +110,21 @@ class KanbanScheduleSerializerTest(TestCase):
         self.assertEqual(data['assigned_to_name'], 'sched-sup')
 
     def test_labels_are_null_when_relations_are_unset(self):
+        customer = Company.objects.create(name='Schedule customer', is_customer=True)
         bare = WorkOrder.objects.create(
-            title='Unassigned', status='backlog', priority='low'
+            title='Unassigned', status='backlog', priority='low', customer=customer
         )
 
-        data = self.client.get(
-            reverse('kanban-card-detail', kwargs={'pk': bare.pk})
-        ).json()
+        with override_settings(
+            AIMMS_MAINTENANCE_SCOPE_RESOLVER=lambda actor: (
+                {MaintenanceScope(customer_id=customer.pk, site_key=None)}
+                if actor.pk == self.user.pk
+                else set()
+            )
+        ):
+            data = self.client.get(
+                reverse('kanban-card-detail', kwargs={'pk': bare.pk})
+            ).json()
 
         self.assertIsNone(data['machine'])
         self.assertIsNone(data['machine_name'])
@@ -133,7 +149,10 @@ class KanbanScheduleSerializerTest(TestCase):
         # aware in production. A direct == against an aware value fails here for
         # reasons that have nothing to do with the code under test.
         self.assertEqual(
-            (self.work_order.scheduled_start.year, self.work_order.scheduled_start.month),
+            (
+                self.work_order.scheduled_start.year,
+                self.work_order.scheduled_start.month,
+            ),
             (2026, 8),
         )
         self.assertEqual(self.work_order.scheduled_start.day, 10)
@@ -235,6 +254,9 @@ class KanbanScheduleSerializerTest(TestCase):
         self.assertEqual(self.work_order.assigned_to, self.user)
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class KanbanWindowFilterTest(TestCase):
     """``min_date`` / ``max_date`` select cards overlapping a viewport."""
 
@@ -244,17 +266,16 @@ class KanbanWindowFilterTest(TestCase):
         )
         self.client.force_login(self.user)
         self.url = reverse('kanban-card-list')
+        self.machine = AssetMachine.objects.create(
+            name='Window machine', client=get_default_client()
+        )
 
         # August 2026 is the viewport under test in most cases below.
         self.inside = self._card(
             'inside', start=_utc(2026, 8, 10), end=_utc(2026, 8, 11)
         )
-        self.before = self._card(
-            'before', start=_utc(2026, 7, 1), end=_utc(2026, 7, 2)
-        )
-        self.after = self._card(
-            'after', start=_utc(2026, 9, 20), end=_utc(2026, 9, 21)
-        )
+        self.before = self._card('before', start=_utc(2026, 7, 1), end=_utc(2026, 7, 2))
+        self.after = self._card('after', start=_utc(2026, 9, 20), end=_utc(2026, 9, 21))
         # Starts before and ends after the window: overlaps without either
         # endpoint being inside it. A containment test would wrongly drop this.
         self.spanning = self._card(
@@ -263,6 +284,7 @@ class KanbanWindowFilterTest(TestCase):
 
     def _card(self, title, *, start=None, end=None, due=None):
         return WorkOrder.objects.create(
+            machine=self.machine,
             title=title,
             status='backlog',
             priority='low',
@@ -356,9 +378,7 @@ class KanbanWindowFilterTest(TestCase):
         self.assertNotIn('after', until_august)
 
     def test_no_window_returns_every_active_card(self):
-        self.assertEqual(
-            self._titles(), {'inside', 'before', 'after', 'spanning'}
-        )
+        self.assertEqual(self._titles(), {'inside', 'before', 'after', 'spanning'})
 
     def test_window_composes_with_other_filters(self):
         self._card('other-priority', start=_utc(2026, 8, 12), end=_utc(2026, 8, 13))
@@ -385,6 +405,9 @@ class KanbanWindowFilterTest(TestCase):
         self.assertIsInstance(response.json(), list)
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class KanbanScheduleQueryCountTest(TestCase):
     """The denormalized labels must not reintroduce an N+1 on an unpaginated list."""
 
@@ -397,7 +420,9 @@ class KanbanScheduleQueryCountTest(TestCase):
     def _build(self, count):
         WorkOrder.objects.all().delete()
         for index in range(count):
-            machine = AssetMachine.objects.create(name=f'M{count}-{index}')
+            machine = AssetMachine.objects.create(
+                name=f'M{count}-{index}', client=get_default_client()
+            )
             WorkOrder.objects.create(
                 title=f'card-{index}',
                 status='backlog',

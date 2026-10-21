@@ -36,6 +36,7 @@ import uuid
 from contextlib import contextmanager
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.test import TestCase, override_settings
 
 from asgiref.sync import async_to_sync
@@ -55,7 +56,7 @@ from assets.models import AssetMachine, Client
 from tasks import ai_read
 from tasks.models import KanbanCard, WorkOrder, WorkOrderLifecycle
 from tasks.scope import MaintenanceScope
-from users.models import Owner
+from users.models import Owner, RuleSet
 
 READ_FLAGS = {'AIMMS_MAINTENANCE_AI_READ_ENABLED': True}
 
@@ -216,6 +217,14 @@ class KanbanCardIdentityTestCase(TestCase):
             email=f'cardid-{suffix}@example.com',
             password='pw',
         )
+        # O24 requires native Work view before applying client grants. Keep
+        # this positive-control actor an ordinary reader; the exact client
+        # resolver below still governs every machine-only Work/task read.
+        group = Group.objects.create(name=f'cardid-viewers-{suffix}')
+        RuleSet.objects.update_or_create(
+            group=group, name='work_order', defaults={'can_view': True}
+        )
+        cls.actor.groups.add(group)
 
     def setUp(self):
         """One grant (client A) through the production resolver seam."""

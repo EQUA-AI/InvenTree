@@ -137,7 +137,8 @@ sections=["FUTURE","STDLIB","DJANGO","THIRDPARTY","FIRSTPARTY","LOCALFOLDER"]
 # responde/momento/deine/ist/recommandation are es/de/fr words in the ai i18n templates.
 # "despatch" is the official spelling in Indian grid regulation - the Regional
 # and National Load Despatch Centres, cited in the threshold record.
-ignore-words-list = ["assertIn","SME","intoto","fitH","responde","momento","deine","ist","recommandation","maschine","despatch"]
+# "OT" is operational technology (plant control systems) in the AIMMS R6 records.
+ignore-words-list = ["assertIn","SME","intoto","fitH","responde","momento","deine","ist","recommandation","maschine","despatch","OT"]
 # Lockfile integrity hashes false-positive constantly.
 skip = "src/frontend/package-lock.json"
 

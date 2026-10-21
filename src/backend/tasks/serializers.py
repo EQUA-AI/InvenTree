@@ -12,6 +12,7 @@ from .models import (
     WorkOrderDependency,
     WorkOrderPart,
 )
+from .work_execution.fields import WORK_EXECUTION_FIELDS, WorkExecutionFieldsMixin
 
 
 class WorkOrderDependencySerializer(serializers.ModelSerializer):
@@ -159,9 +160,7 @@ class WorkOrderBoardSerializer(serializers.ModelSerializer):
     machine_name = serializers.CharField(
         source='machine.name', read_only=True, default=None
     )
-    machine_location = serializers.CharField(
-        source='machine.location', read_only=True, default=None
-    )
+    machine_location = serializers.SerializerMethodField()
     assigned_to_username = serializers.CharField(
         source='assigned_to.username', read_only=True, default=None
     )
@@ -235,6 +234,26 @@ class WorkOrderBoardSerializer(serializers.ModelSerializer):
             'actual_completed_at',
         )
 
+    def get_machine_location(self, obj) -> str | None:
+        """Shared Work identity does not authorize its machine's live location."""
+        from tasks.scope import work_machine_authorized
+
+        if obj.machine is None:
+            return None
+        request = self.context.get('request')
+        # Machine scope is its exact client identity (scope_for_machine). Cache
+        # only on this response serializer; future scope dimensions must also
+        # enter the key. This avoids one resolver query per Work.
+        if not hasattr(self, '_location_machine_authority'):
+            self._location_machine_authority = {}
+        actor = getattr(request, 'user', None)
+        key = (getattr(actor, 'pk', None), obj.machine.client_id)
+        if key not in self._location_machine_authority:
+            self._location_machine_authority[key] = work_machine_authorized(actor, obj)
+        if not self._location_machine_authority[key]:
+            return None
+        return obj.machine.location
+
     def get_assigned_to_name(self, obj) -> str | None:
         """Return the assignee's display name, falling back to the username."""
         user = obj.assigned_to
@@ -301,6 +320,45 @@ class WorkOrderBoardSerializer(serializers.ModelSerializer):
                 filtered.append(tag)
 
         return filtered
+
+
+class WorkOrderTableSerializer(WorkOrderBoardSerializer):
+    """The Board's Work projection plus the Work list's "Needs attention" reasons.
+
+    The Board keeps its exact shape; only the paginated Work list uses this.
+    ``attention_reasons`` is null unless the list was asked for its "Needs
+    attention" scope, so an absent rule is never read as "no reasons".
+    """
+
+    attention_reasons = serializers.SerializerMethodField()
+
+    class Meta(WorkOrderBoardSerializer.Meta):
+        """Board fields plus the attention reasons and the affected component.
+
+        The component (R6 P12, the machine Maintenance tab's Open work view) is
+        the work order's own recorded component, read-only here.
+        """
+
+        fields = (
+            *WorkOrderBoardSerializer.Meta.fields,
+            'attention_reasons',
+            'affected_component',
+            'affected_component_ref',
+        )
+        read_only_fields = (
+            *WorkOrderBoardSerializer.Meta.read_only_fields,
+            'affected_component',
+            'affected_component_ref',
+        )
+
+    def get_attention_reasons(self, work) -> list[str] | None:
+        """Reasons under ``tasks.attention`` when that scope was requested."""
+        today = self.context.get('attention_today')
+        if today is None:
+            return None
+        from .attention import attention_reasons
+
+        return attention_reasons(work, today)
 
 
 class KanbanCardSerializer(serializers.ModelSerializer):
@@ -422,6 +480,7 @@ class WorkOrderSummarySerializer(serializers.ModelSerializer):
             'status',
             'priority',
             'lifecycle_status',
+            'lifecycle_version',
             'work_order_type',
             'machine',
             'machine_name',
@@ -451,9 +510,15 @@ def _is_preliminary(diagnosis) -> bool:
 
 def _approved_scope_projection(packet) -> dict | None:
     """Return the approved scope currently in force for a packet."""
-    scope = packet.approved_scopes.filter(superseded_at__isnull=True).first()
-    if scope is None:
+    scopes = (
+        packet._authority_scopes
+        if hasattr(packet, '_authority_scopes')
+        else list(packet.approved_scopes.all().order_by('-version', '-pk'))
+    )
+    candidates = [scope for scope in scopes if scope.superseded_at is None]
+    if len(candidates) != 1 or candidates[0].pk != scopes[0].pk:
         return None
+    scope = candidates[0]
     return {
         'id': scope.pk,
         'version': scope.version,
@@ -467,7 +532,7 @@ def _approved_scope_projection(packet) -> dict | None:
     }
 
 
-class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
+class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerializer):
     """Complete read-only work-order context for the detail page."""
 
     cards = serializers.SerializerMethodField()
@@ -477,6 +542,7 @@ class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
     maintenance_record = serializers.SerializerMethodField()
     structured_closeout = serializers.SerializerMethodField()
     canonical_commands_enabled = serializers.SerializerMethodField()
+    closeout_wizard_enabled = serializers.SerializerMethodField()
     source_alert = serializers.SerializerMethodField()
 
     class Meta(WorkOrderBoardSerializer.Meta):
@@ -484,6 +550,8 @@ class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
 
         fields = (
             *WorkOrderBoardSerializer.Meta.fields,
+            'affected_component',
+            'affected_component_ref',
             'cards',
             'dependencies',
             'events',
@@ -491,7 +559,9 @@ class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
             'maintenance_record',
             'structured_closeout',
             'canonical_commands_enabled',
+            'closeout_wizard_enabled',
             'source_alert',
+            *WORK_EXECUTION_FIELDS,
         )
         read_only_fields = fields
 
@@ -518,6 +588,20 @@ class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
 
     def get_dependencies(self, obj) -> list:
         """Return predecessor and successor relationships."""
+        from tasks.scope import scoped_work_orders
+
+        request = self.context.get('request')
+        incoming_dependencies = list(obj.dependencies_in.all())
+        outgoing_dependencies = list(obj.dependencies_out.all())
+        related_ids = {
+            *(dependency.predecessor_id for dependency in incoming_dependencies),
+            *(dependency.successor_id for dependency in outgoing_dependencies),
+        }
+        allowed_ids = set(
+            scoped_work_orders(getattr(request, 'user', None))
+            .filter(pk__in=related_ids)
+            .values_list('pk', flat=True)
+        )
         incoming = [
             {
                 'id': dependency.pk,
@@ -526,7 +610,8 @@ class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
                 'lag_minutes': dependency.lag_minutes,
                 'card': self._summary(dependency.predecessor),
             }
-            for dependency in obj.dependencies_in.all()
+            for dependency in incoming_dependencies
+            if dependency.predecessor_id in allowed_ids
         ]
         outgoing = [
             {
@@ -536,25 +621,66 @@ class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
                 'lag_minutes': dependency.lag_minutes,
                 'card': self._summary(dependency.successor),
             }
-            for dependency in obj.dependencies_out.all()
+            for dependency in outgoing_dependencies
+            if dependency.successor_id in allowed_ids
         ]
         return [*incoming, *outgoing]
 
-    @staticmethod
-    def get_events(obj) -> list:
+    def get_events(self, obj) -> list:
         """Return append-only lifecycle audit events."""
         from .workorder_serializers import WorkOrderEventSerializer
 
         return WorkOrderEventSerializer(
-            obj.events.all().order_by('-created_at'), many=True
+            obj.events.all().order_by('-created_at'), many=True, context=self.context
         ).data
 
-    @staticmethod
-    def get_repair_packet(obj) -> dict | None:
-        """Return repair diagnosis and safety context when present."""
+    def to_representation(self, instance):
+        """Withhold every packet-derived section for a foreign-machine reader."""
+        from .work_execution.common import PACKET_WITHHELD
+
+        setattr(instance, PACKET_WITHHELD, not self._packet_authorized(instance))
+        try:
+            return super().to_representation(instance)
+        finally:
+            instance.__dict__.pop(PACKET_WITHHELD, None)
+
+    def _machine_authorized(self, obj) -> bool:
+        """O24: shared Work never projects its machine's scoped records.
+
+        Customer and unattributed Work are visible to every Work viewer, but
+        the repair packet, source alert and maintenance record belong to the
+        machine's client. They are withheld unless the reader holds that
+        machine scope, exactly as the packet and Health endpoints refuse them.
+        """
+        cache = self.context.setdefault('_o24_machine_authorized', {})
+        if obj.pk not in cache:
+            from tasks.scope import work_machine_authorized
+
+            request = self.context.get('request')
+            cache[obj.pk] = work_machine_authorized(getattr(request, 'user', None), obj)
+        return cache[obj.pk]
+
+    def _packet_authorized(self, obj) -> bool:
+        """Retain P32's exact packet/Work machine binding in embedded reads."""
         packet = getattr(obj, 'repair_packet', None)
-        if packet is None:
+        return bool(
+            packet is not None
+            and packet.machine_id == obj.machine_id
+            and self._machine_authorized(obj)
+        )
+
+    def get_repair_packet(self, obj) -> dict | None:
+        """Return repair diagnosis and safety context when present."""
+        from repair.authority_models import gate_reason_for_actor
+        from tasks.services.operational_authority import read_gates
+
+        packet = getattr(obj, 'repair_packet', None)
+        if not self._packet_authorized(obj):
             return None
+        actor = (
+            self.context.get('request').user if self.context.get('request') else None
+        )
+
         return {
             'id': packet.pk,
             'reference': packet.reference,
@@ -597,21 +723,33 @@ class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
                     'is_mandatory': gate.is_mandatory,
                     'requires_photo': gate.requires_photo,
                     'requires_second_person': gate.requires_second_person,
+                    'is_satisfied': (gate_blocking_reason := gate.unsatisfied_reason())
+                    == '',
+                    'unsatisfied_reason': gate_reason_for_actor(
+                        gate, actor, gate_blocking_reason
+                    ),
                 }
-                for gate in packet.gates.all().order_by('sequence', 'created_at')
+                for gate in read_gates(packet)
             ],
         }
 
-    @staticmethod
-    def get_source_alert(obj) -> dict | None:
+    def get_source_alert(self, obj) -> dict | None:
         """Return the health anomaly this work order answers, if any.
 
         The alert is what a technician opens the page to understand, so it is
         projected here rather than left a click away. External alert and alarm
         identifiers are retained as human references; links still use internal
-        keys.
+        keys. It is machine health, so it needs the machine's scope (O24).
         """
-        anomaly = obj.anomalies.select_related('source').order_by('pk').first()
+        if not self._machine_authorized(obj):
+            return None
+        anomaly = (
+            obj.anomalies
+            .filter(machine_id=obj.machine_id)
+            .select_related('source')
+            .order_by('pk')
+            .first()
+        )
         if anomaly is None:
             return None
         return {
@@ -631,11 +769,18 @@ class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
             'machine_id': anomaly.machine_id,
         }
 
-    @staticmethod
-    def get_maintenance_record(obj) -> dict | None:
-        """Return maintenance history produced by this work order."""
+    def get_maintenance_record(self, obj) -> dict | None:
+        """Return maintenance history produced by this work order.
+
+        The record is the machine's plant history (``scope_for_maintenance_record``),
+        so shared Work on another client's machine does not project it (O24).
+        """
         record = getattr(obj, 'maintenance_record', None)
-        if record is None:
+        if (
+            record is None
+            or record.machine_id != obj.machine_id
+            or not self._machine_authorized(obj)
+        ):
             return None
         return {
             'id': record.pk,
@@ -654,12 +799,20 @@ class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
         ``amendment_count`` make a governed correction visible instead of
         silently changing values.
         """
-        from .services.closeout_amend import effective_closeout_overview
+        from .services.closeout_amend import (
+            base_closeout_fields,
+            effective_closeout_overview,
+        )
 
         closeout = getattr(obj, 'structured_closeout', None)
         if closeout is None:
             return None
+        from .closeout_serializers import _actor_name
+
         fields = effective_closeout_overview(closeout)
+        from .services.accepted_reports import report_summary
+
+        reports = list(closeout.reports.order_by('revision'))
         return {
             'id': closeout.pk,
             'cause': fields['cause'],
@@ -669,8 +822,15 @@ class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
             'downtime_minutes': fields['downtime_minutes'],
             'follow_up_required': fields['follow_up_required'],
             'follow_up': fields['follow_up'],
+            'reports': [report_summary(report) for report in reports],
+            'original': base_closeout_fields(closeout),
+            'content_hash': closeout.content_hash,
+            'completed_by': closeout.completed_by_id,
+            'completed_by_name': _actor_name(closeout.completed_by),
             'completed_at': closeout.completed_at,
             'verified_at': closeout.verified_at,
+            'verified_by': closeout.verified_by_id,
+            'verified_by_name': _actor_name(closeout.verified_by),
             'amended': fields['amended'],
             'amendment_count': fields['amendment_count'],
         }
@@ -679,3 +839,11 @@ class WorkOrderOverviewSerializer(WorkOrderBoardSerializer):
     def get_canonical_commands_enabled(obj) -> bool:
         """Report whether the feature-gated command surface is enabled."""
         return bool(getattr(settings, 'AIMMS_WORK_ORDERS_ENABLED', False))
+
+    @staticmethod
+    def get_closeout_wizard_enabled(obj) -> bool:
+        """Expose the effective wizard gate without inferring availability from 404."""
+        return bool(
+            getattr(settings, 'AIMMS_WORK_ORDERS_ENABLED', False)
+            and getattr(settings, 'AIMMS_CLOSEOUT_WIZARD_ENABLED', False)
+        )

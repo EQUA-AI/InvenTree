@@ -146,7 +146,8 @@ export function RowActions({
           <Tooltip withinPortal={true} label={title || t`Actions`}>
             <ActionIcon
               key={`row-action-menu-${index ?? ''}`}
-              aria-label={`row-action-menu-${index ?? ''}`}
+              aria-label={title || t`Row actions`}
+              data-testid={`row-action-menu-${index ?? ''}`}
               onClick={openMenu}
               disabled={disabled}
               variant='transparent'

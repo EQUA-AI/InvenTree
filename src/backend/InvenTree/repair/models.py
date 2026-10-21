@@ -7,7 +7,7 @@ core, and approvals from the ``approvals`` app. See LocalDocs/SpineImplementatio
 """
 
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -71,6 +71,10 @@ CRITICALITY_CHOICES = [
     ('high', _('High')),
     ('critical', _('Critical')),
 ]
+
+
+class AuthorityOwnershipError(ValueError):
+    """A packet with current gate authority must retain its owning Work/asset."""
 
 
 class RepairPacket(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
@@ -193,11 +197,32 @@ class RepairPacket(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
         inherently collision-free; the follow-up ``update`` only runs once, on
         first insert, and never races because each row owns its own pk.
         """
-        super().save(*args, **kwargs)
-        if not self.reference:
-            ref = f'RP-{self.pk:06d}'
-            type(self).objects.filter(pk=self.pk).update(reference=ref)
-            self.reference = ref
+        with transaction.atomic():
+            if self.pk:
+                original = (
+                    type(self).objects.select_for_update().filter(pk=self.pk).first()
+                )
+                fields = kwargs.get('update_fields')
+                changed = original and any(
+                    (fields is None or field in fields or field + '_id' in fields)
+                    and getattr(original, field + '_id') != getattr(self, field + '_id')
+                    for field in ('work_order', 'machine')
+                )
+                if (
+                    changed
+                    and original.gates.filter(
+                        authority_records__correction__isnull=True,
+                        authority_records__isnull=False,
+                    ).exists()
+                ):
+                    raise AuthorityOwnershipError(
+                        'Packet ownership cannot change while its gates have current authority records. Keep the existing Work and machine.'
+                    )
+            super().save(*args, **kwargs)
+            if not self.reference:
+                ref = f'RP-{self.pk:06d}'
+                type(self).objects.filter(pk=self.pk).update(reference=ref)
+                self.reference = ref
 
     @property
     def is_terminal(self) -> bool:
@@ -338,6 +363,12 @@ class RepairPacketGate(models.Model):
         """Explain why this gate is not satisfied, or return an empty string."""
         if not self.is_blocking:
             return ''
+
+        from repair.authority_models import authority_blocker
+
+        authority_reason = authority_blocker(self)
+        if authority_reason:
+            return authority_reason
 
         if self.status == GateStatus.PENDING:
             return 'pending'
@@ -985,3 +1016,30 @@ __all__ = [
 # Risk Radar / Command Center models live in their own module; importing it
 # here registers them with Django's app registry (model discovery).
 from . import risk_models  # noqa: F401
+
+
+class RepairFindingRevision(models.Model):
+    """The original observation before an attributed correction, retained intact.
+
+    Current finding ids remain stable for existing consumers. Each replacement
+    appends the prior snapshot, including original recorder and evidence links.
+    Legacy overwritten values cannot be reconstructed and are not invented.
+    """
+
+    finding = models.ForeignKey(
+        RepairInvestigationFinding, on_delete=models.CASCADE, related_name='revisions'
+    )
+    snapshot = models.JSONField()
+    replaced_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.PROTECT, related_name='+'
+    )
+    replaced_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        """Require another revision rather than destructive edits through app paths."""
+        if not self._state.adding:
+            raise ValueError('Finding revisions are immutable')
+        super().save(*args, **kwargs)
+
+
+from repair.authority_models import GateAuthorityRecord  # noqa: F401

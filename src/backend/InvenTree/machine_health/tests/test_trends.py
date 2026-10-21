@@ -25,6 +25,7 @@ from machine_health.connectors.base import (
 from machine_health.services.trends import (
     DEFAULT_WINDOW_SECONDS,
     TrendError,
+    measured_cadence,
     read_trend,
     read_trends,
 )
@@ -311,6 +312,66 @@ class TrendReadTest(HealthEnvMixin, TestCase):
         self.assertEqual(len(result['samples']), 4)
         self.assertFalse(result['truncated'])
 
+    def test_a_silence_in_the_source_stays_a_silence(self):
+        """Readings keep their own times, nothing fills a gap, the cadence is stated.
+
+        Five-second readings either side of a two-minute silence come back as
+        exactly those readings at their source times. The measured cadence is
+        what a chart breaks its line against, so the silence is drawn as one
+        rather than joined; the expected interval is the fallback when too few
+        readings arrive to measure.
+        """
+        start = self.now - timedelta(minutes=5)
+        stamps = [start + timedelta(seconds=5 * i) for i in range(6)] + [
+            start + timedelta(seconds=150 + 5 * i) for i in range(6)
+        ]
+        _FakeHistorian.canned_readings = [
+            Reading(
+                external_key=self.binding.external_key,
+                value=float(index),
+                observed_at=at,
+            )
+            for index, at in enumerate(stamps)
+        ]
+
+        result = read_trend(
+            self.machine,
+            binding_id=self.binding.pk,
+            start=start,
+            end=self.now,
+            now=self.now,
+        )
+
+        self.assertEqual(result['display_shift_seconds'], 0)
+        self.assertEqual(
+            [sample['observed_at'] for sample in result['samples']],
+            [at.isoformat() for at in stamps],
+        )
+        self.assertEqual(result['cadence_seconds'], 5.0)
+        self.assertEqual(
+            result['limits']['expected_sample_interval_seconds'],
+            EXPECTED_SAMPLE_INTERVAL_SECONDS,
+        )
+
+    def test_too_few_readings_measure_no_cadence(self):
+        """Two readings are one interval: not enough to call it the cadence."""
+        _FakeHistorian.canned_readings = _FakeHistorian.canned_readings[:2]
+
+        result = read_trend(self.machine, binding_id=self.binding.pk, now=self.now)
+
+        self.assertIsNone(result['cadence_seconds'])
+        self.assertEqual(
+            result['limits']['expected_sample_interval_seconds'],
+            EXPECTED_SAMPLE_INTERVAL_SECONDS,
+        )
+
+    def test_the_cadence_is_measured_in_time_order(self):
+        """Readings returned newest first still measure a positive cadence."""
+        # setUp's readings are a minute apart, newest first.
+        result = read_trend(self.machine, binding_id=self.binding.pk, now=self.now)
+
+        self.assertEqual(result['cadence_seconds'], 60.0)
+
     def test_source_without_a_connector_reports_unavailable(self):
         """No trend is invented for a source that cannot serve one."""
         self.source.connector_type = ''
@@ -488,6 +549,39 @@ class TrendsBatchReadTest(HealthEnvMixin, TestCase):
             all(s['value'] == 2.0 for s in by_id[self.second.pk]['samples'])
         )
 
+    def test_each_binding_states_its_own_measured_cadence(self):
+        """A table's trends each carry the cadence of their own readings."""
+        _FakeHistorian.canned_readings = [
+            Reading(
+                external_key=self.binding.external_key,
+                value=1.0,
+                observed_at=self.now - timedelta(seconds=5 * offset),
+            )
+            for offset in range(4)
+        ] + [
+            Reading(
+                external_key=self.second.external_key,
+                value=2.0,
+                observed_at=self.now - timedelta(seconds=30 * offset),
+            )
+            for offset in range(4)
+        ]
+
+        results = read_trends(
+            self.machine, binding_ids=[self.binding.pk, self.second.pk], now=self.now
+        )
+
+        by_id = {r['binding_id']: r for r in results}
+        self.assertEqual(by_id[self.binding.pk]['cadence_seconds'], 5.0)
+        self.assertEqual(by_id[self.second.pk]['cadence_seconds'], 30.0)
+        self.assertTrue(
+            all(
+                r['limits']['expected_sample_interval_seconds']
+                == EXPECTED_SAMPLE_INTERVAL_SECONDS
+                for r in results
+            )
+        )
+
     def test_a_binding_on_another_machine_is_not_returned(self):
         """The machine scopes the read, exactly as the single-binding path does."""
         other = AssetMachine.objects.create(name='Someone else')
@@ -545,3 +639,77 @@ class TrendsBatchReadTest(HealthEnvMixin, TestCase):
 
         # Same work for the fallback, and one connector setup rather than two.
         self.assertEqual(baseline, _FakeHistorian.window_reads)
+
+
+class MeasuredCadenceTest(TestCase):
+    """The cadence a chart breaks its line against."""
+
+    def test_one_close_pair_does_not_fragment_a_slower_source(self):
+        """An extra write among minute readings is not a one-second cadence."""
+        self.assertEqual(self.cadence_at([0, 1, 61, 121, 181, 241, 301]), 60.0)
+
+    def test_health_and_performance_use_the_same_cadence(self):
+        """Both adapters measure the same unsorted, duplicate-containing record."""
+        from machine_health.services.series import _measured_cadence
+
+        for offsets in ([0, 1, 61, 121, 181], [0, 5, 595], [65, 0, 5, 5, 70, 130, 135, 195]):
+            with self.subTest(offsets=offsets):
+                self.assertEqual(
+                    _measured_cadence([{
+                        'available': True,
+                        'count': len(offsets),
+                        'samples': [{'t': offset * 1000} for offset in offsets],
+                    }]),
+                    self.cadence_at(offsets),
+                )
+
+    def test_one_silence_cannot_stretch_a_three_reading_cadence(self):
+        """An outage is not the interval, even with just two gaps."""
+        self.assertEqual(self.cadence_at([0, 5, 595]), 5.0)
+
+    def test_alternating_silences_cannot_become_the_cadence(self):
+        """Repeated sixty-second silences remain distinct from five-second reads."""
+        self.assertEqual(self.cadence_at([0, 5, 65, 70, 130, 135, 195]), 5.0)
+
+    def test_duplicate_times_do_not_become_a_zero_cadence(self):
+        """Only positive observed gaps inform the interval."""
+        self.assertEqual(self.cadence_at([0, 0, 5]), 5.0)
+        self.assertIsNone(self.cadence_at([0, 0, 0]))
+
+    def cadence_at(self, offsets):
+        """Measure the supplied observation times relative to one origin."""
+        start = timezone.now()
+        return measured_cadence([
+            Reading(
+                external_key='k', value=1.0, observed_at=start + timedelta(seconds=s)
+            )
+            for s in offsets
+        ])
+
+    def test_the_median_ignores_a_few_silences(self):
+        """Two long silences among five-second readings leave the cadence at five."""
+        start = timezone.now()
+        offsets = [0, 5, 10, 15, 135, 140, 145, 400, 405, 410]
+        readings = [
+            Reading(
+                external_key='k', value=1.0, observed_at=start + timedelta(seconds=s)
+            )
+            for s in offsets
+        ]
+
+        self.assertEqual(measured_cadence(readings), 5.0)
+
+    def test_fewer_than_three_readings_have_no_cadence(self):
+        """Nothing to measure is not a cadence of zero."""
+        start = timezone.now()
+        self.assertIsNone(measured_cadence([]))
+        self.assertIsNone(
+            measured_cadence([
+                Reading(external_key='k', value=1.0, observed_at=start),
+                Reading(
+                    external_key='k',
+                    value=2.0,
+                    observed_at=start + timedelta(seconds=5),
+                ),
+            ])
+        )

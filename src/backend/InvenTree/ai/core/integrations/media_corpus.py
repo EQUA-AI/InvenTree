@@ -15,11 +15,11 @@ from both document corpora:
 * ``search.in(model_type, ...)`` — the server-side owner allow-list. All
   three owners sit under the single ``work_order:view`` arm (spec §7.3);
   part-owned media never ingests, so no part arm exists.
-* ``client_codes/any(...)`` — the actor's resolved client grants, derived
-  server-side via ``tasks.scope.client_codes_for_actor``. Fail-closed: an
-  unresolved scope or an empty grant set refuses, indistinguishable from an
-  empty corpus (denial == nonexistence). Codes stay in the filter expression
-  only — never in the payload, citations or errors.
+* The ownership candidate clause selects the actor's client-coded evidence
+  plus Work/step owners. O24 shares customer and unattributed Work even
+  without client grants; every Work hit passes fresh native owner authority
+  before its excerpt is returned. Machine owners still require client-code
+  intersection. Codes stay in the filter, never in model-visible results.
 
 Work-order and machine narrowing are resolved server-side (the model supplies
 a reference or name, never an id literal) and degrade to the broad query when
@@ -130,10 +130,10 @@ def evidence_media_filter(
 ) -> str:
     """Build the non-negotiable media filter from server-side values only.
 
-    Clause order is fixed (tests pin the exact string). ``client_codes`` and
-    ``model_types`` are mandatory: an empty set refuses rather than widening,
-    mirroring ``machine_scope_filter``'s ``pk__in=[]`` reasoning — a missing
-    clause would read as "everyone's".
+    Clause order is fixed (tests pin the exact string). ``model_types`` is
+    mandatory. Empty client grants select only Work candidates, whose native
+    owner must be freshly authorized before any excerpt is exposed. They
+    never remove the machine ownership clause.
 
     ``scope_asset_ids`` (S5 enforce) is the analysis-scope serial FLOOR —
     see ``attachment_corpus_filter``: machine-stamped chunks must belong to
@@ -146,7 +146,12 @@ def evidence_media_filter(
         )
     if not model_types:
         raise MediaRetrievalError("No media owner is authorized", code="MEDIA_SCOPE_UNRESOLVED")
-    if not client_codes:
+    work_types = tuple(
+        model_type
+        for model_type in model_types
+        if model_type in {"workorder", "workorderstepexecution"}
+    )
+    if not client_codes and not work_types:
         raise MediaRetrievalError("Actor scope names no client", code="MEDIA_SCOPE_UNRESOLVED")
     for code in client_codes:
         # Client.code is an immutable SlugField, so these characters are
@@ -164,8 +169,17 @@ def evidence_media_filter(
     else:
         joined = ",".join(_odata_literal(item) for item in model_types)
         clauses.append(f"search.in(model_type, '{joined}', ',')")
-    joined_codes = ",".join(_odata_literal(code) for code in sorted(client_codes))
-    clauses.append(f"client_codes/any(c: search.in(c, '{joined_codes}', ','))")
+    # O24: client ACLs select machine candidates; Work candidates require
+    # fresh native owner authorization before any excerpt is returned. This
+    # also covers customer/machineless Work carrying an empty index ACL.
+    ownership = []
+    if client_codes:
+        joined_codes = ",".join(_odata_literal(code) for code in sorted(client_codes))
+        ownership.append(f"client_codes/any(c: search.in(c, '{joined_codes}', ','))")
+    if work_types:
+        joined_work = ",".join(work_types)
+        ownership.append(f"search.in(model_type, '{joined_work}', ',')")
+    clauses.append("(" + " or ".join(ownership) + ")")
     if work_order_id is not None:
         clauses.append(f"work_order_id eq {int(work_order_id)}")
     if step_execution_id is not None:
@@ -195,6 +209,8 @@ def evidence_media_filter(
 
 def _granted(user) -> bool:
     """Whether the acting user's roles grant the single media arm."""
+    if not getattr(user, "is_active", False):
+        return False
     if getattr(user, "is_superuser", False):
         return True
 
@@ -268,12 +284,8 @@ def search_corpus_media(
 
     try:
         client_codes = client_codes_for_actor(user)
-    except ScopeError as exc:
-        # Denial is indistinguishable from an empty corpus downstream; the
-        # code (never the client identity) is the whole diagnostic.
-        raise MediaRetrievalError(
-            "Actor scope is unresolved", code="MEDIA_SCOPE_UNRESOLVED"
-        ) from exc
+    except ScopeError:
+        client_codes = frozenset()
 
     work_order_id: int | None = None
     work_order_filter = "not_requested"

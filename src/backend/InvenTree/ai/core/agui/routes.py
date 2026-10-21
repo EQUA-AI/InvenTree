@@ -59,6 +59,7 @@ async def run_agui(request: Request) -> StreamingResponse:
         _principal,
         _record_rejection,
         _reject_stale_scope_version,
+        _reject_unusable_work_focus,
         _server_correlation_id,
         _turn_metadata,
         get_turn_service,
@@ -74,6 +75,7 @@ async def run_agui(request: Request) -> StreamingResponse:
         ThreadNotFound,
     )
     from aichat.services.threads import FocusVersionConflict
+    from aichat.services.work_focus import WorkFocusError
     from pydantic import ValidationError
 
     if not getattr(get_settings(), "feature_agui_endpoint", False):
@@ -98,6 +100,11 @@ async def run_agui(request: Request) -> StreamingResponse:
     # ``/chat`` and ``/chat/stream``. Omitted (legacy clients) is a no-op.
     expected_focus_version = _normalize_focus_stamp(
         run_input.forwarded_props.expected_focus_version
+    )
+    # P02/P33: a Work-focus receipt is checked as on /chat/stream — 400
+    # ``work_focus_rejected`` before any model call; intake checks it again.
+    await _reject_unusable_work_focus(
+        principal, run_input.thread_id, run_input.forwarded_props.work_focus_receipt
     )
     try:
         content = derive_user_message(run_input)
@@ -162,9 +169,24 @@ async def run_agui(request: Request) -> StreamingResponse:
                     correlation_id=correlation_id,
                     emitter=emitter,
                     expected_focus_version=expected_focus_version,
+                    work_focus_receipt=run_input.forwarded_props.work_focus_receipt,
                 )
             except asyncio.CancelledError:
                 raise
+            except WorkFocusError:
+                await emitter.emit(
+                    AGUIEvent(
+                        event_type=EventType.RUN_ERROR,
+                        data={
+                            "message": "The Work focus could not be confirmed.",
+                            "code": "work_focus_rejected",
+                            # The browser's typed failure path reads this key
+                            # on both wires (AG-UI forwards it as failureClass).
+                            "failure_class": "work_focus_rejected",
+                        },
+                        thread_id=thread_id,
+                    )
+                )
             except (ThreadNotFound, ScopedThreadRejected):
                 await emitter.emit(
                     AGUIEvent(

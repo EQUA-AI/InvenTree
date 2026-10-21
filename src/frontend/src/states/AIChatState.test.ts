@@ -165,3 +165,40 @@ describe('generalized conversation target hint (plan C)', () => {
     expect(useAIChatState.getState().chatOpenIntent).toBeNull();
   });
 });
+
+describe('conversation and Work focus launch isolation', () => {
+  beforeEach(() => useAIChatState.getState().resetSession(false));
+
+  it('keeps Work receipt launch separate from a durable conversation target', () => {
+    const work = {
+      workOrderId: 5,
+      lifecycleVersion: 3,
+      label: 'WO-000005',
+      returnPath: '/workorder/5/'
+    };
+    openGlobalAIChat({ kind: 'work_order', id: 5, label: 'WO-000005' });
+    useAIChatState.getState().openWithWorkFocus(work);
+    expect(useAIChatState.getState().workFocusHint).toBe(work);
+    expect(useAIChatState.getState().targetHint).toBeUndefined();
+    expect(useAIChatState.getState().routingHint).toBeUndefined();
+    useAIChatState.getState().bindHint('thread-1');
+    expect(useAIChatState.getState().hintThreadId).toBe('thread-1');
+
+    openGlobalAIChat({ kind: 'work_order', id: 6, label: 'WO-000006' });
+    expect(useAIChatState.getState().workFocusHint).toBeUndefined();
+    expect(useAIChatState.getState().targetHint?.id).toBe(6);
+  });
+
+  it('invalidates a pending Work launch when the selected thread changes', () => {
+    useAIChatState.getState().openWithWorkFocus({
+      workOrderId: 5,
+      lifecycleVersion: 3,
+      label: 'WO-000005',
+      returnPath: '/workorder/5/'
+    });
+    useAIChatState.getState().bindHint('thread-1');
+    useAIChatState.getState().clearHint();
+    expect(useAIChatState.getState().workFocusHint).toBeUndefined();
+    expect(useAIChatState.getState().hintThreadId).toBeNull();
+  });
+});

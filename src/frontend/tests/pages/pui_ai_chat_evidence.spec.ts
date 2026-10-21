@@ -152,7 +152,7 @@ async function runEvidenceTurn(
   await page.reload();
   await openChat(page);
   await page.getByPlaceholder('Type a message...').fill('how many records?');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
 }
 
 test('live v2 answer renders server ordinals, coverage, and control classes', async ({
@@ -350,7 +350,7 @@ test('copy carries scope, coverage and citations — identical live and reloaded
   await runEvidenceTurn(page);
   await expect(page.getByTestId('retrieval-coverage').first()).toBeVisible();
 
-  await page.getByLabel('copy-ai-chat-message').last().click();
+  await page.getByTestId('copy-ai-chat-message').last().click();
   const liveCopy = await page.evaluate(() => navigator.clipboard.readText());
   expect(liveCopy).toContain('**Scope:** Solar central inverters (v3)');
   expect(liveCopy).toContain('**Coverage:** All 602 records evaluated');
@@ -363,7 +363,7 @@ test('copy carries scope, coverage and citations — identical live and reloaded
   await page.reload();
   await openChat(page);
   await expect(page.getByTestId('retrieval-coverage')).toBeVisible();
-  await page.getByLabel('copy-ai-chat-message').last().click();
+  await page.getByTestId('copy-ai-chat-message').last().click();
   const reloadCopy = await page.evaluate(() => navigator.clipboard.readText());
   expect(reloadCopy).toBe(liveCopy);
 });
@@ -377,11 +377,11 @@ test('markdown export downloads exactly the copy composition', async ({
   await runEvidenceTurn(page);
   await expect(page.getByTestId('retrieval-coverage').first()).toBeVisible();
 
-  await page.getByLabel('copy-ai-chat-message').last().click();
+  await page.getByTestId('copy-ai-chat-message').last().click();
   const copyText = await page.evaluate(() => navigator.clipboard.readText());
 
   const downloadPromise = page.waitForEvent('download');
-  await page.getByLabel('export-ai-chat-message').last().click();
+  await page.getByTestId('export-ai-chat-message').last().click();
   const download = await downloadPromise;
   const stream = await download.createReadStream();
   const chunks: Buffer[] = [];
@@ -425,7 +425,7 @@ test('the AG-UI wire renders the same v2 evidence', async ({ browser }) => {
   await page.evaluate(() => localStorage.setItem('aimms.wire', 'agui'));
   await openChat(page);
   await page.getByPlaceholder('Type a message...').fill('how many records?');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
 
   await expect(page.getByTestId('retrieval-coverage')).toContainText(
     'All 602 records evaluated; showing 24 of the full result'

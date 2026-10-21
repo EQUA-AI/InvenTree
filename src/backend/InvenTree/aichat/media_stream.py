@@ -50,7 +50,11 @@ def _resolve_source(request, attachment_id):
 
     from tasks.scope import ScopeError, client_codes_for_actor
 
-    from ai.core.integrations.retrieval_authority import fresh_actor, fresh_role
+    from ai.core.integrations.retrieval_authority import (
+        fresh_actor,
+        fresh_role,
+        native_attachment_owner,
+    )
     from aichat.models import AttachmentIngest, AttachmentIngestPipeline
     from aichat.services.attachment_ingestion import derive_client_codes
     from common.models import Attachment
@@ -68,13 +72,17 @@ def _resolve_source(request, attachment_id):
         return None
     if attachment.model_type == 'part' and not fresh_role(actor, 'part'):
         return None
-    try:
-        if not set(
-            derive_client_codes(attachment.model_type, attachment.model_id)
-        ).intersection(client_codes_for_actor(actor)):
+    if attachment.model_type in {'workorder', 'workorderstepexecution'}:
+        if not native_attachment_owner(actor, attachment):
             return None
-    except ScopeError:
-        return None
+    else:
+        try:
+            if not set(
+                derive_client_codes(attachment.model_type, attachment.model_id)
+            ).intersection(client_codes_for_actor(actor)):
+                return None
+        except ScopeError:
+            return None
     ingest = (
         AttachmentIngest.objects
         .filter(attachment_id=attachment_id)

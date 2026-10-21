@@ -4,6 +4,18 @@ import { MACHINE, SIGNALS, mount } from './fixtures';
 
 void MACHINE;
 
+let pageErrors: string[] = [];
+test.beforeEach(({ page }) => {
+  pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+});
+test.afterEach(() => {
+  expect(
+    pageErrors,
+    'The component harness must not hide runtime errors'
+  ).toEqual([]);
+});
+
 test('the KPI strip shows fixture values and states what it cannot show', async ({
   page
 }) => {
@@ -13,7 +25,7 @@ test('the KPI strip shows fixture values and states what it cannot show', async 
   await expect(power).toContainText('MW');
   await expect(page.locator('[data-kpi="speed"]')).toContainText('745');
   await expect(page.locator('[data-kpi="vibration"]')).toContainText(
-    'No approved vibration channel'
+    'Unavailable · no vibration channel with a confirmed role and unit'
   );
   // Winding 4 is pegged at the over-range marker with quality bad: it is not
   // the highest sensor, and 3276.7 appears nowhere on the tile.
@@ -24,7 +36,9 @@ test('the KPI strip shows fixture values and states what it cannot show', async 
   await expect(page.locator('[data-kpi="status"]')).toContainText('Running');
   // The one sensor without a reading is reported as poor quality, so the
   // strip is not calm - and must not claim to be.
-  await expect(page.getByText('2 with poor quality')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /^2 with poor quality:/ })
+  ).toBeVisible();
   await expect(page.getByText('Nothing outside configured limits')).toHaveCount(
     0
   );
@@ -56,8 +70,20 @@ test('families are drawn as sections with a heatmap and calculated rises', async
   ).toBeVisible();
   // Said twice on purpose: on the KPI tile and as the section's own state.
   await expect(
-    page.getByText('No approved vibration channel', { exact: true })
+    page.getByText(
+      'Unavailable · no vibration channel with a confirmed role and unit',
+      { exact: true }
+    )
   ).toHaveCount(2);
+  // Absent families stay out of navigation; their mounted fallback must still explain why.
+  await expect(
+    page.locator('[data-section="Vibration and mechanical"]')
+  ).toContainText(
+    'Channels without a confirmed engineering role and unit cannot be used for vibration comparison.'
+  );
+  await expect(
+    page.getByText(/Unclassified tags remain in Other signals/)
+  ).toHaveCount(0);
   // A sensor without a usable reading is named as one the chart left out,
   // and no bar of its own is drawn for it.
   await expect(
@@ -116,18 +142,35 @@ test('dragging across a chart offers a zoom, and taking it narrows the window', 
 }) => {
   const requests = await mount(page);
   await expect(page.getByText(/Sampled: one reading every/)).toBeVisible();
-  const chart = page.locator('.recharts-wrapper').first();
+  const chart = page
+    .locator('[data-section="Electrical"] .recharts-wrapper')
+    .first();
+  await expect(chart.locator('.recharts-line-curve').first()).toBeVisible();
   await expect(chart).toBeVisible();
   // Raw mouse events do not scroll: the chart must be inside the viewport.
   await chart.scrollIntoViewIfNeeded();
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      )
+  );
+  await page.screenshot({ path: test.info().outputPath('drag-before.png') });
   const box = (await chart.boundingBox())!;
   // Drag across the middle third of the plot area.
   const y = box.y + box.height * 0.45;
   await page.mouse.move(box.x + box.width * 0.35, y);
+  // Recharts computes its active axis value on the next animation frame.
+  // Wait for that real hover state before pressing, rather than racing it.
+  await expect(chart.locator('.recharts-tooltip-wrapper')).toBeVisible();
+  await expect(chart.locator('.recharts-tooltip-wrapper')).toContainText(
+    'Active power'
+  );
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.45, y, { steps: 4 });
   await page.mouse.move(box.x + box.width * 0.6, y, { steps: 4 });
   await page.mouse.up();
+  await page.screenshot({ path: test.info().outputPath('drag-after.png') });
   const zoom = page.getByRole('button', { name: /^Zoom to / });
   await expect(zoom).toBeVisible();
   const before = requests.length;
@@ -169,5 +212,7 @@ test('a reading past its limit is counted over it', async ({ page }) => {
   });
 
   const winding = page.locator('[data-section="Motor winding temperature"]');
-  await expect(winding.getByText('1 of 10 over a limit')).toBeVisible();
+  await expect(
+    winding.getByText('1 of 10 above warning (Warning above 125 °C)')
+  ).toBeVisible();
 });

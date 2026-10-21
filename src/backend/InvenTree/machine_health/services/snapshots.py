@@ -130,11 +130,14 @@ def capture_anomaly_evidence(
     ]
 
 
-def snapshots_for_machine(machine, *, limit: int = 50):
+def snapshots_for_machine(machine, *, limit: int = 50, snapshot_id=None):
     """Return the machine's most recent evidence snapshots."""
-    return (
+    snapshots = (
         HealthEvidenceSnapshot.objects
         .filter(machine=machine)
-        .select_related('binding', 'source', 'anomaly')
-        .order_by('-captured_at')[: min(limit, MAX_SNAPSHOT_SAMPLES)]
+        .select_related('binding', 'source', 'anomaly', 'created_by')
+        .order_by('-captured_at')
     )
+    if snapshot_id is not None:
+        return snapshots.filter(pk=snapshot_id)
+    return snapshots[: min(limit, MAX_SNAPSHOT_SAMPLES)]

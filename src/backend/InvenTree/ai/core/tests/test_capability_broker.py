@@ -11,6 +11,7 @@ from ai.core.integrations.attachment_corpus import ATTACHMENT_CORPUS_TOOLS
 from ai.core.integrations.controlled_document_corpus import CONTROLLED_CORPUS_TOOLS
 from ai.core.integrations.email.tools import EMAIL_TOOLS
 from ai.core.integrations.inventory_tools import INVENTORY_READ_TOOLS
+from ai.core.integrations.investigation_tools import INVESTIGATION_PROPOSAL_TOOLS
 from ai.core.integrations.kanban_tools import (
     BOARD_TASK_READ_TOOLS,
     KANBAN_READ_TOOLS,
@@ -72,20 +73,19 @@ def test_catalog_covers_every_workflow_toolset_once_in_canonical_order():
         *EVIDENCE_MEDIA_TOOLS,
         *SOURCE_INVENTORY_TOOLS,
         *MEMORY_ACTION_TOOLS,
+        *INVESTIGATION_PROPOSAL_TOOLS,
     )
     catalog = capability_catalog()
 
-    # 64 wf8 tools (delete_kanban_card is withheld) + the specialist writes
+    # 65 wf8 tools (delete_kanban_card is withheld) + the specialist writes
     # wf2/wf3/wf4/wf6 carry: parts/stock/company/sales writes and the nine
     # purchase-order write tools. R2 added search_attachment_docs; R3 added
     # search_evidence_media; S8a added list_document_sources; R5 retired
     # search_part_documents (59 -> 58, catalog 95 -> 94).
-    # Connected mailbox discovery and the owner-bound receipt reader are
-    # additive. S5b board-task reads (list/get/check_board_task_*) joined
-    # wf8 and the catalog: 61 -> 64 tools, catalog 97 -> 100.
-    assert len(wf8_tools) == 64
-    assert len(catalog) == 100
-    assert tuple(entry.tool for entry in catalog[:64]) == wf8_tools
+    # Combined catalog: board-task reads plus investigation proposals.
+    assert len(wf8_tools) == 65
+    assert len(catalog) == 101
+    assert tuple(entry.tool for entry in catalog[:65]) == wf8_tools
     assert len({entry.tool_id for entry in catalog}) == len(catalog)
 
 
@@ -110,6 +110,7 @@ def test_catalog_has_expected_stable_pack_shapes():
 
     assert counts == {
         "memory.proposals": 1,
+        "investigation.proposals": 1,
         "parts.read": 5,
         "stock.read": 6,
         "bom.read": 2,
@@ -194,13 +195,13 @@ def test_every_catalog_entry_has_an_explicit_policy():
 
 
 def test_protected_resource_tools_have_resource_authorizers():
-    policies = {
-        entry.tool_id: entry.authorization
-        for entry in capability_catalog()
-        if entry.authorization.kind is PolicyKind.RESOURCE_AUTHORIZER
-    }
+    policies = {entry.tool_id: entry.authorization for entry in capability_catalog()}
 
-    assert set(policies) == {
+    assert {
+        tool_id
+        for tool_id, policy in policies.items()
+        if policy.kind is PolicyKind.RESOURCE_AUTHORIZER
+    } == {
         "get_part_attachments",
         "list_database_tables",
         "query_database",
@@ -217,15 +218,6 @@ def test_protected_resource_tools_have_resource_authorizers():
         "get_machine_parts",
         "get_machine_maintenance_history",
         "get_machine_attachments",
-        # Maintenance work orders share the machines rationale AND the
-        # authorizer string: the same tenant scope governs both packs, so the
-        # guard branch is deliberately shared rather than duplicated.
-        "search_work_orders",
-        "get_work_order_history",
-        "get_work_order_closeout",
-        "get_work_order_overview",
-        "get_work_order_readiness",
-        "get_work_order_repair_state",
         "get_open_repairs_for_machine",
         # Controlled-corpus search is site-scoped, not machine-scoped: the
         # filter comes from deployment constants, so it gets its own branch.
@@ -235,7 +227,8 @@ def test_protected_resource_tools_have_resource_authorizers():
     assert policies["get_part_attachments"].all_of == (("part", "view"),)
     assert policies["get_machine_health"].authorizer == "machine_scope_access"
     assert policies["get_machine_health"].all_of == (("work_order", "view"),)
-    assert policies["search_work_orders"].authorizer == "machine_scope_access"
+    assert policies["search_work_orders"].kind is PolicyKind.NATIVE_PERMISSION
+    assert policies["search_work_orders"].authorizer is None
     assert policies["search_work_orders"].all_of == (("work_order", "view"),)
     assert policies["search_manuals"].authorizer == "controlled_corpus_access"
     assert policies["search_manuals"].all_of == (("work_order", "view"),)
@@ -335,8 +328,8 @@ def test_contract_manifest_is_stable_and_complete():
 
     assert first == second
     assert manifest_json() == manifest_json()
-    # Matches the catalog pin above: 100 entries (wf8 64 + specialist writes).
-    assert len(first) == 100
+    # Combined catalog includes every tool from both parent lines.
+    assert len(first) == 101
     assert all(record["module"] for record in first)
     assert all(record["qualname"] for record in first)
     assert all(len(record["contract_digest"]) == 64 for record in first)
@@ -832,13 +825,18 @@ def test_every_text_action_name_routes_to_specialist_fallback():
     missed = [
         tool_name(tool)
         for tool in text_chat_action_tools()
-        if not select_capabilities(
+        if tool_name(tool) != "propose_memory_action"
+        and not select_capabilities(
             tool_name(tool).replace("_", " "),
             authenticated=True,
         ).requires_specialist
     ]
 
     assert missed == []
+    # The existing memory proposal has its own permission-gated review rail.
+    memory = select_capabilities("forget all my memories", authenticated=True)
+    assert memory.tools == ()
+    assert memory.reason == "memory_permission_required"
 
 
 def test_ambiguous_prompt_requires_clarification_without_broad_fallback():
@@ -1465,6 +1463,7 @@ async def test_wf8_agent_is_toolless_guarded_and_bounded(monkeypatch):
             self.client = self
 
         def with_options(self, **kwargs):
+            captured["transport"] = kwargs
             return self
 
     class FakeAgent:
@@ -1506,6 +1505,8 @@ async def test_wf8_agent_is_toolless_guarded_and_bounded(monkeypatch):
     assert isinstance(captured["middleware"], CapabilityInvocationMiddleware)
     assert invocation_config.max_iterations == workflow.MAX_TOOL_ITERATIONS
     assert invocation_config.include_detailed_errors is False
+    assert captured["transport"]["max_retries"] == 1
+    assert captured["transport"]["timeout"].read == pytest.approx(30.0)
 
 
 def test_manual_fact_intent_carries_the_uploaded_corpus(monkeypatch):
@@ -7177,3 +7178,62 @@ class TestSourceOwnershipStructuralRegressions:
         TestFinalRelativeSourceOwnership().test_relative_source_public_boundary(
             monkeypatch, query, expected_intent
         )
+
+
+def test_request_focus_exposes_only_reviewed_evidence_proposal_and_native_reads():
+    """Request focus enables proposal preparation, never the artifact executor."""
+    context = {"work_focus": {"schema_version": 2, "kind": "work_order", "request_id": 401}}
+    reader = select_capabilities(
+        "Record these readings",
+        context=context,
+        profile=frozenset({("work_order", "view")}),
+        authenticated=True,
+    )
+    assert "propose_investigation_artifact" not in reader.tool_ids
+    technician = select_capabilities(
+        "Record these readings",
+        context=context,
+        profile=frozenset({("work_order", "view"), ("work_order", "change")}),
+        authenticated=True,
+    )
+    assert technician.pack_ids == ("maintenance.read", "investigation.proposals")
+    assert "propose_investigation_artifact" in technician.tool_ids
+    entries = [entry for entry in capability_catalog() if entry.tool_id in technician.tool_ids]
+    assert [entry.tool_id for entry in entries if entry.effect != ToolEffect.READ] == [
+        "propose_investigation_artifact"
+    ]
+    assert len(entries) <= MAX_INITIAL_TOOLS
+    assert (
+        select_capabilities(
+            "Record these readings", context=context, profile=frozenset(), authenticated=False
+        ).tool_ids
+        == ()
+    )
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "What does the bearing manual say?",
+        "Search the uploaded documents for the bearing procedure",
+        "Show machine telemetry for this pump",
+        "What do you remember about this pump?",
+        "Remember this approved observation",
+    ],
+)
+def test_request_focus_extends_normal_query_capabilities(query):
+    """Evidence gathering retains manuals, documents, machine and memory routing."""
+    profile = frozenset(
+        (role, verb)
+        for role in ("work_order", "machine", "assetmachine", "part", "aichat", "memory")
+        for verb in ("view", "change", "add", "delete")
+    )
+    normal = select_capabilities(query, profile=profile, authenticated=True)
+    focused = select_capabilities(
+        query,
+        profile=profile,
+        authenticated=True,
+        context={"work_focus": {"schema_version": 2, "request_id": 401}},
+    )
+    assert set(normal.tool_ids).issubset(focused.tool_ids)
+    assert "propose_investigation_artifact" in focused.tool_ids

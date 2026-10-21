@@ -82,6 +82,11 @@ class TurnRun:
     #: Set when the recorded focus target failed its per-turn
     #: re-authorization: its label/ids must not guide routing or reads.
     focus_unavailable: bool = False
+    # P02/P33: the verified Work focus ``begin_turn`` stored with the turn
+    # (``aichat.services.work_focus``) — None for an unfocused turn. Separate
+    # from ``analysis_scope``: focus names the record a question is about, it
+    # never narrows or widens what the actor may read.
+    work_focus: dict[str, Any] | None = None
     task_intent: Any = None
     query_plan: Any = None
     retrieval_snapshot: Any = None

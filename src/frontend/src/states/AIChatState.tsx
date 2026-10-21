@@ -1,3 +1,7 @@
+import type {
+  ComponentFocusReference,
+  EvidenceFocusReference
+} from '@lib/types/AimmsWire.generated';
 import { create } from 'zustand';
 import { queryClient } from '../App';
 import { clearChatIndices } from '../functions/chatThreadCache';
@@ -10,8 +14,8 @@ import { clearChatIndices } from '../functions/chatThreadCache';
  * never as message text. It grants nothing: the server re-authorizes the
  * machine id on the scope update and again on every turn, and a denied or
  * out-of-scope machine stays indistinguishable from a nonexistent one.
- * Against a backend without the scope capability it degrades to its
- * original role — a display-only chip.
+ * A missing capability or refused acknowledgement blocks the hinted send;
+ * the user can retry or explicitly remove the machine selection.
  */
 export interface AIChatRoutingHint {
   machineId: number;
@@ -45,13 +49,48 @@ export function machineTargetHint(hint: AIChatRoutingHint): AIChatTargetHint {
   };
 }
 
+/**
+ * P02/P33: a question asked from one Work order.
+ *
+ * Unlike the machine hint it never touches the analysis scope. Before the
+ * first send the drawer asks the server to acknowledge this exact Work at this
+ * exact `lifecycleVersion`; only that signed receipt goes with the message,
+ * and a refusal, a missing capability or a malformed response sends nothing.
+ * The label and path are display and navigation data, never authority.
+ */
+export interface AIChatWorkFocusHint {
+  workOrderId: number | null;
+  /** The Work's native `lifecycle_version` as the launching page showed it. */
+  lifecycleVersion: number | null;
+  component?: ComponentFocusReference;
+  evidence?: EvidenceFocusReference;
+  requestId?: number;
+  requestVersion?: number;
+  /** What the launching page showed, e.g. "WO-73 · Replace seal". */
+  label: string;
+  /** The launching route (path and query), validated before it is used. */
+  returnPath: string;
+}
+
+function activeLauncher(): HTMLElement | null {
+  if (typeof document === 'undefined' || typeof HTMLElement === 'undefined')
+    return null;
+  return document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
+}
+
 interface AIChatStateProps {
   isOpen: boolean;
+  /** Ephemeral UI launcher; never serialized or sent as assistant context. */
+  returnFocusTarget: HTMLElement | null;
   sessionGeneration: number;
   resetSession: (clearIndex?: boolean) => void;
   routingHint?: AIChatRoutingHint;
   /** Plan C: the generalized pending target (machine/task/work order). */
   targetHint?: AIChatTargetHint;
+  /** P02/P33: at most one of `routingHint` and `workFocusHint` is set. */
+  workFocusHint?: AIChatWorkFocusHint;
   hintThreadId: string | null;
   bindHint: (threadId: string) => void;
   /**
@@ -66,8 +105,18 @@ interface AIChatStateProps {
   openWithHint: (hint: AIChatRoutingHint) => void;
   /** Plan C: contextual Ask from a board task or work-order detail. */
   openWithTargetHint: (hint: AIChatTargetHint) => void;
+  openWithWorkFocus: (
+    hint: AIChatWorkFocusHint,
+    target?: HTMLElement | null
+  ) => void;
   close: () => void;
   clearHint: () => void;
+  clearWorkFocus: () => void;
+  advanceRequestFocus: (
+    workOrderId: number,
+    requestId: number,
+    version: number
+  ) => void;
   /**
    * Transient "open the Chat tab" intent set by machine Ask/scan. The drawer
    * consumes it exactly once (select Chat + focus the composer); it must not
@@ -79,6 +128,7 @@ interface AIChatStateProps {
 
 export const useAIChatState = create<AIChatStateProps>()((set) => ({
   isOpen: false,
+  returnFocusTarget: null,
   sessionGeneration: 0,
   resetSession: (clearIndex = true) => {
     if (clearIndex) clearChatIndices();
@@ -106,20 +156,24 @@ export const useAIChatState = create<AIChatStateProps>()((set) => ({
       predicate: (query) => privateQueries.has(String(query.queryKey[0]))
     });
     set((state) => ({
+      returnFocusTarget: null,
       sessionGeneration: state.sessionGeneration + 1,
       isOpen: false,
       routingHint: undefined,
       targetHint: undefined,
+      workFocusHint: undefined,
       hintThreadId: null,
       chatOpenIntent: null
     }));
   },
   routingHint: undefined,
   targetHint: undefined,
+  workFocusHint: undefined,
   hintThreadId: null,
   bindHint: (threadId) =>
     set((state) =>
-      (state.routingHint || state.targetHint) && state.hintThreadId === null
+      (state.routingHint || state.targetHint || state.workFocusHint) &&
+      state.hintThreadId === null
         ? { hintThreadId: threadId }
         : {}
     ),
@@ -130,25 +184,33 @@ export const useAIChatState = create<AIChatStateProps>()((set) => ({
         ? {
             routingHint: undefined,
             targetHint: undefined,
-            hintThreadId: null
+            // An investigation request can remain as a per-turn Work focus.
+            hintThreadId: state.workFocusHint ? state.hintThreadId : null
           }
         : {}
     ),
-  open: () => set({ isOpen: true }),
+  open: () =>
+    set({
+      isOpen: true,
+      returnFocusTarget: activeLauncher()
+    }),
   openWithHint: (hint: AIChatRoutingHint) =>
     set({
       isOpen: true,
+      returnFocusTarget: activeLauncher(),
       routingHint: hint,
       targetHint: machineTargetHint(hint),
+      workFocusHint: undefined,
       hintThreadId: null,
       chatOpenIntent: 'chat'
     }),
   openWithTargetHint: (hint: AIChatTargetHint) =>
     set({
       isOpen: true,
+      returnFocusTarget: activeLauncher(),
       targetHint: hint,
-      // The machine routing hint keeps its legacy scope-seeding role; task
-      // and work-order targets never seed an analysis scope.
+      workFocusHint: undefined,
+      // Only a machine target seeds the analysis scope.
       routingHint:
         hint.kind === 'machine'
           ? { machineId: hint.id, machineName: hint.label }
@@ -156,19 +218,63 @@ export const useAIChatState = create<AIChatStateProps>()((set) => ({
       hintThreadId: null,
       chatOpenIntent: 'chat'
     }),
+  openWithWorkFocus: (hint: AIChatWorkFocusHint, target?: HTMLElement | null) =>
+    set({
+      isOpen: true,
+      returnFocusTarget: target ?? activeLauncher(),
+      routingHint: undefined,
+      targetHint: undefined,
+      workFocusHint: hint,
+      hintThreadId: null,
+      chatOpenIntent: 'chat'
+    }),
   close: () =>
     set({
       isOpen: false,
+      returnFocusTarget: null,
       routingHint: undefined,
       targetHint: undefined,
+      workFocusHint: undefined,
       hintThreadId: null,
       chatOpenIntent: null
     }),
   clearHint: () =>
-    set({ routingHint: undefined, targetHint: undefined, hintThreadId: null }),
+    set({
+      routingHint: undefined,
+      targetHint: undefined,
+      workFocusHint: undefined,
+      hintThreadId: null
+    }),
+  clearWorkFocus: () =>
+    set((state) => ({
+      workFocusHint: undefined,
+      hintThreadId:
+        state.routingHint || state.targetHint ? state.hintThreadId : null
+    })),
+  advanceRequestFocus: (workOrderId, requestId, version) =>
+    set((state) => {
+      const hint = state.workFocusHint;
+      if (
+        !hint ||
+        hint.workOrderId !== workOrderId ||
+        hint.requestId !== requestId ||
+        !Number.isSafeInteger(version) ||
+        version <= (hint.requestVersion ?? 0)
+      )
+        return {};
+      return { workFocusHint: { ...hint, requestVersion: version } };
+    }),
   chatOpenIntent: null,
   consumeChatOpenIntent: () => set({ chatOpenIntent: null })
 }));
+
+/** P02/P33: open the one existing assistant about one Work order. */
+export function openGlobalAIChatAboutWork(
+  hint: AIChatWorkFocusHint,
+  target?: HTMLElement
+) {
+  useAIChatState.getState().openWithWorkFocus(hint, target);
+}
 
 export function openGlobalAIChat(hint?: AIChatRoutingHint | AIChatTargetHint) {
   if (hint && 'kind' in hint) {

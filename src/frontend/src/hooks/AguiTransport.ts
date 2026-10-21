@@ -92,6 +92,8 @@ export interface AguiTurnOptions {
   expectedScopeVersion?: number;
   /** Plan C: capture-time focus stamp; omitted when never observed. */
   expectedFocusVersion?: number;
+  /** P02/P33: the signed Work-focus acknowledgement for this one turn. */
+  workFocusReceipt?: string;
   signal: AbortSignal;
   csrfToken?: string;
   callbacks: AguiTurnCallbacks;
@@ -312,7 +314,8 @@ export async function runAguiTurn(options: AguiTurnOptions): Promise<void> {
           idempotencyKey: options.idempotencyKey,
           fileIds: options.fileIds,
           expectedScopeVersion: options.expectedScopeVersion,
-          expectedFocusVersion: options.expectedFocusVersion
+          expectedFocusVersion: options.expectedFocusVersion,
+          workFocusReceipt: options.workFocusReceipt
         }
       },
       subscriber
@@ -343,6 +346,13 @@ export async function runAguiTurn(options: AguiTurnOptions): Promise<void> {
     // NEVER let the raw response body reach error copy.
     const resolvedStatus =
       httpStatus ?? Number(/^HTTP (\d{3}):/.exec(message)?.[1] ?? Number.NaN);
+    // P02/P33: a refused Work-focus receipt is typed and final as well.
+    if (resolvedStatus === 400 && /work_focus_rejected/.test(message)) {
+      throw new AguiRunError(
+        'The work order could not be confirmed.',
+        'work_focus_rejected'
+      );
+    }
     // S1: the scope-version conflict is a typed, non-retryable outcome —
     // carry it as a failureClass so the hook's conflict UX can catch it.
     if (resolvedStatus === 409 && /scope_version_conflict/.test(message)) {
