@@ -1,5 +1,22 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+**Final merged-tree Monitoring clock repair — 21 October 2026:** starting tree
+`937e4f477` integrates both design passes. The disclosure retained the integrated
+Machine-screen formatter, which removed the old browser-zone suffix. It now uses
+one validated plant clock from the existing occurrence read, a visible timezone
+label and the shared 24-hour date spelling. S7 explicitly tests a Riyadh plant
+with a UTC browser, including missing/invalid/refused timezone fallbacks. Focused
+spec **48/48**, nine app/sprint TypeScript configs plus the library config and
+**11 clock units / 2 files** pass. The extra standalone Node tooling config has
+existing deprecation/dependency-resolution errors, retained separately. Full S7
+passes **178/178** (20.5 minutes); all six changed-file hooks and tracking pass.
+The owned browser container is stopped and
+both owned listeners are absent (13:05:36 UTC). Both coordinator ports were confirmed empty at
+12:27:03 UTC before any file edits; task runtime is isolated to websocket 3006,
+harness 15237. See [the repair report](reports/S7-monitoring-clock.md). Backlog
+statuses are unchanged; no Git writes or Azure access and no deployment/product
+acceptance. Earlier unmerged-index and branch-only statements below are history.
+
 **Last update:** 21 October 2026 (Codex, design-pass-2 merge resolution). **Current stage:** all 12 conflicts in the coordinator-started merge of `inventTree-aniket` into `r6/design-pass-2` are resolved, retaining Health/Performance part 2 alongside machine-screen part 1, the Work uplift and O24. All nine TypeScript projects, full Vitest **776 tests / 80 files**, hooks on all 14 resolved/supporting files, tracking and whitespace/marker checks pass. Earlier evidence below remains historical. P31/S8-01 remain In progress, P32 Ready for review. No Git write command, Playwright run, server startup or Azure access was performed; the index remains unmerged for coordinator review.
 
 **Health/Performance replay checkpoint:** 21 October 2026 (Codex, design-pass-2 host replay follow-up). **Current stage:** bounded host-browser repairs are verified. The stale-card capture retains ratio 1, the whole phone state spec passed 60/60 and final S8 phone project passed 111/111; the stabilized native acceptance spec passed 4/4. Own harness PID 65795 on port 15224 and browser container on port 3002 are stopped and absence verified. See [Host replay fixes](reports/S8-01-part2.md#host-replay-fixes) for commands, retained failures and evidence. The parent master design pass remains partial. Earlier Work-focus transport, turn consumer, result linkage and Work launcher were verified in isolated tests (S0-31/S1-25/S1-26); P02/P33 and both sprints remain In progress.
