@@ -1,4 +1,6 @@
 /** Unified assistant fixture; endpoints are recording-only browser mocks. */
+import './aichat-drawer-lingui';
+
 import { i18n } from '@lingui/core';
 import { I18nProvider } from '@lingui/react';
 import {

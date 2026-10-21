@@ -7,8 +7,8 @@ playback therefore rides this deterministic endpoint regardless of the
 deployment's DEBUG posture, for images and video alike.
 
 Source access is rechecked against current role and client grants on every
-metadata and byte request. Revisions identify the exact stored bytes. PDF
-support is limited to existing ingested attachments; no conversion is implied.
+metadata and byte request. Revisions identify the exact stored bytes. PDF and
+Markdown support is limited to indexed attachments; no conversion is implied.
 
 Responses never echo the stored filename or path; errors carry value-free
 codes only.
@@ -29,6 +29,8 @@ _BLOCK = 1024 * 1024
 
 _CONTENT_TYPES = {
     '.pdf': 'application/pdf',
+    '.md': 'text/markdown',
+    '.markdown': 'text/markdown',
     '.mp4': 'video/mp4',
     '.m4v': 'video/mp4',
     '.mov': 'video/quicktime',
@@ -49,7 +51,7 @@ def _resolve_source(request, attachment_id):
     from tasks.scope import ScopeError, client_codes_for_actor
 
     from ai.core.integrations.retrieval_authority import fresh_actor, fresh_role
-    from aichat.models import AttachmentIngest
+    from aichat.models import AttachmentIngest, AttachmentIngestPipeline
     from aichat.services.attachment_ingestion import derive_client_codes
     from common.models import Attachment
 
@@ -90,6 +92,11 @@ def _resolve_source(request, attachment_id):
         return None
     name = getattr(attachment.attachment, 'name', '') or ''
     suffix = ('.' + name.rsplit('.', 1)[-1].lower()) if '.' in name else ''
+    if (
+        suffix in {'.md', '.markdown'}
+        and ingest.pipeline != AttachmentIngestPipeline.DOC
+    ):
+        return None
     if suffix not in _CONTENT_TYPES or not default_storage.exists(name):
         return None
     # Hash and serve the same open file. A replaced attachment must never

@@ -21,6 +21,7 @@ import { generateUrl } from '../../functions/urls';
 import type { MediaEvidenceItem } from '../../hooks/UseAIChat';
 import { useAIChatState } from '../../states/AIChatState';
 import { useEvidenceViewerState } from '../../states/EvidenceViewerState';
+import { MarkdownMessage } from './MarkdownMessage';
 import { isolateDialog } from './dialogBackground';
 import {
   evidenceKey,
@@ -29,6 +30,8 @@ import {
   validVideoSegment
 } from './evidenceLocator';
 import { useAssistantNavigation } from './useAssistantNavigation';
+
+const MAX_MARKDOWN_BYTES = 512 * 1024;
 
 export function GlobalEvidenceViewer() {
   const { item, close } = useEvidenceViewerState();
@@ -84,6 +87,32 @@ export function MediaEvidenceModal({
       return parseSourceMetadata(data, item?.source_revision);
     }
   });
+  const markdown = useQuery({
+    queryKey: [
+      'ai-evidence-markdown',
+      generation,
+      item?.attachment_id,
+      source.data?.revision
+    ],
+    enabled: !!item && source.data?.content_type === 'text/markdown',
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+    queryFn: async ({ signal }) => {
+      const { data } = await api.get<ArrayBuffer>(
+        `/api/aichat/evidence/media/${item!.attachment_id}/`,
+        {
+          params: { revision: source.data!.revision },
+          responseType: 'arraybuffer',
+          headers: { Range: `bytes=0-${MAX_MARKDOWN_BYTES}` },
+          signal
+        }
+      );
+      if (data.byteLength > MAX_MARKDOWN_BYTES)
+        throw new Error('Markdown preview exceeds the size limit');
+      return new TextDecoder('utf-8', { fatal: true }).decode(data);
+    }
+  });
   useEffect(() => {
     if (!item || !modalElement) return;
     // Mantine can share one portal among several dialogs; isolate this modal's
@@ -111,6 +140,7 @@ export function MediaEvidenceModal({
       )
     : '';
   const isPdf = metadata?.content_type === 'application/pdf';
+  const isMarkdown = metadata?.content_type === 'text/markdown';
   const isVideo = metadata?.content_type.startsWith('video/');
   const targetModel = item.work_order_id
     ? ModelType.workorder
@@ -140,7 +170,7 @@ export function MediaEvidenceModal({
       data-testid='media-evidence-modal'
     >
       <Stack gap='sm'>
-        <Text size='xs' c='dimmed'>
+        <Text size='xs' c='dimmed' style={{ overflowWrap: 'anywhere' }}>
           {item.source_revision
             ? t`Revision: ${item.source_revision}`
             : t`Unversioned citation — showing the currently authorized source`}
@@ -195,6 +225,29 @@ export function MediaEvidenceModal({
                     <Text>{t`This browser cannot display the document. Open the original to use your document reader.`}</Text>
                   </object>
                 </>
+              ) : isMarkdown ? (
+                markdown.isPending ? (
+                  <Loader aria-label={t`Loading document`} />
+                ) : markdown.isError ? (
+                  <Alert
+                    color='yellow'
+                    data-testid='markdown-evidence-unavailable'
+                  >
+                    {t`Markdown preview unavailable. Open the original to read the authorized source.`}
+                  </Alert>
+                ) : (
+                  <div
+                    role='document'
+                    aria-label={t`Markdown document preview`}
+                    data-testid='markdown-evidence-preview'
+                    style={{ overflow: 'auto', maxHeight: '65vh', minWidth: 0 }}
+                  >
+                    <MarkdownMessage
+                      content={markdown.data}
+                      allowImages={false}
+                    />
+                  </div>
+                )
               ) : isVideo ? (
                 <>
                   {item.timecode_start_s != null && (
@@ -266,7 +319,7 @@ export function MediaEvidenceModal({
                 </div>
               )}
               <Group justify='space-between'>
-                {!isVideo && (
+                {!isVideo && !isMarkdown && (
                   <Group>
                     <Button
                       variant='default'

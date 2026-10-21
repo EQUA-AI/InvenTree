@@ -8,6 +8,18 @@ import {
 } from './evidenceLocator';
 
 describe('revision metadata locators', () => {
+  it('accepts revision-pinned Markdown sources without PDF page locators', () => {
+    const metadata = {
+      revision: 'a'.repeat(64),
+      content_type: 'text/markdown',
+      page_count: null,
+      page_labels: []
+    };
+    expect(parseSourceMetadata(metadata, metadata.revision)).toEqual(metadata);
+    expect(() => parseSourceMetadata(metadata, 'b'.repeat(64))).toThrow(
+      'Source unavailable'
+    );
+  });
   it('rejects malformed metadata and silent revision substitution', () => {
     const metadata = {
       revision: 'a'.repeat(64),

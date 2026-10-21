@@ -39,6 +39,38 @@ This checks feature contracts and access; reconcile displayed counts with the
 same user's maintenance and machine records separately. It does not validate
 write workflows, worker compatibility, or performance at production scale.
 
+## Markdown evidence viewer
+
+Indexed `.md` and `.markdown` attachments can be previewed in the evidence viewer
+only when their ingest uses the DOC pipeline. Metadata and bytes each recheck the
+current role, client scope, and indexed source hash. The viewer pins its byte
+request to the metadata revision and requests `Range: bytes=0-524288`: previews
+accept at most 512 KiB, with one extra byte to detect oversized sources. Invalid
+UTF-8, stale revisions, and denied reads show an unavailable state.
+
+Markdown uses the chat renderer with raw HTML disabled and images disallowed.
+Only absolute HTTP(S) links are clickable. Long prose wraps; code and tables
+scroll within the bounded preview. The normal chat image policy is unchanged.
+PDF sources retain their PDF-only `X-Frame-Options: SAMEORIGIN` header; images
+and video retain the existing viewer and transport behavior.
+
+Before releasing this viewer, run the focused backend module
+`aichat.tests.test_evidence_media_stream` with `--keepdb`, the frontend unit suite,
+and the frontend production typecheck/build. From `src/frontend`, after compiling
+the translation catalogs, run:
+
+```bash
+yarn compile
+yarn playwright test --config playwright.voice.config.ts tests/pages/pui_ui_evidence.spec.ts
+```
+
+These browser tests use real components and mocked APIs, not a deployed backend.
+They cover Markdown safety, byte limits, malformed encoding, reopening after a
+denied read, desktop/mobile reflow, and the existing PDF locator/focus behavior.
+Also verify authorized `.md` and `.markdown` sources and PDF/video/image previews
+against the candidate revision before promotion. A viewer-only release requires
+no migration, re-ingestion, re-embedding, or worker change.
+
 ## Worker alignment
 
 Inventory every intended worker before promoting an image. Record its image

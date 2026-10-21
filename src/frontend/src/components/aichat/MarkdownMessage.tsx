@@ -147,9 +147,11 @@ const markdownComponents: Components = {
 };
 
 export function MarkdownMessage({
-  content
+  content,
+  allowImages = true
 }: Readonly<{
   content: string;
+  allowImages?: boolean;
 }>) {
   return (
     <Box
@@ -162,6 +164,7 @@ export function MarkdownMessage({
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={markdownComponents}
+        disallowedElements={allowImages ? undefined : ['img']}
         skipHtml
       >
         {content}

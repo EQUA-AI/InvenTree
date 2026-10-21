@@ -260,9 +260,15 @@ class EvidenceMediaStreamTests(TestCase):
 
     def test_bytes_changed_before_reindex_are_unavailable(self):
         """Storage drift cannot reuse the indexed revision's identity."""
-        with default_storage.open(self.image.attachment.name, 'wb') as handle:
+        image = _make_attachment(
+            'replaced-image.png',
+            _BODY[:512],
+            self.part,
+            pipeline=AttachmentIngestPipeline.IMAGE,
+        )
+        with default_storage.open(image.attachment.name, 'wb') as handle:
             handle.write(b'changed bytes')
-        self.assertEqual(self.client.get(_url(self.image.pk)).status_code, 404)
+        self.assertEqual(self.client.get(_url(image.pk)).status_code, 404)
 
     def test_pdf_metadata_and_source(self):
         """Physical page count comes from the actual authorized PDF revision."""
@@ -287,6 +293,132 @@ class EvidenceMediaStreamTests(TestCase):
         self.assertEqual(
             self.client.get(_url(pdf.pk))['Content-Type'], 'application/pdf'
         )
+
+    def test_markdown_metadata_and_source(self):
+        """Both Markdown suffixes expose only verified DOC source bytes."""
+        content = (
+            b'# Service notes\n\n| Part | Status |\n| --- | --- |\n| Seal | OK |\n'
+        )
+        revision = hashlib.sha256(content).hexdigest()
+        for suffix in ('.md', '.markdown', '.MD'):
+            with self.subTest(suffix=suffix):
+                attachment = _make_attachment(
+                    f'notes{suffix}',
+                    content,
+                    self.part,
+                    pipeline=AttachmentIngestPipeline.DOC,
+                )
+                url = _url(attachment.pk)
+                metadata = self.client.get(url + 'metadata/', {'revision': revision})
+                self.assertEqual(metadata.status_code, 200)
+                self.assertEqual(metadata['Cache-Control'], 'private, no-store')
+                self.assertEqual(
+                    metadata.json(),
+                    {
+                        'revision': revision,
+                        'content_type': 'text/markdown',
+                        'page_count': None,
+                        'page_labels': [],
+                    },
+                )
+                response = self.client.get(url, {'revision': revision})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response['Content-Type'], 'text/markdown')
+                self.assertEqual(response['Content-Length'], str(len(content)))
+                self.assertEqual(response['ETag'], f'"{revision}"')
+                self.assertEqual(response['Cache-Control'], 'private, no-store')
+                self.assertEqual(response['X-Content-Type-Options'], 'nosniff')
+                self.assertEqual(response['Accept-Ranges'], 'bytes')
+                self.assertEqual(_body(response), content)
+                for endpoint in (url, url + 'metadata/'):
+                    stale = self.client.get(endpoint, {'revision': '0' * 64})
+                    self.assertEqual(stale.status_code, 404)
+                    self.assertEqual(stale.content, b'')
+
+    def test_markdown_requires_indexed_doc_pipeline(self):
+        """Unindexed and wrong-pipeline Markdown are value-free 404s."""
+        attachment = _make_attachment('notes.md', b'# Notes', self.part)
+        url = _url(attachment.pk)
+        for endpoint in (url, url + 'metadata/'):
+            response = self.client.get(endpoint)
+            self.assertEqual(response.status_code, 404)
+            self.assertEqual(response.content, b'')
+        ingest = AttachmentIngest.objects.create(
+            attachment_id=attachment.pk,
+            model_type=attachment.model_type,
+            model_id=attachment.model_id,
+            source_sha256=hashlib.sha256(b'# Notes').hexdigest(),
+            pipeline=AttachmentIngestPipeline.DOC,
+            state=AttachmentIngestState.INDEXED,
+        )
+        cases = [
+            (AttachmentIngestPipeline.DOC, state)
+            for state in AttachmentIngestState.values
+            if state != AttachmentIngestState.INDEXED
+        ] + [
+            (pipeline, AttachmentIngestState.INDEXED)
+            for pipeline in (
+                AttachmentIngestPipeline.IMAGE,
+                AttachmentIngestPipeline.VIDEO,
+            )
+        ]
+        for pipeline, state in cases:
+            with self.subTest(pipeline=pipeline, state=state):
+                AttachmentIngest.objects.filter(pk=ingest.pk).update(
+                    pipeline=pipeline, state=state
+                )
+                for endpoint in (url, url + 'metadata/'):
+                    response = self.client.get(endpoint)
+                    self.assertEqual(response.status_code, 404)
+                    self.assertEqual(response.content, b'')
+
+    def test_markdown_range_and_head(self):
+        """The preview gets one detection byte beyond its exact 512 KiB limit."""
+        limit = 512 * 1024
+        content = b'x' * (limit + 10)
+        attachment = _make_attachment(
+            'bounded.markdown',
+            content,
+            self.part,
+            pipeline=AttachmentIngestPipeline.DOC,
+        )
+        url = _url(attachment.pk)
+        revision = hashlib.sha256(content).hexdigest()
+        for method in (self.client.get, self.client.head):
+            response = method(
+                url, {'revision': revision}, HTTP_RANGE=f'bytes=0-{limit}'
+            )
+            self.assertEqual(response.status_code, 206)
+            self.assertEqual(response['Content-Type'], 'text/markdown')
+            self.assertEqual(
+                response['Content-Range'], f'bytes 0-{limit}/{len(content)}'
+            )
+            self.assertEqual(response['Content-Length'], str(limit + 1))
+            if response.streaming:
+                self.assertEqual(_body(response), content[: limit + 1])
+            else:
+                self.assertEqual(response.content, b'')
+        unsatisfiable = self.client.get(url, HTTP_RANGE=f'bytes={len(content)}-')
+        self.assertEqual(unsatisfiable.status_code, 416)
+        self.assertEqual(unsatisfiable['Content-Range'], f'bytes */{len(content)}')
+        malformed = self.client.get(url, HTTP_RANGE='bytes=invalid')
+        self.assertEqual(malformed.status_code, 200)
+        self.assertEqual(_body(malformed), content)
+
+    def test_markdown_changed_before_reindex_is_unavailable(self):
+        """Neither metadata nor bytes can reuse a drifted Markdown revision."""
+        attachment = _make_attachment(
+            'replaced.md',
+            b'# Original',
+            self.part,
+            pipeline=AttachmentIngestPipeline.DOC,
+        )
+        with default_storage.open(attachment.attachment.name, 'wb') as handle:
+            handle.write(b'# Replaced')
+        for suffix in ('', 'metadata/'):
+            response = self.client.get(_url(attachment.pk) + suffix)
+            self.assertEqual(response.status_code, 404)
+            self.assertEqual(response.content, b'')
 
 
 @override_settings(
@@ -536,6 +668,29 @@ class EvidencePDFFramePolicyTests(TestCase):
         self.assertEqual(payload['revision'], self.pdf_sha)
         self.assertEqual(response['Cache-Control'], 'private, no-store')
         self.assertEqual(response['X-Frame-Options'], 'DENY')
+
+    def test_markdown_revoked_role_blocks_metadata_and_bytes(self):
+        """Markdown authorization uses the fresh persisted role for both reads."""
+        response = self.client.get(_url(self.markdown_attachment.pk))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(_body(response), self.markdown_bytes)
+        self.rule.can_view = False
+        self.rule.save()
+        for suffix in ('', 'metadata/'):
+            response = self.client.get(_url(self.markdown_attachment.pk) + suffix)
+            self.assertEqual(response.status_code, 404)
+            self.assertEqual(response.content, b'')
+
+    def test_markdown_revoked_client_blocks_metadata_and_bytes(self):
+        """A remaining unrelated client grant cannot authorize Markdown reads."""
+        response = self.client.get(_url(self.markdown_attachment.pk))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(_body(response), self.markdown_bytes)
+        self.grant_owned.delete()
+        for suffix in ('', 'metadata/'):
+            response = self.client.get(_url(self.markdown_attachment.pk) + suffix)
+            self.assertEqual(response.status_code, 404)
+            self.assertEqual(response.content, b'')
 
     def test_anonymous_keeps_denial(self):
         """Refuse anonymous PDF requests while keeping DENY framing."""

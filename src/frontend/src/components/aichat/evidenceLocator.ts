@@ -56,6 +56,7 @@ export function parseSourceMetadata(
     typeof data.content_type !== 'string' ||
     ![
       'application/pdf',
+      'text/markdown',
       'image/png',
       'image/jpeg',
       'image/webp',

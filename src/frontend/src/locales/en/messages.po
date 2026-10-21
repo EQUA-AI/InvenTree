@@ -18730,3 +18730,14 @@ msgstr "Your account can't use voice in this conversation."
 msgid "{0} request(s) waiting to send. They go in order once the current request finishes."
 msgstr "{0} request(s) waiting to send. They go in order once the current request finishes."
 
+#: src/components/aichat/MediaEvidenceModal.tsx:230
+msgid "Loading document"
+msgstr "Loading document"
+
+#: src/components/aichat/MediaEvidenceModal.tsx:236
+msgid "Markdown preview unavailable. Open the original to read the authorized source."
+msgstr "Markdown preview unavailable. Open the original to read the authorized source."
+
+#: src/components/aichat/MediaEvidenceModal.tsx:241
+msgid "Markdown document preview"
+msgstr "Markdown document preview"
