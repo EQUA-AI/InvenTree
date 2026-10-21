@@ -1,8 +1,10 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
-**Last update:** 21 October 2026 (Codex, bounded Work uplift replay). **Current stage:** Work-focus transport, turn consumer, result linkage and Work launcher verified in isolated tests (S0-31/S1-25/S1-26); P02/P33 and both sprints remain In progress.
+**Last update:** 21 October 2026 (Codex, merged Work dock regression). **Current stage:** Work-focus transport, turn consumer, result linkage and Work launcher verified in isolated tests (S0-31/S1-25/S1-26); P02/P33 and both sprints remain In progress.
 
-**Latest bounded follow-up:** Work uplift host failures repaired in `r6/work-uplift`: reuse the complete Closeout fixture for keyboard navigation and select translated `Verified` in the authority-expiry test. Linux Chromium native fixtures pass S8 225/225, S4 232/232, S1 204/204, S6 256/256 and S7 172/172; each of the four reported phone cases passes five repetitions. All nine requested TypeScript projects, 702 units, Lingui extract/compile with bytewise locale restore, changed-file hooks and tracking checks pass. See [Host replay fixes](reports/work-uplift.md#host-replay-fixes) and `data/devscratch/r6-s8/work-uplift/host-replay/`. The owned browser is stopped; host cleanup of orphaned Vite PID 35625 on 15228 is pending after sandbox SIGTERM denial. No provider contract or parent disposition changes; O22 scores and deployment acceptance remain separate.
+**Latest bounded follow-up:** Safe-area follow-up passes: S8 correctly measures the full border box; the prior total lagged inset changes through Mantine requestAnimationFrame/state. Product now measures content and adds shared CSS padding/border once. Both specs remain unchanged. Full s8-work **162/162** (uplift spec **52/52**), S4 time-recording **18/18**, same-operation 0/34/72px inset + 34px focus probe, nine TypeScript projects, 24 units and changed-file hooks pass. Linux Chromium on owned WS 3005 / harness 15236; owned browser/container and harness stopped; both ports clear. See [follow-up evidence](reports/work-dock-merge-regression.md#safe-area-follow-up). P31/P32 and deployment/product acceptance states remain unchanged.
+
+**Previous bounded follow-up:** Work uplift host failures repaired in `r6/work-uplift`: reuse the complete Closeout fixture for keyboard navigation and select translated `Verified` in the authority-expiry test. Linux Chromium native fixtures pass S8 225/225, S4 232/232, S1 204/204, S6 256/256 and S7 172/172; each of the four reported phone cases passes five repetitions. All nine requested TypeScript projects, 702 units, Lingui extract/compile with bytewise locale restore, changed-file hooks and tracking checks pass. See [Host replay fixes](reports/work-uplift.md#host-replay-fixes) and `data/devscratch/r6-s8/work-uplift/host-replay/`. The owned browser is stopped; host cleanup of orphaned Vite PID 35625 on 15228 is pending after sandbox SIGTERM denial. No provider contract or parent disposition changes; O22 scores and deployment acceptance remain separate.
 **User instruction:** “okay lets begin s0 and keep track of all the tasks and plan later i may need to switch it to codex agent”.
 
 **Continued instruction:** “okay carry on and once done s0 then start s1”, followed by explicit S1 overlap. Historical technical checkpoints remain below. The later owner delegation accepts bounded artifacts, not unimplemented contracts or deployment.
@@ -12,6 +14,21 @@
 **This session's instruction:** “Resume AIMMS R6 from HANDOFF.md; preserve existing changes, continue the next recorded task, and update the sprint ledgers”, then “and apply designprompt1.md to all UI work”. A pre-session patch and untracked-file archive are kept under `data/devscratch/r6-s1/2026-10-19/ack-transport/pre-session/`.
 
 This file is the durable resumption point. Do not depend on the preceding chat, redo all research, or infer completion from source inspection.
+
+## Initial integrated Work dock regression — 21 October 2026
+
+Bounded product repair at `cef890495`; ready for review. The unchanged spec passes
+18/18 and focused repeats 10/10 in Linux Chromium; nine TypeScript projects,
+24 relevant units, changed-file hooks and tracking pass. The expanding
+native context Accordion created a temporary scrolling ancestor during focus.
+Context now opens immediately; dock clearance observes the complete border box
+without adding safe area twice. Original test assertions remain unchanged.
+See [merged dock regression](reports/work-dock-merge-regression.md) and
+`data/devscratch/r6-s8/dock-clearance-merge/`. Owned browser WS **3005**, fixture
+harness **15236**, both stopped with clear ports. P31/P32 and deployment/product
+acceptance remain separate. Next: coordinator review and macOS host replay if
+required; no deployment or product acceptance is inferred.
+No forbidden port, Git write, other container/worktree or Azure use.
 
 ## Design-review repair checkpoint — 21 October 2026
 

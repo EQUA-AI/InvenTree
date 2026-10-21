@@ -19,7 +19,7 @@ import {
   Timeline,
   Title
 } from '@mantine/core';
-import { useElementSize, useMediaQuery } from '@mantine/hooks';
+import { useMediaQuery } from '@mantine/hooks';
 import {
   IconAlertTriangle,
   IconArrowLeft,
@@ -34,7 +34,6 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import {
-  type CSSProperties,
   type ReactNode,
   useCallback,
   useEffect,
@@ -233,21 +232,13 @@ function WorkOrderWorkspace({
   const activePanel = workPanelState(params);
   const isPhone = useMediaQuery('(max-width: 47.99em)');
   const assistantSurface = useWorkAssistantClearance(isPhone);
-  const { ref: navigationSizeRef, height: navigationHeight } =
-    useElementSize<HTMLDivElement>();
-  const navigationElement = useRef<HTMLDivElement | null>(null);
-  const navigationRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      navigationElement.current = node;
-      return navigationSizeRef(node);
-    },
-    [navigationSizeRef]
-  );
+  const navigationRef = useRef<HTMLDivElement>(null);
   const [inlineNavigation, setInlineNavigation] = useState(false);
   useEffect(() => {
-    const navigation = navigationElement.current;
+    const navigation = navigationRef.current;
+    const surface = assistantSurface.current;
     const header = document.querySelector<HTMLElement>('[data-app-header]');
-    if (!isPhone || !navigation) {
+    if (!isPhone || !navigation || !surface) {
       setInlineNavigation(false);
       return;
     }
@@ -261,7 +252,18 @@ function WorkOrderWorkspace({
         height < window.innerHeight - 1 || remaining < Math.min(320, height / 2)
       );
     };
-    const observer = new ResizeObserver(measure);
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries.find(({ target }) => target === navigation);
+      // contentRect excludes padding and border even with border-box observation.
+      // CSS adds those shared values once, so inset changes take effect without
+      // waiting for an observer frame or React render to publish a new total.
+      if (entry)
+        surface.style.setProperty(
+          '--work-navigation-content-height',
+          `${Math.ceil(entry.contentRect.height)}px`
+        );
+      measure();
+    });
     observer.observe(navigation, { box: 'border-box' });
     if (header) observer.observe(header);
     window.visualViewport?.addEventListener('resize', measure);
@@ -269,10 +271,11 @@ function WorkOrderWorkspace({
     measure();
     return () => {
       observer.disconnect();
+      surface.style.removeProperty('--work-navigation-content-height');
       window.visualViewport?.removeEventListener('resize', measure);
       window.removeEventListener('resize', measure);
     };
-  }, [isPhone]);
+  }, [isPhone, assistantSurface]);
   const workflowRef = useRef<HTMLDivElement>(null);
   const previousPanel = useRef(activePanel);
   // The fixed phone dock is the only layout where the tab row is not in the
@@ -427,8 +430,12 @@ function WorkOrderWorkspace({
           <Grid.Col span={{ base: 12, lg: 5 }}>
             <Stack gap='md'>
               <ServiceRestoration workOrder={workOrder} />
+              {/* An expanding Collapse is temporarily scrollable: focusing a
+                  time control can scroll inside it and leave the control
+                  clipped or behind the dock. Reveal interactive context at once. */}
               <Accordion
                 multiple
+                transitionDuration={0}
                 keepMounted
                 keepMountedMode='display-none'
                 variant='contained'
@@ -727,11 +734,6 @@ function WorkOrderWorkspace({
       data-inline-navigation={inlineNavigation || undefined}
       gap='md'
       className={`${classes.workspace} ${classes.surface}`}
-      style={
-        {
-          '--work-navigation-height': `calc(${navigationHeight}px + max(8px, var(--work-safe-area-bottom, env(safe-area-inset-bottom))) + 1px)`
-        } as CSSProperties
-      }
     >
       <PageTitle
         title={`${workOrder.reference || t`Work order ${workOrder.id}`} - ${workOrder.title}`}

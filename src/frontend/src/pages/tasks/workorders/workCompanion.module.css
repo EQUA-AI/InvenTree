@@ -93,17 +93,19 @@
 
 @media (max-width: 47.99em) {
   .workspace {
+    /* Keep inset changes synchronous with the dock. Only its content is
+       measured; padding and border below are shared with .navigation. */
+    --work-navigation-padding-bottom: max(8px, var(--work-safe-area-bottom, env(safe-area-inset-bottom)));
+    --work-navigation-border-height: 1px;
+    --work-navigation-height: calc(var(--work-navigation-content-height, 151px) + var(--work-navigation-padding-bottom) + var(--work-navigation-border-height));
+    --work-dock-clearance: calc(var(--work-navigation-height) + var(--mantine-spacing-md));
     margin-inline-end: 0;
     padding: var(--mantine-spacing-sm);
-    padding-bottom: calc(var(--work-navigation-height, 160px) + var(--mantine-spacing-md));
-  }
-
-  .workspace {
-    --work-dock-clearance: calc(var(--work-navigation-height, 160px) + var(--mantine-spacing-md));
+    padding-bottom: var(--work-dock-clearance);
   }
 
   .workspace :where(button, a, input, textarea, select, summary, [tabindex]) {
-    scroll-margin-bottom: calc(var(--work-navigation-height, 160px) + var(--mantine-spacing-md));
+    scroll-margin-bottom: var(--work-dock-clearance);
   }
 
   .workspace :global(.mantine-Button-root) {
@@ -129,9 +131,9 @@
     bottom: 0;
     padding-inline-start: max(8px, env(safe-area-inset-left));
     padding-inline-end: max(8px, env(safe-area-inset-right));
-    padding-bottom: max(8px, var(--work-safe-area-bottom, env(safe-area-inset-bottom)));
+    padding-bottom: var(--work-navigation-padding-bottom);
     background: var(--mantine-color-body);
-    border-top: 1px solid var(--mantine-color-default-border);
+    border-top: var(--work-navigation-border-height) solid var(--mantine-color-default-border);
     box-shadow: 0 -3px 12px rgb(0 0 0 / 8%);
   }
 
