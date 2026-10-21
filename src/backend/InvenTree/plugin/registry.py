@@ -932,7 +932,7 @@ class PluginsRegistry:
     def __get_mixin_order(self):
         """Returns a list of mixin classes, in the order that they should be activated."""
         # Preset list of mixins
-        order = self.DEFAULT_MIXIN_ORDER
+        order = list(self.DEFAULT_MIXIN_ORDER)
 
         # Append mixins that are not defined in the default list
         order += [

@@ -8,6 +8,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from common.models import InvenTreeUserSetting, NotificationMessage
+from InvenTree.unit_test import PluginRegistryMixin
 from machine_health.services.alarm_notifications import CATEGORY, recipients_for
 from machine_health.services.anomalies import evaluate_thresholds
 
@@ -27,12 +28,16 @@ def scope_by_username(actor):
     return [{'customer_id': None, 'site_key': None, 'client_id': client_id}]
 
 
-class AlarmNotificationTest(HealthEnvMixin, TestCase):
+class AlarmNotificationTest(HealthEnvMixin, PluginRegistryMixin, TestCase):
     """Who is told, when, and how often."""
 
     def setUp(self):
         """One bounded signal and three users who differ in exactly one gate."""
         super().setUp()
+        # Startup collection can precede the test database, and automatic
+        # registry reloads are disabled in tests. Load the real delivery plugins
+        # against this test's database rather than relying on an earlier suite.
+        self.ensurePluginsLoaded(force=True)
         self.build_health_env()
         # The shared environment grants every actor the machine's client, which
         # is the one thing this suite must be able to withhold. Its resolver is

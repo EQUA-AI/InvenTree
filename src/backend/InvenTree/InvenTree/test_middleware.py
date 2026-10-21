@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 from django.http import Http404, HttpRequest
+from django.test import override_settings
 from django.urls import reverse
 
 from error_report.models import Error
@@ -165,9 +166,11 @@ class MiddlewareTests(InvenTreeTestCase):
             response = self.client.get(reverse('web'))
             self.do_positive_test(response)
 
+    @override_settings(ALLOWED_HOSTS=['testserver', 'otherhost.example.com'])
     def test_site_lax_protocol(self):
         """Test that the site URL check is correctly working with/without lax protocol check."""
         # Test that a completely different host fails
+        # Django accepts the host so the SITE_URL middleware can reject it.
         with self.settings(
             SITE_URL='https://testserver', CSRF_TRUSTED_ORIGINS=['https://testserver']
         ):
@@ -214,6 +217,14 @@ class MiddlewareTests(InvenTreeTestCase):
             )
             self.assertContains(response, 'INVE-E7: The visited path', status_code=500)
 
+    @override_settings(
+        ALLOWED_HOSTS=[
+            'testserver',
+            'testserver.example.com',
+            'not-my-testserver.example.com',
+            'not-my.testserver.example.com',
+        ]
+    )
     def test_site_url_checks_multi(self):
         """Test that the site URL check is correctly working in a multi-site setup."""
         # multi-site setup with trusted origins

@@ -3,9 +3,9 @@
 import io
 import json
 import os
-import time
 import uuid
 from datetime import timedelta
+from decimal import Decimal
 from http import HTTPStatus
 from unittest import mock
 
@@ -22,6 +22,7 @@ from django.test.utils import override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+import requests
 from PIL import Image
 
 import common.validators
@@ -1616,10 +1617,12 @@ class CommonTest(InvenTreeAPITestCase):
         self.user.is_superuser = False
         self.user.save()
 
+    @override_settings(PLUGINS_ENABLED=True)
     def test_health_api(self):
         """Test health check URL."""
         from plugin import registry
 
+        # Exercise registry readiness even when the test runner disables plugins.
         # Fully started system - ok
         response_data = self.get(reverse('api-system-health'), expected_code=200).json()
         self.assertIn('status', response_data)
@@ -1649,6 +1652,29 @@ class CommonTest(InvenTreeAPITestCase):
 class CurrencyAPITests(InvenTreeAPITestCase):
     """Unit tests for the currency exchange API endpoints."""
 
+    def setUp(self):
+        """Select the real built-in exchange plugin with known currencies."""
+        super().setUp()
+        self.ensurePluginsLoaded()
+        # Settings writes populate the cache outside TestCase's DB rollback.
+        self.addCleanup(
+            cache.delete_many,
+            [
+                InvenTreeSetting.create_cache_key(key)
+                for key in (
+                    'INVENTREE_DEFAULT_CURRENCY',
+                    'CURRENCY_CODES',
+                    'CURRENCY_UPDATE_PLUGIN',
+                )
+            ],
+        )
+        set_global_setting('INVENTREE_DEFAULT_CURRENCY', 'USD')
+        set_global_setting('CURRENCY_CODES', 'USD,EUR,GBP')
+        set_global_setting('CURRENCY_UPDATE_PLUGIN', 'inventreecurrencyexchange')
+        self.assertIsNotNone(
+            registry.get_plugin('inventreecurrencyexchange', active=True)
+        )
+
     def test_exchange_endpoint(self):
         """Test that the currency exchange endpoint works as expected."""
         response = self.get(reverse('api-currency-exchange'), expected_code=200)
@@ -1656,35 +1682,61 @@ class CurrencyAPITests(InvenTreeAPITestCase):
         self.assertIn('base_currency', response.data)
         self.assertIn('exchange_rates', response.data)
 
-    def test_refresh_endpoint(self):
+    @mock.patch('requests.request')
+    def test_refresh_endpoint(self, mock_request):
         """Call the 'refresh currencies' endpoint."""
         from djmoney.contrib.exchange.models import Rate
 
         # Delete any existing exchange rate data
         Rate.objects.all().delete()
 
-        # Updating via the external exchange may not work every time
-        for _idx in range(5):
-            try:
-                self.post(
-                    reverse('api-currency-refresh'),
-                    expected_code=200,
-                    max_query_time=30,
-                )
-            except Exception:
-                continue
+        # Replace only HTTP transport; the plugin parses a real JSON response.
+        response = requests.Response()
+        response.status_code = 200
+        response._content = json.dumps({
+            'base': 'USD',
+            'date': '2026-10-20',
+            'rates': {'EUR': 0.9, 'GBP': 0.8, 'AUD': 1.5},
+        }).encode()
+        mock_request.return_value = response
 
-            # There should be some new exchange rate objects now
-            if Rate.objects.all().exists():
-                # Exit early
-                return
+        self.post(reverse('api-currency-refresh'), expected_code=200, max_query_time=30)
 
-            # Delay and try again - might have problems with exchange rate endpoint
-            time.sleep(10)  # pragma: no cover
+        self.assertTrue(Rate.objects.all().exists())
+        self.assertEqual(
+            dict(Rate.objects.values_list('currency', 'value')),
+            {'USD': Decimal('1'), 'EUR': Decimal('0.9'), 'GBP': Decimal('0.8')},
+        )
+        mock_request.assert_called_once_with(
+            'GET',
+            url='https://api.frankfurter.app/latest?from=USD&to=USD,EUR,GBP',
+            headers={'Content-Type': 'application/json'},
+        )
 
-        raise TimeoutError(
-            'Could not refresh currency exchange data after 5 attempts'
-        )  # pragma: no cover
+    @mock.patch('requests.request')
+    def test_refresh_provider_failure_keeps_existing_rates(self, mock_request):
+        """A failed provider response must preserve the last known rates."""
+        from djmoney.contrib.exchange.models import ExchangeBackend, Rate
+
+        backend, _ = ExchangeBackend.objects.update_or_create(
+            name='InvenTreeExchange', defaults={'base_currency': 'USD'}
+        )
+        Rate.objects.all().delete()
+        Rate.objects.create(backend=backend, currency='USD', value=1)
+        Rate.objects.create(backend=backend, currency='EUR', value=Decimal('0.75'))
+        rates_before = dict(Rate.objects.values_list('currency', 'value'))
+        response = requests.Response()
+        response.status_code = 503
+        response._content = b'{"error": "Provider unavailable"}'
+        mock_request.return_value = response
+
+        with self.assertLogs('inventree', level='WARNING'):
+            self.post(reverse('api-currency-refresh'), expected_code=200)
+
+        self.assertEqual(
+            dict(Rate.objects.values_list('currency', 'value')), rates_before
+        )
+        mock_request.assert_called_once()
 
 
 class NotesImageTest(InvenTreeAPITestCase):
