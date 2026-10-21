@@ -753,11 +753,12 @@ The coordinator also applies new **expand-only database-default migrations**:
 
 Both are on `inventTree-aniket` (merge `c86ac0229`) and were applied to Azure on
 21 October 2026; the final image must be built from a commit that contains them.
-They make these four NOT NULL columns safe for inserts from the old web app and
+They make these five NOT NULL columns safe for inserts from the old web app and
 the old worker, which remain running until deployment:
 
 | Column | Database default |
 |---|---|
+| `tasks_closeoutcapture.voice_unavailable_reason` (added in tasks 0032) | Empty string |
 | `tasks_workorder.corrective_finding` | Empty string |
 | `tasks_workorder.corrective_origin_kind` (the CharField added in tasks 0038) | Empty string |
 | `tasks_investigationrequest.escalation_reason` | Empty string |
@@ -767,17 +768,20 @@ Database defaults apply when old code omits a new column; a Python model default
 alone does not provide that protection. The schema remains expand-only, and the
 old code already runs on it before the deployer switches images.
 
-If these are the only additions, the arithmetic is 967 + 15 + 2 = 984 applied
-rows. This is an expectation, not the completed migration record. Use the
-coordinator's actual count and exact names in the hand-over table. Expected leaves
+The completed record matches the arithmetic: 967 + 15 + 2 = 984 applied rows
+(hand-over table at the top). Expected leaves
 are aichat `0054_investigation_proposal_action`, assets
 `0023_registry_recorded_facts`, repair `0012_operational_authority`, tasks 0041
 and users 0026 (`0041_db_defaults_for_old_code`, `0026_ruleset_operating_authority_db_default`). `showmigrations` from the final image must show nothing pending.
 
-**Historical rehearsal limit.** Only the first 4 migrations were timed on a local
-copy: guard plus migration took 172.8 s, and seven business-table row counts were
-unchanged. That rehearsal did not cover the full 15 plus the new defaults; it is
-not evidence of the coordinator's completed Azure migration.
+**Rehearsal before the Azure run (21 October).** All 17 migrations were applied to a
+local copy of that morning's Azure backup: about 20 s of migration time; the old
+deployed code (`bb732dd1d`) then inserted a Work order, a closeout capture, a group
+and rulesets on the migrated copy (rolled back); row counts were unchanged apart
+from the expected new group, permissions and content types. On Azure the same 17
+took 07:32:23-07:35:33 UTC. Evidence: `contrib/ui-ux/r6/reports/azure-schema.md`.
+The earlier 20 October rehearsal timed only the first 4 (guard plus migration
+172.8 s).
 
 ### 7.2 What the startup guard does
 
@@ -1064,7 +1068,7 @@ worker revision, or use `revision copy` as above.
 Rolling the web and worker images back to their previous revisions is safe:
 the coordinator's schema is expand-only, and the old code already runs on it
 before deployment. The added database defaults protect old-code inserts into the
-four NOT NULL columns listed in section 7.1. **No schema rollback is needed or
+five NOT NULL columns listed in section 7.1. **No schema rollback is needed or
 advised.** Leave the migrated schema and its defaults in place.
 
 Do not reverse migrations, drop the new columns or apply ad hoc default SQL as
