@@ -38,35 +38,7 @@ def _scopes(packet):
     ]
 
 
-def _drift_status(application):
-    """Compare the immutable applied identity with the catalogue at this read."""
-    from tasks.models import ProcedureRevisionStatus
-
-    revision = application.revision
-    procedure = revision.procedure
-    snapshot = application.snapshot
-    identities = (
-        (snapshot.get('procedure_id'), procedure.pk),
-        (snapshot.get('revision_id'), revision.pk),
-        (snapshot.get('revision', {}).get('revision'), revision.revision),
-    )
-    if any(
-        type(recorded) is not int or recorded != actual
-        for recorded, actual in identities
-    ):
-        return 'not_evaluated'
-    if procedure.current_revision_id is None:
-        return 'not_evaluated'
-    if procedure.current_revision_id != revision.pk:
-        return 'different_revision'
-    if not procedure.active:
-        return 'procedure_inactive'
-    if revision.status != ProcedureRevisionStatus.PUBLISHED:
-        return 'revision_not_published'
-    return 'current'
-
-
-def _application(application, part_names):
+def _application(application, part_names, *, catalogue):
     snapshot = application.snapshot
     return {
         'id': application.pk,
@@ -76,11 +48,11 @@ def _application(application, part_names):
         'revision': snapshot.get('revision', {}).get('revision'),
         'change_summary': snapshot.get('revision', {}).get('change_summary'),
         'snapshot_hash': application.snapshot_hash,
-        # The model's legacy default is not a recorded comparison.
-        'drift_status': _drift_status(application),
-        'drift_basis': 'catalogue_at_read',
-        'current_catalogue_code': application.revision.procedure.code or None,
-        'current_catalogue_name': application.revision.procedure.name or None,
+        # Current catalogue metadata is independent of the applied Work snapshot.
+        'drift_status': catalogue['drift_status'],
+        'drift_basis': catalogue['drift_basis'],
+        'current_catalogue_code': catalogue['current_catalogue_code'],
+        'current_catalogue_name': catalogue['current_catalogue_name'],
         'applied_by': person(application.applied_by),
         'applied_at': application.applied_at.isoformat(),
         'steps': snapshot.get('steps', []),
@@ -94,6 +66,7 @@ def _application(application, part_names):
 
 def project(work_order, actor=None) -> dict:
     """Read the scoped parent's saved package and native deviations only."""
+    from tasks.procedure_catalogue import application_catalogues
     from tasks.services.operational_authority import records
 
     from .scope_revision import project as revision_review
@@ -110,6 +83,9 @@ def project(work_order, actor=None) -> dict:
         if enabled
         else []
     )
+    # Shared Work authorizes its immutable application snapshot, not the live
+    # procedure catalogue. Reuse the direct reader's current customer scope.
+    catalogues = application_catalogues(actor, applications)
     part_names = {}
     if actor and actor.is_authenticated and actor.has_perm('part.view_part'):
         from part.models import Part
@@ -127,7 +103,8 @@ def project(work_order, actor=None) -> dict:
         'revision_review': revision_review(work_order, scopes),
         'procedures_state': 'read' if enabled else 'not_enabled',
         'applications': [
-            _application(application, part_names) for application in applications
+            _application(application, part_names, catalogue=catalogues[application.pk])
+            for application in applications
         ]
         if enabled
         else [],

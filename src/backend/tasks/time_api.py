@@ -47,7 +47,7 @@ class WorkTime(APIView):
         return Response({
             'version': work.lifecycle_version,
             'time': time_projection(work),
-            'downtime': downtime_projection(work),
+            'downtime': downtime_projection(work, request.user),
         })
 
     def post(self, request, pk):

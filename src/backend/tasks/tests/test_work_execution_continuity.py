@@ -231,10 +231,10 @@ class WorkContinuityProjectionTest(InvenTreeAPITestCase):
         )
         WorkOrderDependency.objects.create(predecessor=self.work, successor=foreign)
         value = self.overview()
-        self.assertEqual(len(value['dependencies']), 1)
+        self.assertEqual(len(value['dependencies']), 2)
         self.assertEqual(value['dependencies'][0]['card']['id'], self.sibling.pk)
         self.assertEqual(value['dependencies'][0]['card']['lifecycle_version'], 4)
-        self.assertNotIn('Foreign hidden scope', json.dumps(value))
+        self.assertIn('Foreign hidden scope', json.dumps(value))
 
     def test_stale_hold_and_failed_resume_keep_current_hold_unresolved(self):
         """A version/readiness refusal cannot become a locally successful resume."""
@@ -251,13 +251,29 @@ class WorkContinuityProjectionTest(InvenTreeAPITestCase):
         )
         self.assertEqual(self.work.events.count(), 1)
 
-    def test_foreign_parent_scope_denies_projection_and_commands(self):
-        """A new context projection does not broaden the existing Work boundary."""
+    def test_customer_parent_allows_projection_and_authorized_commands(self):
+        """O24 shares Work continuity while command roles remain required."""
         self.execute_permission()
         self.work.customer = Company.objects.create(
             name='Out of scope continuity', is_customer=True
         )
         self.work.save(update_fields=['customer'])
+        self.get(
+            reverse('kanban-card-overview', kwargs={'pk': self.work.pk}),
+            expected_code=200,
+        )
+        self.post_command('hold', 1, 'shared-hold', expected=200)
+        self.assertEqual(self.work.events.count(), 1)
+
+    def test_foreign_machine_parent_denies_projection_and_commands(self):
+        """A new context projection does not broaden the existing Work boundary.
+
+        O24 moved the foreign boundary to machine-only Work on a machine the
+        reader's client scope does not hold (here a clientless machine).
+        """
+        self.execute_permission()
+        self.work.machine = AssetMachine.objects.create(name='Unresolved continuity')
+        self.work.save(update_fields=['machine'])
         self.get(
             reverse('kanban-card-overview', kwargs={'pk': self.work.pk}),
             expected_code=404,

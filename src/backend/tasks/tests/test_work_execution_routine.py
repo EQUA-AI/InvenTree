@@ -162,7 +162,7 @@ class RoutineProjectionTest(InvenTreeAPITestCase):
             'Original instruction',
         )
 
-    def test_foreign_parent_is_unavailable(self):
+    def test_shared_customer_parent_is_available(self):
         """The existing overview scope authorizes the entire new projection."""
         from company.models import Company
 
@@ -170,6 +170,16 @@ class RoutineProjectionTest(InvenTreeAPITestCase):
             name='Foreign customer', is_customer=True
         )
         self.work.save(update_fields=['customer'])
+        self.get(
+            reverse('kanban-card-overview', kwargs={'pk': self.work.pk}),
+            expected_code=200,
+        )
+        # The boundary that remains: machine-only Work outside reader scope.
+        from assets.models import AssetMachine
+
+        self.work.customer = None
+        self.work.machine = AssetMachine.objects.create(name='Unresolved O24 parent')
+        self.work.save(update_fields=['customer', 'machine'])
         self.get(
             reverse('kanban-card-overview', kwargs={'pk': self.work.pk}),
             expected_code=404,

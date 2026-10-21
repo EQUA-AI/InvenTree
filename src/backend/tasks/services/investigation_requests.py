@@ -64,14 +64,18 @@ def _linked_person(actor_id, work_order):
         raise ValidationError('Owner must have the native Work view role.')
 
 
-def _validate_links(fields, work_order):
-    from repair.models import RepairInvestigationFinding, RepairPacket
+def _validate_links(fields, work_order, actor):
+    from repair.models import RepairInvestigationFinding
+    from repair.scope import scoped_repair_packets
 
     _linked_person(fields.get('owner_id'), work_order)
+    # O24: shared Work is not packet authority. Source links need the packet's
+    # machine scope and exact packet/Work machine binding, just like reads.
+    packets = scoped_repair_packets(actor).filter(work_order=work_order)
     if (
         fields.get('source_finding_id')
         and not RepairInvestigationFinding.objects.filter(
-            pk=fields['source_finding_id'], packet__work_order=work_order
+            pk=fields['source_finding_id'], packet__in=packets
         ).exists()
     ):
         raise ValidationError('Finding must belong to this Work.')
@@ -85,9 +89,7 @@ def _validate_links(fields, work_order):
             raise ValidationError(
                 'Proposal requires packet_id, check and generated_at.'
             )
-        packet = RepairPacket.objects.filter(
-            work_order=work_order, pk=proposal['packet_id']
-        ).first()
+        packet = packets.filter(pk=proposal['packet_id']).first()
         if (
             packet is None
             or proposal['check']
@@ -210,7 +212,7 @@ def command(
         validator = RequestFieldsSerializer(data=fields, partial=operation == 'revise')
         validator.is_valid(raise_exception=True)
         clean = validator.validated_data
-        _validate_links(clean, work)
+        _validate_links(clean, work, actor)
         if row is None:
             row = InvestigationRequest(
                 work_order=work, created_by=actor, updated_by=actor

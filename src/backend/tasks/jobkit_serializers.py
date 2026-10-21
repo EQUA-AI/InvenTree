@@ -2,8 +2,6 @@
 
 from rest_framework import serializers
 
-from users.permissions import check_user_role
-
 from .jobkit_models import (
     JobKit,
     JobKitAllocation,
@@ -45,6 +43,17 @@ class JobKitSerializer(serializers.ModelSerializer):
     """Read-only Job Kit with its ordered planned lines."""
 
     lines = serializers.SerializerMethodField()
+
+    def to_representation(self, instance):
+        """Keep staging stock identity behind the Materials stock boundary."""
+        from .materials_readout import can_read_work_stock
+
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        work_order = self.context.get('work_order') or instance.work_order
+        if not request or not can_read_work_stock(request.user, work_order):
+            data['staging_location'] = None
+        return data
 
     class Meta:
         """Serializer metadata."""
@@ -108,7 +117,15 @@ class JobKitAllocationSerializer(serializers.ModelSerializer):
         """Apply the same stock-identity boundary as the Materials projection."""
         data = super().to_representation(instance)
         request = self.context.get('request')
-        if request is None or not check_user_role(request.user, 'stock', 'view'):
+        from .materials_readout import can_read_work_stock
+
+        work_order = self.context.get('work_order') or instance.line.kit.work_order
+        visibility = self.context.setdefault('_stock_visibility', {})
+        if work_order.pk not in visibility:
+            visibility[work_order.pk] = bool(
+                request and can_read_work_stock(request.user, work_order)
+            )
+        if not visibility[work_order.pk]:
             for field in (
                 'stock_item',
                 'source_location_snapshot',

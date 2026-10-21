@@ -252,11 +252,9 @@ async def authorize_invocation(tool_id: str, arguments: Any) -> CapabilityEntry:
         if not await _has_maintenance_scope():
             _deny("maintenance_scope_unresolved")
     elif policy.authorizer == "evidence_media_access":
-        # R3 evidence-media search. Same four checks as the attachment arm
-        # with media vocabulary; the maintenance-scope precheck is even more
-        # load-bearing here -- every media document is client-coded, so an
-        # actor whose scope cannot resolve would read as "no evidence exists"
-        # instead of being refused before dispatch.
+        # O24 permits shared Work evidence without client grants. The corpus
+        # still filters machine candidates by client and freshly authorizes
+        # every Work owner before returning any excerpt.
         from ai.core.config import get_settings
 
         if not get_settings().feature_media_rag_retrieval:
@@ -266,8 +264,6 @@ async def authorize_invocation(tool_id: str, arguments: Any) -> CapabilityEntry:
             _deny("invalid_media_query")
         if not (get_settings().single_site_policy_key or "").strip():
             _deny("site_scope_unconfigured")
-        if not await _has_maintenance_scope():
-            _deny("maintenance_scope_unresolved")
     elif policy.kind is PolicyKind.RESOURCE_AUTHORIZER:
         _deny("unknown_resource_authorizer")
 

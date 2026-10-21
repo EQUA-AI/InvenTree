@@ -17,7 +17,12 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Q, QuerySet
 
-from tasks.scope import MaintenanceScope, ScopeError, scope_for_actor
+from tasks.scope import (
+    MaintenanceScope,
+    ScopeError,
+    scope_for_actor,
+    work_order_scope_filter,
+)
 
 SCOPE_UNRESOLVED = 'SCOPE_UNRESOLVED'
 
@@ -132,10 +137,11 @@ def _require_site_unscoped(
 
 
 def _wo_claims_any(prefix: str) -> Q:
-    """Work orders that provably belong to *some* scope, per the WO rule.
+    """Work provenance that attributes stock/procurement to a known scope.
 
-    A work order is owned by its explicit customer when it names one, else by
-    its machine's client. Everything else is unowned and never radar input.
+    These non-Work sources retain their existing customer/client attribution.
+    This is never a Work visibility predicate: O24 shares customer and
+    unattributed Work, without sharing its stock or procurement records.
     """
     return Q(**{f'{prefix}customer__isnull': False}) | Q(**{
         f'{prefix}machine__client__isnull': False
@@ -143,7 +149,7 @@ def _wo_claims_any(prefix: str) -> Q:
 
 
 def _wo_claims_scope(prefix: str, scope: MaintenanceScope) -> Q:
-    """Work orders provably owned by the one requested scope."""
+    """Provenance in one stock/procurement scope, never a Work access grant."""
     if scope.customer_id is not None:
         return Q(**{f'{prefix}customer_id': scope.customer_id})
     return Q(**{
@@ -170,9 +176,16 @@ class RiskSourceScopeAdapter:
 class WorkOrderScopeAdapter(RiskSourceScopeAdapter):
     """Scope adapter over ``tasks.WorkOrder`` (the AIMMS work order).
 
-    Mirrors the live fail-closed seam: an explicit work-order customer is the
-    order's whole boundary, otherwise the asset's client owns it -- exactly
-    the rule the live work-order API applies.
+    O24: customer and unattributed Work are shared with every Work viewer,
+    so they belong in every authorized scope's Work scan (and may therefore
+    appear under more than one scope key). Machine-only Work stays inside the
+    requested client and the actor's canonical Work authority. Packet,
+    approval, procurement and shortage sources keep their own machine/stock
+    attribution instead of inheriting the shared Work predicate.
+
+    Inactive actors and actors without Work view authority abort the rule.
+    A Work viewer needs no machine grant for shared Work; the enclosing Risk
+    request or scan still authorizes its explicit scope key separately.
     """
 
     source_kind = 'work_order'
@@ -182,40 +195,44 @@ class WorkOrderScopeAdapter(RiskSourceScopeAdapter):
         from tasks.models import WorkOrder
 
         scope = _require_site_unscoped(scope, self.source_kind)
-        return WorkOrder.objects.filter(_wo_claims_scope('', scope))
+        try:
+            authority = work_order_scope_filter(actor)
+        except ScopeError as exc:
+            raise RiskScopeError(str(exc)) from exc
+        shared = Q(customer__isnull=False) | Q(
+            customer__isnull=True, machine__isnull=True
+        )
+        client_work = (
+            Q(pk__in=[])
+            if scope.client_id is None
+            else Q(customer__isnull=True, machine__client_id=scope.client_id)
+        )
+        return WorkOrder.objects.filter(authority).filter(shared | client_work)
 
 
 class RepairPacketScopeAdapter(RiskSourceScopeAdapter):
     """Scope adapter over ``repair.RepairPacket``.
 
-    A packet's provable owner follows the work-order rule: an explicit
-    customer on its linked work order wins, else the client of its machine
-    (or its work order's machine). Packets claiming any other scope on one
-    of those paths are excluded (never leaked, never counted).
+    A packet always belongs to its machine's client. Linked Work must also
+    be readable and name that exact machine, matching the live packet API.
+    Shared customer Work never authorizes a foreign or unresolved machine.
     """
 
     source_kind = 'repair_packet'
 
     def queryset_for_scope(self, *, actor, scope: MaintenanceScope) -> QuerySet:
         """Return packets provably owned by the requested scope."""
-        from repair.models import RepairPacket
+        from repair.scope import scoped_repair_packets
 
         scope = _require_site_unscoped(scope, self.source_kind)
-        if scope.customer_id is not None:
-            claims_scope = Q(work_order__customer_id=scope.customer_id)
-        else:
-            claims_scope = Q(work_order__customer__isnull=True) & (
-                Q(machine__client_id=scope.client_id)
-                | Q(work_order__machine__client_id=scope.client_id)
-            )
-        claims_any = (
-            Q(work_order__customer__isnull=False)
-            | Q(machine__client__isnull=False)
-            | Q(work_order__machine__client__isnull=False)
-        )
-        return RepairPacket.objects.filter(claims_scope).exclude(
-            claims_any & ~claims_scope
-        )
+        try:
+            work_order_scope_filter(actor)
+        except ScopeError as exc:
+            raise RiskScopeError(str(exc)) from exc
+        packets = scoped_repair_packets(actor)
+        if scope.client_id is None:
+            return packets.none()
+        return packets.filter(machine__client_id=scope.client_id)
 
 
 def _conflicting_shortages(scope: MaintenanceScope) -> QuerySet:
@@ -256,9 +273,9 @@ class ApprovalScopeAdapter(RiskSourceScopeAdapter):
         packets = RepairPacketScopeAdapter().queryset_for_scope(
             actor=actor, scope=scope
         )
-        work_orders = WorkOrderScopeAdapter().queryset_for_scope(
-            actor=actor, scope=scope
-        )
+        from tasks.models import WorkOrder
+
+        work_orders = WorkOrder.objects.filter(_wo_claims_scope('', scope))
         claims_scope = Q(repair_packet_links__packet__in=packets) | Q(
             jobkitshortage__line__kit__work_order__in=work_orders
         )
@@ -266,21 +283,10 @@ class ApprovalScopeAdapter(RiskSourceScopeAdapter):
         # .exclude(Q(...) & ~Q(...)) over these multi-valued joins is not
         # anchored to one link, so an approval with one in-scope link would
         # escape exclusion even while also linked to another scope.
-        if scope.customer_id is not None:
-            link_claims_scope = Q(packet__work_order__customer_id=scope.customer_id)
-        else:
-            link_claims_scope = Q(packet__work_order__customer__isnull=True) & (
-                Q(packet__machine__client_id=scope.client_id)
-                | Q(packet__work_order__machine__client_id=scope.client_id)
-            )
-        link_claims_any = (
-            Q(packet__work_order__customer__isnull=False)
-            | Q(packet__machine__client__isnull=False)
-            | Q(packet__work_order__machine__client__isnull=False)
-        )
-        conflicting_links = RepairPacketApprovalLink.objects.filter(
-            link_claims_any & ~link_claims_scope
-        )
+        # Every linked packet must pass the same machine and Work checks.
+        # A shared Work customer is neither a second owner nor authority for
+        # an otherwise foreign, mismatched or unresolved packet link.
+        conflicting_links = RepairPacketApprovalLink.objects.exclude(packet__in=packets)
         conflicting_shortages = _conflicting_shortages(scope)
         return (
             Approval.objects
@@ -306,9 +312,9 @@ class PurchaseOrderLineScopeAdapter(RiskSourceScopeAdapter):
         from order.models import PurchaseOrderLineItem
 
         scope = _require_site_unscoped(scope, self.source_kind)
-        work_orders = WorkOrderScopeAdapter().queryset_for_scope(
-            actor=actor, scope=scope
-        )
+        from tasks.models import WorkOrder
+
+        work_orders = WorkOrder.objects.filter(_wo_claims_scope('', scope))
         # Anchored per shortage row (see ApprovalScopeAdapter): a line
         # feeding shortages of two scopes is conflicting and excluded
         # from both scopes rather than leaked into both.
@@ -330,9 +336,9 @@ class JobKitShortageScopeAdapter(RiskSourceScopeAdapter):
         from tasks.jobkit_models import JobKitShortage
 
         _require_site_unscoped(scope, self.source_kind)
-        work_orders = WorkOrderScopeAdapter().queryset_for_scope(
-            actor=actor, scope=scope
-        )
+        from tasks.models import WorkOrder
+
+        work_orders = WorkOrder.objects.filter(_wo_claims_scope('', scope))
         return JobKitShortage.objects.filter(line__kit__work_order__in=work_orders)
 
 

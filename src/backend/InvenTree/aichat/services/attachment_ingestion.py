@@ -391,12 +391,12 @@ def derive_client_codes(model_type: str, model_id: int) -> list[str]:
 
 
 def _work_order_client_codes(work_order) -> list[str]:
-    """Evidence scope for one work order, mirroring ``scope_for_work_order``.
+    """Search-index evidence scope for one work order.
 
-    Customer-attributed WOs stamp an empty set (deliberately fail-closed):
-    client-scoped actors cannot see those WOs at all and customer scopes
-    carry no client codes, so stamping the machine code would
-    cross-client-widen. Missing machine/client links likewise fail closed.
+    Customer-attributed and machineless WOs have no client ACL. O24 media
+    retrieval selects Work-owner candidates separately and reauthorizes the
+    native Work before exposing excerpts; streaming applies the same check.
+    Empty codes never authorize a machine-owned source.
     """
     if work_order is None:
         return []

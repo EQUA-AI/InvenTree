@@ -26,8 +26,20 @@ def procedures_enabled() -> bool:
     return bool(getattr(settings, 'AIMMS_PROCEDURES_ENABLED', False))
 
 
+#: Set on a Work instance for the duration of one read that must not project
+#: its repair packet (O24: shared Work on a machine outside the reader's
+#: client scope). Commands never set it; they re-check the real relation.
+PACKET_WITHHELD = '_o24_packet_withheld'
+
+
 def packet_of(work_order):
-    """Return the repair packet owning this work order, if any."""
+    """Return the repair packet owning this work order, if any.
+
+    A read that has withheld the packet sees none: the packet is machine-scoped
+    and shared Work is never machine authority.
+    """
+    if getattr(work_order, PACKET_WITHHELD, False):
+        return None
     try:
         return work_order.repair_packet
     except Exception:  # RelatedObjectDoesNotExist

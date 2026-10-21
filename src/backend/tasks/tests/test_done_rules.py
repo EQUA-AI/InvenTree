@@ -4,12 +4,14 @@ from datetime import datetime, timezone as dt_timezone
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from assets.models import AssetMachine, get_default_client
 from tasks.models import WorkOrder, KanbanColumn, WorkOrderLifecycle
 from tasks.services import scheduling
+from users.models import RuleSet
 
 
 def _utc(y, m, d, h=9):
@@ -35,12 +37,24 @@ class TerminalColumnTest(TestCase):
         )
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver'
+)
 class DoneCardImmutabilityTest(TestCase):
     def setUp(self):
         self.actor = get_user_model().objects.create_user(
             username='done-actor', email='d@example.com', password='pw'
         )
-        self.machine = AssetMachine.objects.create(name='Done Press')
+        group = Group.objects.create(name='Done Work editors')
+        RuleSet.objects.update_or_create(
+            group=group,
+            name='work_order',
+            defaults={'can_view': True, 'can_change': True},
+        )
+        self.actor.groups.add(group)
+        self.machine = AssetMachine.objects.create(
+            name='Done Press', client=get_default_client()
+        )
 
     def _card(self, status='backlog'):
         return WorkOrder.objects.create(

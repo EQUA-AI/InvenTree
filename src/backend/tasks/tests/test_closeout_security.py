@@ -1,18 +1,22 @@
 """Scope, flag-gating, permission, and HTTP contract tests for closeout."""
 
+from decimal import Decimal
+
+from django.contrib.auth.models import Group
 from django.test import TestCase, override_settings
 
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from company.models import Company
-from tasks.models import WorkOrderCloseout, WorkOrderLifecycle
-from tasks.scope import MaintenanceScope
+from part.models import Part
+from stock.models import StockItem
+from tasks.models import CloseoutPartUsage, WorkOrderCloseout, WorkOrderLifecycle
 from tasks.tests.closeout_fixtures import (
     CLOSEOUT_FLAGS,
     VALID_CLOSEOUT,
     CloseoutEnvMixin,
 )
+from users.models import RuleSet
 
 CLOSEOUT_ROUTES = (
     'closeout/captures/',
@@ -45,8 +49,8 @@ class CloseoutScopeSecurityTest(CloseoutEnvMixin, TestCase):
                 suffix,
             )
 
-    def test_cross_scope_actor_gets_scope_safe_404(self):
-        other_customer = Company.objects.create(name='Other Co', is_customer=True)
+    def test_no_grant_viewer_reads_shared_work_but_not_machine_only_work(self):
+        """O24 shares customer Work; foreign machine-only reads/actions stay denied."""
         outsider = self.make_scoped_user(
             'security-outsider',
             permissions=[
@@ -55,11 +59,14 @@ class CloseoutScopeSecurityTest(CloseoutEnvMixin, TestCase):
                 'reconcile_closeout_parts',
             ],
         )
-        outsider.maintenance_scopes = {
-            MaintenanceScope(customer_id=other_customer.pk, site_key=None)
-        }
+        outsider.maintenance_scopes = set()
         client = APIClient()
         client.force_authenticate(outsider)
+        for suffix in CLOSEOUT_ROUTES:
+            response = client.get(self.url(suffix))
+            self.assertEqual(response.status_code, status.HTTP_200_OK, suffix)
+        self.work_order.customer = None
+        self.work_order.save(update_fields=['customer'])
         for suffix in CLOSEOUT_ROUTES:
             response = client.get(self.url(suffix))
             self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND, suffix)
@@ -100,6 +107,57 @@ class CloseoutScopeSecurityTest(CloseoutEnvMixin, TestCase):
         response = self.client.get(self.url('closeout/captures/'))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data, [])
+
+    @override_settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=None)
+    def test_shared_usage_stock_identity_requires_machine_scope_and_stock_view(self):
+        """Shared reconciliation facts do not grant stock or tracking identity."""
+        part = Part.objects.create(name='Closeout stock scope part')
+        stock = StockItem.objects.create(part=part, quantity=Decimal('5'))
+        stock.take_stock(Decimal('2'), self.actor, notes='closeout usage')
+        tracking = stock.tracking_info.order_by('-pk').first()
+        row = CloseoutPartUsage.objects.create(
+            work_order=self.work_order,
+            part=part,
+            stock_item=stock,
+            stock_tracking_id=tracking.pk,
+            used_quantity=Decimal('2'),
+            source='walkup',
+            variance_reason='Recorded at the job',
+        )
+        reader = self.make_scoped_user('closeout-stock-viewer')
+        stock_group = Group.objects.create(name='Closeout stock viewers')
+        RuleSet.objects.update_or_create(
+            group=stock_group, name='stock', defaults={'can_view': True}
+        )
+        reader.groups.add(stock_group)
+        self.client.force_authenticate(reader)
+        own = self.client.get(self.url('closeout/part-usage/'))
+        self.assertEqual(own.status_code, status.HTTP_200_OK)
+        self.assertEqual(own.data[0]['stock_item'], stock.pk)
+        self.assertEqual(own.data[0]['stock_tracking_id'], tracking.pk)
+
+        reader.maintenance_scopes = set()
+        revoked = self.client.get(self.url('closeout/part-usage/'))
+        self.assertEqual(revoked.status_code, status.HTTP_200_OK)
+        self.assertIsNone(revoked.data[0]['stock_item'])
+        self.assertIsNone(revoked.data[0]['stock_tracking_id'])
+        self.assertEqual(revoked.data[0]['id'], row.pk)
+        self.assertEqual(revoked.data[0]['part'], part.pk)
+        self.assertEqual(Decimal(revoked.data[0]['used_quantity']), Decimal('2'))
+        self.assertEqual(revoked.data[0]['variance_reason'], 'Recorded at the job')
+
+        without_stock = self.make_scoped_user('closeout-stock-role-missing')
+        self.client.force_authenticate(without_stock)
+        hidden = self.client.get(self.url('closeout/part-usage/'))
+        self.assertEqual(hidden.status_code, status.HTTP_200_OK)
+        self.assertIsNone(hidden.data[0]['stock_item'])
+        self.assertIsNone(hidden.data[0]['stock_tracking_id'])
+        denied = self.client.post(
+            self.url('closeout/part-usage/'),
+            {'kind': 'candidate', 'candidate_text': 'Unpermitted write'},
+            format='json',
+        )
+        self.assertEqual(denied.status_code, status.HTTP_403_FORBIDDEN)
 
 
 @override_settings(**CLOSEOUT_FLAGS)

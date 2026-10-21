@@ -1,15 +1,12 @@
-"""R3 media retrieval scope: denial is indistinguishable from nonexistence.
+"""R3 media retrieval scope with O24 shared Work and scoped machine evidence.
 
-The filter names only the actor's clients, never anyone else's.
-
-Runs ``search_corpus_media`` against the shared RAG fixtures with the
-production scope path live (resolver seam -> ``scope_for_actor`` ->
-``client_codes_for_actor``) and only the network clients faked. The machine
-and work-order resolvers are the real ``assets.ai_read.machines_in_scope``
-and ``tasks.ai_read`` helpers under the acting user, so an out-of-scope
-work-order photo and a nonexistent one take the same path — an off-scope
-client's evidence media is invisible because the filter carries only the
-actor's own codes.
+The machine candidate branch names only the actor's client codes. The Work
+candidate branch admits shared customer and unattributed Work even without
+client grants; native owner reauthorization rejects foreign machine-only
+Work before exposing any excerpt. Machine/Work narrowing uses the real
+authorized readers, so unavailable names remain indistinguishable from
+missing records. Provider clients alone are faked here; final native owner
+authorization has stored-source regression coverage in retrieval_authority.
 """
 
 from unittest import mock
@@ -29,19 +26,19 @@ _GRANTS: dict[str, set[MaintenanceScope]] = {}
 
 #: The non-negotiable prefix of every evidence-media filter for an acme-only
 #: actor: site pin, currency, the evidence trust tier, the owner allow-list,
-#: and the actor's own client codes — clause order is part of the contract.
+#: and client-machine/Work-owner candidates; clause order is pinned.
 _BASE_FILTER = (
     "scope_key eq 'site-a' and is_current eq true and "
     "access_class eq 'evidence_recording' and "
     "search.in(model_type, 'workorder,workorderstepexecution,assetmachine', ',') "
-    "and client_codes/any(c: search.in(c, 'acme', ','))"
+    "and (client_codes/any(c: search.in(c, 'acme', ',')) or "
+    "search.in(model_type, 'workorder,workorderstepexecution', ','))"
 )
 
 
 def _grant_resolver(actor):
     """Resolver seam: return whatever the test granted this username."""
     return _GRANTS.get(actor.get_username(), set())
-
 
 
 def _indistinguishable(result):
@@ -56,6 +53,7 @@ def _indistinguishable(result):
     retrieval.pop('retrieval_id', None)
     normalized['retrieval'] = retrieval
     return normalized
+
 
 class FakeSearchClient:
     """Records every filter; returns scripted rows."""
@@ -189,12 +187,17 @@ class MediaRetrievalScopeTests(RagFixtureTestCase):
             self.assertNotIn(str(self.wo_zeta.pk), built.split("'acme'")[-1])
             self.assertNotIn('zeta', built)
 
-    def test_ungranted_actor_is_refused_not_widened(self):
-        """An actor with no grants gets a refusal, never an unscoped query."""
+    def test_ungranted_work_viewer_selects_only_work_owner_candidates(self):
+        """No client grant still admits shared Work, never machine candidates."""
         _GRANTS.clear()
-        with self.assertRaises(MediaRetrievalError) as caught:
-            self._search()
-        self.assertEqual(caught.exception.code, 'MEDIA_SCOPE_UNRESOLVED')
+        search_client, result = self._search()
+        self.assertEqual(result['returned_count'], 0)
+        self.assertNotIn('client_codes/any', search_client.filters[0])
+        self.assertTrue(
+            search_client.filters[0].endswith(
+                "and (search.in(model_type, 'workorder,workorderstepexecution', ','))"
+            )
+        )
 
     def test_clientless_machine_never_appears_in_a_filter(self):
         """The orphan press resolves to no scope.

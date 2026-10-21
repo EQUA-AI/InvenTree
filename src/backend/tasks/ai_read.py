@@ -468,11 +468,15 @@ def work_order_readiness(user, work_order, *, action: str = 'start') -> dict[str
     return envelope
 
 
-def work_order_repair_state(work_order) -> dict[str, Any]:
+def work_order_repair_state(work_order, *, machine_authorized: bool) -> dict[str, Any]:
     """The linked repair packet: identity, findings, approved scope, gates.
 
     ``repair`` is imported at call time: it already imports ``tasks``, and a
     module-level import here would be circular.
+
+    ``machine_authorized`` is the caller's ``work_machine_authorized`` result.
+    Shared (O24) Work on a machine outside the reader's client scope projects
+    no packet, exactly as the Work overview and packet endpoints withhold it.
     """
     from repair.models import ApprovedRepairScope, RepairPacket
     from tasks.services.investigation_requests import project_requests
@@ -487,7 +491,14 @@ def work_order_repair_state(work_order) -> dict[str, Any]:
         return value
 
     requests = fenced(project_requests(work_order))
-    packet = RepairPacket.objects.filter(work_order=work_order).order_by('pk').first()
+    packet = (
+        RepairPacket.objects
+        .filter(work_order=work_order, machine_id=work_order.machine_id)
+        .order_by('pk')
+        .first()
+        if machine_authorized
+        else None
+    )
     if packet is None:
         return {'work_order_id': work_order.pk, 'packet': None, 'requests': requests}
 
@@ -564,15 +575,17 @@ def work_order_repair_state(work_order) -> dict[str, Any]:
 def open_repairs_for_machine(user, machine) -> dict[str, Any]:
     """Non-terminal repairs for one authorized machine, with start readiness.
 
-    The REST ``MachineOpenRepairs`` view does no tenant check; this projection
-    exists so the AI rail never inherits that gap.
+    Apply the same canonical packet boundary as the REST reader before
+    counting or slicing. Shared Work cannot authorize a mismatched packet,
+    and one refused candidate must not abort the authorized repair list.
     """
-    from repair.models import PacketStatus, RepairPacket
+    from repair.models import PacketStatus
+    from repair.scope import scoped_repair_packets
     from repair.services import repair_start_readiness
 
     terminal = (PacketStatus.CLOSED, PacketStatus.CANCELED)
     rows = (
-        RepairPacket.objects
+        scoped_repair_packets(user)
         .filter(machine=machine)
         .exclude(status__in=terminal)
         .select_related('work_order')
@@ -626,12 +639,15 @@ def _bounded_json(value, *, limit: int = 500) -> str | None:
     return fence(text, limit=limit) or None
 
 
-def work_order_procedure_application(work_order) -> dict[str, Any] | None:
+def work_order_procedure_application(work_order, actor=None) -> dict[str, Any] | None:
     """The PRIMARY structured procedure application, revision-pinned (S9).
 
     §8.5 evidence stage 1: which governed revision this work order was
     executed against, byte-anchored (``content_hash``) with the applied
-    snapshot hash and the drift verdict. ``None`` means no structured
+    snapshot hash. Live catalogue labels/status and current drift need the
+    procedure reader's independent customer authority. Missing recorded
+    metadata stays unknown; it never falls back to a live revision.
+    ``None`` means no structured
     application exists — the comparison gate then degrades to the
     deliberately ``cannot_determine``-heavy prose path, never guesses.
     """
@@ -643,21 +659,26 @@ def work_order_procedure_application(work_order) -> dict[str, Any] | None:
     )
     if application is None:
         return None
-    revision = application.revision
+    from .procedure_catalogue import application_catalogues
+
+    snapshot = application.snapshot or {}
+    recorded_revision = snapshot.get('revision') or {}
+    catalogue = application_catalogues(actor, [application])[application.pk]
     return {
         'application_id': application.pk,
         'primary': application.primary,
         'sequence': application.sequence,
-        'procedure_code': revision.procedure.code,
-        'procedure_name': fence(revision.procedure.name, limit=255),
-        'revision_id': revision.pk,
-        'revision': revision.revision,
-        'revision_status': revision.status,
-        'content_version': revision.content_version,
-        'content_hash': revision.content_hash or None,
+        'procedure_code': catalogue['current_catalogue_code'],
+        'procedure_name': fence(catalogue['current_catalogue_name'], limit=255) or None,
+        # The native application FK is a recorded identity, not live metadata.
+        'revision_id': application.revision_id,
+        'revision': recorded_revision.get('revision'),
+        'revision_status': catalogue['revision_status'],
+        'content_version': recorded_revision.get('content_version'),
+        'content_hash': recorded_revision.get('content_hash') or None,
         'snapshot_hash': application.snapshot_hash or None,
         'policy_version': application.policy_version,
-        'drift_status': application.drift_status,
+        'drift_status': catalogue['drift_status'],
         'applied_at': _iso(application.applied_at),
         'step_count': application.step_executions.count(),
     }

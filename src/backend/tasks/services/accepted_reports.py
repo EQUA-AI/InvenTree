@@ -55,7 +55,7 @@ def freeze_report(*, work_order, closeout, actor, amendment=None):
     """Called while the parent Work is locked, inside its atomic command."""
     from tasks.closeout_serializers import (
         CloseoutCaptureSerializer,
-        CloseoutPartUsageSerializer,
+        CloseoutPartUsageSnapshotSerializer,
         CloseoutProposalSerializer,
         CloseoutReadingSerializer,
     )
@@ -113,7 +113,9 @@ def freeze_report(*, work_order, closeout, actor, amendment=None):
             for capture in captures
             for proposal in capture.current_revision.proposals.all().order_by('pk')
         ],
-        'materials': CloseoutPartUsageSerializer(
+        # Frozen Work content keeps its recorded references and exact hash;
+        # live reconciliation APIs apply their separate stock read boundary.
+        'materials': CloseoutPartUsageSnapshotSerializer(
             work_order.closeout_part_usage.all().order_by('pk'), many=True
         ).data,
         'readings': CloseoutReadingSerializer(

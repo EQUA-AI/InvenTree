@@ -599,16 +599,32 @@ class ProcessDecisionTests(InvenTreeAPITestCase):
             'accepted',
         )
 
-    def test_foreign_parent_denies_acceptance(self):
-        """New commands retain the native parent scope even for privileged actors."""
+    def test_customer_parent_allows_authorized_acceptance(self):
+        """O24 permits authorized handover acceptance across Work customer values."""
         from company.models import Company
-        from tasks.services.work_orders import WorkOrderScopeError
-
         self.propose()
         self.work.customer = Company.objects.create(
             name='Foreign customer', is_customer=True
         )
         self.work.save(update_fields=['customer'])
+        self.accept()
+        self.assertIsNotNone(self.work.handovers.get().accepted_at)
+
+    def test_foreign_machine_parent_denies_acceptance(self):
+        """New commands retain the native parent scope even for privileged actors.
+
+        O24 moved the foreign boundary from the customer value to machine-only
+        Work on another client's machine.
+        """
+        from assets.models import AssetMachine, Client
+        from tasks.services.work_orders import WorkOrderScopeError
+
+        self.propose()
+        self.work.machine = AssetMachine.objects.create(
+            name='O24 foreign handover pump',
+            client=Client.objects.create(name='O24 foreign', code='o24-handover'),
+        )
+        self.work.save(update_fields=['machine'])
         with self.assertRaises(WorkOrderScopeError):
             self.accept()
         self.assertIsNone(self.work.handovers.get().accepted_at)
@@ -1151,6 +1167,15 @@ class ProcessDecisionTests(InvenTreeAPITestCase):
             name='Foreign review customer', is_customer=True
         )
         self.work.save(update_fields=['customer'])
+        self.assertEqual(self.client.get(options).status_code, 200)
+        from assets.models import AssetMachine, Client
+
+        self.work.customer = None
+        self.work.machine = AssetMachine.objects.create(
+            name='O24 foreign review pump',
+            client=Client.objects.create(name='O24 review', code='o24-review'),
+        )
+        self.work.save(update_fields=['customer', 'machine'])
         self.assertEqual(self.client.get(options).status_code, 404)
 
     def test_review_missing_expert_group_is_unavailable(self):
@@ -1173,10 +1198,13 @@ class ProcessDecisionTests(InvenTreeAPITestCase):
             name='Foreign recurrence', is_customer=True
         )
         self.work.save(update_fields=['customer'])
-        with self.assertRaisesRegex(
-            ValidationError, 'No eligible same-component deviation'
-        ):
-            self.review_recurrence(occurrence)
+        with override_settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=lambda actor: []):
+            from tasks.services.work_orders import WorkOrderScopeError
+
+            # The shared creation boundary rejects the foreign machine before
+            # the recurrence-specific validator can inspect its prior Work.
+            with self.assertRaisesRegex(WorkOrderScopeError, 'no such machine'):
+                self.review_recurrence(occurrence)
         self.assertEqual(WorkOrder.objects.count(), 1)
         self.work.customer = None
         self.work.save(update_fields=['customer'])
@@ -1939,15 +1967,14 @@ class ProcessDecisionTests(InvenTreeAPITestCase):
 
     def test_followup2_foreign_missing_and_inactive_recurrence_refuse_identically(self):
         """The HTTP command cannot reveal foreign Work on an in-scope machine."""
-        from company.models import Company
+        from assets.models import AssetMachine, Client
 
         self.closed(False)
         occurrence = self.deviation()
         self.bind(occurrence)
-        self.work.customer = Company.objects.create(
-            name='Foreign existence boundary', is_customer=True
-        )
-        self.work.save(update_fields=['customer'])
+        foreign_client = Client.objects.create(name='Foreign recurrence client', code='o24-recurrence-other')
+        self.work.machine = AssetMachine.objects.create(name='O24 foreign recurrence pump', client=foreign_client)
+        self.work.save(update_fields=['machine'])
         body = {
             'title': 'Corrective response',
             'machine': self.machine.pk,
@@ -1962,9 +1989,9 @@ class ProcessDecisionTests(InvenTreeAPITestCase):
         missing = self.client.post(
             url, {**body, 'recurrence_of': self.work.pk + 999999}, format='json'
         )
-        self.work.customer = None
+        self.work.machine = self.machine
         self.work.is_active = False
-        self.work.save(update_fields=['customer', 'is_active'])
+        self.work.save(update_fields=['machine', 'is_active'])
         inactive = self.client.post(url, body, format='json')
         for response in (foreign, missing, inactive):
             self.assertEqual(response.status_code, 400, response.data)

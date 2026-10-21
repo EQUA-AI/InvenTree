@@ -963,7 +963,9 @@ class _CommandView(APIView):
         work_order = get_object_or_404(
             scoped_work_orders(self.request.user), pk=work_order_id
         )
-        return WorkOrderBoardSerializer(work_order).data
+        return WorkOrderBoardSerializer(
+            work_order, context={'request': self.request}
+        ).data
 
     def _card_payload(self, card_id):
         card = get_object_or_404(
@@ -1418,7 +1420,9 @@ class WorkOrderScheduleWindow(APIView):
         )
 
         return Response({
-            'cards': WorkOrderBoardSerializer(work_orders, many=True).data,
+            'cards': WorkOrderBoardSerializer(
+                work_orders, many=True, context={'request': request}
+            ).data,
             'dependencies': WorkOrderDependencySerializer(dependencies, many=True).data,
             'warnings': detect_conflicts(work_orders),
         })

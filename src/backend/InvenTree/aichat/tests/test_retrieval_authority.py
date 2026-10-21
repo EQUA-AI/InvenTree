@@ -6,10 +6,15 @@ from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.test import TestCase
+from django.test import TestCase, override_settings
+
+from tasks.models import WorkOrder
 
 from ai.core.integrations import retrieval_authority as authority
-from aichat.models import ControlledDocument
+from aichat.models import AttachmentIngest, ControlledDocument, MediaSegment
+from assets.models import AssetMachine, Client
+from common.models import Attachment
+from company.models import Company
 from users.models import RuleSet
 
 
@@ -33,6 +38,8 @@ class RetrievalAuthorityTests(TestCase):
                     azure_search_controlled_documents_index='fixture-index',
                     feature_attachment_rag_retrieval=True,
                     azure_search_attachment_docs_index='attachment-index',
+                    feature_media_rag_retrieval=True,
+                    azure_search_media_index='media-index',
                 ),
             )
         )
@@ -145,3 +152,95 @@ class RetrievalAuthorityTests(TestCase):
             )
             self.assertFalse(authority.native_attachment_owner(self.user, attachment))
             authorize.assert_called_once()
+
+    def media_row(self, owner):
+        """Build native projection coordinates without a provider or file read."""
+        from aichat.services.attachment_ingestion import derive_client_codes
+
+        with mock.patch('InvenTree.tasks.offload_task', return_value=True):
+            source = Attachment.objects.create(
+                model_type='workorder',
+                model_id=owner.pk,
+                attachment='synthetic/o24-not-opened.png',
+            )
+        ingest = AttachmentIngest.objects.create(
+            attachment_id=source.pk,
+            model_type='workorder',
+            model_id=owner.pk,
+            source_sha256='d' * 64,
+            state='indexed',
+            pipeline='image',
+            search_index_name='media-index',
+        )
+        identity = f'o24-media-{source.pk}'
+        MediaSegment.objects.create(
+            ingest=ingest, media_type='image', search_doc_id=identity
+        )
+        return {
+            'id': identity,
+            'attachment_id': source.pk,
+            'model_type': 'workorder',
+            'model_id': owner.pk,
+            'scope_key': 'fixture',
+            'source_sha256': 'd' * 64,
+            'is_current': True,
+            'access_class': 'evidence_recording',
+            'client_codes': derive_client_codes('workorder', owner.pk),
+            'caption': 'Synthetic Work evidence',
+        }
+
+    @override_settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=lambda actor: set())
+    def test_no_client_media_retrieval_uses_native_work_owner_and_fresh_role(self):
+        """Shared Work excerpts survive empty ACLs; machine-only Work does not."""
+        machine = AssetMachine.objects.create(
+            name='Foreign media machine',
+            client=Client.objects.create(
+                name='Foreign media', code='foreign-o24-media'
+            ),
+        )
+        customer = Company.objects.create(
+            name='O24 evidence customer', is_customer=True
+        )
+        shared = [
+            WorkOrder.objects.create(
+                title='Customer evidence', customer=customer, machine=machine
+            ),
+            WorkOrder.objects.create(title='Unattributed evidence'),
+        ]
+        foreign = WorkOrder.objects.create(
+            title='Foreign machine evidence', machine=machine
+        )
+        rows = [self.media_row(work) for work in [*shared, foreign]]
+        with mock.patch(
+            'ai.core.integrations.projection_gate.recall_allowed', return_value=True
+        ):
+            self.assertEqual(
+                authority.attachment_rows(rows, user=self.user, corpus='media'),
+                rows[:2],
+            )
+            self.rule.can_view = False
+            self.rule.save()
+            self.assertEqual(
+                authority.attachment_rows(rows, user=self.user, corpus='media'), []
+            )
+
+    @override_settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=lambda actor: set())
+    def test_matching_stale_client_acl_cannot_authorize_a_foreign_work_owner(self):
+        """Every Work hit is rechecked even when Search's client predicate matched."""
+        machine = AssetMachine.objects.create(
+            name='Denied media machine',
+            client=Client.objects.create(name='Denied media', code='denied-o24-media'),
+        )
+        work = WorkOrder.objects.create(title='Denied Work media', machine=machine)
+        row = self.media_row(work)
+        with (
+            mock.patch(
+                'tasks.scope.client_codes_for_actor', return_value={'denied-o24-media'}
+            ),
+            mock.patch(
+                'ai.core.integrations.projection_gate.recall_allowed', return_value=True
+            ),
+        ):
+            self.assertEqual(
+                authority.attachment_rows([row], user=self.user, corpus='media'), []
+            )

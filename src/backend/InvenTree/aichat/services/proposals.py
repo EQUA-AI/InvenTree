@@ -258,6 +258,14 @@ def _authorize_and_bind(
         _authorized_work_order(owner, int(intent.get('predecessor_id')))
         return successor.pk, successor.lifecycle_version, successor
     work_order = _authorized_work_order(owner, int(work_order_id))
+    if action_type == ProposalAction.WORK_ORDER_UPDATE.value:
+        from tasks.services.scheduling import _authorize_plan_update
+        from tasks.services.work_orders import WorkOrderScopeError
+
+        try:
+            _authorize_plan_update(owner, work_order, intent.get('fields') or {})
+        except WorkOrderScopeError as exc:
+            raise ProposalNotFound('no such machine') from exc
     if action_type == 'investigation.artifact':
         from aichat.services.investigation_proposals import prepare
 
@@ -288,36 +296,18 @@ def _authorize_and_bind(
 
 
 def _authorize_machine_scope(owner, machine_id) -> None:
-    """Authorize creation against the machine's own scope identity.
+    """Apply the creation command's native roles and machine scope at preview.
 
-    Identity resolution is delegated to ``scope_for_machine`` so this rail can
-    never drift from the canonical rule. An unscoped machine is refused:
-    guessing a boundary for it would be worse than declining.
-
-    Failures are reported as "no such machine" rather than distinguishing "exists
-    but not yours", so a caller cannot enumerate other tenants' assets.
+    Previews hold no machine lock before any existing Work locks. The canonical
+    creation service locks and reauthorizes the machine before a write.
     """
-    from tasks.scope import ScopeError, scope_for_actor, scope_for_machine
-
-    from assets.models import AssetMachine
-
-    if not machine_id:
-        raise ProposalError('create requires a machine')
-    machine = AssetMachine.objects.filter(pk=machine_id).first()
-    if machine is None:
-        raise ProposalNotFound('no such machine')
+    from tasks.services.scheduling import _authorize_creation
+    from tasks.services.work_orders import WorkOrderScopeError
 
     try:
-        required = scope_for_machine(machine)
-    except ScopeError as exc:
-        raise ProposalError(str(exc)) from exc
-
-    try:
-        scopes = scope_for_actor(owner)
-    except ScopeError as exc:
+        _authorize_creation(owner, machine_id)
+    except WorkOrderScopeError as exc:
         raise ProposalNotFound('no such machine') from exc
-    if required not in scopes:
-        raise ProposalNotFound('no such machine')
 
 
 def _dependency_successor(owner, dependency_id):
@@ -1607,32 +1597,38 @@ def confirm_proposal(
             # Re-check the RBAC role at execution time: a grant may have been
             # revoked between propose and confirm (§5.3 defense in depth).
             _require_role(owner, proposal.action_type)
-            if expected_preview_hash is not None:
-                from tasks.models import WorkOrder
+            from tasks.models import WorkOrder, WorkOrderDependency
 
-                if proposal.target_work_order_id:
-                    list(
-                        WorkOrder.objects
-                        .select_for_update()
-                        .filter(
-                            pk__in=sorted({
-                                int(proposal.target_work_order_id),
-                                int(
-                                    proposal.intent.get('predecessor_id')
-                                    or proposal.target_work_order_id
-                                ),
-                            })
-                        )
-                        .order_by('pk')
-                    )
-                _, version, target = _authorize_and_bind(
-                    owner,
-                    proposal.action_type,
-                    proposal.target_work_order_id,
-                    proposal.intent,
-                    thread_id=proposal.thread_id,
-                    source_turn_id=proposal.source_turn_id,
-                )
+            # Every pending dispatch reauthorizes current targets. Omitting a
+            # preview hash opts out of drift comparison, never out of scope.
+            target_ids = set()
+            if proposal.target_work_order_id:
+                target_ids.add(int(proposal.target_work_order_id))
+            if proposal.action_type == ProposalAction.DEPENDENCY_CREATE:
+                target_ids.add(int(proposal.intent['predecessor_id']))
+            if proposal.action_type == ProposalAction.DEPENDENCY_DELETE:
+                edge = WorkOrderDependency.objects.filter(
+                    pk=proposal.intent.get('dependency_id')
+                ).first()
+                if edge is not None:
+                    target_ids.update((edge.predecessor_id, edge.successor_id))
+            if proposal.action_type == ProposalAction.SCHEDULE_OPTIMIZE:
+                target_ids.update(_optimize_candidate_ids(proposal.intent))
+            list(
+                WorkOrder.objects
+                .select_for_update()
+                .filter(pk__in=sorted(target_ids))
+                .order_by('pk')
+            )
+            _, version, target = _authorize_and_bind(
+                owner,
+                proposal.action_type,
+                proposal.target_work_order_id,
+                proposal.intent,
+                thread_id=proposal.thread_id,
+                source_turn_id=proposal.source_turn_id,
+            )
+            if expected_preview_hash is not None:
                 current_hash = compute_preview_hash(
                     _preview(target, proposal.action_type, proposal.intent)
                 )

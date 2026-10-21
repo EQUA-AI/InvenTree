@@ -427,19 +427,23 @@ class R6PermissionMatrix(TestCase):
     @override_settings(
         AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.tests.test_r6_permission_matrix.ambiguous_scope'
     )
-    def test_ambiguous_scope_cannot_disclose_customer_work(self):
-        """Queryset reads must agree with the existing exact-record denial."""
+    def test_ambiguous_scope_authorizes_shared_work_but_no_machine_only_work(self):
+        """Invalid grants supply no machine authority; Work view still shares O24 Work."""
         work = WorkOrder.objects.get(pk=self.owners['customer']['work'])
+        self.assertEqual(require_work_order_scope(self.reader, work).customer_id, self.customer.pk)
+        own_work = WorkOrder.objects.get(pk=self.owners['own']['work'])
         with self.assertRaises(ScopeError):
-            require_work_order_scope(self.reader, work)
+            require_work_order_scope(self.reader, own_work)
         for case in (READS[15], READS[16], READS[18], READS[19]):
             with self.subTest(case=case.name):
-                self.assertEqual(self.get_case(case, 'customer').status_code, 404)
+                self.assertEqual(self.get_case(case, 'customer').status_code, 200)
+                self.assertEqual(self.get_case(case, 'own').status_code, 404)
         response = self.get_case(READS[13])
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data['results'], [])
+        self.assertEqual({row['id'] for row in response.data['results']}, {work.pk})
+        self.assertEqual(authorized_focus(self.reader.pk, work.pk)['work_order_id'], work.pk)
         with self.assertRaises(WorkFocusError):
-            authorized_focus(self.reader.pk, work.pk)
+            authorized_focus(self.reader.pk, own_work.pk)
 
     @override_settings(
         AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.tests.test_r6_permission_matrix.ambiguous_scope'
@@ -735,7 +739,6 @@ class R6PermissionMatrix(TestCase):
             for actor, target in (
                 (self.no_role, work),
                 (self.outside, work),
-                (self.reader, self.owners['customer']['work']),
                 (self.reader, self.owners['unresolved']['work']),
             ):
                 with (
@@ -887,6 +890,25 @@ class R6PermissionMatrix(TestCase):
             row['source_location_snapshot']['location_name'], 'P32 private bay'
         )
         self.assertEqual(row['stock_tracking_id'], 54321)
+
+    @override_settings(AIMMS_JOB_KITS_ENABLED=True)
+    def test_shared_customer_work_does_not_grant_foreign_stock_identity(self):
+        """Even a stock reader needs the machine client for reservation identities."""
+        kit, allocation = self.make_job_kit()
+        WorkOrder.objects.filter(pk=kit.work_order_id).update(
+            customer=self.customer, machine_id=self.owners['foreign']['machine']
+        )
+        RuleSet.objects.update_or_create(group=self.group, name='stock', defaults={'can_view': True})
+        with connection.execute_wrapper(self.read_only):
+            response = self.api.get(f'/api/tasks/work-orders/{kit.work_order_id}/job-kit/allocations/')
+            materials = self.api.get(f'/api/tasks/work-orders/{kit.work_order_id}/materials/')
+        self.assertEqual(response.status_code, 200)
+        row = response.data['results'][0]
+        for key in ('stock_item', 'source_location_snapshot', 'stock_tracking_id'):
+            self.assertIsNone(row[key])
+        self.assertEqual(materials.status_code, 200)
+        self.assertFalse(materials.data['stock_visible'])
+        self.assertTrue(materials.data['requirements'][0]['reservations'][0]['stock_item']['hidden'])
 
     @override_settings(
         AIMMS_JOB_KITS_ENABLED=True,
@@ -1327,15 +1349,15 @@ class R6PermissionMatrix(TestCase):
             connection.execute_wrapper(self.read_only),
         ):
             self.assertIsNotNone(decision(packets['own']))
-            self.assertIsNone(decision(packets['customer']))
+            self.assertIsNotNone(decision(packets['customer']))
             self.assertIsNone(decision(packets['corrupt']))
             roots = services.list_diagnostic_record_roots(self.reader)
             self.assertEqual(
                 {r['entity_id'] for r in roots if r['entity_type'] == 'repair_packet'},
-                {packets['own'].pk},
+                {packets['own'].pk, packets['customer'].pk},
             )
             with override_settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=sales_scope):
-                self.assertIsNotNone(decision(packets['customer']))
+                self.assertIsNone(decision(packets['customer']))
                 self.assertIsNone(decision(packets['own']))
                 roots = services.list_diagnostic_record_roots(self.reader)
                 self.assertEqual(
@@ -1344,7 +1366,7 @@ class R6PermissionMatrix(TestCase):
                         for r in roots
                         if r['entity_type'] == 'repair_packet'
                     },
-                    {packets['customer'].pk},
+                    set(),
                 )
 
 
@@ -1371,9 +1393,9 @@ def read_test(case, variant):
             if case.collection and variant == 'foreign':
                 self.api.force_login(self.outside)
         elif variant == 'customer':
-            # Explicit sales ownership wins over the machine's client.
+            # O24 shares customer Work without widening machine authority.
             owner = 'customer'
-            expected = 200 if case.collection or '{machine}' in case.path else 404
+            expected = 200
         with override_settings(
             **(
                 {
@@ -1411,13 +1433,18 @@ def read_test(case, variant):
         ):
             results = response.data['results']
             visible = (
-                set()
+                ({self.owners['customer']['work']} if case.name == 'work_list' else set())
                 if variant == 'unresolved'
                 else (
                     {
                         self.owners['foreign'][
                             'work' if case.name == 'work_list' else 'machine'
-                        ]
+                        ],
+                        *(
+                            [self.owners['customer']['work']]
+                            if case.name == 'work_list'
+                            else []
+                        ),
                     }
                     if variant == 'foreign'
                     else {
@@ -1425,7 +1452,7 @@ def read_test(case, variant):
                             'work' if case.name == 'work_list' else 'machine'
                         ],
                         *(
-                            []
+                            [self.owners['customer']['work']]
                             if case.name == 'work_list'
                             else [self.owners['customer']['machine']]
                         ),
@@ -1434,26 +1461,25 @@ def read_test(case, variant):
             )
             self.assertEqual({row.get('id', row.get('pk')) for row in results}, visible)
         if variant == 'customer' and '{machine}' in case.path:
-            self.assertNotIn('P32 customer work', str(response.data))
+            if case.name == 'occurrences':
+                self.assertIn('P32 customer work', str(response.data))
             if case.name == 'work_summary':
-                self.assertEqual(response.data['open']['count'], 0)
+                self.assertEqual(response.data['open']['count'], 1)
             elif case.name == 'positions':
-                self.assertEqual(response.data['machine_work']['count'], 0)
+                self.assertEqual(response.data['machine_work']['count'], 1)
                 populated = [
                     row['work']
                     for row in response.data['positions']
                     if row['work'] is not None
                 ]
                 self.assertTrue(populated)
-                self.assertTrue(
-                    all(row['count'] == 0 and row['results'] == [] for row in populated)
-                )
+                self.assertTrue(any(row['count'] == 1 for row in populated))
             elif case.name == 'components':
                 rows = response.data.get('results', response.data)
                 self.assertTrue(rows)
-                self.assertTrue(all(row['open_work']['count'] == 0 for row in rows))
+                self.assertTrue(all(row['open_work']['count'] == 1 for row in rows))
             elif case.name == 'occurrence':
-                self.assertEqual(response.data['work'], [])
+                self.assertEqual([row['id'] for row in response.data['work']], [self.owners['customer']['work']])
 
     return test
 
@@ -1539,7 +1565,10 @@ def write_test(name, path, fields, permission, variant):
 
     def test(self):
         own = self.owners['own']
-        work = WorkOrder.objects.get(pk=own['work'])
+        shared = variant in ('customer', 'customer_viewer')
+        work = WorkOrder.objects.get(
+            pk=self.owners['customer' if shared else 'own']['work']
+        )
         # A hold can act now; resume has the same real readiness as native Work.
         if name == 'resume':
             work.lifecycle_status = 'on_hold'
@@ -1548,8 +1577,16 @@ def write_test(name, path, fields, permission, variant):
         if name == 'capture':
             work.closeout_captures.update(status='abandoned')
         body = {'expected_version': 1, 'idempotency_key': f'p32-{name}', **fields}
-        path_ids = self.owners[variant] if variant in ('foreign', 'customer') else own
-        authorized = variant in ('missing_key', 'replay', 'conflict') or (
+        # O24: shared customer Work is reachable, but a viewer without the
+        # command permission/role (``customer_viewer``) is still refused 403.
+        path_ids = (
+            self.owners['customer']
+            if shared
+            else self.owners[variant]
+            if variant == 'foreign'
+            else own
+        )
+        authorized = variant in ('missing_key', 'replay', 'conflict', 'customer') or (
             variant == 'flag_off' and '/api/tasks/' not in path
         )
         if authorized:
@@ -1563,7 +1600,7 @@ def write_test(name, path, fields, permission, variant):
         if variant == 'anonymous':
             self.api.logout()
             expected = 401
-        elif variant in ('foreign', 'customer'):
+        elif variant == 'foreign':
             # Give the role/command permission so a 404 proves scope specifically.
             if permission:
                 self.grant(permission)
@@ -1635,6 +1672,7 @@ for _name, _path, _fields, _permission in WRITES:
         'viewer',
         'foreign',
         'customer',
+        'customer_viewer',
         'missing_key',
         'flag_off',
         'replay',

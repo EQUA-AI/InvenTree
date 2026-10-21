@@ -357,6 +357,13 @@ class WorkOrderProcedureApplication(models.Model):
 class WorkOrderStepExecution(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
     """Recorded execution state for one snapshotted procedure step."""
 
+    @classmethod
+    def check_related_permission(cls, permission, user):
+        """Step attachments use the same native action roles as their Work."""
+        from tasks.models import WorkOrder
+
+        return WorkOrder.check_related_permission(permission, user)
+
     application = models.ForeignKey(
         WorkOrderProcedureApplication,
         on_delete=models.CASCADE,

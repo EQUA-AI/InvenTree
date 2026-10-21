@@ -101,8 +101,7 @@ class MaintenanceAiReadTestCase(TestCase):
         cls.customer_wo = cls._work_order(
             title='Customer callout', customer=cls.customer
         )
-        # The one exception to client-first: an explicit sales claim wins,
-        # so the machine's own client must NOT reach this job.
+        # O24: explicit sales Work is shared across resolved actor scopes.
         cls.customer_machine_wo = cls._work_order(
             title='Warranty job on the feed pump',
             machine=cls.machine,
@@ -111,7 +110,7 @@ class MaintenanceAiReadTestCase(TestCase):
         cls.foreign_wo = cls._work_order(
             title='Foreign press overhaul', machine=cls.other_machine
         )
-        # Neither a customer nor a machine client: unreachable by design.
+        # Neither customer nor machine: shared Work under O24.
         cls.orphan_wo = cls._work_order(title='Orphan job')
 
     @classmethod
@@ -166,47 +165,44 @@ class WorkOrderScopeFilterTests(MaintenanceAiReadTestCase):
                     else:
                         self.assertIn(work_order, selected)
 
-    def test_client_grant_reaches_the_plain_machine_job_only(self):
-        """A client grant selects only the plain client-machine job.
-
-        Never the customer claim on that same machine, and never the orphan.
-        """
+    def test_client_grant_reaches_shared_and_own_machine_work(self):
+        """A client grant selects its machine-only job and every shared job."""
         selected = set(WorkOrder.objects.filter(work_order_scope_filter(self.actor)))
         self.assertIn(self.wo, selected)
-        self.assertNotIn(self.customer_machine_wo, selected)
+        self.assertIn(self.customer_machine_wo, selected)
         self.assertNotIn(self.foreign_wo, selected)
-        self.assertNotIn(self.orphan_wo, selected)
+        self.assertIn(self.orphan_wo, selected)
 
     def test_customer_grant_reaches_the_sales_jobs_only(self):
-        """A customer grant selects exactly the jobs claimed by that customer."""
+        """A customer grant reaches shared Work, regardless of its sales owner."""
         selected = set(
             WorkOrder.objects.filter(work_order_scope_filter(self.customer_actor))
         )
-        self.assertEqual(selected, {self.customer_wo, self.customer_machine_wo})
+        self.assertEqual(
+            selected, {self.customer_wo, self.customer_machine_wo, self.orphan_wo}
+        )
 
-    def test_site_qualified_grant_selects_nothing(self):
-        """A site-scoped grant authorizes no work order, so it must match none.
-
-        A resolved work-order scope never carries a site key and scope equality
-        includes it, so a site-qualified grant that widened the filter would
-        surface jobs every per-record check then denies.
-        """
+    def test_site_qualified_grant_selects_shared_work_only(self):
+        """A site-qualified grant reaches shared Work but no machine-only job."""
         self.actor.maintenance_scopes = {
             MaintenanceScope(
                 customer_id=None, site_key='sydney', client_id=self.client_tenant.pk
             )
         }
         self.assertEqual(
-            list(WorkOrder.objects.filter(work_order_scope_filter(self.actor))), []
+            set(WorkOrder.objects.filter(work_order_scope_filter(self.actor))),
+            {self.customer_wo, self.customer_machine_wo, self.orphan_wo},
         )
         with self.assertRaises(ScopeError):
             require_work_order_scope(self.actor, self.wo)
 
-    def test_unresolved_actor_raises_rather_than_matching_everything(self):
-        """An actor with no scope must not fall through to an empty Q()."""
+    def test_viewer_without_scope_selects_only_shared_work(self):
+        """No client grant authorizes shared Work without selecting every job."""
         self.actor.maintenance_scopes = set()
-        with self.assertRaises(ScopeError):
-            work_order_scope_filter(self.actor)
+        self.assertEqual(
+            set(WorkOrder.objects.filter(work_order_scope_filter(self.actor))),
+            {self.customer_wo, self.customer_machine_wo, self.orphan_wo},
+        )
 
 
 class AuthorizedWorkOrderTests(MaintenanceAiReadTestCase):
@@ -220,11 +216,8 @@ class AuthorizedWorkOrderTests(MaintenanceAiReadTestCase):
         """Denial must never disclose that a job exists."""
         self.assertIsNone(ai_read.authorized_work_order(self.actor, self.foreign_wo.pk))
         self.assertIsNone(ai_read.authorized_work_order(self.actor, 999999))
-        self.assertIsNone(ai_read.authorized_work_order(self.actor, self.orphan_wo.pk))
-        # The customer claim on the actor's own machine is still not theirs.
-        self.assertIsNone(
-            ai_read.authorized_work_order(self.actor, self.customer_machine_wo.pk)
-        )
+        for work in (self.orphan_wo, self.customer_wo, self.customer_machine_wo):
+            self.assertEqual(ai_read.authorized_work_order(self.actor, work.pk), work)
 
     def test_flag_off_is_a_kill_switch_on_every_rail(self):
         """The read flag is enforced at the shared reader, not per workflow."""
@@ -238,11 +231,15 @@ class AuthorizedWorkOrderTests(MaintenanceAiReadTestCase):
         self.assertIsNone(ai_read.authorized_work_order(anon, self.wo.pk))
         self.assertEqual(ai_read.work_orders_in_scope(anon), [])
 
-    def test_unresolved_scope_yields_nothing(self):
-        """An actor the deployment cannot scope reads no job at all."""
+    def test_viewer_without_scope_reads_shared_work_only(self):
+        """Work view needs no client scope for customer or unattributed Work."""
         self.actor.maintenance_scopes = set()
         self.assertIsNone(ai_read.authorized_work_order(self.actor, self.wo.pk))
-        self.assertEqual(ai_read.work_orders_in_scope(self.actor), [])
+        self.assertIsNone(ai_read.authorized_work_order(self.actor, self.foreign_wo.pk))
+        shared = {self.customer_wo, self.customer_machine_wo, self.orphan_wo}
+        self.assertEqual(set(ai_read.work_orders_in_scope(self.actor)), shared)
+        for work in shared:
+            self.assertEqual(ai_read.authorized_work_order(self.actor, work.pk), work)
 
     def test_non_numeric_id_is_refused(self):
         """A model-supplied id is a candidate, and a bad one is just not found."""
@@ -268,13 +265,15 @@ class WorkOrderSearchTests(MaintenanceAiReadTestCase):
         for hint in ('feed pump bearing', self.wo.reference, 'Feed Pump 7'):
             with self.subTest(hint=hint):
                 rows = ai_read.work_orders_in_scope(self.actor, query=hint)
-                self.assertEqual([w.pk for w in rows], [self.wo.pk])
+                expected = {self.wo.pk, self.customer_machine_wo.pk} if hint == 'Feed Pump 7' else {self.wo.pk}
+                self.assertEqual({w.pk for w in rows}, expected)
 
     def test_customer_grant_lists_exactly_the_sales_jobs(self):
-        """A customer grant lists that customer's jobs and nothing else."""
+        """A resolved customer grant lists customer and unattributed Work."""
         rows = ai_read.work_orders_in_scope(self.customer_actor)
         self.assertEqual(
-            {w.pk for w in rows}, {self.customer_wo.pk, self.customer_machine_wo.pk}
+            {w.pk for w in rows},
+            {self.customer_wo.pk, self.customer_machine_wo.pk, self.orphan_wo.pk},
         )
 
     def test_result_count_is_bounded_even_when_asked_for_more(self):
@@ -532,7 +531,7 @@ class RepairStateTests(MaintenanceAiReadTestCase):
 
     def test_missing_packet_is_reported_not_invented(self):
         """A job with no packet says so explicitly."""
-        state = ai_read.work_order_repair_state(self.customer_wo)
+        state = ai_read.work_order_repair_state(self.customer_wo, machine_authorized=True)
         self.assertEqual(
             state,
             {
@@ -544,7 +543,7 @@ class RepairStateTests(MaintenanceAiReadTestCase):
 
     def test_packet_identity_is_projected_with_fenced_free_text(self):
         """Status fields ride bare; operator prose rides fenced."""
-        packet = ai_read.work_order_repair_state(self.wo)['packet']
+        packet = ai_read.work_order_repair_state(self.wo, machine_authorized=True)['packet']
         self.assertEqual(packet['packet_id'], self.packet.pk)
         self.assertEqual(packet['reference'], self.packet.reference)
         self.assertEqual(packet['status'], PacketStatus.DRAFT)
@@ -561,7 +560,7 @@ class RepairStateTests(MaintenanceAiReadTestCase):
 
     def test_findings_carry_value_unit_and_verification(self):
         """A finding is a typed observation, not flattened prose."""
-        findings = ai_read.work_order_repair_state(self.wo)['findings']
+        findings = ai_read.work_order_repair_state(self.wo, machine_authorized=True)['findings']
         self.assertEqual(len(findings), 1)
         row = findings[0]
         self.assertEqual(row['finding_key'], 'vibration')
@@ -574,7 +573,7 @@ class RepairStateTests(MaintenanceAiReadTestCase):
 
     def test_only_the_current_approved_scope_is_projected(self):
         """The superseded version must not resurface as current guidance."""
-        scope = ai_read.work_order_repair_state(self.wo)['approved_scope']
+        scope = ai_read.work_order_repair_state(self.wo, machine_authorized=True)['approved_scope']
         self.assertEqual(scope['version'], 2)
         self.assertIn('lost lubrication', scope['verified_cause'])
         self.assertEqual(len(scope['scope_lines']), 2)
@@ -585,13 +584,13 @@ class RepairStateTests(MaintenanceAiReadTestCase):
         self.assertEqual(scope['crew_size'], 2)
         self.assertEqual(scope['planned_elapsed_minutes'], 90)
         self.assertIsNotNone(scope['approved_at'])
-        blob = json.dumps(ai_read.work_order_repair_state(self.wo))
+        blob = json.dumps(ai_read.work_order_repair_state(self.wo, machine_authorized=True))
         self.assertNotIn('Old superseded cause', blob)
         self.assertNotIn('Old superseded action', blob)
 
     def test_gate_counts_reflect_the_satisfied_gate(self):
         """One confirmed blocking gate: nothing unsatisfied, advance allowed."""
-        gates = ai_read.work_order_repair_state(self.wo)['gates']
+        gates = ai_read.work_order_repair_state(self.wo, machine_authorized=True)['gates']
         self.assertEqual(gates['total'], 1)
         self.assertEqual(gates['unsatisfied_blocking'], [])
         # A bare boolean, deliberately: the model-facing JSON must not carry
@@ -602,7 +601,7 @@ class RepairStateTests(MaintenanceAiReadTestCase):
         """A pending blocking gate is reported by its (fenced) name."""
         self.gate.status = GateStatus.PENDING
         self.gate.save(update_fields=['status'])
-        gates = ai_read.work_order_repair_state(self.wo)['gates']
+        gates = ai_read.work_order_repair_state(self.wo, machine_authorized=True)['gates']
         self.assertEqual(len(gates['unsatisfied_blocking']), 1)
         name = gates['unsatisfied_blocking'][0]
         self.assertTrue(name.startswith(ai_read.UNTRUSTED_CONTENT_BEGIN))
@@ -651,6 +650,37 @@ class OpenRepairsForMachineTests(MaintenanceAiReadTestCase):
                 self.assertTrue(
                     blocker['message'].startswith(ai_read.UNTRUSTED_CONTENT_BEGIN)
                 )
+
+    def test_shared_work_does_not_add_mismatched_packet_candidates(self):
+        """A foreign linked machine cannot abort or inflate the authorized list."""
+        shared = self._work_order(
+            title='Shared Work on foreign machine',
+            machine=self.other_machine,
+            customer=self.customer,
+        )
+        mismatched = RepairPacket.objects.create(
+            work_order=shared,
+            machine=self.machine,
+            fault_summary='Foreign mismatched packet secret',
+        )
+        standalone = RepairPacket.objects.create(
+            machine=self.machine, fault_summary='Authorized standalone packet'
+        )
+        result = ai_read.open_repairs_for_machine(self.actor, self.machine)
+        self.assertEqual(result['population_count'], 2)
+        self.assertEqual(result['returned_count'], 2)
+        self.assertEqual(
+            {row['packet_id'] for row in result['repairs']},
+            {self.open_packet.pk, standalone.pk},
+        )
+        self.assertNotIn(mismatched.fault_summary, json.dumps(result))
+        standalone_row = next(
+            row for row in result['repairs'] if row['packet_id'] == standalone.pk
+        )
+        self.assertEqual(
+            {blocker['code'] for blocker in standalone_row['blockers']},
+            {'NO_WORK_ORDER'},
+        )
 
     def test_result_is_json_serializable(self):
         """The tool layer hands this straight to a prompt."""
@@ -745,7 +775,7 @@ class ExcludedFieldsTests(RepairStateTests):
             'row': ai_read.work_order_row(self.wo),
             'overview': ai_read.work_order_overview(self.wo),
             'readiness': ai_read.work_order_readiness(self.actor, self.wo),
-            'repair_state': ai_read.work_order_repair_state(self.wo),
+            'repair_state': ai_read.work_order_repair_state(self.wo, machine_authorized=True),
             'open_repairs': ai_read.open_repairs_for_machine(self.actor, self.machine),
         })
         for forbidden in (

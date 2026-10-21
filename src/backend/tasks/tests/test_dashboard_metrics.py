@@ -6,12 +6,15 @@ from datetime import timezone as dt_timezone
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.test import TestCase, override_settings
 
 from assets.models import AssetMachine, Client, ClientScopeGrant
+from company.models import Company
 from tasks.dashboard_metrics import METRICS, MetricOptions, dashboard_metric
 from tasks.models import WorkOrder, WorkOrderPart
 from tasks.scope import ScopeError
+from users.models import RuleSet
 
 
 def widget_scopes(actor):
@@ -361,7 +364,9 @@ class MaintenanceDashboardTests(TestCase):
         self.assertEqual(response.json()['value'], 1)
         self.assertEqual(response['Cache-Control'], 'private, no-store')
         ClientScopeGrant.objects.filter(user=self.actor).delete()
-        self.assertEqual(self.client.get(self.url).json()['state'], 'unavailable')
+        response = self.client.get(self.url)
+        self.assertEqual(response.json()['state'], 'ready')
+        self.assertEqual(response.json()['value'], 0)
         self.actor.is_superuser = False
         self.actor.save(update_fields=['is_superuser'])
         self.assertEqual(self.client.get(self.url).status_code, 403)
@@ -369,13 +374,69 @@ class MaintenanceDashboardTests(TestCase):
         self.assertIn(self.client.get(self.url).status_code, (401, 403))
 
     def test_scope_failure_does_not_claim_zero(self):
-        """Unavailable data is distinct from a verified empty population."""
+        """Unresolved machine metrics cannot claim a verified empty fleet."""
         with mock.patch(
             'tasks.dashboard_metrics.machine_scope_filter', side_effect=ScopeError
         ):
-            result = self.client.get(self.url).json()
+            result = self.client.get(self.url, {'metric': 'data-health'}).json()
         self.assertFalse(result['complete'])
         self.assertNotIn('value', result)
+
+    @override_settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=None)
+    def test_no_grant_work_viewer_reads_shared_work_only(self):
+        """The real API shares Work with no resolver fallback or machine grant."""
+        self.actor.is_superuser = False
+        self.actor.save(update_fields=['is_superuser'])
+        group = Group.objects.create(name='Dashboard Work viewers')
+        rules, _ = RuleSet.objects.update_or_create(
+            name='work_order', group=group, defaults={'can_view': True}
+        )
+        self.actor.groups.add(group)
+        ClientScopeGrant.objects.filter(user=self.actor).delete()
+        self.assertFalse(hasattr(self.actor, 'maintenance_scopes'))
+        customer = Company.objects.create(name='Dashboard customer', is_customer=True)
+        shared = self.order(customer=customer, machine=self.hidden)
+        unattributed = self.order(machine=None)
+        self.order(machine=self.hidden)
+        self.order()
+
+        response = self.client.get(self.url, {'metric': 'open'})
+        self.assertEqual(response.status_code, 200)
+        result = response.json()
+        self.assertTrue(result['complete'])
+        self.assertEqual(result['value'], 2)
+        self.assertEqual(
+            {row['pk'] for row in result['records']}, {shared.pk, unattributed.pk}
+        )
+        self.assertTrue(
+            all(row['visible_machine'] is None for row in result['records'])
+        )
+        self.assertTrue(all(row['machine_label'] is None for row in result['records']))
+        self.assertEqual(result['machines'], [])
+        self.assertEqual(result['clients'], [])
+
+        for filters in (
+            {'machine': str(self.hidden.pk)},
+            {'client': str(self.other.pk)},
+            {'criticality': 'critical'},
+        ):
+            with self.subTest(filters=filters):
+                result = self.client.get(self.url, {'metric': 'open', **filters}).json()
+                self.assertTrue(result['complete'])
+                self.assertEqual(result['value'], 0)
+                self.assertEqual(result['records'], [])
+
+        for metric in ('alerts', 'data-health'):
+            with self.subTest(metric=metric):
+                response = self.client.get(self.url, {'metric': metric})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()['state'], 'unavailable')
+                self.assertFalse(response.json()['complete'])
+                self.assertNotIn('value', response.json())
+
+        rules.can_view = False
+        rules.save(update_fields=['can_view'])
+        self.assertEqual(self.client.get(self.url, {'metric': 'open'}).status_code, 403)
 
     def test_work_order_access_does_not_disclose_ungranted_machine(self):
         """A customer-scoped job does not grant its asset's independent scope."""

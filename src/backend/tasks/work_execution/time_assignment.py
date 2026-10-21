@@ -6,7 +6,7 @@ from django.utils import timezone
 from .common import person
 
 
-def project(work_order) -> dict:
+def project(work_order, actor=None) -> dict:
     """Read native assignment provenance, retaining unknown time coverage."""
     observed_at = timezone.now()
     events = list(
@@ -46,7 +46,7 @@ def project(work_order) -> dict:
     records = time_projection(work_order, observed_at)
     return {
         'time_records': records,
-        'downtime_records': downtime_projection(work_order),
+        'downtime_records': downtime_projection(work_order, actor),
         'rule': 'time_assignment.v1',
         'observed_at': observed_at.isoformat(),
         'assigned_to': person(work_order.assigned_to),

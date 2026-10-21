@@ -39,7 +39,8 @@ BASE_FILTER = (
     f"scope_key eq '{SCOPE_KEY}' and is_current eq true "
     "and access_class eq 'evidence_recording' "
     "and search.in(model_type, 'workorder,workorderstepexecution,assetmachine', ',') "
-    "and client_codes/any(c: search.in(c, 'acme', ','))"
+    "and (client_codes/any(c: search.in(c, 'acme', ',')) or "
+    "search.in(model_type, 'workorder,workorderstepexecution', ','))"
 )
 
 
@@ -218,7 +219,7 @@ def retrieval_off(monkeypatch):
 
 
 def _user(**overrides):
-    base = {"username": "tech", "is_superuser": True}
+    base = {"username": "tech", "is_superuser": True, "is_active": True}
     base.update(overrides)
     return SimpleNamespace(**base)
 
@@ -265,7 +266,8 @@ def test_filter_appends_narrowing_clauses_in_order():
         f"scope_key eq '{SCOPE_KEY}' and is_current eq true "
         "and access_class eq 'evidence_recording' "
         "and model_type eq 'workorder' "
-        "and client_codes/any(c: search.in(c, 'acme,zeta', ',')) "
+        "and (client_codes/any(c: search.in(c, 'acme,zeta', ',')) or "
+        "search.in(model_type, 'workorder', ',')) "
         "and work_order_id eq 1042 and step_execution_id eq 7 "
         "and asset_id eq 'SN-100' and media_type eq 'image'"
     )
@@ -290,8 +292,20 @@ def test_filter_refuses_blank_scope_key():
 
 def test_filter_refuses_empty_client_codes():
     with pytest.raises(MediaRetrievalError) as excinfo:
-        evidence_media_filter(scope_key=SCOPE_KEY, client_codes=set(), model_types=("workorder",))
+        evidence_media_filter(
+            scope_key=SCOPE_KEY, client_codes=set(), model_types=("assetmachine",)
+        )
     assert excinfo.value.code == "MEDIA_SCOPE_UNRESOLVED"
+
+
+def test_empty_client_codes_select_only_work_candidates():
+    built = evidence_media_filter(
+        scope_key=SCOPE_KEY,
+        client_codes=set(),
+        model_types=("workorder", "workorderstepexecution", "assetmachine"),
+    )
+    assert "and (search.in(model_type, 'workorder,workorderstepexecution', ','))" in built
+    assert "client_codes/any" not in built
 
 
 def test_filter_refuses_empty_model_types():
@@ -330,14 +344,18 @@ def test_blank_site_key_refuses_before_any_client(blank_scope):
     assert search_client.calls == 0
 
 
-def test_unresolved_actor_scope_refuses(monkeypatch):
-    monkeypatch.setattr(config, "get_settings", lambda: _settings())
+def test_unresolved_actor_scope_still_queries_work_candidates(retrieval_on, monkeypatch):
+    """O24 does not require a client grant to find shared Work evidence."""
     _stub_scope(monkeypatch, error=_StubScopeError("unresolved"))
+    _spy_ledger(monkeypatch)
     embedding_client = _EmbeddingClient()
-    with pytest.raises(MediaRetrievalError) as excinfo:
-        _run(embedding_client=embedding_client)
-    assert excinfo.value.code == "MEDIA_SCOPE_UNRESOLVED"
-    assert embedding_client.queries == []
+    search, _embedder, _result = _run(embedding_client=embedding_client)
+    assert embedding_client.queries
+    assert "client_codes/any" not in search.kwargs["filter"]
+    assert (
+        "and (search.in(model_type, 'workorder,workorderstepexecution', ','))"
+        in search.kwargs["filter"]
+    )
 
 
 def test_ungranted_arm_refuses(retrieval_on, monkeypatch):

@@ -154,13 +154,24 @@ class WorkOrderEventSerializer(serializers.ModelSerializer):
 
     def get_metadata(self, obj) -> dict:
         """O21 source identities follow the same scope as the origin projection."""
-        metadata = obj.metadata
+        metadata = obj.metadata if isinstance(obj.metadata, dict) else {}
         result = metadata.get('result_metadata') or {}
+        if not isinstance(result, dict):
+            return metadata
+        request = self.context.get('request')
+        if obj.event_type == 'WORK_TIME_RECORDED':
+            from tasks.services.work_time import redact_machine_telemetry
+
+            metadata = {
+                **metadata,
+                'result_metadata': redact_machine_telemetry(
+                    result, obj.work_order, request.user if request else None
+                ),
+            }
         if result.get('origin_kind') != 'routine_finding':
             return metadata
         from tasks.services.routine_findings import visible_work
 
-        request = self.context.get('request')
         if (
             not visible_work(request.user if request else None)
             .filter(pk=result.get('routine_work_id'))

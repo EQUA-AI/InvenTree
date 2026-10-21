@@ -30,7 +30,7 @@ from __future__ import annotations
 from django.db.models import Prefetch
 
 from tasks.dashboard_metrics import OPEN
-from tasks.scope import ScopeError, scope_for_actor, scope_for_work_order
+from tasks.scope import scoped_work_orders
 
 from assets.health_models import (
     ACTIVE_ANOMALY_STATUSES,
@@ -85,22 +85,24 @@ def machine_work_summary(actor, machine) -> dict:
     }
 
 
-def _reader_scopes(actor):
-    """Resolve the same canonical scopes once; failure withholds all work."""
-    try:
-        return scope_for_actor(actor)
-    except ScopeError:
-        return set()
+def _reader_scopes(actor, anomalies):
+    """Authorize only this bounded page's Work through the canonical predicate."""
+    ids = {row.work_order_id for row in anomalies if row.work_order_id}
+    ids.update(
+        row.repair_packet.work_order_id
+        for row in anomalies
+        if row.repair_packet_id and row.repair_packet.work_order_id
+    )
+    return set(
+        scoped_work_orders(actor).filter(pk__in=ids).values_list('pk', flat=True)
+    )
 
 
 def _visible(scopes, work_order):
-    """Keep exact customer/client precedence without per-row resolver queries."""
+    """Use canonical Work visibility without per-row resolver queries."""
     if work_order is None:
         return None
-    try:
-        return work_order if scope_for_work_order(work_order) in scopes else None
-    except ScopeError:
-        return None
+    return work_order if work_order.pk in scopes else None
 
 
 def _work_row(work_order, relation: str) -> dict:
@@ -132,7 +134,11 @@ def _work_for(scopes, anomaly, machine) -> tuple[list[dict], dict | None]:
         rows.append(_work_row(owning, 'owning'))
     packet = anomaly.repair_packet
     packet_ref = None
-    if packet is not None and packet.machine_id == machine.pk:
+    if (
+        packet is not None
+        and packet.machine_id == machine.pk
+        and (packet.work_order_id is None or packet.work_order.machine_id == machine.pk)
+    ):
         packet_work = packet.work_order
         visible_packet_work = _visible(scopes, packet_work)
         if packet_work is None or visible_packet_work is not None:
@@ -308,7 +314,7 @@ def fault_occurrences(actor, machine, *, status='all', limit=None, offset=None):
     ):
         by_anomaly[snapshot.anomaly_id].append(snapshot)
 
-    scopes = _reader_scopes(actor)
+    scopes = _reader_scopes(actor, page)
     results = []
     for anomaly in page:
         retained = by_anomaly[anomaly.pk]
@@ -346,7 +352,7 @@ def fault_occurrence(actor, machine, occurrence_id: int) -> dict | None:
         .select_related('source', 'created_by')
         .order_by('captured_at', 'id')
     )
-    scopes = _reader_scopes(actor)
+    scopes = _reader_scopes(actor, [anomaly])
     row = _occurrence(
         scopes,
         anomaly,

@@ -22,6 +22,7 @@ from tasks.procedure_models import (
     WorkOrderProcedureApplication,
     WorkOrderStepExecution,
 )
+from tasks.services.procedure_execution import _application_snapshot
 from tasks.workorder_models import WorkOrderDeviation
 
 HIDDEN_TECH = 'hidden-technician-name'
@@ -61,7 +62,7 @@ class ProcedureReaderTestCase(TestCase):
             revision=cls.revision,
             sequence=1,
             primary=True,
-            snapshot={'title': 'Inverter service procedure', 'steps': []},
+            snapshot=_application_snapshot(cls.revision),
             snapshot_hash='d' * 64,
             applied_by=cls.author,
             idempotency_key=f'apply-{suffix}',
@@ -116,10 +117,14 @@ class ApplicationProjectionTests(ProcedureReaderTestCase):
         self.assertTrue(row['primary'])
         self.assertEqual(row['content_hash'], 'c' * 64)
         self.assertEqual(row['snapshot_hash'], 'd' * 64)
-        self.assertEqual(row['drift_status'], 'current')
+        self.assertEqual(row['drift_status'], 'not_evaluated')
         self.assertEqual(row['revision'], 3)
         self.assertEqual(row['step_count'], 2)
-        self.assertIn(ai_read.UNTRUSTED_CONTENT_BEGIN, row['procedure_name'])
+        # Without a catalogue-scoped actor, recorded pins remain readable
+        # while the live procedure labels and publication comparison do not.
+        self.assertIsNone(row['procedure_name'])
+        self.assertIsNone(row['procedure_code'])
+        self.assertIsNone(row['revision_status'])
 
     def test_no_application_is_none_not_a_guess(self):
         bare = WorkOrder.objects.create(

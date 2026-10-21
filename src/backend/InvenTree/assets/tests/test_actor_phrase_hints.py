@@ -8,6 +8,7 @@ actor B's machine names or work-order references.
 """
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 
@@ -47,6 +48,12 @@ class ActorPhraseHintTests(TestCase):
         users = get_user_model().objects
         cls.actor_a = users.create_user(username='hints-a', password='pw')
         cls.actor_b = users.create_user(username='hints-b', password='pw')
+        group = Group.objects.create(name='Phrase hint Work viewers')
+        rule = group.rule_sets.get(name='work_order')
+        rule.can_view = True
+        rule.save()
+        cls.actor_a.groups.add(group)
+        cls.actor_b.groups.add(group)
         cls.pump = AssetMachine.objects.create(
             name='Influent Pump 1', client=cls.plant_a
         )

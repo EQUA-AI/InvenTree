@@ -99,9 +99,13 @@ class MachineWorkViewsTests(TestCase):
         work('canceled')
         work('ready', is_active=False)
         work('ready', machine=self.sibling)
-        work(
-            'ready',
-            customer=Company.objects.create(name='Other customer', is_customer=True),
+        self.open_jobs.append(
+            work(
+                'ready',
+                customer=Company.objects.create(
+                    name='Other customer', is_customer=True
+                ),
+            )
         )
         AssetMaintenanceRecord.objects.create(
             machine=self.machine,
@@ -138,7 +142,7 @@ class MachineWorkViewsTests(TestCase):
         """One open set, one scope: three surfaces report the same number."""
         summary = self.summary()
         self.assertEqual(summary['rule'], MACHINE_WORK_VIEWS_RULE)
-        self.assertEqual(summary['open'], {'count': 4, 'highest_priority': 'high'})
+        self.assertEqual(summary['open'], {'count': 5, 'highest_priority': 'high'})
         self.assertEqual(
             summary['open_statuses'],
             ['planned', 'ready', 'in_progress', 'on_hold', 'verifying'],
@@ -401,13 +405,15 @@ class FaultOccurrenceTests(TestCase):
         self.assertEqual(row['signals'][0]['binding_id'], self.binding.pk)
 
     def test_owning_work_is_shown_only_inside_the_work_scope(self):
-        """Visible work is linked; a customer job is withheld, id and all."""
+        """Shared customer Work is linked through the authorized machine endpoint."""
         rows = {row['id']: row for row in self.read()['results']}
         [owning] = rows[self.resolved.pk]['work']
         self.assertEqual(owning['id'], self.owning.pk)
         self.assertEqual(owning['relation'], 'owning')
         self.assertEqual(owning['lifecycle_status'], 'completed')
-        self.assertEqual(rows[self.active.pk]['work'], [])
+        self.assertEqual(
+            [work['id'] for work in rows[self.active.pk]['work']], [self.hidden.pk]
+        )
         self.assertNotIn('work_order', rows[self.active.pk])
         self.assertIsNone(rows[self.active.pk]['repair_packet'])
         self.assertEqual(rows[self.unowned.pk]['work'], [])
@@ -431,6 +437,35 @@ class FaultOccurrenceTests(TestCase):
             [(self.owning.pk, 'owning'), (packet_work.pk, 'repair_packet')],
         )
         self.assertEqual(row['repair_packet']['id'], packet.pk)
+
+    def test_customer_work_never_reveals_a_packet_with_a_different_machine(self):
+        """O24 keeps P32 packet/Work machine consistency for occurrence links."""
+        other = AssetMachine.objects.create(
+            name='Different packet machine', client=self.tenant
+        )
+        self.hidden.machine = other
+        self.hidden.save(update_fields=['machine'])
+        packet = RepairPacket.objects.create(
+            machine=self.machine,
+            work_order=self.hidden,
+            symptom='Invalid linked machine',
+        )
+        self.resolved.repair_packet = packet
+        self.resolved.save()
+        for suffix in ('', f'{self.resolved.pk}/'):
+            with self.subTest(suffix=suffix):
+                result = self.read(suffix)
+                row = (
+                    result
+                    if suffix
+                    else next(
+                        item
+                        for item in result['results']
+                        if item['id'] == self.resolved.pk
+                    )
+                )
+                self.assertIsNone(row['repair_packet'])
+                self.assertEqual([work['id'] for work in row['work']], [self.owning.pk])
 
     def test_list_rows_cite_snapshots_without_their_samples(self):
         """Rows carry evidence references; samples come with the detail."""

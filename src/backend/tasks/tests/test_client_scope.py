@@ -1,10 +1,8 @@
 """Client scope for plant assets.
 
 A machine is reachable through the client that owns this deployment; a sales
-customer is a claim about a work order, never about the asset. These tests pin
-that client resolution works, that an explicit work-order customer still wins
-over the asset's client, and that a machine without a client remains
-unreachable rather than falling open.
+customer is a claim about a work order, never about the asset. These tests pin client resolution, shared customer/unattributed Work under
+O24, and fail-closed machine-only Work when a machine has no client.
 """
 
 import uuid
@@ -13,6 +11,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.test import TestCase, override_settings
 
+from assets.models import AssetMachine, Client
+from company.models import Company
 from tasks.models import WorkOrder, WorkOrderType
 from tasks.scope import (
     MaintenanceScope,
@@ -22,9 +22,6 @@ from tasks.scope import (
     scope_for_work_order,
     work_order_scope_filter,
 )
-
-from assets.models import AssetMachine, Client
-from company.models import Company
 
 
 class ClientScopeResolutionTest(TestCase):
@@ -36,9 +33,7 @@ class ClientScopeResolutionTest(TestCase):
         self.client_record = Client.objects.create(
             name=f'Northgate Water {suffix}', code=f'northgate-{suffix}'
         )
-        self.customer = Company.objects.create(
-            name=f'ACME {suffix}', is_customer=True
-        )
+        self.customer = Company.objects.create(name=f'ACME {suffix}', is_customer=True)
         self.internal = AssetMachine.objects.create(
             name=f'Internal pump {suffix}', client=self.client_record
         )
@@ -76,16 +71,20 @@ class ClientScopeResolutionTest(TestCase):
         Pinned deliberately: this is the one exception to client-first, and a
         later "simplification" must not silently flip it.
         """
-        scope = scope_for_work_order(
-            self._card(self.internal, customer=self.customer)
-        )
+        scope = scope_for_work_order(self._card(self.internal, customer=self.customer))
 
         self.assertEqual(scope.customer_id, self.customer.pk)
         self.assertIsNone(scope.client_id)
 
+    def test_unattributed_work_has_empty_provenance_but_missing_work_is_refused(self):
+        """An actual shared record must never be confused with a missing parent."""
+        self.assertFalse(scope_for_work_order(self._card(None)).is_resolved)
+        with self.assertRaises(ScopeError):
+            scope_for_work_order(None)
+
     def test_machine_with_neither_identity_stays_unreachable(self):
         """A boundary is never guessed for an unscoped record."""
-        with self.assertRaisesMessage(ScopeError, 'neither a customer nor a client'):
+        with self.assertRaisesMessage(ScopeError, 'machine has no client'):
             scope_for_work_order(self._card(self.unscoped))
 
 
@@ -159,9 +158,9 @@ class WorkOrderScopeFilterTest(TestCase):
 
     The filter is what listing surfaces run before any per-record check gets a
     chance, so it must never be wider than the row-by-row gate. These tests pin
-    the two selection rules (explicit-customer orders for customer grants,
-    customer-NULL orders on client machines for client grants), that site-keyed
-    grants contribute nothing, and that the two authorization forms agree on
+    the two selection rules (shared customer/unattributed Work for active viewers,
+    machine-only orders on client machines for client grants), that site-keyed
+    grants contribute no machine-only Work, and that the two authorization forms agree on
     every cell of a small matrix.
     """
 
@@ -193,15 +192,21 @@ class WorkOrderScopeFilterTest(TestCase):
             password='pw',
         )
 
+        group = Group.objects.create(name=f'filter-viewers-{suffix}')
+        rule = group.rule_sets.get(name='work_order')
+        rule.can_view = True
+        rule.save()
+        self.actor.groups.add(group)
+
         # One card per boundary shape the filter must distinguish.
         self.wo_customer_x = self._card(None, customer=self.customer_x)
-        # Explicit customer on a client machine: the customer claim is the
-        # whole boundary, so a client-A grant must NOT surface this card.
+        # Customer Work is shared even when it names a client machine.
         self.wo_customer_x_on_a = self._card(self.machine_a, customer=self.customer_x)
         self.wo_customer_y_on_a = self._card(self.machine_a, customer=self.customer_y)
         self.wo_client_a = self._card(self.machine_a)
         self.wo_client_b = self._card(self.machine_b)
         self.wo_orphan = self._card(self.machine_orphan)
+        self.wo_unattributed = self._card(None)
         self.matrix = [
             self.wo_customer_x,
             self.wo_customer_x_on_a,
@@ -209,6 +214,7 @@ class WorkOrderScopeFilterTest(TestCase):
             self.wo_client_a,
             self.wo_client_b,
             self.wo_orphan,
+            self.wo_unattributed,
         ]
 
     def _card(self, machine, **overrides):
@@ -225,9 +231,9 @@ class WorkOrderScopeFilterTest(TestCase):
     def _selected(self):
         """Every work order the filter surfaces for the actor, exactly."""
         return set(
-            WorkOrder.objects.filter(
-                work_order_scope_filter(self.actor)
-            ).values_list('pk', flat=True)
+            WorkOrder.objects.filter(work_order_scope_filter(self.actor)).values_list(
+                'pk', flat=True
+            )
         )
 
     def _customer_grant(self, customer, site_key=None):
@@ -238,20 +244,34 @@ class WorkOrderScopeFilterTest(TestCase):
             customer_id=None, site_key=site_key, client_id=client.pk
         )
 
-    def test_customer_grant_selects_exactly_that_customers_orders(self):
-        """A customer grant reaches explicit-customer cards and nothing else."""
+    def test_customer_grant_selects_all_shared_work(self):
+        """Any resolved scope reaches all customer and unattributed Work."""
         self.actor.maintenance_scopes = {self._customer_grant(self.customer_x)}
 
         self.assertEqual(
             self._selected(),
-            {self.wo_customer_x.pk, self.wo_customer_x_on_a.pk},
+            {
+                self.wo_customer_x.pk,
+                self.wo_customer_x_on_a.pk,
+                self.wo_customer_y_on_a.pk,
+                self.wo_unattributed.pk,
+            },
         )
 
-    def test_client_grant_selects_exactly_customer_null_orders_on_its_machines(self):
-        """A client grant reaches the client's own jobs, not its sold ones."""
+    def test_client_grant_selects_shared_work_and_its_machine_only_work(self):
+        """A client grant reaches shared Work as well as its own machine-only jobs."""
         self.actor.maintenance_scopes = {self._client_grant(self.client_a)}
 
-        self.assertEqual(self._selected(), {self.wo_client_a.pk})
+        self.assertEqual(
+            self._selected(),
+            {
+                self.wo_client_a.pk,
+                self.wo_customer_x.pk,
+                self.wo_customer_x_on_a.pk,
+                self.wo_customer_y_on_a.pk,
+                self.wo_unattributed.pk,
+            },
+        )
 
     def test_combined_grants_select_the_union(self):
         """Multiple grants widen the selection to exactly their union."""
@@ -266,26 +286,37 @@ class WorkOrderScopeFilterTest(TestCase):
                 self.wo_customer_x.pk,
                 self.wo_customer_x_on_a.pk,
                 self.wo_client_a.pk,
+                self.wo_customer_y_on_a.pk,
+                self.wo_unattributed.pk,
             },
         )
 
-    def test_site_keyed_grants_contribute_nothing(self):
-        """A site-qualified grant matches no rows rather than a wider set.
-
-        ``scope_for_work_order`` never reports a site key, so the per-record
-        gate would deny every one of these rows; surfacing them here would be
-        the exact listing-before-denial leak the filter exists to prevent.
+    def test_site_keyed_grants_contribute_no_machine_only_work(self):
+        """Site-qualified scopes authorize shared Work but no machine-only rows.
         """
         self.actor.maintenance_scopes = {
             self._customer_grant(self.customer_x, site_key='plant-1'),
             self._client_grant(self.client_a, site_key='plant-1'),
         }
 
-        self.assertEqual(self._selected(), set())
+        self.assertEqual(
+            self._selected(),
+            {
+                self.wo_customer_x.pk,
+                self.wo_customer_x_on_a.pk,
+                self.wo_customer_y_on_a.pk,
+                self.wo_unattributed.pk,
+            },
+        )
 
     def test_filter_never_selects_what_the_row_check_denies(self):
         """Property: over the whole matrix, selected == allowed, cell by cell."""
         grant_sets = {
+            'no grants': set(),
+            'unresolved grant': {MaintenanceScope(None, None)},
+            'ambiguous grant': {
+                MaintenanceScope(self.customer_x.pk, None, self.client_a.pk)
+            },
             'customer grant': {self._customer_grant(self.customer_x)},
             'client grant': {self._client_grant(self.client_a)},
             'both grants': {
@@ -312,10 +343,29 @@ class WorkOrderScopeFilterTest(TestCase):
                 with self.subTest(grants=label, work_order=work_order.pk):
                     self.assertEqual(work_order.pk in selected, allowed)
 
-    def test_unresolved_actor_raises_rather_than_matching_nothing(self):
-        """No scopes at all is an error, not an empty (and silent) board."""
-        with self.assertRaisesMessage(ScopeError, 'unresolved'):
-            work_order_scope_filter(self.actor)
+    def test_viewer_without_grants_selects_shared_work_only(self):
+        """Work view alone authorizes shared Work, never machine-only Work."""
+        self.assertEqual(
+            self._selected(),
+            {
+                self.wo_customer_x.pk,
+                self.wo_customer_x_on_a.pk,
+                self.wo_customer_y_on_a.pk,
+                self.wo_unattributed.pk,
+            },
+        )
+
+    def test_role_and_active_checks_agree_for_sets_and_records(self):
+        """Independent scope providers cannot substitute for active Work view."""
+        self.actor.maintenance_scopes = {self._client_grant(self.client_a)}
+        self.actor.is_active = False
+        for actor in (self.actor, get_user_model().objects.create_user('roleless')):
+            with self.subTest(actor=actor.pk):
+                with self.assertRaises(ScopeError):
+                    work_order_scope_filter(actor)
+                for work_order in self.matrix:
+                    with self.assertRaises(ScopeError):
+                        require_work_order_scope(actor, work_order)
 
     def test_unauthenticated_actor_raises(self):
         """The filter is not reachable anonymously."""
@@ -363,9 +413,7 @@ class SingleSiteScopeResolverTest(TestCase):
             scopes,
             {
                 MaintenanceScope(
-                    customer_id=None,
-                    site_key=None,
-                    client_id=self.internal_client.pk,
+                    customer_id=None, site_key=None, client_id=self.internal_client.pk
                 )
             },
         )
@@ -421,6 +469,4 @@ class SingleSiteScopeResolverTest(TestCase):
 
         scopes = scope_for_actor(self.superuser)
 
-        self.assertEqual(
-            {scope.client_id for scope in scopes}, {override_client.pk}
-        )
+        self.assertEqual({scope.client_id for scope in scopes}, {override_client.pk})

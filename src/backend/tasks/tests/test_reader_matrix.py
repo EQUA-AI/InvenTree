@@ -19,6 +19,7 @@ pinned: an enforced scope's misses stay misses.
 """
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.test import TestCase, override_settings
 
 from assets import ai_read as assets_ai_read
@@ -42,6 +43,11 @@ class ReaderMatrixTests(TestCase):
         """One tenant, the eight fixtures, thirty work orders."""
         user_model = get_user_model()
         cls.actor = user_model.objects.create_user(username='matrix-actor')
+        group = Group.objects.create(name='Reader matrix Work viewers')
+        rule = group.rule_sets.get(name='work_order')
+        rule.can_view = True
+        rule.save()
+        cls.actor.groups.add(group)
         cls.tenant = Client.objects.create(name='Solar Plant', code='solar-plant')
         cls.other_client = Client.objects.create(name='Other Plant', code='other-plant')
         cls.eval_client = Client.objects.create(
