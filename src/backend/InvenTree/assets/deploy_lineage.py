@@ -8,15 +8,14 @@ of what that database holds, and ``migrate`` would then apply this line's
 history beside the other's without complaint: Django records applied migrations
 by name and raises no objection to names it has never heard of.
 
-So the question is asked before ``migrate``, and it is asked from ``manage.py
-shell``. A management command cannot ask it: with migrations pending the boot
-gate in ``InvenTree.apps`` (``INVE-W8``) exits before ``handle()`` is reached,
-and ``shell`` is one of the few entry points that gate lets through.
+The question is asked before ``migrate``. The ``runmigrations`` command uses
+InvenTree's existing migration startup classification, which passes the pending
+migration boot gate and suppresses normal startup writes. An arbitrary new
+management command would encounter ``INVE-W8`` before reaching ``handle()``.
 
-    python src/backend/InvenTree/manage.py shell -c \
-        "from assets.deploy_lineage import report; report()"
+    python src/backend/InvenTree/manage.py runmigrations --check
 
-``contrib/container/init.sh`` runs exactly that, and then ``migrate``, when
+``contrib/container/init.sh`` calls ``runmigrations`` when
 ``AIMMS_MIGRATE_ON_START`` is set - which is how a rollout that carries
 migrations applies them, since the same gate leaves no running container to
 apply them from.
@@ -29,9 +28,9 @@ is what a rollback looks like, and a rolled-back image has to be able to start.
 Both together means this code is about to add to a history it has not seen all
 of.
 
-Exits non-zero on a refusal, having changed nothing. One refusal would be
-false: if upstream ever deletes the ``replaces`` list from a squashed migration,
-the names it replaced become unknown here. Nothing on disk does that today.
+Exits non-zero on a refusal, having changed nothing. Direct ``replaces`` lists
+and the explicitly verified upstream ancestry in ``migration_aliases`` account
+for historical squashes. Unrecognized branches remain subject to refusal.
 """
 
 from __future__ import annotations
@@ -42,6 +41,9 @@ from dataclasses import dataclass
 
 from django.db import connection as default_connection
 from django.db.migrations.executor import MigrationExecutor
+
+from assets.migration_aliases import recognized_legacy_ancestors
+from legacy_boundary.checkpoint import validate_recorded_boundary
 
 
 @dataclass(frozen=True)
@@ -72,7 +74,9 @@ def lineage(connection=None) -> Lineage:
     for - by the ``replaces`` list of a migration that is on disk - and are
     excluded here.
     """
-    executor = MigrationExecutor(connection or default_connection)
+    connection = connection or default_connection
+    validate_recorded_boundary(connection)
+    executor = MigrationExecutor(connection)
     loader = executor.loader
 
     on_disk = set(loader.disk_migrations)
@@ -82,7 +86,10 @@ def lineage(connection=None) -> Lineage:
         for key in (migration.replaces or [])
     }
     apps_shipped = {app_label for app_label, _name in on_disk}
-    stray = sorted(set(loader.applied_migrations) - on_disk - replaced)
+    historical = recognized_legacy_ancestors(
+        loader.disk_migrations, loader.applied_migrations
+    )
+    stray = sorted(set(loader.applied_migrations) - on_disk - replaced - historical)
 
     # The same plan the boot gate and ``migrate`` compute.
     plan = executor.migration_plan(loader.graph.leaf_nodes())

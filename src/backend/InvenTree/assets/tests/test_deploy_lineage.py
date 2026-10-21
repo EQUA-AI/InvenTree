@@ -15,6 +15,7 @@ from django.db.migrations.recorder import MigrationRecorder
 from django.test import TestCase
 
 from assets.deploy_lineage import lineage, report
+from assets.migration_aliases import LEGACY_SQUASH_ANCESTORS
 
 
 class DeployLineageTests(TestCase):
@@ -62,6 +63,16 @@ class DeployLineageTests(TestCase):
             'no applied-but-not-on-disk names exist, so the squash exclusion '
             'is not being exercised by this suite',
         )
+
+    def test_proven_upstream_ancestors_do_not_block_a_real_rollout(self):
+        """Nested squashes and the part parallel branch have original source."""
+        self.make_pending()
+        for _outer, anchor, ancestors in LEGACY_SQUASH_ANCESTORS:
+            self.record(*anchor)
+            for key in ancestors:
+                self.record(*key)
+        self.assertEqual(lineage().unknown, ())
+        self.assertTrue(report(out=StringIO()))
 
     def test_report_passes_a_clean_database_in_one_line(self):
         """The common case: a restart with nothing to do."""
