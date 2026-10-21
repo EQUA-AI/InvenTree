@@ -1,3 +1,4 @@
+import type { SeriesResponse } from '@lib/types/MachineHealth';
 import { MantineProvider } from '@mantine/core';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -8,12 +9,14 @@ vi.mock('@lingui/core/macro', () => ({
   plural: (n: number, forms: { one: string; other: string }) =>
     (n === 1 ? forms.one : forms.other).replace('#', String(n))
 }));
+import { HistoryProvenance } from '../investigation/HistoryProvenance';
 import { LiveIndicator } from '../performance/TimeRangeControl';
 import { WindowStatus } from '../performance/WindowStatus';
 import { SourcePollStatus } from './SourcePollStatus';
 import { StatusBadge, type StatusTone } from './StatusBadge';
 import { HealthStateBadge } from './common';
 import { FreshnessText, freshnessFacts } from './common';
+import { DisplayClockContext, displayClock } from './mimic/observedTime';
 const render = (child: ReturnType<typeof createElement>) =>
   renderToStaticMarkup(createElement(MantineProvider, {}, child));
 const text = (html: string) =>
@@ -187,6 +190,106 @@ it('does not turn an absent history cadence into zero seconds', () => {
   );
   expect(html).toContain('cadence not supplied');
   expect(html).not.toContain('cadence 0');
+});
+
+describe('one history read retains its metadata alongside the live summary', () => {
+  const show = (
+    expectedInterval: number | null | undefined,
+    lastPollAt: string | null
+  ) => {
+    // Missing server metadata is handled defensively even though the API type
+    // currently declares the expected interval as required.
+    const response = {
+      machine: 1,
+      station: null,
+      window_start: '2026-10-20T23:00:00Z',
+      window_end: '2026-10-21T00:00:00Z',
+      window_seconds: 3600,
+      mode: 'complete',
+      slots: null,
+      resolution_seconds: 5,
+      cadence_seconds: 5,
+      expected_documents: 3,
+      documents_read: 3,
+      display_shifted: false,
+      display_shift_seconds: 0,
+      live: {
+        enabled: true,
+        last_poll_at: lastPollAt,
+        last_error_code: '',
+        poll_interval_seconds: 30
+      },
+      limits: {
+        max_window_seconds: 86400,
+        complete_read_max_documents: 10000,
+        min_points: 2,
+        max_points: 4320,
+        expected_sample_interval_seconds: expectedInterval
+      },
+      series: []
+    } as SeriesResponse;
+    return text(
+      render(
+        createElement(
+          DisplayClockContext.Provider,
+          { value: displayClock('Asia/Riyadh') },
+          createElement(LiveIndicator, {
+            live: false,
+            fetching: false,
+            newestAt: null,
+            updatedAt: null,
+            response,
+            freshnessSeconds: null,
+            now: Date.parse(response.window_end)
+          }),
+          createElement(HistoryProvenance, {
+            response,
+            loading: false,
+            updating: false,
+            failed: false,
+            extent: undefined,
+            onRetry: vi.fn()
+          })
+        )
+      )
+    );
+  };
+
+  it('retains each metadata fact once and uses the plant clock for poll and window times', () => {
+    const output = show(30, '2026-10-20T23:59:58Z');
+    expect(output).toContain(
+      'Every reading in the window (3 snapshots, cadence 5 s)'
+    );
+    expect(
+      output.match(/Expected sample interval 30 s \(server default\)/g)
+    ).toHaveLength(1);
+    expect(
+      output.match(/last poll attempt 21 Oct 2026 02:59:58/g)
+    ).toHaveLength(1);
+    expect(output).toContain(
+      'Window: 21 Oct 2026 02:00:00 — 21 Oct 2026 03:00:00'
+    );
+    expect(output).not.toContain('last poll attempt 20 Oct 2026 23:59:58');
+  });
+
+  it.each([null, undefined])(
+    'keeps a missing expected interval (%s) unknown and omits an absent poll',
+    (interval) => {
+      const output = show(interval, null);
+      expect(output.match(/Expected interval not supplied/g)).toHaveLength(1);
+      expect(output).not.toContain('Expected sample interval');
+      expect(output).not.toContain('last poll attempt');
+    }
+  );
+
+  it('preserves a supplied zero interval and labels an invalid poll time unavailable', () => {
+    const output = show(0, 'invalid timestamp');
+    expect(
+      output.match(/Expected sample interval 0 s \(server default\)/g)
+    ).toHaveLength(1);
+    expect(output.match(/last poll attempt Time unavailable/g)).toHaveLength(1);
+    expect(output).not.toContain('invalid timestamp');
+  });
 });
 
 it('keeps one silent window status without a response and none in comparison children', () => {

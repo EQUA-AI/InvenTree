@@ -237,11 +237,34 @@ for (const scheme of ['light', 'dark'] as const) {
       harnessParams: { role: 'engineer' }
     });
     const root = page.getByTestId('pump-performance');
-    // Spoiler inserts this control after measuring its content. Establish the
-    // final tab order before walking backwards from the first KPI.
+    // Cadence, poll and window metadata belong to the same selected-history
+    // read. Keep one disclosure and establish its measured final tab order.
+    const readDetails = root.getByRole('button', {
+      name: 'Show read details',
+      exact: true
+    });
+    await expect(readDetails).toHaveCount(1);
+    await expect(readDetails).toBeVisible();
     await expect(
-      root.getByRole('button', { name: 'Show read details', exact: true })
+      root
+        .getByTestId('live-indicator')
+        .getByRole('button', { name: 'Show read details', exact: true })
+    ).toHaveCount(0);
+    await readDetails.click();
+    const provenance = root.getByTestId('history-provenance');
+    await expect(
+      provenance.getByText('Expected sample interval', { exact: false })
     ).toBeVisible();
+    await expect(
+      provenance.getByText('last poll attempt', { exact: false })
+    ).toBeVisible();
+    await expect(provenance.getByText(/^Window:/)).toBeVisible();
+    await expect(provenance.getByText(/^Single-window limit:/)).toBeVisible();
+    await provenance
+      .getByRole('button', { name: 'Hide read details', exact: true })
+      .click();
+    await expect(readDetails).toHaveCount(1);
+    await expect(readDetails).toBeVisible();
     const trendTrigger = root.locator('[data-kpi="speed"]').getByRole('button');
     await focusCapture(page, trendTrigger, 'trend-mark', scheme);
     const live = root.getByRole('switch', { name: 'Live', exact: true });
