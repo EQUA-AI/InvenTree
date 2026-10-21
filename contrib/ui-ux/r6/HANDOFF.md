@@ -1,5 +1,45 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## Integrated line checkpoint — 21 October 2026, 16:30 (read this first)
+
+`inventTree-aniket` at `01f0d8a14` holds every R6 batch; nothing is pushed. The
+owner merges it into `IOT-Merge` (O25). Older paragraphs below that say a branch
+or an index is still unmerged are history.
+
+| Item | Commit on the line | Evidence (agent review under O12; not owner or deployment acceptance) |
+|---|---|---|
+| Azure schema defaults (tasks 0041, users 0026) | `c86ac0229` | Azure `inventree` migrated 21 Oct 07:32-07:35 UTC: 984 applied, nothing pending (hand-over table) |
+| Deployment hand-over (O25) | `1fb924dfb` | `contrib/ui-ux/r6/deployment-handover.md` |
+| Machine screens (S8-01 part 1) | `7cfd7076e` | Host S8 400, S0 110, S3 280, S2 86 + known camera-reset pixel test |
+| Work uplift | `1998edb33` | Host S8 225, S4 232, S6 256, S7 172, S1 204 |
+| O24 | `cef890495` | Three Codex security reviews, final MERGE; host S8 179, S1 204, S4 232 |
+| Phone Work dock fix (merge regression) | `d12908f53` | Host S4 232, S8 Work 162 |
+| Health/Performance (S8-01 part 2) + monitoring clock fix | `01f0d8a14` | Final tree host S0 110, S1 204, S4 230+, S6 255+, S7 178, S3 278, S8 601 |
+| Owner decision O26 (Hyperagent gate withdrawn) | `279957e03` | owner-approval.md |
+
+**Open, owner chose to merge first and fix after (21 Oct, option B):**
+
+1. `tests/s8/pui_monitoring_acceptance.spec.ts:217` "Performance scales, navigation
+   and keyboard controls" fails on the integrated tree (desktop light/dark, phone
+   dark): `getByTestId('pump-performance')` has two "Show read details" buttons
+   after both design passes merged. Fix the product so each read has one clearly
+   named control; do not weaken the test.
+2. Load-sensitive on the Mac when four browser lanes share the GPU; pass when run
+   alone: S3 `pui_performance_comparisons.spec.ts:93` and `:174` (phone), S8 Work
+   `pui_p31_work_keyboard.spec.ts:47` and `pui_p31_work_reflow.spec.ts:169`. Re-run
+   alone to confirm on the integrated tree.
+3. Known and not caused by R6: S2 camera-reset pixel equality on the Mac; the
+   backend baseline failures recorded in reports/integration-1.md and O24.md
+   (including 4 migration-test timeouts); two newer line defects found on 21 Oct
+   that also fail without R6 changes (`ScopeRevisionProjectionTest` metadata list,
+   `IoTRuleSetTests` ignore list).
+4. Ledgers: sprint-backlog.csv statuses and the s*.md boards were not re-baselined
+   in this pass; do that with the button fix.
+
+Next steps: the button fix (Codex), a full host replay of S0-S8 on the integrated
+tree, then the owner's review and merge into `IOT-Merge`, then deployment per the
+hand-over (the deployer does not run migrations).
+
 **Final merged-tree Monitoring clock repair — 21 October 2026:** starting tree
 `937e4f477` integrates both design passes. The disclosure retained the integrated
 Machine-screen formatter, which removed the old browser-zone suffix. It now uses
