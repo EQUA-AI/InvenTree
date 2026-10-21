@@ -152,8 +152,10 @@ class ChatThread(models.Model):
     # under row lock); shape/canonical projection validation lives in
     # ``ai.core.focus.contract``, resolution/authorization in
     # ``ai.core.focus.resolution``, not in the database.
-    conversation_focus = models.JSONField(default=dict, blank=True)
-    focus_version = models.PositiveBigIntegerField(default=0)
+    # Keep database defaults so an older serving image can still insert threads
+    # while the version that understands conversation focus is being rolled out.
+    conversation_focus = models.JSONField(default=dict, blank=True, db_default={})
+    focus_version = models.PositiveBigIntegerField(default=0, db_default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
