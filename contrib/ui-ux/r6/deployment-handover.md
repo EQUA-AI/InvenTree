@@ -155,7 +155,6 @@ applies to aimms-dev. This document uses the plan's `az` commands instead.
 - [ ] Deployer's own fresh, validated pre-deploy backup recommended (section 3.5).
 - [ ] Decision on the pumphouse poll and section 14 (section 6, step 6).
 - [ ] Go-ahead for the smoke-test writes in sections 8.3 and 8.4 (test users, tokens, sign-ins).
-- [ ] Decision on rotating the database password that sits in git history (section 5.4).
 
 ---
 
@@ -488,18 +487,14 @@ Use `True` if keeping the startup check enabled.
   rollout controls first, then add the R6 flags in a second revision. In Multiple
   mode that second revision also starts at 0% and needs its own traffic switch
   (section 6, "Traffic in Multiple mode").
-- **Credential in git history (owner decision needed).** `app.yaml` at commit
-  `73c7ce6f5` (10 July) holds the database password as a plaintext env value;
-  `f44148516` is the later commit that *deleted* the file. `73c7ce6f5` is reachable
-  from `origin/IOT`, `origin/IOT-Merge`, `origin/inventTree-aniket`,
-  `origin/equa/customizations` and three other remote branches (`git branch -r
-  --contains 73c7ce6f5`). That GitHub repository is the build source, which plan
-  section 7 calls a "public Git context". The owner's Azure state note says the
-  password was still valid, and the server firewall still had an allow-all rule, on
-  2026-10-11. **Ask the owner whether to rotate the password** (and tighten the
-  firewall). Rotating also means updating the value the web and worker apps use
-  (env value or Container App secret), which creates new revisions. Do not copy
-  anything from that file.
+- **Old credential in git history (no action needed for it).** `app.yaml` at
+  commit `73c7ce6f5` (10 July) holds a database password as a plaintext env value;
+  `f44148516` (13 August) deleted the file, but the commit stays reachable from the
+  remote branches. On 21 October the coordinator compared fingerprints (no value
+  printed): the password in that commit is **not** the current one, which the owner
+  had already changed and keeps outside the repository (`data/azure-db.env`). Do not
+  copy anything from that file. Separately, the owner's 11 October note recorded an
+  allow-all firewall rule on the server; tightening it is the owner's call.
 
 ---
 
@@ -1159,7 +1154,7 @@ rollback. `INVENTREE_RESTORE_HOLD=1` makes the app answer HTTP requests with 503
 | 17 | Spare details for WO-003826, then receive it into Stock (O23). | Site / owner |
 | 18 | P36 deployed evidence (A4) from the deployed build. | Coordinator agent, after deployment |
 | 19 | O23 historical-labelling wording and outstanding design passes. | Coordinator agent |
-| 20 | Decide whether to rotate the database password that is in git history (`73c7ce6f5:app.yaml`) and tighten the server firewall; rotation means updating the value on both apps (section 5.4). | Owner |
+| 20 | Decide whether to tighten the server firewall (an allow-all rule was recorded on 11 October). The password in git history is an old one and needs no rotation (section 5.4). | Owner |
 | 21 | Decide whether aimms-dev keeps sharing `inventree-media-vol` with aimms-experimental (section 9.4). | Owner |
 | 22 | Go-ahead for the smoke-test writes (8.3, 8.4) and clean-up of test users, grants and tokens afterwards. | Owner (go-ahead), deployer (clean-up) |
 
