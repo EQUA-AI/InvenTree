@@ -665,6 +665,21 @@ def fact_from_dataset_profile(
     )
 
 
+def _procedure_application_values(application: Mapping[str, Any]) -> dict[str, FactValue]:
+    """One canonical value projection, also checked afresh before emission."""
+    return {
+        "procedure_code": _value(
+            "identifier", application.get("procedure_code") or "the applied procedure snapshot"
+        ),
+        "procedure_name": _value("text", application.get("procedure_name") or ""),
+        "revision": _value("int", application.get("revision")),
+        "content_hash": _value("identifier", application.get("content_hash") or ""),
+        "drift_status": _value("enum", application.get("drift_status")),
+        "applied_at": _value("datetime", application.get("applied_at")),
+        "step_count": _value("int", application.get("step_count", 0)),
+    }
+
+
 def fact_from_procedure_application(
     store: EvidenceStore,
     application: Mapping[str, Any],
@@ -677,15 +692,7 @@ def fact_from_procedure_application(
     Governed content, byte-anchored: ``controlled=True`` with the revision
     ``content_hash`` as the source revision — S9's stage-1 evidence.
     """
-    values: dict[str, FactValue] = {
-        "procedure_code": _value("identifier", application.get("procedure_code") or ""),
-        "procedure_name": _value("text", application.get("procedure_name") or ""),
-        "revision": _value("int", application.get("revision")),
-        "content_hash": _value("identifier", application.get("content_hash") or ""),
-        "drift_status": _value("enum", application.get("drift_status")),
-        "applied_at": _value("datetime", application.get("applied_at")),
-        "step_count": _value("int", application.get("step_count", 0)),
-    }
+    values = _procedure_application_values(application)
     return store.add_fact(
         kind="record_field",
         source_class="procedure_application",

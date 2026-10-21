@@ -13,7 +13,7 @@ from rest_framework.views import APIView
 
 from approvals.models import ActionType, Approval
 
-from .models import Procedure, ProcedureRevision, ProcedureRevisionStatus
+from .models import ProcedureRevision, ProcedureRevisionStatus
 from .permissions import AUTHOR_PROCEDURE, PUBLISH_PROCEDURE, require_permission
 from .procedure_serializers import (
     ArchiveProcedureRevisionSerializer,
@@ -30,7 +30,7 @@ from .procedure_serializers import (
     ReorderStepsSerializer,
     RequestReviewSerializer,
 )
-from .scope import ScopeError, scope_for_actor
+from .scope import ScopeError, scope_for_actor, scoped_procedures
 from .services.procedures import (
     ProcedureCommandError,
     ProcedureImmutableError,
@@ -59,13 +59,7 @@ class ProcedureEnabledMixin:
 
 def _scoped_procedures(actor):
     """Apply explicit customer scope before every procedure lookup."""
-    try:
-        customer_ids = [
-            item.customer_id for item in scope_for_actor(actor) if item.site_key is None
-        ]
-    except ScopeError:
-        return Procedure.objects.none()
-    return Procedure.objects.filter(customer_id__in=customer_ids)
+    return scoped_procedures(actor)
 
 
 def _procedure_queryset(actor):

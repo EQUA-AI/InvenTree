@@ -95,7 +95,8 @@ class WorkExecutionFieldsMixin(serializers.Serializer):
         """P27: native assignment provenance, without inferred labor."""
         from .time_assignment import project
 
-        return project(obj)
+        request = self.context.get('request')
+        return project(obj, actor=request.user if request else None)
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_verification_return(self, obj) -> dict:

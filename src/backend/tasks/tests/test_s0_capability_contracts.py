@@ -4,7 +4,6 @@ from django.test import TestCase, override_settings
 
 from rest_framework.test import APIClient
 
-from company.models import Company
 from repair.models import (
     GateStatus,
     LockoutPoint,
@@ -13,7 +12,6 @@ from repair.models import (
     RepairPacketGate,
 )
 from tasks.models import WorkOrderCloseout, WorkOrderLifecycle
-from tasks.scope import MaintenanceScope
 from tasks.tests.closeout_fixtures import (
     CLOSEOUT_FLAGS,
     VALID_CLOSEOUT,
@@ -124,14 +122,16 @@ class S0CapabilityContractTest(CloseoutEnvMixin, TestCase):
         )
 
     def test_revoked_scope_is_checked_before_returning_a_saved_receipt(self):
-        """An exact retry cannot bypass the HTTP parent's current scope."""
+        """Shared receipts survive client revocation; machine-only ones do not."""
         intent = self.intent()
         first = self.client.post(self.url('complete/'), intent, format='json')
         self.assertEqual(first.status_code, 200)
-        outside = Company.objects.create(name='S0 other customer', is_customer=True)
-        self.actor.maintenance_scopes = {
-            MaintenanceScope(customer_id=outside.pk, site_key=None)
-        }
+        self.actor.maintenance_scopes = set()
+        shared_replay = self.client.post(self.url('complete/'), intent, format='json')
+        self.assertEqual(shared_replay.status_code, 200)
+        self.assertEqual(shared_replay.data, first.data)
+        self.work_order.customer = None
+        self.work_order.save(update_fields=['customer'])
         replay = self.client.post(self.url('complete/'), intent, format='json')
         self.assertEqual(replay.status_code, 404)
         self.assertEqual(

@@ -875,16 +875,16 @@ class ProposalApiTests(ProposalRailTestCase):
         )
 
     def test_cross_scope_target_is_not_disclosed_on_create(self):
-        """Cross scope target is not disclosed on create."""
-        other_customer = Company.objects.create(
-            name='Proposal Other Customer', is_customer=True
-        )
+        """Cross scope target is not disclosed on create.
+
+        O24: a customer value no longer hides Work, so the foreign target is
+        machine-only Work on a machine outside the actor's client scope.
+        """
         other_machine = AssetMachine.objects.create(name='Secret press')
         other_work_order = WorkOrder.objects.create(
             title='Secret work order',
             status=WorkOrder.STATUS_REVIEW,
             priority=WorkOrder.PRIORITY_MEDIUM,
-            customer=other_customer,
             machine=other_machine,
             work_order_type=WorkOrderType.PREVENTIVE,
             lifecycle_status=WorkOrderLifecycle.IN_PROGRESS,

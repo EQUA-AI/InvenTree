@@ -111,7 +111,8 @@ class TimeAssignmentProjectionTest(TestCase):
             correlation_id=uuid.uuid4(),
             metadata={'assigned_to_id': previous.pk},
         )
-        with self.assertNumQueries(4):
+        # Actorless reads query no machine telemetry under O24.
+        with self.assertNumQueries(3):
             rows = {row['id']: row for row in project(self.work)['events']}
         self.assertEqual(rows[self.event.pk]['assigned_to_name'], 'Current Technician')
         self.assertEqual(

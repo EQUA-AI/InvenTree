@@ -887,3 +887,56 @@ for (const status of [403, 404]) {
     expect(writes).toEqual([]);
   });
 }
+
+for (const attribution of ['customer', 'unattributed'] as const) {
+  for (const scheme of ['light', 'dark'] as const) {
+    test(`O24 authorized ${attribution} Work response renders for a viewer in ${scheme}`, async ({
+      page
+    }, info) => {
+      const writes = watchWrites(page);
+      const work = continuityWork();
+      // The overview does not expose customer IDs. Backend scope tests prove
+      // authorization; this fixture proves an authorized response renders for
+      // a viewer without granting execution actions in either O24 case.
+      work.title = `Synthetic ${attribution} Work`;
+      if (attribution === 'customer') {
+        work.company = 'Synthetic customer';
+        work.machine_name = 'Synthetic foreign client pump';
+      } else {
+        work.machine = null;
+        work.machine_name = null;
+        work.machine_location = null;
+      }
+      await mockExecutionWork(page, work);
+      await viewerEntry(
+        page,
+        '/maintenance/work-orders/73/?work_panel=work',
+        scheme
+      );
+      await expect(
+        page.getByRole('heading', {
+          name: `WO-73: Synthetic ${attribution} Work`,
+          exact: true
+        })
+      ).toBeVisible();
+      await expect(page.getByTestId('work-continuity')).toBeVisible();
+      await expect(
+        page.getByText(
+          'No hold/resume action is available for this Work and your current permission.',
+          { exact: true }
+        )
+      ).toBeVisible();
+      await noWriteControls(page, /Hold work|Resume work|Accept handover/);
+      await expectNoPageOverflow(page);
+      await capturePanel(
+        page,
+        info.outputPath(`o24-${attribution}-${scheme}.png`)
+      );
+      await page.screenshot({
+        path: info.outputPath(`o24-${attribution}-${scheme}-viewport.png`),
+        animations: 'disabled'
+      });
+      expect(writes).toEqual([]);
+    });
+  }
+}

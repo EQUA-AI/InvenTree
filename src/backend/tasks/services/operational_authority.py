@@ -3,6 +3,7 @@
 import hashlib
 import json
 import uuid
+from contextlib import contextmanager
 
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
@@ -17,7 +18,7 @@ from assets.health_models import MachineSignalBinding
 from repair.authority_models import GateAuthorityRecord
 from repair.models import RepairPacketGate
 from tasks.authority_models import OperationalAuthorityRecord
-from tasks.scope import ScopeError, enforce_machine_scope
+from tasks.scope import ScopeError, enforce_machine_scope, work_machine_authorized
 from tasks.services.investigation_requests import _change_actor
 from tasks.services.work_orders import (
     StaleVersion,
@@ -28,7 +29,7 @@ from tasks.services.work_orders import (
     _require_scope,
     _require_version,
 )
-from tasks.work_execution.common import packet_of, person
+from tasks.work_execution.common import PACKET_WITHHELD, packet_of, person
 
 OPERATIONS_PERMISSION = 'tasks.record_operating_authority'
 KINDS = (
@@ -328,9 +329,41 @@ def record_data(row, *, basis=None, current=None, tests=None):
     }
 
 
+def _packet_sources_authorized(work, actor):
+    """Work provenance never grants a packet's native source identities."""
+    packet = packet_of(work)
+    return bool(
+        packet
+        and packet.machine_id == work.machine_id
+        and work_machine_authorized(actor, work)
+    )
+
+
+@contextmanager
+def _packet_sources(work, actor):
+    """Guard packet sources consistently in reads and new command contexts."""
+    previous = work.__dict__.get(PACKET_WITHHELD)
+    work.__dict__[PACKET_WITHHELD] = not _packet_sources_authorized(work, actor)
+    try:
+        yield
+    finally:
+        if previous is None:
+            work.__dict__.pop(PACKET_WITHHELD, None)
+        else:
+            work.__dict__[PACKET_WITHHELD] = previous
+
+
+def _without_packet_sources(record):
+    """Redact packet provenance in a response without rewriting the saved fact."""
+    return {**record, 'basis': {**record['basis'], 'scope_ids': []}}
+
+
 def records(work, *, physical=False, actor=None):
     """Never cross the canonical Work parent when projecting records."""
     model = GateAuthorityRecord if physical else OperationalAuthorityRecord
+    packet_authorized = _packet_sources_authorized(work, actor)
+    if physical and not packet_authorized:
+        return []
     if (
         physical
         and actor
@@ -351,18 +384,34 @@ def records(work, *, physical=False, actor=None):
         query = query.filter(target_id__in=ids).select_related('target')
     rows = list(query)
     superseded = {row.supersedes_id for row in rows if row.supersedes_id}
-    basis = _basis(work)
+    basis = (
+        _basis(work)
+        if packet_authorized
+        else {'machine_id': work.machine_id, 'scope_ids': []}
+    )
     tests = (
         _test_basis(work) if any(row.kind == 'test_acceptance' for row in rows) else []
     )
-    return [
+    result = [
         record_data(row, basis=basis, current=row.pk not in superseded, tests=tests)
         for row in rows
     ]
+    return (
+        result
+        if packet_authorized
+        else [_without_packet_sources(row) for row in result]
+    )
 
 
 def project(work, actor):
     """One overview projection with server-computed recording capabilities."""
+    targets = _targets(work, actor) if actor else []
+    with _packet_sources(work, actor):
+        return _project(work, actor, targets)
+
+
+def _project(work, actor, targets):
+    """Project only packet sources authorized by the enclosing read guard."""
     try:
         live = (
             _change_actor(actor)
@@ -373,7 +422,6 @@ def project(work, actor):
         live = None
     packet = packet_of(work)
     gates = read_gates(packet)
-    targets = _targets(work, actor) if actor else []
     machine_authorized = work.machine_id in {target.pk for target in targets}
     physical_authorized = (
         machine_authorized and packet and packet.machine_id == work.machine_id
@@ -406,10 +454,11 @@ def project(work, actor):
                     live and physical_authorized and _gate_permitted(live, gate)
                 ),
             }
-            for gate in gates
+            # O24: a shared Work's packet gates belong to its machine's client.
+            for gate in (gates if machine_authorized else [])
         ],
         'targets': [{'id': target.pk, 'name': target.name} for target in targets],
-        'physical': records(work, physical=True, actor=actor),
+        'physical': records(work, physical=True, actor=actor) if packet else [],
         'operational': records(work, actor=actor),
         'telemetry': telemetry(work, actor) if actor else [],
     }
@@ -515,9 +564,15 @@ def command(
     request_hash = _canonical_hash('operational_authority', actor, intent)
     replay = _replay_or_none(work, idempotency_key, request_hash)
     if replay:
+        if not physical and not _packet_sources_authorized(work, actor):
+            return {
+                **replay.metadata,
+                'record': _without_packet_sources(replay.metadata['record']),
+            }
         return replay.metadata
     _require_version(work, expected_version)
-    checked, context_token = _context(work)
+    with _packet_sources(work, actor):
+        checked, context_token = _context(work)
     if expected_context != context_token:
         raise StaleVersion(
             'Scope, tests or safety requirements changed; review the latest Work.'
@@ -725,12 +780,14 @@ def command(
         row.save()
     work.lifecycle_version += 1
     work.save(update_fields=['lifecycle_version', 'updated_at'])
+    with _packet_sources(work, actor):
+        recorded = record_data(row)
     receipt = {
         'work_order_id': work.pk,
         'work_version': work.lifecycle_version,
         'idempotency_key': idempotency_key,
         'expected_context': expected_context,
-        'record': record_data(row),
+        'record': recorded,
     }
     _append_result(
         work_order=work,

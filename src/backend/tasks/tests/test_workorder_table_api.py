@@ -22,7 +22,7 @@ class WorkOrderTableAPITest(TestCase):
     """Use stored reader roles, real test login and explicit client grants."""
 
     def setUp(self):
-        """Create fifty authorized jobs plus foreign and unresolved matches."""
+        """Create fifty authorized jobs, shared (O24) jobs and a foreign match."""
         self.actor = get_user_model().objects.create_user(
             username='work-table-reader', password='synthetic-only'
         )
@@ -57,17 +57,19 @@ class WorkOrderTableAPITest(TestCase):
             )
             for index in range(50)
         ]
+        # Machine-only Work on another client's machine stays hidden.
         self.hidden = [
-            WorkOrder.objects.create(title='Foreign work', machine=foreign_machine),
-            WorkOrder.objects.create(
-                title='Customer boundary wins',
-                machine=self.machine,
-                customer=Company.objects.create(
-                    name='Other customer', is_customer=True
-                ),
-            ),
-            WorkOrder.objects.create(title='Unresolved work'),
+            WorkOrder.objects.create(title='Foreign work', machine=foreign_machine)
         ]
+        # O24: customer-attributed and unattributed Work are shared with every
+        # Work viewer; they are older than the fifty jobs, so they sort last.
+        self.customer_work = WorkOrder.objects.create(
+            title='Shared customer work',
+            machine=self.machine,
+            customer=Company.objects.create(name='Other customer', is_customer=True),
+        )
+        self.unattributed = WorkOrder.objects.create(title='Unattributed work')
+        self.shared = [self.customer_work, self.unattributed]
         WorkOrder.objects.filter(pk__in=[work.pk for work in self.works]).update(
             created_at=timezone.now()
         )
@@ -80,21 +82,26 @@ class WorkOrderTableAPITest(TestCase):
         """Scope and deterministic ordering precede the two result pages."""
         first = self.api.get(BASE, {'limit': 25})
         second = self.api.get(BASE, {'limit': 25, 'offset': 25})
-        self.assertEqual(first.status_code, 200)
-        self.assertEqual(second.status_code, 200)
-        self.assertEqual(first.data['count'], 50)
-        self.assertEqual(second.data['count'], 50)
+        third = self.api.get(BASE, {'limit': 25, 'offset': 50})
+        for page in (first, second, third):
+            self.assertEqual(page.status_code, 200)
+            self.assertEqual(page.data['count'], 52)
         actual = [row['id'] for row in first.data['results'] + second.data['results']]
         self.assertEqual(actual, [work.pk for work in reversed(self.works)])
-        self.assertIsNotNone(first.data['next'])
-        self.assertIsNone(second.data['next'])
+        self.assertEqual(
+            {row['id'] for row in third.data['results']},
+            {work.pk for work in self.shared},
+        )
+        self.assertIsNotNone(second.data['next'])
+        self.assertIsNone(third.data['next'])
 
     def test_original_board_collection_remains_an_unpaginated_array(self):
         """The additive collection never changes existing Board consumers."""
         response = self.api.get('/api/kanban/work-orders/', {'limit': 1})
         self.assertEqual(response.status_code, 200)
         self.assertIsInstance(response.data, list)
-        self.assertEqual(len(response.data), 50)
+        self.assertEqual(len(response.data), 52)
+        self.assertNotIn(self.hidden[0].pk, {row['id'] for row in response.data})
 
     def test_filters_apply_before_count_and_pagination(self):
         """Typed assignment, priority, lifecycle and type share one population."""
@@ -124,7 +131,9 @@ class WorkOrderTableAPITest(TestCase):
         """Search follows real native fields without leaking hidden matches."""
         for search, expected in [
             (self.works[0].reference, 1),
-            (self.machine.name, 50),
+            # The shared customer job is on the same machine (O24).
+            (self.machine.name, 51),
+            ('Foreign work', 0),
             (self.actor.username, 25),
             ('missing-reference', 0),
         ]:
@@ -134,12 +143,18 @@ class WorkOrderTableAPITest(TestCase):
                 self.assertEqual(response.data['count'], expected)
 
     def test_grant_revocation_removes_rows_and_counts(self):
-        """A previously authorized session does not cache client authority."""
+        """A previously authorized session does not cache client authority.
+
+        The revoked client's machine-only jobs leave at once; the shared (O24)
+        customer job on that machine stays readable to the Work viewer.
+        """
         self.grant.delete()
         response = self.api.get(BASE, {'search': self.machine.name})
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data['count'], 0)
-        self.assertEqual(response.data['results'], [])
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(
+            [row['id'] for row in response.data['results']], [self.customer_work.pk]
+        )
 
     def test_view_role_revocation_denies_the_collection(self):
         """Client grants alone do not grant the native work view role."""
@@ -173,7 +188,7 @@ class WorkOrderTableAPITest(TestCase):
         ])
         response = self.api.get(BASE, {'limit': 10000})
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data['count'], 220)
+        self.assertEqual(response.data['count'], 222)
         self.assertEqual(len(response.data['results']), 200)
         self.assertIsNotNone(response.data['next'])
 

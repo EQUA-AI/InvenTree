@@ -895,17 +895,27 @@ def get_viewable_attachment_model_types(user) -> set:
     return {
         model.__name__.lower()
         for model in attachment_model_types()
-        if check_user_permission(user, model, 'view', groups=groups)
+        if (
+            model.check_related_permission('view', user)
+            if model.__name__.lower() == 'workorderstepexecution'
+            else check_user_permission(user, model, 'view', groups=groups)
+        )
     }
 
 
 def _maintenance_attachment_scope(queryset, actor):
     """Apply maintenance ownership without changing unrelated attachment types."""
+    from tasks.procedure_models import WorkOrderStepExecution
     from tasks.scope import scoped_machines, scoped_work_orders
 
+    work_orders = scoped_work_orders(actor)
+    steps = WorkOrderStepExecution.objects.filter(
+        application__work_order__in=work_orders
+    )
     return queryset.filter(
-        ~Q(model_type__in=('workorder', 'assetmachine'))
-        | Q(model_type='workorder', model_id__in=scoped_work_orders(actor))
+        ~Q(model_type__in=('workorder', 'workorderstepexecution', 'assetmachine'))
+        | Q(model_type='workorder', model_id__in=work_orders)
+        | Q(model_type='workorderstepexecution', model_id__in=steps)
         | Q(model_type='assetmachine', model_id__in=scoped_machines(actor))
     )
 
@@ -925,6 +935,15 @@ def _require_maintenance_attachment_owner(actor, serializer):
     )
     if model_type == 'workorder':
         get_object_or_404(scoped_work_orders(actor), pk=model_id)
+    elif model_type == 'workorderstepexecution':
+        from tasks.procedure_models import WorkOrderStepExecution
+
+        get_object_or_404(
+            WorkOrderStepExecution.objects.filter(
+                application__work_order__in=scoped_work_orders(actor)
+            ),
+            pk=model_id,
+        )
     elif model_type == 'assetmachine':
         get_object_or_404(scoped_machines(actor), pk=model_id)
 
@@ -981,6 +1000,13 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
 
         for model_type in model_types:
             if model_class := attachment_model_class_from_label(model_type):
+                if (
+                    model_type == 'workorderstepexecution'
+                    and not model_class.check_related_permission('delete', request.user)
+                ):
+                    raise PermissionDenied(
+                        _('User does not have permission to delete these attachments')
+                    )
                 if not check_user_permission(request.user, model_class, 'delete'):
                     raise ValidationError(
                         _('User does not have permission to delete these attachments')

@@ -1,12 +1,13 @@
 """O20 authorization, revision, date and governed deletion checks offline."""
 
 import hashlib
-from datetime import datetime, timezone as dt_timezone
+from datetime import datetime
+from datetime import timezone as dt_timezone
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Permission
-from django.core.exceptions import PermissionDenied, ValidationError as DjangoValidationError
+from django.core.exceptions import PermissionDenied
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
 from django.db.migrations.autodetector import MigrationAutodetector
@@ -25,8 +26,16 @@ from tasks.calibration_models import CalibrationTraceability
 from tasks.closeout_models import CloseoutReading
 from tasks.models import WorkOrder, WorkOrderDeletionRecord
 from tasks.services.calibration import command, project
-from tasks.services.scheduling import NotMutable, delete_work_order, update_work_order_plan
-from tasks.services.work_orders import IdempotencyConflict, StaleVersion, WorkOrderScopeError
+from tasks.services.scheduling import (
+    NotMutable,
+    delete_work_order,
+    update_work_order_plan,
+)
+from tasks.services.work_orders import (
+    IdempotencyConflict,
+    StaleVersion,
+    WorkOrderScopeError,
+)
 from tasks.tests.closeout_fixtures import CLOSEOUT_FLAGS, CloseoutEnvMixin
 
 
@@ -166,15 +175,33 @@ class CalibrationTraceabilityTests(CloseoutEnvMixin, TestCase):
         self.assertEqual(CalibrationTraceability.objects.count(), 1)
 
     def test_foreign_work_and_inactive_actor_are_refused(self):
-        """No scope disclosure or bypass on exact retries."""
+        """No scope disclosure or bypass on exact retries.
+
+        O24: another customer value no longer moves the Work out of reach, so
+        the exact retry still replays. Machine-only Work on another client's
+        machine is the remaining foreign boundary and stays refused.
+        """
+        from assets.models import AssetMachine, Client
+
         self.apply()
         foreign = Company.objects.create(name='Foreign', is_customer=True)
         self.work_order.customer = foreign
         self.work_order.save()
         response = self.client.post(self.url(), self.intent, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.apply()
+        self.assertEqual(CalibrationTraceability.objects.count(), 1)
+        other_client = Client.objects.create(name='Foreign O20', code='o24-o20-foreign')
+        self.work_order.customer = None
+        self.work_order.machine = AssetMachine.objects.create(
+            name='Foreign O20 machine', client=other_client
+        )
+        self.work_order.save()
+        response = self.client.post(self.url(), self.intent, format='json')
         self.assertEqual(response.status_code, 404)
         with self.assertRaises(WorkOrderScopeError):
             self.apply()
+        self.assertEqual(CalibrationTraceability.objects.count(), 1)
         get_user_model().objects.filter(pk=self.actor.pk).update(is_active=False)
         with self.assertRaises(PermissionDenied):
             self.apply()

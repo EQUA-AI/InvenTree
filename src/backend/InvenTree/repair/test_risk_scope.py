@@ -117,7 +117,7 @@ class ScopeAdapterTest(RiskEnvMixin, TestCase):
             )
 
     def test_work_order_adapter_membership(self):
-        """Customer scopes see explicit-customer rows; nothing via machines."""
+        """Resolved Work viewers see every customer Work; no machine-only widening."""
         mine = self.make_work_order()
         mine_via_machine = self.make_client_work_order(self.machine)
         theirs = self.make_work_order(customer=self.other_customer)
@@ -128,11 +128,11 @@ class ScopeAdapterTest(RiskEnvMixin, TestCase):
         ids = set(queryset.values_list('pk', flat=True))
         self.assertIn(mine.pk, ids)
         self.assertNotIn(mine_via_machine.pk, ids)
-        self.assertNotIn(theirs.pk, ids)
+        self.assertIn(theirs.pk, ids)
         self.assertNotIn(foreign_via_machine.pk, ids)
 
     def test_work_order_adapter_client_membership(self):
-        """Client scopes see customer-NULL rows on their machines only."""
+        """Client scopes include shared Work plus their machine-only Work."""
         explicit_customer = self.make_work_order()
         mine_via_machine = self.make_client_work_order(self.machine)
         foreign_via_machine = self.make_client_work_order(self.other_machine)
@@ -144,14 +144,29 @@ class ScopeAdapterTest(RiskEnvMixin, TestCase):
         )
         ids = set(queryset.values_list('pk', flat=True))
         self.assertIn(mine_via_machine.pk, ids)
-        self.assertNotIn(explicit_customer.pk, ids)
+        self.assertIn(explicit_customer.pk, ids)
         self.assertNotIn(foreign_via_machine.pk, ids)
-        # An explicit work-order customer owns the order even on my machine.
-        self.assertNotIn(customer_wins.pk, ids)
+        # Customer attribution no longer hides otherwise readable Work.
+        self.assertIn(customer_wins.pk, ids)
+
+    def test_work_order_adapter_aborts_without_work_view_authority(self):
+        """O24 shared Work is not scanned for an actor who cannot view Work.
+
+        The adapter aborts (fail closed) instead of returning a silent zero.
+        """
+        self.make_work_order()
+        self.actor.groups.clear()
+        with self.assertRaises(RiskScopeError):
+            get_source_adapter('work_order').queryset_for_scope(
+                actor=self.actor, scope=self.client_scope
+            )
 
     def test_repair_packet_adapter_membership(self):
-        """The explicit work-order customer wins; else the machine's client."""
+        """Shared Work never replaces packet machine scope or exact binding."""
+        from tasks.scope import ScopeError
+
         from repair.models import RepairPacket
+        from repair.scope import require_repair_packet_scope, scoped_repair_packets
 
         via_machine = RepairPacket.objects.create(
             fault_summary='a', machine=self.machine
@@ -159,10 +174,15 @@ class ScopeAdapterTest(RiskEnvMixin, TestCase):
         via_wo = RepairPacket.objects.create(
             fault_summary='b', work_order=self.make_work_order()
         )
-        wo_wins = RepairPacket.objects.create(
+        foreign_machine = RepairPacket.objects.create(
             fault_summary='w',
             machine=self.other_machine,
-            work_order=self.make_work_order(),
+            work_order=self.make_work_order(machine=self.other_machine),
+        )
+        mismatched = RepairPacket.objects.create(
+            fault_summary='mismatch',
+            machine=self.other_machine,
+            work_order=self.make_work_order(machine=self.machine),
         )
         theirs = RepairPacket.objects.create(
             fault_summary='c', machine=self.other_machine
@@ -170,13 +190,16 @@ class ScopeAdapterTest(RiskEnvMixin, TestCase):
         foreign_wo = RepairPacket.objects.create(
             fault_summary='d',
             machine=self.machine,
-            work_order=self.make_work_order(customer=self.other_customer),
+            work_order=self.make_work_order(
+                customer=self.other_customer, machine=self.machine
+            ),
         )
         unprovable = RepairPacket.objects.create(fault_summary='e')
         all_pks = {
             via_machine.pk,
             via_wo.pk,
-            wo_wins.pk,
+            foreign_machine.pk,
+            mismatched.pk,
             theirs.pk,
             foreign_wo.pk,
             unprovable.pk,
@@ -187,13 +210,32 @@ class ScopeAdapterTest(RiskEnvMixin, TestCase):
                 'pk', flat=True
             )
         )
-        self.assertEqual(customer_ids & all_pks, {via_wo.pk, wo_wins.pk})
+        self.assertEqual(customer_ids & all_pks, set())
         client_ids = set(
             adapter.queryset_for_scope(
                 actor=self.actor, scope=self.client_scope
             ).values_list('pk', flat=True)
         )
-        self.assertEqual(client_ids & all_pks, {via_machine.pk})
+        self.assertEqual(client_ids & all_pks, {via_machine.pk, foreign_wo.pk})
+        canonical_ids = set(
+            scoped_repair_packets(self.actor).values_list('pk', flat=True)
+        )
+        self.assertEqual(client_ids & all_pks, canonical_ids & all_pks)
+        for packet in (
+            via_machine,
+            via_wo,
+            foreign_machine,
+            mismatched,
+            theirs,
+            foreign_wo,
+            unprovable,
+        ):
+            with self.subTest(packet=packet.pk):
+                if packet.pk in client_ids:
+                    require_repair_packet_scope(self.actor, packet)
+                else:
+                    with self.assertRaises(ScopeError):
+                        require_repair_packet_scope(self.actor, packet)
 
     def test_approval_adapter_membership(self):
         """Approvals are scoped only through provable links."""
@@ -222,6 +264,17 @@ class ScopeAdapterTest(RiskEnvMixin, TestCase):
             ),
             approval=foreign,
         )
+        customer_work = approval()
+        RepairPacketApprovalLink.objects.create(
+            packet=RepairPacket.objects.create(
+                fault_summary='Shared Work local packet',
+                machine=self.machine,
+                work_order=self.make_work_order(
+                    machine=self.machine, customer=self.other_customer
+                ),
+            ),
+            approval=customer_work,
+        )
         unlinked = approval()
         adapter = get_source_adapter('approval')
         ids = set(
@@ -230,6 +283,7 @@ class ScopeAdapterTest(RiskEnvMixin, TestCase):
             ).values_list('pk', flat=True)
         )
         self.assertIn(linked.pk, ids)
+        self.assertIn(customer_work.pk, ids)
         self.assertNotIn(foreign.pk, ids)
         self.assertNotIn(unlinked.pk, ids)
         # Machine-linked packets belong to clients; customer scopes see none.
@@ -238,7 +292,35 @@ class ScopeAdapterTest(RiskEnvMixin, TestCase):
                 'pk', flat=True
             )
         )
-        self.assertEqual(customer_ids & {linked.pk, foreign.pk, unlinked.pk}, set())
+        self.assertEqual(
+            customer_ids & {linked.pk, foreign.pk, customer_work.pk, unlinked.pk}, set()
+        )
+
+    def test_packet_adapters_require_work_view_for_linked_and_standalone_packets(self):
+        """A custom resolver cannot let a viewless actor scan machine packets."""
+        from tasks.scope import ScopeError
+
+        from repair.models import RepairPacket
+        from repair.scope import require_repair_packet_scope, scoped_repair_packets
+
+        packets = (
+            RepairPacket.objects.create(
+                machine=self.machine, fault_summary='Standalone'
+            ),
+            RepairPacket.objects.create(
+                machine=self.machine,
+                work_order=self.make_work_order(machine=self.machine),
+                fault_summary='Linked',
+            ),
+        )
+        self.actor.groups.clear()
+        adapter = get_source_adapter('repair_packet')
+        with self.assertRaises(RiskScopeError):
+            adapter.queryset_for_scope(actor=self.actor, scope=self.client_scope)
+        self.assertFalse(scoped_repair_packets(self.actor).exists())
+        for packet in packets:
+            with self.subTest(packet=packet.pk), self.assertRaises(ScopeError):
+                require_repair_packet_scope(self.actor, packet)
 
     def test_approval_linked_to_two_clients_leaks_nowhere(self):
         """An approval linked to two clients is conflicting: no scope sees it.

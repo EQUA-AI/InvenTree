@@ -1051,9 +1051,9 @@ _MACHINE_READ_TOOL_IDS = frozenset({
     "get_machine_attachments",
 })
 
-#: The maintenance pack shares the machines rationale and authorizer: a
-#: work_order:view grant says "may read jobs", never "may read *this* job",
-#: and tasks.ai_read re-checks the row itself on every call.
+#: Work readers recheck the canonical Work predicate on every call. O24
+#: permits shared Work without any client grant, so they must not inherit
+#: the machine-only precondition that requires a resolved client scope.
 _MAINTENANCE_READ_TOOL_IDS = frozenset({
     "search_work_orders",
     "get_work_order_overview",
@@ -1080,7 +1080,7 @@ def _authorization_policy(tool: Any, tool_id: str) -> AuthorizationPolicy:
             all_of=(("part", "view"),),
             authorizer="part_attachment_access",
         )
-    if tool_id in _MACHINE_READ_TOOL_IDS or tool_id in _MAINTENANCE_READ_TOOL_IDS:
+    if tool_id in _MACHINE_READ_TOOL_IDS or tool_id == "get_open_repairs_for_machine":
         # Deliberately NOT plain NATIVE_PERMISSION. A work_order:view grant is
         # global, while asset rows belong to a customer or a client -- so the
         # role says "may read assets", never "may read *this* asset". The
@@ -1093,6 +1093,11 @@ def _authorization_policy(tool: Any, tool_id: str) -> AuthorizationPolicy:
             kind=PolicyKind.RESOURCE_AUTHORIZER,
             all_of=(("work_order", "view"),),
             authorizer="machine_scope_access",
+        )
+    if tool_id in _MAINTENANCE_READ_TOOL_IDS:
+        return AuthorizationPolicy(
+            kind=PolicyKind.NATIVE_PERMISSION,
+            all_of=(("work_order", "view"),),
         )
     if tool_id == "search_manuals":
         # Site-scoped controlled-document retrieval. Deliberately NOT

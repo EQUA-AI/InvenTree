@@ -69,7 +69,7 @@ class NeedsAttentionTests(TestCase):
         work('Draft high', priority='high', lifecycle='draft')
         work('Archived high', priority='high', is_active=False)
         work(
-            'Customer-owned high',
+            'Shared customer high',
             priority='high',
             customer=Company.objects.create(name='Elsewhere', is_customer=True),
         )
@@ -96,6 +96,7 @@ class NeedsAttentionTests(TestCase):
             reasons,
             {
                 'High': ['high_priority'],
+                'Shared customer high': ['high_priority'],
                 'High late unowned': ['high_priority', 'overdue', 'no_owner'],
                 'High undated': ['high_priority'],
                 'Overdue': ['overdue'],
@@ -103,7 +104,7 @@ class NeedsAttentionTests(TestCase):
                 'No owner': ['no_owner'],
             },
         )
-        self.assertEqual(page['count'], 6)
+        self.assertEqual(page['count'], 7)
 
     def test_order_is_priority_then_earliest_due_then_newest(self, _today):
         """No score: native priority, then the due window, undated last."""
@@ -113,6 +114,7 @@ class NeedsAttentionTests(TestCase):
             [
                 'High late unowned',
                 'High',
+                'Shared customer high',
                 'High undated',
                 'Overdue',
                 'No owner',
@@ -129,12 +131,12 @@ class NeedsAttentionTests(TestCase):
         # The native text ordering puts "low" before "medium"; the attention
         # order puts it last.
         self.assertLess(titles.index('On hold'), titles.index('Overdue'))
-        self.assertEqual(len(titles), 6)
+        self.assertEqual(len(titles), 7)
 
     def test_filters_and_search_narrow_within_the_rule(self, _today):
         """Native filters still apply before counting and paging."""
         high = self.get(attention='true', priority='high')
-        self.assertEqual(high['count'], 3)
+        self.assertEqual(high['count'], 4)
         searched = self.get(attention='true', search='hold')
         self.assertEqual([row['title'] for row in searched['results']], ['On hold'])
 
@@ -167,7 +169,7 @@ class NeedsAttentionTests(TestCase):
         }
         self.assertEqual(titles, {'High late unowned', 'Overdue', 'High', 'Due today'})
 
-    def test_revoked_scope_empties_the_rule(self, _today):
+    def test_revoked_client_grant_retains_shared_attention_work(self, _today):
         """The rule never widens what the reader may see."""
         self.grant.delete()
-        self.assertEqual(self.get(attention='true')['count'], 0)
+        self.assertEqual([row['title'] for row in self.get(attention='true')['results']], ['Shared customer high'])

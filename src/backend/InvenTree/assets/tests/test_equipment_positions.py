@@ -285,8 +285,12 @@ class EquipmentPositionsTests(TestCase):
         self.assertEqual(motor['family_name'], 'Electric Motor')
         self.assertEqual(len(motor['signals']), 1)
 
-    def test_work_outside_the_readers_boundary_is_not_attributed(self):
-        """A customer-owned job on the bearing slot is not the reader's to see."""
+    def test_shared_customer_work_is_attributed_to_its_slot(self):
+        """O24: a customer job on the bearing slot is shared with Work viewers.
+
+        Before O24 the customer value hid it; now it is attributed like any
+        other open job on this (authorized) machine.
+        """
         from company.models import Company
 
         WorkOrder.objects.create(
@@ -300,9 +304,9 @@ class EquipmentPositionsTests(TestCase):
         body, positions = self.read()
         self.assertEqual(
             [w['title'] for w in positions['bearing']['work']['results']],
-            ['Replace DE bearing'],
+            ['Customer bearing job', 'Replace DE bearing'],
         )
-        self.assertEqual(body['machine_work'], {'count': 2})
+        self.assertEqual(body['machine_work'], {'count': 3})
 
     def test_focus_revision_matches_live_reference_and_slots_have_native_ids(self):
         """Slot sort order cannot make the API's exact focus revision stale."""

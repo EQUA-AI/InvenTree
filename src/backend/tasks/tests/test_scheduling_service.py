@@ -4,9 +4,11 @@ from datetime import datetime, timezone as dt_timezone
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.contrib.auth.models import Group
+from django.test import TestCase, override_settings
 
-from assets.models import AssetMachine
+from assets.models import AssetMachine, ClientScopeGrant, get_default_client
+from users.models import RuleSet
 from tasks.models import (
     WorkOrder,
     WorkOrderCommand,
@@ -45,12 +47,24 @@ def _same_instant(stored, expected):
     )
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.granted_client_scope_resolver'
+)
 class SchedulingServiceTest(TestCase):
     def setUp(self):
         self.actor = get_user_model().objects.create_user(
             username='sched-actor', email='s@example.com', password='pw'
         )
-        self.machine = AssetMachine.objects.create(name='Svc Press')
+        group = Group.objects.create(name='Scheduling service editors')
+        RuleSet.objects.update_or_create(
+            group=group,
+            name='work_order',
+            defaults={'can_view': True, 'can_change': True, 'can_add': True},
+        )
+        self.actor.groups.add(group)
+        self.tenant = get_default_client()
+        ClientScopeGrant.objects.create(user=self.actor, client=self.tenant)
+        self.machine = AssetMachine.objects.create(name='Svc Press', client=self.tenant)
 
     def _card(self, **kw):
         return WorkOrder.objects.create(
@@ -217,7 +231,7 @@ class SchedulingServiceTest(TestCase):
 
     def test_update_plan_changes_allowed_fields(self):
         work_order = self._card()
-        other = AssetMachine.objects.create(name='Other Svc')
+        other = AssetMachine.objects.create(name='Other Svc', client=self.tenant)
         scheduling.update_work_order_plan(
             work_order_id=work_order.pk,
             actor=self.actor,

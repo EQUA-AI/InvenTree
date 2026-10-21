@@ -410,6 +410,11 @@ def create_repair_work_package(
     machine = AssetMachine.objects.filter(pk=draft['machine_id']).first()
     if machine is None:
         raise UnknownMachine(f'No machine {draft["machine_id"]}.')
+    # Intake can be called directly by chat, approvals or generation. Check
+    # the current creation boundary before returning duplicate repair links or
+    # looking up any other draft metadata. The canonical create command repeats
+    # this check under its locks immediately before a write or replay.
+    machine = scheduling._authorize_creation(actor, machine.pk)
 
     if draft['parts']:
         known = set(

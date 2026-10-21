@@ -189,9 +189,8 @@ class RoutineFindingTests(InvenTreeAPITestCase):
         """The linked-source refusal reveals no foreign Work details."""
         foreign = WorkOrder.objects.create(
             title='Secret foreign source',
-            machine=self.machine,
+            machine=AssetMachine.objects.create(name='Foreign O21 machine'),
             work_order_type='inspection',
-            customer=Company.objects.create(name='Foreign O21', is_customer=True),
         )
         other = AssetMachine.objects.create(
             name='Other fixture', client=get_default_client()
@@ -209,9 +208,8 @@ class RoutineFindingTests(InvenTreeAPITestCase):
         """A permitted creator cannot probe another Work boundary over HTTP."""
         foreign = WorkOrder.objects.create(
             title='Secret source',
-            machine=self.machine,
+            machine=AssetMachine.objects.create(name='Private boundary machine'),
             work_order_type='inspection',
-            customer=Company.objects.create(name='Private boundary', is_customer=True),
         )
         responses = []
         for identity in (foreign.pk, 987654321):
@@ -274,24 +272,34 @@ class RoutineFindingTests(InvenTreeAPITestCase):
         with self.assertRaises(IdempotencyConflict):
             self.create(corrective_finding='Different observation')
 
-    def test_projection_hides_unreadable_links_in_both_directions(self):
-        """No hidden child identity/count or unreadable source finding escapes."""
+    def test_shared_customer_links_are_readable_in_both_directions(self):
+        """O24 keeps customer Work links visible; anonymous reads stay empty."""
         child = WorkOrder.objects.get(pk=self.create().work_order_id)
         child.customer = Company.objects.create(name='Private child', is_customer=True)
         child.save(update_fields=['customer'])
-        self.assertEqual(linked(self.work, self.viewer), [])
+        self.assertEqual([row['id'] for row in linked(self.work, self.viewer)], [child.pk])
         child.customer = None
         child.save(update_fields=['customer'])
         self.work.customer = Company.objects.create(
             name='Private original', is_customer=True
         )
         self.work.save(update_fields=['customer'])
-        self.assertEqual(origin(child, self.viewer), {'state': 'unavailable'})
+        self.assertEqual(origin(child, self.viewer)['id'], self.work.pk)
         self.assertIsNone(origin(self.work, self.viewer))
         self.assertEqual(linked(self.work, None), [])
+        # Unreadable (machine-only, unresolved machine) Work stays hidden both ways.
+        hidden = AssetMachine.objects.create(name='O21 unresolved machine')
+        self.work.customer = None
+        self.work.save(update_fields=['customer'])
+        WorkOrder.objects.filter(pk=child.pk).update(machine=hidden)
+        self.assertEqual(linked(self.work, self.viewer), [])
+        WorkOrder.objects.filter(pk=child.pk).update(machine=self.machine)
+        WorkOrder.objects.filter(pk=self.work.pk).update(machine=hidden)
+        child.refresh_from_db()
+        self.assertEqual(origin(child, self.viewer), {'state': 'unavailable'})
 
-    def test_http_hides_unreadable_links_and_event_source_identities(self):
-        """Overview and history metadata cannot bypass related-Work scope."""
+    def test_http_shares_customer_links_and_event_source_identities(self):
+        """Customer Work origin and linked identities remain readable under O24."""
         child = WorkOrder.objects.get(pk=self.create().work_order_id)
         child.customer = Company.objects.create(
             name='Private child HTTP', is_customer=True
@@ -300,13 +308,29 @@ class RoutineFindingTests(InvenTreeAPITestCase):
         result = self.get(
             f'/api/kanban/work-orders/{self.work.pk}/overview/', expected_code=200
         )
-        self.assertEqual(result.data['routine_work']['linked_corrective'], [])
+        self.assertEqual([row['id'] for row in result.data['routine_work']['linked_corrective']], [child.pk])
         child.customer = None
         child.save(update_fields=['customer'])
         self.work.customer = Company.objects.create(
             name='Private source HTTP', is_customer=True
         )
         self.work.save(update_fields=['customer'])
+        result = self.get(
+            f'/api/kanban/work-orders/{child.pk}/overview/', expected_code=200
+        )
+        self.assertEqual(result.data['routine_origin']['id'], self.work.pk)
+        self.assertEqual(
+            result.data['events'][0]['metadata']['result_metadata']['routine_work_id'],
+            self.work.pk,
+        )
+        self.assertNotIn(
+            'source_state', result.data['events'][0]['metadata']['result_metadata']
+        )
+        # An unreadable source (machine-only on an unresolved machine) is still
+        # hidden from the overview and the event source identity.
+        WorkOrder.objects.filter(pk=self.work.pk).update(
+            customer=None, machine=AssetMachine.objects.create(name='O21 hidden source')
+        )
         result = self.get(
             f'/api/kanban/work-orders/{child.pk}/overview/', expected_code=200
         )
@@ -440,9 +464,7 @@ class RoutineFindingTests(InvenTreeAPITestCase):
         )
         for work in (self.work, child):
             WorkOrder.objects.filter(pk=work.pk).update(customer=foreign)
-            with self.assertRaises(ValidationError) as caught:
-                self.create()
-            self.assertEqual(caught.exception.detail, [REFUSAL])
+            self.assertEqual(self.create(), result)
             WorkOrder.objects.filter(pk=work.pk).update(customer=None)
         self.assertEqual(self.create(), result)
         self.assertEqual(child.commands.count(), 1)

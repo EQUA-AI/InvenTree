@@ -247,7 +247,7 @@ class ScopeRevisionProjectionTest(InvenTreeAPITestCase):
         self.assertEqual(sibling.lifecycle_status, 'in_progress')
         self.assertEqual(self.packet.approved_scopes.count(), 2)
 
-    def test_foreign_parent_scope_denies_the_entire_projection(self):
+    def test_shared_customer_parent_includes_revision_projection(self):
         """Child revision facts retain the canonical parent's maintenance boundary."""
         from company.models import Company
 
@@ -255,6 +255,16 @@ class ScopeRevisionProjectionTest(InvenTreeAPITestCase):
             name='Foreign revision customer', is_customer=True
         )
         self.work.save(update_fields=['customer'])
+        self.get(
+            reverse('kanban-card-overview', kwargs={'pk': self.work.pk}),
+            expected_code=200,
+        )
+        # The boundary that remains: machine-only Work outside reader scope.
+        from assets.models import AssetMachine
+
+        self.work.customer = None
+        self.work.machine = AssetMachine.objects.create(name='Unresolved O24 parent')
+        self.work.save(update_fields=['customer', 'machine'])
         self.get(
             reverse('kanban-card-overview', kwargs={'pk': self.work.pk}),
             expected_code=404,

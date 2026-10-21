@@ -190,13 +190,13 @@ def test_every_catalog_entry_has_an_explicit_policy():
 
 
 def test_protected_resource_tools_have_resource_authorizers():
-    policies = {
-        entry.tool_id: entry.authorization
-        for entry in capability_catalog()
-        if entry.authorization.kind is PolicyKind.RESOURCE_AUTHORIZER
-    }
+    policies = {entry.tool_id: entry.authorization for entry in capability_catalog()}
 
-    assert set(policies) == {
+    assert {
+        tool_id
+        for tool_id, policy in policies.items()
+        if policy.kind is PolicyKind.RESOURCE_AUTHORIZER
+    } == {
         "get_part_attachments",
         "list_database_tables",
         "query_database",
@@ -213,15 +213,6 @@ def test_protected_resource_tools_have_resource_authorizers():
         "get_machine_parts",
         "get_machine_maintenance_history",
         "get_machine_attachments",
-        # Maintenance work orders share the machines rationale AND the
-        # authorizer string: the same tenant scope governs both packs, so the
-        # guard branch is deliberately shared rather than duplicated.
-        "search_work_orders",
-        "get_work_order_history",
-        "get_work_order_closeout",
-        "get_work_order_overview",
-        "get_work_order_readiness",
-        "get_work_order_repair_state",
         "get_open_repairs_for_machine",
         # Controlled-corpus search is site-scoped, not machine-scoped: the
         # filter comes from deployment constants, so it gets its own branch.
@@ -231,7 +222,8 @@ def test_protected_resource_tools_have_resource_authorizers():
     assert policies["get_part_attachments"].all_of == (("part", "view"),)
     assert policies["get_machine_health"].authorizer == "machine_scope_access"
     assert policies["get_machine_health"].all_of == (("work_order", "view"),)
-    assert policies["search_work_orders"].authorizer == "machine_scope_access"
+    assert policies["search_work_orders"].kind is PolicyKind.NATIVE_PERMISSION
+    assert policies["search_work_orders"].authorizer is None
     assert policies["search_work_orders"].all_of == (("work_order", "view"),)
     assert policies["search_manuals"].authorizer == "controlled_corpus_access"
     assert policies["search_manuals"].all_of == (("work_order", "view"),)

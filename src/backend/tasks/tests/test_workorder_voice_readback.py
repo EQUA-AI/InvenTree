@@ -132,10 +132,26 @@ class WorkOrderVoiceCancellationTests(WorkOrderVoiceFixture, TestCase):
             )
         self.assertFalse(ChatActionProposal.objects.exists())
 
-    def test_out_of_scope_work_order_cannot_be_presented(self):
-        """Knowing a work-order identifier does not grant its maintenance scope."""
+    def test_different_customer_work_can_be_presented(self):
+        """O24 shares customer Work; governed voice confirmation remains required."""
         foreign = Company.objects.create(name='E1 other customer', is_customer=True)
         WorkOrder.objects.filter(pk=self.order.pk).update(customer=foreign)
+        self.present()
+        self.assertEqual(ChatActionProposal.objects.count(), 1)
+        self.assertFalse(VoiceOperation.objects.exists())
+
+    def test_out_of_scope_work_order_cannot_be_presented(self):
+        """Knowing a work-order identifier does not grant its maintenance scope.
+
+        Under O24 the remaining boundary is machine-only Work on a machine the
+        reader's client scope does not hold.
+        """
+        from assets.models import AssetMachine
+
+        WorkOrder.objects.filter(pk=self.order.pk).update(
+            customer=None,
+            machine=AssetMachine.objects.create(name='E1 unresolved machine'),
+        )
         with self.assertRaises(proposals.ProposalError):
             self.present()
         self.assertFalse(ChatActionProposal.objects.exists())

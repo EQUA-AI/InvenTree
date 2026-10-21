@@ -154,7 +154,7 @@ def evaluate_comparison_gate(user: Any, *, query: str, scope: Any = None) -> Com
         deviations = work_order_deviations(work_order)
         completed_at = work_order.actual_completed_at.isoformat()
 
-        application = work_order_procedure_application(work_order)
+        application = work_order_procedure_application(work_order, actor=user)
         if application is not None:
             from tasks.procedure_models import WorkOrderProcedureApplication
 
@@ -181,7 +181,8 @@ def evaluate_comparison_gate(user: Any, *, query: str, scope: Any = None) -> Com
                     steps=steps,
                     deviations=deviations,
                     manual_document=None,
-                    drift=str(application.get("drift_status")) != "current",
+                    drift=application.get("drift_status")
+                    in {"different_revision", "procedure_inactive", "revision_not_published"},
                     completed_at=completed_at,
                 ),
                 rule=rule,

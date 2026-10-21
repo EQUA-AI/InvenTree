@@ -9,13 +9,13 @@ from rest_framework.test import APIClient
 
 from company.models import Company
 from tasks.models import (
-    WorkOrder,
     Procedure,
     ProcedureRevision,
     ProcedureRevisionStatus,
     ProcedureStep,
     ProcedureStepType,
     StepExecutionStatus,
+    WorkOrder,
     WorkOrderDeviation,
     WorkOrderType,
 )
@@ -238,8 +238,8 @@ class ProcedureExecutionAPITest(TestCase):
         ).json()
         self.assertEqual(rows['count'], 1)
 
-    def test_cross_scope_parent_and_revision_return_not_found(self):
-        """Neither parent nor revision child lookup leaks another customer."""
+    def test_shared_work_parent_is_readable_but_foreign_procedure_stays_refused(self):
+        """O24 shares the Work parent, while procedure ownership is unchanged."""
         hidden_order = WorkOrder.objects.create(
             title='Hidden work',
             status=WorkOrder.STATUS_BACKLOG,
@@ -247,7 +247,17 @@ class ProcedureExecutionAPITest(TestCase):
             customer=self.other_customer,
         )
         parent = self.client.get(f'/api/tasks/work-orders/{hidden_order.pk}/steps/')
-        self.assertEqual(parent.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(parent.status_code, status.HTTP_200_OK)
+        from assets.models import AssetMachine
+
+        foreign_order = WorkOrder.objects.create(
+            title='Foreign machine-only work',
+            status=WorkOrder.STATUS_BACKLOG,
+            priority=WorkOrder.PRIORITY_MEDIUM,
+            machine=AssetMachine.objects.create(name='Unresolved O24 machine'),
+        )
+        foreign = self.client.get(f'/api/tasks/work-orders/{foreign_order.pk}/steps/')
+        self.assertEqual(foreign.status_code, status.HTTP_404_NOT_FOUND)
 
         hidden_procedure = Procedure.objects.create(
             code='HIDDEN-EXEC',

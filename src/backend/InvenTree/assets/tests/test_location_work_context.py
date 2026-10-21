@@ -49,10 +49,11 @@ class LocationWorkContextTests(TestCase):
         work('low')
         work('high', 'on_hold')
         work('medium', 'in_progress')
-        # Not open, not active, or outside the reader's Work boundary.
+        # Not open or not active.
         work('high', 'completed')
         work('high', 'cancelled')
         work('high', is_active=False)
+        # O24: customer Work is shared with every Work viewer, so it counts.
         work(
             'high',
             customer=Company.objects.create(name='Other customer', is_customer=True),
@@ -69,7 +70,7 @@ class LocationWorkContextTests(TestCase):
         """Only open, active Work inside the canonical boundary counts."""
         rows = self.rows()
         self.assertEqual(
-            rows['Busy pump']['open_work'], {'count': 3, 'highest_priority': 'high'}
+            rows['Busy pump']['open_work'], {'count': 4, 'highest_priority': 'high'}
         )
         self.assertEqual(
             rows['Quiet pump']['open_work'], {'count': 0, 'highest_priority': None}
@@ -116,7 +117,7 @@ class LocationWorkContextTests(TestCase):
         """The counts belong to the page actually returned."""
         rows = self.rows(search='Busy')
         self.assertEqual(list(rows), ['Busy pump'])
-        self.assertEqual(rows['Busy pump']['open_work']['count'], 3)
+        self.assertEqual(rows['Busy pump']['open_work']['count'], 4)
         second_page = self.rows(limit=1, offset=1)
         self.assertEqual(list(second_page), ['Quiet pump'])
         self.assertEqual(second_page['Quiet pump']['open_work']['count'], 0)

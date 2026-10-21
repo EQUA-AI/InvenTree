@@ -1,5 +1,6 @@
 """P21 saved package projections do not establish physical authority."""
 
+from copy import deepcopy
 from types import SimpleNamespace
 
 from django.test import override_settings
@@ -7,6 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from assets.models import AssetMachine, get_default_client
+from company.models import Company
 from InvenTree.unit_test import InvenTreeAPITestCase
 from part.models import Part
 from repair.models import ApprovedRepairScope, RepairPacket
@@ -17,11 +19,12 @@ from tasks.models import (
     WorkOrderDeviation,
     WorkOrderProcedureApplication,
 )
+from tasks.scope import MaintenanceScope
 from tasks.work_execution.package import project
 
 
 @override_settings(
-    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.single_site_scope_resolver',
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER=None,
     AIMMS_PROCEDURES_ENABLED=True,
 )
 class PreparedPackageTest(InvenTreeAPITestCase):
@@ -35,12 +38,23 @@ class PreparedPackageTest(InvenTreeAPITestCase):
         self.machine = AssetMachine.objects.create(
             name='Package machine', client=get_default_client()
         )
+        self.customer = Company.objects.create(
+            name='Package procedure customer', is_customer=True
+        )
+        self.user.maintenance_scopes = {
+            MaintenanceScope(customer_id=None, site_key=None, client_id=self.machine.client_id),
+            MaintenanceScope(customer_id=self.customer.pk, site_key=None),
+        }
+        self.client.force_authenticate(self.user)
         self.work = WorkOrder.objects.create(title='Package work', machine=self.machine)
         self.packet = RepairPacket.objects.create(
             machine=self.machine, work_order=self.work, fault_summary='Inspect'
         )
         self.procedure = Procedure.objects.create(
-            code='PACKAGE', name='Mutable catalogue name', created_by=self.user
+            code='PACKAGE',
+            name='Mutable catalogue name',
+            customer=self.customer,
+            created_by=self.user,
         )
         self.revision = ProcedureRevision.objects.create(
             procedure=self.procedure,
@@ -147,6 +161,82 @@ class PreparedPackageTest(InvenTreeAPITestCase):
         self.application.refresh_from_db()
         self.assertEqual(self.application.snapshot, before)
 
+    def _publish_applied_revision(self):
+        """Make live drift evaluation meaningful without replacing saved content."""
+        self.revision.status = 'published'
+        self.revision.published_by = self.user
+        self.revision.published_at = timezone.now()
+        self.revision.save(update_fields=['status', 'published_by', 'published_at'])
+        self.procedure.current_revision = self.revision
+        self.procedure.save(update_fields=['current_revision'])
+        self.application.snapshot['revision']['revision'] = self.revision.revision
+        self.application.save(update_fields=['snapshot'])
+
+    def _assert_catalogue_withheld_and_snapshot_retained(self, before):
+        """A shared Work keeps saved requirements but supplies no live comparison."""
+        row = self.overview().data['prepared_package']['applications'][0]
+        self.assertIsNone(row['current_catalogue_code'])
+        self.assertIsNone(row['current_catalogue_name'])
+        self.assertEqual(row['drift_status'], 'not_evaluated')
+        self.assertEqual(row['drift_basis'], 'not_evaluated')
+        self.assertEqual(row['procedure_id'], before['procedure_id'])
+        self.assertEqual(row['revision_id'], before['revision_id'])
+        self.assertEqual(row['revision'], before['revision']['revision'])
+        self.assertEqual(row['change_summary'], before['revision']['change_summary'])
+        self.assertEqual(row['steps'], before['steps'])
+        self.assertEqual(
+            row['resources'],
+            [{**item, 'part_name': None} for item in before['resources']],
+        )
+        self.assertEqual(row['snapshot_hash'], self.application.snapshot_hash)
+        self.application.refresh_from_db()
+        self.assertEqual(self.application.snapshot, before)
+
+    def test_shared_work_withholds_foreign_live_procedure_catalogue(self):
+        """A shared applied snapshot is not access to its foreign live catalogue."""
+        foreign = Company.objects.create(name='Foreign procedure customer')
+        self.work.customer = foreign
+        self.work.save(update_fields=['customer'])
+        self.procedure.customer = foreign
+        self.procedure.save(update_fields=['customer'])
+        self._publish_applied_revision()
+        before = deepcopy(self.application.snapshot)
+        procedure_url = f'/api/tasks/procedures/{self.procedure.pk}/'
+        self.get(procedure_url, expected_code=404)
+        self._assert_catalogue_withheld_and_snapshot_retained(before)
+
+        self.procedure.code = 'FOREIGN-LIVE-RENAME'
+        self.procedure.name = 'Foreign live catalogue changed after application'
+        self.procedure.active = False
+        self.procedure.save(update_fields=['code', 'name', 'active'])
+        self.revision.status = 'archived'
+        self.revision.save(update_fields=['status'])
+        self._assert_catalogue_withheld_and_snapshot_retained(before)
+
+    def test_live_procedure_enrichment_rechecks_canonical_customer_scope(self):
+        """Fresh direct-reader authority gates labels and drift on every read."""
+        self.work.customer = self.customer
+        self.work.save(update_fields=['customer'])
+        self._publish_applied_revision()
+        before = deepcopy(self.application.snapshot)
+        procedure_url = f'/api/tasks/procedures/{self.procedure.pk}/'
+        self.get(procedure_url, expected_code=200)
+        row = self.overview().data['prepared_package']['applications'][0]
+        self.assertEqual(row['current_catalogue_code'], self.procedure.code)
+        self.assertEqual(row['current_catalogue_name'], self.procedure.name)
+        self.assertEqual(row['drift_status'], 'current')
+        self.assertEqual(row['drift_basis'], 'catalogue_at_read')
+
+        for scopes in (
+            {MaintenanceScope(customer_id=None, site_key=None, client_id=self.machine.client_id)},
+            set(),
+            {MaintenanceScope(customer_id=self.customer.pk, site_key='one-site')},
+        ):
+            with self.subTest(scopes=scopes):
+                self.user.maintenance_scopes = scopes
+                self.get(procedure_url, expected_code=404)
+                self._assert_catalogue_withheld_and_snapshot_retained(before)
+
     def test_scope_revisions_and_unresolved_deviation_are_retained(self):
         """Both scope versions and a deviation retain actors and reason."""
         ApprovedRepairScope.objects.create(
@@ -201,12 +291,19 @@ class PreparedPackageTest(InvenTreeAPITestCase):
         self.assertEqual(self.work.events.count(), events)
         self.assertEqual(self.work.deviations.count(), 0)
 
-    def test_parent_scope_is_required(self):
-        """A foreign explicit Work customer denies all child package data."""
+    def test_customer_parent_is_shared(self):
+        """O24 allows prepared Work package fields across customer values."""
         from company.models import Company
 
         self.work.customer = Company.objects.create(name='Foreign package customer')
         self.work.save(update_fields=['customer'])
+        self.overview(code=200)
+        # The boundary that remains: machine-only Work outside reader scope.
+        from assets.models import AssetMachine
+
+        self.work.customer = None
+        self.work.machine = AssetMachine.objects.create(name='Unresolved O24 parent')
+        self.work.save(update_fields=['customer', 'machine'])
         self.overview(code=404)
 
     def test_resource_part_name_is_catalogue_label_without_mutating_snapshot(self):

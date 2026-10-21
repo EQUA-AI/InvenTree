@@ -346,31 +346,46 @@ class PacketReceiptTest(packet_tests.PacketCloseoutApiTest):
         )
         self.assertEqual(response.data['code'], 'PACKET_OWNS_LIFECYCLE')
 
-    def test_revoked_scope_refuses_readiness_receipt_and_capture(self):
-        """The owning packet does not widen the original Work's scope."""
+    def test_revoked_machine_scope_refuses_packet_but_retains_shared_work_capture(self):
+        """O24 shares narrative capture, never packet close or machine-only Work."""
         packet_tests._GRANTED_CUSTOMER_IDS.clear()
+        packet_tests._GRANTED_CLIENT_IDS.clear()
         self.get(self.url, expected_code=404)
         self.post(self.url, self.body(), expected_code=404)
+        capture_url = f'/api/tasks/work-orders/{self.work_order.pk}/closeout/captures/'
+        intent = {
+            'expected_version': 1,
+            'idempotency_key': 'revoked',
+            'narrative': 'A shared Work narrative',
+        }
+        captured = self.post(capture_url, intent, expected_code=200)
+        self.assertEqual(CloseoutCapture.objects.count(), 1)
+        self.assertEqual(
+            CloseoutCapture.objects.get().pk, captured.data['metadata']['capture_id']
+        )
+        self.work_order.customer = None
+        self.work_order.save(update_fields=['customer'])
         self.post(
-            f'/api/tasks/work-orders/{self.work_order.pk}/closeout/captures/',
-            {
-                'expected_version': 1,
-                'idempotency_key': 'revoked',
-                'narrative': 'No authorized write',
-            },
+            capture_url,
+            {**intent, 'idempotency_key': 'machine-only'},
             expected_code=404,
         )
         self.assertFalse(WorkOrderCloseout.objects.exists())
-        self.assertFalse(CloseoutCapture.objects.exists())
+        self.assertEqual(CloseoutCapture.objects.count(), 1)
 
     def test_unrelated_and_unavailable_work_ids_have_identical_refusal_without_lock(
         self,
     ):
         """Work existence and tenant membership cannot be probed through a packet."""
-        from company.models import Company
+        from assets.models import AssetMachine, Client
 
-        tenant = Company.objects.create(name='Other tenant', is_customer=True)
-        foreign = WorkOrder.objects.create(title='Foreign', customer=tenant)
+        tenant = Client.objects.create(name='Other tenant', code='o24-receipt-other')
+        foreign = WorkOrder.objects.create(
+            title='Foreign',
+            machine=AssetMachine.objects.create(
+                name='O24 receipt foreign pump', client=tenant
+            ),
+        )
         unresolved = WorkOrder.objects.create(title='Unresolved scope')
         unrelated = WorkOrder.objects.create(title='Unrelated', customer=self.customer)
         missing = max(foreign.pk, unrelated.pk) + 100000

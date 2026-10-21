@@ -657,7 +657,11 @@ class RepairPacketStart(APIView):
     def get(self, request, pk):
         """Explain whether this repair can start, and what is blocking it."""
         packet = _get_packet(request.user, pk)
-        return Response(services.repair_start_readiness(packet, actor=request.user))
+        try:
+            readiness = services.repair_start_readiness(packet, actor=request.user)
+        except (ScopeError, WorkOrderScopeError):
+            raise Http404 from None
+        return Response(readiness)
 
     def post(self, request, pk):
         """Transition the packet and its work order into execution."""
@@ -682,18 +686,22 @@ class RepairPacketStart(APIView):
                 idempotency_key=data.get('idempotency_key') or uuid.uuid4().hex,
                 reason=data.get('reason', ''),
             )
+        except (ScopeError, WorkOrderScopeError):
+            raise Http404 from None
         except services.RepairStartError as exc:
             return Response({'code': exc.code, 'detail': str(exc)}, status=400)
         except ReadinessBlocked as exc:
             # The authoritative blocker list, so the UI shows the same reasons
             # the server used to refuse rather than a generic failure.
+            try:
+                readiness = services.repair_start_readiness(packet, actor=request.user)
+            except (ScopeError, WorkOrderScopeError):
+                raise Http404 from None
             return Response(
                 {
                     'code': 'READINESS_BLOCKED',
                     'detail': str(exc),
-                    'readiness': services.repair_start_readiness(
-                        packet, actor=request.user
-                    ),
+                    'readiness': readiness,
                 },
                 status=409,
             )
@@ -740,15 +748,18 @@ class MachineOpenRepairs(APIView):
             .order_by('-created_at')
         )
 
-        results = [
-            {
-                **services.repair_start_readiness(packet, actor=request.user),
-                'fault_summary': packet.fault_summary,
-                'criticality': packet.criticality,
-                'work_order_title': packet.work_order.title,
-            }
-            for packet in packets
-        ]
+        try:
+            results = [
+                {
+                    **services.repair_start_readiness(packet, actor=request.user),
+                    'fault_summary': packet.fault_summary,
+                    'criticality': packet.criticality,
+                    'work_order_title': packet.work_order.title,
+                }
+                for packet in packets
+            ]
+        except (ScopeError, WorkOrderScopeError):
+            raise Http404 from None
         return Response({'count': len(results), 'results': results})
 
 

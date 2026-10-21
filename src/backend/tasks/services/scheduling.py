@@ -7,12 +7,11 @@ Every command records a ``WorkOrderCommand`` (idempotency ledger) and a
 ``WorkOrderEvent`` (audit), reuses ``lifecycle_version`` as the optimistic
 concurrency token, and runs under a row lock.
 
-Scope note: unlike ``tasks.services.work_orders`` (the flagged canonical API),
-these commands do NOT impose customer scope via ``scope_for_actor``. The
-unflagged board they serve is gated by the ``work_order`` ruleset at the endpoint
-(RolePermission), and adding scope here would reject any actor without configured
-``maintenance_scopes`` — breaking ordinary board writes. Customer scoping stays a
-flagged-canonical-API concern until that surface is turned on.
+Creation and planning updates enforce native action/view roles and resulting
+Work scope inside their transactions. Newly attached machines require their own
+client scope (P32 contract B), locked before a creation or assignment; shared
+Work never supplies that authority. Other scheduling-family commands retain
+their existing endpoint/proposal authorization contracts.
 
 Deferred to S6 (semantics): working-time-aware span/duration math, done-column
 immutability, dependency commands, and same-machine conflict detection. The
@@ -29,6 +28,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import ProtectedError
 from django.utils import timezone
@@ -45,6 +45,7 @@ from tasks.models import (
     WorkOrderPart,
     WorkOrderType,
 )
+from tasks.scope import scoped_machines
 from tasks.services.calendars import spec_for_card
 
 # Reuse the canonical command primitives so the two services cannot drift on how
@@ -54,10 +55,12 @@ from tasks.services.work_orders import (
     IdempotencyConflict,
     StaleVersion,
     WorkOrderCommandError,
+    WorkOrderScopeError,
     _append_result,
     _canonical_hash,
     _locked_work_order,
     _replay_or_none,
+    _require_scope,
     _require_version,
     require_work_order_machine_change,
 )
@@ -195,6 +198,27 @@ def _new_correlation(correlation_id: uuid.UUID | None) -> uuid.UUID:
     return correlation_id or uuid.uuid4()
 
 
+def _authorize_creation(actor, machine_id, *, lock=False):
+    """Authorize a new machine assignment independently of any shared Work.
+
+    Preview and intake preflights do not hold machine locks before existing Work
+    locks. The transactional writer repeats this check with ``lock=True`` after
+    locking any current Work/origin and before changing any record.
+    """
+    from users.permissions import check_user_role
+
+    if not check_user_role(actor, 'work_order', 'add'):
+        raise PermissionDenied('Work creation requires work_order.add')
+    machines = scoped_machines(actor)
+    if lock:
+        machines = machines.select_for_update()
+    machine = machines.filter(pk=machine_id).first()
+    if machine is None:
+        raise WorkOrderScopeError('no such machine')
+    _require_scope(actor, WorkOrder(machine=machine))
+    return machine
+
+
 @transaction.atomic
 def create_work_order(
     *,
@@ -213,6 +237,7 @@ def create_work_order(
     """
     payload = {'title': title, 'machine_id': machine_id, **planning}
     request_hash = _canonical_hash('create', actor, payload)
+    _authorize_creation(actor, machine_id)
 
     routine_intent = planning.get('corrective_origin_kind') == 'routine_finding'
     origin_kind = planning.get('corrective_origin_kind')
@@ -266,9 +291,14 @@ def create_work_order(
             )
         # The command is FK'd to the card it created, so the card is prior's
         # work_order — result_ref holds the event pk, not the card pk.
-        existing = WorkOrder.objects.filter(pk=prior.work_order_id).first()
-        if existing is None:
-            raise WorkOrderCommandError('Stored create result cannot be replayed')
+        try:
+            existing = _locked_work_order(prior.work_order_id)
+        except WorkOrder.DoesNotExist as exc:
+            raise WorkOrderCommandError(
+                'Stored create result cannot be replayed'
+            ) from exc
+        _authorize_creation(actor, machine_id, lock=True)
+        _require_scope(actor, existing)
         if routine_intent:
             from rest_framework.exceptions import ValidationError
 
@@ -281,8 +311,6 @@ def create_work_order(
             ):
                 raise ValidationError(REFUSAL)
         if planning.get('recurrence_of'):
-            from tasks.services.work_orders import _require_scope
-
             _require_scope(actor, existing)
             return _replay_or_none(existing, idempotency_key, request_hash)
         return _result_for(existing, 'create', prior.correlation_id, idempotency_key)
@@ -305,7 +333,6 @@ def create_work_order(
             eligible_prior,
             reopen_blocker,
         )
-        from tasks.services.work_orders import _require_scope
 
         prior_work, occurrence = eligible_prior(
             actor=actor,
@@ -314,6 +341,7 @@ def create_work_order(
             prior_id=planning.get('recurrence_of'),
         )
         _require_scope(actor, prior_work)
+        machine = _authorize_creation(actor, machine_id, lock=True)
         if type(planning.get('prior_version')) is not int:
             raise InvalidSchedule('Prior Work version is required.')
         _require_version(prior_work, planning['prior_version'])
@@ -366,6 +394,9 @@ def create_work_order(
             )
         recurrence = (prior_work, occurrence)
 
+    if not recurrence_intent:
+        machine = _authorize_creation(actor, machine_id, lock=True)
+
     fields = {key: value for key, value in planning.items() if key in _PLAN_FIELDS}
     fields.setdefault('status', WorkOrder.STATUS_BACKLOG)
     fields.setdefault('priority', WorkOrder.PRIORITY_MEDIUM)
@@ -397,9 +428,9 @@ def create_work_order(
     correlation_id = _new_correlation(correlation_id)
 
     with transaction.atomic():
-        work_order = WorkOrder.objects.create(
-            title=title, machine_id=machine_id, **fields
-        )
+        work_order = WorkOrder(title=title, machine=machine, **fields)
+        _require_scope(actor, work_order)
+        work_order.save()
         if recurrence:
             recurrence[1].work_order = work_order
             recurrence[1].save(update_fields=['work_order', 'updated_at'])
@@ -456,6 +487,7 @@ def _mutate(
     event_type: str,
     payload: dict[str, Any],
     apply,
+    authorize=None,
     reason: str = '',
     correlation_id: uuid.UUID | None = None,
 ) -> CommandResult:
@@ -471,6 +503,9 @@ def _mutate(
 
     with transaction.atomic():
         work_order = _locked_work_order(work_order_id)
+
+        if authorize is not None:
+            authorize(work_order)
 
         replay = _replay_or_none(work_order, idempotency_key, request_hash)
         if replay:
@@ -501,6 +536,33 @@ def _mutate(
         )
 
 
+def _authorize_plan_update(actor, work_order, fields):
+    """Require Work view/change, the existing Work, and its proposed machine.
+
+    This also authorizes the resulting Work before an idempotent replay can
+    return. A shared Work's unchanged machine identity remains permitted; only
+    a newly selected machine requires its own client grant.
+    """
+    from users.permissions import check_user_role
+
+    if not check_user_role(actor, 'work_order', 'change'):
+        raise PermissionDenied('Planning updates require work_order.change')
+    _require_scope(actor, work_order)
+    machine = work_order.machine
+    machine_id = fields.get('machine_id', work_order.machine_id)
+    if machine_id != work_order.machine_id:
+        if machine_id is None:
+            machine = None
+        else:
+            machine = (
+                scoped_machines(actor).select_for_update().filter(pk=machine_id).first()
+            )
+            if machine is None:
+                raise WorkOrderScopeError('no such machine')
+    candidate = WorkOrder(customer_id=work_order.customer_id, machine=machine)
+    _require_scope(actor, candidate)
+
+
 def update_work_order_plan(
     *,
     work_order_id: int,
@@ -510,7 +572,7 @@ def update_work_order_plan(
     fields: dict[str, Any],
     correlation_id: uuid.UUID | None = None,
 ) -> CommandResult:
-    """Update planning metadata (title, description, priority, machine, type, …)."""
+    """Update planning metadata under native Work view/change and scope checks."""
     allowed = {key: value for key, value in fields.items() if key in _PLAN_FIELDS}
 
     if not allowed:
@@ -529,6 +591,7 @@ def update_work_order_plan(
             )
         for key, value in allowed.items():
             setattr(work_order, key, value)
+        _require_scope(actor, work_order)
         return {'updated_fields': sorted(allowed)}, list(allowed)
 
     return _mutate(
@@ -540,6 +603,7 @@ def update_work_order_plan(
         event_type='PLAN_UPDATED',
         payload={'fields': allowed, 'expected_version': expected_version},
         apply=apply,
+        authorize=lambda work_order: _authorize_plan_update(actor, work_order, allowed),
         correlation_id=correlation_id,
     )
 

@@ -6,7 +6,7 @@ changes responsibility. Physical/service and cross-crew authority stay separate.
 
 from django.conf import settings
 
-from .common import packet_of, person
+from .common import person
 
 
 def handover_summary(work_order, actor=None):
@@ -106,12 +106,13 @@ def project(work_order, actor=None):
         .select_related('actor')
         .order_by('-created_at', '-pk')
     )
-    packet = packet_of(work_order)
+    # Withheld packet details do not transfer lifecycle ownership to Work.
+    packet_owned = hasattr(work_order, 'repair_packet')
     enabled = bool(getattr(settings, 'AIMMS_WORK_ORDERS_ENABLED', False))
     permitted = bool(
         actor and actor.is_authenticated and actor.has_perm('tasks.execute_workorder')
     )
-    eligible = enabled and permitted and packet is None
+    eligible = enabled and permitted and not packet_owned
     latest = events[0] if events else None
     # A current hold reason may exist without a matching native audit event.
     # Do not borrow a recorder/time when reason or transition provenance differs.
@@ -166,7 +167,7 @@ def project(work_order, actor=None):
             else 'permission_required'
             if not permitted
             else 'packet_owns_lifecycle'
-            if packet
+            if packet_owned
             else None,
         },
         'assignment_acceptance': {

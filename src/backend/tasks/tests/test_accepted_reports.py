@@ -175,11 +175,47 @@ class AcceptedReportTests(CloseoutEnvMixin, TestCase):
         self,
     ):
         """The advertised digest is reproducible from downloaded UTF-8 bytes."""
+        from part.models import Part
+        from stock.models import StockItem
+        from tasks.closeout_models import CloseoutPartUsage
+
+        part = Part.objects.create(name='Recorded report material')
+        stock = StockItem.objects.create(part=part, quantity=2)
+        stock.take_stock(1, self.actor, notes='Accepted Work account')
+        tracking = stock.tracking_info.order_by('-pk').first()
+        usage = CloseoutPartUsage.objects.create(
+            work_order=self.work_order,
+            part=part,
+            stock_item=stock,
+            stock_tracking_id=tracking.pk,
+            used_quantity=1,
+            disposition='installed',
+            source='walkup',
+            state='reconciled',
+        )
         self.work_order.title = 'Synthetic 測定'
         self.work_order.save()
         self.complete()
         report = AcceptedCloseoutReport.objects.get()
-        response = self.client.get(report_url(report))
+        self.assertEqual(report.document['materials'][0]['id'], usage.pk)
+        self.assertEqual(report.document['materials'][0]['stock_item'], stock.pk)
+        self.assertEqual(
+            report.document['materials'][0]['stock_tracking_id'], tracking.pk
+        )
+        # O24 shares the frozen Work document. It cannot change with the
+        # reader's stock role or grant, nor authorize live Stock resources.
+        reader = self.make_scoped_user('report-content-viewer')
+        reader.maintenance_scopes = set()
+        self.client.force_authenticate(reader)
+        with self.settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=None):
+            response = self.client.get(report_url(report))
+            live = self.client.get(
+                f'/api/tasks/work-orders/{self.work_order.pk}/closeout/part-usage/'
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(live.status_code, 200)
+        self.assertIsNone(live.data[0]['stock_item'])
+        self.assertIsNone(live.data[0]['stock_tracking_id'])
         exported = response.data['canonical_export'].encode('utf-8')
         self.assertEqual(hashlib.sha256(exported).hexdigest(), report.content_hash)
         self.assertEqual(
@@ -554,8 +590,8 @@ class AcceptedReportTests(CloseoutEnvMixin, TestCase):
         voice.save()
         self.assertEqual(upload().status_code, 404)
 
-    def test_foreign_and_revoked_scope_cannot_read_reports_or_media(self):
-        """Every read reauthorizes the current Work boundary."""
+    def test_shared_reports_survive_client_revocation_but_machine_only_ones_do_not(self):
+        """Originals and reports follow the current Work boundary on every read."""
         self.complete()
         report = AcceptedCloseoutReport.objects.get()
         original = retain_original(
@@ -569,6 +605,12 @@ class AcceptedReportTests(CloseoutEnvMixin, TestCase):
         outsider = self.make_scoped_user('outsider')
         outsider.maintenance_scopes = set()
         self.client.force_authenticate(outsider)
+        self.assertEqual(self.client.get(report_url(report)).status_code, 200)
+        shared_media = self.client.get(media)
+        self.assertEqual(shared_media.status_code, 200)
+        self.assertEqual(b''.join(shared_media.streaming_content), b'bytes')
+        self.work_order.customer = None
+        self.work_order.save(update_fields=['customer'])
         self.assertEqual(self.client.get(report_url(report)).status_code, 404)
         self.assertEqual(self.client.get(media).status_code, 404)
         self.client.force_authenticate(None)

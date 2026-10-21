@@ -188,6 +188,14 @@ class RiskEnvMixin:
         self.actor = User.objects.create_user(
             username='risk-actor', email='actor@example.com', password='pw'
         )
+        from django.contrib.auth.models import Group
+
+        group = Group.objects.create(name=f'Risk Work viewers {suffix}')
+        rule = group.rule_sets.get(name='work_order')
+        rule.can_view = True
+        rule.save()
+        self.service.groups.add(group)
+        self.actor.groups.add(group)
         SCOPES_BY_USERNAME.clear()
         SCOPES_BY_USERNAME['risk-service'] = {self.scope, self.client_scope}
         SCOPES_BY_USERNAME['risk-actor'] = {self.scope, self.client_scope}

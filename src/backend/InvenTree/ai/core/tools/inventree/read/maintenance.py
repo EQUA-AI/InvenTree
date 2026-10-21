@@ -252,15 +252,18 @@ async def get_work_order_repair_state(work_order_id: int) -> dict[str, Any]:
     def _fetch():
         from tasks import ai_read
 
-        _user, work_order = _resolve(work_order_id)
+        user, work_order = _resolve(work_order_id)
         if work_order is None:
             return None
         from ai.core.analysis.scope_context import scope_miss_for_machine
+        from tasks.scope import work_machine_authorized
 
         miss = scope_miss_for_machine(work_order.machine_id)
         if miss is not None:
             return miss
-        return ai_read.work_order_repair_state(work_order)
+        return ai_read.work_order_repair_state(
+            work_order, machine_authorized=work_machine_authorized(user, work_order)
+        )
 
     result = await _fetch()
     return result if result is not None else {"error": _NOT_FOUND}

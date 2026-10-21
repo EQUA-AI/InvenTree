@@ -43,7 +43,9 @@ def attachment_rows(rows, *, user, corpus):
     try:
         clients = client_codes_for_actor(actor)
     except ScopeError:
-        return []
+        # A client grant remains mandatory for machine/part evidence. Shared
+        # Work evidence is authorized from its current native owner below.
+        clients = frozenset()
     if corpus == "attachment":
         arms = ("part", "assetmachine") if fresh_role(actor, "part") else ("assetmachine",)
         index_name = settings.azure_search_attachment_docs_index
@@ -58,7 +60,13 @@ def attachment_rows(rows, *, user, corpus):
             row, corpus=corpus, index_name=index_name
         ):
             continue
-        if not set(row.get("client_codes") or ()).intersection(clients):
+        if row.get("model_type") in {"workorder", "workorderstepexecution"}:
+            from common.models import Attachment
+
+            attachment = Attachment.objects.filter(pk=row.get("attachment_id")).first()
+            if attachment is None or not native_attachment_owner(actor, attachment):
+                continue
+        elif not set(row.get("client_codes") or ()).intersection(clients):
             continue
         accepted.append(row)
     return accepted
@@ -124,12 +132,26 @@ def native_attachment_owner(actor, attachment):
                 return False
             require_machine_scope(actor, machine)
             return True
-        if attachment.model_type == "workorder":
+        if attachment.model_type in {"workorder", "workorderstepexecution"}:
             from tasks.models import WorkOrder
 
-            work_order = (
-                WorkOrder.objects.select_related("machine").filter(pk=attachment.model_id).first()
-            )
+            if attachment.model_type == "workorder":
+                work_order = (
+                    WorkOrder.objects
+                    .select_related("machine")
+                    .filter(pk=attachment.model_id)
+                    .first()
+                )
+            else:
+                from tasks.procedure_models import WorkOrderStepExecution
+
+                execution = (
+                    WorkOrderStepExecution.objects
+                    .select_related("application__work_order__machine")
+                    .filter(pk=attachment.model_id)
+                    .first()
+                )
+                work_order = execution.application.work_order if execution else None
             if work_order is None:
                 return False
             require_work_order_scope(actor, work_order)

@@ -16,6 +16,19 @@ from users.permissions import check_user_role
 TERMINAL = ('consumed', 'returned', 'released', 'exception')
 
 
+def can_read_work_stock(actor, work_order):
+    """Stock identity requires stock view and the Work machine's client scope.
+
+    Shared customer Work is not a grant to inspect another client's stock
+    reservations, serials, locations or fitted-item records.
+    """
+    from tasks.scope import work_machine_authorized
+
+    if not check_user_role(actor, 'stock', 'view'):
+        return False
+    return work_machine_authorized(actor, work_order)
+
+
 def _person(user):
     """A recorder's display name, or None when nobody is recorded."""
     if user is None:
@@ -72,10 +85,12 @@ def _tracking(ids):
     }
 
 
-def _usage_row(row, visible):
+def _usage_row(row, visible, work_order):
     from assets.recorded_facts import fit_row
 
     fit = getattr(row, 'componentfit', None) if visible else None
+    if fit is not None and fit.component.machine_id != work_order.machine_id:
+        fit = None
     return {
         'fitted_record': fit_row(fit) if fit else None,
         'id': row.pk,
@@ -94,18 +109,24 @@ def _usage_row(row, visible):
     }
 
 
-def _component(work_order):
+def _component(work_order, actor):
     """The registry slot the job names, when the machine holds one."""
     from assets.registry_models import AssetComponent
 
     ref = (work_order.affected_component_ref or '').strip()
     if not ref:
         return None
+    from tasks.scope import work_machine_authorized
+
     slot = (
-        AssetComponent.objects
-        .filter(machine_id=work_order.machine_id, code=ref)
-        .only('pk', 'code', 'name', 'machine_id')
-        .first()
+        (
+            AssetComponent.objects
+            .filter(machine_id=work_order.machine_id, code=ref)
+            .only('pk', 'code', 'name', 'machine_id')
+            .first()
+        )
+        if work_machine_authorized(actor, work_order)
+        else None
     )
     return {
         'ref': ref,
@@ -120,12 +141,13 @@ def material_readout(actor, work_order) -> dict:
     from tasks.closeout_models import CloseoutPartUsage
     from tasks.jobkit_models import JobKit
 
-    visible = check_user_role(actor, 'stock', 'view')
+    visible = can_read_work_stock(actor, work_order)
     kits_enabled = bool(getattr(settings, 'AIMMS_JOB_KITS_ENABLED', False))
 
     usage_query = CloseoutPartUsage.objects.filter(work_order=work_order)
     if visible:
         usage_query = usage_query.select_related(
+            'componentfit__component',
             'componentfit__recorded_by',
             'componentfit__verified_by',
             'componentfit__retracted_by',
@@ -141,7 +163,7 @@ def material_readout(actor, work_order) -> dict:
         if row.allocation_id:
             usage_by_allocation.setdefault(row.allocation_id, []).append(row)
         else:
-            loose_usage.append(_usage_row(row, visible))
+            loose_usage.append(_usage_row(row, visible, work_order))
 
     kit = None
     if kits_enabled:
@@ -201,13 +223,15 @@ def material_readout(actor, work_order) -> dict:
                             'status': allocation.status,
                             'by': _person(track.user) if track else None,
                             'at': _when(allocation.disposed_at),
-                            'tracking_id': allocation.stock_tracking_id,
+                            'tracking_id': allocation.stock_tracking_id
+                            if visible
+                            else None,
                         }
                         if allocation.status in TERMINAL
                         else None
                     ),
                     'usage': [
-                        _usage_row(row, visible)
+                        _usage_row(row, visible, work_order)
                         for row in usage_by_allocation.get(allocation.pk, [])
                     ],
                 })
@@ -267,7 +291,7 @@ def material_readout(actor, work_order) -> dict:
         'source': 'job_kit' if kit is not None else 'requirements',
         'kits_enabled': kits_enabled,
         'stock_visible': visible,
-        'component': _component(work_order),
+        'component': _component(work_order, actor),
         'requirements': requirements,
         'unmatched_usage': loose_usage,
     }
