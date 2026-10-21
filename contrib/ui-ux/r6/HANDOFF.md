@@ -11,6 +11,22 @@
 
 This file is the durable resumption point. Do not depend on the preceding chat, redo all research, or infer completion from source inspection.
 
+## Latest checkpoint — 21 October 2026, early morning (Claude Code coordinating Codex and Hyperagent)
+
+Read this first; older sections below are history.
+
+**Integrated line:** `inventTree-aniket` now merges every R6 batch: P51, P47, build/guard fixes, O15 process (P42-P44, P50), P40 Health, P32 permission matrix, P26 packet receipt, P02 canonical context and focus, O15 authority (B1-B3), O15 data (D1-D5), O15 media (E1-E2), O20 calibration, O21 routine-fault link, P31 Work-side responsive/accessibility pass, plus integration fixes (integration-1, integration-2). Tasks migrations 0033-0038 are joined by 0039_merge_r6_parallel and 0040_merge_r6_o21 (local only, never applied to Azure). `sprint-backlog.csv` statuses are updated to this state.
+
+**Still on branches, not merged:** `r6/design-pass` (S8-01 part 1 machine screens, Hyperagent round-1 fixes in progress), `r6/design-pass-2` (S8-01 part 2 Health/Performance, committed bfa6e8638, Hyperagent round-1 fixes in progress), `r6/work-uplift` (Work-workspace uplift for the Hyperagent gate, in progress).
+
+**Hyperagent gate (O22):** both Mantine & InvenTree Frontend Engineer agents must score each screen batch 95+/100. Round-1 scores: Work workspace Opus 38 / Gemini 58; machine screens Opus 46 / Gemini 64; Health and Performance Opus 44 / Gemini 74. Reconciled fix specs: session scratchpad `hyper/<batch>/synthesis.md` or `fix-spec.md`. Rescoring follows each fix round.
+
+**Verification notes:** host checks run on macOS Chromium on the GPU via git-excluded `playwright.gpu-*.config.ts` wrappers with a Vite warm-up. Three pixel-equality 3D control cases in S2 are renderer-sensitive on this Mac and also fail without R6 changes. Backend on the merged line: `tasks repair assets machine_health users` plus focus suites; the remaining 3 alarm-notification failures and 6 onboarding errors ("Invalid physical unit") reproduce identically on the pre-R6 base. The offline runner now mounts repository data read-only (contrib/cosmos, contrib/pump-cassandra, the dev compose file, mimic SVGs).
+
+**Owner decisions waiting:** (1) customer-attributed Work is unreachable under the production scope resolver (1,393 of 1,550 orders in the Azure copy; 3 orders have neither customer nor machine) - decide before deployment; (2) deployment hand-over (O19) to someone with Container App and registry access, at 1 vCPU / 2 GiB (O18), with a backup first and the Azure Files share for E1; (3) the owner's manual review of the three review branches (A6) before any pull request. P34 also needs the real spare's details (O23) and P36 the deployed build; P48 waits on hardware (A5).
+
+**Next:** finish the three branches above, merge them, rescore with Hyperagent until both agents reach 95, then the full replay of every sprint (P35) and the three review branches.
+
 ## Read order and authoritative state
 
 1. Root `AGENTS.md` and `CONTRIBUTING.md`.
