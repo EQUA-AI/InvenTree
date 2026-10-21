@@ -48,11 +48,20 @@ function lifecycleLabel(state: string) {
 }
 
 function HoldResumeRecord({
-  workOrder
-}: Readonly<{ workOrder: WorkOrderOverview }>) {
+  workOrder,
+  onRecoveryNeeded
+}: Readonly<{ workOrder: WorkOrderOverview; onRecoveryNeeded?: () => void }>) {
   const controller = useContinuityCommand(workOrder.id);
   const [reason, setReason] = useState('');
   const { state } = controller;
+  useEffect(() => {
+    if (
+      ['pending', 'uncertain', 'stale', 'failed', 'blocked'].includes(
+        state.status
+      )
+    )
+      onRecoveryNeeded?.();
+  }, [state.status, onRecoveryNeeded]);
   const resultFocus = useActionFocus(state.status === 'pending');
   const confirmedEventId =
     state.status === 'confirmed' ? state.receipt.event_id : null;
@@ -300,8 +309,9 @@ function PendingRequest({
 
 /** Six-question handover brief assembled from saved Work facts, never an acceptance. */
 export function WorkContinuity({
-  workOrder
-}: Readonly<{ workOrder: WorkOrderOverview }>) {
+  workOrder,
+  onRecoveryNeeded
+}: Readonly<{ workOrder: WorkOrderOverview; onRecoveryNeeded?: () => void }>) {
   const [params] = useSearchParams();
   const value =
     workOrder.work_continuity?.rule === 'work_continuity.v1'
@@ -309,10 +319,9 @@ export function WorkContinuity({
       : null;
   if (!value)
     return (
-      <Alert
-        color='gray'
-        title={t`Work continuity not supplied`}
-      >{t`This server does not supply hold provenance or site handover acceptance here. Assignment and opening a panel do not establish accepted responsibility or physical permission.`}</Alert>
+      <Text size='sm' data-testid='work-continuity-not-supplied'>
+        {t`Work continuity is not supplied by this server. See “Not supplied by this server” at the end of this panel.`}
+      </Text>
     );
   const requests = workOrder.investigation?.requests;
   const pending =
@@ -341,7 +350,7 @@ export function WorkContinuity({
         <Text size='sm'>{t`Saved context for this Work; review before a shift change or resume.`}</Text>
       </Group>
       {hold && (
-        <Alert color='orange' title={t`Recorded hold reason`}>
+        <Alert role='note' color='orange' title={t`Recorded hold reason`}>
           <Stack gap={4}>
             <Text size='sm'>
               {value?.current_hold?.reason || t`Not recorded`}
@@ -382,6 +391,7 @@ export function WorkContinuity({
         )}
         <Anchor
           component={Link}
+          replace
           size='sm'
           to={to('diagnose')}
         >{t`Open investigation and original evidence`}</Anchor>
@@ -393,28 +403,16 @@ export function WorkContinuity({
               fw={600}
               size='sm'
             >{t`Physical state and safe boundary`}</Text>
-            <SimpleGrid cols={{ base: 1, sm: 2 }}>
-              <ExecutionFact
-                label={t`Equipment physical state`}
-              >{t`Not recorded`}</ExecutionFact>
-              <ExecutionFact
-                label={t`Service / standby availability`}
-              >{t`Not recorded`}</ExecutionFact>
-              <ExecutionFact
-                label={t`Current hazards / prohibited actions`}
-              >{t`Not recorded`}</ExecutionFact>
-              <ExecutionFact
-                label={t`Operating window / access authority`}
-              >{t`Not recorded`}</ExecutionFact>
-            </SimpleGrid>
-            <Text size='sm'>{t`No connected provider supplies these current facts. Prepared gates, a restored lockout point or a Work status do not establish permission to act.`}</Text>
+            <Text size='sm'>{t`Prepared gates, a restored lockout point or a Work status do not establish permission to act. Review the attributed authority in its owning panel; missing current facts remain unknown.`}</Text>
             <Anchor
               component={Link}
+              replace
               size='sm'
               to={to('plan')}
             >{t`Review recorded boundaries and scope`}</Anchor>
             <Anchor
               component={Link}
+              replace
               size='sm'
               to={to('verify')}
             >{t`Open saved tests and return records`}</Anchor>
@@ -463,16 +461,19 @@ export function WorkContinuity({
               <Text size='sm'>{t`Installed material state: Not recorded. Requirement, reservation, issue and use remain separate facts in Parts for this job.`}</Text>
               <Anchor
                 component={Link}
+                replace
                 to={to('parts')}
                 size='sm'
               >{t`Review material reservations, issues and recorded use`}</Anchor>
               <Anchor
                 component={Link}
+                replace
                 to={to('verify')}
                 size='sm'
               >{t`Review recorded verification results`}</Anchor>
               <Anchor
                 component={Link}
+                replace
                 to={to('history')}
                 size='sm'
               >{t`Open attributed Work history`}</Anchor>
@@ -548,7 +549,8 @@ export function WorkContinuity({
                       size='sm'
                       to={`/maintenance/work-orders/${dependency.card.id}/`}
                     >
-                      {dependency.card.reference || `WO-${dependency.card.id}`}{' '}
+                      {dependency.card.reference ||
+                        t`Work order ${dependency.card.id}`}{' '}
                       · {dependency.card.title}
                     </Anchor>
                     <Text size='sm'>
@@ -576,7 +578,10 @@ export function WorkContinuity({
           </Accordion.Panel>
         </Accordion.Item>
       </Accordion>
-      <HoldResumeRecord workOrder={workOrder} />
+      <HoldResumeRecord
+        workOrder={workOrder}
+        onRecoveryNeeded={onRecoveryNeeded}
+      />
     </ExecutionSection>
   );
 }
@@ -639,6 +644,7 @@ export function WorkContinuityConstraints({
     return null;
   return (
     <Alert
+      role='note'
       color='orange'
       title={t`Saved hold and request constraints`}
       data-testid='continuity-constraints'
@@ -668,6 +674,7 @@ export function WorkContinuityConstraints({
         <Text size='sm'>{t`These requests keep their own scope and unresolved status. Their relationship to other executable tasks or permissions is not recorded.`}</Text>
         <Anchor
           component={Link}
+          replace
           size='sm'
           to={`?${workPanelParams(params, 'work')}`}
         >{t`Review continuity brief and pending owners`}</Anchor>

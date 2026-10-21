@@ -20,6 +20,7 @@ import { useApi } from '../../../contexts/ApiContext';
 import { useVoiceCapture } from '../../../hooks/useVoiceCapture';
 import { OriginalMedia } from './OriginalMedia';
 import { useOriginalRecording } from './useOriginalRecording';
+import workClasses from './workCompanion.module.css';
 
 /**
  * B4 (S32b): dictate a closeout narrative through the governed voice-capture
@@ -150,6 +151,7 @@ export default function DictateCloseoutModal({
   return (
     <Modal
       opened={opened}
+      classNames={{ content: workClasses.workTokens }}
       onClose={async () => {
         if (voice.busy || uploading) return;
         recording.reset();

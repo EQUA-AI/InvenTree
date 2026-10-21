@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { nativeBaseline } from '../s0/guards';
 import { mockWorkList, openWorkList } from '../s1/workListFixtures';
 import { continuityWork } from '../s4/continuityFixtures';
+import { revealWorkContext } from '../s4/workExecutionFixtures';
 import { openExecutionPanel } from '../s4/workExecutionFixtures';
 import { closeoutWork } from '../s6/closeoutFixtures';
 import { phoneAssistant } from '../s7/phoneCompanionFixtures';
@@ -189,6 +190,7 @@ test('D7 an unrelated storage event cannot reuse a completed command focus targe
     });
   });
   await openExecutionPanel(page, 'work');
+  await revealWorkContext(page, 'Continuity and handover');
   await page
     .getByLabel('Reason for hold', { exact: true })
     .fill('Synthetic local hold.');

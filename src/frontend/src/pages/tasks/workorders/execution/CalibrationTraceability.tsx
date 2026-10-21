@@ -23,6 +23,7 @@ import { useApi } from '../../../../contexts/ApiContext';
 import { generateUrl } from '../../../../functions/urls';
 import { useLocalState } from '../../../../states/LocalState';
 import { useUserState } from '../../../../states/UserState';
+import workClasses from '../workCompanion.module.css';
 import {
   ExecutionFact,
   executionBadgeStyles,
@@ -449,6 +450,7 @@ export function CalibrationTraceability({
       {canRecord && revisions && (
         <Modal
           opened={opened}
+          classNames={{ content: workClasses.workTokens }}
           onClose={() => {
             if (!commandLocked) setOpened(false);
           }}

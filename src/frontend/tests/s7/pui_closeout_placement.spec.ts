@@ -64,9 +64,11 @@ for (const scheme of ['light', 'dark'] as const) {
       })
     ).toBeHidden();
     await page
-      .getByTestId('closeout-link')
-      .filter({ visible: true })
-      .getByRole('link', { name: 'Open Closeout', exact: true })
+      .getByTestId('work-brief')
+      .getByRole('link', {
+        name: 'View maintenance account and report',
+        exact: true
+      })
       .click();
     await expect(action).toBeEnabled();
     await account.getByText('Read report', { exact: true }).click();

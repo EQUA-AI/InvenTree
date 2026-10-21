@@ -13,12 +13,14 @@ export function WorkPanelNavigation({
   panels,
   reference,
   navigationRef,
-  authority
+  authority,
+  inline = false
 }: Readonly<{
   panels: readonly { name: WorkPanel; label: string }[];
   reference: string;
   navigationRef: Ref<HTMLDivElement>;
   authority?: OperationalAuthority;
+  inline?: boolean;
 }>) {
   const [params] = useSearchParams();
   const [now, setNow] = useState(Date.now);
@@ -79,9 +81,11 @@ export function WorkPanelNavigation({
       ref={navigationRef}
       className={classes.navigation}
       data-testid='work-panel-navigation'
+      data-inline-navigation={inline || undefined}
     >
       {/* Recorded facts are not permission to work; Plan & Safety owns the checks. */}
       <Anchor
+        replace
         component={Link}
         to={`?${workPanelParams(params, 'plan')}`}
         className={classes.boundary}

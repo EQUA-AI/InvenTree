@@ -92,11 +92,11 @@ for (const scheme of ['light', 'dark'] as const) {
     );
     await page.getByRole('tab', { name: 'Work', exact: true }).click();
     await expect(
-      panelRegion(page, 'Work').getByTestId('work-brief')
+      panelRegion(page, 'Work').getByTestId('service-restoration')
     ).toContainText('Synthetic standby unavailable');
     await captureAuthorityRegion(
       page,
-      panelRegion(page, 'Work').getByTestId('work-brief'),
+      panelRegion(page, 'Work').getByTestId('service-restoration'),
       info.outputPath(`authority-outcome-section-${scheme}.png`)
     );
   });

@@ -27,6 +27,7 @@ export function HandoverAcceptance({
   return (
     <Stack gap='xs' data-testid='handover-acceptance'>
       <Alert
+        role='note'
         color={value.state === 'pending' ? 'orange' : 'blue'}
         title={
           value.state === 'pending'

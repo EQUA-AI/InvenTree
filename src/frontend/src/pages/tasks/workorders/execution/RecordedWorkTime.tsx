@@ -16,18 +16,28 @@ import {
   TextInput,
   Textarea
 } from '@mantine/core';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { RecordCommandState } from '../../../../components/records/RecordCommandState';
 import { useRecordedCommand } from '../../../../components/records/useRecordedCommand';
 import { useUserState } from '../../../../states/UserState';
-import { recordedTime } from './ExecutionFacts';
+import { WarningText, recordedTime } from './ExecutionFacts';
+
+/**
+ * Native focus scrolling keeps these controls above the fixed phone dock. The
+ * clearance is the measured navigation height on a docked phone, a small
+ * margin with inline navigation, and zero on desktop (workCompanion.module.css).
+ */
+const DOCK_CLEARANCE = {
+  scrollMarginBottom: 'var(--work-dock-clearance, 0px)'
+};
 
 export function workTimeEndpoint(id: number) {
   return `${apiUrl(ApiEndpoints.work_order_list)}${id}/time/`;
 }
 export function RecordedWorkTime({
-  workOrder
-}: Readonly<{ workOrder: WorkOrderOverview }>) {
+  workOrder,
+  onRecoveryNeeded
+}: Readonly<{ workOrder: WorkOrderOverview; onRecoveryNeeded?: () => void }>) {
   const user = useUserState();
   const [saved, setSaved] = useState<TimeResult | null>(null);
   const source = workOrder.time_assignment?.time_records;
@@ -49,6 +59,9 @@ export function RecordedWorkTime({
     (row) => row.person_id === user.user?.pk && !row.ended_at
   );
   const locked = command.pending || !!command.retained;
+  useEffect(() => {
+    if (locked) onRecoveryNeeded?.();
+  }, [locked, onRecoveryNeeded]);
   return (
     <Stack gap='sm' data-testid='recorded-work-time'>
       {value?.intervals.length ? (
@@ -130,21 +143,14 @@ export function RecordedWorkTime({
         </>
       )}
       {value?.open_at_closure && (
-        <Text
-          c='orange'
-          fw={600}
-          size='sm'
-        >{t`Work is closed with an open interval. Time stops at recorded closure; a supervisor must correct the interval. Missing closure time leaves the total unknown.`}</Text>
+        <WarningText>{t`Work is closed with an open interval. Time stops at recorded closure; a supervisor must correct the interval. Missing closure time leaves the total unknown.`}</WarningText>
       )}
       {user.hasChangeRole(UserRoles.work_order) && (
         <Group
           data-testid='work-time-controls'
           grow
           preventGrowOverflow={false}
-          style={{
-            scrollMarginBottom:
-              'calc(var(--aimms-work-dock-height, 96px) + env(safe-area-inset-bottom))'
-          }}
+          style={DOCK_CLEARANCE}
         >
           <Button
             disabled={
@@ -152,6 +158,7 @@ export function RecordedWorkTime({
               !!ownOpen ||
               ['completed', 'canceled'].includes(workOrder.lifecycle_status)
             }
+            style={DOCK_CLEARANCE}
             onClick={() => command.submit('start', {}, version)}
           >{t`Start work`}</Button>
           <Button
@@ -161,6 +168,7 @@ export function RecordedWorkTime({
               !ownOpen ||
               ['completed', 'canceled'].includes(workOrder.lifecycle_status)
             }
+            style={DOCK_CLEARANCE}
             onClick={() => command.submit('pause', {}, version)}
           >{t`Pause work`}</Button>
           <Button
@@ -170,6 +178,7 @@ export function RecordedWorkTime({
               !ownOpen ||
               ['completed', 'canceled'].includes(workOrder.lifecycle_status)
             }
+            style={DOCK_CLEARANCE}
             onClick={() => command.submit('stop', {}, version)}
           >{t`Stop work`}</Button>
         </Group>

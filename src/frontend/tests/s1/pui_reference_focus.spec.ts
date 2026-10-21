@@ -315,11 +315,14 @@ for (const scheme of ['light', 'dark'])
       .getByRole('tabpanel', { name: 'Verify & Return', exact: true })
       .getByTestId('service-restoration');
     await expect(service).toContainText(
-      'Authority and service records: Not recorded'
+      'Service restoration is not established by Work completion.'
     );
-    await expect(service.locator('[data-service-state]')).toHaveAttribute(
-      'data-service-state',
-      'not_recorded'
+    const gaps = page
+      .getByRole('tabpanel', { name: 'Verify & Return', exact: true })
+      .getByTestId('not-supplied');
+    await gaps.getByRole('button').click();
+    await expect(gaps).toContainText(
+      'Test acceptance, operating permission, observed return, required service and standby capacity: authoritative records are not supplied by this server.'
     );
     await service.scrollIntoViewIfNeeded();
     await page.screenshot({

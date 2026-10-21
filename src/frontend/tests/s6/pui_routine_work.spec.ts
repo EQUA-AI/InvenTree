@@ -98,7 +98,8 @@ for (const type of ['preventive', 'inspection', 'calibration']) {
       );
       await expect(section).toContainText('synthetic-step-1');
       await expect(section).toContainText('a'.repeat(64));
-      await expect(section).toContainText('0 bar · pending');
+      await expect(section).toContainText('0 bar');
+      await expect(section).toContainText('Not evaluated');
       await expect(section).toContainText('Recorded limits: 0 – 1');
       await expect(section).toContainText('Synthetic technician');
       await expect(section).toContainText('Before');
@@ -384,18 +385,16 @@ test('P51 reading append and retest refresh the mounted Work overview', async ({
     await expect.poll(() => overviewReads).toBe(writes.length + 1);
     await expect(page.getByTestId('fixture-fetching')).toHaveText('0');
     await tabs.getByRole('tab', { name: 'Work', exact: true }).click();
-    const saved = section.getByRole('region', {
-      name: `Saved reading ${801 + writes.length}`,
-      exact: true
-    });
+    const saved = section.getByTestId(`routine-reading-${801 + writes.length}`);
     await expect(saved).toContainText(label);
+    await expect(saved).toContainText(`${value} bar`);
     await expect(saved).toContainText(
-      `${value} bar · Value parsed · no limits recorded · not evaluated`
+      'Value parsed · no limits recorded · not evaluated'
     );
     await expect(section).not.toContainText('No closeout readings returned');
   }
   await expect(
-    section.getByRole('region', { name: /^Saved reading/ })
+    section.locator('[data-testid^="routine-reading-"]')
   ).toHaveCount(2);
   await expect(section).toContainText('Synthetic initial reading');
   expect(writes).toEqual([
@@ -455,12 +454,10 @@ for (const type of ['preventive', 'inspection', 'calibration']) {
     });
     await mockExecutionWork(page, value);
     await openExecutionPanel(page);
-    const reading = page.getByRole('region', {
-      name: 'Saved reading 701',
-      exact: true
-    });
+    const reading = page.getByTestId('routine-reading-701');
+    await expect(reading).toContainText('4.200000 bar');
     await expect(reading).toContainText(
-      '4.200000 bar · Value parsed · no limits recorded · not evaluated'
+      'Value parsed · no limits recorded · not evaluated'
     );
     await expect(reading).toContainText(
       'Recorded limits: Not recorded – Not recorded'
@@ -492,11 +489,11 @@ test('P51 recorded zero bounds preserve the native reading state', async ({
     'Not recorded – 0',
     '0 – 1'
   ].entries()) {
-    const reading = page.getByRole('region', {
-      name: `Saved reading ${710 + i}`,
-      exact: true
-    });
-    await expect(reading).toContainText('0 bar · verified');
+    const reading = page.getByTestId(`routine-reading-${710 + i}`);
+    await expect(reading).toContainText('0 bar');
+    await expect(reading).toContainText(
+      'Within recorded limits · acceptance separate'
+    );
     await expect(reading).toContainText(`Recorded limits: ${limits}`);
     await expect(reading).not.toContainText('not evaluated');
   }
@@ -523,25 +520,27 @@ for (const scheme of ['light', 'dark'] as const) {
       'Synthetic deviation review reason',
       'Not recorded'
     ].entries()) {
-      const reading = page.getByRole('region', {
-        name: `Saved reading ${720 + i}`,
-        exact: true
-      });
-      await expect(reading).toContainText('bar · dispositioned');
+      const reading = page.getByTestId(`routine-reading-${720 + i}`);
+      await expect(reading).toContainText('0 bar');
+      await expect(reading).toContainText(
+        'Disposition recorded · earlier outcome unavailable'
+      );
       await expect(reading).toContainText(
         'Reading recorded by: Synthetic original technician'
       );
       await expect(reading).toContainText('Reading recorded at:');
-      const disposition = reading.getByRole('region', {
-        name: `Reading ${720 + i} disposition`,
-        exact: true
-      });
+      const disposition = reading.getByTestId('reading-disposition');
+      const gaps = page.getByTestId('not-supplied');
+      if (
+        (await gaps.getByRole('button').getAttribute('aria-expanded')) ===
+        'false'
+      )
+        await gaps.getByRole('button').click();
       await expect(disposition).toContainText(`Disposition reason: ${reason}`);
-      await expect(disposition).toContainText(
-        'Disposition recorded by: Not recorded'
-      );
-      await expect(disposition).toContainText(
-        'Disposition recorded at: Not recorded'
+      await expect(gaps).toContainText('Disposition recorded by: Not recorded');
+      await expect(gaps).toContainText('Disposition recorded at: Not recorded');
+      await expect(gaps).toContainText(
+        'The earlier verification outcome of a dispositioned reading is not retained in this reading record.'
       );
       await expect(disposition).toContainText(
         'Earlier verification outcome is not retained in this reading record.'

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { nativeBaseline } from '../s0/guards';
 import { continuityWork, saveTransition } from '../s4/continuityFixtures';
+import { revealWorkContext } from '../s4/workExecutionFixtures';
 import { openExecutionPanel } from '../s4/workExecutionFixtures';
 import { closeoutWork } from '../s6/closeoutFixtures';
 import {
@@ -35,6 +36,7 @@ for (const width of [1440, 390])
         return route.fulfill({ json: receipt });
       });
       await openExecutionPanel(page, 'work');
+      await revealWorkContext(page, 'Continuity and handover');
       const region = page.getByTestId('hold-resume-record');
       await region
         .getByLabel('Reason for hold', { exact: true })

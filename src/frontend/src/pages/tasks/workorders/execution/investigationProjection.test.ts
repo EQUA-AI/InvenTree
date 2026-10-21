@@ -4,6 +4,7 @@ import type { Investigation } from '@lib/types/WorkExecution';
 
 import {
   diagnoseReturnPath,
+  diagnosisVerification,
   isSnapshotId,
   measured,
   readInvestigation
@@ -98,20 +99,73 @@ describe('readInvestigation', () => {
     expect(reading.requestsAvailable).toBe(false);
   });
 
-  it('takes verification from the server flag, and an empty cause is none', () => {
+  it('keeps the server verification flag; missing verifier or time is unattributed, not preliminary', () => {
     const base = investigation();
     const verified = readInvestigation({
       ...base,
-      explanation: { ...base.explanation!, preliminary: false }
+      explanation: {
+        ...base.explanation!,
+        preliminary: false,
+        verified_by: 'Synthetic verifier',
+        verified_at: '2026-10-20T08:00:00Z'
+      }
     });
     expect(verified.kind === 'ready' && verified.qualification).toBe(
       'verified'
+    );
+    for (const attribution of [
+      { verified_by: null, verified_at: null },
+      { verified_by: 'Synthetic verifier', verified_at: null },
+      { verified_by: null, verified_at: '2026-10-20T08:00:00Z' }
+    ]) {
+      const missing = readInvestigation({
+        ...base,
+        explanation: {
+          ...base.explanation!,
+          preliminary: false,
+          ...attribution
+        }
+      });
+      expect(missing.kind === 'ready' && missing.qualification).toBe(
+        'unattributed'
+      );
+    }
+    const flagged = readInvestigation({
+      ...base,
+      explanation: {
+        ...base.explanation!,
+        preliminary: true,
+        verified_by: 'Synthetic verifier',
+        verified_at: '2026-10-20T08:00:00Z'
+      }
+    });
+    expect(flagged.kind === 'ready' && flagged.qualification).toBe(
+      'preliminary'
     );
     const empty = readInvestigation({
       ...base,
       explanation: { ...base.explanation!, likely_cause: '' }
     });
     expect(empty.kind === 'ready' && empty.qualification).toBe('none');
+  });
+});
+
+describe('diagnosisVerification', () => {
+  it('has three states and never overrides the server flag', () => {
+    expect(diagnosisVerification(true, 'A', '2026-10-20T08:00:00Z')).toBe(
+      'preliminary'
+    );
+    expect(diagnosisVerification(undefined, 'A', '2026-10-20T08:00:00Z')).toBe(
+      'preliminary'
+    );
+    expect(diagnosisVerification(false, 'A', '2026-10-20T08:00:00Z')).toBe(
+      'verified'
+    );
+    expect(diagnosisVerification(false)).toBe('unattributed');
+    expect(diagnosisVerification(false, 'A', null)).toBe('unattributed');
+    expect(diagnosisVerification(false, null, '2026-10-20T08:00:00Z')).toBe(
+      'unattributed'
+    );
   });
 });
 

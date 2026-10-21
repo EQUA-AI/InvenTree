@@ -300,7 +300,7 @@ test('native standalone closeout mounts only on first visit and retains its loca
   });
 });
 
-test('direct-linked Parts and native browser history select views without changing work identity', async ({
+test('direct-linked Parts replaces panel history without changing work identity', async ({
   page
 }) => {
   const requests = await mockPanelWork(page);
@@ -316,9 +316,12 @@ test('direct-linked Parts and native browser history select views without changi
     page.getByRole('heading', { name: 'Parts for this job', exact: true })
   ).toBeVisible();
   await tabs.getByRole('tab', { name: 'History', exact: true }).click();
+  await expect(page.getByTestId('fixture-navigation-type')).toHaveText(
+    'REPLACE'
+  );
   await page.getByRole('button', { name: 'Fixture back', exact: true }).click();
   await expect(
-    tabs.getByRole('tab', { name: 'Parts', exact: true })
+    tabs.getByRole('tab', { name: 'History', exact: true })
   ).toHaveAttribute('aria-selected', 'true');
   await expect(
     page.getByRole('heading', { name: 'WO-73: Synthetic job 73', exact: true })

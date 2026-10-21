@@ -39,16 +39,13 @@ test('O15 an open Work removes its ready claim when recorded authority expires',
   await expect(
     panel.getByText('No blocking gates', { exact: true })
   ).toBeVisible();
-  const packetCard = panel
-    .getByRole('heading', { name: 'Repair packet', exact: true })
-    .locator('../../..');
-  await expect(
-    packetCard.getByText('Verified', { exact: true }).locator('..')
-  ).toHaveAttribute('style', /green/);
+  const gateBadge = panel
+    .getByRole('group', { name: 'Safety gates table, scroll for all columns' })
+    .getByText('Verified', { exact: true })
+    .locator('..');
+  await expect(gateBadge).toHaveAttribute('style', /green/);
   await page.clock.fastForward(601_000);
-  await expect(
-    packetCard.getByText('Verified', { exact: true }).locator('..')
-  ).toHaveAttribute('style', /red/);
+  await expect(gateBadge).toHaveAttribute('style', /red/);
   await expect(
     panel.getByText('No blocking gates', { exact: true })
   ).toHaveCount(0);
@@ -101,25 +98,24 @@ for (const scheme of ['light', 'dark'] as const) {
       exact: true
     });
     await expect(packetCard).toBeVisible();
-    if (await packetCard.count()) {
-      const status = packetCard
-        .locator('../../..')
-        .getByText('Confirmed', { exact: true });
-      await expect(status.locator('..')).toHaveAttribute('style', /red/);
-      const width = await status.evaluate((element) => ({
-        content: element.scrollWidth,
-        visible: element.clientWidth
-      }));
-      expect(
-        width.content,
-        'Native gate status must remain fully readable'
-      ).toBeLessThanOrEqual(width.visible + 1);
-      await captureAuthorityRegion(
-        page,
-        packetCard.locator('../../..'),
-        info.outputPath(`authority-packet-card-${scheme}.png`)
-      );
-    }
+    const safetyTable = panel.getByRole('group', {
+      name: 'Safety gates table, scroll for all columns'
+    });
+    const status = safetyTable.getByText('Confirmed', { exact: true });
+    await expect(status.locator('..')).toHaveAttribute('style', /red/);
+    const width = await status.evaluate((element) => ({
+      content: element.scrollWidth,
+      visible: element.clientWidth
+    }));
+    expect(
+      width.content,
+      'Native gate status must remain fully readable'
+    ).toBeLessThanOrEqual(width.visible + 1);
+    await captureAuthorityRegion(
+      page,
+      safetyTable,
+      info.outputPath(`authority-safety-gates-${scheme}.png`)
+    );
     await expectNoPageOverflow(page);
     await panel
       .getByText('Recorded physical authority', { exact: true })

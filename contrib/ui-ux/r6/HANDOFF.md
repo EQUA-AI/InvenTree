@@ -1,6 +1,8 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
-**Last update:** 19 October 2026 (Claude Code). **Current stage:** Work-focus transport, turn consumer, result linkage and Work launcher verified in isolated tests (S0-31/S1-25/S1-26); P02/P33 and both sprints remain In progress.
+**Last update:** 21 October 2026 (Codex, bounded Work uplift replay). **Current stage:** Work-focus transport, turn consumer, result linkage and Work launcher verified in isolated tests (S0-31/S1-25/S1-26); P02/P33 and both sprints remain In progress.
+
+**Latest bounded follow-up:** Work uplift host failures repaired in `r6/work-uplift`: reuse the complete Closeout fixture for keyboard navigation and select translated `Verified` in the authority-expiry test. Linux Chromium native fixtures pass S8 225/225, S4 232/232, S1 204/204, S6 256/256 and S7 172/172; each of the four reported phone cases passes five repetitions. All nine requested TypeScript projects, 702 units, Lingui extract/compile with bytewise locale restore, changed-file hooks and tracking checks pass. See [Host replay fixes](reports/work-uplift.md#host-replay-fixes) and `data/devscratch/r6-s8/work-uplift/host-replay/`. The owned browser is stopped; host cleanup of orphaned Vite PID 35625 on 15228 is pending after sandbox SIGTERM denial. No provider contract or parent disposition changes; O22 scores and deployment acceptance remain separate.
 **User instruction:** “okay lets begin s0 and keep track of all the tasks and plan later i may need to switch it to codex agent”.
 
 **Continued instruction:** “okay carry on and once done s0 then start s1”, followed by explicit S1 overlap. Historical technical checkpoints remain below. The later owner delegation accepts bounded artifacts, not unimplemented contracts or deployment.

@@ -17,6 +17,8 @@
     "tests/s8/captureEvidence.ts",
     "tests/s8/pui_focus_captures.spec.ts",
     "tests/s8/pui_permission_matrix.spec.ts",
+    "tests/s8/pui_work_uplift.spec.ts",
+    "tests/s8/pui_work_uplift_contrast.spec.ts",
     "tests/s8/permissionGuard.spec.ts",
     "tests/s8/pui_p31_work_reflow.spec.ts",
     "tests/s8/pui_p31_work_review.spec.ts",

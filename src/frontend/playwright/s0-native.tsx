@@ -1,3 +1,7 @@
+import {
+  createInvenTreeTheme,
+  cssVariablesResolver
+} from '../src/contexts/ThemeContext';
 import './aichat-drawer-lingui';
 
 import { i18n } from '@lingui/core';
@@ -22,7 +26,8 @@ import {
   Route,
   Routes,
   useLocation,
-  useNavigate
+  useNavigate,
+  useNavigationType
 } from 'react-router-dom';
 
 import LayoutComponent from '../src/components/nav/Layout';
@@ -93,7 +98,16 @@ useUserState.setState({
 
 function QueryState() {
   const fetching = useIsFetching();
-  return <Text data-testid='fixture-fetching'>{fetching}</Text>;
+  const navigation = useNavigationType();
+  return (
+    <>
+      <Text data-testid='fixture-fetching'>{fetching}</Text>
+      <Text data-testid='fixture-navigation-type'>{navigation}</Text>
+      <Text data-testid='fixture-theme-primary'>
+        {useLocalState.getState().userTheme.primaryColor}
+      </Text>
+    </>
+  );
 }
 
 function NativeSurface() {
@@ -204,6 +218,8 @@ function NativeSurface() {
 createRoot(document.getElementById('root')!).render(
   <I18nProvider i18n={i18n}>
     <MantineProvider
+      cssVariablesResolver={cssVariablesResolver}
+      theme={createInvenTreeTheme(useLocalState.getState().userTheme)}
       forceColorScheme={params.get('scheme') === 'dark' ? 'dark' : 'light'}
     >
       <ApiProvider api={axios.create()} client={client}>

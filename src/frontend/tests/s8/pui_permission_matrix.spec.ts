@@ -5,6 +5,7 @@ import { mockWorkList } from '../s1/workListFixtures';
 import { anomaly, openHealth } from '../s3/healthFixtures';
 import { BAYS, stationMimic } from '../s3/stationFixtures';
 import { continuityWork } from '../s4/continuityFixtures';
+import { revealWorkContext } from '../s4/workExecutionFixtures';
 import {
   capturePanel,
   expectNoPageOverflow,
@@ -506,10 +507,11 @@ for (const scheme of ['light', 'dark'] as const) {
       (route) => route.fulfill({ json: [] })
     );
     await openExecutionPanel(page, 'work', scheme);
+    await revealWorkContext(page, 'Continuity and handover');
     await expect(page.getByTestId('work-continuity')).toBeVisible();
     await noWriteControls(
       page,
-      /Hold work record|Resume work record|Accept assignment|Generate|Assign|Update record/
+      /Hold work record|Resume work record|Accept assignment|Generate|\bAssign\b|Update record/
     );
     await expectNoPageOverflow(page);
     await capturePanel(page, info.outputPath(`viewer-work-${scheme}.png`));
