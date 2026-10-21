@@ -280,6 +280,26 @@ export function machineDetailHref(
     : `/machines/machine/${machinePk}/`;
 }
 
+/** Carry only the native Machines origin into a machine-panel drill-down. */
+export function machinePanelHref(
+  machinePk: number,
+  panel: string,
+  params: URLSearchParams,
+  extra: Record<string, string> = {}
+): string {
+  const base = machineDetailHref(machinePk, {
+    location: machineLocationId(params),
+    direct: params.get('scope') === 'direct',
+    source: machineSourceView(params),
+    list: machineListState(params)
+  });
+  const [path, search = ''] = base.split('?');
+  const query = new URLSearchParams(search);
+  for (const [key, value] of Object.entries(extra)) query.set(key, value);
+  const qs = query.toString();
+  return `${path}${panel}/${qs ? `?${qs}` : ''}`;
+}
+
 /**
  * Explicit machine→list return routes (U2): location-origin visits go back to
  * the sites panel with their filters; All Machines / Unassigned return to

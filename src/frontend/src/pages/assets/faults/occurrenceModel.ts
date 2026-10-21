@@ -94,6 +94,7 @@ export interface FaultOccurrence {
 }
 
 export interface OccurrencePage {
+  plant_timezone?: string | null;
   rule: string;
   count: number;
   limit: number;

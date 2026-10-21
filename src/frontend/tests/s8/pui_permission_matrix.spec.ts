@@ -443,8 +443,8 @@ for (const pump of [false, true]) {
       await expect(alarm).toContainText('P32 synthetic warning');
       for (const name of ['Acknowledge', 'Create repair', 'Dismiss'])
         await expect(
-          alarm.getByRole('button', { name, exact: true })
-        ).toBeDisabled();
+          alarm.getByRole('button', { name: new RegExp(`^${name}\\b`) })
+        ).toHaveCount(0);
       await expectNoPageOverflow(page);
       await capturePanel(
         page,
@@ -452,13 +452,6 @@ for (const pump of [false, true]) {
           `mimic-${pump ? 'pump' : 'station'}-viewer-${scheme}.png`
         )
       );
-      await alarm
-        .getByRole('button', { name: 'Dismiss', exact: true })
-        .scrollIntoViewIfNeeded();
-      for (const name of ['Acknowledge', 'Create repair', 'Dismiss'])
-        await expect(
-          alarm.getByRole('button', { name, exact: true })
-        ).toBeInViewport({ ratio: 1 });
       await page.screenshot({
         path: info.outputPath(
           `mimic-${pump ? 'pump' : 'station'}-viewer-actions-${scheme}.png`
@@ -476,12 +469,27 @@ for (const pump of [false, true]) {
           });
         }, grants);
         for (const name of ['Acknowledge', 'Create repair', 'Dismiss']) {
-          const control = alarm.getByRole('button', { name, exact: true });
-          if (grants.includes(name === 'Create repair' ? 'add' : 'change'))
+          const control = alarm.getByRole('button', {
+            name: new RegExp(`^${name}\\b`)
+          });
+          if (grants.includes(name === 'Create repair' ? 'add' : 'change')) {
             await expect(control).toBeEnabled();
-          else await expect(control).toBeDisabled();
+            await control.scrollIntoViewIfNeeded();
+            await expect(control).toBeInViewport({ ratio: 1 });
+            if (info.project.name.endsWith('phone')) {
+              const box = (await control.boundingBox())!;
+              expect(box.width).toBeGreaterThanOrEqual(44);
+              expect(box.height).toBeGreaterThanOrEqual(44);
+            }
+          } else await expect(control).toHaveCount(0);
         }
       }
+      await expectNoPageOverflow(page);
+      await alarm.screenshot({
+        path: info.outputPath(
+          `mimic-${pump ? 'pump' : 'station'}-authorized-actions-${scheme}.png`
+        )
+      });
       expect(writes).toEqual([]);
     });
   }

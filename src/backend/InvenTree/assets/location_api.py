@@ -1,5 +1,6 @@
 """Scoped APIs for physical locations and explicit machine transfers."""
 
+from django.conf import settings
 from django.db.models import Count, Q
 from django.http import Http404
 from django.urls import path
@@ -121,6 +122,7 @@ class LocationContext(LocationView):
                     'pk', 'name'
                 )
             ),
+            'plant_timezone': settings.AIMMS_PLANT_TIMEZONE or None,
             'can_add': check_user_role(request.user, 'work_order', 'add'),
             'can_change': check_user_role(request.user, 'work_order', 'change'),
         })

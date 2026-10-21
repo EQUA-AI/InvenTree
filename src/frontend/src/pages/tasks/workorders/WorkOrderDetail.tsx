@@ -602,6 +602,7 @@ function WorkOrderWorkspace({
           panels={panels}
           reference={workOrder.reference || t`Work order ${workOrder.id}`}
           navigationRef={navigationRef}
+          authority={workOrder.operational_authority}
         />
         {!activePanel && (
           <Alert mt='md' color='red' title={t`Work panel unavailable`}>

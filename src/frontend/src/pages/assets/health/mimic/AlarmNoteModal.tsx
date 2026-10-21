@@ -9,6 +9,7 @@ import {
   Textarea
 } from '@mantine/core';
 import { useState } from 'react';
+import operations from '../../operations.module.css';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
@@ -105,7 +106,7 @@ export function AlarmNoteModal({
       {target && (
         <Stack gap='sm'>
           <Text size='sm'>{target.summary}</Text>
-          <Text size='xs' c='dimmed'>
+          <Text size='xs' className={operations.meta}>
             {dismissing
               ? t`Dismiss an alarm that is wrong rather than the machine: a limit set too tight, a channel known to misread. It leaves the active list and tells nobody while the reading goes on breaching, and closes when the reading returns inside its limits.`
               : t`Acknowledging records that you have seen this condition. It closes when the reading returns inside its limits, not before; acknowledging does not make a repair ready.`}

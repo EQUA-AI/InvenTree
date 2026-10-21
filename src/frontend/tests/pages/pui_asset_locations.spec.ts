@@ -171,7 +171,7 @@ function machineRow(
     locationPk?: number | null;
     active?: boolean;
     legacy?: string;
-    alarms?: { open: number; critical: number };
+    alarms?: { open: number; critical: number; warning?: number };
   } = {}
 ) {
   const loc = opts.locationPk ? BY_PK.get(opts.locationPk) : undefined;
@@ -187,7 +187,8 @@ function machineRow(
     physical_location: loc ? locationRow(loc) : null,
     placement_version: 1,
     open_alarms: opts.alarms?.open ?? 0,
-    open_critical_alarms: opts.alarms?.critical ?? 0
+    open_critical_alarms: opts.alarms?.critical ?? 0,
+    open_warning_alarms: opts.alarms?.warning ?? 0
   };
 }
 
@@ -305,7 +306,7 @@ async function installMocks(page: Page) {
         rows = [
           machineRow(5, 'Pump 1', {
             locationPk: 12,
-            alarms: { open: 3, critical: 2 }
+            alarms: { open: 3, critical: 2, warning: 1 }
           }),
           machineRow(6, 'Pump 2', {
             locationPk: null,
@@ -314,7 +315,7 @@ async function installMocks(page: Page) {
           }),
           machineRow(7, 'Pump 3', {
             locationPk: 12,
-            alarms: { open: 1, critical: 0 }
+            alarms: { open: 1, critical: 0, warning: 1 }
           }),
           ...Array.from({ length: 6 }, (_, i) =>
             machineRow(30 + i, `Compressor ${i + 1}`, { locationPk: 12 })
@@ -602,19 +603,13 @@ test('Include sublocations toggle drives table scope and wording', async ({
   );
   const toggle = page.getByRole('switch', { name: 'Include sublocations' });
   await expect(toggle).toBeChecked();
-  await expect(
-    page.getByText(
-      'Includes machines placed at this location and all of its sublocations.'
-    )
-  ).toBeVisible();
-  await expect(page.getByText('Including sublocations')).toBeVisible();
+  await expect(page.getByText('Descendant placements included')).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-describedby', /.+/);
 
   await toggle.uncheck();
   await expect(page.getByTestId('destination')).toContainText('scope=direct');
-  await expect(
-    page.getByText('Includes only machines placed directly at this location.')
-  ).toBeVisible();
-  await expect(page.getByText('Direct here')).toBeVisible();
+  await expect(page.getByText('Direct placements only')).toBeVisible();
+  await expect(page.getByTestId('machine-count-view')).toHaveText('5');
   await expect
     .poll(() => {
       const req = lastMachineRequest(machineListRequests);
@@ -631,10 +626,10 @@ test('native summary and machine rows remain aligned for an old cohort link', as
     '/playwright/machine-locations.html?mode=workspace&location=12&demo_session=123e4567-e89b-12d3-a456-426614174000'
   );
   await expect(page.getByTestId('machine-count-view')).toHaveText('9');
-  await expect(page.getByText('9 machines')).toBeVisible();
+  await expect(page.getByText('9 machines', { exact: true })).toBeVisible();
   await expect(
     page.getByRole('columnheader', { name: 'Active record' })
-  ).toBeVisible();
+  ).toHaveCount(0);
   expect(machineListRequests.length).toBeGreaterThan(0);
   expect(detailRequests.length).toBeGreaterThan(0);
   expect(
@@ -650,7 +645,7 @@ test('location change resets table page and selection', async ({ page }) => {
   await page.goto(
     '/playwright/machine-locations.html?mode=workspace&location=21'
   );
-  await expect(page.getByText('30 machines')).toBeVisible();
+  await expect(page.getByText('30 machines', { exact: true })).toBeVisible();
   await page
     .getByRole('navigation', { name: /pagination/i })
     .getByRole('button', { name: '2' })
@@ -663,7 +658,7 @@ test('location change resets table page and selection', async ({ page }) => {
   await page.evaluate(() =>
     (window as any).__machineTest.setSearch('location', '12')
   );
-  await expect(page.getByText('9 machines')).toBeVisible();
+  await expect(page.getByText('9 machines', { exact: true })).toBeVisible();
   await expect
     .poll(() => {
       const req = machineListRequests
@@ -685,16 +680,16 @@ test('each machine shows its alarms and the list narrows to them', async ({
   await page.goto(
     '/playwright/machine-locations.html?mode=workspace&location=12'
   );
-  await expect(page.getByText('9 machines')).toBeVisible();
+  await expect(page.getByText('9 machines', { exact: true })).toBeVisible();
   const row = (name: string) => page.getByRole('row').filter({ hasText: name });
   await expect(row('Pump 1').getByText('2 critical')).toBeVisible();
   await expect(row('Pump 1').getByText('1 warning')).toBeVisible();
   await expect(row('Pump 3').getByText('1 warning')).toBeVisible();
   await expect(row('Pump 3').getByText(/critical/)).toHaveCount(0);
-  await expect(row('Compressor 1').locator('td[data-alarms]')).toHaveText('—');
+  await expect(row('Compressor 1').locator('td[data-alarms]')).toHaveText('0');
 
   await page.getByRole('switch', { name: 'In alarm only' }).check();
-  await expect(page.getByText('2 machines')).toBeVisible();
+  await expect(page.getByText('2 machines', { exact: true })).toBeVisible();
   await expect
     .poll(() =>
       lastMachineRequest(machineListRequests)?.params.get('has_alarms')
@@ -707,7 +702,7 @@ test('each machine shows its alarms and the list narrows to them', async ({
     .getByRole('button', { name: 'Expand South Site', exact: true })
     .click();
   await page.getByRole('button', { name: 'Line One', exact: true }).click();
-  await expect(page.getByText('30 machines')).toBeVisible();
+  await expect(page.getByText('30 machines', { exact: true })).toBeVisible();
   const narrow = page.getByRole('switch', { name: 'In alarm only' });
   await expect(narrow).not.toBeChecked();
 
@@ -718,7 +713,7 @@ test('each machine shows its alarms and the list narrows to them', async ({
     page.getByText('No machine in this list has an active alarm.')
   ).toBeVisible();
   await page.getByRole('button', { name: 'Show all machines' }).click();
-  await expect(page.getByText('30 machines')).toBeVisible();
+  await expect(page.getByText('30 machines', { exact: true })).toBeVisible();
   await expect(narrow).not.toBeChecked();
 });
 
@@ -775,7 +770,9 @@ test.describe('mobile', () => {
     await expect(
       page.getByRole('tree', { name: 'Location tree' })
     ).toBeHidden();
-    await expect(page.getByTestId('machine-count-view')).toBeVisible();
+    await expect(
+      page.getByRole('region', { name: 'Loaded page summary' })
+    ).toContainText('This page · 9 of 9 machines');
 
     await choose.click();
     await expect(

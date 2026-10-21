@@ -2,7 +2,7 @@ import { plural, t } from '@lingui/core/macro';
 import {
   Alert,
   Anchor,
-  Badge,
+  Box,
   Button,
   Divider,
   Group,
@@ -11,27 +11,49 @@ import {
   SegmentedControl,
   SimpleGrid,
   Skeleton,
+  Spoiler,
   Stack,
   Table,
   Text,
-  Title
+  Title,
+  useMantineTheme
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import { IconChevronDown, IconChevronRight } from '@tabler/icons-react';
+import {
+  IconChevronDown,
+  IconChevronRight,
+  IconClockExclamation
+} from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import dayjs from 'dayjs';
+import { MonitoringContinuityNotice } from '../health/MonitoringContinuity';
+import { ageLabel } from '../health/mimic/FreshnessLabel';
+import {
+  type DisplayClock,
+  DisplayClockContext,
+  formatInstant,
+  useDisplayClock
+} from '../health/mimic/observedTime';
+import operations from '../operations.module.css';
+
 import { type ReactNode, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import { useApi } from '../../../contexts/ApiContext';
-import { SeverityBadge, qualityLabel } from '../health/common';
+import {
+  AlarmStateBadge,
+  StatusBadge as Badge,
+  SeverityBadge,
+  qualityLabel
+} from '../health/common';
 import {
   detectorLabel,
-  occurrenceStatusLabel,
+  metricLabel,
+  outsideOccurrenceSpan,
   retainedValue,
+  shiftSpan,
   snapshotReasonLabel,
   workRelationLabel
 } from './occurrenceLabels';
@@ -47,8 +69,8 @@ import {
   occurrenceRequest
 } from './occurrenceModel';
 
-function when(value: string | null | undefined): string {
-  return value ? dayjs(value).format('D MMM YYYY HH:mm:ss') : '—';
+function when(value: string | null | undefined, clock: DisplayClock): string {
+  return formatInstant(value, clock) ?? t`Time unavailable`;
 }
 
 function lifecycleLabel(status: string): string {
@@ -80,7 +102,7 @@ function Field({
 }: Readonly<{ label: string; children: ReactNode }>) {
   return (
     <Stack gap={2}>
-      <Text size='xs' c='dimmed' fw={600}>
+      <Text size='xs' className={operations.meta} fw={600}>
         {label}
       </Text>
       <div style={{ overflowWrap: 'anywhere' }}>{children}</div>
@@ -97,7 +119,7 @@ function EventIdentity({
     occurrence.external_id && t`Source alarm ${occurrence.external_id}`
   ].filter(Boolean);
   return (
-    <Text size='xs' c='dimmed'>
+    <Text size='xs' className={operations.meta}>
       {ids.length ? ids.join(' · ') : t`No source alarm id`}
       {' · '}
       {t`Record ${occurrence.id}`}
@@ -108,7 +130,7 @@ function EventIdentity({
 function Components({ occurrence }: Readonly<{ occurrence: FaultOccurrence }>) {
   if (!occurrence.components.length) {
     return (
-      <Text size='sm' c='dimmed'>
+      <Text size='sm' className={operations.meta}>
         {occurrence.signals.length
           ? t`Signal not mapped to a component`
           : t`No signal recorded`}
@@ -121,7 +143,7 @@ function Components({ occurrence }: Readonly<{ occurrence: FaultOccurrence }>) {
         <Text key={component.code} size='sm'>
           {component.name}
           {component.status === 'draft' && (
-            <Text span size='xs' c='dimmed'>
+            <Text span size='xs' className={operations.meta}>
               {' · '}
               {t`unverified assignment`}
             </Text>
@@ -136,7 +158,7 @@ function Evidence({ occurrence }: Readonly<{ occurrence: FaultOccurrence }>) {
   return (
     <Stack gap={2}>
       <Text size='sm'>{occurrence.source?.name ?? t`Source not recorded`}</Text>
-      <Text size='xs' c='dimmed'>
+      <Text size='xs' className={operations.meta}>
         {occurrence.snapshot_count
           ? plural(occurrence.snapshot_count, {
               one: '# retained snapshot',
@@ -154,7 +176,7 @@ function WorkLinks({
 }: Readonly<{ occurrence: FaultOccurrence; compact?: boolean }>) {
   if (!occurrence.work.length && !occurrence.repair_packet) {
     return (
-      <Text size='sm' c='dimmed'>
+      <Text size='sm' className={operations.meta}>
         {t`No owning work you can open`}
       </Text>
     );
@@ -164,6 +186,7 @@ function WorkLinks({
       {occurrence.work.map((work) => (
         <Stack key={work.id} gap={0}>
           <Anchor
+            className={operations.link}
             component={Link}
             to={`/maintenance/work-orders/${work.id}/`}
             size='sm'
@@ -171,7 +194,7 @@ function WorkLinks({
           >
             {work.reference ?? t`Work order ${work.id}`}
           </Anchor>
-          <Text size='xs' c='dimmed'>
+          <Text size='xs' className={operations.meta}>
             {workRelationLabel(work.relation)} ·{' '}
             {lifecycleLabel(work.lifecycle_status)}
             {!compact && work.title ? ` · ${work.title}` : ''}
@@ -180,6 +203,7 @@ function WorkLinks({
       ))}
       {occurrence.repair_packet && (
         <Anchor
+          className={operations.link}
           component={Link}
           to={`/repair/packets/${occurrence.repair_packet.id}/`}
           size='xs'
@@ -191,25 +215,27 @@ function WorkLinks({
   );
 }
 
-function Outcome({ occurrence }: Readonly<{ occurrence: FaultOccurrence }>) {
+function Outcome({
+  occurrence,
+  showNote = true
+}: Readonly<{ occurrence: FaultOccurrence; showNote?: boolean }>) {
   return (
-    <Stack gap={2}>
-      <Badge
-        variant={occurrence.active ? 'light' : 'outline'}
-        color={occurrence.active ? 'orange' : 'gray'}
-        w='fit-content'
-      >
-        {occurrenceStatusLabel(occurrence.status)}
-      </Badge>
-      {occurrence.status === 'acknowledged' && (
-        <Text size='xs' c='dimmed'>
-          {t`Acknowledged, not resolved`}
-        </Text>
-      )}
-      {occurrence.resolution_note && (
-        <Text size='xs' c='dimmed' lineClamp={3}>
-          {occurrence.resolution_note}
-        </Text>
+    <Stack gap={4} miw={0}>
+      <AlarmStateBadge
+        status={occurrence.status}
+        severity={occurrence.severity}
+      />
+      {showNote && occurrence.resolution_note && (
+        <Spoiler
+          classNames={{ control: operations.link }}
+          maxHeight={60}
+          showLabel={t`Show full note`}
+          hideLabel={t`Show less`}
+        >
+          <Text size='xs' className={operations.meta}>
+            {occurrence.resolution_note}
+          </Text>
+        </Spoiler>
       )}
     </Stack>
   );
@@ -217,19 +243,25 @@ function Outcome({ occurrence }: Readonly<{ occurrence: FaultOccurrence }>) {
 
 function RetainedSnapshotCard({
   snapshot,
-  machineId
-}: Readonly<{ snapshot: RetainedSnapshot; machineId: number }>) {
+  machineId,
+  occurrence
+}: Readonly<{
+  snapshot: RetainedSnapshot;
+  machineId: number;
+  occurrence: FaultOccurrence;
+}>) {
+  const clock = useDisplayClock();
   const samples = snapshot.samples ?? [];
   const sameInstant = snapshot.window_start === snapshot.window_end;
   return (
     <Paper withBorder p='sm' data-snapshot={snapshot.id}>
       <Stack gap={6}>
         <Group justify='space-between' gap='xs' align='flex-start'>
-          <Stack gap={0} style={{ minWidth: 0 }}>
+          <Stack gap={0} miw={0}>
             <Text size='sm' fw={600} style={{ overflowWrap: 'anywhere' }}>
               {snapshot.signal_label || t`Signal not recorded`}
             </Text>
-            <Text size='xs' c='dimmed'>
+            <Text size='xs' className={operations.meta}>
               {snapshotReasonLabel(snapshot.reason)}
             </Text>
           </Stack>
@@ -237,16 +269,31 @@ function RetainedSnapshotCard({
             {t`Retained snapshot`}
           </Badge>
         </Group>
+        {outsideOccurrenceSpan(snapshot, occurrence) && (
+          <Badge
+            color='gray'
+            variant='outline'
+            leftSection={<IconClockExclamation size={14} />}
+          >{t`Outside occurrence span`}</Badge>
+        )}
+        <Text className={operations.meta}>
+          {t`Sample age at capture`}:{' '}
+          {ageLabel(
+            (Date.parse(snapshot.captured_at) -
+              Date.parse(snapshot.window_end ?? '')) /
+              1000
+          )}
+        </Text>
         <SimpleGrid cols={{ base: 1, sm: 3 }} spacing='xs'>
-          <Field label={t`Retained window`}>
+          <Field label={t`Sample window`}>
             <Text size='sm'>
               {sameInstant
-                ? when(snapshot.window_start)
-                : `${when(snapshot.window_start)} — ${when(snapshot.window_end)}`}
+                ? `${t`Single sample at`} ${when(snapshot.window_start, clock)}`
+                : `${when(snapshot.window_start, clock)} — ${when(snapshot.window_end, clock)}`}
             </Text>
           </Field>
           <Field label={t`Captured`}>
-            <Text size='sm'>{when(snapshot.captured_at)}</Text>
+            <Text size='sm'>{when(snapshot.captured_at, clock)}</Text>
           </Field>
           <Field label={t`Quality when captured`}>
             <Text size='sm'>
@@ -268,7 +315,7 @@ function RetainedSnapshotCard({
                 {samples.map((sample, index) => (
                   <Table.Tr key={`${sample.observed_at}-${index}`}>
                     <Table.Td>
-                      <Text size='xs'>{when(sample.observed_at)}</Text>
+                      <Text size='xs'>{when(sample.observed_at, clock)}</Text>
                     </Table.Td>
                     <Table.Td>
                       <Text size='xs'>
@@ -281,22 +328,27 @@ function RetainedSnapshotCard({
             </Table>
           </Table.ScrollContainer>
         ) : (
-          <Text size='xs' c='dimmed'>
+          <Text size='xs' className={operations.meta}>
             {t`No reading was available when this snapshot was captured; that absence is what was retained.`}
           </Text>
         )}
-        <Text size='xs' c='dimmed' style={{ overflowWrap: 'anywhere' }}>
+        <Text
+          size='xs'
+          className={operations.meta}
+          style={{ overflowWrap: 'anywhere' }}
+        >
           {snapshot.source_name ?? t`Source not recorded`} · {t`content hash`}{' '}
           {snapshot.content_hash.slice(0, 12)}
         </Text>
         <Anchor
+          className={operations.link}
           component={Link}
           size='sm'
           to={`/machines/machine/${machineId}/health/?snapshot=${encodeURIComponent(snapshot.id)}`}
         >
           {t`Open exact retained snapshot`}
         </Anchor>
-        <Text size='xs' c='dimmed'>
+        <Text size='xs' className={operations.meta}>
           {snapshot.captured_by_name
             ? t`Captured by ${snapshot.captured_by_name}`
             : snapshot.system_actor
@@ -306,7 +358,7 @@ function RetainedSnapshotCard({
         {snapshot.captured_by_name && snapshot.system_actor && (
           <Text
             size='xs'
-            c='dimmed'
+            className={operations.meta}
           >{t`System actor: ${snapshot.system_actor}`}</Text>
         )}
       </Stack>
@@ -389,19 +441,64 @@ function OccurrenceAccount({
   occurrence: FaultOccurrence;
   extra?: (detail: FaultOccurrence) => ReactNode;
 }>) {
-  const metrics = Object.entries(occurrence.metrics ?? {}).filter(
-    ([, value]) =>
-      value === null || ['number', 'string', 'boolean'].includes(typeof value)
-  );
+  const clock = useDisplayClock();
+  const metrics = Object.entries(occurrence.metrics ?? {})
+    .map(([key, value]) => metricLabel(key, value, occurrence.metrics ?? {}))
+    .filter(Boolean);
+  const dismissed = occurrence.metrics?.dismissed as
+    | { at?: string; by?: string; note?: string }
+    | undefined;
   return (
-    <Stack gap='sm' data-testid='occurrence-evidence'>
+    <Stack gap={6} data-testid='occurrence-evidence'>
+      <Group gap={6} align='flex-start'>
+        <Title order={5}>
+          {occurrence.title ||
+            occurrence.signals[0]?.display_name ||
+            t`Occurrence ${occurrence.id}`}
+        </Title>
+        <Group gap='xs'>
+          <SeverityBadge severity={occurrence.severity} />
+          <Outcome occurrence={occurrence} showNote={false} />
+        </Group>
+      </Group>
+      <Text className={operations.meta}>
+        {t`Occurrence ${occurrence.id}`} ·{' '}
+        {occurrence.alarm_code || t`Code not recorded`} ·{' '}
+        {occurrence.components.map((c) => c.name).join(', ') ||
+          t`Component not recorded`}
+      </Text>
+      {occurrence.status === 'resolved' && (
+        <Text size='sm'>
+          {t`Resolved`}{' '}
+          {occurrence.resolved_at
+            ? when(occurrence.resolved_at, clock)
+            : t`time not recorded`}
+        </Text>
+      )}
+      {dismissed && (
+        <Text size='sm'>
+          {t`Dismissed`} {when(dismissed.at, clock)} {t`by`}{' '}
+          {dismissed.by ?? t`recorder not recorded`}:{' '}
+          {dismissed.note ?? t`note not recorded`}
+        </Text>
+      )}
+      {occurrence.resolution_note && (
+        <Spoiler
+          classNames={{ control: operations.link }}
+          maxHeight={60}
+          showLabel={t`Show full note`}
+          hideLabel={t`Show less`}
+        >
+          <Text size='sm'>{occurrence.resolution_note}</Text>
+        </Spoiler>
+      )}
       <Title order={6}>{t`Original observation`}</Title>
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing='sm'>
         <Field label={t`First observed`}>
-          <Text size='sm'>{when(occurrence.first_observed_at)}</Text>
+          <Text size='xs'>{when(occurrence.first_observed_at, clock)}</Text>
         </Field>
         <Field label={t`Last observed`}>
-          <Text size='sm'>{when(occurrence.last_observed_at)}</Text>
+          <Text size='sm'>{when(occurrence.last_observed_at, clock)}</Text>
         </Field>
         <Field label={t`Raised by`}>
           <Text size='sm'>
@@ -411,28 +508,29 @@ function OccurrenceAccount({
               : ''}
           </Text>
         </Field>
-        <Field label={t`Seen by`}>
+        <Field label={t`Acknowledgement`}>
           <Text size='sm'>
             {occurrence.acknowledged_at || occurrence.status === 'acknowledged'
-              ? `${t`Acknowledged`} ${occurrence.acknowledged_at ? when(occurrence.acknowledged_at) : t`time not recorded`} ${occurrence.acknowledged_by_name ? t`by ${occurrence.acknowledged_by_name}` : t`(recorder not recorded)`}`
+              ? `${t`Acknowledged`} ${occurrence.acknowledged_at ? when(occurrence.acknowledged_at, clock) : t`time not recorded`} ${occurrence.acknowledged_by_name ? t`by ${occurrence.acknowledged_by_name}` : t`(recorder not recorded)`}`
               : t`Not acknowledged`}
           </Text>
         </Field>
       </SimpleGrid>
-      {occurrence.evidence_summary && (
-        <Text size='sm'>{occurrence.evidence_summary}</Text>
-      )}
+      <Text size='sm'>
+        {occurrence.evidence_summary || t`No finding recorded`}
+      </Text>
       {metrics.length > 0 && (
-        <Group gap='xs'>
-          {metrics.map(([key, value]) => (
-            <Badge key={key} variant='outline' color='gray' tt='none'>
-              {key}: {String(value)}
-            </Badge>
+        <Box component='dl' m={0} className={operations.meta}>
+          <Text component='dt' size='sm' fw={600}>{t`Detection metrics`}</Text>
+          {metrics.map((label) => (
+            <Text component='dd' key={label} m={0} size='sm'>
+              {label}
+            </Text>
           ))}
-        </Group>
+        </Box>
       )}
       {occurrence.signals.length > 0 && (
-        <Text size='xs' c='dimmed'>
+        <Text size='xs' className={operations.meta}>
           {t`Signals`}:{' '}
           {occurrence.signals
             .map((signal) =>
@@ -443,21 +541,27 @@ function OccurrenceAccount({
             .join(', ')}
         </Text>
       )}
-      <Text
-        size='xs'
-        c='dimmed'
-      >{t`Recorded plant times; no dashboard time shift is applied.`}</Text>
+      {occurrence.display_shifted && (
+        <Text
+          className={operations.meta}
+        >{t`Shown ${shiftSpan(occurrence.display_shift_seconds) ?? t`an unspecified interval`} later than recorded`}</Text>
+      )}
       <Divider />
       <Group justify='space-between' gap='xs'>
         <Title order={6}>{t`Evidence retained at the time`}</Title>
-        <Anchor component={Link} to={`/machines/machine/${machineId}/health/`}>
+        <Anchor
+          size='sm'
+          className={operations.link}
+          component={Link}
+          to={`/machines/machine/${machineId}/health/`}
+        >
           {t`Current readings are on the Health tab`}
         </Anchor>
       </Group>
       {occurrence.snapshots.length ? (
         <Stack gap='xs'>
           {occurrence.snapshot_count > occurrence.snapshots.length && (
-            <Text size='xs' c='dimmed'>
+            <Text size='xs' className={operations.meta}>
               {t`Showing the ${occurrence.snapshots.length} most recent of ${occurrence.snapshot_count} retained snapshots.`}
             </Text>
           )}
@@ -465,12 +569,13 @@ function OccurrenceAccount({
             <RetainedSnapshotCard
               key={snapshot.id}
               snapshot={snapshot}
+              occurrence={occurrence}
               machineId={machineId}
             />
           ))}
         </Stack>
       ) : (
-        <Text size='sm' c='dimmed'>
+        <Text size='sm' className={operations.meta}>
           {t`No evidence snapshot was retained for this occurrence. The record above is what was kept; today's readings are not put in its place.`}
         </Text>
       )}
@@ -496,6 +601,7 @@ export function FaultOccurrences({
   renderInvestigation?: (occurrence: FaultOccurrence) => ReactNode;
 }>) {
   const api = useApi();
+  const theme = useMantineTheme();
   const phone = useMediaQuery('(max-width: 48em)');
   const [params, setParams] = useSearchParams();
   const state = occurrenceListState(params);
@@ -511,11 +617,15 @@ export function FaultOccurrences({
         )
       ).data
   });
+  // A failed refresh retains React Query data; it cannot support current list claims.
+  const list = query.isSuccess ? query.data : undefined;
+  const clock = useDisplayClock(list?.plant_timezone);
   const triggers = useRef(new Map<number, HTMLButtonElement | null>());
   const openedEvidence = useRef<HTMLElement>(null);
   useEffect(() => {
-    if (state.open !== null) openedEvidence.current?.focus();
-  }, [state.open]);
+    if (state.open !== null)
+      openedEvidence.current?.focus({ preventScroll: true });
+  }, [state.open, query.data]);
   const lastOpened = useRef<number | null>(null);
   const update = (changes: Partial<OccurrenceListState>, replace = false) =>
     setParams(
@@ -537,9 +647,9 @@ export function FaultOccurrences({
   };
   const lastPage = Math.max(
     1,
-    Math.ceil((query.data?.count ?? 0) / OCCURRENCE_PAGE_SIZE)
+    Math.ceil((list?.count ?? 0) / OCCURRENCE_PAGE_SIZE)
   );
-  const outOfRange = !!query.data && state.page > lastPage;
+  const outOfRange = !!list && state.page > lastPage;
   useEffect(() => {
     if (query.isSuccess && !query.isFetching && outOfRange)
       update({ page: lastPage }, true);
@@ -554,6 +664,7 @@ export function FaultOccurrences({
         triggers.current.set(occurrence.id, node);
       }}
       size='compact-xs'
+      className={operations.phoneTarget}
       variant='subtle'
       w='fit-content'
       aria-expanded={state.open === occurrence.id}
@@ -571,247 +682,326 @@ export function FaultOccurrences({
     </Button>
   );
 
-  return (
-    <Stack gap='sm' data-testid='fault-occurrences'>
-      <Group justify='space-between' align='flex-end' gap='sm'>
-        <Stack gap={2}>
-          <Title order={5}>{t`Occurrences`}</Title>
-          <Text size='xs' c='dimmed'>
-            {t`Each alarm or detected condition recorded for this machine, with the evidence retained at the time and the work that owns the response.`}
-          </Text>
+  const expanded =
+    state.open !== null ? (
+      <Paper
+        component='section'
+        withBorder
+        p='sm'
+        id={`occurrence-${state.open}`}
+        ref={openedEvidence}
+        tabIndex={-1}
+        aria-label={t`Opened occurrence evidence`}
+      >
+        <Stack gap='sm'>
+          <Group justify='space-between' gap='xs'>
+            <Button
+              size='compact-xs'
+              variant='subtle'
+              className={`${operations.link} ${operations.phoneTarget}`}
+              onClick={() => toggle(state.open!)}
+            >{t`Close evidence`}</Button>
+          </Group>
+          <OccurrenceEvidence
+            machineId={machineId}
+            occurrenceId={state.open}
+            extra={renderInvestigation}
+          />
         </Stack>
-        <SegmentedControl
-          size='xs'
-          aria-label={t`Occurrence status`}
-          value={state.status}
-          onChange={(value) =>
-            update({
-              status: value as OccurrenceStatusFilter,
-              page: 1,
-              open: null
-            })
-          }
-          data={[
-            { value: 'all', label: t`All` },
-            { value: 'active', label: t`Active` },
-            { value: 'resolved', label: t`Resolved` }
-          ]}
-        />
-      </Group>
-      {state.open !== null && (
+      </Paper>
+    ) : null;
+  return (
+    <DisplayClockContext value={clock}>
+      <Stack
+        gap='sm'
+        className={operations.phoneOccurrences}
+        data-testid='fault-occurrences'
+        data-operational-panel='fault-history'
+      >
         <Paper
           component='section'
-          withBorder
-          p='sm'
-          id={`occurrence-${state.open}`}
-          ref={openedEvidence}
-          tabIndex={-1}
-          aria-label={t`Opened occurrence evidence`}
+          aria-labelledby='fault-history-title'
+          className={operations.band}
         >
-          <Stack gap='sm'>
-            <Group justify='space-between' gap='xs'>
-              <Title order={5}>{t`Occurrence ${state.open}`}</Title>
-              <Button
-                size='compact-xs'
-                variant='subtle'
-                onClick={() => toggle(state.open!)}
-              >{t`Close evidence`}</Button>
+          <div className={operations.heading}>
+            <Group gap={4}>
+              <Title
+                order={4}
+                id='fault-history-title'
+              >{t`Alarm and fault investigation`}</Title>
+              <Badge
+                color='gray'
+                variant='outline'
+              >{t`Recorded occurrences`}</Badge>
             </Group>
-            <OccurrenceEvidence
-              machineId={machineId}
-              occurrenceId={state.open}
-              extra={renderInvestigation}
-            />
-          </Stack>
-        </Paper>
-      )}
-      {query.isPending && (
-        <Stack gap='xs' aria-label={t`Loading occurrences`}>
-          {[1, 2, 3].map((row) => (
-            <Skeleton key={row} height={56} />
-          ))}
-        </Stack>
-      )}
-      {query.isError && (
-        <Alert
-          color='red'
-          title={
-            denied
-              ? t`Occurrences unavailable`
-              : t`Occurrences could not be loaded`
-          }
-        >
-          <Group justify='space-between' gap='xs'>
-            <Text size='sm'>
-              {denied
-                ? t`Your access to this machine's history could not be confirmed.`
-                : t`The history source is unavailable. Nothing is shown in its place.`}
-            </Text>
             <Button
               size='xs'
-              variant='light'
-              onClick={() => void query.refetch()}
-            >{t`Retry occurrences`}</Button>
-          </Group>
-        </Alert>
-      )}
-      {query.data && (
-        <Text size='sm' c='dimmed' component='output'>
-          {plural(query.data.count, {
-            one: '# occurrence',
-            other: '# occurrences'
-          })}
-          {state.status === 'active'
-            ? ` · ${t`active now`}`
-            : state.status === 'resolved'
-              ? ` · ${t`resolved`}`
-              : ''}
-          {' · '}
-          {t`newest first`}
-          {' · '}
-          {t`Recorded plant times; shown in your timezone (UTC${dayjs().format('Z')}). No dashboard time shift is applied.`}
-        </Text>
-      )}
-      {query.data && query.data.count === 0 && (
-        <Paper withBorder p='md'>
-          <Text size='sm' c='dimmed'>
-            {state.status === 'all'
-              ? t`No alarm or detected condition has been recorded for this machine.`
-              : state.status === 'active'
-                ? t`No occurrence is active on this machine now.`
-                : t`No resolved occurrence is recorded for this machine.`}
+              variant='default'
+              loading={query.isFetching}
+              onClick={() => query.refetch()}
+            >{t`Refresh`}</Button>
+          </div>
+          <Text className={operations.meta}>
+            {t`Records read`}{' '}
+            {formatInstant(query.dataUpdatedAt || null, clock) ??
+              t`Time unavailable`}{' '}
+            · {t`Times`}: {clock.label}
           </Text>
+          <Text
+            className={operations.caveat}
+          >{t`Resolved does not always mean cleared. Acknowledged conditions remain active.`}</Text>
+          <Text
+            className={operations.caveat}
+          >{t`Retained evidence is not current readings. Read the resolution note.`}</Text>
+          <Box maw='70ch'>
+            <MonitoringContinuityNotice compact />
+          </Box>
         </Paper>
-      )}
-      {query.data &&
-        query.data.results.length > 0 &&
-        (phone ? (
-          <Stack gap='xs'>
-            {query.data.results.map((occurrence) => (
-              <Paper
-                key={occurrence.id}
-                withBorder
-                p='sm'
-                data-occurrence={occurrence.id}
-              >
-                <Stack gap='xs'>
-                  <Group justify='space-between' gap='xs' wrap='nowrap'>
-                    <SeverityBadge severity={occurrence.severity} />
-                    <Outcome occurrence={occurrence} />
-                  </Group>
-                  <Text size='sm' fw={600} style={{ overflowWrap: 'anywhere' }}>
-                    {occurrence.title}
-                  </Text>
-                  <EventIdentity occurrence={occurrence} />
-                  <SimpleGrid cols={2} spacing='xs'>
-                    <Field label={t`Occurred`}>
-                      <Text size='sm'>
-                        {when(occurrence.first_observed_at)}
-                      </Text>
-                    </Field>
-                    <Field label={t`Component`}>
-                      <Components occurrence={occurrence} />
-                    </Field>
-                    <Field label={t`Source / evidence`}>
-                      <Evidence occurrence={occurrence} />
-                    </Field>
-                    <Field label={t`Owning work`}>
-                      <WorkLinks occurrence={occurrence} compact />
-                    </Field>
-                  </SimpleGrid>
-                  {toggleButton(occurrence)}
-                </Stack>
-              </Paper>
+        <Group justify='space-between' align='flex-end' gap='sm'>
+          <Stack gap={2}>
+            <Title order={5}>{t`Occurrences`}</Title>
+          </Stack>
+          <SegmentedControl
+            size='xs'
+            color={`${theme.primaryColor}.7`}
+            aria-label={t`Occurrence status`}
+            value={state.status}
+            onChange={(value) =>
+              update({
+                status: value as OccurrenceStatusFilter,
+                page: 1,
+                open: null
+              })
+            }
+            data={[
+              { value: 'all', label: t`All` },
+              { value: 'active', label: t`Active` },
+              { value: 'resolved', label: t`Resolved` }
+            ]}
+          />
+        </Group>
+        {query.isPending && (
+          <Stack gap='xs' aria-label={t`Loading occurrences`}>
+            {[1, 2, 3].map((row) => (
+              <Skeleton key={row} height={56} />
             ))}
           </Stack>
-        ) : (
-          <Table.ScrollContainer minWidth={960}>
-            <Table
-              data-testid='fault-occurrence-table'
-              verticalSpacing='sm'
-              style={{ tableLayout: 'fixed' }}
-            >
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th w={170}>{t`Occurred`}</Table.Th>
-                  <Table.Th w='26%'>{t`Event / finding`}</Table.Th>
-                  <Table.Th>{t`Component`}</Table.Th>
-                  <Table.Th>{t`Source / evidence`}</Table.Th>
-                  <Table.Th>{t`Owning work`}</Table.Th>
-                  <Table.Th w={150}>{t`Outcome`}</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {query.data.results.map((occurrence) => (
-                  <OccurrenceRows
-                    key={occurrence.id}
-                    occurrence={occurrence}
-                    toggle={toggleButton(occurrence)}
-                  />
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
-        ))}
-      {lastPage > 1 && (
-        <Group justify='flex-end'>
-          <nav aria-label={t`Occurrence pagination`}>
-            <Pagination
-              value={state.page}
-              total={lastPage}
-              onChange={(page) => update({ page, open: null })}
-            />
-          </nav>
-        </Group>
-      )}
-    </Stack>
+        )}
+        {query.isError && (
+          <Alert
+            color='red'
+            title={
+              denied
+                ? t`Occurrences unavailable`
+                : t`Occurrences could not be loaded`
+            }
+          >
+            <Group justify='space-between' gap='xs'>
+              <Text size='sm'>
+                {denied
+                  ? t`Your access to this machine's history could not be confirmed.`
+                  : t`The history source is unavailable. Nothing is shown in its place.`}
+              </Text>
+              <Button
+                size='xs'
+                variant='light'
+                onClick={() => void query.refetch()}
+              >{t`Retry occurrences`}</Button>
+            </Group>
+          </Alert>
+        )}
+        {list && (
+          <Text size='sm' className={operations.meta} component='output'>
+            {plural(list.count, {
+              one: '# occurrence',
+              other: '# occurrences'
+            })}
+            {state.status === 'active'
+              ? ` · ${t`active now`}`
+              : state.status === 'resolved'
+                ? ` · ${t`resolved`}`
+                : ''}
+            {' · '}
+            {t`newest first`}
+          </Text>
+        )}
+        {list && list.count === 0 && (
+          <Paper withBorder p='md'>
+            <Text size='sm' className={operations.meta}>
+              {state.status === 'all'
+                ? t`No alarm or detected condition has been recorded for this machine.`
+                : state.status === 'active'
+                  ? t`No occurrence is active on this machine now.`
+                  : t`No resolved occurrence is recorded for this machine.`}
+            </Text>
+          </Paper>
+        )}
+        {list &&
+          list.results.length > 0 &&
+          (phone ? (
+            <Stack gap='xs'>
+              {list.results.map((occurrence) => (
+                <Paper
+                  key={occurrence.id}
+                  withBorder
+                  p='sm'
+                  data-occurrence={occurrence.id}
+                >
+                  <Stack gap='xs'>
+                    <Group justify='space-between' gap='xs' align='flex-start'>
+                      <div style={{ flexShrink: 0 }}>
+                        <SeverityBadge severity={occurrence.severity} />
+                      </div>
+                      <Outcome occurrence={occurrence} />
+                    </Group>
+                    <Text
+                      size='sm'
+                      fw={600}
+                      style={{ overflowWrap: 'anywhere' }}
+                    >
+                      {occurrence.title}
+                    </Text>
+                    <EventIdentity occurrence={occurrence} />
+                    <SimpleGrid cols={2} spacing='xs'>
+                      <Field label={t`First observed`}>
+                        <Text size='sm'>
+                          {when(occurrence.first_observed_at, clock)}
+                        </Text>
+                      </Field>
+                      {occurrence.last_observed_at !==
+                        occurrence.first_observed_at && (
+                        <Field label={t`Last observed`}>
+                          <Text size='sm'>
+                            {when(occurrence.last_observed_at, clock)}
+                          </Text>
+                        </Field>
+                      )}
+                      <Field label={t`Component`}>
+                        <Components occurrence={occurrence} />
+                      </Field>
+                      <Field label={t`Source / evidence`}>
+                        <Evidence occurrence={occurrence} />
+                      </Field>
+                      <Field label={t`Owning work`}>
+                        <WorkLinks occurrence={occurrence} compact />
+                      </Field>
+                    </SimpleGrid>
+                    {toggleButton(occurrence)}
+                    {state.open === occurrence.id && expanded}
+                  </Stack>
+                </Paper>
+              ))}
+            </Stack>
+          ) : (
+            <Table.ScrollContainer minWidth={960}>
+              <Table
+                data-testid='fault-occurrence-table'
+                verticalSpacing={4}
+                style={{ tableLayout: 'fixed' }}
+              >
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th w={95}>{t`Severity`}</Table.Th>
+                    <Table.Th w={200}>{t`State`}</Table.Th>
+                    <Table.Th w={165}>
+                      {t`Observed`}
+                      <Text
+                        size='xs'
+                        className={operations.meta}
+                      >{t`Observed span, not event duration`}</Text>
+                    </Table.Th>
+                    <Table.Th w='26%'>{t`Event / finding`}</Table.Th>
+                    <Table.Th>{t`Component`}</Table.Th>
+                    <Table.Th>{t`Evidence`}</Table.Th>
+                    <Table.Th>{t`Owning work`}</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {list.results.map((occurrence) => (
+                    <OccurrenceRows
+                      key={occurrence.id}
+                      occurrence={occurrence}
+                      toggle={toggleButton(occurrence)}
+                      expanded={state.open === occurrence.id ? expanded : null}
+                    />
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          ))}
+        {state.open !== null &&
+          list &&
+          !list.results.some((row) => row.id === state.open) &&
+          expanded}
+        {lastPage > 1 && (
+          <Group justify='flex-end'>
+            <nav aria-label={t`Occurrence pagination`}>
+              <Pagination
+                value={state.page}
+                total={lastPage}
+                onChange={(page) => update({ page, open: null })}
+              />
+            </nav>
+          </Group>
+        )}
+      </Stack>
+    </DisplayClockContext>
   );
 }
 
 function OccurrenceRows({
   occurrence,
-  toggle
+  toggle,
+  expanded
 }: Readonly<{
   occurrence: FaultOccurrence;
   toggle: ReactNode;
+  expanded?: ReactNode;
 }>) {
-  const top = { verticalAlign: 'top' } as const;
+  const clock = useDisplayClock();
   return (
     <>
       <Table.Tr data-occurrence={occurrence.id}>
-        <Table.Td style={top}>
+        <Table.Td className={operations.cell}>
+          <SeverityBadge severity={occurrence.severity} />
+        </Table.Td>
+        <Table.Td className={operations.cell}>
+          <Outcome occurrence={occurrence} />
+        </Table.Td>
+        <Table.Td className={operations.cell}>
           <Stack gap={2}>
-            <Text size='sm'>{when(occurrence.first_observed_at)}</Text>
+            <Text size='xs'>{when(occurrence.first_observed_at, clock)}</Text>
             {occurrence.last_observed_at !== occurrence.first_observed_at && (
-              <Text size='xs' c='dimmed'>
-                {t`until`} {when(occurrence.last_observed_at)}
+              <Text size='xs' className={operations.meta}>
+                {t`until`} {when(occurrence.last_observed_at, clock)}
               </Text>
             )}
             {toggle}
           </Stack>
         </Table.Td>
-        <Table.Td style={{ ...top, overflowWrap: 'anywhere' }}>
+        <Table.Td className={operations.cell}>
           <Stack gap={4}>
-            <SeverityBadge severity={occurrence.severity} />
             <Text size='sm' fw={600}>
               {occurrence.title}
             </Text>
             <EventIdentity occurrence={occurrence} />
           </Stack>
         </Table.Td>
-        <Table.Td style={{ ...top, overflowWrap: 'anywhere' }}>
+        <Table.Td className={operations.cell}>
           <Components occurrence={occurrence} />
         </Table.Td>
-        <Table.Td style={{ ...top, overflowWrap: 'anywhere' }}>
+        <Table.Td className={operations.cell}>
           <Evidence occurrence={occurrence} />
         </Table.Td>
-        <Table.Td style={{ ...top, overflowWrap: 'anywhere' }}>
+        <Table.Td className={operations.cell}>
           <WorkLinks occurrence={occurrence} compact />
         </Table.Td>
-        <Table.Td style={top}>
-          <Outcome occurrence={occurrence} />
-        </Table.Td>
       </Table.Tr>
+      {expanded && (
+        <Table.Tr>
+          <Table.Td colSpan={7}>{expanded}</Table.Td>
+        </Table.Tr>
+      )}
     </>
   );
 }

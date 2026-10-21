@@ -15,7 +15,6 @@ import {
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import dayjs from 'dayjs';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useApi } from '../../../contexts/ApiContext';
@@ -26,19 +25,25 @@ import {
   type OccurrencePage,
   occurrenceRequest
 } from '../faults/occurrenceModel';
+import operations from '../operations.module.css';
 import { HealthStateBadge, qualityLabel } from './common';
+import { displayClock, formatInstant } from './mimic/observedTime';
 
 /** Policy continuity, never a claim that a source is currently available. */
-export function MonitoringContinuityNotice() {
+export function MonitoringContinuityNotice({
+  compact = false
+}: { compact?: boolean }) {
+  if (compact)
+    return (
+      <Text size='sm'>{t`Configured monitoring spans maintenance and Closeout; its availability is separate.`}</Text>
+    );
   return (
     <Text size='sm'>{t`Configured proactive monitoring applies before, during and after maintenance and Closeout. Its current availability is separate from repair, test and service outcomes.`}</Text>
   );
 }
 
 const when = (value?: string | null) =>
-  value
-    ? `${dayjs(value).format('DD MMM YYYY, HH:mm:ss')} (${Intl.DateTimeFormat().resolvedOptions().timeZone})`
-    : t`Time unavailable`;
+  formatInstant(value, displayClock()) ?? t`Time unavailable`;
 
 const unavailableInScope = (error: unknown) =>
   isAxiosError(error) && [401, 403, 404].includes(error.response?.status ?? 0);
@@ -90,6 +95,7 @@ export function MonitoringContinuity({
         </Text>
         {workOrder.source_alert && (
           <Anchor
+            className={operations.link}
             component={Link}
             to={`/machines/machine/${workOrder.source_alert.machine_id}/fault-history/?occurrence=${workOrder.source_alert.id}`}
             size='sm'
@@ -98,16 +104,19 @@ export function MonitoringContinuity({
         <AcceptedReportLinks reports={workOrder.structured_closeout?.reports} />
         <Group>
           <Anchor
+            className={operations.link}
             component={Link}
             to={`?${workPanelParams(params, 'diagnose')}`}
             size='sm'
           >{t`Saved requests and evidence for this Work`}</Anchor>
           <Anchor
+            className={operations.link}
             component={Link}
             to={`?${workPanelParams(params, 'closeout')}`}
             size='sm'
           >{t`Account, original fields and amendments`}</Anchor>
           <Anchor
+            className={operations.link}
             component={Link}
             to={`?${workPanelParams(params, 'history')}`}
             size='sm'
@@ -227,6 +236,7 @@ function CurrentMonitoring({
         </>
       )}
       <Anchor
+        className={operations.link}
         component={Link}
         to={`/machines/machine/${machineId}/health/`}
         size='sm'
@@ -296,12 +306,14 @@ function CurrentMonitoring({
                   <Text size='sm'>{t`Retained quality unavailable; current readings are not substituted.`}</Text>
                 )}
                 <Anchor
+                  className={operations.link}
                   component={Link}
                   to={`/machines/machine/${machineId}/fault-history/?occurrence=${occurrence.id}`}
                   size='sm'
                 >{t`Open exact occurrence and retained evidence`}</Anchor>
                 {occurrence.work.map((work) => (
                   <Anchor
+                    className={operations.link}
                     key={work.id}
                     component={Link}
                     to={`/maintenance/work-orders/${work.id}/?work_panel=diagnose`}
@@ -323,9 +335,10 @@ function CurrentMonitoring({
       )}
       <Text
         size='xs'
-        c='dimmed'
-      >{t`Original occurrence and capture times are retained. Browser timezone conversion is labelled; no dashboard display shift is applied.`}</Text>
+        className={operations.meta}
+      >{t`Original occurrence and capture times are retained; retained evidence is separate from current readings.`}</Text>
       <Anchor
+        className={operations.link}
         component={Link}
         to={`/machines/machine/${machineId}/fault-history/`}
         size='sm'

@@ -1,4 +1,5 @@
 import dayjs from 'dayjs';
+import { machinePanelHref } from '../locations/locationTree';
 
 /** Mantine's local picker value is not an ECMAScript ISO date string. */
 export function pickerInstant(value: string | null): number {
@@ -66,7 +67,8 @@ export function investigationHref(
   span: InvestigationWindow,
   occurrence: number,
   snapshot?: string,
-  clock: 'recorded' | 'display' = 'display'
+  clock: 'recorded' | 'display' = 'display',
+  origin = new URLSearchParams()
 ) {
   const params = new URLSearchParams({
     history_from: new Date(span.from).toISOString(),
@@ -75,7 +77,12 @@ export function investigationHref(
   });
   params.set('history_clock', clock);
   if (snapshot) params.set('snapshot', snapshot);
-  return `/machines/machine/${machineId}/performance/?${params}`;
+  return machinePanelHref(
+    machineId,
+    'performance',
+    origin,
+    Object.fromEntries(params)
+  );
 }
 
 /** Series reads accept display-clock bounds. Never guess an unknown offset. */

@@ -39,6 +39,11 @@ class AssetMachineSerializer(serializers.ModelSerializer):
     # a zero that would read as "none".
     open_alarms = serializers.SerializerMethodField()
     open_critical_alarms = serializers.SerializerMethodField()
+    open_warning_alarms = serializers.SerializerMethodField()
+
+    def get_open_warning_alarms(self, machine) -> int | None:
+        """Active warnings, distinct from info and critical alarms."""
+        return getattr(machine, 'open_warning_alarms', None)
 
     def get_open_alarms(self, machine) -> int | None:
         """Open or acknowledged alarms here and one level below."""
@@ -63,6 +68,7 @@ class AssetMachineSerializer(serializers.ModelSerializer):
             'source_key',
             'open_alarms',
             'open_critical_alarms',
+            'open_warning_alarms',
             'location',
             'client',
             'manufacturer',

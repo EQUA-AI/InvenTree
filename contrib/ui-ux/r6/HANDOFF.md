@@ -11,6 +11,14 @@
 
 This file is the durable resumption point. Do not depend on the preceding chat, redo all research, or infer completion from source inspection.
 
+## Design-review repair checkpoint — 21 October 2026
+
+The merged-machine design fixes and targeted regression coverage are implemented. See `reports/S8-01.md` (“Design review fixes”) for per-item causes, changes and actual checks. Final engineering checks pass: all nine TypeScript projects, full Vitest 724 tests / 73 files, prek on all 31 changed/untracked files, tracking and diff checks. Lingui extract/compile passed with all 117 locale files restored bytewise. **Sandbox S2 failed on software-rendering start-up time; macOS GPU S0/S2/S3/S8 verification by the coordinator is pending.** The coordinator stopped the task-owned browser container and Vite; do not start replacements. Renderer experiments in product/fixture code, test gates, routing and scratch launch/tracing configuration are reverted; original readiness assertions, timeouts and rendering remain. The merge stays uncommitted with every original unmerged entry; no Git write commands. No other worktree/container, ports 15221–15226 or Azure connection used. S8-01/P31 remain In progress and P32 Ready for review; no deployment or product acceptance is inferred.
+
+## Merge-resolution checkpoint — 21 October 2026
+
+On `r6/design-pass`, the coordinator-started merge from `inventTree-aniket` has all ten source conflicts resolved, with no Git index writes. `reports/S8-01.md` (“Merge with the integrated line”) records each decision and verification; `s8.md` tracks the merge slice. The backlog retains the integrated ticket statuses. D02/D19/D20/D21 now distinguish source preservation from pending browser replay. Next: coordinator reviews, stages and commits the resolutions, then runs the host GPU suites and inspects fresh renders. Historical screenshots were inspected only as layout context; this session started no server, ran no Playwright, and touched no other worktree/container or Azure resource. No product or deployment acceptance is inferred.
+
 ## Latest checkpoint — 21 October 2026, early morning (Claude Code coordinating Codex and Hyperagent)
 
 Read this first; older sections below are history.

@@ -11,7 +11,7 @@
   <!-- Discharge header, collecting every bay and leaving the station. -->
   <path d="M236 56h660v14H236z" fill="var(--mimic-water, #d0ebff)"/>
   <path d="M236 50v26"/>
-  <path d="M896 49l26 14l-26 14z" fill="var(--mimic-water, #d0ebff)"/>
+  <path d="M896 56h26v14h-26z" fill="var(--mimic-water, #d0ebff)"/>
 
   <g id="forebay" data-point="/dex/COMMAN_FORBAY_LEVEL"/>
   <g id="station-status" data-point="/st"/>

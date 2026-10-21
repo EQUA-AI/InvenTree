@@ -210,6 +210,8 @@ def live_status(station):
         'approved': approved,
         'last_poll_at': checkpoint.last_poll_at if checkpoint else None,
         'last_error_code': checkpoint.last_error_code if checkpoint else '',
+        'last_error_at': checkpoint.source.last_error_at if checkpoint else None,
+        'last_success_at': checkpoint.source.last_success_at if checkpoint else None,
     }
 
 

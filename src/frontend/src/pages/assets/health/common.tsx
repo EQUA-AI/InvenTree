@@ -1,15 +1,23 @@
 import { plural, t } from '@lingui/core/macro';
-import { Badge, Group, Text } from '@mantine/core';
+import { Badge, type BadgeProps, Group, Text } from '@mantine/core';
 import {
   IconAlertTriangle,
+  IconBellCheck,
+  IconBellOff,
+  IconBellRinging,
   IconCircleCheck,
   IconHelpCircle,
+  IconHistory,
+  IconInfoCircle,
   IconPlugConnectedX,
   IconUrgent
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import type { ReactNode } from 'react';
+
+import operations from '../operations.module.css';
+import { displayClock, formatInstant } from './mimic/observedTime';
 
 import type {
   AnomalySeverity,
@@ -71,7 +79,9 @@ export function healthStateVisual(state: HealthState): StateVisual {
   }
 }
 
-export function severityVisual(severity: AnomalySeverity): StateVisual {
+export function severityVisual(
+  severity: string | null | undefined
+): StateVisual {
   switch (severity) {
     case 'critical':
       return {
@@ -85,13 +95,114 @@ export function severityVisual(severity: AnomalySeverity): StateVisual {
         label: t`Warning`,
         icon: <IconAlertTriangle size={16} />
       };
-    default:
+    case 'info':
       return {
         color: 'blue',
         label: t`Info`,
+        icon: <IconInfoCircle size={16} />
+      };
+    default:
+      return {
+        color: 'gray',
+        label: t`Severity unavailable`,
         icon: <IconHelpCircle size={16} />
       };
   }
+}
+
+/** Shared badge contrast and vocabulary; palette remains native Mantine. */
+export function StatusBadge({
+  children,
+  variant = 'light',
+  leftSection,
+  color = 'gray',
+  maw = 'none',
+  miw = 'max-content',
+  ...props
+}: BadgeProps & { children: ReactNode; 'data-alarm-status'?: string }) {
+  return (
+    <Badge
+      {...props}
+      variant={variant}
+      color={
+        variant === 'filled' && !color.includes('.') ? `${color}.9` : color
+      }
+      autoContrast={variant === 'filled'}
+      c={variant === 'filled' ? undefined : 'var(--mantine-color-text)'}
+      tt='none'
+      maw={maw}
+      miw={miw}
+      leftSection={leftSection ?? <IconInfoCircle size={14} />}
+    >
+      {children}
+    </Badge>
+  );
+}
+export function alarmStateVisual(
+  status: string | null,
+  severity?: string | null
+) {
+  const color = severityVisual(severity).color;
+  switch (status) {
+    case 'open':
+      return {
+        label: t`Active · not acknowledged`,
+        color: severity === 'critical' ? 'red.9' : color,
+        variant: 'filled' as const,
+        icon: <IconBellRinging size={14} />
+      };
+    case 'acknowledged':
+      return {
+        label: t`Active · acknowledged`,
+        color,
+        variant: 'outline' as const,
+        icon: <IconBellCheck size={14} />
+      };
+    case 'resolved':
+      return {
+        label: t`Resolved`,
+        color: 'gray',
+        variant: 'outline' as const,
+        icon: <IconHistory size={14} />
+      };
+    case 'suppressed':
+      return {
+        label: t`Dismissed`,
+        color: 'gray',
+        variant: 'outline' as const,
+        icon: <IconBellOff size={14} />
+      };
+    default:
+      return {
+        label: t`Alarm state unavailable`,
+        color: 'gray',
+        variant: 'outline' as const,
+        icon: <IconHelpCircle size={14} />
+      };
+  }
+}
+export function AlarmStateBadge({
+  status,
+  severity
+}: { status: string | null; severity?: string | null }) {
+  const visual = alarmStateVisual(status, severity);
+  return (
+    <StatusBadge
+      data-alarm-status={status ?? 'unknown'}
+      color={visual.color}
+      variant={visual.variant}
+      leftSection={visual.icon}
+    >
+      {visual.label}
+    </StatusBadge>
+  );
+}
+export function Unavailable({ reason }: { reason: string }) {
+  return (
+    <Text size='sm'>
+      {t`Unavailable`} · {reason}
+    </Text>
+  );
 }
 
 export function HealthStateBadge({
@@ -100,26 +211,28 @@ export function HealthStateBadge({
 }: Readonly<{ state: HealthState; size?: string }>) {
   const visual = healthStateVisual(state);
   return (
-    <Badge
-      style={{ flexShrink: 0, maxWidth: 'none' }}
+    <StatusBadge
+      flex='0 0 auto'
+      maw='none'
+      miw='max-content'
       color={visual.color}
       variant='light'
       size={size}
       leftSection={visual.icon}
     >
       {visual.label}
-    </Badge>
+    </StatusBadge>
   );
 }
 
 export function SeverityBadge({
   severity
-}: Readonly<{ severity: AnomalySeverity }>) {
+}: Readonly<{ severity: AnomalySeverity | string | null }>) {
   const visual = severityVisual(severity);
   return (
-    <Badge color={visual.color} variant='light' leftSection={visual.icon}>
+    <StatusBadge color={visual.color} variant='light' leftSection={visual.icon}>
       {visual.label}
-    </Badge>
+    </StatusBadge>
   );
 }
 
@@ -164,9 +277,9 @@ export function SourceTypeBadge({
     return null;
   }
   return (
-    <Badge variant='outline' color='gray'>
+    <StatusBadge variant='outline' color='gray'>
       {sourceTypeLabel(type)}
-    </Badge>
+    </StatusBadge>
   );
 }
 
@@ -182,7 +295,7 @@ export function ObservedAt({
 }: Readonly<{ observedAt: string | null; stale: boolean }>) {
   if (!observedAt) {
     return (
-      <Text size='sm' c='dimmed'>
+      <Text size='sm' className={operations.meta}>
         {t`No reading`}
       </Text>
     );
@@ -192,12 +305,12 @@ export function ObservedAt({
     <Group
       gap={6}
       wrap='wrap'
-      title={new Date(observedAt).toLocaleString(undefined, {
-        timeZoneName: 'long'
-      })}
+      title={formatInstant(observedAt, displayClock()) ?? t`Time unavailable`}
     >
-      <Text size='sm'>{dayjs(observedAt).format('MMM D, HH:mm')}</Text>
-      <Text size='xs' c={stale ? undefined : 'dimmed'}>
+      <Text size='sm'>
+        {formatInstant(observedAt, displayClock()) ?? t`Time unavailable`}
+      </Text>
+      <Text size='xs' className={operations.meta}>
         {stale ? t`Stale` : dayjs(observedAt).fromNow()}
       </Text>
     </Group>

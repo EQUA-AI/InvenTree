@@ -1,4 +1,5 @@
 import { type Page, type Route, expect } from '@playwright/test';
+import type { FaultOccurrence } from '../../src/pages/assets/faults/occurrenceModel';
 
 import { mockMachine } from '../s0/machineFixtures';
 import { mockWork } from '../s0/workFixtures';
@@ -271,7 +272,18 @@ export const occurrences = [
     title: 'Drive-end bearing high temperature',
     evidence_summary:
       'Bearing temperature 118.4 degC above its 110 degC limit.',
-    metrics: { peak: 118.4, threshold: 110 },
+    metrics: {
+      value: 118.4,
+      unit: 'degC',
+      warn_min: null,
+      warn_max: 110,
+      critical_min: null,
+      critical_max: 130,
+      vote_confirmed: 2,
+      vote_minimum: 2,
+      vote_group: 'thermal',
+      unchanged_for_seconds: 840
+    },
     detector: 'source_alarm',
     detector_version: '',
     source: { id: 5, name: 'Synthetic SCADA', type: 'scada' },
@@ -318,8 +330,8 @@ export const occurrences = [
         source_name: 'Synthetic SCADA',
         captured_by_name: 'Synthetic Technician',
         system_actor: 'historian-import',
-        window_start: '2025-07-27T02:14:05Z',
-        window_end: '2025-07-27T02:14:05Z',
+        window_start: '2026-10-12T02:14:05Z',
+        window_end: '2026-10-12T02:14:05Z',
         captured_at: '2026-10-12T02:16:00Z',
         quality: 'good',
         stale: false,
@@ -403,7 +415,11 @@ export const rollup = {
 /** Machine 18's Fault History reads: the rollup, occurrences and details. */
 export async function mockFaultHistory(
   page: Page,
-  options: { listStatus?: number; empty?: boolean } = {}
+  options: {
+    listStatus?: number;
+    empty?: boolean;
+    rows?: FaultOccurrence[];
+  } = {}
 ) {
   const requests = { list: [] as URL[], detail: [] as URL[] };
   await mockWork(page);
@@ -424,7 +440,7 @@ export async function mockFaultHistory(
       const status = url.searchParams.get('status') ?? 'all';
       const rows = options.empty
         ? []
-        : occurrences.filter((row) =>
+        : (options.rows ?? occurrences).filter((row) =>
             status === 'active'
               ? row.active
               : status === 'resolved'
@@ -434,6 +450,7 @@ export async function mockFaultHistory(
       return route.fulfill({
         json: {
           rule: 'fault_occurrences.v1',
+          plant_timezone: null,
           machine: 18,
           status,
           count: rows.length,
@@ -453,9 +470,21 @@ export async function mockFaultHistory(
       const url = new URL(route.request().url());
       requests.detail.push(url);
       const id = Number(url.pathname.split('/').at(-2));
-      return occurrences.some((row) => row.id === id)
-        ? route.fulfill({ json: occurrenceDetail(id) })
-        : route.fulfill({ status: 404, json: { detail: 'Not found' } });
+      if (!(options.rows ?? occurrences).some((row) => row.id === id))
+        return route.fulfill({ status: 404, json: { detail: 'Not found' } });
+      const row = options.rows?.find((item) => item.id === id);
+      const detail = row
+        ? {
+            ...row,
+            snapshots: row.snapshots.map((snapshot) => ({
+              ...snapshot,
+              samples: [{ observed_at: snapshot.window_start, value: 118.4 }],
+              statistics: { available: true, latest: 118.4 },
+              source_references: {}
+            }))
+          }
+        : occurrenceDetail(id);
+      return route.fulfill({ json: detail });
     }
   );
   return requests;

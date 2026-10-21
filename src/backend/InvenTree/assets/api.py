@@ -148,6 +148,14 @@ def with_open_alarms(queryset):
     return queryset.annotate(
         own_alarms=Count('anomalies', filter=own, distinct=True),
         child_alarms=Count('children__anomalies', filter=below, distinct=True),
+        own_warning=Count(
+            'anomalies', filter=own & Q(anomalies__severity='warning'), distinct=True
+        ),
+        child_warning=Count(
+            'children__anomalies',
+            filter=below & Q(children__anomalies__severity='warning'),
+            distinct=True,
+        ),
         own_critical=Count(
             'anomalies', filter=own & Q(anomalies__severity='critical'), distinct=True
         ),
@@ -159,6 +167,7 @@ def with_open_alarms(queryset):
     ).annotate(
         open_alarms=F('own_alarms') + F('child_alarms'),
         open_critical_alarms=F('own_critical') + F('child_critical'),
+        open_warning_alarms=F('own_warning') + F('child_warning'),
     )
 
 

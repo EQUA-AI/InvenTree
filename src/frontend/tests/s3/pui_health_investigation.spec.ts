@@ -679,7 +679,7 @@ for (const scheme of ['light', 'dark'] as const)
       .click();
     const slices = page.getByTestId('investigation-slices');
     const setTime = async (label: string, hour: string) => {
-      const trigger = slices.getByLabel(label, { exact: true });
+      const trigger = slices.getByLabel(`${label} (UTC)`, { exact: true });
       await trigger.click();
       const dropdownId = await trigger.getAttribute('aria-controls');
       expect(dropdownId).toBeTruthy();
@@ -737,11 +737,11 @@ for (const scheme of ['light', 'dark'] as const)
     );
     await expect(slices).toContainText('Slice 2 of 3');
     await expect(
-      slices.getByLabel('Case span from', { exact: true })
-    ).toContainText('17/10/2026 06:00');
+      slices.getByLabel('Case span from (UTC)', { exact: true })
+    ).toContainText('17 Oct 2026 06:00');
     await expect(
-      slices.getByLabel('Case span to', { exact: true })
-    ).toContainText('17/10/2026 19:00');
+      slices.getByLabel('Case span to (UTC)', { exact: true })
+    ).toContainText('17 Oct 2026 19:00');
     await expect(trendCard(page)).toContainText(
       'Chart origin: selected fixed source window'
     );
