@@ -31,20 +31,19 @@ A read-only `pg_dump -Fc` backup of Azure was taken on 21 October 2026 before
 the migration and is held by the owner locally. Record only its file name above;
 do not include its path or contents.
 
-**Update, 21 October evening: deploying from IOT-Merge.** IOT-Merge now
-carries five migrations that Azure does not have yet: aichat
-`0054_chatthread_conversation_focus` and `0055_chatthread_focus_db_defaults`,
-the merge-only aichat `0056_merge_focus_and_investigation`, and
-`legacy_boundary` `0001_observed_schema_checkpoint` and
-`0002_verify_focus_checkpoint`. They are applied at rollout through the
-`runmigrations` command and the guarded startup runner in
+**Update, 21 October evening: deploying from IOT-Merge.** At 15:43 UTC the
+IOT-Merge maintainer applied four more migrations on Azure with
+`runmigrations`: aichat `0054_chatthread_conversation_focus` and
+`0055_chatthread_focus_db_defaults`, and `legacy_boundary`
+`0001_observed_schema_checkpoint` and `0002_verify_focus_checkpoint`. Azure now
+has 988. An IOT-Merge build has one more, the merge-only aichat
+`0056_merge_focus_and_investigation`, which changes no tables. It is recorded at
+rollout by `runmigrations` and the guarded startup runner in
 `contrib/container/init.sh`, following
 `contrib/container/IOT-Migration-Reconciliation.md` (`runmigrations --check`,
-then `runmigrations`, then `--check` again). Take a fresh backup first. This
-replaces the "the deployer does not run migrations" rule below for an
-IOT-Merge build; the 984-migration record above is the starting point those
-five build on. Agree the run with the IOT-Merge maintainer before touching
-Azure.
+then `runmigrations`, then `--check` again). Take a fresh backup first. For an
+IOT-Merge build this replaces the "the deployer does not run migrations" rule
+below. Agree the run with the IOT-Merge maintainer before touching Azure.
 
 ---
 
