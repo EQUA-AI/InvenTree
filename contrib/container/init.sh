@@ -63,19 +63,18 @@ cd ${INVENTREE_HOME}
 # master's, so it ends the container. There is no running container left to
 # migrate from, and the migration has to happen here or not at all.
 #
-# The lineage check comes first and changes nothing. If it refuses, `set -e`
-# stops this script before `migrate` and before the server, the revision never
+# The lineage check and forward plan run under one database advisory lock and
+# one PostgreSQL transaction. If either fails, `set -e` stops this script before
+# the server, the revision never
 # becomes ready, and whatever was serving carries on. INVENTREE_AUTO_UPDATE
 # would also migrate at start, but it does not ask whose database this is, and
 # it starts the server even when a migration has failed.
 #
 # Leave it unset on the worker, so that one container migrates, and take it off
-# again after the rollout: it costs two extra application boots on every start.
+# again after the rollout: it costs an extra application boot on every start.
 if [[ "${AIMMS_MIGRATE_ON_START,,}" == "true" ]]; then
-    echo "AIMMS_MIGRATE_ON_START is enabled - checking lineage, then migrating"
-    python "${INVENTREE_BACKEND_DIR}/InvenTree/manage.py" shell -c \
-        "from assets.deploy_lineage import report; report()"
-    python "${INVENTREE_BACKEND_DIR}/InvenTree/manage.py" migrate --noinput
+    echo "AIMMS_MIGRATE_ON_START is enabled - applying guarded atomic migrations"
+    python "${INVENTREE_BACKEND_DIR}/InvenTree/manage.py" runmigrations
     echo "Migration step finished - starting the server"
 fi
 

@@ -1,0 +1,18 @@
+{
+  "repair_gateauthorityrecord.repair_authority_kind": [
+    "CHECK (((kind)::text = ANY (ARRAY[('isolation'::character varying)::text, ('permit'::character varying)::text, ('access_window'::character varying)::text])))",
+    "CHECK (((kind)::text = ANY ((ARRAY['isolation'::character varying, 'permit'::character varying, 'access_window'::character varying])::text[])))"
+  ],
+  "tasks_investigationartifact.tasks_inv_artifact_kind": [
+    "CHECK (((kind)::text = ANY (ARRAY[('observation'::character varying)::text, ('reading_set'::character varying)::text, ('photo'::character varying)::text, ('report'::character varying)::text, ('laboratory'::character varying)::text, ('check_result'::character varying)::text])))",
+    "CHECK (((kind)::text = ANY ((ARRAY['observation'::character varying, 'reading_set'::character varying, 'photo'::character varying, 'report'::character varying, 'laboratory'::character varying, 'check_result'::character varying])::text[])))"
+  ],
+  "tasks_investigationrequest.tasks_inv_request_status": [
+    "CHECK (((status)::text = ANY (ARRAY[('open'::character varying)::text, ('answered'::character varying)::text, ('cannot_perform'::character varying)::text, ('pending_external'::character varying)::text, ('disputed'::character varying)::text, ('resolved'::character varying)::text])))",
+    "CHECK (((status)::text = ANY ((ARRAY['open'::character varying, 'answered'::character varying, 'cannot_perform'::character varying, 'pending_external'::character varying, 'disputed'::character varying, 'resolved'::character varying])::text[])))"
+  ],
+  "tasks_operationalauthorityrecord.tasks_authority_kind": [
+    "CHECK (((kind)::text = ANY (ARRAY[('test_acceptance'::character varying)::text, ('operating_permission'::character varying)::text, ('observed_return'::character varying)::text, ('service_state'::character varying)::text])))",
+    "CHECK (((kind)::text = ANY ((ARRAY['test_acceptance'::character varying, 'operating_permission'::character varying, 'observed_return'::character varying, 'service_state'::character varying])::text[])))"
+  ]
+}

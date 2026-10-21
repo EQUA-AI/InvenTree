@@ -1,0 +1,4322 @@
+{
+  "version": 1,
+  "origin": "Observed complete PostgreSQL boundary, 2026-10-21; reconstructed checkpoint, not recovered historical source. Historical data transformations and authority grants are not replayed.",
+  "tables": [
+    "assets_componentfit",
+    "assets_registrycommand",
+    "assets_sharedperformanceview",
+    "assets_signaldesignation",
+    "repair_gateauthorityrecord",
+    "repair_repairfindingrevision",
+    "tasks_acceptedcloseoutreport",
+    "tasks_calibrationtraceability",
+    "tasks_captureoriginal",
+    "tasks_investigationartifact",
+    "tasks_investigationrequest",
+    "tasks_operationalauthorityrecord",
+    "tasks_workdowntime",
+    "tasks_workhandover",
+    "tasks_worktimeinterval"
+  ],
+  "selected_columns": [
+    [
+      "tasks_closeoutcapture",
+      "voice_unavailable_reason"
+    ],
+    [
+      "tasks_workorder",
+      "corrective_finding"
+    ],
+    [
+      "tasks_workorder",
+      "corrective_origin_kind"
+    ],
+    [
+      "tasks_workorder",
+      "corrective_reading_id"
+    ],
+    [
+      "tasks_workorder",
+      "corrective_step_id"
+    ],
+    [
+      "tasks_workorder",
+      "recurrence_occurrence_id"
+    ],
+    [
+      "tasks_workorder",
+      "recurrence_of_id"
+    ],
+    [
+      "tasks_workorder",
+      "tags"
+    ],
+    [
+      "users_ruleset",
+      "can_record_operating_authority"
+    ]
+  ],
+  "columns": [
+    {
+      "table_name": "assets_componentfit",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "YES",
+      "identity_generation": "BY DEFAULT"
+    },
+    {
+      "table_name": "assets_componentfit",
+      "column_name": "component_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_componentfit",
+      "column_name": "stock_item_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_componentfit",
+      "column_name": "work_order_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_componentfit",
+      "column_name": "usage_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_componentfit",
+      "column_name": "fitted_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_componentfit",
+      "column_name": "recorded_by_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_componentfit",
+      "column_name": "recorded_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_componentfit",
+      "column_name": "verified_by_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_componentfit",
+      "column_name": "verified_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_componentfit",
+      "column_name": "reason",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_componentfit",
+      "column_name": "retracted_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_componentfit",
+      "column_name": "retracted_by_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_componentfit",
+      "column_name": "retraction_reason",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_componentfit",
+      "column_name": "source",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 16,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_componentfit",
+      "column_name": "serial",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 100,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_componentfit",
+      "column_name": "lot",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 100,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_registrycommand",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "YES",
+      "identity_generation": "BY DEFAULT"
+    },
+    {
+      "table_name": "assets_registrycommand",
+      "column_name": "machine_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_registrycommand",
+      "column_name": "actor_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_registrycommand",
+      "column_name": "key",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 128,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_registrycommand",
+      "column_name": "request_hash",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 64,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_registrycommand",
+      "column_name": "result",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_registrycommand",
+      "column_name": "recorded_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_sharedperformanceview",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "YES",
+      "identity_generation": "BY DEFAULT"
+    },
+    {
+      "table_name": "assets_sharedperformanceview",
+      "column_name": "machine_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_sharedperformanceview",
+      "column_name": "owner_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_sharedperformanceview",
+      "column_name": "name",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 80,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_sharedperformanceview",
+      "column_name": "config",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_sharedperformanceview",
+      "column_name": "is_default",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_sharedperformanceview",
+      "column_name": "active",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_sharedperformanceview",
+      "column_name": "version",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_sharedperformanceview",
+      "column_name": "recorded_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_sharedperformanceview",
+      "column_name": "updated_by_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_sharedperformanceview",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_signaldesignation",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "YES",
+      "identity_generation": "BY DEFAULT"
+    },
+    {
+      "table_name": "assets_signaldesignation",
+      "column_name": "binding_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_signaldesignation",
+      "column_name": "version",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_signaldesignation",
+      "column_name": "critical",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_signaldesignation",
+      "column_name": "binding_signature",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 64,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_signaldesignation",
+      "column_name": "reason",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_signaldesignation",
+      "column_name": "recorded_by_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "assets_signaldesignation",
+      "column_name": "recorded_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "YES",
+      "identity_generation": "BY DEFAULT"
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "column_name": "version",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "column_name": "recorded_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "column_name": "observed_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "column_name": "effective_from",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "column_name": "effective_until",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "column_name": "source_reference",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 1000,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "column_name": "statement",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "column_name": "basis",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "column_name": "recorded_by_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "column_name": "work_order_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "column_name": "kind",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 24,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "column_name": "outcome",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 24,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "column_name": "verified_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "column_name": "verified_by_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "column_name": "gate_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "column_name": "supersedes_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "repair_repairfindingrevision",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "YES",
+      "identity_generation": "BY DEFAULT"
+    },
+    {
+      "table_name": "repair_repairfindingrevision",
+      "column_name": "snapshot",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "repair_repairfindingrevision",
+      "column_name": "replaced_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "repair_repairfindingrevision",
+      "column_name": "finding_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "repair_repairfindingrevision",
+      "column_name": "replaced_by_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "YES",
+      "identity_generation": "BY DEFAULT"
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "column_name": "revision",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "column_name": "document",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "column_name": "text",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "column_name": "content_hash",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 64,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "column_name": "accepted_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "column_name": "closeout_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "column_name": "previous_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "column_name": "amendment_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "column_name": "accepted_by_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "YES",
+      "identity_generation": "BY DEFAULT"
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "column_name": "revision",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "column_name": "reference_instrument_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 200,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "column_name": "certificate_number",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 200,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "column_name": "issuing_lab",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 200,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "column_name": "valid_until",
+      "data_type": "date",
+      "udt_name": "date",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "column_name": "certificate_snapshot",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "column_name": "correction_reason",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "column_name": "recorded_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "column_name": "work_order_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "column_name": "reading_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "column_name": "supersedes_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "column_name": "certificate_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "column_name": "recorded_by_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "YES",
+      "identity_generation": "BY DEFAULT"
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "column_name": "file",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 100,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "column_name": "filename",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "column_name": "content_type",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 100,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "column_name": "content_hash",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 64,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "column_name": "byte_size",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 64,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "column_name": "started_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "column_name": "duration_ms",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 64,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "column_name": "work_order_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "column_name": "voice_capture_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "column_name": "artifact_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "column_name": "recorded_by_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_closeoutcapture",
+      "column_name": "voice_unavailable_reason",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": "''::character varying",
+      "character_maximum_length": 500,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "YES",
+      "identity_generation": "BY DEFAULT"
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "column_name": "request_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "column_name": "kind",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 24,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "column_name": "payload",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "column_name": "attachment_snapshot",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "column_name": "attachment_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "column_name": "supersedes_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "column_name": "recorded_by_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "column_name": "source_turn_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 80,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "column_name": "source_proposal_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "column_name": "source_file",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "YES",
+      "identity_generation": "BY DEFAULT"
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "work_order_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "schema_version",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "version",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "purpose",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "next_check",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "priority",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "required_artifacts",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "status",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 24,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "owner_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "next_checkpoint",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "source_finding_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "source_proposal",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "blocked_reason",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "resolution",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "created_by_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "updated_by_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "escalation_group_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "escalated_by_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "escalated_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "column_name": "escalation_reason",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": "''::text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "YES",
+      "identity_generation": "BY DEFAULT"
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "column_name": "version",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "column_name": "recorded_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "column_name": "observed_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "column_name": "effective_from",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "column_name": "effective_until",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "column_name": "source_reference",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 1000,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "column_name": "statement",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "column_name": "basis",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "column_name": "recorded_by_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "column_name": "work_order_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "column_name": "kind",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 24,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "column_name": "outcome",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 24,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "column_name": "details",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "column_name": "target_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "column_name": "supersedes_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workdowntime",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "YES",
+      "identity_generation": "BY DEFAULT"
+    },
+    {
+      "table_name": "tasks_workdowntime",
+      "column_name": "work_order_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workdowntime",
+      "column_name": "binding_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workdowntime",
+      "column_name": "started_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workdowntime",
+      "column_name": "ended_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workdowntime",
+      "column_name": "proposal",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workdowntime",
+      "column_name": "recorded_by_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workdowntime",
+      "column_name": "recorded_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workdowntime",
+      "column_name": "reason",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workdowntime",
+      "column_name": "supersedes_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "YES",
+      "identity_generation": "BY DEFAULT"
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "column_name": "work_order_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "column_name": "previous_owner_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "column_name": "incoming_owner_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "column_name": "proposed_by_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "column_name": "proposed_version",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "column_name": "proposed_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "column_name": "accepted_by_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "column_name": "accepted_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "column_name": "accepted_version",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "column_name": "withdrawn_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "column_name": "previous_owner_name",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 320,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "column_name": "incoming_owner_name",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 320,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "column_name": "proposed_by_name",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 320,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "column_name": "accepted_by_name",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 320,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workorder",
+      "column_name": "tags",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "NO",
+      "column_default": "'[]'::jsonb",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workorder",
+      "column_name": "recurrence_of_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workorder",
+      "column_name": "recurrence_occurrence_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workorder",
+      "column_name": "corrective_origin_kind",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": "''::character varying",
+      "character_maximum_length": 24,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workorder",
+      "column_name": "corrective_finding",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": "''::text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workorder",
+      "column_name": "corrective_reading_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_workorder",
+      "column_name": "corrective_step_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "YES",
+      "identity_generation": "BY DEFAULT"
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "column_name": "work_order_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "column_name": "person_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "column_name": "started_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "column_name": "ended_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "column_name": "end_action",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 8,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "column_name": "recorded_by_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "column_name": "recorded_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "column_name": "ended_by_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "column_name": "ended_recorded_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "column_name": "reason",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "column_name": "supersedes_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "users_ruleset",
+      "column_name": "can_record_operating_authority",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    }
+  ],
+  "proposal_columns": [
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "scope_key",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "scope_hash",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 64,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "thread_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "source_turn_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 64,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "action_type",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 32,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "target_work_order_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "target_version",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "preview",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "reason",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "state",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 16,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "policy_version",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 64,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "idempotency_key",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 128,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "expires_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "confirmed_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "receipt",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "failure_code",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 64,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "owner_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "intent",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "approval_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "correlation_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "character_maximum_length": 100,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "preview_hash",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": "''::character varying",
+      "character_maximum_length": 64,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "target_stock_item_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0,
+      "is_identity": "NO",
+      "identity_generation": null
+    },
+    {
+      "table_name": "aichat_chatactionproposal",
+      "column_name": "target_memory_fact_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "YES",
+      "column_default": null,
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_identity": "NO",
+      "identity_generation": null
+    }
+  ],
+  "constraints": [
+    {
+      "table_name": "assets_componentfit",
+      "constraint_name": "assets_componentfit_component_id_67245adc_fk_assets_as",
+      "kind": "f",
+      "definition": "FOREIGN KEY (component_id) REFERENCES assets_assetcomponent(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "assets_componentfit",
+      "constraint_name": "assets_componentfit_pkey",
+      "kind": "p",
+      "definition": "PRIMARY KEY (id)",
+      "validated": true
+    },
+    {
+      "table_name": "assets_componentfit",
+      "constraint_name": "assets_componentfit_recorded_by_id_0085da12_fk_auth_user_id",
+      "kind": "f",
+      "definition": "FOREIGN KEY (recorded_by_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "assets_componentfit",
+      "constraint_name": "assets_componentfit_retracted_by_id_23ebc3ad_fk_auth_user_id",
+      "kind": "f",
+      "definition": "FOREIGN KEY (retracted_by_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "assets_componentfit",
+      "constraint_name": "assets_componentfit_stock_item_id_eaf56adc_fk_stock_sto",
+      "kind": "f",
+      "definition": "FOREIGN KEY (stock_item_id) REFERENCES stock_stockitem(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "assets_componentfit",
+      "constraint_name": "assets_componentfit_usage_id_74c7d9d9_fk_tasks_clo",
+      "kind": "f",
+      "definition": "FOREIGN KEY (usage_id) REFERENCES tasks_closeoutpartusage(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "assets_componentfit",
+      "constraint_name": "assets_componentfit_usage_id_key",
+      "kind": "u",
+      "definition": "UNIQUE (usage_id)",
+      "validated": true
+    },
+    {
+      "table_name": "assets_componentfit",
+      "constraint_name": "assets_componentfit_verified_by_id_10f33acd_fk_auth_user_id",
+      "kind": "f",
+      "definition": "FOREIGN KEY (verified_by_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "assets_componentfit",
+      "constraint_name": "assets_componentfit_work_order_id_fcae2ce9_fk_tasks_wor",
+      "kind": "f",
+      "definition": "FOREIGN KEY (work_order_id) REFERENCES tasks_workorder(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "assets_registrycommand",
+      "constraint_name": "assets_registrycomma_machine_id_c037b2eb_fk_assets_as",
+      "kind": "f",
+      "definition": "FOREIGN KEY (machine_id) REFERENCES assets_assetmachine(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "assets_registrycommand",
+      "constraint_name": "assets_registrycommand_actor_id_9b824740_fk_auth_user_id",
+      "kind": "f",
+      "definition": "FOREIGN KEY (actor_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "assets_registrycommand",
+      "constraint_name": "assets_registrycommand_pkey",
+      "kind": "p",
+      "definition": "PRIMARY KEY (id)",
+      "validated": true
+    },
+    {
+      "table_name": "assets_registrycommand",
+      "constraint_name": "registry_command_key",
+      "kind": "u",
+      "definition": "UNIQUE (machine_id, actor_id, key)",
+      "validated": true
+    },
+    {
+      "table_name": "assets_sharedperformanceview",
+      "constraint_name": "assets_sharedperform_machine_id_725dd45c_fk_assets_as",
+      "kind": "f",
+      "definition": "FOREIGN KEY (machine_id) REFERENCES assets_assetmachine(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "assets_sharedperformanceview",
+      "constraint_name": "assets_sharedperform_updated_by_id_2ec4d22e_fk_auth_user",
+      "kind": "f",
+      "definition": "FOREIGN KEY (updated_by_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "assets_sharedperformanceview",
+      "constraint_name": "assets_sharedperformanceview_owner_id_3991131e_fk_auth_user_id",
+      "kind": "f",
+      "definition": "FOREIGN KEY (owner_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "assets_sharedperformanceview",
+      "constraint_name": "assets_sharedperformanceview_pkey",
+      "kind": "p",
+      "definition": "PRIMARY KEY (id)",
+      "validated": true
+    },
+    {
+      "table_name": "assets_sharedperformanceview",
+      "constraint_name": "assets_sharedperformanceview_version_check",
+      "kind": "c",
+      "definition": "CHECK ((version >= 0))",
+      "validated": true
+    },
+    {
+      "table_name": "assets_signaldesignation",
+      "constraint_name": "assets_signaldesigna_binding_id_ba239288_fk_assets_ma",
+      "kind": "f",
+      "definition": "FOREIGN KEY (binding_id) REFERENCES assets_machinesignalbinding(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "assets_signaldesignation",
+      "constraint_name": "assets_signaldesigna_recorded_by_id_c5e5b936_fk_auth_user",
+      "kind": "f",
+      "definition": "FOREIGN KEY (recorded_by_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "assets_signaldesignation",
+      "constraint_name": "assets_signaldesignation_pkey",
+      "kind": "p",
+      "definition": "PRIMARY KEY (id)",
+      "validated": true
+    },
+    {
+      "table_name": "assets_signaldesignation",
+      "constraint_name": "assets_signaldesignation_version_check",
+      "kind": "c",
+      "definition": "CHECK ((version >= 0))",
+      "validated": true
+    },
+    {
+      "table_name": "assets_signaldesignation",
+      "constraint_name": "signal_designation_version",
+      "kind": "u",
+      "definition": "UNIQUE (binding_id, version)",
+      "validated": true
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "constraint_name": "repair_authority_kind",
+      "kind": "c",
+      "definition": "CHECK (((kind)::text = ANY (ARRAY[('isolation'::character varying)::text, ('permit'::character varying)::text, ('access_window'::character varying)::text])))",
+      "validated": true
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "constraint_name": "repair_gateauthority_gate_id_4e553e73_fk_repair_re",
+      "kind": "f",
+      "definition": "FOREIGN KEY (gate_id) REFERENCES repair_repairpacketgate(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "constraint_name": "repair_gateauthority_recorded_by_id_d96a0b2d_fk_auth_user",
+      "kind": "f",
+      "definition": "FOREIGN KEY (recorded_by_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "constraint_name": "repair_gateauthority_supersedes_id_e7aedd05_fk_repair_ga",
+      "kind": "f",
+      "definition": "FOREIGN KEY (supersedes_id) REFERENCES repair_gateauthorityrecord(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "constraint_name": "repair_gateauthority_verified_by_id_f45cafd9_fk_auth_user",
+      "kind": "f",
+      "definition": "FOREIGN KEY (verified_by_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "constraint_name": "repair_gateauthority_work_order_id_367cc899_fk_tasks_wor",
+      "kind": "f",
+      "definition": "FOREIGN KEY (work_order_id) REFERENCES tasks_workorder(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "constraint_name": "repair_gateauthorityrecord_pkey",
+      "kind": "p",
+      "definition": "PRIMARY KEY (id)",
+      "validated": true
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "constraint_name": "repair_gateauthorityrecord_supersedes_id_key",
+      "kind": "u",
+      "definition": "UNIQUE (supersedes_id)",
+      "validated": true
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "constraint_name": "repair_gateauthorityrecord_version_check",
+      "kind": "c",
+      "definition": "CHECK ((version >= 0))",
+      "validated": true
+    },
+    {
+      "table_name": "repair_repairfindingrevision",
+      "constraint_name": "repair_repairfinding_finding_id_3a7ca819_fk_repair_re",
+      "kind": "f",
+      "definition": "FOREIGN KEY (finding_id) REFERENCES repair_repairinvestigationfinding(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "repair_repairfindingrevision",
+      "constraint_name": "repair_repairfinding_replaced_by_id_0ab7eb5e_fk_auth_user",
+      "kind": "f",
+      "definition": "FOREIGN KEY (replaced_by_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "repair_repairfindingrevision",
+      "constraint_name": "repair_repairfindingrevision_pkey",
+      "kind": "p",
+      "definition": "PRIMARY KEY (id)",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "constraint_name": "tasks_acceptedcloseo_accepted_by_id_b4c8e05d_fk_auth_user",
+      "kind": "f",
+      "definition": "FOREIGN KEY (accepted_by_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "constraint_name": "tasks_acceptedcloseo_amendment_id_246e20a7_fk_tasks_clo",
+      "kind": "f",
+      "definition": "FOREIGN KEY (amendment_id) REFERENCES tasks_closeoutamendment(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "constraint_name": "tasks_acceptedcloseo_closeout_id_2c8c9971_fk_tasks_wor",
+      "kind": "f",
+      "definition": "FOREIGN KEY (closeout_id) REFERENCES tasks_workordercloseout(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "constraint_name": "tasks_acceptedcloseo_previous_id_5c50a65a_fk_tasks_acc",
+      "kind": "f",
+      "definition": "FOREIGN KEY (previous_id) REFERENCES tasks_acceptedcloseoutreport(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "constraint_name": "tasks_acceptedcloseoutreport_amendment_id_key",
+      "kind": "u",
+      "definition": "UNIQUE (amendment_id)",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "constraint_name": "tasks_acceptedcloseoutreport_pkey",
+      "kind": "p",
+      "definition": "PRIMARY KEY (id)",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "constraint_name": "tasks_acceptedcloseoutreport_revision_check",
+      "kind": "c",
+      "definition": "CHECK ((revision >= 0))",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "constraint_name": "tasks_report_revision_uniq",
+      "kind": "u",
+      "definition": "UNIQUE (closeout_id, revision)",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "constraint_name": "tasks_cal_positive_revision",
+      "kind": "c",
+      "definition": "CHECK ((revision >= 1))",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "constraint_name": "tasks_cal_reading_revision",
+      "kind": "u",
+      "definition": "UNIQUE (reading_id, revision)",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "constraint_name": "tasks_calibrationtra_certificate_id_a23bb415_fk_common_at",
+      "kind": "f",
+      "definition": "FOREIGN KEY (certificate_id) REFERENCES common_attachment(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "constraint_name": "tasks_calibrationtra_reading_id_010e10b8_fk_tasks_clo",
+      "kind": "f",
+      "definition": "FOREIGN KEY (reading_id) REFERENCES tasks_closeoutreading(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "constraint_name": "tasks_calibrationtra_recorded_by_id_7a0db8b5_fk_auth_user",
+      "kind": "f",
+      "definition": "FOREIGN KEY (recorded_by_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "constraint_name": "tasks_calibrationtra_supersedes_id_913938c8_fk_tasks_cal",
+      "kind": "f",
+      "definition": "FOREIGN KEY (supersedes_id) REFERENCES tasks_calibrationtraceability(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "constraint_name": "tasks_calibrationtra_work_order_id_df40dc8d_fk_tasks_wor",
+      "kind": "f",
+      "definition": "FOREIGN KEY (work_order_id) REFERENCES tasks_workorder(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "constraint_name": "tasks_calibrationtraceability_pkey",
+      "kind": "p",
+      "definition": "PRIMARY KEY (id)",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "constraint_name": "tasks_calibrationtraceability_revision_check",
+      "kind": "c",
+      "definition": "CHECK ((revision >= 0))",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "constraint_name": "tasks_calibrationtraceability_supersedes_id_key",
+      "kind": "u",
+      "definition": "UNIQUE (supersedes_id)",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "constraint_name": "tasks_captureorigina_artifact_id_287ae91f_fk_tasks_inv",
+      "kind": "f",
+      "definition": "FOREIGN KEY (artifact_id) REFERENCES tasks_investigationartifact(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "constraint_name": "tasks_captureorigina_voice_capture_id_13b76ee1_fk_voice_voi",
+      "kind": "f",
+      "definition": "FOREIGN KEY (voice_capture_id) REFERENCES voice_voicecapturesession(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "constraint_name": "tasks_captureorigina_work_order_id_b26d4cc6_fk_tasks_wor",
+      "kind": "f",
+      "definition": "FOREIGN KEY (work_order_id) REFERENCES tasks_workorder(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "constraint_name": "tasks_captureoriginal_byte_size_check",
+      "kind": "c",
+      "definition": "CHECK ((byte_size >= 0))",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "constraint_name": "tasks_captureoriginal_duration_ms_check",
+      "kind": "c",
+      "definition": "CHECK ((duration_ms >= 0))",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "constraint_name": "tasks_captureoriginal_pkey",
+      "kind": "p",
+      "definition": "PRIMARY KEY (id)",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "constraint_name": "tasks_captureoriginal_recorded_by_id_e46dc734_fk_auth_user_id",
+      "kind": "f",
+      "definition": "FOREIGN KEY (recorded_by_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "constraint_name": "tasks_inv_artifact_kind",
+      "kind": "c",
+      "definition": "CHECK (((kind)::text = ANY (ARRAY[('observation'::character varying)::text, ('reading_set'::character varying)::text, ('photo'::character varying)::text, ('report'::character varying)::text, ('laboratory'::character varying)::text, ('check_result'::character varying)::text])))",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "constraint_name": "tasks_investigationa_attachment_id_95d09391_fk_common_at",
+      "kind": "f",
+      "definition": "FOREIGN KEY (attachment_id) REFERENCES common_attachment(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "constraint_name": "tasks_investigationa_recorded_by_id_1c5d37f6_fk_auth_user",
+      "kind": "f",
+      "definition": "FOREIGN KEY (recorded_by_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "constraint_name": "tasks_investigationa_request_id_0a2c2201_fk_tasks_inv",
+      "kind": "f",
+      "definition": "FOREIGN KEY (request_id) REFERENCES tasks_investigationrequest(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "constraint_name": "tasks_investigationa_supersedes_id_e62a88e7_fk_tasks_inv",
+      "kind": "f",
+      "definition": "FOREIGN KEY (supersedes_id) REFERENCES tasks_investigationartifact(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "constraint_name": "tasks_investigationartifact_pkey",
+      "kind": "p",
+      "definition": "PRIMARY KEY (id)",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "constraint_name": "tasks_inv_request_status",
+      "kind": "c",
+      "definition": "CHECK (((status)::text = ANY (ARRAY[('open'::character varying)::text, ('answered'::character varying)::text, ('cannot_perform'::character varying)::text, ('pending_external'::character varying)::text, ('disputed'::character varying)::text, ('resolved'::character varying)::text])))",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "constraint_name": "tasks_investigationr_created_by_id_f0c792b3_fk_auth_user",
+      "kind": "f",
+      "definition": "FOREIGN KEY (created_by_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "constraint_name": "tasks_investigationr_escalated_by_id_6d0ba648_fk_auth_user",
+      "kind": "f",
+      "definition": "FOREIGN KEY (escalated_by_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "constraint_name": "tasks_investigationr_escalation_group_id_294be994_fk_auth_grou",
+      "kind": "f",
+      "definition": "FOREIGN KEY (escalation_group_id) REFERENCES auth_group(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "constraint_name": "tasks_investigationr_source_finding_id_060f82c4_fk_repair_re",
+      "kind": "f",
+      "definition": "FOREIGN KEY (source_finding_id) REFERENCES repair_repairinvestigationfinding(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "constraint_name": "tasks_investigationr_updated_by_id_a533cd94_fk_auth_user",
+      "kind": "f",
+      "definition": "FOREIGN KEY (updated_by_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "constraint_name": "tasks_investigationr_work_order_id_7354e176_fk_tasks_wor",
+      "kind": "f",
+      "definition": "FOREIGN KEY (work_order_id) REFERENCES tasks_workorder(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "constraint_name": "tasks_investigationrequest_owner_id_954b6e11_fk_auth_user_id",
+      "kind": "f",
+      "definition": "FOREIGN KEY (owner_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "constraint_name": "tasks_investigationrequest_pkey",
+      "kind": "p",
+      "definition": "PRIMARY KEY (id)",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "constraint_name": "tasks_investigationrequest_priority_check",
+      "kind": "c",
+      "definition": "CHECK ((priority >= 0))",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "constraint_name": "tasks_investigationrequest_schema_version_check",
+      "kind": "c",
+      "definition": "CHECK ((schema_version >= 0))",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "constraint_name": "tasks_investigationrequest_version_check",
+      "kind": "c",
+      "definition": "CHECK ((version >= 0))",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "constraint_name": "tasks_authority_kind",
+      "kind": "c",
+      "definition": "CHECK (((kind)::text = ANY (ARRAY[('test_acceptance'::character varying)::text, ('operating_permission'::character varying)::text, ('observed_return'::character varying)::text, ('service_state'::character varying)::text])))",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "constraint_name": "tasks_operationalaut_recorded_by_id_cdaeef6a_fk_auth_user",
+      "kind": "f",
+      "definition": "FOREIGN KEY (recorded_by_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "constraint_name": "tasks_operationalaut_supersedes_id_4e913bd3_fk_tasks_ope",
+      "kind": "f",
+      "definition": "FOREIGN KEY (supersedes_id) REFERENCES tasks_operationalauthorityrecord(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "constraint_name": "tasks_operationalaut_target_id_7585a7f4_fk_assets_as",
+      "kind": "f",
+      "definition": "FOREIGN KEY (target_id) REFERENCES assets_assetmachine(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "constraint_name": "tasks_operationalaut_work_order_id_449cd307_fk_tasks_wor",
+      "kind": "f",
+      "definition": "FOREIGN KEY (work_order_id) REFERENCES tasks_workorder(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "constraint_name": "tasks_operationalauthorityrecord_pkey",
+      "kind": "p",
+      "definition": "PRIMARY KEY (id)",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "constraint_name": "tasks_operationalauthorityrecord_supersedes_id_key",
+      "kind": "u",
+      "definition": "UNIQUE (supersedes_id)",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "constraint_name": "tasks_operationalauthorityrecord_version_check",
+      "kind": "c",
+      "definition": "CHECK ((version >= 0))",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_workdowntime",
+      "constraint_name": "tasks_workdowntime_binding_id_ec4de157_fk_assets_ma",
+      "kind": "f",
+      "definition": "FOREIGN KEY (binding_id) REFERENCES assets_machinesignalbinding(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_workdowntime",
+      "constraint_name": "tasks_workdowntime_pkey",
+      "kind": "p",
+      "definition": "PRIMARY KEY (id)",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_workdowntime",
+      "constraint_name": "tasks_workdowntime_recorded_by_id_a58dcf0c_fk_auth_user_id",
+      "kind": "f",
+      "definition": "FOREIGN KEY (recorded_by_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_workdowntime",
+      "constraint_name": "tasks_workdowntime_supersedes_id_a3899557_fk_tasks_wor",
+      "kind": "f",
+      "definition": "FOREIGN KEY (supersedes_id) REFERENCES tasks_workdowntime(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_workdowntime",
+      "constraint_name": "tasks_workdowntime_supersedes_id_key",
+      "kind": "u",
+      "definition": "UNIQUE (supersedes_id)",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_workdowntime",
+      "constraint_name": "tasks_workdowntime_work_order_id_3aeba7e2_fk_tasks_workorder_id",
+      "kind": "f",
+      "definition": "FOREIGN KEY (work_order_id) REFERENCES tasks_workorder(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "constraint_name": "tasks_workhandover_accepted_by_id_16b3a6f5_fk_auth_user_id",
+      "kind": "f",
+      "definition": "FOREIGN KEY (accepted_by_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "constraint_name": "tasks_workhandover_accepted_version_check",
+      "kind": "c",
+      "definition": "CHECK ((accepted_version >= 0))",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "constraint_name": "tasks_workhandover_incoming_owner_id_d7cd27fd_fk_auth_user_id",
+      "kind": "f",
+      "definition": "FOREIGN KEY (incoming_owner_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "constraint_name": "tasks_workhandover_pkey",
+      "kind": "p",
+      "definition": "PRIMARY KEY (id)",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "constraint_name": "tasks_workhandover_previous_owner_id_d2fb90bd_fk_auth_user_id",
+      "kind": "f",
+      "definition": "FOREIGN KEY (previous_owner_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "constraint_name": "tasks_workhandover_proposed_by_id_0677ea50_fk_auth_user_id",
+      "kind": "f",
+      "definition": "FOREIGN KEY (proposed_by_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "constraint_name": "tasks_workhandover_proposed_version_check",
+      "kind": "c",
+      "definition": "CHECK ((proposed_version >= 0))",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "constraint_name": "tasks_workhandover_work_order_id_f26a7ae7_fk_tasks_workorder_id",
+      "kind": "f",
+      "definition": "FOREIGN KEY (work_order_id) REFERENCES tasks_workorder(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_workorder",
+      "constraint_name": "tasks_workorder_corrective_reading_i_2a218942_fk_tasks_clo",
+      "kind": "f",
+      "definition": "FOREIGN KEY (corrective_reading_id) REFERENCES tasks_closeoutreading(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_workorder",
+      "constraint_name": "tasks_workorder_corrective_step_id_ffccaf72_fk_tasks_wor",
+      "kind": "f",
+      "definition": "FOREIGN KEY (corrective_step_id) REFERENCES tasks_workorderstepexecution(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_workorder",
+      "constraint_name": "tasks_workorder_recurrence_occurrenc_b92ddb9b_fk_assets_ma",
+      "kind": "f",
+      "definition": "FOREIGN KEY (recurrence_occurrence_id) REFERENCES assets_machineanomaly(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_workorder",
+      "constraint_name": "tasks_workorder_recurrence_occurrence_id_key",
+      "kind": "u",
+      "definition": "UNIQUE (recurrence_occurrence_id)",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_workorder",
+      "constraint_name": "tasks_workorder_recurrence_of_id_cebbbe34_fk_tasks_workorder_id",
+      "kind": "f",
+      "definition": "FOREIGN KEY (recurrence_of_id) REFERENCES tasks_workorder(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "constraint_name": "tasks_worktimeinterv_supersedes_id_c45be1ba_fk_tasks_wor",
+      "kind": "f",
+      "definition": "FOREIGN KEY (supersedes_id) REFERENCES tasks_worktimeinterval(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "constraint_name": "tasks_worktimeinterv_work_order_id_55e2e0e2_fk_tasks_wor",
+      "kind": "f",
+      "definition": "FOREIGN KEY (work_order_id) REFERENCES tasks_workorder(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "constraint_name": "tasks_worktimeinterval_ended_by_id_e0e8f8a4_fk_auth_user_id",
+      "kind": "f",
+      "definition": "FOREIGN KEY (ended_by_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "constraint_name": "tasks_worktimeinterval_person_id_44a66bb7_fk_auth_user_id",
+      "kind": "f",
+      "definition": "FOREIGN KEY (person_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "constraint_name": "tasks_worktimeinterval_pkey",
+      "kind": "p",
+      "definition": "PRIMARY KEY (id)",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "constraint_name": "tasks_worktimeinterval_recorded_by_id_e3978368_fk_auth_user_id",
+      "kind": "f",
+      "definition": "FOREIGN KEY (recorded_by_id) REFERENCES auth_user(id) DEFERRABLE INITIALLY DEFERRED",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "constraint_name": "tasks_worktimeinterval_supersedes_id_key",
+      "kind": "u",
+      "definition": "UNIQUE (supersedes_id)",
+      "validated": true
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "constraint_name": "work_time_positive",
+      "kind": "c",
+      "definition": "CHECK (((ended_at IS NULL) OR (ended_at > started_at)))",
+      "validated": true
+    }
+  ],
+  "indexes": [
+    {
+      "table_name": "assets_componentfit",
+      "index_name": "assets_componentfit_component_id_67245adc",
+      "definition": "CREATE INDEX assets_componentfit_component_id_67245adc ON public.assets_componentfit USING btree (component_id)",
+      "valid": true
+    },
+    {
+      "table_name": "assets_componentfit",
+      "index_name": "assets_componentfit_pkey",
+      "definition": "CREATE UNIQUE INDEX assets_componentfit_pkey ON public.assets_componentfit USING btree (id)",
+      "valid": true
+    },
+    {
+      "table_name": "assets_componentfit",
+      "index_name": "assets_componentfit_recorded_by_id_0085da12",
+      "definition": "CREATE INDEX assets_componentfit_recorded_by_id_0085da12 ON public.assets_componentfit USING btree (recorded_by_id)",
+      "valid": true
+    },
+    {
+      "table_name": "assets_componentfit",
+      "index_name": "assets_componentfit_retracted_by_id_23ebc3ad",
+      "definition": "CREATE INDEX assets_componentfit_retracted_by_id_23ebc3ad ON public.assets_componentfit USING btree (retracted_by_id)",
+      "valid": true
+    },
+    {
+      "table_name": "assets_componentfit",
+      "index_name": "assets_componentfit_stock_item_id_eaf56adc",
+      "definition": "CREATE INDEX assets_componentfit_stock_item_id_eaf56adc ON public.assets_componentfit USING btree (stock_item_id)",
+      "valid": true
+    },
+    {
+      "table_name": "assets_componentfit",
+      "index_name": "assets_componentfit_usage_id_key",
+      "definition": "CREATE UNIQUE INDEX assets_componentfit_usage_id_key ON public.assets_componentfit USING btree (usage_id)",
+      "valid": true
+    },
+    {
+      "table_name": "assets_componentfit",
+      "index_name": "assets_componentfit_verified_by_id_10f33acd",
+      "definition": "CREATE INDEX assets_componentfit_verified_by_id_10f33acd ON public.assets_componentfit USING btree (verified_by_id)",
+      "valid": true
+    },
+    {
+      "table_name": "assets_componentfit",
+      "index_name": "assets_componentfit_work_order_id_fcae2ce9",
+      "definition": "CREATE INDEX assets_componentfit_work_order_id_fcae2ce9 ON public.assets_componentfit USING btree (work_order_id)",
+      "valid": true
+    },
+    {
+      "table_name": "assets_registrycommand",
+      "index_name": "assets_registrycommand_actor_id_9b824740",
+      "definition": "CREATE INDEX assets_registrycommand_actor_id_9b824740 ON public.assets_registrycommand USING btree (actor_id)",
+      "valid": true
+    },
+    {
+      "table_name": "assets_registrycommand",
+      "index_name": "assets_registrycommand_machine_id_c037b2eb",
+      "definition": "CREATE INDEX assets_registrycommand_machine_id_c037b2eb ON public.assets_registrycommand USING btree (machine_id)",
+      "valid": true
+    },
+    {
+      "table_name": "assets_registrycommand",
+      "index_name": "assets_registrycommand_pkey",
+      "definition": "CREATE UNIQUE INDEX assets_registrycommand_pkey ON public.assets_registrycommand USING btree (id)",
+      "valid": true
+    },
+    {
+      "table_name": "assets_registrycommand",
+      "index_name": "registry_command_key",
+      "definition": "CREATE UNIQUE INDEX registry_command_key ON public.assets_registrycommand USING btree (machine_id, actor_id, key)",
+      "valid": true
+    },
+    {
+      "table_name": "assets_sharedperformanceview",
+      "index_name": "assets_sharedperformanceview_machine_id_725dd45c",
+      "definition": "CREATE INDEX assets_sharedperformanceview_machine_id_725dd45c ON public.assets_sharedperformanceview USING btree (machine_id)",
+      "valid": true
+    },
+    {
+      "table_name": "assets_sharedperformanceview",
+      "index_name": "assets_sharedperformanceview_owner_id_3991131e",
+      "definition": "CREATE INDEX assets_sharedperformanceview_owner_id_3991131e ON public.assets_sharedperformanceview USING btree (owner_id)",
+      "valid": true
+    },
+    {
+      "table_name": "assets_sharedperformanceview",
+      "index_name": "assets_sharedperformanceview_pkey",
+      "definition": "CREATE UNIQUE INDEX assets_sharedperformanceview_pkey ON public.assets_sharedperformanceview USING btree (id)",
+      "valid": true
+    },
+    {
+      "table_name": "assets_sharedperformanceview",
+      "index_name": "assets_sharedperformanceview_updated_by_id_2ec4d22e",
+      "definition": "CREATE INDEX assets_sharedperformanceview_updated_by_id_2ec4d22e ON public.assets_sharedperformanceview USING btree (updated_by_id)",
+      "valid": true
+    },
+    {
+      "table_name": "assets_signaldesignation",
+      "index_name": "assets_signaldesignation_binding_id_ba239288",
+      "definition": "CREATE INDEX assets_signaldesignation_binding_id_ba239288 ON public.assets_signaldesignation USING btree (binding_id)",
+      "valid": true
+    },
+    {
+      "table_name": "assets_signaldesignation",
+      "index_name": "assets_signaldesignation_pkey",
+      "definition": "CREATE UNIQUE INDEX assets_signaldesignation_pkey ON public.assets_signaldesignation USING btree (id)",
+      "valid": true
+    },
+    {
+      "table_name": "assets_signaldesignation",
+      "index_name": "assets_signaldesignation_recorded_by_id_c5e5b936",
+      "definition": "CREATE INDEX assets_signaldesignation_recorded_by_id_c5e5b936 ON public.assets_signaldesignation USING btree (recorded_by_id)",
+      "valid": true
+    },
+    {
+      "table_name": "assets_signaldesignation",
+      "index_name": "signal_designation_version",
+      "definition": "CREATE UNIQUE INDEX signal_designation_version ON public.assets_signaldesignation USING btree (binding_id, version)",
+      "valid": true
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "index_name": "repair_gateauthorityrecord_gate_id_4e553e73",
+      "definition": "CREATE INDEX repair_gateauthorityrecord_gate_id_4e553e73 ON public.repair_gateauthorityrecord USING btree (gate_id)",
+      "valid": true
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "index_name": "repair_gateauthorityrecord_pkey",
+      "definition": "CREATE UNIQUE INDEX repair_gateauthorityrecord_pkey ON public.repair_gateauthorityrecord USING btree (id)",
+      "valid": true
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "index_name": "repair_gateauthorityrecord_recorded_by_id_d96a0b2d",
+      "definition": "CREATE INDEX repair_gateauthorityrecord_recorded_by_id_d96a0b2d ON public.repair_gateauthorityrecord USING btree (recorded_by_id)",
+      "valid": true
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "index_name": "repair_gateauthorityrecord_supersedes_id_key",
+      "definition": "CREATE UNIQUE INDEX repair_gateauthorityrecord_supersedes_id_key ON public.repair_gateauthorityrecord USING btree (supersedes_id)",
+      "valid": true
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "index_name": "repair_gateauthorityrecord_verified_by_id_f45cafd9",
+      "definition": "CREATE INDEX repair_gateauthorityrecord_verified_by_id_f45cafd9 ON public.repair_gateauthorityrecord USING btree (verified_by_id)",
+      "valid": true
+    },
+    {
+      "table_name": "repair_gateauthorityrecord",
+      "index_name": "repair_gateauthorityrecord_work_order_id_367cc899",
+      "definition": "CREATE INDEX repair_gateauthorityrecord_work_order_id_367cc899 ON public.repair_gateauthorityrecord USING btree (work_order_id)",
+      "valid": true
+    },
+    {
+      "table_name": "repair_repairfindingrevision",
+      "index_name": "repair_repairfindingrevision_finding_id_3a7ca819",
+      "definition": "CREATE INDEX repair_repairfindingrevision_finding_id_3a7ca819 ON public.repair_repairfindingrevision USING btree (finding_id)",
+      "valid": true
+    },
+    {
+      "table_name": "repair_repairfindingrevision",
+      "index_name": "repair_repairfindingrevision_pkey",
+      "definition": "CREATE UNIQUE INDEX repair_repairfindingrevision_pkey ON public.repair_repairfindingrevision USING btree (id)",
+      "valid": true
+    },
+    {
+      "table_name": "repair_repairfindingrevision",
+      "index_name": "repair_repairfindingrevision_replaced_by_id_0ab7eb5e",
+      "definition": "CREATE INDEX repair_repairfindingrevision_replaced_by_id_0ab7eb5e ON public.repair_repairfindingrevision USING btree (replaced_by_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "index_name": "tasks_acceptedcloseoutreport_accepted_by_id_b4c8e05d",
+      "definition": "CREATE INDEX tasks_acceptedcloseoutreport_accepted_by_id_b4c8e05d ON public.tasks_acceptedcloseoutreport USING btree (accepted_by_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "index_name": "tasks_acceptedcloseoutreport_amendment_id_key",
+      "definition": "CREATE UNIQUE INDEX tasks_acceptedcloseoutreport_amendment_id_key ON public.tasks_acceptedcloseoutreport USING btree (amendment_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "index_name": "tasks_acceptedcloseoutreport_closeout_id_2c8c9971",
+      "definition": "CREATE INDEX tasks_acceptedcloseoutreport_closeout_id_2c8c9971 ON public.tasks_acceptedcloseoutreport USING btree (closeout_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "index_name": "tasks_acceptedcloseoutreport_pkey",
+      "definition": "CREATE UNIQUE INDEX tasks_acceptedcloseoutreport_pkey ON public.tasks_acceptedcloseoutreport USING btree (id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "index_name": "tasks_acceptedcloseoutreport_previous_id_5c50a65a",
+      "definition": "CREATE INDEX tasks_acceptedcloseoutreport_previous_id_5c50a65a ON public.tasks_acceptedcloseoutreport USING btree (previous_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_acceptedcloseoutreport",
+      "index_name": "tasks_report_revision_uniq",
+      "definition": "CREATE UNIQUE INDEX tasks_report_revision_uniq ON public.tasks_acceptedcloseoutreport USING btree (closeout_id, revision)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "index_name": "tasks_cal_reading_revision",
+      "definition": "CREATE UNIQUE INDEX tasks_cal_reading_revision ON public.tasks_calibrationtraceability USING btree (reading_id, revision)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "index_name": "tasks_calibrationtraceability_certificate_id_a23bb415",
+      "definition": "CREATE INDEX tasks_calibrationtraceability_certificate_id_a23bb415 ON public.tasks_calibrationtraceability USING btree (certificate_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "index_name": "tasks_calibrationtraceability_pkey",
+      "definition": "CREATE UNIQUE INDEX tasks_calibrationtraceability_pkey ON public.tasks_calibrationtraceability USING btree (id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "index_name": "tasks_calibrationtraceability_reading_id_010e10b8",
+      "definition": "CREATE INDEX tasks_calibrationtraceability_reading_id_010e10b8 ON public.tasks_calibrationtraceability USING btree (reading_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "index_name": "tasks_calibrationtraceability_recorded_by_id_7a0db8b5",
+      "definition": "CREATE INDEX tasks_calibrationtraceability_recorded_by_id_7a0db8b5 ON public.tasks_calibrationtraceability USING btree (recorded_by_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "index_name": "tasks_calibrationtraceability_supersedes_id_key",
+      "definition": "CREATE UNIQUE INDEX tasks_calibrationtraceability_supersedes_id_key ON public.tasks_calibrationtraceability USING btree (supersedes_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_calibrationtraceability",
+      "index_name": "tasks_calibrationtraceability_work_order_id_df40dc8d",
+      "definition": "CREATE INDEX tasks_calibrationtraceability_work_order_id_df40dc8d ON public.tasks_calibrationtraceability USING btree (work_order_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "index_name": "tasks_captureoriginal_artifact_id_287ae91f",
+      "definition": "CREATE INDEX tasks_captureoriginal_artifact_id_287ae91f ON public.tasks_captureoriginal USING btree (artifact_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "index_name": "tasks_captureoriginal_pkey",
+      "definition": "CREATE UNIQUE INDEX tasks_captureoriginal_pkey ON public.tasks_captureoriginal USING btree (id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "index_name": "tasks_captureoriginal_recorded_by_id_e46dc734",
+      "definition": "CREATE INDEX tasks_captureoriginal_recorded_by_id_e46dc734 ON public.tasks_captureoriginal USING btree (recorded_by_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "index_name": "tasks_captureoriginal_voice_capture_id_13b76ee1",
+      "definition": "CREATE INDEX tasks_captureoriginal_voice_capture_id_13b76ee1 ON public.tasks_captureoriginal USING btree (voice_capture_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_captureoriginal",
+      "index_name": "tasks_captureoriginal_work_order_id_b26d4cc6",
+      "definition": "CREATE INDEX tasks_captureoriginal_work_order_id_b26d4cc6 ON public.tasks_captureoriginal USING btree (work_order_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "index_name": "tasks_investigationartifact_attachment_id_95d09391",
+      "definition": "CREATE INDEX tasks_investigationartifact_attachment_id_95d09391 ON public.tasks_investigationartifact USING btree (attachment_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "index_name": "tasks_investigationartifact_pkey",
+      "definition": "CREATE UNIQUE INDEX tasks_investigationartifact_pkey ON public.tasks_investigationartifact USING btree (id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "index_name": "tasks_investigationartifact_recorded_by_id_1c5d37f6",
+      "definition": "CREATE INDEX tasks_investigationartifact_recorded_by_id_1c5d37f6 ON public.tasks_investigationartifact USING btree (recorded_by_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "index_name": "tasks_investigationartifact_request_id_0a2c2201",
+      "definition": "CREATE INDEX tasks_investigationartifact_request_id_0a2c2201 ON public.tasks_investigationartifact USING btree (request_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_investigationartifact",
+      "index_name": "tasks_investigationartifact_supersedes_id_e62a88e7",
+      "definition": "CREATE INDEX tasks_investigationartifact_supersedes_id_e62a88e7 ON public.tasks_investigationartifact USING btree (supersedes_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "index_name": "tasks_inv_work_status_idx",
+      "definition": "CREATE INDEX tasks_inv_work_status_idx ON public.tasks_investigationrequest USING btree (work_order_id, status)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "index_name": "tasks_investigationrequest_created_by_id_f0c792b3",
+      "definition": "CREATE INDEX tasks_investigationrequest_created_by_id_f0c792b3 ON public.tasks_investigationrequest USING btree (created_by_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "index_name": "tasks_investigationrequest_escalated_by_id_6d0ba648",
+      "definition": "CREATE INDEX tasks_investigationrequest_escalated_by_id_6d0ba648 ON public.tasks_investigationrequest USING btree (escalated_by_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "index_name": "tasks_investigationrequest_escalation_group_id_294be994",
+      "definition": "CREATE INDEX tasks_investigationrequest_escalation_group_id_294be994 ON public.tasks_investigationrequest USING btree (escalation_group_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "index_name": "tasks_investigationrequest_owner_id_954b6e11",
+      "definition": "CREATE INDEX tasks_investigationrequest_owner_id_954b6e11 ON public.tasks_investigationrequest USING btree (owner_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "index_name": "tasks_investigationrequest_pkey",
+      "definition": "CREATE UNIQUE INDEX tasks_investigationrequest_pkey ON public.tasks_investigationrequest USING btree (id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "index_name": "tasks_investigationrequest_source_finding_id_060f82c4",
+      "definition": "CREATE INDEX tasks_investigationrequest_source_finding_id_060f82c4 ON public.tasks_investigationrequest USING btree (source_finding_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "index_name": "tasks_investigationrequest_updated_by_id_a533cd94",
+      "definition": "CREATE INDEX tasks_investigationrequest_updated_by_id_a533cd94 ON public.tasks_investigationrequest USING btree (updated_by_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_investigationrequest",
+      "index_name": "tasks_investigationrequest_work_order_id_7354e176",
+      "definition": "CREATE INDEX tasks_investigationrequest_work_order_id_7354e176 ON public.tasks_investigationrequest USING btree (work_order_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "index_name": "tasks_authority_work_kind",
+      "definition": "CREATE INDEX tasks_authority_work_kind ON public.tasks_operationalauthorityrecord USING btree (work_order_id, kind)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "index_name": "tasks_operationalauthorityrecord_pkey",
+      "definition": "CREATE UNIQUE INDEX tasks_operationalauthorityrecord_pkey ON public.tasks_operationalauthorityrecord USING btree (id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "index_name": "tasks_operationalauthorityrecord_recorded_by_id_cdaeef6a",
+      "definition": "CREATE INDEX tasks_operationalauthorityrecord_recorded_by_id_cdaeef6a ON public.tasks_operationalauthorityrecord USING btree (recorded_by_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "index_name": "tasks_operationalauthorityrecord_supersedes_id_key",
+      "definition": "CREATE UNIQUE INDEX tasks_operationalauthorityrecord_supersedes_id_key ON public.tasks_operationalauthorityrecord USING btree (supersedes_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "index_name": "tasks_operationalauthorityrecord_target_id_7585a7f4",
+      "definition": "CREATE INDEX tasks_operationalauthorityrecord_target_id_7585a7f4 ON public.tasks_operationalauthorityrecord USING btree (target_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_operationalauthorityrecord",
+      "index_name": "tasks_operationalauthorityrecord_work_order_id_449cd307",
+      "definition": "CREATE INDEX tasks_operationalauthorityrecord_work_order_id_449cd307 ON public.tasks_operationalauthorityrecord USING btree (work_order_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_workdowntime",
+      "index_name": "tasks_workdowntime_binding_id_ec4de157",
+      "definition": "CREATE INDEX tasks_workdowntime_binding_id_ec4de157 ON public.tasks_workdowntime USING btree (binding_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_workdowntime",
+      "index_name": "tasks_workdowntime_pkey",
+      "definition": "CREATE UNIQUE INDEX tasks_workdowntime_pkey ON public.tasks_workdowntime USING btree (id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_workdowntime",
+      "index_name": "tasks_workdowntime_recorded_by_id_a58dcf0c",
+      "definition": "CREATE INDEX tasks_workdowntime_recorded_by_id_a58dcf0c ON public.tasks_workdowntime USING btree (recorded_by_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_workdowntime",
+      "index_name": "tasks_workdowntime_supersedes_id_key",
+      "definition": "CREATE UNIQUE INDEX tasks_workdowntime_supersedes_id_key ON public.tasks_workdowntime USING btree (supersedes_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_workdowntime",
+      "index_name": "tasks_workdowntime_work_order_id_3aeba7e2",
+      "definition": "CREATE INDEX tasks_workdowntime_work_order_id_3aeba7e2 ON public.tasks_workdowntime USING btree (work_order_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "index_name": "tasks_workhandover_accepted_by_id_16b3a6f5",
+      "definition": "CREATE INDEX tasks_workhandover_accepted_by_id_16b3a6f5 ON public.tasks_workhandover USING btree (accepted_by_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "index_name": "tasks_workhandover_incoming_owner_id_d7cd27fd",
+      "definition": "CREATE INDEX tasks_workhandover_incoming_owner_id_d7cd27fd ON public.tasks_workhandover USING btree (incoming_owner_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "index_name": "tasks_workhandover_pkey",
+      "definition": "CREATE UNIQUE INDEX tasks_workhandover_pkey ON public.tasks_workhandover USING btree (id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "index_name": "tasks_workhandover_previous_owner_id_d2fb90bd",
+      "definition": "CREATE INDEX tasks_workhandover_previous_owner_id_d2fb90bd ON public.tasks_workhandover USING btree (previous_owner_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "index_name": "tasks_workhandover_proposed_by_id_0677ea50",
+      "definition": "CREATE INDEX tasks_workhandover_proposed_by_id_0677ea50 ON public.tasks_workhandover USING btree (proposed_by_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_workhandover",
+      "index_name": "tasks_workhandover_work_order_id_f26a7ae7",
+      "definition": "CREATE INDEX tasks_workhandover_work_order_id_f26a7ae7 ON public.tasks_workhandover USING btree (work_order_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_workorder",
+      "index_name": "tasks_workorder_corrective_reading_id_2a218942",
+      "definition": "CREATE INDEX tasks_workorder_corrective_reading_id_2a218942 ON public.tasks_workorder USING btree (corrective_reading_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_workorder",
+      "index_name": "tasks_workorder_corrective_step_id_ffccaf72",
+      "definition": "CREATE INDEX tasks_workorder_corrective_step_id_ffccaf72 ON public.tasks_workorder USING btree (corrective_step_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_workorder",
+      "index_name": "tasks_workorder_recurrence_occurrence_id_key",
+      "definition": "CREATE UNIQUE INDEX tasks_workorder_recurrence_occurrence_id_key ON public.tasks_workorder USING btree (recurrence_occurrence_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_workorder",
+      "index_name": "tasks_workorder_recurrence_of_id_cebbbe34",
+      "definition": "CREATE INDEX tasks_workorder_recurrence_of_id_cebbbe34 ON public.tasks_workorder USING btree (recurrence_of_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "index_name": "tasks_worktimeinterval_ended_by_id_e0e8f8a4",
+      "definition": "CREATE INDEX tasks_worktimeinterval_ended_by_id_e0e8f8a4 ON public.tasks_worktimeinterval USING btree (ended_by_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "index_name": "tasks_worktimeinterval_person_id_44a66bb7",
+      "definition": "CREATE INDEX tasks_worktimeinterval_person_id_44a66bb7 ON public.tasks_worktimeinterval USING btree (person_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "index_name": "tasks_worktimeinterval_pkey",
+      "definition": "CREATE UNIQUE INDEX tasks_worktimeinterval_pkey ON public.tasks_worktimeinterval USING btree (id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "index_name": "tasks_worktimeinterval_recorded_by_id_e3978368",
+      "definition": "CREATE INDEX tasks_worktimeinterval_recorded_by_id_e3978368 ON public.tasks_worktimeinterval USING btree (recorded_by_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "index_name": "tasks_worktimeinterval_supersedes_id_key",
+      "definition": "CREATE UNIQUE INDEX tasks_worktimeinterval_supersedes_id_key ON public.tasks_worktimeinterval USING btree (supersedes_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "index_name": "tasks_worktimeinterval_work_order_id_55e2e0e2",
+      "definition": "CREATE INDEX tasks_worktimeinterval_work_order_id_55e2e0e2 ON public.tasks_worktimeinterval USING btree (work_order_id)",
+      "valid": true
+    },
+    {
+      "table_name": "tasks_worktimeinterval",
+      "index_name": "work_time_person",
+      "definition": "CREATE INDEX work_time_person ON public.tasks_worktimeinterval USING btree (work_order_id, person_id)",
+      "valid": true
+    }
+  ],
+  "queries": {
+    "columns": "SELECT table_name,column_name,data_type,udt_name,is_nullable,column_default,character_maximum_length,numeric_precision,numeric_scale,is_identity,identity_generation FROM information_schema.columns WHERE table_schema='public' ORDER BY table_name,ordinal_position",
+    "constraints": "SELECT c.relname AS table_name,k.conname AS constraint_name,k.contype AS kind,pg_get_constraintdef(k.oid) AS definition,k.convalidated AS validated FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' ORDER BY c.relname,k.conname",
+    "indexes": "SELECT p.tablename AS table_name,p.indexname AS index_name,p.indexdef AS definition,i.indisvalid AS valid FROM pg_indexes p JOIN pg_class c ON c.relname=p.indexname JOIN pg_namespace n ON n.oid=c.relnamespace AND n.nspname=p.schemaname JOIN pg_index i ON i.indexrelid=c.oid WHERE p.schemaname='public' ORDER BY p.tablename,p.indexname"
+  }
+}

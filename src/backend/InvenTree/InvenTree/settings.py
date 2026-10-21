@@ -324,6 +324,7 @@ INSTALLED_APPS = [
     'stock.apps.StockConfig',
     'tasks.apps.TasksConfig',
     'assets.apps.AssetsConfig',
+    'legacy_boundary.apps.LegacyBoundaryConfig',
     'approvals.apps.ApprovalsConfig',
     'repair.apps.RepairConfig',
     'aichat.apps.AIChatConfig',
