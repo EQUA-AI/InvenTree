@@ -4,7 +4,6 @@ import {
   Button,
   Group,
   SegmentedControl,
-  Spoiler,
   Stack,
   Switch,
   Text,
@@ -418,21 +417,6 @@ export function LiveIndicator({
           {modeText}
         </MetaText>
       )}
-      <Spoiler
-        maxHeight={0}
-        showLabel={t`Show read details`}
-        hideLabel={t`Hide read details`}
-        classNames={{ control: monitoring.link }}
-      >
-        <MetaText size='xs'>
-          {cadence != null
-            ? t`Expected sample interval ${formatDuration(cadence)} (server default)`
-            : t`Expected interval not supplied`}
-          {response?.live.last_poll_at
-            ? ` · ${t`last poll attempt ${displayInstant(response.live.last_poll_at) ?? t`Time unavailable`}`}`
-            : ''}
-        </MetaText>
-      </Spoiler>
     </Stack>
   );
 }

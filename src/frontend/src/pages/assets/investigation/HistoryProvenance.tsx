@@ -12,6 +12,7 @@ import {
 import { AttentionAlert, MetaText } from '../health/common';
 import { formatInstant, useDisplayClock } from '../health/mimic/observedTime';
 import monitoring from '../monitoring.module.css';
+import { formatDuration } from '../performance/format';
 import type { DataRange } from '../performance/usePerformanceData';
 
 export function HistoryProvenance({
@@ -81,6 +82,14 @@ export function HistoryProvenance({
               showLabel={t`Show read details`}
               hideLabel={t`Hide read details`}
             >
+              <MetaText size='xs'>
+                {response.limits.expected_sample_interval_seconds != null
+                  ? t`Expected sample interval ${formatDuration(response.limits.expected_sample_interval_seconds)} (server default)`
+                  : t`Expected interval not supplied`}
+                {response.live.last_poll_at
+                  ? ` · ${t`last poll attempt ${formatInstant(response.live.last_poll_at, clock) ?? t`Time unavailable`}`}`
+                  : ''}
+              </MetaText>
               <Text maw='70ch' size='xs'>
                 {t`Window`}:{' '}
                 {formatInstant(response.window_start, clock) ??
