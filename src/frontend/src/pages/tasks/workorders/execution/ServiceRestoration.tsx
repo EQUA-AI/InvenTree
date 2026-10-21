@@ -1,7 +1,6 @@
-import { displayAuthority } from '@lib/types/CanonicalDisplay';
 import type { WorkOrderOverview } from '@lib/types/WorkOrderOverview';
 import { t } from '@lingui/core/macro';
-import { Anchor, Badge, Group, SimpleGrid, Stack, Text } from '@mantine/core';
+import { Anchor, Badge, SimpleGrid, Stack, Text } from '@mantine/core';
 import { Link, useSearchParams } from 'react-router-dom';
 import { workPanelParams } from '../workPanelState';
 import {
@@ -9,11 +8,7 @@ import {
   ExecutionSection,
   recordedTime
 } from './ExecutionFacts';
-import {
-  AuthorityRecorder,
-  AuthorityRecords,
-  currentAuthority
-} from './OperationalAuthority';
+import { AuthorityRecorder, AuthorityRecords } from './OperationalAuthority';
 import { acceptanceSummary } from './authorityProjection';
 import { authorityReading } from './authorityReading';
 import { testEvaluation } from './verificationProjection';
@@ -37,7 +32,6 @@ export function ServiceRestoration({
         ? t`Test acceptance: not recorded`
         : t`Test acceptance: ${acceptance.outcomes.join(', ')}${acceptance.basis ? t` · basis changed or unavailable` : ''}${acceptance.ineffective ? t` · outside effective window` : ''}`;
   const closeout = workOrder.structured_closeout;
-  const service = displayAuthority();
   const verification = workOrder.verification_return;
   const tests =
     verification?.rule === 'verification_return.v1' &&
@@ -73,44 +67,23 @@ export function ServiceRestoration({
         </ExecutionFact>
       </SimpleGrid>
       {closeout && (
-        <Text size='xs' c='dimmed'>
+        <Text size='xs'>
           {t`Completed account source`}: {closeout.id} ·{' '}
           {closeout.completed_by_name || t`Recorder unavailable`} ·{' '}
           {recordedTime(closeout.completed_at)}
         </Text>
       )}
       <Text
-        size='xs'
-        c='dimmed'
-      >{t`Authority and service records: Not recorded`}</Text>
-      <Group gap='xs' data-service-state={service.state}>
-        {[
-          t`Condition controlled: unknown`,
-          t`Asset repair: unconfirmed`,
-          acceptanceBadge,
-          currentAuthority(authority, 'observed_return').length
-            ? t`Operating return: recorded observation`
-            : t`Operating return: awaiting record`,
-          t`Service: awaiting verification`,
-          currentAuthority(authority, 'service_state').some(
-            (row) => row.details.redundancy
-          )
-            ? t`Resilience: recorded state`
-            : t`Resilience: unknown`
-        ].map((label) => (
-          <Badge
-            key={label}
-            color='gray'
-            variant='light'
-            styles={{
-              root: { height: 'auto' },
-              label: { whiteSpace: 'normal' }
-            }}
-          >
-            {label}
-          </Badge>
-        ))}
-      </Group>
+        size='sm'
+        fw={600}
+      >{t`Service restoration is not established by Work completion.`}</Text>
+      <Badge
+        color='gray'
+        variant='light'
+        styles={{ root: { height: 'auto' }, label: { whiteSpace: 'normal' } }}
+      >
+        {acceptanceBadge}
+      </Badge>
       {authority ? (
         <>
           <AuthorityRecords
@@ -148,13 +121,8 @@ export function ServiceRestoration({
           )}
           <AuthorityRecorder value={authority} mode='service' />
         </>
-      ) : (
-        <Text size='sm'>{t`Awaiting service verification — duty, affected process, standby capacity, operating conditions and operations-owned restrictions are unavailable from the current providers. Their source, responsible owner and effective time are unknown.`}</Text>
-      )}
-      <Text
-        size='sm'
-        c='dimmed'
-      >{t`Work completion, a recorded pass or equipment running does not establish accepted tests, operating permission, full service, restored standby capacity or closed obligations.`}</Text>
+      ) : null}
+      <Text size='sm'>{t`Work completion, a recorded pass or equipment running does not establish accepted tests, operating permission, full service, restored standby capacity or closed obligations.`}</Text>
       <Stack gap='xs'>
         <Text
           size='sm'
@@ -167,7 +135,7 @@ export function ServiceRestoration({
                 {closeout.follow_up ||
                   t`Follow-up required; detail unavailable`}
               </Text>
-              <Text size='xs' c='dimmed'>
+              <Text size='xs'>
                 {t`Source`}: {t`Closeout`} {closeout.id} · {t`Saved at`}:{' '}
                 {recordedTime(closeout.completed_at)}
               </Text>
@@ -181,7 +149,12 @@ export function ServiceRestoration({
         ) : (
           unresolved.map((row) => (
             <Stack key={row.id} gap={2}>
-              <Anchor component={Link} to={requestLink(row.id)} size='sm'>
+              <Anchor
+                component={Link}
+                replace
+                to={requestLink(row.id)}
+                size='sm'
+              >
                 {t`Request ${row.id}`} · {row.next_check}
               </Anchor>
               <Text size='sm'>
@@ -189,7 +162,7 @@ export function ServiceRestoration({
                 {row.owner_name || t`Not recorded`} · {t`Next checkpoint`}:{' '}
                 {recordedTime(row.next_checkpoint)}
               </Text>
-              <Text size='xs' c='dimmed'>
+              <Text size='xs'>
                 {t`Source`}: {t`Request ${row.id}`} v{row.version} ·{' '}
                 {t`Saved at`}: {recordedTime(row.created_at)} ·{' '}
                 {t`Original trigger: unavailable`}
@@ -200,14 +173,12 @@ export function ServiceRestoration({
             </Stack>
           ))
         )}
-        <Text
-          size='xs'
-          c='dimmed'
-        >{t`Service, financial, reporting, quality, permanent-repair and residual obligations are not supplied as an authoritative register. Applicability, accepted owners and deadlines cannot be inferred from this account or request queue.`}</Text>
+        <Text size='xs'>{t`Service, financial, reporting, quality, permanent-repair and residual obligations are not supplied as an authoritative register. Applicability, accepted owners and deadlines cannot be inferred from this account or request queue.`}</Text>
       </Stack>
       {params.get('work_panel') !== 'verify' && (
         <Anchor
           component={Link}
+          replace
           to={`?${workPanelParams(params, 'verify')}`}
           size='sm'
         >{t`View test, release and operating records in Verify & Return`}</Anchor>

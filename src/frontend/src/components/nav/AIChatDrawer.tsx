@@ -997,17 +997,23 @@ function ChatMessageItem({
           )}
 
           {/* Message bubble (U1: theme-aware colors — no hardcoded
-            light-only grays; user bubbles keep WCAG-safe white on blue) */}
+            light-only grays; Work messages use the native contrast tokens) */}
           <Paper
             p='sm'
             radius='lg'
             style={{
               backgroundColor: isUser
-                ? theme.colors.blue[6]
+                ? message.workFocus
+                  ? 'var(--aimms-work-action-bg, var(--mantine-color-blue-8))'
+                  : theme.colors.blue[6]
                 : colorScheme === 'dark'
                   ? theme.colors.dark[6]
                   : theme.colors.gray[0],
-              color: isUser ? 'white' : undefined,
+              color: isUser
+                ? message.workFocus
+                  ? 'var(--aimms-work-action-text, #ffffff)'
+                  : 'white'
+                : undefined,
               maxWidth: '85%',
               borderTopRightRadius: isUser ? 4 : undefined,
               borderTopLeftRadius: !isUser ? 4 : undefined,
@@ -1295,6 +1301,7 @@ function AIChatSessionDrawer({
   opened: boolean;
   onClose: () => void;
 }>) {
+  const returnFocusTarget = useAIChatState((state) => state.returnFocusTarget);
   const theme = useMantineTheme();
   const {
     messages,
@@ -1740,6 +1747,20 @@ function AIChatSessionDrawer({
 
   // S2: a scope PUT seeded by the routing hint is in flight before a send.
   const [isApplyingScope, setIsApplyingScope] = useState(false);
+  const scopeSendFocus = useRef<Element | null>(null);
+  useLayoutEffect(() => {
+    if (isApplyingScope || isLoading || isSyncing) return;
+    const previous = scopeSendFocus.current;
+    scopeSendFocus.current = null;
+    if (
+      opened &&
+      previous &&
+      (document.activeElement === document.body ||
+        document.activeElement === previous)
+    )
+      inputRef.current?.focus();
+  }, [opened, isApplyingScope, isLoading, isSyncing]);
+
   const scopeSendInFlight = useRef<symbol | null>(null);
   const [scopeLaunchError, setScopeLaunchError] = useState(false);
 
@@ -1787,6 +1808,7 @@ function AIChatSessionDrawer({
         }
         const focusAttempt = Symbol('work-focus');
         scopeSendInFlight.current = focusAttempt;
+        scopeSendFocus.current = document.activeElement;
         setIsApplyingScope(true);
         let acknowledged: Awaited<ReturnType<typeof acknowledgeWorkFocus>>;
         try {
@@ -1841,6 +1863,7 @@ function AIChatSessionDrawer({
         }
         const scopeAttempt = Symbol('machine-scope');
         scopeSendInFlight.current = scopeAttempt;
+        scopeSendFocus.current = document.activeElement;
         setIsApplyingScope(true);
         try {
           const result = await setThreadScope({
@@ -2059,6 +2082,7 @@ function AIChatSessionDrawer({
     <>
       <AssistantSurface
         opened={opened}
+        returnFocusTarget={returnFocusTarget}
         modal={Boolean(narrow)}
         suspended={
           consentOpen ||
@@ -2591,6 +2615,19 @@ function AIChatSessionDrawer({
               />
 
               {workFocusHint && (
+                <style>{`
+                #ai-chat-drawer { --mantine-color-dimmed: var(--aimms-work-dimmed); }
+                #ai-chat-drawer .mantine-Alert-title,
+                #ai-chat-drawer .mantine-Alert-message { color: var(--mantine-color-text); }
+                @media (max-width: 47.99em) {
+                  #ai-chat-drawer .mantine-ActionIcon-root,
+                  #ai-chat-drawer .mantine-CloseButton-root,
+                  #ai-chat-drawer a:not(:where(p, li, span, label, td, th, h1, h2, h3, h4, h5, h6) a) { min-width: 44px; min-height: 44px; }
+                  #ai-chat-drawer a:not(:where(p, li, span, label, td, th, h1, h2, h3, h4, h5, h6) a) { display: inline-flex; align-items: center; }
+                }
+              `}</style>
+              )}
+              {workFocusHint && (
                 <Group
                   gap='xs'
                   mb={4}
@@ -2712,12 +2749,7 @@ function AIChatSessionDrawer({
                 server-confirmed scope only, with no menu attached. */}
               <AnalysisContextLine scope={activeScope} />
               {(workFocusHint || messages.at(-1)?.workFocus) && (
-                <Text
-                  hiddenFrom='sm'
-                  size='xs'
-                  mb={4}
-                  data-testid='ai-chat-physical-boundary'
-                >
+                <Text size='xs' mb={4} data-testid='ai-chat-physical-boundary'>
                   {t`Physical authority not supplied. Chat does not authorize work.`}
                 </Text>
               )}

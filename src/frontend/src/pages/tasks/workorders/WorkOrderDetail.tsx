@@ -8,6 +8,7 @@ import {
   Button,
   Card,
   Divider,
+  Grid,
   Group,
   Loader,
   SimpleGrid,
@@ -35,6 +36,7 @@ import dayjs from 'dayjs';
 import {
   type CSSProperties,
   type ReactNode,
+  useCallback,
   useEffect,
   useRef,
   useState
@@ -65,22 +67,20 @@ import PageTitle from '../../../components/nav/PageTitle';
 
 import { useApi } from '../../../contexts/ApiContext';
 import { openGlobalAIChatAboutWork } from '../../../states/AIChatState';
+import { useUserState } from '../../../states/UserState';
 import { MonitoringContinuity } from '../../assets/health/MonitoringContinuity';
 import { InvestigationSection } from '../../maintenance/workorders/components/InvestigationSection';
 import { WorkOrderAlertContext } from '../../maintenance/workorders/components/WorkOrderAlertContext';
 import { WorkOrderProblemPanel } from '../../maintenance/workorders/components/WorkOrderProblemPanel';
-import {
-  WorkOrderSafetyReadiness,
-  gateStatusColor,
-  useGateAuthorityClock
-} from '../../maintenance/workorders/components/WorkOrderSafetyReadiness';
+import { WorkOrderSafetyReadiness } from '../../maintenance/workorders/components/WorkOrderSafetyReadiness';
 import { AcceptedReport, AcceptedReportLinks } from './AcceptedReport';
-import { CloseoutLink } from './CloseoutLink';
 import { CloseoutPanel, WorkCloseoutReadings } from './CloseoutPanel';
 import { WorkAttachmentResource } from './WorkAttachmentResource';
 import { WorkMaterialsPanel } from './WorkMaterialsPanel';
 import { WorkPanelNavigation } from './WorkPanelNavigation';
 import { DiagnoseProjection } from './execution/DiagnoseProjection';
+import { unattributedVerificationLabel } from './execution/ExecutionFacts';
+import { NotSupplied } from './execution/NotSupplied';
 import { PreparedPackage } from './execution/PreparedPackage';
 import { RoutineLinks } from './execution/RoutineLinks';
 import { RoutineWork } from './execution/RoutineWork';
@@ -94,6 +94,8 @@ import {
   WorkContinuityConstraints,
   WorkContinuityHistory
 } from './execution/WorkContinuity';
+import { diagnosisVerification } from './execution/investigationProjection';
+import { workAttention } from './execution/workAttention';
 import { useWorkAssistantClearance } from './useWorkAssistantClearance';
 import classes from './workCompanion.module.css';
 import {
@@ -105,13 +107,13 @@ import { projectCloseoutWorkOrder } from './workProjection';
 
 const LIFECYCLE_COLORS: Record<string, string> = {
   draft: 'gray',
-  planned: 'blue',
-  ready: 'cyan',
-  in_progress: 'yellow',
+  planned: 'gray',
+  ready: 'gray',
+  in_progress: 'blue',
   on_hold: 'orange',
   verifying: 'violet',
-  completed: 'green',
-  canceled: 'red'
+  completed: 'gray',
+  canceled: 'gray'
 };
 
 /**
@@ -143,9 +145,32 @@ export default function WorkOrderDetail() {
   const denied = [401, 403, 404].includes(
     (workOrderQuery.error as any)?.response?.status
   );
+  if (!denied && workOrderQuery.isError && !workOrderQuery.data) {
+    return (
+      <Alert
+        className={classes.surface}
+        color='red'
+        title={t`Work could not be loaded`}
+        m='md'
+      >
+        <Stack gap='sm'>
+          <Text size='sm'>{t`The server could not return this work order. Its existence and your access have not been established.`}</Text>
+          <Button
+            variant='light'
+            onClick={() => void workOrderQuery.refetch()}
+          >{t`Retry Work`}</Button>
+          <Anchor
+            component={Link}
+            to='/maintenance/board'
+          >{t`Return to the work-order board`}</Anchor>
+        </Stack>
+      </Alert>
+    );
+  }
   if (denied || !workOrderQuery.data) {
     return (
       <Alert
+        className={classes.surface}
         color='red'
         icon={<IconAlertTriangle size={16} />}
         title={t`Work order unavailable`}
@@ -166,7 +191,12 @@ export default function WorkOrderDetail() {
   return (
     <>
       {workOrderQuery.isError && (
-        <Alert color='orange' title={t`Latest Work unavailable`} m='md'>
+        <Alert
+          className={classes.surface}
+          color='orange'
+          title={t`Latest Work unavailable`}
+          m='md'
+        >
           <Text size='sm'>{t`Last-known record is shown. Drafts are retained. Refresh before relying on its current state.`}</Text>
           <Text size='xs'>
             {t`Last-known Work version`}:{' '}
@@ -198,35 +228,149 @@ function WorkOrderWorkspace({
 }: Readonly<{ workOrder: WorkOrderOverview }>) {
   const navigate = useNavigate();
   const location = useLocation();
+  const directEntry = useRef(location.key === 'default');
   const [params, setParams] = useSearchParams();
   const activePanel = workPanelState(params);
   const isPhone = useMediaQuery('(max-width: 47.99em)');
   const assistantSurface = useWorkAssistantClearance(isPhone);
-  const { ref: navigationRef, height: navigationHeight } =
+  const { ref: navigationSizeRef, height: navigationHeight } =
     useElementSize<HTMLDivElement>();
+  const navigationElement = useRef<HTMLDivElement | null>(null);
+  const navigationRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      navigationElement.current = node;
+      return navigationSizeRef(node);
+    },
+    [navigationSizeRef]
+  );
+  const [inlineNavigation, setInlineNavigation] = useState(false);
+  useEffect(() => {
+    const navigation = navigationElement.current;
+    const header = document.querySelector<HTMLElement>('[data-app-header]');
+    if (!isPhone || !navigation) {
+      setInlineNavigation(false);
+      return;
+    }
+    const measure = () => {
+      const height = window.visualViewport?.height ?? window.innerHeight;
+      const remaining =
+        height -
+        (header?.getBoundingClientRect().height ?? 0) -
+        navigation.getBoundingClientRect().height;
+      setInlineNavigation(
+        height < window.innerHeight - 1 || remaining < Math.min(320, height / 2)
+      );
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(navigation, { box: 'border-box' });
+    if (header) observer.observe(header);
+    window.visualViewport?.addEventListener('resize', measure);
+    window.addEventListener('resize', measure);
+    measure();
+    return () => {
+      observer.disconnect();
+      window.visualViewport?.removeEventListener('resize', measure);
+      window.removeEventListener('resize', measure);
+    };
+  }, [isPhone]);
   const workflowRef = useRef<HTMLDivElement>(null);
   const previousPanel = useRef(activePanel);
+  // The fixed phone dock is the only layout where the tab row is not in the
+  // panel's reading order, so only there does focus move to the new panel.
+  // On desktop (and the inline short-viewport fallback) the tab row stays in
+  // view and keeps focus, so manual-activation keyboard users stay in the
+  // tablist. An in-panel link that hid its own panel returns focus to the
+  // active tab rather than to the document body.
+  const dockedNavigation = isPhone && !inlineNavigation;
   useEffect(() => {
-    if (
-      previousPanel.current !== activePanel &&
-      window.matchMedia('(max-width: 47.99em)').matches
-    )
-      workflowRef.current?.scrollIntoView({ block: 'start' });
+    if (previousPanel.current !== activePanel && activePanel) {
+      const workflow = workflowRef.current;
+      const panel = workflow?.querySelector<HTMLElement>(
+        `[data-work-panel="${activePanel}"]`
+      );
+      if (dockedNavigation) {
+        panel?.focus({ preventScroll: true });
+        panel?.scrollIntoView({ block: 'start' });
+      } else {
+        const tabList =
+          workflow?.querySelector<HTMLElement>('[role="tablist"]');
+        const bounds = tabList?.getBoundingClientRect();
+        const header =
+          document
+            .querySelector<HTMLElement>('[data-app-header]')
+            ?.getBoundingClientRect().bottom ?? 0;
+        if (
+          bounds &&
+          (bounds.top < Math.max(0, header) ||
+            bounds.bottom > window.innerHeight)
+        )
+          workflow?.scrollIntoView({ block: 'start' });
+        const active = document.activeElement;
+        if (
+          !active ||
+          active === document.body ||
+          active.getClientRects().length === 0
+        )
+          workflow
+            ?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
+            ?.focus({ preventScroll: true });
+      }
+    }
     previousPanel.current = activePanel;
-  }, [activePanel]);
+  }, [activePanel, dockedNavigation]);
   // P02/P33: the one existing assistant, asked about this exact Work at the
   // lifecycle version shown here. The drawer acknowledges it with the server
   // before sending; this page grants nothing.
   const canAskAboutWork =
     Number.isSafeInteger(workOrder.lifecycle_version) &&
     workOrder.lifecycle_version > 0;
-  const askAboutWork = () =>
-    openGlobalAIChatAboutWork({
-      workOrderId: workOrder.id,
-      lifecycleVersion: workOrder.lifecycle_version,
-      label: `${workOrder.reference} · ${workOrder.title}`,
-      returnPath: `${location.pathname}${location.search}`
-    });
+  const askAboutWork = (target: HTMLElement) =>
+    openGlobalAIChatAboutWork(
+      {
+        workOrderId: workOrder.id,
+        lifecycleVersion: workOrder.lifecycle_version,
+        label: `${workOrder.reference || t`Work order ${workOrder.id}`} · ${workOrder.title}`,
+        returnPath: `${location.pathname}${location.search}`
+      },
+      target
+    );
+  const user = useUserState();
+  const attention = workAttention(workOrder, user.user?.pk);
+  const attentionKeys = attention.keys.join('|');
+  const [context, setContext] = useState<string[]>(() => [
+    ...new Set(attention.keys.map((key) => key.split(':')[0]))
+  ]);
+  // Open a context disclosure whenever the server projection shows something
+  // for this person to act on that it has not shown before: at mount and on
+  // every later read. A disclosure the person collapsed stays collapsed until
+  // a new actionable record appears.
+  const shownAttention = useRef(new Set<string>(attention.keys));
+  useEffect(() => {
+    const fresh = attentionKeys
+      .split('|')
+      .filter((key) => key && !shownAttention.current.has(key));
+    if (!fresh.length) return;
+    for (const key of fresh) shownAttention.current.add(key);
+    const items = [...new Set(fresh.map((key) => key.split(':')[0]))];
+    setContext((previous) => [
+      ...previous,
+      ...items.filter((item) => !previous.includes(item))
+    ]);
+  }, [attentionKeys]);
+  const showContinuityRecovery = useCallback(
+    () =>
+      setContext((previous) =>
+        previous.includes('continuity') ? previous : [...previous, 'continuity']
+      ),
+    []
+  );
+  const showTimeRecovery = useCallback(
+    () =>
+      setContext((previous) =>
+        previous.includes('assignment') ? previous : [...previous, 'assignment']
+      ),
+    []
+  );
   const [visited, setVisited] = useState<Set<WorkPanel>>(
     () => new Set(activePanel ? [activePanel] : [])
   );
@@ -244,36 +388,98 @@ function WorkOrderWorkspace({
       name: 'work',
       label: t`Work`,
       content: (
-        <Stack gap='md'>
-          <WorkBrief workOrder={workOrder} />
-          <ScopeRevisionNotice workOrder={workOrder} />
-          <CloseoutLink />
-          <RoutineLinks workOrder={workOrder} originOnly />
-          <RoutineWork workOrder={workOrder} />
-          {workOrder.repair_packet && (
-            <WorkOrderProblemPanel packet={workOrder.repair_packet} />
-          )}
-          <ServiceRestoration workOrder={workOrder} />
-          <WorkContinuity workOrder={workOrder} />
-          <TimeAssignment workOrder={workOrder} />
-          <MonitoringContinuity workOrder={workOrder} />
-          <SectionCard
-            title={t`Board cards`}
-            icon={<IconLayoutKanban size={18} />}
-          >
-            <Text
-              size='sm'
-              c='dimmed'
-              mb='sm'
-            >{t`Operational tasks retain their own recorded status and links.`}</Text>
-            <WorkTableScroll
-              minWidth={640}
-              label={t`Board cards table, scroll for all columns`}
-            >
-              <CardsTable cards={workOrder.cards ?? []} />
-            </WorkTableScroll>
-          </SectionCard>
-        </Stack>
+        <Grid gap='md' className={classes.executionGrid}>
+          <Grid.Col span={{ base: 12, lg: 7 }}>
+            <Stack gap='md'>
+              <RoutineWork workOrder={workOrder} />
+              <WorkBrief workOrder={workOrder} />
+              <ScopeRevisionNotice workOrder={workOrder} />
+              <RoutineLinks workOrder={workOrder} originOnly />
+              {workOrder.repair_packet && (
+                <WorkOrderProblemPanel
+                  packet={workOrder.repair_packet}
+                  explanation={
+                    workOrder.investigation?.packet?.id ===
+                    workOrder.repair_packet.id
+                      ? workOrder.investigation.explanation
+                      : null
+                  }
+                />
+              )}
+              <SectionCard
+                title={t`Board cards`}
+                icon={<IconLayoutKanban size={18} />}
+              >
+                <Text
+                  size='sm'
+                  c='dimmed'
+                  mb='sm'
+                >{t`Operational tasks retain their own recorded status and links.`}</Text>
+                <WorkTableScroll
+                  minWidth={640}
+                  label={t`Board cards table, scroll for all columns`}
+                >
+                  <CardsTable cards={workOrder.cards ?? []} />
+                </WorkTableScroll>
+              </SectionCard>
+            </Stack>
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, lg: 5 }}>
+            <Stack gap='md'>
+              <ServiceRestoration workOrder={workOrder} />
+              <Accordion
+                multiple
+                keepMounted
+                keepMountedMode='display-none'
+                variant='contained'
+                value={context}
+                onChange={setContext}
+              >
+                <Accordion.Item value='continuity'>
+                  <Accordion.Control>
+                    <ContextControlLabel
+                      title={t`Continuity and handover`}
+                      status={
+                        attention.continuity === 'handover'
+                          ? t`Handover awaiting your acceptance`
+                          : attention.continuity === 'hold'
+                            ? t`Work on hold`
+                            : null
+                      }
+                    />
+                  </Accordion.Control>
+                  <Accordion.Panel>
+                    <WorkContinuity
+                      workOrder={workOrder}
+                      onRecoveryNeeded={showContinuityRecovery}
+                    />
+                  </Accordion.Panel>
+                </Accordion.Item>
+                <Accordion.Item value='assignment'>
+                  <Accordion.Control>
+                    <ContextControlLabel
+                      title={t`Assignment and person-work time`}
+                      status={
+                        attention.assignment === 'open_at_closure'
+                          ? t`Work closed with an open interval`
+                          : attention.assignment === 'own_running'
+                            ? t`Your work time is running`
+                            : null
+                      }
+                    />
+                  </Accordion.Control>
+                  <Accordion.Panel>
+                    <TimeAssignment
+                      workOrder={workOrder}
+                      onRecoveryNeeded={showTimeRecovery}
+                    />
+                  </Accordion.Panel>
+                </Accordion.Item>
+              </Accordion>
+              <MonitoringContinuity workOrder={workOrder} />
+            </Stack>
+          </Grid.Col>
+        </Grid>
       )
     },
     {
@@ -297,6 +503,7 @@ function WorkOrderWorkspace({
                 </WorkTableScroll>
               ) : (
                 <Alert
+                  role='note'
                   color='gray'
                   title={t`No findings in this overview`}
                 >{t`Recorded findings are not supplied here. This does not establish a cause or mean that all evidence sources have been checked.`}</Alert>
@@ -311,7 +518,7 @@ function WorkOrderWorkspace({
       label: t`Plan & Safety`,
       content: (
         <Stack gap='md'>
-          <ScopeRevisionNotice workOrder={workOrder} />
+          <ScopeRevisionNotice workOrder={workOrder} full />
           <WorkContinuityConstraints workOrder={workOrder} />
           <PreparedPackage
             value={workOrder.prepared_package}
@@ -333,11 +540,17 @@ function WorkOrderWorkspace({
               />
               <RepairPacketCard
                 packet={workOrder.repair_packet}
-                physical={workOrder.operational_authority?.physical}
+                explanation={
+                  workOrder.investigation?.packet?.id ===
+                  workOrder.repair_packet.id
+                    ? workOrder.investigation.explanation
+                    : null
+                }
               />
             </>
           ) : (
             <Alert
+              role='note'
               color='gray'
               title={t`No linked repair packet`}
             >{t`Safety and approved-scope records are not included in this overview. This is not permission to begin physical work.`}</Alert>
@@ -355,18 +568,20 @@ function WorkOrderWorkspace({
       name: 'parts',
       label: t`Parts`,
       content: (
-        <SectionCard
-          title={t`Parts for this job`}
-          icon={<IconPackage size={18} />}
-        >
+        <Stack gap='md'>
           <ScopeRevisionNotice workOrder={workOrder} />
-          {/* R6 P22: requirement → reservation → issue → use, each recorded. */}
-          <WorkMaterialsPanel
-            workOrderId={workOrder.id}
-            label={workOrder.reference || t`Work order ${workOrder.id}`}
-            fallback={<PartsTable parts={workOrder.parts} />}
-          />
-        </SectionCard>
+          <SectionCard
+            title={t`Parts for this job`}
+            icon={<IconPackage size={18} />}
+          >
+            {/* R6 P22: requirement → reservation → issue → use, each recorded. */}
+            <WorkMaterialsPanel
+              workOrderId={workOrder.id}
+              label={workOrder.reference || t`Work order ${workOrder.id}`}
+              fallback={<PartsTable parts={workOrder.parts} />}
+            />
+          </SectionCard>
+        </Stack>
       )
     },
     {
@@ -404,7 +619,6 @@ function WorkOrderWorkspace({
               closeout={workOrder.structured_closeout}
             />
           )}
-          <MonitoringContinuity workOrder={workOrder} />
           {workOrder.canonical_commands_enabled || workOrder.repair_packet ? (
             <CloseoutPanel
               workOrder={projectCloseoutWorkOrder(workOrder)}
@@ -416,6 +630,7 @@ function WorkOrderWorkspace({
           ) : (
             <Text c='dimmed'>{t`Standalone completion is not enabled for this work order.`}</Text>
           )}
+          <MonitoringContinuity workOrder={workOrder} />
         </Stack>
       )
     },
@@ -449,9 +664,11 @@ function WorkOrderWorkspace({
         <Accordion.Panel>
           <Stack gap='md'>
             {workOrder.description && (
-              <Text size='sm'>{workOrder.description}</Text>
+              <>
+                <Text size='sm'>{workOrder.description}</Text>
+                <Divider />
+              </>
             )}
-            <Divider />
             <SimpleGrid cols={{ base: 2, md: 4 }}>
               <InfoItem
                 label={t`Board stage`}
@@ -507,21 +724,25 @@ function WorkOrderWorkspace({
       ref={assistantSurface}
       component='main'
       aria-labelledby='work-order-title'
+      data-inline-navigation={inlineNavigation || undefined}
       gap='md'
       className={`${classes.workspace} ${classes.surface}`}
       style={
         {
-          '--work-navigation-height': `${navigationHeight}px`
+          '--work-navigation-height': `calc(${navigationHeight}px + max(8px, var(--work-safe-area-bottom, env(safe-area-inset-bottom))) + 1px)`
         } as CSSProperties
       }
     >
-      <PageTitle title={`${workOrder.reference} - ${workOrder.title}`} />
-      <Group justify='space-between' align='flex-start'>
+      <PageTitle
+        title={`${workOrder.reference || t`Work order ${workOrder.id}`} - ${workOrder.title}`}
+      />
+      <Stack gap='sm'>
         <Group
+          className={classes.identity}
           gap='sm'
           wrap='nowrap'
           align='flex-start'
-          style={{ flex: '1 1 320px', minWidth: 0 }}
+          style={{ minWidth: 0 }}
         >
           <ActionIcon
             variant='default'
@@ -529,7 +750,11 @@ function WorkOrderWorkspace({
             data-testid='work-order-back'
             size={isPhone ? 44 : 28}
             style={{ flexShrink: 0 }}
-            onClick={() => navigate(-1)}
+            onClick={() =>
+              directEntry.current
+                ? navigate('/maintenance/board')
+                : navigate(-1)
+            }
           >
             <IconArrowLeft size={16} />
           </ActionIcon>
@@ -540,68 +765,80 @@ function WorkOrderWorkspace({
               size='h3'
               style={{ overflowWrap: 'anywhere' }}
             >
-              {workOrder.reference}: {workOrder.title}
+              {workOrder.reference || t`Work order ${workOrder.id}`}:{' '}
+              {workOrder.title}
             </Title>
             <Text size='sm' c='dimmed'>
-              {workOrder.machine_name ?? t`No machine assigned`}
+              {workOrder.machine_name ??
+                (workOrder.machine === null
+                  ? t`No machine assigned`
+                  : t`Machine name not supplied`)}
               {workOrder.machine_location
                 ? ` · ${workOrder.machine_location}`
                 : ''}
             </Text>
           </Stack>
         </Group>
-        <Group gap='xs'>
-          <Button
-            variant='light'
-            size='xs'
-            leftSection={<IconMessageChatbot size={16} />}
-            onClick={askAboutWork}
-            disabled={!canAskAboutWork}
-          >
-            {t`Ask about this work`}
-          </Button>
-          <StateBadge
-            value={workOrder.status}
-            color='indigo'
-            label={t`Board stage`}
-          />
-          <StateBadge
-            value={workOrder.lifecycle_status}
-            label={t`Lifecycle`}
-            color={LIFECYCLE_COLORS[workOrder.lifecycle_status] ?? 'gray'}
-          />
-          <StateBadge
-            value={workOrder.priority}
-            label={t`Priority`}
-            color={priorityColor(workOrder.priority)}
-          />
+        <Group justify='space-between' align='flex-start' gap='sm'>
+          <Group gap='xs' w='100%' style={{ minWidth: 0 }}>
+            <WorkAttachmentResource workOrderId={workOrder.id} />
+            <Button
+              variant='light'
+              size='sm'
+              leftSection={<IconMessageChatbot size={16} />}
+              onClick={(event) => askAboutWork(event.currentTarget)}
+              disabled={!canAskAboutWork}
+            >
+              {t`Ask about this work`}
+            </Button>
+          </Group>
+          <Group gap='xs'>
+            <StateBadge
+              value={workOrder.status}
+              color={statusColor(workOrder.status)}
+              label={t`Board stage`}
+            />
+            <StateBadge
+              value={workOrder.lifecycle_status}
+              label={t`Lifecycle`}
+              color={LIFECYCLE_COLORS[workOrder.lifecycle_status] ?? 'gray'}
+            />
+            <StateBadge
+              value={workOrder.priority}
+              label={t`Priority`}
+              color={priorityColor(workOrder.priority)}
+            />
+          </Group>
         </Group>
-      </Group>
-
-      <WorkAttachmentResource workOrderId={workOrder.id} />
+      </Stack>
 
       {workOrder.source_alert && (
         <WorkOrderAlertContext alert={workOrder.source_alert} />
       )}
 
-      {!isPhone && recordDetails}
-
       <Tabs
         ref={workflowRef}
         className={classes.workflow}
         value={activePanel}
+        activateTabWithKeyboard={false}
         keepMounted
         keepMountedMode='display-none'
         onChange={(value) => {
           const panel = panels.find((entry) => entry.name === value);
           if (panel)
-            setParams((previous) => workPanelParams(previous, panel.name));
+            setParams((previous) => workPanelParams(previous, panel.name), {
+              replace: true
+            });
         }}
       >
         <WorkPanelNavigation
           panels={panels}
           reference={workOrder.reference || t`Work order ${workOrder.id}`}
           navigationRef={navigationRef}
+          inline={inlineNavigation}
+          hasPhysicalRecords={Boolean(
+            workOrder.operational_authority?.physical.length
+          )}
         />
         {!activePanel && (
           <Alert mt='md' color='red' title={t`Work panel unavailable`}>
@@ -609,18 +846,60 @@ function WorkOrderWorkspace({
               <Text>{t`This link does not name a supported workflow panel.`}</Text>
               <Anchor
                 component={Link}
+                replace
                 to={`?${workPanelParams(params, 'work')}`}
               >{t`Return to Work`}</Anchor>
             </Stack>
           </Alert>
         )}
         {panels.map((panel) => (
-          <Tabs.Panel key={panel.name} value={panel.name} pt='md'>
-            {visited.has(panel.name) ? panel.content : null}
+          <Tabs.Panel
+            key={panel.name}
+            value={panel.name}
+            pt='md'
+            tabIndex={-1}
+            data-work-panel={panel.name}
+          >
+            {visited.has(panel.name) ? (
+              <Stack gap='md'>
+                {panel.content}
+                <NotSupplied work={workOrder} panel={panel.name} />
+              </Stack>
+            ) : null}
           </Tabs.Panel>
         ))}
       </Tabs>
-      {isPhone && recordDetails}
+      {recordDetails}
+    </Stack>
+  );
+}
+
+/** Disclosure title plus a status only when something needs action. */
+function ContextControlLabel({
+  title,
+  status
+}: Readonly<{ title: string; status: string | null }>) {
+  return (
+    <Stack gap={2}>
+      <Text size='sm' fw={500}>
+        {title}
+      </Text>
+      {status && (
+        <Group gap={6} wrap='nowrap' align='flex-start'>
+          <IconAlertTriangle
+            size={14}
+            aria-hidden
+            style={{
+              flexShrink: 0,
+              marginTop: 2,
+              color: 'var(--aimms-work-warning-icon, currentColor)'
+            }}
+          />
+          <Text size='xs' fw={600} data-testid='work-context-status'>
+            {status}
+          </Text>
+        </Group>
+      )}
     </Stack>
   );
 }
@@ -635,7 +914,7 @@ function InfoItem({
         {label}
       </Text>
       <Text size='sm' style={{ overflowWrap: 'anywhere' }}>
-        {value || '-'}
+        {value || t`Not recorded`}
       </Text>
     </Stack>
   );
@@ -667,7 +946,7 @@ function StateBadge({
   label
 }: Readonly<{ value: string; color: string; label?: string }>) {
   return (
-    <Badge variant='light' color={color}>
+    <Badge variant='dot' color={color}>
       {label ? `${label}: ${humanize(value)}` : humanize(value)}
     </Badge>
   );
@@ -707,11 +986,11 @@ function CardsTable({ cards }: Readonly<{ cards: BoardCard[] }>) {
             </Table.Td>
             <Table.Td>
               <Badge variant='light' color='gray'>
-                {card.card_kind}
+                {humanize(card.card_kind)}
               </Badge>
             </Table.Td>
             <Table.Td>
-              <Badge variant='light'>{card.status}</Badge>
+              <Badge variant='light'>{humanize(card.status)}</Badge>
             </Table.Td>
             <Table.Td>
               <Text size='sm' c={card.effective_start ? undefined : 'dimmed'}>
@@ -754,7 +1033,7 @@ function PartsTable({ parts }: Readonly<{ parts: WorkOrderPart[] }>) {
                   {part.part_name}
                 </Text>
                 <Text size='xs' c='dimmed'>
-                  {part.part_ipn || '-'}
+                  {part.part_ipn || t`Not recorded`}
                 </Text>
               </Table.Td>
               <Table.Td>{part.quantity}</Table.Td>
@@ -765,7 +1044,7 @@ function PartsTable({ parts }: Readonly<{ parts: WorkOrderPart[] }>) {
                   color={part.allocation_status === 'full' ? 'green' : 'orange'}
                 />
               </Table.Td>
-              <Table.Td>{part.allocation_note || '-'}</Table.Td>
+              <Table.Td>{part.allocation_note || t`Not recorded`}</Table.Td>
             </Table.Tr>
           ))}
         </Table.Tbody>
@@ -829,12 +1108,18 @@ function DependenciesTable({
 
 function RepairPacketCard({
   packet,
-  physical
+  explanation
 }: Readonly<{
   packet: RepairPacketOverview;
-  physical?: import('@lib/types/OperationalAuthority').AuthorityRecord[];
+  explanation?:
+    | import('@lib/types/WorkExecution').InvestigationExplanation
+    | null;
 }>) {
-  const { expired } = useGateAuthorityClock(packet.gates, physical);
+  const verification = diagnosisVerification(
+    packet.diagnosis_is_preliminary,
+    explanation?.verified_by,
+    explanation?.verified_at
+  );
   const likelyCause =
     typeof packet.diagnosis.likely_cause === 'string'
       ? packet.diagnosis.likely_cause
@@ -862,32 +1147,14 @@ function RepairPacketCard({
         />
         <InfoItem
           label={
-            packet.diagnosis_is_preliminary
-              ? t`Preliminary results`
-              : t`Verified diagnosis`
+            verification === 'verified'
+              ? t`Verified diagnosis`
+              : verification === 'unattributed'
+                ? unattributedVerificationLabel()
+                : t`Preliminary results`
           }
           value={likelyCause}
         />
-      </SimpleGrid>
-      <Divider />
-      <Text size='sm' fw={600}>{t`Safety gates`}</Text>
-      <SimpleGrid cols={{ base: 1, md: 2 }}>
-        {packet.gates.map((gate) => (
-          <Group key={gate.id} justify='space-between' wrap='wrap'>
-            <Stack gap={0}>
-              <Text size='sm'>{gate.name}</Text>
-              <Text size='xs' c='dimmed'>
-                {humanize(gate.gate_type)}
-                {gate.requires_second_person ? ` · ${t`Second person`}` : ''}
-                {gate.requires_photo ? ` · ${t`Photo required`}` : ''}
-              </Text>
-            </Stack>
-            <StateBadge
-              value={gate.status}
-              color={gateStatusColor(gate, expired(gate))}
-            />
-          </Group>
-        ))}
       </SimpleGrid>
     </SectionCard>
   );
@@ -962,7 +1229,7 @@ function EventTimeline({ events }: Readonly<{ events: WorkOrderEvent[] }>) {
                 .map(humanize)
                 .join(' → ') ||
                 event.reason ||
-                '-'}
+                t`Not recorded`}
             </Text>
             {event.reason && <Text size='xs'>{event.reason}</Text>}
             <Text size='xs' c='dimmed'>
@@ -978,13 +1245,13 @@ function EventTimeline({ events }: Readonly<{ events: WorkOrderEvent[] }>) {
 }
 
 function displayReference(
-  workOrder: Pick<WorkOrderSummary, 'reference' | 'title'>
+  workOrder: Pick<WorkOrderSummary, 'id' | 'reference' | 'title'>
 ) {
-  return `${workOrder.reference ?? `WO-${workOrder.title}`} · ${workOrder.title}`;
+  return `${workOrder.reference || t`Work order ${workOrder.id}`} · ${workOrder.title}`;
 }
 
 function assigneeLabel(workOrder: WorkOrderOverview): string {
-  return workOrder.assigned_to_name || workOrder.assignee || '-';
+  return workOrder.assigned_to_name || workOrder.assignee || t`Not recorded`;
 }
 
 function humanize(value: string): string {
@@ -995,15 +1262,15 @@ function humanize(value: string): string {
 }
 
 function formatDateTime(value: string | null): string {
-  return value ? dayjs(value).format('DD MMM YYYY, HH:mm') : '-';
+  return value ? dayjs(value).format('DD MMM YYYY, HH:mm') : t`Not recorded`;
 }
 
 function formatDate(value: string | null): string {
-  return value ? dayjs(value).format('DD MMM YYYY') : '-';
+  return value ? dayjs(value).format('DD MMM YYYY') : t`Not recorded`;
 }
 
 function formatMinutes(value: number | null): string {
-  if (value == null) return '-';
+  if (value == null) return t`Not recorded`;
   if (value < 60) return `${value} min`;
   const hours = Math.floor(value / 60);
   const minutes = value % 60;
@@ -1015,12 +1282,12 @@ function priorityColor(value: string): string {
     ? 'red'
     : value === 'medium'
       ? 'yellow'
-      : 'teal';
+      : 'gray';
 }
 
 function statusColor(value: string): string {
   if (value === 'in-progress') return 'indigo';
   if (value === 'review') return 'yellow';
-  if (value === 'done') return 'green';
+  if (value === 'done') return 'gray';
   return 'gray';
 }

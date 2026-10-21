@@ -55,16 +55,19 @@ export function ContinueInvestigation({
         size='sm'
         leftSection={<IconMessageChatbot size={16} />}
         disabled={!usable}
-        onClick={() =>
-          openGlobalAIChatAboutWork({
-            workOrderId: workOrder.id,
-            lifecycleVersion: workOrder.lifecycle_version,
-            ...(request
-              ? { requestId: request.id, requestVersion: request.version }
-              : {}),
-            label: `${workOrder.reference ?? `WO-${workOrder.id}`} · ${workOrder.title}`,
-            returnPath
-          })
+        onClick={(event) =>
+          openGlobalAIChatAboutWork(
+            {
+              workOrderId: workOrder.id,
+              lifecycleVersion: workOrder.lifecycle_version,
+              ...(request
+                ? { requestId: request.id, requestVersion: request.version }
+                : {}),
+              label: `${workOrder.reference || t`Work order ${workOrder.id}`} · ${workOrder.title}`,
+              returnPath
+            },
+            event.currentTarget
+          )
         }
       >
         {label ?? t`Continue investigation`}

@@ -44,6 +44,7 @@ export function CloseoutReconciliation({
         >{t`Discrepancy owners, business-record ownership and next checkpoints are unavailable where the source does not name them. A recorded resolver is not an assigned owner.`}</Text>
         <Anchor
           component={Link}
+          replace
           to='?work_panel=parts'
         >{t`Open Parts and native inventory records`}</Anchor>
         <Text size='sm' fw={600}>

@@ -15,8 +15,9 @@ function elapsed(value: number | null): string | null {
 }
 
 export function TimeAssignment({
-  workOrder
-}: Readonly<{ workOrder: WorkOrderOverview }>) {
+  workOrder,
+  onRecoveryNeeded
+}: Readonly<{ workOrder: WorkOrderOverview; onRecoveryNeeded?: () => void }>) {
   const supplied = workOrder.time_assignment?.rule === 'time_assignment.v1';
   const value: Projection | undefined = supplied
     ? workOrder.time_assignment
@@ -30,39 +31,57 @@ export function TimeAssignment({
       testId='time-assignment'
     >
       <SimpleGrid cols={{ base: 1, sm: 2 }}>
-        <ExecutionFact label={t`Recorded assignee`}>
-          {value?.assigned_to ??
-            workOrder.assigned_to_name ??
-            workOrder.assigned_to_username ??
-            null}
-        </ExecutionFact>
-        <ExecutionFact label={t`Legacy assignee label`}>
-          {value?.legacy_assignee ?? workOrder.assignee}
-        </ExecutionFact>
-        <ExecutionFact label={t`Elapsed since recorded assignment`}>
-          {elapsed(value?.elapsed_assignment_seconds ?? null)}
-        </ExecutionFact>
-        <ExecutionFact label={t`Assignment event at`}>
-          {recordedTime(value?.assignment_event_at)}
-        </ExecutionFact>
-        <ExecutionFact label={t`Assignment recorded by`}>
-          {value?.assignment_recorded_by}
-        </ExecutionFact>
-        <ExecutionFact label={t`Recorded assignment reason`}>
-          {value?.assignment_reason}
-        </ExecutionFact>
-        <ExecutionFact label={t`Native actual start`}>
-          {recordedTime(workOrder.actual_started_at)}
-        </ExecutionFact>
-        <ExecutionFact label={t`Native actual completion`}>
-          {recordedTime(workOrder.actual_completed_at)}
-        </ExecutionFact>
+        {[
+          [
+            t`Recorded assignee`,
+            value?.assigned_to ??
+              workOrder.assigned_to_name ??
+              workOrder.assigned_to_username ??
+              null
+          ],
+          [
+            t`Legacy assignee label`,
+            value?.legacy_assignee ?? workOrder.assignee
+          ],
+          [
+            t`Elapsed since recorded assignment`,
+            elapsed(value?.elapsed_assignment_seconds ?? null)
+          ],
+          [
+            t`Assignment event at`,
+            value?.assignment_event_at
+              ? recordedTime(value.assignment_event_at)
+              : null
+          ],
+          // Attribution and rationale stay visible as Not recorded when absent.
+          [t`Assignment recorded by`, value?.assignment_recorded_by, true],
+          [t`Recorded assignment reason`, value?.assignment_reason, true],
+          [
+            t`Native actual start`,
+            workOrder.actual_started_at
+              ? recordedTime(workOrder.actual_started_at)
+              : null
+          ],
+          [
+            t`Native actual completion`,
+            workOrder.actual_completed_at
+              ? recordedTime(workOrder.actual_completed_at)
+              : null
+          ]
+        ]
+          .filter(([, fact, always]) => always || (fact != null && fact !== ''))
+          .map(([label, fact]) => (
+            <ExecutionFact key={String(label)} label={String(label)}>
+              {fact as string | null | undefined}
+            </ExecutionFact>
+          ))}
       </SimpleGrid>
-      <Text
-        size='sm'
-        c='dimmed'
-      >{t`Elapsed assignment is wall time at the last server read, not labor or accepted responsibility. Actual start and completion are job timestamps, not person-work intervals.`}</Text>
-      <RecordedWorkTime key={workOrder.id} workOrder={workOrder} />
+      <Text size='sm'>{t`Elapsed assignment is wall time at the last server read, not labor or accepted responsibility. Actual start and completion are job timestamps, not person-work intervals.`}</Text>
+      <RecordedWorkTime
+        key={workOrder.id}
+        workOrder={workOrder}
+        onRecoveryNeeded={onRecoveryNeeded}
+      />
       {handover?.available ? (
         <Stack gap={2} data-testid='time-handover-record'>
           <Text size='sm'>
@@ -99,7 +118,7 @@ export function TimeAssignment({
                     <Text size='sm'>
                       {event.reason ?? t`Assignment reason not recorded`}
                     </Text>
-                    <Text size='xs' c='dimmed'>
+                    <Text size='xs'>
                       {event.recorded_by ?? t`Recorder not recorded`} ·{' '}
                       {recordedTime(event.recorded_at)}
                     </Text>
@@ -113,10 +132,7 @@ export function TimeAssignment({
                     </Text>
                   </Stack>
                 ))}
-                <Text
-                  size='xs'
-                  c='dimmed'
-                >{t`Assignment changes are audit records, not accepted handovers or attributed work intervals.`}</Text>
+                <Text size='xs'>{t`Assignment changes are audit records, not accepted handovers or attributed work intervals.`}</Text>
               </Stack>
             </Accordion.Panel>
           </Accordion.Item>

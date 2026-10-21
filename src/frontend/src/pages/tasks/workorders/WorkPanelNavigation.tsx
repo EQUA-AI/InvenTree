@@ -11,11 +11,15 @@ import { type WorkPanel, workPanelParams } from './workPanelState';
 export function WorkPanelNavigation({
   panels,
   reference,
-  navigationRef
+  navigationRef,
+  hasPhysicalRecords = false,
+  inline = false
 }: Readonly<{
   panels: readonly { name: WorkPanel; label: string }[];
   reference: string;
   navigationRef: Ref<HTMLDivElement>;
+  hasPhysicalRecords?: boolean;
+  inline?: boolean;
 }>) {
   const [params] = useSearchParams();
   return (
@@ -23,10 +27,12 @@ export function WorkPanelNavigation({
       ref={navigationRef}
       className={classes.navigation}
       data-testid='work-panel-navigation'
+      data-inline-navigation={inline || undefined}
     >
       {/* P21 supplies no physical-authority record. Gates, lifecycle, a saved
           scope and a successful maintenance update cannot establish it. */}
       <Anchor
+        replace
         component={Link}
         to={`?${workPanelParams(params, 'plan')}`}
         className={classes.boundary}
@@ -35,7 +41,10 @@ export function WorkPanelNavigation({
         <IconShieldQuestion size={20} aria-hidden />
         <Box>
           <Text size='xs' fw={600}>
-            {reference} · {t`Physical authority not supplied`}
+            {reference} ·{' '}
+            {hasPhysicalRecords
+              ? t`Physical authority: review recorded sources`
+              : t`Physical authority not supplied`}
           </Text>
           <Text size='xs'>
             {t`View Plan & Safety. This does not authorize work.`}

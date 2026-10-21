@@ -26,6 +26,7 @@ import { Link } from 'react-router-dom';
 import { openGlobalAIChatAboutWork } from '../../../states/AIChatState';
 import { OriginalMedia } from './OriginalMedia';
 import { ContinueInvestigation } from './execution/ContinueInvestigation';
+import { readingStatusLabel } from './execution/routinePresentation';
 import { narrativeExcerpts } from './storyProvenance';
 
 const when = (value?: string | null) =>
@@ -158,7 +159,7 @@ export function PreparedCloseout({
       : []),
     ...(readings ?? []).map(
       (row) =>
-        `${row.label}: ${row.raw_text} ${row.unit} · ${row.verification_state} · ${when(row.recorded_at)} · ${t`Recorded by`} ${fact(row.recorded_by_name)}`
+        `${row.label}: ${row.raw_text} ${row.unit} · ${readingStatusLabel(row.verification_state)} · ${when(row.recorded_at)} · ${t`Recorded by`} ${fact(row.recorded_by_name)}`
     ),
     ...(amendments ?? []).map(
       (row) =>
@@ -257,6 +258,7 @@ export function PreparedCloseout({
           )}
           <Anchor
             component={Link}
+            replace
             to='?work_panel=verify'
           >{t`View verification in Verify & Return`}</Anchor>
           <Text
@@ -266,6 +268,7 @@ export function PreparedCloseout({
           <Title order={3} size='h5'>{t`Materials and time`}</Title>
           <Anchor
             component={Link}
+            replace
             to='?work_panel=parts'
           >{t`View recorded materials and custody`}</Anchor>
           <Text size='sm'>
@@ -307,7 +310,7 @@ export function PreparedCloseout({
               <Group key={row.id} gap='xs' wrap='wrap'>
                 <Text size='sm'>
                   {row.label}: {row.raw_text || t`Not recorded`} {row.unit} ·{' '}
-                  {row.verification_state}
+                  {readingStatusLabel(row.verification_state)}
                 </Text>
                 {displayReading(row).focus && (
                   <Button

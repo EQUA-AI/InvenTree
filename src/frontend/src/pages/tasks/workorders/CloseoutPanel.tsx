@@ -45,7 +45,9 @@ import {
   reviewedAccountValues,
   savedFieldValue
 } from './closeoutAccount';
+import { WarningText } from './execution/ExecutionFacts';
 import { ServiceRestoration } from './execution/ServiceRestoration';
+import { readingStatusLabel } from './execution/routinePresentation';
 import { narrativeExcerpts } from './storyProvenance';
 import { useActionFocus } from './useActionFocus';
 import { useCaptureSave } from './useCaptureSave';
@@ -695,7 +697,6 @@ export function CloseoutPanel({
             </Stack>
           </Card>
         )}
-      {execution && <ServiceRestoration workOrder={execution} />}
       {(capturesQuery.isError ||
         proposalQuery.isError ||
         partUsageQuery.isError) && (
@@ -818,7 +819,7 @@ export function CloseoutPanel({
         />
       )}
       {!captureEnabled && (
-        <Alert color='blue' data-testid='closeout-wizard-disabled'>
+        <Alert role='note' color='blue' data-testid='closeout-wizard-disabled'>
           {t`Closeout capture, material reconciliation and readings are not enabled. Readiness still applies.`}
           {!accepted && (
             <Text size='sm'>{t`Enter the manual account below. Values remain an unsaved draft until the final update.`}</Text>
@@ -1025,6 +1026,7 @@ export function CloseoutPanel({
           execution && <CloseoutReconciliation workOrder={execution} />
         }
       />
+      {execution && <ServiceRestoration workOrder={execution} />}
       {effectsQuery.data && effectsQuery.data.length > 0 && (
         <details>
           <summary>{t`Recorded follow-up effects`}</summary>
@@ -1198,7 +1200,7 @@ function NarrativeStep({
             <Badge color='grape'>{t`Voice transcript`}</Badge>
           )}
           <Text size='sm' c='dimmed'>
-            {t`Revision`} {capture.revision ?? '-'}
+            {t`Revision`} {capture.revision ?? t`Not recorded`}
           </Text>
         </Group>
         <Textarea
@@ -1307,7 +1309,10 @@ function ReviewStep({
       mt='md'
     >
       {!capture && captureAvailable && (
-        <Alert color='gray'>{t`Manual account recovery: values remain an unsaved draft until the final update. A technician story can be added separately through the native capture.`}</Alert>
+        <Alert
+          role='note'
+          color='gray'
+        >{t`Manual account recovery: values remain an unsaved draft until the final update. A technician story can be added separately through the native capture.`}</Alert>
       )}
       {proposal?.warnings?.length ? (
         <Alert color='yellow' icon={<IconAlertTriangle size={16} />}>
@@ -1464,9 +1469,9 @@ function PartsStep({
                       ? `${t`Candidate`}: ${row.candidate_text}`
                       : row.source}
                   </Table.Td>
-                  <Table.Td>{row.planned_quantity ?? '-'}</Table.Td>
-                  <Table.Td>{row.issued_quantity ?? '-'}</Table.Td>
-                  <Table.Td>{row.used_quantity ?? '-'}</Table.Td>
+                  <Table.Td>{row.planned_quantity ?? t`Not recorded`}</Table.Td>
+                  <Table.Td>{row.issued_quantity ?? t`Not recorded`}</Table.Td>
+                  <Table.Td>{row.used_quantity ?? t`Not recorded`}</Table.Td>
                   <Table.Td>
                     <Badge
                       color={row.state === 'reconciled' ? 'green' : 'yellow'}
@@ -1585,24 +1590,22 @@ export function ReadingsStep({
           <Badge
             color={
               row.verification_state === 'verified'
-                ? 'green'
+                ? 'gray'
                 : row.verification_state === 'failed'
                   ? 'red'
                   : 'yellow'
             }
             variant='light'
           >
-            {row.verification_state}
+            {readingStatusLabel(row.verification_state)}
           </Badge>
           <Text size='sm'>
-            {row.label}: {row.raw_text || '-'} {row.unit && `(${row.unit})`}
+            {row.label}: {row.raw_text || t`Not recorded`}{' '}
+            {row.unit && `(${row.unit})`}
           </Text>
           {row.required && <Badge size='xs'>{t`required`}</Badge>}
           {row.warnings.includes('numeric_ambiguity') && (
-            <Text
-              size='xs'
-              c='orange'
-            >{t`ambiguous numeric — correct or re-enter`}</Text>
+            <WarningText size='xs'>{t`ambiguous numeric — correct or re-enter`}</WarningText>
           )}
         </Group>
       ))}
@@ -1718,7 +1721,7 @@ export function WorkCloseoutReadings({
           {query.data.map((row) => (
             <Text key={row.id} size='sm'>
               {row.label}: {row.raw_text || t`Not recorded`} {row.unit} ·{' '}
-              {row.verification_state}
+              {readingStatusLabel(row.verification_state)}
             </Text>
           ))}
           <Text size='xs' c='dimmed'>

@@ -368,10 +368,13 @@ function ObservationDraft({
               </Alert>
             ) : (
               <>
-                <Text
-                  size='xs'
-                  c='dimmed'
-                >{t`Local observation draft — retained while switching Work panels or closing this disclosure. Reloading or leaving this Work discards the local draft. This view has no confirmed save for this draft. Existing Work attachments keep their own upload state.`}</Text>
+                <Alert
+                  role='note'
+                  color='orange'
+                  title={t`Unsaved local observation`}
+                >
+                  <Text size='sm'>{t`Local observation draft — retained while switching Work panels or closing this disclosure. Reloading or leaving this Work discards the local draft. This view has no confirmed save for this draft. Existing Work attachments keep their own upload state.`}</Text>
+                </Alert>
                 <Textarea
                   label={t`Observed fact`}
                   minRows={3}

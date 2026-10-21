@@ -1,6 +1,12 @@
 import { Box, FocusTrap, Overlay, Paper, Portal } from '@mantine/core';
 import { useViewportSize } from '@mantine/hooks';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import {
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState
+} from 'react';
 import { isolateDialog } from './dialogBackground';
 
 export function clampAssistantWidth(width: number, viewport: number) {
@@ -14,6 +20,7 @@ export function clampAssistantWidth(width: number, viewport: number) {
 /** Persistent desktop side region, becoming a single dialog on small screens. */
 export function AssistantSurface({
   opened,
+  returnFocusTarget,
   modal,
   suspended,
   width,
@@ -23,6 +30,7 @@ export function AssistantSurface({
   children
 }: {
   opened: boolean;
+  returnFocusTarget?: HTMLElement | null;
   modal: boolean;
   suspended: boolean;
   width: number;
@@ -36,6 +44,16 @@ export function AssistantSurface({
   const [overlay, setOverlay] = useState(false);
   const viewport = useViewportSize();
   const dialog = modal || overlay;
+  // Capture the launcher before modal isolation blurs the background and
+  // before the native focus trap moves focus into the composer.
+  useLayoutEffect(() => {
+    if (opened)
+      trigger.current =
+        returnFocusTarget ??
+        (document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null);
+  }, [opened, returnFocusTarget]);
   useEffect(() => {
     if (!opened) {
       setOverlay(false);
@@ -67,10 +85,6 @@ export function AssistantSurface({
   }, [opened, dialog, suspended, surface]);
   useEffect(() => {
     if (!opened) return;
-    trigger.current =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
     return () => {
       trigger.current?.focus();
     };

@@ -63,7 +63,11 @@ export function WorkAttachmentResource({
     trigger.current?.focus({ preventScroll: true });
   };
   return (
-    <Stack gap='xs'>
+    <Stack
+      gap='xs'
+      w={opened ? '100%' : undefined}
+      style={{ minWidth: 0, maxWidth: '100%' }}
+    >
       <Group>
         <Button
           ref={trigger}

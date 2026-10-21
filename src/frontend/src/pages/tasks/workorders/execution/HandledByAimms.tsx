@@ -265,7 +265,12 @@ function ActionRow({ row }: Readonly<{ row: HandledAction }>) {
       </Group>
       <Group gap='md' mt={4}>
         {target && (
-          <Anchor component={Link} to={target} size='sm'>
+          <Anchor
+            component={Link}
+            replace={target.startsWith('?')}
+            to={target}
+            size='sm'
+          >
             {linkLabel(row)}
           </Anchor>
         )}
@@ -442,7 +447,7 @@ export function HandledByAimms({ value }: Readonly<{ value: unknown }>) {
             ` ${t`Not enabled on this server: ${notEnabled.map(sourceLabel).join(', ')}.`}`}
         </Text>
         {counts.failed + counts.unknown > 0 && (
-          <Alert color='gray' variant='light' p='xs'>
+          <Alert role='note' color='gray' variant='light' p='xs'>
             <Text size='sm'>
               {t`No confirmed result or next owner is recorded here for failed or unknown actions.`}
             </Text>

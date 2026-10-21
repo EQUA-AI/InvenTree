@@ -105,6 +105,7 @@ export function WorkRecordUpdate({
                         {row.code === 'VERIFICATION_REQUIRED' && (
                           <Anchor
                             component={Link}
+                            replace
                             to='?work_panel=verify'
                           >{t`Open Verify & Return`}</Anchor>
                         )}
@@ -243,6 +244,7 @@ export function WorkRecordUpdate({
       )}
       <Anchor
         component={Link}
+        replace
         to='?work_panel=verify'
       >{t`View Verify & Return`}</Anchor>
     </Stack>

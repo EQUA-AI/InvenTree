@@ -4,13 +4,15 @@ import { t } from '@lingui/core/macro';
 import {
   Accordion,
   Alert,
+  Anchor,
   Badge,
   Group,
   SimpleGrid,
   Stack,
   Text
 } from '@mantine/core';
-import { CloseoutLink } from '../CloseoutLink';
+import { Link, useSearchParams } from 'react-router-dom';
+import { workPanelParams } from '../workPanelState';
 import {
   ExecutionFact,
   ExecutionSection,
@@ -80,9 +82,6 @@ function TestResult({ test }: Readonly<{ test: VerificationTest }>) {
         <ExecutionFact label={t`Recorded step status`}>
           {test.status.replaceAll('_', ' ')}
         </ExecutionFact>
-        <ExecutionFact label={t`Conditions and instruments`}>
-          {null}
-        </ExecutionFact>
       </SimpleGrid>
       {evaluation === 'not_evaluated' && (
         <Text size='sm'>{t`The saved result does not establish a pass against applicable criteria. A completed step or an unbounded numeric check is not accepted equipment verification.`}</Text>
@@ -105,7 +104,7 @@ function TestResult({ test }: Readonly<{ test: VerificationTest }>) {
                           ? t`Not-applicable disposition`
                           : t`Step completion recorded`}
                   </Text>
-                  <Text size='xs' c='dimmed'>
+                  <Text size='xs'>
                     {event.recorded_by ?? t`Recorder not recorded`} ·{' '}
                     {recordedTime(event.recorded_at)} · {t`Result version`}{' '}
                     {event.version ?? t`Not recorded`}
@@ -123,10 +122,7 @@ function TestResult({ test }: Readonly<{ test: VerificationTest }>) {
                     </Text>
                   )}
                   {event.recorded_note_truncated && (
-                    <Text
-                      size='xs'
-                      c='dimmed'
-                    >{t`First 4000 characters shown; the full note remains in the native event record.`}</Text>
+                    <Text size='xs'>{t`First 4000 characters shown; the full note remains in the native event record.`}</Text>
                   )}
                   <Text size='sm'>{t`Historical value: not available`}</Text>
                   {event.evidence_ids.length > 0 && (
@@ -148,11 +144,11 @@ function TestResult({ test }: Readonly<{ test: VerificationTest }>) {
 export function VerificationReturn({
   workOrder
 }: Readonly<{ workOrder: WorkOrderOverview }>) {
+  const [params] = useSearchParams();
   const value = workOrder.verification_return;
   const supplied = value?.rule === 'verification_return.v1';
   return (
     <Stack gap='md' data-testid='verification-return'>
-      <CloseoutLink />
       <ExecutionSection title={t`Physical verification`}>
         {!supplied ? (
           <Text size='sm'>{t`Physical test criteria and attempts are not supplied by this server. Not evaluated.`}</Text>
@@ -163,23 +159,14 @@ export function VerificationReturn({
         ) : (
           value.tests.map((test) => <TestResult key={test.id} test={test} />)
         )}
-        <ExecutionFact label={t`Responsible technical acceptance`}>
-          {workOrder.operational_authority ? (
+        {workOrder.operational_authority && (
+          <ExecutionFact label={t`Responsible technical acceptance`}>
             <AuthorityRecords
               value={workOrder.operational_authority}
               kinds={['test_acceptance']}
             />
-          ) : (
-            t`Not available — no equipment-test acceptance record is supplied.`
-          )}
-        </ExecutionFact>
-      </ExecutionSection>
-      <ExecutionSection title={t`Controlled test permission`}>
-        <Text size='sm'>{t`Awaiting test authority — authority, permitted test scope, conditions, owner and effective time are not supplied.`}</Text>
-        <Text
-          size='sm'
-          c='dimmed'
-        >{t`Permission for a controlled test does not permit unrestricted operation.`}</Text>
+          </ExecutionFact>
+        )}
       </ExecutionSection>
       <ExecutionSection title={t`Release and operating return`}>
         {supplied && value.lockouts.length > 0 ? (
@@ -202,32 +189,23 @@ export function VerificationReturn({
         ) : (
           <Text size='sm'>{t`Awaiting release record — no lockout-point records supplied here.`}</Text>
         )}
-        <Text
-          size='sm'
-          c='dimmed'
-        >{t`A restored lockout point is one source record. It does not clear independent restrictions or establish job-wide release.`}</Text>
-        <SimpleGrid cols={{ base: 1, sm: 2 }}>
-          <ExecutionFact label={t`Operating permission`}>
-            {workOrder.operational_authority ? (
+        <Text size='sm'>{t`A restored lockout point is one source record. It does not clear independent restrictions or establish job-wide release.`}</Text>
+        {workOrder.operational_authority && (
+          <SimpleGrid cols={{ base: 1, sm: 2 }}>
+            <ExecutionFact label={t`Operating permission`}>
               <AuthorityRecords
                 value={workOrder.operational_authority}
                 kinds={['operating_permission']}
               />
-            ) : (
-              t`Not recorded — awaiting operating authority.`
-            )}
-          </ExecutionFact>
-          <ExecutionFact label={t`Observed operating return`}>
-            {workOrder.operational_authority ? (
+            </ExecutionFact>
+            <ExecutionFact label={t`Observed operating return`}>
               <AuthorityRecords
                 value={workOrder.operational_authority}
                 kinds={['observed_return']}
               />
-            ) : (
-              t`Awaiting operations record of return.`
-            )}
-          </ExecutionFact>
-        </SimpleGrid>
+            </ExecutionFact>
+          </SimpleGrid>
+        )}
       </ExecutionSection>
       <AuthorityRecorder
         value={workOrder.operational_authority}
@@ -241,8 +219,16 @@ export function VerificationReturn({
         <ExecutionFact label={t`Recorded verification time`}>
           {recordedTime(workOrder.structured_closeout?.verified_at)}
         </ExecutionFact>
-        <Alert color='gray'>{t`A recorded summary or completed work order does not establish permission to operate.`}</Alert>
+        <Alert
+          role='note'
+          color='gray'
+        >{t`A recorded summary or completed work order does not establish permission to operate.`}</Alert>
       </ExecutionSection>
+      <Anchor
+        component={Link}
+        replace
+        to={`?${workPanelParams(params, 'closeout')}`}
+      >{t`Open Closeout`}</Anchor>
     </Stack>
   );
 }

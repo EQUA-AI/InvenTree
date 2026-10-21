@@ -66,10 +66,15 @@ export function WorkFocusChip({ focus }: Readonly<{ focus: ChatWorkFocus }>) {
   const workBadge = (
     <Badge
       size='sm'
-      variant='light'
-      color={unavailable ? 'gray' : 'teal'}
+      variant='default'
+      color='gray'
       leftSection={<IconClipboardList size={12} />}
-      style={{ cursor: unavailable ? 'default' : 'pointer', maxWidth: '100%' }}
+      style={{
+        cursor: unavailable ? 'default' : 'pointer',
+        maxWidth: '100%',
+        background: 'var(--mantine-color-body)',
+        color: 'var(--mantine-color-text)'
+      }}
       styles={
         focus.identity.request_id ||
         focus.identity.component ||

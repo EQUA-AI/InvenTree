@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { nativeBaseline } from '../s0/guards';
-import { savedRequest } from './workExecutionFixtures';
+import { revealWorkContext, savedRequest } from './workExecutionFixtures';
 import {
   capturePanel,
   expectNoPageOverflow,
@@ -85,8 +85,8 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(brief).toContainText(
       'Operations restriction remains independent'
     );
-    await expect(brief).toContainText(
-      'Not available — service restoration not supplied'
+    await expect(panel.getByTestId('service-restoration')).toContainText(
+      'Service restoration is not established by Work completion.'
     );
     await expect(brief).toContainText(
       'Amended account · 1 retained amendments'
@@ -99,7 +99,7 @@ for (const scheme of ['light', 'dark'] as const) {
     );
     await expect(
       panel.getByRole('button', {
-        name: /Generate|Assign|Approve|Start time|Update maintenance/
+        name: /Generate|\bAssign\b|Approve|Start time|Update maintenance/
       })
     ).toHaveCount(0);
     await expectNoPageOverflow(page);
@@ -154,6 +154,7 @@ test('cannot-perform stays first class and opens the exact shared request in cha
   });
   await mockAssistantOpen(page);
   await openExecutionPanel(page);
+  await revealWorkContext(page, 'Investigation and preparation summary');
   const brief = page.getByTestId('work-brief');
   await expect(brief).toContainText('1 unresolved requests · 1 saved requests');
   await expect(brief).toContainText('cannot perform');

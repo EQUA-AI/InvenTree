@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { TimeResult } from '../../lib/types/RecordedFacts';
 import { nativeBaseline } from '../s0/guards';
+import { revealWorkContext } from './workExecutionFixtures';
 import {
   expectNoPageOverflow,
   mockExecutionWork,
@@ -56,6 +57,7 @@ for (const scheme of ['light', 'dark'] as const) {
       time_assignment: timeAssignment({ time_records: facts.time })
     });
     await openExecutionPanel(page, 'work', scheme);
+    await revealWorkContext(page, 'Assignment and person-work time');
     const time = panelRegion(page, 'Work').getByTestId('recorded-work-time');
     await expect(time).toContainText(
       'Recorded person-work: 10 min at last server read · coverage partial'
@@ -92,6 +94,7 @@ test('O15 missing totals and end attribution stay unknown despite a recorded int
     })
   });
   await openExecutionPanel(page);
+  await revealWorkContext(page, 'Assignment and person-work time');
   const time = panelRegion(page, 'Work').getByTestId('recorded-work-time');
   await expect(time).toContainText(
     'Recorded person-work: not recorded · coverage unknown'
@@ -119,6 +122,7 @@ test('O15 an uncertain start retries the original versioned intent', async ({
     });
   });
   await openExecutionPanel(page, 'work', 'light', false, 'editor');
+  await revealWorkContext(page, 'Assignment and person-work time');
   const time = panelRegion(page, 'Work').getByTestId('recorded-work-time');
   await time.getByRole('button', { name: 'Start work', exact: true }).click();
   await expect(time).toContainText('Original outcome remains unconfirmed');
@@ -197,6 +201,7 @@ test('O15 supervisor closes a forgotten interval and keeps the original visible'
     });
   });
   await openExecutionPanel(page, 'work', 'dark', false, 'supervisor');
+  await revealWorkContext(page, 'Assignment and person-work time');
   const section = panelRegion(page, 'Work').getByTestId('recorded-work-time');
   await section.getByRole('button', { name: 'Supervisor correction' }).click();
   await section
@@ -322,6 +327,7 @@ test('O15 technician start, pause, resume and stop use successive server version
     });
   });
   await openExecutionPanel(page, 'work', 'light', false, 'editor');
+  await revealWorkContext(page, 'Assignment and person-work time');
   const section = panelRegion(page, 'Work').getByTestId('recorded-work-time');
   await section
     .getByRole('button', { name: 'Start work', exact: true })
@@ -386,6 +392,7 @@ test('O15 a refused resolution keeps the original intent until a durable absence
     });
   });
   await openExecutionPanel(page, 'work', 'light', false, 'editor');
+  await revealWorkContext(page, 'Assignment and person-work time');
   const section = panelRegion(page, 'Work').getByTestId('recorded-work-time');
   await section
     .getByRole('button', { name: 'Start work', exact: true })
@@ -436,6 +443,7 @@ test('O15 closed Work flags its open interval and disables clock commands', asyn
     time_assignment: timeAssignment({ time_records: facts.time })
   });
   await openExecutionPanel(page, 'work', 'dark', false, 'editor');
+  await revealWorkContext(page, 'Assignment and person-work time');
   const section = panelRegion(page, 'Work').getByTestId('recorded-work-time');
   await expect(section).toContainText('Work is closed with an open interval.');
   await expect(section).toContainText(
@@ -455,31 +463,36 @@ test('O15 closed Work flags its open interval and disables clock commands', asyn
 test('O15 time controls remain reachable above a fixed phone Work dock', async ({
   page
 }, info) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await mockExecutionWork(page, workOrder());
   await openExecutionPanel(page, 'work', 'light', false, 'editor');
-  await page.evaluate(() => {
-    const dock = document.createElement('div');
-    dock.dataset.testid = 'future-work-dock';
-    dock.textContent = 'Synthetic fixed Work dock';
-    Object.assign(dock.style, {
-      position: 'fixed',
-      bottom: '0',
-      left: '0',
-      right: '0',
-      height: '96px',
-      zIndex: '9999',
-      background: '#14334f',
-      color: 'white',
-      padding: '12px'
-    });
-    document.body.append(dock);
-  });
+  await revealWorkContext(page, 'Assignment and person-work time');
+  const navigation = page.getByTestId('work-panel-navigation');
+  await expect(navigation).toHaveCSS('position', 'fixed');
   const controls = panelRegion(page, 'Work').getByTestId('work-time-controls');
-  await controls.evaluate((node) => node.scrollIntoView({ block: 'center' }));
+  // Native focus scrolling from the top of the page: the controls' own
+  // scroll-margin-bottom (the measured dock clearance) must keep them above
+  // the real fixed navigation, with no test-side centring.
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const start = controls.getByRole('button', {
+    name: 'Start work',
+    exact: true
+  });
+  await expect(start).toBeEnabled();
+  // Precondition: before focus the control is at or below the dock, so the
+  // assertion below depends on the focus scroll and its margin.
+  const before = await start.boundingBox();
+  const dockBefore = await navigation.boundingBox();
+  expect(before!.y + before!.height).toBeGreaterThan(dockBefore!.y);
+  await start.focus();
+  await expect(start).toBeFocused();
+  const dock = await navigation.boundingBox();
+  expect(dock).not.toBeNull();
+  // Pause and Stop are disabled without an open interval and so cannot take
+  // focus; they share the focused control's row and are checked in place.
   for (const name of ['Start work', 'Pause work', 'Stop work']) {
     const button = controls.getByRole('button', { name, exact: true });
     const box = await button.boundingBox();
-    const dock = await page.getByTestId('future-work-dock').boundingBox();
     expect(box!.y + box!.height).toBeLessThanOrEqual(dock!.y);
     expect(
       await button.evaluate((node) => {

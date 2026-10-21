@@ -14,12 +14,12 @@ export default defineConfig({
   projects: [
     {
       name: 's8-desktop',
-      testIgnore: ['s8/pui_p31_work_*.spec.ts'],
+      testIgnore: ['s8/pui_p31_work_*.spec.ts', 's8/pui_work_uplift*.spec.ts'],
       use: devices['Desktop Chrome']
     },
     {
       name: 's8-phone',
-      testIgnore: ['s8/pui_p31_work_*.spec.ts'],
+      testIgnore: ['s8/pui_p31_work_*.spec.ts', 's8/pui_work_uplift*.spec.ts'],
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 390, height: 844 }
@@ -27,7 +27,7 @@ export default defineConfig({
     },
     {
       name: 's8-work',
-      testMatch: ['s8/pui_p31_work_*.spec.ts'],
+      testMatch: ['s8/pui_p31_work_*.spec.ts', 's8/pui_work_uplift*.spec.ts'],
       use: devices['Desktop Chrome']
     }
   ]

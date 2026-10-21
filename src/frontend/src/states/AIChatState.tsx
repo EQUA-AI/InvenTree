@@ -45,8 +45,18 @@ export interface AIChatWorkFocusHint {
   returnPath: string;
 }
 
+function activeLauncher(): HTMLElement | null {
+  if (typeof document === 'undefined' || typeof HTMLElement === 'undefined')
+    return null;
+  return document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
+}
+
 interface AIChatStateProps {
   isOpen: boolean;
+  /** Ephemeral UI launcher; never serialized or sent as assistant context. */
+  returnFocusTarget: HTMLElement | null;
   sessionGeneration: number;
   resetSession: (clearIndex?: boolean) => void;
   routingHint?: AIChatRoutingHint;
@@ -56,7 +66,10 @@ interface AIChatStateProps {
   bindHint: (threadId: string) => void;
   open: () => void;
   openWithHint: (hint: AIChatRoutingHint) => void;
-  openWithWorkFocus: (hint: AIChatWorkFocusHint) => void;
+  openWithWorkFocus: (
+    hint: AIChatWorkFocusHint,
+    target?: HTMLElement | null
+  ) => void;
   close: () => void;
   clearHint: () => void;
   clearWorkFocus: () => void;
@@ -76,6 +89,7 @@ interface AIChatStateProps {
 
 export const useAIChatState = create<AIChatStateProps>()((set) => ({
   isOpen: false,
+  returnFocusTarget: null,
   sessionGeneration: 0,
   resetSession: (clearIndex = true) => {
     if (clearIndex) clearChatIndices();
@@ -103,6 +117,7 @@ export const useAIChatState = create<AIChatStateProps>()((set) => ({
       predicate: (query) => privateQueries.has(String(query.queryKey[0]))
     });
     set((state) => ({
+      returnFocusTarget: null,
       sessionGeneration: state.sessionGeneration + 1,
       isOpen: false,
       routingHint: undefined,
@@ -120,18 +135,24 @@ export const useAIChatState = create<AIChatStateProps>()((set) => ({
         ? { hintThreadId: threadId }
         : {}
     ),
-  open: () => set({ isOpen: true }),
+  open: () =>
+    set({
+      isOpen: true,
+      returnFocusTarget: activeLauncher()
+    }),
   openWithHint: (hint: AIChatRoutingHint) =>
     set({
       isOpen: true,
+      returnFocusTarget: activeLauncher(),
       routingHint: hint,
       workFocusHint: undefined,
       hintThreadId: null,
       chatOpenIntent: 'chat'
     }),
-  openWithWorkFocus: (hint: AIChatWorkFocusHint) =>
+  openWithWorkFocus: (hint: AIChatWorkFocusHint, target?: HTMLElement | null) =>
     set({
       isOpen: true,
+      returnFocusTarget: target ?? activeLauncher(),
       routingHint: undefined,
       workFocusHint: hint,
       hintThreadId: null,
@@ -140,6 +161,7 @@ export const useAIChatState = create<AIChatStateProps>()((set) => ({
   close: () =>
     set({
       isOpen: false,
+      returnFocusTarget: null,
       routingHint: undefined,
       workFocusHint: undefined,
       hintThreadId: null,
@@ -165,8 +187,11 @@ export const useAIChatState = create<AIChatStateProps>()((set) => ({
 }));
 
 /** P02/P33: open the one existing assistant about one Work order. */
-export function openGlobalAIChatAboutWork(hint: AIChatWorkFocusHint) {
-  useAIChatState.getState().openWithWorkFocus(hint);
+export function openGlobalAIChatAboutWork(
+  hint: AIChatWorkFocusHint,
+  target?: HTMLElement
+) {
+  useAIChatState.getState().openWithWorkFocus(hint, target);
 }
 
 export function openGlobalAIChat(hint?: AIChatRoutingHint) {

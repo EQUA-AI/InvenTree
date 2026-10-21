@@ -74,7 +74,10 @@ export function MonitoringContinuity({
               originalOccurrence={workOrder.source_alert?.id}
             />
           ) : (
-            <Alert color='gray'>{t`Monitoring unavailable — no machine is linked to this Work. This is not a failed repair or a healthy assessment.`}</Alert>
+            <Alert
+              role='note'
+              color='gray'
+            >{t`Monitoring unavailable — no machine is linked to this Work. This is not a failed repair or a healthy assessment.`}</Alert>
           ))}
         <Text size='sm'>{t`Post-repair observation requirements are unavailable: no sourced criteria, responsible owner or duration is supplied. No watch period is inferred from completion.`}</Text>
         <Text
@@ -99,16 +102,19 @@ export function MonitoringContinuity({
         <Group>
           <Anchor
             component={Link}
+            replace
             to={`?${workPanelParams(params, 'diagnose')}`}
             size='sm'
           >{t`Saved requests and evidence for this Work`}</Anchor>
           <Anchor
             component={Link}
+            replace
             to={`?${workPanelParams(params, 'closeout')}`}
             size='sm'
           >{t`Account, original fields and amendments`}</Anchor>
           <Anchor
             component={Link}
+            replace
             to={`?${workPanelParams(params, 'history')}`}
             size='sm'
           >{t`Attributed Work history`}</Anchor>
@@ -162,7 +168,7 @@ function CurrentMonitoring({
       {summary.isPending ? (
         <Text size='sm'>{t`Reading current monitoring configuration…`}</Text>
       ) : !data ? (
-        <Alert color='gray'>
+        <Alert role='note' color='gray'>
           <Stack gap='xs'>
             <Text size='sm'>
               {unavailableInScope(summary.error)
@@ -235,7 +241,7 @@ function CurrentMonitoring({
       {occurrences.isPending ? (
         <Text size='sm'>{t`Reading recorded deviations…`}</Text>
       ) : occurrences.isError || !occurrences.data ? (
-        <Alert color='gray'>
+        <Alert role='note' color='gray'>
           <Stack gap='xs'>
             <Text size='sm'>
               {unavailableInScope(occurrences.error)

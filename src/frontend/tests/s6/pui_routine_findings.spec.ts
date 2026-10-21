@@ -297,9 +297,9 @@ for (const scheme of ['light', 'dark'] as const) {
         .getByTestId('routine-finding-form')
         .getByRole('link', { name: 'WO-80', exact: true })
     ).toHaveAttribute('href', /work-orders\/80/);
-    await expect(page.getByTestId('routine-work')).toContainText(
-      '0 bar · pending'
-    );
+    const retainedReading = page.getByTestId('routine-reading-701');
+    await expect(retainedReading).toContainText('0 bar');
+    await expect(retainedReading).toContainText('Not evaluated');
     await capturePanel(page, info.outputPath(`success-${scheme}.png`));
     await captureFinding(page, info.outputPath(`success-${scheme}-detail.png`));
     await page.getByRole('tab', { name: 'History', exact: true }).click();

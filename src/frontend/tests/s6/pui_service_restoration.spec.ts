@@ -67,8 +67,14 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(brief).toContainText('Updated · Closeout 301');
     await expect(brief).toContainText('Recorded passes: 1');
     await expect(brief).toContainText('Test acceptance: unavailable');
-    await expect(brief).toContainText('Service: awaiting verification');
-    await expect(brief).toContainText('Resilience: unknown');
+    await expect(brief).toContainText(
+      'Service restoration is not established by Work completion.'
+    );
+    const gaps = closeout.getByTestId('not-supplied');
+    await gaps.getByRole('button').click();
+    await expect(gaps).toContainText(
+      'required service and standby capacity: authoritative records are not supplied'
+    );
     await expect(brief).toContainText(accepted!.follow_up);
     await expect(brief).toContainText(
       'Follow-up owner, original trigger, checkpoint and resolution are not supplied'
