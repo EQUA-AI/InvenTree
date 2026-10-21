@@ -18,7 +18,7 @@ import {
 /**
  * Electrical performance: what the machine draws and how cleanly.
  *
- * Power and power factor share a chart because they are read together; current
+ * Power and power factor use separate synchronized charts; current
  * and voltage share one for the same reason. Relationships against speed and
  * pressure are drawn as patterns, not explanations.
  *
@@ -84,46 +84,51 @@ export function ElectricalSection({
   }
 
   const currentColors = familyColors(currents.length, ['blue'], theme, scheme);
-  const voltageColors = familyColors(voltages.length, ['teal'], theme, scheme);
+  const voltageColors = familyColors(voltages.length, ['cyan'], theme, scheme);
 
   return (
     <Stack gap='md'>
       <CardGrid>
         {hasPower && (
-          <ChartCard
-            title={t`Power and power factor`}
-            description={
-              sharedAxis
-                ? factor.length > 0
-                  ? t`Active and reactive power on the left axis (${power[0].signal.unit} / ${reactive[0].signal.unit}); power factor on the right.`
-                  : t`Active and reactive power share the left axis (${power[0].signal.unit} / ${reactive[0].signal.unit}).`
-                : power.length > 0 && factor.length > 0
-                  ? t`Active power on the left axis; power factor on the right.`
-                  : undefined
-            }
-          >
-            <ParameterTrend
-              parameters={[...powerCard, ...factor]}
-              lines={[
-                ...power.map((p) => lineFor(p, 'blue.7')),
-                ...(sharedAxis
-                  ? reactive.map((p) => lineFor(p, 'violet.6'))
-                  : []),
-                ...factor.map((p) => lineFor(p, 'orange.6', 'right'))
-              ]}
-              series={series}
-              window={window}
-              syncId={syncId}
-              onZoom={onZoom}
-              unit={
-                sharedAxis
-                  ? `${power[0].signal.unit} / ${reactive[0].signal.unit}`
-                  : power[0]?.signal.unit
-              }
-              // Dimensionless: named by its series rather than a unit.
-              rightUnit={factor[0]?.signal.unit || undefined}
-            />
-          </ChartCard>
+          <Stack gap='md'>
+            {powerCard.length > 0 && (
+              <ChartCard title={t`Power`}>
+                <ParameterTrend
+                  parameters={powerCard}
+                  lines={[
+                    ...power.map((p) => lineFor(p, 'blue.7')),
+                    ...(sharedAxis
+                      ? reactive.map((p) => lineFor(p, 'violet.6'))
+                      : [])
+                  ]}
+                  series={series}
+                  window={window}
+                  syncId={syncId}
+                  onZoom={onZoom}
+                  unit={
+                    sharedAxis
+                      ? `${power[0].signal.unit} / ${reactive[0].signal.unit}`
+                      : power[0]?.signal.unit
+                  }
+                />
+              </ChartCard>
+            )}
+            {factor.length > 0 && (
+              <ChartCard title={t`Power factor`}>
+                <ParameterTrend
+                  parameters={factor}
+                  lines={factor.map((parameter) =>
+                    lineFor(parameter, 'violet.6')
+                  )}
+                  series={series}
+                  window={window}
+                  syncId={syncId}
+                  onZoom={onZoom}
+                  unit={factor[0].signal.unit}
+                />
+              </ChartCard>
+            )}
+          </Stack>
         )}
         {ownReactiveCard && (
           <ChartCard
@@ -182,7 +187,7 @@ export function ElectricalSection({
               parameters={[...excitationCurrent, ...excitationVoltage]}
               lines={[
                 ...excitationCurrent.map((p) => lineFor(p, 'blue.6')),
-                ...excitationVoltage.map((p) => lineFor(p, 'teal.6', 'right'))
+                ...excitationVoltage.map((p) => lineFor(p, 'cyan.6', 'right'))
               ]}
               series={series}
               window={window}
@@ -197,7 +202,7 @@ export function ElectricalSection({
           <ChartCard title={t`Frequency`}>
             <ParameterTrend
               parameters={frequency}
-              lines={frequency.map((p) => lineFor(p, 'gray.7'))}
+              lines={frequency.map((p) => lineFor(p, 'cyan.7'))}
               series={series}
               window={window}
               syncId={syncId}

@@ -1,7 +1,7 @@
 import { t } from '@lingui/core/macro';
 import {
+  Accordion,
   Alert,
-  Badge,
   Button,
   Center,
   Group,
@@ -15,10 +15,15 @@ import {
 import { IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { displayClockLabel } from '../displayClock';
+import { StatusBadge } from '../health/StatusBadge';
+import { MetaText } from '../health/common';
 import { HistoryProvenance } from '../investigation/HistoryProvenance';
 import { InvestigationSlices } from '../investigation/InvestigationSlices';
 import { LinkedEvidence } from '../investigation/LinkedEvidence';
 import { displayLinkedWindow } from '../investigation/windows';
+import monitoring from '../monitoring.module.css';
+import { useNow } from '../useNow';
 import { HistoryReadStack } from './HistoryReadContext';
 import { failedHistoryTargets } from './historyBatches';
 
@@ -204,12 +209,7 @@ export function useWindowState(
 
 /** A ticking "now" so ages and the live badge stay honest without refetching. */
 export function useClock(intervalMs = 5000): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), intervalMs);
-    return () => clearInterval(timer);
-  }, [intervalMs]);
-  return now;
+  return useNow(intervalMs);
 }
 
 export function windowInfoFrom(
@@ -259,9 +259,14 @@ function PumpPerformance({
   );
   const signalsQuery = useMachineSignals(machine.pk, range.live);
   const [investigationOpen, setInvestigationOpen] = useState(false);
-  const [comparisonOpen, setComparisonOpen] = useState(false);
-  const [comparisonMounted, setComparisonMounted] = useState(false);
+  const [comparisonOpen, setComparisonOpen] = useState(() =>
+    params.has('compare')
+  );
+  const [comparisonMounted, setComparisonMounted] = useState(() =>
+    params.has('compare')
+  );
   const [search, setSearch] = useState('');
+  const [qualityOnly, setQualityOnly] = useState(false);
   const [section, setSection] = useState('all');
   const [expanded, setExpanded] = useState<Set<string> | null>(null);
 
@@ -319,11 +324,16 @@ function PumpPerformance({
   const syncId = `performance-${machine.pk}`;
 
   const freshness = signalsQuery.data?.[0]?.freshness_threshold_seconds ?? null;
+  const displayParameters = (
+    qualityOnly
+      ? allParameters.filter((parameter) => parameter.signal.quality !== 'good')
+      : allParameters
+  ).filter((parameter) => matchesChannel(parameter, search));
   const large = parameters.length > 100;
   const isOpen = (key: string) => expanded?.has(key) ?? !large;
   const visible = (key: PerformanceSection) =>
     (section === 'all' || section === key) &&
-    allParameters.some(
+    displayParameters.some(
       (p) => sectionOf(p) === key && matchesChannel(p, search)
     );
   const toggleSection = (key: string) =>
@@ -362,14 +372,14 @@ function PumpPerformance({
     return (
       <Alert
         color='red'
-        variant='light'
+        variant='outline'
         title={t`Performance data unavailable`}
       >
-        {t`The health service could not be reached. Nothing on this tab is cached or estimated.`}
+        {t`Signal observations could not be read. Retry to check this machine.`}
         <Group mt='xs'>
           <Button
             size='xs'
-            variant='light'
+            variant='outline'
             onClick={() => signalsQuery.refetch()}
           >
             {t`Retry`}
@@ -382,7 +392,7 @@ function PumpPerformance({
     return (
       <Alert
         color='blue'
-        variant='light'
+        variant='outline'
         icon={<IconInfoCircle size={16} />}
         title={t`No signals are mapped for this machine`}
       >
@@ -402,7 +412,24 @@ function PumpPerformance({
     unavailable.length + failedCount === coveredCount + failedCount;
 
   return (
-    <HistoryReadStack response={response} gap='lg'>
+    <HistoryReadStack
+      response={response}
+      gap='xs'
+      className={monitoring.scope}
+      data-testid='pump-performance'
+      aria-labelledby='pump-performance-title'
+    >
+      <Group justify='space-between' className={monitoring.band}>
+        <Title
+          id='pump-performance-title'
+          order={4}
+        >{t`Performance workspace`}</Title>
+        <MetaText size='xs'>{t`Times: your clock (${displayClockLabel()}) · plant timezone not supplied`}</MetaText>
+      </Group>
+      <MetaText
+        size='sm'
+        maw='70ch'
+      >{t`KPIs show latest observations; trends use selected source history.`}</MetaText>
       <Group justify='space-between' align='flex-start' wrap='wrap' gap='md'>
         <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
           <TimeRangeControl
@@ -419,23 +446,27 @@ function PumpPerformance({
             }}
             refreshing={seriesQuery.isFetching}
             dataRange={dataRange.data}
+            status={(controls) => (
+              <LiveIndicator
+                controls={controls}
+                live={range.live}
+                fetching={seriesQuery.isFetching}
+                failed={seriesQuery.isError}
+                newestAt={newestAt}
+                updatedAt={seriesQuery.dataUpdatedAt || null}
+                response={response}
+                freshnessSeconds={freshness}
+                now={now}
+              />
+            )}
           />
           <WindowStatus
+            showClock={false}
             response={response}
             updating={seriesQuery.isPlaceholderData}
             now={now}
           />
         </Stack>
-        <LiveIndicator
-          live={range.live}
-          fetching={seriesQuery.isFetching}
-          failed={seriesQuery.isError}
-          newestAt={newestAt}
-          updatedAt={seriesQuery.dataUpdatedAt || null}
-          response={response}
-          freshnessSeconds={freshness}
-          now={now}
-        />
       </Group>
 
       {invalidLink && (
@@ -452,12 +483,14 @@ function PumpPerformance({
             : t`The linked window must have valid increasing timestamps and be no longer than 24 h. No history has been requested from this link.`}
           {linked.clockUnknown && (
             <Button
+              className={monitoring.link}
               size='xs'
               variant='subtle'
               onClick={() => dataRange.refetch()}
             >{t`Retry source extent`}</Button>
           )}
           <Button
+            className={monitoring.link}
             size='xs'
             variant='subtle'
             onClick={() =>
@@ -476,37 +509,11 @@ function PumpPerformance({
         </Alert>
       )}
       <LinkedEvidence machineId={machine.pk} />
-      <HistoryProvenance
-        response={response}
-        loading={seriesQuery.isFetching && !response}
-        updating={seriesQuery.isPlaceholderData}
-        failed={seriesQuery.isError}
-        extent={dataRange.data}
-        onRetry={() => seriesQuery.refetch()}
-      />
-      <Paper withBorder radius='md' p='sm'>
-        <Button
-          variant='subtle'
-          size='xs'
-          aria-expanded={investigationOpen}
-          onClick={() => setInvestigationOpen((value) => !value)}
-        >{t`Case span investigation`}</Button>
-        {investigationOpen && (
-          <InvestigationSlices
-            initial={resolveWindow(range.window, now)}
-            onRead={(span) => {
-              range.onCustom(span.from, span.to);
-            }}
-          />
-        )}
-      </Paper>
-      <ChannelNavigator
+      <UnusualStrip
         parameters={parameters}
-        search={search}
-        onSearch={setSearch}
-        section={section}
-        onSection={selectSection}
-        onShowAll={() => {
+        response={response}
+        onPoor={() => {
+          setQualityOnly(true);
           setSearch('');
           setSection('all');
           setExpanded(
@@ -521,54 +528,122 @@ function PumpPerformance({
             ])
           );
         }}
+        qualityFiltered={qualityOnly}
+        onClear={() => setQualityOnly(false)}
       />
-      <Paper withBorder radius='md' p='sm'>
-        <Button
-          variant='subtle'
-          size='xs'
-          aria-expanded={comparisonOpen}
-          onClick={() => {
-            setComparisonOpen((value) => !value);
-            setComparisonMounted(true);
+      <KpiStrip tiles={tiles} now={now} window={window} />
+      {!comparisonOpen && (
+        <ChannelNavigator
+          parameters={
+            qualityOnly
+              ? parameters.filter((p) => p.signal.quality !== 'good')
+              : parameters
+          }
+          search={search}
+          onSearch={(value) => {
+            setSearch(value);
+            setQualityOnly(false);
+            setSection('all');
           }}
-        >{t`Comparisons and display views`}</Button>
-        <div style={{ display: comparisonOpen ? undefined : 'none' }}>
-          {comparisonMounted && (
-            <ComparisonWorkbench
-              machineId={machine.pk}
-              assetType={machine.asset_type}
-              parameters={parameters}
-              response={seriesQuery.isError ? undefined : response}
-              window={range.window}
-              search={search}
-              section={section}
-              onView={(view) => {
-                setSearch(view.search);
-                selectSection(view.section);
-              }}
-            />
-          )}
-        </div>
-      </Paper>
-      <KpiStrip tiles={tiles} now={now} />
-
-      {/* Counts are of this machine's own signals; the station context read
-        alongside them is not something this pump has limits on. */}
-      <UnusualStrip parameters={parameters} response={response} />
+          collapsed={comparisonOpen}
+          section={section}
+          onSection={selectSection}
+          onShowAll={() => {
+            setSearch('');
+            setSection('all');
+            setExpanded(
+              new Set([
+                'electrical',
+                'operation',
+                'winding',
+                'vibration',
+                'cooling',
+                'bearing',
+                'other'
+              ])
+            );
+          }}
+        />
+      )}
+      <Accordion
+        value={comparisonOpen ? 'comparison' : null}
+        onChange={(value) => {
+          setComparisonOpen(value === 'comparison');
+          if (value) setComparisonMounted(true);
+        }}
+        keepMounted
+        keepMountedMode='display-none'
+      >
+        <Accordion.Item value='comparison'>
+          <Accordion.Control>{t`Comparisons and saved views`}</Accordion.Control>
+          <Accordion.Panel>
+            {comparisonMounted && (
+              <ComparisonWorkbench
+                machineId={machine.pk}
+                assetType={machine.asset_type}
+                parameters={parameters}
+                response={seriesQuery.isError ? undefined : response}
+                window={range.window}
+                search={search}
+                section={section}
+                onView={(view) => {
+                  setQualityOnly(false);
+                  setSearch(view.search);
+                  selectSection(view.section);
+                }}
+              />
+            )}
+          </Accordion.Panel>
+        </Accordion.Item>
+      </Accordion>
+      {comparisonOpen && (
+        <ChannelNavigator
+          parameters={
+            qualityOnly
+              ? parameters.filter((p) => p.signal.quality !== 'good')
+              : parameters
+          }
+          search={search}
+          onSearch={(value) => {
+            setSearch(value);
+            setQualityOnly(false);
+            setSection('all');
+          }}
+          collapsed={comparisonOpen}
+          section={section}
+          onSection={selectSection}
+          onShowAll={() => {
+            setSearch('');
+            setSection('all');
+            setExpanded(
+              new Set([
+                'electrical',
+                'operation',
+                'winding',
+                'vibration',
+                'cooling',
+                'bearing',
+                'other'
+              ])
+            );
+          }}
+        />
+      )}
 
       {seriesQuery.isError && (
         <Alert
           color='red'
-          variant='light'
+          classNames={{ label: monitoring.error }}
+          variant='outline'
           title={t`Could not read history for this window`}
         >
-          {t`The request failed. Current values above are still live; the charts below show nothing rather than a partial line.`}
+          {t`The history request failed. Latest signal observations are shown separately; the requested history window is unavailable.`}
         </Alert>
       )}
       {failedAll && !seriesQuery.isError && (
         <Alert
           color='yellow'
-          variant='light'
+          variant='outline'
           icon={<IconAlertTriangle size={16} />}
           title={t`The source could not serve this window`}
         >
@@ -595,7 +670,7 @@ function PumpPerformance({
             onToggle={() => toggleSection('electrical')}
           >
             <ElectricalSection
-              parameters={allParameters}
+              parameters={displayParameters}
               series={series}
               window={window}
               syncId={syncId}
@@ -609,7 +684,7 @@ function PumpPerformance({
             onToggle={() => toggleSection('operation')}
           >
             <OperationSection
-              parameters={allParameters}
+              parameters={displayParameters}
               series={series}
               window={window}
               syncId={syncId}
@@ -623,7 +698,7 @@ function PumpPerformance({
             onToggle={() => toggleSection('winding')}
           >
             <WindingSection
-              parameters={allParameters}
+              parameters={displayParameters}
               series={series}
               window={window}
               syncId={syncId}
@@ -637,7 +712,7 @@ function PumpPerformance({
             onToggle={() => toggleSection('vibration')}
           >
             <VibrationSection
-              parameters={allParameters}
+              parameters={displayParameters}
               series={series}
               window={window}
               syncId={syncId}
@@ -651,7 +726,7 @@ function PumpPerformance({
             onToggle={() => toggleSection('cooling')}
           >
             <CoolingSection
-              parameters={allParameters}
+              parameters={displayParameters}
               series={series}
               window={window}
               syncId={syncId}
@@ -665,7 +740,7 @@ function PumpPerformance({
             onToggle={() => toggleSection('bearing')}
           >
             <BearingSection
-              parameters={allParameters}
+              parameters={displayParameters}
               series={series}
               window={window}
               syncId={syncId}
@@ -680,18 +755,44 @@ function PumpPerformance({
               onToggle={() => toggleSection('other')}
             >
               <OtherSection
-                parameters={inCategory(allParameters, 'other')}
+                parameters={inCategory(displayParameters, 'other')}
                 series={series}
+                window={window}
               />
             </Section>
           )}
         </Stack>
       </div>
 
+      <HistoryProvenance
+        response={response}
+        loading={seriesQuery.isFetching && !response}
+        updating={seriesQuery.isPlaceholderData}
+        failed={seriesQuery.isError}
+        extent={dataRange.data}
+        onRetry={() => seriesQuery.refetch()}
+      />
+      <Paper withBorder p='sm'>
+        <Button
+          className={monitoring.link}
+          variant='subtle'
+          size='xs'
+          aria-expanded={investigationOpen}
+          onClick={() => setInvestigationOpen((value) => !value)}
+        >{t`Case span investigation`}</Button>
+        {investigationOpen && (
+          <InvestigationSlices
+            initial={resolveWindow(range.window, now)}
+            onRead={(span) => {
+              range.onCustom(span.from, span.to);
+            }}
+          />
+        )}
+      </Paper>
       {response && (
-        <Text size='xs' c='dimmed'>
-          {t`Read live from ${response.series[0]?.source_name ?? t`the source`}. Every window chart here is a bounded read of the source's own history; retained evidence is identified separately.`}
-        </Text>
+        <MetaText size='xs'>
+          {t`Read from ${response.series[0]?.source_name ?? t`the source`}. Every window chart here is a bounded read of source history; retained evidence is identified separately.`}
+        </MetaText>
       )}
     </HistoryReadStack>
   );
@@ -724,6 +825,7 @@ function Section({
       <Group justify='space-between'>
         <Title order={5}>{title}</Title>
         <Button
+          className={monitoring.link}
           variant='subtle'
           size='compact-xs'
           aria-expanded={open}
@@ -747,8 +849,14 @@ function Section({
  */
 function UnusualStrip({
   parameters,
-  response
+  response,
+  onPoor,
+  qualityFiltered,
+  onClear
 }: Readonly<{
+  onPoor?: () => void;
+  qualityFiltered?: boolean;
+  onClear?: () => void;
   parameters: ReturnType<typeof resolveParameters>;
   response: ReturnType<typeof useMachineSeries>['data'];
 }>) {
@@ -762,76 +870,97 @@ function UnusualStrip({
   const failedTargets = failedHistoryTargets(response);
 
   return (
-    <Paper withBorder radius='md' p='sm'>
+    <Paper withBorder p='sm'>
       <Group gap='xs' wrap='wrap' align='center'>
         <Text size='sm' fw={600}>
-          {t`Anything unusual?`}
+          {t`Exceptions`}
         </Text>
         {critical.length > 0 && (
-          <Badge color='red' variant='filled'>
+          <StatusBadge tone='critical' color='red.9' variant='filled'>
             {t`${critical.length} critical: ${critical
               .map((p) => p.label)
               .slice(0, 3)
               .join(', ')}${critical.length > 3 ? '…' : ''}`}
-          </Badge>
+          </StatusBadge>
         )}
         {warning.length > 0 && (
-          <Badge color='yellow' variant='light'>
+          <StatusBadge tone='warning' color='yellow.6' variant='filled'>
             {t`${warning.length} warning: ${warning
               .map((p) => p.label)
               .slice(0, 3)
               .join(', ')}${warning.length > 3 ? '…' : ''}`}
-          </Badge>
+          </StatusBadge>
         )}
         {stale.length > 0 && (
-          <Badge color='yellow' variant='light'>
+          <StatusBadge tone='stale' color='gray' variant='outline'>
             {t`${stale.length} of ${parameters.length} signals stale`}
-          </Badge>
+          </StatusBadge>
         )}
         {poor.length > 0 && (
-          <Badge color='gray' variant='light'>
-            {t`${poor.length} with poor quality`}
-          </Badge>
+          <Button
+            variant='default'
+            className={monitoring.link}
+            size='compact-sm'
+            maw='100%'
+            h='auto'
+            py={4}
+            styles={{ label: { whiteSpace: 'normal' } }}
+            aria-pressed={qualityFiltered}
+            onClick={onPoor}
+          >
+            {t`${poor.length} with poor quality`}:{' '}
+            {poor.map((parameter) => parameter.label).join(', ')}
+          </Button>
+        )}
+        {qualityFiltered && (
+          <Button
+            variant='subtle'
+            className={monitoring.link}
+            size='compact-sm'
+            onClick={onClear}
+          >{t`Clear quality filter`}</Button>
         )}
         {failedTargets.bindings.size + failedTargets.keys.size > 0 && (
-          <Badge
-            color='yellow'
-            variant='light'
-          >{t`${failedTargets.bindings.size + failedTargets.keys.size} history targets could not be read; coverage unknown`}</Badge>
+          <StatusBadge
+            tone='neutral'
+            color='gray'
+            variant='outline'
+          >{t`${failedTargets.bindings.size + failedTargets.keys.size} history targets could not be read; coverage unknown`}</StatusBadge>
         )}
         {unavailable.length > 0 && (
-          <Badge color='gray' variant='light'>
+          <StatusBadge tone='neutral' color='gray' variant='outline'>
             {t`${unavailable.length} without history in this window`}
-          </Badge>
+          </StatusBadge>
         )}
         {evaluation.verdict.kind === 'calm' && (
-          <Badge
+          <StatusBadge
+            tone='neutral'
             color={
               failedTargets.bindings.size + failedTargets.keys.size > 0
                 ? 'gray'
                 : 'green'
             }
-            variant='light'
+            variant='outline'
           >
             {failedTargets.bindings.size + failedTargets.keys.size > 0
               ? t`Current evaluated readings within limits; history coverage incomplete`
               : t`Nothing outside configured limits`}
-          </Badge>
+          </StatusBadge>
         )}
         {evaluation.verdict.kind === 'no-limits' && (
-          <Badge color='gray' variant='light'>
+          <StatusBadge tone='neutral' color='gray' variant='outline'>
             {t`No configured limits to evaluate`}
-          </Badge>
+          </StatusBadge>
         )}
         {evaluation.verdict.kind === 'unavailable' && (
-          <Badge color='gray' variant='light'>
+          <StatusBadge tone='neutral' color='gray' variant='outline'>
             {t`Evaluation unavailable`}
-          </Badge>
+          </StatusBadge>
         )}
-        <Text size='xs' c='dimmed' data-evaluated={evaluation.evaluated}>
+        <MetaText size='xs' data-evaluated={evaluation.evaluated}>
           {t`${evaluation.evaluated} of ${evaluation.total} evaluated against their limits now.`}{' '}
           {t`${evaluation.configured} of ${evaluation.total} signals have limits configured; the rest are drawn without a verdict.`}
-        </Text>
+        </MetaText>
       </Group>
     </Paper>
   );

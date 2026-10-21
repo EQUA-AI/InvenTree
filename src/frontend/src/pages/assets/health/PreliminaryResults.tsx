@@ -1,15 +1,5 @@
-import { t } from '@lingui/core/macro';
-import {
-  Alert,
-  Anchor,
-  Badge,
-  Card,
-  Group,
-  List,
-  Stack,
-  Text,
-  Tooltip
-} from '@mantine/core';
+import { plural, t } from '@lingui/core/macro';
+import { Alert, Card, Group, List, Stack, Text, Tooltip } from '@mantine/core';
 import {
   IconAlertTriangle,
   IconBroadcast,
@@ -17,8 +7,10 @@ import {
   IconCircleX,
   IconHelpCircle
 } from '@tabler/icons-react';
-import dayjs from 'dayjs';
 import { Link } from 'react-router-dom';
+import { displayInstant } from '../displayClock';
+import { StatusBadge } from './StatusBadge';
+import { MetaText, MonitoringLink } from './common';
 
 import type {
   AnalysisStatus,
@@ -90,27 +82,28 @@ export function PreliminaryResultsPanel({
     results.authority === 'source_declared' ? results.authority_source : null;
 
   return (
-    <Card withBorder radius='md' p='md'>
+    <Card withBorder p='md'>
       <Stack gap='sm'>
         <Group justify='space-between' align='center' wrap='wrap'>
           <Group gap='xs'>
             <Text fw={600}>
               {provisional ? t`Preliminary results` : t`Diagnosis`}
             </Text>
-            <Badge color={status.color} variant='light'>
+            <StatusBadge tone='neutral' color={status.color} variant='outline'>
               {status.label}
-            </Badge>
+            </StatusBadge>
             {declaredBy && (
               <Tooltip
                 label={t`${declaredBy} raised this alarm against limits configured in that system. Whether the machine is outside them is its determination, not an inference made here.`}
               >
-                <Badge
+                <StatusBadge
+                  tone='neutral'
                   color='blue'
-                  variant='light'
+                  variant='outline'
                   leftSection={<IconBroadcast size={14} />}
                 >
                   {t`Declared by ${declaredBy}`}
-                </Badge>
+                </StatusBadge>
               </Tooltip>
             )}
             {(results.status === 'available' || !!declaredBy) && (
@@ -121,16 +114,16 @@ export function PreliminaryResultsPanel({
                     : t`Confidence reflects only how usable the data was, not how well the failure is understood.`
                 }
               >
-                <Badge variant='outline' color='gray'>
+                <StatusBadge tone='neutral' variant='outline' color='gray'>
                   {t`Confidence ${Math.round(results.confidence * 100)}%`}
-                </Badge>
+                </StatusBadge>
               </Tooltip>
             )}
           </Group>
           {results.generated_at && (
-            <Text size='xs' c='dimmed'>
-              {t`Generated ${dayjs(results.generated_at).format('MMM D, HH:mm')} by ${results.provider}`}
-            </Text>
+            <MetaText size='xs'>
+              {t`Generated ${displayInstant(results.generated_at) ?? t`Time unavailable`} by ${results.provider}`}
+            </MetaText>
           )}
         </Group>
 
@@ -150,9 +143,9 @@ export function PreliminaryResultsPanel({
 
         {results.evidence.length > 0 && (
           <Stack gap={4}>
-            <Text size='xs' c='dimmed' fw={500}>
+            <MetaText size='xs' fw={500}>
               {t`Evidence`}
-            </Text>
+            </MetaText>
             {results.evidence.map((item) => {
               const relation = relationVisual(item.relation);
               return (
@@ -162,31 +155,32 @@ export function PreliminaryResultsPanel({
                   wrap='nowrap'
                   align='flex-start'
                 >
-                  <Badge
+                  <StatusBadge
+                    tone='neutral'
                     size='sm'
                     color={relation.color}
-                    variant='light'
+                    variant='outline'
                     leftSection={relation.icon}
                   >
                     {relation.label}
-                  </Badge>
+                  </StatusBadge>
                   <Stack gap={0} style={{ flex: 1 }}>
                     <Text size='sm'>{item.observation}</Text>
                     {item.snapshot_id && (
-                      <Text size='xs' c='dimmed'>
+                      <MetaText size='xs'>
                         {machineId ? (
-                          <Anchor
+                          <MonitoringLink
                             component={Link}
                             size='xs'
                             to={`/machines/machine/${machineId}/health/?snapshot=${encodeURIComponent(item.snapshot_id)}`}
                           >
                             {t`Snapshot ${item.snapshot_id.slice(0, 8)}`}
-                          </Anchor>
+                          </MonitoringLink>
                         ) : (
                           t`Snapshot ${item.snapshot_id.slice(0, 8)}`
                         )}
                         {item.stale ? ` · ${t`stale at capture`}` : ''}
-                      </Text>
+                      </MetaText>
                     )}
                   </Stack>
                 </Group>
@@ -197,9 +191,9 @@ export function PreliminaryResultsPanel({
 
         {results.alternatives.length > 0 && (
           <Stack gap={4}>
-            <Text size='xs' c='dimmed' fw={500}>
+            <MetaText size='xs' fw={500}>
               {t`Rule these out first`}
-            </Text>
+            </MetaText>
             <List size='sm' spacing={2}>
               {results.alternatives.map((item) => (
                 <List.Item key={item}>{item}</List.Item>
@@ -210,9 +204,9 @@ export function PreliminaryResultsPanel({
 
         {results.confirm_tests.length > 0 && (
           <Stack gap={4}>
-            <Text size='xs' c='dimmed' fw={500}>
+            <MetaText size='xs' fw={500}>
               {t`Suggested confirmation tests`}
-            </Text>
+            </MetaText>
             <List size='sm' spacing={2}>
               {results.confirm_tests.map((item) => (
                 <List.Item key={item}>{item}</List.Item>
@@ -222,18 +216,27 @@ export function PreliminaryResultsPanel({
         )}
 
         <Group gap='lg' wrap='wrap'>
-          <Text size='xs' c='dimmed'>
-            {t`Based on ${results.data_window.snapshot_count} snapshot(s)`}
-          </Text>
+          <MetaText size='xs'>
+            {plural(results.data_window.snapshot_count, {
+              one: 'Based on # snapshot',
+              other: 'Based on # snapshots'
+            })}
+          </MetaText>
           {results.freshness.stale && (
-            <Text size='xs' c='dimmed'>
-              {t`${results.freshness.stale_signal_count} stale signal(s)`}
-            </Text>
+            <MetaText size='xs'>
+              {plural(results.freshness.stale_signal_count, {
+                one: '# stale signal',
+                other: '# stale signals'
+              })}
+            </MetaText>
           )}
           {results.quality.bad_signal_count > 0 && (
-            <Text size='xs' c='dimmed'>
-              {t`${results.quality.bad_signal_count} signal(s) of poor quality`}
-            </Text>
+            <MetaText size='xs'>
+              {plural(results.quality.bad_signal_count, {
+                one: '# signal of poor quality',
+                other: '# signals of poor quality'
+              })}
+            </MetaText>
           )}
         </Group>
       </Stack>

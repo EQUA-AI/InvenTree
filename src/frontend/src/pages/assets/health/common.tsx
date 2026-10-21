@@ -1,23 +1,31 @@
 import { plural, t } from '@lingui/core/macro';
-import { Badge, type BadgeProps, Group, Text } from '@mantine/core';
+import {
+  Alert,
+  type AlertProps,
+  Anchor,
+  type AnchorProps,
+  Badge,
+  type BadgeProps,
+  Group,
+  Text,
+  type TextProps,
+  createPolymorphicComponent
+} from '@mantine/core';
 import {
   IconAlertTriangle,
   IconBellCheck,
   IconBellOff,
   IconBellRinging,
   IconCircleCheck,
+  IconClockOff,
   IconHelpCircle,
   IconHistory,
   IconInfoCircle,
-  IconPlugConnectedX,
   IconUrgent
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
-import type { ReactNode } from 'react';
-
-import operations from '../operations.module.css';
-import { displayClock, formatInstant } from './mimic/observedTime';
+import { type ReactNode, forwardRef } from 'react';
 
 import type {
   AnomalySeverity,
@@ -26,6 +34,17 @@ import type {
   MachineSignal,
   SignalQuality
 } from '@lib/types/MachineHealth';
+
+import { displayInstant } from '../displayClock';
+import monitoring from '../monitoring.module.css';
+import operations from '../operations.module.css';
+import { unitLabel } from '../performance/format';
+import { useNow } from '../useNow';
+import {
+  StatusBadge as MonitoringStatusBadge,
+  statusTone
+} from './StatusBadge';
+import { displayClock, formatInstant } from './mimic/observedTime';
 
 dayjs.extend(relativeTime);
 
@@ -67,8 +86,8 @@ export function healthStateVisual(state: HealthState): StateVisual {
     case 'offline':
       return {
         color: 'gray',
-        label: t`Offline`,
-        icon: <IconPlugConnectedX size={16} />
+        label: t`No current data`,
+        icon: <IconClockOff size={16} />
       };
     default:
       return {
@@ -207,21 +226,41 @@ export function Unavailable({ reason }: { reason: string }) {
 
 export function HealthStateBadge({
   state,
-  size = 'md'
-}: Readonly<{ state: HealthState; size?: string }>) {
+  size = 'md',
+  neutralNormal = false,
+  describedBy
+}: Readonly<{
+  state: HealthState;
+  size?: string;
+  neutralNormal?: boolean;
+  describedBy?: string;
+}>) {
   const visual = healthStateVisual(state);
   return (
-    <StatusBadge
+    <MonitoringStatusBadge
+      tone={state === 'normal' && neutralNormal ? 'neutral' : statusTone(state)}
+      aria-describedby={describedBy}
+      style={{ flexShrink: 0, maxWidth: 'none' }}
       flex='0 0 auto'
       maw='none'
       miw='max-content'
-      color={visual.color}
-      variant='light'
+      color={
+        state === 'normal' && neutralNormal
+          ? 'gray'
+          : state === 'critical'
+            ? 'red.9'
+            : state === 'warning'
+              ? 'yellow.6'
+              : visual.color
+      }
+      variant={
+        state === 'critical' || state === 'warning' ? 'filled' : 'outline'
+      }
       size={size}
-      leftSection={visual.icon}
+      leftSection={state === 'offline' ? visual.icon : undefined}
     >
       {visual.label}
-    </StatusBadge>
+    </MonitoringStatusBadge>
   );
 }
 
@@ -230,9 +269,16 @@ export function SeverityBadge({
 }: Readonly<{ severity: AnomalySeverity | string | null }>) {
   const visual = severityVisual(severity);
   return (
-    <StatusBadge color={visual.color} variant='light' leftSection={visual.icon}>
+    <MonitoringStatusBadge
+      tone={statusTone(severity ?? '')}
+      leftSection={visual.icon}
+      color={visual.color}
+      variant={
+        severity === 'critical' || severity === 'warning' ? 'filled' : 'outline'
+      }
+    >
       {visual.label}
-    </StatusBadge>
+    </MonitoringStatusBadge>
   );
 }
 
@@ -277,22 +323,134 @@ export function SourceTypeBadge({
     return null;
   }
   return (
-    <StatusBadge variant='outline' color='gray'>
+    <MonitoringStatusBadge tone='neutral' variant='outline' color='gray'>
       {sourceTypeLabel(type)}
-    </StatusBadge>
+    </MonitoringStatusBadge>
   );
 }
 
+export const MetaText = createPolymorphicComponent<'p', TextProps>(
+  forwardRef<HTMLParagraphElement, TextProps>(
+    ({ className, ...props }, ref) => (
+      <Text
+        ref={ref}
+        size='sm'
+        maw='70ch'
+        className={[monitoring.meta, className].filter(Boolean).join(' ')}
+        {...props}
+      />
+    )
+  )
+);
+export const MonitoringLink = createPolymorphicComponent<'a', AnchorProps>(
+  forwardRef<HTMLAnchorElement, AnchorProps>(({ className, ...props }, ref) => (
+    <Anchor
+      ref={ref}
+      className={[monitoring.link, className].filter(Boolean).join(' ')}
+      {...props}
+    />
+  ))
+);
+export function AttentionAlert(props: AlertProps) {
+  return (
+    <Alert
+      variant='outline'
+      color='yellow'
+      icon={<IconAlertTriangle size={16} />}
+      maw='70ch'
+      c='var(--mantine-color-text)'
+      {...props}
+      classNames={{ label: monitoring.attentionTitle }}
+    />
+  );
+}
+export function Unit({ code }: Readonly<{ code: string | null | undefined }>) {
+  return (
+    <abbr title={code || undefined} style={{ textDecoration: 'none' }}>
+      {unitLabel(code)}
+    </abbr>
+  );
+}
+/** Age is judged against the same observation and budget as the server flag. */
+export function freshnessFacts(
+  observedAt: string | number | null,
+  stale: boolean,
+  thresholdSeconds: number | null | undefined,
+  now: number
+) {
+  const time = displayInstant(observedAt);
+  if (!time) return null;
+  const ms =
+    typeof observedAt === 'number' ? observedAt : Date.parse(observedAt!);
+  const future = ms > now;
+  const seconds = Math.floor(Math.abs(now - ms) / 1000);
+  const age =
+    seconds < 60
+      ? `${seconds} s`
+      : seconds < 86400
+        ? `${Math.floor(seconds / 60)} min`
+        : `${Math.floor(seconds / 86400)} d`;
+  const budget =
+    thresholdSeconds == null
+      ? 'budget not supplied'
+      : `freshness budget ${thresholdSeconds} s`;
+  const serverFlag =
+    stale &&
+    (future || (thresholdSeconds != null && seconds <= thresholdSeconds));
+  return { time, age, budget, serverFlag, future };
+}
+export function FreshnessText({
+  observedAt,
+  stale,
+  thresholdSeconds,
+  now: suppliedNow
+}: Readonly<{
+  observedAt: string | number | null;
+  stale: boolean;
+  thresholdSeconds?: number | null;
+  now?: number;
+}>) {
+  const pageNow = useNow(1000, suppliedNow == null);
+  const fact = freshnessFacts(
+    observedAt,
+    stale,
+    thresholdSeconds,
+    suppliedNow ?? pageNow
+  );
+  if (!fact) return <MetaText>{t`Observation time unavailable`}</MetaText>;
+  return (
+    <Group gap={4} style={{ fontVariantNumeric: 'tabular-nums' }}>
+      {stale ? (
+        <MonitoringStatusBadge tone='stale' color='gray'>
+          {fact.serverFlag ? t`Stale (server flag)` : t`Stale`} ·{' '}
+          {fact.future
+            ? t`${fact.age} ahead of your clock`
+            : t`${fact.age} old`}{' '}
+          · {fact.budget}
+        </MonitoringStatusBadge>
+      ) : (
+        <MetaText>
+          {fact.time} ·{' '}
+          {fact.future
+            ? t`${fact.age} ahead of your clock`
+            : t`${fact.age} old`}
+        </MetaText>
+      )}
+    </Group>
+  );
+}
 /**
  * Render an observation time with how long ago it was.
  *
  * Freshness is never implied: a stale reading says so in words next to the
  * timestamp, so nobody reads an hours-old number as the machine's current state.
  */
-export function ObservedAt({
-  observedAt,
-  stale
-}: Readonly<{ observedAt: string | null; stale: boolean }>) {
+export function ObservedAt(props: Parameters<typeof FreshnessText>[0]) {
+  // Budget-aware callers retain the full server-flag and age explanation.
+  if ('thresholdSeconds' in props || 'now' in props) {
+    return <FreshnessText {...props} />;
+  }
+  const { observedAt, stale } = props;
   if (!observedAt) {
     return (
       <Text size='sm' className={operations.meta}>
@@ -318,8 +476,10 @@ export function ObservedAt({
 }
 
 /** Bounds follow the native classifier: a minimum is breached below, a maximum above. */
-export function formatSignalLimits(signal: MachineSignal): string | null {
-  const unit = signal.unit ? ` ${signal.unit}` : '';
+export function formatSignalLimits(
+  signal: Pick<MachineSignal, 'limits' | 'unit'>
+): string | null {
+  const unit = ` ${unitLabel(signal.unit)}`;
   const parts: string[] = [];
   for (const [label, min, max] of [
     [t`Normal`, signal.limits.normal_min, signal.limits.normal_max],

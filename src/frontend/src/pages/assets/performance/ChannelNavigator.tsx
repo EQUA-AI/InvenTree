@@ -1,36 +1,40 @@
 import { t } from '@lingui/core/macro';
 import {
+  Accordion,
   Button,
-  Group,
   Paper,
   Select,
+  SimpleGrid,
   Stack,
   Text,
   TextInput
 } from '@mantine/core';
-import { useMemo } from 'react';
+import { useMediaQuery } from '@mantine/hooks';
+import { useEffect, useMemo, useState } from 'react';
+import { MetaText } from '../health/common';
+import monitoring from '../monitoring.module.css';
 import {
   PERFORMANCE_SECTIONS,
   type PerformanceSection,
   matchesChannel,
   sectionOf
 } from './channelNavigation';
+import { unitLabel } from './format';
 import { categoryLabel } from './parameters';
 import type { ResolvedParameter } from './resolve';
-
 export function sectionTitle(section: PerformanceSection) {
   return section === 'operation'
     ? t`Speed, operation and hydraulics`
     : categoryLabel(section);
 }
-
 export function ChannelNavigator({
   parameters,
   search,
   onSearch,
   section,
   onSection,
-  onShowAll
+  onShowAll,
+  collapsed = false
 }: Readonly<{
   parameters: ResolvedParameter[];
   search: string;
@@ -38,103 +42,118 @@ export function ChannelNavigator({
   section: string;
   onSection: (value: string) => void;
   onShowAll: () => void;
+  collapsed?: boolean;
 }>) {
+  const phone = useMediaQuery('(max-width: 47.99em)');
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (collapsed) setOpen(false);
+  }, [collapsed]);
   const matched = useMemo(
     () => parameters.filter((p) => matchesChannel(p, search)),
     [parameters, search]
   );
-  return (
-    <Paper withBorder radius='md' p='sm' data-testid='channel-navigator'>
-      <Stack gap='xs'>
-        <Group justify='space-between'>
-          <Text size='sm' fw={600}>
-            {t`Channel overview`} · {parameters.length}
-          </Text>
-          <Button
-            size='compact-xs'
-            variant='light'
-            onClick={onShowAll}
-          >{t`Show all`}</Button>
-        </Group>
-        <Group align='flex-end' grow>
-          <TextInput
-            label={t`Find a channel`}
-            maxLength={200}
-            placeholder={t`Name, tag or unit`}
-            value={search}
-            onChange={(event) => onSearch(event.currentTarget.value)}
-          />
-          <Select
-            label={t`Section`}
-            value={section}
-            allowDeselect={false}
-            onChange={(value) => onSection(value ?? 'all')}
-            data={[
-              { value: 'all', label: t`Full overview` },
-              ...PERFORMANCE_SECTIONS.map((key) => ({
-                value: key,
-                label: sectionTitle(key)
-              }))
-            ]}
-          />
-        </Group>
-        <Text
-          size='xs'
-          c='dimmed'
-        >{t`Search locates whole native chart groups. History scope and chart selections are retained. Current readings remain independent of the selected history window.`}</Text>
-        <Group gap='xs'>
-          {PERFORMANCE_SECTIONS.map((key) => {
-            const count = matched.filter((p) => sectionOf(p) === key).length;
-            return (
-              count > 0 && (
-                <Button
-                  key={key}
-                  size='compact-xs'
-                  variant={section === key ? 'light' : 'subtle'}
-                  onClick={() => onSection(key)}
-                >
-                  {sectionTitle(key)} · {count}
-                </Button>
-              )
-            );
-          })}
-        </Group>
-        {matched.length === 0 && (
-          <Text size='sm'>{t`No matching channels. Clear the search or Show all.`}</Text>
-        )}
-        {search.trim() && (
-          <Stack
-            gap={2}
-            mah={180}
-            style={{ overflowY: 'auto' }}
-            aria-label={t`Matching channels`}
-          >
-            {matched.map((p) => (
-              <Button
-                key={p.id}
-                size='compact-xs'
-                h='auto'
-                mih={28}
-                py={4}
-                variant='subtle'
-                justify='flex-start'
-                styles={{
-                  label: {
-                    whiteSpace: 'normal',
-                    lineHeight: 1.4,
-                    textAlign: 'start',
-                    overflowWrap: 'anywhere'
+  const content = (
+    <Stack gap='xs'>
+      <SimpleGrid cols={{ base: 1, sm: 2 }}>
+        <TextInput
+          classNames={{ input: monitoring.input }}
+          label={t`Find a channel`}
+          maxLength={200}
+          placeholder={t`Name, tag or unit`}
+          value={search}
+          onChange={(event) => onSearch(event.currentTarget.value)}
+        />
+        <Select
+          classNames={{ input: monitoring.input, option: monitoring.option }}
+          label={t`Section`}
+          value={search.trim() ? 'search' : section}
+          allowDeselect={false}
+          onOptionSubmit={(value) =>
+            value === 'all'
+              ? onShowAll()
+              : value !== 'search' && onSection(value)
+          }
+          data={[
+            { value: 'all', label: t`Full overview` },
+            ...PERFORMANCE_SECTIONS.map((key) => ({
+              value: key,
+              label: `${sectionTitle(key)} · ${parameters.filter((p) => sectionOf(p) === key).length}`
+            })),
+            ...(search.trim()
+              ? [
+                  {
+                    value: 'search',
+                    label: t`Search results · ${matched.length}`
                   }
-                }}
-                onClick={() => onSection(sectionOf(p))}
-              >
-                {p.label} · {p.signal.external_key} ·{' '}
-                {p.signal.unit || t`no unit`}
-              </Button>
-            ))}
-          </Stack>
-        )}
-      </Stack>
-    </Paper>
+                ]
+              : [])
+          ]}
+        />
+      </SimpleGrid>
+      <MetaText size='xs'>{t`Channels are the signals mapped to this machine. Search by name, tag or unit keeps the history scope and chart selections.`}</MetaText>
+      {!matched.length && (
+        <Text size='sm'>{t`No matching channels. Clear the search or select Full overview.`}</Text>
+      )}
+      {search.trim() && (
+        <Stack
+          gap={2}
+          mah={180}
+          style={{ overflowY: 'auto' }}
+          aria-label={t`Matching channels`}
+        >
+          {matched.map((p) => (
+            <Button
+              key={p.id}
+              className={monitoring.link}
+              size='compact-xs'
+              h='auto'
+              py={4}
+              style={{ flexShrink: 0 }}
+              variant='subtle'
+              justify='flex-start'
+              styles={{
+                inner: { height: 'auto' },
+                label: {
+                  // Wrapping results need a full line box, not compact-button cap height.
+                  textBoxTrim: 'none',
+                  lineHeight: 1.5,
+                  height: 'auto',
+                  whiteSpace: 'normal',
+                  textAlign: 'start',
+                  overflowWrap: 'anywhere'
+                }
+              }}
+              onClick={() => onSection(sectionOf(p))}
+            >
+              {p.label} · {p.signal.external_key} · {unitLabel(p.signal.unit)}
+            </Button>
+          ))}
+        </Stack>
+      )}
+    </Stack>
+  );
+  return (
+    <div data-testid='channel-navigator'>
+      {phone || collapsed ? (
+        <Accordion
+          value={open ? 'channels' : null}
+          onChange={(value) => setOpen(value === 'channels')}
+          keepMounted
+          keepMountedMode='display-none'
+        >
+          <Accordion.Item value='channels'>
+            <Accordion.Control>
+              {t`Channels`} · {parameters.length}
+            </Accordion.Control>
+            <Accordion.Panel>{content}</Accordion.Panel>
+          </Accordion.Item>
+        </Accordion>
+      ) : (
+        <Paper withBorder p='sm'>
+          {content}
+        </Paper>
+      )}
+    </div>
   );
 }

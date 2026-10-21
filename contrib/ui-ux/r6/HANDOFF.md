@@ -1,5 +1,30 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+**Final merged-tree Monitoring clock repair — 21 October 2026:** starting tree
+`937e4f477` integrates both design passes. The disclosure retained the integrated
+Machine-screen formatter, which removed the old browser-zone suffix. It now uses
+one validated plant clock from the existing occurrence read, a visible timezone
+label and the shared 24-hour date spelling. S7 explicitly tests a Riyadh plant
+with a UTC browser, including missing/invalid/refused timezone fallbacks. Focused
+spec **48/48**, nine app/sprint TypeScript configs plus the library config and
+**11 clock units / 2 files** pass. The extra standalone Node tooling config has
+existing deprecation/dependency-resolution errors, retained separately. Full S7
+passes **178/178** (20.5 minutes); all six changed-file hooks and tracking pass.
+The owned browser container is stopped and
+both owned listeners are absent (13:05:36 UTC). Both coordinator ports were confirmed empty at
+12:27:03 UTC before any file edits; task runtime is isolated to websocket 3006,
+harness 15237. See [the repair report](reports/S7-monitoring-clock.md). Backlog
+statuses are unchanged; no Git writes or Azure access and no deployment/product
+acceptance. Earlier unmerged-index and branch-only statements below are history.
+
+**Last update:** 21 October 2026 (Codex, design-pass-2 merge resolution). **Current stage:** all 12 conflicts in the coordinator-started merge of `inventTree-aniket` into `r6/design-pass-2` are resolved, retaining Health/Performance part 2 alongside machine-screen part 1, the Work uplift and O24. All nine TypeScript projects, full Vitest **776 tests / 80 files**, hooks on all 14 resolved/supporting files, tracking and whitespace/marker checks pass. Earlier evidence below remains historical. P31/S8-01 remain In progress, P32 Ready for review. No Git write command, Playwright run, server startup or Azure access was performed; the index remains unmerged for coordinator review.
+
+**Health/Performance replay checkpoint:** 21 October 2026 (Codex, design-pass-2 host replay follow-up). **Current stage:** bounded host-browser repairs are verified. The stale-card capture retains ratio 1, the whole phone state spec passed 60/60 and final S8 phone project passed 111/111; the stabilized native acceptance spec passed 4/4. Own harness PID 65795 on port 15224 and browser container on port 3002 are stopped and absence verified. See [Host replay fixes](reports/S8-01-part2.md#host-replay-fixes) for commands, retained failures and evidence. The parent master design pass remains partial. Earlier Work-focus transport, turn consumer, result linkage and Work launcher were verified in isolated tests (S0-31/S1-25/S1-26); P02/P33 and both sprints remain In progress.
+
+**Work-focus and Work-uplift replay checkpoint:** 21 October 2026 (Codex, bounded Work uplift replay). **Current stage:** Work-focus transport, turn consumer, result linkage and Work launcher verified in isolated tests (S0-31/S1-25/S1-26); P02/P33 and both sprints remain In progress.
+
+**Work-uplift bounded follow-up:** Work uplift host failures repaired in `r6/work-uplift`: reuse the complete Closeout fixture for keyboard navigation and select translated `Verified` in the authority-expiry test. Linux Chromium native fixtures pass S8 225/225, S4 232/232, S1 204/204, S6 256/256 and S7 172/172; each of the four reported phone cases passes five repetitions. All nine requested TypeScript projects, 702 units, Lingui extract/compile with bytewise locale restore, changed-file hooks and tracking checks pass. See [Host replay fixes](reports/work-uplift.md#host-replay-fixes) and `data/devscratch/r6-s8/work-uplift/host-replay/`. The owned browser is stopped; host cleanup of orphaned Vite PID 35625 on 15228 is pending after sandbox SIGTERM denial. No provider contract or parent disposition changes; O22 scores and deployment acceptance remain separate.
+
 **Last update:** 21 October 2026 (Codex, merged Work dock regression). **Current stage:** Work-focus transport, turn consumer, result linkage and Work launcher verified in isolated tests (S0-31/S1-25/S1-26); P02/P33 and both sprints remain In progress.
 
 **Latest bounded follow-up:** Safe-area follow-up passes: S8 correctly measures the full border box; the prior total lagged inset changes through Mantine requestAnimationFrame/state. Product now measures content and adds shared CSS padding/border once. Both specs remain unchanged. Full s8-work **162/162** (uplift spec **52/52**), S4 time-recording **18/18**, same-operation 0/34/72px inset + 34px focus probe, nine TypeScript projects, 24 units and changed-file hooks pass. Linux Chromium on owned WS 3005 / harness 15236; owned browser/container and harness stopped; both ports clear. See [follow-up evidence](reports/work-dock-merge-regression.md#safe-area-follow-up). P31/P32 and deployment/product acceptance states remain unchanged.
@@ -14,6 +39,12 @@
 **This session's instruction:** “Resume AIMMS R6 from HANDOFF.md; preserve existing changes, continue the next recorded task, and update the sprint ledgers”, then “and apply designprompt1.md to all UI work”. A pre-session patch and untracked-file archive are kept under `data/devscratch/r6-s1/2026-10-19/ack-transport/pre-session/`.
 
 This file is the durable resumption point. Do not depend on the preceding chat, redo all research, or infer completion from source inspection.
+
+## Health/Performance integration checkpoint — 21 October 2026
+
+The coordinator-started merge into `r6/design-pass-2` preserves both sides' source, fixtures, tests and TypeScript project membership. `s8.md` records this integration separately from the earlier machine/Work merges and host replays. The contract register combines part 2's D03 missing-batch and D21 phone-pagination evidence with machine-design evidence and O24's current shared-Work rules. Customer-attributed and unattributed Work remains shared with every active Work viewer; machine scope and action permissions remain independent, as recorded in `reports/O24.md`.
+
+Verification passes: `npx tsc --noEmit --project` for `tsconfig.json` and every `tsconfig.s*.json` (s0, s1, s2, s3, s4, s6, s7, s8); full `npx vitest run` **776 tests / 80 files**; `PATH=/opt/homebrew/bin:$PATH prek run --files` on all 14 resolved/supporting files after initial Biome formatting of three files; `git diff --check`; conflict-marker scan; tracking **58 work items / 95 screen dispositions / 26 contracts**. Test-name/assertion and exact 31-file S8 project-union audits retain both branches' coverage. Evidence and logs: `data/devscratch/r6-s8/design-pass-2/merge-resolution-20261021T113236Z/`. The existing backlog was audited without changing parent statuses; no new browser, deployment or product acceptance is claimed. The Git index remains unmerged for coordinator review; no Git write command, Playwright run, server startup or Azure access was performed by this task.
 
 ## Initial integrated Work dock regression — 21 October 2026
 
@@ -335,3 +366,5 @@ Next (owner first): choose the showcase case (D23) for P34; decide whether to ap
 - **2026-10-19 — Claude Code resumed; Work-focus transport and launcher:** preserved all local changes (pre-session archive). Implemented the acknowledgement endpoint, receipt on all three chat wires, wf8 model input, result/reload identity, saved-turn read, capability and generated wire section; the Work-page launcher, acknowledgement-before-send, chips and link-back under designprompt1. Verified as recorded above and in `s1.md`; S0-31/S1-25/S1-26 technical Done, screen 43 In progress; P02/P33/S0/S1 parents unchanged. No commit/push/PR, existing DB/service, Azure or OT change.
 
 - **2026-10-18 — explicit S1 overlap:** user says “meanwhile start s1”. Started P14 native machine Preview/return, reusing the existing indexed-media viewer with exact source identity and native actions preserved. Final S1 suite26, units68, backend388 and S1/S0 types pass; Biome35/touched Python lint pass. Shared media drift fixture cleanup and production-style/non-superuser browser fixtures corrected; failed evidence retained. Full preservation replay/current hashes in S1 ledger/manifest. P14 and candidate22/23 In progress; S0 not accepted, other S1 tickets Planned. No commit/push/PR, existing DB/service, Azure or OT change.
+
+- **2026-10-21 — design-pass-2 host browser repairs verified:** bounded S8-01 part 2 task: Health history locator scope, explicit missing-batch “Not returned”, current closeout disclosure label, phone Other-channel pagination containment, and measured capture/key-focus helpers. Final full Linux Chromium fixture replays passed S8 **222/222**, S0 **95/95**, S7 **172/172**; two restored S3 trend contracts passed **4/4** across desktop/phone. Default/S0/S7/S8/S3 types, **733 units in 73 files**, all applicable prek checks on **91 changed files**, tracking validation and Lingui extraction/compilation passed; **117 locale files restored bytewise**. Representative screenshots inspected. The first-phase browser was removed and Vite config restored bytewise. On the second-host-replay resumption, prior harness PID 17707 was absent and port 15224 was free; its earlier cleanup blocker is resolved. The current managed runtime and subsequent capture-helper verification are recorded in the report. See `reports/S8-01-part2.md#host-replay-fixes`; evidence is `data/devscratch/r6-s8/S8-01-part2/host-replay/`. Parent S8/R6, deployment and product acceptance remain unchanged; coordinator host review and O22 rescore remain separate. No Git write, external service or Azure access.

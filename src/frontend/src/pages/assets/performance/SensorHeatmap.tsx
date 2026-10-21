@@ -9,9 +9,10 @@ import {
 } from '@mantine/core';
 import { useElementSize } from '@mantine/hooks';
 import { useMemo } from 'react';
+import { MetaText } from '../health/common';
 
 import { formatTick, formatValue, timeTicks } from './format';
-import { type HeatmapMatrix, limitState } from './series';
+import type { HeatmapMatrix } from './series';
 
 //: Row labels are measured, not assumed; these only bound the result, so one
 //: long sensor name cannot eat the grid and a short one cannot strand it.
@@ -58,7 +59,7 @@ export interface SensorHeatmapProps {
   unit: string;
   decimals: number;
   windowSeconds: number;
-  /** Colour family for the scale. Warm for temperature, cool for the rest. */
+  /** Neutral data colour family for the scale; alarm colours are reserved for states. */
   hue?: string;
 }
 
@@ -69,9 +70,8 @@ export interface SensorHeatmapProps {
  * pads can be read at a glance: a sensor running hot is a bright row, a
  * change in the window is a change of shade left to right. The scale spans the
  * matrix's own observed range - it says so, with the two ends printed - so it
- * is a comparison of sensors against each other, never a verdict. Where a
- * sensor has configured limits and a cell crosses one, that cell is outlined
- * in the state's colour; that is the only place a threshold enters.
+ * is a comparison of sensors against each other, never a verdict. Configured
+ * limits and server-evaluated states are presented separately in the card.
  *
  * Plain SVG rather than a chart library: a grid of rectangles with native
  * tooltips is lighter than five hundred React tooltips and needs nothing more.
@@ -81,13 +81,13 @@ export function SensorHeatmap({
   unit,
   decimals,
   windowSeconds,
-  hue = 'orange'
+  hue = 'indigo'
 }: Readonly<SensorHeatmapProps>) {
   const theme = useMantineTheme();
   const scheme = useComputedColorScheme('light');
   const { ref, width } = useElementSize<HTMLDivElement>();
 
-  const palette = theme.colors[hue] ?? theme.colors.orange;
+  const palette = theme.colors[hue] ?? theme.colors.indigo;
   // Which end of the ramp is "low" depends on what the card is made of. On
   // white, low is pale and high is saturated; on a dark card those same fills
   // invert the meaning - the coolest sensors become the brightest rows - so
@@ -155,11 +155,6 @@ export function SensorHeatmap({
     [axisStart, axisEnd, gridWidth]
   );
 
-  const stateColor: Record<string, string> = {
-    critical: theme.colors.red[7],
-    warning: theme.colors.yellow[6]
-  };
-
   return (
     <Stack gap={4} ref={ref}>
       <Box
@@ -183,8 +178,7 @@ export function SensorHeatmap({
             </text>
             {row.cells.map((cell, c) => {
               const column = matrix.columns[c];
-              const state = limitState(cell, row.limits);
-              const outline = stateColor[state];
+
               // A cell resting on one reading is that reading, not a mean of
               // one: "mean of 1 readings" claims an average that averages
               // nothing.
@@ -208,8 +202,7 @@ export function SensorHeatmap({
                       : shade(cell)
                   }
                   fillOpacity={cell === null ? 0.35 : 1}
-                  stroke={outline}
-                  strokeWidth={outline ? 1.5 : 0}
+                  data-heatmap-cell='true'
                 >
                   <title>{title}</title>
                 </rect>
@@ -234,7 +227,7 @@ export function SensorHeatmap({
                 y={13}
                 fontSize={10}
                 textAnchor='middle'
-                fill='var(--mantine-color-dimmed)'
+                fill='var(--mantine-color-text)'
               >
                 {text}
               </text>
@@ -243,9 +236,9 @@ export function SensorHeatmap({
         </g>
       </Box>
       <Group gap='xs' justify='flex-end'>
-        <Text size='xs' c='dimmed'>
-          {t`Scale spans the observed range:`}
-        </Text>
+        <Box w={12} h={12} bg='var(--mantine-color-default-border)' />
+        <MetaText size='xs'>{t`No reading`}</MetaText>
+        <MetaText size='xs'>{t`Scale spans the observed range:`}</MetaText>
         <Text size='xs'>
           {formatValue(matrix.min, decimals, unit, matrix.max - matrix.min)}
         </Text>
@@ -260,9 +253,9 @@ export function SensorHeatmap({
         <Text size='xs'>
           {formatValue(matrix.max, decimals, unit, matrix.max - matrix.min)}
         </Text>
-        <Text size='xs' c='dimmed'>
+        <MetaText size='xs'>
           {t`· each cell is the mean of the readings in its column`}
-        </Text>
+        </MetaText>
       </Group>
     </Stack>
   );

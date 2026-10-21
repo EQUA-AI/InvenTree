@@ -1,22 +1,16 @@
 import { t } from '@lingui/core/macro';
-import { Badge, Group, Loader, Text } from '@mantine/core';
+import { Group, Loader, Text } from '@mantine/core';
 import dayjs from 'dayjs';
+import { displayClockLabel } from '../displayClock';
+import { StatusBadge } from '../health/StatusBadge';
+import { MetaText } from '../health/common';
 
 import type { SeriesResponse } from '@lib/types/MachineHealth';
 
 import { formatDuration } from './format';
 
 /** The viewer's clock, named: "Europe/London (UTC+01:00)". */
-export function clockLabel(at: number = Date.now()): string {
-  let zone = '';
-  try {
-    zone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? '';
-  } catch {
-    zone = '';
-  }
-  const offset = `UTC${dayjs(at).format('Z')}`;
-  return zone ? `${zone} (${offset})` : offset;
-}
+export const clockLabel = displayClockLabel;
 
 /**
  * Edges of a window as a reader says them: the date only where it is not
@@ -42,14 +36,25 @@ export function formatWindow(start: number, end: number, now: number): string {
 export function WindowStatus({
   response,
   updating,
-  now
+  now,
+  showClock = true,
+  announce = true
 }: Readonly<{
   response: SeriesResponse | undefined;
   /** The response on screen is the previous query's, kept while this one loads. */
   updating: boolean;
   now: number;
+  showClock?: boolean;
+  announce?: boolean;
 }>) {
-  if (!response) return null;
+  // Keep the announcement container mounted during loading and failed reads.
+  // The visible error explains a failed request; this region never invents a window.
+  const announcement = announce ? (
+    <Text component='output' size='xs' aria-live='polite' aria-atomic='true'>
+      {updating ? t`Updating selected history window.` : ''}
+    </Text>
+  ) : null;
+  if (!response) return announcement;
   const start = new Date(response.window_start).getTime();
   const end = new Date(response.window_end).getTime();
   const seconds = Math.max(1, Math.round((end - start) / 1000));
@@ -60,24 +65,23 @@ export function WindowStatus({
       data-window-status={updating ? 'updating' : 'current'}
     >
       {updating && (
-        <Badge
+        <StatusBadge
+          tone='neutral'
           size='sm'
-          variant='light'
+          variant='outline'
           color='blue'
           leftSection={<Loader size={10} color='blue' />}
         >
           {t`Updating`}
-        </Badge>
+        </StatusBadge>
       )}
-      <Text component='output' size='xs' aria-live='polite' aria-atomic='true'>
-        {updating ? t`Updating selected history window.` : ''}
-      </Text>
-      <Text component='div' size='xs' c='dimmed' aria-live='off'>
+      {announcement}
+      <MetaText component='div' size='xs' aria-live='off'>
         {updating
           ? t`Charts still show the previous window, ${formatWindow(start, end, now)} (${formatDuration(seconds)}), until the new one arrives.`
           : t`Window on screen: ${formatWindow(start, end, now)} (${formatDuration(seconds)}).`}{' '}
-        {t`Times in ${clockLabel(end)}.`}
-      </Text>
+        {showClock && t`Times in ${clockLabel(end)}.`}
+      </MetaText>
     </Group>
   );
 }

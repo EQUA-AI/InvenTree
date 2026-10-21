@@ -1,8 +1,17 @@
 import type { SeriesResponse } from '@lib/types/MachineHealth';
 import { t } from '@lingui/core/macro';
-import { Alert, Button, Group, Paper, Stack, Text } from '@mantine/core';
+import {
+  Alert,
+  Button,
+  Group,
+  Paper,
+  Spoiler,
+  Stack,
+  Text
+} from '@mantine/core';
+import { AttentionAlert, MetaText } from '../health/common';
 import { formatInstant, useDisplayClock } from '../health/mimic/observedTime';
-import operations from '../operations.module.css';
+import monitoring from '../monitoring.module.css';
 import type { DataRange } from '../performance/usePerformanceData';
 
 export function HistoryProvenance({
@@ -29,52 +38,67 @@ export function HistoryProvenance({
     (entry) => entry.available && entry.samples.length === 0
   );
   return (
-    <Paper withBorder radius='md' p='sm' data-testid='history-provenance'>
+    <Paper withBorder p='sm' data-testid='history-provenance'>
       <Stack gap={4}>
         <Text fw={600} size='sm'>{t`History origin and limits`}</Text>
-        <Text size='xs' className={operations.meta}>
+        <MetaText maw='70ch' size='sm'>
           {currentDescription ??
-            t`KPIs, current bars and the current-limit evaluation use each signal's latest observation, even for a fixed historical window. They are not the selected range. Window trends read source history; retained snapshots are separate evidence.`}
-        </Text>
-        {loading && <Text size='xs'>{t`Loading selected source window…`}</Text>}
+            t`KPIs, current dots and limit assessments use latest observations, not the selected range. Window trends read source history; retained snapshots are separate evidence.`}
+        </MetaText>
+        {loading && (
+          <Text maw='70ch' size='sm'>{t`Loading selected source window…`}</Text>
+        )}
         {failed && (
           <Alert color='red'>{t`History read failed. Current readings do not replace missing history.`}</Alert>
         )}
         {response && !failed && (
           <>
-            <Text size='xs'>
+            <MetaText maw='70ch'>
               {t`Source`}:{' '}
               {[...new Set(entries.map((entry) => entry.source_name))].join(
                 ', '
-              ) || t`Not supplied`}
-              . {t`Window`}:{' '}
-              {formatInstant(response.window_start, clock) ??
-                t`Time unavailable`}{' '}
-              —{' '}
-              {formatInstant(response.window_end, clock) ?? t`Time unavailable`}
-              . {updating ? t`Previous window while updating.` : ''}
-            </Text>
-            <Text size='xs'>
-              {response.read_batches && response.read_batches.length > 1 ? (
-                t`Resolution is reported per bounded read below.`
-              ) : (
-                <>
-                  {t`Resolution`}: {response.resolution_seconds} s
-                </>
-              )}{' '}
+              ) || t`Not supplied`}{' '}
               ·{' '}
+              {Math.round(
+                (Date.parse(response.window_end) -
+                  Date.parse(response.window_start)) /
+                  60000
+              )}{' '}
+              {t`min window`} · {t`measured interval`}{' '}
+              {response.read_batches && response.read_batches.length > 1
+                ? t`per read`
+                : `${response.resolution_seconds} s`}{' '}
+              · {t`gaps not filled`}
+            </MetaText>
+            <MetaText maw='70ch' size='xs'>
               {response.mode === 'sampled'
                 ? t`Sampled real readings; fast transients may be absent.`
                 : t`Complete source read for this bounded window; source gaps remain gaps.`}
-            </Text>
-            <Text size='xs'>
-              {t`Single-window limit`}:{' '}
-              {response.limits.max_window_seconds / 3600} h · {t`Point budget`}:{' '}
-              {response.slots ?? t`Complete mode`} · {t`Returned series`}:{' '}
-              {entries.length}
-            </Text>
+            </MetaText>
+            <Spoiler
+              maxHeight={0}
+              classNames={{ control: monitoring.link }}
+              showLabel={t`Show read details`}
+              hideLabel={t`Hide read details`}
+            >
+              <Text maw='70ch' size='xs'>
+                {t`Window`}:{' '}
+                {formatInstant(response.window_start, clock) ??
+                  t`Time unavailable`}{' '}
+                —{' '}
+                {formatInstant(response.window_end, clock) ??
+                  t`Time unavailable`}
+                . {updating ? t`Previous window while updating.` : ''}
+              </Text>
+              <Text maw='70ch' size='xs'>
+                {t`Single-window limit`}:{' '}
+                {response.limits.max_window_seconds / 3600} h ·{' '}
+                {t`Samples requested`}: {response.slots ?? t`Complete mode`} ·{' '}
+                {t`Returned series`}: {entries.length}
+              </Text>
+            </Spoiler>
             {response.display_shifted && (
-              <Alert color='yellow'>{t`Source timestamps are moved by ${response.display_shift_seconds} seconds onto the display clock. This is not the plant's original clock.`}</Alert>
+              <AttentionAlert>{t`Source timestamps are moved by ${response.display_shift_seconds} seconds onto the display clock. This is not the plant's original clock.`}</AttentionAlert>
             )}
             {(unavailable.length > 0 || empty.length > 0) && (
               <Alert color='gray' title={t`History coverage gaps`}>
@@ -82,7 +106,7 @@ export function HistoryProvenance({
                   <details>
                     <summary>{t`${unavailable.length} unavailable series — show source reasons`}</summary>
                     {unavailable.map((entry) => (
-                      <Text key={entry.binding_id} size='xs'>
+                      <Text key={entry.binding_id} size='sm'>
                         {entry.display_name || entry.external_key}:{' '}
                         {entry.detail || entry.reason || t`History unavailable`}
                       </Text>
@@ -90,25 +114,33 @@ export function HistoryProvenance({
                   </details>
                 )}
                 {empty.length > 0 && (
-                  <Text size='xs'>{t`${empty.length} series returned no samples. No samples is different from a recorded zero.`}</Text>
+                  <Text
+                    maw='70ch'
+                    size='sm'
+                  >{t`No samples in window: ${empty.map((entry) => entry.display_name || entry.external_key).join(', ')}. No samples is different from a recorded zero.`}</Text>
                 )}
               </Alert>
             )}
             {!!response.read_batches?.some((batch) => batch.failed) && (
-              <Alert color='yellow' title={t`Partial history read`}>
+              <AttentionAlert title={t`Partial history read`}>
                 {t`${response.read_batches.filter((batch) => batch.failed).length} of ${response.read_batches.length} bounded batches failed. Available charts remain visible; missing batches are not complete evidence.`}
                 <Button
+                  className={monitoring.link}
                   size='compact-xs'
                   variant='subtle'
                   onClick={onRetry}
                 >{t`Retry history`}</Button>
-              </Alert>
+              </AttentionAlert>
             )}
             {response.read_batches && response.read_batches.length > 1 && (
               <details>
                 <summary>{t`Per-batch resolution and clock`}</summary>
                 {response.read_batches.map((batch, i) => (
-                  <Text size='xs' key={i}>
+                  <Text
+                    maw='70ch'
+                    size='sm'
+                    key={`${response.window_start}:${batch.bindings.join(',')}:${batch.keys.join(',')}`}
+                  >
                     {t`Batch ${i + 1}`}:{' '}
                     {batch.failed
                       ? t`History read failed; coverage unknown.`
@@ -118,22 +150,22 @@ export function HistoryProvenance({
               </details>
             )}
             {response.read_batches && response.read_batches.length > 1 && (
-              <Text
-                size='xs'
-                className={operations.meta}
-              >{t`${response.read_batches.length} bounded batches share these time bounds. Each may read overlapping source documents; batching does not imply flat source work or payload.`}</Text>
+              <MetaText
+                maw='70ch'
+                size='sm'
+              >{t`${response.read_batches.length} bounded batches share these time bounds. Each may read overlapping source documents; batching does not imply flat source work or payload.`}</MetaText>
             )}
           </>
         )}
-        <Text size='xs' className={operations.meta}>
+        <MetaText maw='70ch' size='sm'>
           {extent?.available && extent.from && extent.to
             ? t`Reported source extent: ${formatInstant(extent.from, clock) ?? t`Time unavailable`} — ${formatInstant(extent.to, clock) ?? t`Time unavailable`}. Availability within it is not guaranteed.`
             : t`Source extent unavailable. This does not prove that the source has no history.`}
-        </Text>
+        </MetaText>
         {failed && (
           <Group>
             <Button
-              size='xs'
+              size='sm'
               variant='light'
               onClick={onRetry}
             >{t`Retry history`}</Button>

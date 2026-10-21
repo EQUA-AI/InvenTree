@@ -1,3 +1,4 @@
+import { unitLabel } from './format';
 import type { ResolvedParameter } from './resolve';
 import type { SeriesTargets } from './usePerformanceData';
 
@@ -32,7 +33,8 @@ export function matchesChannel(
       parameter.label,
       parameter.signal.display_name,
       parameter.signal.external_key,
-      parameter.signal.unit
+      parameter.signal.unit,
+      unitLabel(parameter.signal.unit)
     ].some((value) => value.toLocaleLowerCase().includes(text))
   );
 }

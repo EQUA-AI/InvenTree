@@ -1,13 +1,11 @@
-import {
-  createInvenTreeTheme,
-  cssVariablesResolver
-} from '../src/contexts/ThemeContext';
 import './aichat-drawer-lingui';
+
+import { FixtureTheme, prepareFixtureTheme } from './FixtureTheme';
 
 import { i18n } from '@lingui/core';
 import { t } from '@lingui/core/macro';
 import { I18nProvider } from '@lingui/react';
-import { Button, MantineProvider, Stack, Text } from '@mantine/core';
+import { Button, Stack, Text } from '@mantine/core';
 import '@mantine/core/styles.css';
 import '@mantine/charts/styles.css';
 import '@mantine/dates/styles.css';
@@ -51,6 +49,7 @@ import { useUserState } from '../src/states/UserState';
 import { signalRows } from '../tests/performance/fixtures';
 
 const params = new URLSearchParams(window.location.search);
+prepareFixtureTheme(params);
 const surface = params.get('surface') ?? 'signals';
 const nativeReader =
   ['machine-explorer', 'maintenance-shell'].includes(surface) &&
@@ -186,7 +185,10 @@ function NativeSurface() {
   }
   return (
     <>
-      <Text data-testid='destination'>
+      <Text
+        hidden={params.get('compactChrome') === 'true'}
+        data-testid='destination'
+      >
         {location.pathname + location.search}
       </Text>
       <Routes>
@@ -217,11 +219,7 @@ function NativeSurface() {
 
 createRoot(document.getElementById('root')!).render(
   <I18nProvider i18n={i18n}>
-    <MantineProvider
-      cssVariablesResolver={cssVariablesResolver}
-      theme={createInvenTreeTheme(useLocalState.getState().userTheme)}
-      forceColorScheme={params.get('scheme') === 'dark' ? 'dark' : 'light'}
-    >
+    <FixtureTheme nativeTheme={params.get('nativeTheme') === 'true'}>
       <ApiProvider api={axios.create()} client={client}>
         <ModalsProvider>
           <Notifications />
@@ -238,18 +236,20 @@ createRoot(document.getElementById('root')!).render(
                   ? t`S1 synthetic fixture — native resources`
                   : t`S0 synthetic fixture — native baseline`}
               </Text>
-              <Button
-                variant='default'
-                onClick={() => void client.invalidateQueries()}
-              >
-                {t`Refresh fixture`}
-              </Button>
-              <QueryState />
+              <div hidden={params.get('compactChrome') === 'true'}>
+                <Button
+                  variant='default'
+                  onClick={() => void client.invalidateQueries()}
+                >
+                  {t`Refresh fixture`}
+                </Button>
+                <QueryState />
+              </div>
               <NativeSurface />
             </Stack>
           </MemoryRouter>
         </ModalsProvider>
       </ApiProvider>
-    </MantineProvider>
+    </FixtureTheme>
   </I18nProvider>
 );

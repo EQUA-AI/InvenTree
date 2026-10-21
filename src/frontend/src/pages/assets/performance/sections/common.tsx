@@ -1,6 +1,7 @@
 import { t } from '@lingui/core/macro';
 import { Box, Paper, SimpleGrid, Stack, Text } from '@mantine/core';
-import { Children, type ReactNode } from 'react';
+import { Children, type ReactNode, isValidElement } from 'react';
+import monitoring from '../../monitoring.module.css';
 
 import type { SeriesEntry } from '@lib/types/MachineHealth';
 
@@ -85,7 +86,10 @@ export function CardGrid({
     >
       {cards.map((card, index) =>
         spanLast && index === cards.length - 1 ? (
-          <Box key={index} style={{ gridColumn: '1 / -1' }}>
+          <Box
+            key={isValidElement(card) ? card.key : String(card)}
+            style={{ gridColumn: '1 / -1' }}
+          >
             {card}
           </Box>
         ) : (
@@ -103,12 +107,12 @@ export function ChartCard({
   children
 }: Readonly<{ title: string; description?: string; children: ReactNode }>) {
   return (
-    <Paper withBorder radius='md' p='md'>
+    <Paper withBorder p='md'>
       <Stack gap='xs'>
         <Stack gap={2}>
           <Text fw={600}>{title}</Text>
           {description && (
-            <Text size='xs' c='dimmed'>
+            <Text size='xs' className={monitoring.meta}>
               {description}
             </Text>
           )}
@@ -214,7 +218,7 @@ export function ScaledTrend({
           (axis === 'left' ? split.leftUnits : split.rightUnits) || t`no unit`;
         return (
           <Stack gap={4} key={`${axis}:${group.key}`}>
-            <Text size='xs' c='dimmed' data-units-apart={own}>
+            <Text size='xs' className={monitoring.meta} data-units-apart={own}>
               {t`Drawn apart: ${group.items.map((l) => l.label).join(', ')} in ${own}, not ${shared}.`}
             </Text>
             <TrendChart

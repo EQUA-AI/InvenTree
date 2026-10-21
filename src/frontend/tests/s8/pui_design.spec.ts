@@ -244,7 +244,7 @@ test('event trend adds a labelled bounded context and preserves the canonical oc
   expect(url.searchParams.get('history_to')).toBe('2026-10-12T02:44:05.000Z');
   const before = requests.length;
   await link.click();
-  await expect(page.getByText('Anything unusual?')).toBeVisible({
+  await expect(page.getByText('Exceptions', { exact: true })).toBeVisible({
     timeout: 30_000
   });
   await expect.poll(() => requests.length).toBe(before + 1);

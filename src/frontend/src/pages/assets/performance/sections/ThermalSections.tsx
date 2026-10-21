@@ -1,7 +1,6 @@
 import { t } from '@lingui/core/macro';
 import {
   Alert,
-  Badge,
   Group,
   SimpleGrid,
   Stack,
@@ -11,12 +10,14 @@ import {
 } from '@mantine/core';
 import { IconInfoCircle } from '@tabler/icons-react';
 import { useMemo } from 'react';
+import { StatusBadge } from '../../health/StatusBadge';
+import { MetaText } from '../../health/common';
 
 import type { SeriesEntry } from '@lib/types/MachineHealth';
 
 import { SensorGroupCard } from '../SensorGroupCard';
 import { TrendChart, type TrendSeries, familyColors } from '../TrendChart';
-import { formatRange, formatValue } from '../format';
+import { formatRange, formatValue, unitLabel } from '../format';
 import { type ResolvedParameter, withRole } from '../resolve';
 import {
   alignRows,
@@ -56,7 +57,7 @@ export function WindingSection({
           series={series}
           window={window}
           syncId={syncId}
-          hue='orange'
+          hue='indigo'
           heatmap
           comparison
           onZoom={onZoom}
@@ -73,7 +74,7 @@ export function WindingSection({
             series={series}
             window={window}
             syncId={syncId}
-            hue='red'
+            hue='violet'
             comparison
             onZoom={onZoom}
           />
@@ -85,7 +86,7 @@ export function WindingSection({
             series={series}
             window={window}
             syncId={syncId}
-            hue='gray'
+            hue='grape'
             onZoom={onZoom}
           />
         )}
@@ -124,10 +125,10 @@ export function VibrationSection({
         color='gray'
         variant='light'
         icon={<IconInfoCircle size={16} />}
-        title={t`No approved vibration channel`}
+        title={t`Unavailable · no vibration channel with a confirmed role and unit`}
       >
         <Text size='sm'>
-          {t`This pump's vibration tags are in the dictionary but have not passed review, because the source does not say whether they report displacement (µm) or velocity (mm/s). Until that is confirmed they are not shown as live readings, so this section has nothing it can honestly draw.`}
+          {t`Channels without a confirmed engineering role and unit cannot be used for vibration comparison.`}
         </Text>
       </Alert>
     );
@@ -229,7 +230,7 @@ function subtractable(
     .filter((p) => !sameScale(p.a.signal.unit, p.b.signal.unit))
     .map(
       (p) =>
-        `${p.a.label} (${p.a.signal.unit || t`no unit`}) − ${p.b.label} (${p.b.signal.unit || t`no unit`})`
+        `${p.a.label} (${unitLabel(p.a.signal.unit)}) − ${p.b.label} (${unitLabel(p.b.signal.unit)})`
     );
   return { pairs: ok, refused };
 }
@@ -250,13 +251,10 @@ function DifferenceCard(
 ) {
   const groups = groupByScale(props.pairs, (pair) => pair.a.signal.unit);
   if (groups.length <= 1) return <SameScaleDifferenceCard {...props} />;
-  const units = groups.map((group) => unitText(group) || t`no unit`);
+  const units = groups.map((group) => unitLabel(unitText(group)));
   return (
     <Stack gap='md'>
-      <Text
-        size='sm'
-        c='dimmed'
-      >{t`Drawn apart: temperature rises in ${units.join(', ')} have separate axes; no conversion is assumed.`}</Text>
+      <MetaText size='sm'>{t`Drawn apart: temperature rises in ${units.join(', ')} have separate axes; no conversion is assumed.`}</MetaText>
       {groups.map((group, index) => (
         <div key={group.key} data-difference-unit={unitText(group)}>
           <SameScaleDifferenceCard
@@ -359,9 +357,7 @@ function SameScaleDifferenceCard({
   if (pairs.length === 0)
     return (
       <ChartCard title={title} description={description}>
-        <Text size='sm' c='dimmed'>
-          {t`No pair could be calculated.`}
-        </Text>
+        <MetaText size='sm'>{t`No pair could be calculated.`}</MetaText>
       </ChartCard>
     );
 
@@ -371,9 +367,10 @@ function SameScaleDifferenceCard({
         {computed.map((c) => {
           const stats = seriesStats(c.entry);
           return (
-            <Badge
+            <StatusBadge
+              tone='neutral'
               key={c.key}
-              variant='light'
+              variant='outline'
               color={c.stale ? 'gray' : hue}
               size='sm'
               // A truncated badge loses the window range, which is the half
@@ -395,12 +392,12 @@ function SameScaleDifferenceCard({
               {stats
                 ? ` (${t`window`} ${formatRange(stats.min, stats.max, decimals)})`
                 : ''}
-            </Badge>
+            </StatusBadge>
           );
         })}
-        <Badge variant='outline' color='gray' size='sm'>
+        <StatusBadge tone='neutral' variant='outline' color='gray' size='sm'>
           {t`Calculated`}
-        </Badge>
+        </StatusBadge>
       </Group>
       <TrendChart
         rows={rows}
@@ -476,7 +473,7 @@ export function CoolingSection({
               series={series}
               window={window}
               syncId={syncId}
-              hue='orange'
+              hue='indigo'
               comparison={outlet.length > 2}
               onZoom={onZoom}
             />
@@ -531,7 +528,7 @@ export function CoolingSection({
               series={series}
               window={window}
               syncId={syncId}
-              hue='red'
+              hue='violet'
               comparison={hot.length > 2}
               onZoom={onZoom}
             />
@@ -610,7 +607,7 @@ export function BearingSection({
             series={series}
             window={window}
             syncId={syncId}
-            hue='pink'
+            hue='blue'
             comparison
             onZoom={onZoom}
           />
@@ -623,7 +620,7 @@ export function BearingSection({
             series={series}
             window={window}
             syncId={syncId}
-            hue='teal'
+            hue='cyan'
             comparison
             onZoom={onZoom}
           />

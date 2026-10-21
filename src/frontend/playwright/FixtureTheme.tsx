@@ -1,12 +1,42 @@
+import { MantineProvider } from '@mantine/core';
 import '@mantine/notifications/styles.css';
 import 'mantine-contextmenu/styles.css';
 import type { JSX } from 'react';
 import { api } from '../src/App';
-import { ThemeContext } from '../src/contexts/ThemeContext';
+import {
+  ThemeContext,
+  createInvenTreeTheme,
+  cssVariablesResolver
+} from '../src/contexts/ThemeContext';
 import { useLocalState } from '../src/states/LocalState';
 
-/** The app's real theme, locale and modal providers, with local fixture state. */
-export function FixtureTheme({ children }: { children: JSX.Element }) {
+/** Native providers by default; monitoring fixtures can opt into a lightweight theme. */
+export function FixtureTheme({
+  children,
+  nativeTheme = true,
+  fallbackUserTheme = true
+}: Readonly<{
+  children: JSX.Element;
+  nativeTheme?: boolean;
+  fallbackUserTheme?: boolean;
+}>) {
+  const params = new URLSearchParams(location.search);
+  if (!nativeTheme)
+    return (
+      <MantineProvider
+        cssVariablesResolver={
+          fallbackUserTheme ? cssVariablesResolver : undefined
+        }
+        theme={
+          fallbackUserTheme
+            ? createInvenTreeTheme(useLocalState.getState().userTheme)
+            : undefined
+        }
+        forceColorScheme={params.get('scheme') === 'dark' ? 'dark' : 'light'}
+      >
+        {children}
+      </MantineProvider>
+    );
   return <ThemeContext>{children}</ThemeContext>;
 }
 

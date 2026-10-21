@@ -42,9 +42,6 @@ export function MonitoringContinuityNotice({
   );
 }
 
-const when = (value?: string | null) =>
-  formatInstant(value, displayClock()) ?? t`Time unavailable`;
-
 const unavailableInScope = (error: unknown) =>
   isAxiosError(error) && [401, 403, 404].includes(error.response?.status ?? 0);
 
@@ -163,8 +160,18 @@ function CurrentMonitoring({
     }
   });
   const data = !summary.isError ? summary.data : undefined;
+  // Both reads concern this machine; only a successful occurrence read declares
+  // the configured plant zone. A failed refresh cannot supply it from cache.
+  const clock = displayClock(
+    occurrences.isSuccess ? occurrences.data.plant_timezone : null
+  );
+  const when = (value?: string | null) =>
+    formatInstant(value, clock) ?? t`Time unavailable`;
   return (
     <Stack gap='sm' data-testid='current-monitoring'>
+      <Text size='xs' className={operations.meta}>
+        {t`Times`}: {clock.label}
+      </Text>
       <Button
         variant='default'
         loading={summary.isFetching || occurrences.isFetching}

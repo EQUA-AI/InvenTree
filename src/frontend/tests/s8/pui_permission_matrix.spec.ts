@@ -35,8 +35,12 @@ function watchWrites(page: Page) {
   return writes;
 }
 
-async function noWriteControls(page: Page, names: RegExp) {
+async function noWriteControls(page: Page, names: RegExp, minimum = 0) {
   const controls = page.getByRole('button', { name: names });
+  expect(
+    await controls.count(),
+    'Expected permission controls to be present'
+  ).toBeGreaterThanOrEqual(minimum);
   for (const control of await controls.all()) {
     if (await control.isVisible()) await expect.soft(control).toBeDisabled();
   }
@@ -484,6 +488,22 @@ for (const pump of [false, true]) {
             }
           } else await expect(control).toHaveCount(0);
         }
+        if (grants.includes('change') && grants.includes('add')) {
+          // Position the authorized action cell in both scroll axes: scrolling
+          // only the last button can leave its neighbours clipped on a phone.
+          await alarm
+            .locator('td')
+            .last()
+            .evaluate((cell) =>
+              cell.scrollIntoView({ block: 'center', inline: 'center' })
+            );
+          for (const name of ['Acknowledge', 'Create repair', 'Dismiss'])
+            await expect(
+              alarm.getByRole('button', {
+                name: new RegExp(`^${name}\\b`)
+              })
+            ).toBeInViewport({ ratio: 1 });
+        }
       }
       await expectNoPageOverflow(page);
       await alarm.screenshot({
@@ -568,10 +588,12 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(
       page.getByRole('heading', { name: 'Signals', exact: true })
     ).toBeVisible();
-    await noWriteControls(
-      page,
-      /^(Analyze|Acknowledge|Dismiss|Create repair|Start repair)$/
-    );
+    await expect(page.getByText(/^View only:/)).toBeVisible();
+    await expect(
+      page.getByRole('button', {
+        name: /^(Analyze|Acknowledge|Dismiss|Create repair|Start repair)\b/
+      })
+    ).toHaveCount(0);
     await expectNoPageOverflow(page);
     await capturePanel(page, info.outputPath(`viewer-health-${scheme}.png`));
     expect(writes).toEqual([]);
@@ -669,7 +691,11 @@ for (const scheme of ['light', 'dark'] as const) {
     );
     await viewerEntry(page, '/machines/machine/18/parts/', scheme, 'machine');
     const row = page.getByRole('row').filter({ hasText: 'PS-MOTOR:1' });
+    await expect(row.getByText('Draft', { exact: true })).toBeVisible();
     await expect(row).toContainText('Slot assignment not verified');
+    await expect(row).toContainText(
+      'P32 synthetic inferred assignment; fit unverified.'
+    );
     await expect(row).toContainText('Not available');
     await expect(row.getByRole('link')).toHaveCount(0);
     await expect(
@@ -845,10 +871,11 @@ for (const status of [403, 404]) {
     await expect(
       page.getByText('No active anomalies.', { exact: true })
     ).toHaveCount(0);
-    await noWriteControls(
-      page,
-      /^(Analyze|Acknowledge|Dismiss|Create repair|Start repair)$/
-    );
+    await expect(
+      page.getByRole('button', {
+        name: /^(Analyze|Acknowledge|Dismiss|Create repair|Start repair)\b/
+      })
+    ).toHaveCount(0);
     await capturePanel(page, info.outputPath(`health-refused-${status}.png`));
     expect(writes).toEqual([]);
   });
@@ -875,10 +902,11 @@ for (const status of [403, 404]) {
     await expect(
       page.getByText('No active anomalies.', { exact: true })
     ).toHaveCount(0);
-    await noWriteControls(
-      page,
-      /^(Analyze|Acknowledge|Dismiss|Create repair|Start repair)$/
-    );
+    await expect(
+      page.getByRole('button', {
+        name: /^(Analyze|Acknowledge|Dismiss|Create repair|Start repair)\b/
+      })
+    ).toHaveCount(0);
     await expectNoPageOverflow(page);
     await capturePanel(
       page,

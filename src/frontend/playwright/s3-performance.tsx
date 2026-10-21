@@ -1,15 +1,31 @@
+// Activate Lingui before native shell modules evaluate.
 import './aichat-drawer-lingui';
+
+import LayoutComponent from '../src/components/nav/Layout';
+import MachineDetail from '../src/pages/assets/MachineDetail';
+
+import { FixtureTheme, prepareFixtureTheme } from './FixtureTheme';
 
 import { i18n } from '@lingui/core';
 import { I18nProvider } from '@lingui/react';
-import { Button, Group, MantineProvider, Stack, Text } from '@mantine/core';
+import { Button, Group, Stack, Text } from '@mantine/core';
 import '@mantine/core/styles.css';
 import '@mantine/charts/styles.css';
 import '@mantine/dates/styles.css';
+import '@mantine/notifications/styles.css';
+import '@mantine/spotlight/styles.css';
+import 'mantine-contextmenu/styles.css';
+import 'mantine-datatable/styles.css';
 import { QueryClient, useIsFetching } from '@tanstack/react-query';
 import axios from 'axios';
 import { createRoot } from 'react-dom/client';
-import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate
+} from 'react-router-dom';
 
 import { ApiProvider } from '../src/contexts/ApiContext';
 import { PerformancePanel } from '../src/pages/assets/performance/PerformancePanel';
@@ -23,6 +39,7 @@ import { useUserState } from '../src/states/UserState';
  * navigation; they are not product chrome.
  */
 const params = new URLSearchParams(window.location.search);
+if (params.get('nativeTheme') === 'true') prepareFixtureTheme(params);
 const pk = Number(params.get('machine') ?? 18);
 const asset = params.get('asset') ?? 'pump';
 const entry = params.get('entry') ?? `/machines/machine/${pk}/performance`;
@@ -56,34 +73,44 @@ function Harness() {
   return (
     <Stack p='md' gap='sm'>
       <Text>S3 synthetic fixture — native Performance</Text>
-      <Text
-        data-testid='destination'
-        size='xs'
-        style={{ overflowWrap: 'anywhere' }}
-      >
-        {location.pathname + location.search}
-      </Text>
-      <Group gap='xs'>
-        <Button
+      <div hidden={params.get('compactChrome') === 'true'}>
+        <Text
+          data-testid='destination'
           size='xs'
-          variant='default'
-          onClick={() => navigate(`/machines/machine/${pk}/health`)}
+          style={{ overflowWrap: 'anywhere' }}
         >
-          Fixture leave Performance
-        </Button>
-        <Button size='xs' variant='default' onClick={() => navigate(-1)}>
-          Fixture back
-        </Button>
-        <QueryState />
-      </Group>
-      {onPerformance && (
-        <PerformancePanel
-          machine={{
-            pk,
-            name: params.get('name') ?? 'Synthetic machine',
-            asset_type: asset
-          }}
-        />
+          {location.pathname + location.search}
+        </Text>
+        <Group gap='xs'>
+          <Button
+            size='xs'
+            variant='default'
+            onClick={() => navigate(`/machines/machine/${pk}/health`)}
+          >
+            Fixture leave Performance
+          </Button>
+          <Button size='xs' variant='default' onClick={() => navigate(-1)}>
+            Fixture back
+          </Button>
+          <QueryState />
+        </Group>
+      </div>
+      {params.get('nativeTheme') === 'true' ? (
+        <Routes>
+          <Route element={<LayoutComponent />}>
+            <Route path='/machines/machine/:id/*' element={<MachineDetail />} />
+          </Route>
+        </Routes>
+      ) : (
+        onPerformance && (
+          <PerformancePanel
+            machine={{
+              pk,
+              name: params.get('name') ?? 'Synthetic machine',
+              asset_type: asset
+            }}
+          />
+        )
       )}
     </Stack>
   );
@@ -91,8 +118,9 @@ function Harness() {
 
 createRoot(document.getElementById('root')!).render(
   <I18nProvider i18n={i18n}>
-    <MantineProvider
-      forceColorScheme={params.get('scheme') === 'dark' ? 'dark' : 'light'}
+    <FixtureTheme
+      nativeTheme={params.get('nativeTheme') === 'true'}
+      fallbackUserTheme={false}
     >
       <ApiProvider api={axios.create()} client={client}>
         <MemoryRouter
@@ -102,6 +130,6 @@ createRoot(document.getElementById('root')!).render(
           <Harness />
         </MemoryRouter>
       </ApiProvider>
-    </MantineProvider>
+    </FixtureTheme>
   </I18nProvider>
 );

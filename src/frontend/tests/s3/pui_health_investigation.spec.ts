@@ -67,7 +67,7 @@ for (const scheme of ['light', 'dark'] as const) {
       new Date(NOW).toISOString()
     );
     await expect(
-      signalTable(page).getByRole('cell', { name: '812.5 m3/h', exact: true })
+      signalTable(page).getByRole('cell', { name: '812.5 cusec', exact: true })
     ).toBeVisible();
     const card = trendCard(page);
     expect(
@@ -79,10 +79,13 @@ for (const scheme of ['light', 'dark'] as const) {
       )
     ).toBe(true);
     await expect(card).toContainText(
-      'They are not the selected historical range'
+      'Current values and recent row trends differ from selected history'
     );
-    await expect(card).toContainText('Measured interval: 5 s');
-    await expect(card).toContainText('Sample ceiling: 4320');
+    await card
+      .getByRole('button', { name: 'Show read details', exact: true })
+      .click();
+    await expect(card.getByText(/Measured interval: 5 s/)).toBeVisible();
+    await expect(card).toContainText('Most samples per read: 4320');
     await expect(card).toContainText('Fast transients may be absent');
     await expect(card).toContainText('Gaps longer than 15 seconds');
     const retained = card.getByTestId('linked-evidence');
@@ -116,7 +119,7 @@ for (const scheme of ['light', 'dark'] as const) {
       .click();
     const dialog = page.getByRole('dialog', { name: 'Expanded signal trend' });
     await expect(dialog.getByText(/^Selected window:/)).toContainText(
-      'Oct 17, 2026'
+      '17 Oct 2026'
     );
     await expect(dialog.locator('.recharts-area-curve')).toHaveAttribute(
       'stroke',
@@ -831,7 +834,7 @@ test('late history cannot replace a newer binding and loading is explicit', asyn
     .toBe(true);
   await card.getByRole('combobox', { name: 'Parameter' }).click();
   await page
-    .getByRole('option', { name: 'Bypass flow (m3/h)', exact: true })
+    .getByRole('option', { name: 'Bypass flow (m³/h)', exact: true })
     .click();
   await expect(card).toContainText('Source window returned');
   await expect(card.getByText('7 samples', { exact: true })).toBeVisible();
@@ -851,7 +854,7 @@ test('late history cannot replace a newer binding and loading is explicit', asyn
       )
   );
   await expect(card.getByRole('combobox', { name: 'Parameter' })).toHaveValue(
-    'Bypass flow (m3/h)'
+    'Bypass flow (m³/h)'
   );
   await expect(card.getByText('7 samples', { exact: true })).toBeVisible();
   await expect(card).toContainText('Binding 202 historian');

@@ -1,5 +1,23 @@
 import { t } from '@lingui/core/macro';
 import dayjs from 'dayjs';
+import { displayInstant } from '../displayClock';
+
+/** Lossless typography only: no unit conversion or inferred dimension. */
+export function unitLabel(code: string | null | undefined): string {
+  if (!code?.trim()) return t`unit not recorded`;
+  return (
+    (
+      {
+        degC: '°C',
+        degF: '°F',
+        'm3/h': 'm³/h',
+        mH2O: 'mH₂O',
+        percent: '%',
+        'm3/s': 'm³/s'
+      } as Record<string, string>
+    )[code] ?? code
+  );
+}
 
 /**
  * Formatting for the Performance tab. Numbers keep the precision the catalogue
@@ -71,7 +89,7 @@ export function formatAt(
     minimumFractionDigits: 0,
     maximumFractionDigits: decimals
   });
-  return unit ? `${text} ${unit}` : text;
+  return unit ? `${text} ${unitLabel(unit)}` : text;
 }
 
 /**
@@ -117,7 +135,7 @@ export function formatInstant(ms: number | null | undefined): string {
   if (ms === null || ms === undefined) {
     return '—';
   }
-  return dayjs(ms).format('D MMM YYYY HH:mm:ss');
+  return displayInstant(ms, { offsetIfDiffers: true }) ?? t`Time unavailable`;
 }
 
 export function formatClock(ms: number | null | undefined): string {

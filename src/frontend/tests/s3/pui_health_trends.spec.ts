@@ -94,7 +94,7 @@ test('the full chart keeps the silence open on a proportional time axis', async 
   page
 }, testInfo) => {
   for (const scheme of ['light', 'dark'] as const) {
-    await openHealth(page, { scheme });
+    await openHealth(page, { scheme, nativeTheme: true, compactChrome: true });
     const card = trendCard(page);
     await expect(curve(page)).toHaveCount(1);
     await expect(card.getByText('98 samples')).toBeVisible();
@@ -129,8 +129,28 @@ test('the full chart keeps the silence open on a proportional time axis', async 
     await expect(gaps).toContainText('Readings that are not numbers: 1 of 98.');
     await expect(gaps).toContainText('Nothing is filled in');
     await expect(card).toContainText(
-      'Selected window: Oct 18, 2026, 08:50:00 AM to Oct 18, 2026, 09:00:00 AM (UTC).'
+      'Selected window: 18 Oct 2026 08:50:00 to 18 Oct 2026 09:00:00.'
     );
+    await card
+      .getByRole('button', { name: 'Expand chart', exact: true })
+      .click();
+    const expanded = page.getByRole('dialog', {
+      name: 'Expanded signal trend',
+      exact: true
+    });
+    await expect(expanded.getByText(/Selected window:/)).toContainText(
+      'Times: your clock (UTC, UTC+00:00)'
+    );
+    await expanded.getByText(/Selected window:/).scrollIntoViewIfNeeded();
+    await expect(expanded.getByText(/Selected window:/)).toBeInViewport({
+      ratio: 1
+    });
+    await expanded.screenshot({
+      path: testInfo.outputPath(`expanded-clock-${scheme}.png`)
+    });
+    await expanded
+      .getByRole('button', { name: 'Close expanded signal trend', exact: true })
+      .click();
     // The controls stay inside the card at every width.
     const cardBox = (await card.boundingBox())!;
     const parameterBox = (await card
@@ -161,15 +181,15 @@ test('recorded zero, empty read, no source history and a missing row stay distin
   const row = (name: string) =>
     table.getByRole('row').filter({ hasText: name });
   await expect(row('Seal flush flow')).toContainText('No samples');
-  await expect(row('Cooling water flow')).toContainText('No trend');
+  await expect(row('Cooling water flow')).toContainText('History unavailable');
   await expect(row('Winding temperature')).toContainText('Not returned');
 
-  await chooseParameter(page, 'Bypass flow (m3/h)');
+  await chooseParameter(page, 'Bypass flow (m³/h)');
   await expect(curve(page)).toHaveCount(1);
   await chooseParameter(page, 'Seal flush flow (l/min)');
   await expect(trendCard(page)).toContainText('No samples in this window');
   await expect(trendCard(page)).toContainText('and from a recorded zero');
-  await chooseParameter(page, 'Cooling water flow (m3/h)');
+  await chooseParameter(page, 'Cooling water flow (m³/h)');
   await expect(trendCard(page)).toContainText('No history for this signal');
   await expect(trendCard(page)).toContainText('no configured connector');
   await table.screenshot({
@@ -208,7 +228,11 @@ test('source outages, timeouts, unsupported history and missing batch rows have 
   for (const [index, reason] of reasons.entries()) {
     const row = table.getByRole('row').filter({ hasText: reason });
     const label =
-      index < 2 ? 'Read failed' : index === 2 ? 'No history' : 'No trend';
+      index < 2
+        ? 'Read failed'
+        : index === 2
+          ? 'No history'
+          : 'History unavailable';
     const status = row.getByRole('button', { name: new RegExp(`^${label}:`) });
     await expect(status).toBeVisible();
     await row
@@ -221,7 +245,7 @@ test('source outages, timeouts, unsupported history and missing batch rows have 
     await expect(
       page.locator(`[role="tooltip"][id="${reasonId}"]`)
     ).toBeVisible();
-    await chooseParameter(page, `${reason} (m3/h)`);
+    await chooseParameter(page, `${reason} (cusec)`);
     await expect(trendCard(page)).toContainText(
       index < 2 ? 'Could not read the source' : 'No history for this signal'
     );
@@ -262,7 +286,7 @@ test('invalid readings stay distinct from a sparse record with truthful drawable
   await expect(trendCard(page)).toContainText('No drawable readings');
   await expect(curve(page)).toHaveCount(0);
   await expect(trendCard(page)).not.toContainText('Each is drawn as a break');
-  await chooseParameter(page, 'One drawable (m3/h)');
+  await chooseParameter(page, 'One drawable (m³/h)');
   await expect(trendCard(page)).toContainText('Only one drawable reading');
   await expect(trendCard(page)).toContainText('1 of 121 readings can be drawn');
   await expect(trendCard(page)).not.toContainText('Each is drawn as a break');
@@ -334,11 +358,13 @@ test('a failed read says it failed, in the rows and in the chart', async ({
   await expect(
     signalTable(page).getByText('Read failed', { exact: true })
   ).toHaveCount(drawable);
-  await expect(signalTable(page).getByText('No trend')).toHaveCount(0);
+  await expect(signalTable(page).getByText('No samples in window')).toHaveCount(
+    0
+  );
   await expect(trendCard(page)).toContainText('Could not load the trend');
   // Current readings are kept beside the failure.
   await expect(
-    signalTable(page).getByRole('cell', { name: '0 m3/h', exact: true })
+    signalTable(page).getByRole('cell', { name: '0 m³/h', exact: true })
   ).toBeVisible();
 });
 
@@ -350,9 +376,19 @@ test('a raw unitless vibration channel keeps its own units', async ({
   await expect(curve(page)).toHaveCount(1);
   await expect(page.getByText(/mm\/s/)).toHaveCount(0);
   await expect(
-    signalTable(page).getByRole('cell', { name: '1834', exact: true })
+    signalTable(page).getByRole('cell', {
+      name: '1834 unit not recorded',
+      exact: true
+    })
   ).toBeVisible();
-  await expect(trendCard(page).locator('.recharts-label')).toHaveCount(0);
+  const axisUnit = trendCard(page).getByText('unit not recorded', {
+    exact: true
+  });
+  await expect(axisUnit).toHaveCount(1);
+  await expect(axisUnit).toBeVisible();
+  await expect(
+    trendCard(page).locator('.recharts-cartesian-axis-tick-value')
+  ).not.toContainText(['unit not recorded']);
 });
 
 test('a server that states no cadence breaks only at unreadable readings, and says so', async ({

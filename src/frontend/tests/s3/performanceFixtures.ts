@@ -1,4 +1,6 @@
 import { type Page, type Route, expect } from '@playwright/test';
+import { mockMachine } from '../s0/machineFixtures';
+import { mockTheme } from './themeFixtures';
 
 import {
   MACHINE,
@@ -31,10 +33,13 @@ export const NATIVE_SIGNALS: readonly SignalSpec[] = [
  * Health reads the panel makes are answered; anything else fails the guard.
  */
 type PerformanceOptions = {
+  now?: number;
   /** Await the actual initial history response for non-loading scenarios. */
   settleInitialRead?: boolean;
   signals?: readonly SignalSpec[];
   scheme?: 'light' | 'dark';
+  nativeTheme?: boolean;
+  compactChrome?: boolean;
   /** The S3 harness: a router whose location the tests can read. */
   harness?: 's0' | 's3';
   /** Extra query parameters for the S3 harness page. */
@@ -123,6 +128,14 @@ export async function openPerformance(
   page: Page,
   options: PerformanceOptions = {}
 ) {
+  await page.clock.setFixedTime(new Date(options.now ?? NOW));
+  await mockTheme(page);
+  if (options.nativeTheme)
+    await mockMachine(page, {
+      sourceKey: 'P1',
+      parent: 17,
+      parentName: 'Synthetic station'
+    });
   const requests = await mockPerformance(page, options);
   const initialRead = options.settleInitialRead
     ? page
@@ -140,13 +153,17 @@ export async function openPerformance(
       asset: 'pump',
       name: 'Synthetic pump',
       scheme: options.scheme ?? 'light',
+      nativeTheme: String(options.nativeTheme ?? false),
+      compactChrome: String(options.compactChrome ?? false),
       ...options.harnessParams
     });
     await page.goto(`/playwright/s3-performance.html?${query}`);
   } else {
     const query = new URLSearchParams({
       surface: 'performance',
-      scheme: options.scheme ?? 'light'
+      scheme: options.scheme ?? 'light',
+      nativeTheme: String(options.nativeTheme ?? false),
+      compactChrome: String(options.compactChrome ?? false)
     });
     await page.goto(`/playwright/s0-native.html?${query}`);
   }
@@ -157,7 +174,11 @@ export async function openPerformance(
       timeout: 60000
     });
   }
-  await expect(page.getByText('Anything unusual?')).toBeVisible();
+  await expect(page.getByText('Exceptions', { exact: true })).toBeVisible();
+  if (!options.nativeTheme) {
+    const nav = page.getByRole('button', { name: /^Channels ·/ });
+    if (await nav.isVisible()) await nav.click();
+  }
   return requests;
 }
 

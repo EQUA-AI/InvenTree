@@ -50,7 +50,7 @@ for (const scheme of ['light', 'dark'] as const)
     expect(requests[0].searchParams.get('from')).toBe(from);
     expect(requests[0].searchParams.get('to')).toBe(to);
     await expect(page.getByTestId('history-provenance')).toContainText(
-      'They are not the selected range'
+      'not the selected range'
     );
     await expect(page.getByTestId('history-provenance')).toContainText('24 h');
     await expect(page.getByTestId('history-provenance')).not.toContainText(
@@ -149,7 +149,10 @@ test('partial bindings failure names affected charts, comparison and Other cover
   await expect(page.getByTestId('history-provenance')).toContainText(
     '1 of 2 bounded batches failed'
   );
-  await page.getByRole('button', { name: 'Show all', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Section', exact: true }).click();
+  await page
+    .getByRole('option', { name: 'Full overview', exact: true })
+    .click();
   await expect(page.locator('[data-section="Electrical"]')).toContainText(
     'History read failed for'
   );
@@ -165,7 +168,7 @@ test('partial bindings failure names affected charts, comparison and Other cover
     })
   ).toBeVisible();
   await page
-    .getByRole('button', { name: 'Comparisons and display views', exact: true })
+    .getByRole('button', { name: 'Comparisons and saved views', exact: true })
     .click();
   await page
     .getByRole('combobox', { name: 'Comparison channels', exact: true })
@@ -284,9 +287,7 @@ for (const scheme of ['light', 'dark'] as const)
     await slices
       .getByRole('button', { name: 'Read this slice', exact: true })
       .click();
-    await expect(
-      page.getByText('Anything unusual?', { exact: true })
-    ).toBeVisible();
+    await expect(page.getByText('Exceptions', { exact: true })).toBeVisible();
     await expect.poll(() => history.length).toBe(2);
     expect(history[1].searchParams.get('from')).toBe(
       '2026-10-02T00:00:00.000Z'

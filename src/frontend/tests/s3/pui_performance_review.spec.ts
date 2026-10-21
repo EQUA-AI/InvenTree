@@ -34,7 +34,7 @@ test('P11-1 an uncompared critical sensor keeps the family tile critical', async
   });
   const tile = page.locator('[data-kpi="winding"]');
   await expect(tile.getByText('Critical', { exact: true })).toBeVisible();
-  await expect(tile).toContainText('Winding 4 (degF) critical, not compared');
+  await expect(tile).toContainText('Winding 4 (°F) critical, not compared');
   await expect(tile).toContainText('Highest of 3');
   await expect(tile).not.toContainText('no limit configured');
   await tile.screenshot({
@@ -121,7 +121,7 @@ for (const scheme of ['light', 'dark'] as const)
     });
     const row = page.locator('tbody tr').filter({ hasText: 'Pump 2' });
     await expect(row).toContainText(
-      /Station mimic read at .*26 Sep.*15:00.*not an observation time.*not from this window/
+      /Station mimic read at .*18 Oct.*12:00.*not an observation time.*not from this window/
     );
     await expect(row).not.toContainText('Current, not from this window');
     await row.screenshot({
@@ -162,14 +162,14 @@ test('P11-7 delta pairs with different units have separate axes', async ({
   });
   const section = page.locator('[data-section="Cooling and thermal"]');
   await expect(
-    section.getByText(/Drawn apart: temperature rises in degC, degF/)
+    section.getByText(/Drawn apart: temperature rises in °C, °F/)
   ).toBeVisible();
   await expect(
     section.locator('[data-difference-unit="degC"] [data-axis-title="left"]')
-  ).toHaveText('degC');
+  ).toHaveText('°C');
   await expect(
     section.locator('[data-difference-unit="degF"] [data-axis-title="left"]')
-  ).toHaveText('degF');
+  ).toHaveText('°F');
 });
 test('P11-8 failed pump read cannot show green Live', async ({ page }) => {
   await openPerformance(page, { harness: 's3', failSeries: () => true });

@@ -86,34 +86,28 @@ for (const scheme of ['light', 'dark'] as const) {
       ]
     });
     await expect(
-      page.getByText('5 mapped · 3 usable now · 3 evaluated now', {
-        exact: true
-      })
+      page.getByText(
+        'Assessed on 3 of 5 signals · critical coverage unavailable',
+        {
+          exact: true
+        }
+      )
     ).toBeVisible();
     await expect(
       page.getByText('Critical coverage unavailable', { exact: true })
     ).toBeVisible();
     const table = signalTable(page);
-    await expect(table.getByRole('columnheader')).toHaveCount(10);
+    await expect(table.getByRole('columnheader')).toHaveCount(7);
     expect(await table.locator('th').allTextContents()).toEqual([
       'Signal',
       'Value',
       'State',
-      'Trend',
+      'Limits',
       'Observed',
-      'Current condition',
-      'Active anomalies',
       'Quality',
-      'Source',
-      'Limits'
+      'Trend'
     ]);
-    for (const state of [
-      'Normal',
-      'Warning',
-      'Critical',
-      'Offline',
-      'Unknown'
-    ]) {
+    for (const state of ['Normal', 'Warning', 'Critical', 'Unknown']) {
       const row = table
         .getByRole('row')
         .filter({ hasText: `Signal ${state.toLowerCase()}` });
@@ -136,38 +130,41 @@ for (const scheme of ['light', 'dark'] as const) {
       name: 'Details for Signal normal',
       exact: true
     });
-    if (info.project.name.includes('phone')) {
-      await expect(details).toHaveAttribute('aria-expanded', 'false');
-      await expect(
-        normal.getByRole('cell', { name: /Warning below/ })
-      ).toHaveCount(0);
-      await details.click();
-      await expect(details).toHaveAttribute('aria-expanded', 'true');
-      await warning
-        .getByRole('button', {
-          name: 'Details for Signal warning',
-          exact: true
-        })
-        .click();
-    }
+    await expect(details).toHaveAttribute('aria-expanded', 'false');
     await expect(
-      warning.getByRole('link', { name: 'Open owning work 818' })
+      normal.getByRole('cell', { name: /Warning below/ })
+    ).toBeVisible();
+    await details.click();
+    await expect(details).toHaveAttribute('aria-expanded', 'true');
+    await warning
+      .getByRole('button', {
+        name: 'Details for Signal warning',
+        exact: true
+      })
+      .click();
+    await expect(
+      warning
+        .locator('xpath=following-sibling::tr[1]')
+        .getByRole('link', { name: 'Open owning work 818' })
     ).toHaveAttribute('href', '/maintenance/work-orders/818/');
-    await expect(warning).toContainText('1 active anomaly cites this signal');
-    await expect(normal).toContainText(
+    await expect(
+      warning.locator('xpath=following-sibling::tr[1]')
+    ).toContainText('1 active anomaly cites this signal');
+    await expect(
+      normal.locator('xpath=following-sibling::tr[1]')
+    ).toContainText(
       '1 active machine anomaly does not name its signals; this signal may be affected.'
     );
     await expect(
       normal.getByRole('cell', {
-        name: 'Warning below 600 m3/h · Critical below 400 m3/h',
-        exact: true
+        name: /Warning below 600 cusec · Critical below 400 cusec/
       })
     ).toBeVisible();
-    await expect(normal.getByRole('cell').nth(3).getByRole('img')).toHaveCount(
+    await expect(normal.getByRole('cell').nth(6).getByRole('img')).toHaveCount(
       1
     );
     await expect(
-      normal.getByRole('cell', { name: '812.5 m3/h', exact: true })
+      normal.getByRole('cell', { name: '812.5 cusec', exact: true })
     ).toBeVisible();
     if (info.project.name.includes('phone')) {
       await normal.screenshot({
@@ -198,13 +195,15 @@ for (const scheme of ['light', 'dark'] as const) {
       ).toBeVisible();
       await expect(
         table.getByRole('button', { name: /^Details for/ })
-      ).toHaveCount(0);
+      ).toHaveCount(5);
       await expect(
         normal.getByRole('cell', { name: /Warning below/ })
       ).toBeVisible();
-      const sourceType = normal.locator(
-        '#signal-201-source .mantine-Badge-label'
-      );
+      await details.click();
+      const sourceType = normal
+        .locator('xpath=following-sibling::tr[1]')
+        .locator('.mantine-Badge-label')
+        .first();
       const sourceLabelSize = await sourceType.evaluate((el) => ({
         scroll: el.scrollWidth,
         client: el.clientWidth
@@ -266,7 +265,7 @@ for (const scheme of ['light', 'dark'] as const) {
     });
     await expect(evidence.getByRole('heading')).toBeFocused();
     await expect(evidence).toContainText(
-      'Warning below 600 m3/h · Critical below 400 m3/h'
+      'Warning below 600 cusec · Critical below 400 cusec'
     );
     await expect(evidence).toContainText(
       '1 active machine anomaly does not name its signals; this signal may be affected.'
@@ -277,13 +276,9 @@ for (const scheme of ['light', 'dark'] as const) {
     await evidence
       .getByRole('button', { name: 'Close signal evidence' })
       .click();
-    await page
-      .locator('.mantine-Paper-root')
-      .filter({
-        has: page.getByText('Observation and coverage', { exact: true })
-      })
-      .last()
-      .screenshot({ path: info.outputPath(`coverage-${scheme}.png`) });
+    await page.getByTestId('health-summary').screenshot({
+      path: info.outputPath(`coverage-${scheme}.png`)
+    });
     expect(requests.batch).toHaveLength(1);
     expect(requests.chart).toHaveLength(1);
   });
@@ -317,7 +312,7 @@ test('filter keeps component scope and selected chart instead of silently select
   ).toBeVisible();
   await expect(
     trendCard(page).getByRole('combobox', { name: 'Parameter' })
-  ).toHaveValue('Discharge flow (m3/h)');
+  ).toHaveValue('Discharge flow (cusec)');
   await page
     .getByRole('textbox', { name: 'Search signals' })
     .fill('unmapped-name');
@@ -343,7 +338,19 @@ test('retained exact entry preserves fault evidence beside a normal current asse
   });
   await expect(retained).toContainText('Retained; not current');
   await expect(retained).toContainText('2025');
-  await expect(retained).toContainText('380 m3/h');
+  await expect(retained).toContainText('380 m³/h');
+  const retainedScroll = retained.getByRole('region', {
+    name: 'Retained observations; scroll for all columns',
+    exact: true
+  });
+  await expect(retainedScroll).toHaveAttribute('tabindex', '0');
+  if (info.project.name.includes('phone')) {
+    await retainedScroll.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect
+      .poll(() => retainedScroll.evaluate((el) => el.scrollLeft))
+      .toBeGreaterThan(0);
+  }
   await expect(retained).toContainText('Original source');
   await expect(retained).toContainText(snapshot.content_hash);
   await expect(retained).toContainText('System actor: detector');
@@ -353,14 +360,14 @@ test('retained exact entry preserves fault evidence beside a normal current asse
   });
   await expect(
     signalTable(page).getByRole('row').filter({ hasText: 'Discharge flow' })
-  ).toContainText('812.5 m3/h');
+  ).toContainText('812.5 cusec');
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-  await expect(retained).toContainText('380 m3/h');
+  await expect(retained).toContainText('380 m³/h');
   await retained
     .getByRole('button', { name: 'Return to current observations' })
     .click();
   await expect(page.getByTestId('destination')).not.toContainText('snapshot=');
-  await expect(retained).not.toContainText('380 m3/h');
+  await expect(retained).not.toContainText('380 m³/h');
   await retained
     .getByRole('button', { name: 'Browse retained evidence' })
     .click();
@@ -370,7 +377,7 @@ test('retained exact entry preserves fault evidence beside a normal current asse
   await expect(page.getByTestId('destination')).toContainText(
     `snapshot=${snapshot.id}`
   );
-  await expect(retained).toContainText('380 m3/h');
+  await expect(retained).toContainText('380 m³/h');
 });
 
 test('missing retained citation and failed current reads never become empty healthy success', async ({
@@ -415,9 +422,7 @@ for (const scheme of ['light', 'dark'] as const) {
       })),
       summary: { state: 'unknown' }
     });
-    const condition = page
-      .getByText('Condition', { exact: true })
-      .locator('..');
+    const condition = page.getByTestId('health-summary');
     await expect(
       condition
         .locator('.mantine-Badge-label')
@@ -429,9 +434,12 @@ for (const scheme of ['light', 'dark'] as const) {
         .getByText('Normal', { exact: true })
     ).toHaveCount(0);
     await expect(
-      page.getByText('6 mapped · 6 usable now · 0 evaluated now', {
-        exact: true
-      })
+      page.getByText(
+        'Assessed on 0 of 6 signals · critical coverage unavailable',
+        {
+          exact: true
+        }
+      )
     ).toBeVisible();
     await expect(
       signalTable(page).getByText('Not assessed: limits not configured', {
@@ -475,9 +483,17 @@ for (const newest of ['future', 'expired', 'current'] as const) {
     const observation = page
       .getByText('Last observation', { exact: true })
       .locator('..');
-    await expect(observation.getByText('Stale', { exact: true })).toHaveCount(
+    await expect(observation.locator('[data-tone="stale"]')).toHaveCount(
       newest === 'current' ? 0 : 1
     );
+    if (newest === 'future')
+      await expect(observation).toContainText(
+        'Stale (server flag) · 180 min ahead of your clock · freshness budget 300 s'
+      );
+    if (newest === 'expired')
+      await expect(observation).toContainText(
+        'Stale · 20 s old · freshness budget 10 s'
+      );
     await observation.screenshot({
       path: info.outputPath(`newest-${newest}.png`)
     });
@@ -521,7 +537,12 @@ test('retained recorder uses the human name and states missing provenance', asyn
 test('preliminary analysis citation opens its exact retained incident', async ({
   page
 }, info) => {
-  await openHealth(page, { anomalies: [anomaly()], snapshots: [snapshot] });
+  await openHealth(page, {
+    anomalies: [anomaly()],
+    snapshots: [snapshot],
+    nativeTheme: true,
+    compactChrome: true
+  });
   const results: PreliminaryResults = {
     status: 'available',
     authority: 'derived',
@@ -549,7 +570,7 @@ test('preliminary analysis citation opens its exact retained incident', async ({
     quality: { summary: 'good', bad_signal_count: 0 },
     provider: 'fixture',
     model_or_rule_version: 'fixture',
-    generated_at: null,
+    generated_at: '2026-10-18T09:01:02Z',
     verified_by_user: false,
     verified_at: null,
     amendments: [],
@@ -559,7 +580,18 @@ test('preliminary analysis citation opens its exact retained incident', async ({
     '**/api/machine-health/machines/18/health/anomalies/44/preliminary-analysis/',
     (route) => route.fulfill({ json: { preliminary_results: results } })
   );
-  await page.getByRole('button', { name: 'Analyze', exact: true }).click();
+  await page
+    .getByRole('button', {
+      name: 'Analyze Discharge flow below warning limit',
+      exact: true
+    })
+    .click();
+  await expect(
+    page.getByText('Generated 18 Oct 2026 09:01:02 by fixture', { exact: true })
+  ).toBeVisible();
+  await page
+    .getByText('Generated 18 Oct 2026 09:01:02 by fixture', { exact: true })
+    .screenshot({ path: info.outputPath('preliminary-generated-instant.png') });
   const citation = page.getByRole('link', {
     name: 'Snapshot 9ae91736',
     exact: true
@@ -574,7 +606,7 @@ test('preliminary analysis citation opens its exact retained incident', async ({
     exact: true
   });
   await expect(retained).toContainText(snapshot.content_hash);
-  await expect(retained).toContainText('380 m3/h');
+  await expect(retained).toContainText('380 m³/h');
   await retained.screenshot({
     path: info.outputPath('diagnosis-exact-citation.png')
   });
@@ -608,9 +640,7 @@ for (const scheme of ['light', 'dark'] as const) {
       summary: { state: 'normal' }
     });
     await expect(
-      page.getByText('2 designated · 1 usable now · 1 evaluated now', {
-        exact: true
-      })
+      page.getByText(/critical coverage incomplete: 1 of 2/)
     ).toBeVisible();
     await expect(
       page.getByText(/Unassessed or missing evidence remains unknown/)
@@ -631,7 +661,7 @@ for (const scheme of ['light', 'dark'] as const) {
         (node) => node.scrollWidth <= node.clientWidth + 1
       )
     ).toBe(true);
-    const connected = sourceTable.getByText('Connected', { exact: true });
+    const connected = sourceTable.getByText(/^Succeeded /);
     await expect(connected).toBeVisible();
     expect(
       await connected.evaluate(
@@ -695,9 +725,7 @@ for (const scheme of ['light', 'dark'] as const) {
       ]
     });
     await expect(
-      page.getByText('2 designated · 0 usable now · 0 evaluated now', {
-        exact: true
-      })
+      page.getByText(/critical coverage incomplete: 0 of 2/)
     ).toBeVisible();
     await expect(
       page.getByText('Critical coverage incomplete', { exact: true })

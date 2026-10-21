@@ -2,6 +2,7 @@ import { type Locator, expect, test } from '@playwright/test';
 type RGB = [number, number, number, number];
 const rgba = (value: string): RGB => {
   const c = value.match(/[\d.]+/g)!.map(Number);
+  if (value.startsWith('color(srgb ')) for (let i = 0; i < 3; i++) c[i] *= 255;
   return [c[0], c[1], c[2], c[3] ?? 1];
 };
 const over = (front: RGB, back: RGB): RGB => [

@@ -1,23 +1,28 @@
 import { t } from '@lingui/core/macro';
 import {
-  Anchor,
   Button,
   Group,
   SegmentedControl,
   Stack,
   Table,
   Text,
-  TextInput
+  TextInput,
+  useComputedColorScheme,
+  useMantineTheme
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import dayjs from 'dayjs';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { displayInstant } from '../displayClock';
+import monitoring from '../monitoring.module.css';
+import { MetaText, MonitoringLink } from './common';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import type { MachineAnomaly } from '@lib/types/MachineHealth';
 import { useApi } from '../../../contexts/ApiContext';
+import { AnomalyTimeShift } from './AnomalyTimeShift';
+import { StatusBadge, alarmStateVisual } from './StatusBadge';
 import { SeverityBadge } from './common';
 
 /** How many past alarms are shown before the rest are asked for. */
@@ -26,7 +31,7 @@ const FIRST_PAGE = 10;
 type Dismissal = { by?: string; note?: string };
 
 function when(value: string | null): string {
-  return value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '—';
+  return displayInstant(value) ?? t`Time unavailable`;
 }
 
 /** Everything about an alarm a reader might search the history for. */
@@ -56,13 +61,15 @@ function haystack(alarm: MachineAnomaly): string {
  * what became of it.
  *
  * Both times shown are when the condition was observed, first and last, and
- * both are on the same clock - the one the rest of the page shows. When the
+ * any display offset is identified on that row. When the
  * detector wrote the row closed is a fact about this server, on another
  * clock, and putting it beside them made an alarm on replayed history look
  * as though it had ended before it began.
  */
 export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
   const api = useApi();
+  const theme = useMantineTheme();
+  const scheme = useComputedColorScheme('light');
   const [showAll, setShowAll] = useState(false);
   const [search, setSearch] = useState('');
   const [severity, setSeverity] = useState('all');
@@ -79,16 +86,14 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
 
   const alarms = query.data ?? [];
   if (query.isLoading) {
-    return <Text c='dimmed'>{t`Loading past alarms…`}</Text>;
+    return <MetaText>{t`Loading past alarms…`}</MetaText>;
   }
   if (query.isError)
     return (
-      <Text c='dimmed'>{t`Past alarms could not be read. Their absence is not established.`}</Text>
+      <MetaText>{t`Past alarms could not be read. Their absence is not established.`}</MetaText>
     );
   if (!alarms.length) {
-    return (
-      <Text c='dimmed'>{t`No past alarms recorded for this machine.`}</Text>
-    );
+    return <MetaText>{t`No past alarms recorded for this machine.`}</MetaText>;
   }
   const wanted = search.trim().toLowerCase();
   const matching = alarms.filter(
@@ -105,6 +110,7 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
     <Stack gap='xs'>
       <Group gap='sm'>
         <TextInput
+          classNames={{ input: monitoring.input }}
           size='xs'
           w={260}
           aria-label={t`Search past alarms`}
@@ -113,6 +119,9 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
           onChange={(event) => setSearch(event.currentTarget.value)}
         />
         <SegmentedControl
+          color={`${theme.primaryColor}.${scheme === 'dark' ? 4 : 7}`}
+          autoContrast
+          classNames={{ label: monitoring.segment }}
           size='xs'
           aria-label={t`Severity`}
           value={severity}
@@ -123,13 +132,22 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
             { value: 'warning', label: t`Warning` }
           ]}
         />
-        <Text size='xs' c='dimmed'>
+        <MetaText size='xs'>
           {count === total
             ? t`${total} alarms`
             : t`${count} of ${total} alarms`}
-        </Text>
+        </MetaText>
       </Group>
-      <Table.ScrollContainer minWidth={900}>
+      <Table.ScrollContainer
+        minWidth={900}
+        scrollAreaProps={{
+          viewportProps: {
+            tabIndex: 0,
+            role: 'region',
+            'aria-label': t`Past alarms; scroll for all columns`
+          }
+        }}
+      >
         <Table striped data-testid='alarm-history'>
           <Table.Thead>
             <Table.Tr>
@@ -138,7 +156,7 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
               <Table.Th>{t`First observed`}</Table.Th>
               <Table.Th>{t`Last observed`}</Table.Th>
               <Table.Th>{t`How it ended`}</Table.Th>
-              <Table.Th>{t`Seen by`}</Table.Th>
+              <Table.Th>{t`Acknowledgement`}</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -146,38 +164,55 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
               const dismissed = alarm.metrics?.dismissed as
                 | Dismissal
                 | undefined;
+              const visual = alarmStateVisual(alarm.status, alarm.severity);
               return (
                 <Table.Tr key={alarm.pk} data-anomaly={alarm.pk}>
                   <Table.Td>
                     <SeverityBadge severity={alarm.severity} />
                   </Table.Td>
                   <Table.Td>
+                    <StatusBadge
+                      tone='neutral'
+                      color={visual.color}
+                      variant={visual.variant}
+                      leftSection={visual.icon}
+                    >
+                      {visual.label}
+                    </StatusBadge>
                     <Text size='sm' fw={500}>
                       {alarm.title}
                     </Text>
                     {alarm.evidence_summary && (
-                      <Text size='xs' c='dimmed'>
-                        {alarm.evidence_summary}
-                      </Text>
+                      <MetaText size='xs'>{alarm.evidence_summary}</MetaText>
                     )}
                     {alarm.work_order && (
-                      <Anchor
+                      <MonitoringLink
                         component={Link}
                         to={`/maintenance/work-orders/${alarm.work_order}/`}
                         size='xs'
                       >
                         {t`Open the repair raised for it`}
-                      </Anchor>
+                      </MonitoringLink>
                     )}
                   </Table.Td>
                   <Table.Td style={{ whiteSpace: 'nowrap' }}>
                     {when(alarm.first_observed_at)}
+                    <AnomalyTimeShift
+                      anomaly={alarm}
+                      time={alarm.first_observed_at}
+                    />
                   </Table.Td>
                   <Table.Td style={{ whiteSpace: 'nowrap' }}>
                     {when(alarm.last_observed_at)}
+                    <AnomalyTimeShift
+                      anomaly={alarm}
+                      time={alarm.last_observed_at}
+                    />
                   </Table.Td>
                   <Table.Td>
-                    <Text size='sm'>{alarm.resolution_note || '—'}</Text>
+                    <Text size='sm'>
+                      {alarm.resolution_note || t`Outcome note unavailable`}
+                    </Text>
                   </Table.Td>
                   <Table.Td>
                     {/* Who saw it, and what they wrote; an alarm nobody
@@ -187,9 +222,7 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
                         <Text size='sm'>
                           {t`Dismissed by`} {dismissed.by || t`Unknown`}
                         </Text>
-                        <Text size='xs' c='dimmed'>
-                          {dismissed.note}
-                        </Text>
+                        <MetaText size='xs'>{dismissed.note}</MetaText>
                       </>
                     ) : alarm.acknowledged_by_name ? (
                       <>
@@ -197,15 +230,19 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
                           {t`Acknowledged by`} {alarm.acknowledged_by_name}
                         </Text>
                         {alarm.acknowledgement_note && (
-                          <Text size='xs' c='dimmed'>
+                          <MetaText size='xs'>
                             {alarm.acknowledgement_note}
-                          </Text>
+                          </MetaText>
                         )}
                       </>
+                    ) : alarm.status === 'suppressed' ? (
+                      <MetaText>{t`Dismissal details unavailable`}</MetaText>
+                    ) : alarm.acknowledged_at ? (
+                      <MetaText>{t`Acknowledged ${when(alarm.acknowledged_at)} · recorder unavailable`}</MetaText>
+                    ) : alarm.status === 'acknowledged' ? (
+                      <MetaText>{t`Acknowledgement details unavailable`}</MetaText>
                     ) : (
-                      <Text size='sm' c='dimmed'>
-                        {t`Nobody, before it ended`}
-                      </Text>
+                      <MetaText>{t`No acknowledgement recorded`}</MetaText>
                     )}
                   </Table.Td>
                 </Table.Tr>
@@ -214,18 +251,18 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
           </Table.Tbody>
         </Table>
       </Table.ScrollContainer>
-      {!count && <Text c='dimmed' size='sm'>{t`No past alarm matches.`}</Text>}
+      {!count && <MetaText size='sm'>{t`No past alarm matches.`}</MetaText>}
       {hidden > 0 && (
         <Group>
-          <Button variant='subtle' size='xs' onClick={() => setShowAll(true)}>
+          <Button
+            className={monitoring.link}
+            variant='subtle'
+            size='xs'
+            onClick={() => setShowAll(true)}
+          >
             {t`Show ${hidden} more`}
           </Button>
         </Group>
-      )}
-      {alarms.some((alarm) => alarm.display_shifted) && (
-        <Text size='xs' c='dimmed'>
-          {t`Times are on the clock this station is presented on, the same as the rest of the page.`}
-        </Text>
       )}
     </Stack>
   );

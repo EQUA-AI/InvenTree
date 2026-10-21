@@ -21,6 +21,8 @@ import {
 } from '../s6/closeoutFixtures';
 
 nativeBaseline();
+// The supplied plant clock must win over an independently configured browser.
+test.use({ timezoneId: 'UTC' });
 
 const summary = {
   configured: true,
@@ -87,6 +89,7 @@ async function monitoring(
     empty?: boolean;
     longIdentity?: boolean;
     occurrence?: FaultOccurrence;
+    plantTimezone?: string | null;
   } = {}
 ) {
   const reads: URL[] = [];
@@ -137,6 +140,10 @@ async function monitoring(
         status: options.occurrenceStatus ?? 200,
         json: {
           rule: 'fault_occurrences.v1',
+          plant_timezone:
+            options.plantTimezone === undefined
+              ? 'Asia/Riyadh'
+              : options.plantTimezone,
           count: options.empty ? 0 : 1,
           limit: 25,
           offset: 0,
@@ -199,8 +206,23 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(disclosure).toContainText('Current configured monitoring');
     await expect(disclosure).toContainText('before, during and after');
     await expect(disclosure).toContainText('NEW-903');
-    await expect(disclosure).toContainText('20 Oct 2026,');
+    await expect(disclosure).toContainText(
+      'Latest observation: 20 Oct 2026 11:10:00'
+    );
+    await expect(disclosure).toContainText(
+      'Last source success: 20 Oct 2026 11:10:00'
+    );
+    await expect(disclosure).toContainText(
+      'First observed: 20 Oct 2026 11:05:00'
+    );
+    await expect(disclosure).toContainText(
+      'Last observed: 20 Oct 2026 11:10:00'
+    );
+    await expect(disclosure).toContainText('Captured: 20 Oct 2026 11:06:00');
     await expect(disclosure).toContainText('Asia/Riyadh');
+    await expect(disclosure.getByText(/^Times:/)).toHaveText(
+      'Times: plant clock (Asia/Riyadh, UTC+03:00)'
+    );
     await expect(disclosure).toContainText('Quality at capture: Uncertain');
     await expect(disclosure).toContainText('Stale at capture');
     await expect(disclosure).toContainText(
@@ -250,6 +272,66 @@ for (const scheme of ['light', 'dark'] as const) {
     expect(commands).toHaveLength(0);
   });
 }
+
+for (const [name, plantTimezone, reason] of [
+  ['missing', null, 'plant timezone not supplied'],
+  ['invalid', 'Invalid/Plant', 'plant timezone invalid']
+] as const) {
+  test(`${name} plant timezone explicitly falls back to the browser clock`, async ({
+    page
+  }, info) => {
+    await closeoutWork(page, { completed: true });
+    await monitoring(page, { plantTimezone });
+    await openCloseout(page);
+    const disclosure = visibleContinuity(page);
+    await disclosure.locator('summary').click();
+    await expect(disclosure).toContainText('NEW-903');
+    await expect(disclosure.getByText(/^Times:/)).toHaveText(
+      `Times: your clock (UTC, UTC+00:00) · ${reason}`
+    );
+    await expect(disclosure).toContainText(
+      'Latest observation: 20 Oct 2026 08:10:00'
+    );
+    await expect(disclosure).toContainText('Captured: 20 Oct 2026 08:06:00');
+    await expect(disclosure).not.toContainText('plant clock');
+    await containment(page);
+    await capture(page, info.outputPath(`monitoring-${name}-timezone.png`));
+  });
+}
+
+test('a denied occurrence refresh cannot label current monitoring with a cached plant clock', async ({
+  page
+}, info) => {
+  await closeoutWork(page, { completed: true });
+  await monitoring(page);
+  await openCloseout(page);
+  const disclosure = visibleContinuity(page);
+  await disclosure.locator('summary').click();
+  await expect(disclosure).toContainText('Times: plant clock (Asia/Riyadh,');
+  await expect(disclosure).toContainText('NEW-903');
+  await monitoring(page, { occurrenceStatus: 403 });
+  await disclosure
+    .getByRole('button', {
+      name: 'Refresh monitoring and deviations',
+      exact: true
+    })
+    .click();
+  await expect(disclosure).toContainText('Deviation records unavailable');
+  await expect(disclosure.getByText(/^Times:/)).toHaveText(
+    'Times: your clock (UTC, UTC+00:00) · plant timezone not supplied'
+  );
+  await expect(disclosure).toContainText(
+    'Latest observation: 20 Oct 2026 08:10:00'
+  );
+  await expect(disclosure).toContainText('Connected source');
+  await expect(disclosure).not.toContainText('Asia/Riyadh');
+  await expect(disclosure).not.toContainText('NEW-903');
+  await containment(page);
+  await capture(
+    page,
+    info.outputPath('monitoring-denied-timezone-refresh.png')
+  );
+});
 
 test('monitoring configuration is available during open work without a closure trigger', async ({
   page
@@ -561,8 +643,9 @@ for (const scheme of ['light', 'dark'] as const) {
       const account = page.getByTestId('closeout-account');
       if (action === 'create_linked') {
         await expect(account).toContainText(accepted!.result);
-        await page
-          .getByText('Original completed account', { exact: true })
+        await account
+          .locator('summary')
+          .filter({ hasText: /^Original completed account$/ })
           .click();
         await expect(
           account.getByText(`Result: ${values.result}`, { exact: true })
