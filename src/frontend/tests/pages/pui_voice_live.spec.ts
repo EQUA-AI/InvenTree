@@ -79,7 +79,7 @@ test('closing the drawer ends voice and releases the microphone', async ({
   await openChat(page);
   await startVoice(page);
   await expect(page.getByTestId('voice-state-badge')).toHaveText('Listening');
-  await page.getByLabel('close-ai-chat').click();
+  await page.getByTestId('close-ai-chat').click();
 
   await expect.poll(() => voice.sessionEnded).toBe(true);
   await expect

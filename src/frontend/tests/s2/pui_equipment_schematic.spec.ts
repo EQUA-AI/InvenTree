@@ -1,10 +1,12 @@
 import { type Page, expect, test } from '@playwright/test';
+import { nativeThemeFixtures } from '../s8/themeFixtures';
 
 import { nativeBaseline } from '../s0/guards';
 import { mockMachine } from '../s0/machineFixtures';
 import { mockPositions } from './equipmentFixtures';
 
 nativeBaseline();
+nativeThemeFixtures();
 
 // Equipment view reads the machine's position records once it mounts.
 test.beforeEach(async ({ page }) => {
@@ -126,7 +128,7 @@ test('the schematic is the secondary view, and switching back keeps the model as
   await expect(page.getByTestId('fixture-schematic')).toBeVisible();
   await expect(page.locator('canvas.aimms-twin-canvas')).toHaveCount(0);
   await expect(page.getByTestId('fixture-location')).toHaveText(
-    '/fixture?position=bearing&view=schematic'
+    '/machines/machine/18/equipment/?position=bearing&view=schematic'
   );
   await chooseView(page, '3D model');
   await expect(page.locator('[data-scene-phase="ready"]')).toBeVisible();
@@ -139,7 +141,7 @@ test('the schematic is the secondary view, and switching back keeps the model as
       .getByRole('radio', { name: 'Exploded' })
   ).toBeChecked();
   await expect(page.getByTestId('fixture-location')).toHaveText(
-    '/fixture?position=bearing'
+    '/machines/machine/18/equipment/?position=bearing'
   );
 });
 
@@ -147,13 +149,13 @@ test('a link can open the schematic first, and a pump without one has no switch'
   page
 }) => {
   await page.goto(
-    `/playwright/s2-equipment.html?kind=panel&schematic=yes&entry=${encodeURIComponent('/fixture?view=schematic')}`
+    `/playwright/s2-equipment.html?kind=panel&schematic=yes&entry=${encodeURIComponent('/machines/machine/18/equipment/?view=schematic')}`
   );
   await expect(page.getByTestId('fixture-schematic')).toBeVisible();
   await expect(page.locator('canvas.aimms-twin-canvas')).toHaveCount(0);
   // No schematic: no switch, and the link's view is ignored.
   await page.goto(
-    `/playwright/s2-equipment.html?kind=panel&entry=${encodeURIComponent('/fixture?view=schematic')}`
+    `/playwright/s2-equipment.html?kind=panel&entry=${encodeURIComponent('/machines/machine/18/equipment/?view=schematic')}`
   );
   await expect(page.locator('[data-scene-phase="ready"]')).toBeVisible();
   await expect(
@@ -396,7 +398,7 @@ test('a canonical position link reselects the mounted panel when graphics are un
   });
   await mockPositions(page);
   await page.goto(
-    `/playwright/s2-equipment.html?kind=panel&entry=${encodeURIComponent('/fixture?position=bearing')}`
+    `/playwright/s2-equipment.html?kind=panel&entry=${encodeURIComponent('/machines/machine/18/equipment/?position=bearing')}`
   );
   await page.locator('[data-position="motor"]').click();
   await expect(page.locator('[data-selected-position]')).toHaveAttribute(

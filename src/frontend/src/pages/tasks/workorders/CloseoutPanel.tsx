@@ -34,6 +34,7 @@ import {
 } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { WorkTableScroll } from '../../../components/tables/WorkTableScroll';
 import { CloseoutReconciliation } from './CloseoutReconciliation';
 import DictateCloseoutModal from './DictateCloseoutModal';
 import { DraftRecovery } from './DraftRecovery';
@@ -44,8 +45,11 @@ import {
   reviewedAccountValues,
   savedFieldValue
 } from './closeoutAccount';
+import { WarningText } from './execution/ExecutionFacts';
 import { ServiceRestoration } from './execution/ServiceRestoration';
+import { readingStatusLabel } from './execution/routinePresentation';
 import { narrativeExcerpts } from './storyProvenance';
+import { useActionFocus } from './useActionFocus';
 import { useCaptureSave } from './useCaptureSave';
 import { useWorkRecordUpdate } from './useWorkRecordUpdate';
 import type { UpdateIntent } from './workRecordUpdate';
@@ -354,7 +358,7 @@ export function CloseoutPanel({
       !voiceReason.trim()
     )
       return;
-    void captureSave.save({
+    return captureSave.save({
       url: apiUrl(ApiEndpoints.work_order_closeout_captures, woId),
       command: 'closeout_capture',
       payload: {
@@ -399,7 +403,7 @@ export function CloseoutPanel({
         effectiveFieldValue(field)
       ])
     );
-    void captureSave.save({
+    return captureSave.save({
       url: apiUrl(ApiEndpoints.work_order_closeout_capture_decisions, woId, {
         capId: base().captureId ?? capture.id
       }),
@@ -590,7 +594,7 @@ export function CloseoutPanel({
       ...(downtime !== '' ? { downtime_minutes: downtime } : {}),
       ...(capture?.status === 'reviewed' ? { capture_id: capture.id } : {})
     };
-    void update.execute({
+    return update.execute({
       workOrderId: woId,
       ...(packetId != null ? { packetId } : {}),
       payload
@@ -613,7 +617,7 @@ export function CloseoutPanel({
 
   return (
     <Stack gap='md'>
-      <Title order={4}>{t`Closeout`}</Title>
+      <Title order={2} size='h4'>{t`Closeout`}</Title>
       {captureEnabled && (
         <DictateCloseoutModal
           opened={dictateOpen}
@@ -631,7 +635,7 @@ export function CloseoutPanel({
         !proposalQuery.isError && (
           <Card withBorder mb='md' data-testid='closeout-questions'>
             <Stack gap='xs'>
-              <Title order={5}>
+              <Title order={3} size='h5'>
                 {REQUIRED_FIELDS.some(
                   (field) => !effectiveFieldValue(field).trim()
                 )
@@ -693,7 +697,6 @@ export function CloseoutPanel({
             </Stack>
           </Card>
         )}
-      {execution && <ServiceRestoration workOrder={execution} />}
       {(capturesQuery.isError ||
         proposalQuery.isError ||
         partUsageQuery.isError) && (
@@ -816,7 +819,7 @@ export function CloseoutPanel({
         />
       )}
       {!captureEnabled && (
-        <Alert color='blue' data-testid='closeout-wizard-disabled'>
+        <Alert role='note' color='blue' data-testid='closeout-wizard-disabled'>
           {t`Closeout capture, material reconciliation and readings are not enabled. Readiness still applies.`}
           {!accepted && (
             <Text size='sm'>{t`Enter the manual account below. Values remain an unsaved draft until the final update.`}</Text>
@@ -979,9 +982,9 @@ export function CloseoutPanel({
               completedAt={accepted?.completed_at}
               completedId={accepted?.id}
               onSubmit={complete}
-              onReconcile={() => void update.execute()}
+              onReconcile={() => update.execute()}
               onReview={() => {
-                void update
+                return update
                   .reviewLatest()
                   .then((version) => setReviewedVersion(version ?? null));
               }}
@@ -1023,6 +1026,7 @@ export function CloseoutPanel({
           execution && <CloseoutReconciliation workOrder={execution} />
         }
       />
+      {execution && <ServiceRestoration workOrder={execution} />}
       {effectsQuery.data && effectsQuery.data.length > 0 && (
         <details>
           <summary>{t`Recorded follow-up effects`}</summary>
@@ -1180,17 +1184,23 @@ function NarrativeStep({
   saving: boolean;
   loading: boolean;
 }>) {
+  const resultFocus = useActionFocus(busy || saving || loading);
   if (loading) return <Loader size='sm' />;
   if (capture) {
     return (
-      <Stack gap='sm' mt='md'>
+      <Stack
+        {...resultFocus.props}
+        aria-label={t`Closeout story recovery`}
+        gap='sm'
+        mt='md'
+      >
         <Group gap='xs'>
           <Badge>{capture.status}</Badge>
           {capture.source_type === 'voice' && (
             <Badge color='grape'>{t`Voice transcript`}</Badge>
           )}
           <Text size='sm' c='dimmed'>
-            {t`Revision`} {capture.revision ?? '-'}
+            {t`Revision`} {capture.revision ?? t`Not recorded`}
           </Text>
         </Group>
         <Textarea
@@ -1203,7 +1213,7 @@ function NarrativeStep({
         {capture.status === 'open' && (
           <Group>
             <Button
-              onClick={onExtract}
+              onClick={() => resultFocus.run(onExtract)}
               loading={saving}
               disabled={busy || !canCapture}
               leftSection={<IconSparkles size={16} />}
@@ -1219,7 +1229,12 @@ function NarrativeStep({
     );
   }
   return (
-    <Stack gap='sm' mt='md'>
+    <Stack
+      {...resultFocus.props}
+      aria-label={t`Closeout story recovery`}
+      gap='sm'
+      mt='md'
+    >
       <Text size='sm'>{t`Use Dictate for the default voice-transcript path, or record a typed equivalent and why voice cannot be used. Attach original audio in Dictate before accepting the transcript.`}</Text>
       <TextInput
         label={t`Why voice is unavailable or unusable`}
@@ -1241,7 +1256,7 @@ function NarrativeStep({
       />
       <Group>
         <Button
-          onClick={onCreate}
+          onClick={() => resultFocus.run(onCreate)}
           loading={saving}
           disabled={
             !canCapture || busy || !narrative.trim() || !voiceReason.trim()
@@ -1284,11 +1299,20 @@ function ReviewStep({
   busy: boolean;
   saving: boolean;
 }>) {
+  const resultFocus = useActionFocus(busy || saving);
   const fields = ['cause', ...REQUIRED_FIELDS];
   return (
-    <Stack gap='sm' mt='md'>
+    <Stack
+      {...resultFocus.props}
+      aria-label={t`Closeout field review`}
+      gap='sm'
+      mt='md'
+    >
       {!capture && captureAvailable && (
-        <Alert color='gray'>{t`Manual account recovery: values remain an unsaved draft until the final update. A technician story can be added separately through the native capture.`}</Alert>
+        <Alert
+          role='note'
+          color='gray'
+        >{t`Manual account recovery: values remain an unsaved draft until the final update. A technician story can be added separately through the native capture.`}</Alert>
       )}
       {proposal?.warnings?.length ? (
         <Alert color='yellow' icon={<IconAlertTriangle size={16} />}>
@@ -1353,7 +1377,11 @@ function ReviewStep({
       ) : null}
       <Group>
         {capture && (
-          <Button onClick={onSubmit} loading={saving} disabled={busy}>
+          <Button
+            onClick={() => resultFocus.run(onSubmit)}
+            loading={saving}
+            disabled={busy}
+          >
             {t`Record decisions`}
           </Button>
         )}
@@ -1394,12 +1422,18 @@ function PartsStep({
   busy: boolean;
   saving: boolean;
 }>) {
+  const resultFocus = useActionFocus(busy || saving);
   return (
-    <Stack gap='sm' mt='md'>
+    <Stack
+      {...resultFocus.props}
+      aria-label={t`Material reconciliation recovery`}
+      gap='sm'
+      mt='md'
+    >
       <Group>
         <Button
           variant='light'
-          onClick={onRefresh}
+          onClick={() => resultFocus.run(onRefresh)}
           loading={saving}
           disabled={!canRefresh || busy}
           leftSection={<IconRefresh size={16} />}
@@ -1412,7 +1446,10 @@ function PartsStep({
           {t`No usage rows yet. Refresh to seed rows from the job kit.`}
         </Text>
       ) : (
-        <Table.ScrollContainer minWidth={640}>
+        <WorkTableScroll
+          minWidth={640}
+          label={t`Material reconciliation table, scroll for all columns`}
+        >
           <Table striped withTableBorder>
             <Table.Thead>
               <Table.Tr>
@@ -1432,9 +1469,9 @@ function PartsStep({
                       ? `${t`Candidate`}: ${row.candidate_text}`
                       : row.source}
                   </Table.Td>
-                  <Table.Td>{row.planned_quantity ?? '-'}</Table.Td>
-                  <Table.Td>{row.issued_quantity ?? '-'}</Table.Td>
-                  <Table.Td>{row.used_quantity ?? '-'}</Table.Td>
+                  <Table.Td>{row.planned_quantity ?? t`Not recorded`}</Table.Td>
+                  <Table.Td>{row.issued_quantity ?? t`Not recorded`}</Table.Td>
+                  <Table.Td>{row.used_quantity ?? t`Not recorded`}</Table.Td>
                   <Table.Td>
                     <Badge
                       color={row.state === 'reconciled' ? 'green' : 'yellow'}
@@ -1485,10 +1522,12 @@ function PartsStep({
                             !canResolve || !drafts[row.id]?.disposition || busy
                           }
                           onClick={() =>
-                            onResolve(
-                              row,
-                              drafts[row.id].disposition,
-                              drafts[row.id]?.reason ?? ''
+                            resultFocus.run(() =>
+                              onResolve(
+                                row,
+                                drafts[row.id].disposition,
+                                drafts[row.id]?.reason ?? ''
+                              )
                             )
                           }
                         >
@@ -1501,7 +1540,7 @@ function PartsStep({
               ))}
             </Table.Tbody>
           </Table>
-        </Table.ScrollContainer>
+        </WorkTableScroll>
       )}
     </Stack>
   );
@@ -1523,44 +1562,50 @@ export function ReadingsStep({
   const [rawText, setRawText] = useState('');
   const [unit, setUnit] = useState('');
   const [required, setRequired] = useState(false);
+  const resultFocus = useActionFocus(busy);
 
   const addReading = () =>
-    runCommand(async () => {
-      const response = await api.post(
-        apiUrl(ApiEndpoints.work_order_closeout_readings, workOrderId),
-        { label, raw_text: rawText, unit, required }
-      );
-      if (response.status !== 201 || !Number.isSafeInteger(response.data?.id))
-        throw new Error('Reading save unconfirmed');
-      setLabel('');
-      setRawText('');
-    });
+    resultFocus.run(() =>
+      runCommand(async () => {
+        const response = await api.post(
+          apiUrl(ApiEndpoints.work_order_closeout_readings, workOrderId),
+          { label, raw_text: rawText, unit, required }
+        );
+        if (response.status !== 201 || !Number.isSafeInteger(response.data?.id))
+          throw new Error('Reading save unconfirmed');
+        setLabel('');
+        setRawText('');
+      })
+    );
 
   return (
-    <Stack gap='sm' mt='md'>
+    <Stack
+      {...resultFocus.props}
+      aria-label={t`Reading entry`}
+      gap='sm'
+      mt='md'
+    >
       {rows.map((row) => (
         <Group key={row.id} gap='xs'>
           <Badge
             color={
               row.verification_state === 'verified'
-                ? 'green'
+                ? 'gray'
                 : row.verification_state === 'failed'
                   ? 'red'
                   : 'yellow'
             }
             variant='light'
           >
-            {row.verification_state}
+            {readingStatusLabel(row.verification_state)}
           </Badge>
           <Text size='sm'>
-            {row.label}: {row.raw_text || '-'} {row.unit && `(${row.unit})`}
+            {row.label}: {row.raw_text || t`Not recorded`}{' '}
+            {row.unit && `(${row.unit})`}
           </Text>
           {row.required && <Badge size='xs'>{t`required`}</Badge>}
           {row.warnings.includes('numeric_ambiguity') && (
-            <Text
-              size='xs'
-              c='orange'
-            >{t`ambiguous numeric — correct or re-enter`}</Text>
+            <WarningText size='xs'>{t`ambiguous numeric — correct or re-enter`}</WarningText>
           )}
         </Group>
       ))}
@@ -1650,7 +1695,7 @@ export function WorkCloseoutReadings({
   };
   return (
     <Card withBorder>
-      <Title order={4}>{t`Closeout readings`}</Title>
+      <Title order={2} size='h4'>{t`Closeout readings`}</Title>
       {failure && (
         <Alert color='orange'>
           {failure === 'uncertain'
@@ -1676,7 +1721,7 @@ export function WorkCloseoutReadings({
           {query.data.map((row) => (
             <Text key={row.id} size='sm'>
               {row.label}: {row.raw_text || t`Not recorded`} {row.unit} ·{' '}
-              {row.verification_state}
+              {readingStatusLabel(row.verification_state)}
             </Text>
           ))}
           <Text size='xs' c='dimmed'>

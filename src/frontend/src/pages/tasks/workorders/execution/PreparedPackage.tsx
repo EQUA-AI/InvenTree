@@ -30,6 +30,7 @@ import type {
 import { useApi } from '../../../../contexts/ApiContext';
 import { extractErrorMessage } from '../../../../functions/api';
 import { useUserState } from '../../../../states/UserState';
+import { useActionFocus } from '../useActionFocus';
 import { workPanelParams } from '../workPanelState';
 import {
   ExecutionFact,
@@ -46,7 +47,7 @@ export function StepCriteria({ step }: Readonly<{ step: PackageStep }>) {
   return (
     <Stack gap={2}>
       <Text size='sm'>{step.instruction || t`No instruction recorded`}</Text>
-      <Text size='xs' c='dimmed'>
+      <Text size='xs'>
         {t`Unit`}: {step.unit || t`Not recorded`} · {t`Minimum`}:{' '}
         {step.min_value ?? t`Not recorded`} · {t`Maximum`}:{' '}
         {step.max_value ?? t`Not recorded`}
@@ -134,7 +135,10 @@ function Application({
         {driftLabel}
       </ExecutionFact>
       {drift !== 'current' && (
-        <Alert color='orange'>{t`Review the catalogue difference or missing comparison through the native flow. The original applied instructions are retained; this comparison does not establish readiness or authority.`}</Alert>
+        <Alert
+          role='note'
+          color='orange'
+        >{t`Review the catalogue difference or missing comparison through the native flow. The original applied instructions are retained; this comparison does not establish readiness or authority.`}</Alert>
       )}
       {application.change_summary && (
         <Text size='sm'>{application.change_summary}</Text>
@@ -178,10 +182,10 @@ function Application({
                       {resource.part_name ?? t`Part name unavailable`}
                     </Text>
                   )}
-                  <Text size='xs' c='dimmed'>
+                  <Text size='xs'>
                     {t`Current catalogue name; requirement retained from the applied snapshot`}
                   </Text>
-                  <Text size='xs' c='dimmed'>
+                  <Text size='xs'>
                     {t`Quantity unit not recorded in this snapshot`} ·{' '}
                     {resource.fulfillment_mode === 'checkout_return'
                       ? t`Checkout and return`
@@ -224,9 +228,7 @@ function DeviationValues({
   const facts = deviationFacts(value);
   return (
     <Stack gap={2}>
-      <Text size='xs' c='dimmed'>
-        {label}
-      </Text>
+      <Text size='xs'>{label}</Text>
       {facts.length === 0 ? (
         <Text size='sm'>{t`Not recorded`}</Text>
       ) : (
@@ -260,6 +262,7 @@ function DeviationEntry({ workOrderId }: Readonly<{ workOrderId: number }>) {
     'saved' | 'uncertain' | 'refused' | null
   >(null);
   const [refusal, setRefusal] = useState('');
+  const resultFocus = useActionFocus(busy);
   async function save() {
     if (busy || !reason.trim()) return;
     setBusy(true);
@@ -313,7 +316,11 @@ function DeviationEntry({ workOrderId }: Readonly<{ workOrderId: number }>) {
       <Accordion.Item value='deviation'>
         <Accordion.Control>{t`Record a changed condition`}</Accordion.Control>
         <Accordion.Panel>
-          <Stack gap='sm'>
+          <Stack
+            {...resultFocus.props}
+            aria-label={t`Changed condition record`}
+            gap='sm'
+          >
             <Text size='sm'>{t`Native manual recovery records a deviation. It does not approve a revised scope or release a restriction.`}</Text>
             <Textarea
               label={t`Changed condition and reason`}
@@ -339,7 +346,7 @@ function DeviationEntry({ workOrderId }: Readonly<{ workOrderId: number }>) {
             )}
             <Button
               style={{ alignSelf: 'flex-start' }}
-              onClick={save}
+              onClick={() => resultFocus.run(save)}
               loading={busy}
               disabled={!reason.trim() || outcome === 'uncertain'}
             >{t`Save deviation`}</Button>
@@ -363,6 +370,7 @@ export function PreparedPackage({
   if (value?.rule !== 'prepared_package.v1')
     return (
       <Alert
+        role='note'
         color='gray'
         title={t`Prepared package not supplied`}
       >{t`This server does not supply the applied procedure, resources or revision history here. Use the linked native records. Missing information does not establish readiness.`}</Alert>
@@ -395,10 +403,7 @@ export function PreparedPackage({
               : t`No current approved repair scope recorded.`}
           </Text>
         )}
-        <Text
-          size='sm'
-          c='dimmed'
-        >{t`A saved scope or applied procedure is a plan record, not proof of physical application or permission to work.`}</Text>
+        <Text size='sm'>{t`A saved scope or applied procedure is a plan record, not proof of physical application or permission to work.`}</Text>
         {value.procedures_state === 'not_enabled' ? (
           <Text size='sm'>{t`Governed procedure records are not enabled.`}</Text>
         ) : value.applications.length ? (
@@ -410,6 +415,7 @@ export function PreparedPackage({
         )}
         <Anchor
           component={Link}
+          replace
           to={`?${workPanelParams(params, 'parts')}`}
           size='sm'
         >{t`Open Parts for this job`}</Anchor>
@@ -421,10 +427,7 @@ export function PreparedPackage({
               value={authority}
               kinds={['isolation', 'permit', 'access_window']}
             />
-            <Text
-              size='sm'
-              c='dimmed'
-            >{t`Recorded facts retain their own effective window and independent verification. They do not confirm the safety gate, clear other restrictions or grant operating permission.`}</Text>
+            <Text size='sm'>{t`Recorded facts retain their own effective window and independent verification. They do not confirm the safety gate, clear other restrictions or grant operating permission.`}</Text>
             <AuthorityRecorder value={authority} mode='physical' />
           </>
         ) : (
@@ -445,7 +448,7 @@ export function PreparedPackage({
               <Text fw={600} size='sm'>
                 {item.reason}
               </Text>
-              <Text size='xs' c='dimmed'>
+              <Text size='xs'>
                 {item.recorded_by ?? t`Recorder not recorded`} ·{' '}
                 {recordedTime(item.created_at)} · {item.category}
               </Text>

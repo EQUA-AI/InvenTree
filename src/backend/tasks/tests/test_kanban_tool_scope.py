@@ -18,6 +18,7 @@ import uuid
 from contextlib import contextmanager
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.test import TestCase, override_settings
 
 from asgiref.sync import async_to_sync
@@ -94,6 +95,11 @@ class KanbanToolScopeTest(TestCase):
             email=f'{suffix}@example.com',
             password='pw',
         )
+        group = Group.objects.create(name=f'kanban-viewers-{suffix}')
+        self.rule = group.rule_sets.get(name='work_order')
+        self.rule.can_view = True
+        self.rule.save()
+        self.actor.groups.add(group)
         _GRANTS.clear()
         self.addCleanup(_GRANTS.clear)
         _GRANTS[self.actor.get_username()] = {
@@ -133,14 +139,34 @@ class KanbanToolScopeTest(TestCase):
         self.assertEqual(result['population_count'], 1)
         self.assertEqual([c['id'] for c in result['cards']], [self.card_a.pk])
 
+    def test_customer_and_unattributed_cards_are_shared_without_machine_widening(self):
+        """All board tools share O24's canonical Work predicate."""
+        from company.models import Company
+
+        shared = self._card(
+            self.machine_b,
+            customer=Company.objects.create(name='O24 shared', is_customer=True),
+        )
+        unattributed = self._card(None)
+        result = self._call(list_kanban_cards)
+        self.assertEqual(
+            {row['id'] for row in result['cards']},
+            {self.card_a.pk, shared.pk, unattributed.pk},
+        )
+        self.assertEqual(self._call(get_kanban_summary)['total_active'], 3)
+        self.assertEqual(
+            self._call(get_kanban_card, work_order_id=shared.pk)['id'], shared.pk
+        )
+        self.rule.can_view = False
+        self.rule.save()
+        self.assertEqual(self._call(list_kanban_cards)['returned_count'], 0)
+
     def test_summary_counts_only_the_actors_clients_cards(self):
         """Aggregates leak just as loudly as rows; they are scoped too."""
         result = self._call(get_kanban_summary)
 
         self.assertEqual(result['total_active'], 1)
-        self.assertEqual(
-            result['status_counts'], {WorkOrder.STATUS_BACKLOG: 1}
-        )
+        self.assertEqual(result['status_counts'], {WorkOrder.STATUS_BACKLOG: 1})
 
     def test_get_card_returns_the_actors_own_card(self):
         """Scoping must not break the happy path."""
@@ -176,9 +202,7 @@ class KanbanToolScopeTest(TestCase):
     def test_check_stock_foreign_card_matches_the_missing_error(self):
         """The stock tool honours the same boundary with the same message."""
         foreign = self._call(check_kanban_card_stock, work_order_id=self.card_b.pk)
-        missing = self._call(
-            check_kanban_card_stock, work_order_id=self._missing_id()
-        )
+        missing = self._call(check_kanban_card_stock, work_order_id=self._missing_id())
 
         self.assertIn('error', foreign)
         self.assertEqual(set(foreign), set(missing))
@@ -200,9 +224,7 @@ class KanbanToolScopeTest(TestCase):
     def test_no_principal_gets_the_not_found_error_for_a_real_card(self):
         """Unauthenticated reads are refused, not resolved."""
         fetched = self._call(get_kanban_card, None, work_order_id=self.card_a.pk)
-        stock = self._call(
-            check_kanban_card_stock, None, work_order_id=self.card_a.pk
-        )
+        stock = self._call(check_kanban_card_stock, None, work_order_id=self.card_a.pk)
 
         self.assertIn('error', fetched)
         self.assertIn('error', stock)

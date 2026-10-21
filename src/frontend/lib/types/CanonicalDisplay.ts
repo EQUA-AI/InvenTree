@@ -132,30 +132,6 @@ export function displayReading(
       : null
   };
 }
-/** Optional future authority rows: absence never means authorized or in service. */
-export function displayAuthority<
-  T extends {
-    id: number | string;
-    status?: string | null;
-    version?: number | string | null;
-    source?: { record?: string | null; provider?: string | null };
-  }
->(
-  record?: T | null
-): { state: 'not_recorded'; record: null; source: null } | CanonicalDisplay<T> {
-  return record == null
-    ? { state: 'not_recorded', record: null, source: null }
-    : {
-        source: {
-          record: record.source?.record ?? null,
-          id: record.id,
-          revision: record.version ?? null,
-          provider: record.source?.provider ?? null
-        },
-        state: record.status ?? null,
-        record
-      };
-}
 export function displayComponent(
   machineId: number,
   rule: string,

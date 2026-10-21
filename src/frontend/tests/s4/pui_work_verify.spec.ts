@@ -231,16 +231,16 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(
       verify.getByText('Historical value: not available')
     ).toHaveCount(3);
-    await expect(verify.getByText(/Awaiting test authority/)).toBeVisible();
-    await expect(
-      verify.getByText(/awaiting operating authority/)
-    ).toBeVisible();
-    await expect(
-      verify.getByText('Awaiting operations record of return.')
-    ).toBeVisible();
-    await expect(
-      verify.getByText(/Awaiting service verification/)
-    ).toBeVisible();
+    const gaps = verify.getByTestId('not-supplied');
+    await gaps.getByRole('button').click();
+    await expect(gaps).toContainText('Controlled-test authority');
+    await expect(gaps).toContainText(
+      'operating permission, observed return, required service and standby capacity'
+    );
+    await expect(gaps).toContainText('authoritative records are not supplied');
+    await expect(verify.getByTestId('service-restoration')).toContainText(
+      'Service restoration is not established by Work completion.'
+    );
     await expect(
       verify.getByRole('button', {
         name: /Update|Complete|Approve|Authorize|Release/

@@ -1,10 +1,12 @@
 import { type Page, expect, test } from '@playwright/test';
+import { nativeThemeFixtures } from '../s8/themeFixtures';
 
 import { nativeBaseline } from '../s0/guards';
 import { mockMachine } from '../s0/machineFixtures';
 import { mockPositions } from './equipmentFixtures';
 
 nativeBaseline();
+nativeThemeFixtures();
 
 // Equipment view reads the machine's position records once it mounts.
 test.beforeEach(async ({ page }) => {

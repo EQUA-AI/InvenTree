@@ -294,7 +294,7 @@ test('Settings - Admin', async ({ browser }) => {
   const roomCell = await page.getByRole('cell', { name: 'Room', exact: true });
   const roomRow = await getRowFromCell(roomCell);
 
-  await roomRow.getByLabel(/row-action-menu-/i).click();
+  await roomRow.getByTestId(/row-action-menu-/i).click();
 
   await page.getByRole('menuitem', { name: 'Edit' }).click();
   await expect(page.getByLabel('text-field-name', { exact: true })).toHaveValue(
@@ -321,7 +321,7 @@ test('Settings - Admin', async ({ browser }) => {
   });
   const boxRow = await getRowFromCell(boxCell);
 
-  await boxRow.getByLabel(/row-action-menu-/i).click();
+  await boxRow.getByTestId(/row-action-menu-/i).click();
 
   await page.getByRole('menuitem', { name: 'Edit' }).click();
   await expect(page.getByLabel('text-field-name', { exact: true })).toHaveValue(
@@ -333,7 +333,7 @@ test('Settings - Admin', async ({ browser }) => {
   await page.getByRole('button', { name: 'Cancel' }).click();
 
   // Edit first item again (revert values)
-  await roomRow.getByLabel(/row-action-menu-/i).click();
+  await roomRow.getByTestId(/row-action-menu-/i).click();
   await page.getByRole('menuitem', { name: 'Edit' }).click();
   await page.getByLabel('text-field-name', { exact: true }).fill('Room');
   await page.waitForTimeout(500);
@@ -452,7 +452,7 @@ test('Settings - Admin - Parameter', async ({ browser }) => {
       await page
         .getByRole('cell', { name: 'some list' })
         .locator('..')
-        .getByLabel('row-action-menu-')
+        .getByTestId('row-action-menu-')
         .click();
       await page.getByRole('menuitem', { name: 'Delete' }).click();
       await page.getByRole('button', { name: 'Delete' }).click();
@@ -502,7 +502,7 @@ test('Settings - Admin - Parameter', async ({ browser }) => {
       await page
         .getByRole('cell', { name: 'my custom parameter' })
         .locator('..')
-        .getByLabel('row-action-menu-')
+        .getByTestId('row-action-menu-')
         .click();
       await page.getByRole('menuitem', { name: 'Delete' }).click();
       await page.getByRole('button', { name: 'Delete' }).click();

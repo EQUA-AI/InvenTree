@@ -63,6 +63,7 @@ export interface TwinOptions {
   labels?: boolean;
   cameraState?: TwinCameraState;
   hotspots?: boolean;
+  onOccluded?: (parts: {id: TwinPartId; number: number; label: string}[]) => void;
   onSelect?: (id: TwinPartId, part: TwinPart | undefined) => void;
   onReady?: (ready: TwinReady) => void;
   onError?: (error: TwinError) => void;
@@ -70,6 +71,8 @@ export interface TwinOptions {
 
 export interface TwinController {
   destroy(): void;
+  setTheme(): void;
+  setRotate(value: boolean): void;
   select(id: TwinPartId): void;
   setMode(mode: TwinMode): void;
   setLabels(value: boolean): void;
@@ -86,9 +89,9 @@ export interface TwinController {
   };
 }
 
-export const PARTS: readonly TwinPart[];
-export const VERSION: string;
-export function create(
+export declare const PARTS: readonly TwinPart[];
+export declare const VERSION: string;
+export declare function create(
   host: HTMLElement,
   options?: TwinOptions
 ): TwinController;

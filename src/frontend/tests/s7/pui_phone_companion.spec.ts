@@ -208,9 +208,7 @@ for (const width of [360, 390]) {
       path: info.outputPath(`phone-downtime-${width}-${scheme}.png`)
     });
     // Native icon controls retain their square geometry as well.
-    const back = await page
-      .getByRole('button', { name: 'work-order-back', exact: true })
-      .boundingBox();
+    const back = await page.getByTestId('work-order-back').boundingBox();
     expect(back!.width).toBe(back!.height);
     await completionAccess(page, false);
     await expect(downtime).toBeDisabled();
@@ -233,6 +231,10 @@ for (const width of [360, 390]) {
     const fixture = await closeoutWork(page);
     await openExecutionPanel(page, 'work', scheme);
     await page.getByRole('button', { name: /^Attachments \(/ }).focus();
+    await page.keyboard.press('Tab');
+    await expect(
+      page.getByRole('button', { name: 'Ask about this work', exact: true })
+    ).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(page.getByTestId('work-phone-boundary')).toBeFocused();
     await page.keyboard.press('Tab');
@@ -283,7 +285,7 @@ for (const width of [360, 390]) {
     });
     await openExecutionPanel(page, 'work', scheme);
     const alert = page
-      .getByRole('alert')
+      .getByRole('note')
       .filter({ hasText: 'Raised from a health alert' });
     for (const name of ['Work', 'Closeout']) {
       await page.getByRole('tab', { name, exact: true }).click();
@@ -382,7 +384,7 @@ test('narrow phone retains targeted Closeout and its draft across panels, keyboa
     page.getByRole('tab', { name: 'History', exact: true })
   ).toHaveAttribute('aria-selected', 'true');
   await page.setViewportSize({ width: 1100, height: 800 });
-  await expect(page.getByTestId('work-phone-boundary')).toBeHidden();
+  await expect(page.getByTestId('work-phone-boundary')).toBeVisible();
   await page.getByRole('tab', { name: 'Closeout', exact: true }).click();
   await expect(draft).toHaveValue(
     'Synthetic phone draft retained while checking the saved verification.'
@@ -426,7 +428,7 @@ test('desktop keeps native tabs and the outcome-led Work brief', async ({
   await page.setViewportSize({ width: 1440, height: 900 });
   const fixture = await closeoutWork(page);
   await openExecutionPanel(page, 'work', 'light');
-  await expect(page.getByTestId('work-phone-boundary')).toBeHidden();
+  await expect(page.getByTestId('work-phone-boundary')).toBeVisible();
   const tabs = page.getByRole('tablist', {
     name: 'Work workflow',
     exact: true
@@ -450,7 +452,7 @@ test('desktop keeps native tabs and the outcome-led Work brief', async ({
       );
       return Boolean(
         tabs &&
-          node.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING
+          tabs.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING
       );
     })
   ).toBe(true);
@@ -498,7 +500,7 @@ for (const width of [360, 390]) {
       exact: true
     });
     await composer.fill('Synthetic phone observation for this saved request.');
-    await page.getByLabel('send-ai-chat-message').click();
+    await page.getByTestId('send-ai-chat-message').click();
     await expect(
       page
         .getByRole('alert')
@@ -513,7 +515,7 @@ for (const width of [360, 390]) {
       path: info.outputPath(`phone-request-refused-${width}-dark.png`)
     });
     assistant.confirm();
-    await page.getByLabel('send-ai-chat-message').click();
+    await page.getByTestId('send-ai-chat-message').click();
     await expect(
       page.getByText('Synthetic phone answer; no evidence published.', {
         exact: true
@@ -598,7 +600,7 @@ test('phone Work chat returns to the same unsaved capture without publishing or 
   await page
     .getByRole('textbox', { name: 'Message', exact: true })
     .fill('Which account fact remains missing?');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByText('Synthetic phone answer; no evidence published.', {
       exact: true

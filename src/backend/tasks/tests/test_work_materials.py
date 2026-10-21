@@ -121,8 +121,78 @@ class WorkMaterialsTests(CloseoutEnvMixin, TestCase):
         self.assertEqual(reserved['stock_item'], {'pk': None, 'hidden': True})
 
     @override_settings(**KITS)
-    def test_a_job_outside_the_readers_scope_is_not_found(self):
-        """Scope first: another customer's job reads as 404."""
+    def test_shared_work_withholds_closed_stock_tracking_without_machine_scope(self):
+        """Terminal reservations retain Work quantities but redact native stock IDs."""
+        from tasks.services.job_kit_custody import consume_allocation
+
+        line = self.build_kit_line(quantity='1')
+        self.reserve_kit()
+        allocation = line.allocations.get()
+        consume_allocation(
+            work_order_id=self.work_order.pk,
+            allocation_id=allocation.pk,
+            actor=self.actor,
+        )
+        (own,) = self.read().data['requirements'][0]['reservations']
+        self.assertIsNotNone(own['closed']['tracking_id'])
+        # Even the stock-view role is insufficient for this machine after revocation.
+        self.actor.maintenance_scopes = set()
+        (shared,) = self.read().data['requirements'][0]['reservations']
+        self.assertEqual(shared['quantity'], 1.0)
+        self.assertEqual(shared['stock_item'], {'pk': None, 'hidden': True})
+        self.assertIsNone(shared['closed']['tracking_id'])
+
+    @override_settings(**KITS)
+    def test_reassigning_shared_work_does_not_transfer_foreign_fitted_history(self):
+        """Fitted history keeps its original component machine after Work moves."""
+        from assets.models import AssetMachine, Client
+        from assets.record_models import ComponentFit
+        from tasks.closeout_models import CloseoutPartUsage
+
+        part = Part.objects.create(name='Fitted bearing', component=True)
+        stock = StockItem.objects.create(part=part, quantity=1)
+        component = AssetComponent.objects.create(
+            machine=self.machine, part=part, code='ORIGINAL:1', name='Original slot'
+        )
+        usage = CloseoutPartUsage.objects.create(
+            work_order=self.work_order, part=part, stock_item=stock, source='manual'
+        )
+        fit = ComponentFit.objects.create(
+            component=component,
+            stock_item=stock,
+            work_order=self.work_order,
+            usage=usage,
+            recorded_by=self.actor,
+            reason='Original machine fit',
+            source='closeout',
+            serial='Original-fit-serial',
+        )
+        self.assertEqual(
+            self.read().data['unmatched_usage'][0]['fitted_record']['id'], fit.pk
+        )
+        # A changer may attach an authorized machine to shared Work. That
+        # must not expose physical history from the original foreign client.
+        replacement_client = Client.objects.create(
+            name='New fit client', code='o24-fit-new-client'
+        )
+        replacement = AssetMachine.objects.create(
+            name='Replacement pump', client=replacement_client
+        )
+        self.actor.maintenance_scopes = {
+            MaintenanceScope(
+                customer_id=None, site_key=None, client_id=replacement_client.pk
+            )
+        }
+        self.work_order.machine = replacement
+        self.work_order.save(update_fields=['machine'])
+        moved = self.read().data
+        self.assertTrue(moved['stock_visible'])
+        self.assertIsNone(moved['unmatched_usage'][0]['fitted_record'])
+        self.assertEqual(moved['unmatched_usage'][0]['stock_item']['pk'], stock.pk)
+
+    @override_settings(**KITS)
+    def test_customer_job_is_shared_with_another_resolved_reader(self):
+        """O24 shares Work requirements; stock identities still need stock view."""
         other = Company.objects.create(name='Other co', is_customer=True)
         outsider = get_user_model().objects.create_user(
             username='outsider', email='outsider@example.com', password='pw'
@@ -131,7 +201,23 @@ class WorkMaterialsTests(CloseoutEnvMixin, TestCase):
         outsider.maintenance_scopes = {
             MaintenanceScope(customer_id=other.pk, site_key=None)
         }
-        self.assertEqual(self.read(outsider).status_code, 404)
+        result = self.read(outsider)
+        self.assertEqual(result.status_code, 200)
+        self.assertFalse(result.data['stock_visible'])
+
+    @override_settings(**FLAGS)
+    def test_a_job_outside_the_readers_scope_is_not_found(self):
+        """Scope first: machine-only Work on an unresolved machine reads as 404.
+
+        Under O24 the customer value is no longer the boundary; the machine's
+        client is, for Work without a customer.
+        """
+        from assets.models import AssetMachine
+
+        self.work_order.customer = None
+        self.work_order.machine = AssetMachine.objects.create(name='Unresolved pump')
+        self.work_order.save(update_fields=['customer', 'machine'])
+        self.assertEqual(self.read().status_code, 404)
 
     @override_settings(**FLAGS)
     def test_the_named_slot_links_to_the_machines_parts(self):
@@ -148,6 +234,13 @@ class WorkMaterialsTests(CloseoutEnvMixin, TestCase):
         component = self.read().data['component']
         self.assertIsNone(component['pk'])
         self.assertEqual(component['ref'], 'PS-UNKNOWN:1')
+        self.work_order.affected_component_ref = slot.code
+        self.work_order.save(update_fields=['affected_component_ref'])
+        self.actor.maintenance_scopes = set()
+        shared_component = self.read().data['component']
+        self.assertEqual(shared_component['ref'], slot.code)
+        self.assertIsNone(shared_component['pk'])
+        self.assertEqual(shared_component['name'], '')
 
     @override_settings(AIMMS_WORK_ORDERS_ENABLED=False)
     def test_hidden_with_the_work_order_api(self):

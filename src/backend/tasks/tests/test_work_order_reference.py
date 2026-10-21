@@ -10,15 +10,18 @@ import uuid
 
 from django.contrib.auth import get_user_model
 from django.db import connection
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from tasks.models import WorkOrder
 from tasks.services import scheduling
 
-from assets.models import AssetMachine
+from assets.models import AssetMachine, ClientScopeGrant, get_default_client
 from repair.work_packages import create_repair_work_package
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.granted_client_scope_resolver'
+)
 class WorkOrderReferenceTest(TestCase):
     """A reference is assigned however the work order was created."""
 
@@ -28,7 +31,9 @@ class WorkOrderReferenceTest(TestCase):
         self.actor = get_user_model().objects.create_superuser(
             username=f'ref-{suffix}', email=f'{suffix}@example.com', password='pw'
         )
-        self.machine = AssetMachine.objects.create(name=f'Machine {suffix}')
+        client = get_default_client()
+        ClientScopeGrant.objects.create(user=self.actor, client=client)
+        self.machine = AssetMachine.objects.create(name=f'Machine {suffix}', client=client)
 
     def test_direct_creation_gets_a_reference(self):
         """Even a bare ORM create is identified."""

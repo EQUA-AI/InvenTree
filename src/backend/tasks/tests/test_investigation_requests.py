@@ -304,6 +304,57 @@ class InvestigationRequestTests(InvestigationProjectionTest):
                 key='wrong-original',
             )
 
+    def test_shared_work_cannot_link_foreign_or_mismatched_packet_sources(self):
+        """O24 shares request records, never the packet's source authority."""
+        from assets.models import AssetMachine, Client
+        from company.models import Company
+        from repair.models import RepairInvestigationFinding, RepairPacket
+
+        self.work_order.customer = Company.objects.create(
+            name='O24 investigation', is_customer=True
+        )
+        self.work_order.save(update_fields=['customer'])
+        finding = RepairInvestigationFinding.objects.create(
+            packet=self.packet,
+            finding_key='o24-source',
+            category='measurement',
+            observation='Machine-scoped finding',
+        )
+        other = Client.objects.create(
+            name='O24 investigation', code='o24-investigation'
+        )
+        local_client_id = self.machine.client_id
+        mismatch = AssetMachine.objects.create(
+            name='O24 mismatched packet machine', client_id=local_client_id
+        )
+        fields = {'purpose': 'Check', 'next_check': 'Record readings'}
+        sources = (
+            {'source_finding_id': finding.pk},
+            {
+                'source_proposal': {
+                    'packet_id': self.packet.pk,
+                    'check': self.packet.diagnosis['confirm_tests'][0],
+                    'generated_at': self.packet.diagnosis['generated_at'],
+                }
+            },
+        )
+        for boundary in ('foreign', 'mismatched'):
+            self.machine.client_id = (
+                other.pk if boundary == 'foreign' else local_client_id
+            )
+            self.machine.save(update_fields=['client'])
+            RepairPacket.objects.filter(pk=self.packet.pk).update(
+                machine_id=self.machine.pk if boundary == 'foreign' else mismatch.pk
+            )
+            for index, source in enumerate(sources):
+                with self.subTest(boundary=boundary, source=index):
+                    with self.assertRaises(ValidationError):
+                        self.apply(
+                            fields={**fields, **source}, key=f'o24-{boundary}-{index}'
+                        )
+        self.assertFalse(InvestigationRequest.objects.exists())
+        self.assertFalse(self.work_order.events.exists())
+
     def test_read_endpoint_and_overview_use_same_canonical_ids(self):
         """The queue and detail endpoint project the same saved request/evidence."""
         result = self.apply()

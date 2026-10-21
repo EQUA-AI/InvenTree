@@ -38,6 +38,7 @@ export function AcceptedReportLinks({
         return (
           <Anchor
             component={Link}
+            replace
             key={report.id}
             to={`?${next}#accepted-report`}
           >

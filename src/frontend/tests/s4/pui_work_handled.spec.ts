@@ -264,6 +264,7 @@ test('a server without the projection says the record is not supplied', async ({
   const requests = await mockExecutionWork(page, workOrder());
   await openExecutionPanel(page);
   const work = panelRegion(page, 'Work');
+  await work.getByTestId('not-supplied').getByRole('button').click();
   await expect(
     work.getByText(
       'This server does not supply a record of AIMMS digital work for this work order. Nothing here means AIMMS did or did not act.'

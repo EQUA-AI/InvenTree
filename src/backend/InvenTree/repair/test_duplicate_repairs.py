@@ -13,7 +13,7 @@ from django.test import TestCase, override_settings
 from tasks.models import WorkOrder
 
 from assets.health_models import AnomalySeverity
-from assets.models import AssetMachine, get_default_client
+from assets.models import AssetMachine, ClientScopeGrant, get_default_client
 from InvenTree.unit_test import InvenTreeAPITestCase
 from machine_health.services.anomalies import fingerprint_for, record_anomaly
 
@@ -35,6 +35,9 @@ def _draft(machine_id, **overrides):
     return draft
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.granted_client_scope_resolver'
+)
 class DuplicateDetectionTest(TestCase):
     """The command refuses a second open repair unless told otherwise."""
 
@@ -46,7 +49,11 @@ class DuplicateDetectionTest(TestCase):
             email=f'{suffix}@example.com',
             password='pw',
         )
-        self.machine = AssetMachine.objects.create(name=f'Pump {suffix}')
+        self.tenant = get_default_client()
+        ClientScopeGrant.objects.create(user=self.actor, client=self.tenant)
+        self.machine = AssetMachine.objects.create(
+            name=f'Pump {suffix}', client=self.tenant
+        )
 
         self.first = create_repair_work_package(
             actor=self.actor,
@@ -119,7 +126,9 @@ class DuplicateDetectionTest(TestCase):
 
     def test_other_machines_are_unaffected(self):
         """A busy machine does not block work on a different asset."""
-        other = AssetMachine.objects.create(name=f'Blower {uuid.uuid4().hex[:6]}')
+        other = AssetMachine.objects.create(
+            name=f'Blower {uuid.uuid4().hex[:6]}', client=self.tenant
+        )
 
         self.assertEqual(find_duplicate_repairs(other), [])
 
@@ -131,7 +140,9 @@ class DuplicateDetectionTest(TestCase):
     def test_replay_is_not_treated_as_a_duplicate(self):
         """Retrying the original request must still replay, not conflict."""
         key = uuid.uuid4().hex
-        machine = AssetMachine.objects.create(name=f'Screen {uuid.uuid4().hex[:6]}')
+        machine = AssetMachine.objects.create(
+            name=f'Screen {uuid.uuid4().hex[:6]}', client=self.tenant
+        )
         draft = _draft(machine.pk)
 
         first = create_repair_work_package(
@@ -147,6 +158,9 @@ class DuplicateDetectionTest(TestCase):
         self.assertTrue(replay.replayed)
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.granted_client_scope_resolver'
+)
 class AnomalyEvidenceLinkTest(TestCase):
     """Creating from an anomaly leaves a typed, protected evidence trail."""
 
@@ -165,7 +179,11 @@ class AnomalyEvidenceLinkTest(TestCase):
             email=f'{suffix}@example.com',
             password='pw',
         )
-        self.machine = AssetMachine.objects.create(name=f'Clarifier {suffix}')
+        self.tenant = get_default_client()
+        ClientScopeGrant.objects.create(user=self.actor, client=self.tenant)
+        self.machine = AssetMachine.objects.create(
+            name=f'Clarifier {suffix}', client=self.tenant
+        )
         source = HealthSource.objects.create(
             name=f'SCADA {suffix}', source_type=SourceType.SCADA
         )

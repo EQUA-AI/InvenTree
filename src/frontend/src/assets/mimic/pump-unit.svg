@@ -23,7 +23,7 @@
   </g>
 
   <!-- Motor frame. Its fill is the bay's state. -->
-  <g id="part-motor" data-part="PS-MOTOR" stroke="var(--mimic-part-motor, var(--mimic-state-line, #495057))">
+  <g id="part-motor" data-part="PS-MOTOR" stroke-dasharray="var(--mimic-state-dash, none)" stroke="var(--mimic-part-motor, var(--mimic-state-line, #495057))">
     <rect x="474" y="92" width="152" height="140" rx="10" fill="var(--mimic-state, #e9ecef)"/>
     <path d="M500 110v104M525 110v104M550 110v104M575 110v104M600 110v104" stroke-width="1.2" opacity=".4"/>
   </g>
@@ -69,13 +69,11 @@
   <!-- Suction: bellmouth and pipe into the casing. -->
   <path d="M262 442l-22-9v38l22-9z" fill="var(--mimic-water, #d0ebff)"/>
   <path d="M262 442h242v20H262z" fill="var(--mimic-water, #d0ebff)"/>
-  <path d="M370 452h34m-9-6l9 6l-9 6" stroke-width="1.6"/>
 
   <!-- Discharge line, and the two valves on it. -->
   <g id="part-discharge" data-part="PS-DISCHARGE" stroke="var(--mimic-part-discharge, var(--mimic-line, #495057))">
     <path d="M592 422h246v20H592z" fill="var(--mimic-water, #d0ebff)"/>
-    <path d="M838 417l26 15l-26 15z" fill="var(--mimic-water, #d0ebff)"/>
-    <path d="M618 432h34m-9-6l9 6l-9 6" stroke-width="1.6"/>
+    <path d="M838 422h26v20h-26z" fill="var(--mimic-water, #d0ebff)"/>
   </g>
   <g id="part-eopd-valve" data-part="PS-EOPD-VALVE" stroke="var(--mimic-part-eopd-valve, var(--mimic-line, #495057))">
     <path d="M690 416l18 16l-18 16zM726 416l-18 16l18 16z" fill="var(--mimic-surface, #f8f9fa)"/>
@@ -90,7 +88,7 @@
 
   <!-- Pump casing and impeller, drawn last so the pipes meet it cleanly. Its
        fill is the bay's state. -->
-  <g id="part-casing" data-part="PS-CASING" stroke="var(--mimic-part-casing, var(--mimic-state-line, #495057))">
+  <g id="part-casing" data-part="PS-CASING" stroke-dasharray="var(--mimic-state-dash, none)" stroke="var(--mimic-part-casing, var(--mimic-state-line, #495057))">
     <circle cx="550" cy="452" r="48" fill="var(--mimic-state, #e9ecef)"/>
     <circle cx="550" cy="452" r="13" fill="var(--mimic-surface, #f8f9fa)"/>
     <g stroke-width="1.6">

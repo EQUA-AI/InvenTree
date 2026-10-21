@@ -4,6 +4,8 @@ import {
   type AlertProps,
   Anchor,
   type AnchorProps,
+  Badge,
+  type BadgeProps,
   Group,
   Text,
   type TextProps,
@@ -11,11 +13,18 @@ import {
 } from '@mantine/core';
 import {
   IconAlertTriangle,
+  IconBellCheck,
+  IconBellOff,
+  IconBellRinging,
   IconCircleCheck,
   IconClockOff,
   IconHelpCircle,
+  IconHistory,
+  IconInfoCircle,
   IconUrgent
 } from '@tabler/icons-react';
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
 import { type ReactNode, forwardRef } from 'react';
 
 import type {
@@ -28,9 +37,16 @@ import type {
 
 import { displayInstant } from '../displayClock';
 import monitoring from '../monitoring.module.css';
+import operations from '../operations.module.css';
 import { unitLabel } from '../performance/format';
 import { useNow } from '../useNow';
-import { StatusBadge, statusTone } from './StatusBadge';
+import {
+  StatusBadge as MonitoringStatusBadge,
+  statusTone
+} from './StatusBadge';
+import { displayClock, formatInstant } from './mimic/observedTime';
+
+dayjs.extend(relativeTime);
 
 /**
  * Shared presentation for health state, severity, quality and freshness.
@@ -82,7 +98,9 @@ export function healthStateVisual(state: HealthState): StateVisual {
   }
 }
 
-export function severityVisual(severity: AnomalySeverity): StateVisual {
+export function severityVisual(
+  severity: string | null | undefined
+): StateVisual {
   switch (severity) {
     case 'critical':
       return {
@@ -100,7 +118,7 @@ export function severityVisual(severity: AnomalySeverity): StateVisual {
       return {
         color: 'blue',
         label: t`Info`,
-        icon: <IconHelpCircle size={16} />
+        icon: <IconInfoCircle size={16} />
       };
     default:
       return {
@@ -109,6 +127,101 @@ export function severityVisual(severity: AnomalySeverity): StateVisual {
         icon: <IconHelpCircle size={16} />
       };
   }
+}
+
+/** Shared badge contrast and vocabulary; palette remains native Mantine. */
+export function StatusBadge({
+  children,
+  variant = 'light',
+  leftSection,
+  color = 'gray',
+  maw = 'none',
+  miw = 'max-content',
+  ...props
+}: BadgeProps & { children: ReactNode; 'data-alarm-status'?: string }) {
+  return (
+    <Badge
+      {...props}
+      variant={variant}
+      color={
+        variant === 'filled' && !color.includes('.') ? `${color}.9` : color
+      }
+      autoContrast={variant === 'filled'}
+      c={variant === 'filled' ? undefined : 'var(--mantine-color-text)'}
+      tt='none'
+      maw={maw}
+      miw={miw}
+      leftSection={leftSection ?? <IconInfoCircle size={14} />}
+    >
+      {children}
+    </Badge>
+  );
+}
+export function alarmStateVisual(
+  status: string | null,
+  severity?: string | null
+) {
+  const color = severityVisual(severity).color;
+  switch (status) {
+    case 'open':
+      return {
+        label: t`Active · not acknowledged`,
+        color: severity === 'critical' ? 'red.9' : color,
+        variant: 'filled' as const,
+        icon: <IconBellRinging size={14} />
+      };
+    case 'acknowledged':
+      return {
+        label: t`Active · acknowledged`,
+        color,
+        variant: 'outline' as const,
+        icon: <IconBellCheck size={14} />
+      };
+    case 'resolved':
+      return {
+        label: t`Resolved`,
+        color: 'gray',
+        variant: 'outline' as const,
+        icon: <IconHistory size={14} />
+      };
+    case 'suppressed':
+      return {
+        label: t`Dismissed`,
+        color: 'gray',
+        variant: 'outline' as const,
+        icon: <IconBellOff size={14} />
+      };
+    default:
+      return {
+        label: t`Alarm state unavailable`,
+        color: 'gray',
+        variant: 'outline' as const,
+        icon: <IconHelpCircle size={14} />
+      };
+  }
+}
+export function AlarmStateBadge({
+  status,
+  severity
+}: { status: string | null; severity?: string | null }) {
+  const visual = alarmStateVisual(status, severity);
+  return (
+    <StatusBadge
+      data-alarm-status={status ?? 'unknown'}
+      color={visual.color}
+      variant={visual.variant}
+      leftSection={visual.icon}
+    >
+      {visual.label}
+    </StatusBadge>
+  );
+}
+export function Unavailable({ reason }: { reason: string }) {
+  return (
+    <Text size='sm'>
+      {t`Unavailable`} · {reason}
+    </Text>
+  );
 }
 
 export function HealthStateBadge({
@@ -124,10 +237,13 @@ export function HealthStateBadge({
 }>) {
   const visual = healthStateVisual(state);
   return (
-    <StatusBadge
+    <MonitoringStatusBadge
       tone={state === 'normal' && neutralNormal ? 'neutral' : statusTone(state)}
       aria-describedby={describedBy}
       style={{ flexShrink: 0, maxWidth: 'none' }}
+      flex='0 0 auto'
+      maw='none'
+      miw='max-content'
       color={
         state === 'normal' && neutralNormal
           ? 'gray'
@@ -144,24 +260,25 @@ export function HealthStateBadge({
       leftSection={state === 'offline' ? visual.icon : undefined}
     >
       {visual.label}
-    </StatusBadge>
+    </MonitoringStatusBadge>
   );
 }
 
 export function SeverityBadge({
   severity
-}: Readonly<{ severity: AnomalySeverity }>) {
+}: Readonly<{ severity: AnomalySeverity | string | null }>) {
   const visual = severityVisual(severity);
   return (
-    <StatusBadge
-      tone={statusTone(severity)}
+    <MonitoringStatusBadge
+      tone={statusTone(severity ?? '')}
+      leftSection={visual.icon}
       color={visual.color}
       variant={
         severity === 'critical' || severity === 'warning' ? 'filled' : 'outline'
       }
     >
       {visual.label}
-    </StatusBadge>
+    </MonitoringStatusBadge>
   );
 }
 
@@ -206,9 +323,9 @@ export function SourceTypeBadge({
     return null;
   }
   return (
-    <StatusBadge tone='neutral' variant='outline' color='gray'>
+    <MonitoringStatusBadge tone='neutral' variant='outline' color='gray'>
       {sourceTypeLabel(type)}
-    </StatusBadge>
+    </MonitoringStatusBadge>
   );
 }
 
@@ -304,13 +421,13 @@ export function FreshnessText({
   return (
     <Group gap={4} style={{ fontVariantNumeric: 'tabular-nums' }}>
       {stale ? (
-        <StatusBadge tone='stale' color='gray'>
+        <MonitoringStatusBadge tone='stale' color='gray'>
           {fact.serverFlag ? t`Stale (server flag)` : t`Stale`} ·{' '}
           {fact.future
             ? t`${fact.age} ahead of your clock`
             : t`${fact.age} old`}{' '}
           · {fact.budget}
-        </StatusBadge>
+        </MonitoringStatusBadge>
       ) : (
         <MetaText>
           {fact.time} ·{' '}
@@ -322,8 +439,41 @@ export function FreshnessText({
     </Group>
   );
 }
-/** Kept for native callers outside this pass; new code uses FreshnessText. */
-export const ObservedAt = FreshnessText;
+/**
+ * Render an observation time with how long ago it was.
+ *
+ * Freshness is never implied: a stale reading says so in words next to the
+ * timestamp, so nobody reads an hours-old number as the machine's current state.
+ */
+export function ObservedAt(props: Parameters<typeof FreshnessText>[0]) {
+  // Budget-aware callers retain the full server-flag and age explanation.
+  if ('thresholdSeconds' in props || 'now' in props) {
+    return <FreshnessText {...props} />;
+  }
+  const { observedAt, stale } = props;
+  if (!observedAt) {
+    return (
+      <Text size='sm' className={operations.meta}>
+        {t`No reading`}
+      </Text>
+    );
+  }
+
+  return (
+    <Group
+      gap={6}
+      wrap='wrap'
+      title={formatInstant(observedAt, displayClock()) ?? t`Time unavailable`}
+    >
+      <Text size='sm'>
+        {formatInstant(observedAt, displayClock()) ?? t`Time unavailable`}
+      </Text>
+      <Text size='xs' className={operations.meta}>
+        {stale ? t`Stale` : dayjs(observedAt).fromNow()}
+      </Text>
+    </Group>
+  );
+}
 
 /** Bounds follow the native classifier: a minimum is breached below, a maximum above. */
 export function formatSignalLimits(

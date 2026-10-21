@@ -301,6 +301,8 @@ class RuleSet(models.Model):
     can_record_operating_authority = models.BooleanField(
         verbose_name=_('Can record operating authority and service state'),
         default=False,
+        # Rulesets created by code that predates the column get False too.
+        db_default=False,
     )
 
     can_complete_workorder = models.BooleanField(

@@ -3,6 +3,7 @@ import type { AxiosInstance } from 'axios';
 import type { ShowContextMenuFunction } from 'mantine-contextmenu';
 import type {
   DataTableCellClickHandler,
+  DataTableProps,
   DataTableRowExpansionProps
 } from 'mantine-datatable';
 import type { ReactNode } from 'react';
@@ -116,7 +117,7 @@ export type TableColumnProps<T = any> = {
   render?: (record: T, index?: number) => any;
   filter?: TableColumnFilterType;
   filtering?: boolean;
-  width?: number;
+  width?: string | number;
   minWidth?: string | number;
   resizable?: boolean;
   noWrap?: boolean;
@@ -197,6 +198,7 @@ export type RowViewProps = RowAction & RowModelProps & RowViewBehaviorProps;
  * @param noHeader: boolean - Hide the table header
  */
 export type InvenTreeTableProps<T = any> = {
+  scrollAreaProps?: DataTableProps<T>['scrollAreaProps'];
   params?: any;
   defaultSortColumn?: string;
   noRecordsText?: string;
@@ -223,6 +225,8 @@ export type InvenTreeTableProps<T = any> = {
   rowExpansion?: DataTableRowExpansionProps<T>;
   dataFormatter?: (data: any) => any;
   rowActions?: (record: T) => RowAction[];
+  /** Static, accessible heading for the row-action column. */
+  rowActionsTitle?: ReactNode;
   detailAction?: boolean;
   onRowClick?: (record: T, index: number, event: any) => void;
   onCellClick?: DataTableCellClickHandler<T>;

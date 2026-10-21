@@ -18,6 +18,7 @@ WORK_EXECUTION_FIELDS = (
     'routine_work',
     'recurrence_policy',
     'operational_authority',
+    'routine_origin',
 )
 
 
@@ -55,6 +56,15 @@ class WorkExecutionFieldsMixin(serializers.Serializer):
     work_continuity = serializers.SerializerMethodField()
     routine_work = serializers.SerializerMethodField()
     recurrence_policy = serializers.SerializerMethodField()
+    routine_origin = serializers.SerializerMethodField()
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_routine_origin(self, obj) -> dict | None:
+        """O21: only disclose the source routine Work to its authorized reader."""
+        from tasks.services.routine_findings import origin
+
+        request = self.context.get('request')
+        return origin(obj, request.user if request else None)
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_routine_work(self, obj) -> dict | None:
@@ -85,7 +95,8 @@ class WorkExecutionFieldsMixin(serializers.Serializer):
         """P27: native assignment provenance, without inferred labor."""
         from .time_assignment import project
 
-        return project(obj)
+        request = self.context.get('request')
+        return project(obj, actor=request.user if request else None)
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_verification_return(self, obj) -> dict:

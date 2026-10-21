@@ -26,6 +26,7 @@ import { Link } from 'react-router-dom';
 import { openGlobalAIChatAboutWork } from '../../../states/AIChatState';
 import { OriginalMedia } from './OriginalMedia';
 import { ContinueInvestigation } from './execution/ContinueInvestigation';
+import { readingStatusLabel } from './execution/routinePresentation';
 import { narrativeExcerpts } from './storyProvenance';
 
 const when = (value?: string | null) =>
@@ -158,7 +159,7 @@ export function PreparedCloseout({
       : []),
     ...(readings ?? []).map(
       (row) =>
-        `${row.label}: ${row.raw_text} ${row.unit} · ${row.verification_state} · ${when(row.recorded_at)} · ${t`Recorded by`} ${fact(row.recorded_by_name)}`
+        `${row.label}: ${row.raw_text} ${row.unit} · ${readingStatusLabel(row.verification_state)} · ${when(row.recorded_at)} · ${t`Recorded by`} ${fact(row.recorded_by_name)}`
     ),
     ...(amendments ?? []).map(
       (row) =>
@@ -187,7 +188,7 @@ export function PreparedCloseout({
       <Card withBorder data-testid='closeout-account'>
         <Stack gap='sm'>
           <Group justify='space-between'>
-            <Title order={4}>{t`Prepared maintenance account`}</Title>
+            <Title order={2} size='h4'>{t`Prepared maintenance account`}</Title>
             <Badge color={accepted ? 'green' : 'gray'}>
               {accepted
                 ? t`Completed account`
@@ -257,15 +258,17 @@ export function PreparedCloseout({
           )}
           <Anchor
             component={Link}
+            replace
             to='?work_panel=verify'
           >{t`View verification in Verify & Return`}</Anchor>
           <Text
             size='sm'
             c='dimmed'
           >{t`This account does not establish permission to operate or service return.`}</Text>
-          <Title order={5}>{t`Materials and time`}</Title>
+          <Title order={3} size='h5'>{t`Materials and time`}</Title>
           <Anchor
             component={Link}
+            replace
             to='?work_panel=parts'
           >{t`View recorded materials and custody`}</Anchor>
           <Text size='sm'>
@@ -297,7 +300,7 @@ export function PreparedCloseout({
             >{t`Optional time and follow-up edits are an unsaved draft.`}</Text>
           )}
           {reconciliation}
-          <Title order={5}>{t`Saved readings and attempts`}</Title>
+          <Title order={3} size='h5'>{t`Saved readings and attempts`}</Title>
           {readings === undefined ? (
             <Text size='sm'>{t`Reading records are not available.`}</Text>
           ) : readings.length === 0 ? (
@@ -307,7 +310,7 @@ export function PreparedCloseout({
               <Group key={row.id} gap='xs' wrap='wrap'>
                 <Text size='sm'>
                   {row.label}: {row.raw_text || t`Not recorded`} {row.unit} ·{' '}
-                  {row.verification_state}
+                  {readingStatusLabel(row.verification_state)}
                 </Text>
                 {displayReading(row).focus && (
                   <Button
@@ -330,7 +333,7 @@ export function PreparedCloseout({
               </Group>
             ))
           )}
-          <Title order={5}>{t`Report preview`}</Title>
+          <Title order={3} size='h5'>{t`Report preview`}</Title>
           {accepted && (
             <Text size='sm' c='dimmed'>
               {accepted.reports?.length
@@ -390,7 +393,7 @@ export function PreparedCloseout({
           )}
           {accepted && (
             <>
-              <Title order={5}>{t`Attributed amendments`}</Title>
+              <Title order={3} size='h5'>{t`Attributed amendments`}</Title>
               {amendments === undefined ? (
                 <Text>{t`Amendments could not yet be read.`}</Text>
               ) : amendments.length === 0 ? (
@@ -424,7 +427,7 @@ export function PreparedCloseout({
       </Card>
       <Card withBorder data-testid='closeout-story'>
         <Stack gap='sm'>
-          <Title order={4}>{t`Technician story & insights`}</Title>
+          <Title order={2} size='h4'>{t`Technician story & insights`}</Title>
           {captures === undefined ? (
             <Text>{t`Story sources are not available yet.`}</Text>
           ) : captures.length === 0 ? (

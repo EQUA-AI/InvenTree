@@ -57,6 +57,18 @@ class PhysicalLocationTests(TestCase):
             name='Location test machine', client=self.owner, location='Old paper label'
         )
 
+    def test_context_declares_only_the_explicit_plant_clock(self):
+        """Location timezone and Django TIME_ZONE never stand in for the plant."""
+        with self.settings(AIMMS_PLANT_TIMEZONE='', TIME_ZONE='Europe/London'):
+            response = self.api.get('/api/assets/locations/context/')
+            self.assertEqual(response.status_code, 200)
+            self.assertIsNone(response.data['plant_timezone'])
+        with self.settings(AIMMS_PLANT_TIMEZONE='Asia/Kolkata'):
+            self.assertEqual(
+                self.api.get('/api/assets/locations/context/').data['plant_timezone'],
+                'Asia/Kolkata',
+            )
+
     def node(self, name, **extra):
         """Create through the same structural command used by the API."""
         return save_location(

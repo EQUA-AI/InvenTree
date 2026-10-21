@@ -366,9 +366,7 @@ test('unsupported files external links and viewer permissions retain native beha
       exact: true
     })
   ).toHaveCount(0);
-  await expect(
-    page.getByRole('button', { name: /^row-action-menu/ })
-  ).toHaveCount(0);
+  await expect(page.getByTestId(/^row-action-menu/)).toHaveCount(0);
   await expect(page.getByRole('checkbox')).toHaveCount(0);
 });
 
@@ -395,7 +393,7 @@ test('editors retain native upload external-link edit and delete controls', asyn
       exact: true
     })
   });
-  await row.getByRole('button', { name: /^row-action-menu/ }).click();
+  await row.getByTestId(/^row-action-menu/).click();
   await expect(
     page.getByRole('menuitem', { name: 'Edit', exact: true })
   ).toBeVisible();

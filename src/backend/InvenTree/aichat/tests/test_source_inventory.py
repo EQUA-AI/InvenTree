@@ -65,8 +65,9 @@ class SourceInventoryTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         """One authorized machine world under the 'acme' site client."""
-        from assets.models import AssetMachine, Client
         from django.contrib.contenttypes.models import ContentType
+
+        from assets.models import AssetMachine, Client
 
         # Startup can cache live-database content-type ids before Django
         # switches to its reusable test database. Owner signals must resolve
@@ -90,8 +91,9 @@ class SourceInventoryTests(TestCase):
     # -- controlled documents ------------------------------------------
 
     def _list_named_sources(self, name, **kwargs):
-        from ai.core.integrations.source_inventory_tools import list_document_sources
         from asgiref.sync import async_to_sync
+
+        from ai.core.integrations.source_inventory_tools import list_document_sources
 
         with mock.patch(
             'ai.core.integrations.source_inventory_tools._current_user',
@@ -117,6 +119,7 @@ class SourceInventoryTests(TestCase):
         )
 
     def test_named_tool_resolves_exact_name_before_partial_matches(self):
+        """An exact authorized name wins over additional partial matches."""
         from assets.models import AssetMachine
 
         AssetMachine.objects.create(
@@ -127,6 +130,7 @@ class SourceInventoryTests(TestCase):
         self.assertEqual(inventory.call_args.kwargs['machine_ids'], [self.machine.pk])
 
     def test_named_tool_returns_real_ambiguous_candidates(self):
+        """Multiple authorized matches require explicit machine selection."""
         from assets.models import AssetMachine
 
         other = AssetMachine.objects.create(
@@ -141,12 +145,14 @@ class SourceInventoryTests(TestCase):
         )
 
     def test_named_tool_does_not_fall_back_to_unfiltered_on_missing_name(self):
+        """Missing names never turn a precise request into a broad inventory."""
         with mock.patch('ai.core.analysis.source_gateway.inventory') as inventory:
             result = self._list_named_sources('No such machine')
         inventory.assert_not_called()
         self.assertEqual(result['machine_filter'], 'not_resolved')
 
     def test_named_tool_cannot_resolve_an_unauthorized_machine(self):
+        """A foreign machine name is indistinguishable from a missing name."""
         from assets.models import AssetMachine, Client
 
         other_client = Client.objects.create(name='Other client', code='other')
@@ -424,6 +430,31 @@ class SourceInventoryTests(TestCase):
         section = attachment_inventory(user=self.user, asset_set=empty)
         self.assertEqual(section['population_count'], 0)
         self.assertIn('asset_selection_required', section['warnings'])
+
+    def test_shared_work_media_is_searchable_without_a_client_acl_stamp(self):
+        """O24 Work ownership supplies evidence access; asset selection stays scoped."""
+        from tasks.models import WorkOrder
+
+        from ai.core.analysis.source_gateway import (
+            attachment_inventory,
+            resolve_asset_set,
+        )
+        from company.models import Company
+
+        work = WorkOrder.objects.create(
+            title='O24 inventory Work', machine=self.machine,
+            customer=Company.objects.create(name='O24 inventory customer', is_customer=True),
+        )
+        attachment = self._attachment('workorder', work.pk, 'shared-evidence.png')
+        self._ingest(
+            attachment, model_type='workorder', model_id=work.pk, client_codes=[],
+            pipeline=AttachmentIngestPipeline.IMAGE,
+        )
+        asset_set = resolve_asset_set(self.user, [self.machine.pk])
+        section = attachment_inventory(user=self.user, asset_set=asset_set)
+        [item] = section['attachments']
+        self.assertTrue(item['source_state']['searchable_now'])
+        self.assertNotIn('not_searchable_for_actor', item.get('warnings', []))
 
     # -- top level -------------------------------------------------------
 

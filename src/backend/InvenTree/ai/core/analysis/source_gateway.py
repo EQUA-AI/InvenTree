@@ -178,7 +178,10 @@ def source_state_for_controlled_row(
 
 
 def source_state_for_ingest_row(
-    ingest: Any | None, *, actor_codes: frozenset[str] = frozenset()
+    ingest: Any | None,
+    *,
+    actor_codes: frozenset[str] = frozenset(),
+    work_authorized: bool = False,
 ) -> dict[str, bool]:
     """A11 states for one attachment/media registry row (or its absence)."""
     if ingest is None:
@@ -200,7 +203,7 @@ def source_state_for_ingest_row(
         "searchable_now": bool(
             state == "indexed"
             and getattr(ingest, "search_index_name", "")
-            and row_codes & actor_codes
+            and (work_authorized or row_codes & actor_codes)
         ),
         "current": state not in ("superseded", "deleted"),
     }
@@ -447,12 +450,21 @@ def attachment_inventory(
         if not readable or not native_attachment_owner(current_actor, attachment):
             withheld_count += 1
             continue
+        work_authorized = attachment.model_type in {"workorder", "workorderstepexecution"}
         ingest = ingest_by_attachment.get(attachment.pk)
         if ingest is not None:
             if str(ingest.pipeline) not in wanted_pipelines:
                 continue
             row_codes = frozenset(ingest.client_codes or ())
-            if row_codes and not (row_codes & actor_codes):
+            if work_authorized:
+                from aichat.services.attachment_ingestion import derive_client_codes
+
+                if row_codes != frozenset(
+                    derive_client_codes(attachment.model_type, attachment.model_id)
+                ):
+                    withheld_count += 1
+                    continue
+            if not work_authorized and row_codes and not (row_codes & actor_codes):
                 withheld_count += 1
                 continue
         basename = attachment.basename
@@ -473,10 +485,12 @@ def attachment_inventory(
                 if ingest is not None and str(ingest.state) in ("failed", "skipped")
                 else None
             ),
-            "source_state": source_state_for_ingest_row(ingest, actor_codes=actor_codes),
+            "source_state": source_state_for_ingest_row(
+                ingest, actor_codes=actor_codes, work_authorized=work_authorized
+            ),
             "applicability": "unresolved",
         }
-        if ingest is not None and not (ingest.client_codes or ()):
+        if ingest is not None and not work_authorized and not (ingest.client_codes or ()):
             entry.setdefault("warnings", []).append("not_searchable_for_actor")
         items.append(entry)
 

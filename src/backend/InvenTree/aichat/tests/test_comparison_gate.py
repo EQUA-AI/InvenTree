@@ -28,6 +28,7 @@ from tasks.procedure_models import (
     WorkOrderStepExecution,
 )
 from tasks.scope import MaintenanceScope
+from tasks.services.procedure_execution import _application_snapshot
 
 READ_FLAGS = {'AIMMS_MAINTENANCE_AI_READ_ENABLED': True}
 SCOPE_KEY = 'epcon-experimental'
@@ -81,7 +82,7 @@ class ComparisonGateTestCase(TestCase):
         cls.application = WorkOrderProcedureApplication.objects.create(
             work_order=cls.structured_wo,
             revision=cls.revision,
-            snapshot={'title': 'Gate procedure'},
+            snapshot=_application_snapshot(cls.revision),
             snapshot_hash='d' * 64,
             applied_by=cls.author,
             idempotency_key=f'gate-{suffix}',

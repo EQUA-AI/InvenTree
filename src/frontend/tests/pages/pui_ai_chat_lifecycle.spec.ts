@@ -26,14 +26,14 @@ test('delete cancellation sends no mutation and incomplete cleanup can be retrie
   await expect(
     page.getByText('Durable server history', { exact: true })
   ).toBeVisible();
-  await page.getByLabel('select-ai-chat-thread').click();
-  await page.getByLabel(`delete-ai-chat-thread-${threadId}`).click();
+  await page.getByTestId('select-ai-chat-thread').click();
+  await page.getByTestId(`delete-ai-chat-thread-${threadId}`).click();
   let modal = page.getByRole('dialog', { name: 'Delete conversation?' });
   await modal.getByRole('button', { name: 'Cancel', exact: true }).click();
   expect(attempts).toBe(0);
-  const deleteButton = page.getByLabel(`delete-ai-chat-thread-${threadId}`);
+  const deleteButton = page.getByTestId(`delete-ai-chat-thread-${threadId}`);
   if (!(await deleteButton.isVisible()))
-    await page.getByLabel('select-ai-chat-thread').click();
+    await page.getByTestId('select-ai-chat-thread').click();
   await deleteButton.click();
   modal = page.getByRole('dialog', { name: 'Delete conversation?' });
   await modal

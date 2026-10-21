@@ -2,34 +2,48 @@ import { t } from '@lingui/core/macro';
 import {
   Alert,
   Anchor,
-  Badge,
   Box,
   Breadcrumbs,
   Button,
   Checkbox,
+  Collapse,
   Grid,
   Group,
   Loader,
   Pagination,
   Paper,
   Select,
-  SimpleGrid,
   Stack,
   Switch,
   Table,
   Text,
   TextInput,
-  Title
+  Title,
+  Tooltip,
+  useMatches
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
-import { IconMapPin, IconPlus, IconSearch } from '@tabler/icons-react';
+import {
+  IconFlag,
+  IconMapPin,
+  IconPlus,
+  IconSearch,
+  IconServerOff
+} from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { MachineAlarmBadges } from '../../../components/items/MachineAlarmBadges';
 import { useApi } from '../../../contexts/ApiContext';
 import { useUserState } from '../../../states/UserState';
-import { HealthStateBadge } from '../health/common';
+import {
+  StatusBadge as Badge,
+  HealthStateBadge,
+  Unavailable
+} from '../health/common';
+import { formatInstant, useDisplayClock } from '../health/mimic/observedTime';
+import operations from '../operations.module.css';
+import { MachinePageSummary } from './MachinePageSummary';
 
 import { machineOpenWorkHref } from '../maintenance/machineWorkViews';
 import { LocationBrowser, locationKindLabel } from './LocationBrowser';
@@ -90,11 +104,13 @@ export function ScopedMachineList({
   ) => void;
   source: MachineSourceView;
 }) {
+  const phone = useMatches({ base: true, sm: false });
   const api = useApi();
   const identity = useUserState((s) => s.authGeneration);
   const { search, alarmsOnly, criticality, page } = state;
   const [debounced] = useDebouncedValue(search, 200);
   const searchPending = search !== debounced;
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [selection, setSelection] = useState<number[]>([]);
   const [moving, setMoving] = useState<LocatedMachine[] | null>(null);
   useEffect(() => {
@@ -193,69 +209,105 @@ export function ScopedMachineList({
     includeDescendants
   });
   return (
-    <Stack>
-      <Group justify='space-between'>
-        <Group>
-          <TextInput
-            aria-label={t`Search machines`}
-            placeholder={t`Search machines`}
-            description={t`Search this list by name, serial, or manufacturer.`}
-            leftSection={<IconSearch size={16} />}
-            value={search}
-            onChange={(event) =>
-              onStateChange({ search: event.currentTarget.value }, true)
-            }
-          />
-          <Switch
-            label={t`In alarm only`}
-            checked={alarmsOnly}
-            onChange={(event) =>
-              onStateChange({ alarmsOnly: event.currentTarget.checked })
-            }
-          />
-          <Select
-            aria-label={t`Criticality`}
-            placeholder={t`Any criticality`}
-            clearable
-            // The chosen value names its filter; the options stay short.
-            data={MACHINE_CRITICALITIES.map((level) => ({
-              value: level,
-              label: `${t`Criticality`}: ${criticalityLabel(level)}`
-            }))}
-            renderOption={({ option }) =>
-              criticalityLabel(option.value as MachineCriticality)
-            }
-            value={criticality || null}
-            onChange={(value) =>
-              onStateChange({ criticality: machineCriticality(value) ?? '' })
-            }
-            w={190}
-          />
-        </Group>
-        <Group>
-          <Text size='sm' c='dimmed'>
-            {query.data && !query.isError && !searchPending
-              ? t`${query.data.count} machines`
-              : ''}
-          </Text>
-          {selection.length > 0 && (
-            <Text size='sm' c='dimmed'>
-              {t`Selected on this page`} ({selection.length})
+    <Stack gap='xs' className={operations.phoneStack}>
+      {query.data && !query.isError && !searchPending && !pageOutOfRange && (
+        <MachinePageSummary
+          rows={query.data.results}
+          total={query.data.count}
+          updatedAt={query.dataUpdatedAt}
+          updating={query.isFetching}
+          alarmsOnly={alarmsOnly}
+          onAlarmsChange={() => onStateChange({ alarmsOnly: !alarmsOnly })}
+        />
+      )}
+
+      <Button
+        hiddenFrom='sm'
+        variant='default'
+        size='xs'
+        aria-expanded={filtersOpen}
+        onClick={() => setFiltersOpen((value) => !value)}
+      >{t`Filters`}</Button>
+      <Collapse
+        expanded={!phone || filtersOpen}
+        display={phone && !filtersOpen ? 'none' : undefined}
+      >
+        <Group justify='space-between'>
+          <Group>
+            <TextInput
+              size='xs'
+              label={t`Search machines`}
+              classNames={{
+                input: operations.input,
+                description: operations.meta
+              }}
+              description={t`Name, serial or manufacturer`}
+              leftSection={<IconSearch size={16} />}
+              value={search}
+              onChange={(event) =>
+                onStateChange({ search: event.currentTarget.value }, true)
+              }
+            />
+            <Switch
+              classNames={{ track: operations.input }}
+              label={t`In alarm only`}
+              checked={alarmsOnly}
+              onChange={(event) =>
+                onStateChange({ alarmsOnly: event.currentTarget.checked })
+              }
+            />
+            <Select
+              size='xs'
+              label={t`Criticality`}
+              classNames={{
+                input: operations.input,
+                description: operations.meta
+              }}
+              // The chosen value names its filter; the options stay short.
+              data={[
+                { value: 'any', label: t`Any criticality` },
+                ...MACHINE_CRITICALITIES.map((level) => ({
+                  value: level,
+                  label: `${t`Criticality`}: ${criticalityLabel(level)}`
+                }))
+              ]}
+              renderOption={({ option }) =>
+                option.value === 'any'
+                  ? t`Any criticality`
+                  : criticalityLabel(option.value as MachineCriticality)
+              }
+              value={criticality || 'any'}
+              onChange={(value) =>
+                onStateChange({ criticality: machineCriticality(value) ?? '' })
+              }
+              w={190}
+            />
+          </Group>
+          <Group>
+            <Text size='sm' className={operations.meta}>
+              {query.data && !query.isError && !searchPending
+                ? t`${query.data.count} machines`
+                : ''}
             </Text>
-          )}
-          {canChange && (
-            <Button
-              variant='light'
-              leftSection={<IconMapPin size={16} />}
-              disabled={!selected.length || query.isFetching || query.isError}
-              onClick={() => setMoving(selected)}
-            >
-              {t`Move selected`}
-              {selected.length ? ` (${selected.length})` : ''}
-            </Button>
-          )}
+            {selection.length > 0 && (
+              <Text size='sm' className={operations.meta}>
+                {t`Selected on this page`} ({selection.length})
+              </Text>
+            )}
+            {canChange && (
+              <Button
+                variant='light'
+                leftSection={<IconMapPin size={16} />}
+                disabled={!selected.length || query.isFetching || query.isError}
+                onClick={() => setMoving(selected)}
+              >
+                {t`Move selected`}
+                {selected.length ? ` (${selected.length})` : ''}
+              </Button>
+            )}
+          </Group>
         </Group>
-      </Group>
+      </Collapse>
       {(query.isPending ||
         searchPending ||
         (pageOutOfRange && !query.isError)) && <Loader size='sm' />}
@@ -265,9 +317,8 @@ export function ScopedMachineList({
         !searchPending &&
         !pageOutOfRange && (
           <Text
-            component='output'
             size='sm'
-            c='dimmed'
+            className={operations.meta}
           >{t`Updating machines — showing the last loaded results.`}</Text>
         )}
       {query.isError && !searchPending && (
@@ -281,53 +332,243 @@ export function ScopedMachineList({
       )}
       {query.data && !query.isError && !searchPending && !pageOutOfRange && (
         <>
-          {/* Below this the table scrolls in place (phones); a 1280px
-              desktop still shows every column without scrolling. */}
-          <Table.ScrollContainer minWidth={1000}>
-            <Table striped highlightOnHover>
-              <Table.Thead>
-                <Table.Tr>
-                  {canChange && (
-                    <Table.Th>
-                      <Checkbox
-                        aria-label={t`Select machines on this page`}
-                        checked={allSelected}
-                        indeterminate={selected.length > 0 && !allSelected}
-                        onChange={(event) =>
-                          setSelection(
-                            event.currentTarget.checked
-                              ? query.data.results.map((m) => m.pk)
-                              : []
-                          )
-                        }
-                      />
-                    </Table.Th>
-                  )}
-                  <Table.Th>{t`Machine`}</Table.Th>
-                  <Table.Th>{t`Physical location`}</Table.Th>
-                  <Table.Th>{t`Manufacturer / model`}</Table.Th>
-                  <Table.Th>{t`Active record`}</Table.Th>
-                  {/* Short status labels must read whole on a phone; the
+          {query.data.results.length > 0 && (
+            <Box data-testid='machine-results'>
+              {!phone && (
+                <Box>
+                  {query.data.results.length > 0 && (
+                    <Table.ScrollContainer
+                      minWidth={720}
+                      scrollAreaProps={{ type: 'auto' }}
+                    >
+                      <Table
+                        striped
+                        highlightOnHover
+                        verticalSpacing={3}
+                        style={{ tableLayout: 'fixed' }}
+                      >
+                        <Table.Thead>
+                          <Table.Tr>
+                            {canChange && (
+                              <Table.Th>
+                                <Checkbox
+                                  aria-label={t`Select machines on this page`}
+                                  checked={allSelected}
+                                  indeterminate={
+                                    selected.length > 0 && !allSelected
+                                  }
+                                  onChange={(event) =>
+                                    setSelection(
+                                      event.currentTarget.checked
+                                        ? query.data.results.map((m) => m.pk)
+                                        : []
+                                    )
+                                  }
+                                />
+                              </Table.Th>
+                            )}
+                            <Table.Th w='36%'>{t`Machine`}</Table.Th>
+                            {/* Short status labels must read whole on a phone; the
                       table scrolls sideways rather than truncating them. */}
-                  <Table.Th style={{ minWidth: STATUS_COLUMN_WIDTH }}>
-                    {t`Condition`}
-                  </Table.Th>
-                  <Table.Th style={{ minWidth: STATUS_COLUMN_WIDTH }}>
-                    {t`Alarms`}
-                  </Table.Th>
-                  <Table.Th style={{ minWidth: STATUS_COLUMN_WIDTH }}>
-                    {t`Work`}
-                  </Table.Th>
-                  <Table.Th>{t`Criticality`}</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {query.data.results.map((machine) => (
-                  <Table.Tr key={machine.pk}>
-                    {canChange && (
-                      <Table.Td>
+                            <Table.Th w='19%'>
+                              <Tooltip
+                                label={t`The Health tab's assessment of this machine`}
+                              >
+                                <Text
+                                  component='span'
+                                  tabIndex={0}
+                                >{t`Condition`}</Text>
+                              </Tooltip>
+                            </Table.Th>
+                            <Table.Th w='15%'>
+                              <Tooltip
+                                label={t`Active (open or acknowledged) alarms on this machine and the pumps under it`}
+                              >
+                                <Text
+                                  component='span'
+                                  tabIndex={0}
+                                >{t`Alarms`}</Text>
+                              </Tooltip>
+                            </Table.Th>
+                            <Table.Th w='20%'>{t`Work`}</Table.Th>
+                            <Table.Th w='10%'>{t`Criticality`}</Table.Th>
+                          </Table.Tr>
+                        </Table.Thead>
+                        <Table.Tbody>
+                          {query.data.results.map((machine) => (
+                            <Table.Tr
+                              key={machine.pk}
+                              data-machine={machine.pk}
+                              id={`machine-row-${machine.pk}`}
+                              tabIndex={-1}
+                            >
+                              {canChange && (
+                                <Table.Td>
+                                  <Checkbox
+                                    aria-label={t`Select ${machine.name}`}
+                                    checked={selection.includes(machine.pk)}
+                                    onChange={(event) =>
+                                      setSelection(
+                                        event.currentTarget.checked
+                                          ? [...selection, machine.pk]
+                                          : selection.filter(
+                                              (id) => id !== machine.pk
+                                            )
+                                      )
+                                    }
+                                  />
+                                </Table.Td>
+                              )}
+                              <Table.Td>
+                                <Anchor
+                                  className={operations.link}
+                                  component={Link}
+                                  to={machineDetailHref(machine.pk, rowScope)}
+                                >
+                                  {machine.name}
+                                </Anchor>
+                                <Text size='xs' className={operations.meta}>
+                                  {machine.serial || t`Serial not recorded`} ·{' '}
+                                  {[machine.manufacturer, machine.model]
+                                    .filter(Boolean)
+                                    .join(' / ') || t`Not recorded`}
+                                </Text>
+                                {includeDescendants && (
+                                  <Text size='xs' className={operations.meta}>
+                                    {t`Location`}:{' '}
+                                    {machine.physical_location
+                                      ? machine.physical_location.pk ===
+                                        location
+                                        ? t`Here`
+                                        : locationPath(
+                                            machine.physical_location
+                                          )
+                                      : t`Unassigned`}
+                                  </Text>
+                                )}
+                                {!machine.active && (
+                                  <Badge
+                                    color='gray'
+                                    variant='outline'
+                                    size='sm'
+                                  >{t`Inactive record`}</Badge>
+                                )}
+                              </Table.Td>
+                              <MachineConditionCell value={machine.condition} />
+                              <Table.Td
+                                data-alarms={machine.open_alarms ?? undefined}
+                              >
+                                {typeof machine.open_alarms !== 'number' ||
+                                !Number.isSafeInteger(machine.open_alarms) ||
+                                machine.open_alarms < 0 ? (
+                                  <Unavailable
+                                    reason={t`alarm count not supplied`}
+                                  />
+                                ) : machine.open_alarms > 0 ? (
+                                  <MachineAlarmBadges
+                                    open={machine.open_alarms}
+                                    critical={machine.open_critical_alarms}
+                                    warning={machine.open_warning_alarms}
+                                  />
+                                ) : (
+                                  '0'
+                                )}
+                              </Table.Td>
+                              <MachineWorkCell
+                                value={machine.open_work}
+                                href={machineDetailHref(machine.pk, rowScope)}
+                              />
+                              <MachineCriticalityCell
+                                value={machine.criticality}
+                              />
+                            </Table.Tr>
+                          ))}
+                        </Table.Tbody>
+                      </Table>
+                    </Table.ScrollContainer>
+                  )}
+                </Box>
+              )}
+              {phone && (
+                <Stack gap='xs'>
+                  {query.data.results.map((machine) => (
+                    <Paper
+                      key={machine.pk}
+                      withBorder
+                      p='sm'
+                      data-machine-card={machine.pk}
+                      data-machine={machine.pk}
+                      id={`machine-row-${machine.pk}`}
+                      tabIndex={-1}
+                    >
+                      <Anchor
+                        className={operations.link}
+                        component={Link}
+                        to={machineDetailHref(machine.pk, rowScope)}
+                        fw={600}
+                      >
+                        {machine.name}
+                      </Anchor>
+                      <Text className={operations.meta} size='xs'>
+                        {machine.serial || t`Serial not recorded`} ·{' '}
+                        {[machine.manufacturer, machine.model]
+                          .filter(Boolean)
+                          .join(' / ') || t`Not recorded`}
+                      </Text>
+                      {!machine.active && (
+                        <Badge
+                          color='gray'
+                          variant='outline'
+                        >{t`Inactive record`}</Badge>
+                      )}
+                      <Table withRowBorders={false} verticalSpacing={2}>
+                        <Table.Thead>
+                          <Table.Tr>
+                            <Table.Th>{t`Condition`}</Table.Th>
+                            <Table.Th>{t`Alarms`}</Table.Th>
+                          </Table.Tr>
+                        </Table.Thead>
+                        <Table.Tbody>
+                          <Table.Tr>
+                            <MachineConditionCell value={machine.condition} />
+                            <Table.Td
+                              data-alarms={machine.open_alarms ?? undefined}
+                            >
+                              {typeof machine.open_alarms === 'number' ? (
+                                machine.open_alarms === 0 ? (
+                                  '0'
+                                ) : (
+                                  <MachineAlarmBadges
+                                    open={machine.open_alarms}
+                                    critical={machine.open_critical_alarms}
+                                    warning={machine.open_warning_alarms}
+                                  />
+                                )
+                              ) : (
+                                <Unavailable
+                                  reason={t`alarm count not supplied`}
+                                />
+                              )}
+                            </Table.Td>
+                          </Table.Tr>
+                          <Table.Tr>
+                            <Table.Td>{t`Work`}</Table.Td>
+                            <MachineWorkCell
+                              value={machine.open_work}
+                              href={machineDetailHref(machine.pk, rowScope)}
+                            />
+                          </Table.Tr>
+                          <Table.Tr>
+                            <Table.Td>{t`Criticality`}</Table.Td>
+                            <MachineCriticalityCell
+                              value={machine.criticality}
+                            />
+                          </Table.Tr>
+                        </Table.Tbody>
+                      </Table>
+                      {canChange && (
                         <Checkbox
-                          aria-label={t`Select ${machine.name}`}
+                          label={t`Select ${machine.name}`}
                           checked={selection.includes(machine.pk)}
                           onChange={(event) =>
                             setSelection(
@@ -337,73 +578,20 @@ export function ScopedMachineList({
                             )
                           }
                         />
-                      </Table.Td>
-                    )}
-                    <Table.Td>
-                      <Anchor
-                        component={Link}
-                        to={machineDetailHref(machine.pk, rowScope)}
-                      >
-                        {machine.name}
-                      </Anchor>
-                      {machine.serial && (
-                        <Text size='xs' c='dimmed'>
-                          {machine.serial}
-                        </Text>
                       )}
-                    </Table.Td>
-                    <Table.Td>
-                      {machine.physical_location ? (
-                        <Anchor
-                          component={Link}
-                          to={placementHref(machine.physical_location.pk)}
-                        >
-                          {locationPath(machine.physical_location)}
-                        </Anchor>
-                      ) : (
-                        <Badge
-                          variant='light'
-                          color='gray'
-                        >{t`Unassigned`}</Badge>
-                      )}
-                      {machine.location && (
-                        <Text size='xs' c='dimmed'>
-                          {t`Legacy label`}: {machine.location}
-                        </Text>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      {[machine.manufacturer, machine.model]
-                        .filter(Boolean)
-                        .join(' / ') || '—'}
-                    </Table.Td>
-                    <Table.Td>{machine.active ? t`Yes` : t`No`}</Table.Td>
-                    <MachineConditionCell value={machine.condition} />
-                    <Table.Td data-alarms={machine.open_alarms ?? undefined}>
-                      {machine.open_alarms ? (
-                        <MachineAlarmBadges
-                          open={machine.open_alarms}
-                          critical={machine.open_critical_alarms}
-                        />
-                      ) : (
-                        '—'
-                      )}
-                    </Table.Td>
-                    <MachineWorkCell
-                      value={machine.open_work}
-                      href={machineDetailHref(machine.pk, rowScope)}
-                    />
-                    <MachineCriticalityCell value={machine.criticality} />
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
+                    </Paper>
+                  ))}
+                </Stack>
+              )}
+            </Box>
+          )}
           {!query.data.results.length && (
             <Paper withBorder p='lg'>
               {emptyKind === 'no-search-matches' && (
                 <Stack gap='xs'>
-                  <Text c='dimmed'>{t`No machines match your search.`}</Text>
+                  <Text
+                    className={operations.meta}
+                  >{t`No machines match your search.`}</Text>
                   <Button
                     variant='light'
                     size='xs'
@@ -414,7 +602,9 @@ export function ScopedMachineList({
               )}
               {emptyKind === 'no-filter-matches' && (
                 <Stack gap='xs'>
-                  <Text c='dimmed'>{t`No machines match these filters.`}</Text>
+                  <Text
+                    className={operations.meta}
+                  >{t`No machines match these filters.`}</Text>
                   <Button
                     variant='light'
                     size='xs'
@@ -427,7 +617,7 @@ export function ScopedMachineList({
               )}
               {emptyKind === 'no-machines-in-alarm' && (
                 <Stack gap='xs'>
-                  <Text c='dimmed'>
+                  <Text className={operations.meta}>
                     {t`No machine in this list has an active alarm.`}
                   </Text>
                   <Button
@@ -440,21 +630,30 @@ export function ScopedMachineList({
               )}
               {emptyKind === 'no-direct-machines' && (
                 <Stack gap='xs'>
-                  <Text c='dimmed'>
+                  <Text className={operations.meta}>
                     {t`No machines are placed directly at this location.`}
                   </Text>
-                  <Text size='sm' c='dimmed'>
+                  <Text size='sm' className={operations.meta}>
                     {t`Turn on Include sublocations to see machines placed in sublocations.`}
                   </Text>
                 </Stack>
               )}
               {emptyKind === 'no-machines-here' && (
-                <Text c='dimmed'>
-                  {t`No machines at this location or its sublocations.`}
-                </Text>
+                <Stack gap='xs'>
+                  <IconServerOff />
+                  <Title order={5}>{t`No machines at this location`}</Title>
+                  <Text
+                    className={operations.meta}
+                  >{t`No machine is placed at this location or its sublocations.`}</Text>
+                  <Anchor
+                    className={operations.link}
+                    component={Link}
+                    to='/machines/index/machines/'
+                  >{t`Browse all machines`}</Anchor>
+                </Stack>
               )}
               {emptyKind === 'no-unassigned-machines' && (
-                <Text c='dimmed'>
+                <Text className={operations.meta}>
                   {t`No unassigned machines in your workspace.`}
                 </Text>
               )}
@@ -463,6 +662,7 @@ export function ScopedMachineList({
           {query.data.count > MACHINE_PAGE_SIZE && (
             <nav aria-label={t`Machine results pagination`}>
               <Pagination
+                color='var(--mantine-primary-color-7)'
                 total={lastPage}
                 value={page}
                 onChange={(value) => {
@@ -511,8 +711,12 @@ function MachineWorkCell({
   if (summary.kind === 'unavailable') {
     return (
       <Table.Td data-open-work='unavailable'>
-        <Text size='sm' c='dimmed' title={t`Open work could not be checked`}>
-          {t`Not available`}
+        <Text
+          size='sm'
+          className={operations.meta}
+          title={t`Open work could not be checked`}
+        >
+          {t`Unavailable · could not be checked`}
         </Text>
       </Table.Td>
     );
@@ -520,19 +724,19 @@ function MachineWorkCell({
   if (summary.kind === 'none') {
     return (
       <Table.Td data-open-work='0' aria-label={t`No open work`}>
-        —
+        0
       </Table.Td>
     );
   }
   const priority = summary.priority;
   return (
     <Table.Td data-open-work={summary.count}>
-      <Group gap={6} wrap='nowrap'>
+      <Group gap={4} wrap='wrap'>
         <Anchor
+          className={operations.link}
           component={Link}
           to={machineOpenWorkHref(href)}
           size='sm'
-          style={{ whiteSpace: 'nowrap' }}
           aria-label={t`${summary.count} open work orders — open the machine's open work`}
         >
           {t`${summary.count} open`}
@@ -540,15 +744,16 @@ function MachineWorkCell({
         {priority && (
           <Badge
             size='xs'
-            variant='light'
+            variant='outline'
+            leftSection={<IconFlag size={12} />}
             color={PRIORITY_COLORS[priority]}
             style={{ flexShrink: 0, overflow: 'visible' }}
           >
             {priority === 'high'
-              ? t`High`
+              ? t`High priority`
               : priority === 'medium'
-                ? t`Medium`
-                : t`Low`}
+                ? t`Medium priority`
+                : t`Low priority`}
           </Badge>
         )}
       </Group>
@@ -581,8 +786,12 @@ function MachineConditionCell({ value }: Readonly<{ value: unknown }>) {
   if (condition.kind === 'unavailable') {
     return (
       <Table.Td data-condition='unavailable'>
-        <Text size='sm' c='dimmed' title={t`Condition could not be checked`}>
-          {t`Not available`}
+        <Text
+          size='sm'
+          className={operations.meta}
+          title={t`Condition could not be checked`}
+        >
+          {t`Condition unavailable · could not be checked`}
         </Text>
       </Table.Td>
     );
@@ -591,9 +800,20 @@ function MachineConditionCell({ value }: Readonly<{ value: unknown }>) {
   return (
     <Table.Td data-condition={condition.state}>
       <Stack gap={2} align='flex-start'>
-        <HealthStateBadge state={condition.state} size='sm' />
+        <Tooltip
+          disabled={condition.state !== 'offline'}
+          label={t`Every mapped signal is stale; no current reading`}
+        >
+          <Box tabIndex={condition.state === 'offline' ? 0 : undefined}>
+            <HealthStateBadge state={condition.state} size='sm' />
+          </Box>
+        </Tooltip>
         {note && (
-          <Text size='xs' c='dimmed' style={{ whiteSpace: 'nowrap' }}>
+          <Text
+            size='xs'
+            className={operations.meta}
+            style={{ whiteSpace: 'nowrap' }}
+          >
             {note}
           </Text>
         )}
@@ -626,7 +846,7 @@ function MachineCriticalityCell({ value }: Readonly<{ value: unknown }>) {
     <Table.Td data-criticality={level ?? 'undeclared'}>
       <Text
         size='sm'
-        c={level ? undefined : 'dimmed'}
+        className={operations.meta}
         style={{ whiteSpace: 'nowrap' }}
       >
         {level ? criticalityLabel(level) : t`Not declared`}
@@ -668,7 +888,7 @@ function RootOverview({
     <Paper withBorder p='xl'>
       <Stack>
         <Title order={4}>{t`Browse top-level locations`}</Title>
-        <Text c='dimmed'>
+        <Text className={operations.meta}>
           {t`Select a top-level location to see its machines and current maintenance counts.`}
         </Text>
         {rootQuery.isPending && <Loader size='sm' />}
@@ -684,14 +904,18 @@ function RootOverview({
         )}
         {rootQuery.data?.results.map((node) => (
           <Group key={node.pk} justify='space-between' gap='xs'>
-            <Anchor component={Link} to={locationHref(node.pk)}>
+            <Anchor
+              className={operations.link}
+              component={Link}
+              to={locationHref(node.pk)}
+            >
               {node.name}
             </Anchor>
             <Group gap='xs'>
               <Badge variant='light'>
                 {locationKindLabel(locationKind(node.kind))}
               </Badge>
-              <Text size='xs' c='dimmed'>
+              <Text size='xs' className={operations.meta}>
                 {node.code}
               </Text>
               {node.archived && (
@@ -700,7 +924,7 @@ function RootOverview({
                 </Badge>
               )}
               {workspaces.length > 1 && (
-                <Text size='xs' c='dimmed'>
+                <Text size='xs' className={operations.meta}>
                   {workspaceLabel(node.client, workspaces)}
                 </Text>
               )}
@@ -710,6 +934,7 @@ function RootOverview({
         {(rootQuery.data?.count ?? 0) > ROOT_PAGE_SIZE && (
           <nav aria-label={t`Location overview pagination`}>
             <Pagination
+              color='var(--mantine-primary-color-7)'
               total={Math.ceil((rootQuery.data?.count ?? 0) / ROOT_PAGE_SIZE)}
               value={rootPage}
               onChange={setRootPage}
@@ -750,6 +975,7 @@ export function LocationWorkspace({
     parent?: LocationNode;
   } | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   const context = useQuery<LocationContext>({
     queryKey: ['asset-locations', identity, 'context'],
@@ -780,38 +1006,68 @@ export function LocationWorkspace({
     ? counts?.direct_open_work_orders
     : counts?.total_open_work_orders;
   const workspaces = context.data?.workspaces ?? [];
+  const clock = useDisplayClock(context.data?.plant_timezone);
   return (
-    <Stack>
-      <Group justify='space-between'>
-        <Box>
-          <Title order={3}>
-            {view === 'sites'
-              ? t`By location`
-              : view === 'all'
-                ? t`All Machines`
-                : t`Unassigned machines`}
-          </Title>
-          <Text size='sm' c='dimmed'>
-            {view === 'sites'
-              ? t`Organize physical locations and see where maintenance is needed.`
-              : t`Physical placement is separate from the legacy location label.`}
-          </Text>
-        </Box>
-        <Group>
-          <Button
-            variant='default'
-            onClick={() =>
-              queryClient.invalidateQueries({ queryKey: ['asset-locations'] })
-            }
-          >{t`Refresh`}</Button>
-          {view === 'sites' && !context.isError && context.data?.can_add && (
-            <Button
-              leftSection={<IconPlus size={16} />}
-              onClick={() => setEditing({})}
-            >{t`Add location`}</Button>
-          )}
+    <Stack gap='xs' data-operational-panel='machines'>
+      {(!selected || context.data?.can_add) && (
+        <Group justify='space-between'>
+          <Box>
+            {view !== 'sites' && (
+              <Title order={4}>
+                {view === 'all' ? t`All Machines` : t`Unassigned machines`}
+              </Title>
+            )}
+            {(view !== 'sites' || !selected) && (
+              <Text size='sm' className={operations.meta}>
+                {view === 'sites'
+                  ? t`Organize physical locations and see where maintenance is needed.`
+                  : t`Physical placement is separate from the legacy location label.`}
+              </Text>
+            )}
+          </Box>
+          <Group>
+            {view === 'sites' &&
+              !selected &&
+              context.data &&
+              !context.isError && (
+                <Button
+                  hiddenFrom='lg'
+                  variant='default'
+                  leftSection={<IconMapPin size={16} />}
+                  aria-expanded={mobileOpen}
+                  aria-controls='machine-location-browser'
+                  onClick={() => setMobileOpen((open) => !open)}
+                >
+                  {t`Choose location`}
+                </Button>
+              )}
+
+            {!selected && (
+              <Button
+                variant='default'
+                onClick={() =>
+                  queryClient.invalidateQueries({
+                    queryKey: ['asset-locations']
+                  })
+                }
+              >{t`Refresh`}</Button>
+            )}
+            {view === 'sites' && !context.isError && context.data?.can_add && (
+              <Button
+                leftSection={<IconPlus size={16} />}
+                onClick={() => setEditing({})}
+              >{t`Add location`}</Button>
+            )}
+          </Group>
         </Group>
-      </Group>
+      )}
+      {!selected && (
+        <Text className={operations.meta}>
+          {t`Times`}: {clock.label} · {t`Records read`}{' '}
+          {formatInstant(context.dataUpdatedAt || null, clock) ??
+            t`Time unavailable`}
+        </Text>
+      )}
       {context.isPending && <Loader size='sm' />}
       {context.isError && (
         <Alert
@@ -832,22 +1088,13 @@ export function LocationWorkspace({
           />
         ) : (
           <>
-            <Button
-              className={classes.chooseLocation}
-              variant='default'
-              leftSection={<IconMapPin size={16} />}
-              aria-expanded={mobileOpen}
-              aria-controls='machine-location-browser'
-              onClick={() => setMobileOpen((open) => !open)}
-            >
-              {t`Choose location`}
-            </Button>
             <Grid>
               <Grid.Col
                 id='machine-location-browser'
                 className={classes.browser}
                 data-mobile-open={mobileOpen ? 'true' : 'false'}
-                span={{ base: 12, md: 3 }}
+                visibleFrom={mobileOpen ? undefined : 'lg'}
+                span={{ base: 12, lg: 3 }}
               >
                 <LocationBrowser
                   selected={selected}
@@ -856,8 +1103,8 @@ export function LocationWorkspace({
                   workspaces={workspaces}
                 />
               </Grid.Col>
-              <Grid.Col span={{ base: 12, md: 9 }}>
-                <Stack>
+              <Grid.Col span={{ base: 12, lg: 9 }}>
+                <Stack gap='xs' className={operations.phoneStack}>
                   {rawLocation && !locationId && (
                     <Alert color='red'>{t`The location link is invalid.`}</Alert>
                   )}
@@ -867,63 +1114,107 @@ export function LocationWorkspace({
                   )}
                   {selected && !detail.isError ? (
                     <>
-                      <nav aria-label={t`Location path`}>
-                        <Breadcrumbs>
-                          {selected.path.map((node) => (
-                            <Anchor
-                              key={node.pk}
-                              component={Link}
-                              to={`?${machineLocationParams(params, node.pk)}`}
-                              aria-current={
-                                node.pk === selected.pk ? 'page' : undefined
-                              }
+                      {selected.path.length > 1 && (
+                        <nav aria-label={t`Location path`}>
+                          <Breadcrumbs>
+                            {selected.path.map((node) => (
+                              <Anchor
+                                className={operations.link}
+                                key={node.pk}
+                                component={Link}
+                                to={`?${machineLocationParams(params, node.pk)}`}
+                              >
+                                {node.name}
+                              </Anchor>
+                            ))}
+                          </Breadcrumbs>
+                        </nav>
+                      )}
+                      <Paper
+                        className={operations.band}
+                        component='section'
+                        aria-labelledby='location-name'
+                      >
+                        <Group justify='space-between' gap={4}>
+                          <Group
+                            gap={4}
+                            wrap='wrap'
+                            w={{ base: '100%', sm: 'auto' }}
+                          >
+                            <Title
+                              w={{ base: '100%', sm: 'auto' }}
+                              order={4}
+                              id='location-name'
                             >
-                              {node.name}
-                            </Anchor>
-                          ))}
-                        </Breadcrumbs>
-                      </nav>
-                      <Paper withBorder p='md'>
-                        <Stack gap='sm'>
-                          <Group justify='space-between'>
-                            <Group>
-                              <Title order={3}>{selected.name}</Title>
-                              <Badge variant='light'>
+                              {selected.name}
+                            </Title>
+                            <Group gap={4} wrap='nowrap'>
+                              <Badge size='sm'>
                                 {locationKindLabel(locationKind(selected.kind))}
                               </Badge>
-                              <Badge variant='outline'>{selected.code}</Badge>
-                              {selected.archived && (
-                                <Badge color='gray'>{t`Archived`}</Badge>
-                              )}
-                            </Group>
-                            <Group>
-                              {context.data.can_add && !selected.archived && (
-                                <Button
-                                  variant='light'
-                                  size='xs'
-                                  onClick={() =>
-                                    setEditing({ parent: selected })
-                                  }
-                                >{t`Add sublocation`}</Button>
-                              )}
-                              {context.data.can_change && (
-                                <Button
-                                  variant='default'
-                                  size='xs'
-                                  onClick={() => setEditing({ node: selected })}
-                                >{t`Edit location`}</Button>
-                              )}
+                              <Badge size='sm' variant='outline'>
+                                {selected.code}
+                              </Badge>
                             </Group>
                           </Group>
-                          {selected.description && (
-                            <Text>{selected.description}</Text>
-                          )}
-                          <Text size='sm' c='dimmed'>
-                            {t`Timezone`}:{' '}
-                            {selected.effective_timezone ?? t`Not configured`}
-                          </Text>
+                          <Group gap={4} className={operations.phoneActions}>
+                            <Button
+                              hiddenFrom='lg'
+                              size='compact-xs'
+                              className={operations.phoneTarget}
+                              variant='default'
+                              aria-expanded={mobileOpen}
+                              aria-controls='machine-location-browser'
+                              onClick={() => setMobileOpen((value) => !value)}
+                            >{t`Choose location`}</Button>
+                            <Button
+                              size='compact-xs'
+                              className={operations.phoneTarget}
+                              variant='default'
+                              onClick={() =>
+                                queryClient.invalidateQueries({
+                                  queryKey: ['asset-locations']
+                                })
+                              }
+                            >{t`Refresh`}</Button>
+                            <Button
+                              hiddenFrom='sm'
+                              size='compact-xs'
+                              variant='subtle'
+                              className={`${operations.link} ${operations.phoneTarget}`}
+                              aria-expanded={detailsOpen}
+                              onClick={() => setDetailsOpen((value) => !value)}
+                            >{t`Location details`}</Button>
+                            {context.data.can_add && !selected.archived && (
+                              <Button
+                                size='compact-xs'
+                                className={operations.phoneTarget}
+                                variant='default'
+                                onClick={() => setEditing({ parent: selected })}
+                              >{t`Add sublocation`}</Button>
+                            )}
+                            {context.data.can_change && (
+                              <Button
+                                size='compact-xs'
+                                className={operations.phoneTarget}
+                                variant='default'
+                                onClick={() => setEditing({ node: selected })}
+                              >{t`Edit location`}</Button>
+                            )}
+                          </Group>
                           <Switch
+                            size='xs'
                             label={t`Include sublocations`}
+                            aria-label={t`Include sublocations`}
+                            description={
+                              direct
+                                ? t`Direct placements only`
+                                : t`Descendant placements included`
+                            }
+                            classNames={{
+                              track: operations.input,
+                              description: operations.meta
+                            }}
                             checked={!direct}
                             onChange={(event) =>
                               setParams((previous) => {
@@ -937,64 +1228,62 @@ export function LocationWorkspace({
                               })
                             }
                           />
-                          <Text size='sm' c='dimmed'>
-                            {direct
-                              ? t`Includes only machines placed directly at this location.`
-                              : t`Includes machines placed at this location and all of its sublocations.`}
+                        </Group>
+                        <Text className={operations.meta}>
+                          {t`Times`}: {clock.label}
+                        </Text>
+
+                        <Box visibleFrom='sm'>
+                          <Text className={operations.meta}>
+                            {selected.description} · {t`Location timezone`}:{' '}
+                            {selected.effective_timezone ?? t`Unavailable`} (
+                            {t`location setting`}) · {t`Records read`}{' '}
+                            {formatInstant(
+                              detail.dataUpdatedAt || null,
+                              clock
+                            ) ?? t`Time unavailable`}
                           </Text>
-                        </Stack>
-                      </Paper>
-                      <SimpleGrid cols={{ base: 1, sm: 3 }}>
-                        <Paper withBorder p='md'>
-                          <Text size='sm' c='dimmed'>
-                            {t`Machines in this view`}
-                          </Text>
-                          <Text
-                            size='xl'
-                            fw={700}
-                            data-testid='machine-count-view'
-                          >
-                            {summary.view ?? '—'}
-                          </Text>
-                          <Text size='xs' c='dimmed'>
-                            {summary.showDirectBreakdown
-                              ? t`Including sublocations`
-                              : t`Direct here`}
-                          </Text>
-                        </Paper>
-                        {summary.showDirectBreakdown && (
-                          <Paper withBorder p='md'>
-                            <Text size='sm' c='dimmed'>
-                              {t`Direct at this location`}
-                            </Text>
+                          <Text className={operations.meta}>
                             <Text
-                              size='xl'
-                              fw={700}
+                              component='span'
+                              data-testid='machine-count-view'
+                            >
+                              {summary.view ?? t`Unavailable`}
+                            </Text>{' '}
+                            {t`machines in view`} (
+                            <Text
+                              component='span'
                               data-testid='machine-count-direct'
                             >
-                              {summary.direct ?? '—'}
-                            </Text>
-                            <Text size='xs' c='dimmed'>
-                              {t`Direct here`}
-                            </Text>
-                          </Paper>
-                        )}
-                        <Paper withBorder p='md'>
-                          <Text size='sm' c='dimmed'>
-                            {t`Open work orders now`}
+                              {summary.direct ?? t`Unavailable`}
+                            </Text>{' '}
+                            {t`directly here`}) ·{' '}
+                            {countOrders ?? t`Unavailable`}{' '}
+                            {t`open work orders (drafts excluded; each counted once)`}
                           </Text>
-                          <Text size='xl' fw={700}>
-                            {countOrders ?? '—'}
+                        </Box>
+                        <Collapse expanded={detailsOpen} hiddenFrom='sm'>
+                          <Text className={operations.meta}>
+                            {selected.description} · {t`Location timezone`}:{' '}
+                            {selected.effective_timezone ?? t`Unavailable`} (
+                            {t`location setting`}) · {t`Records read`}{' '}
+                            {formatInstant(
+                              detail.dataUpdatedAt || null,
+                              clock
+                            ) ?? t`Time unavailable`}
                           </Text>
-                          <Text size='xs' c='dimmed'>
-                            {t`Drafts excluded; work orders counted once.`}
+                          <Text className={operations.meta}>
+                            {summary.view ?? t`Unavailable`}{' '}
+                            {t`machines in view`} ·{' '}
+                            {countOrders ?? t`Unavailable`}{' '}
+                            {t`open work orders`}
                           </Text>
-                        </Paper>
-                      </SimpleGrid>
+                        </Collapse>
+                      </Paper>
                       {summary.locationTotalsOnly && (
                         <Text
                           size='xs'
-                          c='dimmed'
+                          className={operations.meta}
                           data-testid='location-totals-note'
                         >
                           {t`Location totals — machine search and alarm filters do not change these counts.`}

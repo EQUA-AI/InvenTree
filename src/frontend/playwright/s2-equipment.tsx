@@ -1,15 +1,24 @@
 import { i18n } from '@lingui/core';
-import { I18nProvider } from '@lingui/react';
-import { Button, Group, MantineProvider, Stack, Text } from '@mantine/core';
+import { Button, Group, Stack, Text } from '@mantine/core';
 import { useAIChatState } from '../src/states/AIChatState';
 import '@mantine/core/styles.css';
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, focusManager } from '@tanstack/react-query';
 import axios from 'axios';
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Link, MemoryRouter, useLocation } from 'react-router-dom';
+import {
+  Link,
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation
+} from 'react-router-dom';
+import { EquipmentViewControls } from '../src/pages/assets/equipment/ViewControls';
 
 import { ApiProvider } from '../src/contexts/ApiContext';
+import { useGlobalSettingsState } from '../src/states/SettingsStates';
+import { FixtureTheme, prepareFixtureTheme } from './FixtureTheme';
+import { MachineFixtureRail } from './MachineFixtureRail';
 
 import { EquipmentScene } from '../src/pages/assets/equipment/EquipmentScene';
 import { EquipmentViewPanel } from '../src/pages/assets/equipment/EquipmentViewPanel';
@@ -22,6 +31,12 @@ i18n.load('en', {});
 i18n.activate('en');
 
 const params = new URLSearchParams(window.location.search);
+prepareFixtureTheme(params);
+useGlobalSettingsState.setState({ loaded: true, lookup: {} });
+// Opt-in isolation for the selection/cache contract. Periodic refresh is
+// independent of selection and can otherwise run during slow WebGL checks.
+const pollingPaused = params.get('polling') === 'paused';
+if (pollingPaused) focusManager.setFocused(false);
 const client = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } }
 });
@@ -31,6 +46,16 @@ const client = new QueryClient({
  * controls standing in for a parent's props, a telemetry refresh and
  * navigation; they are not product chrome.
  */
+function FixtureSchematic() {
+  const controls = useContext(EquipmentViewControls);
+  return (
+    <Stack>
+      {controls}
+      <Text data-testid='fixture-schematic'>Fixture process schematic</Text>
+    </Stack>
+  );
+}
+
 function Harness() {
   const focus = useAIChatState((state) => state.workFocusHint);
   const [selected, setSelected] = useState<TwinPartId>('machine');
@@ -41,7 +66,10 @@ function Harness() {
   const [polls, setPolls] = useState(0);
   return (
     <Stack p='md' gap='sm'>
-      <Text>S2 synthetic fixture — reference 3D scene</Text>
+      <Text>
+        S2 synthetic fixture — reference 3D scene
+        {pollingPaused && ' · scheduled polling paused for selection test'}
+      </Text>
       <Group gap='xs'>
         <Button
           size='xs'
@@ -105,16 +133,25 @@ function Harness() {
       </output>
       {mounted &&
         (params.get('kind') === 'panel' ? (
-          <EquipmentViewPanel
-            machine={{ pk: 18, name: 'Synthetic pump' }}
-            schematic={
-              params.get('schematic') === 'yes' ? (
-                <Text data-testid='fixture-schematic'>
-                  Fixture process schematic
-                </Text>
-              ) : undefined
-            }
-          />
+          <Routes>
+            <Route
+              path='/machines/machine/:id/*'
+              element={
+                <MachineFixtureRail
+                  equipment={
+                    <EquipmentViewPanel
+                      machine={{ pk: 18, name: 'Synthetic pump' }}
+                      schematic={
+                        params.get('schematic') === 'yes' ? (
+                          <FixtureSchematic />
+                        ) : undefined
+                      }
+                    />
+                  }
+                />
+              }
+            />
+          </Routes>
         ) : (
           <EquipmentScene
             modelKey={modelKey}
@@ -139,15 +176,15 @@ function FixtureLocation() {
 }
 
 createRoot(document.getElementById('root')!).render(
-  <I18nProvider i18n={i18n}>
-    <MantineProvider
-      forceColorScheme={params.get('scheme') === 'dark' ? 'dark' : 'light'}
-    >
-      <ApiProvider api={axios.create()} client={client}>
-        <MemoryRouter initialEntries={[params.get('entry') ?? '/fixture']}>
-          <Harness />
-        </MemoryRouter>
-      </ApiProvider>
-    </MantineProvider>
-  </I18nProvider>
+  <FixtureTheme>
+    <ApiProvider api={axios.create()} client={client}>
+      <MemoryRouter
+        initialEntries={[
+          params.get('entry') ?? '/machines/machine/18/equipment/'
+        ]}
+      >
+        <Harness />
+      </MemoryRouter>
+    </ApiProvider>
+  </FixtureTheme>
 );

@@ -7,6 +7,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.test import TestCase, override_settings
+from django.urls import reverse
 from django.utils import timezone
 
 from rest_framework.exceptions import ValidationError
@@ -377,6 +378,141 @@ class WorkTimeTests(TestCase):
         corrected = self.run_command('downtime', fields)
         self.assertEqual(len(corrected['downtime']), 2)
         self.assertTrue(corrected['downtime'][1]['superseded'])
+
+    def test_shared_work_does_not_carry_foreign_machine_telemetry(self):
+        """O24: customer Work stays readable; its machine's run/stop data does not."""
+        from company.models import Company
+
+        _binding, trend = self.telemetry()
+        with patch('machine_health.services.trends.read_trend', return_value=trend):
+            proposal = propose_downtime(self.work, self.actor)['proposals'][0]
+        self.work.customer = Company.objects.create(name='O24 time', is_customer=True)
+        self.work.save(update_fields=['customer'])
+        other = Client.objects.create(name='O24 other time', code='o24-other-time')
+        ClientScopeGrant.objects.filter(user=self.actor).delete()
+        ClientScopeGrant.objects.create(user=self.actor, client=other)
+        url = f'/api/tasks/work-orders/{self.work.pk}/time/'
+        with patch('machine_health.services.trends.read_trend', return_value=trend):
+            refused = propose_downtime(self.work, self.actor)
+            response = self.client.get(url, {'propose': 'true'})
+        self.assertEqual(refused['proposals'], [])
+        self.assertEqual(
+            refused['reason'], 'Machine telemetry is outside your machine scope.'
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['proposals'], [])
+        self.assertEqual(self.client.get(url).status_code, 200)
+        with self.assertRaisesRegex(ValidationError, 'outside your machine scope'):
+            self.run_command('downtime', {'token': proposal['token']}, key='o24')
+        self.assertFalse(WorkDowntime.objects.exists())
+
+    @override_settings(AIMMS_WORK_ORDERS_ENABLED=True)
+    def test_saved_downtime_and_clock_replay_redact_revoked_machine_telemetry(self):
+        """Shared Work clocks remain usable while saved machine samples stay private."""
+        from company.models import Company
+
+        _binding, trend = self.telemetry()
+        with patch('machine_health.services.trends.read_trend', return_value=trend):
+            proposal = propose_downtime(self.work, self.actor)['proposals'][0]
+        self.run_command('downtime', {'token': proposal['token']}, key='confirm')
+        initial_clock = self.run_command('start', key='clock')
+        self.assertEqual(len(initial_clock['downtime']), 1)
+        overview_url = reverse('kanban-card-overview', kwargs={'pk': self.work.pk})
+        overview = self.client.get(overview_url)
+        self.assertEqual(overview.status_code, 200)
+        self.assertEqual(
+            overview.data['time_assignment']['downtime_records'],
+            initial_clock['downtime'],
+        )
+        self.work.customer = Company.objects.create(
+            name='O24 saved time', is_customer=True
+        )
+        self.work.save(update_fields=['customer'])
+        other = Client.objects.create(name='O24 revoked time', code='o24-revoked-time')
+        ClientScopeGrant.objects.filter(user=self.actor).delete()
+        ClientScopeGrant.objects.create(user=self.actor, client=other)
+
+        response = self.client.get(f'/api/tasks/work-orders/{self.work.pk}/time/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['downtime'], [])
+        overview = self.client.get(overview_url)
+        self.assertEqual(overview.status_code, 200)
+        self.assertEqual(overview.data['time_assignment']['downtime_records'], [])
+        events = self.client.get(
+            reverse('work-order-events', kwargs={'pk': self.work.pk})
+        )
+        self.assertEqual(events.status_code, 200)
+        self.assertNotIn('"binding_id"', str(events.content))
+        self.assertNotIn('"proposal"', str(events.content))
+        self.assertNotIn('"external_key"', str(events.content))
+        replay = self.run_command('start', key='clock', version=2)
+        self.assertEqual(replay, {**initial_clock, 'downtime': []})
+        with self.assertRaisesRegex(ValidationError, 'outside your machine scope'):
+            self.run_command(
+                'downtime', {'token': proposal['token']}, key='confirm', version=1
+            )
+        # Response redaction cannot rewrite the original exact command receipt.
+        event = self.work.events.get(idempotency_key=f'{self.actor.pk}:clock')
+        self.assertEqual(event.metadata['result_metadata'], initial_clock)
+        self.assertEqual(WorkDowntime.objects.count(), 1)
+
+    @override_settings(AIMMS_WORK_ORDERS_ENABLED=True)
+    def test_reassigning_shared_work_cannot_unredact_foreign_saved_telemetry(self):
+        """Attaching an own machine cannot authorize samples from the old asset."""
+        from company.models import Company
+
+        _binding, trend = self.telemetry()
+        with patch('machine_health.services.trends.read_trend', return_value=trend):
+            proposal = propose_downtime(self.work, self.actor)['proposals'][0]
+        self.run_command('downtime', {'token': proposal['token']}, key='old-confirm')
+        initial_clock = self.run_command('start', key='old-clock')
+        self.work.customer = Company.objects.create(
+            name='O24 reassigned time', is_customer=True
+        )
+        self.work.save(update_fields=['customer'])
+        own_client = Client.objects.create(name='O24 new owner', code='o24-new-time')
+        own_machine = AssetMachine.objects.create(
+            name='O24 own pump', client=own_client
+        )
+        ClientScopeGrant.objects.filter(user=self.actor).delete()
+        ClientScopeGrant.objects.create(user=self.actor, client=own_client)
+        changed = self.client.patch(
+            f'/api/kanban/work-orders/{self.work.pk}/',
+            {'machine': own_machine.pk},
+            content_type='application/json',
+        )
+        self.assertEqual(changed.status_code, 200)
+        self.work.refresh_from_db()
+        self.assertEqual(self.work.machine_id, own_machine.pk)
+
+        time = self.client.get(f'/api/tasks/work-orders/{self.work.pk}/time/')
+        self.assertEqual(time.status_code, 200)
+        self.assertEqual(time.data['downtime'], [])
+        self.assertEqual(
+            time.data['time']['intervals'], initial_clock['time']['intervals']
+        )
+        overview = self.client.get(
+            reverse('kanban-card-overview', kwargs={'pk': self.work.pk})
+        )
+        self.assertEqual(overview.status_code, 200)
+        self.assertEqual(overview.data['time_assignment']['downtime_records'], [])
+        self.assertEqual(
+            self.run_command('start', key='old-clock', version=2),
+            {**initial_clock, 'downtime': []},
+        )
+        events = self.client.get(
+            reverse('work-order-events', kwargs={'pk': self.work.pk})
+        )
+        self.assertEqual(events.status_code, 200)
+        for key in ('binding_id', 'proposal', 'external_key'):
+            self.assertNotIn(f'"{key}"', str(events.content))
+        with self.assertRaisesRegex(ValidationError, 'saved telemetry origin'):
+            self.run_command(
+                'downtime', {'token': proposal['token']}, key='old-confirm', version=1
+            )
+        event = self.work.events.get(idempotency_key=f'{self.actor.pk}:old-clock')
+        self.assertEqual(event.metadata['result_metadata'], initial_clock)
+        self.assertEqual(WorkDowntime.objects.count(), 1)
 
     def test_no_telemetry_does_not_propose(self):
         """A missing mapping cannot produce a stop window."""

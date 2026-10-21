@@ -118,7 +118,11 @@ class JobKitDetail(JobKitEnabledMixin, APIView):
         """Resolve parent scope, then serialize the kit."""
         work_order = _scoped_work_order(request, pk)
         kit = _kit_or_404(work_order)
-        return Response(JobKitSerializer(kit).data)
+        return Response(
+            JobKitSerializer(
+                kit, context={'request': request, 'work_order': work_order}
+            ).data
+        )
 
 
 class JobKitBuild(JobKitEnabledMixin, APIView):
@@ -161,7 +165,12 @@ class JobKitBuild(JobKitEnabledMixin, APIView):
                 work_order.lifecycle_version,
                 status.HTTP_409_CONFLICT,
             )
-        return Response(JobKitSerializer(kit).data, status=status.HTTP_201_CREATED)
+        return Response(
+            JobKitSerializer(
+                kit, context={'request': request, 'work_order': work_order}
+            ).data,
+            status=status.HTTP_201_CREATED,
+        )
 
     @staticmethod
     def _error(exc, correlation_id, current_version, response_status):
@@ -389,7 +398,12 @@ class JobKitReserve(JobKitEnabledMixin, APIView):
                 work_order.lifecycle_version,
                 status.HTTP_409_CONFLICT,
             )
-        return Response(JobKitSerializer(kit).data, status=status.HTTP_200_OK)
+        return Response(
+            JobKitSerializer(
+                kit, context={'request': request, 'work_order': work_order}
+            ).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class JobKitAllocationList(JobKitEnabledMixin, APIView):
@@ -413,7 +427,7 @@ class JobKitAllocationList(JobKitEnabledMixin, APIView):
         page = paginator.paginate_queryset(rows, request, view=self)
         return paginator.get_paginated_response(
             JobKitAllocationSerializer(
-                page, many=True, context={'request': request}
+                page, many=True, context={'request': request, 'work_order': work_order}
             ).data
         )
 
@@ -572,7 +586,11 @@ class JobKitRefresh(JobKitEnabledMixin, APIView):
                 current_version=_kit_version(work_order.pk),
                 response_status=status.HTTP_409_CONFLICT,
             )
-        return Response(JobKitSerializer(kit).data)
+        return Response(
+            JobKitSerializer(
+                kit, context={'request': request, 'work_order': work_order}
+            ).data
+        )
 
 
 class JobKitShortageLinkPO(JobKitEnabledMixin, APIView):

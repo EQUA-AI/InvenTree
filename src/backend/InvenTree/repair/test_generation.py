@@ -13,14 +13,16 @@ from types import SimpleNamespace
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from tasks.models import WorkOrder, WorkOrderLifecycle, WorkOrderType
 
-from assets.models import AssetMachine, get_default_client
+from assets.models import AssetMachine, ClientScopeGrant, get_default_client
 from InvenTree.unit_test import InvenTreeAPITestCase
+from users.models import RuleSet
 
 from . import generation, services
 from .generation import (
@@ -128,8 +130,25 @@ class GenerationIdempotencyTest(TestCase):
         )
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.granted_client_scope_resolver'
+)
 class AIProviderGenerationTest(TestCase):
     """A (mocked) AI provider result materialises parts + gates onto the packet."""
+
+    def setUp(self):
+        """Materializing Work requires the requesting creator and asset grant."""
+        suffix = uuid.uuid4().hex[:8]
+        self.actor = get_user_model().objects.create_user(
+            username=f'generation-creator-{suffix}', password='pw'
+        )
+        group = Group.objects.create(name=f'generation-creators-{suffix}')
+        RuleSet.objects.update_or_create(
+            group=group, name='work_order', defaults={'can_view': True, 'can_add': True}
+        )
+        self.actor.groups.add(group)
+        self.tenant = get_default_client()
+        ClientScopeGrant.objects.create(user=self.actor, client=self.tenant)
 
     def _result(self, part):
         return GenerationResult(
@@ -159,7 +178,9 @@ class AIProviderGenerationTest(TestCase):
     def test_ai_result_creates_work_order_parts_and_gates(self):
         """An AI provider result creates the work order, part lines and gates."""
         part = self._part()
-        machine = AssetMachine.objects.create(name=f'Panel-{uuid.uuid4().hex[:6]}')
+        machine = AssetMachine.objects.create(
+            name=f'Panel-{uuid.uuid4().hex[:6]}', client=self.tenant
+        )
         packet = RepairPacket.objects.create(
             fault_summary='contactor fault', machine=machine
         )
@@ -167,7 +188,7 @@ class AIProviderGenerationTest(TestCase):
         with mock.patch.object(
             services, 'get_generator', return_value=_stub_generator(self._result(part))
         ):
-            services.run_repair_packet_workflow(packet, {})
+            services.run_repair_packet_workflow(packet, {'user_id': self.actor.pk})
         packet.refresh_from_db()
 
         self.assertEqual(packet.generation_status, GenerationStatus.SUCCEEDED)
@@ -179,7 +200,9 @@ class AIProviderGenerationTest(TestCase):
     def test_packet_work_order_is_machine_linked_and_audited(self):
         """The packet's work order carries the packet machine and a CREATED event."""
         part = self._part()
-        machine = AssetMachine.objects.create(name=f'Pump-{uuid.uuid4().hex[:6]}')
+        machine = AssetMachine.objects.create(
+            name=f'Pump-{uuid.uuid4().hex[:6]}', client=self.tenant
+        )
         packet = RepairPacket.objects.create(
             fault_summary='seal weeping', machine=machine, criticality='critical'
         )
@@ -187,7 +210,7 @@ class AIProviderGenerationTest(TestCase):
         with mock.patch.object(
             services, 'get_generator', return_value=_stub_generator(self._result(part))
         ):
-            services.run_repair_packet_workflow(packet, {})
+            services.run_repair_packet_workflow(packet, {'user_id': self.actor.pk})
         packet.refresh_from_db()
 
         work_order = packet.work_order

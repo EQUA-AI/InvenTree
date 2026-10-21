@@ -2,13 +2,30 @@ import { t } from '@lingui/core/macro';
 import { Alert, Badge, Card, Group, Stack, Table, Text } from '@mantine/core';
 import { IconCircleCheck, IconLock, IconShieldLock } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
+import { WorkTableScroll } from '../../../../components/tables/WorkTableScroll';
 
 import type { AuthorityRecord } from '@lib/types/OperationalAuthority';
 import type { RepairGate } from '@lib/types/WorkOrderOverview';
+import { gateTypeLabel } from '../../../repair/components/safety/safetyApi';
+import { WarningText } from '../../../tasks/workorders/execution/ExecutionFacts';
 
 const SATISFIED_STATUSES = new Set(['confirmed', 'verified', 'waived']);
 
-export function gateStatusColor(gate: RepairGate, expired: boolean): string {
+/** Translated gate status; an unrecognised value is named as such, not shown raw. */
+function gateStatusText(status: string): string {
+  return (
+    (
+      {
+        pending: t`Pending`,
+        confirmed: t`Confirmed`,
+        verified: t`Verified`,
+        waived: t`Waived`
+      } as Record<string, string>
+    )[status] ?? t`Status not recognized`
+  );
+}
+
+function gateStatusColor(gate: RepairGate, expired: boolean): string {
   const status = gate.status;
   if (gate.is_blocking && (gate.is_satisfied === false || expired))
     return 'red';
@@ -109,13 +126,14 @@ export function WorkOrderSafetyReadiness({
 
         {unknown.length > 0 && (
           <Alert
+            role='note'
             color='gray'
             variant='light'
           >{t`Current gate checks are not supplied. A recorded gate status alone does not establish physical authority.`}</Alert>
         )}
 
         {waived.length > 0 && (
-          <Alert color='orange' variant='light'>
+          <Alert role='note' color='orange' variant='light'>
             {t`${waived.length} gate(s) were waived. A waiver is a recorded decision, not a satisfied requirement.`}
           </Alert>
         )}
@@ -125,7 +143,10 @@ export function WorkOrderSafetyReadiness({
             {t`No safety gates are attached to this repair.`}
           </Text>
         ) : (
-          <Table.ScrollContainer minWidth={720}>
+          <WorkTableScroll
+            minWidth={720}
+            label={t`Safety gates table, scroll for all columns`}
+          >
             <Table striped>
               <Table.Thead>
                 <Table.Tr>
@@ -144,7 +165,7 @@ export function WorkOrderSafetyReadiness({
                     </Table.Td>
                     <Table.Td>
                       <Badge variant='outline' color='gray'>
-                        {gate.gate_type}
+                        {gateTypeLabel(gate.gate_type)}
                       </Badge>
                     </Table.Td>
                     <Table.Td>
@@ -152,13 +173,13 @@ export function WorkOrderSafetyReadiness({
                         color={gateStatusColor(gate, expired(gate))}
                         variant='light'
                       >
-                        {gate.status}
+                        {gateStatusText(gate.status)}
                       </Badge>
                       {(gate.is_satisfied === false || expired(gate)) &&
                         blockingReason(gate) && (
-                          <Text size='xs' c='red'>
+                          <WarningText size='xs'>
                             {blockingReason(gate)}
-                          </Text>
+                          </WarningText>
                         )}
                     </Table.Td>
                     <Table.Td>
@@ -181,7 +202,7 @@ export function WorkOrderSafetyReadiness({
                 ))}
               </Table.Tbody>
             </Table>
-          </Table.ScrollContainer>
+          </WorkTableScroll>
         )}
       </Stack>
     </Card>
@@ -190,7 +211,7 @@ export function WorkOrderSafetyReadiness({
 
 export default WorkOrderSafetyReadiness;
 
-export function useGateAuthorityClock(
+function useGateAuthorityClock(
   gates: RepairGate[],
   physical?: AuthorityRecord[]
 ) {

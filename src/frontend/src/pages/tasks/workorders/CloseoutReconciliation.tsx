@@ -15,7 +15,10 @@ export function CloseoutReconciliation({
   return (
     <Stack gap='sm' data-testid='closeout-reconciliation'>
       <Stack gap='sm'>
-        <Title order={5}>{t`Material custody, time and downtime`}</Title>
+        <Title
+          order={3}
+          size='h5'
+        >{t`Material custody, time and downtime`}</Title>
         <Text size='sm'>{t`Usage and custody are separate records. A reservation or a reconciled usage row does not prove fitted identity or stock release.`}</Text>
         <details
           onToggle={(event) => {
@@ -41,6 +44,7 @@ export function CloseoutReconciliation({
         >{t`Discrepancy owners, business-record ownership and next checkpoints are unavailable where the source does not name them. A recorded resolver is not an assigned owner.`}</Text>
         <Anchor
           component={Link}
+          replace
           to='?work_panel=parts'
         >{t`Open Parts and native inventory records`}</Anchor>
         <Text size='sm' fw={600}>

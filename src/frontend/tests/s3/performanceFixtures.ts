@@ -32,39 +32,34 @@ export const NATIVE_SIGNALS: readonly SignalSpec[] = [
  * fixture, with an optional signal list and colour scheme. Only the three
  * Health reads the panel makes are answered; anything else fails the guard.
  */
-export async function openPerformance(
+type PerformanceOptions = {
+  now?: number;
+  /** Await the actual initial history response for non-loading scenarios. */
+  settleInitialRead?: boolean;
+  signals?: readonly SignalSpec[];
+  scheme?: 'light' | 'dark';
+  nativeTheme?: boolean;
+  compactChrome?: boolean;
+  /** The S3 harness: a router whose location the tests can read. */
+  harness?: 's0' | 's3';
+  /** Extra query parameters for the S3 harness page. */
+  harnessParams?: Record<string, string>;
+  /** Hold a series answer back, per request (0-based order). */
+  delaySeriesMs?: (url: URL, index: number) => number;
+  fail?: boolean;
+  failSeries?: (url: URL) => boolean;
+  displayShift?: number | null;
+  mapSeriesResponse?: (
+    response: ReturnType<typeof seriesFor>,
+    url: URL
+  ) => ReturnType<typeof seriesFor>;
+};
+
+/** Register the native API fixtures without mounting a second panel. */
+export async function mockPerformance(
   page: Page,
-  options: {
-    signals?: readonly SignalSpec[];
-    now?: number;
-    /** Await the actual initial history response for non-loading scenarios. */
-    settleInitialRead?: boolean;
-    scheme?: 'light' | 'dark';
-    nativeTheme?: boolean;
-    compactChrome?: boolean;
-    /** The S3 harness: a router whose location the tests can read. */
-    harness?: 's0' | 's3';
-    /** Extra query parameters for the S3 harness page. */
-    harnessParams?: Record<string, string>;
-    /** Hold a series answer back, per request (0-based order). */
-    delaySeriesMs?: (url: URL, index: number) => number;
-    fail?: boolean;
-    failSeries?: (url: URL) => boolean;
-    displayShift?: number | null;
-    mapSeriesResponse?: (
-      response: ReturnType<typeof seriesFor>,
-      url: URL
-    ) => ReturnType<typeof seriesFor>;
-  } = {}
+  options: PerformanceOptions = {}
 ) {
-  await page.clock.setFixedTime(new Date(options.now ?? NOW));
-  await mockTheme(page);
-  if (options.nativeTheme)
-    await mockMachine(page, {
-      sourceKey: 'P1',
-      parent: 17,
-      parentName: 'Synthetic station'
-    });
   const specs = options.signals ?? NATIVE_SIGNALS;
   const requests: URL[] = [];
   await page.route(
@@ -126,6 +121,22 @@ export async function openPerformance(
         .catch(() => undefined);
     }
   );
+  return requests;
+}
+
+export async function openPerformance(
+  page: Page,
+  options: PerformanceOptions = {}
+) {
+  await page.clock.setFixedTime(new Date(options.now ?? NOW));
+  await mockTheme(page);
+  if (options.nativeTheme)
+    await mockMachine(page, {
+      sourceKey: 'P1',
+      parent: 17,
+      parentName: 'Synthetic station'
+    });
+  const requests = await mockPerformance(page, options);
   const initialRead = options.settleInitialRead
     ? page
         .waitForResponse(

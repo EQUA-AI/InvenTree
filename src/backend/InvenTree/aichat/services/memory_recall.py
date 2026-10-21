@@ -143,7 +143,6 @@ def _eligible(repository, thread_id):
         _identity=OuterRef('entity_id'),
         machine__client__code=OuterRef('client_code'),
         machine__client__active=True,
-        customer__isnull=True,
     )
     entities = (
         Q(entity_kind='machine') & Q(Exists(machines))

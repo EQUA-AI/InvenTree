@@ -46,8 +46,9 @@ function impactLabel(kind: string) {
 
 /** A notice follows the saved revision into each affected Work surface. */
 export function ScopeRevisionNotice({
-  workOrder
-}: Readonly<{ workOrder: WorkOrderOverview }>) {
+  workOrder,
+  full = false
+}: Readonly<{ workOrder: WorkOrderOverview; full?: boolean }>) {
   const [params] = useSearchParams();
   const packageValue = workOrder.prepared_package;
   const review = packageValue?.revision_review;
@@ -62,8 +63,27 @@ export function ScopeRevisionNotice({
     packageValue?.scopes ?? [],
     review?.current_scope_id ?? null
   );
+  if (!full)
+    return (
+      <Paper withBorder p='xs' role='note' data-testid='scope-revision-notice'>
+        <Group gap='xs'>
+          <Text size='sm' fw={600}>
+            {current
+              ? t`Scope version ${current.version}`
+              : t`Scope needs review`}
+          </Text>
+          <Anchor
+            component={Link}
+            replace
+            size='sm'
+            to={`?${workPanelParams(params, 'plan')}#scope-revisions`}
+          >{t`Review in Plan & Safety`}</Anchor>
+        </Group>
+      </Paper>
+    );
   return (
     <Alert
+      role='note'
       color='orange'
       title={
         current
@@ -79,15 +99,18 @@ export function ScopeRevisionNotice({
       data-testid='scope-revision-notice'
     >
       <Stack gap={6}>
-        <Text size='sm'>
-          {review?.selective_reassessment?.items.some(
-            (row) => row.scope_id === review.current_scope_id
-          )
-            ? t`Recorded component and procedure bindings identify mapped dependencies. Evidence stays with its original binding; reassessment and unavailable evidence are shown below. Obsolete scope is not executable. Changed physical work needs its own applicable authority.`
-            : t`Saved scope records and request revisions remain available for review. The record does not identify which tasks, materials, resources, permissions or tests are affected. Changed physical work needs its own applicable authority; an earlier approval cannot cover it automatically.`}
-        </Text>
+        {full && (
+          <Text size='sm'>
+            {review?.selective_reassessment?.items.some(
+              (row) => row.scope_id === review.current_scope_id
+            )
+              ? t`Recorded component and procedure bindings identify mapped dependencies. Evidence stays with its original binding; reassessment and unavailable evidence are shown below. Obsolete scope is not executable. Changed physical work needs its own applicable authority.`
+              : t`Saved scope records and request revisions remain available for review. The record does not identify which tasks, materials, resources, permissions or tests are affected. Changed physical work needs its own applicable authority; an earlier approval cannot cover it automatically.`}
+          </Text>
+        )}
         <Anchor
           component={Link}
+          replace
           size='sm'
           to={`?${workPanelParams(params, 'plan')}#scope-revisions`}
         >{t`Review scope changes and retained evidence`}</Anchor>
@@ -176,10 +199,7 @@ function Comparison({
         />
         <ScopeFacts scope={after} label={t`After · next retained version`} />
       </SimpleGrid>
-      <Text
-        size='sm'
-        c='dimmed'
-      >{t`Compared in native version order. Approval notes are retained; a linked revision reason and supporting evidence are not recorded. Text at the same line position does not identify an execution task or establish unchanged readiness.`}</Text>
+      <Text size='sm'>{t`Compared in native version order. Approval notes are retained; a linked revision reason and supporting evidence are not recorded. Text at the same line position does not identify an execution task or establish unchanged readiness.`}</Text>
       {changes.map((change) => (
         <Stack key={change.sequence} gap={3}>
           <Badge
@@ -297,7 +317,11 @@ export function ScopeRevisionReview({
   };
   return (
     <Stack gap='sm' id='scope-revisions' data-testid='scope-revision-review'>
-      <Alert color='orange' title={t`Affected readiness is not established`}>
+      <Alert
+        role='note'
+        color='orange'
+        title={t`Affected readiness is not established`}
+      >
         {review?.selective_reassessment?.items.some(
           (row) => row.scope_id === review.current_scope_id
         )
@@ -306,6 +330,7 @@ export function ScopeRevisionReview({
       </Alert>
       {review?.selective_reassessment?.unmapped_changes && (
         <Alert
+          role='note'
           color='orange'
           data-testid='unmapped-scope-change'
         >{t`An unbound scope line changed. Its applicability to tasks, materials, tests and permissions is unknown; recorded bindings do not identify the full impact.`}</Alert>
@@ -459,12 +484,10 @@ export function ScopeRevisionReview({
                         ? revision.retained_evidence_ids.join(', ')
                         : t`No evidence IDs in this saved snapshot`}
                     </Text>
-                    <Text
-                      size='sm'
-                      c='dimmed'
-                    >{t`Scope relationship and authored revision reason: Not recorded. The saved request change is not proof of a new approved scope or permission.`}</Text>
+                    <Text size='sm'>{t`Scope relationship and authored revision reason: Not recorded. The saved request change is not proof of a new approved scope or permission.`}</Text>
                     <Anchor
                       component={Link}
+                      replace
                       to={requestLink(revision.request_id)}
                       size='sm'
                     >{t`Open saved request ${revision.request_id} and evidence`}</Anchor>
@@ -478,16 +501,19 @@ export function ScopeRevisionReview({
       <Group gap='md'>
         <Anchor
           component={Link}
+          replace
           size='sm'
           to={`?${workPanelParams(params, 'diagnose')}`}
         >{t`Open investigation and retained evidence`}</Anchor>
         <Anchor
           component={Link}
+          replace
           size='sm'
           to={`?${workPanelParams(params, 'parts')}`}
         >{t`Review job materials`}</Anchor>
         <Anchor
           component={Link}
+          replace
           size='sm'
           to={`?${workPanelParams(params, 'verify')}`}
         >{t`Review saved verification criteria and attempts`}</Anchor>

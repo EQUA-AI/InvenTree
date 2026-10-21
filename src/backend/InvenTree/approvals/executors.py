@@ -611,18 +611,19 @@ class SafetyGateExecutor(ApprovalExecutor):
     atomic_execution = True
 
     def execute_for_approval(self, approval, *, actor, execution):
-        """The reviewer must have the packet's current maintenance scope."""
-        from tasks.scope import require_machine_scope, require_work_order_scope
+        """The reviewer must have the packet's current maintenance scope.
 
+        A packet always needs its machine's client scope; linked Work is
+        checked as well. Shared (O24) customer Work never authorizes a gate
+        on another client's machine.
+        """
         from repair.models import RepairPacketGate
+        from repair.scope import require_repair_packet_scope
 
         gate = RepairPacketGate.objects.select_related(
             'packet__work_order__machine', 'packet__machine'
         ).get(pk=approval.payload['gate_id'])
-        if gate.packet.work_order_id:
-            require_work_order_scope(actor, gate.packet.work_order)
-        else:
-            require_machine_scope(actor, gate.packet.machine)
+        require_repair_packet_scope(actor, gate.packet)
         return super().execute_for_approval(approval, actor=actor, execution=execution)
 
     def validate(self, payload: dict) -> list[str]:

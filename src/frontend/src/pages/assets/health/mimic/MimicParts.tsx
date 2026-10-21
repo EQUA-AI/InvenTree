@@ -1,12 +1,14 @@
 import { t } from '@lingui/core/macro';
+import { Text } from '@mantine/core';
 import { type KeyboardEvent, useState } from 'react';
 
+import operations from '../../operations.module.css';
 import { type Display, summarize } from './MimicReadings';
 import { usable } from './format';
 import type { LayoutPart, MimicData, MimicPoint } from './types';
 
 /** The size of a part's entry in the key, in the drawing's own units. */
-const ENTRY = { width: 220, height: 70, pitch: 77, top: 20 };
+const ENTRY = { width: 220, height: 74, pitch: 77, top: 20 };
 
 /** One bar of a part's strip: a sensor, its height its reading. */
 type Bar = {
@@ -103,10 +105,10 @@ export function partStates(data: MimicData, display: Display): PartState[] {
 /** The colour a part's verdict is marked in; null when it has none. */
 function verdictColor(state: PartState) {
   if (!state.points.length) return null;
-  if (state.verdict === 'critical') return 'var(--mantine-color-red-filled)';
-  if (state.verdict === 'warning') return 'var(--mantine-color-yellow-filled)';
-  if (state.verdict === 'normal') return 'var(--mantine-color-green-filled)';
-  return 'var(--mantine-color-gray-filled)';
+  if (state.verdict === 'critical') return 'var(--mantine-color-red-9)';
+  if (state.verdict === 'warning') return 'var(--mantine-color-yellow-9)';
+  if (state.verdict === 'normal') return 'var(--mantine-color-green-9)';
+  return 'var(--mantine-color-gray-9)';
 }
 
 /**
@@ -128,10 +130,6 @@ export function partOutlines(states: PartState[], active: string | null) {
     if (color) outlines[`--mimic-${state.part.id}`] = color;
   }
   return outlines;
-}
-
-function clip(text: string, length: number) {
-  return text.length > length ? `${text.slice(0, length - 1)}…` : text;
 }
 
 /**
@@ -197,21 +195,23 @@ export function MimicParts({
                   ? 'var(--mantine-color-gray-filled)'
                   : color
                     ? 'var(--mantine-color-body)'
-                    : 'var(--mantine-color-dimmed)'
+                    : 'var(--mantine-color-text)'
               }
               strokeWidth={lit ? 2.5 : 1.5}
               strokeDasharray={color || lit ? undefined : '3 2'}
             />
             <text
               x={cx}
-              y={cy + 3.6}
+              y={cy + 5.6}
               textAnchor='middle'
-              fontSize={10.5}
+              fontSize={16}
               fontWeight={700}
               fill={
                 color
-                  ? 'var(--mantine-color-white)'
-                  : 'var(--mantine-color-dimmed)'
+                  ? state.verdict === 'warning' || state.verdict === 'normal'
+                    ? 'var(--mantine-color-black)'
+                    : 'var(--mantine-color-white)'
+                  : 'var(--mantine-color-text)'
               }
             >
               {state.number}
@@ -223,12 +223,14 @@ export function MimicParts({
           <g
             key={part.id}
             data-part={part.code}
+            data-verdict={state.verdict}
             onMouseEnter={() => onActive(part.code)}
             onMouseLeave={() => onActive(null)}
             style={{ cursor: empty ? 'default' : 'pointer' }}
           >
             <g
               // biome-ignore lint/a11y/useSemanticElements: an SVG has no button element to draw with; this is one in role, focus and keys
+              className={operations.mimicPart}
               role='button'
               tabIndex={0}
               aria-label={`${state.number}. ${state.name}`}
@@ -260,37 +262,67 @@ export function MimicParts({
                 strokeWidth={1.2}
                 strokeDasharray={empty && !lit ? '4 3' : undefined}
               />
+              <rect
+                className={operations.mimicFocusRing}
+                data-focus-ring
+                x={x - 4}
+                y={y - 4}
+                width={ENTRY.width + 8}
+                height={ENTRY.height + 8}
+                rx={9}
+                fill='none'
+                stroke='var(--mantine-color-text)'
+                strokeWidth={3}
+                vectorEffect='non-scaling-stroke'
+              />
               {marker(x + 17, y + 18, 9.5)}
-              <text
-                x={x + 33}
-                y={y + 22}
-                fontSize={11.5}
-                fontWeight={600}
-                fill={
-                  empty
-                    ? 'var(--mantine-color-dimmed)'
-                    : 'var(--mantine-color-text)'
+              {[
+                {
+                  text: state.name,
+                  dx: 33,
+                  dy: 4,
+                  size: 18,
+                  weight: 600,
+                  height: 23
+                },
+                {
+                  text: empty ? t`No readings on this pump` : first,
+                  dx: 12,
+                  dy: 25,
+                  size: 16,
+                  weight: 400,
+                  height: 18
+                },
+                {
+                  text: empty ? '' : second,
+                  dx: 12,
+                  dy: 40,
+                  size: 16,
+                  weight: 400,
+                  height: 18
                 }
-              >
-                {clip(state.name, 30)}
-              </text>
-              <text
-                x={x + 12}
-                y={y + 38}
-                fontSize={11}
-                fontStyle={empty ? 'italic' : undefined}
-                fill='var(--mantine-color-dimmed)'
-              >
-                {empty ? t`No readings on this pump` : clip(first, 36)}
-              </text>
-              <text
-                x={x + 12}
-                y={y + 51}
-                fontSize={10}
-                fill='var(--mantine-color-dimmed)'
-              >
-                {empty ? '' : clip(second, 40)}
-              </text>
+              ].map((line, lineIndex) => (
+                <foreignObject
+                  key={line.dy}
+                  x={x + line.dx}
+                  y={y + line.dy}
+                  width={ENTRY.width - line.dx - 10}
+                  height={line.height}
+                  data-part-label
+                >
+                  <Text
+                    truncate
+                    fz={line.size}
+                    fw={line.weight}
+                    lh={1.1}
+                    c='var(--mantine-color-text)'
+                    title={line.text}
+                    fs={empty && lineIndex === 1 ? 'italic' : undefined}
+                  >
+                    {line.text}
+                  </Text>
+                </foreignObject>
+              ))}
               {bars.map((bar, slot) => {
                 const gap = 2;
                 const width = Math.min(
@@ -309,9 +341,7 @@ export function MimicParts({
                     rx={1}
                     fill={bar.level === null ? 'none' : barColor(bar.point)}
                     stroke={
-                      bar.level === null
-                        ? 'var(--mantine-color-dimmed)'
-                        : 'none'
+                      bar.level === null ? 'var(--mantine-color-text)' : 'none'
                     }
                     strokeWidth={1}
                     strokeDasharray={bar.level === null ? '2 1' : undefined}

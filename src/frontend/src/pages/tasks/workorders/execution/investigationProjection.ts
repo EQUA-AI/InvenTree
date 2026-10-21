@@ -11,13 +11,32 @@ export type InvestigationReading =
   | {
       kind: 'ready';
       investigation: Investigation;
-      qualification: 'verified' | 'preliminary' | 'none';
+      qualification: DiagnosisVerification | 'none';
       evidence: Record<EvidenceRelation, InvestigationEvidence[]>;
       disputed: InvestigationFinding[];
       requestsAvailable: boolean;
     };
 
 const RELATIONS: EvidenceRelation[] = ['supports', 'contradicts', 'unknown'];
+
+/**
+ * Three honest states for a saved diagnosis.
+ *
+ * `verified` needs the server's non-preliminary flag plus the recorded verifier
+ * and time. When the server says the diagnosis is no longer preliminary but the
+ * projection omits who verified it or when, the flag is kept (`unattributed`)
+ * rather than overridden back to preliminary or promoted to fully verified.
+ */
+export type DiagnosisVerification = 'verified' | 'unattributed' | 'preliminary';
+
+export function diagnosisVerification(
+  serverPreliminary: boolean | null | undefined,
+  verifiedBy?: string | null,
+  verifiedAt?: string | null
+): DiagnosisVerification {
+  if (serverPreliminary !== false) return 'preliminary';
+  return verifiedBy && verifiedAt ? 'verified' : 'unattributed';
+}
 
 /**
  * Accept only `investigation.v1`.
@@ -55,9 +74,11 @@ export function readInvestigation(value: unknown): InvestigationReading {
     investigation: investigation as Investigation,
     qualification: !explanation?.likely_cause
       ? 'none'
-      : explanation.preliminary
-        ? 'preliminary'
-        : 'verified',
+      : diagnosisVerification(
+          explanation.preliminary,
+          explanation.verified_by,
+          explanation.verified_at
+        ),
     evidence,
     disputed: investigation.findings.filter(
       (finding) => finding.verification === 'disputed'

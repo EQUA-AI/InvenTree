@@ -431,6 +431,15 @@ def get_ruleset_ignore() -> list[str]:
         'tasks_acceptedcloseoutreport',
         'tasks_captureoriginal',
         'tasks_calibrationtraceability',
+        # O15 data and process records: endpoint/service-enforced, scoped by
+        # their own Work and machine checks, not generic model CRUD.
+        'assets_componentfit',
+        'assets_registrycommand',
+        'assets_sharedperformanceview',
+        'assets_signaldesignation',
+        'tasks_workdowntime',
+        'tasks_workhandover',
+        'tasks_worktimeinterval',
         'tasks_closeoutamendment',
         'tasks_closeoutcapture',
         'tasks_closeoutcapturerevision',

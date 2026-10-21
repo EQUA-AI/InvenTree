@@ -3,10 +3,15 @@
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.contrib.auth.models import Group
+from django.test import TestCase, override_settings
+
+from tasks.models import WorkOrder
 
 from aichat.services import memory_policy as service
 from assets.models import AssetMachine, Client
+from company.models import Company
+from users.models import RuleSet
 
 
 def candidate(
@@ -137,3 +142,32 @@ class MemoryPolicyTests(TestCase):
                     or bool(field.choices),
                     f'{label}.{name} is not structurally typed',
                 )
+
+    @override_settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=lambda actor: set())
+    def test_shared_work_verification_retains_separate_client_memory_admission(self):
+        """O24 read authority never supplies client memory consent/enrollment."""
+        owner = get_user_model().objects.create_user(username='o24-memory-viewer')
+        group = Group.objects.create(name='O24 memory Work readers')
+        RuleSet.objects.update_or_create(
+            group=group, name='work_order', defaults={'can_view': True}
+        )
+        owner.groups.add(group)
+        client = Client.objects.create(name='O24 memory client', code='o24-memory-client')
+        machine = AssetMachine.objects.create(name='O24 memory machine', client=client)
+        work = WorkOrder.objects.create(
+            title='Shared memory source', machine=machine,
+            customer=Company.objects.create(name='O24 memory customer', is_customer=True),
+        )
+        kwargs = {
+            'source_model': 'tasks.WorkOrder', 'source_id': work.pk,
+            'source_field': 'is_active',
+        }
+        with self.assertRaisesRegex(service.MemoryPolicyError, 'source_scope'):
+            service.verify_native_field(owner, **kwargs, eligible_clients=set())
+        result = service.verify_native_field(owner, **kwargs, eligible_clients={client.code})
+        self.assertTrue(result.value)
+        self.assertEqual(result.client_code, client.code)
+        work.machine = None
+        work.save(update_fields=['machine'])
+        with self.assertRaisesRegex(service.MemoryPolicyError, 'source_scope'):
+            service.verify_native_field(owner, **kwargs, eligible_clients={client.code})

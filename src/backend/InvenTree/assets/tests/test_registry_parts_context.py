@@ -132,8 +132,11 @@ class RegistryPartsContextTests(TestCase):
             station[self.pump.pk, 'PS-MOTOR-DE-BRG:1']['open_work'], {'count': 1}
         )
 
-    def test_work_outside_the_readers_scope_is_not_counted(self):
-        """A customer-owned job on the slot is not the reader's to count."""
+    def test_shared_customer_work_is_counted_on_its_slot(self):
+        """O24: a customer job on the slot is shared with Work viewers.
+
+        Before O24 the customer value hid it from the count.
+        """
         from company.models import Company
 
         WorkOrder.objects.create(
@@ -146,7 +149,7 @@ class RegistryPartsContextTests(TestCase):
         )
         rows = self.rows()
         self.assertEqual(
-            rows[self.pump.pk, 'PS-MOTOR-DE-BRG:1']['open_work'], {'count': 1}
+            rows[self.pump.pk, 'PS-MOTOR-DE-BRG:1']['open_work'], {'count': 2}
         )
 
     def test_station_slots_and_virtual_parts_have_no_position_or_stock(self):

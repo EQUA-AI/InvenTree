@@ -933,6 +933,9 @@ def repair_start_readiness(packet, *, actor) -> dict:
     from tasks.services.finalization import PacketFinalization
     from tasks.services.readiness import evaluate_work_order_readiness
 
+    from repair.scope import require_repair_packet_scope
+
+    require_repair_packet_scope(actor, packet)
     blockers: list[dict] = []
     work_order = packet.work_order
 
@@ -1037,7 +1040,10 @@ def start_repair_packet(
     from tasks.services.finalization import PacketFinalization
     from tasks.services.work_orders import transition_work_order
 
+    from repair.scope import require_repair_packet_scope
+
     locked = RepairPacket.objects.select_for_update().get(pk=packet.pk)
+    require_repair_packet_scope(actor, locked)
 
     if locked.work_order_id is None:
         raise RepairStartError('This packet has no work order to start.')
@@ -1141,7 +1147,10 @@ def close_repair_packet(
         _require_version,
     )
 
+    from repair.scope import require_repair_packet_scope
+
     locked = RepairPacket.objects.select_for_update().get(pk=packet.pk)
+    require_repair_packet_scope(actor, locked)
     from_status = locked.status
 
     # Only this packet's current or historical Work may be named by a caller.
@@ -1276,7 +1285,10 @@ def packet_close_readiness(packet, *, actor):
     from tasks.services.finalization import PacketFinalization
     from tasks.services.readiness import ReadinessBlocker, evaluate_work_order_readiness
 
+    from repair.scope import require_repair_packet_scope
+
     current = RepairPacket.objects.select_for_update().get(pk=packet.pk)
+    require_repair_packet_scope(actor, current)
     if current.work_order_id is None:
         raise RepairCloseoutError('This packet has no work order to close.')
     work_order = _scoped_locked_packet_work(actor, current.work_order_id)
@@ -1870,9 +1882,9 @@ _DIAGNOSTIC_SIMILAR_RESULT_LIMIT = 5
 def similar_repair_candidates(machines):
     """Canonical verified, same-machine/same-model and same-client candidate set.
 
-    The caller supplies currently authorized root machines. Customer-owned work
-    orders cannot borrow their asset's client authorization. This lazy predicate
-    is shared by the diagnostic reader and the bounded memory context read.
+    The caller supplies currently authorized root machines. Customer Work may
+    contribute its verified closeout under O24; the root's machine/client and
+    packet-machine binding still constrain every candidate and recheck.
     """
     from django.db.models import Exists, F, OuterRef, Q
 
@@ -1883,7 +1895,6 @@ def similar_repair_candidates(machines):
     return RepairPacket.objects.filter(
         Exists(roots),
         machine_id=F('work_order__machine_id'),
-        work_order__customer__isnull=True,
         work_order__structured_closeout__verified_by__isnull=False,
         work_order__structured_closeout__verified_at__isnull=False,
     )
@@ -2238,17 +2249,18 @@ def read_diagnostic_published_playbooks(
     from django.db.models import Q
 
     from tasks.procedure_models import ProcedureRevision, ProcedureRevisionStatus
+    from tasks.scope import scoped_procedures
 
-    # Machines carry no customer identity, so the only procedures an asset can
-    # prove membership of are the customer-less (internal) ones. Customer
-    # procedures never leak through an applicability edge.
+    # An applicability edge narrows the live catalogue; it grants no customer
+    # authority. Use the native procedure reader's current scope before search
+    # or the evidence limit, independently of the authorized machine root.
     revisions = (
         ProcedureRevision.objects
         .filter(
             status=ProcedureRevisionStatus.PUBLISHED,
+            procedure__in=scoped_procedures(actor),
             procedure__active=True,
             applicability_rules__machine_id=machine_id,
-            procedure__customer__isnull=True,
         )
         .filter(
             Q(procedure__code__icontains=query)

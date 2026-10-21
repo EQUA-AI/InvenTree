@@ -1,9 +1,11 @@
 import { type Page, expect, test } from '@playwright/test';
+import { nativeThemeFixtures } from '../s8/themeFixtures';
 
 import { nativeBaseline } from '../s0/guards';
 import { mockMachine } from '../s0/machineFixtures';
 
 nativeBaseline();
+nativeThemeFixtures();
 
 /** Registry component rows for pump 18, as the Parts tab reads them. */
 function components(withStock: boolean) {

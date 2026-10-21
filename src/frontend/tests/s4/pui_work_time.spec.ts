@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { TimeAssignment } from '../../lib/types/WorkExecution';
 import { nativeBaseline } from '../s0/guards';
+import { revealWorkContext } from './workExecutionFixtures';
 import {
   capturePanel,
   expectNoPageOverflow,
@@ -55,6 +56,7 @@ for (const scheme of ['light', 'dark'] as const) {
       time_assignment: assignment()
     });
     await openExecutionPanel(page, 'work', scheme);
+    await revealWorkContext(page, 'Assignment and person-work time');
     const time = panelRegion(page, 'Work').getByTestId('time-assignment');
     await expect(
       time.getByText('60 min at last read', { exact: true })
@@ -117,6 +119,7 @@ test('missing audit names stay unknown instead of exposing raw assignee ids', as
   value.events[0].previous_assigned_to_name = null;
   await mockExecutionWork(page, { ...workOrder(), time_assignment: value });
   await openExecutionPanel(page);
+  await revealWorkContext(page, 'Assignment and person-work time');
   const time = page.getByTestId('time-assignment');
   await time
     .getByRole('button', { name: 'Recorded assignment changes (1)' })
@@ -159,6 +162,7 @@ test('legacy or missing assignment provenance stays unknown', async ({
     })
   });
   await openExecutionPanel(page);
+  await revealWorkContext(page, 'Assignment and person-work time');
   const time = page.getByTestId('time-assignment');
   await expect(
     time.getByText('Synthetic legacy label', { exact: true })
@@ -173,6 +177,7 @@ test('legacy or missing assignment provenance stays unknown', async ({
   await capturePanel(page, info.outputPath('time-legacy-unknown.png'));
   await mockExecutionWork(page);
   await page.reload();
+  await revealWorkContext(page, 'Assignment and person-work time');
   await expect(
     page
       .getByTestId('time-assignment')

@@ -58,9 +58,7 @@ test('fifty jobs paginate on the server and open the exact owning work with nati
   await expect(
     page.getByRole('heading', { name: 'WO-98: Synthetic job 98', exact: true })
   ).toBeVisible();
-  await page
-    .getByRole('button', { name: 'work-order-back', exact: true })
-    .click();
+  await page.getByTestId('work-order-back').click();
   await expect(work).toBeVisible();
   await expect(
     pagination.getByRole('button', { name: '2', exact: true })

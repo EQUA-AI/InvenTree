@@ -49,6 +49,7 @@ export default defineConfig({
       name: 's0-phone',
       testMatch: [
         'pages/pui_ui_reflow.spec.ts',
+        's0/nativeMimic.s0.ts',
         's0/pui_supplied_trends.spec.ts',
         's0/pui_native_identity.spec.ts',
         's0/pui_native_views.spec.ts',

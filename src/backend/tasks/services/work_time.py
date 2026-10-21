@@ -11,6 +11,7 @@ from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
+from tasks.scope import work_machine_authorized
 from tasks.services.investigation_requests import _change_actor
 from tasks.services.work_orders import (
     _append_result,
@@ -111,8 +112,24 @@ def time_projection(work, now=None):
     }
 
 
-def downtime_projection(work):
+def _downtime_origin_matches(work, proposal, binding_id):
+    """A saved sample retains its original Work, machine and binding identity."""
+    return (
+        isinstance(proposal, dict)
+        and type(proposal.get('work')) is int
+        and proposal['work'] == work.pk
+        and type(proposal.get('machine')) is int
+        and proposal['machine'] == work.machine_id
+        and type(proposal.get('binding_id')) is int
+        and type(binding_id) is int
+        and proposal['binding_id'] == binding_id
+    )
+
+
+def downtime_projection(work, actor):
     """Confirmed machine stop windows, separate from service availability."""
+    if not work_machine_authorized(actor, work):
+        return []
     rows = list(
         WorkDowntime.objects
         .filter(work_order=work)
@@ -135,7 +152,36 @@ def downtime_projection(work):
             'superseded': r.pk in superseded,
         }
         for r in rows
+        if r.binding.machine_id == work.machine_id
+        and _downtime_origin_matches(work, r.proposal, r.binding_id)
     ]
+
+
+def redact_machine_telemetry(result, work, actor):
+    """Withhold machine samples from a response without rewriting its receipt."""
+    if 'downtime' not in result:
+        return result
+    if not work_machine_authorized(actor, work) or not isinstance(
+        result['downtime'], list
+    ):
+        return {**result, 'downtime': []}
+    from assets.health_models import MachineSignalBinding
+
+    candidates = [
+        row
+        for row in result['downtime']
+        if isinstance(row, dict)
+        and _downtime_origin_matches(work, row.get('proposal'), row.get('binding_id'))
+    ]
+    binding_ids = set(
+        MachineSignalBinding.objects.filter(
+            pk__in={row['binding_id'] for row in candidates}, machine_id=work.machine_id
+        ).values_list('pk', flat=True)
+    )
+    return {
+        **result,
+        'downtime': [row for row in candidates if row['binding_id'] in binding_ids],
+    }
 
 
 def _status_bindings(work):
@@ -161,6 +207,13 @@ def propose_downtime(work, actor, start=None, end=None):
     """Require observed run→stop→run transitions without unknown boundaries."""
     from machine_health.services.trends import TrendError, read_trend
 
+    # O24: shared Work does not carry its machine's telemetry. Run/stop
+    # samples are machine health, so they need the machine's client scope.
+    if work.machine_id and not work_machine_authorized(actor, work):
+        return {
+            'proposals': [],
+            'reason': 'Machine telemetry is outside your machine scope.',
+        }
     candidates = list(_status_bindings(work)) if work.machine_id else []
     if len(candidates) != 1:
         return {'proposals': [], 'reason': 'No unambiguous run/stop binding recorded.'}
@@ -270,6 +323,8 @@ def command(
     get_user_model().objects.select_for_update().get(pk=person_id)
     work = _locked_work_order(work_order_id)
     _require_scope(actor, work)
+    if operation == 'downtime' and not work_machine_authorized(actor, work):
+        raise ValidationError('Machine telemetry is outside your machine scope.')
     if operation == 'correct' and not check_user_role(actor, 'admin', 'change'):
         raise PermissionDenied('Supervisor (admin change) permission required.')
     if (
@@ -298,7 +353,29 @@ def command(
     )
     replay = _replay_or_none(work, idempotency_key, digest)
     if replay:
-        return replay.metadata
+        if operation == 'downtime':
+            # Exact committed retries need no fresh proposal age, but must
+            # retain the original authorized machine and binding after edits.
+            try:
+                proposal = signing.loads(fields.get('token'), salt='o15-downtime')
+            except (signing.BadSignature, TypeError) as exc:
+                raise ValidationError(
+                    'The saved telemetry origin is unavailable.'
+                ) from exc
+            from assets.health_models import MachineSignalBinding
+
+            binding_id = (
+                proposal.get('binding_id') if isinstance(proposal, dict) else None
+            )
+            if (
+                not _downtime_origin_matches(work, proposal, binding_id)
+                or proposal.get('actor') != actor.pk
+                or not MachineSignalBinding.objects.filter(
+                    pk=proposal['binding_id'], machine_id=work.machine_id
+                ).exists()
+            ):
+                raise ValidationError('The saved telemetry origin is unavailable.')
+        return redact_machine_telemetry(replay.metadata, work, actor)
     if reconcile_only:
         result = {
             'record_command_outcome': 'not_committed',
@@ -458,9 +535,14 @@ def command(
         original = None
         if fields.get('supersedes') is not None:
             original = WorkDowntime.objects.filter(
-                pk=fields['supersedes'], work_order=work, replacement__isnull=True
+                pk=fields['supersedes'],
+                work_order=work,
+                binding_id=proposal['binding_id'],
+                replacement__isnull=True,
             ).first()
-            if original is None:
+            if original is None or not _downtime_origin_matches(
+                work, original.proposal, original.binding_id
+            ):
                 raise ValidationError('Downtime original is no longer current.')
         elif WorkDowntime.objects.filter(work_order=work, proposal=proposal).exists():
             raise ValidationError(
@@ -496,7 +578,7 @@ def command(
     result = {
         'version': work.lifecycle_version,
         'time': time_projection(work, now),
-        'downtime': downtime_projection(work),
+        'downtime': downtime_projection(work, actor),
     }
     _append_result(
         work_order=work,

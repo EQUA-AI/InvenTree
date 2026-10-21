@@ -445,7 +445,7 @@ class OperationalAuthorityTests(InvenTreeAPITestCase):
         self.gate.refresh_from_db()
         self.assertFalse(self.gate.is_satisfied)
         value = project(WorkOrder.objects.get(pk=self.work.pk), self.user)
-        self.assertFalse(value['gates'][0]['can_record'])
+        self.assertEqual(value['gates'], [])
         self.packet.machine = self.machine
         self.packet.work_order = WorkOrder.objects.create(
             title='Other Work', machine=self.machine
@@ -456,6 +456,121 @@ class OperationalAuthorityTests(InvenTreeAPITestCase):
         )
         self.gate.refresh_from_db()
         self.assertFalse(self.gate.is_satisfied)
+
+    def test_authority_get_withholds_mismatched_foreign_packet_sources(self):
+        """Standalone authority reads enforce the overview's packet boundary."""
+        from assets.models import Client
+        from company.models import Company
+
+        scope = approve_repair_scope(
+            self.packet, scope_lines=['Original packet scope'], actor=self.user
+        )
+        self.apply()
+        self.work.refresh_from_db()
+        original_version = self.work.lifecycle_version
+        original_context = _context(self.work)[1]
+        operating = self.operating()
+        receipt = self.apply(
+            operating,
+            key='operating-scope',
+            expected_version=original_version,
+            expected_context=original_context,
+        )
+        url = reverse('work-operational-authority', kwargs={'pk': self.work.pk})
+        own = self.get(url).data
+        self.assertEqual([gate['id'] for gate in own['gates']], [self.gate.pk])
+        self.assertEqual(len(own['physical']), 1)
+        self.assertEqual(own['operational'][0]['basis']['scope_ids'], [scope.pk])
+
+        self.work.customer = Company.objects.create(
+            name='O24 authority customer', is_customer=True
+        )
+        self.work.save(update_fields=['customer'])
+        foreign = AssetMachine.objects.create(
+            name='Foreign packet machine',
+            client=Client.objects.create(
+                name='Foreign authority', code='o24-authority'
+            ),
+        )
+        # Native writers refuse this drift; the reader must also contain
+        # historical/out-of-band mismatches without trusting shared Work.
+        RepairPacket.objects.filter(pk=self.packet.pk).update(machine=foreign)
+        self.gate.name = 'Foreign packet gate secret'
+        self.gate.save(update_fields=['name'])
+        shared = self.get(url).data
+        self.assertEqual(shared['gates'], [])
+        self.assertEqual(shared['physical'], [])
+        self.assertEqual(shared['operational'][0]['basis']['scope_ids'], [])
+        self.assertNotIn(self.gate.name, str(shared))
+        self.assertNotEqual(shared['context_token'], own['context_token'])
+        overview = self.get(
+            reverse('kanban-card-overview', kwargs={'pk': self.work.pk})
+        ).data
+        self.assertEqual(
+            overview['verification_return']['operating_permission']['records'][0][
+                'basis'
+            ]['scope_ids'],
+            [],
+        )
+        replay = self.apply(
+            operating,
+            key='operating-scope',
+            expected_version=original_version,
+            expected_context=original_context,
+        )
+        self.assertEqual(
+            replay,
+            {
+                **receipt,
+                'record': {
+                    **receipt['record'],
+                    'basis': {**receipt['record']['basis'], 'scope_ids': []},
+                },
+            },
+        )
+        # An inaccessible gate cannot influence the reviewed command token.
+        self.gate.name = 'Another foreign packet gate secret'
+        self.gate.save(update_fields=['name'])
+        self.assertEqual(self.get(url).data['context_token'], shared['context_token'])
+        event = self.work.events.get(idempotency_key='operating-scope')
+        self.assertEqual(event.metadata['result_metadata'], receipt)
+        self.assertEqual(receipt['record']['basis']['scope_ids'], [scope.pk])
+        self.user.user_permissions.add(
+            Permission.objects.get(codename='view_workorder_audit')
+        )
+        events = self.get(
+            reverse('work-order-events', kwargs={'pk': self.work.pk})
+        ).data['results']
+        self.assertTrue(events)
+        self.assertTrue(
+            all('result_metadata' not in event['metadata'] for event in events)
+        )
+        intent = {
+            'operation': 'record',
+            'expected_version': shared['work_version'],
+            'idempotency_key': 'foreign-packet-context',
+            'fields': operating,
+        }
+        # A caller cannot reconstruct the unkeyed source hash to promote a
+        # foreign packet into the saved basis of a new operating fact.
+        self.post(
+            url,
+            {
+                **intent,
+                'expected_context': _context(WorkOrder.objects.get(pk=self.work.pk))[1],
+            },
+            expected_code=409,
+        )
+        fresh = self.post(
+            url,
+            {
+                **intent,
+                'idempotency_key': 'own-target-context',
+                'expected_context': shared['context_token'],
+            },
+            expected_code=200,
+        )
+        self.assertEqual(fresh.data['record']['basis']['scope_ids'], [])
 
     def test_expired_record_cannot_be_cleared_by_waiving_gate(self):
         """A gate waiver does not erase a separately recorded expired permit."""
@@ -634,7 +749,9 @@ class OperationalAuthorityTests(InvenTreeAPITestCase):
         value = project(work, self.user)
         self.assertEqual(value['targets'], [])
         self.assertFalse(any(value['commands'].values()))
-        self.assertFalse(value['gates'][0]['can_record'])
+        # O24: packet gates are machine-scoped; without the machine they are
+        # not projected at all (formerly listed with can_record False).
+        self.assertEqual(value['gates'], [])
 
     def test_http_record_replay_stale_and_revoked_grant(self):
         """Exercise the actual JSON writer, receipt, conflict and current-role denial."""
@@ -659,7 +776,12 @@ class OperationalAuthorityTests(InvenTreeAPITestCase):
         self.assertEqual(GateAuthorityRecord.objects.count(), 1)
 
     def test_work_customer_scope_never_substitutes_for_physical_asset_scope(self):
-        """A sales claim about Work cannot authorize recording at another client asset."""
+        """A sales claim about Work cannot authorize recording at another client asset.
+
+        O24: the customer-only reader still sees the shared Work, but the
+        packet, its gates and every physical record stay machine-scoped: they
+        are withheld rather than listed as unrecordable.
+        """
         from company.models import Company
         from tasks.scope import MaintenanceScope
 
@@ -687,7 +809,7 @@ class OperationalAuthorityTests(InvenTreeAPITestCase):
             ]
         ):
             value = project(self.work, self.user)
-            self.assertFalse(value['gates'][0]['can_record'])
+            self.assertEqual(value['gates'], [])
             self.assertEqual(value['physical'], [])
             with self.assertRaises(PermissionDenied):
                 self.apply(
@@ -698,9 +820,7 @@ class OperationalAuthorityTests(InvenTreeAPITestCase):
             for name in ('kanban-card-overview', 'work-order-events'):
                 response = self.get(reverse(name, kwargs={'pk': self.work.pk}))
                 if name == 'kanban-card-overview':
-                    gate = response.data['repair_packet']['gates'][0]
-                    self.assertFalse(gate['is_satisfied'])
-                    self.assertEqual(gate['unsatisfied_reason'], 'not satisfied')
+                    self.assertIsNone(response.data['repair_packet'])
                 for secret in (
                     self.fields['statement'],
                     self.fields['source_reference'],
@@ -708,15 +828,10 @@ class OperationalAuthorityTests(InvenTreeAPITestCase):
                     station_fields['source_reference'],
                 ):
                     self.assertNotIn(secret, str(response.data))
-            packet_response = self.get(
-                reverse('repair-packet-detail', kwargs={'pk': self.packet.pk})
-            )
-            self.assertEqual(
-                packet_response.data['gates'][0]['unsatisfied_reason'], 'not satisfied'
-            )
-            self.assertEqual(
-                packet_response.data['unsatisfied_safety_gates'][0]['reason'],
-                'not satisfied',
+            # Packets always need their machine's client scope (O24).
+            self.get(
+                reverse('repair-packet-detail', kwargs={'pk': self.packet.pk}),
+                expected_code=404,
             )
         # Generic response redaction cannot mutate durable receipts or exact replay.
         event = self.work.events.get(

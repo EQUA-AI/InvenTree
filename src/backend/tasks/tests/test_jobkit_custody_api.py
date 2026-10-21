@@ -8,6 +8,7 @@ from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from assets.models import AssetMachine, Client, ClientScopeGrant
 from company.models import Company
 from part.models import Part
 from stock.models import StockItem
@@ -17,31 +18,35 @@ from tasks.models import (
     JobKitAllocation,
     JobKitAllocationStatus,
     JobKitLine,
-    WorkOrder,
     ProcedureResourceKind,
+    WorkOrder,
     WorkOrderType,
 )
-from tasks.scope import MaintenanceScope
 from tasks.services.job_kits import reserve_job_kit
 
 
-@override_settings(AIMMS_JOB_KITS_ENABLED=True)
+@override_settings(
+    AIMMS_JOB_KITS_ENABLED=True,
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.granted_client_scope_resolver',
+)
 class JobKitCustodyAPITest(TestCase):
     """Exercise the scoped custody transition endpoints."""
 
     def setUp(self):
+        """Reserve real stock on Work whose machine the actor may inspect."""
         self.customer = Company.objects.create(name='Custody API', is_customer=True)
         self.actor = get_user_model().objects.create_superuser(
             username='custody-api', email='custody-api@example.com', password='pw'
         )
-        self.actor.maintenance_scopes = {
-            MaintenanceScope(customer_id=self.customer.pk, site_key=None)
-        }
+        tenant = Client.objects.create(name='Custody API client', code='custody-api')
+        ClientScopeGrant.objects.create(user=self.actor, client=tenant)
+        machine = AssetMachine.objects.create(name='Custody API pump', client=tenant)
         self.client = APIClient()
         self.client.force_authenticate(self.actor)
         self.work_order = WorkOrder.objects.create(
             title='Custody API WO', status=WorkOrder.STATUS_BACKLOG,
             priority=WorkOrder.PRIORITY_MEDIUM, customer=self.customer,
+            machine=machine,
             work_order_type=WorkOrderType.PREVENTIVE,
         )
         self.kit = JobKit.objects.create(
@@ -67,6 +72,7 @@ class JobKitCustodyAPITest(TestCase):
         )
 
     def test_stage_issue_consume_flow(self):
+        """Custody effects return stock tracking under the actor's real grants."""
         stage = self.client.post(f'{self.base}/stage/', {}, format='json')
         self.assertEqual(stage.status_code, status.HTTP_200_OK)
         self.assertEqual(stage.data['status'], JobKitAllocationStatus.STAGED)
@@ -84,11 +90,13 @@ class JobKitCustodyAPITest(TestCase):
         self.assertEqual(self.stock.quantity, Decimal('6'))
 
     def test_consume_after_consume_conflicts(self):
+        """A terminal reservation cannot consume the same stock twice."""
         self.client.post(f'{self.base}/consume/', {}, format='json')
         again = self.client.post(f'{self.base}/consume/', {}, format='json')
         self.assertEqual(again.status_code, status.HTTP_409_CONFLICT)
 
     def test_return_endpoint(self):
+        """Returning a reservation leaves the unconsumed stock quantity intact."""
         response = self.client.post(f'{self.base}/return/', {}, format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['status'], JobKitAllocationStatus.RETURNED)
@@ -96,6 +104,7 @@ class JobKitCustodyAPITest(TestCase):
         self.assertEqual(self.stock.quantity, Decimal('10'))
 
     def test_stage_scan_required(self):
+        """A required scan cannot be bypassed when staging a reservation."""
         self.line.requires_scan = True
         self.line.save(update_fields=['requires_scan'])
         blocked = self.client.post(f'{self.base}/stage/', {}, format='json')
@@ -107,5 +116,6 @@ class JobKitCustodyAPITest(TestCase):
 
     @override_settings(AIMMS_JOB_KITS_ENABLED=False)
     def test_custody_hidden_when_flag_disabled(self):
+        """Disabled Job Kits accept no custody command."""
         response = self.client.post(f'{self.base}/consume/', {}, format='json')
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

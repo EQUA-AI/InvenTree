@@ -1,12 +1,20 @@
 import { type Page, expect, test } from '@playwright/test';
+import { nativeThemeFixtures } from '../s8/themeFixtures';
 
 import { nativeBaseline } from '../s0/guards';
 import { mockPositions, positionsFixture } from './equipmentFixtures';
 
 nativeBaseline();
+nativeThemeFixtures();
 
-async function openPanel(page: Page, scheme: 'light' | 'dark' = 'light') {
-  await page.goto(`/playwright/s2-equipment.html?kind=panel&scheme=${scheme}`);
+async function openPanel(
+  page: Page,
+  scheme: 'light' | 'dark' = 'light',
+  pauseScheduledPolling = false
+) {
+  await page.goto(
+    `/playwright/s2-equipment.html?kind=panel&scheme=${scheme}${pauseScheduledPolling ? '&polling=paused' : ''}`
+  );
   await expect(page.locator('[data-scene-phase="ready"]')).toBeVisible();
 }
 
@@ -46,8 +54,9 @@ test('a bound position shows its own slot, reading and work, and the rest as par
     await expect(panel.locator('[data-parent-work]')).toHaveText(
       "2 other open on this machine (parent context, not this position's)."
     );
-    // Every reading carries its own age, and the read itself its time.
-    await expect(reading).toContainText('ago');
+    // Positions does not supply server-relative age; never infer it from the browser.
+    await expect(reading).toContainText('age unavailable');
+    await expect(reading).toContainText('15:00:00');
     await expect(panel.locator('[data-records-read]')).toContainText(
       'Records read at'
     );
@@ -66,7 +75,12 @@ test('another position changes only the bound context, from one read', async ({
   page
 }) => {
   const positions = await mockPositions(page);
-  await openPanel(page);
+  // Retain exactly one read while exercising selection. A scheduled 30s
+  // refresh is a different behavior and must not depend on runner speed.
+  await openPanel(page, 'light', true);
+  await expect(
+    page.getByText('scheduled polling paused for selection test')
+  ).toBeVisible();
   const panel = inspector(page);
   // Impeller: no family, so nothing of the bearing's appears.
   await pick(page, 'bearing');
@@ -92,7 +106,7 @@ test('another position changes only the bound context, from one read', async ({
   // Casing: a family with no slot on this machine.
   await pick(page, 'pump');
   await expect(panel).toContainText(
-    'No Pump Casing and Spiral Case slot is recorded for this machine, so no readings or work are shown.'
+    'No Pump Casing and Spiral Case component is recorded for this machine, so no readings or work are shown.'
   );
   // A click on the model chooses the same position and the same records.
   await page
@@ -115,7 +129,7 @@ test('the whole machine shows its work and asks for a component', async ({
     '3 open on this machine'
   );
   await expect(panel).toContainText(
-    'Select a component to see its own slot, readings and work.'
+    'Select a component to see its own component records, readings and work.'
   );
 });
 
@@ -220,7 +234,7 @@ test('records the reader may not see say so, with no retry that cannot help', as
 test('a Parts slot opens the model on its own position', async ({ page }) => {
   await mockPositions(page);
   await page.goto(
-    `/playwright/s2-equipment.html?kind=panel&entry=${encodeURIComponent('/fixture?position=bearing')}`
+    `/playwright/s2-equipment.html?kind=panel&entry=${encodeURIComponent('/machines/machine/18/equipment/?position=bearing')}`
   );
   await expect(page.locator('[data-scene-phase="ready"]')).toBeVisible();
   await expect(
@@ -237,7 +251,7 @@ test('an unknown position in the link falls back to the whole machine', async ({
 }) => {
   await mockPositions(page);
   await page.goto(
-    `/playwright/s2-equipment.html?kind=panel&entry=${encodeURIComponent('/fixture?position=gearbox')}`
+    `/playwright/s2-equipment.html?kind=panel&entry=${encodeURIComponent('/machines/machine/18/equipment/?position=gearbox')}`
   );
   await expect(page.locator('[data-scene-phase="ready"]')).toBeVisible();
   await expect(page.locator('[data-position="machine"]')).toHaveAttribute(

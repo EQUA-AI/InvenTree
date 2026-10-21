@@ -15,7 +15,7 @@ from django.test import TestCase, override_settings
 
 from tasks.models import WorkOrder, WorkOrderLifecycle, WorkOrderPart, WorkOrderType
 
-from assets.models import AssetMachine, get_default_client
+from assets.models import AssetMachine, ClientScopeGrant, get_default_client
 from InvenTree.unit_test import InvenTreeAPITestCase
 from part.models import Part
 
@@ -111,6 +111,9 @@ class DraftValidationTest(TestCase):
         self.assertEqual(result['work_order_type'], WorkOrderType.CORRECTIVE)
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.granted_client_scope_resolver'
+)
 class CreateWorkPackageTest(TestCase):
     """The atomic create command."""
 
@@ -121,8 +124,10 @@ class CreateWorkPackageTest(TestCase):
             email='planner@example.com',
             password='test-password',
         )
+        self.tenant = get_default_client()
+        ClientScopeGrant.objects.create(user=self.actor, client=self.tenant)
         self.machine = AssetMachine.objects.create(
-            name=f'Blower-{uuid.uuid4().hex[:6]}'
+            name=f'Blower-{uuid.uuid4().hex[:6]}', client=self.tenant
         )
         self.part = Part.objects.create(
             name=f'Seal-{uuid.uuid4().hex[:6]}',

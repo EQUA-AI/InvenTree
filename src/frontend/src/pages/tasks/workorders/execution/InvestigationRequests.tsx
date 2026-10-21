@@ -54,6 +54,7 @@ export function InvestigationRequests({
   if (!requests.available)
     return (
       <Alert
+        role='note'
         color='gray'
         title={t`Saved requests not available`}
       >{t`Saved requests are not supplied by this server. Use the existing assistant for discussion; opening chat does not save a request.`}</Alert>
@@ -61,6 +62,7 @@ export function InvestigationRequests({
   if (!Array.isArray(requests.items))
     return (
       <Alert
+        role='note'
         color='orange'
         title={t`Request queue unavailable`}
       >{t`The server did not supply the saved queue. Refresh the Work before continuing.`}</Alert>
@@ -75,6 +77,7 @@ export function InvestigationRequests({
     <Stack gap='sm' data-testid='investigation-requests'>
       {priority && (
         <Alert
+          role='note'
           color={
             ['cannot_perform', 'disputed', 'pending_external'].includes(
               priority.status
@@ -186,6 +189,7 @@ export function InvestigationRequests({
                 'resolved'
               ].includes(r.status) && (
                 <Alert
+                  role='note'
                   color={r.status === 'resolved' ? 'gray' : 'orange'}
                   title={
                     r.status === 'resolved'

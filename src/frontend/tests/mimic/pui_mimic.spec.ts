@@ -365,7 +365,9 @@ test('a reading that cannot be shown says why, on the drawing', async ({
   await page.goto('/');
   await page.getByRole('button', { name: 'P17: Stale', exact: true }).click();
   const tag = page.locator('g[data-point="/dex/PUMP17_POWER"]');
-  await expect(tag.locator('text').last()).toHaveText('Stale');
+  await expect(tag).toContainText('Stale');
+  await expect(tag).toContainText('15:00:00');
+  await expect(tag).not.toContainText('7.5');
   await expect(tag.locator('rect')).toHaveAttribute('stroke-dasharray', '4 3');
 });
 
@@ -632,9 +634,9 @@ test('an alarm is acknowledged with a note where it is seen, and leads to Health
   // Two readings outside their limits; only one is an alarm yet.
   const raised = page.locator('tr[data-point="/w1"]');
   const pending = page.locator('tr[data-point="/w9"]');
-  await expect(raised).toContainText('Open · critical');
+  await expect(raised).toContainText('Active · not acknowledged');
   await expect(
-    raised.getByRole('link', { name: 'Open in Health' })
+    raised.getByRole('link', { name: 'Open /w1 in Health' })
   ).toHaveAttribute('href', '/machines/machine/1/health');
   await expect(pending).toContainText('Not raised yet');
   await expect(
@@ -658,7 +660,7 @@ test('an alarm is acknowledged with a note where it is seen, and leads to Health
   ]);
   // The page re-reads, and the alarm is shown as acknowledged with nothing
   // left to press.
-  await expect(raised).toContainText('Acknowledged · critical');
+  await expect(raised).toContainText('Active · acknowledged');
   await expect(raised.getByRole('button', { name: 'Acknowledge' })).toHaveCount(
     0
   );
@@ -831,5 +833,7 @@ test('an alarm is dismissed only with a reason, and then offers nothing more', a
   ]);
   await expect(row).toContainText('Dismissed');
   await expect(row.getByRole('button')).toHaveCount(0);
-  await expect(row.getByRole('link', { name: 'Open in Health' })).toBeVisible();
+  await expect(
+    row.getByRole('link', { name: 'Open /w1 in Health' })
+  ).toBeVisible();
 });

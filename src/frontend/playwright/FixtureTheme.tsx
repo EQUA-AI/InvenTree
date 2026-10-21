@@ -1,27 +1,61 @@
 import { MantineProvider } from '@mantine/core';
+import '@mantine/notifications/styles.css';
+import 'mantine-contextmenu/styles.css';
 import type { JSX } from 'react';
 import { api } from '../src/App';
-import { ThemeContext } from '../src/contexts/ThemeContext';
+import {
+  ThemeContext,
+  createInvenTreeTheme,
+  cssVariablesResolver
+} from '../src/contexts/ThemeContext';
+import { useLocalState } from '../src/states/LocalState';
 
-/** Use the production theme and colour-scheme manager, with explicit fixture-backed global reads. */
+/** Native providers by default; monitoring fixtures can opt into a lightweight theme. */
 export function FixtureTheme({
-  children
-}: Readonly<{ children: JSX.Element }>) {
+  children,
+  nativeTheme = true,
+  fallbackUserTheme = true
+}: Readonly<{
+  children: JSX.Element;
+  nativeTheme?: boolean;
+  fallbackUserTheme?: boolean;
+}>) {
   const params = new URLSearchParams(location.search);
-  if (params.get('nativeTheme') !== 'true')
+  if (!nativeTheme)
     return (
       <MantineProvider
+        cssVariablesResolver={
+          fallbackUserTheme ? cssVariablesResolver : undefined
+        }
+        theme={
+          fallbackUserTheme
+            ? createInvenTreeTheme(useLocalState.getState().userTheme)
+            : undefined
+        }
         forceColorScheme={params.get('scheme') === 'dark' ? 'dark' : 'light'}
       >
         {children}
       </MantineProvider>
     );
-  api.defaults.headers.common['Accept-Language'] = 'en,en-us';
+  return <ThemeContext>{children}</ThemeContext>;
+}
+
+export function prepareFixtureTheme(params: URLSearchParams) {
   localStorage.setItem(
     'scheme',
-    new URLSearchParams(location.search).get('scheme') === 'dark'
-      ? 'dark'
-      : 'light'
+    params.get('scheme') === 'dark' ? 'dark' : 'light'
   );
-  return <ThemeContext>{children}</ThemeContext>;
+  useLocalState.setState({ language: 'en' });
+  const primary = params.get('primary');
+  if (primary === 'indigo' || primary === 'blue') {
+    useLocalState.setState({
+      userTheme: {
+        ...useLocalState.getState().userTheme,
+        primaryColor: primary
+      }
+    });
+  }
+  // LanguageContext's normal header is already initialized; no global-state
+  // refresh or real backend is needed by this isolated fixture.
+  api.defaults.headers.common['Accept-Language'] = 'en,en-us';
 }

@@ -1,40 +1,69 @@
 import { t } from '@lingui/core/macro';
-import { Badge, Group, type GroupProps } from '@mantine/core';
+import { Group, type GroupProps } from '@mantine/core';
+import { IconBellRinging, IconInfoCircle } from '@tabler/icons-react';
+import { StatusBadge } from '../../pages/assets/health/common';
 
-/**
- * How many alarms stand on a machine, the criticals apart from the rest.
- *
- * One rendering for every list that says where there is something to look
- * at, so the Machines page and the dashboard read alike. Renders nothing when
- * no alarm stands; what an empty cell shows is the list's own business.
- */
+/** Counts include the machine and its child pumps. Missing severity is not warning. */
 export function MachineAlarmBadges({
-  open: openAlarms,
-  critical: criticalAlarms,
+  open,
+  critical,
+  warning,
   justify
 }: Readonly<{
   open?: number | null;
   critical?: number | null;
+  warning?: number | null;
   justify?: GroupProps['justify'];
 }>) {
-  const open = openAlarms ?? 0;
-  const critical = criticalAlarms ?? 0;
-
-  if (!open) {
-    return null;
-  }
-
+  if (typeof open !== 'number' || open <= 0) return null;
+  const knownCritical =
+    typeof critical === 'number' &&
+    Number.isSafeInteger(critical) &&
+    critical >= 0 &&
+    critical <= open;
+  const c = knownCritical ? critical : 0;
+  const w =
+    typeof warning === 'number' &&
+    Number.isSafeInteger(warning) &&
+    warning >= 0 &&
+    warning <= open - c
+      ? warning
+      : null;
   return (
-    <Group gap={6} wrap='nowrap' justify={justify}>
-      {critical > 0 && (
-        <Badge color='red' variant='filled' size='sm'>
-          {t`${critical} critical`}
-        </Badge>
+    <Group gap={4} wrap='wrap' justify={justify}>
+      {c > 0 && (
+        <StatusBadge
+          color='red.9'
+          variant='filled'
+          size='sm'
+          leftSection={<IconBellRinging size={12} />}
+        >{t`${c} critical`}</StatusBadge>
       )}
-      {open > critical && (
-        <Badge color='yellow' variant='light' size='sm'>
-          {t`${open - critical} warning`}
-        </Badge>
+      {w !== null && w > 0 && (
+        <StatusBadge
+          color='yellow'
+          size='sm'
+          leftSection={<IconBellRinging size={12} />}
+        >{t`${w} warning`}</StatusBadge>
+      )}
+      {w !== null && knownCritical && open > c + w && (
+        <StatusBadge
+          color='gray'
+          size='sm'
+          leftSection={<IconInfoCircle size={12} />}
+        >{t`${open - c - w} other`}</StatusBadge>
+      )}
+      {w === null && knownCritical && open > c && (
+        <StatusBadge
+          color='gray'
+          size='sm'
+        >{t`${open - c} non-critical`}</StatusBadge>
+      )}
+      {!knownCritical && (
+        <StatusBadge
+          color='gray'
+          size='sm'
+        >{t`${open} active · severity unavailable`}</StatusBadge>
       )}
     </Group>
   );

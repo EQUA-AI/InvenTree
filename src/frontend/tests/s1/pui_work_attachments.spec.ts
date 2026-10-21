@@ -367,9 +367,7 @@ test('page query parameters cannot retarget a bound work resource or disable its
     exact: true
   });
   await expect(search).toBeEnabled();
-  await expect(
-    page.getByRole('button', { name: 'table-select-filters', exact: true })
-  ).toBeEnabled();
+  await expect(page.getByTestId('table-select-filters')).toBeEnabled();
   await search.fill('nameplate');
   await expect
     .poll(() =>

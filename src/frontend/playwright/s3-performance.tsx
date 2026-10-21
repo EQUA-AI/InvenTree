@@ -4,7 +4,7 @@ import './aichat-drawer-lingui';
 import LayoutComponent from '../src/components/nav/Layout';
 import MachineDetail from '../src/pages/assets/MachineDetail';
 
-import { FixtureTheme } from './FixtureTheme';
+import { FixtureTheme, prepareFixtureTheme } from './FixtureTheme';
 
 import { i18n } from '@lingui/core';
 import { I18nProvider } from '@lingui/react';
@@ -39,6 +39,7 @@ import { useUserState } from '../src/states/UserState';
  * navigation; they are not product chrome.
  */
 const params = new URLSearchParams(window.location.search);
+if (params.get('nativeTheme') === 'true') prepareFixtureTheme(params);
 const pk = Number(params.get('machine') ?? 18);
 const asset = params.get('asset') ?? 'pump';
 const entry = params.get('entry') ?? `/machines/machine/${pk}/performance`;
@@ -117,7 +118,10 @@ function Harness() {
 
 createRoot(document.getElementById('root')!).render(
   <I18nProvider i18n={i18n}>
-    <FixtureTheme>
+    <FixtureTheme
+      nativeTheme={params.get('nativeTheme') === 'true'}
+      fallbackUserTheme={false}
+    >
       <ApiProvider api={axios.create()} client={client}>
         <MemoryRouter
           basename={params.get('basename') ?? '/'}

@@ -1,6 +1,6 @@
 import './aichat-drawer-lingui';
 
-import { FixtureTheme } from './FixtureTheme';
+import { FixtureTheme, prepareFixtureTheme } from './FixtureTheme';
 
 import { i18n } from '@lingui/core';
 import { t } from '@lingui/core/macro';
@@ -24,7 +24,8 @@ import {
   Route,
   Routes,
   useLocation,
-  useNavigate
+  useNavigate,
+  useNavigationType
 } from 'react-router-dom';
 
 import LayoutComponent from '../src/components/nav/Layout';
@@ -48,6 +49,7 @@ import { useUserState } from '../src/states/UserState';
 import { signalRows } from '../tests/performance/fixtures';
 
 const params = new URLSearchParams(window.location.search);
+prepareFixtureTheme(params);
 const surface = params.get('surface') ?? 'signals';
 const nativeReader =
   ['machine-explorer', 'maintenance-shell'].includes(surface) &&
@@ -95,7 +97,16 @@ useUserState.setState({
 
 function QueryState() {
   const fetching = useIsFetching();
-  return <Text data-testid='fixture-fetching'>{fetching}</Text>;
+  const navigation = useNavigationType();
+  return (
+    <>
+      <Text data-testid='fixture-fetching'>{fetching}</Text>
+      <Text data-testid='fixture-navigation-type'>{navigation}</Text>
+      <Text data-testid='fixture-theme-primary'>
+        {useLocalState.getState().userTheme.primaryColor}
+      </Text>
+    </>
+  );
 }
 
 function NativeSurface() {
@@ -208,7 +219,7 @@ function NativeSurface() {
 
 createRoot(document.getElementById('root')!).render(
   <I18nProvider i18n={i18n}>
-    <FixtureTheme>
+    <FixtureTheme nativeTheme={params.get('nativeTheme') === 'true'}>
       <ApiProvider api={axios.create()} client={client}>
         <ModalsProvider>
           <Notifications />

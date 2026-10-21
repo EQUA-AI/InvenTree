@@ -34,6 +34,7 @@ from tasks.procedure_models import (
     WorkOrderStepExecution,
 )
 from tasks.scope import MaintenanceScope
+from tasks.services.procedure_execution import _application_snapshot
 from tasks.workorder_models import WorkOrderDeviation
 
 READ_FLAGS = {
@@ -81,7 +82,7 @@ class ComparisonEndToEndTests(TestCase):
         cls.application = WorkOrderProcedureApplication.objects.create(
             work_order=cls.work_order,
             revision=revision,
-            snapshot={'title': 'E2E procedure'},
+            snapshot=_application_snapshot(revision),
             snapshot_hash='d' * 64,
             applied_by=cls.author,
             idempotency_key=f'e2e-{suffix}',

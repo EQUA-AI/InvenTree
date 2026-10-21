@@ -1,7 +1,6 @@
 import {
   displayAction,
   displayArtifact,
-  displayAuthority,
   displayCloseout,
   displayComponent,
   displayFocus,
@@ -136,12 +135,7 @@ describe('canonical reference focus', () => {
       '/machines/machine/18/equipment/?position=bearing'
     );
   });
-  it('absent authority and missing source revisions remain explicit', () => {
-    expect(displayAuthority()).toEqual({
-      state: 'not_recorded',
-      record: null,
-      source: null
-    });
+  it('missing source revisions remain explicit', () => {
     expect(
       displayComponent(18, 'reference_positions.v1', { id: 'bearing' })
     ).toBeNull();
@@ -219,20 +213,6 @@ it('all display seams retain canonical IDs, enums and unmodified source objects'
   const capture = { id: 3, revision: 2, status: 'reviewed' } as any;
   expect(displayCloseout(capture).source.revision).toBe(2);
   expect(displayCloseout(capture).record).toBe(capture);
-  const authority = { id: 6, status: null, version: 3 };
-  expect(displayAuthority(authority).state).toBeNull();
-  expect(displayAuthority(authority).record).toBe(authority);
-  expect(displayAuthority(authority).source?.record).toBeNull();
-  const attributed = {
-    ...authority,
-    source: { record: 'provider_supplied_kind', provider: 'fixture-provider' }
-  };
-  expect(displayAuthority(attributed).source).toEqual({
-    record: 'provider_supplied_kind',
-    id: 6,
-    revision: 3,
-    provider: 'fixture-provider'
-  });
 });
 
 describe('independent reference availability', () => {

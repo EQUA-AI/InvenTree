@@ -31,6 +31,7 @@ import type {
 import type { WorkOrderOverview } from '@lib/types/WorkOrderOverview';
 
 import { ContinueInvestigation } from './ContinueInvestigation';
+import { unattributedVerificationLabel } from './ExecutionFacts';
 import { InvestigationRequests } from './InvestigationRequests';
 import {
   isSnapshotId,
@@ -69,9 +70,7 @@ function Fact({
 }: Readonly<{ label: string; value: string | null }>) {
   return (
     <Stack gap={0}>
-      <Text size='xs' c='dimmed'>
-        {label}
-      </Text>
+      <Text size='xs'>{label}</Text>
       <Text size='sm' style={{ overflowWrap: 'anywhere' }}>
         {value ?? t`Not recorded`}
       </Text>
@@ -95,7 +94,9 @@ function Section({
       <Stack gap='sm'>
         <Group gap='xs' wrap='nowrap' align='center'>
           {icon}
-          <Title order={4}>{title}</Title>
+          <Title order={2} size='h4'>
+            {title}
+          </Title>
         </Group>
         {children}
       </Stack>
@@ -183,7 +184,7 @@ function EvidenceGroup({
         </Badge>
       </Group>
       {items.length === 0 ? (
-        <Text size='sm' c='dimmed'>
+        <Text size='sm'>
           {relation === 'contradicts'
             ? t`No contradicting evidence is cited.`
             : t`None cited.`}
@@ -203,7 +204,7 @@ function EvidenceGroup({
               <Text size='sm' style={{ overflowWrap: 'anywhere' }}>
                 {item.observation || t`No observation text recorded`}
               </Text>
-              <Text size='xs' c='dimmed' style={{ overflowWrap: 'anywhere' }}>
+              <Text size='xs' style={{ overflowWrap: 'anywhere' }}>
                 {[
                   item.signal_label,
                   value,
@@ -308,6 +309,10 @@ export function DiagnoseProjection({
             <Badge variant='light' color='teal' styles={WRAP_BADGE}>
               {t`Verified by ${explanation?.verified_by ?? t`a person`}`}
             </Badge>
+          ) : qualification === 'unattributed' ? (
+            <Badge variant='light' color='gray' styles={WRAP_BADGE}>
+              {unattributedVerificationLabel()}
+            </Badge>
           ) : qualification === 'preliminary' ? (
             <Badge variant='light' color='yellow' styles={WRAP_BADGE}>
               {t`Preliminary — not technician verified`}
@@ -318,9 +323,7 @@ export function DiagnoseProjection({
             </Badge>
           )}
           {qualification === 'verified' && explanation?.verified_at && (
-            <Text size='xs' c='dimmed'>
-              {when(explanation.verified_at)}
-            </Text>
+            <Text size='xs'>{when(explanation.verified_at)}</Text>
           )}
           <Anchor
             component={Link}
@@ -335,7 +338,7 @@ export function DiagnoseProjection({
             t`No explanation has been saved for this investigation.`}
         </Text>
         {qualification === 'preliminary' && (
-          <Text size='sm' c='dimmed'>
+          <Text size='sm'>
             {t`The initiating cause is not established. This restates what the cited evidence shows, with the gaps below, and authorizes nothing.`}
           </Text>
         )}
@@ -345,7 +348,11 @@ export function DiagnoseProjection({
               r.status
             )
           )) && (
-          <Alert color='orange' title={t`Investigation decision unresolved`}>
+          <Alert
+            role='note'
+            color='orange'
+            title={t`Investigation decision unresolved`}
+          >
             {t`The saved explanation retains its recorded verification. Conflicting or unavailable evidence still needs a decision on the affected request; this does not invalidate unrelated findings or authorize work.`}
           </Alert>
         )}
@@ -370,14 +377,12 @@ export function DiagnoseProjection({
                 <List.Item key={`${index}-${check}`}>{check}</List.Item>
               ))}
             </List>
-            <Text size='xs' c='dimmed'>
+            <Text size='xs'>
               {t`Proposed by the diagnosis, not assigned, scheduled or confirmed. The order is the diagnosis's, not a priority decision.`}
             </Text>
           </>
         ) : (
-          <Text size='sm' c='dimmed'>
-            {t`The diagnosis proposes no checks.`}
-          </Text>
+          <Text size='sm'>{t`The diagnosis proposes no checks.`}</Text>
         )}
       </Section>
 
@@ -393,6 +398,7 @@ export function DiagnoseProjection({
         </SimpleGrid>
         {disputed.length > 0 && (
           <Alert
+            role='note'
             color='orange'
             variant='light'
             icon={<IconAlertTriangle size={16} />}
@@ -442,7 +448,7 @@ export function DiagnoseProjection({
             {explanation.amendments.map((amendment, index) => (
               <Stack key={`${index}-${amendment.text}`} gap={0}>
                 <Text size='sm'>{amendment.text}</Text>
-                <Text size='xs' c='dimmed'>
+                <Text size='xs'>
                   {[
                     amendment.author
                       ? t`by ${amendment.author}`
@@ -457,7 +463,7 @@ export function DiagnoseProjection({
             ))}
           </Stack>
         ) : (
-          <Text size='sm' c='dimmed'>
+          <Text size='sm'>
             {t`No technician correction is recorded on the diagnosis.`}
           </Text>
         )}
@@ -524,7 +530,7 @@ export function DiagnoseProjection({
           </Stack>
         )}
         {investigation.finding_history === 'overwritten_in_place' && (
-          <Text size='xs' c='dimmed'>
+          <Text size='xs'>
             {t`This server updates a finding in place: when it is corrected, its earlier value and verification are not kept.`}
           </Text>
         )}
@@ -542,7 +548,7 @@ export function DiagnoseProjection({
                 {t`Approved scope version ${intervention.version}`}
               </Badge>
               {intervention.superseded_versions > 0 && (
-                <Text size='xs' c='dimmed'>
+                <Text size='xs'>
                   {t`${intervention.superseded_versions} earlier version(s) retained`}
                 </Text>
               )}
@@ -551,7 +557,7 @@ export function DiagnoseProjection({
               {intervention.verified_cause ||
                 t`No verified cause is recorded on the approved scope.`}
             </Text>
-            <Text size='xs' c='dimmed'>
+            <Text size='xs'>
               {[
                 t`${intervention.scope_line_count} scope step(s)`,
                 intervention.failure_codes.join(', ') || null,
@@ -563,12 +569,12 @@ export function DiagnoseProjection({
                 .filter(Boolean)
                 .join(' · ')}
             </Text>
-            <Anchor component={Link} to={`?${planParams}`} size='sm'>
+            <Anchor component={Link} replace to={`?${planParams}`} size='sm'>
               {t`Open Plan & Safety`}
             </Anchor>
           </>
         ) : (
-          <Text size='sm' c='dimmed'>
+          <Text size='sm'>
             {t`No approved intervention scope is recorded. Nothing here authorizes physical work.`}
           </Text>
         )}

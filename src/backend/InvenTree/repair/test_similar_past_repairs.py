@@ -228,13 +228,23 @@ class SimilarPastRepairsReadTest(TestCase):
         self.assertIn(newer.fault_summary, claims[0])
         self.assertIn(older.fault_summary, claims[1])
 
-    def test_customer_work_order_cannot_borrow_machine_client_scope(self):
-        """A work-order customer is a separate boundary even on a local asset."""
+    def test_customer_work_order_is_shared_but_never_crosses_the_machine_client(self):
+        """O24: a customer value no longer hides a verified local repair.
+
+        The candidate set stays bound to the authorized machine's client: a
+        customer job on another tenant's same-model machine still contributes
+        nothing (formerly any customer value withheld the repair entirely).
+        """
         from company.models import Company
 
         packet = self._closed_packet(machine=self.machine)
+        foreign = self._closed_packet(machine=self.foreign)
         customer = Company.objects.create(
             name='Unrelated customer fixture', is_customer=True
         )
-        WorkOrder.objects.filter(pk=packet.work_order_id).update(customer=customer)
-        self.assertEqual(self._read()['evidence'], ())
+        WorkOrder.objects.filter(
+            pk__in=[packet.work_order_id, foreign.work_order_id]
+        ).update(customer=customer)
+        claims = [item['claim'] for item in self._read()['evidence']]
+        self.assertEqual(len(claims), 1)
+        self.assertIn(packet.fault_summary, claims[0])

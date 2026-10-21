@@ -2,6 +2,7 @@
 
 import math
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
@@ -362,9 +363,14 @@ def station_mimic(station, *, unit=None, now=None):
         'name': station.name,
         'alarm': worst.get(station.pk),
         'generated_at': now,
+        'display_shifted': bool(shift.total_seconds()),
+        'display_shift_seconds': int(shift.total_seconds()),
+        'plant_timezone': settings.AIMMS_PLANT_TIMEZONE or None,
         'source': status['source'],
         'last_poll_at': status['last_poll_at'],
         'last_error_code': status['last_error_code'],
+        'last_error_at': status['last_error_at'],
+        'last_success_at': status['last_success_at'],
         'enabled': enabled,
         'layout': layout,
         'station_points': station_points,

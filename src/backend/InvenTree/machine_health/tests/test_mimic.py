@@ -105,6 +105,36 @@ class MimicTests(InvenTreeAPITestCase):
         self.assertIsNone(response.data['totals']['power']['value'])
         self.assertEqual(self.get_mimic(unit='P2').status_code, 400)
 
+    @override_settings(AIMMS_PLANT_TIMEZONE='')
+    def test_unshifted_clock_and_source_times(self):
+        """An undeclared plant clock stays null; source times are not poll times."""
+        now = timezone.now().replace(microsecond=0)
+        self.source.last_error_at = now - timedelta(minutes=4)
+        self.source.last_success_at = now - timedelta(minutes=5)
+        self.source.save()
+        response = self.get_mimic(unit='P1').data
+        self.assertFalse(response['display_shifted'])
+        self.assertEqual(response['display_shift_seconds'], 0)
+        self.assertIsNone(response['plant_timezone'])
+        self.assertEqual(response['last_error_at'], self.source.last_error_at.isoformat().replace('+00:00', 'Z'))
+        self.assertEqual(response['last_success_at'], self.source.last_success_at.isoformat().replace('+00:00', 'Z'))
+        self.assertIsNone(response['last_poll_at'])
+
+    @override_settings(AIMMS_PLANT_TIMEZONE='Asia/Kolkata')
+    def test_shift_and_declared_plant_clock_reach_the_api(self):
+        """The same offset that ages readings is disclosed by the serializer."""
+        now = timezone.now()
+        end = now - timedelta(days=400)
+        self.source.config['data_ranges'] = {str(self.station.source_entity_uuid): {
+            'from': (end - timedelta(days=10)).isoformat(), 'to': end.isoformat()
+        }}
+        self.source.save()
+        self.add_point('/pd/P1/st', 'R', unit='', age=400 * 86400)
+        response = self.get_mimic(unit='P1').data
+        self.assertTrue(response['display_shifted'])
+        self.assertGreaterEqual(response['display_shift_seconds'], 400 * 86400)
+        self.assertEqual(response['plant_timezone'], 'Asia/Kolkata')
+
     def test_selected_values_alarms_and_unconfigured_thresholds(self):
         """Only configured limits produce alarms; no limits means unknown health."""
         _, binding = self.add_point('/dex/CORE1', 45, unit='degC')

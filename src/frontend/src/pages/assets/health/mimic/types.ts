@@ -98,6 +98,11 @@ export type MimicData = {
   /** The worst active alarm on the station's own readings. */
   alarm?: 'critical' | 'warning' | null;
   generated_at: string;
+  plant_timezone?: string | null;
+  display_shifted?: boolean;
+  display_shift_seconds?: number;
+  last_error_at?: string | null;
+  last_success_at?: string | null;
   enabled: boolean;
   source: { pk: number; name: string } | null;
   last_poll_at: string | null;

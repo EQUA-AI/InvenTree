@@ -250,6 +250,23 @@ class DecisionBatchCommandSerializer(BaseCommandSerializer):
 class CloseoutPartUsageSerializer(serializers.ModelSerializer):
     """Read-only reconciliation row."""
 
+    def to_representation(self, instance):
+        """Use the Materials boundary for stock and stock-tracking identities."""
+        from .materials_readout import can_read_work_stock
+
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        work_order = self.context.get('work_order') or instance.work_order
+        visibility = self.context.setdefault('_stock_visibility', {})
+        if work_order.pk not in visibility:
+            visibility[work_order.pk] = bool(
+                request and can_read_work_stock(request.user, work_order)
+            )
+        if not visibility[work_order.pk]:
+            data['stock_item'] = None
+            data['stock_tracking_id'] = None
+        return data
+
     class Meta:
         """Serializer metadata."""
 
@@ -273,6 +290,14 @@ class CloseoutPartUsageSerializer(serializers.ModelSerializer):
             'version',
         )
         read_only_fields = fields
+
+
+class CloseoutPartUsageSnapshotSerializer(CloseoutPartUsageSerializer):
+    """Canonical Work evidence for immutable reports, independent of readers."""
+
+    def to_representation(self, instance):
+        """Preserve recorded fields; live stock-resource reads stay separate."""
+        return serializers.ModelSerializer.to_representation(self, instance)
 
 
 class PartUsageCreateSerializer(serializers.Serializer):

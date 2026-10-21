@@ -188,3 +188,21 @@ export function timeAssignment(
     ...overrides
   };
 }
+
+/** Open the native contextual disclosure before operating its actual controls. */
+export async function revealWorkContext(
+  page: Page,
+  label:
+    | 'Continuity and handover'
+    | 'Assignment and person-work time'
+    | 'Investigation and preparation summary'
+) {
+  // A disclosure that needs action appends its status to the control's
+  // accessible name ("Continuity and handover Handover awaiting your
+  // acceptance"), so match the title as the name's exact start.
+  const control = panelRegion(page, 'Work').getByRole('button', {
+    name: new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|$)`)
+  });
+  if ((await control.getAttribute('aria-expanded')) === 'false')
+    await control.click();
+}

@@ -5,6 +5,7 @@ import { mockWorkList } from '../s1/workListFixtures';
 import { anomaly, openHealth } from '../s3/healthFixtures';
 import { BAYS, stationMimic } from '../s3/stationFixtures';
 import { continuityWork } from '../s4/continuityFixtures';
+import { revealWorkContext } from '../s4/workExecutionFixtures';
 import {
   capturePanel,
   expectNoPageOverflow,
@@ -447,8 +448,8 @@ for (const pump of [false, true]) {
       await expect(alarm).toContainText('P32 synthetic warning');
       for (const name of ['Acknowledge', 'Create repair', 'Dismiss'])
         await expect(
-          alarm.getByRole('button', { name, exact: true })
-        ).toBeDisabled();
+          alarm.getByRole('button', { name: new RegExp(`^${name}\\b`) })
+        ).toHaveCount(0);
       await expectNoPageOverflow(page);
       await capturePanel(
         page,
@@ -456,18 +457,6 @@ for (const pump of [false, true]) {
           `mimic-${pump ? 'pump' : 'station'}-viewer-${scheme}.png`
         )
       );
-      // Position the action cell in both scroll axes: scrolling only the last
-      // button can leave its neighbours clipped at the phone viewport edge.
-      await alarm
-        .locator('td')
-        .last()
-        .evaluate((cell) =>
-          cell.scrollIntoView({ block: 'center', inline: 'center' })
-        );
-      for (const name of ['Acknowledge', 'Create repair', 'Dismiss'])
-        await expect(
-          alarm.getByRole('button', { name, exact: true })
-        ).toBeInViewport({ ratio: 1 });
       await page.screenshot({
         path: info.outputPath(
           `mimic-${pump ? 'pump' : 'station'}-viewer-actions-${scheme}.png`
@@ -485,12 +474,43 @@ for (const pump of [false, true]) {
           });
         }, grants);
         for (const name of ['Acknowledge', 'Create repair', 'Dismiss']) {
-          const control = alarm.getByRole('button', { name, exact: true });
-          if (grants.includes(name === 'Create repair' ? 'add' : 'change'))
+          const control = alarm.getByRole('button', {
+            name: new RegExp(`^${name}\\b`)
+          });
+          if (grants.includes(name === 'Create repair' ? 'add' : 'change')) {
             await expect(control).toBeEnabled();
-          else await expect(control).toBeDisabled();
+            await control.scrollIntoViewIfNeeded();
+            await expect(control).toBeInViewport({ ratio: 1 });
+            if (info.project.name.endsWith('phone')) {
+              const box = (await control.boundingBox())!;
+              expect(box.width).toBeGreaterThanOrEqual(44);
+              expect(box.height).toBeGreaterThanOrEqual(44);
+            }
+          } else await expect(control).toHaveCount(0);
+        }
+        if (grants.includes('change') && grants.includes('add')) {
+          // Position the authorized action cell in both scroll axes: scrolling
+          // only the last button can leave its neighbours clipped on a phone.
+          await alarm
+            .locator('td')
+            .last()
+            .evaluate((cell) =>
+              cell.scrollIntoView({ block: 'center', inline: 'center' })
+            );
+          for (const name of ['Acknowledge', 'Create repair', 'Dismiss'])
+            await expect(
+              alarm.getByRole('button', {
+                name: new RegExp(`^${name}\\b`)
+              })
+            ).toBeInViewport({ ratio: 1 });
         }
       }
+      await expectNoPageOverflow(page);
+      await alarm.screenshot({
+        path: info.outputPath(
+          `mimic-${pump ? 'pump' : 'station'}-authorized-actions-${scheme}.png`
+        )
+      });
       expect(writes).toEqual([]);
     });
   }
@@ -507,10 +527,11 @@ for (const scheme of ['light', 'dark'] as const) {
       (route) => route.fulfill({ json: [] })
     );
     await openExecutionPanel(page, 'work', scheme);
+    await revealWorkContext(page, 'Continuity and handover');
     await expect(page.getByTestId('work-continuity')).toBeVisible();
     await noWriteControls(
       page,
-      /Hold work record|Resume work record|Accept assignment|Generate|Assign|Update record/
+      /Hold work record|Resume work record|Accept assignment|Generate|\bAssign\b|Update record/
     );
     await expectNoPageOverflow(page);
     await capturePanel(page, info.outputPath(`viewer-work-${scheme}.png`));
@@ -893,4 +914,57 @@ for (const status of [403, 404]) {
     );
     expect(writes).toEqual([]);
   });
+}
+
+for (const attribution of ['customer', 'unattributed'] as const) {
+  for (const scheme of ['light', 'dark'] as const) {
+    test(`O24 authorized ${attribution} Work response renders for a viewer in ${scheme}`, async ({
+      page
+    }, info) => {
+      const writes = watchWrites(page);
+      const work = continuityWork();
+      // The overview does not expose customer IDs. Backend scope tests prove
+      // authorization; this fixture proves an authorized response renders for
+      // a viewer without granting execution actions in either O24 case.
+      work.title = `Synthetic ${attribution} Work`;
+      if (attribution === 'customer') {
+        work.company = 'Synthetic customer';
+        work.machine_name = 'Synthetic foreign client pump';
+      } else {
+        work.machine = null;
+        work.machine_name = null;
+        work.machine_location = null;
+      }
+      await mockExecutionWork(page, work);
+      await viewerEntry(
+        page,
+        '/maintenance/work-orders/73/?work_panel=work',
+        scheme
+      );
+      await expect(
+        page.getByRole('heading', {
+          name: `WO-73: Synthetic ${attribution} Work`,
+          exact: true
+        })
+      ).toBeVisible();
+      await expect(page.getByTestId('work-continuity')).toBeVisible();
+      await expect(
+        page.getByText(
+          'No hold/resume action is available for this Work and your current permission.',
+          { exact: true }
+        )
+      ).toBeVisible();
+      await noWriteControls(page, /Hold work|Resume work|Accept handover/);
+      await expectNoPageOverflow(page);
+      await capturePanel(
+        page,
+        info.outputPath(`o24-${attribution}-${scheme}.png`)
+      );
+      await page.screenshot({
+        path: info.outputPath(`o24-${attribution}-${scheme}-viewport.png`),
+        animations: 'disabled'
+      });
+      expect(writes).toEqual([]);
+    });
+  }
 }

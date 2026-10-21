@@ -465,11 +465,11 @@ test('O20 missing traceability provider is unavailable and cannot authorize a wr
   delete value.routine_work!.readings[0].calibration_traceability;
   await mockExecutionWork(page, value);
   await openExecutionPanel(page);
-  await expect(trace(page)).toContainText(
-    'Calibration traceability unavailable'
-  );
+  const gaps = page.getByTestId('not-supplied');
+  await gaps.getByRole('button').click();
+  await expect(gaps).toContainText('Calibration traceability unavailable');
   await expect(
-    trace(page).getByRole('button', {
+    page.getByRole('button', {
       name: 'Record traceability',
       exact: true
     })

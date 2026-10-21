@@ -108,6 +108,22 @@ export async function nonText(locator: Locator, against: Locator) {
   expect(actual.ratio).toBeGreaterThanOrEqual(3);
   return actual;
 }
+/** SVG focus edges are painted over the schematic's rendered ancestor surface. */
+export async function svgEdge(locator: Locator) {
+  const raw = await locator.evaluate((el) => {
+    const chain: string[] = [];
+    for (let n: Element | null = el; n; n = n.parentElement)
+      chain.unshift(getComputedStyle(n).backgroundColor);
+    return { stroke: getComputedStyle(el).stroke, chain };
+  });
+  const actual = measured(raw.stroke, raw.chain, 0);
+  await test.info().attach('focus-ring-contrast', {
+    body: JSON.stringify(actual),
+    contentType: 'application/json'
+  });
+  expect(actual.ratio).toBeGreaterThanOrEqual(3);
+  return actual;
+}
 /** Direct text and nonempty placeholders; the caller supplies the native panel. */
 export async function textSweep(scope: Locator) {
   const raw = await scope.evaluate((root) =>

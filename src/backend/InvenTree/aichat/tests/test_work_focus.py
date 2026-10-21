@@ -112,9 +112,9 @@ class WorkFocusTests(TestCase):
         self.assertEqual(self.repository.get_scope(self.thread.pk), before)
         self.assertFalse(ChatTurn.objects.exists())
 
-    def test_unknown_foreign_customer_and_unresolved_work_reject_identically(self):
-        """Client access never confers a customer-attributed Work boundary."""
-        for work in [self.foreign_work, self.customer_work, self.unresolved]:
+    def test_unknown_and_foreign_machine_work_reject_identically(self):
+        """O24 shares customer and unattributed Work without widening machine Work."""
+        for work in [self.foreign_work]:
             with (
                 self.subTest(work=work.pk),
                 self.assertRaisesMessage(WorkFocusError, 'work_focus_rejected'),
@@ -124,6 +124,29 @@ class WorkFocusTests(TestCase):
             self.repository.acknowledge_work_focus(
                 self.thread.pk, 9999999, expected_version=1
             )
+
+    def test_customer_and_unattributed_work_can_be_acknowledged(self):
+        """Shared Work uses the same signed, versioned focus contract."""
+        for work in (self.customer_work, self.unresolved):
+            with self.subTest(work=work.pk):
+                result = self.acknowledge(work)
+                self.assertEqual(result['focus']['work_order_id'], work.pk)
+
+    @override_settings(AIMMS_SINGLE_SITE_CLIENT_CODE='no-o24-fallback-client')
+    def test_shared_focus_needs_no_client_grant_but_still_needs_work_role(self):
+        """O24 focus reads follow Work authorization independently of asset scope."""
+        self.grant.delete()
+        for work in (self.customer_work, self.unresolved):
+            with self.subTest(work=work.pk):
+                result = self.acknowledge(work)
+                self.assertEqual(result['focus']['work_order_id'], work.pk)
+        with self.assertRaises(WorkFocusError):
+            self.acknowledge(self.work)
+        self.role.can_view = False
+        self.role.save()
+        for work in (self.customer_work, self.unresolved):
+            with self.subTest(work=work.pk), self.assertRaises(WorkFocusError):
+                self.acknowledge(work)
 
     def test_candidate_ids_and_versions_are_strict_positive_integers(self):
         """Booleans and numeric strings cannot become canonical identity."""
@@ -436,6 +459,8 @@ class WorkFocusTests(TestCase):
         changed = self.answer(self.second_work, 'changed')
         third = WorkOrder.objects.create(title='Third work', machine=self.machine)
         withdrawn = self.answer(third, 'withdrawn')
+        fourth = WorkOrder.objects.create(title='Fourth work', machine=self.machine)
+        reattributed = self.answer(fourth, 'reattributed')
         unfocused_turn = self.begin(key='unfocused').turn
         self.repository.terminal(
             unfocused_turn.pk,
@@ -448,19 +473,29 @@ class WorkFocusTests(TestCase):
         WorkOrder.objects.filter(pk=self.second_work.pk).update(
             lifecycle_version=self.second_work.lifecycle_version + 1
         )
-        third.customer = Company.objects.create(name='Later owner', is_customer=True)
-        third.save(update_fields=['customer'])
+        # Moving machine-only Work to another client's machine withdraws it.
+        third.machine = self.foreign_work.machine
+        third.save(update_fields=['machine'])
+        # O24: a later customer keeps the Work visible; its boundary changed.
+        fourth.customer = Company.objects.create(name='Later owner', is_customer=True)
+        fourth.save(update_fields=['customer'])
 
         ids = [
             unchanged,
             changed,
             withdrawn,
+            reattributed,
             unfocused_turn.output_message_id,
             'msg_unknown',
         ]
         self.assertEqual(
             self.repository.work_focus_states(self.thread.pk, ids),
-            {unchanged: 'current', changed: 'changed', withdrawn: 'unavailable'},
+            {
+                unchanged: 'current',
+                changed: 'changed',
+                withdrawn: 'unavailable',
+                reattributed: 'changed',
+            },
         )
 
     def test_state_lookup_checks_each_work_once(self):

@@ -7,6 +7,7 @@ maintenance-history row, and the two aggregates commit together or not at all.
 """
 
 import uuid
+from types import SimpleNamespace
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -19,10 +20,10 @@ from tasks.models import (
     WorkOrderLifecycle,
     WorkOrderType,
 )
-from tasks.scope import MaintenanceScope
+from tasks.scope import MaintenanceScope, ScopeError
 from tasks.services.closeout import CloseoutError
 
-from assets.models import AssetMachine, AssetMaintenanceRecord
+from assets.models import AssetMachine, AssetMaintenanceRecord, Client
 from company.models import Company
 from InvenTree.unit_test import InvenTreeAPITestCase
 
@@ -47,13 +48,17 @@ VALID_CLOSEOUT = {
 # The API request user is reloaded per request, so scope is supplied through the
 # deployment resolver hook rather than an attribute on the in-memory actor.
 _GRANTED_CUSTOMER_IDS: list[int] = []
+_GRANTED_CLIENT_IDS: list[int] = []
 
 
 def _scope_resolver(actor):
-    """Return the customer scopes granted to the current test actor."""
+    """Return independent Work provenance and machine grants for this actor."""
     return {
         MaintenanceScope(customer_id=customer_id, site_key=None)
         for customer_id in _GRANTED_CUSTOMER_IDS
+    } | {
+        MaintenanceScope(customer_id=None, site_key=None, client_id=client_id)
+        for client_id in _GRANTED_CLIENT_IDS
     }
 
 
@@ -74,9 +79,15 @@ class PacketCloseoutTest(TestCase):
         self.actor.maintenance_scopes = {
             MaintenanceScope(customer_id=self.customer.pk, site_key=None)
         }
-        # The machine carries no tenant identity of its own: the work order's
-        # explicit customer is what authorizes this closeout.
-        self.machine = AssetMachine.objects.create(name=f'Pump {suffix}')
+        self.tenant = Client.objects.create(
+            name='Packet closeout client', code=f'packet-closeout-{suffix}'
+        )
+        self.actor.maintenance_scopes.add(
+            MaintenanceScope(customer_id=None, site_key=None, client_id=self.tenant.pk)
+        )
+        self.machine = AssetMachine.objects.create(
+            name=f'Pump {suffix}', client=self.tenant
+        )
         self.work_order = WorkOrder.objects.create(
             title='Seal and wear-ring repair',
             status=WorkOrder.STATUS_REVIEW,
@@ -142,6 +153,50 @@ class PacketCloseoutTest(TestCase):
             ).count(),
             1,
         )
+
+    def test_shared_work_cannot_authorize_close_or_readiness_after_machine_revocation(
+        self,
+    ):
+        """Packet completion and replay still require current machine scope."""
+        self.close(key='same')
+        self.actor.maintenance_scopes = {
+            MaintenanceScope(customer_id=self.customer.pk, site_key=None)
+        }
+        with self.assertRaises(ScopeError):
+            self.close(key='same')
+        with self.assertRaises(ScopeError):
+            services.packet_close_readiness(self.packet, actor=self.actor)
+        self.assertEqual(WorkOrderCloseout.objects.count(), 1)
+        self.assertEqual(AssetMaintenanceRecord.objects.count(), 1)
+
+    def test_safety_approval_requires_machine_scope_beyond_shared_work(self):
+        """An approval cannot turn shared customer Work into physical authority."""
+        from approvals.executors import SafetyGateExecutor
+
+        gate = RepairPacketGate.objects.create(
+            packet=self.packet, name='O24 permit', gate_type='permit'
+        )
+        approval = SimpleNamespace(payload={'gate_id': gate.pk, 'action': 'confirm'})
+        execution = SimpleNamespace(idempotency_key='o24-safety')
+        self.actor.maintenance_scopes = {
+            MaintenanceScope(customer_id=self.customer.pk, site_key=None)
+        }
+        with self.assertRaises(ScopeError):
+            SafetyGateExecutor().execute_for_approval(
+                approval, actor=self.actor, execution=execution
+            )
+        gate.refresh_from_db()
+        self.assertEqual(gate.status, GateStatus.PENDING)
+        self.assertFalse(self.packet.events.exists())
+        self.actor.maintenance_scopes.add(
+            MaintenanceScope(customer_id=None, site_key=None, client_id=self.tenant.pk)
+        )
+        result = SafetyGateExecutor().execute_for_approval(
+            approval, actor=self.actor, execution=execution
+        )
+        self.assertTrue(result.success)
+        gate.refresh_from_db()
+        self.assertEqual(gate.status, GateStatus.CONFIRMED)
 
     def test_advance_cannot_close_a_packet_that_owns_a_work_order(self):
         """The old direct transition no longer bypasses structured closeout."""
@@ -243,8 +298,14 @@ class PacketCloseoutApiTest(InvenTreeAPITestCase):
         )
         _GRANTED_CUSTOMER_IDS[:] = [self.customer.pk]
         self.addCleanup(_GRANTED_CUSTOMER_IDS.clear)
-        # Clientless machine: the work order's explicit customer scopes the close.
-        self.machine = AssetMachine.objects.create(name=f'Blower {suffix}')
+        self.tenant = Client.objects.create(
+            name='Packet API client', code=f'packet-api-{suffix}'
+        )
+        _GRANTED_CLIENT_IDS[:] = [self.tenant.pk]
+        self.addCleanup(_GRANTED_CLIENT_IDS.clear)
+        self.machine = AssetMachine.objects.create(
+            name=f'Blower {suffix}', client=self.tenant
+        )
         self.work_order = WorkOrder.objects.create(
             title='Bearing replacement',
             status=WorkOrder.STATUS_REVIEW,

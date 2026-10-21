@@ -160,9 +160,7 @@ class WorkOrderBoardSerializer(serializers.ModelSerializer):
     machine_name = serializers.CharField(
         source='machine.name', read_only=True, default=None
     )
-    machine_location = serializers.CharField(
-        source='machine.location', read_only=True, default=None
-    )
+    machine_location = serializers.SerializerMethodField()
     assigned_to_username = serializers.CharField(
         source='assigned_to.username', read_only=True, default=None
     )
@@ -235,6 +233,26 @@ class WorkOrderBoardSerializer(serializers.ModelSerializer):
             'actual_started_at',
             'actual_completed_at',
         )
+
+    def get_machine_location(self, obj) -> str | None:
+        """Shared Work identity does not authorize its machine's live location."""
+        from tasks.scope import work_machine_authorized
+
+        if obj.machine is None:
+            return None
+        request = self.context.get('request')
+        # Machine scope is its exact client identity (scope_for_machine). Cache
+        # only on this response serializer; future scope dimensions must also
+        # enter the key. This avoids one resolver query per Work.
+        if not hasattr(self, '_location_machine_authority'):
+            self._location_machine_authority = {}
+        actor = getattr(request, 'user', None)
+        key = (getattr(actor, 'pk', None), obj.machine.client_id)
+        if key not in self._location_machine_authority:
+            self._location_machine_authority[key] = work_machine_authorized(actor, obj)
+        if not self._location_machine_authority[key]:
+            return None
+        return obj.machine.location
 
     def get_assigned_to_name(self, obj) -> str | None:
         """Return the assignee's display name, falling back to the username."""
@@ -608,14 +626,48 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
         ]
         return [*incoming, *outgoing]
 
-    @staticmethod
-    def get_events(obj) -> list:
+    def get_events(self, obj) -> list:
         """Return append-only lifecycle audit events."""
         from .workorder_serializers import WorkOrderEventSerializer
 
         return WorkOrderEventSerializer(
-            obj.events.all().order_by('-created_at'), many=True
+            obj.events.all().order_by('-created_at'), many=True, context=self.context
         ).data
+
+    def to_representation(self, instance):
+        """Withhold every packet-derived section for a foreign-machine reader."""
+        from .work_execution.common import PACKET_WITHHELD
+
+        setattr(instance, PACKET_WITHHELD, not self._packet_authorized(instance))
+        try:
+            return super().to_representation(instance)
+        finally:
+            instance.__dict__.pop(PACKET_WITHHELD, None)
+
+    def _machine_authorized(self, obj) -> bool:
+        """O24: shared Work never projects its machine's scoped records.
+
+        Customer and unattributed Work are visible to every Work viewer, but
+        the repair packet, source alert and maintenance record belong to the
+        machine's client. They are withheld unless the reader holds that
+        machine scope, exactly as the packet and Health endpoints refuse them.
+        """
+        cache = self.context.setdefault('_o24_machine_authorized', {})
+        if obj.pk not in cache:
+            from tasks.scope import work_machine_authorized
+
+            request = self.context.get('request')
+            cache[obj.pk] = work_machine_authorized(getattr(request, 'user', None), obj)
+        return cache[obj.pk]
+
+    def _packet_authorized(self, obj) -> bool:
+        """Retain P32's exact packet/Work machine binding in embedded reads."""
+        packet = getattr(obj, 'repair_packet', None)
+        return bool(
+            packet is not None
+            and packet.machine_id == obj.machine_id
+            and self._machine_authorized(obj)
+        )
 
     def get_repair_packet(self, obj) -> dict | None:
         """Return repair diagnosis and safety context when present."""
@@ -623,7 +675,7 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
         from tasks.services.operational_authority import read_gates
 
         packet = getattr(obj, 'repair_packet', None)
-        if packet is None:
+        if not self._packet_authorized(obj):
             return None
         actor = (
             self.context.get('request').user if self.context.get('request') else None
@@ -681,16 +733,23 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
             ],
         }
 
-    @staticmethod
-    def get_source_alert(obj) -> dict | None:
+    def get_source_alert(self, obj) -> dict | None:
         """Return the health anomaly this work order answers, if any.
 
         The alert is what a technician opens the page to understand, so it is
         projected here rather than left a click away. External alert and alarm
         identifiers are retained as human references; links still use internal
-        keys.
+        keys. It is machine health, so it needs the machine's scope (O24).
         """
-        anomaly = obj.anomalies.select_related('source').order_by('pk').first()
+        if not self._machine_authorized(obj):
+            return None
+        anomaly = (
+            obj.anomalies
+            .filter(machine_id=obj.machine_id)
+            .select_related('source')
+            .order_by('pk')
+            .first()
+        )
         if anomaly is None:
             return None
         return {
@@ -710,11 +769,18 @@ class WorkOrderOverviewSerializer(WorkExecutionFieldsMixin, WorkOrderBoardSerial
             'machine_id': anomaly.machine_id,
         }
 
-    @staticmethod
-    def get_maintenance_record(obj) -> dict | None:
-        """Return maintenance history produced by this work order."""
+    def get_maintenance_record(self, obj) -> dict | None:
+        """Return maintenance history produced by this work order.
+
+        The record is the machine's plant history (``scope_for_maintenance_record``),
+        so shared Work on another client's machine does not project it (O24).
+        """
         record = getattr(obj, 'maintenance_record', None)
-        if record is None:
+        if (
+            record is None
+            or record.machine_id != obj.machine_id
+            or not self._machine_authorized(obj)
+        ):
             return None
         return {
             'id': record.pk,

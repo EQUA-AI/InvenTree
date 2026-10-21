@@ -370,7 +370,11 @@ class CloseoutPartUsageList(CloseoutCommandView):
         """Return every usage row for the work order."""
         work_order = self.get_work_order(request, pk)
         rows = CloseoutPartUsage.objects.filter(work_order=work_order).order_by('pk')
-        return Response(CloseoutPartUsageSerializer(rows, many=True).data)
+        return Response(
+            CloseoutPartUsageSerializer(
+                rows, many=True, context={'request': request, 'work_order': work_order}
+            ).data
+        )
 
     def post(self, request, pk):
         """Add one walk-up usage row or narrative candidate."""
@@ -406,7 +410,10 @@ class CloseoutPartUsageList(CloseoutCommandView):
         if _is_response(result):
             return result
         return Response(
-            CloseoutPartUsageSerializer(result).data, status=status.HTTP_201_CREATED
+            CloseoutPartUsageSerializer(
+                result, context={'request': request, 'work_order': work_order}
+            ).data,
+            status=status.HTTP_201_CREATED,
         )
 
 
@@ -431,7 +438,11 @@ class CloseoutPartUsageResolve(CloseoutCommandView):
         )
         if _is_response(result):
             return result
-        return Response(CloseoutPartUsageSerializer(result).data)
+        return Response(
+            CloseoutPartUsageSerializer(
+                result, context={'request': request, 'work_order': work_order}
+            ).data
+        )
 
 
 class CloseoutPartUsageRefresh(CloseoutCommandView):

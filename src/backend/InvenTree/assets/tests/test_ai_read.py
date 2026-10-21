@@ -547,8 +547,8 @@ class MachineFaultHistoryTests(MachineAiReadTestCase):
         self.assertEqual(causes, [{'cause': 'bearing wear', 'count': 2}])
         self.assertEqual(rollup['declared']['source'], 'operator-declared profile')
 
-    def test_unauthorized_work_orders_are_skipped(self):
-        """A closeout on a WO outside the actor's scope never aggregates."""
+    def test_shared_customer_work_closeouts_are_included(self):
+        """O24 includes a shared customer closeout on the authorized machine."""
         from company.models import Company
 
         closeout = self._verified_closeout('foreign cause')
@@ -559,7 +559,7 @@ class MachineFaultHistoryTests(MachineAiReadTestCase):
         closeout.work_order.save(update_fields=['customer'])
 
         rollup = ai_read.machine_fault_history(self.actor, self.machine, fenced=False)
-        self.assertEqual(rollup['observed']['verified_causes']['top'], [])
+        self.assertEqual(rollup['observed']['verified_causes']['top'], [{'cause': 'foreign cause', 'count': 1}])
 
     def test_overview_includes_fault_history_with_fencing(self):
         """The AI overview carries the rollup with fenced operator text."""

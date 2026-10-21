@@ -36,10 +36,10 @@ for (const scheme of ['light', 'dark'] as const) {
       'Not established'
     );
     await expect(page.getByTestId('prepared-closeout')).toContainText(
-      'Initial test: 6 mm/s · failed'
+      'Initial test: 6 mm/s · Failed reading'
     );
     await expect(page.getByTestId('prepared-closeout')).toContainText(
-      'Repeat test: 0 mm/s · verified'
+      'Repeat test: 0 mm/s · Value parsed · acceptance separate'
     );
     await expect(
       page.getByRole('button', { name: 'Add reading', exact: true })

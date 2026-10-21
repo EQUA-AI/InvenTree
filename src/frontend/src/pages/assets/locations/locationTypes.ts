@@ -29,6 +29,7 @@ export interface LocationNode {
 }
 
 export interface LocatedMachine extends AssetMachine {
+  open_warning_alarms?: number | null;
   physical_location: LocationNode | null;
   placement_version: number;
   /** R6 UI01: open Work in the reader's Work scope; null when unknown. */
@@ -40,6 +41,7 @@ export interface LocatedMachine extends AssetMachine {
 }
 
 export interface LocationContext {
+  plant_timezone?: string | null;
   workspaces: { pk: number; name: string }[];
   can_add: boolean;
   can_change: boolean;

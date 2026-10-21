@@ -58,7 +58,7 @@ class InvestigationRequest(models.Model):
         related_name='investigation_requests',
     )
     source_proposal = models.JSONField(null=True, blank=True)
-    escalation_reason = models.TextField(blank=True)
+    escalation_reason = models.TextField(blank=True, default='', db_default='')
     blocked_reason = models.TextField(blank=True)
     resolution = models.TextField(blank=True)
     created_by = models.ForeignKey(

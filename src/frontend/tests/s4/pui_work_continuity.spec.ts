@@ -6,6 +6,7 @@ import {
   saveTransition
 } from './continuityFixtures';
 import { revisionWork } from './scopeRevisionFixtures';
+import { revealWorkContext } from './workExecutionFixtures';
 import {
   capturePanel,
   captureProcessSection,
@@ -24,6 +25,7 @@ for (const scheme of ['light', 'dark'] as const) {
   }, info) => {
     const requests = await mockExecutionWork(page, continuityWork());
     await openExecutionPanel(page, 'work', scheme);
+    await revealWorkContext(page, 'Continuity and handover');
     const brief = page.getByTestId('work-continuity');
     await expect(
       brief.getByText('Synthetic equipment access unavailable', { exact: true })
@@ -124,6 +126,7 @@ test('existing hold and resume commands use current versions and keep checks and
     }
   );
   await openExecutionPanel(page, 'work');
+  await revealWorkContext(page, 'Continuity and handover');
   const record = page.getByTestId('hold-resume-record');
   await record
     .getByLabel('Reason for hold', { exact: true })
@@ -199,6 +202,7 @@ test('uncertain hold survives reload and a reconciliation refusal retains the or
     else await route.fulfill({ json: saveTransition(overview, 'hold', body) });
   });
   await openExecutionPanel(page, 'work', 'dark');
+  await revealWorkContext(page, 'Continuity and handover');
   await page
     .getByLabel('Reason for hold', { exact: true })
     .fill('Synthetic original uncertain reason');
@@ -263,6 +267,7 @@ test('stale command keeps the reason and requires a fresh read before another in
       await route.fulfill({ json: saveTransition(overview, 'hold', body) });
   });
   await openExecutionPanel(page, 'work');
+  await revealWorkContext(page, 'Continuity and handover');
   await page
     .getByLabel('Reason for hold', { exact: true })
     .fill('Synthetic retained stale reason');
@@ -317,6 +322,7 @@ test('resume refusal shows the recorded readiness blocker and keeps the hold', a
     });
   });
   await openExecutionPanel(page, 'work', 'dark');
+  await revealWorkContext(page, 'Continuity and handover');
   await page
     .getByRole('button', { name: 'Resume work record', exact: true })
     .click();
@@ -369,6 +375,7 @@ test('packet ownership and absent acceptance providers create no competing actio
   };
   await mockExecutionWork(page, overview);
   await openExecutionPanel(page, 'work', 'dark');
+  await revealWorkContext(page, 'Continuity and handover');
   const brief = page.getByTestId('work-continuity');
   await expect(
     brief.getByText(/repair packet owns this Work lifecycle/)
@@ -402,6 +409,7 @@ test('request discussion preserves its saved identity and older servers stay exp
   await mockExecutionWork(page, overview);
   await mockAssistantOpen(page);
   await openExecutionPanel(page, 'work');
+  await revealWorkContext(page, 'Continuity and handover');
   await page
     .getByTestId('continuity-request-401')
     .getByRole('button', { name: 'Discuss request 401' })
@@ -412,18 +420,16 @@ test('request discussion preserves its saved identity and older servers stay exp
   await expect(page.getByTestId('ai-chat-work-focus')).toContainText(
     'Request 401'
   );
-  await page
-    .getByRole('button', { name: 'close-ai-chat', exact: true })
-    .click();
+  await page.getByTestId('close-ai-chat').click();
   delete overview.work_continuity;
   overview.investigation!.requests = {
     available: false,
     reason: 'no_provider'
   };
   await page.reload();
-  await expect(
-    page.getByText('Work continuity not supplied', { exact: true })
-  ).toBeVisible();
+  const gaps = page.getByTestId('not-supplied');
+  await gaps.getByRole('button').click();
+  await expect(gaps).toContainText('Work continuity not supplied.');
   await expect(page.getByText(/Pending saved requests \(0\)/)).toHaveCount(0);
   await expect(
     page.getByRole('button', {
@@ -493,6 +499,7 @@ for (const scheme of ['light', 'dark'] as const) {
       }
     );
     await openExecutionPanel(page, 'work', scheme);
+    await revealWorkContext(page, 'Continuity and handover');
     const section = page.getByTestId('handover-acceptance');
     await expect(
       section.getByText('Responsible owner: Synthetic outgoing technician')
@@ -625,6 +632,7 @@ test('O15 uncertain handover reconciles the same original intent after reload', 
     }
   );
   await openExecutionPanel(page);
+  await revealWorkContext(page, 'Continuity and handover');
   await page
     .getByRole('button', { name: 'Accept handover', exact: true })
     .click();

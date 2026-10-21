@@ -47,6 +47,15 @@ export function nativeBaseline(
     void options;
     await page.route(intercepted, async (route) => {
       const url = new URL(route.request().url());
+      // Native Gantt CSS supplies these optional remote font fallbacks.
+      // Fulfil them locally with no bytes; every other external read still fails.
+      if (
+        url.origin === 'https://cdn.svar.dev' &&
+        /^\/fonts\/roboto\/500\.woff2?$/.test(url.pathname)
+      ) {
+        await route.fulfill({ status: 204, body: '' });
+        return;
+      }
       if (
         url.origin !== new URL(baseURL!).origin ||
         /^\/(api|media|static)(\/|$)/.test(url.pathname)

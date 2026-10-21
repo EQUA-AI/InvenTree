@@ -6,6 +6,7 @@
 		"vite-env.d.ts",
 		"playwright/s0-native.tsx",
 		"tests/s0/guards.ts",
+		"tests/s0/pui_module_startup.spec.ts",
 		"tests/s0/workFixtures.ts",
 		"tests/s0/pui_native_identity.spec.ts",
 		"tests/s0/pui_native_views.spec.ts",

@@ -45,9 +45,9 @@ async function fixture(page: Page) {
 }
 
 async function openExport(page: Page) {
-  const item = page.getByLabel('export-owned-ai-chat-threads');
+  const item = page.getByTestId('export-owned-ai-chat-threads');
   if (!(await item.isVisible()))
-    await page.getByLabel('select-ai-chat-thread').click();
+    await page.getByTestId('select-ai-chat-thread').click();
   await item.click();
   return page.getByRole('dialog', {
     name: 'Export my saved conversations',

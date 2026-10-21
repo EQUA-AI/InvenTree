@@ -9,8 +9,8 @@ import {
   Stack,
   Text
 } from '@mantine/core';
-import { displayInstant } from '../displayClock';
 import { AttentionAlert, MetaText } from '../health/common';
+import { formatInstant, useDisplayClock } from '../health/mimic/observedTime';
 import monitoring from '../monitoring.module.css';
 import type { DataRange } from '../performance/usePerformanceData';
 
@@ -31,6 +31,7 @@ export function HistoryProvenance({
   onRetry: () => void;
   currentDescription?: string;
 }>) {
+  const clock = useDisplayClock();
   const entries = response?.series ?? [];
   const unavailable = entries.filter((entry) => !entry.available);
   const empty = entries.filter(
@@ -81,9 +82,13 @@ export function HistoryProvenance({
               hideLabel={t`Hide read details`}
             >
               <Text maw='70ch' size='xs'>
-                {t`Window`}: {displayInstant(response.window_start)} —{' '}
-                {displayInstant(response.window_end)}.{' '}
-                {updating ? t`Previous window while updating.` : ''}
+                {t`Window`}:{' '}
+                {formatInstant(response.window_start, clock) ??
+                  t`Time unavailable`}{' '}
+                —{' '}
+                {formatInstant(response.window_end, clock) ??
+                  t`Time unavailable`}
+                . {updating ? t`Previous window while updating.` : ''}
               </Text>
               <Text maw='70ch' size='xs'>
                 {t`Single-window limit`}:{' '}
@@ -154,7 +159,7 @@ export function HistoryProvenance({
         )}
         <MetaText maw='70ch' size='sm'>
           {extent?.available && extent.from && extent.to
-            ? t`Reported source extent: ${displayInstant(extent.from) ?? t`Time unavailable`} — ${displayInstant(extent.to) ?? t`Time unavailable`}. Availability within it is not guaranteed.`
+            ? t`Reported source extent: ${formatInstant(extent.from, clock) ?? t`Time unavailable`} — ${formatInstant(extent.to, clock) ?? t`Time unavailable`}. Availability within it is not guaranteed.`
             : t`Source extent unavailable. This does not prove that the source has no history.`}
         </MetaText>
         {failed && (

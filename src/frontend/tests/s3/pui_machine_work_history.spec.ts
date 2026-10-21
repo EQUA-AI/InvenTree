@@ -128,7 +128,7 @@ test.describe('R6 P12 machine Maintenance: Open work and Completed history', () 
     await expect(
       page.getByRole('heading', { name: 'WO-98: Synthetic job 98' })
     ).toBeVisible();
-    await page.getByRole('button', { name: 'work-order-back' }).click();
+    await page.getByTestId('work-order-back').click();
     await expect(page.getByTestId('destination')).toContainText(
       '/machines/machine/18/maintenance/'
     );
@@ -314,7 +314,7 @@ test('the Machines list Work count opens that machine on its open work', async (
   });
   await openExplorer(page, '/machines/index/machines/?search=pump');
   const cell = page
-    .getByRole('row')
+    .locator('[data-machine]')
     .filter({ hasText: 'Synthetic pump 001' })
     .locator('td[data-open-work="2"]');
   const link = cell.getByRole('link', { name: /^2 open/ });
@@ -401,7 +401,7 @@ test.describe('R6 P12 Fault History: occurrences, retained evidence and owning w
       );
       await expect(snapshot).toContainText('content hash c0ffeec0ffee');
       // Retained source times stay on the plant clock, even for migrated history.
-      await expect(snapshot).toContainText('27 Jul 2025');
+      await expect(snapshot).toContainText('12 Oct 2026');
       await expect(snapshot).toContainText('Captured by Synthetic Technician');
       await expect(snapshot).toContainText('System actor: historian-import');
       await expect(
@@ -411,7 +411,7 @@ test.describe('R6 P12 Fault History: occurrences, retained evidence and owning w
         '/machines/machine/18/health/?snapshot=a3f1c2d4-0000-4000-8000-000000000001'
       );
       await expect(page.getByTestId('fault-occurrences')).toContainText(
-        'Recorded plant times'
+        'Times: your clock'
       );
       await expect(
         evidence.getByRole('link', {

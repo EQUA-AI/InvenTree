@@ -233,7 +233,7 @@ test('request-scoped chat acknowledges the exact revision and preserves return i
   await page
     .getByRole('textbox', { name: 'Message', exact: true })
     .fill('First synthetic reading set');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByText('Synthetic response for saved request 401.', { exact: true })
   ).toBeVisible();
@@ -251,7 +251,7 @@ test('request-scoped chat acknowledges the exact revision and preserves return i
   await page
     .getByRole('textbox', { name: 'Message', exact: true })
     .fill('Second synthetic reading set');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByText('Synthetic response for saved request 401.', { exact: true })
   ).toHaveCount(2);
@@ -289,7 +289,7 @@ test('older server cannot silently downgrade a request to Work-only chat', async
   await page
     .getByRole('textbox', { name: 'Message', exact: true })
     .fill('Keep this draft for request 401');
-  await page.getByLabel('send-ai-chat-message').click();
+  await page.getByTestId('send-ai-chat-message').click();
   await expect(
     page.getByRole('textbox', { name: 'Message', exact: true })
   ).toHaveValue('Keep this draft for request 401');
@@ -617,7 +617,7 @@ for (const scheme of ['light', 'dark'] as const) {
     await page
       .getByRole('textbox', { name: 'Message', exact: true })
       .fill('Continue after approval');
-    await page.getByLabel('send-ai-chat-message').click();
+    await page.getByTestId('send-ai-chat-message').click();
     await expect(
       page.getByText('Continuing request at revision 4.', { exact: true })
     ).toBeVisible();

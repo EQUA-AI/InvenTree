@@ -85,13 +85,17 @@ def test_every_maintenance_tool_is_read_effect():
         assert catalog[tool_id].effect is ToolEffect.READ, tool_id
 
 
-def test_maintenance_tools_require_a_resource_authorizer_not_just_a_role():
-    """A work_order:view grant is global; work-order rows belong to tenants."""
+def test_work_readers_admit_viewers_without_widening_machine_readers():
+    """O24 shares Work; machine tools still require a resolved client scope."""
     catalog = {entry.tool_id: entry for entry in capability_catalog()}
     for tool_id in MAINTENANCE_TOOL_IDS:
         policy = catalog[tool_id].authorization
-        assert policy.kind is PolicyKind.RESOURCE_AUTHORIZER, tool_id
-        assert policy.authorizer == "machine_scope_access", tool_id
+        if tool_id == "get_open_repairs_for_machine":
+            assert policy.kind is PolicyKind.RESOURCE_AUTHORIZER, tool_id
+            assert policy.authorizer == "machine_scope_access", tool_id
+        else:
+            assert policy.kind is PolicyKind.NATIVE_PERMISSION, tool_id
+            assert policy.authorizer is None, tool_id
         assert ("work_order", "view") in policy.all_of, tool_id
 
 

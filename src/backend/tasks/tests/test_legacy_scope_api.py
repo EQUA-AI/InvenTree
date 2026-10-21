@@ -58,7 +58,7 @@ class LegacyWorkScopeAPITest(TestCase):
         )
         customer = Company.objects.create(name='Sales customer', is_customer=True)
         self.customer_owned = WorkOrder.objects.create(
-            title='Customer boundary wins', machine=self.machine, customer=customer
+            title='Shared customer Work', machine=self.machine, customer=customer
         )
         self.orphan = WorkOrder.objects.create(title='Unresolved work')
         part = Part.objects.create(name='Synthetic scope part')
@@ -74,8 +74,40 @@ class LegacyWorkScopeAPITest(TestCase):
         """Return one legacy work resource URL."""
         return f'/api/kanban/work-orders/{work_order.pk}/{suffix}'
 
+    def step(self, work_order):
+        """Create a saved Work-owned step without granting procedure catalog access."""
+        from tasks.procedure_models import (
+            Procedure,
+            ProcedureRevision,
+            WorkOrderProcedureApplication,
+            WorkOrderStepExecution,
+        )
+
+        procedure = Procedure.objects.create(
+            code=f'O24-STEP-{work_order.pk}',
+            name='Saved procedure',
+            created_by=self.actor,
+        )
+        revision = ProcedureRevision.objects.create(
+            procedure=procedure,
+            revision=1,
+            work_order_type='corrective',
+            created_by=self.actor,
+        )
+        application = WorkOrderProcedureApplication.objects.create(
+            work_order=work_order,
+            revision=revision,
+            snapshot={},
+            snapshot_hash='0' * 64,
+            applied_by=self.actor,
+            idempotency_key='o24-step-attachment',
+        )
+        return WorkOrderStepExecution.objects.create(
+            application=application, step_key=uuid.uuid4(), sequence=1, step_snapshot={}
+        )
+
     def test_collections_include_only_the_canonical_boundary(self):
-        """Role access never widens client scope or explicit customer precedence."""
+        """Shared Work is included; foreign machine-only Work remains withheld."""
         for endpoint in ('/api/kanban/work-orders/', '/api/tasks/work-orders/'):
             with self.subTest(endpoint=endpoint):
                 response = self.api.get(endpoint)
@@ -85,14 +117,20 @@ class LegacyWorkScopeAPITest(TestCase):
                     if isinstance(response.data, dict)
                     else response.data
                 )
-                self.assertEqual({item['id'] for item in items}, {self.own.pk})
+                self.assertEqual(
+                    {item['id'] for item in items},
+                    {self.own.pk, self.customer_owned.pk, self.orphan.pk},
+                )
         cards = self.api.get('/api/kanban/cards/')
         self.assertEqual(cards.status_code, 200)
-        self.assertEqual({item['work_order'] for item in cards.data}, {self.own.pk})
+        self.assertEqual(
+            {item['work_order'] for item in cards.data},
+            {self.own.pk, self.customer_owned.pk, self.orphan.pk},
+        )
 
     def test_detail_overview_card_and_part_fail_closed(self):
         """Forbidden and unresolved records return scope-safe not-found results."""
-        for work_order in (self.foreign, self.customer_owned, self.orphan):
+        for work_order in (self.foreign,):
             for endpoint in (
                 self.resource(work_order),
                 self.resource(work_order, 'overview/'),
@@ -111,12 +149,344 @@ class LegacyWorkScopeAPITest(TestCase):
             self.api.get(self.resource(self.own, 'overview/')).status_code, 200
         )
 
-    def test_revocation_removes_legacy_access_on_the_next_session_request(self):
-        """Revoking a stored grant cannot retain stale legacy list/detail authority."""
+    def test_shared_work_detail_and_edits_keep_foreign_machine_scope(self):
+        """A normal client actor reads/edits shared Work, never its foreign asset."""
+        # Registered pump endpoints use client scope; generic equipment has
+        # a separate retained legacy visibility contract.
+        self.foreign_machine.parent = AssetMachine.objects.create(
+            name='O24 foreign station', asset_type='pumphouse',
+            client=self.foreign_machine.client, source_namespace='o24',
+            source_entity_uuid=uuid.uuid4(),
+        )
+        self.foreign_machine.asset_type = 'pump'
+        self.foreign_machine.source_key = 'o24-foreign-pump'  # gitleaks:allow
+        self.foreign_machine.save(update_fields=['asset_type', 'parent', 'source_key'])
+        self.customer_owned.machine = self.foreign_machine
+        self.customer_owned.save(update_fields=['machine'])
+        for work in (self.customer_owned, self.orphan):
+            with self.subTest(work=work.pk):
+                self.assertEqual(self.api.get(self.resource(work)).status_code, 200)
+                response = self.api.patch(
+                    self.resource(work), {'title': 'Shared edit'}, format='json'
+                )
+                self.assertEqual(response.status_code, 200, response.data)
+                work.refresh_from_db()
+                self.assertEqual(work.title, 'Shared edit')
+        packet = RepairPacket.objects.create(
+            work_order=self.customer_owned, machine=self.foreign_machine
+        )
+        for path in (
+            f'/api/assets/machines/{self.foreign_machine.pk}/',
+            f'/api/machine-health/machines/{self.foreign_machine.pk}/health/',
+            f'/api/machine-health/machines/{self.foreign_machine.pk}/health/signals/',
+            f'/api/repair/packets/{packet.pk}/',
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(self.api.get(path).status_code, 404)
+        # P32: a shared customer does not authorize newly attaching a machine.
+        for path in (self.resource(self.own), self.resource(self.orphan)):
+            denied = self.api.patch(
+                path,
+                {
+                    'customer': self.customer_owned.customer_id,
+                    'machine': self.foreign_machine.pk,
+                },
+                format='json',
+            )
+            self.assertEqual(denied.status_code, 404)
+
+    def _foreign_machine_records(self):
+        """Put shared customer Work on the foreign machine with its records."""
+        import datetime
+
+        from django.utils import timezone
+
+        from assets.health_models import MachineAnomaly
+        from assets.models import AssetMaintenanceRecord
+
+        self.customer_owned.machine = self.foreign_machine
+        self.customer_owned.save(update_fields=['machine'])
+        packet = RepairPacket.objects.create(
+            work_order=self.customer_owned,
+            machine=self.foreign_machine,
+            fault_summary='O24 foreign packet secret',
+        )
+        RepairPacketGate.objects.create(
+            packet=packet, name='O24 foreign isolation gate', gate_type='loto'
+        )
+        now = timezone.now()
+        MachineAnomaly.objects.create(
+            machine=self.foreign_machine,
+            work_order=self.customer_owned,
+            fingerprint='o24-foreign-alert',
+            title='O24 foreign alert secret',
+            first_observed_at=now,
+            last_observed_at=now,
+        )
+        AssetMaintenanceRecord.objects.create(
+            machine=self.foreign_machine,
+            work_order=self.customer_owned,
+            date=datetime.date(2026, 10, 1),
+            summary='O24 foreign history secret',
+        )
+        return packet
+
+    def test_shared_work_overview_withholds_foreign_machine_records(self):
+        """O24: Work fields are shared; packet, alert and history stay machine-scoped."""
+        packet = self._foreign_machine_records()
+        response = self.api.get(self.resource(self.customer_owned, 'overview/'))
+        self.assertEqual(response.status_code, 200)
+        data = response.data
+        self.assertEqual(data['title'], 'Shared customer Work')
+        self.assertIsNone(data['repair_packet'])
+        self.assertIsNone(data['source_alert'])
+        self.assertIsNone(data['maintenance_record'])
+        self.assertIsNone(data['investigation']['packet'])
+        self.assertEqual(data['operational_authority']['gates'], [])
+        self.assertEqual(data['operational_authority']['telemetry'], [])
+        body = str(data)
+        for secret in (
+            'O24 foreign packet secret',
+            'O24 foreign isolation gate',
+            'O24 foreign alert secret',
+            'O24 foreign history secret',
+        ):
+            self.assertNotIn(secret, body)
+        # The same Work on the reader's own machine projects every section.
+        self.customer_owned.machine = self.machine
+        self.customer_owned.save(update_fields=['machine'])
+        # Persisted mismatches must not bypass the packet/record machine binding.
+        mismatched = self.api.get(self.resource(self.customer_owned, 'overview/')).data
+        self.assertIsNone(mismatched['repair_packet'])
+        self.assertIsNone(mismatched['investigation']['packet'])
+        self.assertIsNone(mismatched['source_alert'])
+        self.assertIsNone(mismatched['maintenance_record'])
+        RepairPacket.objects.filter(pk=packet.pk).update(machine=self.machine)
+        self.customer_owned.anomalies.update(machine=self.machine)
+        record = self.customer_owned.maintenance_record
+        record.machine = self.machine
+        record.save(update_fields=['machine'])
+        own = self.api.get(self.resource(self.customer_owned, 'overview/')).data
+        self.assertEqual(own['repair_packet']['id'], packet.pk)
+        self.assertEqual(own['source_alert']['title'], 'O24 foreign alert secret')
+        self.assertEqual(
+            own['maintenance_record']['summary'], 'O24 foreign history secret'
+        )
+        self.assertEqual(
+            [gate['name'] for gate in own['operational_authority']['gates']],
+            ['O24 foreign isolation gate'],
+        )
+
+    @override_settings(AIMMS_MAINTENANCE_AI_READ_ENABLED=True)
+    def test_shared_work_ai_repair_state_withholds_foreign_packet(self):
+        """The AI Work tool follows the overview: no foreign packet through Work."""
+        from asgiref.sync import async_to_sync
+
+        from ai.core.auth import AIPrincipal, principal_context
+        from ai.core.tools.inventree.read.maintenance import get_work_order_repair_state
+        from tasks.scope import work_machine_authorized
+
+        packet = self._foreign_machine_records()
+        principal = AIPrincipal(
+            subject=f'user:{self.actor.pk}',
+            actor=f'user:{self.actor.pk}',
+            user_pk=str(self.actor.pk),
+            username=self.actor.get_username(),
+            authentication_method='session',
+            scope='chat',
+            policy_version='test',
+            is_staff=False,
+            is_superuser=False,
+        )
+
+        def call():
+            token = principal_context.set(principal)
+            try:
+                return async_to_sync(get_work_order_repair_state)(
+                    work_order_id=self.customer_owned.pk
+                )
+            finally:
+                principal_context.reset(token)
+
+        self.assertFalse(work_machine_authorized(self.actor, self.customer_owned))
+        self.assertFalse(work_machine_authorized(self.actor, self.orphan))
+        result = call()
+        self.assertEqual(result['work_order_id'], self.customer_owned.pk)
+        self.assertIsNone(result['packet'])
+        self.assertNotIn('O24 foreign packet secret', str(result))
+        self.customer_owned.machine = self.machine
+        self.customer_owned.save(update_fields=['machine'])
+        self.assertIsNone(call()['packet'])
+        RepairPacket.objects.filter(pk=packet.pk).update(machine=self.machine)
+        self.assertEqual(call()['packet']['packet_id'], packet.pk)
+
+    def test_safety_gate_approval_needs_the_packet_machine_scope(self):
+        """Shared customer Work cannot authorize a gate on a foreign machine."""
+        from types import SimpleNamespace
+
+        from approvals.executors import SafetyGateExecutor
+        from tasks.scope import ScopeError
+
+        packet = self._foreign_machine_records()
+        gate = packet.gates.get()
+        with self.assertRaises(ScopeError):
+            SafetyGateExecutor().execute_for_approval(
+                SimpleNamespace(payload={'gate_id': gate.pk}),
+                actor=self.actor,
+                execution=None,
+            )
+
+    def test_view_only_viewer_reads_but_cannot_change_shared_work(self):
+        """Work view shares customer/unattributed Work; edits still need change."""
+        self.rules.can_add = False
+        self.rules.can_change = False
+        self.rules.can_delete = False
+        self.rules.save()
+        for work in (self.customer_owned, self.orphan):
+            with self.subTest(work=work.pk):
+                self.assertEqual(self.api.get(self.resource(work)).status_code, 200)
+                self.assertEqual(
+                    self.api.patch(
+                        self.resource(work), {'title': 'No'}, format='json'
+                    ).status_code,
+                    403,
+                )
+                self.assertEqual(self.api.delete(self.resource(work)).status_code, 403)
+                work.refresh_from_db()
+                self.assertNotEqual(work.title, 'No')
+
+    def test_customer_create_requires_role_and_authorized_machine(self):
+        """Customer selection is shared; proposed machine authorization stays exact."""
+        before = WorkOrder.objects.count()
+        for machine, expected in ((self.machine, 201), (self.foreign_machine, 404)):
+            result = self.api.post(
+                '/api/kanban/work-orders/',
+                {
+                    'title': 'O24 customer create',
+                    'customer': self.customer_owned.customer_id,
+                    'machine': machine.pk,
+                    'status': 'backlog',
+                    'priority': 'medium',
+                },
+                format='json',
+            )
+            self.assertEqual(result.status_code, expected, result.data)
+        self.assertEqual(WorkOrder.objects.count(), before + 1)
+
+    def test_board_schedule_dependencies_and_ai_include_shared_work(self):
+        """All canonical read paths include customer and unattributed Work."""
+        from tasks import ai_read
+        from tasks.models import WorkOrderDependency
+
+        WorkOrderDependency.objects.create(
+            predecessor=self.customer_owned, successor=self.orphan
+        )
+        expected = {self.own.pk, self.customer_owned.pk, self.orphan.pk}
+        board = self.api.get('/api/kanban/cards/')
+        self.assertEqual({row['work_order'] for row in board.data}, expected)
+        window = self.api.get('/api/kanban/schedule/')
+        self.assertEqual({row['id'] for row in window.data['cards']}, expected)
+        self.assertEqual(len(window.data['dependencies']), 1)
+        overview = self.api.get(self.resource(self.orphan, 'overview/'))
+        self.assertEqual(
+            overview.data['dependencies'][0]['card']['id'], self.customer_owned.pk
+        )
+        with override_settings(AIMMS_MAINTENANCE_AI_READ_ENABLED=True):
+            self.assertEqual(
+                {work.pk for work in ai_read.work_orders_in_scope(self.actor)}, expected
+            )
+            self.assertEqual(
+                ai_read.authorized_work_order(self.actor, self.customer_owned.pk).pk,
+                self.customer_owned.pk,
+            )
+
+    def test_shared_work_is_not_disclosed_over_http_without_view_role(self):
+        """Even an independent resolved client scope cannot replace Work view."""
+        from tasks.scope import MaintenanceScope
+
+        self.actor.groups.clear()
+        scope = MaintenanceScope(customer_id=None, site_key=None, client_id=self.tenant.pk)
+        with override_settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=lambda actor: {scope}):
+            for work in (self.customer_owned, self.orphan):
+                for path in (self.resource(work), self.resource(work, 'overview/'), f'/api/tasks/work-orders/{work.pk}/'):
+                    with self.subTest(path=path):
+                        result = self.api.get(path)
+                        self.assertIn(result.status_code, (403, 404))
+                        self.assertNotIn(work.title, str(result.data))
+
+    def test_shared_work_still_requires_active_viewer(self):
+        """Independent resolver grants cannot substitute for view or active state."""
+        from tasks.scope import (
+            MaintenanceScope,
+            ScopeError,
+            require_work_order_scope,
+            scoped_work_orders,
+        )
+
+        scopes = {MaintenanceScope(customer_id=None, site_key=None, client_id=self.tenant.pk)}
+        roleless = type(self.actor).objects.create_user(username='o24-roleless')
+        with override_settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=lambda actor: scopes):
+            self.actor.is_active = False
+            for actor in (roleless, self.actor):
+                for work in (self.customer_owned, self.orphan):
+                    with self.subTest(actor=actor.pk, work=work.pk), self.assertRaises(ScopeError):
+                        require_work_order_scope(actor, work)
+                self.assertFalse(scoped_work_orders(actor).exists())
+            self.actor.is_active = True
+        with override_settings(AIMMS_MAINTENANCE_SCOPE_RESOLVER=lambda actor: []):
+            self.assertEqual(
+                set(scoped_work_orders(self.actor).values_list('pk', flat=True)),
+                {self.customer_owned.pk, self.orphan.pk},
+            )
+
+    @override_settings(AIMMS_SINGLE_SITE_CLIENT_CODE='o24-no-fallback-client')
+    def test_viewer_without_any_client_grant_reads_shared_work_and_attachments(self):
+        """Production resolver may return nothing; shared Work needs view alone."""
+        from tasks.scope import ScopeError, scope_for_actor
+
+        self.grant.delete()
+        with self.assertRaises(ScopeError):
+            scope_for_actor(self.actor)
+        self.rules.can_add = False
+        self.rules.can_change = False
+        self.rules.can_delete = False
+        self.rules.save()
+        expected = {self.customer_owned.pk, self.orphan.pk}
+        for endpoint in ('/api/kanban/work-orders/', '/api/tasks/work-orders/'):
+            response = self.api.get(endpoint)
+            self.assertEqual(response.status_code, 200, response.data)
+            rows = response.data.get('results', []) if isinstance(response.data, dict) else response.data
+            self.assertEqual({row['id'] for row in rows}, expected)
+        for work in (self.customer_owned, self.orphan):
+            attachment = Attachment.objects.create(
+                model_type='workorder', model_id=work.pk, comment='O24 shared evidence',
+                link='https://example.invalid/o24-shared-evidence',
+            )
+            for endpoint in (
+                self.resource(work),
+                self.resource(work, 'overview/'),
+                f'/api/tasks/work-orders/{work.pk}/',
+                f'/api/attachment/{attachment.pk}/',
+            ):
+                with self.subTest(endpoint=endpoint):
+                    response = self.api.get(endpoint)
+                    self.assertEqual(response.status_code, 200, response.data)
+            self.assertEqual(self.api.patch(self.resource(work), {'title': 'Forbidden'}, format='json').status_code, 403)
+        for work in (self.own, self.foreign):
+            self.assertEqual(self.api.get(self.resource(work)).status_code, 404)
+        # The same no-grant actor may edit shared Work once change is granted.
+        self.rules.can_change = True
+        self.rules.save()
+        self.assertEqual(self.api.patch(self.resource(self.orphan), {'title': 'Allowed'}, format='json').status_code, 200)
+        self.assertEqual(self.api.patch(self.resource(self.orphan), {'machine': self.machine.pk}, format='json').status_code, 404)
+
+    def test_revocation_removes_machine_only_work_but_retains_shared_work(self):
+        """Single-site fallback retains shared Work, never the revoked client machine."""
         self.assertEqual(self.api.get(self.resource(self.own)).status_code, 200)
         self.grant.delete()
-        self.assertEqual(self.api.get('/api/kanban/work-orders/').data, [])
-        self.assertEqual(self.api.get('/api/kanban/cards/').data, [])
+        shared = {self.customer_owned.pk, self.orphan.pk}
+        self.assertEqual({row['id'] for row in self.api.get('/api/kanban/work-orders/').data}, shared)
+        self.assertEqual({row['work_order'] for row in self.api.get('/api/kanban/cards/').data}, shared)
         self.assertEqual(
             self.api.get(self.resource(self.own, 'overview/')).status_code, 404
         )
@@ -184,7 +554,10 @@ class LegacyWorkScopeAPITest(TestCase):
         self.assertEqual(overview.data['dependencies'], [])
         window = self.api.get('/api/kanban/schedule/')
         self.assertEqual(window.status_code, 200)
-        self.assertEqual({item['id'] for item in window.data['cards']}, {self.own.pk})
+        self.assertEqual(
+            {item['id'] for item in window.data['cards']},
+            {self.own.pk, self.customer_owned.pk, self.orphan.pk},
+        )
         self.assertEqual(window.data['dependencies'], [])
 
     def test_view_only_scope_does_not_grant_mutation_roles(self):
@@ -301,7 +674,7 @@ class LegacyWorkScopeAPITest(TestCase):
         for model_type, owner, accessible in (
             ('workorder', self.own, True),
             ('workorder', self.foreign, False),
-            ('workorder', self.orphan, False),
+            ('workorder', self.orphan, True),
             ('assetmachine', self.machine, True),
             ('assetmachine', self.foreign_machine, False),
         ):
@@ -359,7 +732,11 @@ class LegacyWorkScopeAPITest(TestCase):
         self.assertEqual(allowed.status_code, 201, allowed.data)
         moved = self.api.patch(
             f'/api/attachment/{allowed.data["pk"]}/',
-            {'model_type': 'assetmachine', 'model_id': self.foreign_machine.pk, 'expected_revision': allowed.data['expected_revision']},
+            {
+                'model_type': 'assetmachine',
+                'model_id': self.foreign_machine.pk,
+                'expected_revision': allowed.data['expected_revision'],
+            },
             format='json',
         )
         self.assertEqual(moved.status_code, 404)
@@ -368,8 +745,134 @@ class LegacyWorkScopeAPITest(TestCase):
             (stored.model_type, stored.model_id), ('workorder', self.own.pk)
         )
 
+    @override_settings(AIMMS_SINGLE_SITE_CLIENT_CODE='o24-step-no-fallback')
+    def test_step_attachment_reads_follow_shared_work_without_any_client_grant(self):
+        """Native step metadata follows Work view and exact Work machine scope."""
+        from tasks.scope import ScopeError, scope_for_actor
+
+        self.customer_owned.machine = self.foreign_machine
+        self.customer_owned.save(update_fields=['machine'])
+        self.grant.delete()
+        with self.assertRaises(ScopeError):
+            scope_for_actor(self.actor)
+        self.rules.can_add = self.rules.can_change = self.rules.can_delete = False
+        self.rules.save()
+        allowed = set()
+        for work in (self.own, self.foreign, self.customer_owned, self.orphan):
+            step = self.step(work)
+            attachment = Attachment.objects.create(
+                model_type='workorderstepexecution',
+                model_id=step.pk,
+                link='https://example.invalid/o24-step-evidence',
+            )
+            readable = work in (self.customer_owned, self.orphan)
+            self.assertEqual(
+                self.api.get(f'/api/attachment/{attachment.pk}/').status_code,
+                200 if readable else 404,
+            )
+            if readable:
+                allowed.add(attachment.pk)
+        response = self.api.get('/api/attachment/')
+        self.assertEqual(response.status_code, 200)
+        rows = (
+            response.data.get('results', [])
+            if isinstance(response.data, dict)
+            else response.data
+        )
+        self.assertEqual({row['pk'] for row in rows}, allowed)
+
+        self.rules.can_view = False
+        self.rules.save()
+        for pk in allowed:
+            self.assertEqual(self.api.get(f'/api/attachment/{pk}/').status_code, 404)
+        response = self.api.get('/api/attachment/')
+        self.assertEqual(response.status_code, 200)
+        rows = (
+            response.data.get('results', [])
+            if isinstance(response.data, dict)
+            else response.data
+        )
+        self.assertEqual(rows, [])
+
+    @override_settings(AIMMS_SINGLE_SITE_CLIENT_CODE='o24-step-no-fallback')
+    def test_step_attachment_actions_use_work_roles_and_reauthorize_proposed_owner(
+        self,
+    ):
+        """Ignored child-model permissions never substitute for Work action roles."""
+        from django.contrib.auth.models import Permission
+
+        self.grant.delete()
+        shared_step = self.step(self.customer_owned)
+        orphan_step = self.step(self.orphan)
+        foreign_step = self.step(self.foreign)
+        attachment = Attachment.objects.create(
+            model_type='workorderstepexecution',
+            model_id=shared_step.pk,
+            link='https://example.invalid/o24-step-actions',
+        )
+        url = f'/api/attachment/{attachment.pk}/'
+        payload = {
+            'model_type': 'workorderstepexecution',
+            'model_id': shared_step.pk,
+            'link': 'https://example.invalid/o24-new-step',
+        }
+        self.rules.can_add = self.rules.can_change = self.rules.can_delete = False
+        self.rules.save()
+        # Even explicitly assigned raw child-model permissions are not Work authority.
+        self.actor.user_permissions.add(
+            *Permission.objects.filter(
+                content_type__app_label='tasks',
+                codename__in=(
+                    'change_workorderstepexecution',
+                    'delete_workorderstepexecution',
+                ),
+            )
+        )
+        self.assertEqual(self.api.get(url).status_code, 200)
+        self.assertEqual(
+            self.api.patch(url, {'comment': 'Denied'}, format='json').status_code, 403
+        )
+        self.assertEqual(self.api.delete(url).status_code, 403)
+        self.assertEqual(
+            self.api.post('/api/attachment/', payload, format='json').status_code, 403
+        )
+        self.assertEqual(
+            self.api.delete(
+                '/api/attachment/', {'items': [attachment.pk]}, format='json'
+            ).status_code,
+            403,
+        )
+        self.assertTrue(Attachment.objects.filter(pk=attachment.pk).exists())
+
+        self.rules.can_change = self.rules.can_delete = True
+        self.rules.save()
+        self.assertEqual(
+            self.api.patch(url, {'comment': 'Allowed'}, format='json').status_code, 200
+        )
+        created = self.api.post('/api/attachment/', payload, format='json')
+        self.assertEqual(created.status_code, 201, created.data)
+        for owner_id in (foreign_step.pk, 99999999):
+            refused = self.api.patch(url, {'model_id': owner_id}, format='json')
+            self.assertEqual(refused.status_code, 404, refused.data)
+        attachment.refresh_from_db()
+        self.assertEqual(attachment.model_id, shared_step.pk)
+        self.assertEqual(
+            self.api.patch(
+                url, {'model_id': orphan_step.pk}, format='json'
+            ).status_code,
+            200,
+        )
+        self.assertEqual(self.api.delete(url).status_code, 204)
+        self.assertEqual(
+            self.api.delete(
+                '/api/attachment/', {'items': [created.data['pk']]}, format='json'
+            ).status_code,
+            200,
+        )
+        self.assertFalse(Attachment.objects.filter(pk=created.data['pk']).exists())
+
     def test_packet_collections_follow_work_scope_before_machine_scope(self):
-        """An owned machine cannot widen the linked work's customer boundary."""
+        """Packets require their own machine scope, including shared customer Work."""
         own = RepairPacket.objects.create(work_order=self.own, machine=self.machine)
         foreign = RepairPacket.objects.create(
             work_order=self.foreign, machine=self.foreign_machine
@@ -386,8 +889,10 @@ class LegacyWorkScopeAPITest(TestCase):
             if isinstance(response.data, dict)
             else response.data
         )
-        self.assertEqual({item['pk'] for item in items}, {own.pk, standalone.pk})
-        for packet in (foreign, customer, unscoped):
+        self.assertEqual(
+            {item['pk'] for item in items}, {own.pk, customer.pk, standalone.pk}
+        )
+        for packet in (foreign, unscoped):
             self.assertEqual(
                 self.api.get(f'/api/repair/packets/{packet.pk}/').status_code, 404
             )
@@ -465,15 +970,16 @@ class LegacyWorkScopeAPITest(TestCase):
         self.assertEqual(created.status_code, 404, created.data)
 
     def test_machine_repair_chooser_only_returns_accessible_work(self):
-        """A known asset does not expose customer-owned or foreign packet links."""
+        """An authorized asset includes customer Work; foreign assets stay refused."""
         owned = RepairPacket.objects.create(work_order=self.own, machine=self.machine)
-        RepairPacket.objects.create(
+        customer = RepairPacket.objects.create(
             work_order=self.customer_owned, machine=self.machine
         )
         response = self.api.get(f'/api/repair/machines/{self.machine.pk}/open-repairs/')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
-            [item['packet_id'] for item in response.data['results']], [owned.pk]
+            {item['packet_id'] for item in response.data['results']},
+            {owned.pk, customer.pk},
         )
         self.assertEqual(
             self.api.get(
@@ -553,7 +1059,7 @@ class LegacyWorkScopeAPITest(TestCase):
     def test_work_package_duplicate_control_does_not_reveal_hidden_links(self):
         """An override cannot reveal or bypass repair work outside the boundary."""
         RepairPacket.objects.create(
-            work_order=self.customer_owned, machine=self.machine
+            work_order=self.foreign, machine=self.machine
         )
         before = WorkOrder.objects.count()
         for override in (False, True):
@@ -573,7 +1079,7 @@ class LegacyWorkScopeAPITest(TestCase):
     def test_work_package_replay_checks_the_current_owner_before_service(self):
         """A previously issued key cannot modify work after its scope changes."""
         WorkOrderCommand.objects.create(
-            work_order=self.customer_owned,
+            work_order=self.foreign,
             command='create',
             idempotency_key='synthetic-hidden-key',
             correlation_id=uuid.uuid4(),

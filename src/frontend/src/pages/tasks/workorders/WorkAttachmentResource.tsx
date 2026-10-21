@@ -63,7 +63,11 @@ export function WorkAttachmentResource({
     trigger.current?.focus({ preventScroll: true });
   };
   return (
-    <Stack gap='xs'>
+    <Stack
+      gap='xs'
+      w={opened ? '100%' : undefined}
+      style={{ minWidth: 0, maxWidth: '100%' }}
+    >
       <Group>
         <Button
           ref={trigger}
@@ -96,7 +100,7 @@ export function WorkAttachmentResource({
         <Paper withBorder p='md'>
           <Stack gap='md'>
             <Group justify='space-between'>
-              <Title order={4}>{t`Work attachments`}</Title>
+              <Title order={2} size='h4'>{t`Work attachments`}</Title>
               <Button
                 variant='subtle'
                 onClick={close}
