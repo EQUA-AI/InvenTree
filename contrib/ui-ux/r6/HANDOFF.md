@@ -1,6 +1,6 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
-## Integrated line checkpoint — 21 October 2026, 16:30 (read this first)
+## Integrated line checkpoint — 21 October 2026, evening (read this first)
 
 `inventTree-aniket` at `01f0d8a14` holds every R6 batch; nothing is pushed. The
 owner merges it into `IOT-Merge` (O25). Older paragraphs below that say a branch
@@ -17,27 +17,31 @@ or an index is still unmerged are history.
 | Health/Performance (S8-01 part 2) + monitoring clock fix | `01f0d8a14` | Final tree host S0 110, S1 204, S4 230+, S6 255+, S7 178, S3 278, S8 601 |
 | Owner decision O26 (Hyperagent gate withdrawn) | `279957e03` | owner-approval.md |
 
-**Open, owner chose to merge first and fix after (21 Oct, option B):**
+**Follow-ups closed the same evening (21 Oct):** the Performance "Show read
+details" duplicate is fixed (`r6/perf-button`, host 8/8) and the pre-existing
+backend failures outside the five R6 apps are fixed (`r6/backend-fix-b`, 27
+outcomes plus a plugin-registry bug). Both are merged.
 
-1. `tests/s8/pui_monitoring_acceptance.spec.ts:217` "Performance scales, navigation
-   and keyboard controls" fails on the integrated tree (desktop light/dark, phone
-   dark): `getByTestId('pump-performance')` has two "Show read details" buttons
-   after both design passes merged. Fix the product so each read has one clearly
-   named control; do not weaken the test.
-2. Load-sensitive on the Mac when four browser lanes share the GPU; pass when run
-   alone: S3 `pui_performance_comparisons.spec.ts:93` and `:174` (phone), S8 Work
-   `pui_p31_work_keyboard.spec.ts:47` and `pui_p31_work_reflow.spec.ts:169`. Re-run
-   alone to confirm on the integrated tree.
-3. Known and not caused by R6: S2 camera-reset pixel equality on the Mac; the
-   backend baseline failures recorded in reports/integration-1.md and O24.md
-   (including 4 migration-test timeouts); two newer line defects found on 21 Oct
-   that also fail without R6 changes (`ScopeRevisionProjectionTest` metadata list,
-   `IoTRuleSetTests` ignore list).
-4. Ledgers: sprint-backlog.csv statuses and the s*.md boards were not re-baselined
-   in this pass; do that with the button fix.
+**Still open (owner asked to skip lower-priority work for now):**
 
-Next steps: the button fix (Codex), a full host replay of S0-S8 on the integrated
-tree, then the owner's review and merge into `IOT-Merge`, then deployment per the
+1. Load-sensitive on the Mac when several browser lanes share the GPU; they
+   pass alone: S3 `pui_performance_comparisons.spec.ts:93` and `:174` (phone),
+   S8 Work `pui_p31_work_keyboard.spec.ts:47` and `pui_p31_work_reflow.spec.ts:169`,
+   and an S3 Health dialog footer partly in view (seen once in Linux). Not re-run
+   alone on the final tree.
+2. Parked: `r6/backend-fix-a` (the 79 pre-existing failures in tasks, users,
+   repair, assets and aichat, the 4 migration-test timeouts, the runner's `media`
+   exclusion). Test-only; no product behaviour depends on it. One partial edit
+   on that branch, not merged.
+3. Known and not caused by R6: the S2 camera-reset pixel test on the Mac, and
+   the backend-runner image/profile limitations listed in
+   reports/backend-baseline-fixes-b.md.
+4. Ledgers: sprint-backlog.csv statuses and the s*.md boards were not
+   re-baselined in this pass.
+5. Parked by the owner: R8 procurement demo (contrib/ui-ux/r8-procurement/).
+
+Next steps: a full host replay of S0-S8 on the integrated tree when convenient,
+then the owner's review and merge into `IOT-Merge`, then deployment per the
 hand-over (the deployer does not run migrations).
 
 **Final merged-tree Monitoring clock repair — 21 October 2026:** starting tree
