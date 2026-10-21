@@ -1,9 +1,8 @@
 import { t } from '@lingui/core/macro';
 import { Box, Group, Paper, Stack, Table, Text } from '@mantine/core';
-import { IconCircleCheck, IconPlugConnectedX } from '@tabler/icons-react';
 import { displayInstant } from '../displayClock';
-import monitoring from '../monitoring.module.css';
-import { StatusBadge as Badge } from './StatusBadge';
+import { SourcePollStatus } from './SourcePollStatus';
+import { MetaText } from './common';
 
 import type { HealthSourceStatus } from '@lib/types/MachineHealth';
 
@@ -22,20 +21,25 @@ export function HealthSourceStatusTable({
   if (sources.length === 0) {
     return (
       <Paper withBorder p='md'>
-        <Text
-          className={monitoring.meta}
-        >{t`No health source is configured for this machine.`}</Text>
+        <MetaText>{t`No health source is configured for this machine.`}</MetaText>
       </Paper>
     );
   }
 
   return (
-    <Paper withBorder p={0} style={{ overflowX: 'auto' }}>
+    <Paper
+      withBorder
+      p={0}
+      style={{ overflowX: 'auto' }}
+      component='section'
+      aria-label={t`Source connections; scroll for all columns`}
+      tabIndex={0}
+    >
       <Table striped miw={720} aria-label={t`Source connections`}>
         <Table.Thead>
           <Table.Tr>
             <Table.Th>{t`Source`}</Table.Th>
-            <Table.Th>{t`Connection`}</Table.Th>
+            <Table.Th>{t`Last poll`}</Table.Th>
             <Table.Th>{t`Last success`}</Table.Th>
             <Table.Th>{t`Last error`}</Table.Th>
             <Table.Th>{t`Freshness budget`}</Table.Th>
@@ -54,27 +58,7 @@ export function HealthSourceStatusTable({
                 </Group>
               </Table.Td>
               <Table.Td>
-                {source.active && source.healthy ? (
-                  <Badge
-                    w='max-content'
-                    maw='none'
-                    color='green'
-                    variant='light'
-                    leftSection={<IconCircleCheck size={14} />}
-                  >
-                    {t`Connected`}
-                  </Badge>
-                ) : (
-                  <Badge
-                    w='max-content'
-                    maw='none'
-                    color='gray'
-                    variant='light'
-                    leftSection={<IconPlugConnectedX size={14} />}
-                  >
-                    {source.active ? t`Failing` : t`Disabled`}
-                  </Badge>
-                )}
+                <SourcePollStatus source={source} />
               </Table.Td>
               <Table.Td>
                 <Text size='sm'>
@@ -93,9 +77,7 @@ export function HealthSourceStatusTable({
                       : t`Not recorded`}
                   </Text>
                   {source.last_error_code && (
-                    <Text size='xs' className={monitoring.meta}>
-                      {source.last_error_code}
-                    </Text>
+                    <MetaText size='xs'>{source.last_error_code}</MetaText>
                   )}
                 </Stack>
               </Table.Td>

@@ -24,7 +24,7 @@ const reactive = (unit: string) =>
   signal('/dex/PUMP1_PUMP_REACTIVE_POWER', 2.1, unit, 'Reactive Power');
 
 const strip = (page: Page) =>
-  page.locator('.mantine-Paper-root').filter({ hasText: 'Anything unusual?' });
+  page.locator('.mantine-Paper-root').filter({ hasText: 'Exceptions' });
 
 test('a machine with no configured limits is never called calm', async ({
   page
@@ -99,7 +99,7 @@ test('reactive power shares the power axis only at the same magnitude, and power
 }, testInfo) => {
   const card = (title: string) =>
     page
-      .locator('.mantine-Paper-root')
+      .locator('[data-section="Electrical"] .mantine-Paper-root')
       .filter({ has: page.getByText(title, { exact: true }) })
       .first();
   const axis = (title: string, side: 'left' | 'right') =>
@@ -111,12 +111,11 @@ test('reactive power shares the power axis only at the same magnitude, and power
       signals: [power, reactive('MVar'), factor, speed],
       scheme
     });
-    const powerCard = 'Power and power factor';
+    const powerCard = 'Power';
     await expect(axis(powerCard, 'left')).toHaveText('MW / MVar');
-    await expect(axis(powerCard, 'right')).toHaveText('Power factor');
-    await expect(card(powerCard)).toContainText(
-      'Active and reactive power on the left axis (MW / MVar); power factor on the right.'
-    );
+    await expect(axis('Power factor', 'left')).toHaveText('Power factor');
+    await expect(axis(powerCard, 'right')).toHaveCount(0);
+    await expect(card('Power factor')).toBeVisible();
     await expect(page.getByText('Reactive power', { exact: true })).toHaveCount(
       // Its toggle chip in the power card; no separate card.
       1
@@ -132,10 +131,9 @@ test('reactive power shares the power axis only at the same magnitude, and power
     harness: 's3',
     signals: [power, reactive('kvar'), factor, speed]
   });
-  await expect(axis('Power and power factor', 'left')).toHaveText('MW');
-  await expect(axis('Power and power factor', 'right')).toHaveText(
-    'Power factor'
-  );
+  await expect(axis('Power', 'left')).toHaveText('MW');
+  await expect(axis('Power factor', 'left')).toHaveText('Power factor');
+  await expect(axis('Power', 'right')).toHaveCount(0);
   const own = card('Reactive power');
   await expect(own).toContainText(
     'Drawn apart from active power: their units (MW and kvar) are not stated at the same magnitude.'

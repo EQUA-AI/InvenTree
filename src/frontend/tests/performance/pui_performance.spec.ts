@@ -36,7 +36,9 @@ test('the KPI strip shows fixture values and states what it cannot show', async 
   await expect(page.locator('[data-kpi="status"]')).toContainText('Running');
   // The one sensor without a reading is reported as poor quality, so the
   // strip is not calm - and must not claim to be.
-  await expect(page.getByText('2 with poor quality')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /^2 with poor quality:/ })
+  ).toBeVisible();
   await expect(page.getByText('Nothing outside configured limits')).toHaveCount(
     0
   );
@@ -140,18 +142,35 @@ test('dragging across a chart offers a zoom, and taking it narrows the window', 
 }) => {
   const requests = await mount(page);
   await expect(page.getByText(/Sampled: one reading every/)).toBeVisible();
-  const chart = page.locator('.recharts-wrapper').first();
+  const chart = page
+    .locator('[data-section="Electrical"] .recharts-wrapper')
+    .first();
+  await expect(chart.locator('.recharts-line-curve').first()).toBeVisible();
   await expect(chart).toBeVisible();
   // Raw mouse events do not scroll: the chart must be inside the viewport.
   await chart.scrollIntoViewIfNeeded();
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      )
+  );
+  await page.screenshot({ path: test.info().outputPath('drag-before.png') });
   const box = (await chart.boundingBox())!;
   // Drag across the middle third of the plot area.
   const y = box.y + box.height * 0.45;
   await page.mouse.move(box.x + box.width * 0.35, y);
+  // Recharts computes its active axis value on the next animation frame.
+  // Wait for that real hover state before pressing, rather than racing it.
+  await expect(chart.locator('.recharts-tooltip-wrapper')).toBeVisible();
+  await expect(chart.locator('.recharts-tooltip-wrapper')).toContainText(
+    'Active power'
+  );
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.45, y, { steps: 4 });
   await page.mouse.move(box.x + box.width * 0.6, y, { steps: 4 });
   await page.mouse.up();
+  await page.screenshot({ path: test.info().outputPath('drag-after.png') });
   const zoom = page.getByRole('button', { name: /^Zoom to / });
   await expect(zoom).toBeVisible();
   const before = requests.length;
@@ -193,5 +212,7 @@ test('a reading past its limit is counted over it', async ({ page }) => {
   });
 
   const winding = page.locator('[data-section="Motor winding temperature"]');
-  await expect(winding.getByText('1 of 10 over a limit')).toBeVisible();
+  await expect(
+    winding.getByText('1 of 10 above warning (Warning above 125 °C)')
+  ).toBeVisible();
 });

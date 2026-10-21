@@ -1,4 +1,5 @@
 import { t } from '@lingui/core/macro';
+import { unitLabel } from './format';
 
 import type {
   HealthState,
@@ -47,6 +48,8 @@ function tileFor(
     stale: signal.stale,
     quality: signal.quality,
     limitsConfigured: hasLimits(signal),
+    limits: signal.limits,
+    freshnessSeconds: signal.freshness_threshold_seconds,
     // A limit verdict on an unusable reading is no verdict.
     state:
       hasLimits(signal) && signal.quality === 'good'
@@ -127,6 +130,8 @@ function highestTile(
     stale: top.signal.stale,
     state: worst,
     limitsConfigured: candidates.some((p) => hasLimits(p.signal)),
+    limits: top.signal.limits,
+    freshnessSeconds: top.signal.freshness_threshold_seconds,
     series: series.get(top.signal.binding_id),
     caption: [
       top.signal.unit
@@ -135,7 +140,7 @@ function highestTile(
       uncompared > 0
         ? t`${uncompared} in ${groups
             .filter((g) => !g.items.includes(top))
-            .map((g) => unitText(g) || t`no unit`)
+            .map((g) => unitLabel(unitText(g)))
             .join(', ')} not compared`
         : '',
       ...candidates
@@ -148,7 +153,7 @@ function highestTile(
         )
         .map(
           (p) =>
-            t`${p.label} (${p.signal.unit || t`no unit`}) ${p.signal.state}, not compared`
+            t`${p.label} (${unitLabel(p.signal.unit)}) ${p.signal.state}, not compared`
         )
     ]
       .filter(Boolean)
@@ -188,7 +193,7 @@ function statusTile(
     valueText: word,
     unit: '',
     decimals: 0,
-    observedAt: last?.t ?? instant(parameter.signal),
+    observedAt: instant(parameter.signal),
     stale: parameter.signal.stale,
     state: 'unconfigured',
     caption:

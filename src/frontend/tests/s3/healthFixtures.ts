@@ -79,9 +79,9 @@ export interface HealthSignalSpec {
 export const HEALTH_SIGNALS: readonly HealthSignalSpec[] = [
   {
     id: 201,
-    key: '/dex/PUMP1_DISCHARGE_FLOW',
+    key: '/pd/P1/dv',
     name: 'Discharge flow',
-    unit: 'm3/h',
+    unit: 'cusec',
     kind: 'flow',
     value: 812.5,
     state: 'normal',
@@ -379,7 +379,8 @@ export function anomaly(
     severity: 'warning',
     status: 'open',
     title: 'Discharge flow below warning limit',
-    evidence_summary: 'Discharge flow read 580 m3/h against a 600 m3/h limit.',
+    evidence_summary:
+      'Synthetic discharge flow read 580 cusec against a 600 cusec limit.',
     metrics: {},
     detector: 'threshold',
     detector_version: '1',
@@ -550,7 +551,7 @@ export async function openHealth(
   });
   const entry = `/machines/machine/${MACHINE}/health/${options.entrySearch ?? ''}`;
   const query = new URLSearchParams({
-    surface: 'machine',
+    surface: options.nativeTheme ? 'machine-shell' : 'machine',
     entry,
     scheme: options.scheme ?? 'light',
     nativeTheme: String(options.nativeTheme ?? false),

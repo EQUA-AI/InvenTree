@@ -1,4 +1,8 @@
+// Activate Lingui before native shell modules evaluate.
 import './aichat-drawer-lingui';
+
+import LayoutComponent from '../src/components/nav/Layout';
+import MachineDetail from '../src/pages/assets/MachineDetail';
 
 import { FixtureTheme } from './FixtureTheme';
 
@@ -8,10 +12,20 @@ import { Button, Group, Stack, Text } from '@mantine/core';
 import '@mantine/core/styles.css';
 import '@mantine/charts/styles.css';
 import '@mantine/dates/styles.css';
+import '@mantine/notifications/styles.css';
+import '@mantine/spotlight/styles.css';
+import 'mantine-contextmenu/styles.css';
+import 'mantine-datatable/styles.css';
 import { QueryClient, useIsFetching } from '@tanstack/react-query';
 import axios from 'axios';
 import { createRoot } from 'react-dom/client';
-import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate
+} from 'react-router-dom';
 
 import { ApiProvider } from '../src/contexts/ApiContext';
 import { PerformancePanel } from '../src/pages/assets/performance/PerformancePanel';
@@ -80,14 +94,22 @@ function Harness() {
           <QueryState />
         </Group>
       </div>
-      {onPerformance && (
-        <PerformancePanel
-          machine={{
-            pk,
-            name: params.get('name') ?? 'Synthetic machine',
-            asset_type: asset
-          }}
-        />
+      {params.get('nativeTheme') === 'true' ? (
+        <Routes>
+          <Route element={<LayoutComponent />}>
+            <Route path='/machines/machine/:id/*' element={<MachineDetail />} />
+          </Route>
+        </Routes>
+      ) : (
+        onPerformance && (
+          <PerformancePanel
+            machine={{
+              pk,
+              name: params.get('name') ?? 'Synthetic machine',
+              asset_type: asset
+            }}
+          />
+        )
       )}
     </Stack>
   );

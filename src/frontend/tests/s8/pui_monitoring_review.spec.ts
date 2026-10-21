@@ -7,7 +7,7 @@ import { captureMatrix, monitoringMeasurements } from './monitoringEvidence';
 
 nativeBaseline();
 for (const scheme of ['light', 'dark'] as const) {
-  test(`monitoring keeps native disabled gray actions and alert title styles ${scheme}`, async ({
+  test(`monitoring hides viewer actions and keeps the attention title local ${scheme}`, async ({
     page
   }) => {
     await page.addInitScript(() => {
@@ -24,22 +24,8 @@ for (const scheme of ['light', 'dark'] as const) {
     const actions = page.getByTestId('pump-health').getByRole('button', {
       name: /^(Analyze|Acknowledge|Dismiss|Create repair)\b/
     });
-    await expect(actions).toHaveCount(4);
-    for (const button of await actions.all())
-      await expect(button).toBeDisabled();
-    const comparison = await page
-      .getByRole('button', { name: /^Dismiss\b/ })
-      .evaluate((button) => {
-        const clone = button.cloneNode(true) as HTMLElement;
-        document.body.appendChild(clone);
-        const result = {
-          panel: getComputedStyle(button).color,
-          native: getComputedStyle(clone).color
-        };
-        clone.remove();
-        return result;
-      });
-    expect(comparison.panel).toBe(comparison.native);
+    await expect(actions).toHaveCount(0);
+    await expect(page.getByText(/^View only:/)).toBeVisible();
     const title = await page
       .getByRole('alert')
       .filter({ hasText: 'Critical coverage unavailable' })
@@ -62,7 +48,10 @@ for (const scheme of ['light', 'dark'] as const) {
     );
     expect(coverageTitle?.ratio).toBeGreaterThanOrEqual(4.5);
     // Also catches treating normalized color(srgb) components as 0..255 RGB.
-    expect(coverageTitle?.ratio).toBeLessThan(12);
+    expect(coverageTitle?.ratio).toBeCloseTo(
+      scheme === 'light' ? 7.018346 : 13.091108,
+      2
+    );
     await captureMatrix(page, 'health', 'viewer-actions', scheme);
   });
 
@@ -79,7 +68,7 @@ for (const scheme of ['light', 'dark'] as const) {
     await page.getByText('Custom', { exact: true }).click();
     await expect(
       page.getByText(
-        'History held from 16 Sep 2026 15:00:00 to 26 Sep 2026 15:00:00.',
+        'History held from 8 Oct 2026 12:00:00 to 18 Oct 2026 12:00:00.',
         { exact: true }
       )
     ).toBeVisible();

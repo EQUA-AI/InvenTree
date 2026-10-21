@@ -11,6 +11,7 @@ import { useLocalStorage } from '@mantine/hooks';
 import { useState } from 'react';
 import { useLocalState } from '../../../states/LocalState';
 import { useUserState } from '../../../states/UserState';
+import { MetaText } from '../health/common';
 import monitoring from '../monitoring.module.css';
 import { SharedDisplayViews } from './SharedDisplayViews';
 import {
@@ -82,11 +83,14 @@ function ScopedPreferences({
   };
   return (
     <Stack gap='xs'>
+      {' '}
+      <SharedDisplayViews
+        machineId={machineId}
+        current={current}
+        onRestore={onRestore}
+      />
       <Text fw={600} size='sm'>{t`Personal display views`}</Text>
-      <Text
-        size='sm'
-        className={monitoring.meta}
-      >{t`Saved only in this browser for this signed-in user, server and machine. Display choices only; no historical evidence or access grant is saved. Changes remain unsaved until Save view.`}</Text>
+      <MetaText size='sm'>{t`Saved only in this browser for this signed-in user, server and machine. Display choices only; no historical evidence or access grant is saved. Changes remain unsaved until Save view.`}</MetaText>
       <SimpleGrid cols={{ base: 1, sm: 2 }} style={{ alignItems: 'end' }}>
         <TextInput
           classNames={{ input: monitoring.input }}
@@ -154,15 +158,15 @@ function ScopedPreferences({
         >{t`Delete view`}</Button>
       </SimpleGrid>
       {notice && (
-        <Text component='output' size='sm' style={{ overflowWrap: 'anywhere' }}>
+        <Text
+          component='div'
+          aria-live='off'
+          size='sm'
+          style={{ overflowWrap: 'anywhere' }}
+        >
           {notice}
         </Text>
       )}
-      <SharedDisplayViews
-        machineId={machineId}
-        current={current}
-        onRestore={onRestore}
-      />
     </Stack>
   );
 }

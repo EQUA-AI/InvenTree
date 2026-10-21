@@ -7,6 +7,9 @@
     "tests/s8/pui_monitoring_design.spec.ts",
     "tests/s8/pui_monitoring_states.spec.ts",
     "tests/s8/monitoringEvidence.ts",
-    "tests/s8/pui_monitoring_review.spec.ts"
+    "tests/s8/pui_monitoring_review.spec.ts",
+    "tests/s8/pui_monitoring_acceptance.spec.ts",
+    "tests/s8/hyperagentEvidence.ts",
+    "tests/s8/contrast.ts"
   ]
 }

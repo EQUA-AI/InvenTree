@@ -19,12 +19,15 @@ import { DateTimePicker } from '@mantine/dates';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../../../contexts/ApiContext';
 import { useLocalState } from '../../../states/LocalState';
 import { useUserState } from '../../../states/UserState';
+import { MetaText } from '../health/common';
 import { HistoryProvenance } from '../investigation/HistoryProvenance';
 import { pickerInstant } from '../investigation/windows';
 import monitoring from '../monitoring.module.css';
+import { useNow } from '../useNow';
 import { DisplayPreferences } from './DisplayPreferences';
 import { HistoryReadStack } from './HistoryReadContext';
 import { windowInfoFrom } from './PerformancePanel';
@@ -32,9 +35,11 @@ import type { WindowInfo } from './SensorGroupCard';
 import { TrendChart } from './TrendChart';
 import { WindowStatus } from './WindowStatus';
 import { type DisplayView, comparisonGroups } from './comparisonViews';
+import { unitLabel } from './format';
 import { type ResolvedParameter, resolveParameters } from './resolve';
 import { lineFor, rowsFor } from './sections/common';
 import { indexSeries } from './series';
+import { sameScale } from './units';
 import {
   type WindowSpec,
   resolveWindow,
@@ -61,7 +66,15 @@ export function ComparisonWorkbench({
   section: string;
   onView: (view: DisplayView) => void;
 }>) {
-  const [selected, setSelected] = useState<string[]>([]);
+  const now = useNow();
+  const [params] = useSearchParams();
+  const [selected, setSelected] = useState<string[]>(
+    () =>
+      params
+        .get('compare')
+        ?.split(',')
+        .filter((id) => /^\d+$/.test(id)) ?? []
+  );
   const [missing, setMissing] = useState(false);
   const [mode, setMode] = useState('within');
   const chosen = parameters.filter((p) =>
@@ -85,70 +98,96 @@ export function ComparisonWorkbench({
         )) && (
         <Alert color='yellow'>{t`Some selected or saved signals are no longer mapped or permitted. They were not substituted.`}</Alert>
       )}
-      <Text fw={600} size='sm'>{t`Investigation comparison`}</Text>
-      <Select
-        classNames={{ input: monitoring.input }}
-        label={t`Comparison mode`}
-        value={mode}
-        allowDeselect={false}
-        onChange={(value) => {
-          setMode(value ?? 'within');
-          setAnchor({ kind: 'absolute', ...toAbsolute(window) });
-        }}
-        data={[
-          { value: 'within', label: t`Within this machine` },
-          { value: 'machine', label: t`Another permitted machine` },
-          { value: 'before-after', label: t`Before / after windows` }
-        ]}
-      />
-      <MultiSelect
-        classNames={{ input: monitoring.input }}
-        label={t`Comparison channels`}
-        searchable
-        value={selected}
-        onChange={(value) => {
-          setSelected(value);
-          setMissing(false);
-        }}
-        maxValues={12}
-        data={parameters.map((p) => ({
-          value: String(p.signal.binding_id),
-          label: `${p.label} · ${p.signal.external_key} · ${p.signal.unit || t`no unit`}`
-        }))}
-      />
-      <Text
-        size='sm'
-        className={monitoring.meta}
-      >{t`Up to 12 channels. Only matching engineering roles and compatible units share a chart. Other channels use separate synchronized charts. Operating duty, load and instrument configuration are not verified by unit compatibility.`}</Text>
-      {chosen.length === 0 ? (
-        <Text size='sm'>{t`Select channels to compare.`}</Text>
-      ) : mode === 'within' ? (
-        <ComparisonPlots
-          parameters={chosen}
-          response={response}
-          window={windowInfoFrom(response, window, Date.now())}
-          syncId={`compare-${machineId}`}
-        />
-      ) : mode === 'before-after' ? (
-        <BeforeAfter
-          machineId={machineId}
-          parameters={chosen}
-          anchor={anchor}
-        />
-      ) : (
-        <MachineComparison
-          key={machineId}
-          machineId={machineId}
-          assetType={assetType}
-          parameters={chosen}
-          window={anchor}
-        />
-      )}
-      <DisplayPreferences
-        machineId={machineId}
-        current={{ search, section, bindings: selected.map(Number) }}
-        onRestore={restore}
-      />
+      <SimpleGrid cols={{ base: 1, lg: 2 }} spacing='md'>
+        <Stack gap='xs'>
+          <Text fw={600} size='sm'>{t`Investigation comparison`}</Text>
+          <SimpleGrid cols={{ base: 1, sm: 2 }}>
+            <Select
+              classNames={{ input: monitoring.input }}
+              label={t`Comparison mode`}
+              value={mode}
+              allowDeselect={false}
+              onChange={(value) => {
+                setMode(value ?? 'within');
+                setAnchor({ kind: 'absolute', ...toAbsolute(window) });
+              }}
+              data={[
+                { value: 'within', label: t`Within this machine` },
+                { value: 'machine', label: t`Another permitted machine` },
+                { value: 'before-after', label: t`Before / after windows` }
+              ]}
+            />
+            <MultiSelect
+              classNames={{ input: monitoring.input }}
+              label={t`Comparison channels`}
+              searchable
+              value={selected}
+              onChange={(value) => {
+                setSelected(value);
+                setMissing(false);
+              }}
+              maxValues={12}
+              filter={({ options, search }) =>
+                options.filter(
+                  (option) =>
+                    'value' in option &&
+                    `${option.label} ${parameters.find((p) => String(p.signal.binding_id) === option.value)?.signal.external_key ?? ''}`
+                      .toLowerCase()
+                      .includes(search.toLowerCase())
+                )
+              }
+              renderOption={({ option }) => (
+                <Stack gap={0}>
+                  <Text size='sm'>{option.label}</Text>
+                  <MetaText size='xs'>
+                    {
+                      parameters.find(
+                        (p) => String(p.signal.binding_id) === option.value
+                      )?.signal.external_key
+                    }
+                  </MetaText>
+                </Stack>
+              )}
+              data={parameters.map((p) => ({
+                value: String(p.signal.binding_id),
+                label: `${p.label} · ${unitLabel(p.signal.unit)}`
+              }))}
+            />
+          </SimpleGrid>
+          <MetaText size='sm'>{t`Up to 12 channels. Only matching engineering roles and compatible units share a chart. Other channels use separate synchronized charts. Operating duty, load and instrument configuration are not verified by unit compatibility.`}</MetaText>
+          {chosen.length === 0 ? (
+            <Text size='sm'>{t`Select channels to compare.`}</Text>
+          ) : mode === 'within' ? (
+            <ComparisonPlots
+              parameters={chosen}
+              response={response}
+              window={windowInfoFrom(response, window, now)}
+              syncId={`compare-${machineId}`}
+            />
+          ) : mode === 'before-after' ? (
+            <BeforeAfter
+              machineId={machineId}
+              parameters={chosen}
+              anchor={anchor}
+            />
+          ) : (
+            <MachineComparison
+              key={machineId}
+              machineId={machineId}
+              assetType={assetType}
+              parameters={chosen}
+              window={anchor}
+            />
+          )}
+        </Stack>
+        <Stack gap='sm'>
+          <DisplayPreferences
+            machineId={machineId}
+            current={{ search, section, bindings: selected.map(Number) }}
+            onRestore={restore}
+          />
+        </Stack>
+      </SimpleGrid>
     </Stack>
   );
 }
@@ -170,15 +209,32 @@ export function ComparisonPlots({
   syncId: string;
 }>) {
   const series = useMemo(() => indexSeries(response), [response]);
+  const groups = useMemo(() => comparisonGroups(parameters), [parameters]);
   return (
     <Stack gap='sm'>
-      {comparisonGroups(parameters).length > 1 && (
-        <Text
-          size='sm'
-          maw='70ch'
-        >{t`Different engineering roles or units: selected channels use separate synchronized charts.`}</Text>
+      {groups.length > 1 && (
+        <Stack gap={2} data-testid='comparison-refusal'>
+          <Text fw={600} size='sm'>{t`Not compared on one axis`}</Text>
+          {groups.slice(1).map((group) => {
+            const first = groups[0].items[0];
+            const own = group.items[0];
+            const mismatch = !sameScale(first.signal.unit, own.signal.unit)
+              ? first.definition.role !== own.definition.role
+                ? t`unit and role`
+                : t`unit`
+              : t`role`;
+            return (
+              <Text
+                size='sm'
+                maw='70ch'
+                key={group.key}
+              >{t`${group.items.map((p) => p.label).join(', ')} (${unitLabel(own.signal.unit)}, ${own.definition.role}) can't share an axis with ${groups[0].items.map((p) => p.label).join(', ')} (${unitLabel(first.signal.unit)}, ${first.definition.role}): different ${mismatch}.`}</Text>
+            );
+          })}
+          <Text size='sm'>{t`Shown on separate synchronized charts`}</Text>
+        </Stack>
       )}
-      {comparisonGroups(parameters).map((group) => (
+      {groups.map((group) => (
         <Paper
           key={group.key}
           withBorder
@@ -187,14 +243,14 @@ export function ComparisonPlots({
         >
           <Text fw={600} size='sm'>
             {group.items.map((p) => p.label).join(' / ')} ·{' '}
-            {group.items[0].signal.unit || t`no stated unit`}
+            {unitLabel(group.items[0].signal.unit)}
           </Text>
           <TrendChart
             rows={rowsFor(group.items, series, window)}
             series={group.items.map((p, i) =>
               lineFor(
                 p,
-                ['blue.6', 'orange.6', 'teal.6', 'grape.6'][i % 4],
+                ['blue.6', 'indigo.6', 'cyan.7', 'grape.6'][i % 4],
                 'left',
                 p.definition.chart === 'step'
               )
@@ -227,6 +283,7 @@ function HistoryComparison({
   syncId: string;
   onShift?: (shift: number | undefined) => void;
 }>) {
+  const now = useNow();
   const bindings = useMemo(
     () => parameters.map((p) => p.signal.binding_id),
     [parameters]
@@ -267,9 +324,10 @@ function HistoryComparison({
         <>
           <WindowStatus
             showClock={false}
+            announce={false}
             response={query.data}
             updating={query.isPlaceholderData}
-            now={Date.now()}
+            now={now}
           />
           <HistoryProvenance
             response={query.data}
@@ -282,17 +340,17 @@ function HistoryComparison({
           />
           {query.data && (
             <>
-              <Text size='sm' className={monitoring.meta}>
+              <MetaText size='sm'>
                 {query.data.series
                   .map((entry) => entry.source_name)
                   .filter((name, i, all) => all.indexOf(name) === i)
                   .join(', ')}{' '}
                 · {query.data.resolution_seconds} s · {query.data.mode}
-              </Text>
+              </MetaText>
               <ComparisonPlots
                 parameters={parameters}
                 response={query.data}
-                window={windowInfoFrom(query.data, window, Date.now())}
+                window={windowInfoFrom(query.data, window, now)}
                 syncId={
                   onShift
                     ? `${syncId}-${Number.isFinite(shift) ? shift : `unknown-${machineId}`}`
@@ -349,10 +407,7 @@ function BeforeAfter({
           setAfter(previous);
         }}
       >{t`Read preceding equal window as B`}</Button>
-      <Text
-        size='sm'
-        className={monitoring.meta}
-      >{t`A is the selected window frozen when this mode opens. B is an independent source read, up to 24 h. Timestamps remain absolute in the browser timezone; charts do not shift events to imply a repair effect. The preceding-window shortcut does not infer a repair boundary. Select the actual repair boundaries and check duty/load yourself.`}</Text>
+      <MetaText size='sm'>{t`A is the selected window frozen when this mode opens. B is an independent source read, up to 24 h. Timestamps remain absolute in the browser timezone; charts do not shift events to imply a repair effect. The preceding-window shortcut does not infer a repair boundary. Select the actual repair boundaries and check duty/load yourself.`}</MetaText>
       <SimpleGrid
         cols={{ base: 1, sm: 2, lg: 3 }}
         style={{ alignItems: 'end' }}
@@ -372,7 +427,7 @@ function BeforeAfter({
       {(from || to) && !valid && (
         <Text
           size='sm'
-          c='red'
+          className={monitoring.error}
         >{t`Choose an increasing window no longer than 24 h.`}</Text>
       )}
       <HistoryComparison
@@ -444,10 +499,7 @@ function MachineComparison({
     candidates.find((item) => String(item.pk) === candidate);
   return (
     <Stack gap='sm'>
-      <Text
-        size='sm'
-        className={monitoring.meta}
-      >{t`Candidates come from your permitted machine list, with the same recorded asset type. This does not establish equivalent duty or load. No operational ranking is made. Both machines use the same absolute display-time bounds. Crosshairs synchronize only when their recorded-to-display clock offsets are known and equal.`}</Text>
+      <MetaText size='sm'>{t`Candidates come from your permitted machine list, with the same recorded asset type. This does not establish equivalent duty or load. No operational ranking is made. Both machines use the same absolute display-time bounds. Crosshairs synchronize only when their recorded-to-display clock offsets are known and equal.`}</MetaText>
       <Group align='flex-end' grow>
         <TextInput
           classNames={{ input: monitoring.input }}
@@ -550,10 +602,7 @@ function MatchedMachine({
         <Text>{t`No compatible mapped engineering roles and units on this machine.`}</Text>
       )}
       {!signals.isError && matched.length > 0 && (
-        <Text
-          size='sm'
-          className={monitoring.meta}
-        >{t`Only the first 12 available role/unit matches below are compared; unmatched channels are omitted. Duty, load and configuration remain unverified.`}</Text>
+        <MetaText size='sm'>{t`Only the first 12 available role/unit matches below are compared; unmatched channels are omitted. Duty, load and configuration remain unverified.`}</MetaText>
       )}
       {!signals.isError && matched.length > 0 && (
         <HistoryComparison

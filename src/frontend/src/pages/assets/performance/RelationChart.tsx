@@ -8,10 +8,16 @@ import {
   useComputedColorScheme
 } from '@mantine/core';
 import { useMemo } from 'react';
-import monitoring from '../monitoring.module.css';
+import { MetaText } from '../health/common';
 
-import { formatInstant, formatTick, formatValue, niceTicks } from './format';
-import { type RelationPoint, axisDomain } from './series';
+import {
+  formatInstant,
+  formatTick,
+  formatValue,
+  niceTicks,
+  unitLabel
+} from './format';
+import type { RelationPoint } from './series';
 
 /** One plotted point: the pair, its instant, and the band it was drawn in. */
 interface BandPoint {
@@ -71,10 +77,16 @@ export function RelationChart({
     return { x: spread((p) => p.x), y: spread((p) => p.y) };
   }, [points]);
 
-  const yDomain = useMemo(
-    () => axisDomain(extent.y.min, extent.y.max),
-    [extent.y]
+  const yTicks = niceTicks(
+    extent.y.min === extent.y.max ? extent.y.min - 1 : extent.y.min,
+    extent.y.min === extent.y.max ? extent.y.max + 1 : extent.y.max
   );
+  const yDomain: [number, number] = [yTicks[0], yTicks.at(-1)!];
+  const xTicks = niceTicks(
+    extent.x.min === extent.x.max ? extent.x.min - 1 : extent.x.min,
+    extent.x.min === extent.x.max ? extent.x.max + 1 : extent.x.max
+  );
+  const xDomain: [number, number] = [xTicks[0], xTicks.at(-1)!];
 
   // As wide as the longest tick it will print, for the same reason the trend
   // charts measure theirs: a fixed 56px wraps every pressure tick onto two
@@ -116,8 +128,8 @@ export function RelationChart({
     // bright-to-dim, so the newest points were the hardest to see.
     const colors =
       scheme === 'dark'
-        ? ['gray.7', 'blue.6', 'blue.3']
-        : ['gray.6', 'blue.5', 'blue.9'];
+        ? ['indigo.8', 'blue.6', 'cyan.3']
+        : ['cyan.8', 'blue.7', 'indigo.9'];
     return slices.map((slice, i) => ({
       color: colors[i + (3 - slices.length)] ?? 'blue.6',
       name: t`${formatTick(slice[0].t, windowSeconds)} – ${formatTick(slice[slice.length - 1].t, windowSeconds)}`,
@@ -136,27 +148,27 @@ export function RelationChart({
         {points.length < 3 ? (
           // As tall as the chart it stands in for, so a card in a row of them
           // does not collapse, and specific about how few were paired.
-          <Text size='sm' className={monitoring.meta} py='lg' mih={height}>
+          <MetaText size='sm' py='lg' mih={height}>
             {t`Only ${points.length} paired readings in this window; too few to show a relationship.`}
-          </Text>
+          </MetaText>
         ) : (
           <>
             <ScatterChart
-              textColor='var(--aimms-monitoring-meta, var(--mantine-color-text))'
+              textColor='var(--mantine-color-text)'
               styles={{
                 axisLabel: {
-                  fill: 'var(--aimms-monitoring-meta, var(--mantine-color-text))'
+                  fill: 'var(--mantine-color-text)'
                 }
               }}
               h={height}
               data={bands}
               dataKey={{ x: 'x', y: 'y' }}
-              xAxisLabel={xUnit ? `${xLabel} (${xUnit})` : xLabel}
-              yAxisLabel={yUnit ? `${yLabel} (${yUnit})` : yLabel}
+              xAxisLabel={xUnit ? `${xLabel} (${unitLabel(xUnit)})` : xLabel}
+              yAxisLabel={yUnit ? `${yLabel} (${unitLabel(yUnit)})` : yLabel}
               labels={{ x: xLabel, y: yLabel }}
               unit={{
-                x: xUnit ? ` ${xUnit}` : '',
-                y: yUnit ? ` ${yUnit}` : ''
+                x: '',
+                y: ''
               }}
               valueFormatter={{
                 x: (value: number) =>
@@ -164,8 +176,8 @@ export function RelationChart({
                 y: (value: number) =>
                   formatValue(value, yDecimals, undefined, extent.y.range)
               }}
-              xAxisProps={{ domain: axisDomain(extent.x.min, extent.x.max) }}
-              yAxisProps={{ domain: yDomain, width: yAxisWidth }}
+              xAxisProps={{ domain: xDomain, ticks: xTicks }}
+              yAxisProps={{ domain: yDomain, ticks: yTicks, width: yAxisWidth }}
               withLegend
               // The reserved band has to cover what the legend renders, or its
               // labels are cut off by the plot below them.
@@ -191,9 +203,9 @@ export function RelationChart({
                 )
               }}
             />
-            <Text size='xs' className={monitoring.meta}>
+            <MetaText size='xs'>
               {t`Each point is one snapshot in which both were read; colour strengthens toward the present. A pattern here is an operating pattern, not a cause.`}
-            </Text>
+            </MetaText>
           </>
         )}
       </Stack>
@@ -243,13 +255,11 @@ function PointTooltip({
   );
   return (
     <Paper withBorder shadow='sm' p='xs' style={{ minWidth: 180 }}>
-      <Text size='xs' className={monitoring.meta}>
-        {formatInstant(datum.t)}
-      </Text>
+      <MetaText size='xs'>{formatInstant(datum.t)}</MetaText>
       {datum.name && (
-        <Text size='xs' className={monitoring.meta} mb={4}>
+        <MetaText size='xs' mb={4}>
           {datum.name}
-        </Text>
+        </MetaText>
       )}
       <Stack gap={2}>
         {row(xLabel, formatValue(datum.x, xDecimals, xUnit, xRange))}

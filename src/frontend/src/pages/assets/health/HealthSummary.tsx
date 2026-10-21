@@ -1,148 +1,180 @@
 import type {
+  MachineAnomaly,
   MachineHealthSummary,
   MachineSignal
 } from '@lib/types/MachineHealth';
-import { t } from '@lingui/core/macro';
-import { Alert, Group, Paper, SimpleGrid, Stack, Text } from '@mantine/core';
-import { IconAlertTriangle, IconPlugConnectedX } from '@tabler/icons-react';
+import { plural, t } from '@lingui/core/macro';
+import { Button, Group, SimpleGrid, Stack, Text } from '@mantine/core';
+import { useId } from 'react';
+import { displayInstant } from '../displayClock';
 import monitoring from '../monitoring.module.css';
-import { StatusBadge } from './StatusBadge';
-import { HealthStateBadge, ObservedAt } from './common';
-import { healthCoverage } from './healthCoverage';
+import { conditionText } from './SignalCondition';
+import { StatusBadge, statusTone } from './StatusBadge';
+import {
+  AttentionAlert,
+  FreshnessText,
+  HealthStateBadge,
+  MetaText,
+  Unit,
+  formatSignalLimits
+} from './common';
+import { headlineFacts } from './headlineFacts';
 
-/** Assessment, quality and designated coverage remain distinct facts. */
+/** Headline remains the server assessment, visibly bounded by its coverage. */
 export function HealthSummaryPanel({
   summary,
-  signals
+  signals,
+  anomalies = null,
+  onSelect
 }: Readonly<{
   summary: MachineHealthSummary;
   signals: MachineSignal[] | null;
+  anomalies?: MachineAnomaly[] | null;
+  onSelect?: (binding: number, trigger: HTMLElement) => void;
 }>) {
+  const id = useId();
+  const fact = headlineFacts(summary, signals, anomalies);
+  const { coverage, critical } = fact;
   const counts = summary.anomaly_counts;
-  const coverage = signals ? healthCoverage(signals) : null;
-  const newestRows = signals?.filter(
-    (signal) =>
-      signal.observed_at &&
-      summary.last_observed_at &&
-      Date.parse(signal.observed_at) === Date.parse(summary.last_observed_at)
+  const newest = signals?.find(
+    (s) => s.observed_at === summary.last_observed_at
   );
-  const critical = coverage?.criticalCoverage;
+  const signalLink = (signal: MachineSignal) => (
+    <Button
+      variant='subtle'
+      className={monitoring.link}
+      size='compact-sm'
+      px={0}
+      h='auto'
+      onClick={(event) => onSelect?.(signal.binding_id, event.currentTarget)}
+    >
+      {signal.display_name}
+    </Button>
+  );
   return (
-    <Stack gap='sm'>
-      <Paper withBorder p='sm'>
-        <SimpleGrid cols={{ base: 1, md: 2 }} spacing='md'>
-          <Stack gap='xs'>
-            <Group justify='space-between' align='flex-start'>
-              <Stack gap={4}>
-                <Text
-                  size='sm'
-                  className={monitoring.meta}
-                >{t`Condition`}</Text>
-                <HealthStateBadge state={summary.state} size='lg' />
-              </Stack>
-              <Stack gap={4}>
-                <Text
-                  size='sm'
-                  className={monitoring.meta}
-                >{t`Last observation`}</Text>
-                <ObservedAt
-                  observedAt={summary.last_observed_at}
-                  stale={newestRows?.some((signal) => signal.stale) ?? false}
-                />
-                {summary.last_observed_at && !newestRows?.length && (
-                  <Text
-                    size='sm'
-                    className={monitoring.meta}
-                  >{t`Observation freshness unavailable`}</Text>
-                )}
-              </Stack>
-            </Group>
-            <Text
-              size='sm'
-              className={monitoring.meta}
-            >{t`Backend assessment · assessment time unavailable`}</Text>
-            <Text size='sm'>
-              {summary.stale_signal_count > 0
-                ? t`${summary.signal_count} mapped, ${summary.stale_signal_count} stale`
-                : t`${summary.signal_count} mapped`}
-            </Text>
-            <Text
-              size='sm'
-              className={monitoring.meta}
-            >{t`Active anomalies on this machine`}</Text>
-            <Group gap={6}>
-              <StatusBadge color='red'>{t`Critical: ${counts?.critical ?? t`Unavailable`}`}</StatusBadge>
-              <StatusBadge color='yellow'>{t`Warning: ${counts?.warning ?? t`Unavailable`}`}</StatusBadge>
-              <StatusBadge color='blue'>{t`Info: ${counts?.info ?? t`Unavailable`}`}</StatusBadge>
-            </Group>
+    <SimpleGrid
+      cols={{ base: 1, md: 2 }}
+      spacing='sm'
+      data-testid='health-summary'
+    >
+      <Stack gap={6}>
+        <Group gap='sm' align='flex-start' style={{ maxWidth: 640 }}>
+          <HealthStateBadge
+            state={summary.state}
+            size='lg'
+            neutralNormal={fact.coverageIncomplete}
+            describedBy={id}
+          />
+          <MetaText id={id}>
+            {coverage
+              ? t`Assessed on ${coverage.evaluated} of ${coverage.mapped} signals`
+              : t`Signal coverage unavailable: signal read failed`}{' '}
+            ·{' '}
+            {critical
+              ? critical.evaluated < critical.designated
+                ? t`critical coverage incomplete: ${critical.evaluated} of ${critical.designated}`
+                : t`critical coverage complete: ${critical.evaluated} of ${critical.designated}`
+              : t`critical coverage unavailable`}
+          </MetaText>
+        </Group>
+        {fact.coverageIncomplete && (
+          <MetaText size='xs'>{t`Missing critical evidence cannot be ruled out, even when the assessment is Normal.`}</MetaText>
+        )}
+        {fact.noObservation && (
+          <Text size='sm'>
+            {plural(coverage!.mapped, {
+              one: 'No observation from # mapped signal',
+              other: 'No observation from # mapped signals'
+            })}
+          </Text>
+        )}
+        {fact.why === 'signals' && (
+          <Stack gap={2} aria-label={t`Assessment cause`}>
+            {fact.matchingSignals.map((s) => (
+              <Text size='sm' key={s.binding_id}>
+                {signalLink(s)}{' '}
+                {s.value == null ? t`Unavailable` : String(s.value)}{' '}
+                <Unit code={s.unit} /> · {conditionText(s)} (
+                {formatSignalLimits(s) ?? t`Not configured`}) · {t`observed`}{' '}
+                {displayInstant(s.observed_at) ?? t`Time unavailable`}
+              </Text>
+            ))}
           </Stack>
-          <Stack gap={4}>
-            <Text size='sm' fw={600}>{t`Observation and coverage`}</Text>
-            <Text size='sm'>
-              {coverage
-                ? t`${coverage.mapped} mapped · ${coverage.usable} usable now · ${coverage.evaluated} evaluated now`
-                : t`Signal coverage unavailable: signal read failed`}
-            </Text>
-            <Text
-              size='sm'
-              className={monitoring.meta}
-              maw='70ch'
-            >{t`Usable: current, good-quality observation. Evaluated: classified by the server against configured limits.`}</Text>
-            {critical ? (
-              <Alert
-                classNames={
-                  critical.evaluated < critical.designated
-                    ? { label: monitoring.attentionTitle }
-                    : undefined
-                }
-                color={
-                  critical.evaluated < critical.designated ? 'yellow' : 'blue'
-                }
-                maw='70ch'
-                title={
-                  critical.evaluated < critical.designated
-                    ? t`Critical coverage incomplete`
-                    : t`Designated critical coverage`
-                }
-              >
-                <Text size='sm'>{t`${critical.designated} designated · ${critical.usable} usable now · ${critical.evaluated} evaluated now`}</Text>
-                <Text size='sm'>{t`Coverage is limited to engineer-designated bindings. Unassessed or missing evidence remains unknown; coverage does not establish equipment health.`}</Text>
-              </Alert>
+        )}
+        {fact.why === 'anomaly' && (
+          <Text size='sm'>{t`From active anomaly: ${fact.anomaly!.title}`}</Text>
+        )}
+        {fact.why === 'unavailable' && (
+          <MetaText>{t`Cause not supplied by the summary`}</MetaText>
+        )}
+        <Group gap={6}>
+          {counts ? (
+            Object.values(counts).every((count) => count === 0) ? (
+              <MetaText>{t`No active anomaly records`}</MetaText>
             ) : (
-              <Alert
-                color='yellow'
-                classNames={{ label: monitoring.attentionTitle }}
-                title={t`Critical coverage unavailable`}
-                maw='70ch'
-              >
-                {t`No critical-signal designation is supplied. Critical limits do not designate critical signals; missing critical evidence cannot be ruled out.`}
-              </Alert>
+              (['critical', 'warning', 'info'] as const)
+                .filter((severity) => counts[severity] > 0)
+                .map((severity) => (
+                  <StatusBadge
+                    key={severity}
+                    tone={statusTone(severity)}
+                    color={
+                      severity === 'critical'
+                        ? 'red.9'
+                        : severity === 'warning'
+                          ? 'yellow.6'
+                          : 'blue.7'
+                    }
+                    variant='filled'
+                  >
+                    {counts[severity]} {severity}
+                  </StatusBadge>
+                ))
+            )
+          ) : (
+            <MetaText>{t`Active anomaly counts unavailable`}</MetaText>
+          )}
+        </Group>
+        <MetaText size='xs'>{t`Last observation`}</MetaText>
+        <FreshnessText
+          observedAt={summary.last_observed_at}
+          stale={newest?.stale ?? false}
+          thresholdSeconds={newest?.freshness_threshold_seconds}
+        />
+        <MetaText size='xs'>{t`Backend assessment · assessment time unavailable`}</MetaText>
+      </Stack>
+      <Stack gap={4}>
+        {critical && critical.evaluated === critical.designated ? (
+          <MetaText>{t`Critical coverage: ${critical.evaluated} of ${critical.designated} designated signals evaluated now`}</MetaText>
+        ) : (
+          <AttentionAlert
+            title={
+              critical
+                ? t`Critical coverage incomplete`
+                : t`Critical coverage unavailable`
+            }
+          >
+            {fact.criticalMissing.map(({ signal, reason }) => (
+              <Text key={signal.binding_id} size='sm'>
+                {signalLink(signal)} · {reason}
+              </Text>
+            ))}
+            {!critical && (
+              <Text size='sm'>{t`No critical-signal designation is supplied. Critical limits do not designate critical signals.`}</Text>
             )}
-          </Stack>
-        </SimpleGrid>
-      </Paper>
-      {summary.state === 'offline' && (
-        <Alert
-          color='gray'
-          icon={<IconPlugConnectedX size={16} />}
-          title={t`No current data`}
-          maw='70ch'
-        >
-          {t`Every mapped signal for this machine is older than its source's freshness budget. Treat the values below as historical, not as the machine's current state.`}
-        </Alert>
-      )}
-      {summary.degraded_data && summary.state !== 'offline' && (
-        <Alert
-          color='yellow'
-          icon={<IconAlertTriangle size={16} />}
-          classNames={{ label: monitoring.attentionTitle }}
-          title={t`Degraded data`}
-          maw='70ch'
-        >
-          {t`Some signals are stale or reported with poor quality. Confirm the readings you rely on before acting on them.`}
-        </Alert>
-      )}
-    </Stack>
+            <MetaText size='xs'>{t`Coverage is limited to engineer-designated bindings. Unassessed or missing evidence remains unknown; coverage does not establish equipment health.`}</MetaText>
+          </AttentionAlert>
+        )}
+        {summary.state === 'offline' && (
+          <MetaText>{t`Every mapped signal is older than its source's freshness budget. Values are historical, not the machine's current state.`}</MetaText>
+        )}
+        {summary.degraded_data && summary.state !== 'offline' && (
+          <AttentionAlert
+            title={t`Degraded data`}
+          >{t`Some signals are stale or reported with poor quality. Confirm the readings you rely on before acting on them.`}</AttentionAlert>
+        )}
+      </Stack>
+    </SimpleGrid>
   );
 }
 export default HealthSummaryPanel;

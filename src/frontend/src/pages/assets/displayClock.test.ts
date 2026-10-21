@@ -1,20 +1,53 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { displayClockLabel, displayInstant } from './displayClock';
-describe('monitoring display clock', () => {
-  it('uses the actual browser zone and offset', () => {
-    expect(displayClockLabel()).toContain(
-      Intl.DateTimeFormat().resolvedOptions().timeZone
-    );
-    expect(displayClockLabel()).toMatch(/UTC[+-]\d{2}:\d{2}/);
+const initial = process.env.TZ;
+afterEach(() => {
+  process.env.TZ = initial;
+  vi.restoreAllMocks();
+});
+describe('the declared browser clock', () => {
+  it.each([
+    ['Asia/Kolkata', '18 Oct 2026 14:30:00', 'UTC+05:30'],
+    ['Pacific/Honolulu', '17 Oct 2026 23:00:00', 'UTC-10:00'],
+    ['Europe/Berlin', '18 Oct 2026 11:00:00', 'UTC+02:00']
+  ])(
+    'formats %s without assuming whole-hour offsets or the UTC date',
+    (zone, expected, offset) => {
+      process.env.TZ = zone;
+      const at = Date.parse('2026-10-18T09:00:00Z');
+      expect(displayInstant(at, { offsetIfDiffers: true, pageAt: at })).toBe(
+        expected
+      );
+      expect(displayClockLabel(at)).toContain(offset);
+    }
+  );
+  it('marks a historical offset that differs across DST', () => {
+    process.env.TZ = 'Europe/Berlin';
+    const pageAt = Date.parse('2026-07-01T12:00:00Z');
+    expect(
+      displayInstant('2026-01-01T12:00:00Z', { offsetIfDiffers: true, pageAt })
+    ).toBe('1 Jan 2026 13:00:00 UTC+01:00');
+    expect(
+      displayInstant('2026-07-01T12:00:00Z', { offsetIfDiffers: true, pageAt })
+    ).toBe('1 Jul 2026 14:00:00');
   });
-  it('formats full dates on a 24 hour clock', () => {
-    expect(displayInstant('2026-10-18T09:00:00Z')).toMatch(
-      /18 Oct 2026 \d{2}:00:00/
-    );
-    expect(displayInstant(0)).not.toBeNull();
+  it('does not invent a zone', () => {
+    vi.spyOn(Intl, 'DateTimeFormat').mockReturnValue({
+      resolvedOptions: () => ({ timeZone: undefined })
+    } as unknown as Intl.DateTimeFormat);
+    expect(displayClockLabel()).toBe('zone unavailable');
   });
-  it('leaves invalid and absent instants unavailable', () => {
-    for (const value of [null, undefined, '', 'bad timestamp', Number.NaN])
+  it('rejects absent, invalid and uninitialized numeric times', () => {
+    for (const value of [
+      null,
+      undefined,
+      '',
+      'bad timestamp',
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      -1,
+      0
+    ])
       expect(displayInstant(value)).toBeNull();
   });
 });

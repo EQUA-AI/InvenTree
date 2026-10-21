@@ -1,5 +1,7 @@
+import type { MachineSignalLimits } from '@lib/types/MachineHealth';
 import { t } from '@lingui/core/macro';
 import {
+  ActionIcon,
   Box,
   Group,
   Paper,
@@ -13,8 +15,10 @@ import {
   IconArrowUpRight,
   IconMinus
 } from '@tabler/icons-react';
-import { StatusBadge as Badge } from '../health/StatusBadge';
+import { StatusBadge } from '../health/StatusBadge';
+import { MetaText } from '../health/common';
 import monitoring from '../monitoring.module.css';
+import { performanceSparkline } from './sparkline';
 
 import type {
   HealthState,
@@ -22,9 +26,14 @@ import type {
   SignalQuality
 } from '@lib/types/MachineHealth';
 
-import { HealthStateBadge } from '../health/common';
-import { formatAge, formatClockOn, formatRange, formatValue } from './format';
-import { type SeriesStats, type Trend, seriesStats, trendOf } from './series';
+import {
+  FreshnessText,
+  HealthStateBadge,
+  Unit,
+  formatSignalLimits
+} from '../health/common';
+import { formatRange, formatValue } from './format';
+import { type Trend, seriesStats, trendOf } from './series';
 
 /**
  * One tile's worth of fact. Built by the panel from a signal and its series;
@@ -49,6 +58,8 @@ export interface KpiTile {
    * for an unusable reading too, so it cannot answer this on its own.
    */
   limitsConfigured?: boolean;
+  limits?: MachineSignalLimits;
+  freshnessSeconds?: number;
   /** A derived number - a sum of bays, say: limits cannot apply to it. */
   calculated?: boolean;
   series?: SeriesEntry;
@@ -58,43 +69,21 @@ export interface KpiTile {
   missingReason?: string;
 }
 
-const SPARK_W = 96;
-const SPARK_H = 24;
-//: Half the stroke width, so the line is inside the box it is drawn in.
-const SPARK_PAD = 1;
-
-export function Sparkline({ entry }: Readonly<{ entry: SeriesEntry }>) {
-  const points = entry.samples
-    .map((s) => s.v)
-    .filter((v): v is number => v !== null && Number.isFinite(v));
-  if (points.length < 2) return null;
-  const min = Math.min(...points);
-  const max = Math.max(...points);
-  const span = max - min;
-  const step = SPARK_W / (points.length - 1);
-  // Inset by half the stroke so a peak or a dip is drawn whole: pinned to
-  // the viewBox edge, the svg's own clipping shaves it flat. A series that
-  // never moved is drawn down the middle rather than along the bottom, where
-  // a full-width rule reads as a divider between the value and its caption
-  // instead of as a flat line; the tile's "Window" caption says it is flat.
-  const path = points
-    .map((v, i) => {
-      const x = i * step;
-      const y =
-        span === 0
-          ? SPARK_H / 2
-          : SPARK_H -
-            SPARK_PAD -
-            ((v - min) / span) * (SPARK_H - 2 * SPARK_PAD);
-      return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(' ');
+export function Sparkline({
+  entry,
+  window
+}: Readonly<{
+  entry: SeriesEntry;
+  window?: { start: number; end: number; resolutionSeconds?: number };
+}>) {
+  const path = performanceSparkline(entry, window);
+  if (!path) return null;
   return (
     <Box
       component='svg'
       width='100%'
-      height={SPARK_H}
-      viewBox={`0 0 ${SPARK_W} ${SPARK_H}`}
+      height={24}
+      viewBox='0 0 96 24'
       preserveAspectRatio='none'
       role='img'
       aria-label={t`Trend over the selected window`}
@@ -103,27 +92,15 @@ export function Sparkline({ entry }: Readonly<{ entry: SeriesEntry }>) {
       <path
         d={path}
         fill='none'
-        stroke='currentColor'
+        stroke='var(--mantine-color-blue-6)'
         strokeWidth={1.5}
-        strokeLinejoin='round'
-        strokeLinecap='round'
         vectorEffect='non-scaling-stroke'
-        opacity={0.6}
       />
     </Box>
   );
 }
-
-function TrendMark({ trend }: Readonly<{ trend: Trend | null }>) {
-  if (trend === null) return null;
-  const icon =
-    trend === 'up' ? (
-      <IconArrowUpRight size={14} />
-    ) : trend === 'down' ? (
-      <IconArrowDownRight size={14} />
-    ) : (
-      <IconMinus size={14} />
-    );
+export function TrendMark({ trend }: Readonly<{ trend: Trend | null }>) {
+  if (trend == null) return null;
   const label =
     trend === 'up'
       ? t`Rising over the window`
@@ -131,39 +108,37 @@ function TrendMark({ trend }: Readonly<{ trend: Trend | null }>) {
         ? t`Falling over the window`
         : t`Steady over the window`;
   return (
-    <Tooltip label={label}>
-      <Text
-        component='span'
-        className={monitoring.meta}
-        style={{ display: 'inline-flex' }}
+    <Tooltip label={label} events={{ hover: true, focus: true, touch: false }}>
+      <ActionIcon
+        variant='transparent'
+        className={monitoring.link}
+        aria-label={label}
       >
-        {icon}
-      </Text>
+        <span role='img' aria-label={label}>
+          {trend === 'up' ? (
+            <IconArrowUpRight size={14} />
+          ) : trend === 'down' ? (
+            <IconArrowDownRight size={14} />
+          ) : (
+            <IconMinus size={14} />
+          )}
+        </span>
+      </ActionIcon>
     </Tooltip>
   );
 }
-
-function Range({
-  stats,
-  decimals,
-  unit
-}: Readonly<{ stats: SeriesStats | null; decimals: number; unit: string }>) {
-  if (!stats) return null;
-  return (
-    <Text size='xs' className={monitoring.meta}>
-      {t`Window`} {formatRange(stats.min, stats.max, decimals, unit)}
-    </Text>
-  );
-}
-
 export function KpiTileCard({
   tile,
-  now
-}: Readonly<{ tile: KpiTile; now: number }>) {
+  now,
+  window
+}: Readonly<{
+  tile: KpiTile;
+  now: number;
+  window?: { start: number; end: number; resolutionSeconds?: number };
+}>) {
   const stats = tile.series ? seriesStats(tile.series) : null;
-  const trend = tile.series ? trendOf(tile.series) : null;
-  const missing = tile.value === null && !tile.valueText;
-  const valueText =
+  const missing = tile.value == null && !tile.valueText;
+  const shown =
     tile.valueText ??
     formatValue(
       tile.value,
@@ -171,115 +146,113 @@ export function KpiTileCard({
       undefined,
       stats ? stats.max - stats.min : null
     );
-
+  const configuredText = tile.limits
+    ? formatSignalLimits({ limits: tile.limits, unit: tile.unit })
+    : null;
   return (
-    <Paper withBorder p='sm' data-kpi={tile.key}>
-      <Stack gap={4}>
-        {/* The label alone, always one line. A badge beside it wrapped the
-            header on the one tile that carried a verdict, which dropped that
-            tile's value a line below its neighbours' - so the badges sit on
-            the age row at the foot instead, where the Stale badge also lands
-            beside the yellow age it explains. */}
-        <Text size='xs' className={monitoring.meta} fw={500}>
-          {tile.label}
-        </Text>
-        {missing ? (
-          <Text size='sm' className={monitoring.meta} py={6}>
-            {tile.missingReason || t`Unavailable · no usable observation`}
-          </Text>
-        ) : (
-          <Stack gap={2}>
-            {/* Value, unit and trend may wrap; a long reading such as
-                -0.00058 mH2O must never push its unit out of the tile. */}
-            <Group gap={6} align='baseline' wrap='wrap' style={{ rowGap: 0 }}>
-              <Text fz={valueText.length > 7 ? 20 : 24} fw={600} lh={1.1}>
-                {valueText}
-              </Text>
-              <Group gap={4} align='center' wrap='nowrap'>
-                {!tile.valueText && tile.unit && (
-                  <Text size='sm' className={monitoring.meta}>
-                    {tile.unit}
-                  </Text>
+    <Paper withBorder p='sm' data-kpi={tile.key} h='100%'>
+      <Stack gap={6} h='100%' justify='space-between'>
+        <Stack gap={4}>
+          <MetaText size='xs' fw={500}>
+            {tile.label}
+          </MetaText>
+          {missing ? (
+            <MetaText>
+              {tile.missingReason || t`Unavailable · no usable observation`}
+            </MetaText>
+          ) : (
+            <Stack gap={2}>
+              <Group gap={4} align='baseline'>
+                <Text
+                  data-kpi-value
+                  fz={shown.length > 7 ? 20 : 24}
+                  fw={tile.stale ? 400 : 600}
+                  lh={1.1}
+                  className={tile.stale ? monitoring.meta : undefined}
+                  style={{ fontVariantNumeric: 'tabular-nums' }}
+                >
+                  {tile.stale ? t`Last known ` : ''}
+                  {shown}
+                </Text>
+                {!tile.valueText && (
+                  <MetaText component='span' size='sm'>
+                    <Unit code={tile.unit} />
+                  </MetaText>
                 )}
-                <TrendMark trend={trend} />
+                {!tile.stale && (
+                  <TrendMark
+                    trend={tile.series ? trendOf(tile.series) : null}
+                  />
+                )}
               </Group>
-            </Group>
-            {tile.series && <Sparkline entry={tile.series} />}
-          </Stack>
-        )}
-        {tile.caption && (
-          <Text size='xs' className={monitoring.meta}>
-            {tile.caption}
-          </Text>
-        )}
-        {/* A tile whose latest value is unusable still has a window and a
-            reading age; dropping both left it saying only "Unavailable". */}
-        {(!missing || stats !== null) && (
-          <Range stats={stats} decimals={tile.decimals} unit={tile.unit} />
-        )}
-        {(!missing || tile.observedAt !== null) && (
-          <Group gap={6} wrap='wrap' align='center'>
-            <Tooltip
-              label={t`Observed ${formatClockOn(tile.observedAt, now)}`}
-              disabled={tile.observedAt === null}
-            >
-              <Text
-                size='xs'
-                c={
-                  tile.stale
-                    ? 'var(--mantine-color-text)'
-                    : 'var(--aimms-monitoring-meta, var(--mantine-color-text))'
-                }
-              >
-                {tile.observedAt === null
-                  ? t`No reading`
-                  : formatAge(tile.observedAt, now)}
-                {/* Only where a limit could exist and none does: an unusable
-                    reading has limits all the same, and a calculated total
-                    cannot have any. */}
-                {!tile.limitsConfigured && !tile.calculated && !tile.valueText
-                  ? ` · ${t`no limit configured`}`
-                  : ''}
-              </Text>
-            </Tooltip>
-            {tile.state !== 'unconfigured' && !missing && !tile.stale && (
-              <Box style={{ flexShrink: 0 }}>
-                <HealthStateBadge state={tile.state} size='xs' />
-              </Box>
-            )}
-            {tile.quality && tile.quality !== 'good' && !missing && (
-              <Badge size='xs' color='gray' variant='light'>
-                {tile.quality === 'bad' ? t`Bad quality` : t`Uncertain quality`}
-              </Badge>
-            )}
-            {tile.stale && !missing && (
-              <Badge size='xs' color='gray' variant='light'>
-                {t`Stale`}
-              </Badge>
-            )}
-          </Group>
-        )}
+              {tile.series && <Sparkline entry={tile.series} window={window} />}
+            </Stack>
+          )}
+          {tile.caption && <MetaText size='xs'>{tile.caption}</MetaText>}
+        </Stack>
+        <Stack gap={4} data-kpi-footer>
+          {stats && (
+            <MetaText size='xs'>
+              {t`Window`}{' '}
+              {formatRange(stats.min, stats.max, tile.decimals, tile.unit)}
+            </MetaText>
+          )}
+          {configuredText ? (
+            <MetaText size='xs'>
+              {configuredText} · {t`on signal mapping`}
+            </MetaText>
+          ) : (
+            !tile.calculated &&
+            !tile.valueText && (
+              <MetaText size='xs'>
+                {tile.limitsConfigured
+                  ? t`Limits apply to other family channels; see their signal mappings.`
+                  : t`no limit configured`}
+              </MetaText>
+            )
+          )}
+          {(!missing || tile.observedAt != null) && (
+            <FreshnessText
+              observedAt={tile.observedAt}
+              stale={tile.stale}
+              thresholdSeconds={tile.freshnessSeconds}
+              now={now}
+            />
+          )}
+          {!tile.stale && !missing && tile.state !== 'unconfigured' && (
+            <HealthStateBadge state={tile.state} size='sm' />
+          )}
+          {!missing && tile.quality && tile.quality !== 'good' && (
+            <StatusBadge tone='neutral' color='gray'>
+              {tile.quality === 'bad' ? t`Bad quality` : t`Uncertain quality`}
+            </StatusBadge>
+          )}
+        </Stack>
       </Stack>
     </Paper>
   );
 }
-
-/** Level 1 of the page: what is happening now. */
 export function KpiStrip({
   tiles,
-  now
-}: Readonly<{ tiles: KpiTile[]; now: number }>) {
-  if (tiles.length === 0) return null;
+  now,
+  window
+}: Readonly<{
+  tiles: KpiTile[];
+  now: number;
+  window?: { start: number; end: number; resolutionSeconds?: number };
+}>) {
+  if (!tiles.length) return null;
   return (
     <SimpleGrid
-      cols={{ base: 2, sm: 3, md: 4, xl: Math.min(8, tiles.length) }}
+      type='container'
+      cols={{ base: 2, '560px': 3, '760px': 4, '1140px': 8 }}
       spacing='sm'
+      data-testid='kpi-strip'
     >
       {tiles.map((tile) => (
-        <KpiTileCard key={tile.key} tile={tile} now={now} />
+        <KpiTileCard key={tile.key} tile={tile} now={now} window={window} />
       ))}
     </SimpleGrid>
   );
 }
-
 export default KpiStrip;

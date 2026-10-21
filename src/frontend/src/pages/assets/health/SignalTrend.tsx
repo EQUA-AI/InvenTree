@@ -1,15 +1,10 @@
 import { t } from '@lingui/core/macro';
-import {
-  Box,
-  Group,
-  Loader,
-  Text,
-  Tooltip,
-  UnstyledButton
-} from '@mantine/core';
+import { Box, Group, Loader, Tooltip, UnstyledButton } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import monitoring from '../monitoring.module.css';
+import { monitoringTerms } from '../monitoringTerms';
+import { MetaText } from './common';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
@@ -168,7 +163,7 @@ export function SignalTrendSparkline({
       trend.reason === 'SOURCE_UNAVAILABLE' || trend.reason === 'SOURCE_TIMEOUT'
         ? t`Read failed`
         : trend.reason === 'NO_CONNECTOR'
-          ? t`No trend`
+          ? t`History unavailable`
           : trend.reason === 'HISTORY_UNSUPPORTED'
             ? t`No history`
             : t`History unavailable`;
@@ -185,7 +180,7 @@ export function SignalTrendSparkline({
   if (prepared.measured === 0 && prepared.undated === 0) {
     return (
       <TrendStatus
-        label={t`No samples`}
+        label={monitoringTerms.noSamples()}
         detail={t`${trend.source_name} answered for this window but held no readings for this signal.`}
       />
     );
@@ -210,6 +205,7 @@ export function SignalTrendSparkline({
 
   return (
     <Tooltip
+      events={{ hover: true, focus: true, touch: false }}
       label={
         breaks > 0
           ? t`${prepared.measured} samples from ${trend.source_name}. The line breaks where the source was silent or a reading could not be drawn.`
@@ -218,7 +214,7 @@ export function SignalTrendSparkline({
       multiline={breaks > 0}
       w={breaks > 0 ? 260 : undefined}
     >
-      <Group gap={4} wrap='nowrap'>
+      <Group gap={4} wrap='nowrap' tabIndex={0}>
         <Box
           component='svg'
           width={WIDTH}
@@ -230,18 +226,14 @@ export function SignalTrendSparkline({
           <path
             d={path}
             fill='none'
-            stroke='currentColor'
+            stroke='var(--mantine-color-blue-6)'
             strokeWidth={1.5}
             strokeLinejoin='round'
             strokeLinecap='round'
             opacity={0.75}
           />
         </Box>
-        {trend.truncated && (
-          <Text size='xs' className={monitoring.meta}>
-            {t`(trimmed)`}
-          </Text>
-        )}
+        {trend.truncated && <MetaText size='xs'>{t`(trimmed)`}</MetaText>}
       </Group>
     </Tooltip>
   );

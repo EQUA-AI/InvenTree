@@ -68,7 +68,7 @@ for (const scheme of ['light', 'dark'] as const) {
       expect(graph).toMatchObject({
         width: '120',
         height: '28',
-        stroke: 'currentColor',
+        stroke: 'var(--mantine-color-blue-6)',
         strokeWidth: '1.5',
         opacity: '0.75'
       });

@@ -1,25 +1,35 @@
 import type { MachineAnomaly } from '@lib/types/MachineHealth';
 import { t } from '@lingui/core/macro';
-import { Text } from '@mantine/core';
+import { Stack } from '@mantine/core';
+import { IconClockShare } from '@tabler/icons-react';
+import { displayInstant } from '../displayClock';
 import { shiftSpan } from '../faults/occurrenceLabels';
+import { StatusBadge } from './StatusBadge';
+import { MetaText } from './common';
+import { shiftFacts } from './shiftFacts';
 
-/** Observation display offsets are separate from timezone formatting and human action times. */
 export function AnomalyTimeShift({
-  anomaly
-}: Readonly<{ anomaly: MachineAnomaly }>) {
+  anomaly,
+  time
+}: Readonly<{ anomaly: MachineAnomaly; time?: string | null }>) {
   if (!anomaly.display_shifted) return null;
-  const seconds = anomaly.display_shift_seconds;
-  const span =
-    typeof seconds === 'number' && Number.isFinite(seconds)
-      ? shiftSpan(Math.abs(seconds))
-      : null;
+  const fact = shiftFacts(anomaly.display_shift_seconds, time);
+  const span = fact.seconds == null ? null : shiftSpan(fact.seconds);
   return (
-    <Text size='sm' data-testid='anomaly-time-shift'>
-      {span
-        ? (seconds ?? 0) < 0
-          ? t`Shown ${span} earlier than recorded`
-          : t`Shown ${span} later than recorded`
-        : t`Display shift reported; amount unavailable`}
-    </Text>
+    <Stack gap={2} data-testid='anomaly-time-shift'>
+      <StatusBadge
+        tone='neutral'
+        color='gray'
+        variant='outline'
+        leftSection={<IconClockShare size={14} />}
+      >
+        {span
+          ? t`Shifted ${fact.sign}${span}`
+          : t`Display shift reported; amount unavailable`}
+      </StatusBadge>
+      <MetaText size='xs'>
+        {t`Recorded`}: {displayInstant(fact.recorded) ?? t`Time unavailable`}
+      </MetaText>
+    </Stack>
   );
 }

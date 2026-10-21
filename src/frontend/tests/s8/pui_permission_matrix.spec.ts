@@ -567,11 +567,12 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(
       page.getByRole('heading', { name: 'Signals', exact: true })
     ).toBeVisible();
-    await noWriteControls(
-      page,
-      /^(Analyze|Acknowledge|Dismiss|Create repair|Start repair)\b/,
-      4
-    );
+    await expect(page.getByText(/^View only:/)).toBeVisible();
+    await expect(
+      page.getByRole('button', {
+        name: /^(Analyze|Acknowledge|Dismiss|Create repair|Start repair)\b/
+      })
+    ).toHaveCount(0);
     await expectNoPageOverflow(page);
     await capturePanel(page, info.outputPath(`viewer-health-${scheme}.png`));
     expect(writes).toEqual([]);
@@ -849,11 +850,11 @@ for (const status of [403, 404]) {
     await expect(
       page.getByText('No active anomalies.', { exact: true })
     ).toHaveCount(0);
-    await noWriteControls(
-      page,
-      /^(Analyze|Acknowledge|Dismiss|Create repair|Start repair)\b/,
-      1
-    );
+    await expect(
+      page.getByRole('button', {
+        name: /^(Analyze|Acknowledge|Dismiss|Create repair|Start repair)\b/
+      })
+    ).toHaveCount(0);
     await capturePanel(page, info.outputPath(`health-refused-${status}.png`));
     expect(writes).toEqual([]);
   });
@@ -880,11 +881,11 @@ for (const status of [403, 404]) {
     await expect(
       page.getByText('No active anomalies.', { exact: true })
     ).toHaveCount(0);
-    await noWriteControls(
-      page,
-      /^(Analyze|Acknowledge|Dismiss|Create repair|Start repair)\b/,
-      1
-    );
+    await expect(
+      page.getByRole('button', {
+        name: /^(Analyze|Acknowledge|Dismiss|Create repair|Start repair)\b/
+      })
+    ).toHaveCount(0);
     await expectNoPageOverflow(page);
     await capturePanel(
       page,

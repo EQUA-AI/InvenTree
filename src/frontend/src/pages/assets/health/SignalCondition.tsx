@@ -1,9 +1,9 @@
 import type { MachineAnomaly, MachineSignal } from '@lib/types/MachineHealth';
 import { plural, t } from '@lingui/core/macro';
-import { Anchor, Stack, Text } from '@mantine/core';
+import { Stack, Text } from '@mantine/core';
 import { Link } from 'react-router-dom';
 import { displayInstant } from '../displayClock';
-import monitoring from '../monitoring.module.css';
+import { MetaText, MonitoringLink } from './common';
 import { unassociatedAnomalyText } from './common';
 import { anomaliesForSignal } from './signalContext';
 
@@ -59,24 +59,20 @@ export function SignalAnomalyContext({
       {cited.map((anomaly) => (
         <Stack key={anomaly.pk} gap={0}>
           <Text size='sm'>{anomaly.title}</Text>
-          <Text size='xs' className={monitoring.meta}>
+          <MetaText size='xs'>
             {anomaly.first_observed_at
               ? (displayInstant(anomaly.first_observed_at) ??
                 t`Time unavailable`)
               : t`Occurrence time not recorded`}
-          </Text>
+          </MetaText>
           {anomaly.work_order ? (
-            <Anchor
-              className={monitoring.link}
+            <MonitoringLink
               component={Link}
               size='sm'
               to={`/maintenance/work-orders/${anomaly.work_order}/`}
-            >{t`Open owning work ${anomaly.work_order}`}</Anchor>
+            >{t`Open owning work ${anomaly.work_order}`}</MonitoringLink>
           ) : (
-            <Text
-              size='xs'
-              className={monitoring.meta}
-            >{t`No owning work recorded`}</Text>
+            <MetaText size='xs'>{t`No owning work recorded`}</MetaText>
           )}
         </Stack>
       ))}

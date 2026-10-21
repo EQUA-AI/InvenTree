@@ -44,7 +44,7 @@ for (const scheme of ['light', 'dark'] as const) {
       trendCard(page).getByRole('combobox', { name: 'Parameter' })
     ).toHaveValue('Motor DE vibration (raw)');
     await expect(evidence).toContainText('Draft inference');
-    await expect(evidence).toContainText('No unit recorded');
+    await expect(evidence).toContainText('unit not recorded');
     await expect(evidence).toContainText('Not configured');
     await expect(evidence).toContainText(
       'No snapshot of this signal in the latest 50'
@@ -119,14 +119,14 @@ for (const scheme of ['light', 'dark'] as const) {
     await signalTable(page)
       .getByRole('row')
       .filter({ hasText: 'Bypass flow' })
-      .getByRole('cell', { name: '0 m3/h', exact: true })
+      .getByRole('cell', { name: '0 m³/h', exact: true })
       .click();
     await expect(
       page.getByRole('heading', { name: 'Signal evidence: Bypass flow' })
     ).toBeFocused();
     await expect(
       trendCard(page).getByRole('combobox', { name: 'Parameter' })
-    ).toHaveValue('Bypass flow (m3/h)');
+    ).toHaveValue('Bypass flow (m³/h)');
     await expect(
       trendCard(page).getByRole('combobox', { name: 'Range' })
     ).toHaveValue('15 minutes');

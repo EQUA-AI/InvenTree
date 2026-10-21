@@ -21,6 +21,8 @@ import { useApi } from '../../../contexts/ApiContext';
 import { snapshotReasonLabel } from '../faults/occurrenceLabels';
 import monitoring from '../monitoring.module.css';
 import { fullInstant } from './SignalEvidence';
+import { Unit } from './common';
+import { MetaText } from './common';
 import { qualityLabel } from './common';
 
 /** Historical citations are read separately and never replace current state. */
@@ -81,9 +83,7 @@ export function RetainedHealthEvidence({
       <Stack gap='sm'>
         <Group justify='space-between'>
           <Text size='sm' fw={600}>
-            {snapshotId
-              ? t`Retained incident evidence`
-              : t`Current observations`}
+            {snapshotId ? t`Retained incident evidence` : t`Retained evidence`}
           </Text>
           <Button
             className={monitoring.link}
@@ -98,10 +98,7 @@ export function RetainedHealthEvidence({
               : t`Browse retained evidence`}
           </Button>
         </Group>
-        <Text
-          size='sm'
-          className={monitoring.meta}
-        >{t`Current readings and condition remain above. Retained snapshots preserve the original fault-time values and clock; reconnecting a source does not replace them.`}</Text>
+        <MetaText size='sm'>{t`Current readings and condition remain above. Retained snapshots preserve the original fault-time values and clock; reconnecting a source does not replace them.`}</MetaText>
         {listed && (
           <Stack gap='xs'>
             {list.isLoading && <Loader size='xs' />}
@@ -109,10 +106,7 @@ export function RetainedHealthEvidence({
               <Text size='sm'>{t`Retained evidence could not be read; absence is not established.`}</Text>
             )}
             {list.isSuccess && (
-              <Text
-                size='xs'
-                className={monitoring.meta}
-              >{t`Latest ${list.data.length} machine snapshots (maximum 50); older citations remain accessible by their exact links.`}</Text>
+              <MetaText size='xs'>{t`Latest ${list.data.length} machine snapshots (maximum 50); older citations remain accessible by their exact links.`}</MetaText>
             )}
             {list.data?.map((row) => (
               <Button
@@ -172,11 +166,17 @@ export function RetainedHealthEvidence({
                   size='xs'
                   style={{ overflowWrap: 'anywhere' }}
                 >{t`Snapshot ${snapshot.id} · hash ${snapshot.content_hash}`}</Text>
-                <Text
-                  size='xs'
-                  className={monitoring.meta}
-                >{t`Only captured observations are shown. A snapshot does not reconstruct unrecorded history.`}</Text>
-                <Table.ScrollContainer minWidth={450}>
+                <MetaText size='xs'>{t`Only captured observations are shown. A snapshot does not reconstruct unrecorded history.`}</MetaText>
+                <Table.ScrollContainer
+                  minWidth={450}
+                  scrollAreaProps={{
+                    viewportProps: {
+                      tabIndex: 0,
+                      role: 'region',
+                      'aria-label': t`Retained observations; scroll for all columns`
+                    }
+                  }}
+                >
                   <Table aria-label={t`Retained observations`}>
                     <Table.Thead>
                       <Table.Tr>
@@ -196,7 +196,7 @@ export function RetainedHealthEvidence({
                               : typeof sample.value === 'object'
                                 ? JSON.stringify(sample.value)
                                 : String(sample.value)}{' '}
-                            {snapshot.unit}
+                            <Unit code={snapshot.unit} />
                           </Table.Td>
                         </Table.Tr>
                       ))}

@@ -1,34 +1,67 @@
 import { t } from '@lingui/core/macro';
 import { Badge, type BadgeProps } from '@mantine/core';
 import {
+  IconAlertTriangle,
   IconBellCheck,
   IconBellOff,
   IconBellRinging,
+  IconBroadcast,
+  IconCircleCheck,
+  IconClockExclamation,
   IconHistory,
-  IconInfoCircle
+  IconInfoCircle,
+  IconUrgent
 } from '@tabler/icons-react';
 
-/** Shared monitoring badge: text contrast does not depend on the severity hue. */
+export type StatusTone =
+  | 'critical'
+  | 'warning'
+  | 'info'
+  | 'normal'
+  | 'neutral'
+  | 'stale'
+  | 'live';
+const icons = {
+  critical: IconUrgent,
+  warning: IconAlertTriangle,
+  info: IconInfoCircle,
+  normal: IconCircleCheck,
+  stale: IconClockExclamation,
+  live: IconBroadcast
+};
+export function statusTone(state: string): StatusTone {
+  return ['critical', 'warning', 'info', 'normal'].includes(state)
+    ? (state as StatusTone)
+    : state === 'offline'
+      ? 'stale'
+      : 'neutral';
+}
+export type StatusBadgeProps = Omit<BadgeProps, 'variant'> & {
+  tone: StatusTone;
+  variant?: 'filled' | 'outline';
+};
+/** Semantic status only; statistics and provenance use the neutral tone. */
 export function StatusBadge({
+  tone,
   children,
-  leftSection,
-  color = 'gray',
   variant = 'outline',
+  color = 'gray',
+  leftSection,
   ...props
-}: BadgeProps) {
+}: StatusBadgeProps) {
+  const Icon = tone === 'neutral' ? null : icons[tone];
+  const resolved =
+    color === 'red' && variant === 'filled'
+      ? 'red.9'
+      : color === 'yellow' && variant === 'filled'
+        ? 'yellow.6'
+        : color;
   return (
     <Badge
-      {...props}
-      variant={variant === 'filled' ? 'filled' : 'outline'}
+      variant={variant}
       autoContrast
-      color={variant === 'filled' ? `${color}.9` : color}
-      c={
-        variant === 'filled'
-          ? color === 'green'
-            ? 'black'
-            : undefined
-          : 'var(--mantine-color-text)'
-      }
+      color={resolved}
+      c={variant === 'outline' ? 'var(--mantine-color-text)' : undefined}
       tt='none'
       h='auto'
       mih={24}
@@ -38,7 +71,9 @@ export function StatusBadge({
         root: { flexShrink: 0 },
         label: { whiteSpace: 'normal', overflowWrap: 'anywhere' }
       }}
-      leftSection={leftSection ?? <IconInfoCircle size={14} />}
+      leftSection={leftSection ?? (Icon ? <Icon size={14} /> : undefined)}
+      data-tone={tone}
+      {...props}
     >
       {children}
     </Badge>

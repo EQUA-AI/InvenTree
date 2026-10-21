@@ -118,22 +118,22 @@ test('a sensor family in two units gets a card per unit, and the hottest-sensor 
     });
     const section = page.locator('[data-section="Motor winding temperature"]');
     await expect(
-      section.getByText('Stator winding temperature (degC)', { exact: true })
+      section.getByText('Stator winding temperature (°C)', { exact: true })
     ).toBeVisible();
     await expect(
-      section.getByText('Stator winding temperature (degF)', { exact: true })
+      section.getByText('Stator winding temperature (°F)', { exact: true })
     ).toBeVisible();
     await expect(
       section
         .getByText(
-          "This family reports in degC, degF; each unit has its own card, so no reading is compared on another's scale."
+          "This family reports in °C, °F; each unit has its own card, so no reading is compared on another's scale."
         )
         .first()
     ).toBeVisible();
     const tile = page.locator('[data-kpi="winding"]');
     await expect(tile).toContainText('84');
     await expect(tile).toContainText('Highest of 3: Winding 3');
-    await expect(tile).toContainText('1 in degF not compared');
+    await expect(tile).toContainText('1 in °F not compared');
     await expect(tile).not.toContainText('190');
     await section.screenshot({
       path: testInfo.outputPath(`winding-split-${scheme}.png`),
@@ -156,7 +156,7 @@ test('a temperature rise is calculated only where both sensors share a unit', as
   });
   const rise = card(page, 'Cooling water rise (outlet − inlet)');
   await expect(rise).toContainText(
-    'Not calculated, because the paired units differ: Cooling water outlet 1 (degF) − Cooling water inlet 1 (degC).'
+    'Not calculated, because the paired units differ: Cooling water outlet 1 (°F) − Cooling water inlet 1 (°C).'
   );
   await expect(rise).toContainText(/ΔT 2: /);
   await expect(rise).not.toContainText(/ΔT 1: /);

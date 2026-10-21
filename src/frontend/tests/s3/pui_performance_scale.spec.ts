@@ -67,14 +67,30 @@ for (const scheme of ['light', 'dark'] as const)
             name: new RegExp(`Extra instrument ${count - 41} ·`)
           })
           .locator('.mantine-Button-label');
+        await test.info().attach('result-label-geometry', {
+          body: JSON.stringify(
+            await result.evaluate((el) => ({
+              scrollHeight: el.scrollHeight,
+              clientHeight: el.clientHeight,
+              lineHeight: getComputedStyle(el).lineHeight,
+              textBoxTrim:
+                getComputedStyle(el).getPropertyValue('text-box-trim'),
+              bounds: el.getBoundingClientRect().toJSON()
+            }))
+          ),
+          contentType: 'application/json'
+        });
         expect(
           await result.evaluate((el) => el.scrollHeight <= el.clientHeight + 1)
         ).toBe(true);
       }
-      await page.getByRole('button', { name: 'Show all', exact: true }).click();
-      await expect(
-        page.getByText('Power and power factor', { exact: true })
-      ).toBeVisible();
+      await page
+        .getByRole('combobox', { name: 'Section', exact: true })
+        .click();
+      await page
+        .getByRole('option', { name: 'Full overview', exact: true })
+        .click();
+      await expect(page.getByText('Power', { exact: true })).toBeVisible();
       await page
         .getByRole('button', { name: 'Collapse Electrical', exact: true })
         .click();

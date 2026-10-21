@@ -21,11 +21,12 @@ import { useRecordedCommand } from '../../../components/records/useRecordedComma
 import { useLocalState } from '../../../states/LocalState';
 import { useUserState } from '../../../states/UserState';
 import { displayInstant } from '../displayClock';
-import { StatusBadge as Badge } from '../health/StatusBadge';
-const recordedTime = (value: string) =>
-  displayInstant(value) ?? t`Time unavailable`;
+import { StatusBadge } from '../health/StatusBadge';
+import { MetaText } from '../health/common';
 import monitoring from '../monitoring.module.css';
 import type { DisplayView } from './comparisonViews';
+const recordedTime = (value: string) =>
+  displayInstant(value) ?? t`Time unavailable`;
 
 type SharedView = {
   id: number;
@@ -82,10 +83,7 @@ export function SharedDisplayViews({
       style={{ minWidth: 0, overflowWrap: 'anywhere' }}
     >
       <Text fw={600} size='sm'>{t`Shared display views`}</Text>
-      <Text
-        size='sm'
-        className={monitoring.meta}
-      >{t`Visible to everyone who can read this machine. The creator owns each view; engineers curate the default set. Display choices do not save historical evidence or grant access.`}</Text>
+      <MetaText size='sm'>{t`Visible to everyone who can read this machine. The creator owns each view; engineers curate the default set. Display choices do not save historical evidence or grant access.`}</MetaText>
       {!read && (
         <Button
           variant='default'
@@ -111,17 +109,20 @@ export function SharedDisplayViews({
                     {view.name}
                   </Text>
                   {view.is_default && (
-                    <Badge variant='light'>{t`Engineer default`}</Badge>
+                    <StatusBadge
+                      tone='neutral'
+                      variant='outline'
+                    >{t`Engineer default`}</StatusBadge>
                   )}
                 </Group>
-                <Text size='sm' className={monitoring.meta}>
+                <MetaText size='sm'>
                   {t`Created by`}: {view.owner ?? t`Not recorded`} ·{' '}
                   {recordedTime(view.recorded_at)}
-                </Text>
-                <Text size='sm' className={monitoring.meta}>
+                </MetaText>
+                <MetaText size='sm'>
                   {t`Last recorded by`}: {view.updated_by ?? t`Not recorded`} ·{' '}
                   {recordedTime(view.updated_at)}
-                </Text>
+                </MetaText>
                 <SimpleGrid cols={{ base: 1, sm: 3 }}>
                   <Button
                     variant='default'
@@ -164,10 +165,7 @@ export function SharedDisplayViews({
                 {view.owner_id === user.user?.pk &&
                   view.is_default &&
                   !user.hasChangeRole(UserRoles.admin) && (
-                    <Text
-                      size='sm'
-                      className={monitoring.meta}
-                    >{t`An engineer must remove this view from defaults before deletion.`}</Text>
+                    <MetaText size='sm'>{t`An engineer must remove this view from defaults before deletion.`}</MetaText>
                   )}
               </Stack>
             </Paper>

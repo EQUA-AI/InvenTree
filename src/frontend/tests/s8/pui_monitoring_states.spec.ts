@@ -1,5 +1,4 @@
 import { expect, test } from '@playwright/test';
-import { NOW as PERFORMANCE_NOW } from '../performance/fixtures';
 import { nativeBaseline } from '../s0/guards';
 import {
   HEALTH_SIGNALS,
@@ -15,27 +14,65 @@ import {
   openPerformance,
   signal
 } from '../s3/performanceFixtures';
-import { captureMatrix } from './monitoringEvidence';
+import { contrast } from './contrast';
+import { auditAxe, captureState, drawnBoundary } from './hyperagentEvidence';
 
 nativeBaseline();
 const designation = {
   critical: true,
   version: 2,
-  reason: 'Fixture engineer review',
+  reason: 'Synthetic engineer review',
   recorded_by: 'Synthetic engineer',
   recorded_at: '2026-10-18T08:00:00Z'
 };
+const activeSummary = {
+  state: 'warning',
+  active_anomaly_count: 1,
+  anomaly_counts: { critical: 0, warning: 1, info: 0 }
+};
+const healthStates = [
+  'stale',
+  'no-data',
+  'unknown',
+  'critical-coverage-incomplete',
+  'critical-coverage-complete',
+  'signal-read-failed',
+  'anomaly-read-failed',
+  'threshold-breach',
+  'shifted-plus',
+  'shifted-minus',
+  'past-open',
+  'past-acknowledged',
+  'past-resolved',
+  'past-dismissed',
+  'viewer',
+  'editor'
+] as const;
+const perfStates = [
+  '500-channels',
+  'comparison-incompatible',
+  'shared-views',
+  'fresh-live',
+  'search-narrowed',
+  'viewer',
+  'stale',
+  'no-data',
+  'unknown-evaluation',
+  'threshold-breach',
+  'limits-included',
+  'custom-range',
+  'history-read-failed',
+  'partial-history'
+] as const;
 for (const scheme of ['light', 'dark'] as const) {
-  for (const state of [
-    'stale',
-    'no-data',
-    'unknown',
-    'critical-coverage-missing',
-    'threshold-breach',
-    'shifted-alarms'
-  ] as const) {
-    test(`Health ${state} evidence ${scheme}`, async ({ page }) => {
+  for (const state of healthStates)
+    test(`Health ${state} evidence ${scheme}`, async ({ page }, info) => {
       test.setTimeout(180_000);
+      await page.setViewportSize(
+        info.project.name.endsWith('phone')
+          ? { width: 390, height: 844 }
+          : { width: 1440, height: 900 }
+      );
       let signals: HealthSignalSpec[] = [
         {
           ...HEALTH_SIGNALS[0],
@@ -44,15 +81,18 @@ for (const scheme of ['light', 'dark'] as const) {
         }
       ];
       let summary: Record<string, unknown> = {};
+      let anomalies: ReturnType<typeof anomaly>[] = [];
+      let pastAnomalies: ReturnType<typeof anomaly>[] = [];
       if (state === 'stale') {
         signals = signals.map((s) => ({
           ...s,
           stale: true,
-          state: 'offline',
+          state: 'unknown',
           observedAt: new Date(NOW - 3600_000).toISOString()
         }));
         summary = { state: 'offline', last_observed_at: signals[0].observedAt };
-      } else if (state === 'no-data') {
+      }
+      if (state === 'no-data') {
         signals = signals.map((s) => ({
           ...s,
           value: null,
@@ -61,7 +101,8 @@ for (const scheme of ['light', 'dark'] as const) {
           trend: 'empty'
         }));
         summary = { state: 'unknown', last_observed_at: null };
-      } else if (state === 'unknown') {
+      }
+      if (state === 'unknown') {
         signals = signals.map((s) => ({
           ...s,
           state: 'unknown',
@@ -69,102 +110,246 @@ for (const scheme of ['light', 'dark'] as const) {
           criticalDesignation: undefined
         }));
         summary = { state: 'unknown' };
-      } else if (state === 'critical-coverage-missing') {
+      }
+      if (state === 'critical-coverage-incomplete')
         signals.push({
           ...signals[0],
           id: 299,
-          key: '/fixture/critical/missing',
-          name: 'Missing critical measurement',
-          value: null,
-          observedAt: null,
-          state: 'unknown',
-          trend: 'empty'
+          key: '/fixture/critical/review',
+          name: 'Critical flow mapping awaiting review',
+          criticalDesignation: {
+            ...designation,
+            review_required: true,
+            applies_current: false
+          },
+          state: 'normal'
         });
-      } else if (state === 'shifted-alarms') {
-        summary = {
-          state: 'warning',
-          active_anomaly_count: 1,
-          anomaly_counts: { critical: 0, warning: 1, info: 0 }
-        };
-      } else if (state === 'threshold-breach') {
-        signals = signals.map((s) => ({ ...s, value: 350, state: 'critical' }));
+      if (state === 'threshold-breach') {
+        signals = [
+          { ...signals[0], value: 350, state: 'critical' },
+          ...HEALTH_SIGNALS.slice(1)
+        ];
         summary = { state: 'critical' };
       }
+      if (
+        ['viewer', 'editor', 'shifted-plus', 'shifted-minus'].includes(state)
+      ) {
+        const shift =
+          state === 'shifted-plus'
+            ? 10800
+            : state === 'shifted-minus'
+              ? -10800
+              : 0;
+        anomalies = [
+          anomaly({ display_shifted: !!shift, display_shift_seconds: shift })
+        ];
+        summary = activeSummary;
+      }
+      if (state.startsWith('past-')) {
+        const status =
+          state === 'past-dismissed' ? 'suppressed' : state.slice(5);
+        pastAnomalies = [
+          anomaly({
+            pk: 45,
+            status: status as any,
+            acknowledged_at:
+              status === 'acknowledged'
+                ? new Date(NOW - 120_000).toISOString()
+                : null,
+            title: `Synthetic ${state} alarm`,
+            resolved_at: ['resolved', 'suppressed'].includes(status)
+              ? new Date(NOW - 60_000).toISOString()
+              : null
+          })
+        ];
+        if (status === 'open' || status === 'acknowledged') {
+          anomalies = [pastAnomalies[0]];
+          summary = activeSummary;
+        }
+      }
+      if (state === 'viewer' || state === 'editor')
+        await page.addInitScript(
+          (role) => {
+            const url = new URL(location.href);
+            url.searchParams.set('role', role);
+            history.replaceState(null, '', url);
+          },
+          state === 'viewer' ? 'viewer' : 'editor'
+        );
       await openHealth(page, {
         scheme,
         nativeTheme: true,
         compactChrome: true,
         signals,
         summary,
-        ...(state === 'shifted-alarms'
-          ? {
-              anomalies: [
-                anomaly({ display_shifted: true, display_shift_seconds: 93600 })
-              ],
-              pastAnomalies: [
-                anomaly({
-                  pk: 45,
-                  status: 'resolved',
-                  display_shifted: true,
-                  display_shift_seconds: 93600
-                })
-              ]
-            }
-          : {})
+        anomalies,
+        pastAnomalies,
+        signalsStatus: state === 'signal-read-failed' ? 503 : undefined,
+        anomaliesStatus: state === 'anomaly-read-failed' ? 503 : undefined
       });
-      if (state === 'shifted-alarms') {
+      const root = page.getByTestId('pump-health');
+      const heading = (name: string) =>
+        page.getByRole('heading', { name, exact: true });
+      let feature = () => heading('Current condition');
+      if (state === 'stale') {
+        await expect(signalTable(page)).toContainText('Last known');
+        await expect(signalTable(page)).toContainText('60 min old');
         await expect(
-          page.getByText('Shown 1 d 2 h later than recorded', { exact: true })
-        ).toHaveCount(2);
+          signalTable(page).getByText('Normal', { exact: true })
+        ).toHaveCount(0);
         await expect(
-          page.getByTestId('pump-health').getByText(/Times: your clock/)
-        ).toContainText('shifted anomaly times are labelled separately');
+          root.getByText('No current data', { exact: true })
+        ).toBeVisible();
       }
-      if (state === 'stale')
-        await expect(signalTable(page)).toContainText(
-          'Last known · not current'
-        );
       if (state === 'no-data')
-        await expect(signalTable(page)).toContainText(
-          'Unavailable · no observation'
-        );
-      if (state === 'unknown')
+        await expect(root).toContainText('No observation from 1 mapped signal');
+      if (state === 'critical-coverage-incomplete') {
+        feature = () =>
+          root
+            .getByRole('alert')
+            .filter({ hasText: 'Critical coverage incomplete' });
         await expect(
-          page.getByText('Critical coverage unavailable', { exact: true })
-        ).toBeVisible();
-      if (state === 'critical-coverage-missing')
+          root
+            .getByRole('alert')
+            .filter({ hasText: 'Critical coverage incomplete' })
+        ).toContainText('Critical flow mapping awaiting review');
         await expect(
-          page.getByText('2 designated · 1 usable now · 1 evaluated now', {
-            exact: true
-          })
-        ).toBeVisible();
-      if (state === 'threshold-breach') {
-        await signalTable(page)
-          .getByRole('button', {
-            name: 'Details for Discharge flow',
-            exact: true
-          })
-          .click();
-        await expect(signalTable(page)).toContainText(
-          'Critical below 400 m3/h'
-        );
-        await expect(signalTable(page)).toContainText('Fixture historian');
+          root
+            .getByRole('alert')
+            .filter({ hasText: 'Critical coverage incomplete' })
+        ).toContainText('review required');
       }
-      await captureMatrix(page, 'health', state, scheme);
+      if (state === 'critical-coverage-complete') {
+        await expect(root).toContainText(
+          'Critical coverage: 1 of 1 designated signals evaluated now'
+        );
+        await expect(root.getByRole('alert')).toHaveCount(0);
+      }
+      if (state === 'signal-read-failed') {
+        feature = () =>
+          root
+            .getByRole('alert')
+            .filter({ hasText: 'Signal readings unavailable' });
+        await expect(feature()).toBeVisible();
+      }
+      if (state === 'anomaly-read-failed') {
+        feature = () =>
+          root
+            .getByRole('alert')
+            .filter({ hasText: 'Active anomalies unavailable' });
+        await expect(feature()).toBeVisible();
+      }
+      if (state === 'threshold-breach') {
+        const row = signalTable(page).locator('tbody tr').first();
+        await expect(row).toContainText('Discharge flow');
+        await expect(root.getByLabel('Assessment cause')).toContainText(
+          'Critical below 400 cusec'
+        );
+        const badge = root
+          .getByTestId('health-summary')
+          .locator('[data-tone="critical"]')
+          .first();
+        await expect(badge).toHaveAttribute('data-variant', 'filled');
+        await expect(root.getByTestId('threshold-key')).toContainText(
+          'Critical below 400 cusec'
+        );
+      }
+      if (state.startsWith('shifted-')) {
+        feature = () => heading('Active anomalies');
+        await expect(
+          root.getByText(
+            state === 'shifted-plus' ? 'Shifted +3 h' : 'Shifted −3 h',
+            { exact: true }
+          )
+        ).toHaveCount(2);
+        await expect(root.getByText(/^Recorded:/)).toHaveCount(2);
+      }
+      if (state.startsWith('past-')) {
+        if (state === 'past-open' || state === 'past-acknowledged') {
+          await expect(root).not.toContainText('No active anomaly records');
+          await expect(root.getByText(/^From active anomaly:/)).toContainText(
+            `Synthetic ${state} alarm`
+          );
+        }
+        const scroll = root.getByRole('region', {
+          name: 'Past alarms; scroll for all columns',
+          exact: true
+        });
+        await expect(scroll).toHaveAttribute('tabindex', '0');
+        if (page.viewportSize()!.width === 390) {
+          await scroll.focus();
+          await page.keyboard.press('ArrowRight');
+          await expect
+            .poll(() => scroll.evaluate((el) => el.scrollLeft))
+            .toBeGreaterThan(0);
+        }
+        if (state === 'past-acknowledged') {
+          await expect(root).toContainText('recorder unavailable');
+          await expect(root).not.toContainText('Nobody, before it ended');
+        }
+        feature = () =>
+          root
+            .getByTestId('alarm-history')
+            .getByText(
+              state === 'past-open'
+                ? 'Active · not acknowledged'
+                : state === 'past-acknowledged'
+                  ? 'Active · acknowledged'
+                  : state === 'past-resolved'
+                    ? 'Resolved'
+                    : 'Dismissed',
+              { exact: true }
+            );
+        await expect(root).toContainText(`Synthetic ${state} alarm`);
+        // Active anomalies and past-alarm records each retain their status.
+        // This branch proves the status of the returned history record.
+        await expect(feature()).toBeVisible();
+      }
+      if (state === 'viewer' || state === 'editor') {
+        feature = () => heading('Active anomalies');
+        const actions = root.getByRole('button', {
+          name: /^(Analyze|Acknowledge|Dismiss|Create repair)\b/
+        });
+        await expect(actions).toHaveCount(state === 'viewer' ? 0 : 4);
+        if (state === 'viewer')
+          await expect(root.getByText(/^View only:/)).toBeVisible();
+        else
+          for (const action of await actions.all())
+            await expect(action).toBeEnabled();
+      }
+      await captureState(page, 'health', `health-${state}`, scheme, feature);
+      if (state === 'threshold-breach') {
+        await captureState(
+          page,
+          'health',
+          'health-threshold-breach-row',
+          scheme,
+          () => signalTable(page).locator('tbody tr').first()
+        );
+        await captureState(
+          page,
+          'health',
+          'health-threshold-breach-trend',
+          scheme,
+          () => root.getByTestId('health-trend-plot')
+        );
+      }
+      if (state === 'viewer' || state.startsWith('past-'))
+        await auditAxe(
+          page,
+          'health',
+          `health-${state}-${scheme}-${info.project.name}`
+        );
     });
-  }
-  for (const state of [
-    'stale',
-    'no-data',
-    'threshold-breach',
-    'comparison-incompatible',
-    'shared-views',
-    '500-channels',
-    'fresh-live'
-  ] as const) {
-    test(`Performance ${state} evidence ${scheme}`, async ({ page }) => {
+  for (const state of perfStates)
+    test(`Performance ${state} evidence ${scheme}`, async ({ page }, info) => {
       test.setTimeout(180_000);
-      await page.clock.setFixedTime(new Date(PERFORMANCE_NOW));
+      await page.setViewportSize(
+        info.project.name.endsWith('phone')
+          ? { width: 390, height: 844 }
+          : { width: 1440, height: 900 }
+      );
+      await page.clock.setFixedTime(new Date(NOW));
       let signals = [
         signal(
           '/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED1',
@@ -174,14 +359,44 @@ for (const scheme of ['light', 'dark'] as const) {
           { limits: { warn_max: 125, critical_max: 145 }, state: 'warning' }
         )
       ];
+      if (state === 'unknown-evaluation')
+        signals = signals.map((s) => ({ ...s, state: 'unknown' }));
       if (state === 'stale')
-        signals = signals.map((s) => ({ ...s, stale: true, state: 'unknown' }));
+        signals = signals.map((s) => ({
+          ...s,
+          stale: true,
+          state: 'unknown',
+          observedAt: new Date(NOW - 3600_000).toISOString()
+        }));
       if (state === 'no-data')
-        signals = signals.map((s) => ({ ...s, value: null, state: 'unknown' }));
-      if (state === 'comparison-incompatible' || state === 'shared-views')
+        signals = signals.map((s) => ({
+          ...s,
+          value: null,
+          state: 'unknown',
+          observedAt: null
+        }));
+      if (['comparison-incompatible', 'shared-views'].includes(state))
         signals = [
           signal('/dex/PUMP1_SPEED', 745, 'rpm', 'Motor shaft speed'),
           ...signals
+        ];
+      if (
+        [
+          'fresh-live',
+          'viewer',
+          'custom-range',
+          'search-narrowed',
+          'history-read-failed',
+          'partial-history'
+        ].includes(state)
+      )
+        signals = [...NATIVE_SIGNALS];
+      if (state === 'partial-history')
+        signals = [
+          ...NATIVE_SIGNALS,
+          ...Array.from({ length: 210 }, (_, i) =>
+            signal(`/dex/PUMP1_PARTIAL_${i}`, i, 'bar', `Partial fixture ${i}`)
+          )
         ];
       if (state === '500-channels')
         signals = [
@@ -198,96 +413,259 @@ for (const scheme of ['light', 'dark'] as const) {
               results: [
                 {
                   id: 9,
-                  name: 'Engineer investigation set',
+                  name: 'Synthetic engineer investigation',
                   config: { search: '', section: 'all', bindings: [100, 101] },
                   owner_id: 99,
                   owner: 'Synthetic creator',
                   is_default: true,
                   version: 3,
-                  recorded_at: '2026-09-26T08:00:00Z',
+                  recorded_at: '2026-10-18T08:00:00Z',
                   updated_by: 'Synthetic engineer',
-                  updated_at: '2026-09-26T09:00:00Z'
+                  updated_at: '2026-10-18T09:00:00Z'
                 }
               ]
             }
           })
       );
-      const open =
-        state === 'fresh-live' ? openPerformance : openPausedPerformance;
-      const requests = await open(page, {
-        settleInitialRead: true,
-        scheme,
-        harness: 's3',
-        nativeTheme: true,
-        compactChrome: true,
-        signals
-      });
+      const compare = ['comparison-incompatible', 'shared-views'].includes(
+        state
+      );
+      await (state === 'fresh-live' ? openPerformance : openPausedPerformance)(
+        page,
+        {
+          settleInitialRead: true,
+          scheme,
+          harness: 's3',
+          nativeTheme: true,
+          compactChrome: true,
+          signals,
+          harnessParams: {
+            role: state === 'viewer' ? 'viewer' : 'engineer',
+            ...(compare
+              ? { entry: '/machines/machine/18/performance?compare=100,101' }
+              : {})
+          },
+          failSeries:
+            state === 'history-read-failed'
+              ? () => true
+              : state === 'partial-history'
+                ? (url) => url.searchParams.has('keys')
+                : undefined
+        }
+      );
+      const root = page.getByTestId('pump-performance');
+      let feature = () => root.locator('[data-kpi="winding"]');
       if (state === 'fresh-live') {
-        await expect(
-          page.getByRole('switch', { name: 'Live', exact: true })
-        ).toBeChecked();
-        const live = page
-          .locator('.mantine-Badge-root')
-          .filter({ hasText: /^Live$/ });
-        await expect(live).toHaveCount(1);
-        await expect(live).toBeVisible();
+        feature = () => root.getByText('Live', { exact: true }).last();
+        const badge = root.locator('[data-tone="live"]');
+        await expect(badge).toHaveAttribute('data-variant', 'outline');
+        expect((await contrast(badge)).ratio).toBeGreaterThanOrEqual(4.5);
       }
-      if (state === 'no-data')
-        await expect(page.locator('[data-kpi="winding"]')).toContainText(
-          'Unavailable · no usable observation'
-        );
-      if (state === 'threshold-breach')
-        await expect(page.getByTestId('threshold-key')).toContainText(
-          'Warning above 125'
-        );
-      if (state === 'comparison-incompatible' || state === 'shared-views') {
-        await page
+      if (state === 'viewer') {
+        await expect(
+          page.getByRole('button', { name: /^(Create repair|Start repair)\b/ })
+        ).toHaveCount(0);
+        await root
           .getByRole('button', {
-            name: 'Comparisons and display views',
+            name: 'Comparisons and saved views',
             exact: true
           })
           .click();
-        for (const name of ['Shaft speed', 'Winding 1']) {
-          await page
-            .getByRole('combobox', { name: 'Comparison channels', exact: true })
-            .fill(name);
-          await page
-            .getByRole('option')
-            .filter({ hasText: name })
-            .first()
-            .click();
-          await page.keyboard.press('Escape');
-        }
-        await expect(page.locator('[data-comparison-group]')).toHaveCount(2);
         await expect(
-          page.getByText(
-            'Different engineering roles or units: selected channels use separate synchronized charts.',
-            { exact: true }
+          root.getByRole('button', { name: 'Create shared view', exact: true })
+        ).toHaveCount(0);
+      }
+      if (state === 'stale') {
+        const tile = root.locator('[data-kpi="winding"]');
+        await expect(tile).toContainText('Last known');
+        await expect(tile).toContainText('60 min old');
+        await expect(tile).toContainText('freshness budget 300 s');
+        await expect(tile.locator('[data-kpi-value]')).toHaveCSS(
+          'font-weight',
+          '400'
+        );
+        await expect(
+          tile.getByRole('img', {
+            name: /^(Rising|Falling|Steady) over the window$/
+          })
+        ).toHaveCount(0);
+        await expect(
+          tile.getByRole('button', {
+            name: /^(Rising|Falling|Steady) over the window$/
+          })
+        ).toHaveCount(0);
+        await expect(
+          tile.locator(
+            '[data-tone="normal"],[data-tone="warning"],[data-tone="critical"]'
           )
+        ).toHaveCount(0);
+      }
+      if (state === 'unknown-evaluation') {
+        feature = () => root.getByText('Limits not assessed', { exact: true });
+        await expect(
+          root.getByText('Limits not assessed', { exact: true })
         ).toBeVisible();
+        await expect(root.getByText(/within limits/)).toHaveCount(0);
+      }
+      if (state === 'no-data')
+        await expect(root.locator('[data-kpi="winding"]')).toContainText(
+          'Unavailable'
+        );
+      if (state === 'comparison-incompatible') {
+        feature = () => root.getByTestId('comparison-refusal');
+        await expect(feature()).toContainText('Winding 1 (°C, winding)');
+        await expect(feature()).toContainText('Shaft speed (rpm, speed)');
       }
       if (state === 'shared-views') {
-        await page
+        await root
           .getByRole('button', { name: 'Read shared views', exact: true })
           .click();
-        await expect(page.getByTestId('shared-display-views')).toContainText(
+        feature = () => root.getByText('Shared display views', { exact: true });
+        await expect(root.getByTestId('shared-display-views')).toContainText(
           'Synthetic engineer'
         );
-        await page
-          .getByRole('button', { name: 'Restore shared view', exact: true })
-          .click();
-        await expect(page.locator('[data-comparison-group]')).toHaveCount(2);
       }
-      if (state === '500-channels') {
-        await page
-          .getByLabel('Find a channel', { exact: true })
-          .fill('EXTRA_459');
+      if (state === '500-channels' || state === 'search-narrowed') {
+        const nav = root.getByRole('button', { name: /^Channels ·/ });
+        if (await nav.isVisible()) await nav.click();
+        if (state === '500-channels') {
+          const electrical = root.locator('[data-section="Electrical"]');
+          await expect(electrical.locator('.recharts-surface')).toHaveCount(0);
+          await root
+            .getByRole('combobox', { name: 'Section', exact: true })
+            .click();
+          await page
+            .getByRole('option', { name: 'Full overview', exact: true })
+            .click();
+          await expect(
+            electrical.locator('.recharts-surface').first()
+          ).toBeVisible();
+          await root
+            .getByRole('combobox', { name: 'Section', exact: true })
+            .click();
+          await page.getByRole('option', { name: /^Other signals/ }).click();
+          const table = root.getByRole('table', {
+            name: 'Other channels',
+            exact: true
+          });
+          await expect(table.locator('tbody tr')).toHaveCount(50);
+          const scroll = root.getByRole('region', {
+            name: 'Other channels; scroll for all columns',
+            exact: true
+          });
+          await expect(scroll).toHaveAttribute('tabindex', '0');
+          if (page.viewportSize()!.width === 390) {
+            await scroll.focus();
+            await page.keyboard.press('ArrowRight');
+            await expect
+              .poll(() => scroll.evaluate((el) => el.scrollLeft))
+              .toBeGreaterThan(0);
+          }
+          feature = () => root.getByText(/^Showing 1–50 of/);
+        } else {
+          await root
+            .getByRole('textbox', { name: 'Find a channel', exact: true })
+            .fill('SPARE_INSTRUMENT_7');
+          await expect(
+            root.getByRole('combobox', { name: 'Section', exact: true })
+          ).toHaveValue('Search results · 1');
+          feature = () => root.getByTestId('channel-navigator');
+        }
+      }
+      if (state === 'threshold-breach' || state === 'limits-included') {
+        const section = root.locator(
+          '[data-section="Motor winding temperature"]'
+        );
+        feature = () => section.getByTestId('threshold-key');
+        await expect(section.locator('[data-tone="warning"]')).toContainText(
+          '1 of 1 above warning (Warning above 125 °C)'
+        );
         await expect(
-          page.getByRole('button', { name: /Extra instrument 459 ·/ })
+          root.locator('[data-kpi="winding"] [data-tone="warning"]')
         ).toBeVisible();
-        expect(requests).toHaveLength(3);
+        if (state === 'limits-included') {
+          const include = section.getByRole('switch', {
+            name: 'Include limits in scale'
+          });
+          await expect(include).toBeVisible();
+          // Click the visible native track: the transparent input spans the
+          // whole Stack row, whose centre can be empty space.
+          const track = section.locator('.mantine-Switch-track');
+          await expect(track).toHaveCount(1);
+          await track.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+          await track.click();
+          await expect(include).toBeChecked();
+          await drawnBoundary(
+            section.locator('.recharts-reference-line line').first()
+          );
+        }
       }
-      await captureMatrix(page, 'performance', state, scheme);
+      if (state === 'custom-range') {
+        await root.getByText('Custom', { exact: true }).click();
+        for (const [label, day, confirm] of [
+          ['From', '17 October 2026', 'Confirm start'],
+          ['To', '18 October 2026', 'Confirm end']
+        ]) {
+          await root.getByRole('button', { name: label, exact: true }).click();
+          const dropdown = page.locator('[data-dates-dropdown]').last();
+          await dropdown
+            .getByRole('button', { name: day, exact: true })
+            .click();
+          await dropdown
+            .getByRole('button', { name: confirm, exact: true })
+            .click();
+          await expect(
+            root.getByRole('button', { name: label, exact: true })
+          ).not.toContainText(
+            label === 'From' ? 'Start of window' : 'End of window'
+          );
+        }
+        feature = () => root.getByText('History held from', { exact: false });
+      }
+      if (state === 'history-read-failed') {
+        feature = () =>
+          root
+            .getByRole('alert')
+            .filter({ hasText: 'History read failed' })
+            .first();
+        await expect(feature()).toBeVisible();
+      }
+      if (state === 'partial-history') {
+        feature = () =>
+          root.getByRole('alert').filter({ hasText: 'Partial history read' });
+        await expect(feature()).toBeVisible();
+      }
+      await captureState(
+        page,
+        'performance',
+        `performance-${state}`,
+        scheme,
+        feature
+      );
+      if (state === 'threshold-breach') {
+        await captureState(
+          page,
+          'performance',
+          'performance-threshold-breach-chip',
+          scheme,
+          () =>
+            root.locator(
+              '[data-section="Motor winding temperature"] [data-tone="warning"]'
+            )
+        );
+        await captureState(
+          page,
+          'performance',
+          'performance-threshold-breach-kpi',
+          scheme,
+          () => root.locator('[data-kpi="winding"]')
+        );
+      }
+      if (state === 'viewer')
+        await auditAxe(
+          page,
+          'performance',
+          `performance-${scheme}-${info.project.name}`
+        );
     });
-  }
 }

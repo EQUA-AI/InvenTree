@@ -1,25 +1,28 @@
 import { t } from '@lingui/core/macro';
 import {
-  Anchor,
   Button,
   Group,
   SegmentedControl,
   Stack,
   Table,
   Text,
-  TextInput
+  TextInput,
+  useComputedColorScheme,
+  useMantineTheme
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { displayInstant } from '../displayClock';
 import monitoring from '../monitoring.module.css';
+import { MetaText, MonitoringLink } from './common';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import type { MachineAnomaly } from '@lib/types/MachineHealth';
 import { useApi } from '../../../contexts/ApiContext';
 import { AnomalyTimeShift } from './AnomalyTimeShift';
+import { StatusBadge, alarmStateVisual } from './StatusBadge';
 import { SeverityBadge } from './common';
 
 /** How many past alarms are shown before the rest are asked for. */
@@ -65,6 +68,8 @@ function haystack(alarm: MachineAnomaly): string {
  */
 export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
   const api = useApi();
+  const theme = useMantineTheme();
+  const scheme = useComputedColorScheme('light');
   const [showAll, setShowAll] = useState(false);
   const [search, setSearch] = useState('');
   const [severity, setSeverity] = useState('all');
@@ -81,20 +86,14 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
 
   const alarms = query.data ?? [];
   if (query.isLoading) {
-    return <Text className={monitoring.meta}>{t`Loading past alarms…`}</Text>;
+    return <MetaText>{t`Loading past alarms…`}</MetaText>;
   }
   if (query.isError)
     return (
-      <Text
-        className={monitoring.meta}
-      >{t`Past alarms could not be read. Their absence is not established.`}</Text>
+      <MetaText>{t`Past alarms could not be read. Their absence is not established.`}</MetaText>
     );
   if (!alarms.length) {
-    return (
-      <Text
-        className={monitoring.meta}
-      >{t`No past alarms recorded for this machine.`}</Text>
-    );
+    return <MetaText>{t`No past alarms recorded for this machine.`}</MetaText>;
   }
   const wanted = search.trim().toLowerCase();
   const matching = alarms.filter(
@@ -120,6 +119,9 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
           onChange={(event) => setSearch(event.currentTarget.value)}
         />
         <SegmentedControl
+          color={`${theme.primaryColor}.${scheme === 'dark' ? 4 : 7}`}
+          autoContrast
+          classNames={{ label: monitoring.segment }}
           size='xs'
           aria-label={t`Severity`}
           value={severity}
@@ -130,13 +132,22 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
             { value: 'warning', label: t`Warning` }
           ]}
         />
-        <Text size='xs' className={monitoring.meta}>
+        <MetaText size='xs'>
           {count === total
             ? t`${total} alarms`
             : t`${count} of ${total} alarms`}
-        </Text>
+        </MetaText>
       </Group>
-      <Table.ScrollContainer minWidth={900}>
+      <Table.ScrollContainer
+        minWidth={900}
+        scrollAreaProps={{
+          viewportProps: {
+            tabIndex: 0,
+            role: 'region',
+            'aria-label': t`Past alarms; scroll for all columns`
+          }
+        }}
+      >
         <Table striped data-testid='alarm-history'>
           <Table.Thead>
             <Table.Tr>
@@ -145,7 +156,7 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
               <Table.Th>{t`First observed`}</Table.Th>
               <Table.Th>{t`Last observed`}</Table.Th>
               <Table.Th>{t`How it ended`}</Table.Th>
-              <Table.Th>{t`Seen by`}</Table.Th>
+              <Table.Th>{t`Acknowledgement`}</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -153,40 +164,55 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
               const dismissed = alarm.metrics?.dismissed as
                 | Dismissal
                 | undefined;
+              const visual = alarmStateVisual(alarm.status, alarm.severity);
               return (
                 <Table.Tr key={alarm.pk} data-anomaly={alarm.pk}>
                   <Table.Td>
                     <SeverityBadge severity={alarm.severity} />
                   </Table.Td>
                   <Table.Td>
+                    <StatusBadge
+                      tone='neutral'
+                      color={visual.color}
+                      variant={visual.variant}
+                      leftSection={visual.icon}
+                    >
+                      {visual.label}
+                    </StatusBadge>
                     <Text size='sm' fw={500}>
                       {alarm.title}
                     </Text>
                     {alarm.evidence_summary && (
-                      <Text size='xs' className={monitoring.meta}>
-                        {alarm.evidence_summary}
-                      </Text>
+                      <MetaText size='xs'>{alarm.evidence_summary}</MetaText>
                     )}
-                    <AnomalyTimeShift anomaly={alarm} />
                     {alarm.work_order && (
-                      <Anchor
-                        className={monitoring.link}
+                      <MonitoringLink
                         component={Link}
                         to={`/maintenance/work-orders/${alarm.work_order}/`}
                         size='xs'
                       >
                         {t`Open the repair raised for it`}
-                      </Anchor>
+                      </MonitoringLink>
                     )}
                   </Table.Td>
                   <Table.Td style={{ whiteSpace: 'nowrap' }}>
                     {when(alarm.first_observed_at)}
+                    <AnomalyTimeShift
+                      anomaly={alarm}
+                      time={alarm.first_observed_at}
+                    />
                   </Table.Td>
                   <Table.Td style={{ whiteSpace: 'nowrap' }}>
                     {when(alarm.last_observed_at)}
+                    <AnomalyTimeShift
+                      anomaly={alarm}
+                      time={alarm.last_observed_at}
+                    />
                   </Table.Td>
                   <Table.Td>
-                    <Text size='sm'>{alarm.resolution_note || '—'}</Text>
+                    <Text size='sm'>
+                      {alarm.resolution_note || t`Outcome note unavailable`}
+                    </Text>
                   </Table.Td>
                   <Table.Td>
                     {/* Who saw it, and what they wrote; an alarm nobody
@@ -196,9 +222,7 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
                         <Text size='sm'>
                           {t`Dismissed by`} {dismissed.by || t`Unknown`}
                         </Text>
-                        <Text size='xs' className={monitoring.meta}>
-                          {dismissed.note}
-                        </Text>
+                        <MetaText size='xs'>{dismissed.note}</MetaText>
                       </>
                     ) : alarm.acknowledged_by_name ? (
                       <>
@@ -206,15 +230,19 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
                           {t`Acknowledged by`} {alarm.acknowledged_by_name}
                         </Text>
                         {alarm.acknowledgement_note && (
-                          <Text size='xs' className={monitoring.meta}>
+                          <MetaText size='xs'>
                             {alarm.acknowledgement_note}
-                          </Text>
+                          </MetaText>
                         )}
                       </>
+                    ) : alarm.status === 'suppressed' ? (
+                      <MetaText>{t`Dismissal details unavailable`}</MetaText>
+                    ) : alarm.acknowledged_at ? (
+                      <MetaText>{t`Acknowledged ${when(alarm.acknowledged_at)} · recorder unavailable`}</MetaText>
+                    ) : alarm.status === 'acknowledged' ? (
+                      <MetaText>{t`Acknowledgement details unavailable`}</MetaText>
                     ) : (
-                      <Text size='sm' className={monitoring.meta}>
-                        {t`Nobody, before it ended`}
-                      </Text>
+                      <MetaText>{t`No acknowledgement recorded`}</MetaText>
                     )}
                   </Table.Td>
                 </Table.Tr>
@@ -223,12 +251,7 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
           </Table.Tbody>
         </Table>
       </Table.ScrollContainer>
-      {!count && (
-        <Text
-          className={monitoring.meta}
-          size='sm'
-        >{t`No past alarm matches.`}</Text>
-      )}
+      {!count && <MetaText size='sm'>{t`No past alarm matches.`}</MetaText>}
       {hidden > 0 && (
         <Group>
           <Button

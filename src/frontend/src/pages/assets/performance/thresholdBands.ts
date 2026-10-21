@@ -40,3 +40,16 @@ export function thresholdBands(
     return severity ? [{ from, to, severity }] : [];
   });
 }
+
+/** Boundaries inside the displayed domain are the only ones claimed as drawn. */
+export function splitLimits<T extends ThresholdBoundary>(
+  lines: readonly T[],
+  low: number,
+  high: number
+) {
+  const usable = lines.filter((line) => Number.isFinite(line.y));
+  return {
+    drawn: usable.filter((line) => line.y >= low && line.y <= high),
+    offScale: usable.filter((line) => line.y < low || line.y > high)
+  };
+}

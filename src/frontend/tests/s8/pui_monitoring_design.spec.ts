@@ -3,7 +3,7 @@ import { NOW as PERFORMANCE_NOW } from '../performance/fixtures';
 import { nativeBaseline } from '../s0/guards';
 import { openHealth } from '../s3/healthFixtures';
 import { openPausedPerformance } from '../s3/performanceFixtures';
-import { captureMatrix } from './monitoringEvidence';
+import { captureState } from './hyperagentEvidence';
 
 nativeBaseline();
 const phase = process.env.AIMMS_CAPTURE_PHASE || 'final';
@@ -26,7 +26,14 @@ for (const screen of ['health', 'performance'] as const) {
           compactChrome: true
         });
       }
-      await captureMatrix(page, screen, phase, scheme);
+      await captureState(
+        page,
+        screen,
+        `base-${phase}`,
+        scheme,
+        undefined,
+        true
+      );
     });
   }
 }

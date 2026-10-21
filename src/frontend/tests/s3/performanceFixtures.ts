@@ -1,4 +1,5 @@
 import { type Page, type Route, expect } from '@playwright/test';
+import { mockMachine } from '../s0/machineFixtures';
 import { mockTheme } from './themeFixtures';
 
 import {
@@ -35,6 +36,7 @@ export async function openPerformance(
   page: Page,
   options: {
     signals?: readonly SignalSpec[];
+    now?: number;
     /** Await the actual initial history response for non-loading scenarios. */
     settleInitialRead?: boolean;
     scheme?: 'light' | 'dark';
@@ -55,7 +57,14 @@ export async function openPerformance(
     ) => ReturnType<typeof seriesFor>;
   } = {}
 ) {
+  await page.clock.setFixedTime(new Date(options.now ?? NOW));
   await mockTheme(page);
+  if (options.nativeTheme)
+    await mockMachine(page, {
+      sourceKey: 'P1',
+      parent: 17,
+      parentName: 'Synthetic station'
+    });
   const specs = options.signals ?? NATIVE_SIGNALS;
   const requests: URL[] = [];
   await page.route(
@@ -154,7 +163,11 @@ export async function openPerformance(
       timeout: 60000
     });
   }
-  await expect(page.getByText('Anything unusual?')).toBeVisible();
+  await expect(page.getByText('Exceptions', { exact: true })).toBeVisible();
+  if (!options.nativeTheme) {
+    const nav = page.getByRole('button', { name: /^Channels ·/ });
+    if (await nav.isVisible()) await nav.click();
+  }
   return requests;
 }
 

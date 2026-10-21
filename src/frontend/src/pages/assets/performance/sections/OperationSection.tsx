@@ -2,12 +2,11 @@ import { t } from '@lingui/core/macro';
 import {
   SimpleGrid,
   Stack,
-  Text,
   useComputedColorScheme,
   useMantineTheme
 } from '@mantine/core';
 import { useMemo } from 'react';
-import monitoring from '../../monitoring.module.css';
+import { MetaText } from '../../health/common';
 
 import { RelationChart } from '../RelationChart';
 import { SensorGroupCard } from '../SensorGroupCard';
@@ -114,7 +113,7 @@ export function OperationSection({
   // Two shades of one hue, asked for as a family rather than hand-picked: a
   // hand-picked pair can land on the same legible shade and draw two lines in
   // one colour. The same goes for the level pair below.
-  const motorColors = familyColors(motorStatus.length, ['gray'], theme, scheme);
+  const motorColors = familyColors(motorStatus.length, ['blue'], theme, scheme);
   const levelColors = familyColors(2, ['cyan'], theme, scheme);
 
   return (
@@ -135,7 +134,7 @@ export function OperationSection({
               parameters={[...speed, ...status, ...motorStatus]}
               lines={[
                 ...speed.map((p) => lineFor(p, 'blue.7')),
-                ...status.map((p) => lineFor(p, 'green.7', 'right', true)),
+                ...status.map((p) => lineFor(p, 'blue.7', 'right', true)),
                 ...motorStatus.map((p, i) =>
                   lineFor(p, motorColors[i], 'right', true)
                 )
@@ -148,9 +147,9 @@ export function OperationSection({
               rightUnit=''
             />
             {running && (
-              <Text size='xs' className={monitoring.meta}>
+              <MetaText size='xs'>
                 {t`Reported running for ${Math.round(running.share * 100)}% of the window (${running.samples} status readings${window.resolutionSeconds > 10 ? t`, sampled` : ''}).`}
-              </Text>
+              </MetaText>
             )}
           </ChartCard>
         )}

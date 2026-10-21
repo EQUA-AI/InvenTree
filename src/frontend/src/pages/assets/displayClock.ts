@@ -1,16 +1,33 @@
 import dayjs from 'dayjs';
 
-/** No plant timezone is currently supplied by Health or Performance. */
+/** The API supplies no plant zone. An absent browser zone stays unavailable. */
 export function displayClockLabel(at = Date.now()): string {
-  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  return `${zone}, UTC${dayjs(at).format('Z')}`;
+  let zone: string | undefined;
+  try {
+    zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    zone = undefined;
+  }
+  return zone ? `${zone}, UTC${dayjs(at).format('Z')}` : 'zone unavailable';
 }
-
-/** All full instants use the same 24-hour browser clock; invalid is unavailable. */
 export function displayInstant(
-  value: string | number | null | undefined
+  value: string | number | null | undefined,
+  options: { offsetIfDiffers?: boolean; pageAt?: number } = {
+    offsetIfDiffers: true
+  }
 ): string | null {
-  if (value == null || value === '') return null;
+  if (
+    value == null ||
+    value === '' ||
+    (typeof value === 'number' && (!Number.isFinite(value) || value <= 0))
+  )
+    return null;
   const date = dayjs(value);
-  return date.isValid() ? date.format('D MMM YYYY HH:mm:ss') : null;
+  if (!date.isValid()) return null;
+  const offset =
+    options.offsetIfDiffers &&
+    date.utcOffset() !== dayjs(options.pageAt ?? Date.now()).utcOffset()
+      ? ` UTC${date.format('Z')}`
+      : '';
+  return date.format('D MMM YYYY HH:mm:ss') + offset;
 }

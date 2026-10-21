@@ -1,6 +1,6 @@
 import { t } from '@lingui/core/macro';
 import { Box, Paper, SimpleGrid, Stack, Text } from '@mantine/core';
-import { Children, type ReactNode } from 'react';
+import { Children, type ReactNode, isValidElement } from 'react';
 import monitoring from '../../monitoring.module.css';
 
 import type { SeriesEntry } from '@lib/types/MachineHealth';
@@ -86,7 +86,10 @@ export function CardGrid({
     >
       {cards.map((card, index) =>
         spanLast && index === cards.length - 1 ? (
-          <Box key={index} style={{ gridColumn: '1 / -1' }}>
+          <Box
+            key={isValidElement(card) ? card.key : String(card)}
+            style={{ gridColumn: '1 / -1' }}
+          >
             {card}
           </Box>
         ) : (

@@ -561,8 +561,9 @@ for (const scheme of ['light', 'dark'] as const) {
       const account = page.getByTestId('closeout-account');
       if (action === 'create_linked') {
         await expect(account).toContainText(accepted!.result);
-        await page
-          .getByText('Original accepted snapshot', { exact: true })
+        await account
+          .locator('summary')
+          .filter({ hasText: /^Original completed account$/ })
           .click();
         await expect(
           account.getByText(`Result: ${values.result}`, { exact: true })

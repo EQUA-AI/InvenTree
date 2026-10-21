@@ -353,30 +353,38 @@ export default function MachineDetail() {
             </Button>,
             // Create repair plans work for this asset. Starting it is a
             // separate, readiness-gated transition and is not offered here.
-            <Button
-              key='create-repair'
-              leftSection={<IconTool size={16} />}
-              onClick={() => setCreateRepairOpen(true)}
-              disabled={!machine?.pk || !user.hasAddRole(UserRoles.work_order)}
-            >
-              {t`Create repair`}
-            </Button>,
+            user.hasAddRole(UserRoles.work_order) && (
+              <Button
+                key='create-repair'
+                leftSection={<IconTool size={16} />}
+                onClick={() => setCreateRepairOpen(true)}
+                disabled={
+                  !machine?.pk || !user.hasAddRole(UserRoles.work_order)
+                }
+              >
+                {t`Create repair`}
+              </Button>
+            ),
             // Starting is a separate, readiness-gated transition. The modal
             // asks the server what is startable rather than deciding here.
-            <Button
-              key='start-repair'
-              variant='light'
-              leftSection={<IconPlayerPlay size={16} />}
-              onClick={() => setStartRepairOpen(true)}
-              disabled={
-                !machine?.pk ||
-                !user.hasChangeRole(UserRoles.work_order) ||
-                (!user.isSuperuser() &&
-                  !user.user?.permissions?.workorder?.includes('execute'))
-              }
-            >
-              {t`Start repair`}
-            </Button>
+            user.hasChangeRole(UserRoles.work_order) &&
+              (user.isSuperuser() ||
+                user.user?.permissions?.workorder?.includes('execute')) && (
+                <Button
+                  key='start-repair'
+                  variant='light'
+                  leftSection={<IconPlayerPlay size={16} />}
+                  onClick={() => setStartRepairOpen(true)}
+                  disabled={
+                    !machine?.pk ||
+                    !user.hasChangeRole(UserRoles.work_order) ||
+                    (!user.isSuperuser() &&
+                      !user.user?.permissions?.workorder?.includes('execute'))
+                  }
+                >
+                  {t`Start repair`}
+                </Button>
+              )
           ]}
         />
         {machine?.pk && <MachinePlacementPath machineId={machine.pk} />}

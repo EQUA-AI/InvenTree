@@ -63,7 +63,7 @@ test('every native Performance form is drawn, and the inventory is recorded', as
     ])
       expect(inventory.sections).toContain(section);
     for (const card of [
-      'Power and power factor',
+      'Power',
       'Excitation',
       'Frequency',
       'Shaft speed and status',

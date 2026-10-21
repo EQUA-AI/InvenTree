@@ -290,6 +290,7 @@ export async function openStation(
     entry?: string;
   } = {}
 ) {
+  await page.clock.setFixedTime(new Date(NOW));
   const bays = options.bays ?? BAYS;
   const requests: URL[] = [];
   await page.route(

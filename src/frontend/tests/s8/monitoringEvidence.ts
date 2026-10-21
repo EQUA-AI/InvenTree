@@ -1,7 +1,10 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { type Page, expect } from '@playwright/test';
-export const evidenceRoot = resolve('../../data/devscratch/r6-s8/S8-01-part2');
+export const evidenceRoot = resolve(
+  process.env.AIMMS_MONITORING_EVIDENCE_ROOT ??
+    '../../data/devscratch/r6-s8/S8-01-part2/pass2'
+);
 export const sizes = [
   [1100, 800],
   [1440, 900],

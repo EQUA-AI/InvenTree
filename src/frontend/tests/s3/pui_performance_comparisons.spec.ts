@@ -22,7 +22,7 @@ for (const scheme of ['light', 'dark'] as const)
     });
     await page
       .getByRole('button', {
-        name: 'Comparisons and display views',
+        name: 'Comparisons and saved views',
         exact: true
       })
       .click();
@@ -37,13 +37,13 @@ for (const scheme of ['light', 'dark'] as const)
     ).toBeVisible();
     await page
       .getByRole('button', {
-        name: 'Comparisons and display views',
+        name: 'Comparisons and saved views',
         exact: true
       })
       .click();
     await page
       .getByRole('button', {
-        name: 'Comparisons and display views',
+        name: 'Comparisons and saved views',
         exact: true
       })
       .click();
@@ -52,7 +52,7 @@ for (const scheme of ['light', 'dark'] as const)
     await page.reload();
     await page
       .getByRole('button', {
-        name: 'Comparisons and display views',
+        name: 'Comparisons and saved views',
         exact: true
       })
       .click();
@@ -78,7 +78,7 @@ for (const scheme of ['light', 'dark'] as const)
 test('blocked browser storage never reports a saved view', async ({ page }) => {
   await openPausedPerformance(page, { harness: 's3' });
   await page
-    .getByRole('button', { name: 'Comparisons and display views', exact: true })
+    .getByRole('button', { name: 'Comparisons and saved views', exact: true })
     .click();
   await page.evaluate(() => {
     Storage.prototype.setItem = () => {
@@ -131,7 +131,7 @@ for (const scheme of ['light', 'dark'] as const)
     await openPausedPerformance(page, { harness: 's3', scheme });
     await page
       .getByRole('button', {
-        name: 'Comparisons and display views',
+        name: 'Comparisons and saved views',
         exact: true
       })
       .click();
@@ -188,7 +188,7 @@ test('saved view capacity and duplicate names preserve every existing view', asy
   );
   await page.reload();
   await page
-    .getByRole('button', { name: 'Comparisons and display views', exact: true })
+    .getByRole('button', { name: 'Comparisons and saved views', exact: true })
     .click();
   await page.getByLabel('View name', { exact: true }).fill('Twenty first');
   await page.getByRole('button', { name: 'Save view', exact: true }).click();
@@ -225,7 +225,7 @@ for (const scheme of ['light', 'dark'] as const)
     await openPausedPerformance(page, { harness: 's3', scheme });
     await page
       .getByRole('button', {
-        name: 'Comparisons and display views',
+        name: 'Comparisons and saved views',
         exact: true
       })
       .click();
@@ -263,7 +263,7 @@ test('before and after use independent bounded windows and query identities', as
 }, info) => {
   const requests = await openPausedPerformance(page, { harness: 's3' });
   await page
-    .getByRole('button', { name: 'Comparisons and display views', exact: true })
+    .getByRole('button', { name: 'Comparisons and saved views', exact: true })
     .click();
   await choose(page, 'Shaft speed');
   await page
@@ -344,11 +344,12 @@ for (const scheme of ['light', 'dark'] as const) {
       harness: 's3',
       scheme,
       harnessParams: { role: 'engineer' },
+      now: Date.parse('2026-10-20T08:00:00Z'),
       signals: [NATIVE_SIGNALS[0]]
     });
     await page
       .getByRole('button', {
-        name: 'Comparisons and display views',
+        name: 'Comparisons and saved views',
         exact: true
       })
       .click();

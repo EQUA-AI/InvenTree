@@ -442,7 +442,7 @@ export function StationPerformance({
       count && {
         key: 'count',
         p: count,
-        color: 'green.7',
+        color: 'blue.7',
         axis: 'right' as const,
         stepped: true
       }
@@ -693,7 +693,7 @@ export function StationPerformance({
           />
         )}
       </Paper>
-      <KpiStrip tiles={tiles} now={now} />
+      <KpiStrip tiles={tiles} now={now} window={window} />
 
       {seriesQuery.isError && (
         <Alert
