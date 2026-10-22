@@ -886,7 +886,7 @@ function UnusualStrip({
           <Text component='span' size='sm' fw={600}>{t`Exceptions`}</Text>
         </ValueTooltip>
         {critical.length > 0 && (
-          <StatusBadge tone='critical' color='red.9' variant='filled'>
+          <StatusBadge multiline tone='critical' color='red.9' variant='filled'>
             {t`${critical.length} critical: ${critical
               .map((p) => p.label)
               .slice(0, 3)
@@ -894,7 +894,12 @@ function UnusualStrip({
           </StatusBadge>
         )}
         {warning.length > 0 && (
-          <StatusBadge tone='warning' color='yellow.6' variant='filled'>
+          <StatusBadge
+            multiline
+            tone='warning'
+            color='yellow.6'
+            variant='filled'
+          >
             {t`${warning.length} warning: ${warning
               .map((p) => p.label)
               .slice(0, 3)
@@ -939,6 +944,7 @@ function UnusualStrip({
         )}
         {failedTargets.bindings.size + failedTargets.keys.size > 0 && (
           <StatusBadge
+            multiline
             tone='neutral'
             color='gray'
             variant='outline'
@@ -951,6 +957,7 @@ function UnusualStrip({
         )}
         {evaluation.verdict.kind === 'calm' && (
           <StatusBadge
+            multiline
             tone='neutral'
             color={
               failedTargets.bindings.size + failedTargets.keys.size > 0

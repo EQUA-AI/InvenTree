@@ -112,6 +112,7 @@ export function MachinePageSummary({
             }}
           >
             <StatusBadge
+              className={classes.summaryStatusBadge}
               tone={count ? tone : 'neutral'}
               color={count ? (kind === 'warning' ? 'yellow' : 'red') : 'gray'}
               size='sm'

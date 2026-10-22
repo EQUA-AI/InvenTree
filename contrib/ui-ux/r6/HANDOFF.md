@@ -1,5 +1,19 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## UI round 2 Follow-up 9 — 23 October 2026 (ready for coordinator review)
+
+Built on `1baa15d4d`: stable mounted phone filters, spare room in phone machine
+cards and Equipment callouts, a model badge outside the canvas and atomic
+lifecycle badges with balanced Fault History columns. All 5 findings addressed.
+14 unchanged lane cases plus 12 supplemental checks pass; affected Fault checks
+replayed after final layout refinement. 16 final per-screen PNGs inspected.
+84 units, all 9 TypeScript projects (app/S7/S8 rechecked), Lingui with 117 bytewise
+locale restores and changed-file prek pass. Digest `d6474d4a30ae`;
+[execution report](reports/ui-r2.md) lists source files and exact lane evidence.
+Owned WS3012/harness15250 stopped; ports clear. Linux fixture verification only:
+the three Mac-only findings still need coordinator host confirmation. No lane
+specs, owner data or Git writes; parent/deployed acceptance unchanged.
+
 ## UI round 2 Follow-up 8 — 23 October 2026 (ready for coordinator review)
 
 Built on `713b22b65`: exact Equipment return query state, compact stressed-font
