@@ -349,8 +349,11 @@
   .workspace[data-has-parts] { grid-template-columns: minmax(0, .9fr) minmax(0, 3.2fr) minmax(0, .9fr); gap: 10px; }
   .workspace[data-has-parts] .drawing { grid-column: 2; grid-row: 1; height: auto; aspect-ratio: 680 / 520; }
   .workspace[data-has-parts] .callouts { display: contents; }
-  .workspace[data-has-parts] .column { grid-template-columns: minmax(0, 1fr); grid-row: 1; }
+  .workspace[data-has-parts] .column { grid-template-columns: minmax(0, 1fr); grid-row: 1; gap: 4px; }
   .workspace[data-has-parts] .column[data-callout-column="left"] { grid-column: 1; }
   .workspace[data-has-parts] .column[data-callout-column="right"] { grid-column: 3; }
-  .callout { min-height: 60px; gap: 3px; padding: 5px 6px; }
+  .callout { min-height: 52px; gap: 2px; padding: 3px 6px; }
+  .calloutHeading { grid-template-columns: 24px minmax(0, 1fr); gap: 5px; }
+  .calloutHeading > svg { width: 24px; height: 24px; }
+  .calloutName { line-height: 1.25; }
 }

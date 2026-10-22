@@ -51,6 +51,8 @@ export function statusTone(state: string): StatusTone {
 }
 export type StatusBadgeProps = BadgeProps & {
   tone: StatusTone;
+  /** Descriptive evidence may wrap; short operational states stay atomic. */
+  multiline?: boolean;
 };
 /** Semantic status only; statistics and provenance use the neutral tone. */
 export function StatusBadge({
@@ -60,6 +62,8 @@ export function StatusBadge({
   color = 'gray',
   leftSection,
   className,
+  multiline = false,
+  miw = multiline ? 0 : 'max-content',
   ...props
 }: StatusBadgeProps) {
   const warning = tone === 'warning' || String(color).startsWith('yellow');
@@ -85,6 +89,7 @@ export function StatusBadge({
       mih={24}
       py={3}
       maw='100%'
+      miw={miw}
       styles={{
         root: {
           flexShrink: 0,
@@ -97,7 +102,11 @@ export function StatusBadge({
               }
             : {})
         },
-        label: { whiteSpace: 'normal', overflowWrap: 'anywhere' }
+        label: {
+          whiteSpace: multiline ? 'normal' : 'nowrap',
+          overflowWrap: multiline ? 'anywhere' : 'normal',
+          overflow: multiline ? 'hidden' : 'visible'
+        }
       }}
       leftSection={leftSection ?? (Icon ? <Icon size={14} /> : undefined)}
       data-tone={tone}
