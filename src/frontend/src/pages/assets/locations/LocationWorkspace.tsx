@@ -211,21 +211,29 @@ export function ScopedMachineList({
     locationSelected: location != null,
     includeDescendants
   });
+  const pageSummary = query.data &&
+    !query.isError &&
+    !searchPending &&
+    !pageOutOfRange && (
+      <MachinePageSummary
+        rows={query.data.results}
+        total={query.data.count}
+        updatedAt={query.dataUpdatedAt}
+        updating={query.isFetching}
+        alarmsOnly={alarmsOnly}
+        onAlarmsChange={() => onStateChange({ alarmsOnly: !alarmsOnly })}
+        showCount={
+          location == null || !!debounced.trim() || alarmsOnly || !!criticality
+        }
+        compact={!phone}
+      />
+    );
   return (
     <Stack
       gap='sm'
       className={`${operations.phoneStack} ${classes.machineList}`}
     >
-      {query.data && !query.isError && !searchPending && !pageOutOfRange && (
-        <MachinePageSummary
-          rows={query.data.results}
-          total={query.data.count}
-          updatedAt={query.dataUpdatedAt}
-          updating={query.isFetching}
-          alarmsOnly={alarmsOnly}
-          onAlarmsChange={() => onStateChange({ alarmsOnly: !alarmsOnly })}
-        />
-      )}
+      {phone && pageSummary}
 
       <Group hiddenFrom='sm' grow wrap='nowrap'>
         <Button
@@ -251,6 +259,7 @@ export function ScopedMachineList({
           align='flex-end'
           className={classes.listToolbar}
         >
+          {!phone && pageSummary}
           <Group align='flex-end' className={classes.listFilters}>
             <TextInput
               size='sm'
@@ -1369,10 +1378,17 @@ export function LocationWorkspace({
                               {selected.name}
                             </Title>
                           </Group>
-                          <Group gap={4} className={operations.phoneActions}>
+                          <Button.Group
+                            className={`${operations.phoneActions} ${classes.locationActions}`}
+                            style={{ flexWrap: 'wrap' }}
+                          >
                             <Button
                               size='xs'
+                              h={36}
                               className={operations.phoneTarget}
+                              classNames={{
+                                label: classes.locationActionLabel
+                              }}
                               variant='default'
                               aria-expanded={mobileOpen}
                               rightSection={
@@ -1391,15 +1407,23 @@ export function LocationWorkspace({
                             <RefreshAction onClick={refreshLocations} />
                             <Button
                               size='xs'
+                              h={36}
                               variant='default'
                               className={operations.phoneTarget}
+                              classNames={{
+                                label: classes.locationActionLabel
+                              }}
                               aria-expanded={detailsOpen}
                               onClick={() => setDetailsOpen((value) => !value)}
                             >{t`Location details`}</Button>
                             {context.data.can_add && !selected.archived && (
                               <Button
                                 size='xs'
-                                className={operations.phoneTarget}
+                                h={36}
+                                className={`${operations.phoneTarget} ${classes.locationWriteAction}`}
+                                classNames={{
+                                  label: classes.locationActionLabel
+                                }}
                                 variant='default'
                                 onClick={() => setEditing({ parent: selected })}
                               >{t`Add sublocation`}</Button>
@@ -1407,12 +1431,16 @@ export function LocationWorkspace({
                             {context.data.can_change && (
                               <Button
                                 size='xs'
-                                className={operations.phoneTarget}
+                                h={36}
+                                className={`${operations.phoneTarget} ${classes.locationWriteAction}`}
+                                classNames={{
+                                  label: classes.locationActionLabel
+                                }}
                                 variant='default'
                                 onClick={() => setEditing({ node: selected })}
                               >{t`Edit location`}</Button>
                             )}
-                          </Group>
+                          </Button.Group>
                           <Switch
                             size='xs'
                             label={t`Include sublocations`}
@@ -1423,6 +1451,7 @@ export function LocationWorkspace({
                                 : t`Descendant placements included`
                             }
                             classNames={{
+                              body: classes.locationScope,
                               track: classes.switchTrack,
                               label: classes.switchLabel,
                               description: operations.meta

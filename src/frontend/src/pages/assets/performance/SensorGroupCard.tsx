@@ -11,7 +11,11 @@ import {
   useMantineTheme
 } from '@mantine/core';
 import { useMemo } from 'react';
-import { ValueTooltip } from '../../../components/items/ValueTooltip';
+import {
+  MissingValue,
+  ValueTooltip
+} from '../../../components/items/ValueTooltip';
+import operational from '../health/OperationalTokens.module.css';
 import { StatusBadge } from '../health/StatusBadge';
 import { MetaText } from '../health/common';
 import { hasLimits } from './evaluation';
@@ -267,6 +271,13 @@ function SensorGroupCardBody({
             .map((c) => ({
               sensor: c.parameter.label,
               value: c.good && !c.stale ? c.value : null,
+              stale: c.stale,
+              quality: c.parameter.signal.quality,
+              missingReason: c.stale
+                ? t`Stale current reading; not plotted`
+                : !c.good
+                  ? t`No usable current reading; not plotted`
+                  : t`Current reading not supplied`,
               color: colors[0]
             }))
             .sort(
@@ -352,7 +363,7 @@ function SensorGroupCardBody({
   }
 
   return (
-    <Paper withBorder p='md'>
+    <Paper withBorder p='md' className={operational.warning}>
       <Stack gap='sm'>
         <Group justify='space-between' align='flex-start' wrap='wrap' gap='xs'>
           <Stack gap={2}>
@@ -465,9 +476,11 @@ function SensorGroupCardBody({
                           component='span'
                           aria-hidden='true'
                           c={
-                            scheme === 'dark'
-                              ? `${line.severity === 'critical' ? 'red' : 'yellow'}.4`
-                              : line.color
+                            line.severity === 'warning'
+                              ? 'var(--aimms-warning)'
+                              : scheme === 'dark'
+                                ? `${line.severity === 'critical' ? 'red' : 'yellow'}.4`
+                                : line.color
                           }
                           w={16}
                           style={{ borderTop: '2px dashed currentColor' }}
@@ -535,17 +548,46 @@ function SensorGroupCardBody({
                   referenceLines={comparisonLimits.map((line) => ({
                     x: line.y,
                     color:
-                      scheme === 'dark'
-                        ? `${line.severity === 'critical' ? 'red' : 'yellow'}.4`
-                        : line.color
+                      line.severity === 'warning'
+                        ? 'var(--aimms-warning)'
+                        : scheme === 'dark'
+                          ? `${line.severity === 'critical' ? 'red' : 'yellow'}.4`
+                          : line.color
                   }))}
                   scatterProps={{ isAnimationActive: false }}
                   tooltipAnimationDuration={0}
                 />
                 {unreadable.length > 0 && (
-                  <MetaText size='xs'>
-                    {t`No usable current reading, so not plotted: ${unreadable.map((b) => b.sensor).join(', ')}`}
-                  </MetaText>
+                  <Stack gap={2}>
+                    {unreadable.map((sensor) => (
+                      <Group
+                        key={sensor.sensor}
+                        justify='space-between'
+                        gap='sm'
+                      >
+                        <MetaText size='xs'>{sensor.sensor}</MetaText>
+                        {sensor.stale || sensor.quality !== 'good' ? (
+                          <ValueTooltip label={sensor.missingReason}>
+                            <StatusBadge
+                              tone={sensor.stale ? 'stale' : 'neutral'}
+                              size='xs'
+                            >
+                              {sensor.stale
+                                ? t`Stale`
+                                : sensor.quality === 'bad'
+                                  ? t`Bad quality`
+                                  : t`Uncertain quality`}
+                            </StatusBadge>
+                          </ValueTooltip>
+                        ) : (
+                          <MissingValue
+                            label={sensor.sensor}
+                            reason={sensor.missingReason}
+                          />
+                        )}
+                      </Group>
+                    ))}
+                  </Stack>
                 )}
               </Stack>
             )}

@@ -19,7 +19,7 @@ export function relativeAge(
   const age = ageDuration(seconds);
   return future
     ? t`${age} ahead of your clock`
-    : preferJustNow && !stale && seconds >= 0 && seconds < 60
+    : preferJustNow && !stale && seconds >= 0 && seconds <= 10
       ? t`just now`
-      : t`${age} old`;
+      : t`${age} ago`;
 }

@@ -221,6 +221,8 @@ export function parseWorkFocusAcknowledgement(
 }
 
 const WORK_ROUTE = /^\/maintenance\/work-orders\/(\d+)\/?(?:\?[^#]*)?$/;
+const EQUIPMENT_ROUTE =
+  /^\/machines\/machine\/(\d+)\/equipment\/?(?:\?([^#]*))?$/;
 
 /**
  * Where "Open work order" goes: the Work's own route, keeping the panel the
@@ -275,7 +277,11 @@ export function reloadedWorkFocus(
   };
 }
 
-/** Return only to a canonical Work/request or the selected reference position. */
+/**
+ * Return only to a canonical Work/request or the selected reference position.
+ * Equipment query state belongs to that same machine's Equipment route; the
+ * confirmed position always overrides the launch selection.
+ */
 export function focusReturnPath(
   identity: WorkFocusIdentity,
   launchPath?: string
@@ -287,7 +293,13 @@ export function focusReturnPath(
       identity.request_id
     );
   const c = identity.component;
-  return c
-    ? `/machines/machine/${c.machine_id}/equipment/?position=${encodeURIComponent(c.position_id)}${launchPath?.includes('view=schematic') ? '&view=schematic' : ''}`
-    : '/';
+  if (!c) return '/';
+  const query = new URLSearchParams({ position: c.position_id });
+  const match = launchPath ? EQUIPMENT_ROUTE.exec(launchPath) : null;
+  if (match && Number(match[1]) === c.machine_id) {
+    for (const [key, value] of new URLSearchParams(match[2])) {
+      if (key !== 'position') query.append(key, value);
+    }
+  }
+  return `/machines/machine/${c.machine_id}/equipment/?${query}`;
 }

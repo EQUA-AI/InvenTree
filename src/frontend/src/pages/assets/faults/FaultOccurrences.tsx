@@ -42,7 +42,11 @@ import { Link, useSearchParams } from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
-import { ValueTooltip } from '../../../components/items/ValueTooltip';
+import { RefreshAction } from '../../../components/buttons/RefreshAction';
+import {
+  MissingValue,
+  ValueTooltip
+} from '../../../components/items/ValueTooltip';
 import { useApi } from '../../../contexts/ApiContext';
 import {
   AlarmStateBadge,
@@ -57,7 +61,7 @@ import {
   retainedValue,
   shiftSpan,
   snapshotReasonLabel,
-  workRelationLabel
+  workRelationLabel as workRelationLabelForTooltip
 } from './occurrenceLabels';
 import {
   type FaultOccurrence,
@@ -144,12 +148,15 @@ function Components({ occurrence }: Readonly<{ occurrence: FaultOccurrence }>) {
     <Stack gap={2}>
       {occurrence.components.map((component) => (
         <Text key={component.code} size='sm'>
-          {component.name}
-          {component.status === 'draft' && (
-            <Text span size='xs' className={operations.meta}>
-              {' · '}
-              {t`unverified assignment`}
-            </Text>
+          {component.status === 'draft' ? (
+            <ValueTooltip
+              label={t`Unverified component assignment`}
+              focusable={false}
+            >
+              {component.name}
+            </ValueTooltip>
+          ) : (
+            component.name
           )}
         </Text>
       ))}
@@ -179,30 +186,36 @@ function WorkLinks({
 }: Readonly<{ occurrence: FaultOccurrence; compact?: boolean }>) {
   if (!occurrence.work.length && !occurrence.repair_packet) {
     return (
-      <Text size='sm' className={operations.meta}>
-        {t`No owning work you can open`}
-      </Text>
+      <MissingValue reason={t`No linked work order is available to you`} />
     );
   }
   return (
     <Stack gap={4}>
       {occurrence.work.map((work) => (
-        <Stack key={work.id} gap={0}>
-          <Anchor
-            className={operations.link}
-            component={Link}
-            to={`/maintenance/work-orders/${work.id}/`}
-            size='sm'
-            fw={600}
+        <Group key={work.id} gap={6} align='center'>
+          <ValueTooltip
+            label={[
+              workRelationLabelForTooltip(work.relation),
+              !compact ? work.title : null
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+            focusable={false}
           >
-            {work.reference ?? t`Work order ${work.id}`}
-          </Anchor>
-          <Text size='xs' className={operations.meta}>
-            {workRelationLabel(work.relation)} ·{' '}
+            <Anchor
+              className={operations.link}
+              component={Link}
+              to={`/maintenance/work-orders/${work.id}/`}
+              size='sm'
+              fw={600}
+            >
+              {work.reference ?? t`Work order ${work.id}`}
+            </Anchor>
+          </ValueTooltip>
+          <Badge size='sm' color='gray' variant='outline'>
             {lifecycleLabel(work.lifecycle_status)}
-            {!compact && work.title ? ` · ${work.title}` : ''}
-          </Text>
-        </Stack>
+          </Badge>
+        </Group>
       ))}
       {occurrence.repair_packet && (
         <Anchor
@@ -222,25 +235,24 @@ function Outcome({
   occurrence,
   showNote = true
 }: Readonly<{ occurrence: FaultOccurrence; showNote?: boolean }>) {
-  return (
-    <Stack gap={4} miw={0}>
-      <AlarmStateBadge
-        status={occurrence.status}
-        severity={occurrence.severity}
-      />
-      {showNote && occurrence.resolution_note && (
-        <Spoiler
-          classNames={{ control: operations.link }}
-          maxHeight={60}
-          showLabel={t`Show full note`}
-          hideLabel={t`Show less`}
-        >
-          <Text size='xs' className={operations.meta}>
-            {occurrence.resolution_note}
-          </Text>
-        </Spoiler>
-      )}
-    </Stack>
+  const explanation = [
+    occurrence.status === 'resolved'
+      ? t`Resolved does not always mean cleared. The occurrence's recorded outcome does not establish the equipment's current condition.`
+      : null,
+    showNote ? occurrence.resolution_note : null
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const badge = (
+    <AlarmStateBadge
+      status={occurrence.status}
+      severity={occurrence.severity}
+    />
+  );
+  return explanation ? (
+    <ValueTooltip label={explanation}>{badge}</ValueTooltip>
+  ) : (
+    badge
   );
 }
 
@@ -605,7 +617,7 @@ export function FaultOccurrences({
 }>) {
   const api = useApi();
   const theme = useMantineTheme();
-  const phone = useMediaQuery('(max-width: 48em)');
+  const phone = useMediaQuery('(max-width: 47.99375em)');
   const [params, setParams] = useSearchParams();
   const state = occurrenceListState(params);
   const request = occurrenceRequest(state);
@@ -721,48 +733,49 @@ export function FaultOccurrences({
         data-testid='fault-occurrences'
         data-operational-panel='fault-history'
       >
-        <Paper
-          component='section'
-          aria-labelledby='fault-history-title'
-          className={operations.band}
-        >
-          <div className={operations.heading}>
-            <Group gap={4}>
-              <Title
-                order={4}
-                id='fault-history-title'
-              >{t`Alarm and fault investigation`}</Title>
-            </Group>
-            <Button
+        <Group justify='space-between' align='center' gap='sm'>
+          <Group gap='xs'>
+            <Title order={4}>{t`Occurrences`}</Title>
+            {list && (
+              <ValueTooltip
+                label={[
+                  plural(list.count, {
+                    one: '# occurrence',
+                    other: '# occurrences'
+                  }),
+                  t`Newest first`
+                ].join(' · ')}
+              >
+                <Badge color='gray' variant='light'>
+                  {list.count}
+                </Badge>
+              </ValueTooltip>
+            )}
+          </Group>
+          <Group gap='xs'>
+            <SegmentedControl
               size='xs'
-              variant='default'
+              color={`${theme.primaryColor}.7`}
+              aria-label={t`Occurrence status`}
+              value={state.status}
+              onChange={(value) =>
+                update({
+                  status: value as OccurrenceStatusFilter,
+                  page: 1,
+                  open: null
+                })
+              }
+              data={[
+                { value: 'all', label: t`All` },
+                { value: 'active', label: t`Active` },
+                { value: 'resolved', label: t`Resolved` }
+              ]}
+            />
+            <RefreshAction
               loading={query.isFetching}
-              onClick={() => query.refetch()}
-            >{t`Refresh`}</Button>
-          </div>
-        </Paper>
-        <Group justify='space-between' align='flex-end' gap='sm'>
-          <Stack gap={2}>
-            <Title order={5}>{t`Occurrences`}</Title>
-          </Stack>
-          <SegmentedControl
-            size='xs'
-            color={`${theme.primaryColor}.7`}
-            aria-label={t`Occurrence status`}
-            value={state.status}
-            onChange={(value) =>
-              update({
-                status: value as OccurrenceStatusFilter,
-                page: 1,
-                open: null
-              })
-            }
-            data={[
-              { value: 'all', label: t`All` },
-              { value: 'active', label: t`Active` },
-              { value: 'resolved', label: t`Resolved` }
-            ]}
-          />
+              onClick={() => void query.refetch()}
+            />
+          </Group>
         </Group>
         {query.isPending && (
           <Stack gap='xs' aria-label={t`Loading occurrences`}>
@@ -793,21 +806,6 @@ export function FaultOccurrences({
               >{t`Retry occurrences`}</Button>
             </Group>
           </Alert>
-        )}
-        {list && (
-          <Text size='sm' className={operations.meta} component='output'>
-            {plural(list.count, {
-              one: '# occurrence',
-              other: '# occurrences'
-            })}
-            {state.status === 'active'
-              ? ` · ${t`active now`}`
-              : state.status === 'resolved'
-                ? ` · ${t`resolved`}`
-                : ''}
-            {' · '}
-            {t`newest first`}
-          </Text>
         )}
         {list && list.count === 0 && (
           <Paper withBorder p='md'>
@@ -888,11 +886,11 @@ export function FaultOccurrences({
                     <Table.Th w={115}>{t`Severity`}</Table.Th>
                     <Table.Th w={200}>{t`State`}</Table.Th>
                     <Table.Th w={165}>
-                      {t`Observed`}
-                      <Text
-                        size='xs'
-                        className={operations.meta}
-                      >{t`Observed span, not event duration`}</Text>
+                      <ValueTooltip
+                        label={t`Observed span, not event duration`}
+                      >
+                        {t`Observed`}
+                      </ValueTooltip>
                     </Table.Th>
                     <Table.Th w='26%'>{t`Event / finding`}</Table.Th>
                     <Table.Th>{t`Component`}</Table.Th>

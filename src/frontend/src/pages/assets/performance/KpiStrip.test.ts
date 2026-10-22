@@ -38,8 +38,8 @@ it('presents a supplied count with its denominator and no unit/window filler', (
 it('keeps stale visible while the timestamp remains outside its compact badge', () => {
   const markup = render({ stale: true, observedAt: now + 5000 });
   expect(markup).toContain('Stale');
-  expect(markup).toContain('0 s old');
-  expect(markup).not.toContain('ahead of your clock');
+  expect(markup).toContain('5 s ahead of your clock');
+  expect(markup).not.toContain('0 s ago');
   expect(markup).not.toContain('Last known');
   expect(markup).toContain('data-kpi-observed');
 });

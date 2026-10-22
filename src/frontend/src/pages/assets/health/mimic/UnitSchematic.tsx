@@ -102,7 +102,7 @@ export function UnitSchematic({
     );
   });
   return (
-    <div data-unit-schematic className={visual.surface}>
+    <div data-unit-schematic className={`${visual.surface} ${classes.host}`}>
       <dl className={classes.metrics} aria-label={t`Key readings`}>
         {elements.map((element) => {
           const pointer = expandPointer(element.pointer, unit);

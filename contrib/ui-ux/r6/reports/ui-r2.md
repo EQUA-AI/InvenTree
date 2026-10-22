@@ -1,6 +1,6 @@
 # UI round 2 — Hyperagent review repair
 
-Latest work is Follow-up 6, built on `1d3c7b513`; see its finding table below.
+Latest work is Follow-up 7, built on `a2eff8510`; see its finding table below.
 The earlier sections record the committed baseline. Final screenshots are
 replaced by the latest follow-up captures rather than reused from that baseline.
 
@@ -1187,3 +1187,114 @@ Test files touched (2):
 - `src/frontend/src/components/items/ValueTooltip.test.ts` — failure phrase/nowrap assertions; corrected the existing obsolete focusable=false button expectation to prove plain span content with no button or tab stop. Missing/failed/zero assertions remain.
 
 Owned browser container and Vite stopped; ports3012/15250 clear. No database, dependency or git writes. Parent acceptance unchanged.
+
+## Follow-up 7
+
+Built on `a2eff8510`. Fable's round-3 findings were checked against current source. O27 remains: the recorded month is presented as live, while relative ages now say just now only through 10 seconds and otherwise show the actual age. Source disclosure is in the Live control's tooltip and accessible name. This is fixture/source verification; deployment and product acceptance remain with the coordinator.
+
+| Fable fix | Disposition | Source change / evidence |
+| --- | --- | --- |
+| 1 / P1 | Done | UnitMimic uses its host's inline-size container: three columns only at 1100px; two-column callouts below that, with the drawing above. Desktop card spacing also keeps all 13 callouts above the 1440×900 Equipment fold without shrinking the drawing. Equipment view is covered at 1440 and 1280 in both themes. |
+| 2 / F1, P5 | Done | Performance header uses failed-read state or the worst tile freshness, including Live · N stale. Stale tooltips retain source flag, observed instant and read instant. Shared relativeAge uses the 10-second boundary; recorded-source disclosure is restored to Performance and mimic Live tooltips/names. |
+| 3 / F2–F3 | Done | Sensor colours use configured limit states; unconfigured readings remain neutral. KPI columns are capped at four with equal row heights; endpoint delta includes amount and actual time span, with no unlabeled arrow. |
+| 4 / H2 | Done | ValueTooltip's plain span includes its accessible fact in VisuallyHidden. Relative-only Timestamp/FreshnessText is focusable by default. Dense signal and maintenance rows expose missing reasons through one row information control and non-focusable dashes. |
+| 5 / E1–E2, E4 | Done | Fault banner removed; Occurrences and Maintenance history use h4. RefreshAction joins the Occurrences controls; counts become badges. Observed-span explanation, resolution note and the Resolved-does-not-always-mean-cleared caveat are in accessible tooltips. Work lifecycle is beside its link; state badges share 24px height and never wrap. |
+| 6 / E3 | Done fallback; dictionary enrichment skipped | Supplied row descriptions or an optional supplied dictionary take precedence; unknown codes stay visible, including non-Cedar-Creek codes. Removed the CC-PUMP regex. There is no fault-description dictionary to project: ApprovedRepairScope.failure_codes is string JSON (`repair/models.py`), the rollup counts those strings (`assets/ai_read.py`), and machine-profile fault codes are validated string lists. Registry DictionaryPoint describes source paths, not fault codes. No null-only API field or invented description added. |
+| 7 / W1–W2 | Done | Uniformly absent columns collapse once per loaded maintenance page; reasons remain in the native chooser and columns can be revealed. One information control per row exposes missing facts; zero downtime and explicit false Follow-up remain 0 min and No. One RefreshAction refreshes records and counts; Not verified is a quiet outline badge. |
+| 8 / V1–V2 | Done | No-param Equipment view defaults to the schematic when one exists, and falls back to the reference model when none exists. New captures use the default URL; explicit reference-model access remains. |
+| 9 / F4, F6, L3, S6 | Done | Per-bay charts share one pump-key colour map. Exceptions use one filtering badge. Selected-location totals appear once with grouped default actions; station header information is merged and pause sits beside Refresh. |
+| 10 / T2, S3–S4 | Done | Register import replaces Reference design, including the review-note fallback; tooltip explicitly says not field-verified. Missing derived totals visibly identify non-reporting contributors when the API supplies contributor pointers; an empty contributor list does not justify inventing a count. knownNoActiveAlarms requires a reporting source without an error. Three DB-backed tests pass with migration 0015’s real cusec definition: direct/SI conversion, mixed-unit sums and missing-contributor withholding. |
+
+| Remaining per-screen finding | Disposition / reason |
+| --- | --- |
+| S1–S2, P3, L1, H1, T1 | Already done in the committed baseline; preserved. |
+| S5, P2, P4 | Done: balanced phone station KPI spans; green Normal reading marker uses an outlined ring/check; unit legend groups Pump and Readings with a separator. |
+| L2 | Done: desktop summary chips share the toolbar row; phone summary retains wrapping. |
+| L4 | Skipped: the location API supplies no per-site alarm rollup; counts are not invented. |
+| H3 | Skipped: splitting value/unit cells is a broader table contract change; existing values/units remain honest and readable. |
+| H4 | Done: each configured limit stays on one line; tablet horizontal scrolling has an edge fade. |
+| T3 | Skipped: station Parts includes child equipment, so the Equipment column is not constant in that scope. |
+| D1 | Done compact typography; keyboard focus retained so missing identity reasons remain reachable. A deliberate keyboard focus ring is not removed from product styling. |
+| F5 | Skipped: current KPI readings and the selected historical trend have different origins; a historical endpoint must not replace a current reading. |
+| F7 / leftover breakpoint | Done: phone range control has horizontal scroll/edge cue; TimeRangeControl uses 47.99375em. |
+| A1 | Skipped: there is no attachment row-detail surface to hold clipped comments. Full comments/names remain available instead of hiding information. |
+
+Verification:
+
+| Check | Actual result |
+| --- | --- |
+| Targeted Vitest | 136/136 across 17 files pass (112 changed-module cases and 24 retained trend-sample/supplier cases) |
+| Focused Playwright | 25/25 new focused cases pass; 4/4 Equipment cases rechecked after the final card-height adjustment; unchanged 23/23 capture cases and 1/1 Attachments case pass |
+| Types | All 9 TypeScript projects pass; app/S8 rechecked after final edits |
+| Backend cusec total | 3/3 Django TestCase cases pass in an isolated SQLite test database after all 982 migrations; system checks pass |
+| Lingui | Extract and compile pass; all 117 locale files restored bytewise |
+| Hooks | All changed files pass prek and whitespace checks |
+| Captures | 49 PNGs in `data/devscratch/ui-r2/final7/` individually inspected, including 01–39, additional themes/default Equipment widths, reference-model fallback, register basis and three full pump views |
+
+Final browser runs: 49 unique cases and 53 passing executions (25 focused + 4 Equipment repeats + 23 numbered captures + 1 unchanged Attachments). Logs in `data/devscratch/ui-r2/followup7/`: `browser-final.log`, `equipment-final.log`, `captures-final.log`, `attachment-final.log`, `units-final.log`, `types-final.json`, `types-freeze.json`, `types-s8-last.log`, `lingui-result.json`, `backend-linux-test.log`, `prek-final.log`. Initial test-authoring corrections did not remove product assertions; the tablet overflow and final contrast/card-height findings were fixed before final checks.
+
+CMMS captures: `27-maintenance-desktop-light.png`, `28-fault-history-desktop-light.png`, `36-maintenance-desktop-dark.png`, `37-fault-history-desktop-dark.png`, `38-fault-history-phone-light.png`, `39-fault-history-phone-dark.png`. They show the collapsed maintenance columns, real zero/No facts, single Refresh, equal Fault history sections, data-supplied descriptions/raw-code fallback and contained phone badges. Equipment default-URL and mixed-freshness Performance captures are produced by the new main spec. Linux Chromium uses only fixture-intercepted WS3012/harness15250 pages. Frozen digest `18499d49eafd`; hashes and individual review inventory are in `data/devscratch/ui-r2/followup7/{source,capture-review}.json`. Owned container and harness stopped; ports3012/15250 clear. No owner localhost or real records were opened.
+
+Source/config files changed (43), relative to `src/frontend/`:
+
+- `src/components/items/`: `ValueTooltip.tsx`, `ValueTooltip.module.css`
+- `src/pages/assets/`: `FaultHistoryPanel.tsx`, `MachineDetails.module.css`
+- `src/pages/assets/equipment/`: `EquipmentViewPanel.tsx`
+- `src/pages/assets/faults/`: `FaultOccurrences.tsx`, `faultPresentation.ts`
+- `src/pages/assets/health/`: `SignalReading.tsx`, `SignalTable.module.css`, `SignalTable.tsx`, `SignalTrend.tsx`, `Timestamp.tsx`, `common.tsx`, `relativeTime.ts`, `trendPresentation.ts`
+- `src/pages/assets/health/mimic/`: `MimicLiveBadge.tsx`, `MimicParts.tsx`, `StationSchematic.module.css`, `StationSchematic.tsx`, `UnitMimic.module.css`, `UnitMimic.tsx`, `UnitSchematic.tsx`, `mimicVisuals.ts`
+- `src/pages/assets/locations/`: `LocationWorkspace.tsx`, `MachinePageSummary.tsx`, `locations.module.css`
+- `src/pages/assets/maintenance/`: `MachineMaintenancePanel.tsx`, `maintenancePresentation.ts`
+- `src/pages/assets/performance/`: `KpiStrip.module.css`, `KpiStrip.tsx`, `PerformancePanel.tsx`, `SensorGroupCard.tsx`, `SensorHeatmap.tsx`, `StationPerformance.tsx`, `TimeRangeControl.module.css`, `TimeRangeControl.tsx`, `TrendChart.tsx`, `liveState.ts`, `pumpColors.ts`, `sparkline.ts`
+- `src/tables/assets/`: `MaintenanceRecordTable.tsx`, `componentPresentation.ts`
+- Configuration: `tsconfig.s8.json`
+
+Tests touched (18):
+
+- `src/backend/InvenTree/machine_health/tests/test_cusec_total.py`
+- `src/frontend/src/components/items/ValueTooltip.test.ts`
+- `src/frontend/src/pages/assets/faults/faultPresentation.test.ts`
+- `src/frontend/src/pages/assets/health/Timestamp.test.ts`
+- `src/frontend/src/pages/assets/health/mimic/mimicVisuals.test.ts`
+- `src/frontend/src/pages/assets/health/monitoringComponents.test.ts`
+- `src/frontend/src/pages/assets/health/relativeTime.test.ts`
+- `src/frontend/src/pages/assets/health/trendPresentation.test.ts`
+- `src/frontend/src/pages/assets/maintenance/maintenancePresentation.test.ts`
+- `src/frontend/src/pages/assets/performance/KpiStrip.test.ts`
+- `src/frontend/src/pages/assets/performance/SensorHeatmap.test.ts`
+- `src/frontend/src/pages/assets/performance/TimeRangeControl.test.ts`
+- `src/frontend/src/pages/assets/performance/liveState.test.ts`
+- `src/frontend/src/pages/assets/performance/monitoringHelpers.test.ts`
+- `src/frontend/src/pages/assets/performance/pumpColors.test.ts`
+- `src/frontend/src/tables/assets/componentPresentation.test.ts`
+- `src/frontend/tests/s8/pui_ui_followup7.spec.ts`
+- `src/frontend/tests/s8/pui_ui_followup7_cmms.spec.ts`
+
+Only the two new focused Playwright specs cover this pass; no other lane's S1/S8 or outdated wording/clock specs were edited. No git writes or owner data changes. Database creation/migrations were confined to an isolated test database inside the owned browser container; no stored plant records were accessed. Parent acceptance is unchanged.
+
+The shared ValueTooltip change is a general accessibility improvement: plain text facts expose their explanation to assistive technology, and positioned targets contain hidden content inside table scrollers. Other layout changes stay within AIMMS pages. Final contrast review caught and repaired the new Normal marker numeral (now normal text; ring/check remain green) and Not verified badge text; rendered text/UI checks cover both themes. Future observations retain their real clock offset rather than being clamped to zero age.
+
+## Follow-up 8
+
+Built on `713b22b65`. All three confirmed test-lane bugs were verified against current source and fixed; no finding skipped.
+
+| Finding | Fix and final evidence |
+| --- | --- |
+| 1. Reference-answer return drops model view | `focusReturnPath` preserves query state from the exact same-machine native Equipment route, including explicit model/schematic and repeated/encoded parameters. The confirmed position overrides launch positions. Other routes and external destinations retain the canonical fallback. Four unchanged strict desktop/phone, light/dark cases prove the return is `/machines/machine/18/equipment/?position=bearing&view=model`. |
+| 2. Wider-font phone Machines card below fold | Phone selected-location controls share one row; chooser text wraps within its button, and scope/summary spacing is compact. Optional write actions retain separate rows. No facts or controls hidden, no smaller type; 44px targets and desktop styling preserved. Both themes pass with Arial, 1.65 line height and 0.2px letter spacing: first card bottom **820.08px**, previously **900.08px**, within **844px**. |
+| 3. Focused history tooltip clips | UnitMimic uses shared `factTooltipProps` for multiline wrapping, 360px maximum width and hover/focus/touch access. Both strict viewport-matrix cases pass. Focused phone tooltip is **360px** wide, right edge **368px**, document/viewport **390px**; complete explanation and Escape dismissal remain asserted. |
+
+Verification: **8/8 focused Playwright cases**, **107/107 units** across three files, all **9 TypeScript projects**, Lingui extract/compile with all **117 locale files restored bytewise**, changed-file prek and whitespace checks pass. The two phone cases also passed an earlier smoke run. Final source digest: `355cc847847d`.
+
+The exact lane specs at `abd133010` were copied byte-for-byte into an isolated scratch mirror that uses this checkout's current source. The originals, copied assertions and all tracked Playwright specs remain unchanged: `tests/s1/pui_reference_focus.spec.ts` (four exact-return cases), `tests/s8/pui_design.spec.ts` (two wider-font cases), `tests/s8/pui_state_captures.spec.ts` (two shifted-history cases covering 1100/1440/1920/390px). Checksums: `data/devscratch/ui-r2/followup8/lane-specs.json`.
+
+Evidence in `data/devscratch/ui-r2/followup8/`: `{reference,phone,history}-final.log`, corresponding `*-results/` screenshots/geometry, `units.log`, `types.json`, `lingui-result.json`, `prek-final.log` and `source.json`. Reviewed **16 final PNGs**: four reference-answer views, both stressed-font phone views, both focused history tooltips and eight schematic viewport views. Individual paths/hashes are in `capture-review.json`. Fixture-only Linux Chromium on owned WS3012/harness15250; no owner localhost or real records opened. Owned runtime stopped and both ports clear; deployed acceptance/full suites remain with the coordinator.
+
+Source files changed (4):
+
+- `src/frontend/src/components/aichat/workFocus.ts`
+- `src/frontend/src/pages/assets/health/mimic/UnitMimic.tsx`
+- `src/frontend/src/pages/assets/locations/LocationWorkspace.tsx`
+- `src/frontend/src/pages/assets/locations/locations.module.css`
+
+Test file changed (1): `src/frontend/src/components/aichat/referenceFocus.test.ts` — model/schematic and extra-query preservation, confirmed-position precedence and route-boundary coverage. No Playwright spec edited. No database, dependency or Git writes. Parent acceptance unchanged.
