@@ -68,16 +68,18 @@ const curve = (page: Page) => trendCard(page).locator('.recharts-area-curve');
 
 /** Each x-axis tick's position and the instant its label names (UTC). */
 async function axisTicks(card: Locator) {
-  const ticks = await card
-    .locator(
-      '.recharts-xAxis-tick-labels text.recharts-cartesian-axis-tick-value'
-    )
-    .evaluateAll((nodes) =>
-      nodes.map((node) => ({
-        x: Number(node.getAttribute('x')),
-        label: node.textContent ?? ''
-      }))
-    );
+  const labels = card.locator(
+    '.recharts-xAxis-tick-labels text.recharts-cartesian-axis-tick-value'
+  );
+  // Expanding remounts the responsive chart inside the modal. evaluateAll
+  // does not wait for its first layout or for the axis labels to render.
+  await expect(labels.nth(1)).toBeVisible();
+  const ticks = await labels.evaluateAll((nodes) =>
+    nodes.map((node) => ({
+      x: Number(node.getAttribute('x')),
+      label: node.textContent ?? ''
+    }))
+  );
   return ticks.map(({ x, label }) => {
     // Ticks are whole minutes: "08:52 AM".
     const match = label.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?/);
@@ -160,6 +162,7 @@ test('the full chart keeps the silence open on a proportional time axis', async 
       name: 'Expanded signal trend',
       exact: true
     });
+    await expect(expanded).toBeVisible();
     await expect(expanded.getByText(/Times: your clock/)).toHaveCount(0);
     const expandedTicks = await axisTicks(expanded);
     expect(expandedTicks.length).toBeGreaterThanOrEqual(2);
@@ -167,6 +170,10 @@ test('the full chart keeps the silence open on a proportional time axis', async 
       expect(tick.at).toBeGreaterThanOrEqual(NOW - 600_000);
       expect(tick.at).toBeLessThanOrEqual(NOW);
     }
+    const expandedCurve = expanded.locator('.recharts-area-curve');
+    await expect(expandedCurve).toHaveCount(1);
+    await expect(expandedCurve).toHaveAttribute('d', /^M/);
+    expect(subpaths((await expandedCurve.getAttribute('d'))!)).toHaveLength(3);
     await expanded.screenshot({
       path: testInfo.outputPath(`expanded-clock-${scheme}.png`)
     });
