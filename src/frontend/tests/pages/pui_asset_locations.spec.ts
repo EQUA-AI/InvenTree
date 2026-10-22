@@ -412,6 +412,22 @@ function lastMachineRequest(requests: RecordedRequest[]) {
   return requests[requests.length - 1];
 }
 
+async function expectSelectedLocationMachines(page: Page, count: number) {
+  const totals = page.getByRole('region', {
+    name: 'Location totals',
+    exact: true
+  });
+  await expect(totals.getByTestId('machine-count-view')).toHaveText(
+    String(count)
+  );
+  await expect(
+    totals.getByText(count === 1 ? 'machine' : 'machines', { exact: true })
+  ).toBeVisible();
+  await expect(page.locator('[data-machine]')).toHaveCount(count);
+  // A complete selected-location list uses the existing location total once.
+  await expect(page.getByTestId('machine-page-count')).toHaveCount(0);
+}
+
 test.beforeEach(() => {
   machinesError = false;
   locationsError = false;
@@ -681,8 +697,7 @@ test('native summary and machine rows remain aligned for an old cohort link', as
   await page.goto(
     '/playwright/machine-locations.html?mode=workspace&location=12&demo_session=123e4567-e89b-12d3-a456-426614174000'
   );
-  await expect(page.getByTestId('machine-count-view')).toHaveText('8');
-  await expect(page.getByText('8 machines', { exact: true })).toBeVisible();
+  await expectSelectedLocationMachines(page, 8);
   await expect(
     page.getByRole('columnheader', { name: 'Active record' })
   ).toHaveCount(0);
@@ -708,8 +723,7 @@ test('native summary and machine rows remain aligned for an old cohort link', as
   await page
     .getByRole('checkbox', { name: 'Show inactive', exact: true })
     .check();
-  await expect(page.getByTestId('machine-count-view')).toHaveText('9');
-  await expect(page.getByText('9 machines', { exact: true })).toBeVisible();
+  await expectSelectedLocationMachines(page, 9);
   await expect(
     page.getByRole('link', { name: 'Pump 2', exact: true })
   ).toBeVisible();
@@ -739,7 +753,7 @@ test('location change resets table page and selection', async ({ page }) => {
   await page.evaluate(() =>
     (window as any).__machineTest.setSearch('location', '12')
   );
-  await expect(page.getByText('8 machines', { exact: true })).toBeVisible();
+  await expectSelectedLocationMachines(page, 8);
   await expect
     .poll(() => {
       const req = machineListRequests
@@ -761,7 +775,7 @@ test('each machine shows its alarms and the list narrows to them', async ({
   await page.goto(
     '/playwright/machine-locations.html?mode=workspace&location=12'
   );
-  await expect(page.getByText('8 machines', { exact: true })).toBeVisible();
+  await expectSelectedLocationMachines(page, 8);
   const row = (name: string) => page.getByRole('row').filter({ hasText: name });
   await expect(
     row('Pump 1').getByText('Critical · 2', { exact: true })
@@ -861,9 +875,16 @@ test.describe('mobile', () => {
     await expect(
       page.getByRole('list', { name: 'Location drill-down' })
     ).toBeHidden();
+    await expectSelectedLocationMachines(page, 8);
     await expect(
       page.getByRole('region', { name: 'Loaded page summary' })
-    ).toContainText('8 machines');
+    ).toContainText('In alarm · 2');
+    await expect(
+      page.getByRole('region', { name: 'Loaded page summary' })
+    ).toHaveAttribute(
+      'aria-description',
+      /Stale-signal coverage unavailable for 8 machines/
+    );
     await expect(
       page.getByRole('region', { name: 'Loaded page summary' })
     ).not.toContainText('This page');

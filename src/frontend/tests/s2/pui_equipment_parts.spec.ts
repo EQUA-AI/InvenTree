@@ -265,8 +265,11 @@ for (const scheme of ['light', 'dark'] as const) {
       name: 'Thrust Bearing',
       exact: true
     });
+    await page.keyboard.press('Tab');
     await trigger.focus();
-    await expect(page.getByRole('tooltip')).toHaveText('PS-THRUST-BRG:1');
+    await expect(
+      page.getByRole('tooltip', { name: 'PS-THRUST-BRG:1', exact: true })
+    ).toBeVisible();
     await trigger.press('Enter');
     const detail = page.getByRole('dialog', {
       name: 'Thrust Bearing',
