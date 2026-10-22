@@ -6,7 +6,8 @@ import {
   Stack,
   Table,
   Text,
-  Tooltip
+  Tooltip,
+  UnstyledButton
 } from '@mantine/core';
 import { IconChartLine, IconExternalLink } from '@tabler/icons-react';
 import { useState } from 'react';
@@ -15,6 +16,7 @@ import { useUserState } from '../../../../states/UserState';
 import { machinePanelHref } from '../../locations/locationTree';
 import operations from '../../operations.module.css';
 import { AlarmStateBadge, SeverityBadge } from '../common';
+import { MissingValue } from './MissingValue';
 import { formatInstant, useDisplayClock } from './observedTime';
 
 import { UserRoles } from '@lib/enums/Roles';
@@ -61,7 +63,6 @@ export function AlarmTable({
 
   return (
     <>
-      <Text size='sm'>{t`Acknowledgement records that someone saw the application alarm; it does not clear the condition.`}</Text>
       <Table.ScrollContainer
         minWidth={0}
         type='native'
@@ -91,35 +92,47 @@ export function AlarmTable({
                   data-anomaly={alarm.anomaly ?? undefined}
                 >
                   <Table.Td>
-                    {alarm.label}
-                    <Text
-                      size='xs'
-                      className={operations.meta}
-                      style={{ wordBreak: 'break-all' }}
+                    <Tooltip
+                      label={alarm.pointer}
+                      events={{ hover: true, focus: true, touch: true }}
                     >
-                      {alarm.pointer}
-                    </Text>
+                      <UnstyledButton className={operations.phoneTarget}>
+                        {alarm.label}
+                      </UnstyledButton>
+                    </Tooltip>
                   </Table.Td>
                   <Table.Td data-label={t`Alarm`}>
                     <AlarmStatus alarm={alarm} />
                   </Table.Td>
                   <Table.Td data-label={t`Value`}>
-                    {display(alarm)}
-                    {alarm.reason && (
-                      <Text size='xs'>{reasonLabel(alarm.reason)}</Text>
+                    {alarm.value === null || alarm.reason ? (
+                      <MissingValue
+                        label={alarm.label}
+                        reason={
+                          reasonLabel(alarm.reason) ||
+                          t`Not reported by the plant`
+                        }
+                      />
+                    ) : (
+                      display(alarm)
                     )}
                   </Table.Td>
                   <Table.Td data-label={t`Condition`}>
-                    {conditionText(alarm)}
+                    {!alarm.thresholds_configured || alarm.reason ? (
+                      <MissingValue reason={conditionText(alarm)} />
+                    ) : (
+                      conditionText(alarm)
+                    )}
                   </Table.Td>
                   <Table.Td
                     data-label={t`Observed at`}
                     style={{ whiteSpace: 'nowrap' }}
                   >
-                    {alarm.observed_at
-                      ? (formatInstant(alarm.observed_at, clock) ??
-                        t`Time unavailable`)
-                      : t`No reading`}
+                    {formatInstant(alarm.observed_at, clock) ?? (
+                      <MissingValue
+                        reason={t`Observation time not reported by the plant`}
+                      />
+                    )}
                   </Table.Td>
                   <Table.Td className={operations.alarmActions}>
                     <Group
@@ -258,12 +271,21 @@ function AlarmStatus({ alarm }: Readonly<{ alarm: MimicAlarm }>) {
     return <Text size='sm'>{t`Not raised yet`}</Text>;
   }
   return (
-    <Stack gap={4} align='flex-start'>
-      <AlarmStateBadge
-        status={alarm.anomaly_status}
-        severity={alarm.severity}
-      />
-      <SeverityBadge severity={alarm.severity} />
-    </Stack>
+    <Tooltip
+      label={t`Acknowledgement records that someone saw the application alarm; it does not clear the condition.`}
+      events={{ hover: true, focus: true, touch: true }}
+      multiline
+      maw={360}
+    >
+      <UnstyledButton className={operations.phoneTarget} data-alarm-info>
+        <Stack gap={4} align='flex-start'>
+          <AlarmStateBadge
+            status={alarm.anomaly_status}
+            severity={alarm.severity}
+          />
+          <SeverityBadge severity={alarm.severity} />
+        </Stack>
+      </UnstyledButton>
+    </Tooltip>
   );
 }

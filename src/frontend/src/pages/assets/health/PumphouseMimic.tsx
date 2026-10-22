@@ -10,21 +10,22 @@ import {
   Paper,
   Stack,
   Text,
-  Title
+  Title,
+  Tooltip,
+  UnstyledButton
 } from '@mantine/core';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import operations from '../operations.module.css';
 import { recordedTelemetryAsLive } from '../telemetryPresentation';
 import { formatInstant, useDisplayClock } from './mimic/observedTime';
 
 import { AlarmTable } from './mimic/AlarmTable';
 import { ReadingSections } from './mimic/MimicReadings';
-import {
-  MimicSchematic,
-  alarmColor,
-  alarmLabel,
-  stateStyle
-} from './mimic/MimicSchematic';
+import { alarmColor, alarmLabel, stateStyle } from './mimic/MimicSchematic';
+import { MissingValue } from './mimic/MissingValue';
+import { StationSchematic } from './mimic/StationSchematic';
+import classes from './mimic/StationSchematic.module.css';
 import { PANEL, UnitMimic } from './mimic/UnitMimic';
 import {
   displayFor,
@@ -73,7 +74,7 @@ function Legend({ data }: Readonly<{ data: MimicData }>) {
                 border: `1.6px ${style.dashed ? 'dashed' : 'solid'} ${style.line}`
               }}
             />
-            <Text size='xs' c='dimmed'>
+            <Text size='xs'>
               {stateLabel(state)} {counts[state] ?? 0}
             </Text>
           </Group>
@@ -110,35 +111,47 @@ function Legend({ data }: Readonly<{ data: MimicData }>) {
 }
 
 function TotalCard({ name, total }: Readonly<{ name: string; total: Total }>) {
+  const label =
+    name === 'power' ? t`Plant power` : name === 'flow' ? t`Plant flow` : name;
   return (
-    <Paper withBorder p='sm' radius='md' miw={170}>
-      <Text size='xs' c='dimmed' tt='uppercase' fw={600}>
-        {name === 'power'
-          ? t`Plant power`
-          : name === 'flow'
-            ? t`Plant flow`
-            : name}
-      </Text>
-      <Text size='xl' fw={700} lh={1.3}>
-        {total.value === null ? (
-          <Text span c='dimmed' fs='italic' size='md' fw={400}>
-            {t`Unavailable`}
+    <Paper
+      withBorder
+      p='sm'
+      radius='sm'
+      className={classes.total}
+      data-total={name}
+    >
+      <Tooltip
+        label={total.derived ? t`Derived total` : t`Source measurement`}
+        events={{ hover: true, focus: true, touch: true }}
+      >
+        <UnstyledButton className={classes.origin} w='fit-content'>
+          <Text component='span' size='xs' fw={600}>
+            {label}
           </Text>
+        </UnstyledButton>
+      </Tooltip>
+      <Text
+        component='div'
+        size='xl'
+        fw={700}
+        lh={1.3}
+        className={classes.totalValue}
+      >
+        {total.value === null ? (
+          <MissingValue
+            label={label}
+            reason={reasonLabel(total.reason) || t`Not reported by the plant`}
+          />
         ) : (
           <>
             {numberText(total.value)}{' '}
-            <Text span size='sm' c='dimmed' fw={500}>
+            <Text span size='sm' fw={500}>
               {total.unit}
             </Text>
           </>
         )}
       </Text>
-      <Group gap='xs' mt={4}>
-        <Badge variant='outline' size='sm' color='gray'>
-          {total.derived ? t`Derived total` : t`Source measurement`}
-        </Badge>
-        {total.reason && <Text size='xs'>{reasonLabel(total.reason)}</Text>}
-      </Group>
     </Paper>
   );
 }
@@ -160,19 +173,23 @@ export default function PumphouseMimic({ stationId }: { stationId: number }) {
     <Stack ref={ref} gap='md' mih={160}>
       <Group justify='space-between' align='center'>
         <Group gap='lg'>
-          {data && (
+          {data && !query.isError && (
             <>
-              <Text size='xs' c='dimmed'>
-                {t`Source`}: {data.source?.name ?? t`Not bound`}
+              <Text size='xs' className={operations.meta}>
+                {t`Source`}:{' '}
+                {data.source?.name ?? (
+                  <MissingValue reason={t`Source not supplied`} />
+                )}
               </Text>
-              <Text size='xs' c='dimmed'>
+              <Text size='xs' className={operations.meta}>
                 {currentSource ? t`Last reading` : t`Last poll`}:{' '}
-                {currentSource
-                  ? (formatInstant(data.last_observed_at, clock) ??
-                    t`Observation time unavailable`)
-                  : data.last_poll_at
-                    ? new Date(data.last_poll_at).toLocaleString()
-                    : t`Not polled yet`}
+                {formatInstant(
+                  currentSource ? data.last_observed_at : data.last_poll_at,
+                  clock
+                ) ?? (
+                  <MissingValue reason={t`Reading time not supplied`} />
+                )}{' '}
+                · {clock.label}
               </Text>
               {currentSource &&
                 data.enabled &&
@@ -180,14 +197,11 @@ export default function PumphouseMimic({ stationId }: { stationId: number }) {
                 !data.last_error_code && (
                   <Badge color='blue' variant='outline'>{t`Live`}</Badge>
                 )}
-              <Text size='xs' c='dimmed'>
-                {t`Response time`}:{' '}
-                {new Date(data.generated_at).toLocaleString()}
-              </Text>
             </>
           )}
         </Group>
         <Button
+          className={classes.refresh}
           variant='default'
           size='xs'
           loading={query.isFetching}
@@ -208,9 +222,6 @@ export default function PumphouseMimic({ stationId }: { stationId: number }) {
         <Loader />
       ) : (
         <>
-          {data.layout.review_status !== 'approved' && (
-            <Alert color='yellow'>{t`This schematic awaits plant review. Missing mappings are shown as unavailable.`}</Alert>
-          )}
           {!data.enabled && (
             <Alert color='yellow'>
               {recordedTelemetryAsLive(data)
@@ -224,17 +235,17 @@ export default function PumphouseMimic({ stationId }: { stationId: number }) {
             </Alert>
           )}
           <Paper withBorder radius='md' p='sm' bg={PANEL}>
-            <MimicSchematic data={data} selected={unit} onSelect={select} />
+            <StationSchematic data={data} selected={unit} onSelect={select} />
             {!!data.bays.length && <Legend data={data} />}
           </Paper>
           {!data.bays.length && (
             <Alert>{t`No pump slots are registered for this station.`}</Alert>
           )}
-          <Group align='stretch'>
+          <div className={classes.totals}>
             {Object.entries(data.totals).map(([name, total]) => (
               <TotalCard key={name} name={name} total={total} />
             ))}
-          </Group>
+          </div>
           {!!stationPoints.length && (
             <ReadingSections
               display={display}
@@ -270,9 +281,7 @@ export default function PumphouseMimic({ stationId }: { stationId: number }) {
                 </>
               }
             />
-          ) : (
-            <Text c='dimmed'>{t`Select a pump bay to view its instruments and readings.`}</Text>
-          )}
+          ) : null}
           <Title order={4}>{t`Threshold alarms`}</Title>
           {data.alarms.length ? (
             <AlarmTable
@@ -282,12 +291,6 @@ export default function PumphouseMimic({ stationId }: { stationId: number }) {
             />
           ) : (
             <Text>{t`No active alarms from configured thresholds.`}</Text>
-          )}
-          {!!data.unconfigured_thresholds && (
-            <Text c='dimmed' size='sm'>
-              {t`Points without configured thresholds`}:{' '}
-              {data.unconfigured_thresholds}
-            </Text>
           )}
         </>
       )}

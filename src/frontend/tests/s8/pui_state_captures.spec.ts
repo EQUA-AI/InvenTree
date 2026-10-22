@@ -267,8 +267,15 @@ for (const state of states)
               exact: true
             })
           ).toBeVisible();
-          await expect(page.getByLabel('Process data')).toContainText(
-            'Communication statusUnavailable · not supplied'
+          const communication = page
+            .getByLabel('Process data')
+            .getByRole('button', {
+              name: 'Communication status: Not reported by the plant',
+              exact: true
+            });
+          await expect(communication).toHaveText('—');
+          await expect(communication).toHaveAccessibleName(
+            'Communication status: Not reported by the plant'
           );
           if (state === 'schematic-polling-error')
             await expect(page.getByRole('alert').first()).toContainText(
@@ -346,19 +353,22 @@ for (const state of states)
         expect(metadata.clockStatements).toBe(1);
         expect(
           metadata.drawing.tags.filter(
-            (tag) => tag.ageOverlapsLabel || tag.labelOutsideTag
+            (tag) => tag.valueOverlapsLabel || tag.labelOutsideTag
           ),
-          'Tag labels and ages remain separate and inside their boxes'
+          'Reading labels and values remain separate and inside their boxes'
         ).toEqual([]);
         expect(
           metadata.drawing.partLabels.filter(
-            (label) => label.outside || !label.truncated
+            (label) =>
+              label.outside || label.hardTruncated || label.lineClamp !== '2'
           )
         ).toEqual([]);
         expect(metadata.drawing.tagOverlaps).toEqual([]);
         expect(metadata.drawing.markerOverlaps).toEqual([]);
+        expect(metadata.drawing.calloutOverlaps).toEqual([]);
+        expect(metadata.drawing.drawingOverlaps).toEqual([]);
         if (metadata.drawing.tags.length)
-          expect(metadata.drawing.partLabels).toHaveLength(39);
+          expect(metadata.drawing.partLabels).toHaveLength(13);
         if (state === 'base-machines') {
           if (width === 1440)
             expect(metadata.fold.pageFacts?.height).toBeLessThanOrEqual(40);
@@ -379,13 +389,17 @@ for (const state of states)
         }
         if (state === 'base-schematic') {
           await expect(
-            page.locator('svg[aria-label="Pump unit schematic"] [data-tag-age]')
-          ).toHaveCount(5);
-          expect(metadata.drawing.tags).toHaveLength(5);
+            page.locator(
+              '[data-unit-schematic] [data-reading] [data-value] [aria-label]'
+            )
+          ).toHaveCount(4);
+          expect(metadata.drawing.tags).toHaveLength(4);
           expect(metadata.drawing.tagOverlaps).toEqual([]);
           expect(metadata.drawing.markerOverlaps).toEqual([]);
+          expect(metadata.drawing.calloutOverlaps).toEqual([]);
+          expect(metadata.drawing.drawingOverlaps).toEqual([]);
           if (metadata.drawing.tags.length)
-            expect(metadata.drawing.partLabels).toHaveLength(39);
+            expect(metadata.drawing.partLabels).toHaveLength(13);
           if (width === 1100 || width === 1440)
             for (const tag of metadata.drawing.tags)
               expect(tag.labelSize).toBeGreaterThanOrEqual(
@@ -397,7 +411,7 @@ for (const state of states)
             );
           if (width === 390) {
             const key = (await page
-              .getByRole('heading', { name: 'Key readings', exact: true })
+              .getByLabel('Key readings', { exact: true })
               .boundingBox())!;
             expect(key.y + key.height).toBeLessThanOrEqual(844);
           }

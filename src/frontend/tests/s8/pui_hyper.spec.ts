@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { type Locator, type Page, expect, test } from '@playwright/test';
 import { nativeBaseline } from '../s0/guards';
 import { mockExplorer } from '../s1/machineExplorerFixtures';
 import { mockFaultHistory } from '../s3/machineWorkFixtures';
@@ -10,6 +10,13 @@ import {
   openFaultHistory
 } from './designFixtures';
 import { nativeThemeFixtures } from './themeFixtures';
+
+async function keyboardFocus(page: Page, target: Locator) {
+  await page.keyboard.press('Tab');
+  await target.focus();
+  await expect(target).toBeFocused();
+}
+
 nativeBaseline();
 nativeThemeFixtures();
 
@@ -42,7 +49,9 @@ for (const scheme of ['light', 'dark'] as const) {
         exact: true
       })
     ).toHaveCount(1);
-    await expect(page.getByText(/your clock|plant clock/)).toHaveCount(1);
+    await expect(
+      page.getByText(/your clock|plant clock/).filter({ visible: true })
+    ).toHaveCount(1);
     await expect(
       page.locator('[data-operational-panel]').first().getByRole('status')
     ).toHaveCount(1);
@@ -50,14 +59,12 @@ for (const scheme of ['light', 'dark'] as const) {
       page.getByText(/\b(AM|PM)\b|\d{1,2}\/\d{1,2}\/\d{4}/)
     ).toHaveCount(0);
     await expect(
-      page.locator('svg[aria-label="Pump unit schematic"] > g[data-point]')
-    ).toHaveCount(5);
-    const status = page
-      .getByRole('heading', { name: 'Pump unit: P1' })
-      .locator('..');
+      page.locator('[data-unit-schematic] [data-reading][data-point]')
+    ).toHaveCount(4);
+    const status = page.locator('[data-unit-header]');
     await expect(status).toContainText('2 s old');
-    await expect(page.getByLabel('Process data').locator('dt')).toHaveCount(4);
-    await expect(page.getByLabel('Process data').locator('dd')).toHaveCount(4);
+    await expect(page.getByLabel('Process data').locator('dt')).toHaveCount(3);
+    await expect(page.getByLabel('Process data').locator('dd')).toHaveCount(3);
   });
   test(`poll errors are neutral acquisition facts in ${scheme}`, async ({
     page
@@ -72,8 +79,30 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(alert).toContainText(
       'Source network request failed (code NETWORK)'
     );
-    await expect(alert).toContainText('time not supplied');
+    await expect(
+      alert.getByRole('button', {
+        name: 'Source last success: time not supplied',
+        exact: true
+      })
+    ).toHaveText('—');
     await expect(alert).not.toContainText('Communication lost');
+    data.last_poll_at = null;
+    data.last_error_at = null;
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await expect(alert).toContainText('Polling error');
+    for (const label of [
+      'Last attempt',
+      'Source last error',
+      'Source last success'
+    ]) {
+      const reason = `${label}: time not supplied`;
+      const missing = alert.getByRole('button', { name: reason, exact: true });
+      await expect(missing).toHaveText('—');
+      await keyboardFocus(page, missing);
+      await expect(
+        page.getByRole('tooltip').filter({ hasText: reason })
+      ).toHaveText(reason);
+    }
     await readable(alert);
     // The alarm's recorded severity remains explicit when its current
     // threshold reading is unavailable; color is not the only severity cue.
@@ -85,18 +114,16 @@ for (const scheme of ['light', 'dark'] as const) {
         .getByText('Warning', { exact: true })
     ).toBeVisible();
     await expect(
-      page
-        .getByRole('heading', { name: 'Pump unit: P1' })
-        .locator('..')
-        .getByText('Running', { exact: true })
+      page.locator('[data-unit-header]').getByText('Running', { exact: true })
     ).toHaveCount(0);
     data.last_error_code = '';
     data.last_poll_at = null;
     data.last_success_at = null;
     data.last_error_at = null;
     await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-    await expect(page.getByLabel('Process data')).toContainText(
-      'Enabled · no error reported'
+    await expect(page.getByLabel('Process data')).toContainText('Enabled');
+    await expect(page.getByLabel('Process data')).not.toContainText(
+      'Reported error'
     );
     await expect(page.getByLabel('Process data')).not.toContainText(/\bOK\b/);
   });
@@ -134,7 +161,9 @@ for (const scheme of ['light', 'dark'] as const) {
         .getByText('Reference model · geometry unverified')
     ).toBeVisible();
     await readable(page.locator('[data-scene-phase] .mantine-Badge-root'));
-    await expect(page.getByText(/your clock|plant clock/)).toHaveCount(1);
+    await expect(
+      page.getByText(/your clock|plant clock/).filter({ visible: true })
+    ).toHaveCount(1);
     await expect(
       page.locator('[data-operational-panel]').first().getByRole('status')
     ).toHaveCount(1);
@@ -176,7 +205,9 @@ for (const scheme of ['light', 'dark'] as const) {
     await page
       .getByRole('button', { name: 'Location details', exact: true })
       .click();
-    await expect(page.getByText(/your clock|plant clock/)).toHaveCount(1);
+    await expect(
+      page.getByText(/your clock|plant clock/).filter({ visible: true })
+    ).toHaveCount(1);
     await expect(
       page.locator('[data-operational-panel]').first().getByRole('status')
     ).toHaveCount(1);
@@ -206,7 +237,9 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(
       evidence.getByText('Outside occurrence span', { exact: true })
     ).toHaveCount(0);
-    await expect(page.getByText(/your clock|plant clock/)).toHaveCount(1);
+    await expect(
+      page.getByText(/your clock|plant clock/).filter({ visible: true })
+    ).toHaveCount(1);
     await expect(
       page.locator('[data-operational-panel]').first().getByRole('status')
     ).toHaveCount(1);
@@ -247,14 +280,23 @@ for (const scheme of ['light', 'dark'] as const)
         .filter({ has: page.locator('circle + text') });
       await expect(part).toHaveCount(1);
       await expect(part).toHaveAttribute('data-verdict', condition);
-      await expect(part.locator('[data-part-label]')).toHaveCount(3);
+      const callout = page.locator('button[data-part="PS-MOTOR"]');
+      await expect(callout).toHaveAttribute('data-verdict', condition);
+      const label = callout.locator('[data-part-label]');
+      await expect(label).toHaveCSS('-webkit-line-clamp', '2');
+      await expect(label).toHaveCSS('text-overflow', 'clip');
+      await keyboardFocus(page, callout);
+      const fullLabel = await label.innerText();
       await expect(
-        part.locator('[data-part-label]').first().locator(':scope > *')
-      ).toHaveCSS('text-overflow', 'ellipsis');
-      // The key and its corresponding drawing marker each carry the numeral.
-      await expect(part.locator('circle + text')).toHaveCount(2);
-      for (const numeral of await part.locator('circle + text').all())
-        await readable(numeral);
+        page.getByRole('tooltip').filter({ hasText: fullLabel })
+      ).toContainText(fullLabel);
+      // The callout and corresponding native drawing marker carry one numeral each.
+      await expect(part.locator('circle + text')).toHaveCount(1);
+      await expect(
+        callout.locator('[data-part-number] circle + text')
+      ).toHaveCount(1);
+      await readable(part.locator('circle + text'));
+      await readable(callout.locator('[data-part-number] circle + text'));
       await part.screenshot({
         path: info.outputPath(`mapped-part-${condition}-${scheme}.png`)
       });
@@ -288,10 +330,21 @@ for (const scheme of ['light', 'dark'] as const) {
         .filter({ hasText: /^Polling$/ })
         .locator('..')
         .locator('dd')
-    ).toHaveText('disabled');
-    await expect(page.locator('[data-equipment-view]')).toContainText(
-      'Last reading'
-    );
+    ).toHaveText('Disabled');
+    if (info.project.name.endsWith('phone')) {
+      await keyboardFocus(
+        page,
+        page.getByRole('button', { name: 'Schematic information', exact: true })
+      );
+      await expect(
+        page.getByRole('tooltip').filter({ hasText: 'Last reading' })
+      ).toContainText('Last reading');
+      await page.keyboard.press('Escape');
+    } else {
+      await expect(
+        page.locator('[data-equipment-view] output:visible')
+      ).toContainText('Last reading');
+    }
     await page.locator('[data-equipment-view]').screenshot({
       path: info.outputPath(`o27-mimic-${scheme}.png`),
       animations: 'disabled'
@@ -314,7 +367,7 @@ for (const scheme of ['light', 'dark'] as const) {
       page
         .getByLabel('Process data')
         .locator('dd')
-        .filter({ hasText: /^disabled$/ })
+        .filter({ hasText: /^Disabled$/ })
     ).toHaveCount(1);
   });
 }

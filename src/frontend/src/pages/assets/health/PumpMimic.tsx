@@ -1,5 +1,6 @@
 import { t } from '@lingui/core/macro';
 import {
+  ActionIcon,
   Alert,
   Anchor,
   Box,
@@ -9,10 +10,12 @@ import {
   Paper,
   Stack,
   Text,
-  Title
+  Title,
+  Tooltip
 } from '@mantine/core';
 import {
   IconCloudOff,
+  IconInfoCircle,
   IconPlayerPause,
   IconPlugConnectedX
 } from '@tabler/icons-react';
@@ -23,6 +26,7 @@ import operations from '../operations.module.css';
 import { recordedTelemetryAsLive } from '../telemetryPresentation';
 import { StatusBadge } from './common';
 import { AlarmTable } from './mimic/AlarmTable';
+import { MissingValue } from './mimic/MissingValue';
 import { UnitMimic, UnitMimicHeader } from './mimic/UnitMimic';
 import { displayFor, pollErrorLabel } from './mimic/format';
 import {
@@ -67,6 +71,9 @@ export default function PumpMimic({
         ? 'warning'
         : null;
   const worstLabel = worst === 'critical' ? t`Critical` : t`Warning`;
+  const currentSource =
+    recordedTelemetryAsLive(data) && data?.reporting != null;
+  const provenance = `${t`Source`}: ${data?.source?.name ?? t`Source not supplied`} · ${currentSource ? t`Last reading` : t`Last poll attempt`}: ${formatInstant(currentSource ? data?.last_observed_at : data?.last_poll_at, clock) ?? t`Reading time not supplied`} · ${t`Times`}: ${clock.label}`;
   return (
     <DisplayClockContext value={clock}>
       <Stack ref={ref} gap='sm' mih={160} className={operations.phoneStack}>
@@ -85,105 +92,160 @@ export default function PumpMimic({
                 data={data}
                 unit={unit}
                 headingId='schematic-title'
+                information={
+                  <>
+                    <Tooltip
+                      label={`${
+                        data && data.layout.review_status !== 'approved'
+                          ? t`Reference schematic · physical arrangement unverified. Awaiting plant review.`
+                          : t`Reference schematic · physical arrangement unverified`
+                      }\n${provenance}`}
+                      multiline
+                      maw={360}
+                      events={{ hover: true, focus: true, touch: true }}
+                    >
+                      <ActionIcon
+                        variant='subtle'
+                        color='gray'
+                        aria-label={t`Schematic information`}
+                        className={operations.phoneTarget}
+                      >
+                        <IconInfoCircle size={18} />
+                      </ActionIcon>
+                    </Tooltip>
+                    <Text
+                      component='output'
+                      aria-label={provenance}
+                      hiddenFrom='sm'
+                      className={operations.meta}
+                    >
+                      {clock.source === 'plant'
+                        ? t`plant clock`
+                        : t`your clock`}
+                    </Text>
+                  </>
+                }
               />
             ) : (
-              <Title
-                order={4}
-                id='schematic-title'
-              >{t`Process readings`}</Title>
-            )}
-            {data && !query.isError && (
-              <Group
-                gap='xs'
-                aria-label={t`Active alarm summary`}
-                component='fieldset'
-                bd={0}
-                p={0}
-                m={0}
-                miw={0}
-                className={operations.pumpAlarmSummary}
-              >
-                {!bay?.machine ? (
-                  <StatusBadge
-                    color='gray'
-                    className={operations.pumpAlarmCounts}
-                    miw={0}
-                  >{t`Active alarms unavailable · pump mapping not supplied`}</StatusBadge>
-                ) : missingAlarmDetails ? (
-                  <StatusBadge
-                    color={worst === 'critical' ? 'red' : 'yellow'}
-                    className={operations.pumpAlarmCounts}
-                    miw={0}
-                  >
-                    {t`Active alarm`} · {worstLabel} · {t`Count unavailable`}
-                  </StatusBadge>
-                ) : (
-                  <StatusBadge
-                    color={
-                      worst === 'critical'
-                        ? 'red'
-                        : worst === 'warning'
-                          ? 'yellow'
-                          : 'gray'
-                    }
-                    className={operations.pumpAlarmCounts}
-                    miw={0}
-                  >
-                    <Box component='span' visibleFrom='sm'>
-                      {t`Active alarms shown`}: {activeAlarms.length} ·{' '}
-                      {t`Critical`}: {critical} · {t`Warning`}: {warning}
-                    </Box>
-                    <Box component='span' hiddenFrom='sm'>
-                      <Box component='span' display='block'>
-                        {t`Active alarms shown`}: {activeAlarms.length}
-                      </Box>
-                      <Box component='span' display='block'>
-                        {t`Critical`}: {critical} · {t`Warning`}: {warning}
-                      </Box>
-                    </Box>
-                  </StatusBadge>
-                )}
-                {other > 0 && (
-                  <Text size='sm'>
-                    {t`Severity unavailable`}: {other}
-                  </Text>
-                )}
-                <Anchor
-                  href='#pump-threshold-alarms'
-                  className={`${operations.link} ${operations.phoneAlarmLink}`}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    const target = document.getElementById(
-                      'pump-threshold-alarms'
-                    );
-                    target?.focus({ preventScroll: true });
-                    target?.scrollIntoView({ block: 'start' });
-                  }}
-                >{t`Open alarms`}</Anchor>
+              <Group gap='xs'>
+                <Title
+                  order={4}
+                  id='schematic-title'
+                >{t`Process readings`}</Title>
+                <Text
+                  component='output'
+                  aria-label={`${t`Times`}: ${clock.label}`}
+                  hiddenFrom='sm'
+                  className={operations.meta}
+                >
+                  {clock.source === 'plant' ? t`plant clock` : t`your clock`}
+                </Text>
               </Group>
             )}
+
+            {data &&
+              !query.isError &&
+              (!bay?.machine ||
+                missingAlarmDetails ||
+                activeAlarms.length > 0) && (
+                <Group
+                  gap='xs'
+                  aria-label={t`Active alarm summary`}
+                  component='fieldset'
+                  bd={0}
+                  p={0}
+                  m={0}
+                  miw={0}
+                  className={operations.pumpAlarmSummary}
+                >
+                  {!bay?.machine ? (
+                    <StatusBadge
+                      color='gray'
+                      className={operations.pumpAlarmCounts}
+                      miw={0}
+                    >{t`Active alarms unavailable · pump mapping not supplied`}</StatusBadge>
+                  ) : missingAlarmDetails ? (
+                    <StatusBadge
+                      color={worst === 'critical' ? 'red' : 'yellow'}
+                      className={operations.pumpAlarmCounts}
+                      miw={0}
+                    >
+                      {t`Active alarm`} · {worstLabel} · {t`Count unavailable`}
+                    </StatusBadge>
+                  ) : (
+                    <StatusBadge
+                      color={
+                        worst === 'critical'
+                          ? 'red'
+                          : worst === 'warning'
+                            ? 'yellow'
+                            : 'gray'
+                      }
+                      className={operations.pumpAlarmCounts}
+                      miw={0}
+                    >
+                      <Box component='span' visibleFrom='sm'>
+                        {t`Active alarms shown`}: {activeAlarms.length} ·{' '}
+                        {t`Critical`}: {critical} · {t`Warning`}: {warning}
+                      </Box>
+                      <Box component='span' hiddenFrom='sm'>
+                        <Box component='span' display='block'>
+                          {t`Active alarms shown`}: {activeAlarms.length}
+                        </Box>
+                        <Box component='span' display='block'>
+                          {t`Critical`}: {critical} · {t`Warning`}: {warning}
+                        </Box>
+                      </Box>
+                    </StatusBadge>
+                  )}
+                  {other > 0 && (
+                    <Text size='sm'>
+                      {t`Severity unavailable`}: {other}
+                    </Text>
+                  )}
+                  <Anchor
+                    href='#pump-threshold-alarms'
+                    className={`${operations.link} ${operations.phoneAlarmLink}`}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      const target = document.getElementById(
+                        'pump-threshold-alarms'
+                      );
+                      target?.focus({ preventScroll: true });
+                      target?.scrollIntoView({ block: 'start' });
+                    }}
+                  >{t`Open alarms`}</Anchor>
+                </Group>
+              )}
             <Group gap='sm' className={operations.pumpActions}>
               {controls}
               <Button
                 variant='default'
                 size='xs'
                 loading={query.isFetching}
+                className={operations.phoneTarget}
                 onClick={() => query.refetch()}
               >{t`Refresh`}</Button>
               <Anchor
-                className={operations.link}
+                className={`${operations.link} ${operations.phoneTarget}`}
                 component={Link}
                 to={`/machines/machine/${stationId}/mimic`}
+                style={{ display: 'inline-flex', alignItems: 'center' }}
                 size='sm'
               >{t`Open station mimic`}</Anchor>
             </Group>
           </Group>
           <Text
-            className={operations.caveat}
-          >{t`Reference schematic · physical arrangement unverified`}</Text>
-          <Text className={operations.meta} component='output'>
+            className={operations.meta}
+            component='output'
+            aria-label={provenance}
+            visibleFrom='sm'
+          >
             {t`Source`}:{' '}
-            {data?.source?.name ?? t`Unavailable · source not supplied`} ·{' '}
+            {data?.source?.name ?? (
+              <MissingValue reason={t`Source not supplied`} />
+            )}{' '}
+            ·{' '}
             {recordedTelemetryAsLive(data) && data?.reporting != null
               ? t`Last reading`
               : t`Last poll attempt`}
@@ -193,13 +255,8 @@ export default function PumpMimic({
                 ? data.last_observed_at
                 : data?.last_poll_at,
               clock
-            ) ??
-              (data && !query.isError
-                ? t`none recorded`
-                : t`time not supplied`)}{' '}
-            · {t`Read at`}{' '}
-            {formatInstant(data?.generated_at, clock) ?? t`Time unavailable`} ·{' '}
-            {t`Times`}: {clock.label}
+            ) ?? <MissingValue reason={t`Reading time not supplied`} />}{' '}
+            · {t`Times`}: {clock.label}
           </Text>
           {query.isError && (
             <Alert
@@ -220,13 +277,28 @@ export default function PumpMimic({
             >
               {pollErrorLabel(data.last_error_code)} (code{' '}
               {data.last_error_code}). {t`Last attempt`}{' '}
-              {formatInstant(data.last_poll_at, clock) ?? t`time not supplied`}.{' '}
+              {formatInstant(data.last_poll_at, clock) ?? (
+                <MissingValue
+                  label={t`Last attempt`}
+                  reason={t`time not supplied`}
+                />
+              )}
+              .{' '}
               {t`Readings are shown only while they are within the source's freshness limit.`}{' '}
               {t`Source last error`}:{' '}
-              {formatInstant(data.last_error_at, clock) ?? t`time not supplied`}{' '}
+              {formatInstant(data.last_error_at, clock) ?? (
+                <MissingValue
+                  label={t`Source last error`}
+                  reason={t`time not supplied`}
+                />
+              )}{' '}
               · {t`Source last success`}:{' '}
-              {formatInstant(data.last_success_at, clock) ??
-                t`time not supplied`}
+              {formatInstant(data.last_success_at, clock) ?? (
+                <MissingValue
+                  label={t`Source last success`}
+                  reason={t`time not supplied`}
+                />
+              )}
             </Alert>
           )}
           {!query.isError && data && !data.enabled && (
@@ -239,17 +311,6 @@ export default function PumpMimic({
                 ? t`Readings are unavailable for this station. Check station activation and source configuration.`
                 : t`Polling is disabled for this station. Live values are unavailable.`}
             </Alert>
-          )}
-          {data && data.layout.review_status !== 'approved' && (
-            <Group role='note' gap='xs'>
-              <StatusBadge
-                variant='outline'
-                color='gray'
-              >{t`Layout awaiting plant review`}</StatusBadge>
-              <Text
-                className={operations.meta}
-              >{t`Missing mappings are shown as unavailable.`}</Text>
-            </Group>
           )}
         </Paper>
         {query.isError ? null : !data ? (

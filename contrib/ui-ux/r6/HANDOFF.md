@@ -1,5 +1,45 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## UI polish checkpoint — 22 October 2026 (read this first)
+
+`r6/ui-mimic` (station and pump mimics) and `r6/ui-tables` (machines list,
+Health signals, Parts tables) are merged on IOT-Merge, together with O27
+(recorded month shown as live). Owner direction: avoid secondary labels and
+descriptions; let the layout explain; missing values are a dash with the
+reason in a tooltip.
+
+Host browser (macOS GPU) after the polish, per branch: S0 112, S3 303-304,
+S7 178 (O27), S2 86, S8 596-607 passed. The owner asked to wrap up without
+updating tests that still assert removed wording. Failing tests to update
+next (most check captions that were deliberately removed):
+
+- S8 `pui_review.spec.ts:60` honesty caveats readable (light/dark, desktop and phone)
+- S8 `pui_state_captures.spec.ts:49` base-machines, station-stale, station-empty,
+  station-condition-unavailable, machines-info-alarm matrices (light/dark): expect a clock statement
+- S8 `pui_design.spec.ts:350` zero discharge flow wording (desktop, phone)
+- S1 `pui_machine_explorer.spec.ts` :21, :166, :433, :527, :618 (phone) and
+  `pui_work_materials.spec.ts:225` (desktop)
+- S2 `pui_equipment_inspector.spec.ts` :27 and :192 (desktop, phone)
+- Known or load-sensitive: S2 `pui_equipment_controls.spec.ts:132` camera reset
+  (fails on the line too), S3 `pui_performance_comparisons.spec.ts:13` (phone),
+  S8 Work `pui_p31_work_keyboard.spec.ts:153`
+
+These were not re-run on the merged tree.
+
+## Station and pump mimics — 22 October 2026 (coordinator replay pending)
+
+Bounded UI repair on `r6/ui-mimic` from `8a8335959`: responsive station
+readouts/pump row and larger pump schematic with separate callout columns.
+The latest owner direction removes redundant captions and chips; missing values
+use an em dash with an accessible hover/focus reason. Failed reads and active
+alarms remain explicit. Verification is restricted to owned Linux Chromium
+WS 3010 / harness 15245 and synthetic fixtures. See
+[the execution report](reports/ui-mimic.md). P08/P31/P35 parent dispositions
+remain unchanged; no deployment or product acceptance is claimed. Final owner
+direction assigns full browser suites and fresh final-source captures to the
+coordinator on the Mac. Completed sandbox checks and exact source checkpoints
+are recorded in the report; discovery listings are not suite passes.
+
 ## UI tables cleanup — 22 October 2026 (ready for coordinator review)
 
 `r6/ui-tables` implements the owner-requested Machines/location selection and density fixes, calm Health missing-value/assessment presentation and station/pump Parts provenance and stacked rows. Latest owner direction is preserved: no new table notes/captions; missing reasons are accessible hover/focus tooltips. [Report](reports/ui-tables.md), `data/devscratch/ui-tables/`. **195 focused browser cases** verified, final **20/20 before/after capture variants** inspected in Linux Chromium on WS3011/harness15246; nine TypeScript projects, changed units8/8 and Lingui with117 bytewise locale restores pass. Affected backend85/85 pass with explicit scratch-only schema supplement; full raw assets failures match HEAD and are not reported green. User narrowed scope: coordinator runs full sprint suites on the Mac. Parent backlog dispositions and deployment/product acceptance unchanged. No Git writes or Azure access. Browser stopped and WS3011 clear. Host harness PID80523 on15246 remains: sandbox denied SIGTERM; coordinator cleanup required (report runtime note).

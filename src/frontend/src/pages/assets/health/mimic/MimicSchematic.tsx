@@ -7,6 +7,7 @@ import {
   useState
 } from 'react';
 import { ageLabel, freshnessText } from './FreshnessLabel';
+import { UnitSchematic } from './UnitSchematic';
 import { useDisplayClock } from './observedTime';
 
 import unitDrawing from '../../../../assets/mimic/pump-unit.svg?raw';
@@ -91,7 +92,7 @@ export function alarmColor(alarm?: string | null) {
   return alarm === 'critical'
     ? 'var(--mantine-color-red-9)'
     : alarm === 'warning'
-      ? 'var(--mantine-color-yellow-9)'
+      ? 'var(--mantine-color-orange-9)'
       : null;
 }
 
@@ -505,7 +506,7 @@ function Bays({
  * picture of black lines disappears on a dark theme - and so that a pump can
  * be drawn in the colour of its state.
  */
-export function MimicSchematic({
+function LegacyMimicSchematic({
   data,
   unit,
   selected,
@@ -645,4 +646,34 @@ export function MimicSchematic({
         })}
     </svg>
   );
+}
+
+/** Unit callouts and readings use the page grid, outside the drawing. */
+export function MimicSchematic(
+  props: Readonly<{
+    data: MimicData;
+    unit?: string;
+    selected?: string | null;
+    onSelect?: (key: string) => void;
+    display?: Display;
+    onPart?: (state: PartState) => void;
+  }>
+) {
+  if (props.unit) {
+    const bay = props.data.bays.find((item) => item.key === props.unit);
+    const state = stateStyle(bay?.state ?? 'unknown');
+    return (
+      <UnitSchematic
+        data={props.data}
+        unit={props.unit}
+        display={props.display ?? valueText}
+        onPart={props.onPart}
+        state={{
+          ...state,
+          fill: bay?.state === 'stale' ? 'url(#mimic-unit-hatch)' : state.fill
+        }}
+      />
+    );
+  }
+  return <LegacyMimicSchematic {...props} />;
 }

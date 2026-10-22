@@ -43,7 +43,7 @@ test('a bound position shows its own slot, reading and work, and the rest as par
     await expect(slot).toContainText('physical assignment is unverified');
     const reading = panel.locator('[data-signal="202"]');
     await expect(reading).toContainText('DE bearing temperature');
-    await expect(reading).toContainText('95 degC');
+    await expect(reading).toContainText('95 °C');
     await expect(reading).toContainText('Warning');
     await expect(panel.locator('[data-position-work]')).toHaveText(
       '1 open on this component'
@@ -210,7 +210,7 @@ test('readings print at a sensible precision and say when their quality is poor'
   await openPanel(page);
   await pick(page, 'bearing');
   const reading = inspector(page).locator('[data-signal="202"]');
-  await expect(reading).toContainText('95.12 degC');
+  await expect(reading).toContainText('95.12 °C');
   await expect(reading).not.toContainText('95.123456');
   await expect(reading.locator('[data-quality]')).toHaveText(
     'Quality: Uncertain'
