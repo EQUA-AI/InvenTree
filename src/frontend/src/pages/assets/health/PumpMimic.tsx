@@ -147,12 +147,14 @@ export default function PumpMimic({
                   >
                     {!bay?.machine ? (
                       <StatusBadge
+                        multiline
                         color='gray'
                         className={operations.pumpAlarmCounts}
                         miw={0}
                       >{t`Active alarms unavailable · pump mapping not supplied`}</StatusBadge>
                     ) : missingAlarmDetails ? (
                       <StatusBadge
+                        multiline
                         color={worst === 'critical' ? 'red' : 'yellow'}
                         className={operations.pumpAlarmCounts}
                         miw={0}

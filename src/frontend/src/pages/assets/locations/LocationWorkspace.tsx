@@ -117,6 +117,7 @@ export function ScopedMachineList({
   const [debounced] = useDebouncedValue(search, 200);
   const searchPending = search !== debounced;
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const filtersId = useId();
   const [selection, setSelection] = useState<number[]>([]);
   const [moving, setMoving] = useState<LocatedMachine[] | null>(null);
   useEffect(() => {
@@ -241,6 +242,7 @@ export function ScopedMachineList({
           variant='default'
           size='xs'
           aria-expanded={filtersOpen}
+          aria-controls={filtersId}
           onClick={() => setFiltersOpen((value) => !value)}
         >{t`Filters`}</Button>
         {location == null && (
@@ -251,6 +253,7 @@ export function ScopedMachineList({
         )}
       </Group>
       <Collapse
+        id={filtersId}
         expanded={!phone || filtersOpen}
         display={phone && !filtersOpen ? 'none' : undefined}
       >
@@ -292,6 +295,7 @@ export function ScopedMachineList({
               />
             </Box>
             <Checkbox
+              id={`${filtersId}-inactive`}
               label={t`Show inactive`}
               styles={{
                 body: { alignItems: 'center' },
@@ -535,7 +539,7 @@ export function ScopedMachineList({
                     <Paper
                       key={machine.pk}
                       withBorder
-                      p='sm'
+                      p={{ base: 8, sm: 'sm' }}
                       data-machine-card={machine.pk}
                       data-machine={machine.pk}
                       id={`machine-row-${machine.pk}`}
@@ -1534,14 +1538,6 @@ export function LocationWorkspace({
                           </Stack>
                         </Collapse>
                       </Paper>
-                      <ScopedMachineList
-                        location={selected.pk}
-                        includeDescendants={!direct}
-                        canChange={context.data.can_change}
-                        state={listState}
-                        onStateChange={updateListState}
-                        source='sites'
-                      />
                     </>
                   ) : (
                     !locationId && (
@@ -1552,6 +1548,20 @@ export function LocationWorkspace({
                         workspaces={workspaces}
                       />
                     )
+                  )}
+                  {/* Scope changes reload the location counts. Keep the list
+                      mounted independently so its open Filters disclosure and
+                      native input identities survive that pending detail read. */}
+                  {locationId && !detail.isError && (
+                    <ScopedMachineList
+                      key={locationId}
+                      location={locationId}
+                      includeDescendants={!direct}
+                      canChange={context.data.can_change}
+                      state={listState}
+                      onStateChange={updateListState}
+                      source='sites'
+                    />
                   )}
                 </Stack>
               </Grid.Col>

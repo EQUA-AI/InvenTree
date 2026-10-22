@@ -102,6 +102,7 @@
   .listToolbar, .listFilters { width: 100%; }
   .listFilters > div { width: 100%; }
   .pageSummary { padding-block: 4px; row-gap: 6px; }
+  .summaryStatusBadge { padding-inline: 4px; }
   .locationTotals { gap: var(--mantine-spacing-sm); padding-top: 0; }
   .locationActions { width: 100%; gap: 4px; }
   .locationActions > button[aria-expanded] { flex: 1 1 0; min-width: 0; }
@@ -134,7 +135,7 @@
   .machineIdentity a { min-height: 44px; display: inline-flex; align-items: center; }
   .workLink { min-height: 44px; display: inline-flex; align-items: center; }
   .phoneFacts thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-  .phoneFacts tbody { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 16px; }
+  .phoneFacts tbody { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px 16px; }
   .phoneFacts tr { display: grid; min-width: 0; }
   .phoneFacts tr:first-child { grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
   .phoneFacts td:not([data-label]) { display: none; }

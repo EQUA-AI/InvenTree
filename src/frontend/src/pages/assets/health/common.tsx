@@ -4,7 +4,6 @@ import {
   type AlertProps,
   Anchor,
   type AnchorProps,
-  type BadgeProps,
   Text,
   type TextProps,
   createPolymorphicComponent
@@ -37,6 +36,7 @@ import { unitLabel } from '../performance/format';
 import { useNow } from '../useNow';
 import {
   StatusBadge as MonitoringStatusBadge,
+  type StatusBadgeProps,
   statusTone
 } from './StatusBadge';
 import { Timestamp } from './Timestamp';
@@ -135,9 +135,13 @@ export function StatusBadge({
   leftSection,
   color = 'gray',
   maw = '100%',
-  miw = 0,
+  multiline = false,
+  miw = multiline ? 0 : 'max-content',
   ...props
-}: BadgeProps & { children: ReactNode; 'data-alarm-status'?: string }) {
+}: Omit<StatusBadgeProps, 'tone'> & {
+  children: ReactNode;
+  'data-alarm-status'?: string;
+}) {
   return (
     <MonitoringStatusBadge
       tone='neutral'
@@ -146,6 +150,7 @@ export function StatusBadge({
       color={color}
       maw={maw}
       miw={miw}
+      multiline={multiline}
       leftSection={leftSection}
     >
       {children}
