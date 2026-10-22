@@ -577,6 +577,7 @@ function PumpPerformance({
         />
       )}
       <Accordion
+        transitionDuration={0}
         value={comparisonOpen ? 'comparison' : null}
         onChange={(value) => {
           setComparisonOpen(value === 'comparison');

@@ -38,6 +38,7 @@
     "tests/s8/pui_ui_followup2.spec.ts",
     "tests/s8/pui_ui_followup3.spec.ts",
     "tests/s8/pui_ui_followup4.spec.ts",
-    "tests/s8/pui_ui_followup5.spec.ts"
+    "tests/s8/pui_ui_followup5.spec.ts",
+    "tests/s8/pui_ui_followup6.spec.ts"
   ]
 }

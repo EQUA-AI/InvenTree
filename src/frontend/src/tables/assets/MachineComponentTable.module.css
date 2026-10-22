@@ -9,7 +9,7 @@
 .source:focus-visible, .fitTarget:focus-visible, .link:focus-visible { outline: 2px solid var(--aimms-focus, light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3))); outline-offset: 3px; border-radius: 3px; }
 .fitTarget { display: inline-flex; align-items: center; cursor: help; }
 .fit { text-transform: none; color: var(--mantine-color-text); border-color: light-dark(var(--mantine-color-gray-6), var(--mantine-color-dark-2)); }
-.link { color: light-dark(var(--mantine-primary-color-7), var(--mantine-primary-color-4)); }
+.link { color: light-dark(var(--mantine-primary-color-8), var(--mantine-primary-color-3)); }
 
 @media (max-width: 47.99375em) {
   .partsTable table, .partsTable tbody { display: block; width: 100%; }
@@ -25,7 +25,7 @@
 
   .nameActions { position: relative; min-height: 44px; }
   .nameActions > button { max-width: calc(100% - 76px); }
-  .phoneDetails > summary { position: absolute; inset-inline-end: 0; top: 0; min-width: 68px; min-height: 44px; display: flex; align-items: center; justify-content: flex-end; gap: 4px; cursor: pointer; color: light-dark(var(--mantine-primary-color-7), var(--mantine-primary-color-4)); }
+  .phoneDetails > summary { position: absolute; inset-inline-end: 0; top: 0; min-width: 68px; min-height: 44px; display: flex; align-items: center; justify-content: flex-end; gap: 4px; cursor: pointer; color: light-dark(var(--mantine-primary-color-8), var(--mantine-primary-color-3)); }
   .phoneDetails > summary::before { content: '+'; }
   .phoneDetails[open] > summary::before { content: '−'; }
   .phoneDetails > summary:focus-visible { outline: 2px solid var(--aimms-focus, light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3))); outline-offset: 2px; border-radius: var(--mantine-radius-xs); }

@@ -1,6 +1,7 @@
 import { t } from '@lingui/core/macro';
 import { ScatterChart } from '@mantine/charts';
 import {
+  Box,
   Group,
   Paper,
   SimpleGrid,
@@ -315,6 +316,9 @@ function SensorGroupCardBody({
     dotMin === dotMax ? dotMax + 1 : dotMax
   );
   const dotDomain: [number, number] = [dotTicks[0], dotTicks.at(-1)!];
+  const comparisonLimits = referenceLines.filter(
+    (line) => line.y >= dotDomain[0] && line.y <= dotDomain[1]
+  );
   const windowStats = useMemo(() => {
     let max: { label: string; value: number } | null = null;
     for (const p of parameters) {
@@ -449,10 +453,30 @@ function SensorGroupCardBody({
               </Stack>
             )}
             {readable.length > 1 && (
-              <Stack gap={4}>
+              <Stack gap={4} data-testid='sensor-comparison'>
                 <Text size='sm' fw={500}>
                   {t`Current reading by sensor`}
                 </Text>
+                {comparisonLimits.length > 0 && (
+                  <Group gap='sm' data-testid='sensor-comparison-limits'>
+                    {comparisonLimits.map((line) => (
+                      <Group key={line.label} gap={5} wrap='nowrap'>
+                        <Box
+                          component='span'
+                          aria-hidden='true'
+                          c={
+                            scheme === 'dark'
+                              ? `${line.severity === 'critical' ? 'red' : 'yellow'}.4`
+                              : line.color
+                          }
+                          w={16}
+                          style={{ borderTop: '2px dashed currentColor' }}
+                        />
+                        <Text size='xs'>{line.label}</Text>
+                      </Group>
+                    ))}
+                  </Group>
+                )}
                 <ScatterChart
                   textColor='var(--mantine-color-text)'
                   h={Math.max(160, readable.length * 34 + 64)}
@@ -471,7 +495,7 @@ function SensorGroupCardBody({
                   styles={{ axisLabel: { fill: 'var(--mantine-color-text)' } }}
                   withLegend={false}
                   scatterChartProps={{
-                    margin: { top: 28, right: 64, bottom: 24, left: 8 }
+                    margin: { top: 12, right: 24, bottom: 24, left: 8 }
                   }}
                   xAxisProps={{
                     domain: dotDomain,
@@ -508,24 +532,13 @@ function SensorGroupCardBody({
                       formatValue(value, decimals, unit, summary?.spread),
                     y: (index: number) => readable[index]?.sensor ?? ''
                   }}
-                  referenceLines={referenceLines
-                    .filter(
-                      (line) => line.y >= dotDomain[0] && line.y <= dotDomain[1]
-                    )
-                    .map((line, index) => ({
-                      x: line.y,
-                      color:
-                        scheme === 'dark'
-                          ? `${line.severity === 'critical' ? 'red' : 'yellow'}.4`
-                          : line.color,
-                      label: {
-                        value: line.label,
-                        position: 'insideTopRight',
-                        dy: 2 + index * 18,
-                        fontSize: 11,
-                        fill: 'var(--mantine-color-text)'
-                      }
-                    }))}
+                  referenceLines={comparisonLimits.map((line) => ({
+                    x: line.y,
+                    color:
+                      scheme === 'dark'
+                        ? `${line.severity === 'critical' ? 'red' : 'yellow'}.4`
+                        : line.color
+                  }))}
                   scatterProps={{ isAnimationActive: false }}
                   tooltipAnimationDuration={0}
                 />

@@ -44,6 +44,7 @@ import { type ResolvedParameter, resolveParameters } from './resolve';
 import { lineFor, rowsFor } from './sections/common';
 import { indexSeries } from './series';
 import { sameScale } from './units';
+import { useComparisonDropdown } from './useComparisonDropdown';
 import {
   type WindowSpec,
   resolveWindow,
@@ -81,6 +82,8 @@ export function ComparisonWorkbench({
   );
   const [missing, setMissing] = useState(false);
   const [mode, setMode] = useState('within');
+  const modeDropdown = useComparisonDropdown();
+  const channelsDropdown = useComparisonDropdown();
   const chosen = parameters.filter((p) =>
     selected.includes(String(p.signal.binding_id))
   );
@@ -107,6 +110,9 @@ export function ComparisonWorkbench({
           <Text fw={600} size='sm'>{t`Investigation comparison`}</Text>
           <SimpleGrid cols={{ base: 1, sm: 2 }}>
             <Select
+              ref={modeDropdown.ref}
+              onDropdownOpen={modeDropdown.reveal}
+              onDropdownClose={modeDropdown.cancel}
               classNames={{ input: monitoring.input }}
               label={t`Comparison mode`}
               value={mode}
@@ -122,6 +128,9 @@ export function ComparisonWorkbench({
               ]}
             />
             <MultiSelect
+              ref={channelsDropdown.ref}
+              onDropdownOpen={channelsDropdown.reveal}
+              onDropdownClose={channelsDropdown.cancel}
               classNames={{ input: monitoring.input }}
               label={t`Comparison channels`}
               searchable
@@ -129,6 +138,7 @@ export function ComparisonWorkbench({
               onChange={(value) => {
                 setSelected(value);
                 setMissing(false);
+                channelsDropdown.reveal();
               }}
               maxValues={12}
               filter={({ options, search }) =>
@@ -485,6 +495,7 @@ function MachineComparison({
   const [search, setSearch] = useState('');
   const [lookup, setLookup] = useState('');
   const [candidate, setCandidate] = useState<string | null>(null);
+  const machineDropdown = useComparisonDropdown();
   const [primaryShift, setPrimaryShift] = useState<number | undefined>();
   const [candidateShift, setCandidateShift] = useState<number | undefined>();
   const machines = useQuery<{
@@ -541,6 +552,9 @@ function MachineComparison({
         <Alert color='red'>{t`Permitted machines could not be read.`}</Alert>
       ) : (
         <Select
+          ref={machineDropdown.ref}
+          onDropdownOpen={machineDropdown.reveal}
+          onDropdownClose={machineDropdown.cancel}
           classNames={{ input: monitoring.input }}
           label={t`Comparison machine`}
           data={candidates.map((item) => ({

@@ -35,8 +35,8 @@
 }
 .meta { color: var(--mantine-color-gray-7); font-size: var(--mantine-font-size-xs); overflow-wrap: anywhere; }
 :global([data-mantine-color-scheme='dark']) .meta { color: var(--mantine-color-dark-1); }
-.link { color: var(--mantine-primary-color-7); }
-:global([data-mantine-color-scheme='dark']) .link { color: var(--mantine-primary-color-4); }
+.link { color: var(--mantine-primary-color-8); }
+:global([data-mantine-color-scheme='dark']) .link { color: var(--mantine-primary-color-3); }
 .input { border-color: var(--mantine-color-gray-6); }
 .input::placeholder { color: light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-1)); opacity: 1; }
 :global([data-mantine-color-scheme='dark']) .input { border-color: var(--mantine-color-dark-2); }
