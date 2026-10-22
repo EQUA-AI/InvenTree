@@ -71,7 +71,7 @@
 .drillRow:hover { background: var(--mantine-primary-color-light); }
 .drillRow:focus-visible, .nodeName:focus-visible { outline: 2px solid var(--aimms-focus, light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3))); outline-offset: 2px; }
 
-@media (max-width: 48em) {
+@media (max-width: 47.99375em) {
   .rootRow { grid-template-columns: minmax(0, 1fr) auto; gap: 5px 12px; min-height: 70px; }
   .rootCode { grid-column: 1 / -1; }
 }
@@ -95,7 +95,7 @@
 .phoneFacts th { font-size: var(--mantine-font-size-xs); font-weight: 500; }
 .phoneFacts th, .phoneFacts td { text-align: left; }
 .phoneFacts td > div { justify-content: flex-start; }
-@media (max-width: 48em) {
+@media (max-width: 47.99375em) {
   .nodeLabel, .nodeName { min-height: 44px; }
   .chevron { min-width: 44px; min-height: 44px; }
   .machineCheckbox { flex-basis: 44px; width: 44px; min-height: 44px; }
@@ -120,7 +120,7 @@
 .summaryAction { display: inline-flex; align-items: center; flex-shrink: 0; }
 
 .summaryAction:focus-visible { outline: 2px solid var(--aimms-focus, light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3))); outline-offset: 2px; }
-@media (max-width: 48em) {
+@media (max-width: 47.99375em) {
   .summaryAction { min-height: 44px; }
   .filterInput { min-height: 44px; }
   .switchLabel { min-height: 44px; display: inline-flex; align-items: center; }
@@ -143,4 +143,6 @@
 @media (pointer: coarse) { .nodeLabel, .chevron { min-height: 44px; } }
 
 .summaryHeading { min-width: 0; }
-@media (max-width: 48em) { .summaryHeading { width: 100%; flex-wrap: nowrap; } }
+@media (max-width: 47.99375em) { .summaryHeading { width: 100%; flex-wrap: nowrap; } }
+
+.summaryAction[aria-pressed='true'] { background: var(--mantine-primary-color-light); outline: 2px solid light-dark(var(--mantine-primary-color-7), var(--mantine-primary-color-4)); outline-offset: 2px; border-radius: var(--mantine-radius-sm); }

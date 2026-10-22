@@ -18,6 +18,7 @@ export function Timestamp({
   value,
   clock: suppliedClock,
   relative,
+  relativeOnly = false,
   stale = false,
   label,
   compactOnPhone = false,
@@ -28,6 +29,7 @@ export function Timestamp({
   value: string | number | null | undefined;
   clock?: DisplayClock;
   relative?: string;
+  relativeOnly?: boolean;
   stale?: boolean;
   label?: string;
   compactOnPhone?: boolean;
@@ -57,9 +59,14 @@ export function Timestamp({
       component='time'
       dateTime={new Date(value!).toISOString()}
       size='sm'
-      style={{ fontVariantNumeric: 'tabular-nums' }}
+      style={{
+        fontVariantNumeric: 'tabular-nums',
+        whiteSpace: relativeOnly ? 'nowrap' : undefined
+      }}
     >
-      {compactOnPhone && !dateOnly && !timeOnly ? (
+      {relativeOnly && relative ? (
+        relative
+      ) : compactOnPhone && !dateOnly && !timeOnly ? (
         <>
           <span className={classes.full}>{text}</span>
           <span className={classes.phone}>{short}</span>
@@ -67,7 +74,7 @@ export function Timestamp({
       ) : (
         text
       )}
-      {relative ? ` · ${relative}` : ''}
+      {!relativeOnly && relative ? ` · ${relative}` : ''}
     </Text>
   );
   return (

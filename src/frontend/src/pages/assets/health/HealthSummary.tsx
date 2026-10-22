@@ -5,7 +5,6 @@ import type {
 } from '@lib/types/MachineHealth';
 import { plural, t } from '@lingui/core/macro';
 import { Button, Group, Stack, Text } from '@mantine/core';
-import { useId } from 'react';
 import {
   FailedValue,
   MissingValue,
@@ -13,7 +12,6 @@ import {
 } from '../../../components/items/ValueTooltip';
 import monitoring from '../monitoring.module.css';
 import { recordedTelemetryAsLive } from '../telemetryPresentation';
-import classes from './HealthSummary.module.css';
 import { conditionText } from './SignalCondition';
 import { SignalValue } from './SignalReading';
 import { StatusBadge, statusTone } from './StatusBadge';
@@ -23,7 +21,9 @@ import {
   FreshnessText,
   HealthStateBadge,
   MetaText,
-  formatSignalLimits
+  formatSignalLimits,
+  healthStateVisual,
+  severityVisual
 } from './common';
 import { headlineFacts } from './headlineFacts';
 
@@ -41,7 +41,6 @@ export function HealthSummaryPanel({
   onSelect?: (binding: number, trigger: HTMLElement) => void;
   now?: number;
 }>) {
-  const id = useId();
   const fact = headlineFacts(summary, signals, anomalies);
   const { coverage, critical } = fact;
   const counts = summary.anomaly_counts;
@@ -88,30 +87,26 @@ export function HealthSummaryPanel({
     <Stack gap={4} data-testid='health-summary'>
       <Stack gap={6}>
         <Group gap='sm' align='center' wrap='nowrap' style={{ maxWidth: 640 }}>
-          <HealthStateBadge
-            state={summary.state}
-            size='lg'
-            neutralNormal={fact.coverageIncomplete}
-            coverage={
-              coverage
-                ? { evaluated: coverage.evaluated, mapped: coverage.mapped }
-                : null
-            }
-            describedBy={id}
-          />
-          <MetaText id={id} className={classes.assessment}>
-            {signals === null ? (
-              <FailedValue
-                reason={t`Signal coverage unavailable: signal read failed`}
-              />
-            ) : (
-              <ValueTooltip label={`${assessedText}. ${coverageReason}`}>
-                {summary.state === 'normal'
-                  ? criticalText
-                  : `${assessedText} · ${criticalText}`}
-              </ValueTooltip>
-            )}
-          </MetaText>
+          <ValueTooltip
+            label={`${assessedText}. ${criticalText}. ${coverageReason}`}
+            accessibleLabel={`${healthStateVisual(summary.state).label} · ${assessedText}. ${criticalText}. ${coverageReason}`}
+          >
+            <HealthStateBadge
+              state={summary.state}
+              size='lg'
+              neutralNormal={fact.coverageIncomplete}
+              coverage={
+                coverage
+                  ? { evaluated: coverage.evaluated, mapped: coverage.mapped }
+                  : null
+              }
+            />
+          </ValueTooltip>
+          {signals === null && (
+            <FailedValue
+              reason={t`Signal coverage unavailable: signal read failed`}
+            />
+          )}
         </Group>
         {fact.noObservation && (
           <Text size='sm'>
@@ -162,7 +157,7 @@ export function HealthSummaryPanel({
                 }
                 variant='filled'
               >
-                {counts[severity]} {severity}
+                {severityVisual(severity).label} · {counts[severity]}
               </StatusBadge>
             ))}
           </Group>

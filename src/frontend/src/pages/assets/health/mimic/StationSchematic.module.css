@@ -97,13 +97,7 @@
 	color: var(--mantine-color-dimmed);
 }
 
-.scrollCue {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	margin-top: var(--mantine-spacing-sm);
-	color: var(--mantine-color-dimmed);
-}
+
 
 .manifold {
 	fill: var(
@@ -114,7 +108,7 @@
 	stroke-width: 1.5;
 }
 
-@media (max-width: 48em) {
+@media (max-width: 47.99375em) {
 	.viewport {
 		background: linear-gradient(
 				to right,
@@ -163,8 +157,4 @@
 		min-height: 44px;
 	}
 
-	.refresh {
-		min-height: 44px;
-		min-width: 44px;
-	}
 }

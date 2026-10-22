@@ -1,0 +1,4 @@
+.warning {
+  --aimms-warning: light-dark(color-mix(in srgb, var(--mantine-color-orange-9) 85%, var(--mantine-color-black)), var(--mantine-color-orange-4));
+  --aimms-warning-ink: light-dark(var(--mantine-color-white), var(--mantine-color-dark-9));
+}

@@ -1,5 +1,5 @@
 .phone { display: none; }
-@media (max-width: 48em) {
+@media (max-width: 47.99375em) {
   .full { display: none; }
   .phone { display: inline; }
 }

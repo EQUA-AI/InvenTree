@@ -37,33 +37,37 @@ export function MachineAlarmBadges({
           variant='filled'
           size='sm'
           leftSection={<IconBellRinging size={12} />}
-        >{t`${c} critical`}</StatusBadge>
+        >
+          {t`Critical`} · {c}
+        </StatusBadge>
       )}
       {w !== null && w > 0 && (
         <StatusBadge
           color='yellow'
           size='sm'
           leftSection={<IconBellRinging size={12} />}
-        >{t`${w} warning`}</StatusBadge>
+        >
+          {t`Warning`} · {w}
+        </StatusBadge>
       )}
       {w !== null && knownCritical && open > c + w && (
         <StatusBadge
           color='gray'
           size='sm'
           leftSection={<IconInfoCircle size={12} />}
-        >{t`${open - c - w} other`}</StatusBadge>
+        >
+          {t`Other`} · {open - c - w}
+        </StatusBadge>
       )}
       {w === null && knownCritical && open > c && (
-        <StatusBadge
-          color='gray'
-          size='sm'
-        >{t`${open - c} non-critical`}</StatusBadge>
+        <StatusBadge color='gray' size='sm'>
+          {t`Non-critical`} · {open - c}
+        </StatusBadge>
       )}
       {!knownCritical && (
-        <StatusBadge
-          color='gray'
-          size='sm'
-        >{t`${open} active · severity unavailable`}</StatusBadge>
+        <StatusBadge color='gray' size='sm'>
+          {t`Active`} · {open} · {t`Severity unavailable`}
+        </StatusBadge>
       )}
     </Group>
   );

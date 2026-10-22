@@ -1,6 +1,5 @@
 import { plural, t } from '@lingui/core/macro';
 import {
-  ActionIcon,
   Alert,
   Anchor,
   Box,
@@ -32,13 +31,13 @@ import {
   IconFlag,
   IconMapPin,
   IconPlus,
-  IconRefresh,
   IconSearch,
   IconServerOff
 } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { RefreshAction } from '../../../components/buttons/RefreshAction';
 import { MachineAlarmBadges } from '../../../components/items/MachineAlarmBadges';
 import {
   FailedValue,
@@ -235,13 +234,10 @@ export function ScopedMachineList({
           onClick={() => setFiltersOpen((value) => !value)}
         >{t`Filters`}</Button>
         {location == null && (
-          <Button
-            h={44}
-            variant='default'
-            size='xs'
+          <RefreshAction
             loading={query.isFetching}
             onClick={() => query.refetch()}
-          >{t`Refresh`}</Button>
+          />
         )}
       </Group>
       <Collapse
@@ -256,7 +252,7 @@ export function ScopedMachineList({
           <Group align='flex-end' className={classes.listFilters}>
             <TextInput
               size='sm'
-              label={t`Search machines`}
+              aria-label={t`Search machines`}
               classNames={{
                 input: `${operations.input} ${classes.filterInput}`,
                 description: operations.meta
@@ -286,7 +282,7 @@ export function ScopedMachineList({
             </Box>
             <Select
               size='sm'
-              label={t`Criticality`}
+              aria-label={t`Criticality`}
               classNames={{
                 input: `${operations.input} ${classes.filterInput}`,
                 description: operations.meta
@@ -322,7 +318,7 @@ export function ScopedMachineList({
                 {t`Selected on this page`} ({selection.length})
               </Text>
             )}
-            {canChange && (
+            {canChange && selected.length > 0 && (
               <Button
                 variant='light'
                 h={{ base: 44, sm: 36 }}
@@ -1195,16 +1191,9 @@ export function LocationWorkspace({
       </VisuallyHidden>
       {(!selected || context.data?.can_add) && (
         <Group
-          justify='space-between'
+          justify='flex-end'
           visibleFrom={view === 'sites' ? undefined : 'sm'}
         >
-          <Box>
-            {view !== 'sites' && (
-              <Title order={4}>
-                {view === 'all' ? t`All Machines` : t`Unassigned machines`}
-              </Title>
-            )}
-          </Box>
           <Group>
             {view === 'sites' &&
               !selected &&
@@ -1230,13 +1219,7 @@ export function LocationWorkspace({
                 </Button>
               )}
 
-            {!selected && (
-              <Button
-                h={{ base: 44, sm: 36 }}
-                variant='default'
-                onClick={refreshLocations}
-              >{t`Refresh`}</Button>
-            )}
+            {!selected && <RefreshAction onClick={refreshLocations} />}
             {view === 'sites' && !context.isError && context.data?.can_add && (
               <Button
                 leftSection={<IconPlus size={16} />}
@@ -1349,15 +1332,7 @@ export function LocationWorkspace({
                               aria-controls='machine-location-browser'
                               onClick={() => setMobileOpen((value) => !value)}
                             >{t`Choose location`}</Button>
-                            <ActionIcon
-                              variant='default'
-                              w={{ base: 44, sm: 30 }}
-                              h={{ base: 44, sm: 30 }}
-                              aria-label={t`Refresh`}
-                              onClick={refreshLocations}
-                            >
-                              <IconRefresh size={17} />
-                            </ActionIcon>
+                            <RefreshAction onClick={refreshLocations} />
                             <Button
                               size='xs'
                               variant='default'

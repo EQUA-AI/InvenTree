@@ -270,22 +270,23 @@ export default function InvenTreeTableHeader({
               searchCallback={(term: string) => tableState.setSearchTerm(term)}
             />
           )}
-          {tableProps.enableRefresh && (
-            <ActionIcon
-              size={tableProps.controlSize}
-              variant='transparent'
-              aria-label={t`Refresh table`}
-              data-testid='table-refresh'
-              onClick={() => {
-                tableState.refreshTable();
-                tableState.clearSelectedRecords();
-              }}
-            >
-              <Tooltip label={t`Refresh data`} position='top-end'>
-                <IconRefresh />
-              </Tooltip>
-            </ActionIcon>
-          )}
+          {tableProps.enableRefresh &&
+            (tableProps.refreshControl ?? (
+              <ActionIcon
+                size={tableProps.controlSize}
+                variant='transparent'
+                aria-label={t`Refresh table`}
+                data-testid='table-refresh'
+                onClick={() => {
+                  tableState.refreshTable();
+                  tableState.clearSelectedRecords();
+                }}
+              >
+                <Tooltip label={t`Refresh data`} position='top-end'>
+                  <IconRefresh />
+                </Tooltip>
+              </ActionIcon>
+            ))}
           {hasSwitchableColumns && (
             <TableColumnSelect
               columns={columns}

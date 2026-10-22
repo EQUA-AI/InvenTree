@@ -21,9 +21,8 @@ import {
   IconInfoCircle,
   IconUrgent
 } from '@tabler/icons-react';
-import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
 import { type ReactNode, forwardRef } from 'react';
+import { ageDuration, relativeAge } from './relativeTime';
 
 import type {
   AnomalySeverity,
@@ -47,8 +46,6 @@ import {
   formatInstant,
   useDisplayClock
 } from './mimic/observedTime';
-
-dayjs.extend(relativeTime);
 
 /**
  * Shared presentation for health state, severity, quality and freshness.
@@ -407,12 +404,7 @@ export function freshnessFacts(
     typeof observedAt === 'number' ? observedAt : Date.parse(observedAt!);
   const future = ms > now;
   const seconds = Math.floor(Math.abs(now - ms) / 1000);
-  const age =
-    seconds < 60
-      ? `${seconds} s`
-      : seconds < 86400
-        ? `${Math.floor(seconds / 60)} min`
-        : `${Math.floor(seconds / 86400)} d`;
+  const age = ageDuration(seconds);
   const budget =
     thresholdSeconds == null
       ? 'budget not supplied'
@@ -429,6 +421,7 @@ export function FreshnessText({
   now: suppliedNow,
   preferJustNow = false,
   compactOnPhone = false,
+  relativeOnly = false,
   label = t`Observed`,
   focusable = false
 }: Readonly<{
@@ -438,6 +431,7 @@ export function FreshnessText({
   now?: number;
   preferJustNow?: boolean;
   compactOnPhone?: boolean;
+  relativeOnly?: boolean;
   label?: string;
   focusable?: boolean;
 }>) {
@@ -451,11 +445,7 @@ export function FreshnessText({
     clock
   );
   const age = fact
-    ? fact.future
-      ? t`${fact.age} ahead of your clock`
-      : !stale && preferJustNow && fact.seconds < 60
-        ? t`just now`
-        : t`${fact.age} old`
+    ? relativeAge(fact.seconds, preferJustNow, stale, fact.future)
     : undefined;
   const relative =
     fact && stale
@@ -465,7 +455,8 @@ export function FreshnessText({
     <Timestamp
       value={observedAt}
       clock={clock}
-      relative={relative}
+      relative={relativeOnly ? age : relative}
+      relativeOnly={relativeOnly}
       stale={stale && !!fact}
       compactOnPhone={compactOnPhone}
       label={label}
@@ -481,28 +472,7 @@ export function FreshnessText({
  * timestamp, so nobody reads an hours-old number as the machine's current state.
  */
 export function ObservedAt(props: Parameters<typeof FreshnessText>[0]) {
-  const clock = useDisplayClock();
-  // Budget-aware callers retain the full server-flag and age explanation.
-  if ('thresholdSeconds' in props || 'now' in props) {
-    return <FreshnessText {...props} />;
-  }
-  const { observedAt, stale } = props;
-  return (
-    <Timestamp
-      value={observedAt}
-      clock={clock}
-      relative={
-        observedAt
-          ? stale
-            ? t`Stale`
-            : dayjs(observedAt).fromNow()
-          : undefined
-      }
-      stale={stale}
-      label={props.label}
-      focusable={props.focusable}
-    />
-  );
+  return <FreshnessText {...props} />;
 }
 
 /** Bounds follow the native classifier: a minimum is breached below, a maximum above. */

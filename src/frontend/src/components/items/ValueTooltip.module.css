@@ -15,7 +15,7 @@
   outline-offset: 3px;
 }
 
-@media (max-width: 48em) {
+@media (max-width: 47.99375em) {
   .target {
     min-width: 44px;
     min-height: 44px;

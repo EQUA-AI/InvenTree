@@ -2,6 +2,7 @@ import { t } from '@lingui/core/macro';
 import { Anchor, Badge, Box, Text, useMatches } from '@mantine/core';
 import { useCallback, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { RefreshAction } from '../../components/buttons/RefreshAction';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { ModelType } from '@lib/enums/ModelType';
@@ -264,6 +265,7 @@ export function MachineComponentTable({
             className={classes.fitTarget}
           >
             <Badge
+              component='span'
               className={classes.fit}
               data-verified={record.status === 'verified'}
               size='sm'
@@ -306,7 +308,7 @@ export function MachineComponentTable({
         // that part, a separate fact from anything fitted, and only for
         // readers who may see stock.
         accessor: 'stock',
-        title: t`Catalogue stock`,
+        title: t`In stock`,
         width: '10%',
         textAlign: 'right',
         sortable: false,
@@ -411,6 +413,16 @@ export function MachineComponentTable({
             withRowBorders: !phone,
             controlSize: phone ? 44 : undefined,
             enablePagination: true,
+            hideSinglePagePagination: true,
+            refreshControl: (
+              <RefreshAction
+                loading={table.isLoading}
+                onClick={() => {
+                  table.refreshTable();
+                  table.clearSelectedRecords();
+                }}
+              />
+            ),
             enableRefresh: true,
             // The URL holds the open slot, not filters for this table.
             enableQueryFilters: false,

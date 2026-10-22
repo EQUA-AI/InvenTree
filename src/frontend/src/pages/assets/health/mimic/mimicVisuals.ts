@@ -103,3 +103,18 @@ export function alarmAttention(
       ? 'acknowledged'
       : undefined;
 }
+
+/** Absence is known only with complete mapping and an explicitly quiet station. */
+export function knownNoActiveAlarms(data: MimicData | undefined): boolean {
+  return (
+    !!data &&
+    data.alarm === null &&
+    data.bays.length > 0 &&
+    data.bays.every((bay) => bay.machine != null && bay.alarm === null) &&
+    !data.alarms.some(
+      (alarm) =>
+        alarm.anomaly != null &&
+        ['open', 'acknowledged'].includes(alarm.anomaly_status ?? '')
+    )
+  );
+}

@@ -145,11 +145,11 @@ describe('FreshnessText uses the observation and server budget', () => {
     ));
   it('shows stale age and the actual budget', () =>
     expect(show('2026-10-18T08:00:00Z', true, 300)).toContain(
-      'Stale · 60 min old · freshness budget 300 s'
+      'Stale · 1 h old · freshness budget 300 s'
     ));
   it('keeps future observations explicit instead of reporting zero age', () =>
     expect(show('2026-10-18T12:00:00Z', true, 300)).toContain(
-      'Stale (server flag) · 180 min ahead of your clock · freshness budget 300 s'
+      'Stale (server flag) · 3 h ahead of your clock · freshness budget 300 s'
     ));
   it('names an absent budget without substituting zero', () =>
     expect(show('2026-10-18T08:00:00Z', true)).toContain(
@@ -220,9 +220,10 @@ it('keeps critical coverage inspectable without a duplicate prose alert or an em
   );
   expect(text(html)).toContain('0 active anomalies');
   expect(html).toMatch(
-    /<button[^>]*>[^<]*Critical signals: not designated<\/button>/
+    /<button[^>]*aria-label="Normal · Assessed on 0 of 0 signals\. Critical signals: not designated\./
   );
   expect(html).not.toContain('role="alert"');
+  expect(text(html)).not.toContain('Critical signals: not designated');
   expect(html).not.toContain('No active anomalies.');
 });
 

@@ -16,6 +16,7 @@ import {
 import operations from '../../operations.module.css';
 import { unitLabel } from '../../performance/format';
 import { StatusBadge, statusTone } from '../StatusBadge';
+import { Timestamp } from '../Timestamp';
 import { readingSeverity } from './mimicVisuals';
 import visual from './mimicVisuals.module.css';
 import { formatInstant, useDisplayClock } from './observedTime';
@@ -234,15 +235,7 @@ export function PointTable({
                   )}
                 </Table.Td>
                 <Table.Td>
-                  {observed ? (
-                    <time dateTime={point.observed_at ?? undefined}>
-                      {observed}
-                    </time>
-                  ) : (
-                    <MissingValue
-                      reason={t`Observation time not reported by the plant`}
-                    />
-                  )}
+                  <Timestamp value={point.observed_at} clock={clock} />
                 </Table.Td>
                 <Table.Td>
                   {!point.thresholds_configured || point.reason ? (

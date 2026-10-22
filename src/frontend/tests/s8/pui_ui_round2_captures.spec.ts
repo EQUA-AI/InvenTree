@@ -36,7 +36,9 @@ const views = [
   ['18-pump-parts-light-phone', 'pump-parts', 'light', 390],
   ['19-location-dark-desktop', 'location', 'dark', 1440],
   ['20-location-light-phone', 'location', 'light', 390],
-  ['21-location-selected-light-desktop', 'location-selected', 'light', 1440]
+  ['21-location-selected-light-desktop', 'location-selected', 'light', 1440],
+  ['22-health-light-tablet-768x1024', 'health', 'light', 768],
+  ['23-mimic-station-light-desktop-1366x768', 'station', 'light', 1366]
 ] as const;
 
 for (const [name, screen, scheme, width] of views) {
@@ -45,7 +47,11 @@ for (const [name, screen, scheme, width] of views) {
       info.project.name.endsWith('phone'),
       'Numbered matrix sets its own viewport'
     );
-    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.setViewportSize({
+      width,
+      height:
+        width === 390 ? 844 : width === 768 ? 1024 : width === 1366 ? 768 : 900
+    });
     if (screen === 'station' || screen === 'pump') {
       await page.clock.setFixedTime(new Date(observed));
       await page.route('**/api/machine-health/station/17/mimic/**', (route) =>

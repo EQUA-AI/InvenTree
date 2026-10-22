@@ -23,7 +23,7 @@ import { type ReadingSection, ReadingSections } from './MimicReadings';
 import { MimicSchematic } from './MimicSchematic';
 import classes from './UnitMimic.module.css';
 import { displayFor, expandPointer, stateLabel } from './format';
-import { operatingState } from './mimicVisuals';
+import { knownNoActiveAlarms, operatingState } from './mimicVisuals';
 import type { MimicData, MimicPoint } from './types';
 
 export function UnitMimicHeader({
@@ -31,12 +31,14 @@ export function UnitMimicHeader({
   unit,
   actions,
   headingId,
+  headingRef,
   information
 }: {
   data: MimicData;
   unit: string;
   actions?: ReactNode;
   headingId?: string;
+  headingRef?: React.Ref<HTMLHeadingElement>;
   information?: ReactNode;
 }) {
   const bay = data.bays.find((b) => b.key === unit);
@@ -51,7 +53,17 @@ export function UnitMimicHeader({
     <Group justify='space-between' data-unit-header>
       <Group gap={4}>
         <Group gap={4} wrap='nowrap' miw={0}>
-          <Title order={headingId ? 4 : 5} id={headingId}>
+          <Title
+            order={headingId ? 4 : 5}
+            id={headingId}
+            ref={headingRef}
+            tabIndex={headingRef ? -1 : undefined}
+            style={
+              headingRef
+                ? { scrollMarginBlockStart: 'var(--mantine-spacing-xs)' }
+                : undefined
+            }
+          >
             {t`Pump unit`}: {unit}
           </Title>
           {information}
@@ -130,7 +142,8 @@ export function UnitMimic({
   unit,
   actions,
   header = true,
-  alarmPanel
+  alarmPanel,
+  headingRef
 }: Readonly<{
   data: MimicData;
   unit: string;
@@ -138,16 +151,13 @@ export function UnitMimic({
   actions?: ReactNode;
   header?: boolean;
   alarmPanel?: ReactNode;
+  headingRef?: React.Ref<HTMLHeadingElement>;
 }>) {
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState<string[]>([]);
   const list = useRef<HTMLDivElement>(null);
   const display = displayFor(data, unit);
-  const bay = data.bays.find((candidate) => candidate.key === unit);
-  const knownEmptyAlarms =
-    !!bay?.machine &&
-    bay.alarm === null &&
-    !data.alarms.some((alarm) => alarm.machine === bay.machine);
+  const knownEmptyAlarms = knownNoActiveAlarms(data);
 
   const numbers = new Map(
     (data.layout.parts ?? []).map((part, index) => [part.code, index + 1])
@@ -208,7 +218,14 @@ export function UnitMimic({
 
   return (
     <Stack gap='md'>
-      {header && <UnitMimicHeader data={data} unit={unit} actions={actions} />}
+      {header && (
+        <UnitMimicHeader
+          data={data}
+          unit={unit}
+          actions={actions}
+          headingRef={headingRef}
+        />
+      )}
       {header && (
         <MimicAlarmCoverage
           count={unconfiguredCount(Object.values(data.points))}

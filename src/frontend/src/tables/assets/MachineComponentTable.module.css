@@ -9,9 +9,9 @@
 .source:focus-visible, .fitTarget:focus-visible, .link:focus-visible { outline: 2px solid var(--aimms-focus, light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3))); outline-offset: 3px; border-radius: 3px; }
 .fitTarget { display: inline-flex; align-items: center; cursor: help; }
 .fit { text-transform: none; color: var(--mantine-color-text); border-color: light-dark(var(--mantine-color-gray-6), var(--mantine-color-dark-2)); }
-.link { color: light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-2)); }
+.link { color: light-dark(var(--mantine-primary-color-7), var(--mantine-primary-color-4)); }
 
-@media (max-width: 48em) {
+@media (max-width: 47.99375em) {
   .partsTable table, .partsTable tbody { display: block; width: 100%; }
   .partsTable thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .partsTable tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); border-bottom: 1px solid var(--mantine-color-default-border); padding: 8px; gap: 8px 16px; }
@@ -25,7 +25,7 @@
 
   .nameActions { position: relative; min-height: 44px; }
   .nameActions > button { max-width: calc(100% - 76px); }
-  .phoneDetails > summary { position: absolute; inset-inline-end: 0; top: 0; min-width: 68px; min-height: 44px; display: flex; align-items: center; justify-content: flex-end; gap: 4px; cursor: pointer; color: light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-2)); }
+  .phoneDetails > summary { position: absolute; inset-inline-end: 0; top: 0; min-width: 68px; min-height: 44px; display: flex; align-items: center; justify-content: flex-end; gap: 4px; cursor: pointer; color: light-dark(var(--mantine-primary-color-7), var(--mantine-primary-color-4)); }
   .phoneDetails > summary::before { content: '+'; }
   .phoneDetails[open] > summary::before { content: '−'; }
   .phoneDetails > summary:focus-visible { outline: 2px solid var(--aimms-focus, light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3))); outline-offset: 2px; border-radius: var(--mantine-radius-xs); }
@@ -38,7 +38,7 @@
 
 .sourceText { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
-@media (max-width: 48em) {
+@media (max-width: 47.99375em) {
   .partsTable td:has([data-field='status']) .cell, .partsTable td:has([data-field='open_work']) .cell, .partsTable td:has([data-field='stock']) .cell { display: grid; grid-template-rows: 32px 44px; align-items: center; }
   .partsTable td:has([data-field='status']) .cell::before, .partsTable td:has([data-field='open_work']) .cell::before, .partsTable td:has([data-field='stock']) .cell::before { align-self: start; margin: 0; }
 }

@@ -39,7 +39,7 @@ unsupported claim while preserving valid repair work.
 | A1, station captures 01–03 differ from final source | Accepted as an evidence defect. The current source already omitted `Response time` and closed-accordion summaries; those screenshot captions were not current-source regressions. | This task captures all 18 views from the frozen final source; all 18 final captures passed and each was visually inspected. No historical capture is promoted to current acceptance. |
 | A2, split station KPIs and duplicated Station readings | Accepted. Three layout metrics were above the SVG, two totals below, and the station accordion repeated the represented points. | `StationSchematic.tsx` renders layout metrics and totals in one `data-station-metrics` grid. Each present value has pointer, observation/clock or total provenance in its tooltip. `PumphouseMimic.tsx` only renders a station reading group for points not represented in that grid, so additional supplied facts are preserved. |
 | A3, phone station header and scroll affordance | Accepted in current source for verbose source/clock rows and absent scroll cue; the report's Response time line had already been removed. | Source/read-time/clock metadata moved to the information tooltip. Station title, Live and Refresh share a compact header; one timestamp remains visible, using the validated display clock and its explicit browser fallback when no plant zone is supplied. Phone viewport has horizontal arrows, a swipe cue and scroll shadows; bay labels retain native readable size. `PumphouseMimic.tsx`, `StationSchematic.tsx`, `StationSchematic.module.css`. |
-| A4, weak schematic hierarchy and repeated idle zero power | Accepted. Current bays rendered all usable power values, including 0 MW in idle bays. | Idle zero power renders Idle; nonzero or running source power remains visible. Forebay gets illustrative water fill; static manifolds use muted stroke/fill tokens. Geometry and layout remain schematic, with review information in the header tooltip. `StationSchematic.tsx` / CSS. |
+| A4, weak schematic hierarchy and repeated idle zero power | Accepted. Current bays rendered all usable power values, including 0 MW in idle bays. | Idle zero power renders Idle; nonzero or running source power remains visible. Forebay is an unfilled tank outline; static manifolds use muted stroke/fill tokens. Geometry and layout remain schematic, with review information in the header tooltip. `StationSchematic.tsx` / CSS. |
 | B1, pump captures 04–06 and duplicate provenance | Accepted as a capture/evidence defect and for duplicate provenance. Rejected as current-source bugs for zero-alarm chips, Read at, closed-accordion summaries and absent numbered circles: those were already removed/gated/present in the supplied source. | Removed desktop provenance output and phone clock caption; full source/time/clock facts remain in the existing schematic information tooltip. This task captures 04–06 from the frozen final source as part of the 18-view run; all three final pump views were captured and inspected. `PumpMimic.tsx`. |
 | B2a, raw degC and equal min/max range | Accepted. `valueText` appended raw units and `summarize` always emitted low–high for groups of three or more. | `valueText` and grouped summaries use the existing lossless `unitLabel`; equal endpoints render once. The central formatter now accepts `m^3/s` as the same m³/s typography. `mimic/format.ts`, `MimicReadings.tsx`, `performance/format.ts`; focused unit regressions. |
 | B2b, cusec versus m³/s and Idle plus 0.42 rpm | Rejected as evidence of fabricated or inconsistent quantities. Unit pump tags bind source cusec; station totals explicitly declare m^3/s and the backend `services/mimic.py:total_value` converts reviewed contributors into the declared total unit. Pump status and shaft-speed are independent supplied readings; replacing the source 0.42 rpm with zero or changing Idle would invent a fact. | Retain measured magnitudes and source units, label them consistently wherever each quantity appears, and normalize typography only. Synthetic layout fixture explicitly exercises 0 cusec discharge and 0 m³/s station flow. No frontend conversion or inferred state was added. |
@@ -62,7 +62,7 @@ unsupported claim while preserving valid repair work.
 | D2: unavailable anomaly counts are an unlabelled floating dash; empty count group | Accepted. The old all-zero counts branch returned null inside an otherwise unconditional flex group; the unavailable branch had no visible field context. | Only positive severity count groups render; unavailable counts have `Active anomalies:` beside the shared dash, never zero. A known-complete zero list renders the zero count. |
 | D3: phone Refresh wraps below Current condition | Accepted. The header Group could wrap and nested the refresh action with the review link. | Desktop uses a nonwrapping title/action row. Phone retains accessible Current condition and Signals headings without repeating them visually; Refresh shares the Search/filter row. `HealthSummary.module.css` keeps the state beside the assessment, and zero anomalies plus HH:mm:ss/age share one row. The timestamp tooltip supplies the complete formatted instant and validated clock context, including the browser fallback when no plant zone is supplied. |
 | D3: phone Value label/value alignment | Accepted. The phone CSS explicitly justified the value to flex-end although its label was left-aligned. | `SignalTable.module.css` places the name and primary value on one phone row, followed by the state; Details reveals Limits, Observed, Quality and Trend. Desktop numeric readings remain right aligned. |
-| Top 10: inconsistent phone breakpoint and density | Accepted for the signal controls and shared shell. SignalTable used 47.99em while the other owned panel modules used 48em. All three filters plus the table/cards toggle stacked ahead of readings. | The owned breakpoint is 48em. Search remains visible; a 44px Signal filters button discloses Component filter, Order by and table/card mode on phone. Desktop controls remain on one aligned row. |
+| Top 10: inconsistent phone breakpoint and density | Accepted for the signal controls and shared shell. SignalTable used 47.99em while the other owned panel modules used 48em. All three filters plus the table/cards toggle stacked ahead of readings. | The initial owned breakpoint was 48em; Follow-up 3 corrects the phone maximum to 47.99375em. Search remains visible; a 44px Signal filters button discloses Component filter, Order by and table/card mode on phone. Desktop controls remain on one aligned row. |
 | Consistency: date/time formatter | Accepted. Health summary/common freshness used the browser-only formatter while mimic used the plant-clock formatter. The Health summary API provides no plant zone, so inventing one would be wrong. | Health summary and common FreshnessText/ObservedAt delegate to Timestamp, which uses `formatInstant` with the inherited validated `useDisplayClock`; absence retains the explicit browser-clock fallback in the tooltip. A unit verifies Riyadh plant time with a different browser zone. O27 current presentation and just-now text are preserved. |
 | Section 3: critical explanation, clock caption and empty anomaly section are redundant | Accepted. Verified the actual JSX, independently of the old review screenshots. | Explanation and clock context move to accessible tooltips; the empty section is folded into the summary. Current failures, active alarms and actual designated evidence gaps remain explicit or inspectable. |
 
@@ -84,7 +84,7 @@ unsupported claim while preserving valid repair work.
 | E1 / Top 8: standalone registry row consumes phone height | Accepted: registry link was a separate Group above the table action row. | `InstalledPartsPanel.tsx` passes the registry destination into the native table. `MachineComponentTable.tsx` renders the concise `Equipment registry` navigation link via supported `tableActions`, beside existing table controls. The shorter action fits the phone toolbar. |
 | E1 / Top 8: station Equipment phone cell leaves half-row hole | Accepted: full-span CSS covered name, part and source but not machine_name. | Added full-span machine_name cell in `MachineComponentTable.module.css`. After inspection of the fresh native phone render, secondary 3D position, fitted identity and Source moved into a native per-row Details disclosure. Name/catalogue/fit/work/stock remain primary and all secondary facts stay keyboard accessible; desktop columns remain intact. |
 | E2 / Top 8: Source label is long and import date month-first | Accepted: label said Equipment register import while navigation says registry, and custom Intl used locale-dependent ordering. | Short `Registry import` in the cell. Keyboard/hover tooltip retains raw source, original imported timestamp through app `formatInstant` and the inherited display-clock label. No invented dates or altered source units. `ComponentFacts.tsx`. |
-| E2 / Top 8: Parts column allocations sum to 105% | Accepted: station values in source sum to 105. | Station final allocation 8/16/10/10/16/8/12/10/10 sums to 100 and gives the stock header enough room. Pump redistributes hidden Equipment space into Component and Catalogue part; visible columns normalize for stock permission and phone disclosure mode. Explicit minWidth=0 prevents native default 100px minima from overriding these narrow allocations. Native right textAlign remains on both numeric columns. |
+| E2 / Top 8: Parts column allocations sum to 105% | Accepted: station values in source sum to 105. | Station final allocation 8/16/10/10/16/8/12/10/10 sums to 100; the final2 Catalogue stock header still wrapped, addressed in Follow-up 3 by In stock. Pump redistributes hidden Equipment space into Component and Catalogue part; visible columns normalize for stock permission and phone disclosure mode. Explicit minWidth=0 prevents native default 100px minima from overriding these narrow allocations. Native right textAlign remains on both numeric columns. |
 | section 3.11 / Top 8: internal codes repeat under every Component | Accepted. | Removed table secondary code. The existing slot drawer retains the actual code. Focused selectors now find rows by visible component button name; tests prove codes are absent from table and drawer still opens. |
 | section 3.11: slot drawer repeats Assignment verified/Slot assignment not verified beside the badge | Accepted. | Fit basis uses one state badge with the explanation in shared ValueTooltip. Missing drawer facts also use shared MissingValue; recorded zero catalogue stock stays numeric 0. `ComponentSlotDetail.tsx`. |
 | Top 8: hardcoded fit/link hex colours | Accepted: four literal hex values were present. | Replaced link colors with Mantine blue tokens and fit text with the normal Mantine text token, preserving readable contrast on yellow/green light badge surfaces. Tooltip buttons inherit normal text color instead of being styled as navigation links. |
@@ -175,7 +175,7 @@ cap; a clearly scrollable phone station is permitted; failed reads retain a
 visible label; missing facts alone use the quiet dash.
 
 The first 18-view capture run passed and every image was inspected. It exposed
-clipped Catalogue stock headers, corrected before the fresh final run. Those captures and the
+clipped Catalogue stock headers; final2 still wrapped that header, addressed in Follow-up 3. Those captures and the
 pre-Opus source checkpoint are superseded by the final recapture; they are not
 reported as evidence for the subsequent source. Supplemental abnormal-state
 captures exercise the repaired state, failure, coverage and contrast paths.
@@ -195,7 +195,7 @@ The following are source-verified dispositions. Current-source verification and 
 | S7 | Accepted. The earlier repair moved the source distinction to the value tooltip but still lacked a visible calculated cue. | Derived totals alone show Σ plus accessible Calculated total text; measured totals show no calculated cue. Labels remain plain text. `StationSchematic.tsx`. |
 | S8 | Accepted. | Station schematic is now a real `Title order={4}`, matching the station Threshold alarms section. `StationSchematic.tsx`. |
 | S9 | Partly stale and partly accepted. The info trigger was already next to the title after round 2, rather than at the far right. The old missing-mapping sentence was unnecessary. | Kept the adjacent trigger; tooltip now states Reference schematic / physical arrangement unverified / awaiting plant review, plus provenance. Named metric Papers are semantic sections rather than labelled generic divs. |
-| S10 | Qualified. The water fill is intentionally static illustrative structure, not a measured level. Physical arrangement is explicitly unverified in the accessible info tooltip. | Retain validated schematic geometry and its numeric level metric. Rejected inventing an outlet/flow arrow or an extra illustrative caption: no source fact supplies a flow direction, and the owner forbids unnecessary captions. |
+| S10 | Qualified. The current tank has no water fill or inferred level; its level KPI is supplied independently. Physical arrangement is explicitly unverified in the accessible info tooltip. | Retain validated schematic geometry and its numeric level metric. Rejected inventing an outlet/flow arrow or an extra illustrative caption: no source fact supplies a flow direction, and the owner forbids unnecessary captions. |
 | S11 | Rejected as a current-source finding. | `.bay` already has pointer cursor; hover/focus outlines and `aria-pressed` already exist and remain. Focus/selection tests retain these facts. |
 | S12 | Stale screenshot issue, not a current-source bug. | Response time and closed summaries were already removed. Final-source recapture is recorded below. |
 | P1 | Accepted. | Pump header now shows its selected-unit readings without limits. This is computed only when every supplied selected point has a boolean `thresholds_configured`; empty/unknown scope returns null. It does not relabel the station-wide aggregate as pump coverage. No-active wording is restricted to a mapped explicitly alarm-free bay with no supplied alarm rows. `MimicAlarmCoverage.tsx`, `PumpMimic.tsx`, `UnitMimic.tsx`. |
@@ -406,7 +406,7 @@ fit above the fold. Recorded zero and 1834 (no unit) are visible; phone values,
 Search/filter/Refresh and the selected Health tab fit. The native superuser
 warning and machine actions remain.
 
-14–18: full Catalogue stock headers, whole concise SCADA mapping/Registry import,
+14–18: Catalogue stock headers remained wrapped, whole concise SCADA mapping/Registry import,
 right-aligned numeric columns, compact Read failed and one aligned toolbar.
 Phone station/pump Parts each show one complete card plus the next name; secondary
 facts remain in Details. These images do not establish two complete phone cards.
@@ -503,7 +503,7 @@ API contracts, permission checks, routes, source units and O27 remain intact.
 round-2 source already supplies the stated behaviour; it is not a rejection of
 what the reviewer saw in the older diff. “Qualified” identifies the valid defect
 and the unsupported or conflicting proposed remedy separately. Fable assumed
-Mantine 8; this repository pins Mantine 9.2.1, whose public `interactive` tooltip
+Mantine 8; the lockfile resolves installed @mantine/core to 9.6.1, whose public `interactive` tooltip
 API is used. No Mantine internals or `!important` were added.
 
 | ID | Disposition and reason | Fix / source |
@@ -526,7 +526,7 @@ API is used. No Mantine internals or `!important` were added.
 | P4 | Already fixed: unscaled mini-bars removed. | `MimicParts`. |
 | P5 | Qualified: state legend now describes actual coloured equipment; deleting it would remove the hatch/dash/state key requested by the owner. | `MimicLegend`, `UnitSchematic`, `mimicVisuals`. |
 | P6 | Already fixed: hard-coded process dl and polling caption removed. | `UnitMimic`. |
-| P7 | Visible duplication already fixed; accepted multiline tooltip whitespace and pointer-hover persistence. | Shared `ValueTooltip` public interactive API, `whiteSpace: pre-line`; `PumpMimic`. |
+| P7 | Visible duplication already fixed; accepted multiline tooltip whitespace and pointer-hover persistence. | Shared `ValueTooltip` public interactive API and `whiteSpace: pre-line`; no PumpMimic-specific tooltip positioning fix was demonstrated. |
 | P8 | Already fixed: status icons convey their state and empty alarms do not create an alarm link. | `PumpMimic`, canonical badges. |
 | P9 | Already fixed: spatial sides sorted by native y/x; compact callouts below preserve the owner's dominant drawing. Reject mandatory leaders to below-drawing cards. | `UnitSchematic`. |
 | P10 | Qualified: native numbered accordion and accessible badges already fixed. Accepted alarm priority: table now precedes details. A new Drawer plus All readings workflow is unnecessary to repair this view and would replace existing deep-link/group navigation. | `PumpMimic`, `PumphouseMimic`, `UnitMimic.alarmPanel`, `MimicReadings`. |
@@ -816,3 +816,98 @@ Owned browser `r6-uir2-browser-3012` and harness15250 are stopped; cleanup recor
 in `followup2/runtime-cleanup.json`. No Git writes, Azure/data-env reads, other
 worktrees, other containers or other ports. Full Mac suites and human review
 remain with the coordinator. Nothing from A–G is left unimplemented.
+
+## Follow-up 3
+
+Built on `dedc7a678`. All twelve confirmed findings are accepted and repaired;
+these notes supersede conflicting historical implementation claims above.
+Native architecture, permissions, source facts and O27 live presentation remain.
+
+| Finding | Source verification and resulting change | Files (under frontend src unless stated) |
+| --- | --- | --- |
+| 1 / P9 selection | Selection only changed state and the unit followed the alarms. The selected unit now precedes Threshold alarms; its heading receives focus and scrolls to block start, using auto under reduced motion. A small scroll margin prevents fractional clipping on phone. | health/PumphouseMimic.tsx, mimic/UnitMimic.tsx |
+| 2 / S8 alarm absence | The three predicates differed; the station predicate allowed unmapped bays. One `knownNoActiveAlarms` requires a nonempty, completely mapped bay list, null station/bay alarms and no open/acknowledged anomaly. All three consumers use it; unit scope conservatively respects the whole supplied station payload. | health/PumpMimic.tsx, mimic/StationSchematic.tsx, UnitMimic.tsx, mimicVisuals.ts |
+| 3 / H6 exact boundary | Owned max-width:48em overlapped Mantine min-width:48em. Every owned stylesheet now uses phone maximum 47.99375em; the relevant JS queries and PanelGroup match. Refresh and both filters are verified at 767/768/769 px. | owned asset/table/item CSS, panels/PanelGroup.css.ts and .tsx, mimic/UnitSchematic.tsx |
+| 4 / X4 generic scope | The dense phone spacing, 44px tabs, mask and selected-tab scroll affected generic detail panels. New `denseTabs` defaults false and is enabled only by MachineDetail. Generic machine-index panels keep native padding and no mask. | panels/PanelGroup.tsx and .css.ts, assets/MachineDetail.tsx |
+| 5 station KPIs | Running count lacked its supplied bay denominator; derived totals used Σ. It now reads 2 of 14 in the fixture. Plain total labels retain Calculated total in the tooltip; unavailable totals remain a dash. | mimic/StationSchematic.tsx |
+| 6 station drawing | Fixed-width bays overflowed laptop containers; the legend depended on current state and stale hatching dominated. Slots now adapt to measured container width, with two rows below 1100px container width; observation refreshes do not trigger measuring effects. Stale hatch uses thinner, wider-spaced gray strokes and dimmed source-retained glyphs. All five states and two alarm shapes always appear with equal-weight labels. Phone uses edge fades and an initial horizontal offset, with no swipe caption. | health/PumphouseMimic.tsx, mimic/StationSchematic.tsx and .module.css |
+| 7 / X2 motion and acknowledgement | Pulsing alone did not distinguish unacknowledged alarms without motion, and flow could not be paused. Static double rings/outline identify unacknowledged alarms; acknowledged alarms retain a single ring. A quiet per-view pause button controls flow/pulses, exposes aria-pressed and stays paused under OS reduced motion. Marker 5 retains geometry clearance with the added ring. | new mimic/MimicMotion.tsx, mimicVisuals.module.css, MimicParts.tsx, StationSchematic.tsx; health/PumpMimic.tsx and PumphouseMimic.tsx |
+| 8 Health | Heading sizes differed, observed ages wrapped, severity count words were raw keys, and coverage/search copy repeated. Titles share h4 scale, Observed shows a nowrap relative age with the full instant/zone in Timestamp's tooltip, severity words go through Lingui, designation prose lives only in the coverage badge tooltip, Search has an aria-label, and Component filter has All components. | health/HealthSummary.tsx, MachineHealthPanel.tsx, SignalTable.tsx, Timestamp.tsx, common.tsx |
+| 9 Machines/location | Duplicate headings, permanent Move selected, repeated input labels and an unstyled pressed chip were present. Removed duplicate root/All Machines headings, gated Move to selection, changed input labels to aria-labels, and added a token-based pressed style. Final capture also exposed a stuck phone drill-down tooltip; controlled focus/hover state now dismisses on Escape/blur/navigation, with code/reason still reachable on focus. | locations/LocationWorkspace.tsx, LocationBrowser.tsx, locations.module.css |
+| 10 Parts | Native pagination appeared for three results, the stock header wrapped, fit tooltip children relied on Badge defaults, and links used a different blue. Opt-in `hideSinglePagePagination` suppresses the footer only when count <= actual page size, without changing API pagination. Header is In stock; both fit badges explicitly render span; links use the shared primary 7/4 tokens. | tables/assets/MachineComponentTable.tsx and .module.css, ComponentSlotDetail.tsx; components/tables/InvenTreeTable.tsx; lib/types/Tables.tsx |
+| 11 consistency | Refresh controls differed, Health/mimic ages had separate duration rules, and count/warning styling diverged. Shared RefreshAction uses a 36px default action (44px phone) through an opt-in native table refresh slot. Visible instants use Timestamp; shared relativeTime supplies live/stale/future/age rules. Count badges use ·. OperationalTokens supplies one warning colour for badge, marker and value; browser checks compare their actual rendered RGBA values in both themes. | new buttons/RefreshAction.tsx and .module.css, health/relativeTime.ts and OperationalTokens.module.css; health/StatusBadge.tsx, common.tsx, mimic/FreshnessLabel.tsx, MimicReadings.tsx, mimicVisuals.module.css; items/MachineAlarmBadges.tsx; native table header/types |
+| 12 report | Corrected the installed/lockfile @mantine/core version to 9.6.1, removed the water-fill claim, qualified the earlier stock-header claim, and removed the unsupported PumpMimic-specific tooltip-positioning claim. The tank has walls and no invented level fill. | this report |
+
+Verification is targeted Linux Chromium fixture evidence, not deployment or
+product acceptance. Logs are in `data/devscratch/ui-r2/followup3/`:
+
+- **16 unique focused browser cases passed**, across light/dark, after corrective
+  replays (`focused.log`, `station-corrective.log`, `colour-motion.log`,
+  `location-corrective.log`). They cover 1280/1366/1024 station fit, phone/desktop
+  P9 focus/order, animation pause/reduced motion and static acknowledgement,
+  identical warning colours, 767/768/769 Health controls, coverage tooltip,
+  generic/dense tabs, machine selection/pressed style, Parts 3/30-result
+  pagination, complete phone card, and phone location reason dismissal.
+- **78/78 unit tests passed** in eight targeted files (`units-final.log`).
+  `tsc --noEmit` passed for `tsconfig.json` and touched `tsconfig.s8.json`.
+- Lingui extract and TypeScript compile passed. All **117 locale files** were
+  restored byte-for-byte (`lingui-restore.json`); no locale diff remains.
+- `PATH=/opt/homebrew/bin:$PATH prek run --files ...` passed for changed files
+  after formatting (`prek.log`). Tracking validation also passed: 58 work items,
+  95 screen dispositions and 26 contracts (`tracking.log`).
+- An extra unchanged `ValueTooltip.test.ts` run found **one pre-existing stale
+  assertion**: `focusable=false` is expected to produce a button/tabindex -1,
+  whereas the baseline source intentionally renders a plain span. Its other
+  three tests passed. Neither that test nor its source was changed in this pass;
+  the changed CSS only aligns the phone breakpoint. Recorded in
+  `units-related.log`; unrelated stale wording/clock Playwright specs are untouched.
+- Initial browser failures are retained honestly: a new selector matched both
+  totals (corrected to assert each); phone focused headings were fractionally
+  clipped (fixed with scroll margin, strict ratio assertion retained); capture
+  20 exposed the stuck tooltip (fixed in source and regression-tested). No
+  assertion was weakened to produce a final image.
+
+Fresh captures: `data/devscratch/ui-r2/final3/01-…png` through `23-…png`, using
+unchanged 01–21 names plus `22-health-light-tablet-768x1024.png` and
+`23-mimic-station-light-desktop-1366x768.png`. The final 23-case matrix passed (`followup3/captures.log`); every viewport PNG
+and all three full-height pump PNGs were opened and visually inspected
+(`followup3/visual-review.json`). Three full-height pump PNGs are under `full/`.
+The source digest and exact 43-source-file inventory are in
+`followup3/source-manifest.json`; each viewport's JSON records that revision.
+
+Source files changed: 43, covering the shared RefreshAction/table opt-ins,
+PanelGroup opt-in, owned breakpoint CSS, Health/Timestamp/relative time/status
+presentation, mimic selection/layout/motion/absence, location/Machines controls,
+and Parts. Test files changed (six, separately from source):
+
+- `src/frontend/tests/s8/pui_ui_followup3.spec.ts` (new behavior regressions).
+- `src/frontend/tests/s8/pui_ui_round2_captures.spec.ts` (adds 22/23).
+- `src/frontend/src/pages/assets/health/mimic/mimicVisuals.test.ts`.
+- `src/frontend/src/pages/assets/health/relativeTime.test.ts` (new shared rule).
+- `src/frontend/src/pages/assets/health/Timestamp.test.ts`.
+- `src/frontend/src/pages/assets/health/monitoringComponents.test.ts` (asserts
+  shared hour formatting and the new coverage-tooltip structure).
+
+`tsconfig.s8.json` includes the new focused spec. HANDOFF, backlog and contract
+evidence retain their parent acceptance dispositions. No Git writes, Azure or
+other worktree/container/port access; full host suites and human review remain
+with the coordinator.
+
+Final visual review: 01–03 and 23 show clear alarm rings, all fourteen bays at
+laptop/desktop widths, a calmer stale glyph and a stable legend. 04–06 preserve
+the large painted pump (814px / 1406px content at 1440px, about 58%) and all 13
+desktop callouts; phone starts its callouts with the two alarms. 07–10/19–21 show
+complete first phone machine content, unclipped count chips, clean tree names,
+one root title and a tooltip-free phone drill-down. 11–13/22 show compact Health,
+matching title scales, labelled missing states, shared ages and all 768px
+controls. 14–18 show In stock on one line, baseline-aligned phone facts and
+complete first Parts cards. Full pump images also retain the legends, alarm
+actions and reading groups without overlap. Tablet Health retains native
+horizontal table scrolling; this is not a claim that every column fits 768px.
+
+`final-audit.json` confirms all 23 capture revisions match final source digest
+`f3efc8d37f3c`, source unchanged after capture, and locales still bytewise restored.
+Owned browser container (auto-removed after stop) and harness are stopped; neither
+3012 nor 15250 has a listener (`runtime-cleanup.json`). Findings 1–12 have no
+remaining implementation work; full Mac suites, the separate stale-spec update
+and human review remain with the coordinator.

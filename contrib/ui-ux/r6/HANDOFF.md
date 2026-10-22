@@ -1,5 +1,18 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## UI round 2 Follow-up 3 — 22 October 2026 (ready for coordinator review)
+
+Built on `dedc7a678`: remaining Fable findings 1–12 repaired, including P9
+selection/focus, shared honest alarm absence, exact 768px controls, opt-in dense
+tabs, stable adaptive station drawing, static acknowledgement and animation pause,
+and Health/Machines/Parts consistency. 16 unique focused browser cases and all
+23 final3 captures passed; every viewport plus three full pump PNGs inspected.
+78 targeted units, app/S8 types, Lingui with 117 bytewise restores and changed-file
+prek pass. One extra unchanged ValueTooltip unit has a pre-existing stale button
+expectation, documented in [execution report](reports/ui-r2.md). Source digest
+`f3efc8d37f3c`; own WS3012 container and harness15250 stopped. Full host suites and
+human review stay with the coordinator; parent acceptance dispositions unchanged.
+
 ## UI round 2 Follow-up 2 — 22 October 2026 (ready for coordinator review)
 
 Built on `ad22ab1b1`: confirmed A–G repairs, dominant desktop drawing with all

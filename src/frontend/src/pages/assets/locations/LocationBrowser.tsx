@@ -256,6 +256,8 @@ export function LocationBrowser({
     const value = nodeValue(node.pk);
     setExpanded((previous) => ({ ...previous, [value]: true }));
     setDrillParent(value);
+    setFocusedNode(null);
+    setHoveredNode(null);
   };
   const nodeDetail = (node?: LocationNode) =>
     [
@@ -544,15 +546,17 @@ export function LocationBrowser({
           </>
         ) : (
           <>
-            <Anchor
-              className={operations.link}
-              component='button'
-              ta='left'
-              onClick={() => {
-                setDrillParent('root');
-                onSelect(null);
-              }}
-            >{t`Browse top-level locations`}</Anchor>
+            {(selected || (phone && drillParent !== 'root')) && (
+              <Anchor
+                className={operations.link}
+                component='button'
+                ta='left'
+                onClick={() => {
+                  setDrillParent('root');
+                  onSelect(null);
+                }}
+              >{t`Browse top-level locations`}</Anchor>
+            )}
             {branchesByParent.get('root')?.isFetching && <Loader size='sm' />}
             {[...branchesByParent.entries()]
               .filter(([, branch]) => branch.isError)
@@ -580,7 +584,15 @@ export function LocationBrowser({
                 </Alert>
               ))}
             {phone ? (
-              <Stack gap={4}>
+              <Stack
+                gap={4}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    setFocusedNode(null);
+                    setHoveredNode(null);
+                  }
+                }}
+              >
                 {drillParent !== 'root' && (
                   <Group gap='xs' wrap='nowrap'>
                     <ActionIcon
@@ -620,12 +632,22 @@ export function LocationBrowser({
                       <li key={node.pk}>
                         <Tooltip
                           label={nodeDetail(node)}
+                          opened={
+                            focusedNode === nodeValue(node.pk) ||
+                            hoveredNode === nodeValue(node.pk)
+                          }
                           {...factTooltipProps}
                           events={{ hover: true, focus: true, touch: false }}
                         >
                           <button
                             type='button'
                             className={classes.drillRow}
+                            onFocus={() => setFocusedNode(nodeValue(node.pk))}
+                            onBlur={() => setFocusedNode(null)}
+                            onMouseEnter={() =>
+                              setHoveredNode(nodeValue(node.pk))
+                            }
+                            onMouseLeave={() => setHoveredNode(null)}
                             aria-current={
                               selected?.pk === node.pk ? 'location' : undefined
                             }

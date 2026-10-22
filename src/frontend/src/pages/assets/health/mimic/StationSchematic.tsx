@@ -1,7 +1,14 @@
 import { t } from '@lingui/core/macro';
-import { Box, Group, Paper, Text, Title, VisuallyHidden } from '@mantine/core';
-import { IconArrowsHorizontal, IconInfoCircle } from '@tabler/icons-react';
-import type { KeyboardEvent, ReactNode } from 'react';
+import { Box, Group, Paper, Text, Title } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
+import { IconInfoCircle } from '@tabler/icons-react';
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useLayoutEffect,
+  useRef,
+  useState
+} from 'react';
 import {
   MissingValue,
   ValueTooltip
@@ -11,6 +18,7 @@ import { recordedTelemetryAsLive } from '../../telemetryPresentation';
 import { Timestamp } from '../Timestamp';
 import { StatusBadge as Badge } from '../common';
 import { MimicAlarmCoverage } from './MimicAlarmCoverage';
+import { AlarmAttentionRings, MimicMotionControl } from './MimicMotion';
 import { alarmColor, alarmLabel, stateStyle } from './MimicSchematic';
 import { UnavailableReading, failedReading } from './MimicValue';
 import classes from './StationSchematic.module.css';
@@ -28,6 +36,7 @@ import {
 import {
   alarmAttention,
   hasDischargeFlow,
+  knownNoActiveAlarms,
   operatingState,
   readingSeverity
 } from './mimicVisuals';
@@ -84,10 +93,33 @@ export function StationSchematic({
       quality: failed ? (retained ? t`Bad quality` : t`Read failed`) : ''
     };
   });
-  // Stable bay geometry; labels are not estimated from character counts.
-  const slot = 88;
+  const viewport = useRef<HTMLDivElement>(null);
+  const desktop = useMediaQuery('(min-width: 48em)');
+  const [available, setAvailable] = useState(0);
+  useLayoutEffect(() => {
+    const node = viewport.current;
+    if (!node) return;
+    const resize = new ResizeObserver(([entry]) =>
+      setAvailable(entry.contentRect.width)
+    );
+    resize.observe(node);
+    node.scrollLeft = desktop ? 0 : 24;
+    return () => resize.disconnect();
+  }, [desktop, bays.length > 0]);
+  const perRow =
+    desktop && available > 0 && available < 1100
+      ? Math.ceil(bays.length / 2)
+      : bays.length;
+  const rows = Math.max(1, Math.ceil(bays.length / Math.max(1, perRow)));
   const start = 154;
-  const width = Math.max(520, start + slot * bays.length + 26);
+  const slot =
+    desktop && available > 0
+      ? Math.max(
+          60,
+          Math.min(88, (available - start - 26) / Math.max(1, perRow))
+        )
+      : 88;
+  const width = Math.max(520, start + slot * perRow + 26);
   const bottom = 216;
 
   return (
@@ -122,18 +154,11 @@ export function StationSchematic({
             clock={clock}
             compactOnPhone
           />
+          <MimicMotionControl />
           <MimicAlarmCoverage
             station
             count={data.unconfigured_thresholds}
-            knownEmpty={
-              data.alarm === null &&
-              data.bays.every((bay) => bay.alarm === null) &&
-              !data.alarms.some(
-                (alarm) =>
-                  alarm.anomaly !== null &&
-                  ['open', 'acknowledged'].includes(alarm.anomaly_status ?? '')
-              )
-            }
+            knownEmpty={knownNoActiveAlarms(data)}
           />
         </Group>
       </div>
@@ -185,7 +210,11 @@ export function StationSchematic({
                   data-reading-value
                 >
                   {reading ? (
-                    <ValueTooltip label={detail}>{reading}</ValueTooltip>
+                    <ValueTooltip label={detail}>
+                      {element.id === 'pumps-running'
+                        ? `${reading} ${t`of`} ${bays.length}`
+                        : reading}
+                    </ValueTooltip>
                   ) : (
                     <UnavailableReading point={point} label={label} />
                   )}
@@ -201,7 +230,7 @@ export function StationSchematic({
                 ? t`Plant flow`
                 : name;
           const detail = [
-            total.derived ? t`Derived total` : t`Source measurement`,
+            total.derived ? t`Calculated total` : t`Source measurement`,
             total.reason && reasonLabel(total.reason),
             ...total.contributors,
             observed,
@@ -221,13 +250,6 @@ export function StationSchematic({
             >
               <Text size='xs' className={classes.label}>
                 {label}
-                {total.derived && (
-                  <>
-                    {' '}
-                    <span aria-hidden='true'>Σ</span>
-                    <VisuallyHidden>{t`Calculated total`}</VisuallyHidden>
-                  </>
-                )}
               </Text>
               <Text
                 component='div'
@@ -253,297 +275,324 @@ export function StationSchematic({
         })}
       </div>
       {!!bays.length && (
-        <>
-          <Text
-            component='div'
-            size='xs'
-            hiddenFrom='sm'
-            className={classes.scrollCue}
+        <Box
+          component='section'
+          ref={viewport}
+          className={classes.viewport}
+          tabIndex={0}
+          aria-label={t`Station pump bays`}
+        >
+          <svg
+            viewBox={`0 0 ${width} ${320 * rows}`}
+            className={classes.drawing}
+            style={{ minWidth: width }}
+            aria-label={t`Station schematic`}
           >
-            <IconArrowsHorizontal size={15} aria-hidden='true' />
-            {t`Swipe to view all pump bays`}
-          </Text>
-          <Box
-            component='section'
-            className={classes.viewport}
-            tabIndex={0}
-            aria-label={t`Station pump bays`}
-          >
-            <svg
-              viewBox={`0 0 ${width} 320`}
-              className={classes.drawing}
-              style={{ minWidth: width }}
-              aria-label={t`Station schematic`}
-            >
-              <title>{t`Station schematic`}</title>
-              <defs>
-                <pattern
-                  id='station-mimic-hatch'
-                  width='8'
-                  height='8'
-                  patternUnits='userSpaceOnUse'
-                >
-                  <rect width='8' height='8' fill='var(--mantine-color-body)' />
-                  <path
-                    d='M-2 2L2 -2M0 8L8 0M6 10L10 6'
-                    stroke='currentColor'
-                    strokeWidth={1.5}
-                  />
-                </pattern>
-              </defs>
-              <g
-                fill='none'
-                stroke='currentColor'
-                strokeWidth={2}
-                strokeLinecap='round'
-                strokeLinejoin='round'
+            <title>{t`Station schematic`}</title>
+            <defs>
+              <pattern
+                id='station-mimic-hatch'
+                width='14'
+                height='14'
+                patternUnits='userSpaceOnUse'
               >
+                <rect width='14' height='14' fill='var(--mantine-color-body)' />
                 <path
-                  d='M18 60H24V222H120V60H126V228H18Z'
-                  className={classes.manifold}
-                  data-forebay-tank
+                  d='M-2 2L2 -2M0 14L14 0M12 16L16 12'
+                  stroke='light-dark(var(--mantine-color-gray-6), var(--mantine-color-dark-2))'
+                  strokeWidth={0.75}
                 />
-                <path
-                  d={`M126 ${bottom}H${width - 18}v12H126`}
-                  className={classes.manifold}
-                />
-                <path
-                  d={`M${start - 8} 10H${width - 10}v12H${start - 8}z`}
-                  className={classes.manifold}
-                />
-                {bays.map((bay, index) => {
-                  const x = start + slot * (index + 0.5);
-                  const operation = operatingState(data, bay);
-                  const state = stateStyle(operation);
-                  const alarm = alarmColor(bay.alarm);
-                  const attention =
-                    bay.machine == null
-                      ? undefined
-                      : alarmAttention(data.alarms, bay.machine);
-                  const chosen = bay.key === selected;
-                  const press = (event: KeyboardEvent) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      onSelect(bay.key);
-                    }
-                  };
-                  return (
-                    <g
-                      key={bay.key}
-                      // biome-ignore lint/a11y/useSemanticElements: SVG equipment selection needs SVG geometry and keyboard semantics
-                      role='button'
-                      tabIndex={0}
-                      aria-pressed={chosen}
-                      aria-label={`${bay.key}: ${stateLabel(operation)}${alarm ? `, ${alarmLabel(bay.alarm)}` : ''}`}
-                      onClick={() => onSelect(bay.key)}
-                      onKeyDown={press}
-                      onFocus={(event) =>
-                        event.currentTarget.scrollIntoView({
-                          block: 'nearest',
-                          inline: 'nearest'
-                        })
-                      }
-                      className={classes.bay}
-                      data-bay={bay.key}
-                      data-operating-state={operation}
-                      data-alarm={bay.alarm ?? undefined}
-                    >
-                      <title>
-                        {`${bay.name}: ${stateLabel(operation)}${bay.active ? '' : ` · ${t`Inactive equipment`}`}${alarm ? ` · ${alarmLabel(bay.alarm)}` : ''}`}
-                      </title>
-                      <rect
-                        className={classes.focus}
-                        x={x - slot / 2 + 3}
-                        y={48}
-                        width={slot - 6}
-                        height={268}
-                        rx={6}
-                        style={
-                          chosen
-                            ? {
-                                fill: 'var(--mantine-primary-color-light)',
-                                stroke:
-                                  'var(--aimms-focus, light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3)))'
-                              }
-                            : undefined
+              </pattern>
+            </defs>
+            <g
+              fill='none'
+              stroke='currentColor'
+              strokeWidth={2}
+              strokeLinecap='round'
+              strokeLinejoin='round'
+            >
+              {Array.from({ length: rows }, (_, row) => (
+                <g
+                  key={row}
+                  data-station-row
+                  transform={`translate(0 ${row * 320})`}
+                >
+                  <path
+                    d='M18 60H24V222H120V60H126V228H18Z'
+                    className={classes.manifold}
+                    data-forebay-tank
+                  />
+                  <path
+                    d={`M126 ${bottom}H${width - 18}v12H126`}
+                    className={classes.manifold}
+                  />
+                  <path
+                    d={`M${start - 8} 10H${width - 10}v12H${start - 8}z`}
+                    className={classes.manifold}
+                  />
+                  {bays
+                    .slice(row * perRow, (row + 1) * perRow)
+                    .map((bay, index) => {
+                      const x = start + slot * (index + 0.5);
+                      const operation = operatingState(data, bay);
+                      const statusElement = data.layout.elements.find(
+                        (item) => item.id === 'pump-status'
+                      );
+                      const lastCode = statusElement
+                        ? bay.points[
+                            expandPointer(statusElement.pointer, bay.key)
+                          ]?.value
+                        : null;
+                      const retainedState =
+                        operation === 'stale' && lastCode != null
+                          ? Object.entries(
+                              data.layout.status_values ?? {}
+                            ).find(([, codes]) =>
+                              codes.includes(String(lastCode))
+                            )?.[0]
+                          : undefined;
+                      const glyphState = retainedState ?? operation;
+
+                      const state = stateStyle(operation);
+                      const alarm = alarmColor(bay.alarm);
+                      const attention =
+                        bay.machine == null
+                          ? undefined
+                          : alarmAttention(data.alarms, bay.machine);
+                      const chosen = bay.key === selected;
+                      const press = (event: KeyboardEvent) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          onSelect(bay.key);
                         }
-                      />
-                      <path
-                        d={`M${x} 196V${bottom}M${x + 20} 176h6V22`}
-                        className={classes.pipeEdge}
-                      />
-                      <path
-                        d={`M${x} 196V${bottom}M${x + 20} 176h6V22`}
-                        className={classes.pipeCore}
-                      />
-                      {hasDischargeFlow(data, bay) && (
-                        <path
-                          d={`M${x + 20} 176h6V22`}
-                          className={visual.flow}
-                          data-discharge-flow
-                        />
-                      )}
-                      <path d={`M${x} 144V156`} stroke={state.line} />
-                      <rect
-                        x={x - 15}
-                        y={66}
-                        width={30}
-                        height={78}
-                        rx={4}
-                        fill={
-                          operation === 'stale'
-                            ? 'url(#station-mimic-hatch)'
-                            : state.fill
-                        }
-                        stroke={state.line}
-                        strokeDasharray={state.dashed ? '5 4' : undefined}
-                        data-state-body
-                      />
-                      <circle
-                        cx={x}
-                        cy={176}
-                        r={20}
-                        fill={
-                          operation === 'stale'
-                            ? 'url(#station-mimic-hatch)'
-                            : state.fill
-                        }
-                        stroke={state.line}
-                        strokeDasharray={state.dashed ? '5 4' : undefined}
-                        data-state-body
-                      />
-                      <circle
-                        cx={x}
-                        cy={176}
-                        r={3}
-                        fill={state.line}
-                        stroke='none'
-                        data-impeller
-                      />
-                      <path
-                        d={`M${x} 173q8-1 10-10M${x + 3} 178q-2 8 8 10M${x - 3} 178q-7-5-13 2`}
-                        stroke={state.line}
-                        strokeWidth={1.5}
-                      />
-                      {operation === 'fault' && (
+                      };
+                      return (
                         <g
-                          data-fault-icon
-                          stroke='light-dark(var(--mantine-color-red-9), var(--mantine-color-red-1))'
-                          fill='none'
-                          strokeWidth={2}
+                          key={bay.key}
+                          // biome-ignore lint/a11y/useSemanticElements: SVG equipment selection needs SVG geometry and keyboard semantics
+                          role='button'
+                          tabIndex={0}
+                          aria-pressed={chosen}
+                          aria-label={`${bay.key}: ${stateLabel(operation)}${alarm ? `, ${alarmLabel(bay.alarm)}` : ''}`}
+                          onClick={() => onSelect(bay.key)}
+                          onKeyDown={press}
+                          onFocus={(event) =>
+                            event.currentTarget.scrollIntoView({
+                              block: 'nearest',
+                              inline: 'nearest'
+                            })
+                          }
+                          className={classes.bay}
+                          data-bay={bay.key}
+                          data-operating-state={operation}
+                          data-alarm={bay.alarm ?? undefined}
                         >
-                          <path
-                            d={`M${x} 93l11 21h-22zM${x} 100v6M${x} 109v1`}
+                          <title>
+                            {`${bay.name}: ${stateLabel(operation)}${bay.active ? '' : ` · ${t`Inactive equipment`}`}${alarm ? ` · ${alarmLabel(bay.alarm)}` : ''}`}
+                          </title>
+                          <rect
+                            className={classes.focus}
+                            x={x - slot / 2 + 3}
+                            y={48}
+                            width={slot - 6}
+                            height={268}
+                            rx={6}
+                            style={
+                              chosen
+                                ? {
+                                    fill: 'var(--mantine-primary-color-light)',
+                                    stroke:
+                                      'var(--aimms-focus, light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3)))'
+                                  }
+                                : undefined
+                            }
                           />
-                        </g>
-                      )}
-                      {operation === 'running' && (
-                        <path
-                          data-running-icon
-                          d={`M${x - 5} 95l12 9l-12 9z`}
-                          fill='light-dark(var(--mantine-color-green-9), var(--mantine-color-green-1))'
-                          stroke='none'
-                        />
-                      )}
-                      {operation === 'idle' && (
-                        <path
-                          d={`M${x - 4} 96v16M${x + 4} 96v16`}
-                          stroke={state.line}
-                          strokeWidth={3}
-                        />
-                      )}
-                      {alarm && (
-                        <g data-alarm-marker={bay.alarm}>
-                          {attention && (
-                            <circle
-                              cx={x}
-                              cy={44}
-                              r={13}
-                              stroke={alarm}
-                              strokeWidth={2}
-                              className={visual.attention}
-                              data-attention={attention}
+                          <path
+                            d={`M${x} 196V${bottom}M${x + 20} 176h6V22`}
+                            className={classes.pipeEdge}
+                          />
+                          <path
+                            d={`M${x} 196V${bottom}M${x + 20} 176h6V22`}
+                            className={classes.pipeCore}
+                          />
+                          {hasDischargeFlow(data, bay) && (
+                            <path
+                              d={`M${x + 20} 176h6V22`}
+                              className={visual.flow}
+                              data-discharge-flow
                             />
                           )}
-                          <polygon
-                            points={
-                              bay.alarm === 'critical'
-                                ? `${x},33 ${x + 11},44 ${x},55 ${x - 11},44`
-                                : `${x},32 ${x + 12},55 ${x - 12},55`
+                          <path d={`M${x} 144V156`} stroke={state.line} />
+                          <rect
+                            x={x - 15}
+                            y={66}
+                            width={30}
+                            height={78}
+                            rx={4}
+                            fill={
+                              operation === 'stale'
+                                ? 'url(#station-mimic-hatch)'
+                                : state.fill
                             }
-                            fill={alarm}
-                            stroke={alarm}
-                            strokeWidth={2}
+                            stroke={state.line}
+                            strokeDasharray={state.dashed ? '5 4' : undefined}
+                            data-state-body
                           />
+                          <circle
+                            cx={x}
+                            cy={176}
+                            r={20}
+                            fill={
+                              operation === 'stale'
+                                ? 'url(#station-mimic-hatch)'
+                                : state.fill
+                            }
+                            stroke={state.line}
+                            strokeDasharray={state.dashed ? '5 4' : undefined}
+                            data-state-body
+                          />
+                          <circle
+                            cx={x}
+                            cy={176}
+                            r={3}
+                            fill={state.line}
+                            stroke='none'
+                            data-impeller
+                          />
+                          <path
+                            d={`M${x} 173q8-1 10-10M${x + 3} 178q-2 8 8 10M${x - 3} 178q-7-5-13 2`}
+                            stroke={state.line}
+                            strokeWidth={1.5}
+                          />
+                          {glyphState === 'fault' && (
+                            <g
+                              data-fault-icon
+                              opacity={operation === 'stale' ? 0.5 : 1}
+                              stroke={
+                                operation === 'stale'
+                                  ? state.line
+                                  : 'light-dark(var(--mantine-color-red-9), var(--mantine-color-red-1))'
+                              }
+                              fill='none'
+                              strokeWidth={2}
+                            >
+                              <path
+                                d={`M${x} 93l11 21h-22zM${x} 100v6M${x} 109v1`}
+                              />
+                            </g>
+                          )}
+                          {glyphState === 'running' && (
+                            <path
+                              data-running-icon
+                              opacity={operation === 'stale' ? 0.5 : 1}
+                              d={`M${x - 5} 95l12 9l-12 9z`}
+                              fill={
+                                operation === 'stale'
+                                  ? state.line
+                                  : 'light-dark(var(--mantine-color-green-9), var(--mantine-color-green-1))'
+                              }
+                              stroke='none'
+                            />
+                          )}
+                          {glyphState === 'idle' && (
+                            <path
+                              opacity={operation === 'stale' ? 0.5 : 1}
+                              d={`M${x - 4} 96v16M${x + 4} 96v16`}
+                              stroke={state.line}
+                              strokeWidth={3}
+                            />
+                          )}
+                          {alarm && (
+                            <g data-alarm-marker={bay.alarm}>
+                              {attention && (
+                                <AlarmAttentionRings
+                                  x={x}
+                                  y={44}
+                                  radius={13}
+                                  color={alarm}
+                                  attention={attention}
+                                />
+                              )}
+                              <polygon
+                                points={
+                                  bay.alarm === 'critical'
+                                    ? `${x},33 ${x + 11},44 ${x},55 ${x - 11},44`
+                                    : `${x},32 ${x + 12},55 ${x - 12},55`
+                                }
+                                fill={alarm}
+                                stroke={alarm}
+                                strokeWidth={2}
+                              />
+                              <text
+                                x={x}
+                                y={48}
+                                textAnchor='middle'
+                                fontSize={14}
+                                fontWeight={700}
+                                fill={
+                                  bay.alarm === 'warning'
+                                    ? 'var(--aimms-warning-ink)'
+                                    : 'light-dark(var(--mantine-color-white), var(--mantine-color-dark-9))'
+                                }
+                                stroke='none'
+                              >
+                                !
+                              </text>
+                            </g>
+                          )}
                           <text
                             x={x}
-                            y={48}
+                            y={250}
                             textAnchor='middle'
                             fontSize={14}
-                            fontWeight={700}
-                            fill={
-                              bay.alarm === 'warning'
-                                ? 'light-dark(var(--mantine-color-black), var(--mantine-color-dark-9))'
-                                : 'light-dark(var(--mantine-color-white), var(--mantine-color-dark-9))'
-                            }
+                            fontWeight={650}
+                            fill='currentColor'
                             stroke='none'
                           >
-                            !
+                            {bay.key}
                           </text>
+                          <text
+                            x={x}
+                            y={270}
+                            textAnchor='middle'
+                            fontSize={13}
+                            fill='currentColor'
+                            stroke='none'
+                          >
+                            {stateLabel(operation)}
+                          </text>
+                          {!!bayPower[row * perRow + index].value && (
+                            <text
+                              x={x}
+                              y={290}
+                              textAnchor='middle'
+                              fontSize={12}
+                              fill='currentColor'
+                              stroke='none'
+                            >
+                              {bayPower[row * perRow + index].value}
+                            </text>
+                          )}
+                          {!!bayPower[row * perRow + index].quality && (
+                            <text
+                              x={x}
+                              y={308}
+                              textAnchor='middle'
+                              fontSize={11}
+                              fill='currentColor'
+                              stroke='none'
+                            >
+                              {bayPower[row * perRow + index].quality}
+                            </text>
+                          )}
                         </g>
-                      )}
-                      <text
-                        x={x}
-                        y={250}
-                        textAnchor='middle'
-                        fontSize={14}
-                        fontWeight={650}
-                        fill='currentColor'
-                        stroke='none'
-                      >
-                        {bay.key}
-                      </text>
-                      <text
-                        x={x}
-                        y={270}
-                        textAnchor='middle'
-                        fontSize={13}
-                        fill='currentColor'
-                        stroke='none'
-                      >
-                        {stateLabel(operation)}
-                      </text>
-                      {!!bayPower[index].value && (
-                        <text
-                          x={x}
-                          y={290}
-                          textAnchor='middle'
-                          fontSize={12}
-                          fill='currentColor'
-                          stroke='none'
-                        >
-                          {bayPower[index].value}
-                        </text>
-                      )}
-                      {!!bayPower[index].quality && (
-                        <text
-                          x={x}
-                          y={308}
-                          textAnchor='middle'
-                          fontSize={11}
-                          fill='currentColor'
-                          stroke='none'
-                        >
-                          {bayPower[index].quality}
-                        </text>
-                      )}
-                    </g>
-                  );
-                })}
-              </g>
-            </svg>
-          </Box>
-        </>
+                      );
+                    })}
+                </g>
+              ))}
+            </g>
+          </svg>
+        </Box>
       )}
     </div>
   );

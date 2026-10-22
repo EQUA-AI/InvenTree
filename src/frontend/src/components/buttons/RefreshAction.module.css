@@ -1,0 +1,2 @@
+.refresh { flex: 0 0 auto; color: var(--mantine-color-text); border-color: light-dark(var(--mantine-color-gray-6), var(--mantine-color-dark-2)); }
+@media (max-width: 47.99375em) { .refresh { width: 44px; height: 44px; } }

@@ -394,6 +394,7 @@ export default function MachineDetail() {
         />
         {machine?.pk && <MachinePlacementPath machineId={machine.pk} />}
         <PanelGroup
+          denseTabs
           pageKey='asset-machine-detail'
           panels={machinePanels}
           instance={machine}

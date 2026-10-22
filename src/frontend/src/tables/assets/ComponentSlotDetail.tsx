@@ -166,6 +166,7 @@ export function ComponentSlotDetail({
               }
             >
               <Badge
+                component='span'
                 size='sm'
                 c='var(--mantine-color-text)'
                 variant='outline'

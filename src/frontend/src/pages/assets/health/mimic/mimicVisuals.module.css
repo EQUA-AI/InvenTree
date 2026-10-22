@@ -1,5 +1,5 @@
 .surface {
-  --mimic-warning-text: light-dark(color-mix(in srgb, var(--mantine-color-orange-9) 85%, var(--mantine-color-black)), var(--mantine-color-orange-4));
+  --mimic-warning-text: var(--aimms-warning);
   --mimic-critical-text: light-dark(var(--mantine-color-red-9), var(--mantine-color-red-4));
 }
 
@@ -13,6 +13,7 @@
   stroke-linecap: round;
   stroke-dasharray: 9 12;
   animation: discharge-flow 4s linear infinite;
+  animation-play-state: var(--mimic-motion, running);
   pointer-events: none;
 }
 
@@ -24,6 +25,7 @@
 
 .attention[data-attention='unacknowledged'] {
   animation: alarm-attention 1s steps(2, end) infinite;
+  animation-play-state: var(--mimic-motion, running);
 }
 
 @keyframes discharge-flow { to { stroke-dashoffset: -84; } }
@@ -36,6 +38,11 @@
 
 .badgeAttention { display: inline-flex; border-radius: var(--mantine-radius-xl); color: var(--mimic-warning-text); }
 .badgeAttention[data-severity='critical'] { color: var(--mimic-critical-text); }
-.badgeAttention[data-attention='unacknowledged'] { animation: alarm-badge-attention 1s steps(2, end) infinite; }
+.badgeAttention[data-attention='unacknowledged'] { animation: alarm-badge-attention 1s steps(2, end) infinite; animation-play-state: var(--mimic-motion, running); outline: 3px double currentColor; outline-offset: 1px; }
 @keyframes alarm-badge-attention { 0%, 100% { box-shadow: 0 0 0 2px currentColor; } 50% { box-shadow: none; } }
 @media (prefers-reduced-motion: reduce) { .badgeAttention[data-attention='unacknowledged'] { animation: none; box-shadow: 0 0 0 2px currentColor; } }
+
+.motion[data-motion-paused='true'] { --mimic-motion: paused; }
+.motion[data-motion-paused='true'] .attention { opacity: 1; animation: none; }
+.motionControl { flex: 0 0 auto; color: var(--mantine-color-text); border-color: light-dark(var(--mantine-color-gray-6), var(--mantine-color-dark-2)); }
+@media (max-width: 47.99375em) { .motionControl { width: 44px; height: 44px; } }

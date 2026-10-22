@@ -13,8 +13,7 @@ import {
   Text,
   Title,
   Tooltip,
-  UnstyledButton,
-  useMantineTheme
+  UnstyledButton
 } from '@mantine/core';
 import {
   IconExclamationCircle,
@@ -96,6 +95,8 @@ export type PanelProps = {
   defaultPanel?: string;
   onPanelChange?: (panel: string) => void;
   collapsible?: boolean;
+  /** AIMMS machine-detail opt-in; other detail panels retain their native spacing. */
+  denseTabs?: boolean;
   pluginPanelWithoutId?: boolean;
   pluginPanelKey?: PluginPanelKey;
 };
@@ -217,6 +218,7 @@ function BasePanelGroup({
   model,
   id,
   collapsible = true,
+  denseTabs = false,
   pluginPanelWithoutId = false,
   pluginPanelKey
 }: Readonly<PanelProps>): ReactNode {
@@ -225,8 +227,7 @@ function BasePanelGroup({
   const navigate = useNavigate();
 
   const { panel } = useParams();
-  const theme = useMantineTheme();
-  const compact = useMediaQuery(`(max-width: ${theme.breakpoints.sm})`);
+  const compact = useMediaQuery('(max-width: 47.99375em)');
 
   const [expanded, setExpanded] = useState<boolean>(true);
 
@@ -388,7 +389,7 @@ function BasePanelGroup({
 
   const tabListRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!compact) return;
+    if (!compact || !denseTabs) return;
     const frame = requestAnimationFrame(() => {
       const list = tabListRef.current;
       const active = list?.querySelector<HTMLElement>(
@@ -408,7 +409,7 @@ function BasePanelGroup({
       });
     });
     return () => cancelAnimationFrame(frame);
-  }, [compact, currentPanel, activePanels.length]);
+  }, [compact, denseTabs, currentPanel, activePanels.length]);
 
   // hotkeys
   const hotkeys = useMemo(() => {
@@ -434,16 +435,20 @@ function BasePanelGroup({
           orientation={compact ? 'horizontal' : 'vertical'}
           keepMounted={false}
           aria-label={`panel-group-${pageKey}`}
-          classNames={{ tab: classes.selectedPanelTab }}
+          classNames={{
+            tab: `${classes.selectedPanelTab}${denseTabs ? ` ${classes.densePanelTab}` : ''}`
+          }}
           style={{ minWidth: 0, width: '100%' }}
         >
           <Tabs.List
             ref={tabListRef}
-            className={compact ? classes.horizontalPanelList : undefined}
+            className={
+              compact && denseTabs ? classes.horizontalPanelList : undefined
+            }
             justify='left'
             aria-label={`panel-tabs-${pageKey}`}
             style={
-              compact
+              compact && denseTabs
                 ? { flexWrap: 'nowrap', overflowX: 'auto', maxWidth: '100%' }
                 : undefined
             }
@@ -451,8 +456,12 @@ function BasePanelGroup({
             {groupedPanels.map((group) => (
               <Box
                 key={`group-${group.id}`}
-                w={compact ? 'max-content' : '100%'}
-                style={compact ? { display: 'flex', flexShrink: 0 } : undefined}
+                w={compact && denseTabs ? 'max-content' : '100%'}
+                style={
+                  compact && denseTabs
+                    ? { display: 'flex', flexShrink: 0 }
+                    : undefined
+                }
               >
                 <Text
                   hidden={!group.label || !expanded}
@@ -516,14 +525,14 @@ function BasePanelGroup({
                   aria-label={`nav-panel-${identifierString(
                     `${pageKey}-${panel.name}`
                   )}`}
-                  p={compact ? 0 : 'sm'}
+                  p={compact && denseTabs ? 0 : 'sm'}
                   style={{
                     overflowX: 'auto',
                     width: '100%',
                     minWidth: 0
                   }}
                 >
-                  <Stack gap={compact ? 'xs' : 'md'}>
+                  <Stack gap={compact && denseTabs ? 'xs' : 'md'}>
                     {panel.showHeadline !== false && (
                       <>
                         <Group justify='space-between'>

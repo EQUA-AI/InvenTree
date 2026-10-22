@@ -36,3 +36,14 @@ it('keeps a valid timestamp as plain text without an extra keyboard stop', () =>
   expect(markup).toContain('<time');
   expect(markup).not.toContain('<button');
 });
+
+it('keeps a relative column compact while retaining the full observation instant', () => {
+  const markup = render({
+    value: '2026-10-20T08:00:00Z',
+    relative: 'just now',
+    relativeOnly: true
+  });
+  expect(markup).toContain('>just now</time>');
+  expect(markup).toContain('dateTime="2026-10-20T08:00:00.000Z"');
+  expect(markup).toContain('white-space:nowrap');
+});

@@ -1017,7 +1017,11 @@ export function InvenTreeTableInternal<T extends Record<string, any>>({
   const optionalParams = useMemo(() => {
     let _params: Record<string, any> = {};
 
-    if (tableProps.enablePagination) {
+    if (
+      tableProps.enablePagination &&
+      (!tableProps.hideSinglePagePagination ||
+        tableState.recordCount > pageSize)
+    ) {
       _params = {
         ..._params,
         totalRecords: tableState.recordCount,
@@ -1033,6 +1037,8 @@ export function InvenTreeTableInternal<T extends Record<string, any>>({
   }, [
     tablePageSize,
     tableProps.enablePagination,
+    tableProps.hideSinglePagePagination,
+    pageSize,
     tableState.recordCount,
     tableState.page,
     tableState.setPage,

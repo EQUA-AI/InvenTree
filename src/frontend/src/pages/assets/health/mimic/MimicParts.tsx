@@ -4,13 +4,13 @@ import { useState } from 'react';
 import { ValueTooltip } from '../../../../components/items/ValueTooltip';
 import { unitLabel } from '../../performance/format';
 import { StatusBadge } from '../StatusBadge';
+import { AlarmAttentionRings } from './MimicMotion';
 import { failedReading } from './MimicValue';
 
 import { type Display, summarize } from './MimicReadings';
 import classes from './UnitMimic.module.css';
 import { numberText, reasonLabel, usable } from './format';
 import { alarmAttention } from './mimicVisuals';
-import visual from './mimicVisuals.module.css';
 import type { LayoutPart, MimicData, MimicPoint } from './types';
 
 /** Values belong beside a part's name; full sensor names stay in its tooltip. */
@@ -151,7 +151,7 @@ function PartNumber({
           (state.attention ||
           state.verdict === 'warning' ||
           state.verdict === 'critical'
-            ? 15
+            ? 17
             : 13) * scale
         }
         fill='var(--mantine-color-body)'
@@ -159,18 +159,17 @@ function PartNumber({
         strokeWidth={scale}
       />
       {state.attention && (
-        <circle
-          cx={x}
-          cy={y}
-          r={14 * scale}
-          stroke={
+        <AlarmAttentionRings
+          x={x}
+          y={y}
+          radius={14}
+          scale={scale}
+          attention={state.attention}
+          color={
             state.verdict === 'warning'
               ? 'var(--aimms-warning)'
               : 'var(--aimms-critical)'
           }
-          strokeWidth={2 * scale}
-          className={visual.attention}
-          data-attention={state.attention}
         />
       )}
       {state.verdict === 'critical' || state.verdict === 'warning' ? (
@@ -211,9 +210,11 @@ function PartNumber({
         fontWeight={700}
         fill={
           assessed
-            ? state.verdict === 'warning' || state.verdict === 'normal'
-              ? 'light-dark(var(--mantine-color-black), var(--mantine-color-dark-9))'
-              : 'light-dark(var(--mantine-color-white), var(--mantine-color-dark-9))'
+            ? state.verdict === 'warning'
+              ? 'var(--aimms-warning-ink)'
+              : state.verdict === 'normal'
+                ? 'light-dark(var(--mantine-color-black), var(--mantine-color-dark-9))'
+                : 'light-dark(var(--mantine-color-white), var(--mantine-color-dark-9))'
             : 'var(--mantine-color-text)'
         }
       >
@@ -229,7 +230,7 @@ const markerPositions: Record<number, readonly [number, number]> = {
   2: [702, 160],
   3: [430, 198],
   4: [436, 246],
-  5: [476, 283],
+  5: [480, 280],
   6: [656, 349],
   7: [730, 272],
   8: [594, 390],

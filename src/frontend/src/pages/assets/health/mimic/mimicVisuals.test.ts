@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   alarmAttention,
   hasDischargeFlow,
+  knownNoActiveAlarms,
   operatingState,
   readingSeverity
 } from './mimicVisuals';
@@ -160,4 +161,43 @@ describe('source-driven mimic emphasis', () => {
     ).toBeUndefined();
     expect(alarmAttention([{ ...alarm, anomaly: null }], 7)).toBeUndefined();
   });
+});
+
+it('requires every mapped bay to be quiet and no active/acknowledged anomaly before claiming absence', () => {
+  const source = data();
+  source.alarm = null;
+  source.bays[0].machine = 7;
+  source.bays[0].alarm = null;
+  expect(knownNoActiveAlarms(source)).toBe(true);
+  expect(knownNoActiveAlarms(undefined)).toBe(false);
+  expect(knownNoActiveAlarms({ ...source, bays: [] })).toBe(false);
+  for (const alarm of [undefined, 'warning', 'critical'] as const)
+    expect(knownNoActiveAlarms({ ...source, alarm })).toBe(false);
+  expect(
+    knownNoActiveAlarms({
+      ...source,
+      bays: [{ ...source.bays[0], machine: undefined }]
+    })
+  ).toBe(false);
+  expect(
+    knownNoActiveAlarms({
+      ...source,
+      bays: [
+        ...source.bays,
+        { ...source.bays[0], key: 'P8', machine: undefined }
+      ]
+    })
+  ).toBe(false);
+  for (const status of ['open', 'acknowledged', 'suppressed'] as const) {
+    const alarm: MimicAlarm = {
+      ...point(),
+      anomaly: 91,
+      machine: 7,
+      severity: 'critical',
+      anomaly_status: status
+    };
+    expect(knownNoActiveAlarms({ ...source, alarms: [alarm] })).toBe(
+      !['open', 'acknowledged'].includes(status)
+    );
+  }
 });

@@ -15,11 +15,11 @@ import {
 import {
   IconChevronDown,
   IconChevronRight,
-  IconFilter,
-  IconRefresh
+  IconFilter
 } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { Fragment, useId, useMemo, useState } from 'react';
+import { RefreshAction } from '../../../components/buttons/RefreshAction';
 import monitoring from '../monitoring.module.css';
 import { unitLabel } from '../performance/format';
 import { useNow } from '../useNow';
@@ -221,7 +221,7 @@ export function SignalTable({
       <Group align='flex-end' className={classes.filters}>
         <Group align='flex-end' gap='xs' className={classes.search}>
           <TextInput
-            label={t`Search signals`}
+            aria-label={t`Search signals`}
             placeholder={t`Search signals`}
             value={search}
             onChange={(event) => setSearch(event.currentTarget.value)}
@@ -244,17 +244,7 @@ export function SignalTable({
           >
             <IconFilter size={18} />
           </ActionIcon>
-          {onRefresh && (
-            <ActionIcon
-              hiddenFrom='sm'
-              variant='default'
-              size={44}
-              aria-label={t`Refresh`}
-              onClick={onRefresh}
-            >
-              <IconRefresh size={18} />
-            </ActionIcon>
-          )}
+          {onRefresh && <RefreshAction hiddenFrom='sm' onClick={onRefresh} />}
         </Group>
         <Group
           id={`${instanceId}-filters`}
@@ -265,6 +255,7 @@ export function SignalTable({
         >
           <Select
             label={t`Component filter`}
+            placeholder={t`All components`}
             clearable
             value={component}
             onChange={setComponent}
@@ -518,6 +509,7 @@ export function SignalTable({
                   {/* biome-ignore lint/a11y/useSemanticElements: Preserve the native role through phone card CSS. */}
                   <Table.Td role='cell' data-label={t`Observed`}>
                     <FreshnessText
+                      relativeOnly
                       observedAt={signal.observed_at}
                       stale={signal.stale}
                       thresholdSeconds={signal.freshness_threshold_seconds}

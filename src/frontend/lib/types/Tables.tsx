@@ -215,6 +215,8 @@ export type InvenTreeTableProps<T = any> = {
   enableSelection?: boolean;
   enableSearch?: boolean;
   enablePagination?: boolean;
+  hideSinglePagePagination?: boolean;
+  refreshControl?: React.ReactNode;
   enableRefresh?: boolean;
   enableColumnSwitching?: boolean;
   enableColumnCaching?: boolean;

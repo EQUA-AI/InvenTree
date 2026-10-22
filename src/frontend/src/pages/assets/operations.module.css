@@ -1,6 +1,5 @@
 .band, .mimicPanel, .machineShell {
   --aimms-critical: light-dark(var(--mantine-color-red-9), var(--mantine-color-red-5));
-  --aimms-warning: light-dark(var(--mantine-color-orange-9), var(--mantine-color-orange-5));
   --aimms-normal: light-dark(var(--mantine-color-green-9), var(--mantine-color-green-5));
   --aimms-focus: light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3));
   --aimms-panel: light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8));
@@ -49,7 +48,7 @@
 
 /* Keep the first operational item visible on small screens without reducing
    text sizes or removing the provenance and availability explanations. */
-@media (max-width: 48em) {
+@media (max-width: 47.99375em) {
   .band { padding: 6px var(--mantine-spacing-xs); }
   .band h4 { line-height: 1.25; }
   .band .meta, .caveat { line-height: 1.4; }
@@ -69,12 +68,12 @@
 .mimicPart:focus-visible > .mimicFocusRing { visibility: visible; }
 .phoneTarget:focus-visible { outline: 2px solid var(--aimms-focus, light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3))); outline-offset: 2px; border-radius: var(--mantine-radius-xs); }
 .machineShell { min-width: 0; }
-@media (max-width: 48em) {
+@media (max-width: 47.99375em) {
   .machineShell { gap: 6px; }
 }
 .alarmTable { min-width: 720px; }
 .alarmActions { white-space: nowrap; }
-@media (max-width: 48em) {
+@media (max-width: 47.99375em) {
   .phoneTarget { min-height: 44px; min-width: 44px; height: auto; }
   .phoneActions { gap: 8px; }
   .phoneActions > .phoneTarget { padding-inline: 4px; }
@@ -91,7 +90,7 @@
   .alarmActions a { min-width: 44px; min-height: 44px; }
 }
 
-@media (max-width: 48em) {
+@media (max-width: 47.99375em) {
   .conditionCounts { gap: 8px; }
   .pumpStatus { row-gap: 4px; }
   .pumpActions { gap: 4px 8px; }
@@ -103,7 +102,7 @@
   .phoneAlarmLink { min-height: 44px; display: inline-flex; align-items: center; }
 }
 
-@media (min-width: 48.01em) {
+@media (min-width: 48em) {
   .conditionCounts { display: contents; }
   .conditionCounts .phoneTarget { height: 18px; min-height: 18px; padding-inline: 7px; }
   .phoneSummary .alarmFilter { height: 20px; }

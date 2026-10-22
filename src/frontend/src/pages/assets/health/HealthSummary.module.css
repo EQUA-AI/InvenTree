@@ -1,7 +1,7 @@
 .assessment { min-width: 0; flex: 1; }
 .phoneTime { display: none; }
 
-@media (max-width: 48em) {
+@media (max-width: 47.99375em) {
   .fullTime { display: none; }
   .phoneTime { display: inline; }
   .conditionHeader > h4 {

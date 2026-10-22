@@ -1,7 +1,6 @@
 import { plural, t } from '@lingui/core/macro';
 import {
   Alert,
-  Button,
   Center,
   Group,
   Loader,
@@ -13,10 +12,11 @@ import {
   VisuallyHidden
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconInfoCircle, IconRefresh } from '@tabler/icons-react';
+import { IconInfoCircle } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { RefreshAction } from '../../../components/buttons/RefreshAction';
 import monitoring from '../monitoring.module.css';
 import { recordedTelemetryAsLive } from '../telemetryPresentation';
 import { useNow } from '../useNow';
@@ -279,7 +279,6 @@ export function MachineHealthPanel({
             <Title
               id={titleId}
               order={4}
-              size='sm'
               style={{ whiteSpace: 'nowrap' }}
             >{t`Current condition`}</Title>
             {mimicHref && (
@@ -289,13 +288,7 @@ export function MachineHealthPanel({
                 size='sm'
               >{t`See the readings on the mimic`}</MonitoringLink>
             )}
-            <Button
-              visibleFrom='sm'
-              size='xs'
-              variant='default'
-              leftSection={<IconRefresh size={14} />}
-              onClick={refreshAll}
-            >{t`Refresh`}</Button>
+            <RefreshAction visibleFrom='sm' onClick={refreshAll} />
           </Group>
           <SimpleGrid
             cols={{ base: 1, lg: showAnomalies ? 2 : 1 }}
@@ -378,13 +371,7 @@ export function MachineHealthPanel({
         >
           <Title order={4}>{t`Signals`}</Title>
           {(signalsQuery.isError || signals.length === 0) && (
-            <Button
-              hiddenFrom='sm'
-              size='xs'
-              variant='default'
-              leftSection={<IconRefresh size={14} />}
-              onClick={refreshAll}
-            >{t`Refresh`}</Button>
+            <RefreshAction hiddenFrom='sm' onClick={refreshAll} />
           )}
         </Group>
         {signalsQuery.isError ? (

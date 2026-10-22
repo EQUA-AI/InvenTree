@@ -13,6 +13,7 @@ import {
   IconInfoCircle,
   IconUrgent
 } from '@tabler/icons-react';
+import tokens from './OperationalTokens.module.css';
 
 export type StatusTone =
   | 'critical'
@@ -58,21 +59,26 @@ export function StatusBadge({
   variant = 'outline',
   color = 'gray',
   leftSection,
+  className,
   ...props
 }: StatusBadgeProps) {
+  const warning = tone === 'warning' || String(color).startsWith('yellow');
   const Icon = tone === 'neutral' ? null : icons[tone];
   const resolved =
     variant === 'filled' ? (filledColors[color] ?? color) : color;
   return (
     <Badge
       component='span'
+      className={`${tokens.warning}${className ? ` ${className}` : ''}`}
       variant={variant}
       autoContrast
       color={resolved}
       c={
-        variant === 'outline' || variant === 'light'
-          ? 'var(--mantine-color-text)'
-          : undefined
+        warning && variant === 'filled'
+          ? 'var(--aimms-warning-ink)'
+          : variant === 'outline' || variant === 'light'
+            ? 'var(--mantine-color-text)'
+            : undefined
       }
       tt='none'
       h='auto'
@@ -80,7 +86,17 @@ export function StatusBadge({
       py={3}
       maw='100%'
       styles={{
-        root: { flexShrink: 0 },
+        root: {
+          flexShrink: 0,
+          ...(warning
+            ? {
+                borderColor: 'var(--aimms-warning)',
+                ...(variant === 'filled'
+                  ? { backgroundColor: 'var(--aimms-warning)' }
+                  : {})
+              }
+            : {})
+        },
         label: { whiteSpace: 'normal', overflowWrap: 'anywhere' }
       }}
       leftSection={leftSection ?? (Icon ? <Icon size={14} /> : undefined)}

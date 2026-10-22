@@ -72,7 +72,7 @@ export function UnitSchematic({
       window.removeEventListener('resize', fit);
     };
   }, [unit]);
-  const phone = useMediaQuery('(max-width: 48em)');
+  const phone = useMediaQuery('(max-width: 47.99375em)');
   const parts = partStates(data, display);
   // Match the side and vertical order of the native markers. Catalogue
   // numbering remains unchanged on both the drawing and the reading groups.
