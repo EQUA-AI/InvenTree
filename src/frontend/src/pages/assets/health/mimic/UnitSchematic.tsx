@@ -1,7 +1,7 @@
 import { t } from '@lingui/core/macro';
-import { Tooltip, UnstyledButton } from '@mantine/core';
 import { type CSSProperties, useLayoutEffect, useRef, useState } from 'react';
 import unitDrawing from '../../../../assets/mimic/pump-unit.svg?raw';
+import { ValueTooltip } from '../../../../components/items/ValueTooltip';
 import { freshnessText } from './FreshnessLabel';
 import {
   MimicPartMarkers,
@@ -11,7 +11,7 @@ import {
   partStates
 } from './MimicParts';
 import type { Display } from './MimicReadings';
-import { MissingValue } from './MissingValue';
+import { UnavailableReading, failedReading } from './MimicValue';
 import classes from './UnitMimic.module.css';
 import {
   elementLabel,
@@ -46,19 +46,10 @@ export function UnitSchematic({
   const [active, setActive] = useState<string | null>(null);
   const drawing = useRef<SVGSVGElement>(null);
   const [markerScale, setMarkerScale] = useState(1);
-  const [drawingMaxHeight, setDrawingMaxHeight] = useState<number>();
   useLayoutEffect(() => {
     const node = drawing.current;
     if (!node) return;
     const fit = () => {
-      // Desktop native chrome can precede this panel. Keep the full process
-      // drawing in the available fold while labels retain their HTML size.
-      const top = node.getBoundingClientRect().top + window.scrollY;
-      setDrawingMaxHeight(
-        window.innerWidth >= 1100
-          ? Math.max(300, window.innerHeight - top - 16)
-          : undefined
-      );
       const transform = node.getScreenCTM();
       const scale = transform ? Math.hypot(transform.a, transform.b) : 0;
       if (scale > 0) setMarkerScale(Math.max(1, 0.88 / scale));
@@ -72,9 +63,16 @@ export function UnitSchematic({
       observer.disconnect();
       window.removeEventListener('resize', fit);
     };
-  }, [data.generated_at, unit]);
+  }, [unit]);
   const parts = partStates(data, display);
-  const split = Math.ceil(parts.length / 2);
+  // Match the side and vertical order of the native markers. Catalogue
+  // numbering remains unchanged on both the drawing and the reading groups.
+  const spatialOrder = (a: PartState, b: PartState) =>
+    a.part.y - b.part.y || a.part.x - b.part.x;
+  const leftParts = parts.filter(({ part }) => part.x < 550).sort(spatialOrder);
+  const rightParts = parts
+    .filter(({ part }) => part.x >= 550)
+    .sort(spatialOrder);
   const bay = data.bays.find((item) => item.key === unit);
   const clock = useDisplayClock();
   const elements = data.layout.elements.filter((element) => {
@@ -95,8 +93,9 @@ export function UnitSchematic({
           const pointer = expandPointer(element.pointer, unit);
           const point = data.points[pointer];
           const label = elementLabel(element);
-          const shown = usable(point);
-          const reason = reasonLabel(point?.reason ?? 'not_bound');
+          const shown = usable(point) && !failedReading(point);
+          const reason =
+            reasonLabel(point?.reason ?? null) || t`Reason not supplied`;
           const observed = formatInstant(point?.observed_at, clock);
           const detail = shown
             ? `${label}: ${display(point)}${observed ? ` · ${observed} · ${clock.zone} · ${freshnessText(point, clock)}` : ''}`
@@ -113,21 +112,14 @@ export function UnitSchematic({
               </dt>
               <dd className={classes.metricValue} data-value>
                 {shown ? (
-                  <Tooltip
-                    label={detail}
-                    events={{ hover: true, focus: true, touch: true }}
-                  >
-                    <UnstyledButton
-                      aria-label={detail}
-                      className={classes.valueTarget}
-                    >
-                      {display(point)}
-                    </UnstyledButton>
-                  </Tooltip>
+                  <ValueTooltip label={detail} className={classes.valueTarget}>
+                    {display(point)}
+                  </ValueTooltip>
                 ) : (
-                  <MissingValue
+                  <UnavailableReading
+                    point={point}
                     label={label}
-                    reason={detail.slice(label.length + 2)}
+                    display={display}
                   />
                 )}
               </dd>
@@ -139,15 +131,6 @@ export function UnitSchematic({
         className={classes.workspace}
         data-has-parts={!!parts.length || undefined}
       >
-        <div className={classes.column} data-callout-column='left'>
-          <MimicParts
-            states={parts.slice(0, split)}
-            active={active}
-            onActive={setActive}
-            onPart={onPart}
-            display={display}
-          />
-        </div>
         <svg
           ref={drawing}
           className={classes.drawing}
@@ -157,15 +140,17 @@ export function UnitSchematic({
           aria-label={t`Pump unit schematic`}
           style={
             {
-              '--mimic-line': 'var(--mantine-color-text)',
-              '--mimic-muted': 'var(--mantine-color-text)',
-              '--mimic-surface': 'var(--mantine-color-body)',
+              '--mimic-line':
+                'light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-1))',
+              '--mimic-muted':
+                'light-dark(var(--mantine-color-gray-6), var(--mantine-color-dark-2))',
+              '--mimic-surface':
+                'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))',
               '--mimic-structure': 'var(--mantine-color-default-border)',
               '--mimic-water': 'var(--mantine-color-body)',
               '--mimic-state': state.fill,
               '--mimic-state-line': state.line,
               '--mimic-state-dash': state.dashed ? '6 4' : 'none',
-              maxHeight: drawingMaxHeight,
               ...partOutlines(parts, active)
             } as CSSProperties
           }
@@ -197,14 +182,25 @@ export function UnitSchematic({
             onActive={setActive}
           />
         </svg>
-        <div className={classes.column} data-callout-column='right'>
-          <MimicParts
-            states={parts.slice(split)}
-            active={active}
-            onActive={setActive}
-            onPart={onPart}
-            display={display}
-          />
+        <div className={classes.callouts} data-unit-callouts>
+          <div className={classes.column} data-callout-column='left'>
+            <MimicParts
+              states={leftParts}
+              active={active}
+              onActive={setActive}
+              onPart={onPart}
+              display={display}
+            />
+          </div>
+          <div className={classes.column} data-callout-column='right'>
+            <MimicParts
+              states={rightParts}
+              active={active}
+              onActive={setActive}
+              onPart={onPart}
+              display={display}
+            />
+          </div>
         </div>
       </div>
     </div>

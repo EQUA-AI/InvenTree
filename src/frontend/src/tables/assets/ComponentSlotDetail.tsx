@@ -15,6 +15,11 @@ import { Link, useLocation } from 'react-router-dom';
 import { ModelType } from '@lib/enums/ModelType';
 import { getDetailUrl } from '@lib/functions/Navigation';
 import type { MachineComponent } from '@lib/types/Assets';
+import {
+  FailedValue,
+  MissingValue,
+  ValueTooltip
+} from '../../components/items/ValueTooltip';
 import { returnState } from '../../components/nav/returnPath';
 import { FittedIdentity } from '../../pages/assets/FittedIdentity';
 import {
@@ -37,11 +42,7 @@ function Fact({
   );
 }
 
-const missing = (text: string) => (
-  <Text size='sm' c='dimmed'>
-    {text}
-  </Text>
-);
+const missing = (reason: string) => <MissingValue reason={reason} />;
 
 /**
  * R6 P13: one slot's detail, opened from the Parts table (`?slot=<pk>`).
@@ -117,10 +118,14 @@ export function ComponentSlotDetail({
                   {t`View in 3D`}
                 </Anchor>
               </Group>
+            ) : record.reference_position === undefined ? (
+              <FailedValue
+                label={t`3D position`}
+                reason={t`3D position could not be read`}
+              />
             ) : (
               missing(
-                record.reference_position === undefined ||
-                  record.reference_position
+                record.reference_position
                   ? t`3D position not available`
                   : t`Not in the 3D model`
               )
@@ -148,20 +153,27 @@ export function ComponentSlotDetail({
             </Text>
           </Fact>
           <Fact label={t`Fit basis`}>
-            <Group gap='xs'>
+            <ValueTooltip
+              label={
+                record.status === 'verified'
+                  ? t`Assignment verified`
+                  : t`Slot assignment not verified`
+              }
+              accessibleLabel={
+                record.status === 'verified'
+                  ? t`Verified: assignment verified`
+                  : t`Draft: slot assignment not verified`
+              }
+            >
               <Badge
                 size='sm'
-                variant='light'
-                color={record.status === 'verified' ? 'green' : 'yellow'}
+                c='var(--mantine-color-text)'
+                variant='outline'
+                color={record.status === 'verified' ? 'green' : 'gray'}
               >
                 {record.status === 'verified' ? t`Verified` : t`Draft`}
               </Badge>
-              <Text size='sm'>
-                {record.status === 'verified'
-                  ? t`Assignment verified`
-                  : t`Slot assignment not verified`}
-              </Text>
-            </Group>
+            </ValueTooltip>
             <ComponentProvenance record={record} />
             {record.review_note && (
               <Text size='sm' c='dimmed'>
@@ -171,7 +183,10 @@ export function ComponentSlotDetail({
           </Fact>
           <Fact label={t`Work`}>
             {record.open_work === null || record.open_work === undefined ? (
-              missing(t`Open work could not be checked.`)
+              <FailedValue
+                reason={t`Open work could not be checked.`}
+                label={t`Open work`}
+              />
             ) : (
               <Text size='sm'>
                 {record.open_work.count
@@ -193,13 +208,16 @@ export function ComponentSlotDetail({
               {record.virtual ? (
                 missing(t`Not stocked: a logical group.`)
               ) : !record.stock ? (
-                missing(t`Not available`)
+                <FailedValue
+                  reason={t`Catalogue stock could not be read`}
+                  label={t`Catalogue stock`}
+                />
               ) : record.stock.quantity > 0 ? (
                 <Text size='sm'>
                   {t`${record.stock.quantity} in stock for this catalogue part, shared by every slot that uses it.`}
                 </Text>
               ) : (
-                missing(t`None in stock for this catalogue part.`)
+                <Text size='sm'>0</Text>
               )}
             </Fact>
           )}

@@ -1,209 +1,15 @@
-import { readFileSync } from 'node:fs';
 import { type Locator, type Page, expect, test } from '@playwright/test';
-import type {
-  MimicData,
-  MimicLayout,
-  MimicPoint
-} from '../../src/pages/assets/health/mimic/types';
+import { nativeBaseline } from '../s0/guards';
+import { bearingName, fixture, layout, observed } from './layoutFixtures';
+import { mimicEntry } from './navigation';
 
-// Synthetic readings exercise the checked-in engineering mapping, not a copy
-// of the old crowded screen's coordinates or any plant/customer data.
-const layout = JSON.parse(
-  readFileSync(
-    new URL(
-      '../../../backend/InvenTree/machine_health/layouts/pumphouse.layout.json',
-      import.meta.url
-    ),
-    'utf8'
-  )
-) as MimicLayout;
-const observed = '2026-10-22T06:32:41Z';
-const bearingName = 'Motor non-drive-end bearing vibration and temperature';
+nativeBaseline();
+
 const sizes = [
   { name: 'desktop', width: 1440, height: 900 },
   { name: 'tablet', width: 1024, height: 768 },
   { name: 'phone', width: 390, height: 844 }
 ] as const;
-
-function point(
-  pointer: string,
-  label: string,
-  group: string,
-  value: MimicPoint['value'],
-  unit = '',
-  extra: Partial<MimicPoint> = {}
-): MimicPoint {
-  return {
-    pointer,
-    label,
-    group,
-    value,
-    unit,
-    quality: 'good',
-    observed_at: observed,
-    age_seconds: 0,
-    unchanged_for_seconds: null,
-    reason: value === null ? 'not_published' : null,
-    condition: 'unknown',
-    thresholds_configured: false,
-    ...extra
-  };
-}
-
-function pointerFor(template: string, unit: string) {
-  return template
-    .replaceAll('{pump_number}', unit.slice(1))
-    .replaceAll('{pump}', unit);
-}
-
-function unitPoints(unit: string): Record<string, MimicPoint> {
-  const points = Object.fromEntries(
-    layout.elements
-      .filter((element) => element.view === 'unit')
-      .map((element) => {
-        const pointer = pointerFor(element.pointer, unit);
-        const value =
-          element.id === 'pump-pressure'
-            ? null
-            : element.role === 'status'
-              ? 'I'
-              : element.id === 'pump-speed'
-                ? 0.42
-                : 0;
-        const engineeringUnit =
-          element.id === 'pump-power'
-            ? 'MW'
-            : element.id === 'pump-speed'
-              ? 'rpm'
-              : element.id === 'pump-flow'
-                ? 'cusec'
-                : '';
-        return [
-          pointer,
-          point(
-            pointer,
-            element.label,
-            'Process readings',
-            value,
-            engineeringUnit
-          )
-        ];
-      })
-  );
-  for (const [index, part] of (layout.parts ?? []).entries()) {
-    // Empty guide-bearing coverage exercises an absent part without implying
-    // a fault or fabricating the missing pressure measurement.
-    if (part.code === 'PS-GUIDE-BRG') continue;
-    const group = part.code === 'PS-MOTOR-NDE-BRG' ? bearingName : part.label;
-    const vibration = ['PS-MOTOR-NDE-BRG', 'PS-MOTOR-DE-BRG'].includes(
-      part.code
-    );
-    const valve = ['PS-EOPD-VALVE', 'PS-HOPD-VALVE'].includes(part.code);
-    const flow = part.code === 'PS-DISCHARGE';
-    for (
-      let sensor = 1;
-      sensor <= (vibration ? 2 : valve || flow ? 1 : 3);
-      sensor++
-    ) {
-      const pointer = `/synthetic/${unit}/${part.code}/${sensor}`;
-      points[pointer] = point(
-        pointer,
-        `${part.label} ${sensor}`,
-        group,
-        vibration
-          ? 0.1 + sensor * 0.02
-          : valve
-            ? 99
-            : flow
-              ? 0
-              : 39 + index * 0.3 + sensor * 0.2,
-        vibration ? 'mm/s' : valve ? '%' : flow ? 'cusec' : 'degC',
-        { part_code: part.code }
-      );
-    }
-  }
-  return points;
-}
-
-function fixture(unit: string | null): MimicData {
-  return {
-    station: 17,
-    name: 'Synthetic fourteen-bay station',
-    generated_at: observed,
-    plant_timezone: 'Asia/Riyadh',
-    recorded_telemetry_as_live: true,
-    last_observed_at: observed,
-    reporting: true,
-    enabled: true,
-    polling_enabled: true,
-    source: { pk: 1, name: 'Synthetic regression fixture' },
-    last_poll_at: observed,
-    last_error_code: '',
-    layout,
-    station_points: Object.fromEntries(
-      layout.elements
-        .filter((element) => element.view === 'station')
-        .map((element) => [
-          element.pointer,
-          point(
-            element.pointer,
-            element.label,
-            'Station readings',
-            element.id === 'forebay'
-              ? 120.972
-              : element.role === 'status'
-                ? 'I'
-                : 0,
-            element.id === 'forebay' ? 'm' : ''
-          )
-        ])
-    ),
-    bays: Array.from({ length: 14 }, (_, index) => {
-      const key = `P${index + 1}`;
-      const points = unitPoints(key);
-      const power = layout.elements.find(
-        (element) => element.id === 'pump-power'
-      );
-      if (key === 'P3' && power) {
-        const pointer = pointerFor(power.pointer, key);
-        points[pointer] = {
-          ...points[pointer],
-          value: null,
-          reason: 'not_published'
-        };
-      }
-      return {
-        key,
-        machine: index + 1,
-        name: `Synthetic pump ${index + 1}`,
-        active: true,
-        state: 'idle',
-        alarm: null,
-        points
-      };
-    }),
-    selected_unit: unit,
-    points: unit ? unitPoints(unit) : {},
-    totals: {
-      power: {
-        value: null,
-        unit: 'MW',
-        derived: true,
-        reason: 'incomplete',
-        contributors: []
-      },
-      flow: {
-        value: 0,
-        unit: 'm³/s',
-        derived: true,
-        reason: null,
-        contributors: []
-      }
-    },
-    alarms: [],
-    unconfigured_thresholds: 686
-  };
-}
 
 type Rectangle = { x: number; y: number; width: number; height: number };
 
@@ -310,7 +116,7 @@ for (const size of sizes) {
       test('station readings and fourteen selectable pumps stay readable and separate', async ({
         page
       }) => {
-        await page.goto(`/?scheme=${scheme}`);
+        await page.goto(mimicEntry(`/?scheme=${scheme}`));
         const metrics = page.locator('[data-station-metric]');
         await expect(metrics).toHaveCount(3);
         const bays = page.locator('g[data-bay]');
@@ -359,18 +165,34 @@ for (const size of sizes) {
         const totals = page.locator('[data-total]');
         await expect(totals).toHaveCount(2);
         await disjoint(await totals.all());
+        const strip = page.locator('[data-station-metrics]');
+        const stripMetrics = strip.locator(
+          '[data-station-metric], [data-total]'
+        );
+        await expect(stripMetrics).toHaveCount(5);
+        await disjoint(await stripMetrics.all());
         expect(
           Math.abs(
             (await box(totals.nth(0))).height -
               (await box(totals.nth(1))).height
           )
         ).toBeLessThanOrEqual(1);
-        expect(
-          Math.abs(
-            (await box(page.getByText('Plant power', { exact: true }))).y -
-              (await box(page.getByText('Plant flow', { exact: true }))).y
-          )
-        ).toBeLessThanOrEqual(1);
+        if (size.name !== 'phone') {
+          const rows = await stripMetrics.evaluateAll((nodes) =>
+            nodes.map((node) => node.getBoundingClientRect().top)
+          );
+          expect(Math.max(...rows) - Math.min(...rows)).toBeLessThanOrEqual(1);
+        } else {
+          await expect(
+            page.getByText('Swipe to view all pump bays', { exact: true })
+          ).toBeVisible();
+          expect(
+            await strip.evaluate(
+              (node) =>
+                getComputedStyle(node).gridTemplateColumns.split(' ').length
+            )
+          ).toBe(2);
+        }
         await expect(
           page.locator('[data-total="power"] button').last()
         ).toHaveText('—');
@@ -378,9 +200,7 @@ for (const size of sizes) {
           '0 m³/s'
         );
         await noCaptions(page);
-        await expect(
-          page.locator('[data-section="station"] button')
-        ).toHaveText('Station readings');
+        await expect(page.locator('[data-section="station"]')).toHaveCount(0);
         await contained(page, size.name === 'phone');
 
         await page
@@ -411,7 +231,8 @@ for (const size of sizes) {
         await expect(
           page.getByRole('heading', { name: 'Pump unit: P14', exact: true })
         ).toHaveCount(0);
-        await expect(page.locator('[data-section="station"]')).toBeVisible();
+        await expect(stripMetrics).toHaveCount(5);
+        await expect(page.locator('[data-section="station"]')).toHaveCount(0);
 
         await focusTooltip(
           page,
@@ -428,26 +249,58 @@ for (const size of sizes) {
           page.getByRole('button', { name: 'Schematic awaiting plant review' })
         );
         await expect(
-          page.getByRole('tooltip').filter({ hasText: 'awaits plant review' })
+          page
+            .getByRole('tooltip')
+            .filter({ hasText: 'physical arrangement unverified' })
         ).toBeVisible();
       });
 
       test('P7 values, full part labels and native markers stay clear of the pump', async ({
         page
       }) => {
-        await page.goto(`/?scheme=${scheme}&pump=P7`);
+        await page.goto(mimicEntry(`/?scheme=${scheme}&pump=P7`));
         const drawing = page.locator('[data-unit-drawing]');
         await expect(drawing).toBeVisible();
         const callouts = page.locator(
           '[data-callout-column] button[data-part]'
         );
         await expect(callouts).toHaveCount(13);
+        for (const text of await callouts.allTextContents()) {
+          expect(text).not.toMatch(/degC|percent|dv:|-0(?:\s|$)/);
+        }
+        await expect(callouts.filter({ hasText: 'EOPD valve' })).toContainText(
+          '99 %'
+        );
         const readings = page.locator('[data-unit-schematic] [data-reading]');
         await disjoint([
           drawing,
           ...(await readings.all()),
           ...(await callouts.all())
         ]);
+        const drawingBox = await box(drawing);
+        const contentBox = await box(page.locator('[data-unit-schematic]'));
+        expect(drawingBox.width).toBeGreaterThanOrEqual(contentBox.width * 0.5);
+        if (size.name === 'desktop') {
+          expect(drawingBox.height).toBeGreaterThanOrEqual(size.height * 0.6);
+          // Verify the painted native geometry, not only a wide SVG box.
+          const geometry = await drawing.locator('g > svg').evaluate((node) => {
+            const svg = node as SVGSVGElement;
+            const bounds = svg.getBBox();
+            const transform = svg.getScreenCTM();
+            const scale = transform ? Math.hypot(transform.a, transform.b) : 0;
+            return {
+              width: bounds.width * scale,
+              height: bounds.height * scale
+            };
+          });
+          expect(geometry.width).toBeGreaterThanOrEqual(contentBox.width * 0.5);
+          expect(geometry.height).toBeGreaterThanOrEqual(size.height * 0.6);
+        }
+        for (const callout of await callouts.all()) {
+          expect((await box(callout)).y).toBeGreaterThanOrEqual(
+            drawingBox.y + drawingBox.height - 1
+          );
+        }
         for (const name of await callouts.locator('[data-part-label]').all()) {
           const height = await name.evaluate((node) => ({
             actual: node.getBoundingClientRect().height,
@@ -519,18 +372,42 @@ for (const size of sizes) {
         await expect(pressure).toHaveAccessibleName(
           /Not published by this station/
         );
-        for (const label of ['Flow direction', 'Communication status']) {
-          const missing = page.getByRole('button', {
-            name: `${label}: Not reported by the plant`,
-            exact: true
+        await expect(
+          page.getByLabel('Process data', { exact: true })
+        ).toHaveCount(0);
+        await expect(
+          readings.filter({ hasText: 'Discharge flow' })
+        ).toContainText('0 cusec');
+        await expect(page.locator('[data-bar]')).toHaveCount(0);
+        for (const side of ['left', 'right'] as const) {
+          const codes = await page
+            .locator(`[data-callout-column="${side}"] button[data-part]`)
+            .evaluateAll((nodes) =>
+              nodes.map((node) => node.getAttribute('data-part'))
+            );
+          const expected = (layout.parts ?? [])
+            .filter((part) => (side === 'left' ? part.x < 550 : part.x >= 550))
+            .sort((a, b) => a.y - b.y || a.x - b.x)
+            .map((part) => part.code);
+          expect(codes).toEqual(expected);
+        }
+        if (size.name === 'desktop') {
+          const height = (await box(drawing)).height;
+          await page.evaluate(() =>
+            window.scrollTo(0, document.body.scrollHeight)
+          );
+          await page.setViewportSize({
+            width: size.width + 1,
+            height: size.height
           });
-          await expect(missing).toHaveText('—');
-          await focusTooltip(page, missing);
-          await expect(
-            page
-              .getByRole('tooltip')
-              .filter({ hasText: `${label}: Not reported by the plant` })
-          ).toBeVisible();
+          await expect
+            .poll(async () => Math.abs((await box(drawing)).height - height))
+            .toBeLessThanOrEqual(2);
+          await page.setViewportSize({
+            width: size.width,
+            height: size.height
+          });
+          await page.evaluate(() => window.scrollTo(0, 0));
         }
         await page.getByLabel('Filter unit readings', { exact: true }).focus();
         await noCaptions(page);
@@ -539,9 +416,12 @@ for (const size of sizes) {
         for (const section of await page.locator('[data-section]').all()) {
           const title = (await section.getAttribute('data-section')) ?? '';
           const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          await expect(
-            section.getByRole('button', { name: title, exact: true })
-          ).toHaveText(new RegExp(`^\\s*(?:\\d+\\s*)?${escaped}\\s*$`));
+          await expect(section.locator('button').first()).toHaveAccessibleName(
+            new RegExp(`^(?:\\d+\\s*)?${escaped}$`)
+          );
+          await expect(section.locator('button').first()).toHaveText(
+            new RegExp(`^\\s*(?:\\d+\\s*)?${escaped}\\s*$`)
+          );
         }
         await contained(page, size.name === 'phone');
         const bearing = callouts.filter({
@@ -551,6 +431,16 @@ for (const size of sizes) {
         await expect(
           page.getByRole('tooltip').filter({ hasText: bearingName })
         ).toBeVisible();
+        await bearing.click();
+        const opened = page.locator(`[data-section="${bearingName}"]`);
+        await expect(opened.locator('button').first()).toBeFocused();
+        await expect(opened.locator('button').first()).toHaveAttribute(
+          'aria-expanded',
+          'true'
+        );
+        await expect(
+          opened.locator('tbody tr td:nth-child(2) button')
+        ).toHaveCount(0);
         await focusTooltip(page, pressure);
         await expect(
           page

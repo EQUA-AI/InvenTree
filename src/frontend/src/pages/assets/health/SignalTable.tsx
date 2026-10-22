@@ -9,9 +9,15 @@ import {
   Stack,
   Table,
   Text,
-  TextInput
+  TextInput,
+  Tooltip
 } from '@mantine/core';
-import { IconChevronDown, IconChevronRight } from '@tabler/icons-react';
+import {
+  IconChevronDown,
+  IconChevronRight,
+  IconFilter,
+  IconRefresh
+} from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { Fragment, useId, useMemo, useState } from 'react';
 import monitoring from '../monitoring.module.css';
@@ -27,10 +33,15 @@ import type {
   SignalTrend
 } from '@lib/types/MachineHealth';
 
+import {
+  MissingValue,
+  ValueTooltip,
+  factTooltipProps
+} from '../../../components/items/ValueTooltip';
 import { useApi } from '../../../contexts/ApiContext';
 
 import { SignalAnomalyContext, conditionText } from './SignalCondition';
-import { SignalTooltip, SignalValue } from './SignalReading';
+import { SignalValue } from './SignalReading';
 import classes from './SignalTable.module.css';
 import { SignalTrendSparkline } from './SignalTrend';
 import { StatusBadge } from './StatusBadge';
@@ -41,6 +52,12 @@ import {
   formatSignalLimits,
   qualityLabel
 } from './common';
+import {
+  type DisplayClock,
+  formatInstant,
+  useDisplayClock
+} from './mimic/observedTime';
+import { signalReading } from './readingPresentation';
 import { indexSuppliedTrends, suppliedTrend } from './suppliedTrends';
 
 /**
@@ -52,22 +69,40 @@ import { indexSuppliedTrends, suppliedTrend } from './suppliedTrends';
 /** The sparkline window, matched to the one the standalone sparkline uses. */
 const SPARKLINE_WINDOW_SECONDS = 10 * 60;
 
+function readingDescription(
+  signal: MachineSignal,
+  clock: DisplayClock
+): string {
+  const reading = signalReading(signal);
+  return [
+    reading.reason ?? reading.text,
+    conditionText(signal),
+    formatSignalLimits(signal) ?? t`No limits set`,
+    formatInstant(signal.observed_at, clock) ?? t`Observation time unavailable`,
+    qualityLabel(signal.quality)
+  ].join(' · ');
+}
+
 export function SignalTable({
   signals,
   machineId,
   selectedBinding,
   onInspect,
-  anomalies = null
+  anomalies = null,
+  onRefresh
 }: Readonly<{
   signals: MachineSignal[];
   machineId: number;
   anomalies?: MachineAnomaly[] | null;
   selectedBinding?: string | null;
   onInspect?: (binding: number, trigger: HTMLElement) => void;
+  onRefresh?: () => void;
 }>) {
   const api = useApi();
   const [phoneCards, setPhoneCards] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const now = useNow();
+  const clock = useDisplayClock();
   const instanceId = useId();
   const [order, setOrder] = useState<string>('severity');
   const [search, setSearch] = useState('');
@@ -179,35 +214,83 @@ export function SignalTable({
   return (
     <Stack gap='xs'>
       <Group align='flex-end' className={classes.filters}>
-        <TextInput
-          label={t`Search signals`}
-          placeholder={t`Signal, tag, component or unit`}
-          value={search}
-          onChange={(event) => setSearch(event.currentTarget.value)}
-          flex='1 1 220px'
-          classNames={{ input: monitoring.input, description: monitoring.meta }}
-        />
-        <Select
-          label={t`Component filter`}
-          clearable
-          value={component}
-          onChange={setComponent}
-          data={components}
-          flex='1 1 220px'
-          classNames={{ input: monitoring.input, description: monitoring.meta }}
-        />
-        <Select
-          label={t`Order by`}
-          value={order}
-          onChange={(value) => setOrder(value ?? 'severity')}
-          allowDeselect={false}
-          data={[
-            { value: 'severity', label: t`Severity` },
-            { value: 'name', label: t`Name` }
-          ]}
-          classNames={{ input: monitoring.input }}
-          w={140}
-        />
+        <Group align='flex-end' gap='xs' className={classes.search}>
+          <TextInput
+            label={t`Search signals`}
+            placeholder={t`Search signals`}
+            value={search}
+            onChange={(event) => setSearch(event.currentTarget.value)}
+            flex='1 1 180px'
+            classNames={{
+              input: monitoring.input,
+              wrapper: classes.searchWrapper,
+              description: monitoring.meta,
+              label: classes.searchLabel
+            }}
+          />
+          <ActionIcon
+            hiddenFrom='sm'
+            variant='default'
+            size={44}
+            aria-label={t`Signal filters`}
+            aria-expanded={filtersOpen}
+            aria-controls={`${instanceId}-filters`}
+            onClick={() => setFiltersOpen((open) => !open)}
+          >
+            <IconFilter size={18} />
+          </ActionIcon>
+          {onRefresh && (
+            <ActionIcon
+              hiddenFrom='sm'
+              variant='default'
+              size={44}
+              aria-label={t`Refresh`}
+              onClick={onRefresh}
+            >
+              <IconRefresh size={18} />
+            </ActionIcon>
+          )}
+        </Group>
+        <Group
+          id={`${instanceId}-filters`}
+          align='flex-end'
+          gap='sm'
+          className={classes.secondaryFilters}
+          data-open={filtersOpen}
+        >
+          <Select
+            label={t`Component filter`}
+            clearable
+            value={component}
+            onChange={setComponent}
+            data={components}
+            flex='1 1 220px'
+            classNames={{
+              input: monitoring.input,
+              description: monitoring.meta
+            }}
+          />
+          <Select
+            label={t`Order by`}
+            value={order}
+            onChange={(value) => setOrder(value ?? 'severity')}
+            allowDeselect={false}
+            data={[
+              { value: 'severity', label: t`Severity` },
+              { value: 'name', label: t`Name` }
+            ]}
+            classNames={{ input: monitoring.input }}
+            w={140}
+          />
+          <Button
+            variant='default'
+            hiddenFrom='sm'
+            aria-pressed={phoneCards}
+            onClick={() => setPhoneCards((value) => !value)}
+          >
+            {phoneCards ? t`All columns table` : t`Signal cards`}
+          </Button>
+        </Group>
       </Group>
       {selectedBinding &&
         !visibleSignals.some(
@@ -218,15 +301,6 @@ export function SignalTable({
       {visibleSignals.length === 0 && (
         <Text size='sm'>{t`No mapped signals match these filters. Clear the filters to see all signals.`}</Text>
       )}
-      <Button
-        variant='default'
-        hiddenFrom='sm'
-        w='fit-content'
-        aria-pressed={phoneCards}
-        onClick={() => setPhoneCards((value) => !value)}
-      >
-        {phoneCards ? t`All columns table` : t`Signal cards`}
-      </Button>
       <Paper
         component='section'
         aria-label={t`Signal readings; scroll for all columns`}
@@ -274,6 +348,7 @@ export function SignalTable({
                 <Table.Tr
                   role='row'
                   data-selected={selectedBinding === String(signal.binding_id)}
+                  data-details-open={!!detailsOpen[signal.binding_id]}
                   aria-current={
                     selectedBinding === String(signal.binding_id)
                       ? 'true'
@@ -303,25 +378,30 @@ export function SignalTable({
                   {/* biome-ignore lint/a11y/useSemanticElements: Preserve the native role through phone card CSS. */}
                   <Table.Td role='cell' data-label={t`Signal`}>
                     <Group gap={4} wrap='nowrap' align='flex-start'>
-                      <ActionIcon
-                        variant='subtle'
-                        className={monitoring.link}
-                        aria-label={t`Details for ${signal.display_name}`}
-                        aria-expanded={!!detailsOpen[signal.binding_id]}
-                        aria-controls={`${instanceId}-${signal.binding_id}`}
-                        onClick={() =>
-                          setDetailsOpen((open) => ({
-                            ...open,
-                            [signal.binding_id]: !open[signal.binding_id]
-                          }))
-                        }
+                      <Tooltip
+                        label={readingDescription(signal, clock)}
+                        {...factTooltipProps}
                       >
-                        {detailsOpen[signal.binding_id] ? (
-                          <IconChevronDown size={16} />
-                        ) : (
-                          <IconChevronRight size={16} />
-                        )}
-                      </ActionIcon>
+                        <ActionIcon
+                          variant='subtle'
+                          className={monitoring.link}
+                          aria-label={t`Details for ${signal.display_name}`}
+                          aria-expanded={!!detailsOpen[signal.binding_id]}
+                          aria-controls={`${instanceId}-${signal.binding_id}`}
+                          onClick={() =>
+                            setDetailsOpen((open) => ({
+                              ...open,
+                              [signal.binding_id]: !open[signal.binding_id]
+                            }))
+                          }
+                        >
+                          {detailsOpen[signal.binding_id] ? (
+                            <IconChevronDown size={16} />
+                          ) : (
+                            <IconChevronRight size={16} />
+                          )}
+                        </ActionIcon>
+                      </Tooltip>
                       <Stack gap={0} miw={0}>
                         {onInspect ? (
                           <Button
@@ -381,23 +461,40 @@ export function SignalTable({
                       fw={signal.stale ? 400 : 500}
                       className={signal.stale ? monitoring.meta : undefined}
                     >
-                      <SignalValue signal={signal} />
+                      <SignalValue signal={signal} focusable={false} />
                     </Text>
                   </Table.Td>
                   {/* biome-ignore lint/a11y/useSemanticElements: Preserve the native role through phone card CSS. */}
                   <Table.Td role='cell' data-label={t`State`}>
-                    <SignalTooltip label={conditionText(signal)}>
-                      {signal.state === 'unknown' ||
-                      (signal.stale && signal.state !== 'offline') ? (
-                        '—'
-                      ) : (
+                    {signal.stale && signal.state !== 'offline' ? (
+                      <ValueTooltip
+                        label={conditionText(signal)}
+                        focusable={false}
+                      >
+                        <StatusBadge
+                          tone='stale'
+                          size='sm'
+                        >{t`Stale`}</StatusBadge>
+                      </ValueTooltip>
+                    ) : signal.state === 'unknown' ? (
+                      <MissingValue
+                        label={t`State`}
+                        reason={conditionText(signal)}
+                        focusable={false}
+                      />
+                    ) : (
+                      <ValueTooltip
+                        label={conditionText(signal)}
+                        focusable={false}
+                      >
                         <HealthStateBadge state={signal.state} size='sm' />
-                      )}
-                    </SignalTooltip>
+                      </ValueTooltip>
+                    )}
                   </Table.Td>
                   {/* biome-ignore lint/a11y/useSemanticElements: Preserve the native role through phone card CSS. */}
                   <Table.Td role='cell' data-label={t`Limits`}>
-                    <SignalTooltip
+                    <ValueTooltip
+                      focusable={false}
                       label={`${formatSignalLimits(signal) ?? t`No limits set`} · ${t`Limits on signal mapping; engineering approval not supplied`}`}
                     >
                       {formatSignalLimits(signal) ? (
@@ -405,32 +502,31 @@ export function SignalTable({
                           {formatSignalLimits(signal)}
                         </Text>
                       ) : (
-                        <StatusBadge tone='neutral' size='sm'>
-                          {t`No limits set`}
-                        </StatusBadge>
+                        <Text
+                          component='span'
+                          size='xs'
+                          className={monitoring.meta}
+                        >{t`None`}</Text>
                       )}
-                    </SignalTooltip>
+                    </ValueTooltip>
                   </Table.Td>
                   {/* biome-ignore lint/a11y/useSemanticElements: Preserve the native role through phone card CSS. */}
                   <Table.Td role='cell' data-label={t`Observed`}>
-                    {signal.observed_at ? (
-                      <FreshnessText
-                        observedAt={signal.observed_at}
-                        stale={signal.stale}
-                        thresholdSeconds={signal.freshness_threshold_seconds}
-                        now={now}
-                      />
-                    ) : (
-                      <SignalTooltip
-                        label={t`Observation time not reported by the plant`}
-                      />
-                    )}
+                    <FreshnessText
+                      observedAt={signal.observed_at}
+                      stale={signal.stale}
+                      thresholdSeconds={signal.freshness_threshold_seconds}
+                      now={now}
+                      focusable={false}
+                    />
                   </Table.Td>
                   {/* biome-ignore lint/a11y/useSemanticElements: Preserve the native role through phone card CSS. */}
                   <Table.Td role='cell' data-label={t`Quality`}>
                     {signal.quality === 'unknown' ? (
-                      <SignalTooltip
-                        label={t`Quality not reported by the plant`}
+                      <MissingValue
+                        label={t`Quality`}
+                        reason={t`Quality unavailable`}
+                        focusable={false}
                       />
                     ) : (
                       <Text size='sm'>{qualityLabel(signal.quality)}</Text>

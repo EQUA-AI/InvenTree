@@ -430,14 +430,6 @@ export function LocationBrowser({
             {label}
           </button>
         </Tooltip>
-        <Text size='xs' className={operations.meta}>
-          {locationKindLabel(kind)}
-        </Text>
-        {location?.code ? (
-          <Text size='xs' className={operations.meta}>
-            {location.code}
-          </Text>
-        ) : null}
         {location?.archived && (
           <Badge size='xs' color='gray' variant='light'>
             {t`Archived`}
@@ -472,8 +464,8 @@ export function LocationBrowser({
         </Group>
         <TextInput
           label={t`Search locations`}
-          description={t`Search names or codes`}
-          classNames={{ input: operations.input, description: operations.meta }}
+          placeholder={t`Name or code`}
+          classNames={{ input: operations.input }}
           leftSection={<IconSearch size={16} />}
           value={search}
           onChange={(event) => {

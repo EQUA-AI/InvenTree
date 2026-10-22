@@ -252,6 +252,7 @@ function TrendStatus({
       events={{ hover: true, focus: true, touch: true }}
     >
       <UnstyledButton
+        tabIndex={-1}
         fz='xs'
         className={monitoring.meta}
         aria-label={`${label}: ${detail}`}

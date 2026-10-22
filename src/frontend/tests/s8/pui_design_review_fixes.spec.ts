@@ -3,7 +3,7 @@ import type { FaultOccurrence } from '../../src/pages/assets/faults/occurrenceMo
 import { nativeBaseline } from '../s0/guards';
 import { mockExplorer } from '../s1/machineExplorerFixtures';
 import { mockFaultHistory, occurrences } from '../s3/machineWorkFixtures';
-import { contrast, readable } from './contrast';
+import { outlineEdge, readable } from './contrast';
 import {
   captureFromTop,
   mockEquipment,
@@ -156,6 +156,12 @@ for (const scheme of ['light', 'dark'] as const) {
     );
     await openEquipment(page, true, scheme);
     const summary = page.getByLabel('Active alarm summary');
+    const coverage = page.locator('[data-limit-coverage]');
+    const withoutLimits = Object.values(data.points).filter(
+      (point) => point.thresholds_configured === false
+    ).length;
+    await expect(coverage).toContainText(`${withoutLimits} without limits`);
+    await expect(coverage).not.toContainText('No active alarms');
     await expect(summary).toContainText(
       'Active alarms shown: 2 · Critical: 1 · Warning: 1'
     );
@@ -196,6 +202,7 @@ for (const scheme of ['light', 'dark'] as const) {
       page.getByText('Refresh to retry; cached values are hidden.')
     ).toBeVisible();
     await expect(summary).toHaveCount(0);
+    await expect(coverage).toHaveCount(0);
   });
 
   test(`pump alarm summary names unavailable scope and unknown severity ${scheme}`, async ({
@@ -205,10 +212,15 @@ for (const scheme of ['light', 'dark'] as const) {
     data.alarms[0].severity = null;
     await openEquipment(page, true, scheme);
     const summary = page.getByLabel('Active alarm summary');
-    await expect(summary).toContainText(
-      'Active alarms shown: 2 · Critical: 0 · Warning: 1'
-    );
+    const coverage = page.locator('[data-limit-coverage]');
+    const withoutLimits = Object.values(data.points).filter(
+      (point) => point.thresholds_configured === false
+    ).length;
+    await expect(coverage).toContainText(`${withoutLimits} without limits`);
+    await expect(coverage).not.toContainText('No active alarms');
+    await expect(summary).toContainText('Active alarms shown: 2 · Warning: 1');
     await expect(summary).toContainText('Severity unavailable: 1');
+    await expect(summary).not.toContainText('Critical: 0');
     data.alarms = [];
     data.bays[0].alarm = 'critical';
     await page.getByRole('button', { name: 'Refresh', exact: true }).click();
@@ -216,20 +228,25 @@ for (const scheme of ['light', 'dark'] as const) {
       'Active alarm · Critical · Count unavailable'
     );
     await expect(summary).not.toContainText('Active alarms shown: 0');
-    await expect(
-      page.getByText('No active alarms from configured thresholds.', {
-        exact: true
-      })
-    ).toHaveCount(0);
+    await expect(coverage).not.toContainText('No active alarms');
     await expect(
       page.getByText('Active alarm details unavailable.', { exact: true })
     ).toBeVisible();
+    data.bays[0].alarm = null;
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await expect(summary).toHaveCount(0);
+    await expect(coverage).toContainText('No active alarms');
+    await expect(coverage).toContainText(`${withoutLimits} without limits`);
+    await expect(
+      page.getByRole('heading', { name: 'Threshold alarms' })
+    ).toHaveCount(0);
     data.bays[0].machine = undefined;
     await page.getByRole('button', { name: 'Refresh', exact: true }).click();
     await expect(summary).toContainText(
       'Active alarms unavailable · pump mapping not supplied'
     );
     await expect(summary).not.toContainText('Active alarms shown: 0');
+    await expect(coverage).not.toContainText('No active alarms');
     await expect(
       page.getByText('Alarm scope unavailable for this pump.', { exact: true })
     ).toBeVisible();
@@ -246,6 +263,7 @@ for (const scheme of ['light', 'dark'] as const) {
     point.thresholds_configured = true;
     await openEquipment(page, true, scheme);
     const button = page.locator('button[data-part="PS-MOTOR"]');
+    const ringColours = new Set<string>();
     for (const condition of ['normal', 'warning', 'critical', 'unknown']) {
       point.condition = condition;
       await page.getByRole('button', { name: 'Refresh', exact: true }).click();
@@ -256,16 +274,16 @@ for (const scheme of ['light', 'dark'] as const) {
       const focused = await button.evaluate((node) => ({
         width: getComputedStyle(node).outlineWidth,
         style: getComputedStyle(node).outlineStyle,
-        color: getComputedStyle(node).outlineColor,
-        text: getComputedStyle(node).color
+        color: getComputedStyle(node).outlineColor
       }));
       expect(focused.width).toBe('3px');
       expect(focused.style).toBe('solid');
-      expect(focused.color).toBe(focused.text);
-      expect((await contrast(button)).ratio).toBeGreaterThanOrEqual(3);
+      ringColours.add(focused.color);
+      await outlineEdge(button);
       await page.mouse.move(0, 0);
       await expect(button).toHaveCSS('outline-width', '3px');
     }
+    expect(ringColours.size).toBe(1);
     await button.scrollIntoViewIfNeeded();
     await page.screenshot({
       path: info.outputPath(`schematic-focus-${scheme}.png`)

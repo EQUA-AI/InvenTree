@@ -1,4 +1,8 @@
 import { type Locator, type Page, expect, test } from '@playwright/test';
+import { nativeBaseline } from '../s0/guards';
+import { mimicEntry } from './navigation';
+
+nativeBaseline();
 
 async function keyboardFocus(page: Page, target: Locator) {
   await page.keyboard.press('Tab');
@@ -99,9 +103,21 @@ test('O27 station readings use display freshness while unavailable states stay e
       }
     })
   );
-  await page.goto('/');
-  await expect(page.getByText(/^Last reading:/)).toBeVisible();
-  await expect(page.getByText(/^Last poll:/)).toHaveCount(0);
+  await page.goto(mimicEntry('/'));
+  const information = page.getByRole('button', {
+    name: 'Schematic awaiting plant review',
+    exact: true
+  });
+  const provenanceTooltip = page.getByRole('tooltip').filter({
+    hasText: 'Reference schematic · physical arrangement unverified.'
+  });
+  await expect(page.locator('time')).toHaveAttribute(
+    'datetime',
+    '2026-09-13T12:00:00.000Z'
+  );
+  await keyboardFocus(page, information);
+  await expect(provenanceTooltip).toContainText('Last reading:');
+  await expect(provenanceTooltip).not.toContainText('Last poll:');
   await expect(page.getByText('Live', { exact: true })).toBeVisible();
   await expect(
     page.getByText(/recorded history|Times moved .*onto the display clock/i)
@@ -113,8 +129,13 @@ test('O27 station readings use display freshness while unavailable states stay e
 
   asLive = false;
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-  await expect(page.getByText(/^Last poll:/)).toBeVisible();
-  await expect(page.getByText(/^Last reading:/)).toHaveCount(0);
+  await expect(page.locator('time')).toHaveAttribute(
+    'datetime',
+    '2025-08-01T00:00:00.000Z'
+  );
+  await keyboardFocus(page, information);
+  await expect(provenanceTooltip).toContainText('Last poll:');
+  await expect(provenanceTooltip).not.toContainText('Last reading:');
   await expect(page.getByText('Live', { exact: true })).toHaveCount(0);
   await page.screenshot({
     path: info.outputPath('o27-station-off.png'),
@@ -159,7 +180,7 @@ test('sparse bays bind the selected pointer and never invent totals or threshold
       json: fixture(new URL(route.request().url()).searchParams.get('unit'))
     })
   );
-  await page.goto('/');
+  await page.goto(mimicEntry('/'));
   await page.getByRole('button', { name: 'P17: Running', exact: true }).click();
   await expect(
     page.locator('[data-reading][data-point="/dex/PUMP17_POWER"]')
@@ -199,7 +220,7 @@ test('stale and disabled readings remain explicitly unavailable', async ({
       )
     })
   );
-  await page.goto('/');
+  await page.goto(mimicEntry('/'));
   await page.getByRole('button', { name: 'P17: Stale', exact: true }).click();
   await expect(
     page.locator('[data-reading][data-point="/dex/PUMP17_POWER"]')
@@ -233,7 +254,7 @@ test('request failure hides cached readings and hidden views stop polling', asyn
           json: fixture(new URL(route.request().url()).searchParams.get('unit'))
         });
   });
-  await page.goto('/');
+  await page.goto(mimicEntry('/'));
   await page.getByRole('button', { name: 'P17: Running', exact: true }).click();
   await expect(
     page.locator('[data-reading][data-point="/dex/PUMP17_POWER"]')
@@ -367,7 +388,7 @@ test('bays are drawn in the order they are numbered, each in its state', async (
       json: numbered(new URL(route.request().url()).searchParams.get('unit'))
     })
   );
-  await page.goto('/');
+  await page.goto(mimicEntry('/'));
   const bays = page.locator('g[data-bay]');
   await expect(bays).toHaveCount(3);
   // The server sorts the keys as text - P1, P10, P2. A row of pumps is not.
@@ -377,10 +398,10 @@ test('bays are drawn in the order they are numbered, each in its state', async (
     )
   ).toEqual(['P1', 'P2', 'P10']);
 
-  await expect(page.locator('[data-legend="running"]')).toHaveText('Running 1');
-  await expect(page.locator('[data-legend="idle"]')).toHaveText('Idle 1');
+  await expect(page.locator('[data-legend="running"]')).toHaveText('Running');
+  await expect(page.locator('[data-legend="idle"]')).toHaveText('Idle');
   // A state nobody can read is counted as unknown, never as idle.
-  await expect(page.locator('[data-legend="unknown"]')).toHaveText('Unknown 1');
+  await expect(page.locator('[data-legend="unknown"]')).toHaveText('Unknown');
 
   // Choosing a bay is done on the drawing, and undone the same way.
   const second = page.getByRole('button', { name: 'P2: Unknown', exact: true });
@@ -407,7 +428,7 @@ test('a status code is given in words, and an unknown code as it came', async ({
       )
     })
   );
-  await page.goto('/');
+  await page.goto(mimicEntry('/'));
   const value = page.locator('[data-point="/st"] [data-reading-value]');
   await expect(value).toHaveText('Running');
 
@@ -443,7 +464,7 @@ test('a system is one line until it is opened', async ({ page }) => {
       json: numbered(new URL(route.request().url()).searchParams.get('unit'))
     })
   );
-  await page.goto('/');
+  await page.goto(mimicEntry('/'));
   await page.getByRole('button', { name: 'P1: Running', exact: true }).click();
 
   const motor = page.getByRole('button', { name: 'Electric Motor' });
@@ -451,8 +472,8 @@ test('a system is one line until it is opened', async ({ page }) => {
   // the other, and nothing is called normal without a limit to be normal by.
   await keyboardFocus(page, motor);
   await expect(
-    page.getByRole('tooltip').filter({ hasText: '3 readings: 30 – 50.5 degC' })
-  ).toContainText('3 readings: 30 – 50.5 degC');
+    page.getByRole('tooltip').filter({ hasText: '3 readings: 30 – 50.5 °C' })
+  ).toContainText('3 readings: 30 – 50.5 °C');
   await expect(
     page.getByRole('tooltip').filter({ hasText: 'Shaft speed: 745 rpm' })
   ).toContainText('Shaft speed: 745 rpm');
@@ -460,7 +481,10 @@ test('a system is one line until it is opened', async ({ page }) => {
   await expect(page.locator('tr[data-point="/w1"]')).toHaveCount(0);
 
   await motor.click();
-  await expect(page.locator('tr[data-point="/w1"]')).toContainText('30 degC');
+  await expect(page.locator('tr[data-point="/w1"]')).toContainText('30 °C');
+  await expect(
+    page.locator('tr[data-point="/w1"] td').nth(1).getByRole('button')
+  ).toHaveCount(0);
   const condition = page
     .locator('tr[data-point="/w1"]')
     .getByLabel('No threshold configured', { exact: true });
@@ -469,7 +493,7 @@ test('a system is one line until it is opened', async ({ page }) => {
   await expect(
     page.getByRole('tooltip').filter({ hasText: 'No threshold configured' })
   ).toHaveText('No threshold configured');
-  await expect(page.locator('tr[data-point="/w2"]')).toContainText('50.5 degC');
+  await expect(page.locator('tr[data-point="/w2"]')).toContainText('50.5 °C');
 });
 
 test('a reading that cannot be shown says why, on the drawing', async ({
@@ -483,7 +507,7 @@ test('a reading that cannot be shown says why, on the drawing', async ({
       )
     })
   );
-  await page.goto('/');
+  await page.goto(mimicEntry('/'));
   await page.getByRole('button', { name: 'P17: Stale', exact: true }).click();
   const tag = page.locator('[data-reading][data-point="/dex/PUMP17_POWER"]');
   const missing = tag.locator('[data-value] [aria-label]');
@@ -615,7 +639,7 @@ test('a pump page shows the pump with its parts numbered and summarised', async 
       )
     })
   );
-  await page.goto('/?pump=P1');
+  await page.goto(mimicEntry('/?pump=P1'));
   await expect(page.getByText('Pump unit: P1')).toBeVisible();
 
   // A part is known by its catalogue code, and named as this pump names it.
@@ -623,12 +647,12 @@ test('a pump page shows the pump with its parts numbered and summarised', async 
     name: '1. Drive motor',
     exact: true
   });
-  await expect(motor).toContainText('3 readings: 58 – 61 degC');
+  await expect(motor.locator('[data-part-summary]')).toHaveText('58 – 61 °C');
   const bearing = page.getByRole('button', {
     name: '2. Thrust Bearing',
     exact: true
   });
-  await expect(bearing).toContainText('Thrust pad: 42 degC');
+  await expect(bearing.locator('[data-part-summary]')).toHaveText('42 °C');
 
   // A part this pump reports nothing for is still drawn, and says so.
   const absent = page.getByRole('button', {
@@ -652,28 +676,20 @@ test('a pump page shows the pump with its parts numbered and summarised', async 
   ).toContainText('Active power: 8.4 MW');
   await expect(electrical.locator('[data-number]')).toHaveCount(0);
 
-  // Each winding is a bar, as tall as its reading against the others; the
-  // shaft speed is not among them, being in another unit.
-  const bars = motor.locator('rect[data-bar]');
-  await expect(bars).toHaveCount(3);
-  const heights = async () =>
-    bars.evaluateAll((nodes) =>
-      nodes.map(
-        (node) =>
-          [
-            node.getAttribute('data-bar'),
-            Number(node.getAttribute('height'))
-          ] as const
-      )
-    );
-  let [w1, w2, w3] = await heights();
-  expect(w1[1]).toBeGreaterThan(w3[1]);
-  expect(w3[1]).toBeGreaterThan(w2[1]);
+  // Quantitative mini-bars are removed in both limited and unlimited groups.
+  await expect(page.locator('rect[data-bar]')).toHaveCount(0);
+  await expect(motor).toHaveAttribute('data-verdict', 'normal');
 
   // Choosing a part on the drawing opens its readings.
   await expect(page.locator('tr[data-point="/w1"]')).toHaveCount(0);
   await motor.click();
-  await expect(page.locator('tr[data-point="/w1"]')).toContainText('61 degC');
+  await expect(page.locator('tr[data-point="/w1"]')).toContainText('61 °C');
+  await expect(
+    page.locator('[data-section="Drive motor"] button').first()
+  ).toBeFocused();
+  await expect(
+    page.locator('[data-section="Drive motor"] button').first()
+  ).toHaveAccessibleName('1 Drive motor Normal');
 
   // Pointer and keyboard focus both outline a part. Leave both before
   // checking that a normal reading does not itself add an outline.
@@ -689,12 +705,13 @@ test('a pump page shows the pump with its parts numbered and summarised', async 
   // ...and the part is, in red, once one is past it.
   winding = 140;
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-  await expect(motor).toContainText('3 readings: 58 – 140 degC');
-  // The one past its limit is the tallest bar, and red.
-  [w1, w2, w3] = await heights();
-  expect(w1[1]).toBeGreaterThan(w2[1]);
-  expect(w1[1]).toBeGreaterThan(w3[1]);
-  await expect(bars.first()).toHaveAttribute('fill', /red/);
+  await expect(motor.locator('[data-part-summary]')).toHaveText('58 – 140 °C');
+  await expect(page.locator('rect[data-bar]')).toHaveCount(0);
+  await expect(motor).toHaveAttribute('data-verdict', 'critical');
+  await expect(motor.locator('[data-part-verdict]')).toHaveText('Critical');
+  await expect(
+    page.locator('[data-section="Drive motor"] button').first()
+  ).toHaveAccessibleName('1 Drive motor Critical');
   expect(
     await drawing.evaluate((node) =>
       (node as SVGElement).style.getPropertyValue('--mimic-part-motor')
@@ -710,11 +727,11 @@ test('a station shows the same pump view for the bay chosen on it', async ({
       json: withParts(new URL(route.request().url()).searchParams.get('unit'))
     })
   );
-  await page.goto('/');
+  await page.goto(mimicEntry('/'));
   await page.getByRole('button', { name: 'P1: Running', exact: true }).click();
   await expect(
     page.getByRole('button', { name: '1. Drive motor', exact: true })
-  ).toContainText('3 readings: 58 – 61 degC');
+  ).toContainText('58 – 61 °C');
 });
 
 /** A station with one alarm raised on pump 1 and one breach not yet raised. */
@@ -769,7 +786,7 @@ test('an alarm is acknowledged with a note where it is seen, and leads to Health
     status = 'acknowledged';
     return route.fulfill({ json: { pk: 44, status } });
   });
-  await page.goto('/');
+  await page.goto(mimicEntry('/'));
 
   // Two readings outside their limits; only one is an alarm yet.
   const raised = page.locator('tr[data-point="/w1"]');
@@ -787,7 +804,7 @@ test('an alarm is acknowledged with a note where it is seen, and leads to Health
     .getByRole('button', { name: 'Acknowledge /w1', exact: true })
     .click();
   const dialog = page.getByRole('dialog');
-  await expect(dialog).toContainText('/w1: 159.5 degC');
+  await expect(dialog).toContainText('/w1: 159.5 °C');
   await dialog.getByLabel('Note').fill('Seen; winding fan checked.');
   await dialog
     .getByRole('button', { name: 'Acknowledge', exact: true })
@@ -826,7 +843,7 @@ test('a refused acknowledgement keeps the note and says why', async ({
       json: { detail: 'You do not have permission to perform this action.' }
     })
   );
-  await page.goto('/?pump=P1');
+  await page.goto(mimicEntry('/?pump=P1'));
 
   // The pump page lists only its own alarms.
   await expect(page.locator('tr[data-point="/w1"]')).toHaveCount(1);
@@ -875,7 +892,7 @@ test('a repair is raised from the alarm row, against the anomaly', async ({
       }
     });
   });
-  await page.goto('/?pump=P1');
+  await page.goto(mimicEntry('/?pump=P1'));
 
   await page
     .locator('tr[data-point="/w1"]')
@@ -916,7 +933,7 @@ test('a bay with an alarm is marked on the drawing, and counted beside the state
       }
     });
   });
-  await page.goto('/');
+  await page.goto(mimicEntry('/'));
 
   // Still running - that is what the pump is doing - and in alarm as well.
   const bay = page.getByRole('button', {
@@ -930,7 +947,7 @@ test('a bay with an alarm is marked on the drawing, and counted beside the state
     /.+/
   );
   await expect(page.locator('[data-legend="alarm-critical"]')).toContainText(
-    'Critical alarm 1'
+    'Critical alarm'
   );
   await expect(page.locator('[data-legend="alarm-warning"]')).toHaveCount(0);
 });
@@ -956,7 +973,7 @@ test('an alarm is dismissed only with a reason, retaining inspection without fur
     status = 'suppressed';
     return route.fulfill({ json: { pk: 44, status } });
   });
-  await page.goto('/?pump=P1');
+  await page.goto(mimicEntry('/?pump=P1'));
 
   const row = page.locator('tr[data-point="/w1"]');
   await row.getByRole('button', { name: 'Dismiss /w1', exact: true }).click();

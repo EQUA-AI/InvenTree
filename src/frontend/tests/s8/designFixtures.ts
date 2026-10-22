@@ -177,7 +177,9 @@ export async function openExplorer(
     .getByText('Loading native panel…', { exact: true })
     .waitFor({ state: 'hidden', timeout: 30_000 });
   await page
-    .locator('table, [role="alert"], h5')
+    .locator(
+      'table:visible, [data-machine-card]:visible, [role="alert"]:visible, h5:visible'
+    )
     .first()
     .waitFor({ timeout: 30_000 });
 }

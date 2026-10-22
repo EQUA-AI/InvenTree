@@ -4,14 +4,20 @@ import type {
   MachineSignal
 } from '@lib/types/MachineHealth';
 import { plural, t } from '@lingui/core/macro';
-import { Button, Group, SimpleGrid, Stack, Text } from '@mantine/core';
+import { Button, Group, Stack, Text } from '@mantine/core';
 import { useId } from 'react';
-import { displayInstant } from '../displayClock';
+import {
+  FailedValue,
+  MissingValue,
+  ValueTooltip
+} from '../../../components/items/ValueTooltip';
 import monitoring from '../monitoring.module.css';
 import { recordedTelemetryAsLive } from '../telemetryPresentation';
+import classes from './HealthSummary.module.css';
 import { conditionText } from './SignalCondition';
-import { SignalTooltip, SignalValue } from './SignalReading';
+import { SignalValue } from './SignalReading';
 import { StatusBadge, statusTone } from './StatusBadge';
+import { Timestamp } from './Timestamp';
 import {
   AttentionAlert,
   FreshnessText,
@@ -37,9 +43,33 @@ export function HealthSummaryPanel({
   const fact = headlineFacts(summary, signals, anomalies);
   const { coverage, critical } = fact;
   const counts = summary.anomaly_counts;
+  const activeCounts = counts
+    ? (['critical', 'warning', 'info'] as const).filter(
+        (severity) => counts[severity] > 0
+      )
+    : null;
+  const coverageReason = [
+    ...fact.criticalMissing.map(
+      ({ signal, reason }) => `${signal.display_name}: ${reason}`
+    ),
+    !critical
+      ? t`No critical-signal designation is supplied. Critical limits do not designate critical signals.`
+      : null,
+    t`Coverage is limited to engineer-designated bindings. Unassessed or missing evidence remains unknown; coverage does not establish equipment health.`
+  ]
+    .filter(Boolean)
+    .join(' ');
   const newest = signals?.find(
     (s) => s.observed_at === summary.last_observed_at
   );
+  const assessedText = coverage
+    ? t`Assessed on ${coverage.evaluated} of ${coverage.mapped} signals`
+    : t`Signal coverage unavailable: signal read failed`;
+  const criticalText = critical
+    ? critical.evaluated < critical.designated
+      ? t`critical coverage incomplete: ${critical.evaluated} of ${critical.designated}`
+      : t`critical coverage complete: ${critical.evaluated} of ${critical.designated}`
+    : t`critical coverage unavailable`;
   const signalLink = (signal: MachineSignal) => (
     <Button
       variant='subtle'
@@ -53,29 +83,32 @@ export function HealthSummaryPanel({
     </Button>
   );
   return (
-    <SimpleGrid
-      cols={{ base: 1, md: 2 }}
-      spacing='sm'
-      data-testid='health-summary'
-    >
+    <Stack gap={4} data-testid='health-summary'>
       <Stack gap={6}>
-        <Group gap='sm' align='flex-start' style={{ maxWidth: 640 }}>
+        <Group gap='sm' align='center' wrap='nowrap' style={{ maxWidth: 640 }}>
           <HealthStateBadge
             state={summary.state}
             size='lg'
             neutralNormal={fact.coverageIncomplete}
+            coverage={
+              coverage
+                ? { evaluated: coverage.evaluated, mapped: coverage.mapped }
+                : null
+            }
             describedBy={id}
           />
-          <MetaText id={id}>
-            {coverage
-              ? t`Assessed on ${coverage.evaluated} of ${coverage.mapped} signals`
-              : t`Signal coverage unavailable: signal read failed`}{' '}
-            ·{' '}
-            {critical
-              ? critical.evaluated < critical.designated
-                ? t`critical coverage incomplete: ${critical.evaluated} of ${critical.designated}`
-                : t`critical coverage complete: ${critical.evaluated} of ${critical.designated}`
-              : t`critical coverage unavailable`}
+          <MetaText id={id} className={classes.assessment}>
+            {signals === null ? (
+              <FailedValue
+                reason={t`Signal coverage unavailable: signal read failed`}
+              />
+            ) : (
+              <ValueTooltip label={`${assessedText}. ${coverageReason}`}>
+                {summary.state === 'normal'
+                  ? criticalText
+                  : `${assessedText} · ${criticalText}`}
+              </ValueTooltip>
+            )}
           </MetaText>
         </Group>
         {fact.noObservation && (
@@ -87,12 +120,16 @@ export function HealthSummaryPanel({
           </Text>
         )}
         {fact.why === 'signals' && (
-          <Stack gap={2} aria-label={t`Assessment cause`}>
+          <Stack component='section' gap={2} aria-label={t`Assessment cause`}>
             {fact.matchingSignals.map((s) => (
               <Text size='sm' key={s.binding_id}>
                 {signalLink(s)} <SignalValue signal={s} /> · {conditionText(s)}{' '}
                 ({formatSignalLimits(s) ?? t`Not configured`}) · {t`observed`}{' '}
-                {displayInstant(s.observed_at) ?? t`Time unavailable`}
+                <Timestamp
+                  value={s.observed_at}
+                  label={t`Observed`}
+                  focusable={false}
+                />
               </Text>
             ))}
           </Stack>
@@ -101,72 +138,55 @@ export function HealthSummaryPanel({
           <Text size='sm'>{t`From active anomaly: ${fact.anomaly!.title}`}</Text>
         )}
         {fact.why === 'unavailable' && (
-          <SignalTooltip
-            label={t`Assessment cause not supplied by the summary`}
-          />
+          <Group gap={6}>
+            <MetaText size='xs'>{t`Assessment cause`}:</MetaText>
+            <MissingValue
+              reason={t`Assessment cause not supplied by the summary`}
+            />
+          </Group>
         )}
-        <Group gap={6}>
-          {counts ? (
-            Object.values(counts).some((count) => count > 0) ? (
-              (['critical', 'warning', 'info'] as const)
-                .filter((severity) => counts[severity] > 0)
-                .map((severity) => (
-                  <StatusBadge
-                    key={severity}
-                    tone={statusTone(severity)}
-                    color={
-                      severity === 'critical'
-                        ? 'red.9'
-                        : severity === 'warning'
-                          ? 'yellow.6'
-                          : 'blue.7'
-                    }
-                    variant='filled'
-                  >
-                    {counts[severity]} {severity}
-                  </StatusBadge>
-                ))
-            ) : null
-          ) : (
-            <SignalTooltip label={t`Active anomaly counts unavailable`} />
-          )}
-        </Group>
-        <MetaText size='xs'>{t`Last observation`}</MetaText>
-        {summary.last_observed_at ? (
+        {counts && activeCounts && activeCounts.length > 0 && (
+          <Group gap={6}>
+            {activeCounts.map((severity) => (
+              <StatusBadge
+                key={severity}
+                tone={statusTone(severity)}
+                color={
+                  severity === 'critical'
+                    ? 'red.9'
+                    : severity === 'warning'
+                      ? 'yellow.6'
+                      : 'blue.7'
+                }
+                variant='filled'
+              >
+                {counts[severity]} {severity}
+              </StatusBadge>
+            ))}
+          </Group>
+        )}
+        <Group gap='xs'>
+          {!counts ? (
+            <Group gap={6}>
+              <MetaText size='xs'>{t`Active anomalies`}:</MetaText>
+              <MissingValue reason={t`Active anomaly counts unavailable`} />
+            </Group>
+          ) : anomalies !== null &&
+            summary.active_anomaly_count === 0 &&
+            activeCounts?.length === 0 ? (
+            <MetaText size='xs'>{t`0 active anomalies`}</MetaText>
+          ) : null}
           <FreshnessText
             preferJustNow={recordedTelemetryAsLive(summary)}
             observedAt={summary.last_observed_at}
             stale={newest?.stale ?? false}
             thresholdSeconds={newest?.freshness_threshold_seconds}
+            compactOnPhone
+            label={t`Last observation`}
           />
-        ) : (
-          <SignalTooltip
-            label={t`Observation time not reported by the plant`}
-          />
-        )}
+        </Group>
       </Stack>
       <Stack gap={4}>
-        {critical && critical.evaluated === critical.designated ? (
-          <MetaText>{t`Critical coverage: ${critical.evaluated} of ${critical.designated} designated signals evaluated now`}</MetaText>
-        ) : (
-          <AttentionAlert
-            title={
-              critical
-                ? t`Critical coverage incomplete`
-                : t`Critical coverage unavailable`
-            }
-          >
-            {fact.criticalMissing.map(({ signal, reason }) => (
-              <Text key={signal.binding_id} size='sm'>
-                {signalLink(signal)} · {reason}
-              </Text>
-            ))}
-            {!critical && (
-              <Text size='sm'>{t`No critical-signal designation is supplied. Critical limits do not designate critical signals.`}</Text>
-            )}
-            <MetaText size='xs'>{t`Coverage is limited to engineer-designated bindings. Unassessed or missing evidence remains unknown; coverage does not establish equipment health.`}</MetaText>
-          </AttentionAlert>
-        )}
         {summary.state === 'offline' && (
           <MetaText>
             {recordedTelemetryAsLive(summary)
@@ -180,7 +200,7 @@ export function HealthSummaryPanel({
           >{t`Some signals are stale or reported with poor quality. Confirm the readings you rely on before acting on them.`}</AttentionAlert>
         )}
       </Stack>
-    </SimpleGrid>
+    </Stack>
   );
 }
 export default HealthSummaryPanel;

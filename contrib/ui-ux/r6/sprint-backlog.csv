@@ -30,7 +30,7 @@ P27,31,S4,preserve,Authoritative attributed time and assignment facts,P17,Fronte
 P28,43,S1,current,Counted work Attachments resource with native ownership,P17,Frontend resources,A01 A13 A18,In progress
 P29,44,S4,preserve,Observation/capture recovery and shared evidence identity,P17,Frontend capture,A13 A17 A18,Ready for review
 P30,47,S7,current,Draft-preserving save and conflicting-record recovery,P17 P25 P29,Frontend platform,A14,In progress
-P31,49,S8,current,Final responsive and accessible rendered acceptance,P06 P10 P19 P23 P26 P37 P38 P39 P47 P48,Frontend design,A15 A19 A20,In progress
+P31,49,S8,current,Final responsive and accessible rendered acceptance (UI round 2 Gemini and Opus repairs verified with 18 final captures inspected; reports/ui-r2.md; full Mac suites and human review with coordinator; fixture verification only),P06 P10 P19 P23 P26 P37 P38 P39 P47 P48,Frontend design,A15 A19 A20,In progress
 P32,04,S8,current,Final server permission source and feature-gate acceptance,P17 P26 P28 P41 P47 P48,Frontend and backend integration,A01 A14 A17 A20 A22,Ready for review
 P33,42,S1,current,Existing assistant scoped intent and persisted-result contract;IOT-Merge host-browser repair evidence in reports/iot-merge.md,P02 P04 P17,Frontend and existing chat owner,A01 A17 A20,In progress
 P34,50,S8,current,Chosen connected successful case acceptance,P01 P03 P07 P09 P15 P19 P20 P21 P22 P23 P24 P26 P28 P31 P32 P33 P37 P38 P39 P40 P41 P45 P46 P47 P48 P49 P50 P51,QA and domain,A16 A17 A18 A19 A20 A22 A23,Blocked

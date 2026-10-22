@@ -55,6 +55,11 @@ for (const scheme of ['light', 'dark'] as const) {
     page
   }, testInfo) => {
     await openHealth(page, { scheme });
+    if (testInfo.project.name.includes('phone')) {
+      await page
+        .getByRole('button', { name: 'Details for Bypass flow', exact: true })
+        .click();
+    }
     await expect(
       page.getByRole('img', { name: 'Recent trend for Bypass flow' })
     ).toBeVisible();

@@ -7,6 +7,7 @@ import {
   IconBellRinging,
   IconBroadcast,
   IconCircleCheck,
+  IconCircleHalf2,
   IconClockExclamation,
   IconHistory,
   IconInfoCircle,
@@ -20,14 +21,25 @@ export type StatusTone =
   | 'normal'
   | 'neutral'
   | 'stale'
-  | 'live';
+  | 'live'
+  | 'partial'
+  | 'failed';
 const icons = {
   critical: IconUrgent,
   warning: IconAlertTriangle,
   info: IconInfoCircle,
   normal: IconCircleCheck,
   stale: IconClockExclamation,
-  live: IconBroadcast
+  live: IconBroadcast,
+  partial: IconCircleHalf2,
+  failed: IconAlertTriangle
+};
+const filledColors: Partial<Record<string, string>> = {
+  red: 'red.9',
+  yellow: 'yellow.6',
+  gray: 'gray.7',
+  green: 'green.6',
+  blue: 'blue.8'
 };
 export function statusTone(state: string): StatusTone {
   return ['critical', 'warning', 'info', 'normal'].includes(state)
@@ -36,9 +48,8 @@ export function statusTone(state: string): StatusTone {
       ? 'stale'
       : 'neutral';
 }
-export type StatusBadgeProps = Omit<BadgeProps, 'variant'> & {
+export type StatusBadgeProps = BadgeProps & {
   tone: StatusTone;
-  variant?: 'filled' | 'outline';
 };
 /** Semantic status only; statistics and provenance use the neutral tone. */
 export function StatusBadge({
@@ -51,17 +62,18 @@ export function StatusBadge({
 }: StatusBadgeProps) {
   const Icon = tone === 'neutral' ? null : icons[tone];
   const resolved =
-    color === 'red' && variant === 'filled'
-      ? 'red.9'
-      : color === 'yellow' && variant === 'filled'
-        ? 'yellow.6'
-        : color;
+    variant === 'filled' ? (filledColors[color] ?? color) : color;
   return (
     <Badge
+      component='span'
       variant={variant}
       autoContrast
       color={resolved}
-      c={variant === 'outline' ? 'var(--mantine-color-text)' : undefined}
+      c={
+        variant === 'outline' || variant === 'light'
+          ? 'var(--mantine-color-text)'
+          : undefined
+      }
       tt='none'
       h='auto'
       mih={24}

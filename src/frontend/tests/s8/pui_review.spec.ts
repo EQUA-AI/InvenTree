@@ -13,6 +13,7 @@ import { nativeThemeFixtures } from './themeFixtures';
 
 nativeBaseline();
 nativeThemeFixtures();
+test.use({ timezoneId: 'Asia/Riyadh' });
 
 for (const scheme of ['light', 'dark'] as const) {
   test(`all alarm states have readable text in ${scheme}`, async ({ page }) => {
@@ -38,25 +39,26 @@ for (const scheme of ['light', 'dark'] as const) {
       await readable(badge);
     await readable(page.getByText('Alarm state unavailable', { exact: true }));
     await readable(page.getByText('Not raised yet', { exact: true }));
-    await expect(page.getByLabel('Process data')).toBeVisible();
-    await readable(
-      page
-        .getByLabel('Process data')
-        .getByText('Flow direction', { exact: true }),
-      14
+    await expect(page.getByLabel('Process data')).toHaveCount(0);
+    const information = page.getByRole('button', {
+      name: 'Schematic information',
+      exact: true
+    });
+    await page.keyboard.press('Tab');
+    await information.focus();
+    const provenance = page.getByRole('tooltip');
+    await expect(provenance).toContainText('your clock');
+    await expect(provenance).toContainText('Source: Synthetic SCADA');
+    await expect(provenance).toContainText(
+      'Last poll attempt: 20 Oct 2026 11:00:00'
     );
-    await readable(
-      page
-        .getByLabel('Process data')
-        .getByText('Communication status', { exact: true }),
-      14
+    await readable(provenance);
+    await expect(page.getByText('Flow direction', { exact: true })).toHaveCount(
+      0
     );
-    const clock = page
-      .locator('[data-operational-panel]')
-      .first()
-      .getByRole('status', { name: /Times: your clock/ });
-    await expect(clock).toBeVisible();
-    await expect(clock).toContainText('your clock');
+    await expect(
+      page.getByText('Communication status', { exact: true })
+    ).toHaveCount(0);
     await expect(page.locator('tr[data-anomaly="901"]')).toContainText(
       '20 Oct 2026 11:00:00'
     );
@@ -67,11 +69,13 @@ for (const scheme of ['light', 'dark'] as const) {
   }) => {
     await mockExplorer(page);
     await openExplorer(page, '/machines/index/sites/?location=12', scheme);
-    await readable(page.getByText(/Page counts only/), 14);
+    const scope = page.getByTestId('machine-page-count');
+    await expect(scope).toHaveAttribute('aria-label', /Page counts only/);
+    await readable(scope, 14);
     await expect(
       page.getByRole('link', { name: 'Equipment Registry', exact: true })
     ).toHaveCSS('background-color', 'rgb(66, 99, 235)');
-    await readable(page.getByText(/Page counts only/), 14);
+    await readable(scope, 14);
     await mockEquipment(page);
     await openEquipment(page, false, scheme);
     await expect(
@@ -184,12 +188,13 @@ test('supplied plant timezone is used for alarm observations', async ({
   data.plant_timezone = 'America/Chicago';
   await openEquipment(page, true, 'light');
   const row = page.locator('tr[data-anomaly="901"]');
-  await expect(
-    page
-      .locator('[data-operational-panel]')
-      .first()
-      .getByRole('status', { name: /Times: plant clock.*America\/Chicago/ })
-  ).toBeVisible();
+  await page.keyboard.press('Tab');
+  await page
+    .getByRole('button', { name: 'Schematic information', exact: true })
+    .focus();
+  await expect(page.getByRole('tooltip')).toContainText(
+    'plant clock (America/Chicago'
+  );
   await expect(row).toContainText('20 Oct 2026 03:00:00');
 });
 

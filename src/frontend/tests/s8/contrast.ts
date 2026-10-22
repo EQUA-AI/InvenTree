@@ -54,13 +54,15 @@ export async function contrast(locator: Locator) {
     }
 
     const style = getComputedStyle(el);
-    const circle =
+    const surface =
       el instanceof SVGTextElement &&
-      el.previousElementSibling instanceof SVGCircleElement
+      (el.previousElementSibling instanceof SVGCircleElement ||
+        (el.parentElement?.matches('[data-alarm-marker]') &&
+          el.previousElementSibling instanceof SVGGraphicsElement))
         ? el.previousElementSibling
         : null;
-    if (circle && getComputedStyle(circle).fill !== 'none')
-      chain.push(getComputedStyle(circle).fill);
+    if (surface && getComputedStyle(surface).fill !== 'none')
+      chain.push(getComputedStyle(surface).fill);
     return {
       fg: el instanceof SVGTextElement ? style.fill : style.color,
       chain,
@@ -124,6 +126,22 @@ export async function svgEdge(locator: Locator) {
   expect(actual.ratio).toBeGreaterThanOrEqual(3);
   return actual;
 }
+/** An offset HTML focus outline is painted against its parent's surface. */
+export async function outlineEdge(locator: Locator) {
+  const raw = await locator.evaluate((el) => {
+    const chain: string[] = [];
+    for (let n: Element | null = el.parentElement; n; n = n.parentElement)
+      chain.unshift(getComputedStyle(n).backgroundColor);
+    return { outline: getComputedStyle(el).outlineColor, chain };
+  });
+  const actual = measured(raw.outline, raw.chain, 0);
+  await test.info().attach('outline-contrast', {
+    body: JSON.stringify(actual),
+    contentType: 'application/json'
+  });
+  expect(actual.ratio).toBeGreaterThanOrEqual(3);
+  return actual;
+}
 /** Direct text and nonempty placeholders; the caller supplies the native panel. */
 export async function textSweep(scope: Locator) {
   const raw = await scope.evaluate((root) =>
@@ -161,13 +179,15 @@ export async function textSweep(scope: Locator) {
       }
 
       const results = [];
-      const circle =
+      const surface =
         el instanceof SVGTextElement &&
-        el.previousElementSibling instanceof SVGCircleElement
+        (el.previousElementSibling instanceof SVGCircleElement ||
+          (el.parentElement?.matches('[data-alarm-marker]') &&
+            el.previousElementSibling instanceof SVGGraphicsElement))
           ? el.previousElementSibling
           : null;
-      if (circle && getComputedStyle(circle).fill !== 'none')
-        chain.push(getComputedStyle(circle).fill);
+      if (surface && getComputedStyle(surface).fill !== 'none')
+        chain.push(getComputedStyle(surface).fill);
       if (text)
         results.push({
           text,

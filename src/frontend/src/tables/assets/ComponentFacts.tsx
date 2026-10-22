@@ -1,72 +1,38 @@
 import type { MachineComponent } from '@lib/types/Assets';
-import { i18n } from '@lingui/core';
 import { t } from '@lingui/core/macro';
-import { Text, Tooltip } from '@mantine/core';
+import {
+  MissingValue,
+  ValueTooltip
+} from '../../components/items/ValueTooltip';
+import {
+  formatInstant,
+  useDisplayClock
+} from '../../pages/assets/health/mimic/observedTime';
 import classes from './MachineComponentTable.module.css';
 import { componentSource } from './componentPresentation';
-
-export function MissingPartFact({ reason }: Readonly<{ reason: string }>) {
-  return (
-    <Tooltip
-      label={reason}
-      events={{ hover: true, focus: true, touch: true }}
-      multiline
-      w={260}
-    >
-      <Text
-        component='span'
-        role='img'
-        tabIndex={0}
-        aria-label={reason}
-        data-table-tooltip
-        size='sm'
-        className={classes.missing}
-      >
-        —
-      </Text>
-    </Tooltip>
-  );
-}
 
 export function ComponentProvenance({
   record
 }: Readonly<{ record: MachineComponent }>) {
+  const clock = useDisplayClock();
   const source = componentSource(record);
-  if (!source.label) return <MissingPartFact reason={t`Source not recorded`} />;
+  if (source.kind === 'missing')
+    return <MissingValue reason={t`Source not recorded`} />;
   const label =
-    source.label === 'Equipment register import'
-      ? t`Equipment register import`
-      : source.label === 'SCADA tag mapping'
-        ? t`SCADA tag mapping`
-        : source.label;
+    source.kind === 'register'
+      ? t`Registry import`
+      : source.kind === 'scada'
+        ? t`SCADA mapping`
+        : source.kind === 'manual'
+          ? t`Manual entry`
+          : source.label;
+  const imported = formatInstant(source.importedAt, clock);
+  const detail = [source.raw || label, imported, imported && clock.label]
+    .filter(Boolean)
+    .join(' · ');
   return (
-    <Tooltip
-      label={source.raw || label}
-      events={{ hover: true, focus: true, touch: true }}
-      multiline
-      w={280}
-    >
-      <Text
-        component='span'
-        size='sm'
-        tabIndex={0}
-        data-table-tooltip
-        className={classes.source}
-      >
-        {label}
-        {source.importedAt && (
-          <>
-            {' '}
-            ·{' '}
-            {new Intl.DateTimeFormat(i18n.locale || 'en', {
-              day: 'numeric',
-              month: 'short',
-              year: 'numeric',
-              timeZone: 'UTC'
-            }).format(new Date(source.importedAt))}
-          </>
-        )}
-      </Text>
-    </Tooltip>
+    <ValueTooltip label={detail} className={classes.source} data-table-tooltip>
+      <span className={classes.sourceText}>{label}</span>
+    </ValueTooltip>
   );
 }

@@ -1,6 +1,13 @@
 import type { MachineComponent } from '@lib/types/Assets';
 
-/** Older APIs keep their raw source; never turn a hash into visible copy. */
+export type ComponentSourceKind =
+  | 'register'
+  | 'scada'
+  | 'manual'
+  | 'other'
+  | 'missing';
+
+/** Normalize the legacy provider vocabulary once, before translation/rendering. */
 export function componentSource(
   record: Pick<
     MachineComponent,
@@ -9,18 +16,28 @@ export function componentSource(
 ) {
   const raw = record.provenance?.trim() ?? '';
   const source = record.provenance_display?.trim() || raw;
-  const label = /^Workbook population [a-f0-9]{12}$/i.test(source)
-    ? 'Equipment register import'
-    : source === 'Inferred from source tags; physical assignment is unverified.'
-      ? 'SCADA tag mapping'
-      : source;
+  const kind: ComponentSourceKind = !source
+    ? 'missing'
+    : /^Workbook population [a-f0-9]{12}$/i.test(source) ||
+        source === 'Equipment register import'
+      ? 'register'
+      : source ===
+            'Inferred from source tags; physical assignment is unverified.' ||
+          source === 'SCADA tag mapping'
+        ? 'scada'
+        : [
+              'Manual entry',
+              'Operator review',
+              'Operator register review'
+            ].includes(source)
+          ? 'manual'
+          : 'other';
   const imported = record.provenance_imported_at;
   return {
-    label,
+    kind,
+    label: kind === 'register' || kind === 'scada' ? '' : source,
     importedAt:
-      label === 'Equipment register import' &&
-      imported &&
-      Number.isFinite(Date.parse(imported))
+      kind === 'register' && imported && Number.isFinite(Date.parse(imported))
         ? imported
         : null,
     raw

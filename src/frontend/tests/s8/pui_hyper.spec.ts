@@ -19,6 +19,7 @@ async function keyboardFocus(page: Page, target: Locator) {
 
 nativeBaseline();
 nativeThemeFixtures();
+test.use({ timezoneId: 'Asia/Riyadh' });
 
 for (const scheme of ['light', 'dark'] as const) {
   test(`shared badge vocabulary, source clock and freshness in ${scheme}`, async ({
@@ -49,12 +50,20 @@ for (const scheme of ['light', 'dark'] as const) {
         exact: true
       })
     ).toHaveCount(1);
-    await expect(
-      page.getByText(/your clock|plant clock/).filter({ visible: true })
-    ).toHaveCount(1);
-    await expect(
-      page.locator('[data-operational-panel]').first().getByRole('status')
-    ).toHaveCount(1);
+    await keyboardFocus(
+      page,
+      page.getByRole('button', { name: 'Schematic information', exact: true })
+    );
+    await expect(page.getByRole('tooltip')).toContainText(
+      'your clock (Asia/Riyadh'
+    );
+    await expect(page.getByRole('tooltip')).toContainText(
+      'Source: Synthetic SCADA'
+    );
+    await expect(page.getByRole('tooltip')).toContainText(
+      'Last poll attempt: 20 Oct 2026 11:00:00'
+    );
+    await page.keyboard.press('Escape');
     await expect(
       page.getByText(/\b(AM|PM)\b|\d{1,2}\/\d{1,2}\/\d{4}/)
     ).toHaveCount(0);
@@ -63,8 +72,10 @@ for (const scheme of ['light', 'dark'] as const) {
     ).toHaveCount(4);
     const status = page.locator('[data-unit-header]');
     await expect(status).toContainText('2 s old');
-    await expect(page.getByLabel('Process data').locator('dt')).toHaveCount(3);
-    await expect(page.getByLabel('Process data').locator('dd')).toHaveCount(3);
+    await expect(page.getByLabel('Process data')).toHaveCount(0);
+    await expect(page.locator('[data-unit-drawing] animateMotion')).toHaveCount(
+      0
+    );
   });
   test(`poll errors are neutral acquisition facts in ${scheme}`, async ({
     page
@@ -121,11 +132,13 @@ for (const scheme of ['light', 'dark'] as const) {
     data.last_success_at = null;
     data.last_error_at = null;
     await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-    await expect(page.getByLabel('Process data')).toContainText('Enabled');
-    await expect(page.getByLabel('Process data')).not.toContainText(
-      'Reported error'
+    await expect(page.getByLabel('Process data')).toHaveCount(0);
+    await expect(
+      page.getByRole('alert').filter({ hasText: 'Polling error' })
+    ).toHaveCount(0);
+    await expect(page.locator('[data-unit-header]')).not.toContainText(
+      /\bOK\b|Communication lost/
     );
-    await expect(page.getByLabel('Process data')).not.toContainText(/\bOK\b/);
   });
   test(`3D phone touch and desktop selection in ${scheme}`, async ({
     page
@@ -181,7 +194,7 @@ for (const scheme of ['light', 'dark'] as const) {
       /condition unknown/
     );
     await expect(
-      scope.getByRole('button', { name: 'Unavailable · 1', exact: true })
+      scope.getByRole('button', { name: 'Read failed · 1', exact: true })
     ).toBeVisible();
     await expect(
       page.getByRole('textbox', { name: 'Search machines' })
@@ -198,19 +211,33 @@ for (const scheme of ['light', 'dark'] as const) {
       sw.locator('..').locator('.mantine-Switch-track'),
       page.locator('#location-name')
     );
-    await page.getByRole('button', { name: /In alarm:/ }).click();
+    await page.getByRole('button', { name: /^In alarm 8$/ }).click();
     await expect
       .poll(() => fixture.requests.at(-1)?.params.get('has_alarms'))
       .toBe('true');
     await page
       .getByRole('button', { name: 'Location details', exact: true })
       .click();
-    await expect(
-      page.getByText(/your clock|plant clock/).filter({ visible: true })
-    ).toHaveCount(1);
-    await expect(
-      page.locator('[data-operational-panel]').first().getByRole('status')
-    ).toHaveCount(1);
+    const readTime = page.locator('time[datetime]').filter({ visible: true });
+    await expect(readTime).toHaveCount(1);
+    await expect(readTime).toHaveText(
+      /^\d{1,2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2}$/
+    );
+    await keyboardFocus(page, readTime.locator('..'));
+    const clockDetail = page
+      .getByRole('tooltip')
+      .filter({ hasText: 'your clock (Asia/Riyadh' });
+    await expect(clockDetail).toContainText(await readTime.innerText());
+    await expect(clockDetail).toContainText('UTC+03:00');
+    const refreshResult = page.getByRole('status', {
+      name: 'Refresh result',
+      exact: true
+    });
+    await expect(refreshResult).toBeEmpty();
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await expect(refreshResult).toHaveText(
+      'Location and machine records refreshed.'
+    );
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth)
     ).toBeLessThanOrEqual(page.viewportSize()!.width);
@@ -323,28 +350,23 @@ for (const scheme of ['light', 'dark'] as const) {
       page.getByText(/Times moved .*onto the display clock/)
     ).toHaveCount(0);
     await expect(page.getByText('Live', { exact: true })).toBeVisible();
-    await expect(
-      page
-        .getByLabel('Process data')
-        .locator('dt')
-        .filter({ hasText: /^Polling$/ })
-        .locator('..')
-        .locator('dd')
-    ).toHaveText('Disabled');
-    if (info.project.name.endsWith('phone')) {
-      await keyboardFocus(
-        page,
-        page.getByRole('button', { name: 'Schematic information', exact: true })
-      );
-      await expect(
-        page.getByRole('tooltip').filter({ hasText: 'Last reading' })
-      ).toContainText('Last reading');
-      await page.keyboard.press('Escape');
-    } else {
-      await expect(
-        page.locator('[data-equipment-view] output:visible')
-      ).toContainText('Last reading');
-    }
+    // O27 reporting is independent of polling; provenance retains the actual source clock.
+    await keyboardFocus(
+      page,
+      page.getByRole('button', { name: 'Schematic information', exact: true })
+    );
+    await expect(page.getByRole('tooltip')).toContainText(
+      'Last reading: 20 Oct 2026 11:00:02'
+    );
+    await expect(page.getByRole('tooltip')).toContainText(
+      'Source: Synthetic SCADA'
+    );
+    await expect(page.getByRole('tooltip')).toContainText(
+      'your clock (Asia/Riyadh'
+    );
+    await expect(page.getByRole('tooltip')).not.toContainText('1 Aug 2025');
+    await page.keyboard.press('Escape');
+    await expect(page.getByLabel('Process data')).toHaveCount(0);
     await page.locator('[data-equipment-view]').screenshot({
       path: info.outputPath(`o27-mimic-${scheme}.png`),
       animations: 'disabled'
@@ -363,11 +385,6 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(page.getByRole('alert')).toContainText(
       'Polling is disabled for this station. Live values are unavailable.'
     );
-    await expect(
-      page
-        .getByLabel('Process data')
-        .locator('dd')
-        .filter({ hasText: /^Disabled$/ })
-    ).toHaveCount(1);
+    await expect(page.getByLabel('Process data')).toHaveCount(0);
   });
 }

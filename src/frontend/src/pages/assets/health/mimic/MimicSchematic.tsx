@@ -54,7 +54,7 @@ const STATE: Record<string, { fill: string; line: string; dashed?: boolean }> =
   {
     running: {
       fill: 'var(--mantine-color-green-light)',
-      line: 'var(--mantine-color-green-8)'
+      line: 'var(--aimms-normal, light-dark(var(--mantine-color-green-9), var(--mantine-color-green-5)))'
     },
     idle: {
       fill: 'var(--mantine-color-body)',
@@ -62,7 +62,7 @@ const STATE: Record<string, { fill: string; line: string; dashed?: boolean }> =
     },
     fault: {
       fill: 'var(--mantine-color-red-light)',
-      line: 'var(--mantine-color-red-filled)'
+      line: 'var(--aimms-critical, light-dark(var(--mantine-color-red-9), var(--mantine-color-red-5)))'
     },
     stale: {
       fill: 'url(#mimic-hatch)',
@@ -90,9 +90,9 @@ export function stateStyle(state: string) {
  */
 export function alarmColor(alarm?: string | null) {
   return alarm === 'critical'
-    ? 'var(--mantine-color-red-9)'
+    ? 'var(--aimms-critical, light-dark(var(--mantine-color-red-9), var(--mantine-color-red-5)))'
     : alarm === 'warning'
-      ? 'var(--mantine-color-orange-9)'
+      ? 'var(--aimms-warning, light-dark(var(--mantine-color-orange-9), var(--mantine-color-orange-5)))'
       : null;
 }
 
@@ -107,8 +107,10 @@ export function alarmLabel(alarm?: string | null) {
 /** The drawings name their colours; this is what the page gives them. */
 const THEME = {
   '--mimic-line': 'var(--mantine-color-text)',
-  '--mimic-muted': 'var(--mantine-color-text)',
-  '--mimic-surface': 'var(--mantine-color-body)',
+  '--mimic-muted':
+    'light-dark(var(--mantine-color-gray-5), var(--mantine-color-dark-2))',
+  '--mimic-surface':
+    'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))',
   '--mimic-structure': 'var(--mantine-color-default-border)',
   '--mimic-water': 'var(--mantine-color-body)'
 } as CSSProperties;
@@ -119,11 +121,11 @@ function viewBoxOf(drawing: string) {
 
 function conditionLine(point?: MimicPoint) {
   if (!usable(point) || !point.thresholds_configured) return null;
-  if (point.condition === 'critical') return 'var(--mantine-color-red-filled)';
+  if (point.condition === 'critical') return alarmColor('critical');
   if (point.condition === 'warning') {
-    return 'var(--mantine-color-yellow-filled)';
+    return alarmColor('warning');
   }
-  if (point.condition === 'normal') return 'var(--mantine-color-green-8)';
+  if (point.condition === 'normal') return stateStyle('running').line;
   return null;
 }
 
@@ -179,8 +181,10 @@ function Tag({
     element.role === 'status'
       ? statusText(point, data.layout)
       : valueText(point);
-  // Only a *missing* point is unbound; a present one states its own reason.
-  const reason = point ? reasonLabel(point.reason) : reasonLabel('not_bound');
+  // An omitted response row does not establish why its value is absent.
+  const reason = point?.reason
+    ? reasonLabel(point.reason)
+    : t`Reason not supplied`;
   const split = reason.lastIndexOf(' ', 18);
   const reasonLines =
     !shown && !stale && reason.length > 18
@@ -397,7 +401,9 @@ function Bays({
               }
               stroke={
                 alarm ??
-                (chosen ? 'var(--mantine-primary-color-filled)' : 'none')
+                (chosen
+                  ? 'var(--aimms-focus, light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3)))'
+                  : 'none')
               }
               strokeWidth={alarm ? 2 : 1.5}
             />
@@ -526,29 +532,16 @@ function LegacyMimicSchematic({
 }>) {
   const svg = useRef<SVGSVGElement>(null);
   const [renderWidth, setRenderWidth] = useState(1100);
-  const [fitWidth, setFitWidth] = useState<number | undefined>();
   useLayoutEffect(() => {
     const node = svg.current;
     if (!node) return;
     const fit = () => {
-      if (window.innerWidth < 768) {
-        setFitWidth(undefined);
-        setRenderWidth(Math.max(720, node.parentElement?.clientWidth ?? 720));
-        return;
-      }
-      const parentWidth = node.parentElement?.clientWidth ?? 1100;
-      const available = Math.max(
-        180,
-        window.innerHeight -
-          (node.getBoundingClientRect().top + window.scrollY) -
-          16
+      setRenderWidth(
+        Math.max(
+          720,
+          node.clientWidth || node.parentElement?.clientWidth || 1100
+        )
       );
-      const next = Math.min(
-        parentWidth,
-        Math.max(unit ? 600 : 0, available * (unit ? 1100 / 580 : 1100 / 300))
-      );
-      setFitWidth(next);
-      setRenderWidth(next);
     };
     fit();
     window.addEventListener('resize', fit);
@@ -558,7 +551,7 @@ function LegacyMimicSchematic({
       window.removeEventListener('resize', fit);
       observer.disconnect();
     };
-  }, [unit, data.display_shifted, data.last_error_code, data.enabled]);
+  }, []);
   // The part being pointed at, on the drawing or in the key beside it.
   const [active, setActive] = useState<string | null>(null);
   const parts = unit ? partStates(data, display) : [];
@@ -585,7 +578,7 @@ function LegacyMimicSchematic({
           '--mimic-state-line': state.line,
           '--mimic-state-dash': state.dashed ? '6 4' : 'none',
           ...partOutlines(parts, active),
-          width: fitWidth ?? '100%',
+          width: '100%',
           maxWidth: '100%',
 
           aspectRatio: `${width} / ${height}`,

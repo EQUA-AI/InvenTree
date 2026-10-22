@@ -1,14 +1,12 @@
 import { t } from '@lingui/core/macro';
-import { Anchor, Group, Stack, Title } from '@mantine/core';
+import { Stack, Title } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import { api } from '../../App';
 import { MachineComponentTable } from '../../tables/assets/MachineComponentTable';
 import { MachinePartTable } from '../../tables/assets/MachinePartTable';
-import operations from './operations.module.css';
 
 interface PartsMachine {
   pk: number;
@@ -41,21 +39,8 @@ export function InstalledPartsPanel({
     : `/machines/registry/?station=${machine.parent}&owner=${machine.pk}`;
 
   return (
-    <Stack gap='md'>
-      <Group justify='flex-end'>
-        <Anchor
-          className={operations.link}
-          display='inline-flex'
-          mih={{ base: 44, sm: 0 }}
-          style={{ alignItems: 'center' }}
-          component={Link}
-          to={registry}
-          size='sm'
-        >
-          {t`Review in the equipment registry`}
-        </Anchor>
-      </Group>
-      <MachineComponentTable machine={machine} />
+    <Stack gap='sm'>
+      <MachineComponentTable machine={machine} registryHref={registry} />
       <RecordedParts machineId={machine.pk} />
     </Stack>
   );

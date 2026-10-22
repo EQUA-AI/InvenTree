@@ -1,5 +1,6 @@
 .header {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	justify-content: space-between;
 	gap: var(--mantine-spacing-xs);
@@ -14,7 +15,7 @@
 
 .metric {
 	min-width: 0;
-	min-height: 84px;
+	min-height: 72px;
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
@@ -40,7 +41,11 @@
 }
 
 .viewport:focus-visible {
-	outline: 2px solid var(--mantine-primary-color-filled);
+	outline: 2px solid
+		var(
+			--aimms-focus,
+			light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3))
+		);
 	outline-offset: 2px;
 }
 
@@ -66,51 +71,84 @@
 .bay:hover .focus,
 .bay:focus-visible .focus {
 	fill: var(--mantine-primary-color-light);
-	stroke: var(--mantine-primary-color-filled);
+	stroke: var(
+		--aimms-focus,
+		light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3))
+	);
 }
 
-.totals {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-	gap: var(--mantine-spacing-sm);
+.observed {
+	flex-basis: 100%;
+	color: var(--mantine-color-dimmed);
+	font-variant-numeric: tabular-nums;
 }
 
-.total {
-	min-width: 0;
-	min-height: 92px;
-	display: flex;
-	flex-direction: column;
+.info {
+	display: inline-flex;
+	align-items: center;
 	justify-content: center;
+	color: var(--mantine-color-dimmed);
 }
 
-.totalValue {
-	min-height: 36px;
+.scrollCue {
 	display: flex;
 	align-items: center;
-	gap: 4px;
+	gap: 6px;
+	margin-top: var(--mantine-spacing-sm);
+	color: var(--mantine-color-dimmed);
 }
 
-.origin {
-	cursor: help;
-}
-
-.origin:focus-visible {
-	outline: 2px solid var(--mantine-primary-color-filled);
-	outline-offset: 2px;
+.manifold {
+	fill: var(
+		--aimms-panel,
+		light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))
+	);
+	stroke: light-dark(var(--mantine-color-gray-5), var(--mantine-color-dark-2));
+	stroke-width: 1.5;
 }
 
 @media (max-width: 48em) {
+	.viewport {
+		background: linear-gradient(
+				to right,
+				var(
+						--aimms-panel,
+						light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))
+					)
+					20%,
+				transparent
+			)
+			left center,
+			linear-gradient(
+				to left,
+				var(
+						--aimms-panel,
+						light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))
+					)
+					20%,
+				transparent
+			)
+			right center,
+			linear-gradient(
+				to right,
+				var(--mantine-color-default-border),
+				transparent
+			)
+			left center,
+			linear-gradient(to left, var(--mantine-color-default-border), transparent)
+			right center;
+		background-size: 30px 100%, 30px 100%, 12px 100%, 12px 100%;
+		background-repeat: no-repeat;
+		background-attachment: local, local, scroll, scroll;
+	}
+
 	.metrics {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: var(--mantine-spacing-xs);
 	}
 
-	.metric:first-child {
-		grid-column: 1 / -1;
-	}
-
 	.metric {
-		min-height: 76px;
+		min-height: 60px;
 	}
 
 	.info {
@@ -121,19 +159,5 @@
 	.refresh {
 		min-height: 44px;
 		min-width: 44px;
-	}
-
-	.origin {
-		min-height: 44px;
-		min-width: 44px;
-	}
-
-	.totalValue {
-		min-height: 44px;
-	}
-
-	.totals {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: var(--mantine-spacing-xs);
 	}
 }

@@ -272,6 +272,7 @@ export default function InvenTreeTableHeader({
           )}
           {tableProps.enableRefresh && (
             <ActionIcon
+              size={tableProps.controlSize}
               variant='transparent'
               aria-label={t`Refresh table`}
               data-testid='table-refresh'
@@ -288,6 +289,7 @@ export default function InvenTreeTableHeader({
           {hasSwitchableColumns && (
             <TableColumnSelect
               columns={columns}
+              controlSize={tableProps.controlSize}
               onToggleColumn={toggleColumn}
             />
           )}
@@ -298,6 +300,7 @@ export default function InvenTreeTableHeader({
               disabled={tableState.filterSet.activeFilters?.length == 0}
             >
               <ActionIcon
+                size={tableProps.controlSize}
                 disabled={hasCustomFilters}
                 variant='transparent'
                 aria-label={t`Table filters`}
@@ -342,6 +345,7 @@ export default function InvenTreeTableHeader({
           )}
           {tableUrl && tableProps.enableDownload && (
             <ActionIcon
+              size={tableProps.controlSize}
               variant='transparent'
               aria-label={t`Export table data`}
               data-testid='table-export-data'

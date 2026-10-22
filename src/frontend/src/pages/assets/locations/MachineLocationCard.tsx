@@ -6,6 +6,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useApi } from '../../../contexts/ApiContext';
 import { useUserState } from '../../../states/UserState';
 import { MachineMoveDialog } from './LocationDialogs';
+import classes from './locations.module.css';
 
 import {
   type LocatedMachine,
@@ -50,7 +51,7 @@ export function MachinePlacementPath({ machineId }: { machineId: number }) {
   const row = machine.isError ? undefined : machine.data?.results[0];
   if (!row) return null;
   return (
-    <Text size='sm' c='dimmed'>
+    <Text size='sm' c='dimmed' className={classes.placementPath}>
       {t`Physical location`}: {placementText(row)}
     </Text>
   );

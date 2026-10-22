@@ -42,6 +42,7 @@ import PumpMimic from './health/PumpMimic';
 import PumphouseMimic from './health/PumphouseMimic';
 import { machineTrail } from './machineTrail';
 import { MachineMaintenancePanel } from './maintenance/MachineMaintenancePanel';
+import operations from './operations.module.css';
 import { PerformancePanel } from './performance/PerformancePanel';
 
 import {
@@ -220,6 +221,7 @@ export default function MachineDetail() {
             {
               name: 'equipment',
               label: t`Equipment view`,
+              showHeadline: false,
               icon: <IconCube />,
               content: (
                 <EquipmentViewPanel
@@ -243,6 +245,7 @@ export default function MachineDetail() {
             {
               name: 'mimic',
               label: t`Pumphouse mimic`,
+              showHeadline: false,
               icon: <IconActivityHeartbeat />,
               content: (
                 <PumphouseMimic key={machine.pk} stationId={machine.pk} />
@@ -255,6 +258,7 @@ export default function MachineDetail() {
         // asks how it is doing before asking what it is made of.
         name: 'health',
         label: t`Health`,
+        showHeadline: false,
         icon: <IconActivityHeartbeat />,
         content: machine?.pk ? (
           <MachineHealthPanel
@@ -280,6 +284,7 @@ export default function MachineDetail() {
       },
       {
         name: 'parts',
+        showHeadline: false,
         // R6 UI07: "Parts"; the native route key stays `parts`.
         label: t`Parts`,
         icon: <IconListCheck />,
@@ -318,7 +323,7 @@ export default function MachineDetail() {
 
   return (
     <InstanceDetail query={instanceQuery}>
-      <Stack>
+      <Stack className={operations.machineShell}>
         <PageDetail
           title={machine?.name ?? t`Machine Detail`}
           breadcrumbs={breadcrumbs}

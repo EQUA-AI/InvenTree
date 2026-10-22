@@ -12,19 +12,21 @@ import {
 import { IconChartLine, IconExternalLink } from '@tabler/icons-react';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { MissingValue } from '../../../../components/items/ValueTooltip';
 import { useUserState } from '../../../../states/UserState';
 import { machinePanelHref } from '../../locations/locationTree';
 import operations from '../../operations.module.css';
+import { Timestamp } from '../Timestamp';
 import { AlarmStateBadge, SeverityBadge } from '../common';
-import { MissingValue } from './MissingValue';
-import { formatInstant, useDisplayClock } from './observedTime';
+import { UnavailableReading, failedReading } from './MimicValue';
+import { useDisplayClock } from './observedTime';
 
 import { UserRoles } from '@lib/enums/Roles';
 
 import { WorkOrderCreateModal } from '../../../maintenance/components/WorkOrderCreateModal';
 import { type AlarmAction, AlarmNoteModal } from './AlarmNoteModal';
 import { type Display, conditionText } from './MimicReadings';
-import { reasonLabel, valueText } from './format';
+import { valueText } from './format';
 import type { MimicAlarm } from './types';
 
 /**
@@ -105,13 +107,14 @@ export function AlarmTable({
                     <AlarmStatus alarm={alarm} />
                   </Table.Td>
                   <Table.Td data-label={t`Value`}>
-                    {alarm.value === null || alarm.reason ? (
-                      <MissingValue
+                    {alarm.value === null ||
+                    alarm.reason ||
+                    failedReading(alarm) ? (
+                      <UnavailableReading
+                        point={alarm}
                         label={alarm.label}
-                        reason={
-                          reasonLabel(alarm.reason) ||
-                          t`Not reported by the plant`
-                        }
+                        display={display}
+                        focusable={false}
                       />
                     ) : (
                       display(alarm)
@@ -119,7 +122,18 @@ export function AlarmTable({
                   </Table.Td>
                   <Table.Td data-label={t`Condition`}>
                     {!alarm.thresholds_configured || alarm.reason ? (
-                      <MissingValue reason={conditionText(alarm)} />
+                      alarm.reason ? (
+                        <UnavailableReading
+                          point={{ ...alarm, value: null }}
+                          label={t`Condition`}
+                          focusable={false}
+                        />
+                      ) : (
+                        <MissingValue
+                          reason={conditionText(alarm)}
+                          focusable={false}
+                        />
+                      )
                     ) : (
                       conditionText(alarm)
                     )}
@@ -128,11 +142,11 @@ export function AlarmTable({
                     data-label={t`Observed at`}
                     style={{ whiteSpace: 'nowrap' }}
                   >
-                    {formatInstant(alarm.observed_at, clock) ?? (
-                      <MissingValue
-                        reason={t`Observation time not reported by the plant`}
-                      />
-                    )}
+                    <Timestamp
+                      value={alarm.observed_at}
+                      clock={clock}
+                      focusable={false}
+                    />
                   </Table.Td>
                   <Table.Td className={operations.alarmActions}>
                     <Group

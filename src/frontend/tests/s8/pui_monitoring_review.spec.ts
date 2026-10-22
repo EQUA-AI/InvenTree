@@ -3,11 +3,12 @@ import { NOW as PERFORMANCE_NOW } from '../performance/fixtures';
 import { nativeBaseline } from '../s0/guards';
 import { anomaly, openHealth } from '../s3/healthFixtures';
 import { openPausedPerformance } from '../s3/performanceFixtures';
+import { readable } from './contrast';
 import { captureMatrix, monitoringMeasurements } from './monitoringEvidence';
 
 nativeBaseline();
 for (const scheme of ['light', 'dark'] as const) {
-  test(`monitoring hides viewer actions and keeps the attention title local ${scheme}`, async ({
+  test(`monitoring hides viewer actions and keeps coverage readable and inspectable ${scheme}`, async ({
     page
   }) => {
     await page.addInitScript(() => {
@@ -26,31 +27,26 @@ for (const scheme of ['light', 'dark'] as const) {
     });
     await expect(actions).toHaveCount(0);
     await expect(page.getByText(/^View only:/)).toBeVisible();
-    const title = await page
-      .getByRole('alert')
-      .filter({ hasText: 'Critical coverage unavailable' })
-      .evaluate((alert) => {
-        const clone = alert.cloneNode(true) as HTMLElement;
-        document.body.appendChild(clone);
-        const result = {
-          panel: getComputedStyle(alert.querySelector('.mantine-Alert-label')!)
-            .color,
-          native: getComputedStyle(clone.querySelector('.mantine-Alert-label')!)
-            .color
-        };
-        clone.remove();
-        return result;
-      });
-    expect(title.panel).toBe(title.native);
+    const coverage = page.getByRole('button', {
+      name: /critical coverage unavailable$/
+    });
+    await coverage.focus();
+    await expect(page.getByRole('tooltip')).toContainText(
+      'No critical-signal designation is supplied.'
+    );
+    await readable(coverage);
+    await readable(page.getByRole('tooltip'));
     const measurements = await monitoringMeasurements(page, 'health');
-    const coverageTitle = measurements.text.find(
-      (row) => row.text === 'Critical coverage unavailable'
+    const coverageTitle = measurements.text.find((row) =>
+      row.text.endsWith('critical coverage unavailable')
     );
     expect(coverageTitle?.ratio).toBeGreaterThanOrEqual(4.5);
-    // Also catches treating normalized color(srgb) components as 0..255 RGB.
-    expect(coverageTitle?.ratio).toBeCloseTo(
-      scheme === 'light' ? 7.018346 : 13.091108,
-      2
+    expect(
+      await coverage.evaluate((node) => getComputedStyle(node).color)
+    ).toBe(
+      await coverage.evaluate(
+        (node) => getComputedStyle(node.parentElement!).color
+      )
     );
     await captureMatrix(page, 'health', 'viewer-actions', scheme);
   });

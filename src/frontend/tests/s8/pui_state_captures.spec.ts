@@ -16,6 +16,7 @@ import {
 import { nativeThemeFixtures } from './themeFixtures';
 nativeBaseline();
 nativeThemeFixtures();
+test.use({ timezoneId: 'Asia/Riyadh' });
 const states = [
   'base-machines',
   'base-model',
@@ -267,16 +268,10 @@ for (const state of states)
               exact: true
             })
           ).toBeVisible();
-          const communication = page
-            .getByLabel('Process data')
-            .getByRole('button', {
-              name: 'Communication status: Not reported by the plant',
-              exact: true
-            });
-          await expect(communication).toHaveText('—');
-          await expect(communication).toHaveAccessibleName(
-            'Communication status: Not reported by the plant'
-          );
+          await expect(page.getByLabel('Process data')).toHaveCount(0);
+          await expect(
+            page.locator('[data-unit-drawing] animateMotion')
+          ).toHaveCount(0);
           if (state === 'schematic-polling-error')
             await expect(page.getByRole('alert').first()).toContainText(
               'code NETWORK'
@@ -350,7 +345,38 @@ for (const state of states)
           'Control edges have 3:1 contrast'
         ).toEqual([]);
         expect(metadata.page.scrollWidth).toBeLessThanOrEqual(width);
-        expect(metadata.clockStatements).toBe(1);
+        if (screen === 'equipment-schematic') {
+          const information = page.getByRole('button', {
+            name: 'Schematic information',
+            exact: true
+          });
+          if (state === 'schematic-query-error') {
+            await expect(information).toHaveCount(0);
+          } else {
+            await expect(information).toBeVisible();
+            await page.keyboard.press('Tab');
+            await information.focus();
+            await expect(information).toBeFocused();
+            const provenance = page
+              .getByRole('tooltip')
+              .filter({ hasText: 'Source: Synthetic SCADA' });
+            await expect(provenance).toContainText('Source: Synthetic SCADA');
+            await expect(provenance).toContainText(
+              'Last poll attempt: 20 Oct 2026 11:00:00'
+            );
+            await expect(provenance).toContainText('your clock (Asia/Riyadh');
+          }
+        } else if (screen === 'machines') {
+          const details = page.getByRole('button', {
+            name: 'Location details',
+            exact: true
+          });
+          await details.click();
+          await expect(
+            page.getByText(/Times: your clock|Times: plant clock/)
+          ).toBeVisible();
+          await details.click();
+        } else expect(metadata.clockStatements).toBe(1);
         expect(
           metadata.drawing.tags.filter(
             (tag) => tag.valueOverlapsLabel || tag.labelOutsideTag
@@ -388,11 +414,25 @@ for (const state of states)
           );
         }
         if (state === 'base-schematic') {
-          await expect(
-            page.locator(
-              '[data-unit-schematic] [data-reading] [data-value] [aria-label]'
-            )
-          ).toHaveCount(4);
+          const readings = page.locator('[data-unit-schematic] [data-reading]');
+          await expect(readings.locator('[data-value] button')).toHaveCount(4);
+          for (const reading of await readings.all()) {
+            const label = (
+              await reading.locator('[data-tag-label]').innerText()
+            ).trim();
+            const target = reading.locator('[data-value]').getByRole('button');
+            const value = (await target.innerText()).trim();
+            await expect(target).toHaveAccessibleName(value);
+            await page.keyboard.press('Tab');
+            await target.focus();
+            await expect(target).toBeFocused();
+            const tooltip = page
+              .getByRole('tooltip')
+              .filter({ hasText: `${label}: ${value}` });
+            await expect(tooltip).toBeVisible();
+            await expect(tooltip).toContainText('20 Oct 2026 11:00:00');
+            await expect(tooltip).toContainText('Asia/Riyadh');
+          }
           expect(metadata.drawing.tags).toHaveLength(4);
           expect(metadata.drawing.tagOverlaps).toEqual([]);
           expect(metadata.drawing.markerOverlaps).toEqual([]);
@@ -405,10 +445,39 @@ for (const state of states)
               expect(tag.labelSize).toBeGreaterThanOrEqual(
                 width === 1440 ? 11.95 : 10.95
               );
-          if (width === 1440 || width === 1920)
-            expect(metadata.fold.svg?.bottom).toBeLessThanOrEqual(
-              page.viewportSize()!.height
+          if (width !== 390) {
+            // The owner prioritizes a dominant drawing under the native
+            // chrome; the complete schematic remains available by scrolling.
+            const drawing = page.locator('[data-unit-drawing]');
+            const bounds = (await drawing.boundingBox())!;
+            const content = (await page
+              .locator('[data-unit-schematic]')
+              .boundingBox())!;
+            const painted = await drawing
+              .locator('g > svg')
+              .evaluate((node) => {
+                const svg = node as SVGSVGElement;
+                const box = svg.getBBox();
+                const transform = svg.getScreenCTM();
+                const scale = transform
+                  ? Math.hypot(transform.a, transform.b)
+                  : 0;
+                return { width: box.width * scale, height: box.height * scale };
+              });
+            expect(bounds.width).toBeGreaterThanOrEqual(content.width * 0.5);
+            expect(painted.width).toBeGreaterThanOrEqual(content.width * 0.5);
+            expect(painted.height).toBeGreaterThanOrEqual(
+              page.viewportSize()!.height * 0.6
             );
+            for (const callout of await page
+              .locator('[data-unit-callouts] button[data-part]')
+              .all()) {
+              const box = (await callout.boundingBox())!;
+              expect(box.y).toBeGreaterThanOrEqual(
+                bounds.y + bounds.height - 1
+              );
+            }
+          }
           if (width === 390) {
             const key = (await page
               .getByLabel('Key readings', { exact: true })

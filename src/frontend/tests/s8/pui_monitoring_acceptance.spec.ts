@@ -106,9 +106,13 @@ for (const scheme of ['light', 'dark'] as const) {
     const root = page.getByTestId('pump-health');
     const refresh = root.getByRole('button', { name: 'Refresh', exact: true });
     const x = (await refresh.boundingBox())!.x;
-    const announced = await root.locator('output').textContent();
+    const announced = await root
+      .locator('[role="status"][aria-atomic="true"]')
+      .textContent();
     await refresh.click();
-    await expect(root.locator('output')).toHaveText(announced!);
+    await expect(
+      root.locator('[role="status"][aria-atomic="true"]')
+    ).toHaveText(announced!);
     expect(
       await root
         .getByRole('heading', { name: 'Active anomalies', exact: true })

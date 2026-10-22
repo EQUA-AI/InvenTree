@@ -1,6 +1,5 @@
 import { t } from '@lingui/core/macro';
 import {
-  Box,
   Group,
   Paper,
   Stack,
@@ -10,28 +9,20 @@ import {
   Tooltip,
   UnstyledButton
 } from '@mantine/core';
-import { IconClockExclamation } from '@tabler/icons-react';
+import { IconClockExclamation, IconSearch } from '@tabler/icons-react';
 import { type ReactNode, useRef, useState } from 'react';
 import operations from '../../operations.module.css';
-import {
-  recordedTelemetryAsLive,
-  showRecordedTelemetry
-} from '../../telemetryPresentation';
+import { showRecordedTelemetry } from '../../telemetryPresentation';
 
 import { shiftSpan } from '../../faults/occurrenceLabels';
 import { StatusBadge as Badge } from '../common';
 import { FreshnessLabel } from './FreshnessLabel';
+import { MimicAlarmCoverage, unconfiguredCount } from './MimicAlarmCoverage';
 import type { PartState } from './MimicParts';
 import { type ReadingSection, ReadingSections } from './MimicReadings';
 import { MimicSchematic } from './MimicSchematic';
-import { MissingValue } from './MissingValue';
 import classes from './UnitMimic.module.css';
-import {
-  displayFor,
-  expandPointer,
-  pollErrorLabel,
-  stateLabel
-} from './format';
+import { displayFor, expandPointer, stateLabel } from './format';
 import type { MimicData, MimicPoint } from './types';
 
 export function UnitMimicHeader({
@@ -121,7 +112,8 @@ export function UnitMimicHeader({
 }
 
 /** The panel a drawing sits on: a shade off the page, in either theme. */
-export const PANEL = 'var(--mantine-color-default-hover)';
+export const PANEL =
+  'var(--aimms-panel, light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8)))';
 
 /**
  * One pump: its drawing, and its readings by the part they belong to.
@@ -147,6 +139,11 @@ export function UnitMimic({
   const [open, setOpen] = useState<string[]>([]);
   const list = useRef<HTMLDivElement>(null);
   const display = displayFor(data, unit);
+  const bay = data.bays.find((candidate) => candidate.key === unit);
+  const knownEmptyAlarms =
+    !!bay?.machine &&
+    bay.alarm === null &&
+    !data.alarms.some((alarm) => alarm.machine === bay.machine);
 
   const numbers = new Map(
     (data.layout.parts ?? []).map((part, index) => [part.code, index + 1])
@@ -191,20 +188,29 @@ export function UnitMimic({
       .map((section) => section.key);
     if (!keys.length) return;
     setOpen((current) => [...new Set([...current, ...keys])]);
-    const target = [
-      ...(list.current?.querySelectorAll('[data-section]') ?? [])
-    ].find((node) => node.getAttribute('data-section') === keys[0]);
-    target?.scrollIntoView({
-      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
-        ? 'instant'
-        : 'smooth',
-      block: 'center'
+    requestAnimationFrame(() => {
+      const target = [
+        ...(list.current?.querySelectorAll('[data-section]') ?? [])
+      ].find((node) => node.getAttribute('data-section') === keys[0]);
+      target?.querySelector('button')?.focus({ preventScroll: true });
+      target?.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+          ? 'instant'
+          : 'smooth',
+        block: 'center'
+      });
     });
   };
 
   return (
     <Stack gap='md'>
       {header && <UnitMimicHeader data={data} unit={unit} actions={actions} />}
+      {header && (
+        <MimicAlarmCoverage
+          count={unconfiguredCount(Object.values(data.points))}
+          knownEmpty={knownEmptyAlarms}
+        />
+      )}
       <Paper withBorder p='md' className={operations.mimicPanel}>
         <MimicSchematic
           data={data}
@@ -216,6 +222,7 @@ export function UnitMimic({
           className={classes.legend}
           aria-label={t`Schematic state legend`}
         >
+          <legend>{t`Pump`}</legend>
           {['running', 'idle', 'fault', 'stale', 'unknown'].map((state) => (
             <span key={state} className={classes.legendItem}>
               <span
@@ -227,47 +234,36 @@ export function UnitMimic({
             </span>
           ))}
         </fieldset>
+        <fieldset
+          className={classes.legend}
+          aria-label={t`Reading condition legend`}
+        >
+          <legend>{t`Readings`}</legend>
+          {[
+            ['critical', t`Critical`],
+            ['warning', t`Warning`],
+            ['normal', t`Normal`],
+            ['unconfigured', t`No limits`],
+            ['unknown', t`Unknown`],
+            ['unavailable', t`No readings`]
+          ].map(([verdict, label]) => (
+            <span className={classes.legendItem} key={verdict}>
+              <span
+                className={classes.readingLegendMark}
+                data-verdict={verdict}
+                aria-hidden='true'
+              />
+              {label}
+            </span>
+          ))}
+        </fieldset>
       </Paper>
-      <Box
-        component='dl'
-        aria-label={t`Process data`}
-        className={classes.process}
-      >
-        <Box>
-          <Text component='dt'>{t`Flow direction`}</Text>
-          <Text component='dd'>
-            <MissingValue
-              label={t`Flow direction`}
-              reason={t`Not reported by the plant`}
-            />
-          </Text>
-        </Box>
-        <Box>
-          <Text component='dt'>{t`Communication status`}</Text>
-          <Text component='dd'>
-            <MissingValue
-              label={t`Communication status`}
-              reason={t`Not reported by the plant`}
-            />
-          </Text>
-        </Box>
-        <Box>
-          <Text component='dt'>{t`Polling`}</Text>
-          <Text component='dd'>
-            {!(recordedTelemetryAsLive(data)
-              ? (data.polling_enabled ?? data.enabled)
-              : data.enabled)
-              ? t`Disabled`
-              : data.last_error_code
-                ? t`Reported error (${pollErrorLabel(data.last_error_code)})`
-                : t`Enabled`}
-          </Text>
-        </Box>
-      </Box>
-
       <TextInput
         classNames={{ input: `${operations.input} ${classes.filterInput}` }}
-        label={t`Filter unit readings`}
+        aria-label={t`Filter unit readings`}
+        placeholder={t`Filter readings`}
+        leftSection={<IconSearch size={16} />}
+        maw={360}
         value={search}
         onChange={(event) => setSearch(event.currentTarget.value)}
       />

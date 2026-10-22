@@ -26,6 +26,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState
 } from 'react';
 import {
@@ -385,6 +386,30 @@ function BasePanelGroup({
     }
   }, [activePanels, panel]);
 
+  const tabListRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!compact) return;
+    const frame = requestAnimationFrame(() => {
+      const list = tabListRef.current;
+      const active = list?.querySelector<HTMLElement>(
+        '[role="tab"][data-active]'
+      );
+      if (!list || !active) return;
+      // Scroll only the strip; opening a panel must not move the page itself.
+      const listBounds = list.getBoundingClientRect();
+      const tabBounds = active.getBoundingClientRect();
+      list.scrollTo({
+        left:
+          list.scrollLeft +
+          tabBounds.left -
+          listBounds.left -
+          (list.clientWidth - tabBounds.width) / 2,
+        behavior: 'instant'
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [compact, currentPanel, activePanels.length]);
+
   // hotkeys
   const hotkeys = useMemo(() => {
     const keys: InvenTreeHotkeyItem[] = [];
@@ -413,6 +438,8 @@ function BasePanelGroup({
           style={{ minWidth: 0, width: '100%' }}
         >
           <Tabs.List
+            ref={tabListRef}
+            className={compact ? classes.horizontalPanelList : undefined}
             justify='left'
             aria-label={`panel-tabs-${pageKey}`}
             style={
@@ -489,14 +516,14 @@ function BasePanelGroup({
                   aria-label={`nav-panel-${identifierString(
                     `${pageKey}-${panel.name}`
                   )}`}
-                  p='sm'
+                  p={compact ? 0 : 'sm'}
                   style={{
                     overflowX: 'auto',
                     width: '100%',
                     minWidth: 0
                   }}
                 >
-                  <Stack gap='md'>
+                  <Stack gap={compact ? 'xs' : 'md'}>
                     {panel.showHeadline !== false && (
                       <>
                         <Group justify='space-between'>

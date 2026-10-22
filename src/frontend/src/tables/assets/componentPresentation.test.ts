@@ -6,7 +6,8 @@ describe('component provenance presentation', () => {
     expect(
       componentSource({ provenance: 'Workbook population f9006a91f8a9' })
     ).toEqual({
-      label: 'Equipment register import',
+      kind: 'register',
+      label: '',
       importedAt: null,
       raw: 'Workbook population f9006a91f8a9'
     });
@@ -34,10 +35,16 @@ describe('component provenance presentation', () => {
           'Inferred from source tags; physical assignment is unverified.',
         provenance_imported_at: '2026-10-10T09:00:00Z'
       })
-    ).toMatchObject({ label: 'SCADA tag mapping', importedAt: null });
+    ).toMatchObject({ kind: 'scada', importedAt: null });
     expect(
       componentSource({ provenance: 'Operator register review' }).label
     ).toBe('Operator register review');
-    expect(componentSource({ provenance: '' }).label).toBe('');
+    expect(componentSource({ provenance: '' }).kind).toBe('missing');
+    expect(
+      componentSource({ provenance: 'Operator register review' }).kind
+    ).toBe('manual');
+    expect(
+      componentSource({ provenance: 'Site-specific source note' })
+    ).toMatchObject({ kind: 'other', label: 'Site-specific source note' });
   });
 });

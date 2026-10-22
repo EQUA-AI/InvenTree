@@ -1,3 +1,11 @@
+.band, .mimicPanel, .machineShell {
+  --aimms-critical: light-dark(var(--mantine-color-red-9), var(--mantine-color-red-5));
+  --aimms-warning: light-dark(var(--mantine-color-orange-9), var(--mantine-color-orange-5));
+  --aimms-normal: light-dark(var(--mantine-color-green-9), var(--mantine-color-green-5));
+  --aimms-focus: light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3));
+  --aimms-panel: light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8));
+  --mantine-color-dimmed: light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-1));
+}
 /* Native Mantine tokens keep operational surfaces aligned in both schemes. */
 .band {
   border: 1px solid var(--mantine-color-default-border);
@@ -31,9 +39,10 @@
 .link { color: var(--mantine-primary-color-7); }
 :global([data-mantine-color-scheme='dark']) .link { color: var(--mantine-primary-color-4); }
 .input { border-color: var(--mantine-color-gray-6); }
+.input::placeholder { color: light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-1)); opacity: 1; }
 :global([data-mantine-color-scheme='dark']) .input { border-color: var(--mantine-color-dark-2); }
-.mimicPanel { background: var(--mantine-color-gray-0); --mimic-stale-line: var(--mantine-color-gray-7); --mimic-hatch-line: var(--mantine-color-gray-6); }
-:global([data-mantine-color-scheme='dark']) .mimicPanel { background: var(--mantine-color-dark-8); --mimic-stale-line: var(--mantine-color-dark-1); --mimic-hatch-line: var(--mantine-color-dark-2); }
+.mimicPanel { background: var(--aimms-panel); --mimic-stale-line: var(--mantine-color-gray-7); --mimic-hatch-line: var(--mantine-color-gray-6); }
+:global([data-mantine-color-scheme='dark']) .mimicPanel { background: var(--aimms-panel); --mimic-stale-line: var(--mantine-color-dark-1); --mimic-hatch-line: var(--mantine-color-dark-2); }
 
 .inline { display: contents; }
 .cell { vertical-align: top; overflow-wrap: anywhere; }
@@ -58,6 +67,11 @@
 /* Phone targets keep their desktop sizes outside the narrow viewport. */
 .mimicFocusRing { visibility: hidden; pointer-events: none; }
 .mimicPart:focus-visible > .mimicFocusRing { visibility: visible; }
+.phoneTarget:focus-visible { outline: 2px solid var(--aimms-focus, light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3))); outline-offset: 2px; border-radius: var(--mantine-radius-xs); }
+.machineShell { min-width: 0; }
+@media (max-width: 48em) {
+  .machineShell { gap: 6px; }
+}
 .alarmTable { min-width: 720px; }
 .alarmActions { white-space: nowrap; }
 @media (max-width: 48em) {
@@ -83,7 +97,7 @@
   .pumpActions { gap: 4px 8px; }
   .pumpAlarmSummary { display: grid; grid-template-columns: minmax(0, 1fr) max-content; gap: 4px 8px; width: 100%; }
   .pumpAlarmSummary .pumpAlarmCounts { height: auto; min-height: 44px; font-size: var(--mantine-font-size-xs); }
-  .pumpAlarmCounts :global(.mantine-Badge-label) { white-space: normal; line-height: 1.2; }
+  .pumpAlarmLabel { white-space: normal; line-height: 1.2; }
   .pumpAlarmSummary > p { grid-column: 1 / -1; }
   .pumpAlarmSummary .phoneAlarmLink { grid-column: 2; grid-row: 1; }
   .phoneAlarmLink { min-height: 44px; display: inline-flex; align-items: center; }

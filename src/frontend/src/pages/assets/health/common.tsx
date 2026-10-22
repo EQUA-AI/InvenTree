@@ -4,9 +4,7 @@ import {
   type AlertProps,
   Anchor,
   type AnchorProps,
-  Badge,
   type BadgeProps,
-  Group,
   Text,
   type TextProps,
   createPolymorphicComponent
@@ -35,16 +33,20 @@ import type {
   SignalQuality
 } from '@lib/types/MachineHealth';
 
-import { displayInstant } from '../displayClock';
 import monitoring from '../monitoring.module.css';
-import operations from '../operations.module.css';
 import { unitLabel } from '../performance/format';
 import { useNow } from '../useNow';
 import {
   StatusBadge as MonitoringStatusBadge,
   statusTone
 } from './StatusBadge';
-import { displayClock, formatInstant } from './mimic/observedTime';
+import { Timestamp } from './Timestamp';
+import {
+  type DisplayClock,
+  displayClock,
+  formatInstant,
+  useDisplayClock
+} from './mimic/observedTime';
 
 dayjs.extend(relativeTime);
 
@@ -132,29 +134,25 @@ export function severityVisual(
 /** Shared badge contrast and vocabulary; palette remains native Mantine. */
 export function StatusBadge({
   children,
-  variant = 'light',
+  variant = 'outline',
   leftSection,
   color = 'gray',
-  maw = 'none',
-  miw = 'max-content',
+  maw = '100%',
+  miw = 0,
   ...props
 }: BadgeProps & { children: ReactNode; 'data-alarm-status'?: string }) {
   return (
-    <Badge
+    <MonitoringStatusBadge
+      tone='neutral'
       {...props}
       variant={variant}
-      color={
-        variant === 'filled' && !color.includes('.') ? `${color}.9` : color
-      }
-      autoContrast={variant === 'filled'}
-      c={variant === 'filled' ? undefined : 'var(--mantine-color-text)'}
-      tt='none'
+      color={color}
       maw={maw}
       miw={miw}
-      leftSection={leftSection ?? <IconInfoCircle size={14} />}
+      leftSection={leftSection}
     >
       {children}
-    </Badge>
+    </MonitoringStatusBadge>
   );
 }
 export function alarmStateVisual(
@@ -228,24 +226,42 @@ export function HealthStateBadge({
   state,
   size = 'md',
   neutralNormal = false,
+  partial = false,
+  coverageUnknown = false,
+  coverage,
   describedBy
 }: Readonly<{
   state: HealthState;
   size?: string;
   neutralNormal?: boolean;
+  partial?: boolean;
+  coverageUnknown?: boolean;
+  coverage?: { evaluated: number; mapped: number } | null;
   describedBy?: string;
 }>) {
   const visual = healthStateVisual(state);
+  const limited =
+    state === 'normal' &&
+    (coverageUnknown ||
+      partial ||
+      neutralNormal ||
+      (!!coverage && coverage.evaluated < coverage.mapped));
+  const label = limited
+    ? coverageUnknown
+      ? t`Normal · coverage unknown`
+      : coverage
+        ? t`Normal · ${coverage.evaluated}/${coverage.mapped}`
+        : t`Normal · partial`
+    : visual.label;
   return (
     <MonitoringStatusBadge
-      tone={state === 'normal' && neutralNormal ? 'neutral' : statusTone(state)}
+      tone={limited ? 'partial' : statusTone(state)}
       aria-describedby={describedBy}
-      style={{ flexShrink: 0, maxWidth: 'none' }}
-      flex='0 0 auto'
-      maw='none'
-      miw='max-content'
+      style={{ flexShrink: 0 }}
+      maw='100%'
+      miw={0}
       color={
-        state === 'normal' && neutralNormal
+        limited
           ? 'gray'
           : state === 'critical'
             ? 'red.9'
@@ -259,7 +275,7 @@ export function HealthStateBadge({
       size={size}
       leftSection={state === 'offline' ? visual.icon : undefined}
     >
-      {visual.label}
+      {label}
     </MonitoringStatusBadge>
   );
 }
@@ -376,9 +392,13 @@ export function freshnessFacts(
   observedAt: string | number | null,
   stale: boolean,
   thresholdSeconds: number | null | undefined,
-  now: number
+  now: number,
+  clock: DisplayClock = displayClock()
 ) {
-  const time = displayInstant(observedAt);
+  const time =
+    typeof observedAt === 'number' && observedAt <= 0
+      ? null
+      : formatInstant(observedAt, clock);
   if (!time) return null;
   const ms =
     typeof observedAt === 'number' ? observedAt : Date.parse(observedAt!);
@@ -404,45 +424,53 @@ export function FreshnessText({
   stale,
   thresholdSeconds,
   now: suppliedNow,
-  preferJustNow = false
+  preferJustNow = false,
+  compactOnPhone = false,
+  label = t`Observed`,
+  focusable = true
 }: Readonly<{
   observedAt: string | number | null;
   stale: boolean;
   thresholdSeconds?: number | null;
   now?: number;
   preferJustNow?: boolean;
+  compactOnPhone?: boolean;
+  label?: string;
+  focusable?: boolean;
 }>) {
   const pageNow = useNow(1000, suppliedNow == null);
+  const clock = useDisplayClock();
   const fact = freshnessFacts(
     observedAt,
     stale,
     thresholdSeconds,
-    suppliedNow ?? pageNow
+    suppliedNow ?? pageNow,
+    clock
   );
-  if (!fact) return <MetaText>{t`Observation time unavailable`}</MetaText>;
+  const age = fact
+    ? fact.future
+      ? t`${fact.age} ahead of your clock`
+      : !stale && preferJustNow && fact.seconds < 60
+        ? t`just now`
+        : t`${fact.age} old`
+    : undefined;
+  const relative =
+    fact && stale
+      ? `${fact.serverFlag ? t`Stale (server flag)` : t`Stale`} · ${age} · ${fact.budget}`
+      : age;
   return (
-    <Group gap={4} style={{ fontVariantNumeric: 'tabular-nums' }}>
-      {stale ? (
-        <MonitoringStatusBadge tone='stale' color='gray'>
-          {fact.serverFlag ? t`Stale (server flag)` : t`Stale`} ·{' '}
-          {fact.future
-            ? t`${fact.age} ahead of your clock`
-            : t`${fact.age} old`}{' '}
-          · {fact.budget}
-        </MonitoringStatusBadge>
-      ) : (
-        <MetaText>
-          {fact.time} ·{' '}
-          {fact.future
-            ? t`${fact.age} ahead of your clock`
-            : preferJustNow && fact.seconds < 60
-              ? t`just now`
-              : t`${fact.age} old`}
-        </MetaText>
-      )}
-    </Group>
+    <Timestamp
+      value={observedAt}
+      clock={clock}
+      relative={relative}
+      stale={stale && !!fact}
+      compactOnPhone={compactOnPhone}
+      label={label}
+      focusable={focusable}
+    />
   );
 }
+
 /**
  * Render an observation time with how long ago it was.
  *
@@ -450,32 +478,27 @@ export function FreshnessText({
  * timestamp, so nobody reads an hours-old number as the machine's current state.
  */
 export function ObservedAt(props: Parameters<typeof FreshnessText>[0]) {
+  const clock = useDisplayClock();
   // Budget-aware callers retain the full server-flag and age explanation.
   if ('thresholdSeconds' in props || 'now' in props) {
     return <FreshnessText {...props} />;
   }
   const { observedAt, stale } = props;
-  if (!observedAt) {
-    return (
-      <Text size='sm' className={operations.meta}>
-        {t`No reading`}
-      </Text>
-    );
-  }
-
   return (
-    <Group
-      gap={6}
-      wrap='wrap'
-      title={formatInstant(observedAt, displayClock()) ?? t`Time unavailable`}
-    >
-      <Text size='sm'>
-        {formatInstant(observedAt, displayClock()) ?? t`Time unavailable`}
-      </Text>
-      <Text size='xs' className={operations.meta}>
-        {stale ? t`Stale` : dayjs(observedAt).fromNow()}
-      </Text>
-    </Group>
+    <Timestamp
+      value={observedAt}
+      clock={clock}
+      relative={
+        observedAt
+          ? stale
+            ? t`Stale`
+            : dayjs(observedAt).fromNow()
+          : undefined
+      }
+      stale={stale}
+      label={props.label}
+      focusable={props.focusable}
+    />
   );
 }
 

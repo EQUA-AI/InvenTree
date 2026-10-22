@@ -199,6 +199,10 @@ export type RowViewProps = RowAction & RowModelProps & RowViewBehaviorProps;
  */
 export type InvenTreeTableProps<T = any> = {
   scrollAreaProps?: DataTableProps<T>['scrollAreaProps'];
+  /** Preserve native column borders unless a table chooses a simpler row grid. */
+  withColumnBorders?: boolean;
+  /** Optional native toolbar target size; existing tables retain their default. */
+  controlSize?: number;
   params?: any;
   defaultSortColumn?: string;
   noRecordsText?: string;

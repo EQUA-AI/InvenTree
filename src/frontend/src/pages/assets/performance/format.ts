@@ -13,7 +13,8 @@ export function unitLabel(code: string | null | undefined): string {
         'm3/h': 'm³/h',
         mH2O: 'mH₂O',
         percent: '%',
-        'm3/s': 'm³/s'
+        'm3/s': 'm³/s',
+        'm^3/s': 'm³/s'
       } as Record<string, string>
     )[code] ?? code
   );

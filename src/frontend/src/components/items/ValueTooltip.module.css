@@ -1,0 +1,23 @@
+.target {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  text-align: inherit;
+  cursor: help;
+  border-radius: var(--mantine-radius-xs);
+}
+
+.target:focus-visible {
+  outline: 2px solid var(--aimms-focus, light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3)));
+  outline-offset: 3px;
+}
+
+@media (max-width: 48em) {
+  .target {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

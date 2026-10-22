@@ -25,6 +25,7 @@ async function keyboardFocus(page: Page, target: Locator) {
 
 nativeBaseline();
 nativeThemeFixtures();
+test.use({ timezoneId: 'Asia/Riyadh' });
 
 test('Machines separates loaded-page counts, stale signals and unavailable operating facts', async ({
   page
@@ -48,13 +49,23 @@ test('Machines separates loaded-page counts, stale signals and unavailable opera
   await page
     .getByRole('button', { name: 'Location details', exact: true })
     .click();
-  await expect(page.getByText(/Times: your clock/)).toBeVisible();
+  const readTime = page.locator('time[datetime]').filter({ visible: true });
+  await expect(readTime).toHaveCount(1);
+  await expect(readTime).toHaveText(
+    /^\d{1,2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2}$/
+  );
+  await keyboardFocus(page, readTime.locator('..'));
+  const clockDetail = page
+    .getByRole('tooltip')
+    .filter({ hasText: 'your clock (Asia/Riyadh' });
+  await expect(clockDetail).toContainText(await readTime.innerText());
+  await expect(clockDetail).toContainText('UTC+03:00');
   await expect(page.getByTestId('machine-count-view')).toHaveText('80');
   await expect(
     page.locator('td[data-condition="offline"]').first()
   ).toContainText('No current data');
   await expect(page.locator('td[data-condition="unavailable"]')).toHaveText(
-    'Condition unavailable · could not be checked'
+    'Read failed'
   );
   await expect(summary).not.toContainText('Running');
 });
@@ -132,16 +143,7 @@ for (const state of ['running', 'stale', 'unknown']) {
     await expect(
       page.getByRole('img', { name: 'Pump unit schematic' })
     ).toBeVisible();
-    await expect(
-      page
-        .getByLabel('Process data')
-        .getByText('Flow direction', { exact: true })
-    ).toBeVisible();
-    await expect(
-      page
-        .getByLabel('Process data')
-        .getByText('Communication status', { exact: true })
-    ).toBeVisible();
+    await expect(page.getByLabel('Process data')).toHaveCount(0);
     await keyboardFocus(
       page,
       page.getByRole('button', { name: 'Schematic information', exact: true })
@@ -151,18 +153,21 @@ for (const state of ['running', 'stale', 'unknown']) {
         hasText: 'Reference schematic · physical arrangement unverified'
       })
     ).toContainText('Reference schematic · physical arrangement unverified');
-    for (const label of ['Flow direction', 'Communication status']) {
-      const missing = page.getByRole('button', {
-        name: `${label}: Not reported by the plant`,
-        exact: true
-      });
-      await expect(missing).toHaveText('—');
-      await keyboardFocus(page, missing);
-      const reason = `${label}: Not reported by the plant`;
-      await expect(
-        page.getByRole('tooltip').filter({ hasText: reason })
-      ).toHaveText(reason);
-    }
+    await expect(page.getByRole('tooltip')).toContainText(
+      'Source: Synthetic SCADA'
+    );
+    await expect(page.getByRole('tooltip')).toContainText(
+      'Last poll attempt: 20 Oct 2026 11:00:00'
+    );
+    await expect(page.getByRole('tooltip')).toContainText(
+      'your clock (Asia/Riyadh'
+    );
+    // Static piping carries no invented flow-direction or communication readout.
+    await expect(
+      page.locator(
+        '[data-unit-drawing] animate, [data-unit-drawing] animateMotion'
+      )
+    ).toHaveCount(0);
     if (state === 'stale')
       await expect(page.getByText('7.5 MW', { exact: true })).toHaveCount(0);
     await expect(
@@ -360,6 +365,8 @@ test('a mapped numeric zero discharge flow is shown with its source unit without
   page
 }) => {
   const data = await mockEquipment(page, 'unknown');
+  data.alarms = [];
+  data.bays.find((bay) => bay.key === 'P1')!.alarm = null;
   data.points['/pd/P1/dv'] = {
     ...data.points['/pd/P1/dv'],
     pointer: '/pd/P1/dv',
@@ -371,11 +378,50 @@ test('a mapped numeric zero discharge flow is shown with its source unit without
   };
   await openEquipment(page, true);
   await expect(
-    page.getByLabel('Process data').getByText('0 m^3/s', { exact: true })
+    page
+      .locator('[data-reading]')
+      .filter({ hasText: 'Discharge flow' })
+      .getByRole('button', { name: '0 m³/s', exact: true })
   ).toBeVisible();
+  const zeroFlow = page
+    .locator('[data-reading][data-point="/pd/P1/dv"]')
+    .getByRole('button', { name: '0 m³/s', exact: true });
+  await keyboardFocus(page, zeroFlow);
   await expect(
-    page.getByLabel('Process data').getByText('Flow direction', { exact: true })
-  ).toBeVisible();
+    page.getByRole('tooltip', { name: 'Discharge flow: 0 m³/s', exact: true })
+  ).toHaveText('Discharge flow: 0 m³/s');
+  await keyboardFocus(
+    page,
+    page.getByRole('button', { name: 'Schematic information', exact: true })
+  );
+  const sourceInfo = page
+    .getByRole('tooltip')
+    .filter({ hasText: 'Source: Synthetic SCADA' });
+  await expect(sourceInfo).toContainText('Source: Synthetic SCADA');
+  await expect(sourceInfo).toContainText(
+    'Last poll attempt: 20 Oct 2026 11:00:00'
+  );
+  await expect(sourceInfo).toContainText('your clock (Asia/Riyadh');
+  await expect(page.getByLabel('Process data')).toHaveCount(0);
+  await expect(page.locator('[data-limit-coverage]')).toContainText(
+    'No active alarms'
+  );
+  await expect(page.locator('[data-limit-coverage]')).toContainText(
+    `${Object.values(data.points).filter((point) => !point.thresholds_configured).length} without limits`
+  );
+  await expect(
+    page.getByRole('heading', { name: 'Threshold alarms', exact: true })
+  ).toHaveCount(0);
+  await expect(
+    page.getByText('No active alarms from configured thresholds.', {
+      exact: true
+    })
+  ).toHaveCount(0);
+  for (const label of ['Flow direction', 'Communication status', 'Polling'])
+    await expect(page.getByText(label, { exact: true })).toHaveCount(0);
+  await expect(page.locator('[data-unit-drawing] animateMotion')).toHaveCount(
+    0
+  );
 });
 
 // Exercise wider glyphs and taller default text lines without reducing any

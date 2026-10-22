@@ -1,7 +1,12 @@
 import { expect, it, vi } from 'vitest';
 
-import { dischargeFlowReading } from './format';
-import type { MimicData } from './types';
+import {
+  dischargeFlowReading,
+  numberText,
+  readingLabel,
+  valueText
+} from './format';
+import type { MimicData, MimicPoint } from './types';
 vi.mock('@lingui/core/macro', () => ({
   t: (parts: TemplateStringsArray, ...values: unknown[]) =>
     parts.reduce((text, part, index) => text + part + (values[index] ?? ''), '')
@@ -31,3 +36,33 @@ it('does not invent an absent discharge mapping', () =>
       'P1'
     )
   ).toBeNull());
+
+it.each([
+  ['degC', '39.3 °C'],
+  ['degF', '39.3 °F'],
+  ['percent', '39.3 %'],
+  ['cusec', '39.3 cusec'],
+  ['m3/s', '39.3 m³/s'],
+  ['m^3/s', '39.3 m³/s']
+])('formats %s without changing its source magnitude', (unit, expected) => {
+  expect(valueText({ value: 39.3, reason: null, unit } as MimicPoint)).toBe(
+    expected
+  );
+});
+
+it.each([-0, -0.00001, -0.0001])(
+  'does not display rounded negative zero for %s',
+  (value) => {
+    expect(numberText(value)).toBe('0');
+  }
+);
+
+it('preserves a genuine negative pressure and names only the reviewed discharge key', () => {
+  expect(
+    valueText({ value: -0.003, reason: null, unit: 'mH2O' } as MimicPoint)
+  ).toBe('-0.003 mH₂O');
+  expect(readingLabel({ label: 'dv', pointer: '/pd/P7/dv' })).toBe(
+    'Discharge flow'
+  );
+  expect(readingLabel({ label: 'dv', pointer: '/unmapped/dv' })).toBe('dv');
+});

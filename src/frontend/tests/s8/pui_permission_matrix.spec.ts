@@ -881,7 +881,7 @@ for (const status of [403, 404]) {
       page.getByRole('table', { name: 'Mapped signal readings' })
     ).toHaveCount(0);
     await expect(
-      page.getByText('No active anomalies.', { exact: true })
+      page.getByText('0 active anomalies', { exact: true })
     ).toHaveCount(0);
     await expect(
       page.getByRole('button', {
@@ -912,7 +912,7 @@ for (const status of [403, 404]) {
     await expect(page.getByText('Normal', { exact: true })).toHaveCount(0);
     await expect(page.getByText(/^(Critical|Warning|Info): 0$/)).toHaveCount(0);
     await expect(
-      page.getByText('No active anomalies.', { exact: true })
+      page.getByText('0 active anomalies', { exact: true })
     ).toHaveCount(0);
     await expect(
       page.getByRole('button', {

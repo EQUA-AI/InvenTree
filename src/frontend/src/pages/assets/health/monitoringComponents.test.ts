@@ -1,5 +1,10 @@
 import type { SeriesResponse } from '@lib/types/MachineHealth';
-import { MantineProvider } from '@mantine/core';
+import {
+  DEFAULT_THEME,
+  MantineProvider,
+  getContrastColor,
+  parseThemeColor
+} from '@mantine/core';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
@@ -13,6 +18,7 @@ import { HistoryProvenance } from '../investigation/HistoryProvenance';
 import { ThresholdKey } from '../performance/ThresholdKey';
 import { LiveIndicator } from '../performance/TimeRangeControl';
 import { WindowStatus } from '../performance/WindowStatus';
+import { HealthSummaryPanel } from './HealthSummary';
 import { SourcePollStatus } from './SourcePollStatus';
 import { SourcePollingBadge } from './SourcePollingBadge';
 import { StatusBadge, type StatusTone } from './StatusBadge';
@@ -67,6 +73,55 @@ it('passes shade and CSS colours unchanged and lets callers set dimensions', () 
     expect(badge.props.autoContrast).toBe(true);
   }
 });
+it('keeps filled status text readable in both native colour schemes', () => {
+  for (const color of ['red', 'yellow', 'gray', 'green', 'blue']) {
+    const badge = StatusBadge({
+      tone: 'info',
+      variant: 'filled',
+      color,
+      children: 'Status'
+    });
+    for (const colorScheme of ['light', 'dark'] as const) {
+      const background = parseThemeColor({
+        color: badge.props.color,
+        theme: DEFAULT_THEME,
+        colorScheme
+      }).value;
+      const channels = background
+        .slice(1)
+        .match(/../g)!
+        .map((channel) => Number.parseInt(channel, 16) / 255)
+        .map((channel) =>
+          channel <= 0.04045
+            ? channel / 12.92
+            : ((channel + 0.055) / 1.055) ** 2.4
+        );
+      const luminance =
+        channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+      const foreground = getContrastColor({
+        color: badge.props.color,
+        theme: DEFAULT_THEME,
+        colorScheme,
+        autoContrast: true
+      });
+      const contrast = foreground.includes('white')
+        ? 1.05 / (luminance + 0.05)
+        : (luminance + 0.05) / 0.05;
+      expect(contrast, `${color} ${colorScheme}`).toBeGreaterThanOrEqual(4.5);
+    }
+  }
+});
+it('uses native body text for light and outline status variants', () => {
+  for (const variant of ['light', 'outline']) {
+    const badge = StatusBadge({
+      tone: 'normal',
+      variant,
+      color: 'green',
+      children: 'Running'
+    });
+    expect(badge.props.c).toBe('var(--mantine-color-text)');
+  }
+});
 describe('FreshnessText uses the observation and server budget', () => {
   const now = Date.parse('2026-10-18T09:00:00Z');
   const show = (
@@ -104,11 +159,107 @@ describe('FreshnessText uses the observation and server budget', () => {
     expect(show('2026-10-18T08:59:40Z', true, 300)).toContain(
       'Stale (server flag) · 20 s old'
     ));
+  it('never labels an expired last-known observation just now under O27', () => {
+    const output = text(
+      render(
+        createElement(FreshnessText, {
+          observedAt: '2026-10-18T08:59:40Z',
+          stale: true,
+          thresholdSeconds: 10,
+          now,
+          preferJustNow: true
+        })
+      )
+    );
+    expect(output).toContain('Stale · 20 s old · freshness budget 10 s');
+    expect(output).not.toContain('just now');
+  });
   it('keeps absent and invalid observation times unavailable', () => {
-    for (const value of [null, 0, 'bad timestamp'])
-      expect(show(value)).toBe('Observation time unavailable');
+    expect(show(null)).toBe('—');
+    for (const value of [0, 'bad timestamp'])
+      expect(show(value)).toBe('Read failed');
+    const html = render(
+      createElement(FreshnessText, { observedAt: null, stale: false, now })
+    );
+    expect(html).toContain(
+      'aria-label="Observed: Observation time unavailable"'
+    );
     expect(freshnessFacts(null, false, 300, now)).toBeNull();
   });
+});
+
+it('uses the inherited plant clock for health observations even when the browser is elsewhere', () => {
+  const output = text(
+    render(
+      createElement(
+        DisplayClockContext.Provider,
+        { value: displayClock('Asia/Riyadh') },
+        createElement(FreshnessText, {
+          observedAt: '2026-10-18T08:59:40Z',
+          stale: false,
+          now: Date.parse('2026-10-18T09:00:00Z')
+        })
+      )
+    )
+  );
+  expect(output).toContain('18 Oct 2026 11:59:40 · 20 s old');
+});
+
+it('keeps critical coverage inspectable without a duplicate prose alert or an empty count group', () => {
+  const html = render(
+    createElement(HealthSummaryPanel, {
+      summary: {
+        state: 'normal',
+        last_observed_at: null,
+        active_anomaly_count: 0,
+        anomaly_counts: { critical: 0, warning: 0, info: 0 }
+      } as any,
+      signals: [],
+      anomalies: []
+    })
+  );
+  expect(text(html)).toContain('0 active anomalies');
+  expect(html).toMatch(
+    /<button[^>]*>[^<]*critical coverage unavailable<\/button>/
+  );
+  expect(html).not.toContain('role="alert"');
+  expect(html).not.toContain('No active anomalies.');
+});
+
+it('labels unavailable anomaly counts and never replaces them with zero', () => {
+  const output = text(
+    render(
+      createElement(HealthSummaryPanel, {
+        summary: {
+          state: 'unknown',
+          last_observed_at: null,
+          anomaly_counts: null
+        } as any,
+        signals: null,
+        anomalies: null
+      })
+    )
+  );
+  expect(output).toContain('Active anomalies:—');
+  expect(output).not.toContain('0 active anomalies');
+});
+
+it('labels an invalid summary time as a failed read without nesting tooltip buttons', () => {
+  const html = render(
+    createElement(HealthSummaryPanel, {
+      summary: {
+        state: 'normal',
+        last_observed_at: 'invalid',
+        active_anomaly_count: 0,
+        anomaly_counts: { critical: 0, warning: 0, info: 0 }
+      } as any,
+      signals: [],
+      anomalies: []
+    })
+  );
+  expect(html).toContain('aria-label="Last observation: Read failed"');
+  expect(html).not.toMatch(/<button\b[^>]*>(?:(?!<\/button>)[\s\S])*<button\b/);
+  expect(text(html)).not.toContain('invalid');
 });
 
 it('keeps unknown poll results distinct from failed attempts and disabled sources', () => {
@@ -158,15 +309,33 @@ it('keeps unknown poll results distinct from failed attempts and disabled source
     )
   ).toContain('Succeeded 18 Oct 2026 08:00:00');
 });
-it('a partial Normal headline is neutral while server breaches remain filled', () => {
+it('a partial Normal headline has its own tone while server breaches remain filled', () => {
   const partial = HealthStateBadge({ state: 'normal', neutralNormal: true });
-  expect(partial.props.tone).toBe('neutral');
+  expect(partial.props.tone).toBe('partial');
   expect(partial.props.color).toBe('gray');
   for (const state of ['critical', 'warning'] as const) {
     const badge = HealthStateBadge({ state });
     expect(badge.props.variant).toBe('filled');
     expect(badge.props.tone).toBe(state);
   }
+});
+
+it('distinguishes exact partial, full and unknown assessment coverage without deriving counts from freshness', () => {
+  const partial = HealthStateBadge({
+    state: 'normal',
+    coverage: { evaluated: 2, mapped: 6 }
+  });
+  expect(partial.props.tone).toBe('partial');
+  expect(partial.props.children).toBe('Normal · 2/6');
+  const full = HealthStateBadge({
+    state: 'normal',
+    coverage: { evaluated: 6, mapped: 6 }
+  });
+  expect(full.props.tone).toBe('normal');
+  expect(full.props.children).toBe('Normal');
+  const unknown = HealthStateBadge({ state: 'normal', coverageUnknown: true });
+  expect(unknown.props.tone).toBe('partial');
+  expect(unknown.props.children).toBe('Normal · coverage unknown');
 });
 
 it('does not turn an absent history cadence into zero seconds', () => {

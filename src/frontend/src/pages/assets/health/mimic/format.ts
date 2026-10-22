@@ -1,4 +1,5 @@
 import { t } from '@lingui/core/macro';
+import { unitLabel } from '../../performance/format';
 
 import type {
   Bay,
@@ -66,9 +67,22 @@ export function usable(point?: MimicPoint): point is MimicPoint {
 }
 
 export function numberText(value: number, digits = 3) {
-  return new Intl.NumberFormat(undefined, {
+  const formatter = new Intl.NumberFormat(undefined, {
     maximumFractionDigits: digits
-  }).format(value);
+  });
+  // Preserve genuine negative readings; a sign on a rounded zero carries no
+  // measured magnitude and should not be presented as a negative value.
+  return value <= 0 && formatter.format(Math.abs(value)) === formatter.format(0)
+    ? formatter.format(0)
+    : formatter.format(value);
+}
+
+/** The reviewed layout maps this source key to discharge flow. */
+export function readingLabel(point: Pick<MimicPoint, 'label' | 'pointer'>) {
+  return /^dv:?$/i.test(point.label.trim()) &&
+    /^\/pd\/[^/]+\/dv$/.test(point.pointer)
+    ? t`Discharge flow`
+    : point.label;
 }
 
 export function valueText(point?: MimicPoint) {
@@ -76,7 +90,7 @@ export function valueText(point?: MimicPoint) {
   if (typeof point.value === 'boolean') return point.value ? t`Yes` : t`No`;
   const value =
     typeof point.value === 'number' ? numberText(point.value) : point.value;
-  return `${value}${point.unit ? ` ${point.unit}` : ''}`;
+  return `${value}${point.unit ? ` ${unitLabel(point.unit)}` : ''}`;
 }
 
 /**

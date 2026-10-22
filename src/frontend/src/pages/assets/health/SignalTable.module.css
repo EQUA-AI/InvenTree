@@ -11,33 +11,41 @@
 .table tr[data-selected='true'] { box-shadow: inset 3px 0 var(--mantine-primary-color-7); border-top: 1px solid var(--mantine-primary-color-7); }
 :global([data-mantine-color-scheme='dark']) .table tr[data-selected='true'] { box-shadow: inset 3px 0 var(--mantine-primary-color-4); border-top-color: var(--mantine-primary-color-4); }
 .table td p { line-height: 1.35; }
-.tooltipTarget { display: inline-flex; align-items: center; max-width: 100%; border-radius: var(--mantine-radius-xs); }
-.tooltipTarget:focus-visible { outline: 2px solid var(--mantine-primary-color-7); outline-offset: 3px; }
-:global([data-mantine-color-scheme='dark']) .tooltipTarget:focus-visible { outline-color: var(--mantine-primary-color-4); }
+.search { flex: 1 1 220px; }
+.secondaryFilters { flex: 1 1 370px; }
 @media (min-width: 48em) and (max-width: 89.99em) {
  .table :is(td, th):first-child { position: sticky; left: 0; background: var(--mantine-color-body); z-index: 1; }
  .table tr[data-selected='true'] td:first-child { background: var(--mantine-primary-color-light); box-shadow: inset 3px 0 var(--mantine-primary-color-7); }
  .table th:first-child { z-index: 3; }
  :global([data-mantine-color-scheme='dark']) .table tr[data-selected='true'] td:first-child { box-shadow: inset 3px 0 var(--mantine-primary-color-4); }
 }
-@media (max-width: 47.99em) {
- .filters { align-items: stretch; }
- .filters > * { flex-basis: 100%; width: 100%; }
- .filters input, .table button, .tooltipTarget { min-height: 44px; }
- .table button, .tooltipTarget { min-width: 44px; }
+@media (max-width: 48em) {
+ .searchWrapper.searchWrapper { --input-height: 44px; --input-size: 44px; height: 44px; min-height: 44px; margin-block: 0; }
+ .searchLabel { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+ .filters { align-items: stretch; gap: 8px; }
+ .search { flex: 1 1 100%; flex-wrap: nowrap; }
+ .secondaryFilters { display: none; }
+ .secondaryFilters[data-open='true'] { display: flex; flex-basis: 100%; }
+ .secondaryFilters > * { flex: 1 1 120px; }
+ .filters input, .table button { min-height: 44px; }
+ .table button { min-width: 44px; }
  .table[data-cards='true'] { display: block; min-width: 0; width: 100%; }
  .table[data-cards='true'] thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
  .table[data-cards='true'] tbody { display: block; }
- .table[data-cards='true'] tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 12px; padding: var(--mantine-spacing-sm); border-bottom: 1px solid var(--mantine-color-default-border); }
+ .table[data-cards='true'] tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 8px; padding: 8px; border-bottom: 1px solid var(--mantine-color-default-border); }
  .table[data-cards='true'] td { display: block; border: 0; padding: 0; min-width: 0; overflow-wrap: anywhere; grid-column: 1 / -1; }
  .table[data-cards='true'] td:nth-child(2), .table[data-cards='true'] td:nth-child(3), .table[data-cards='true'] td:nth-child(4), .table[data-cards='true'] td:nth-child(6) { grid-column: auto; }
+ .table[data-cards='true'] td:first-child { grid-column: 1; grid-row: 1; }
+ .table[data-cards='true'] td:nth-child(2) { grid-column: 2; grid-row: 1; }
+ .table[data-cards='true'] td:nth-child(3) { grid-column: 1 / -1; grid-row: 2; }
  .table[data-cards='true'] td::before { content: attr(data-label) / ""; display: block; font-size: var(--mantine-font-size-xs); font-weight: 500; margin-bottom: 4px; }
- .table[data-cards='true'] td:nth-child(2)::before { text-align: left; }
+ .table[data-cards='true'] td:nth-child(2)::before, .table[data-cards='true'] td:nth-child(3)::before { display: none; }
  .table[data-cards='true'] td:nth-child(2) > p, .table[data-cards='true'] td:nth-child(6) > p { display: flex; align-items: center; min-height: 44px; }
  .table[data-cards='true'] td:nth-child(2) > p { justify-content: flex-end; }
+ .table[data-cards='true'] tbody tr:not([data-details-open='true']) td:nth-child(n+4) { display: none; }
  .table[data-cards='true'] td:first-child::before, .table[data-cards='true'] .details td::before { display: none; }
  .table[data-cards='true'] td:nth-child(4) { grid-row: 3; }
  .table[data-cards='true'] td:nth-child(6) { grid-row: 3; }
  .table[data-cards='true'] td:nth-child(5) { grid-row: 4; }
- .table[data-cards='true'] .details td { grid-row: auto; }
+ .table[data-cards='true'] .details td { grid-row: auto; grid-column: 1 / -1; }
 }

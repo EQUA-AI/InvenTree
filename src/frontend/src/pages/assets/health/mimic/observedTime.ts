@@ -48,9 +48,11 @@ export function useDisplayClock(supplied?: string | null): DisplayClock {
 export function formatInstant(
   value: string | number | null | undefined,
   clock: DisplayClock,
-  opts: { timeOnly?: boolean } = {}
+  opts: { timeOnly?: boolean; dateOnly?: boolean } = {}
 ): string | null {
   if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number' && (!Number.isFinite(value) || value <= 0))
+    return null;
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return null;
   const parts = new Intl.DateTimeFormat('en-GB', {
@@ -65,9 +67,11 @@ export function formatInstant(
   }).formatToParts(date);
   const part = (type: string) => parts.find((p) => p.type === type)?.value;
   const time = `${part('hour')}:${part('minute')}:${part('second')}`;
-  return opts.timeOnly
-    ? time
-    : `${part('day')} ${part('month')} ${part('year')} ${time}`;
+  return opts.dateOnly
+    ? `${part('day')} ${part('month')} ${part('year')}`
+    : opts.timeOnly
+      ? time
+      : `${part('day')} ${part('month')} ${part('year')} ${time}`;
 }
 /** Compatibility for callers outside the redesigned panels. */
 export function observedTime(value: string, supplied?: string): string | null {

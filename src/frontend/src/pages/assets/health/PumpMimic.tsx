@@ -21,12 +21,16 @@ import {
 } from '@tabler/icons-react';
 import { useContext } from 'react';
 import { Link } from 'react-router-dom';
+import { MissingValue } from '../../../components/items/ValueTooltip';
 import { EquipmentViewControls } from '../equipment/ViewControls';
 import operations from '../operations.module.css';
 import { recordedTelemetryAsLive } from '../telemetryPresentation';
 import { StatusBadge } from './common';
 import { AlarmTable } from './mimic/AlarmTable';
-import { MissingValue } from './mimic/MissingValue';
+import {
+  MimicAlarmCoverage,
+  unconfiguredCount
+} from './mimic/MimicAlarmCoverage';
 import { UnitMimic, UnitMimicHeader } from './mimic/UnitMimic';
 import { displayFor, pollErrorLabel } from './mimic/format';
 import {
@@ -64,6 +68,11 @@ export default function PumpMimic({
   // a usable reading and therefore have no row in this response.
   const missingAlarmDetails =
     !!bay?.alarm && !activeAlarms.some((alarm) => alarm.severity === bay.alarm);
+  const knownEmptyAlarms =
+    !!bay?.machine &&
+    bay.alarm === null &&
+    !missingAlarmDetails &&
+    alarms.length === 0;
   const worst =
     bay?.alarm === 'critical' || critical > 0
       ? 'critical'
@@ -93,37 +102,25 @@ export default function PumpMimic({
                 unit={unit}
                 headingId='schematic-title'
                 information={
-                  <>
-                    <Tooltip
-                      label={`${
-                        data && data.layout.review_status !== 'approved'
-                          ? t`Reference schematic · physical arrangement unverified. Awaiting plant review.`
-                          : t`Reference schematic · physical arrangement unverified`
-                      }\n${provenance}`}
-                      multiline
-                      maw={360}
-                      events={{ hover: true, focus: true, touch: true }}
+                  <Tooltip
+                    label={`${
+                      data && data.layout.review_status !== 'approved'
+                        ? t`Reference schematic · physical arrangement unverified. Awaiting plant review.`
+                        : t`Reference schematic · physical arrangement unverified`
+                    }\n${provenance}`}
+                    multiline
+                    maw={360}
+                    events={{ hover: true, focus: true, touch: true }}
+                  >
+                    <ActionIcon
+                      variant='subtle'
+                      color='gray'
+                      aria-label={t`Schematic information`}
+                      className={operations.phoneTarget}
                     >
-                      <ActionIcon
-                        variant='subtle'
-                        color='gray'
-                        aria-label={t`Schematic information`}
-                        className={operations.phoneTarget}
-                      >
-                        <IconInfoCircle size={18} />
-                      </ActionIcon>
-                    </Tooltip>
-                    <Text
-                      component='output'
-                      aria-label={provenance}
-                      hiddenFrom='sm'
-                      className={operations.meta}
-                    >
-                      {clock.source === 'plant'
-                        ? t`plant clock`
-                        : t`your clock`}
-                    </Text>
-                  </>
+                      <IconInfoCircle size={18} />
+                    </ActionIcon>
+                  </Tooltip>
                 }
               />
             ) : (
@@ -132,14 +129,6 @@ export default function PumpMimic({
                   order={4}
                   id='schematic-title'
                 >{t`Process readings`}</Title>
-                <Text
-                  component='output'
-                  aria-label={`${t`Times`}: ${clock.label}`}
-                  hiddenFrom='sm'
-                  className={operations.meta}
-                >
-                  {clock.source === 'plant' ? t`plant clock` : t`your clock`}
-                </Text>
               </Group>
             )}
 
@@ -185,16 +174,26 @@ export default function PumpMimic({
                       miw={0}
                     >
                       <Box component='span' visibleFrom='sm'>
-                        {t`Active alarms shown`}: {activeAlarms.length} ·{' '}
-                        {t`Critical`}: {critical} · {t`Warning`}: {warning}
+                        {[
+                          `${t`Active alarms shown`}: ${activeAlarms.length}`,
+                          ...(critical ? [`${t`Critical`}: ${critical}`] : []),
+                          ...(warning ? [`${t`Warning`}: ${warning}`] : [])
+                        ].join(' · ')}
                       </Box>
                       <Box component='span' hiddenFrom='sm'>
                         <Box component='span' display='block'>
                           {t`Active alarms shown`}: {activeAlarms.length}
                         </Box>
-                        <Box component='span' display='block'>
-                          {t`Critical`}: {critical} · {t`Warning`}: {warning}
-                        </Box>
+                        {(critical > 0 || warning > 0) && (
+                          <Box component='span' display='block'>
+                            {[
+                              ...(critical
+                                ? [`${t`Critical`}: ${critical}`]
+                                : []),
+                              ...(warning ? [`${t`Warning`}: ${warning}`] : [])
+                            ].join(' · ')}
+                          </Box>
+                        )}
                       </Box>
                     </StatusBadge>
                   )}
@@ -235,29 +234,12 @@ export default function PumpMimic({
               >{t`Open station mimic`}</Anchor>
             </Group>
           </Group>
-          <Text
-            className={operations.meta}
-            component='output'
-            aria-label={provenance}
-            visibleFrom='sm'
-          >
-            {t`Source`}:{' '}
-            {data?.source?.name ?? (
-              <MissingValue reason={t`Source not supplied`} />
-            )}{' '}
-            ·{' '}
-            {recordedTelemetryAsLive(data) && data?.reporting != null
-              ? t`Last reading`
-              : t`Last poll attempt`}
-            :{' '}
-            {formatInstant(
-              recordedTelemetryAsLive(data) && data?.reporting != null
-                ? data.last_observed_at
-                : data?.last_poll_at,
-              clock
-            ) ?? <MissingValue reason={t`Reading time not supplied`} />}{' '}
-            · {t`Times`}: {clock.label}
-          </Text>
+          {data && !query.isError && (
+            <MimicAlarmCoverage
+              count={unconfiguredCount(Object.values(data.points))}
+              knownEmpty={knownEmptyAlarms}
+            />
+          )}
           {query.isError && (
             <Alert
               color='gray'
@@ -330,30 +312,32 @@ export default function PumpMimic({
                 >{t`Open station mimic`}</Anchor>
               }
             />
-            <Title
-              order={5}
-              id='pump-threshold-alarms'
-              tabIndex={-1}
-            >{t`Threshold alarms`}</Title>
-            {missingAlarmDetails && bay?.machine && (
-              <Text size='sm'>{t`Active alarm details are unavailable in this response. The bay's active severity remains recorded.`}</Text>
-            )}
-            {!bay?.machine ? (
-              <Text>{t`Alarm scope unavailable for this pump.`}</Text>
-            ) : alarms.length ? (
-              <AlarmTable
-                alarms={alarms}
-                display={displayFor(data, unit)}
-                onAcknowledged={() => query.refetch()}
-              />
-            ) : (
-              <Text>
-                {missingAlarmDetails
-                  ? t`Active alarm details unavailable.`
-                  : bay.alarm === null
-                    ? t`No active alarms from configured thresholds.`
-                    : t`No active alarm details supplied.`}
-              </Text>
+            {!knownEmptyAlarms && (
+              <>
+                <Title
+                  order={5}
+                  id='pump-threshold-alarms'
+                  tabIndex={-1}
+                >{t`Threshold alarms`}</Title>
+                {missingAlarmDetails && bay?.machine && (
+                  <Text size='sm'>{t`Active alarm details are unavailable in this response. The bay's active severity remains recorded.`}</Text>
+                )}
+                {!bay?.machine ? (
+                  <Text>{t`Alarm scope unavailable for this pump.`}</Text>
+                ) : alarms.length ? (
+                  <AlarmTable
+                    alarms={alarms}
+                    display={displayFor(data, unit)}
+                    onAcknowledged={() => query.refetch()}
+                  />
+                ) : (
+                  <Text>
+                    {missingAlarmDetails
+                      ? t`Active alarm details unavailable.`
+                      : t`No active alarm details supplied.`}
+                  </Text>
+                )}
+              </>
             )}
           </>
         )}

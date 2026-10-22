@@ -1,5 +1,20 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## UI round 2 — 22 October 2026 (ready for coordinator review)
+
+`r6/ui-r2` repairs the Gemini and Opus findings against source from `c8e86ae46`,
+including the owner's dominant pump drawing and readable marker/text feedback.
+Shared missing/failure semantics, partial coverage, compact Health, readable
+station states/scrolling, aligned tables and phone controls are implemented.
+See [the finding dispositions and execution ledger](reports/ui-r2.md).
+All 18 fresh final screenshots and 28 supplemental state/focus images were
+inspected. Focused browser checks, 93 units, all nine TypeScript projects,
+Lingui with 117 bytewise locale restores and changed-file prek pass.
+Only owned Linux Chromium WS3012/harness15250 with synthetic intercepts was
+used; both services are stopped and both ports are clear. No Git write or Azure
+access. Full Mac suites and human review stay with the coordinator; parent
+backlog/contract dispositions and deployment/product acceptance remain unchanged.
+
 ## UI polish checkpoint — 22 October 2026 (read this first)
 
 `r6/ui-mimic` (station and pump mimics) and `r6/ui-tables` (machines list,

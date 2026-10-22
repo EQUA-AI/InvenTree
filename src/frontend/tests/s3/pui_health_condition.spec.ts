@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { type Page, expect, test } from '@playwright/test';
 import type {
   HealthEvidenceSnapshot,
   PreliminaryResults
@@ -16,6 +16,149 @@ import {
 
 nativeBaseline();
 test.use({ timezoneId: 'UTC' });
+
+async function openSignalFilters(page: Page) {
+  const toggle = page.getByRole('button', {
+    name: 'Signal filters',
+    exact: true
+  });
+  if (
+    (await toggle.isVisible()) &&
+    (await toggle.getAttribute('aria-expanded')) === 'false'
+  ) {
+    await toggle.click();
+  }
+}
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`compact Health keeps readings above the fold and stale is a real state (${scheme})`, async ({
+    page
+  }, info) => {
+    const phone = info.project.name.includes('phone');
+    await page.setViewportSize(
+      phone ? { width: 390, height: 844 } : { width: 1440, height: 900 }
+    );
+    await openHealth(page, {
+      scheme,
+      nativeTheme: true,
+      compactChrome: true,
+      signals: [HEALTH_SIGNALS[0]],
+      summary: {
+        state: 'normal',
+        active_anomaly_count: 0,
+        anomaly_counts: { critical: 0, warning: 0, info: 0 }
+      }
+    });
+    const root = page.getByTestId('pump-health');
+    await expect(
+      root.getByRole('heading', { name: 'Active anomalies', exact: true })
+    ).toHaveCount(0);
+    await expect(
+      root.getByText('0 active anomalies', { exact: true })
+    ).toBeVisible();
+    const firstReading = signalTable(page).getByRole('button', {
+      name: 'Inspect signal: Discharge flow',
+      exact: true
+    });
+    const firstBox = (await firstReading.boundingBox())!;
+    expect(firstBox.y).toBeGreaterThanOrEqual(0);
+    expect(firstBox.y + Math.min(firstBox.height, 24)).toBeLessThanOrEqual(
+      page.viewportSize()!.height
+    );
+    const value = signalTable(page).getByRole('cell', {
+      name: '812.5 cusec',
+      exact: true
+    });
+    const valueBox = (await value.boundingBox())!;
+    expect(valueBox.y).toBeGreaterThanOrEqual(0);
+    expect(valueBox.y + valueBox.height).toBeLessThanOrEqual(
+      page.viewportSize()!.height
+    );
+    if (phone) {
+      const refresh = root.getByRole('button', {
+        name: 'Refresh',
+        exact: true
+      });
+      const search = root.getByRole('textbox', {
+        name: 'Search signals',
+        exact: true
+      });
+      expect(
+        Math.abs(
+          (await refresh.boundingBox())!.y - (await search.boundingBox())!.y
+        )
+      ).toBeLessThan(1);
+      const row = signalTable(page).locator('tbody tr').first();
+      await expect(row.locator('td').nth(3)).toBeHidden();
+      const details = row.getByRole('button', {
+        name: 'Details for Discharge flow',
+        exact: true
+      });
+      await details.click();
+      await expect(details).toHaveAttribute('aria-expanded', 'true');
+      for (const column of [3, 4, 5, 6])
+        await expect(row.locator('td').nth(column)).toBeVisible();
+      await expect(row.locator('td').nth(3)).toContainText(
+        'Warning below 600 cusec'
+      );
+      await expect(row.locator('td').nth(4)).toContainText('18 Oct 2026');
+      await expect(row.locator('td').nth(5)).toHaveText('Good');
+      await expect(
+        row
+          .locator('td')
+          .nth(6)
+          .getByRole('img', { name: 'Recent trend for Discharge flow' })
+      ).toBeVisible();
+      await details.click();
+      await expect(
+        page.getByRole('combobox', { name: 'Component filter', exact: true })
+      ).toBeHidden();
+      await openSignalFilters(page);
+      await expect(
+        page.getByRole('combobox', { name: 'Component filter', exact: true })
+      ).toBeVisible();
+      await expect(
+        page.getByRole('combobox', { name: 'Order by', exact: true })
+      ).toBeVisible();
+    }
+    await openHealth(page, {
+      scheme,
+      nativeTheme: true,
+      compactChrome: true,
+      signals: [
+        {
+          ...HEALTH_SIGNALS[0],
+          name: 'Stale discharge flow',
+          stale: true,
+          state: 'warning'
+        },
+        {
+          ...HEALTH_SIGNALS[0],
+          id: 299,
+          key: '/missing',
+          name: 'Missing measurement',
+          value: null,
+          state: 'unknown'
+        }
+      ]
+    });
+    const stale = signalTable(page)
+      .getByRole('row')
+      .filter({ hasText: 'Stale discharge flow' })
+      .getByRole('button', { name: 'Stale', exact: true });
+    await expect(stale).toBeVisible();
+    await stale.focus();
+    await expect(page.getByRole('tooltip')).toHaveText(
+      'Not assessed: stale last-known reading'
+    );
+    await expect(stale).toHaveAccessibleDescription(
+      'Not assessed: stale last-known reading'
+    );
+    await expect(
+      signalTable(page).locator('[role="img"][tabindex="0"]')
+    ).toHaveCount(0);
+  });
+}
 
 const snapshot: HealthEvidenceSnapshot = {
   id: '9ae91736-38b8-4d7e-aafe-d8f64e2263ed',
@@ -86,16 +229,18 @@ for (const scheme of ['light', 'dark'] as const) {
       ]
     });
     await expect(
-      page.getByText(
-        'Assessed on 3 of 5 signals · critical coverage unavailable',
-        {
-          exact: true
-        }
-      )
+      page
+        .getByTestId('health-summary')
+        .getByText('Normal · 3/5', { exact: true })
     ).toBeVisible();
-    await expect(
-      page.getByText('Critical coverage unavailable', { exact: true })
-    ).toBeVisible();
+    const coverage = page.getByRole('button', {
+      name: /critical coverage unavailable$/
+    });
+    await expect(coverage).toBeVisible();
+    await coverage.focus();
+    await expect(page.getByRole('tooltip')).toContainText(
+      'No critical-signal designation is supplied.'
+    );
     const table = signalTable(page);
     await expect(table.getByRole('columnheader')).toHaveCount(7);
     expect(await table.locator('th').allTextContents()).toEqual([
@@ -116,6 +261,9 @@ for (const scheme of ['light', 'dark'] as const) {
         .filter({ hasText: state })
         .first();
       await expect(badge).toBeVisible();
+      await expect(
+        row.getByRole('button', { name: state, exact: true })
+      ).toBeVisible();
       expect(
         await badge
           .locator('.mantine-Badge-label')
@@ -131,9 +279,12 @@ for (const scheme of ['light', 'dark'] as const) {
       exact: true
     });
     await expect(details).toHaveAttribute('aria-expanded', 'false');
-    await expect(
-      normal.getByRole('cell', { name: /Warning below/ })
-    ).toBeVisible();
+    if (info.project.name.includes('phone'))
+      await expect(normal.locator('td').nth(3)).toBeHidden();
+    else
+      await expect(
+        normal.getByRole('cell', { name: /Warning below/ })
+      ).toBeVisible();
     await details.click();
     await expect(details).toHaveAttribute('aria-expanded', 'true');
     await warning
@@ -182,24 +333,27 @@ for (const scheme of ['light', 'dark'] as const) {
       .getByRole('row')
       .filter({ hasText: 'Signal unknown' });
     await expect(
-      unknown.getByRole('img', {
-        name: 'Not assessed: no observation',
+      unknown.getByRole('button', {
+        name: 'State: Not assessed: no observation',
         exact: true
       })
     ).toHaveText('—');
     await expect(
-      unknown.getByRole('img', {
-        name: 'No observation reported by the plant',
+      unknown.getByRole('button', {
+        name: 'Value: No observation available',
         exact: true
       })
     ).toHaveText('—');
     await expect(unknown.getByText('Unknown', { exact: true })).toHaveCount(0);
+    if (info.project.name.includes('phone')) await details.click();
     const graph = sparkline(page, 'Signal normal');
     await graph.scrollIntoViewIfNeeded();
     const box = (await graph.boundingBox())!;
     if (info.project.name.includes('phone')) {
       expect(box.x).toBeGreaterThanOrEqual(0);
       expect(box.x + box.width).toBeLessThanOrEqual(390);
+      await details.click();
+      await openSignalFilters(page);
       await page
         .getByRole('button', { name: 'All columns table', exact: true })
         .click();
@@ -315,23 +469,44 @@ test('filter keeps component scope and selected chart instead of silently select
       exact: true
     })
     .click();
-  const missingUnit = signalTable(page).getByRole('img', {
-    name: 'Unit not reported by the plant; raw value 1834',
+  const raw = signalTable(page)
+    .getByRole('row')
+    .filter({ hasText: 'Motor DE vibration (raw)' });
+  await expect(
+    raw.getByRole('cell', { name: '1834 (no unit)', exact: true })
+  ).toBeVisible();
+  const rawDetails = raw.getByRole('button', {
+    name: 'Details for Motor DE vibration (raw)',
     exact: true
   });
-  await missingUnit.scrollIntoViewIfNeeded();
-  await signalTable(page)
-    .getByRole('button', {
-      name: 'Inspect signal: Motor DE vibration (raw)',
-      exact: true
-    })
-    .focus();
-  await page.keyboard.press('Tab');
-  await expect(missingUnit).toBeFocused();
-  await expect(page.getByRole('tooltip')).toHaveText(
-    'Unit not reported by the plant; raw value 1834'
+  const rawInspect = raw.getByRole('button', {
+    name: 'Inspect signal: Motor DE vibration (raw)',
+    exact: true
+  });
+  await rawInspect.focus();
+  await rawInspect.press('Shift+Tab');
+  await expect(rawDetails).toBeFocused();
+  const detailTooltip = page.getByRole('tooltip', {
+    name: /^1834 \(no unit\)/
+  });
+  await expect(detailTooltip).toBeVisible();
+  await expect(rawDetails).toHaveAttribute(
+    'aria-describedby',
+    (await detailTooltip.getAttribute('id'))!
   );
-  await missingUnit.click();
+  await rawDetails.click();
+  await expect(rawDetails).toHaveAttribute('aria-expanded', 'true');
+  const stops = await raw
+    .locator('button')
+    .evaluateAll((nodes) =>
+      nodes
+        .filter((node) => node.tabIndex >= 0)
+        .map((node) => node.getAttribute('aria-label'))
+    );
+  expect(stops).toEqual([
+    'Details for Motor DE vibration (raw)',
+    'Inspect signal: Motor DE vibration (raw)'
+  ]);
   await expect(
     page.getByRole('region', {
       name: 'Signal evidence: Discharge flow',
@@ -347,9 +522,8 @@ test('filter keeps component scope and selected chart instead of silently select
   await expect(
     trendCard(page).getByRole('combobox', { name: 'Parameter' })
   ).toHaveValue('Discharge flow (cusec)');
-  await expect(page.getByRole('tooltip')).toHaveText(
-    'Unit not reported by the plant; raw value 1834'
-  );
+  await rawDetails.click();
+  await openSignalFilters(page);
   await page.getByRole('combobox', { name: 'Component filter' }).click();
   await page.getByRole('option', { name: 'Bearing · BRG:1' }).click();
   await expect(signalTable(page).getByRole('row')).toHaveCount(2);
@@ -490,13 +664,13 @@ for (const scheme of ['light', 'dark'] as const) {
       )
     ).toBeVisible();
     await expect(
-      signalTable(page).getByText('No limits set', {
+      signalTable(page).getByText('None', {
         exact: true
       })
     ).toHaveCount(6);
     await expect(
-      signalTable(page).getByRole('img', {
-        name: 'Not assessed: limits not configured',
+      signalTable(page).getByRole('button', {
+        name: 'State: Not assessed: limits not configured',
         exact: true
       })
     ).toHaveCount(6);
@@ -538,8 +712,9 @@ for (const newest of ['future', 'expired', 'current'] as const) {
       }
     });
     const observation = page
-      .getByText('Last observation', { exact: true })
-      .locator('..');
+      .getByTestId('health-summary')
+      .getByRole('button')
+      .last();
     await expect(observation.locator('[data-tone="stale"]')).toHaveCount(
       newest === 'current' ? 0 : 1
     );
@@ -551,6 +726,14 @@ for (const newest of ['future', 'expired', 'current'] as const) {
       await expect(observation).toContainText(
         'Stale · 20 s old · freshness budget 10 s'
       );
+    if (newest === 'current')
+      await expect(observation).toContainText('just now');
+    await observation.focus();
+    await expect(page.getByRole('tooltip')).toContainText(
+      newest === 'future'
+        ? 'Last observation: 18 Oct 2026 12:00:00'
+        : 'Last observation: 18 Oct 2026 08:59:40'
+    );
     await observation.screenshot({
       path: info.outputPath(`newest-${newest}.png`)
     });
@@ -699,9 +882,17 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(
       page.getByText(/critical coverage incomplete: 1 of 2/)
     ).toBeVisible();
-    await expect(
-      page.getByText(/Unassessed or missing evidence remains unknown/)
-    ).toBeVisible();
+    await page
+      .getByRole('button', {
+        name: /critical coverage incomplete: 1 of 2$/
+      })
+      .focus();
+    await expect(page.getByRole('tooltip')).toContainText(
+      'Missing critical measurement: no observation'
+    );
+    await expect(page.getByRole('tooltip')).toContainText(
+      'Unassessed or missing evidence remains unknown'
+    );
     await page.getByRole('button', { name: /Inspect.*Discharge flow/ }).click();
     await expect(
       page.getByText('Engineer reviewed critical flow · Synthetic engineer', {
@@ -784,9 +975,17 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(
       page.getByText(/critical coverage incomplete: 0 of 2/)
     ).toBeVisible();
-    await expect(
-      page.getByText('Critical coverage incomplete', { exact: true })
-    ).toBeVisible();
+    await page
+      .getByRole('button', {
+        name: /critical coverage incomplete: 0 of 2$/
+      })
+      .focus();
+    await expect(page.getByRole('tooltip')).toContainText(
+      'Remapped critical flow: review required'
+    );
+    await expect(page.getByRole('tooltip')).toContainText(
+      'Retired critical flow: review required'
+    );
     await expect(
       page.getByText('Designated critical coverage', { exact: true })
     ).toHaveCount(0);
@@ -843,3 +1042,35 @@ for (const scheme of ['light', 'dark'] as const) {
     });
   });
 }
+
+test('a capped anomaly read remains visibly limited and cannot establish absence', async ({
+  page
+}) => {
+  await openHealth(page, {
+    compactChrome: true,
+    nativeTheme: true,
+    signals: [HEALTH_SIGNALS[0]],
+    summary: {
+      active_anomaly_count: 201,
+      anomaly_counts: { critical: 0, warning: 201, info: 0 }
+    },
+    anomalies: Array.from({ length: 200 }, (_, index) =>
+      anomaly({
+        pk: 1000 + index,
+        title: `Capped anomaly ${index + 1}`,
+        signals: []
+      })
+    )
+  });
+  await expect(
+    page.getByText('Showing the first 200 active anomalies', { exact: true })
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole('alert')
+      .filter({ hasText: 'The active anomaly list is incomplete.' })
+  ).toBeVisible();
+  await expect(
+    page.getByText('0 active anomalies', { exact: true })
+  ).toHaveCount(0);
+});

@@ -1,8 +1,5 @@
 import { t } from '@lingui/core/macro';
-import { Text, Tooltip } from '@mantine/core';
-import { IconClockExclamation } from '@tabler/icons-react';
-import operations from '../../operations.module.css';
-import { StatusBadge } from '../common';
+import { Timestamp } from '../Timestamp';
 import {
   type DisplayClock,
   formatInstant,
@@ -48,31 +45,26 @@ export function FreshnessLabel({
   preferJustNow = false
 }: { point?: FreshnessPoint; preferJustNow?: boolean }) {
   const clock = useDisplayClock();
-  const label = freshnessText(point, clock, preferJustNow);
+  const seconds = point?.age_seconds;
+  const age = ageLabel(seconds ?? null);
+  const relative =
+    seconds != null &&
+    preferJustNow &&
+    point?.reason !== 'stale' &&
+    seconds >= 0 &&
+    seconds < 60
+      ? t`just now`
+      : seconds == null
+        ? age
+        : t`${age} old`;
   return (
-    <Tooltip
-      label={`${formatInstant(point?.observed_at, clock) ?? t`Time unavailable`} · ${clock.zone}`}
-    >
-      {point?.reason === 'stale' ? (
-        <StatusBadge
-          variant='outline'
-          color='gray'
-          miw={0}
-          maw='100%'
-          h='auto'
-          styles={{
-            label: { whiteSpace: 'normal', lineHeight: 1.4 },
-            root: { paddingBlock: 3 }
-          }}
-          leftSection={<IconClockExclamation size={14} />}
-        >
-          {label}
-        </StatusBadge>
-      ) : (
-        <Text component='span' size='sm' className={operations.meta}>
-          {label}
-        </Text>
-      )}
-    </Tooltip>
+    <Timestamp
+      value={point?.observed_at}
+      clock={clock}
+      timeOnly
+      relative={point?.reason === 'stale' ? t`Stale · ${relative}` : relative}
+      stale={point?.reason === 'stale'}
+      label={t`Last observation`}
+    />
   );
 }

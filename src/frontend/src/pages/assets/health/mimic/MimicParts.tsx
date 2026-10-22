@@ -1,62 +1,45 @@
 import { t } from '@lingui/core/macro';
-import { Text, Tooltip, UnstyledButton } from '@mantine/core';
-import { useId, useState } from 'react';
+import { Text } from '@mantine/core';
+import { useState } from 'react';
+import { ValueTooltip } from '../../../../components/items/ValueTooltip';
+import { unitLabel } from '../../performance/format';
+import { StatusBadge } from '../StatusBadge';
+import { failedReading } from './MimicValue';
 
 import { type Display, summarize } from './MimicReadings';
 import classes from './UnitMimic.module.css';
-import { reasonLabel, usable } from './format';
+import { numberText, reasonLabel, usable } from './format';
 import type { LayoutPart, MimicData, MimicPoint } from './types';
 
-/** One bar of a part's strip: a sensor, its height its reading. */
-type Bar = {
-  point: MimicPoint;
-  /** 0 at the part's lowest reading, 1 at its highest; null if unavailable. */
-  level: number | null;
-};
-
-/**
- * A part's sensors as a row of bars, one each, in the part's main unit.
- *
- * Each bar's height is its reading against the others of the same part, so a
- * sensor reading unlike its neighbours stands out before anyone has read a
- * number - a hot winding among cool ones, a bearing pad warmer than the rest.
- * Only readings in the unit the part reports most of are compared; a shaft
- * speed is not set against winding temperatures. A sensor that cannot be
- * read is a hollow stub, in its place.
- */
-export function sensorBars(points: MimicPoint[]): Bar[] {
-  const counts = new Map<string, number>();
-  for (const point of points) {
-    if (typeof point.value === 'number' || !usable(point)) {
-      counts.set(point.unit, (counts.get(point.unit) ?? 0) + 1);
+/** Values belong beside a part's name; full sensor names stay in its tooltip. */
+export function compactReadings(
+  points: MimicPoint[],
+  display: Display
+): string {
+  const groups = new Map<string, number[]>();
+  const states: string[] = [];
+  for (const point of points.filter(
+    (point) => usable(point) && !failedReading(point)
+  )) {
+    if (typeof point.value !== 'number') {
+      states.push(display(point));
+      continue;
     }
+    const unit = point.unit ? unitLabel(point.unit) : '';
+    groups.set(unit, [...(groups.get(unit) ?? []), point.value]);
   }
-  const [unit] = [...counts].sort((a, b) => b[1] - a[1])[0] ?? [];
-  if (unit === undefined) return [];
-  const family = points.filter((point) => point.unit === unit);
-  const values = family
-    .filter(usable)
-    .map((point) => point.value)
-    .filter((value): value is number => typeof value === 'number');
-  if (values.length < 2) return [];
-  const [low, high] = [Math.min(...values), Math.max(...values)];
-  return family.map((point) => ({
-    point,
-    level:
-      usable(point) && typeof point.value === 'number'
-        ? high === low
-          ? 0.5
-          : (point.value - low) / (high - low)
-        : null
-  }));
-}
-
-function barColor(point: MimicPoint) {
-  if (!point.thresholds_configured) return 'var(--mimic-bar-neutral)';
-  if (point.condition === 'critical') return 'var(--mantine-color-red-filled)';
-  if (point.condition === 'warning') return 'var(--mantine-color-orange-9)';
-  if (point.condition === 'normal') return 'var(--mantine-color-green-9)';
-  return 'var(--mimic-bar-neutral)';
+  return [
+    ...[...groups].map(([unit, values]) => {
+      const low = Math.min(...values);
+      const high = Math.max(...values);
+      const value =
+        low === high
+          ? numberText(low)
+          : `${numberText(low)} – ${numberText(high)}`;
+      return `${value}${unit ? ` ${unit}` : ''}`;
+    }),
+    ...new Set(states)
+  ].join(' · ');
 }
 
 /** What is known of one part of the pump from its readings. */
@@ -101,10 +84,14 @@ export function partStates(data: MimicData, display: Display): PartState[] {
 /** The colour a part's verdict is marked in; null when it has none. */
 export function verdictColor(state: PartState) {
   if (!state.points.length) return null;
-  if (state.verdict === 'critical') return 'var(--mantine-color-red-9)';
-  if (state.verdict === 'warning') return 'var(--mantine-color-orange-9)';
-  if (state.verdict === 'normal') return 'var(--mantine-color-green-9)';
-  return 'var(--mantine-color-gray-9)';
+  if (state.verdict === 'critical')
+    return 'var(--aimms-critical, light-dark(var(--mantine-color-red-9), var(--mantine-color-red-5)))';
+  if (state.verdict === 'warning')
+    return 'var(--aimms-warning, light-dark(var(--mantine-color-orange-9), var(--mantine-color-orange-5)))';
+  if (state.verdict === 'normal')
+    return 'var(--aimms-normal, light-dark(var(--mantine-color-green-9), var(--mantine-color-green-5)))';
+  if (state.verdict === 'unknown') return 'var(--mantine-color-body)';
+  return 'light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))';
 }
 
 /**
@@ -119,7 +106,7 @@ export function partOutlines(states: PartState[], active: string | null) {
   for (const state of states) {
     const color =
       active === state.part.code
-        ? 'var(--mantine-primary-color-filled)'
+        ? 'var(--aimms-focus, light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3)))'
         : state.verdict === 'critical' || state.verdict === 'warning'
           ? verdictColor(state)
           : null;
@@ -143,6 +130,9 @@ function PartNumber({
   scale?: number;
 }>) {
   const color = verdictColor(state);
+  const assessed = ['critical', 'warning', 'normal'].includes(
+    state.verdict ?? ''
+  );
   return (
     <>
       <circle
@@ -152,10 +142,10 @@ function PartNumber({
         fill={color ?? 'var(--mantine-color-body)'}
         stroke={
           active
-            ? 'var(--mantine-primary-color-filled)'
-            : color
-              ? 'var(--mantine-color-body)'
-              : 'var(--mantine-color-text)'
+            ? 'var(--aimms-focus, light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3)))'
+            : assessed
+              ? (color ?? undefined)
+              : 'light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-0))'
         }
         strokeWidth={(active ? 3 : 1.5) * scale}
         strokeDasharray={color || active ? undefined : '3 2'}
@@ -167,10 +157,10 @@ function PartNumber({
         fontSize={15 * scale}
         fontWeight={700}
         fill={
-          color
+          assessed
             ? state.verdict === 'warning' || state.verdict === 'normal'
-              ? 'var(--mantine-color-black)'
-              : 'var(--mantine-color-white)'
+              ? 'light-dark(var(--mantine-color-black), var(--mantine-color-dark-9))'
+              : 'light-dark(var(--mantine-color-white), var(--mantine-color-dark-9))'
             : 'var(--mantine-color-text)'
         }
       >
@@ -237,13 +227,11 @@ export function MimicParts({
   display: Display;
 }>) {
   const [focused, setFocused] = useState<string | null>(null);
-  const id = useId();
   return (
     <>
       {states.map((state) => {
         const { part } = state;
         const empty = !state.points.length;
-        const bars = sensorBars(state.points);
         const lit = active === part.code || focused === part.code;
         const missing = empty
           ? t`No readings on this pump`
@@ -251,108 +239,76 @@ export function MimicParts({
               ...new Set(
                 state.points
                   .filter((point) => point.value === null || !!point.reason)
-                  .map((point) => reasonLabel(point.reason ?? 'no_data'))
+                  .map(
+                    (point) =>
+                      reasonLabel(point.reason) || t`Reason not supplied`
+                  )
               )
             ].join(' · ');
         const description = [state.name, ...state.lines, missing]
           .filter(Boolean)
           .join('\n');
-        const descriptionId = `${id}-${state.number}`;
-        const summary = state.lines.slice(0, 2);
+        const summary = compactReadings(state.points, display);
+        const failures = state.points.filter(failedReading);
+        const retained = compactReadings(
+          failures
+            .filter((point) => point.reason !== 'not_finite')
+            .map((point) => ({ ...point, reason: null, quality: 'good' })),
+          display
+        );
         return (
-          <Tooltip
+          <ValueTooltip
             key={part.code}
             label={description}
-            multiline
-            maw={360}
-            events={{ hover: true, focus: true, touch: true }}
+            className={classes.callout}
+            data-part={part.code}
+            data-verdict={state.verdict}
+            data-active={lit || undefined}
+            accessibleLabel={`${state.number}. ${state.name}`}
+            onClick={() => onPart?.(state)}
+            onMouseEnter={() => onActive(part.code)}
+            onMouseLeave={() => onActive(focused)}
+            onFocus={() => {
+              setFocused(part.code);
+              onActive(part.code);
+            }}
+            onBlur={() => {
+              setFocused(null);
+              onActive(null);
+            }}
           >
-            <UnstyledButton
-              className={classes.callout}
-              data-part={part.code}
-              data-verdict={state.verdict}
-              data-active={lit || undefined}
-              aria-label={`${state.number}. ${state.name}`}
-              aria-describedby={descriptionId}
-              onClick={() => onPart?.(state)}
-              onMouseEnter={() => onActive(part.code)}
-              onMouseLeave={() => onActive(focused)}
-              onFocus={() => {
-                setFocused(part.code);
-                onActive(part.code);
-              }}
-              onBlur={() => {
-                setFocused(null);
-                onActive(null);
-              }}
-            >
-              <span className={classes.calloutHeading}>
-                <svg
-                  width={26}
-                  height={26}
-                  viewBox='0 0 28 28'
-                  aria-hidden='true'
-                  data-part-number
-                >
-                  <PartNumber state={state} x={14} y={14} />
-                </svg>
-                <Text
-                  component='span'
-                  className={classes.calloutName}
-                  data-part-label
-                >
-                  {state.name}
-                </Text>
-              </span>
-              <span className={classes.calloutSummary} data-part-summary>
-                {summary.length ? (
-                  summary.join(' · ')
-                ) : (
-                  <span aria-label={missing}>—</span>
-                )}
-              </span>
-              <span id={descriptionId} className={classes.srOnly}>
-                {description}
-              </span>
-              {!!bars.length && (
-                <svg
-                  className={classes.sensorBars}
-                  width='100%'
-                  height={13}
-                  viewBox={`0 0 ${Math.max(1, bars.length * 12)} 13`}
-                  preserveAspectRatio='xMinYMid meet'
-                  aria-hidden='true'
-                >
-                  {bars.map((bar, slot) => {
-                    const height = bar.level === null ? 3 : 3 + bar.level * 9;
-                    return (
-                      <rect
-                        key={bar.point.pointer}
-                        data-bar={bar.point.pointer}
-                        x={slot * 12}
-                        y={13 - height}
-                        width={10}
-                        height={height}
-                        rx={1}
-                        fill={bar.level === null ? 'none' : barColor(bar.point)}
-                        stroke={
-                          bar.level === null
-                            ? 'var(--mantine-color-text)'
-                            : 'none'
-                        }
-                        strokeWidth={1}
-                        strokeDasharray={bar.level === null ? '2 1' : undefined}
-                      >
-                        <title>
-                          {bar.point.label}: {display(bar.point)}
-                        </title>
-                      </rect>
-                    );
-                  })}
-                </svg>
-              )}
-            </UnstyledButton>
-          </Tooltip>
+            <span className={classes.calloutHeading}>
+              <svg
+                width={26}
+                height={26}
+                viewBox='0 0 28 28'
+                aria-hidden='true'
+                data-part-number
+              >
+                <PartNumber state={state} x={14} y={14} />
+              </svg>
+              <Text
+                component='span'
+                className={classes.calloutName}
+                data-part-label
+              >
+                {state.name}
+              </Text>
+            </span>
+            <span className={classes.calloutSummary} data-part-summary>
+              {summary || retained || (failures.length ? t`Read failed` : '—')}
+            </span>
+            {!!failures.length && (
+              <StatusBadge tone='failed' color='red' size='sm'>
+                {retained ? t`Bad quality` : t`Read failed`}
+              </StatusBadge>
+            )}
+            {(state.verdict === 'critical' || state.verdict === 'warning') && (
+              <Text component='span' size='xs' fw={600} data-part-verdict>
+                {state.verdict === 'critical' ? t`Critical` : t`Warning`}
+              </Text>
+            )}
+          </ValueTooltip>
         );
       })}
     </>

@@ -18,7 +18,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import monitoring from '../monitoring.module.css';
-import { recordedTelemetryAsLive } from '../telemetryPresentation';
 import {
   AttentionAlert,
   MetaText,
@@ -38,11 +37,11 @@ import type {
 import { useApi } from '../../../contexts/ApiContext';
 import { showApiErrorMessage } from '../../../functions/notifications';
 import { WorkOrderCreateModal } from '../../maintenance/components/WorkOrderCreateModal';
-import { displayClockLabel } from '../displayClock';
 import { AlarmHistory } from './AlarmHistory';
 import { AnomalyList } from './AnomalyList';
 import { HealthSourceStatusTable } from './HealthSourceStatus';
 import { HealthSummaryPanel } from './HealthSummary';
+import classes from './HealthSummary.module.css';
 import { MonitoringContinuityNotice } from './MonitoringContinuity';
 import { RetainedHealthEvidence } from './RetainedHealthEvidence';
 import { SignalEvidence } from './SignalEvidence';
@@ -250,12 +249,14 @@ export function MachineHealthPanel({
     selectedBinding ??
     (signals[0] ? String(signals[0].binding_id) : null);
   const signal = signals.find((row) => String(row.binding_id) === bindingId);
+  const showAnomalies =
+    anomaliesQuery.isError || !anomalyAssociationKnown || anomalies.length > 0;
 
   return (
     <Stack
       component='section'
       aria-labelledby={titleId}
-      gap='md'
+      gap='sm'
       className={monitoring.scope}
       data-testid='pump-health'
     >
@@ -264,34 +265,31 @@ export function MachineHealthPanel({
         aria-live='polite'
         aria-atomic='true'
       >{t`Condition now ${healthStateVisual(summary.state).label}; ${plural(summary.active_anomaly_count, { one: '# active anomaly', other: '# active anomalies' })}`}</VisuallyHidden>
-      <Paper withBorder p='sm'>
-        <Stack gap='sm'>
-          <Group justify='space-between' align='center'>
-            <Title id={titleId} order={4}>{t`Current condition`}</Title>
-            <Group gap='xs'>
-              {summary.active_anomaly_count > 0 && (
-                <MonitoringLink
-                  href={`#${anomaliesId}`}
-                  size='sm'
-                >{t`Review active anomalies (${summary.active_anomaly_count})`}</MonitoringLink>
-              )}
-              <Button
-                size='xs'
-                variant='default'
-                leftSection={<IconRefresh size={14} />}
-                onClick={refreshAll}
-              >{t`Refresh`}</Button>
-            </Group>
+      <Paper withBorder p={{ base: 8, sm: 'sm' }}>
+        <Stack gap='xs'>
+          <Group
+            justify='space-between'
+            align='center'
+            wrap='nowrap'
+            className={classes.conditionHeader}
+          >
+            <Title
+              id={titleId}
+              order={4}
+              size='sm'
+              style={{ whiteSpace: 'nowrap' }}
+            >{t`Current condition`}</Title>
+            <Button
+              visibleFrom='sm'
+              size='xs'
+              variant='default'
+              leftSection={<IconRefresh size={14} />}
+              onClick={refreshAll}
+            >{t`Refresh`}</Button>
           </Group>
-          <MetaText size='xs'>
-            {recordedTelemetryAsLive(summary)
-              ? t`Times: your clock (${displayClockLabel()})`
-              : t`Times: your clock (${displayClockLabel()}) for unshifted times · shifted anomaly times are labelled separately · plant timezone not supplied`}
-          </MetaText>
           <SimpleGrid
-            type='container'
-            cols={{ base: 1, '1400px': 2 }}
-            spacing='md'
+            cols={{ base: 1, lg: showAnomalies ? 2 : 1 }}
+            spacing='sm'
           >
             <Stack gap='xs'>
               {!summary.configured ? (
@@ -319,47 +317,72 @@ export function MachineHealthPanel({
                 />
               )}
             </Stack>
-            <Stack gap='sm'>
-              <Group justify='space-between' align='center'>
-                <Title
-                  id={anomaliesId}
-                  tabIndex={-1}
-                  order={4}
-                >{t`Active anomalies`}</Title>
-                {/* Where the reading behind an alarm is drawn, on the part it
+            {showAnomalies && (
+              <Stack gap='xs'>
+                <Group justify='space-between' align='center'>
+                  <Title
+                    id={anomaliesId}
+                    tabIndex={-1}
+                    order={4}
+                  >{t`Active anomalies`}</Title>
+                  {/* Where the reading behind an alarm is drawn, on the part it
               belongs to. */}
-                {mimicHref && (
-                  <MonitoringLink component={Link} to={mimicHref} size='sm'>
-                    {t`See the readings on the mimic`}
-                  </MonitoringLink>
+                  {mimicHref && (
+                    <MonitoringLink component={Link} to={mimicHref} size='sm'>
+                      {t`See the readings on the mimic`}
+                    </MonitoringLink>
+                  )}
+                </Group>
+                {!anomalyAssociationKnown && !anomaliesQuery.isError && (
+                  <AttentionAlert>{t`The active anomaly list is incomplete. Row association cannot establish an absence of anomalies.`}</AttentionAlert>
                 )}
-              </Group>
-              {!anomalyAssociationKnown && !anomaliesQuery.isError && (
-                <AttentionAlert>{t`The active anomaly list is incomplete. Row association cannot establish an absence of anomalies.`}</AttentionAlert>
-              )}
-              {anomaliesQuery.isError ? (
-                <AttentionAlert
-                  title={t`Active anomalies unavailable`}
-                >{t`The anomaly read failed. An empty list cannot be inferred.`}</AttentionAlert>
-              ) : anomalies.length > 0 || anomalyAssociationKnown ? (
-                <AnomalyList
-                  anomalies={anomalies}
-                  acknowledging={acknowledging}
-                  analyzing={analyzing}
-                  results={results}
-                  onAcknowledge={handleAcknowledge}
-                  onCreateRepair={setRepairAnomaly}
-                  onAnalyze={handleAnalyze}
-                  onDismiss={setDismissing}
-                />
-              ) : null}
-            </Stack>
+                {anomalies.length >= 200 && (
+                  <MetaText size='xs'>{t`Showing the first 200 active anomalies`}</MetaText>
+                )}
+                {anomaliesQuery.isError ? (
+                  <AttentionAlert
+                    title={t`Active anomalies unavailable`}
+                  >{t`The anomaly read failed. An empty list cannot be inferred.`}</AttentionAlert>
+                ) : anomalies.length > 0 ? (
+                  <AnomalyList
+                    anomalies={anomalies}
+                    acknowledging={acknowledging}
+                    analyzing={analyzing}
+                    results={results}
+                    onAcknowledge={handleAcknowledge}
+                    onCreateRepair={setRepairAnomaly}
+                    onAnalyze={handleAnalyze}
+                    onDismiss={setDismissing}
+                  />
+                ) : null}
+              </Stack>
+            )}
           </SimpleGrid>
         </Stack>
       </Paper>
 
       <Stack gap='sm'>
-        <Title order={4}>{t`Signals`}</Title>
+        <Group
+          justify='space-between'
+          align='center'
+          wrap='nowrap'
+          className={
+            signalsQuery.isError || signals.length === 0
+              ? undefined
+              : classes.conditionHeader
+          }
+        >
+          <Title order={4}>{t`Signals`}</Title>
+          {(signalsQuery.isError || signals.length === 0) && (
+            <Button
+              hiddenFrom='sm'
+              size='xs'
+              variant='default'
+              leftSection={<IconRefresh size={14} />}
+              onClick={refreshAll}
+            >{t`Refresh`}</Button>
+          )}
+        </Group>
         {signalsQuery.isError ? (
           <AttentionAlert
             title={t`Signal readings unavailable`}
@@ -371,6 +394,7 @@ export function MachineHealthPanel({
             selectedBinding={bindingId}
             onInspect={inspectSignal}
             anomalies={anomalyAssociationKnown ? anomalies : null}
+            onRefresh={refreshAll}
           />
         )}
       </Stack>

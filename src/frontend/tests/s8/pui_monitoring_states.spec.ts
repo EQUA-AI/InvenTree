@@ -194,7 +194,7 @@ for (const scheme of ['light', 'dark'] as const) {
       const root = page.getByTestId('pump-health');
       const heading = (name: string) =>
         page.getByRole('heading', { name, exact: true });
-      let feature = () => heading('Current condition');
+      let feature = () => root.getByTestId('health-summary');
       if (state === 'stale') {
         await expect(signalTable(page)).toContainText('Last known');
         await expect(signalTable(page)).toContainText('60 min old');
@@ -209,24 +209,21 @@ for (const scheme of ['light', 'dark'] as const) {
         await expect(root).toContainText('No observation from 1 mapped signal');
       if (state === 'critical-coverage-incomplete') {
         feature = () =>
-          root
-            .getByRole('alert')
-            .filter({ hasText: 'Critical coverage incomplete' });
-        await expect(
-          root
-            .getByRole('alert')
-            .filter({ hasText: 'Critical coverage incomplete' })
-        ).toContainText('Critical flow mapping awaiting review');
-        await expect(
-          root
-            .getByRole('alert')
-            .filter({ hasText: 'Critical coverage incomplete' })
-        ).toContainText('review required');
+          root.getByRole('button', { name: /critical coverage incomplete:/ });
+        await feature().focus();
+        await expect(page.getByRole('tooltip')).toContainText(
+          'Critical flow mapping awaiting review'
+        );
+        await expect(page.getByRole('tooltip')).toContainText(
+          'review required'
+        );
       }
       if (state === 'critical-coverage-complete') {
-        await expect(root).toContainText(
-          'Critical coverage: 1 of 1 designated signals evaluated now'
-        );
+        await expect(
+          root.getByRole('button', {
+            name: /critical coverage complete: 1 of 1$/
+          })
+        ).toBeVisible();
         await expect(root.getByRole('alert')).toHaveCount(0);
       }
       if (state === 'signal-read-failed') {

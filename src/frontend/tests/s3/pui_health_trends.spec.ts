@@ -30,6 +30,14 @@ function subpaths(d: string): number[][] {
 }
 
 async function rowGraphPath(page: Page, name: string) {
+  if (!(await sparkline(page, name).isVisible())) {
+    const details = signalTable(page).getByRole('button', {
+      name: `Details for ${name}`,
+      exact: true
+    });
+    if ((await details.getAttribute('aria-expanded')) === 'false')
+      await details.click();
+  }
   const d = await sparkline(page, name).locator('path').getAttribute('d');
   expect(d).toBeTruthy();
   return d!;
@@ -380,24 +388,39 @@ test('a raw unitless vibration channel keeps its own units', async ({
   await chooseParameter(page, 'Motor DE vibration (raw)');
   await expect(curve(page)).toHaveCount(1);
   await expect(page.getByText(/mm\/s/)).toHaveCount(0);
-  const missingUnit = signalTable(page).getByRole('img', {
-    name: 'Unit not reported by the plant; raw value 1834',
+  const raw = signalTable(page)
+    .getByRole('row')
+    .filter({
+      has: page.getByRole('button', {
+        name: 'Inspect signal: Motor DE vibration (raw)',
+        exact: true
+      })
+    });
+  await expect(
+    raw.getByRole('cell', { name: '1834 (no unit)', exact: true })
+  ).toBeVisible();
+  const details = raw.getByRole('button', {
+    name: 'Details for Motor DE vibration (raw)',
     exact: true
   });
-  await expect(missingUnit).toHaveText('—');
-  await missingUnit.scrollIntoViewIfNeeded();
-  await signalTable(page)
-    .getByRole('button', {
-      name: 'Inspect signal: Motor DE vibration (raw)',
-      exact: true
-    })
-    .focus();
-  await page.keyboard.press('Tab');
-  await expect(missingUnit).toBeFocused();
-  await expect(page.getByRole('tooltip')).toHaveText(
-    'Unit not reported by the plant; raw value 1834'
+  const inspect = raw.getByRole('button', {
+    name: 'Inspect signal: Motor DE vibration (raw)',
+    exact: true
+  });
+  await details.scrollIntoViewIfNeeded();
+  await inspect.focus();
+  await inspect.press('Shift+Tab');
+  await expect(details).toBeFocused();
+  const detailTooltip = page.getByRole('tooltip', {
+    name: /^1834 \(no unit\)/
+  });
+  await expect(detailTooltip).toBeVisible();
+  await expect(details).toHaveAttribute(
+    'aria-describedby',
+    (await detailTooltip.getAttribute('id'))!
   );
-  await missingUnit.press('Tab');
+  await details.press('Tab');
+  await expect(inspect).toBeFocused();
   const axisUnit = trendCard(page).getByText('unit not recorded', {
     exact: true
   });

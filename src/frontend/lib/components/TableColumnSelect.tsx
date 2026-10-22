@@ -4,15 +4,18 @@ import { IconAdjustments } from '@tabler/icons-react';
 
 export function TableColumnSelect({
   columns,
-  onToggleColumn
+  onToggleColumn,
+  controlSize
 }: Readonly<{
   columns: any[];
+  controlSize?: number;
   onToggleColumn: (columnName: string) => void;
 }>) {
   return (
     <Menu shadow='xs' closeOnItemClick={false}>
       <Menu.Target>
         <ActionIcon
+          size={controlSize}
           variant='transparent'
           aria-label={t`Select columns`}
           data-testid='table-select-columns'
