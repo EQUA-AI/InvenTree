@@ -174,12 +174,20 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(
       page.getByRole('status').filter({ hasText: 'Selected:' })
     ).toContainText('Motor drive-end bearing');
+    const reference = page.locator('[data-reference-model]');
     await expect(
-      page
-        .locator('[data-scene-phase]')
-        .getByRole('button', { name: 'Reference model', exact: true })
+      reference.getByRole('button', { name: 'Reference model', exact: true })
     ).toBeVisible();
-    await readable(page.locator('[data-scene-phase] .mantine-Badge-root'));
+    await readable(reference.locator('.mantine-Badge-root'));
+    const scene = page.locator('[data-scene-phase="ready"]');
+    await expect(
+      scene.getByRole('button', { name: 'Reference model', exact: true })
+    ).toHaveCount(0);
+    const referenceBounds = (await reference.boundingBox())!;
+    const sceneBounds = (await scene.boundingBox())!;
+    expect(referenceBounds.y + referenceBounds.height).toBeLessThanOrEqual(
+      sceneBounds.y
+    );
     await expect(page.getByText(/^Times: (your|plant) clock/)).toHaveCount(0);
     const observed = page
       .getByRole('region', { name: 'Selected position', exact: true })

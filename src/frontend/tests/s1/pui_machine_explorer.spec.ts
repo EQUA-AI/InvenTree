@@ -592,6 +592,8 @@ test('the criticality filter narrows on the server, resets the page and survives
     name: 'Criticality',
     exact: true
   });
+  await showExplorerControls(page);
+  await expect(filter).toBeVisible();
   await filter.scrollIntoViewIfNeeded();
   await expect(filter).toBeInViewport({ ratio: 1 });
   await filter.click();

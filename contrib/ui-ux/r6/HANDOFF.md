@@ -1,5 +1,18 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## UI round 2 Follow-up 10 — 23 October 2026 (ready for coordinator review)
+
+Built on `79c9540fa`: comparison menus use fixed positioning; active editors
+reveal before opening and after committed edits, with no deferred frame scroll.
+The exact unchanged failing light case passes 25 consecutive times, zero retries;
+5 dark repeats, 4 retained editor/machine checks and 2 scroll/reopen probes also
+pass (36 executions). Six final menu PNGs inspected. 5 comparison units, all 9
+TypeScript projects, Lingui with 117 bytewise locale restores and prek pass.
+Digest `ba958119f0a7`; [report](reports/ui-r2.md) lists the three source files.
+Owned WS3012/harness15250 stopped; ports clear. Linux fixture verification only;
+Mac host confirmation remains with the coordinator. No tracked specs, owner
+data or Git writes; parent/deployed acceptance unchanged.
+
 ## UI round 2 Follow-up 9 — 23 October 2026 (ready for coordinator review)
 
 Built on `1baa15d4d`: stable mounted phone filters, spare room in phone machine
