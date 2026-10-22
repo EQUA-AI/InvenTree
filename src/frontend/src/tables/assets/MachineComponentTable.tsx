@@ -94,7 +94,7 @@ export function MachineComponentTable({
         title: t`Equipment`,
         width: '8%',
         sortable: false,
-        hidden: !station,
+        hidden: !station || phone,
         render: (record) =>
           record.machine === machine.pk ? (
             <Text size='sm'>{t`Station`}</Text>
@@ -135,23 +135,26 @@ export function MachineComponentTable({
                   aria-label={t`Details for ${record.name}`}
                 >{t`Details`}</summary>
                 <div className={classes.secondaryFacts}>
-                  {['reference_position', 'fitted_item', 'provenance'].map(
-                    (accessor) => {
-                      const column = columns.find(
-                        (item) => item.accessor === accessor
-                      )!;
-                      return (
-                        <div
-                          key={accessor}
-                          className={classes.cell}
-                          data-label={column.title}
-                          data-field={accessor}
-                        >
-                          {column.render?.(record)}
-                        </div>
-                      );
-                    }
-                  )}
+                  {[
+                    ...(station ? ['machine_name'] : []),
+                    'reference_position',
+                    'fitted_item',
+                    'provenance'
+                  ].map((accessor) => {
+                    const column = columns.find(
+                      (item) => item.accessor === accessor
+                    )!;
+                    return (
+                      <div
+                        key={accessor}
+                        className={classes.cell}
+                        data-label={column.title}
+                        data-field={accessor}
+                      >
+                        {column.render?.(record)}
+                      </div>
+                    );
+                  })}
                 </div>
               </details>
             )}
@@ -412,6 +415,7 @@ export function MachineComponentTable({
             ],
             minHeight: 0,
             withColumnBorders: false,
+            withRowBorders: !phone,
             controlSize: phone ? 44 : undefined,
             enablePagination: true,
             enableRefresh: true,

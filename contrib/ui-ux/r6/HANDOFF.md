@@ -1,5 +1,19 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## UI round 2 owner follow-up — 22 October 2026 (ready for coordinator review)
+
+Continuing on committed `270bb4be3`: compact critical-designation wording,
+state/limit/acknowledgement-driven mimic colour and reduced-motion-safe animation,
+location browser/tree layout and remaining source-verified Fable findings.
+See [the execution report](reports/ui-r2.md). Previous round-2 repairs remain.
+Final 18 numbered capture cases and 16 owner cases pass; all 20 final PNGs
+(including location desktop dark and phone light) were opened and inspected.
+All nine TypeScript projects, 65 units, Lingui extract/compile with 117 bytewise
+locale restores and changed-file prek pass. Final source manifest: `830575ad4719`.
+Owned Linux Chromium WS3012/harness15250 are stopped. Parent/provider and
+product/deployment acceptance dispositions remain unchanged; full Mac suites
+and human review stay with the coordinator.
+
 ## UI round 2 — 22 October 2026 (ready for coordinator review)
 
 `r6/ui-r2` repairs the Gemini and Opus findings against source from `c8e86ae46`,

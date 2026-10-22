@@ -1,13 +1,30 @@
 /* The disclosure and Grid use the same breakpoint from useMantineTheme. */
 
 
-/* Tree row: chevron + selectable label + type/code cues (M1). */
+/* Native Tree owns navigation; labels reserve separate chevron/icon columns. */
 .nodeLabel {
 	cursor: pointer;
 	border-radius: var(--mantine-radius-default);
-	min-height: 28px;
-	flex-wrap: nowrap;
+  display: grid;
+  grid-template-columns: 32px 20px minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  min-height: 44px;
+  padding-block: 5px;
+  padding-inline-end: 6px;
+  position: relative;
 }
+
+.nodeLabel:not([data-depth='1'])::before,
+.nodeLabel:not([data-depth='1'])::after {
+  content: '';
+  position: absolute;
+  inset-inline-start: calc(var(--label-offset) - 8px);
+  pointer-events: none;
+  border-color: var(--mantine-color-default-border);
+}
+.nodeLabel:not([data-depth='1'])::before { top: 0; bottom: 0; border-inline-start: 1px solid var(--mantine-color-default-border); }
+.nodeLabel:not([data-depth='1'])::after { top: 22px; width: 8px; border-top: 1px solid var(--mantine-color-default-border); }
 
 .nodeLabel[data-selected] {
 	background: var(--mantine-primary-color-light);
@@ -37,10 +54,28 @@
 	transform: rotate(90deg);
 }
 
-.nodeName { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.nodeName { min-width: 0; white-space: normal; overflow-wrap: normal; word-break: normal; hyphens: none; font-size: var(--mantine-font-size-sm); line-height: 1.4; }
 
 .nodeName { flex: 1; }
 .nodeLabel > p { flex-shrink: 0; }
+
+.rootList { display: grid; padding: 0; margin: 0; list-style: none; }
+.rootRow { display: grid; grid-template-columns: minmax(0, 1fr) 88px minmax(12ch, 24ch); align-items: center; gap: 16px; min-height: 60px; padding-block: 10px; border-bottom: 1px solid var(--mantine-color-default-border); }
+.rootRow:last-child { border-bottom: 0; }
+.rootRow > a { font-size: var(--mantine-font-size-sm); font-weight: 600; overflow-wrap: normal; hyphens: none; }
+.rootCode { overflow-wrap: anywhere; }
+.treeViewport { max-height: 65dvh; overflow-y: auto; scrollbar-width: thin; padding: 3px; }
+.drillRow[aria-current='location'] { background: var(--mantine-primary-color-light); }
+.drillList { max-height: 55dvh; overflow-y: auto; padding: 0; margin: 0; list-style: none; }
+.drillRow { display: grid; grid-template-columns: 20px minmax(0, 1fr) 20px; gap: 10px; align-items: center; width: 100%; min-height: 48px; border: 0; border-bottom: 1px solid var(--mantine-color-default-border); padding: 10px 4px; background: transparent; color: var(--mantine-color-text); font: inherit; font-size: var(--mantine-font-size-sm); text-align: start; cursor: pointer; }
+.drillRow:hover { background: var(--mantine-primary-color-light); }
+.drillRow:focus-visible, .nodeName:focus-visible { outline: 2px solid var(--aimms-focus, light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3))); outline-offset: 2px; }
+
+@media (max-width: 48em) {
+  .rootRow { grid-template-columns: minmax(0, 1fr) auto; gap: 5px 12px; min-height: 70px; }
+  .rootCode { grid-column: 1 / -1; }
+}
+@media (prefers-reduced-motion: reduce) { .chevron svg { transition: none; } }
 
 .machineList { min-width: 0; }
 .machineIdentity { min-width: 0; }
@@ -78,7 +113,7 @@
 }
 
 .checkboxInput { border-color: light-dark(var(--mantine-color-gray-6), var(--mantine-color-dark-2)); }
-.switchTrack { border-color: light-dark(var(--mantine-color-gray-6), var(--mantine-color-dark-1)); }
+.switchTrack { border: 1px solid light-dark(var(--mantine-color-gray-6), var(--mantine-color-dark-1)); }
 .help { font: inherit; text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
 .summaryCount { font-size: var(--mantine-font-size-sm); font-weight: 600; }
 .summaryStatuses { overflow-x: auto; max-width: 100%; scrollbar-width: thin; }

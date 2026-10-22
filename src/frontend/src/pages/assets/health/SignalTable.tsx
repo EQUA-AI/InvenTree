@@ -493,22 +493,22 @@ export function SignalTable({
                   </Table.Td>
                   {/* biome-ignore lint/a11y/useSemanticElements: Preserve the native role through phone card CSS. */}
                   <Table.Td role='cell' data-label={t`Limits`}>
-                    <ValueTooltip
-                      focusable={false}
-                      label={`${formatSignalLimits(signal) ?? t`No limits set`} · ${t`Limits on signal mapping; engineering approval not supplied`}`}
-                    >
-                      {formatSignalLimits(signal) ? (
+                    {formatSignalLimits(signal) ? (
+                      <ValueTooltip
+                        focusable={false}
+                        label={`${formatSignalLimits(signal)} · ${t`Limits on signal mapping; engineering approval not supplied`}`}
+                      >
                         <Text component='span' size='xs'>
                           {formatSignalLimits(signal)}
                         </Text>
-                      ) : (
-                        <Text
-                          component='span'
-                          size='xs'
-                          className={monitoring.meta}
-                        >{t`None`}</Text>
-                      )}
-                    </ValueTooltip>
+                      </ValueTooltip>
+                    ) : (
+                      <MissingValue
+                        label={t`Limits`}
+                        reason={`${t`No limits set`} · ${t`Limits on signal mapping; engineering approval not supplied`}`}
+                        focusable={false}
+                      />
+                    )}
                   </Table.Td>
                   {/* biome-ignore lint/a11y/useSemanticElements: Preserve the native role through phone card CSS. */}
                   <Table.Td role='cell' data-label={t`Observed`}>

@@ -35,6 +35,10 @@ export function componentSource(
   const imported = record.provenance_imported_at;
   return {
     kind,
+    inferred:
+      raw === 'Inferred from source tags; physical assignment is unverified.' ||
+      source ===
+        'Inferred from source tags; physical assignment is unverified.',
     label: kind === 'register' || kind === 'scada' ? '' : source,
     importedAt:
       kind === 'register' && imported && Number.isFinite(Date.parse(imported))

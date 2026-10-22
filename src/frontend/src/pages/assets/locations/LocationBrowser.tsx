@@ -3,7 +3,6 @@ import {
   ActionIcon,
   Alert,
   Anchor,
-  Badge,
   Box,
   Button,
   Group,
@@ -16,10 +15,13 @@ import {
   Tooltip,
   Tree,
   type TreeNodeData,
+  useMatches,
   useTree
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import {
+  IconArchive,
+  IconArrowLeft,
   IconBox,
   IconBuilding,
   IconBuildingFactory2,
@@ -41,6 +43,7 @@ import {
 } from 'react';
 import operations from '../operations.module.css';
 
+import { factTooltipProps } from '../../../components/items/ValueTooltip';
 import { useApi } from '../../../contexts/ApiContext';
 import {
   branchHasMore,
@@ -123,12 +126,14 @@ export function LocationBrowser({
   workspaces: { pk: number; name: string }[];
 }) {
   const api = useApi();
+  const phone = useMatches({ base: true, sm: false });
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [debounced] = useDebouncedValue(search, 200);
   const [searchPage, setSearchPage] = useState(1);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [pages, setPages] = useState<Record<string, number>>({});
+  const [drillParent, setDrillParent] = useState('root');
   const [revealExhausted, setRevealExhausted] = useState<
     null | 'page-bound' | 'server-exhausted'
   >(null);
@@ -238,6 +243,28 @@ export function LocationBrowser({
 
   const revealPath = selected?.path;
   const revealKey = revealPath?.map((node) => node.pk).join(',');
+  useEffect(() => {
+    if (phone && selected)
+      setDrillParent(
+        selected.parent == null ? 'root' : nodeValue(selected.parent)
+      );
+  }, [phone, selected?.pk, selected?.parent]);
+
+  const openBranch = (node: LocationNode) => {
+    const value = nodeValue(node.pk);
+    setExpanded((previous) => ({ ...previous, [value]: true }));
+    setDrillParent(value);
+  };
+  const nodeDetail = (node?: LocationNode) =>
+    [
+      node?.name,
+      node?.code,
+      node?.kind && locationKindLabel(locationKind(node.kind)),
+      node?.archived && t`Archived`,
+      workspaces.length > 1 && workspaceLabel(node?.client ?? 0, workspaces)
+    ]
+      .filter(Boolean)
+      .join(' · ');
 
   // Selection reveal (M2): expand the selected path when the selection
   // changes, and only then. Background query updates never re-expand, so a
@@ -385,7 +412,7 @@ export function LocationBrowser({
     node,
     expanded: isExpanded,
     hasChildren,
-    isRoot,
+    level,
     tree: controller,
     elementProps
   }: Tree.RenderNodePayload) => {
@@ -393,13 +420,11 @@ export function LocationBrowser({
     const kind = locationKind(location?.kind);
     const KindIcon = LOCATION_KIND_ICONS[kind];
     const label = location?.name ?? String(node.label ?? '');
-    const workspace = workspaceLabel(location?.client ?? 0, workspaces);
     return (
-      <Group
+      <Box
         {...elementProps}
-        className={classes.nodeLabel}
-        wrap='nowrap'
-        gap='xs'
+        className={`${elementProps.className} ${classes.nodeLabel}`}
+        data-depth={level}
         onClick={(event) => {
           // Keeps the treeitem focused (library behaviour) and selects.
           elementProps.onClick(event);
@@ -411,7 +436,7 @@ export function LocationBrowser({
             className={classes.chevron}
             data-expanded={isExpanded || undefined}
             variant='transparent'
-            size='sm'
+            size={32}
             aria-expanded={isExpanded}
             aria-label={`${isExpanded ? t`Collapse` : t`Expand`} ${label}`}
             onClick={(event) => {
@@ -422,25 +447,18 @@ export function LocationBrowser({
             <IconChevronRight size={16} />
           </ActionIcon>
         ) : (
-          <Box w={26} />
+          <Box w={32} />
         )}
         <KindIcon size={16} aria-hidden />
-        <Tooltip label={label}>
+        <Tooltip label={nodeDetail(location) || label} {...factTooltipProps}>
           <button type='button' className={classes.nodeName}>
             {label}
           </button>
         </Tooltip>
         {location?.archived && (
-          <Badge size='xs' color='gray' variant='light'>
-            {t`Archived`}
-          </Badge>
+          <IconArchive size={16} aria-label={t`Archived`} />
         )}
-        {isRoot && workspace && (
-          <Text size='xs' className={operations.meta}>
-            {workspace}
-          </Text>
-        )}
-      </Group>
+      </Box>
     );
   };
 
@@ -463,7 +481,7 @@ export function LocationBrowser({
           <Text fw={600}>{t`Locations`}</Text>
         </Group>
         <TextInput
-          label={t`Search locations`}
+          aria-label={t`Search locations`}
           placeholder={t`Name or code`}
           classNames={{ input: operations.input }}
           leftSection={<IconSearch size={16} />}
@@ -516,7 +534,10 @@ export function LocationBrowser({
               className={operations.link}
               component='button'
               ta='left'
-              onClick={() => onSelect(null)}
+              onClick={() => {
+                setDrillParent('root');
+                onSelect(null);
+              }}
             >{t`Browse top-level locations`}</Anchor>
             {branchesByParent.get('root')?.isFetching && <Loader size='sm' />}
             {[...branchesByParent.entries()]
@@ -544,36 +565,112 @@ export function LocationBrowser({
                   >{t`Retry`}</Button>
                 </Alert>
               ))}
-            <div ref={containerRef} onKeyDown={handleTreeKeyDown}>
-              <Tree
-                data={data}
-                tree={tree}
-                expandOnClick={false}
-                selectOnClick={false}
-                allowRangeSelection={false}
-                expandOnSpace
-                withLines
-                aria-label={t`Location tree`}
-                renderNode={renderNode}
-              />
-            </div>
-            {continuations.map((entry) => (
-              <Group key={entry.parent} justify='space-between' gap='xs'>
-                <Text size='xs' className={operations.meta}>
-                  {entry.name}
-                </Text>
-                <Button
-                  size='xs'
-                  variant='light'
-                  onClick={() =>
-                    setPages((previous) => ({
-                      ...previous,
-                      [entry.parent]: (previous[entry.parent] ?? 1) + 1
-                    }))
-                  }
-                >{t`Load more locations`}</Button>
-              </Group>
-            ))}
+            {phone ? (
+              <Stack gap={4}>
+                {drillParent !== 'root' && (
+                  <Group gap='xs' wrap='nowrap'>
+                    <ActionIcon
+                      variant='default'
+                      size={44}
+                      aria-label={t`Back to parent location`}
+                      onClick={() => {
+                        const parent = nodeLocations.get(drillParent)?.parent;
+                        setDrillParent(
+                          parent == null ? 'root' : nodeValue(parent)
+                        );
+                      }}
+                    >
+                      <IconArrowLeft size={18} />
+                    </ActionIcon>
+                    <Anchor
+                      component='button'
+                      ta='left'
+                      className={classes.nodeName}
+                      aria-label={t`View ${nodeLocations.get(drillParent)?.name ?? ''}`}
+                      onClick={() => selectValue(drillParent)}
+                    >
+                      {nodeLocations.get(drillParent)?.name}
+                    </Anchor>
+                  </Group>
+                )}
+                {branchesByParent.get(drillParent)?.isFetching && (
+                  <Loader size='sm' />
+                )}
+                <ul
+                  className={classes.drillList}
+                  aria-label={t`Location drill-down`}
+                >
+                  {branchesByParent.get(drillParent)?.rows.map((node) => {
+                    const Icon = LOCATION_KIND_ICONS[locationKind(node.kind)];
+                    return (
+                      <li key={node.pk}>
+                        <Tooltip
+                          label={nodeDetail(node)}
+                          {...factTooltipProps}
+                          events={{ hover: true, focus: true, touch: false }}
+                        >
+                          <button
+                            type='button'
+                            className={classes.drillRow}
+                            aria-current={
+                              selected?.pk === node.pk ? 'location' : undefined
+                            }
+                            onClick={() =>
+                              node.has_children
+                                ? openBranch(node)
+                                : onSelect(node.pk)
+                            }
+                          >
+                            <Icon size={18} aria-hidden />
+                            <span>{node.name}</span>
+                            {node.has_children && (
+                              <IconChevronRight size={18} aria-hidden />
+                            )}
+                          </button>
+                        </Tooltip>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Stack>
+            ) : (
+              <div
+                ref={containerRef}
+                className={classes.treeViewport}
+                onKeyDown={handleTreeKeyDown}
+              >
+                <Tree
+                  data={data}
+                  tree={tree}
+                  expandOnClick={false}
+                  selectOnClick={false}
+                  allowRangeSelection={false}
+                  expandOnSpace
+                  levelOffset={24}
+                  aria-label={t`Location tree`}
+                  renderNode={renderNode}
+                />
+              </div>
+            )}
+            {continuations
+              .filter((entry) => !phone || entry.parent === drillParent)
+              .map((entry) => (
+                <Group key={entry.parent} justify='space-between' gap='xs'>
+                  <Text size='xs' className={operations.meta}>
+                    {entry.name}
+                  </Text>
+                  <Button
+                    size='xs'
+                    variant='light'
+                    onClick={() =>
+                      setPages((previous) => ({
+                        ...previous,
+                        [entry.parent]: (previous[entry.parent] ?? 1) + 1
+                      }))
+                    }
+                  >{t`Load more locations`}</Button>
+                </Group>
+              ))}
             {revealExhausted === 'page-bound' && (
               <Alert color='yellow'>
                 {t`This location is beyond the loaded tree pages. Use the search above to reach it.`}

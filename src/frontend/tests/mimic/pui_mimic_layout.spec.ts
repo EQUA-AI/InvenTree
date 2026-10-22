@@ -302,11 +302,45 @@ for (const size of sizes) {
           );
         }
         for (const name of await callouts.locator('[data-part-label]').all()) {
-          const height = await name.evaluate((node) => ({
-            actual: node.getBoundingClientRect().height,
-            line: Number.parseFloat(getComputedStyle(node).lineHeight)
-          }));
-          expect(height.actual).toBeLessThanOrEqual(height.line * 2 + 1);
+          const bounds = await name.evaluate((node) => {
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            const text = range.getBoundingClientRect();
+            const label = node.getBoundingClientRect();
+            return {
+              textHeight: text.height,
+              height: label.height,
+              textWidth: text.width,
+              width: label.width,
+              lineClamp: getComputedStyle(node).webkitLineClamp
+            };
+          });
+          expect(
+            bounds.lineClamp,
+            'The complete part name remains visible'
+          ).toBe('none');
+          expect(bounds.textHeight).toBeLessThanOrEqual(bounds.height + 1);
+          expect(bounds.textWidth).toBeLessThanOrEqual(bounds.width + 1);
+        }
+        if (size.name === 'phone') {
+          const left = await page
+            .locator('[data-callout-column="left"] button[data-part]')
+            .all();
+          const right = await page
+            .locator('[data-callout-column="right"] button[data-part]')
+            .all();
+          for (let row = 0; row < Math.min(left.length, right.length); row++) {
+            const a = await box(left[row]);
+            const b = await box(right[row]);
+            expect(
+              Math.abs(a.y - b.y),
+              'Spatial callouts share a row'
+            ).toBeLessThanOrEqual(1);
+            expect(
+              Math.abs(a.height - b.height),
+              'Full names do not stagger the next row'
+            ).toBeLessThanOrEqual(1);
+          }
         }
         const markers = await page
           .locator('[data-part-markers] > [data-part]')

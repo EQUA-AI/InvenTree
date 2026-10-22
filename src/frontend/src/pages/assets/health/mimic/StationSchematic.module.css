@@ -55,7 +55,12 @@
 	font-family: inherit;
 	color: var(--mantine-color-text);
 	--mimic-stale-line: currentColor;
+  max-width: 1440px;
+  margin-inline: auto;
 }
+
+.pipeEdge { stroke: light-dark(var(--mantine-color-gray-6), var(--mantine-color-dark-2)); stroke-width: 7; }
+.pipeCore { stroke: var(--mantine-color-body); stroke-width: 4; }
 
 .bay {
 	cursor: pointer;
@@ -76,6 +81,8 @@
 		light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3))
 	);
 }
+
+.bay:focus-visible .focus { stroke-width: 3; stroke-dasharray: 5 3; }
 
 .observed {
 	flex-basis: 100%;

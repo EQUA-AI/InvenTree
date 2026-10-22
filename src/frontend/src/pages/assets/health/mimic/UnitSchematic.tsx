@@ -20,6 +20,12 @@ import {
   stateLabel,
   usable
 } from './format';
+import {
+  hasDischargeFlow,
+  operatingState,
+  readingSeverity
+} from './mimicVisuals';
+import visual from './mimicVisuals.module.css';
 import { formatInstant, useDisplayClock } from './observedTime';
 import type { MimicData } from './types';
 
@@ -74,6 +80,8 @@ export function UnitSchematic({
     .filter(({ part }) => part.x >= 550)
     .sort(spatialOrder);
   const bay = data.bays.find((item) => item.key === unit);
+  const operation = operatingState(data, bay);
+  const flow = hasDischargeFlow(data, bay);
   const clock = useDisplayClock();
   const elements = data.layout.elements.filter((element) => {
     if (element.view !== 'unit') return false;
@@ -87,7 +95,7 @@ export function UnitSchematic({
     );
   });
   return (
-    <div data-unit-schematic>
+    <div data-unit-schematic className={visual.surface}>
       <dl className={classes.metrics} aria-label={t`Key readings`}>
         {elements.map((element) => {
           const pointer = expandPointer(element.pointer, unit);
@@ -110,7 +118,11 @@ export function UnitSchematic({
               <dt className={classes.metricLabel} data-tag-label>
                 {label}
               </dt>
-              <dd className={classes.metricValue} data-value>
+              <dd
+                className={`${classes.metricValue} ${visual.value}`}
+                data-value
+                data-severity={readingSeverity(point)}
+              >
                 {shown ? (
                   <ValueTooltip label={detail} className={classes.valueTarget}>
                     {display(point)}
@@ -135,6 +147,7 @@ export function UnitSchematic({
           ref={drawing}
           className={classes.drawing}
           data-unit-drawing
+          data-operating-state={operation}
           viewBox={UNIT_VIEWBOX}
           role='img'
           aria-label={t`Pump unit schematic`}
@@ -174,6 +187,30 @@ export function UnitSchematic({
             // biome-ignore lint/security/noDangerouslySetInnerHtml: checked-in native SVG with geometry validated against the backend layout; no user content
             dangerouslySetInnerHTML={{ __html: NATIVE_DRAWING }}
           />
+          {flow && (
+            <path
+              d='M604 432h78M734 432h24M812 432h46'
+              className={visual.flow}
+              data-discharge-flow
+            />
+          )}
+          {operation === 'fault' && (
+            <g
+              data-fault-icon
+              fill='none'
+              stroke='light-dark(var(--mantine-color-red-9), var(--mantine-color-red-1))'
+              strokeWidth={3}
+            >
+              <path d='M578 112l15 27h-30zM578 121v7M578 133v1' />
+            </g>
+          )}
+          {operation === 'running' && (
+            <path
+              data-running-icon
+              d='M570 113l17 12l-17 12z'
+              fill='light-dark(var(--mantine-color-green-9), var(--mantine-color-green-1))'
+            />
+          )}
           <MimicPartMarkers
             states={parts}
             active={active}
@@ -182,7 +219,15 @@ export function UnitSchematic({
             onActive={setActive}
           />
         </svg>
-        <div className={classes.callouts} data-unit-callouts>
+        <div
+          className={classes.callouts}
+          data-unit-callouts
+          style={
+            {
+              '--callout-rows': Math.max(leftParts.length, rightParts.length, 1)
+            } as CSSProperties
+          }
+        >
           <div className={classes.column} data-callout-column='left'>
             <MimicParts
               states={leftParts}

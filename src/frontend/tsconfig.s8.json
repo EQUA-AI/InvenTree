@@ -32,6 +32,8 @@
     "tests/s8/pui_p31_work_commands.spec.ts",
     "tests/s8/pui_design_review_fixes.spec.ts",
     "tests/s8/pui_p31_work_authority_dock.spec.ts",
-    "tests/s8/pui_ui_round2_health_states.spec.ts"
+    "tests/s8/pui_ui_round2_health_states.spec.ts",
+    "tests/s8/pui_ui_owner_followup.spec.ts",
+    "tests/s8/pui_ui_round2_captures.spec.ts"
   ]
 }

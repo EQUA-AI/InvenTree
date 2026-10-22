@@ -28,7 +28,7 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(actions).toHaveCount(0);
     await expect(page.getByText(/^View only:/)).toBeVisible();
     const coverage = page.getByRole('button', {
-      name: /critical coverage unavailable$/
+      name: /Critical signals: not designated$/
     });
     await coverage.focus();
     await expect(page.getByRole('tooltip')).toContainText(
@@ -38,7 +38,7 @@ for (const scheme of ['light', 'dark'] as const) {
     await readable(page.getByRole('tooltip'));
     const measurements = await monitoringMeasurements(page, 'health');
     const coverageTitle = measurements.text.find((row) =>
-      row.text.endsWith('critical coverage unavailable')
+      row.text.endsWith('Critical signals: not designated')
     );
     expect(coverageTitle?.ratio).toBeGreaterThanOrEqual(4.5);
     expect(

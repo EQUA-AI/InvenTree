@@ -28,6 +28,7 @@ import { StationSchematic } from './mimic/StationSchematic';
 import classes from './mimic/StationSchematic.module.css';
 import { PANEL, UnitMimic } from './mimic/UnitMimic';
 import { displayFor, stateLabel } from './mimic/format';
+import { operatingState } from './mimic/mimicVisuals';
 import type { MimicData } from './mimic/types';
 import { useStationMimic } from './useStationMimic';
 
@@ -47,7 +48,8 @@ const LEGEND = ['running', 'idle', 'fault', 'stale', 'unknown'];
 function Legend({ data }: Readonly<{ data: MimicData }>) {
   const counts: Record<string, number> = {};
   for (const bay of data.bays) {
-    const key = LEGEND.includes(bay.state) ? bay.state : 'unknown';
+    const operation = operatingState(data, bay);
+    const key = LEGEND.includes(operation) ? operation : 'unknown';
     counts[key] = (counts[key] ?? 0) + 1;
   }
   const shown = LEGEND.filter(
@@ -201,6 +203,16 @@ export default function PumphouseMimic({ stationId }: { stationId: number }) {
                 ]}
               />
             )}
+            {!!data.alarms.length && (
+              <>
+                <Title order={4}>{t`Threshold alarms`}</Title>
+                <AlarmTable
+                  alarms={data.alarms}
+                  display={display}
+                  onAcknowledged={() => query.refetch()}
+                />
+              </>
+            )}
             {unit && data.selected_unit === unit ? (
               <UnitMimic
                 key={unit}
@@ -225,16 +237,6 @@ export default function PumphouseMimic({ stationId }: { stationId: number }) {
                 }
               />
             ) : null}
-            {!!data.alarms.length && (
-              <>
-                <Title order={4}>{t`Threshold alarms`}</Title>
-                <AlarmTable
-                  alarms={data.alarms}
-                  display={display}
-                  onAcknowledged={() => query.refetch()}
-                />
-              </>
-            )}
           </>
         )}
       </Stack>

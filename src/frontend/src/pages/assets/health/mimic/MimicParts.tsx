@@ -9,6 +9,8 @@ import { failedReading } from './MimicValue';
 import { type Display, summarize } from './MimicReadings';
 import classes from './UnitMimic.module.css';
 import { numberText, reasonLabel, usable } from './format';
+import { alarmAttention } from './mimicVisuals';
+import visual from './mimicVisuals.module.css';
 import type { LayoutPart, MimicData, MimicPoint } from './types';
 
 /** Values belong beside a part's name; full sensor names stay in its tooltip. */
@@ -53,6 +55,7 @@ export type PartState = {
   lines: string[];
   unavailable: number;
   verdict: ReturnType<typeof summarize>['verdict'];
+  attention?: 'unacknowledged' | 'acknowledged';
 };
 
 /**
@@ -76,7 +79,12 @@ export function partStates(data: MimicData, display: Display): PartState[] {
       points,
       lines: summary.lines,
       unavailable: summary.unavailable,
-      verdict: summary.verdict
+      verdict: summary.verdict,
+      attention: alarmAttention(
+        data.alarms,
+        undefined,
+        points.map((point) => point.pointer)
+      )
     };
   });
 }
@@ -135,21 +143,51 @@ function PartNumber({
   );
   return (
     <>
-      <circle
-        cx={x}
-        cy={y}
-        r={12 * scale}
-        fill={color ?? 'var(--mantine-color-body)'}
-        stroke={
-          active
-            ? 'var(--aimms-focus, light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3)))'
-            : assessed
-              ? (color ?? undefined)
-              : 'light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-0))'
-        }
-        strokeWidth={(active ? 3 : 1.5) * scale}
-        strokeDasharray={color || active ? undefined : '3 2'}
-      />
+      {state.attention && (
+        <circle
+          cx={x}
+          cy={y}
+          r={14 * scale}
+          stroke={
+            state.verdict === 'warning'
+              ? 'var(--aimms-warning)'
+              : 'var(--aimms-critical)'
+          }
+          strokeWidth={2 * scale}
+          className={visual.attention}
+          data-attention={state.attention}
+        />
+      )}
+      {state.verdict === 'critical' || state.verdict === 'warning' ? (
+        <polygon
+          data-number-surface
+          points={
+            state.verdict === 'critical'
+              ? `${x},${y - 13 * scale} ${x + 13 * scale},${y} ${x},${y + 13 * scale} ${x - 13 * scale},${y}`
+              : `${x},${y - 14 * scale} ${x + 14 * scale},${y + 12 * scale} ${x - 14 * scale},${y + 12 * scale}`
+          }
+          fill={color ?? undefined}
+          stroke={active ? 'var(--aimms-focus)' : (color ?? undefined)}
+          strokeWidth={(active ? 3 : 1.5) * scale}
+        />
+      ) : (
+        <circle
+          data-number-surface
+          cx={x}
+          cy={y}
+          r={12 * scale}
+          fill={color ?? 'var(--mantine-color-body)'}
+          stroke={
+            active
+              ? 'var(--aimms-focus, light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3)))'
+              : assessed
+                ? (color ?? undefined)
+                : 'light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-0))'
+          }
+          strokeWidth={(active ? 3 : 1.5) * scale}
+          strokeDasharray={color || active ? undefined : '3 2'}
+        />
+      )}
       <text
         x={x}
         y={y + 5 * scale}
@@ -219,8 +257,6 @@ export function MimicParts({
   display
 }: Readonly<{
   states: PartState[];
-  /** Retained for the legacy station renderer's component contract. */
-  width?: number;
   active: string | null;
   onActive: (code: string | null) => void;
   onPart?: (state: PartState) => void;
@@ -263,6 +299,7 @@ export function MimicParts({
             className={classes.callout}
             data-part={part.code}
             data-verdict={state.verdict}
+            data-alarm-attention={state.attention}
             data-active={lit || undefined}
             accessibleLabel={`${state.number}. ${state.name}`}
             onClick={() => onPart?.(state)}

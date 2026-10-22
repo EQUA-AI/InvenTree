@@ -67,9 +67,9 @@ export function HealthSummaryPanel({
     : t`Signal coverage unavailable: signal read failed`;
   const criticalText = critical
     ? critical.evaluated < critical.designated
-      ? t`critical coverage incomplete: ${critical.evaluated} of ${critical.designated}`
-      : t`critical coverage complete: ${critical.evaluated} of ${critical.designated}`
-    : t`critical coverage unavailable`;
+      ? t`Critical signals: ${critical.evaluated} of ${critical.designated} assessed`
+      : t`Critical signals: ${critical.designated} assessed`
+    : t`Critical signals: not designated`;
   const signalLink = (signal: MachineSignal) => (
     <Button
       variant='subtle'

@@ -95,18 +95,26 @@ test('machine return restores direct location search alarms page and selected pa
     await page
       .getByRole('button', { name: 'Choose location', exact: true })
       .click();
-  }
-  await expect(
-    page
-      .getByRole('treeitem')
-      .filter({
-        has: page.getByRole('button', {
+    await expect(
+      page
+        .getByRole('list', { name: 'Location drill-down' })
+        .getByRole('button', {
           name: 'Synthetic maintenance site',
           exact: true
         })
-      })
-      .first()
-  ).toHaveAttribute('aria-selected', 'true');
+    ).toHaveAttribute('aria-current', 'location');
+  } else
+    await expect(
+      page
+        .getByRole('treeitem')
+        .filter({
+          has: page.getByRole('button', {
+            name: 'Synthetic maintenance site',
+            exact: true
+          })
+        })
+        .first()
+    ).toHaveAttribute('aria-selected', 'true');
   expect(fixture.requests.every((request) => request.method === 'GET')).toBe(
     true
   );
@@ -283,13 +291,18 @@ test('location selection starts a fresh population while explicit history restor
     await page
       .getByRole('button', { name: 'Choose location', exact: true })
       .click();
+    await page
+      .getByRole('list', { name: 'Location drill-down' })
+      .getByRole('button', { name: 'Synthetic maintenance site', exact: true })
+      .click();
+  } else {
+    await page
+      .getByRole('button', {
+        name: 'Expand Synthetic maintenance site',
+        exact: true
+      })
+      .click();
   }
-  await page
-    .getByRole('button', {
-      name: 'Expand Synthetic maintenance site',
-      exact: true
-    })
-    .click();
   await page
     .getByRole('button', { name: 'Synthetic pump hall', exact: true })
     .click();
@@ -298,7 +311,8 @@ test('location selection starts a fresh population while explicit history restor
   ).toBeVisible();
   await expect(
     page.getByRole('region', { name: 'Loaded page summary' })
-  ).toContainText('20 of 20 machines');
+  ).toContainText('20 machines');
+  await expect(page.locator('[data-machine]')).toHaveCount(20);
   await showExplorerControls(page);
   await expect(
     page.getByRole('textbox', { name: 'Search machines', exact: true })
@@ -337,7 +351,8 @@ test('location selection starts a fresh population while explicit history restor
     .click();
   await expect(
     page.getByRole('region', { name: 'Loaded page summary' })
-  ).toContainText('20 of 20 machines');
+  ).toContainText('20 machines');
+  await expect(page.locator('[data-machine]')).toHaveCount(20);
   await showExplorerControls(page);
   await expect(
     page

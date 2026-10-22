@@ -23,6 +23,7 @@ import { type ReadingSection, ReadingSections } from './MimicReadings';
 import { MimicSchematic } from './MimicSchematic';
 import classes from './UnitMimic.module.css';
 import { displayFor, expandPointer, stateLabel } from './format';
+import { operatingState } from './mimicVisuals';
 import type { MimicData, MimicPoint } from './types';
 
 export function UnitMimicHeader({
@@ -39,6 +40,7 @@ export function UnitMimicHeader({
   information?: ReactNode;
 }) {
   const bay = data.bays.find((b) => b.key === unit);
+  const operation = operatingState(data, bay);
   const statusElement = data.layout.elements.find(
     (e) => e.view === 'unit' && e.role === 'status'
   );
@@ -56,23 +58,23 @@ export function UnitMimicHeader({
         </Group>
         {bay && (
           <Badge
-            variant={bay.state === 'stale' ? 'outline' : 'light'}
+            variant={operation === 'stale' ? 'outline' : 'light'}
             leftSection={
-              bay.state === 'stale' ? (
+              operation === 'stale' ? (
                 <IconClockExclamation size={14} />
               ) : undefined
             }
             color={
-              bay.state === 'running'
+              operation === 'running'
                 ? 'green'
-                : bay.state === 'fault'
+                : operation === 'fault'
                   ? 'red'
-                  : bay.state === 'stale'
+                  : operation === 'stale'
                     ? 'gray'
                     : 'gray'
             }
           >
-            {stateLabel(bay.state)}
+            {stateLabel(operation)}
           </Badge>
         )}
         <FreshnessLabel
@@ -127,13 +129,15 @@ export function UnitMimic({
   data,
   unit,
   actions,
-  header = true
+  header = true,
+  alarmPanel
 }: Readonly<{
   data: MimicData;
   unit: string;
   /** Links and buttons for the heading, which differ by where this is shown. */
   actions?: ReactNode;
   header?: boolean;
+  alarmPanel?: ReactNode;
 }>) {
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState<string[]>([]);
@@ -258,6 +262,7 @@ export function UnitMimic({
           ))}
         </fieldset>
       </Paper>
+      {alarmPanel}
       <TextInput
         classNames={{ input: `${operations.input} ${classes.filterInput}` }}
         aria-label={t`Filter unit readings`}

@@ -9,6 +9,7 @@ import { components } from '../s2/partsFixtures';
 import { openHealth } from '../s3/healthFixtures';
 import { readable } from './contrast';
 import { captureFromTop, openExplorer } from './designFixtures';
+import { ownerMimicFixture } from './ownerFixtures';
 import { nativeThemeFixtures } from './themeFixtures';
 
 nativeBaseline();
@@ -46,7 +47,9 @@ for (const [name, screen, scheme, width] of views) {
       await page.clock.setFixedTime(new Date(observed));
       await page.route('**/api/machine-health/station/17/mimic/**', (route) =>
         route.fulfill({
-          json: fixture(new URL(route.request().url()).searchParams.get('unit'))
+          json: (process.env.AIMMS_OWNER_CAPTURE === '1'
+            ? ownerMimicFixture
+            : fixture)(new URL(route.request().url()).searchParams.get('unit'))
         })
       );
       const query = new URLSearchParams({ scheme });

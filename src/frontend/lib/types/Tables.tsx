@@ -201,6 +201,7 @@ export type InvenTreeTableProps<T = any> = {
   scrollAreaProps?: DataTableProps<T>['scrollAreaProps'];
   /** Preserve native column borders unless a table chooses a simpler row grid. */
   withColumnBorders?: boolean;
+  withRowBorders?: boolean;
   /** Optional native toolbar target size; existing tables retain their default. */
   controlSize?: number;
   params?: any;

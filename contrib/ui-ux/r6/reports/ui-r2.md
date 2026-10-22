@@ -1,5 +1,9 @@
 # UI round 2 — Hyperagent review repair
 
+Latest work continues on `270bb4be3`; see the owner/Fable follow-up below.
+The earlier sections record the committed baseline. Final screenshots are
+replaced by the latest follow-up captures rather than reused from that baseline.
+
 Worktree `ui-r2`, branch `r6/ui-r2`, base `c8e86ae46`. Review source:
 `scratchpad/gemini-r1.md`, read completely and checked against current source.
 The review used older component captures and a diff ending at `c55227c95`;
@@ -428,3 +432,273 @@ not establish deployment or plant mapping acceptance.
 Both reviews are dispositioned, valid findings are repaired, the owner's pump
 scale/text feedback is implemented, and all 18 final screenshots are inspected.
 Focused checks pass; the coordinator retains full Mac suite replay and human review.
+
+
+## Owner and Fable follow-up on 270bb4be3 (ready for coordinator review)
+
+The new owner screenshots show older Health/tree markup; source verification
+confirms round 2 already removed the yellow coverage panel, visible clock caption
+and tree type/code labels. Their remaining wording/layout concerns are accepted.
+The complete Fable review was read and checked against the committed source.
+The dispositions below compare Fable's pre-round-2 review with `270bb4be3`
+and this follow-up. No previous test result is promoted to this follow-up.
+
+Current screens: Health (operator/reliability assessment and source coverage),
+station/unit mimic (state, limit and acknowledgement investigation), and location
+workspace (find a physical scope). Existing providers, native Mantine 9/React,
+permissions, O27 presentation and machine header/actions are preserved.
+
+| Follow-up | State |
+| --- | --- |
+| Source/owner/Fable audit | Complete |
+| Health wording and shared tooltip behaviour | Complete; focused checks pass |
+| State/limit/acknowledgement mimic presentation | Complete; focused checks pass |
+| Responsive location tree/root overview | Complete; focused checks pass |
+| Focused checks and fresh affected captures | Complete; final 18-case matrix and 16 owner cases pass; 20 PNGs inspected |
+
+
+### Owner changes and source boundaries
+
+- Health uses one calm, keyboard-described **Critical signals: not designated**
+  item beside the partial Normal badge. Full coverage reasoning remains in its
+  hoverable, Escape-dismissable tooltip; time-zone detail stays with the timestamp.
+- Running equipment has green fill and a play glyph, Idle gray fill and pause
+  glyphs, Fault red fill and an exclamation triangle, Stale hatching, and Unknown
+  dashed outlines. Disabled/failed/non-reporting sources never retain green.
+  Slow discharge dashes require both Running and a current, good-quality,
+  positive discharge reading. Zero/reverse/absent/bad/stale readings do not move.
+  This follows the checked-in discharge geometry and does not invent a valve
+  position, magnitude scale, tank level or reverse-flow direction.
+- Only actual configured Warning/Critical verdicts colour values, callout
+  outlines and triangular/diamond markers. Unconfigured measurements stay neutral.
+  Separate halos blink at 1 Hz only for explicit open anomaly IDs/statuses;
+  explicit acknowledged rows are steady. The text and severity glyph remain
+  steady throughout. Reduced motion removes flow and blinking and thickens the
+  steady alarm halo. No acknowledgement is inferred from a worst-severity flag.
+- Active threshold alarms precede detailed reading groups. All-failed collapsed
+  groups say **Read failed**; genuinely unavailable groups use the shared dash.
+- Location names occupy a wider desktop tree with aligned guide/chevron/icon
+  columns, whole-word wrapping and a bounded scroll viewport. Type/code are in
+  shared accessible tooltips and selected details. The single search input has
+  an accessible name and placeholder. The root overview aligns name/type/code;
+  codes remain secondary and readable. Phone uses a branch drill-down, Back,
+  current-location cue and focus transfer when a choice closes the browser.
+- Actual inferred provenance says **Inferred SCADA** even when its display alias
+  says SCADA mapping. Original provenance and supplied import time remain available.
+
+Principal files: `HealthSummary.tsx`; shared `components/items/ValueTooltip.tsx`;
+`health/mimic/{mimicVisuals,UnitSchematic,StationSchematic,MimicParts,MimicReadings,
+AlarmTable,UnitMimic,MimicSchematic}` and their owned CSS; `PumpMimic.tsx`;
+`PumphouseMimic.tsx`; `locations/{LocationBrowser,LocationWorkspace,locations.module.css}`;
+`tables/assets/{componentPresentation,ComponentFacts,MachineComponentTable}`.
+The thin native table adapter adds an optional `withRowBorders` property in
+`src/frontend/lib/types/Tables.tsx` and `src/frontend/src/components/tables/InvenTreeTable.tsx`;
+its default preserves every other caller. These paths are under
+`src/frontend/src/pages/assets/` unless their prefix says otherwise. Native
+API contracts, permission checks, routes, source units and O27 remain intact.
+
+### Fable findings, verified against source
+
+“Already fixed” means rejected as a remaining defect because the committed
+round-2 source already supplies the stated behaviour; it is not a rejection of
+what the reviewer saw in the older diff. “Qualified” identifies the valid defect
+and the unsupported or conflicting proposed remedy separately. Fable assumed
+Mantine 8; this repository pins Mantine 9.2.1, whose public `interactive` tooltip
+API is used. No Mantine internals or `!important` were added.
+
+| ID | Disposition and reason | Fix / source |
+| --- | --- | --- |
+| S1 | Qualified: repeated idle zeroes and legend counts already removed. Dropping an independently supplied running-count KPI is unnecessary once the legend has no counts. | `StationSchematic`, `MimicLegend`; retain one KPI strip and source state. |
+| S2 | Accepted: plain linework needed hierarchy and independent state cues. | `StationSchematic`, `mimicVisuals`: pipe edge/core, filled motor/pump, centrifugal vanes, play/pause/fault glyphs, hatch/dash. |
+| S3 | Accepted: an unscaled static wave suggested a fabricated level. | Remove water/wave path in `StationSchematic`; retain actual level KPI without inventing tank bounds. |
+| S4 | Accepted: uncapped growth on very wide screens. | `StationSchematic.module.css` caps drawing at 1440px; preserves native readable label geometry rather than an arbitrary 1240px cap. |
+| S5 | Already fixed: equal-height native KPI grid, no separate total-card treatment. | `StationSchematic` / CSS. |
+| S6 | Already fixed: visible provenance/clock caption removed; info is consistently accessible. | `PumphouseMimic`, `PumpMimic`, timestamp tooltip. |
+| S7 | Already fixed: actual station heading and compact empty-alarm item. | `StationSchematic`, `PumphouseMimic`. |
+| S8 | Already fixed: no-active-alarm wording has a compact inline without-limits count. | `MimicAlarmCoverage`; unknown scope never becomes zero. |
+| S9 | Already fixed for surfaces/edges; accepted richer state hierarchy in this follow-up. | Owned panel tokens plus `mimicVisuals`, `StationSchematic` CSS. |
+| S10 | Qualified: round 2 already adds explicit swipe text, edge shadows and keyboard scroll-to-bay. Owner permits a clear horizontal scroller; forcing an unrelated phone tile grid is unnecessary. | `StationSchematic`: all 14 bays remain reachable; new state cues preserved. |
+| S11 | Already fixed: shared left-aligned dash with independent target area; equal KPI height. | `ValueTooltip` CSS, `StationSchematic` CSS. |
+| S12 | Reviewer itself marks stale; current detailed station readings are a deliberate disclosure, not a duplicate summary caption. | `PumphouseMimic`, `MimicReadings`. |
+| P1 | Main blocker already fixed by round 2: no fold-fit or scrollY sizing, CSS full-width dominant drawing. Reject deleting marker scaling: its observer runs on unit/resize, not each refresh, and protects phone numerals. The old document-position calculation was flawed but `rect.top + scrollY` itself is scroll-invariant. | `UnitSchematic`, `UnitMimic.module.css`; new state cues keep the large drawing. |
+| P2 | Contrast/neutral-disc defect already fixed. Accepted explicit triangle/diamond severity shapes in this follow-up. | `MimicParts`, `mimicVisuals`; numbers remain readable in both schemes. |
+| P3 | Qualified: value-only summaries, units, equal-range collapse and negative-zero cleanup were already fixed. Accepted remaining name clipping found in rendered phone inspection: part names now wrap completely; phone spatial columns share grid rows so they do not stagger. Reject forcing mixed-unit evidence into one arbitrary line. | `MimicParts`, `MimicReadings`, shared formatting; full label/reasons in tooltip and native reading group. |
+| P4 | Already fixed: unscaled mini-bars removed. | `MimicParts`. |
+| P5 | Qualified: state legend now describes actual coloured equipment; deleting it would remove the hatch/dash/state key requested by the owner. | `MimicLegend`, `UnitSchematic`, `mimicVisuals`. |
+| P6 | Already fixed: hard-coded process dl and polling caption removed. | `UnitMimic`. |
+| P7 | Visible duplication already fixed; accepted multiline tooltip whitespace and pointer-hover persistence. | Shared `ValueTooltip` public interactive API, `whiteSpace: pre-line`; `PumpMimic`. |
+| P8 | Already fixed: status icons convey their state and empty alarms do not create an alarm link. | `PumpMimic`, canonical badges. |
+| P9 | Already fixed: spatial sides sorted by native y/x; compact callouts below preserve the owner's dominant drawing. Reject mandatory leaders to below-drawing cards. | `UnitSchematic`. |
+| P10 | Qualified: native numbered accordion and accessible badges already fixed. Accepted alarm priority: table now precedes details. A new Drawer plus All readings workflow is unnecessary to repair this view and would replace existing deep-link/group navigation. | `PumpMimic`, `PumphouseMimic`, `UnitMimic.alarmPanel`, `MimicReadings`. |
+| P11 | Rejected: hiding genuinely unmapped pressure would conceal a missing key measurement. Station aggregate m³/s and unit cusec are different source units; silently renaming them would fabricate a conversion. Help controls remain native, focusable tooltip buttons for accessible provenance. | `UnitSchematic`, `ValueTooltip`, source-unit formatter. |
+| P12 | Already fixed: bounded icon search with accessible name. | `UnitMimic`. |
+| P13 | Marker legibility and compact header already fixed; accepted remaining name clipping and staggered phone rows, repaired using full names and shared subgrid rows. Spatial columns preserve drawing correspondence; owner does not require a new numeric one-column workflow. | `UnitSchematic`, `UnitMimic.module.css`; phone overlap/target checks retained. |
+| P14 | Accessible-name defect already fixed; accepted visible all-failed group state. Genuinely unpublished/no-reading groups retain a quiet dash, consistent with owner rules. | `MimicReadings`; SSR distinguishes failed vs unpublished. |
+| P15 | Accepted invalid block nesting and duplicated tooltip primitive. | `AlarmTable` uses shared `ValueTooltip` and span groups. “Active · acknowledged” remains visibly active; no redundant caption is added. |
+| L1 | Already fixed: inherited compact header typography and matching text/numeric alignment. | `LocationWorkspace`, `locations.module.css`. |
+| L2 | Already fixed: one shared FailedValue/canonical status badge, retained last value and quiet missing dash. | `LocationWorkspace`, `ValueTooltip`. |
+| L3 | Rejected proposal to hide unknown-severity alarms: a supplied “other” alarm remains an active fact. A Normal assessment and an independently active informational alarm can coexist; the API facts must not be merged into an invented verdict. | `MachineAlarmBadges`, condition cell. |
+| L4 | Already fixed: one machine count, pluralized summary, no extra count by bulk action. | `MachinePageSummary`, `LocationWorkspace`. |
+| L5 | Accepted remaining vertical toolbar misalignment. | `LocationWorkspace`: 36px desktop / 44px phone controls, centered switch, a painted 1px token track border (colour alone did not paint a border) and >=3:1 rendered checks in both states. Keep disabled Move selected discoverable until selection exists. |
+| L6 | Already fixed: work priority carries its flag and value in a real tooltip target, separate criticality column. | `LocationWorkspace`, `ValueTooltip`. |
+| L7 | Already fixed for repeated site caption/density. Reject clamping away identity solely to force uniform height. | Machine identity layout in `LocationWorkspace`. |
+| L8 | Already fixed: partial/unknown-coverage Normal differs visibly from fully covered Normal. | Shared `HealthStateBadge` and canonical `StatusBadge`. |
+| L9 | Already fixed: 20px visible checkbox / 44px target, scrolling summary chips, aligned fact grid and 44px controls. | `LocationWorkspace`, owned CSS; captures retain full Warning · 2. |
+| W1 | Accepted: remaining visible search label removed, aria-label retained, one placeholder. | `LocationBrowser`. |
+| W2 | Already fixed: grouped actions, visible filter-scope totals qualifier and actual totals/list distinction. | `LocationWorkspace`, `countSummary`. |
+| W3 | Type/code words already removed; accepted deeper guide/spacing/width and phone hierarchy work. | `LocationBrowser`, `locations.module.css`, `LocationWorkspace`; no native-name truncation. |
+| W4 | Qualified: owner explicitly requests a wider desktop panel, implemented as four grid columns. Phone chooser collapses into drill-down. Mandatory desktop collapse would conflict with this scope. | Location workspace/grid and browser. |
+| H1 | Accepted calm inline wording. Owner's later instruction supersedes Fable's proposed retained yellow alert. | `HealthSummary`: one critical-designation item, full reasoning in shared tooltip, partial badge retained. |
+| H2 | Clock caption/label already removed; timestamp already uses shared formatter with zone in tooltip. Keep readable absolute time alongside freshness, which aids observation comparison. | `MachineHealthPanel`, `Timestamp`. |
+| H3 | Already fixed: one canonical badge with explicit partial Normal distinction. | `HealthStateBadge`, `StatusBadge`. |
+| H4 | Already fixed: compact inline empty anomalies item. | `HealthSummary`. |
+| H5 | Qualified: visible Active anomalies label already exists. `counts == null` means unavailable compatibility data, not evidence of a failed request; backend summary always provides a count map. Inventing Read failed there would be false. Actual signal/summary request failures retain visible failed state. | `HealthSummary`, `MachineHealthPanel`, summary service contract. |
+| H6 | Already fixed: phone nesting removed and Refresh stays in compact title row; native tab fully exposed without removing native controls. | `MachineHealthPanel`, monitoring CSS. |
+| H7 | Qualified: Stale, source-tag details and role=img defects were already fixed. Accepted remaining None limits copy found in the rendered final table; replaced it with the shared dash and full accessible reason, without adding tab stops. | `SignalTable`, `SignalReading`, `ValueTooltip`; searchable external_key remains available. |
+| H8 | Already fixed: text state values and dimensionless numbers retained; unit 1 suppressed. | `readingPresentation` and units. |
+| T1 | Already fixed: single Parts toolbar, native registry action retained. | `InstalledPartsPanel`, `MachineComponentTable`. |
+| T2 | Rejected data-dependent auto-hiding: current fixture/page uniformity cannot establish uniformity across a paginated population. Hiding explicit Draft/source/equipment facts would obscure evidence; genuine missing cells already use compact dashes. | `MachineComponentTable`, `ComponentFacts`; secondary phone facts are disclosed. |
+| T3 | Already fixed: widths total 100%, readable untruncated headers and numeric alignment; a long header may wrap within its reserved column. | `MachineComponentTable`, owned CSS. |
+| T4 | Already fixed for grid/typography/model wrapping. Reject clipping full model names to force equal row height. | `MachineComponentTable` CSS; no mid-word model hyphenation. |
+| T5 | Date/short register label already fixed; accepted preserving inferred confidence in SCADA label. API does not supply the proposed provenance enum; normalize existing legacy vocabulary once rather than invent a provider field. | `ComponentFacts`, `componentPresentation`, shared plant-clock formatter. |
+| T6 | Already fixed: no pagination recolour, hard-coded hex, !important or role=img. Scoped semantic token choices are intentional; a global theme rewrite is not required. | `MachineComponentTable.module.css`, canonical tooltip/badge. |
+| T7 | Qualified: 44px actions were already fixed. Accepted remaining station Equipment row before the component name; Equipment now moves into the keyboard-operated Details disclosure on phone. Per-cell hairlines are removed through a small public withRowBorders adapter option; the card separator remains. Scope remains available rather than inferred from a uniform fixture. | `MachineComponentTable` CSS. |
+
+Q3 is covered by P1/P2/P9/P13 and the owner-driven state changes. Q4 is covered
+by T2/T5. Q5's additional source-verified fixes: non-null total reasons are now
+retained (`StationSchematic`); tooltips are hoverable, multiline and do not bind
+sticky touch behaviour to actionable callouts/accordion controls; selected-bay
+keyboard focus has a thicker dashed ring distinct from selection; unused legacy
+schematic renderer and dead width prop are removed. AlarmTable already retained
+last-known bad-quality values in round 2. Missing reason falls back to “Reason not
+supplied”, never an invented no-data cause. The native sm breakpoint is 48em (visibility uses its normal 0.1px upper-bound
+subtraction); owned compact CSS includes the 48em endpoint. That inclusive
+compact sizing is not a second JavaScript layout breakpoint and does not hide
+both control sets. No broken boundary rendering was established by the review.
+The actual obsolete 1100px sizing branch was already removed in round 2.
+No private selector is restored. Shared canonical badges/fact components and the plant-clock formatter
+remain the consistency kit; only real actions/help affordances are interactive.
+
+Fable's section 3 and ranked top 10 repeat these IDs. All are dispositioned above:
+1 P1/P13; 2 S8/L8/W2/H5/P14; 3 shared ValueTooltip; 4 P2; 5 P6/P7/P10/P5;
+6 P3/P4/P9; 7 L1/L2/L5/L6/L9; 8 T1–T6; 9 S1–S5/S10/S11; 10 canonical status,
+time, tooltip and scoped token components. O27 remains live as instructed;
+its tooltip wrapper provides recorded-source detail and is not removed merely
+because the reviewer dislikes a native help control.
+
+
+### Follow-up verification and evidence
+
+The final frontend checkpoint is the 40-file byte manifest
+`data/devscratch/ui-r2/owner/checks/source-manifest-final.json`, SHA-256
+`830575ad4719356451068a8900c5b30f915f7cc60539e5d8d3f83ba437dd8fd0`,
+base `270bb4be3`. Companion capture JSONs identify
+`owner-270bb4be3-830575ad4719`. All rendering uses owned **Linux Chromium**
+WS3012 with the synthetic Vite fixture harness15250. No backend, Azure data or
+plant connection is represented by these results.
+
+| Check | Actual result / evidence |
+| --- | --- |
+| Existing mimic behaviour and desktop/tablet/phone geometry | 27/27 pass, `owner/checks/browser-mimics-final.log`; after removing name clamps and aligning phone rows, six affected geometry cases pass again in `browser-layout-final-v2.log`. |
+| Focused location, Health coverage/freshness and Parts provenance | 20/22 initially pass, `browser-scoped.log`; both failures asserted obsolete “20 of 20 machines”. Updated assertions require the concise count plus all 20 actual rows and preserved URL/history state. Both corrected cases pass, `browser-location-repair.log`. |
+| Final Health missing-limits, Parts desktop headers and both phone asset types | 7 pass / 3 deliberate viewport skips, `browser-health-parts-final.log`. The station phone card leads with the component, Equipment remains in keyboard Details, and every primary cell has zero internal bottom border. |
+| Changed-component units | 65/65 in five files, `units-complete.log`: source-driven motion/verdict/acknowledgement guards, inferred provenance, shared tooltip semantics, failed vs unpublished collapsed groups, monitoring markup. |
+| TypeScript | Final nine-project result recorded in `types-complete.log`: application tsconfig and every tsconfig.s*.json. |
+| Translation | Extract and TypeScript compile succeed; all 117 locale files restored byte-for-byte, zero mismatches, `lingui-complete.log` / `locale-manifest.json`. |
+| Changed-file hooks | All changed files pass from the worktree root with the requested PATH, including final report/tracking, `prek-final.log`; tracking validation passes in `tracking-final.log`. |
+
+The new 16-case owner matrix covers both themes on desktop and phone: calm
+Health designation reasoning, keyboard descriptions, pointer persistence and
+Escape; actual Running/Fault/Stale/Unknown/Idle state; positive versus zero flow;
+unconfigured high values remaining neutral; configured warning/critical value
+and marker contrast; explicit open versus acknowledged halos; reduced motion;
+long-name tree hierarchy and code search, phone drill-down and choice focus;
+painted switch boundaries with >=3:1 contrast in both checked states.
+Text checks retain >=4.5:1, SVG/control edges >=3:1. These are targeted rendered
+measurements, not an independent accessibility certification.
+
+Earlier attempts are retained honestly: the first native mimic invocation used
+the wrong harness entry and was interrupted; a stale browser connection required
+restarting only the owned container. A later capture helper used a single-element
+hidden assertion while two tooltip exit transitions were present; it now waits
+for zero tooltips. The explicit hover/focus/Escape assertions remain unchanged.
+The switch contrast test initially selected a label, while installed Mantine 9
+renders its public track as a span; the selector now matches that native shape.
+Those attempts are not counted as passes. Intermediate captures before the final
+phone-name/row, switch, Health-limits and station-Parts repairs are superseded.
+
+The final checkpoint matrix passes 18/18 (`browser-numbered-final-v4.log`),
+and the complete owner matrix passes 16/16 (`browser-owner-final-v4.log`).
+All 20 numbered PNGs were opened and individually inspected after this final run. Static PNGs freeze animation;
+the browser assertions above establish motion/reduced-motion and acknowledgement
+behaviour. No screenshot alone is used as evidence of blinking or live polling.
+
+
+### Fresh final screenshot index
+
+Every path below is under `data/devscratch/ui-r2/final/` with a same-name JSON
+recording the final source token, viewport and synthetic renderer. The inspected
+PNG checksums are in `owner/checks/final-inspection.json`; source/locale/capture
+integrity checks pass with zero mismatches in `final-integrity.log`.
+
+| # | PNG | Inspection |
+| --- | --- | --- |
+| 01 | `data/devscratch/ui-r2/final/01-mimic-station-desktop-light.png` | Opened and inspected |
+| 02 | `data/devscratch/ui-r2/final/02-mimic-station-desktop-dark.png` | Opened and inspected |
+| 03 | `data/devscratch/ui-r2/final/03-mimic-station-phone-light.png` | Opened and inspected |
+| 04 | `data/devscratch/ui-r2/final/04-mimic-pump-desktop-light.png` | Opened and inspected |
+| 05 | `data/devscratch/ui-r2/final/05-mimic-pump-desktop-dark.png` | Opened and inspected |
+| 06 | `data/devscratch/ui-r2/final/06-mimic-pump-phone-light.png` | Opened and inspected |
+| 07 | `data/devscratch/ui-r2/final/07-machines-light-desktop.png` | Opened and inspected |
+| 08 | `data/devscratch/ui-r2/final/08-machines-dark-desktop.png` | Opened and inspected |
+| 09 | `data/devscratch/ui-r2/final/09-machines-light-phone.png` | Opened and inspected |
+| 10 | `data/devscratch/ui-r2/final/10-location-light-desktop.png` | Opened and inspected |
+| 11 | `data/devscratch/ui-r2/final/11-health-light-desktop.png` | Opened and inspected |
+| 12 | `data/devscratch/ui-r2/final/12-health-dark-desktop.png` | Opened and inspected |
+| 13 | `data/devscratch/ui-r2/final/13-health-light-phone.png` | Opened and inspected |
+| 14 | `data/devscratch/ui-r2/final/14-station-parts-light-desktop.png` | Opened and inspected |
+| 15 | `data/devscratch/ui-r2/final/15-station-parts-light-phone.png` | Opened and inspected |
+| 16 | `data/devscratch/ui-r2/final/16-pump-parts-light-desktop.png` | Opened and inspected |
+| 17 | `data/devscratch/ui-r2/final/17-pump-parts-dark-desktop.png` | Opened and inspected |
+| 18 | `data/devscratch/ui-r2/final/18-pump-parts-light-phone.png` | Opened and inspected |
+| 19 | `data/devscratch/ui-r2/final/19-location-dark-desktop.png` | Opened and inspected |
+| 20 | `data/devscratch/ui-r2/final/20-location-light-phone.png` | Opened and inspected |
+
+
+01–03 show green/play Running, red/triangle Fault, hatched Stale, dashed Unknown
+and gray/pause Idle in the same native drawing, with semantic warning/critical
+markers. The empty tank no longer implies a fabricated water level. Phone uses
+the explicit swipe affordance and edge shadow; all 14 bays remain available
+through scrolling and keyboard, as verified by the existing geometry spec.
+
+04–06 retain the dominant pump: painted geometry is 860×626px within a
+1406×703px drawing region at 1440px (61% of content width, 70% of viewport height).
+Actual source values and units remain; configured warnings/critical readings
+have distinct outlines and shape cues. Complete callout names wrap; phone
+columns share rows. Additional full-page phone and acknowledged-dark pump
+captures in `owner/captures/` were also opened and inspected: callouts, active
+alarm text and detailed reading groups remain readable below the drawing.
+
+07–09 retain compact aligned columns, the normal-size checkbox with its 44px
+phone target, complete Warning · 2, visible failed reads and coverage-unknown
+Normal. The switch now has an actual contrasting boundary in both states.
+10/19 show the wider, unclipped hierarchy and aligned readable root-list codes;
+20 shows the phone drill-down with Back, full current parent and all room names.
+11–13 show one calm designation item, partial Normal, no clock caption and quiet
+missing-limit dashes; the first actual phone reading remains above the fold.
+14–18 show the concise honest provenance and aligned stock/work values. Both
+phone Parts cards lead with the component and retain secondary equipment/source
+in keyboard Details; internal cell hairlines are gone and a complete first card
+fits above the fold.
+
+### Follow-up handoff
+
+All requested owner changes and remaining verified Fable findings are repaired;
+unsupported, superseded and conflicting suggestions have explicit reasons above.
+Gemini/Opus round-2 changes remain intact. Focused browser checks, all nine TypeScript
+projects, 65 units, translation extraction/compile with 117 bytewise restores,
+and changed-file hooks pass. Full sprint suites on the Mac and human review
+remain with the coordinator. Parent work/contract acceptance dispositions are
+unchanged; these are isolated fixture results, not deployment or plant mapping
+acceptance. No Git write, PR/issue, Azure connection or data env access was used.
+Owned browser and harness cleanup is recorded in `owner/checks/runtime-cleanup.log`.

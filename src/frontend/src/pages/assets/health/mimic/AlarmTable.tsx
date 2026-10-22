@@ -1,18 +1,12 @@
 import { t } from '@lingui/core/macro';
-import {
-  ActionIcon,
-  Button,
-  Group,
-  Stack,
-  Table,
-  Text,
-  Tooltip,
-  UnstyledButton
-} from '@mantine/core';
+import { ActionIcon, Button, Group, Table, Text, Tooltip } from '@mantine/core';
 import { IconChartLine, IconExternalLink } from '@tabler/icons-react';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { MissingValue } from '../../../../components/items/ValueTooltip';
+import {
+  MissingValue,
+  ValueTooltip
+} from '../../../../components/items/ValueTooltip';
 import { useUserState } from '../../../../states/UserState';
 import { machinePanelHref } from '../../locations/locationTree';
 import operations from '../../operations.module.css';
@@ -27,6 +21,8 @@ import { WorkOrderCreateModal } from '../../../maintenance/components/WorkOrderC
 import { type AlarmAction, AlarmNoteModal } from './AlarmNoteModal';
 import { type Display, conditionText } from './MimicReadings';
 import { valueText } from './format';
+import { alarmAttention, readingSeverity } from './mimicVisuals';
+import visual from './mimicVisuals.module.css';
 import type { MimicAlarm } from './types';
 
 /**
@@ -70,7 +66,7 @@ export function AlarmTable({
         type='native'
         className={operations.alarmScroll}
       >
-        <Table striped className={operations.alarmTable}>
+        <Table striped className={`${operations.alarmTable} ${visual.surface}`}>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t`Signal`}</Table.Th>
@@ -94,19 +90,21 @@ export function AlarmTable({
                   data-anomaly={alarm.anomaly ?? undefined}
                 >
                   <Table.Td>
-                    <Tooltip
+                    <ValueTooltip
                       label={alarm.pointer}
-                      events={{ hover: true, focus: true, touch: true }}
+                      className={operations.phoneTarget}
                     >
-                      <UnstyledButton className={operations.phoneTarget}>
-                        {alarm.label}
-                      </UnstyledButton>
-                    </Tooltip>
+                      {alarm.label}
+                    </ValueTooltip>
                   </Table.Td>
                   <Table.Td data-label={t`Alarm`}>
                     <AlarmStatus alarm={alarm} />
                   </Table.Td>
-                  <Table.Td data-label={t`Value`}>
+                  <Table.Td
+                    data-label={t`Value`}
+                    className={visual.value}
+                    data-severity={readingSeverity(alarm)}
+                  >
                     {alarm.value === null ||
                     alarm.reason ||
                     failedReading(alarm) ? (
@@ -285,21 +283,31 @@ function AlarmStatus({ alarm }: Readonly<{ alarm: MimicAlarm }>) {
     return <Text size='sm'>{t`Not raised yet`}</Text>;
   }
   return (
-    <Tooltip
+    <ValueTooltip
       label={t`Acknowledgement records that someone saw the application alarm; it does not clear the condition.`}
-      events={{ hover: true, focus: true, touch: true }}
-      multiline
-      maw={360}
+      className={operations.phoneTarget}
+      data-alarm-info
     >
-      <UnstyledButton className={operations.phoneTarget} data-alarm-info>
-        <Stack gap={4} align='flex-start'>
-          <AlarmStateBadge
-            status={alarm.anomaly_status}
-            severity={alarm.severity}
-          />
-          <SeverityBadge severity={alarm.severity} />
-        </Stack>
-      </UnstyledButton>
-    </Tooltip>
+      <Group component='span' gap={6} align='center'>
+        {alarmAttention([alarm]) && (
+          <svg width={14} height={14} aria-hidden='true'>
+            <circle
+              cx={7}
+              cy={7}
+              r={5}
+              stroke='currentColor'
+              strokeWidth={2}
+              className={visual.attention}
+              data-attention={alarmAttention([alarm])}
+            />
+          </svg>
+        )}
+        <AlarmStateBadge
+          status={alarm.anomaly_status}
+          severity={alarm.severity}
+        />
+        <SeverityBadge severity={alarm.severity} />
+      </Group>
+    </ValueTooltip>
   );
 }

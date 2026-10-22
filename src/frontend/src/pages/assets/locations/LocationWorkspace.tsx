@@ -12,6 +12,7 @@ import {
   Grid,
   Group,
   Loader,
+  Badge as MantineBadge,
   Pagination,
   Paper,
   Select,
@@ -35,7 +36,7 @@ import {
   IconServerOff
 } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { MachineAlarmBadges } from '../../../components/items/MachineAlarmBadges';
 import {
@@ -243,7 +244,7 @@ export function ScopedMachineList({
         >
           <Group align='flex-end' className={classes.listFilters}>
             <TextInput
-              size='xs'
+              size='sm'
               label={t`Search machines`}
               classNames={{
                 input: `${operations.input} ${classes.filterInput}`,
@@ -256,19 +257,24 @@ export function ScopedMachineList({
                 onStateChange({ search: event.currentTarget.value }, true)
               }
             />
-            <Switch
-              classNames={{
-                track: classes.switchTrack,
-                label: classes.switchLabel
-              }}
-              label={t`In alarm only`}
-              checked={alarmsOnly}
-              onChange={(event) =>
-                onStateChange({ alarmsOnly: event.currentTarget.checked })
-              }
-            />
+            <Box
+              h={{ base: 44, sm: 36 }}
+              style={{ display: 'flex', alignItems: 'center' }}
+            >
+              <Switch
+                classNames={{
+                  track: classes.switchTrack,
+                  label: classes.switchLabel
+                }}
+                label={t`In alarm only`}
+                checked={alarmsOnly}
+                onChange={(event) =>
+                  onStateChange({ alarmsOnly: event.currentTarget.checked })
+                }
+              />
+            </Box>
             <Select
-              size='xs'
+              size='sm'
               label={t`Criticality`}
               classNames={{
                 input: `${operations.input} ${classes.filterInput}`,
@@ -308,6 +314,7 @@ export function ScopedMachineList({
             {canChange && (
               <Button
                 variant='light'
+                h={{ base: 44, sm: 36 }}
                 leftSection={<IconMapPin size={16} />}
                 disabled={!selected.length || query.isFetching || query.isError}
                 onClick={() => setMoving(selected)}
@@ -1016,7 +1023,7 @@ function RootOverview({
     return `?${next.toString()}`;
   };
   return (
-    <Paper withBorder p='xl'>
+    <Paper withBorder p='md'>
       <Stack>
         <Title order={4}>{t`Browse top-level locations`}</Title>
         {rootQuery.isPending && <Loader size='sm' />}
@@ -1030,35 +1037,46 @@ function RootOverview({
             >{t`Retry`}</Button>
           </Alert>
         )}
-        {rootQuery.data?.results.map((node) => (
-          <Group key={node.pk} justify='space-between' gap='xs'>
-            <Anchor
-              className={operations.link}
-              component={Link}
-              to={locationHref(node.pk)}
-            >
-              {node.name}
-            </Anchor>
-            <Group gap='xs'>
-              <Badge variant='light'>
-                {locationKindLabel(locationKind(node.kind))}
-              </Badge>
-              <Text size='xs' className={operations.meta}>
+        <ul aria-label={t`Top-level locations`} className={classes.rootList}>
+          {rootQuery.data?.results.map((node) => (
+            <li key={node.pk} className={classes.rootRow}>
+              <Anchor
+                className={operations.link}
+                component={Link}
+                to={locationHref(node.pk)}
+              >
+                {node.name}
+              </Anchor>
+              <Group gap={4}>
+                <MantineBadge
+                  variant='outline'
+                  color='gray'
+                  c='var(--mantine-color-text)'
+                  tt='none'
+                >
+                  {locationKindLabel(locationKind(node.kind))}
+                </MantineBadge>
+                {node.archived && (
+                  <Badge size='xs' color='gray' variant='light'>
+                    {t`Archived`}
+                  </Badge>
+                )}
+                {workspaces.length > 1 && (
+                  <Text size='xs' className={operations.meta}>
+                    {workspaceLabel(node.client, workspaces)}
+                  </Text>
+                )}
+              </Group>
+              <Text
+                component='code'
+                size='sm'
+                className={`${operations.meta} ${classes.rootCode}`}
+              >
                 {node.code}
               </Text>
-              {node.archived && (
-                <Badge size='xs' color='gray' variant='light'>
-                  {t`Archived`}
-                </Badge>
-              )}
-              {workspaces.length > 1 && (
-                <Text size='xs' className={operations.meta}>
-                  {workspaceLabel(node.client, workspaces)}
-                </Text>
-              )}
-            </Group>
-          </Group>
-        ))}
+            </li>
+          ))}
+        </ul>
         {(rootQuery.data?.count ?? 0) > ROOT_PAGE_SIZE && (
           <nav aria-label={t`Location overview pagination`}>
             <Pagination
@@ -1073,7 +1091,7 @@ function RootOverview({
         <Button
           component={Link}
           to='/machines/index/unassigned/'
-          variant='light'
+          variant='default'
           w='fit-content'
         >{t`View unassigned machines`}</Button>
       </Stack>
@@ -1103,6 +1121,7 @@ export function LocationWorkspace({
     parent?: LocationNode;
   } | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const choiceFocus = useRef<number | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [refreshResult, setRefreshResult] = useState('');
   const refreshLocations = async () => {
@@ -1135,8 +1154,20 @@ export function LocationWorkspace({
     enabled: view === 'sites' && !!locationId
   });
   const selected = detail.isError ? undefined : detail.data;
-  const select = (id: number | null) =>
+  useEffect(() => {
+    if (!mobileOpen && selected && choiceFocus.current === selected.pk) {
+      choiceFocus.current = null;
+      const frame = requestAnimationFrame(() =>
+        document.getElementById('location-name')?.focus({ preventScroll: true })
+      );
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [selected?.pk, mobileOpen]);
+  const select = (id: number | null) => {
+    if (mobileOpen && id !== null) choiceFocus.current = id;
     setParams((previous) => machineLocationParams(previous, id));
+    if (id !== null) setMobileOpen(false);
+  };
   const counts = selected?.counts;
   const summary = countSummary(counts, {
     direct,
@@ -1226,7 +1257,7 @@ export function LocationWorkspace({
                 className={classes.browser}
                 data-mobile-open={mobileOpen ? 'true' : 'false'}
                 visibleFrom={mobileOpen ? undefined : 'lg'}
-                span={{ base: 12, lg: 3 }}
+                span={{ base: 12, lg: 4 }}
               >
                 <LocationBrowser
                   selected={selected}
@@ -1235,7 +1266,7 @@ export function LocationWorkspace({
                   workspaces={workspaces}
                 />
               </Grid.Col>
-              <Grid.Col span={{ base: 12, lg: 9 }}>
+              <Grid.Col span={{ base: 12, lg: 8 }}>
                 <Stack gap='xs' className={operations.phoneStack}>
                   {rawLocation && !locationId && (
                     <Alert color='red'>{t`The location link is invalid.`}</Alert>
@@ -1277,6 +1308,7 @@ export function LocationWorkspace({
                               w={{ base: '100%', sm: 'auto' }}
                               order={4}
                               id='location-name'
+                              tabIndex={-1}
                             >
                               {selected.name}
                             </Title>

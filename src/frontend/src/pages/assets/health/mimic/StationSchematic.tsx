@@ -25,6 +25,13 @@ import {
   usable,
   valueText
 } from './format';
+import {
+  alarmAttention,
+  hasDischargeFlow,
+  operatingState,
+  readingSeverity
+} from './mimicVisuals';
+import visual from './mimicVisuals.module.css';
 import { formatInstant, useDisplayClock } from './observedTime';
 import type { MimicData } from './types';
 
@@ -84,7 +91,7 @@ export function StationSchematic({
   const bottom = 216;
 
   return (
-    <>
+    <div className={visual.surface}>
       <div className={classes.header}>
         <Group gap={4} wrap='nowrap'>
           <Title order={4}>{t`Station schematic`}</Title>
@@ -173,7 +180,8 @@ export function StationSchematic({
                   component='div'
                   size='xl'
                   fw={650}
-                  className={classes.reading}
+                  className={`${classes.reading} ${visual.value}`}
+                  data-severity={readingSeverity(point)}
                   data-reading-value
                 >
                   {reading ? (
@@ -194,6 +202,7 @@ export function StationSchematic({
                 : name;
           const detail = [
             total.derived ? t`Derived total` : t`Source measurement`,
+            total.reason && reasonLabel(total.reason),
             ...total.contributors,
             observed,
             clock.label
@@ -289,17 +298,7 @@ export function StationSchematic({
                 strokeLinecap='round'
                 strokeLinejoin='round'
               >
-                {/* Illustrative structure only: the fill is not a measured level. */}
-                <path
-                  d='M18 108q9-7 18 0t18 0t18 0t18 0t18 0t18 0V228H18Z'
-                  fill='var(--mantine-color-blue-light)'
-                  stroke='none'
-                />
                 <path d='M18 60V228H126V60' />
-                <path
-                  d='M18 108q9-7 18 0t18 0t18 0t18 0t18 0t18 0'
-                  stroke='var(--mantine-color-blue-6)'
-                />
                 <path
                   d={`M126 ${bottom}H${width - 18}v12H126`}
                   className={classes.manifold}
@@ -310,8 +309,13 @@ export function StationSchematic({
                 />
                 {bays.map((bay, index) => {
                   const x = start + slot * (index + 0.5);
-                  const state = stateStyle(bay.state);
+                  const operation = operatingState(data, bay);
+                  const state = stateStyle(operation);
                   const alarm = alarmColor(bay.alarm);
+                  const attention =
+                    bay.machine == null
+                      ? undefined
+                      : alarmAttention(data.alarms, bay.machine);
                   const chosen = bay.key === selected;
                   const press = (event: KeyboardEvent) => {
                     if (event.key === 'Enter' || event.key === ' ') {
@@ -326,7 +330,7 @@ export function StationSchematic({
                       role='button'
                       tabIndex={0}
                       aria-pressed={chosen}
-                      aria-label={`${bay.key}: ${stateLabel(bay.state)}${alarm ? `, ${alarmLabel(bay.alarm)}` : ''}`}
+                      aria-label={`${bay.key}: ${stateLabel(operation)}${alarm ? `, ${alarmLabel(bay.alarm)}` : ''}`}
                       onClick={() => onSelect(bay.key)}
                       onKeyDown={press}
                       onFocus={(event) =>
@@ -337,10 +341,11 @@ export function StationSchematic({
                       }
                       className={classes.bay}
                       data-bay={bay.key}
+                      data-operating-state={operation}
                       data-alarm={bay.alarm ?? undefined}
                     >
                       <title>
-                        {`${bay.name}: ${stateLabel(bay.state)}${bay.active ? '' : ` · ${t`Inactive equipment`}`}${alarm ? ` · ${alarmLabel(bay.alarm)}` : ''}`}
+                        {`${bay.name}: ${stateLabel(operation)}${bay.active ? '' : ` · ${t`Inactive equipment`}`}${alarm ? ` · ${alarmLabel(bay.alarm)}` : ''}`}
                       </title>
                       <rect
                         className={classes.focus}
@@ -359,7 +364,21 @@ export function StationSchematic({
                             : undefined
                         }
                       />
-                      <path d={`M${x} 196V${bottom}M${x + 20} 176h6V44`} />
+                      <path
+                        d={`M${x} 196V${bottom}M${x + 20} 176h6V44`}
+                        className={classes.pipeEdge}
+                      />
+                      <path
+                        d={`M${x} 196V${bottom}M${x + 20} 176h6V44`}
+                        className={classes.pipeCore}
+                      />
+                      {hasDischargeFlow(data, bay) && (
+                        <path
+                          d={`M${x + 20} 176h6V44`}
+                          className={visual.flow}
+                          data-discharge-flow
+                        />
+                      )}
                       <path d={`M${x} 144V156`} stroke={state.line} />
                       <rect
                         x={x - 15}
@@ -368,7 +387,7 @@ export function StationSchematic({
                         height={78}
                         rx={4}
                         fill={
-                          bay.state === 'stale'
+                          operation === 'stale'
                             ? 'url(#station-mimic-hatch)'
                             : state.fill
                         }
@@ -380,22 +399,68 @@ export function StationSchematic({
                         cy={176}
                         r={20}
                         fill={
-                          bay.state === 'stale'
+                          operation === 'stale'
                             ? 'url(#station-mimic-hatch)'
                             : state.fill
                         }
                         stroke={state.line}
                         strokeDasharray={state.dashed ? '5 4' : undefined}
                       />
-                      <circle
-                        cx={x}
-                        cy={176}
-                        r={5}
-                        fill={state.line}
-                        stroke='none'
-                      />
+                      {operation === 'fault' ? (
+                        <g
+                          data-fault-icon
+                          stroke='light-dark(var(--mantine-color-red-9), var(--mantine-color-red-1))'
+                          fill='none'
+                          strokeWidth={2}
+                        >
+                          <path
+                            d={`M${x} 163l12 22h-24zM${x} 170v6M${x} 180v1`}
+                          />
+                        </g>
+                      ) : (
+                        <>
+                          <circle
+                            cx={x}
+                            cy={176}
+                            r={3}
+                            fill={state.line}
+                            stroke='none'
+                          />
+                          <path
+                            d={`M${x} 173q8-1 10-10M${x + 3} 178q-2 8 8 10M${x - 3} 178q-7-5-13 2`}
+                            stroke={state.line}
+                            strokeWidth={1.5}
+                          />
+                        </>
+                      )}
+                      {operation === 'running' && (
+                        <path
+                          data-running-icon
+                          d={`M${x - 5} 95l12 9l-12 9z`}
+                          fill='light-dark(var(--mantine-color-green-9), var(--mantine-color-green-1))'
+                          stroke='none'
+                        />
+                      )}
+                      {operation === 'idle' && (
+                        <path
+                          d={`M${x - 4} 96v16M${x + 4} 96v16`}
+                          stroke={state.line}
+                          strokeWidth={3}
+                        />
+                      )}
                       {alarm && (
                         <g data-alarm-marker={bay.alarm}>
+                          {attention && (
+                            <circle
+                              cx={x}
+                              cy={56}
+                              r={16}
+                              stroke={alarm}
+                              strokeWidth={2}
+                              className={visual.attention}
+                              data-attention={attention}
+                            />
+                          )}
                           <polygon
                             points={
                               bay.alarm === 'critical'
@@ -442,7 +507,7 @@ export function StationSchematic({
                         fill='currentColor'
                         stroke='none'
                       >
-                        {stateLabel(bay.state)}
+                        {stateLabel(operation)}
                       </text>
                       {!!bayPower[index].value && (
                         <text
@@ -476,6 +541,6 @@ export function StationSchematic({
           </Box>
         </>
       )}
-    </>
+    </div>
   );
 }

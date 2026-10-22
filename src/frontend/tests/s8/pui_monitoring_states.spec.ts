@@ -208,8 +208,7 @@ for (const scheme of ['light', 'dark'] as const) {
       if (state === 'no-data')
         await expect(root).toContainText('No observation from 1 mapped signal');
       if (state === 'critical-coverage-incomplete') {
-        feature = () =>
-          root.getByRole('button', { name: /critical coverage incomplete:/ });
+        feature = () => root.getByRole('button', { name: /Critical signals:/ });
         await feature().focus();
         await expect(page.getByRole('tooltip')).toContainText(
           'Critical flow mapping awaiting review'
@@ -221,7 +220,7 @@ for (const scheme of ['light', 'dark'] as const) {
       if (state === 'critical-coverage-complete') {
         await expect(
           root.getByRole('button', {
-            name: /critical coverage complete: 1 of 1$/
+            name: /Critical signals: 1 assessed$/
           })
         ).toBeVisible();
         await expect(root.getByRole('alert')).toHaveCount(0);

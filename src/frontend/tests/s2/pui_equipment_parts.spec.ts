@@ -220,7 +220,7 @@ for (const scheme of ['light', 'dark'] as const) {
     await openParts(page, { scheme });
     const thrust = row(page, 'PS-THRUST-BRG:1');
     await expect(
-      thrust.getByRole('button', { name: 'SCADA mapping', exact: true })
+      thrust.getByRole('button', { name: 'Inferred SCADA', exact: true })
     ).toBeVisible();
     await readable(thrust.getByText('Draft', { exact: true }));
     await readable(
@@ -415,45 +415,58 @@ test('desktop Parts header text fits the native shell and numeric columns stay r
   }
 });
 
-test('phone Parts leads with a complete compact card and reveals every secondary fact by keyboard', async ({
-  page
-}, info) => {
-  test.skip(!info.project.name.endsWith('phone'), 'Phone disclosure layout');
-  await openParts(page, { expand: false });
-  const bearing = row(page, 'PS-MOTOR-DE-BRG:1');
-  const details = bearing.locator('details');
-  await expect(details).not.toHaveAttribute('open');
-  await expect(
-    bearing.locator('[data-field="reference_position"]')
-  ).toBeHidden();
-  await expect(bearing.locator('[data-field="fitted_item"]')).toBeHidden();
-  await expect(bearing.locator('[data-field="provenance"]')).toBeHidden();
-  await page.evaluate(() => window.scrollTo(0, 0));
-  const bounds = (await bearing.boundingBox())!;
-  expect(bounds.y + bounds.height).toBeLessThanOrEqual(844);
-  const disclosure = details.locator('summary');
-  await disclosure.focus();
-  await expect(disclosure).toHaveAccessibleName(
-    'Details for Motor Drive-End Bearing'
-  );
-  await disclosure.press('Enter');
-  await expect(details).toHaveAttribute('open', '');
-  await expect(
-    bearing.locator('[data-field="reference_position"]')
-  ).toContainText('Motor drive-end bearing');
-  await expect(
-    bearing.getByRole('button', {
-      name: 'No verified fitted identity is recorded for this slot.',
-      exact: true
-    })
-  ).toHaveText('—');
-  await expect(bearing.locator('[data-field="provenance"]')).toHaveText(
-    'SCADA mapping'
-  );
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-  await disclosure.press('Enter');
-  await expect(details).not.toHaveAttribute('open');
-});
+for (const assetType of ['pump', 'pumphouse'] as const) {
+  test(`phone Parts leads with a complete compact card and reveals every secondary fact by keyboard (${assetType})`, async ({
+    page
+  }, info) => {
+    test.skip(!info.project.name.endsWith('phone'), 'Phone disclosure layout');
+    await openParts(page, { expand: false, assetType });
+    const bearing = row(page, 'PS-MOTOR-DE-BRG:1');
+    await expect(bearing.locator('td:visible').first()).toContainText(
+      'Motor Drive-End Bearing'
+    );
+    for (const cell of await bearing.locator('td:visible').all())
+      await expect(cell).toHaveCSS('border-bottom-width', '0px');
+    const details = bearing.locator('details');
+    await expect(details).not.toHaveAttribute('open');
+    await expect(
+      bearing.locator('[data-field="reference_position"]')
+    ).toBeHidden();
+    await expect(bearing.locator('[data-field="fitted_item"]')).toBeHidden();
+    await expect(bearing.locator('[data-field="provenance"]')).toBeHidden();
+    if (assetType === 'pumphouse')
+      await expect(bearing.locator('[data-field="machine_name"]')).toBeHidden();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const bounds = (await bearing.boundingBox())!;
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(844);
+    const disclosure = details.locator('summary');
+    await disclosure.focus();
+    await expect(disclosure).toHaveAccessibleName(
+      'Details for Motor Drive-End Bearing'
+    );
+    await disclosure.press('Enter');
+    await expect(details).toHaveAttribute('open', '');
+    if (assetType === 'pumphouse')
+      await expect(
+        bearing.locator('[data-field="machine_name"]')
+      ).toBeVisible();
+    await expect(
+      bearing.locator('[data-field="reference_position"]')
+    ).toContainText('Motor drive-end bearing');
+    await expect(
+      bearing.getByRole('button', {
+        name: 'No verified fitted identity is recorded for this slot.',
+        exact: true
+      })
+    ).toHaveText('—');
+    await expect(bearing.locator('[data-field="provenance"]')).toHaveText(
+      'Inferred SCADA'
+    );
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await disclosure.press('Enter');
+    await expect(details).not.toHaveAttribute('open');
+  });
+}
 
 const destination = (page: Page) => page.getByTestId('destination');
 const slotDialog = (page: Page) =>

@@ -1090,6 +1090,7 @@ export function InvenTreeTableInternal<T extends Record<string, any>>({
               }
               withTableBorder={!tableProps.noHeader}
               withColumnBorders={tableProps.withColumnBorders ?? true}
+              withRowBorders={tableProps.withRowBorders ?? true}
               striped
               highlightOnHover
               loaderType={userTheme.loader}

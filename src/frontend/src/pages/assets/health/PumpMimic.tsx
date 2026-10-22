@@ -300,6 +300,35 @@ export default function PumpMimic({
         ) : (
           <>
             <UnitMimic
+              alarmPanel={
+                !knownEmptyAlarms && (
+                  <>
+                    <Title
+                      order={5}
+                      id='pump-threshold-alarms'
+                      tabIndex={-1}
+                    >{t`Threshold alarms`}</Title>
+                    {missingAlarmDetails && bay?.machine && (
+                      <Text size='sm'>{t`Active alarm details are unavailable in this response. The bay's active severity remains recorded.`}</Text>
+                    )}
+                    {!bay?.machine ? (
+                      <Text>{t`Alarm scope unavailable for this pump.`}</Text>
+                    ) : alarms.length ? (
+                      <AlarmTable
+                        alarms={alarms}
+                        display={displayFor(data, unit)}
+                        onAcknowledged={() => query.refetch()}
+                      />
+                    ) : (
+                      <Text>
+                        {missingAlarmDetails
+                          ? t`Active alarm details unavailable.`
+                          : t`No active alarm details supplied.`}
+                      </Text>
+                    )}
+                  </>
+                )
+              }
               header={false}
               data={data}
               unit={unit}
@@ -312,33 +341,6 @@ export default function PumpMimic({
                 >{t`Open station mimic`}</Anchor>
               }
             />
-            {!knownEmptyAlarms && (
-              <>
-                <Title
-                  order={5}
-                  id='pump-threshold-alarms'
-                  tabIndex={-1}
-                >{t`Threshold alarms`}</Title>
-                {missingAlarmDetails && bay?.machine && (
-                  <Text size='sm'>{t`Active alarm details are unavailable in this response. The bay's active severity remains recorded.`}</Text>
-                )}
-                {!bay?.machine ? (
-                  <Text>{t`Alarm scope unavailable for this pump.`}</Text>
-                ) : alarms.length ? (
-                  <AlarmTable
-                    alarms={alarms}
-                    display={displayFor(data, unit)}
-                    onAcknowledged={() => query.refetch()}
-                  />
-                ) : (
-                  <Text>
-                    {missingAlarmDetails
-                      ? t`Active alarm details unavailable.`
-                      : t`No active alarm details supplied.`}
-                  </Text>
-                )}
-              </>
-            )}
           </>
         )}
       </Stack>

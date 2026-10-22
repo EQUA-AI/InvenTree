@@ -15,6 +15,9 @@ export const factTooltipProps = {
   multiline: true,
   maw: 360,
   withArrow: true,
+  interactive: true,
+  closeDelay: 150,
+  style: { whiteSpace: 'pre-line' },
   events: { hover: true, focus: true, touch: true }
 } as const;
 
@@ -28,7 +31,11 @@ export function ValueTooltip({
   ...props
 }: Readonly<ValueTooltipProps>) {
   return (
-    <Tooltip label={label} {...factTooltipProps}>
+    <Tooltip
+      label={label}
+      {...factTooltipProps}
+      events={{ hover: true, focus: true, touch: !props.onClick }}
+    >
       <UnstyledButton
         type='button'
         {...props}

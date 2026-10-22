@@ -105,6 +105,34 @@ it('does not promote an independently bad quality flag into a normal verdict or 
 });
 
 it.each([
+  [point(null, { reason: 'bad_quality', quality: 'bad' }), true],
+  [point(null, { reason: 'not_published' }), false]
+])(
+  'keeps a failed collapsed section visibly different from an unpublished reading',
+  (reading, failed) => {
+    const html = renderToStaticMarkup(
+      createElement(
+        MantineProvider,
+        {},
+        createElement(ReadingSections, {
+          sections: [
+            { key: 'motor', title: 'Motor', number: 3, points: [reading] }
+          ]
+        })
+      )
+    );
+    if (failed) {
+      expect(html).toContain('Read failed');
+      expect(html).toContain('data-tone="failed"');
+    } else {
+      expect(html).not.toContain('Read failed');
+      expect(html).toContain('—');
+      expect(html).not.toContain('data-tone="normal"');
+    }
+  }
+);
+
+it.each([
   ['normal', 'normal'],
   ['unknown', 'neutral']
 ] as const)(

@@ -57,7 +57,8 @@ export async function contrast(locator: Locator) {
     const surface =
       el instanceof SVGTextElement &&
       (el.previousElementSibling instanceof SVGCircleElement ||
-        (el.parentElement?.matches('[data-alarm-marker]') &&
+        ((el.parentElement?.matches('[data-alarm-marker]') ||
+          el.previousElementSibling?.hasAttribute('data-number-surface')) &&
           el.previousElementSibling instanceof SVGGraphicsElement))
         ? el.previousElementSibling
         : null;
@@ -182,7 +183,8 @@ export async function textSweep(scope: Locator) {
       const surface =
         el instanceof SVGTextElement &&
         (el.previousElementSibling instanceof SVGCircleElement ||
-          (el.parentElement?.matches('[data-alarm-marker]') &&
+          ((el.parentElement?.matches('[data-alarm-marker]') ||
+            el.previousElementSibling?.hasAttribute('data-number-surface')) &&
             el.previousElementSibling instanceof SVGGraphicsElement))
           ? el.previousElementSibling
           : null;

@@ -234,7 +234,7 @@ for (const scheme of ['light', 'dark'] as const) {
         .getByText('Normal · 3/5', { exact: true })
     ).toBeVisible();
     const coverage = page.getByRole('button', {
-      name: /critical coverage unavailable$/
+      name: /Critical signals: not designated$/
     });
     await expect(coverage).toBeVisible();
     await coverage.focus();
@@ -657,17 +657,22 @@ for (const scheme of ['light', 'dark'] as const) {
     ).toHaveCount(0);
     await expect(
       page.getByText(
-        'Assessed on 0 of 6 signals · critical coverage unavailable',
+        'Assessed on 0 of 6 signals · Critical signals: not designated',
         {
           exact: true
         }
       )
     ).toBeVisible();
-    await expect(
-      signalTable(page).getByText('None', {
-        exact: true
-      })
-    ).toHaveCount(6);
+    const limits = signalTable(page).getByRole('button', {
+      name: 'Limits: No limits set · Limits on signal mapping; engineering approval not supplied',
+      exact: true,
+      includeHidden: true
+    });
+    await expect(limits).toHaveCount(6);
+    for (const limit of await limits.all()) {
+      await expect(limit).toHaveText('—');
+      await expect(limit).toHaveAttribute('tabindex', '-1');
+    }
     await expect(
       signalTable(page).getByRole('button', {
         name: 'State: Not assessed: limits not configured',
@@ -880,11 +885,11 @@ for (const scheme of ['light', 'dark'] as const) {
       summary: { state: 'normal' }
     });
     await expect(
-      page.getByText(/critical coverage incomplete: 1 of 2/)
+      page.getByText(/Critical signals: 1 of 2 assessed/)
     ).toBeVisible();
     await page
       .getByRole('button', {
-        name: /critical coverage incomplete: 1 of 2$/
+        name: /Critical signals: 1 of 2 assessed$/
       })
       .focus();
     await expect(page.getByRole('tooltip')).toContainText(
@@ -973,11 +978,11 @@ for (const scheme of ['light', 'dark'] as const) {
       ]
     });
     await expect(
-      page.getByText(/critical coverage incomplete: 0 of 2/)
+      page.getByText(/Critical signals: 0 of 2 assessed/)
     ).toBeVisible();
     await page
       .getByRole('button', {
-        name: /critical coverage incomplete: 0 of 2$/
+        name: /Critical signals: 0 of 2 assessed$/
       })
       .focus();
     await expect(page.getByRole('tooltip')).toContainText(

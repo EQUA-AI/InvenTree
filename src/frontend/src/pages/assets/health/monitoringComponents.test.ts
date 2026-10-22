@@ -220,7 +220,7 @@ it('keeps critical coverage inspectable without a duplicate prose alert or an em
   );
   expect(text(html)).toContain('0 active anomalies');
   expect(html).toMatch(
-    /<button[^>]*>[^<]*critical coverage unavailable<\/button>/
+    /<button[^>]*>[^<]*Critical signals: not designated<\/button>/
   );
   expect(html).not.toContain('role="alert"');
   expect(html).not.toContain('No active anomalies.');

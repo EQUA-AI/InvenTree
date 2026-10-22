@@ -22,7 +22,9 @@ export function ComponentProvenance({
     source.kind === 'register'
       ? t`Registry import`
       : source.kind === 'scada'
-        ? t`SCADA mapping`
+        ? source.inferred
+          ? t`Inferred SCADA`
+          : t`SCADA mapping`
         : source.kind === 'manual'
           ? t`Manual entry`
           : source.label;

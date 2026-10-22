@@ -16,6 +16,8 @@ import {
 import operations from '../../operations.module.css';
 import { unitLabel } from '../../performance/format';
 import { StatusBadge, statusTone } from '../StatusBadge';
+import { readingSeverity } from './mimicVisuals';
+import visual from './mimicVisuals.module.css';
 import { formatInstant, useDisplayClock } from './observedTime';
 
 import { UnavailableReading, failedReading } from './MimicValue';
@@ -147,7 +149,7 @@ export function PointTable({
   const clock = useDisplayClock();
   return (
     <Table.ScrollContainer minWidth={650}>
-      <Table striped>
+      <Table striped className={visual.surface}>
         <Table.Thead>
           <Table.Tr>
             <Table.Th>{t`Signal`}</Table.Th>
@@ -194,6 +196,8 @@ export function PointTable({
                   </ValueTooltip>
                 </Table.Td>
                 <Table.Td
+                  className={visual.value}
+                  data-severity={readingSeverity(point)}
                   ta={typeof point.value === 'number' ? 'right' : 'left'}
                 >
                   {shown ? (
@@ -321,7 +325,8 @@ export function ReadingSections({
               label={detail}
               multiline
               maw={480}
-              events={{ hover: true, focus: true, touch: true }}
+              interactive
+              events={{ hover: true, focus: true, touch: false }}
             >
               <Accordion.Control>
                 <Group justify='space-between' wrap='wrap' gap='sm'>
@@ -346,7 +351,20 @@ export function ReadingSections({
                     </Group>
                   </Stack>
                   <Group gap='xs' wrap='wrap'>
-                    <VerdictBadge verdict={summary.verdict} />
+                    {section.points.length > 0 &&
+                    section.points.every(failedReading) ? (
+                      <StatusBadge
+                        tone='failed'
+                        color='red'
+                      >{t`Read failed`}</StatusBadge>
+                    ) : summary.unavailable === section.points.length ? (
+                      <MissingValue
+                        reason={detail || t`Reason not supplied`}
+                        focusable={false}
+                      />
+                    ) : (
+                      <VerdictBadge verdict={summary.verdict} />
+                    )}
                   </Group>
                 </Group>
               </Accordion.Control>

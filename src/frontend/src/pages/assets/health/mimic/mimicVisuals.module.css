@@ -1,0 +1,35 @@
+.surface {
+  --mimic-warning-text: light-dark(color-mix(in srgb, var(--mantine-color-orange-9) 85%, var(--mantine-color-black)), var(--mantine-color-orange-4));
+  --mimic-critical-text: light-dark(var(--mantine-color-red-9), var(--mantine-color-red-4));
+}
+
+.value[data-severity='warning'] { color: var(--mimic-warning-text); }
+.value[data-severity='critical'] { color: var(--mimic-critical-text); }
+
+.flow {
+  fill: none;
+  stroke: var(--aimms-normal, light-dark(var(--mantine-color-green-9), var(--mantine-color-green-5)));
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 9 12;
+  animation: discharge-flow 4s linear infinite;
+  pointer-events: none;
+}
+
+.attention {
+  fill: none;
+  pointer-events: none;
+  opacity: 1;
+}
+
+.attention[data-attention='unacknowledged'] {
+  animation: alarm-attention 1s steps(2, end) infinite;
+}
+
+@keyframes discharge-flow { to { stroke-dashoffset: -84; } }
+@keyframes alarm-attention { 50% { opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .flow { animation: none; stroke-dasharray: 9 12; }
+  .attention[data-attention='unacknowledged'] { animation: none; opacity: 1; stroke-width: 3; }
+}

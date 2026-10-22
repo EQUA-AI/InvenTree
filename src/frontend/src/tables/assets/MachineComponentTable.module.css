@@ -31,6 +31,7 @@
   .phoneDetails > summary:focus-visible { outline: 2px solid var(--aimms-focus, light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3))); outline-offset: 2px; border-radius: var(--mantine-radius-xs); }
   .secondaryFacts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 16px; padding-top: 8px; }
   .secondaryFacts [data-field='provenance'] { grid-column: 1 / -1; }
+  .secondaryFacts .cell[data-field='machine_name']::before { display: block; }
   .partsTable td:has([data-field='status']), .partsTable td:has([data-field='open_work']), .partsTable td:has([data-field='stock']) { grid-column: auto; }
 
 }
