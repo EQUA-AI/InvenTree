@@ -1,5 +1,9 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## UI tables cleanup — 22 October 2026 (ready for coordinator review)
+
+`r6/ui-tables` implements the owner-requested Machines/location selection and density fixes, calm Health missing-value/assessment presentation and station/pump Parts provenance and stacked rows. Latest owner direction is preserved: no new table notes/captions; missing reasons are accessible hover/focus tooltips. [Report](reports/ui-tables.md), `data/devscratch/ui-tables/`. **195 focused browser cases** verified, final **20/20 before/after capture variants** inspected in Linux Chromium on WS3011/harness15246; nine TypeScript projects, changed units8/8 and Lingui with117 bytewise locale restores pass. Affected backend85/85 pass with explicit scratch-only schema supplement; full raw assets failures match HEAD and are not reported green. User narrowed scope: coordinator runs full sprint suites on the Mac. Parent backlog dispositions and deployment/product acceptance unchanged. No Git writes or Azure access. Browser stopped and WS3011 clear. Host harness PID80523 on15246 remains: sandbox denied SIGTERM; coordinator cleanup required (report runtime note).
+
 ## O27 live-view — 21 October 2026 (in progress)
 
 `r6/live-view` implements owner O27 behind default-on

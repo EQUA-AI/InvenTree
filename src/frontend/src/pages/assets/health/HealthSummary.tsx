@@ -10,13 +10,13 @@ import { displayInstant } from '../displayClock';
 import monitoring from '../monitoring.module.css';
 import { recordedTelemetryAsLive } from '../telemetryPresentation';
 import { conditionText } from './SignalCondition';
+import { SignalTooltip, SignalValue } from './SignalReading';
 import { StatusBadge, statusTone } from './StatusBadge';
 import {
   AttentionAlert,
   FreshnessText,
   HealthStateBadge,
   MetaText,
-  Unit,
   formatSignalLimits
 } from './common';
 import { headlineFacts } from './headlineFacts';
@@ -78,9 +78,6 @@ export function HealthSummaryPanel({
               : t`critical coverage unavailable`}
           </MetaText>
         </Group>
-        {fact.coverageIncomplete && (
-          <MetaText size='xs'>{t`Missing critical evidence cannot be ruled out, even when the assessment is Normal.`}</MetaText>
-        )}
         {fact.noObservation && (
           <Text size='sm'>
             {plural(coverage!.mapped, {
@@ -93,10 +90,8 @@ export function HealthSummaryPanel({
           <Stack gap={2} aria-label={t`Assessment cause`}>
             {fact.matchingSignals.map((s) => (
               <Text size='sm' key={s.binding_id}>
-                {signalLink(s)}{' '}
-                {s.value == null ? t`Unavailable` : String(s.value)}{' '}
-                <Unit code={s.unit} /> · {conditionText(s)} (
-                {formatSignalLimits(s) ?? t`Not configured`}) · {t`observed`}{' '}
+                {signalLink(s)} <SignalValue signal={s} /> · {conditionText(s)}{' '}
+                ({formatSignalLimits(s) ?? t`Not configured`}) · {t`observed`}{' '}
                 {displayInstant(s.observed_at) ?? t`Time unavailable`}
               </Text>
             ))}
@@ -106,13 +101,13 @@ export function HealthSummaryPanel({
           <Text size='sm'>{t`From active anomaly: ${fact.anomaly!.title}`}</Text>
         )}
         {fact.why === 'unavailable' && (
-          <MetaText>{t`Cause not supplied by the summary`}</MetaText>
+          <SignalTooltip
+            label={t`Assessment cause not supplied by the summary`}
+          />
         )}
         <Group gap={6}>
           {counts ? (
-            Object.values(counts).every((count) => count === 0) ? (
-              <MetaText>{t`No active anomaly records`}</MetaText>
-            ) : (
+            Object.values(counts).some((count) => count > 0) ? (
               (['critical', 'warning', 'info'] as const)
                 .filter((severity) => counts[severity] > 0)
                 .map((severity) => (
@@ -131,19 +126,24 @@ export function HealthSummaryPanel({
                     {counts[severity]} {severity}
                   </StatusBadge>
                 ))
-            )
+            ) : null
           ) : (
-            <MetaText>{t`Active anomaly counts unavailable`}</MetaText>
+            <SignalTooltip label={t`Active anomaly counts unavailable`} />
           )}
         </Group>
         <MetaText size='xs'>{t`Last observation`}</MetaText>
-        <FreshnessText
-          preferJustNow={recordedTelemetryAsLive(summary)}
-          observedAt={summary.last_observed_at}
-          stale={newest?.stale ?? false}
-          thresholdSeconds={newest?.freshness_threshold_seconds}
-        />
-        <MetaText size='xs'>{t`Backend assessment · assessment time unavailable`}</MetaText>
+        {summary.last_observed_at ? (
+          <FreshnessText
+            preferJustNow={recordedTelemetryAsLive(summary)}
+            observedAt={summary.last_observed_at}
+            stale={newest?.stale ?? false}
+            thresholdSeconds={newest?.freshness_threshold_seconds}
+          />
+        ) : (
+          <SignalTooltip
+            label={t`Observation time not reported by the plant`}
+          />
+        )}
       </Stack>
       <Stack gap={4}>
         {critical && critical.evaluated === critical.designated ? (

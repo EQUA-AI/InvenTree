@@ -1,5 +1,5 @@
 import { t } from '@lingui/core/macro';
-import { Anchor, Stack, Text, Title } from '@mantine/core';
+import { Anchor, Group, Stack, Title } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 
@@ -8,6 +8,7 @@ import { apiUrl } from '@lib/functions/Api';
 import { api } from '../../App';
 import { MachineComponentTable } from '../../tables/assets/MachineComponentTable';
 import { MachinePartTable } from '../../tables/assets/MachinePartTable';
+import operations from './operations.module.css';
 
 interface PartsMachine {
   pk: number;
@@ -41,15 +42,19 @@ export function InstalledPartsPanel({
 
   return (
     <Stack gap='md'>
-      <Text size='sm' c='dimmed'>
-        {station
-          ? t`The components the equipment registry holds for this station and its pumps.`
-          : t`The components the equipment registry holds for this pump.`}{' '}
-        {t`Draft means the registry slot assignment still needs review. Fitted identity is recorded separately.`}{' '}
-        <Anchor component={Link} to={registry} size='sm'>
+      <Group justify='flex-end'>
+        <Anchor
+          className={operations.link}
+          display='inline-flex'
+          mih={{ base: 44, sm: 0 }}
+          style={{ alignItems: 'center' }}
+          component={Link}
+          to={registry}
+          size='sm'
+        >
           {t`Review in the equipment registry`}
         </Anchor>
-      </Text>
+      </Group>
       <MachineComponentTable machine={machine} />
       <RecordedParts machineId={machine.pk} />
     </Stack>

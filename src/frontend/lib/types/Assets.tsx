@@ -66,6 +66,10 @@ export interface MachineComponent {
   name: string;
   status: 'draft' | 'verified';
   provenance: string;
+  /** Human-readable source; raw provenance remains available for traceability. */
+  provenance_display?: string;
+  /** Original import timestamp, only when the source records one. */
+  provenance_imported_at?: string | null;
   review_note: string;
   reviewed_at: string | null;
   /** R6 P13: the reference 3D position this slot's family stands for (O11). */

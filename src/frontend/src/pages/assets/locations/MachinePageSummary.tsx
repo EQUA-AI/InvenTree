@@ -1,9 +1,9 @@
 import { plural, t } from '@lingui/core/macro';
-import { Box, Button, Group, Stack, Text } from '@mantine/core';
+import { Button, Group, Text, Tooltip } from '@mantine/core';
 import { IconBellRinging } from '@tabler/icons-react';
-import { StatusBadge } from '../health/common';
 import operations from '../operations.module.css';
 import type { LocatedMachine } from './locationTypes';
+import classes from './locations.module.css';
 import { machineCondition } from './machineCondition';
 import { pageFacts } from './pageFacts';
 
@@ -22,19 +22,35 @@ export function MachinePageSummary({
 }>) {
   const facts = pageFacts(rows);
   if (total === 0) return null;
+  const coverage = plural(facts.unavailable, {
+    one: 'Stale-signal coverage unavailable for # machine',
+    other: 'Stale-signal coverage unavailable for # machines'
+  });
+  const pageDescription = t`Page counts only. ${facts.normal} normal; ${facts.unknown} condition unknown; ${facts.offline} with no current data. Stale signals on ${facts.stale} machines. ${coverage}. Telemetry, run/stop and communication status unavailable here.`;
   return (
-    <Stack
-      gap={4}
-      className={operations.phoneSummary}
+    <Group
+      gap='xs'
+      className={`${operations.phoneSummary} ${classes.pageSummary}`}
       component='section'
       aria-label={t`Loaded page summary`}
     >
-      <Group gap={2} component='output'>
-        <Text
-          size='sm'
-          lh={1.2}
-          fw={600}
-        >{t`This page · ${rows.length} of ${total} machines`}</Text>
+      <Group gap='xs' component='output'>
+        <Tooltip
+          label={pageDescription}
+          multiline
+          maw={360}
+          events={{ hover: true, focus: true, touch: true }}
+        >
+          <Text
+            component='span'
+            tabIndex={0}
+            data-testid='machine-page-count'
+            size='sm'
+            lh={1.2}
+            fw={600}
+            aria-label={pageDescription}
+          >{t`This page · ${rows.length} of ${total} machines`}</Text>
+        </Tooltip>
         <Group
           gap={4}
           className={operations.conditionCounts}
@@ -72,36 +88,10 @@ export function MachinePageSummary({
                 target?.scrollIntoView({ block: 'center' });
               }}
             >
-              {kind === 'unavailable' ? (
-                <>
-                  <Box
-                    component='span'
-                    visibleFrom='sm'
-                  >{t`Condition unavailable (not judged)`}</Box>
-                  <Box component='span' hiddenFrom='sm'>
-                    {label}
-                  </Box>
-                </>
-              ) : (
-                label
-              )}{' '}
-              · {count}
+              {label} · {count}
             </Button>
           ))}
         </Group>
-        <Box visibleFrom='sm' className={operations.inline}>
-          {(
-            [
-              [t`Offline`, facts.offline, 'gray'],
-              [t`Condition unknown (assessed)`, facts.unknown, 'gray'],
-              [t`Normal`, facts.normal, 'green']
-            ] as const
-          ).map(([label, count, color]) => (
-            <StatusBadge size='sm' key={label} color={color}>
-              {label} · {count}
-            </StatusBadge>
-          ))}
-        </Box>
         <Button
           variant='default'
           size='compact-xs'
@@ -113,22 +103,6 @@ export function MachinePageSummary({
           {t`In alarm`}: {facts.alarmRows ?? t`Unavailable`} {t`rows`}
         </Button>
       </Group>
-      <Text className={operations.meta}>
-        {(facts.stale > 0 || facts.unavailable === 0) &&
-          t`Stale signals on ${facts.stale} machines (also counted above)`}
-        {facts.unavailable > 0 && (
-          <>
-            {facts.stale > 0 && ' · '}
-            {plural(facts.unavailable, {
-              one: 'Stale-signal coverage unavailable for # machine',
-              other: 'Stale-signal coverage unavailable for # machines'
-            })}
-          </>
-        )}
-      </Text>
-      <Text
-        className={operations.caveat}
-      >{t`Page counts only. Telemetry, run/stop and communication status unavailable here.`}</Text>
-    </Stack>
+    </Group>
   );
 }

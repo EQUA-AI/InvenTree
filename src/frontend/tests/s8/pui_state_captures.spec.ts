@@ -103,8 +103,11 @@ for (const state of states)
             const summary = page.getByRole('region', {
               name: 'Loaded page summary'
             });
-            await expect(summary).toContainText(
-              'Stale-signal coverage unavailable for 25 machines'
+            await expect(
+              summary.getByTestId('machine-page-count')
+            ).toHaveAttribute(
+              'aria-label',
+              /Stale-signal coverage unavailable for 25 machines/
             );
             await expect(summary).not.toContainText(
               'Stale signals on 0 machines'
@@ -112,8 +115,8 @@ for (const state of states)
           }
           if (state === 'station-stale')
             await expect(
-              page.getByRole('region', { name: 'Loaded page summary' })
-            ).toContainText('Stale signals on 25 machines');
+              page.getByTestId('machine-page-count')
+            ).toHaveAttribute('aria-label', /Stale signals on 25 machines/);
         }
       } else if (
         (state.startsWith('alarm-') && !state.startsWith('alarm-table')) ||

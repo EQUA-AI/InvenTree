@@ -1,4 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
+import { readable } from '../s8/contrast';
 import { nativeThemeFixtures } from '../s8/themeFixtures';
 
 import { nativeBaseline } from '../s0/guards';
@@ -21,6 +22,8 @@ function components(withStock: boolean) {
     name,
     status: 'draft',
     provenance: 'Inferred from source tags; physical assignment is unverified.',
+    provenance_display: 'SCADA tag mapping',
+    provenance_imported_at: null,
     review_note: '',
     reviewed_at: null,
     reference_position: null,
@@ -41,6 +44,8 @@ function components(withStock: boolean) {
       reference_position: 'motor',
       status: 'verified',
       provenance: 'Workbook population 4c1f00a2e9b1',
+      provenance_display: 'Equipment register import',
+      provenance_imported_at: '2026-10-10T14:30:00Z',
       open_work: null
     }),
     row(3, 'PS-THRUST-BRG:1', 'Thrust Bearing', {})
@@ -69,7 +74,7 @@ async function openParts(
     role,
     scheme,
     legacy = false
-  }: { role?: 'viewer'; scheme?: 'dark'; legacy?: boolean } = {}
+  }: { role?: 'viewer'; scheme?: 'light' | 'dark'; legacy?: boolean } = {}
 ) {
   await mockMachine(page);
   const withStock = role !== 'viewer';
@@ -120,11 +125,17 @@ test('the Parts tab keeps its route and says what is known about each slot', asy
 
   const bearing = row(page, 'PS-MOTOR-DE-BRG:1');
   await expect(bearing).toContainText('Motor drive-end bearing');
-  // Nothing records what is fitted: said, not filled in from the catalogue.
-  await expect(bearing).toContainText('Not recorded');
-  await expect(bearing.getByText('Draft', { exact: true })).toBeVisible();
-  await expect(bearing.getByText('Slot assignment not verified')).toBeVisible();
-  await expect(bearing).toContainText('1 open');
+  // The dash still explains absence accessibly; the catalogue is not a fit.
+  await expect(
+    bearing.getByRole('img', {
+      name: 'No verified fitted identity is recorded for this slot.',
+      exact: true
+    })
+  ).toHaveText('—');
+  await expect(
+    bearing.getByLabel('Draft: slot assignment not verified', { exact: true })
+  ).toHaveText('Draft');
+  await expect(bearing.locator('[data-field="open_work"]')).toHaveText('1');
   // The catalogue part opens its own native page; nothing is duplicated here.
   await expect(
     bearing.getByRole('link', { name: 'Motor Drive-End Bearing' })
@@ -134,15 +145,23 @@ test('the Parts tab keeps its route and says what is known about each slot', asy
   ).toHaveAttribute('href', /\/part\/501\/stock$/);
 
   const motor = row(page, 'PS-MOTOR:1');
-  await expect(motor.getByText('Verified', { exact: true })).toBeVisible();
-  await expect(motor.getByText('Assignment verified')).toBeVisible();
+  await expect(
+    motor.getByLabel('Verified: assignment verified', { exact: true })
+  ).toHaveText('Verified');
   // Work that could not be checked is not shown as none.
-  await expect(motor).toContainText('Not available');
+  await expect(
+    motor.getByRole('img', { name: 'Work could not be checked', exact: true })
+  ).toHaveText('—');
+  await expect(motor.locator('[data-field="provenance"]')).toHaveText(
+    'Equipment register import · Oct 10, 2026'
+  );
 
   const thrust = row(page, 'PS-THRUST-BRG:1');
-  await expect(thrust).toContainText('Not in the model');
-  await expect(thrust).toContainText('None in stock');
-  await expect(thrust).toContainText('None open');
+  await expect(
+    thrust.getByRole('img', { name: 'Not in the model', exact: true })
+  ).toHaveText('—');
+  await expect(thrust.locator('[data-field="stock"]')).toHaveText('0');
+  await expect(thrust.locator('[data-field="open_work"]')).toHaveText('0');
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth)
   ).toBeLessThanOrEqual(page.viewportSize()!.width);
@@ -157,10 +176,18 @@ test('a reader without stock access sees no stock column and no part links', asy
   page
 }, testInfo) => {
   await openParts(page, { role: 'viewer', scheme: 'dark' });
-  await expect(row(page, 'PS-MOTOR-DE-BRG:1')).toContainText(
-    'Slot assignment not verified'
-  );
-  await expect(row(page, 'PS-MOTOR-DE-BRG:1')).toContainText('Not available');
+  await expect(
+    row(page, 'PS-MOTOR-DE-BRG:1').getByLabel(
+      'Draft: slot assignment not verified',
+      { exact: true }
+    )
+  ).toHaveText('Draft');
+  await expect(
+    row(page, 'PS-MOTOR-DE-BRG:1').getByRole('img', {
+      name: 'Fitted identity could not be read.',
+      exact: true
+    })
+  ).toHaveText('—');
   await expect(
     page.getByRole('columnheader', { name: 'Catalogue stock' })
   ).toHaveCount(0);
@@ -181,12 +208,123 @@ test('rows from a server without Parts context are not shown as known', async ({
 }) => {
   await openParts(page, { legacy: true });
   const bearing = row(page, 'PS-MOTOR-DE-BRG:1');
-  await expect(bearing).toContainText('Slot assignment not verified');
+  await expect(
+    bearing.getByLabel('Draft: slot assignment not verified', { exact: true })
+  ).toHaveText('Draft');
   // Not "Not in the model", "None open" or "None in stock": it was not said.
   await expect(bearing).not.toContainText('Not in the model');
   await expect(bearing).not.toContainText('None');
-  await expect(bearing.getByText('Not available')).toHaveCount(4);
+  for (const reason of [
+    '3D position could not be read',
+    'Fitted identity could not be read.',
+    'Work could not be checked',
+    'Catalogue stock could not be read'
+  ]) {
+    await expect(
+      bearing.getByRole('img', { name: reason, exact: true })
+    ).toHaveText('—');
+  }
 });
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`Parts facts keep keyboard explanations and provenance within the viewport (${scheme})`, async ({
+    page
+  }, info) => {
+    await openParts(page, { scheme });
+    const thrust = row(page, 'PS-THRUST-BRG:1');
+    await readable(thrust.getByText('Draft', { exact: true }));
+    await readable(
+      thrust.getByRole('button', { name: 'Thrust Bearing', exact: true })
+    );
+    await readable(
+      thrust.getByRole('link', { name: 'Thrust Bearing', exact: true })
+    );
+    await readable(thrust.getByText('PS-THRUST-BRG:1', { exact: true }));
+    const missing = thrust.getByRole('img', {
+      name: 'Not in the model',
+      exact: true
+    });
+    await missing.focus();
+    await expect(missing).toBeFocused();
+    await expect(
+      page.getByRole('tooltip', { name: 'Not in the model', exact: true })
+    ).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+
+    const draft = thrust.getByLabel('Draft: slot assignment not verified', {
+      exact: true
+    });
+    await draft.focus();
+    await expect(draft).toBeFocused();
+    await expect(
+      page.getByRole('tooltip', {
+        name: 'Slot assignment not verified',
+        exact: true
+      })
+    ).toBeVisible();
+
+    const motor = row(page, 'PS-MOTOR:1');
+    const source = motor.getByText('Equipment register import · Oct 10, 2026', {
+      exact: true
+    });
+    await expect(motor.locator('[data-field="provenance"]')).not.toContainText(
+      '4c1f00a2e9b1'
+    );
+    await source.focus();
+    await expect(source).toBeFocused();
+    await expect(
+      page.getByRole('tooltip', {
+        name: 'Workbook population 4c1f00a2e9b1',
+        exact: true
+      })
+    ).toBeVisible();
+    await source.click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+
+    const width = page.viewportSize()!.width;
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth)
+    ).toBeLessThanOrEqual(width);
+    for (const code of ['PS-MOTOR-DE-BRG:1', 'PS-MOTOR:1', 'PS-THRUST-BRG:1']) {
+      const bounds = await row(page, code).boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width + 1);
+    }
+    if (width <= 768) {
+      for (const target of [missing, draft, source]) {
+        const bounds = await target.boundingBox();
+        expect(bounds).not.toBeNull();
+        expect(bounds!.height).toBeGreaterThanOrEqual(44);
+        expect(bounds!.width).toBeGreaterThanOrEqual(44);
+      }
+      // The table becomes stacked facts, with its name and source spanning it.
+      const name = await motor.locator('[data-field="name"]').boundingBox();
+      const provenance = await motor
+        .locator('[data-field="provenance"]')
+        .boundingBox();
+      const motorBounds = await motor.boundingBox();
+      expect(motorBounds).not.toBeNull();
+      // Full-span content uses the row's width, allowing its 24 px padding
+      // and a small border/rounding tolerance, rather than old desktop widths.
+      for (const field of ['name', 'part_name', 'provenance']) {
+        const bounds = await motor
+          .locator(`[data-field="${field}"]`)
+          .boundingBox();
+        expect(bounds).not.toBeNull();
+        expect(bounds!.width).toBeGreaterThanOrEqual(motorBounds!.width - 32);
+      }
+      expect(name).not.toBeNull();
+      expect(provenance).not.toBeNull();
+      expect(provenance!.y).toBeGreaterThan(name!.y + name!.height);
+    }
+    await page.screenshot({
+      path: info.outputPath(`parts-facts-${scheme}.png`),
+      fullPage: true,
+      animations: 'disabled'
+    });
+  });
+}
 
 const destination = (page: Page) => page.getByTestId('destination');
 const slotDialog = (page: Page) =>
@@ -266,7 +404,9 @@ test('closing a slot returns focus, and row clicks never hijack a link', async (
   await expect(trigger).toBeFocused();
 
   // Anywhere else on the row opens it too.
-  await row(page, 'PS-MOTOR:1').getByText('Workbook population').click();
+  await row(page, 'PS-MOTOR:1')
+    .getByText('Electric motor', { exact: true })
+    .click();
   await expect(
     page.getByRole('dialog', { name: 'Electric Motor' })
   ).toBeVisible();

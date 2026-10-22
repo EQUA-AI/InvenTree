@@ -676,6 +676,9 @@ for (const scheme of ['light', 'dark'] as const) {
               name: 'P32 synthetic motor',
               status: 'draft',
               provenance: 'P32 synthetic inferred assignment; fit unverified.',
+              provenance_display:
+                'P32 synthetic inferred assignment; fit unverified.',
+              provenance_imported_at: null,
               review_note: '',
               reviewed_at: null,
               reference_position: 'motor',
@@ -691,12 +694,21 @@ for (const scheme of ['light', 'dark'] as const) {
     );
     await viewerEntry(page, '/machines/machine/18/parts/', scheme, 'machine');
     const row = page.getByRole('row').filter({ hasText: 'PS-MOTOR:1' });
-    await expect(row.getByText('Draft', { exact: true })).toBeVisible();
-    await expect(row).toContainText('Slot assignment not verified');
+    await expect(
+      row.getByLabel('Draft: slot assignment not verified', { exact: true })
+    ).toHaveText('Draft');
     await expect(row).toContainText(
       'P32 synthetic inferred assignment; fit unverified.'
     );
-    await expect(row).toContainText('Not available');
+    await expect(
+      row.getByRole('img', { name: 'Work could not be checked', exact: true })
+    ).toHaveText('—');
+    await expect(
+      row.getByRole('img', {
+        name: 'Fitted identity could not be read.',
+        exact: true
+      })
+    ).toHaveText('—');
     await expect(row.getByRole('link')).toHaveCount(0);
     await expect(
       page.getByRole('columnheader', { name: 'Catalogue stock' })

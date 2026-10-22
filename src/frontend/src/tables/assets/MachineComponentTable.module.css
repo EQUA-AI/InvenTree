@@ -1,0 +1,28 @@
+.partsTable { min-width: 0; --mantine-color-dimmed: light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-1)); }
+.partsTable table { table-layout: fixed; }
+.partsTable th { white-space: normal; }
+.partsTable th div { white-space: normal; overflow: visible; text-overflow: clip; }
+.partsTable td { vertical-align: middle; padding-block: 12px; }
+.cell { min-width: 0; overflow-wrap: anywhere; }
+.missing { display: inline-flex; justify-content: center; align-items: center; min-width: 24px; min-height: 24px; color: light-dark(var(--mantine-color-gray-7), var(--mantine-color-gray-4)); cursor: help; }
+.source { cursor: help; }
+.missing:focus-visible, .source:focus-visible, .fitTarget:focus-visible, .partsTable button:focus-visible { outline: 2px solid var(--mantine-primary-color-filled); outline-offset: 3px; border-radius: 3px; }
+.fitTarget { display: inline-flex; align-items: center; cursor: help; }
+.fit { text-transform: none; color: light-dark(#754000, var(--mantine-color-yellow-3)); }
+.fit[data-verified='true'] { color: light-dark(#1d5d31, var(--mantine-color-green-3)); }
+.partsTable a, .partsTable button { color: light-dark(#3049b0, #b8c7ff); }
+
+@media (max-width: 48em) {
+  .partsTable table, .partsTable tbody { display: block; width: 100%; }
+  .partsTable thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .partsTable tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); border-bottom: 1px solid var(--mantine-color-default-border); padding: 12px; gap: 8px 16px; }
+  .partsTable tbody td { display: block; width: auto !important; min-width: 0 !important; max-width: none !important; border: 0; padding: 0; text-align: left; }
+  .partsTable td:has([data-field='name']), .partsTable td:has([data-field='part_name']), .partsTable td:has([data-field='provenance']) { grid-column: 1 / -1; }
+  .cell::before { content: attr(data-label); display: block; font-size: var(--mantine-font-size-xs); font-weight: 600; margin-bottom: 3px; }
+  .cell[data-field='name']::before { display: none; }
+  .partsTable button, .partsTable a, .missing, .source, .fitTarget { min-height: 44px; display: inline-flex; align-items: center; }
+  .partsTable button, .partsTable a { min-width: 44px; }
+  .fitTarget { min-width: 44px; }
+  .partsTable button { text-align: left; }
+  .missing { min-width: 44px; justify-content: flex-start; }
+}

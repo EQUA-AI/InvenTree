@@ -38,7 +38,7 @@ import type {
 import { useApi } from '../../../contexts/ApiContext';
 import { showApiErrorMessage } from '../../../functions/notifications';
 import { WorkOrderCreateModal } from '../../maintenance/components/WorkOrderCreateModal';
-import { displayClockLabel, displayInstant } from '../displayClock';
+import { displayClockLabel } from '../displayClock';
 import { AlarmHistory } from './AlarmHistory';
 import { AnomalyList } from './AnomalyList';
 import { HealthSourceStatusTable } from './HealthSourceStatus';
@@ -285,8 +285,8 @@ export function MachineHealthPanel({
           </Group>
           <MetaText size='xs'>
             {recordedTelemetryAsLive(summary)
-              ? t`Condition read ${displayInstant(summaryQuery.dataUpdatedAt) ?? t`Time unavailable`} · Times: your clock (${displayClockLabel()})`
-              : t`Condition read ${displayInstant(summaryQuery.dataUpdatedAt) ?? t`Time unavailable`} · Times: your clock (${displayClockLabel()}) for unshifted times · shifted anomaly times are labelled separately · plant timezone not supplied`}
+              ? t`Times: your clock (${displayClockLabel()})`
+              : t`Times: your clock (${displayClockLabel()}) for unshifted times · shifted anomaly times are labelled separately · plant timezone not supplied`}
           </MetaText>
           <SimpleGrid
             type='container'
@@ -334,9 +334,6 @@ export function MachineHealthPanel({
                   </MonitoringLink>
                 )}
               </Group>
-              {!anomaliesQuery.isError && (
-                <MetaText size='sm'>{t`Showing ${anomalies.length} active anomaly records on this machine (maximum 200); summary counts cover the machine's active set.`}</MetaText>
-              )}
               {!anomalyAssociationKnown && !anomaliesQuery.isError && (
                 <AttentionAlert>{t`The active anomaly list is incomplete. Row association cannot establish an absence of anomalies.`}</AttentionAlert>
               )}

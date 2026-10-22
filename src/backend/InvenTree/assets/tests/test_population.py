@@ -456,6 +456,9 @@ class PopulationApplyTests(TestCase):
         self.assertEqual(occurrence.part, family)
         self.assertEqual(occurrence.status, 'draft')
         self.assertIn('compatibility=NOT_APPROVED', occurrence.review_note)
+        import_provenance = f'Workbook population {first["workbook_sha256"][:12]}'
+        self.assertEqual(occurrence.provenance, import_provenance)
+        imported_at = occurrence.created_at
         self.assertEqual(
             MachinePart.objects.get(machine=pumps[0], part=family).quantity, 1
         )
@@ -471,6 +474,9 @@ class PopulationApplyTests(TestCase):
         self.assertEqual(second['part_links']['unchanged'], 2)
         self.assertEqual(Part.objects.filter(IPN__startswith='WB-').count(), 3)
         self.assertEqual(AssetComponent.objects.count(), 2)
+        occurrence.refresh_from_db()
+        self.assertEqual(occurrence.provenance, import_provenance)
+        self.assertEqual(occurrence.created_at, imported_at)
 
     def test_existing_equipment_is_updated_not_duplicated(self):
         client = Client.objects.create(code=CLIENT, name='Pre-existing')

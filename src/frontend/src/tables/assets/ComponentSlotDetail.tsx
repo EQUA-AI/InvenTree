@@ -21,6 +21,7 @@ import {
   REFERENCE_PARTS,
   referencePartLabel
 } from '../../pages/assets/equipment/referenceParts';
+import { ComponentProvenance } from './ComponentFacts';
 
 function Fact({
   label,
@@ -161,7 +162,7 @@ export function ComponentSlotDetail({
                   : t`Slot assignment not verified`}
               </Text>
             </Group>
-            <Text size='sm'>{record.provenance}</Text>
+            <ComponentProvenance record={record} />
             {record.review_note && (
               <Text size='sm' c='dimmed'>
                 {record.review_note}
