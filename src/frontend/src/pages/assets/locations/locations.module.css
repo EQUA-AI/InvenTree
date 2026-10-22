@@ -41,3 +41,45 @@
 
 .nodeName { flex: 1; }
 .nodeLabel > p { flex-shrink: 0; white-space: nowrap; max-width: 4rem; overflow: hidden; text-overflow: ellipsis; }
+
+.machineList { min-width: 0; }
+.machineIdentity { min-width: 0; }
+.machineIdentity a { overflow-wrap: anywhere; }
+.machineCheckbox { flex: 0 0 24px; width: 24px; display: flex; justify-content: center; align-items: center; }
+.machineCheckbox :global(.mantine-Checkbox-input):not(:checked) { border-color: var(--mantine-color-gray-6); }
+:global([data-mantine-color-scheme='dark']) .machineCheckbox :global(.mantine-Checkbox-input):not(:checked) { border-color: var(--mantine-color-dark-2); }
+.machineTable :where(th, td) { vertical-align: middle; padding-inline: 10px; }
+.machineTable th { font-size: var(--mantine-font-size-xs); }
+.machineTable td { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.machineTable td[data-condition] { font-size: var(--mantine-font-size-xs); }
+.machineTable td[data-open-work='unavailable'] p { font-size: var(--mantine-font-size-xs); }
+.missingValue { display: inline-flex; align-items: center; justify-content: center; min-width: 1em; color: var(--mantine-color-text); }
+.pageSummary { padding-block: var(--mantine-spacing-xs); border-block: 1px solid var(--mantine-color-default-border); }
+.listToolbar { row-gap: var(--mantine-spacing-sm); }
+.listFilters { column-gap: var(--mantine-spacing-md); }
+.listFilters input::placeholder { color: light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-1)); opacity: 1; }
+.locationTotals { padding-top: var(--mantine-spacing-sm); font-variant-numeric: tabular-nums; }
+.phoneFacts { table-layout: fixed; margin-top: var(--mantine-spacing-xs); }
+.phoneFacts th { font-size: var(--mantine-font-size-xs); font-weight: 500; }
+.phoneFacts th:last-child, .phoneFacts td:last-child { text-align: right; }
+.phoneFacts td:last-child > div { justify-content: flex-end; }
+@media (max-width: 48em) {
+  .nodeLabel, .nodeName { min-height: 44px; }
+  .chevron { min-width: 44px; min-height: 44px; }
+  .machineCheckbox { flex-basis: 44px; width: 44px; min-height: 44px; }
+  .machineCheckbox :global(.mantine-Checkbox-inner) { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; }
+  .machineCheckbox :global(.mantine-Checkbox-input) { width: 44px; height: 44px; }
+  .machineCheckbox :global(.mantine-Checkbox-icon) { inset: 12px; width: 20px; }
+  .listToolbar, .listFilters { width: 100%; }
+  .listFilters > div { width: 100%; }
+  .listFilters input, .listFilters button { min-height: 44px; }
+  .machineList :where(a, [tabindex='0']) { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; }
+  .pageSummary { padding-block: var(--mantine-spacing-sm); }
+  .locationTotals { gap: var(--mantine-spacing-sm); }
+}
+
+.machineList :where(a, [tabindex='0']):focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 3px;
+  border-radius: 2px;
+}

@@ -27,7 +27,7 @@ export function nativeBaseline(
     const origin = new URL(baseURL!).origin;
     const sourceRevision = process.env.AIMMS_SOURCE_REVISION;
     const isSource = (url: URL) =>
-      /^\/(src|lib|playwright)\/.+\.[cm]?[jt]sx?$/.test(url.pathname);
+      /^\/(src|lib|playwright)\/.+\.(?:[cm]?[jt]sx?|css)$/.test(url.pathname);
     const escapedOrigin = origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const intercepted = new RegExp(
       [
@@ -36,7 +36,7 @@ export function nativeBaseline(
         ...(surface ? [`^${escapedOrigin}/(?:\\?|$)`] : []),
         ...(sourceRevision
           ? [
-              `^${escapedOrigin}/(?:src|lib|playwright)/.+\\.[cm]?[jt]sx?(?:\\?|$)`
+              `^${escapedOrigin}/(?:src|lib|playwright)/.+\\.(?:[cm]?[jt]sx?|css)(?:\\?|$)`
             ]
           : [])
       ].join('|')

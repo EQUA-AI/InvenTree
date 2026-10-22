@@ -239,7 +239,11 @@ test('source outages, timeouts, unsupported history and missing batch rows have 
     await row
       .getByRole('button', { name: `Inspect signal: ${reason}`, exact: true })
       .focus();
-    await page.keyboard.press('Tab');
+    // Value/state/limit explanations participate in the native tab order.
+    for (let step = 0; step < 6; step++) {
+      await page.keyboard.press('Tab');
+      if (await status.evaluate((el) => el === document.activeElement)) break;
+    }
     await expect(status).toBeFocused();
     await expect(status).toHaveAttribute('aria-describedby', /.+/);
     const reasonId = await status.getAttribute('aria-describedby');
@@ -376,12 +380,24 @@ test('a raw unitless vibration channel keeps its own units', async ({
   await chooseParameter(page, 'Motor DE vibration (raw)');
   await expect(curve(page)).toHaveCount(1);
   await expect(page.getByText(/mm\/s/)).toHaveCount(0);
-  await expect(
-    signalTable(page).getByRole('cell', {
-      name: '1834 unit not recorded',
+  const missingUnit = signalTable(page).getByRole('img', {
+    name: 'Unit not reported by the plant; raw value 1834',
+    exact: true
+  });
+  await expect(missingUnit).toHaveText('—');
+  await missingUnit.scrollIntoViewIfNeeded();
+  await signalTable(page)
+    .getByRole('button', {
+      name: 'Inspect signal: Motor DE vibration (raw)',
       exact: true
     })
-  ).toBeVisible();
+    .focus();
+  await page.keyboard.press('Tab');
+  await expect(missingUnit).toBeFocused();
+  await expect(page.getByRole('tooltip')).toHaveText(
+    'Unit not reported by the plant; raw value 1834'
+  );
+  await missingUnit.press('Tab');
   const axisUnit = trendCard(page).getByText('unit not recorded', {
     exact: true
   });

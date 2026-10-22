@@ -147,8 +147,13 @@ for (const scheme of ['light', 'dark'] as const) {
     const filters = page.getByRole('button', { name: 'Filters', exact: true });
     if (await filters.isVisible()) await filters.click();
     const scope = page.getByRole('region', { name: 'Loaded page summary' });
-    await expect(scope).toContainText('Condition unknown (assessed)');
-    await expect(scope).toContainText('Condition unavailable (not judged)');
+    await expect(scope.getByTestId('machine-page-count')).toHaveAttribute(
+      'aria-label',
+      /condition unknown/
+    );
+    await expect(
+      scope.getByRole('button', { name: 'Unavailable · 1', exact: true })
+    ).toBeVisible();
     await expect(
       page.getByRole('textbox', { name: 'Search machines' })
     ).toBeVisible();
@@ -156,7 +161,10 @@ for (const scheme of ['light', 'dark'] as const) {
       page.getByRole('combobox', { name: 'Criticality', exact: true })
     ).toHaveValue('Any criticality');
     const sw = page.getByRole('switch', { name: 'Include sublocations' });
-    await expect(sw).toHaveAttribute('aria-describedby', /.+/);
+    await expect(sw).toHaveAttribute(
+      'aria-description',
+      'Descendant placements included'
+    );
     await nonText(
       sw.locator('..').locator('.mantine-Switch-track'),
       page.locator('#location-name')
@@ -165,6 +173,9 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect
       .poll(() => fixture.requests.at(-1)?.params.get('has_alarms'))
       .toBe('true');
+    await page
+      .getByRole('button', { name: 'Location details', exact: true })
+      .click();
     await expect(page.getByText(/your clock|plant clock/)).toHaveCount(1);
     await expect(
       page.locator('[data-operational-panel]').first().getByRole('status')

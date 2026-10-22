@@ -1,5 +1,6 @@
 """R6 P13: the Parts tab's component rows carry position, work and stock context."""
 
+from datetime import datetime, timezone as dt_timezone
 from io import StringIO
 from unittest import mock
 from uuid import uuid4
@@ -116,6 +117,50 @@ class RegistryPartsContextTests(TestCase):
                 'PS-THRUST-BRG:1': None,
             },
         )
+
+    @override_settings(USE_TZ=True)
+    def test_workbook_source_keeps_raw_provenance_and_stored_import_time(self):
+        """Both pump and station reads name the import without leaking its hash."""
+        raw = 'Workbook population f9006a91f8a9'
+        imported_at = datetime(2026, 10, 10, 14, 30, tzinfo=dt_timezone.utc)
+        slot = AssetComponent.objects.get(
+            machine=self.pump, code='PS-MOTOR-DE-BRG:1'
+        )
+        AssetComponent.objects.filter(pk=slot.pk).update(
+            provenance=raw,
+            created_at=imported_at,
+            reviewed_at=datetime(2026, 10, 20, 12, tzinfo=dt_timezone.utc),
+        )
+        for machine in (self.pump, self.station):
+            with self.subTest(owner=machine.pk):
+                row = self.rows(machine)[self.pump.pk, slot.code]
+                self.assertEqual(row['provenance'], raw)
+                self.assertEqual(row['provenance_display'], 'Equipment register import')
+                self.assertNotIn('f9006a91f8a9', row['provenance_display'])
+                self.assertEqual(
+                    datetime.fromisoformat(row['provenance_imported_at']), imported_at
+                )
+
+    def test_scada_source_does_not_invent_an_import_date(self):
+        """Mapping provenance is concise; creation and review do not imply import."""
+        raw = 'Inferred from source tags; physical assignment is unverified.'
+        slot = AssetComponent.objects.get(machine=self.pump, code='PS-MOTOR:1')
+        AssetComponent.objects.filter(pk=slot.pk).update(provenance=raw)
+        row = self.rows()[self.pump.pk, slot.code]
+        self.assertEqual(row['provenance'], raw)
+        self.assertEqual(row['provenance_display'], 'SCADA tag mapping')
+        self.assertIsNone(row['provenance_imported_at'])
+
+    def test_other_and_missing_sources_do_not_acquire_import_provenance(self):
+        """Custom notes remain recorded text; an absent source stays absent."""
+        slot = AssetComponent.objects.get(machine=self.pump, code='PS-MOTOR:1')
+        for raw in ('Manually proposed assignment', '', 'Workbook population unknown'):
+            with self.subTest(provenance=raw):
+                AssetComponent.objects.filter(pk=slot.pk).update(provenance=raw)
+                row = self.rows()[self.pump.pk, slot.code]
+                self.assertEqual(row['provenance'], raw)
+                self.assertEqual(row['provenance_display'], raw)
+                self.assertIsNone(row['provenance_imported_at'])
 
     def test_open_work_is_the_slots_own_on_its_own_machine(self):
         """Closed, archived, unnamed and other pumps' work does not count."""

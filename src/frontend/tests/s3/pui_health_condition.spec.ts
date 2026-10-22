@@ -107,7 +107,7 @@ for (const scheme of ['light', 'dark'] as const) {
       'Quality',
       'Trend'
     ]);
-    for (const state of ['Normal', 'Warning', 'Critical', 'Unknown']) {
+    for (const state of ['Normal', 'Warning', 'Critical']) {
       const row = table
         .getByRole('row')
         .filter({ hasText: `Signal ${state.toLowerCase()}` });
@@ -178,9 +178,22 @@ for (const scheme of ['light', 'dark'] as const) {
         })
         .click();
     }
+    const unknown = table
+      .getByRole('row')
+      .filter({ hasText: 'Signal unknown' });
     await expect(
-      table.getByRole('row').filter({ hasText: 'Signal unknown' })
-    ).toContainText('Not assessed: no observation');
+      unknown.getByRole('img', {
+        name: 'Not assessed: no observation',
+        exact: true
+      })
+    ).toHaveText('—');
+    await expect(
+      unknown.getByRole('img', {
+        name: 'No observation reported by the plant',
+        exact: true
+      })
+    ).toHaveText('—');
+    await expect(unknown.getByText('Unknown', { exact: true })).toHaveCount(0);
     const graph = sparkline(page, 'Signal normal');
     await graph.scrollIntoViewIfNeeded();
     const box = (await graph.boundingBox())!;
@@ -302,6 +315,41 @@ test('filter keeps component scope and selected chart instead of silently select
       exact: true
     })
     .click();
+  const missingUnit = signalTable(page).getByRole('img', {
+    name: 'Unit not reported by the plant; raw value 1834',
+    exact: true
+  });
+  await missingUnit.scrollIntoViewIfNeeded();
+  await signalTable(page)
+    .getByRole('button', {
+      name: 'Inspect signal: Motor DE vibration (raw)',
+      exact: true
+    })
+    .focus();
+  await page.keyboard.press('Tab');
+  await expect(missingUnit).toBeFocused();
+  await expect(page.getByRole('tooltip')).toHaveText(
+    'Unit not reported by the plant; raw value 1834'
+  );
+  await missingUnit.click();
+  await expect(
+    page.getByRole('region', {
+      name: 'Signal evidence: Discharge flow',
+      exact: true
+    })
+  ).toBeVisible();
+  await expect(
+    page.getByRole('region', {
+      name: 'Signal evidence: Motor DE vibration (raw)',
+      exact: true
+    })
+  ).toHaveCount(0);
+  await expect(
+    trendCard(page).getByRole('combobox', { name: 'Parameter' })
+  ).toHaveValue('Discharge flow (cusec)');
+  await expect(page.getByRole('tooltip')).toHaveText(
+    'Unit not reported by the plant; raw value 1834'
+  );
   await page.getByRole('combobox', { name: 'Component filter' }).click();
   await page.getByRole('option', { name: 'Bearing · BRG:1' }).click();
   await expect(signalTable(page).getByRole('row')).toHaveCount(2);
@@ -442,10 +490,19 @@ for (const scheme of ['light', 'dark'] as const) {
       )
     ).toBeVisible();
     await expect(
-      signalTable(page).getByText('Not assessed: limits not configured', {
+      signalTable(page).getByText('No limits set', {
         exact: true
       })
     ).toHaveCount(6);
+    await expect(
+      signalTable(page).getByRole('img', {
+        name: 'Not assessed: limits not configured',
+        exact: true
+      })
+    ).toHaveCount(6);
+    await expect(
+      signalTable(page).getByText('Unknown', { exact: true })
+    ).toHaveCount(0);
     await condition.locator('../../..').screenshot({
       path: info.outputPath(`unknown-summary-${scheme}.png`)
     });
@@ -763,11 +820,12 @@ for (const scheme of ['light', 'dark'] as const) {
         () => document.documentElement.scrollWidth <= window.innerWidth
       )
     ).toBe(true);
+    await expect(signalTable(page).getByRole('row')).toHaveCount(4);
     await expect(
-      page.getByText(
-        /3 of 3 signal records in this table, including inactive retained bindings/
-      )
-    ).toBeVisible();
+      signalTable(page)
+        .getByRole('row')
+        .filter({ hasText: 'Retired critical flow' })
+    ).toContainText('Inactive binding — retained for critical coverage review');
     const evidence = page.locator('#health-signal-evidence');
     await expect(
       evidence.getByText(/Selected history window, read from the source:/)

@@ -603,12 +603,17 @@ test('Include sublocations toggle drives table scope and wording', async ({
   );
   const toggle = page.getByRole('switch', { name: 'Include sublocations' });
   await expect(toggle).toBeChecked();
-  await expect(page.getByText('Descendant placements included')).toBeVisible();
-  await expect(toggle).toHaveAttribute('aria-describedby', /.+/);
+  await expect(toggle).toHaveAttribute(
+    'aria-description',
+    'Descendant placements included'
+  );
 
   await toggle.uncheck();
   await expect(page.getByTestId('destination')).toContainText('scope=direct');
-  await expect(page.getByText('Direct placements only')).toBeVisible();
+  await expect(toggle).toHaveAttribute(
+    'aria-description',
+    'Direct placements only'
+  );
   await expect(page.getByTestId('machine-count-view')).toHaveText('5');
   await expect
     .poll(() => {
@@ -731,7 +736,10 @@ test('search shows location-total labeling and a truthful empty state', async ({
   const clear = page.getByRole('button', { name: 'Clear search' });
   await expect(clear).toBeVisible();
   // Aggregate cards are location totals, not search matches.
-  await expect(page.getByTestId('location-totals-note')).toBeVisible();
+  await expect(page.getByTestId('location-totals-note')).toHaveAttribute(
+    'aria-label',
+    'Location totals — machine search and alarm filters do not change these counts.'
+  );
   await expect(page.getByTestId('machine-count-view')).toHaveText('9');
 
   await clear.click();

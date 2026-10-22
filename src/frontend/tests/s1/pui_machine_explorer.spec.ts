@@ -2,6 +2,7 @@ import type { Locator } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 
 import { nativeBaseline } from '../s0/guards';
+import { nonText, readable, textSweep } from '../s8/contrast';
 import {
   explorerParams,
   machineReturnLink,
@@ -65,7 +66,10 @@ test('machine return restores direct location search alarms page and selected pa
       .getByRole('link', { name: machineName, exact: true })
   ).toBeVisible();
   await expect(page.getByTestId('machine-count-view')).toHaveText('60');
-  await expect(page.getByTestId('location-totals-note')).toBeVisible();
+  await expect(page.getByTestId('location-totals-note')).toHaveAttribute(
+    'aria-label',
+    'Location totals — machine search and alarm filters do not change these counts.'
+  );
   if (testInfo.project.name === 's1-phone') {
     await page
       .getByRole('button', { name: 'Choose location', exact: true })
@@ -187,7 +191,10 @@ test('filter and physical scope changes reset page without conflating alarm coun
   await expect(page.getByText('50 machines', { exact: true })).toBeVisible();
   expect((await explorerParams(page)).has('page')).toBe(false);
   await expect(page.getByTestId('machine-count-view')).toHaveText('60');
-  await expect(page.getByTestId('location-totals-note')).toBeVisible();
+  await expect(page.getByTestId('location-totals-note')).toHaveAttribute(
+    'aria-label',
+    'Location totals — machine search and alarm filters do not change these counts.'
+  );
   await pagination.getByRole('button', { name: '2', exact: true }).click();
   await search.fill('S1-26');
   await expect(page.getByText('1 machines', { exact: true })).toBeVisible();
@@ -205,7 +212,10 @@ test('filter and physical scope changes reset page without conflating alarm coun
   await expect(page.getByTestId('machine-count-view')).toHaveText('80');
   expect((await explorerParams(page)).has('page')).toBe(false);
   expect((await explorerParams(page)).has('scope')).toBe(false);
-  await expect(page.getByText('Name, serial or manufacturer')).toBeVisible();
+  await expect(search).toHaveAttribute(
+    'placeholder',
+    'Name, serial or manufacturer'
+  );
   await expect(
     page.getByRole('columnheader', { name: 'Active record', exact: true })
   ).toHaveCount(0);
@@ -383,9 +393,7 @@ test('each machine shows its open Work apart from alarms, and an unknown count i
       table.locator('[data-machine]').filter({ hasText: name });
     // Busy: count and the highest native priority.
     const busy = row('Synthetic pump 001');
-    await expect(busy.locator('td[data-open-work="2"]')).toContainText(
-      '2 open'
-    );
+    await expect(busy.locator('td[data-open-work="2"]')).toContainText('2');
     await expect(busy.locator('td[data-open-work="2"]')).toContainText('High');
     await expect(
       row('Synthetic pump 002').locator('td[data-open-work="1"]')
@@ -440,7 +448,12 @@ test('criticality is the declared classification, apart from alarms and work pri
     await expect(cell('Synthetic pump 004')).toHaveText('Medium');
     await expect(cell('Synthetic pump 005')).toHaveText('Low');
     // Nothing declared is said, not shown as a level.
-    await expect(cell('Synthetic pump 003')).toHaveText('Not declared');
+    await expect(cell('Synthetic pump 003')).toHaveText('—');
+    await expect(
+      cell('Synthetic pump 003').getByLabel('Criticality not declared', {
+        exact: true
+      })
+    ).toBeVisible();
     // Plain text: never a coloured badge like an alarm or a priority.
     await expect(
       table.locator('td[data-criticality] .mantine-Badge-root')
@@ -511,7 +524,7 @@ test('the criticality filter narrows on the server, resets the page and survives
   expect(fixture.requests.at(-1)!.params.has('criticality')).toBe(false);
 });
 
-test('each machine shows its Health condition with coverage on its own line, and an unknown condition is not normal', async ({
+test('each machine shows its Health condition with accessible coverage, and an unknown condition is not normal', async ({
   page
 }, testInfo) => {
   await mockExplorer(page);
@@ -527,24 +540,31 @@ test('each machine shows its Health condition with coverage on its own line, and
     // Full coverage: the state alone.
     await expect(cell('Synthetic pump 001')).toHaveText('Normal');
     // Limited coverage says how, apart from the state.
-    await expect(cell('Synthetic pump 002')).toHaveText(
-      'Warning2 of 6 signals stale'
-    );
-    await expect(cell('Synthetic pump 004')).toHaveText(
-      'UnknownNo signals mapped'
-    );
+    await expect(cell('Synthetic pump 002')).toHaveText('Warning');
+    await expect(
+      cell('Synthetic pump 002').getByLabel('2 of 6 signals stale', {
+        exact: true
+      })
+    ).toBeVisible();
+    await expect(cell('Synthetic pump 004')).toHaveText('—');
+    await expect(
+      cell('Synthetic pump 004')
+        .getByLabel('No signals mapped', { exact: true })
+        .last()
+    ).toBeVisible();
     // The integrated Health badge names absent current data explicitly.
     // Keep proving the canonical offline classification independently.
     await expect(cell('Synthetic pump 005')).toHaveAttribute(
       'data-condition',
       'offline'
     );
-    await expect(cell('Synthetic pump 005')).toHaveText(
-      'No current dataNo current data'
-    );
-    await expect(cell('Synthetic pump 008')).toHaveText(
-      'CriticalPoor-quality readings'
-    );
+    await expect(cell('Synthetic pump 005')).toHaveText('No current data');
+    await expect(cell('Synthetic pump 008')).toHaveText('Critical');
+    await expect(
+      cell('Synthetic pump 008').getByLabel('Poor-quality readings', {
+        exact: true
+      })
+    ).toBeVisible();
     // Not judged reads as not available, never as a quiet normal.
     await expect(cell('Synthetic pump 003')).toHaveAttribute(
       'data-condition',
@@ -593,3 +613,72 @@ test('each machine shows its Health condition with coverage on its own line, and
     });
   }
 });
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`machine selection sits beside identity on desktop and phone with a usable focus target (${scheme})`, async ({
+    page
+  }, info) => {
+    const fixture = await mockExplorer(page);
+    fixture.state.canChange = true;
+    await openExplorer(page, '/machines/index/machines/', scheme);
+    const results = page.getByTestId('machine-results');
+    const machine = results.locator('[data-machine="1"]');
+    const select = machine.getByRole('checkbox', {
+      name: 'Select Synthetic pump 001',
+      exact: true
+    });
+    const name = machine.getByRole('link', {
+      name: 'Synthetic pump 001',
+      exact: true
+    });
+    await expect(select).toBeVisible();
+    await nonText(select, machine);
+    await readable(name);
+    const placeholder = (
+      await textSweep(
+        page.getByRole('textbox', { name: 'Search machines', exact: true })
+      )
+    ).find((item) => item.text.startsWith('placeholder:'));
+    expect(placeholder).toBeDefined();
+    expect(placeholder!.ratio).toBeGreaterThanOrEqual(4.5);
+    await select.focus();
+    await select.press('Space');
+    await expect(select).toBeChecked();
+    const checkBox = (await select.boundingBox())!;
+    const nameBox = (await name.boundingBox())!;
+    expect(checkBox.x + checkBox.width).toBeLessThanOrEqual(nameBox.x);
+    expect(nameBox.x - checkBox.x - checkBox.width).toBeLessThanOrEqual(20);
+    if (info.project.name.endsWith('phone')) {
+      expect(checkBox.width).toBeGreaterThanOrEqual(44);
+      expect(checkBox.height).toBeGreaterThanOrEqual(44);
+      expect(checkBox.y).toBeLessThan(nameBox.y + nameBox.height);
+    } else {
+      await expect(select.locator('xpath=ancestor::td')).toContainText(
+        'Synthetic pump 001'
+      );
+      const number = machine.locator('td[data-open-work]');
+      await expect(number).toHaveCSS('text-align', 'right');
+      const all = page.getByRole('checkbox', {
+        name: 'Select machines on this page',
+        exact: true
+      });
+      await all.check();
+      await expect(
+        results.getByRole('checkbox', { checked: true })
+      ).toHaveCount(26);
+    }
+    const missing = results
+      .locator('[data-machine="3"] td[data-criticality]')
+      .getByLabel('Criticality not declared', { exact: true });
+    await missing.scrollIntoViewIfNeeded();
+    await results
+      .locator('[data-machine="3"]')
+      .getByRole('link', { name: 'Synthetic pump 003', exact: true })
+      .focus();
+    await page.keyboard.press('Tab');
+    await expect(missing).toBeFocused();
+    await expect(page.getByRole('tooltip')).toHaveText(
+      'Criticality not declared'
+    );
+  });
+}

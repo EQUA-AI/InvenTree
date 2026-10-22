@@ -58,8 +58,14 @@ function component(pk: number, owner: typeof STATION | typeof PUMP, rest: any) {
     virtual: false,
     status: 'draft',
     provenance: INFERRED,
+    provenance_display: 'SCADA tag mapping',
+    provenance_imported_at: null,
     review_note: '',
     reviewed_at: null,
+    reference_position: null,
+    open_work: { count: 0 },
+    stock: null,
+    fitted: { version: 0, current: null, history: [], pending: [] },
     ...rest
   };
 }
@@ -78,7 +84,8 @@ const ELECTRICAL = component(2, PUMP, {
   name: 'Motor Electrical System',
   virtual: true,
   status: 'verified',
-  provenance: 'Explicit dictionary review crosswalk'
+  provenance: 'Explicit dictionary review crosswalk',
+  provenance_display: 'Explicit dictionary review crosswalk'
 });
 
 const FOREBAY = component(3, STATION, {
@@ -148,13 +155,22 @@ test('Machines - a pump lists the components the registry holds for it', async (
 
   await navigate(page, `machines/machine/${PUMP.pk}/parts`);
   await page
-    .getByText('The components the equipment registry holds for this pump.')
+    .getByRole('columnheader', { name: 'Component', exact: true })
     .waitFor();
 
   const motor = page.getByRole('row').filter({ hasText: 'PS-MOTOR:1' });
   await expect(motor).toContainText('Electric Motor');
-  await expect(motor).toContainText('Draft');
-  await expect(motor).toContainText(INFERRED);
+  await expect(
+    motor.getByLabel('Draft: slot assignment not verified', { exact: true })
+  ).toHaveText('Draft');
+  await expect(motor).toContainText('SCADA tag mapping');
+  await expect(motor).not.toContainText(INFERRED);
+  await expect(
+    motor.getByRole('img', {
+      name: 'No verified fitted identity is recorded for this slot.',
+      exact: true
+    })
+  ).toHaveText('—');
   await expect(motor).not.toContainText('Logical group');
   await expect(
     motor.getByRole('link', { name: 'Electric Motor' })
@@ -163,8 +179,15 @@ test('Machines - a pump lists the components the registry holds for it', async (
   const electrical = page
     .getByRole('row')
     .filter({ hasText: 'PS-ELECTRICAL:1' });
-  await expect(electrical).toContainText('Logical group');
-  await expect(electrical).toContainText('Verified');
+  await expect(
+    electrical.getByRole('img', {
+      name: 'Not stocked: a logical group',
+      exact: true
+    })
+  ).toHaveText('—');
+  await expect(
+    electrical.getByLabel('Verified: assignment verified', { exact: true })
+  ).toHaveText('Verified');
 
   // On a pump every row is the pump's own: no column says so.
   await expect(
@@ -189,12 +212,6 @@ test('Machines - a station lists its own components and its pumps', async ({
   await answer(page, {});
 
   await navigate(page, `machines/machine/${STATION.pk}/parts`);
-  await page
-    .getByText(
-      'The components the equipment registry holds for this station and its pumps.'
-    )
-    .waitFor();
-
   await expect(
     page.getByRole('columnheader', { name: 'Equipment' })
   ).toBeVisible();

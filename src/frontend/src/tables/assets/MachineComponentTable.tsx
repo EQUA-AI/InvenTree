@@ -1,5 +1,5 @@
 import { t } from '@lingui/core/macro';
-import { Anchor, Badge, Group, Stack, Text } from '@mantine/core';
+import { Anchor, Badge, Box, Stack, Text, Tooltip } from '@mantine/core';
 import { useCallback, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
@@ -19,7 +19,9 @@ import {
   referencePartLabel
 } from '../../pages/assets/equipment/referenceParts';
 import { useUserState } from '../../states/UserState';
+import { ComponentProvenance, MissingPartFact } from './ComponentFacts';
 import { ComponentSlotDetail } from './ComponentSlotDetail';
+import classes from './MachineComponentTable.module.css';
 
 /**
  * The equipment registry's components for a pump - or, for a station, its own
@@ -78,10 +80,11 @@ export function MachineComponentTable({
     // Under its station a pump goes by its own name: the page says the rest.
     const prefix = `${machine.name ?? ''} / `;
 
-    return [
+    const columns: TableColumn<MachineComponent>[] = [
       {
         accessor: 'machine_name',
         title: t`Equipment`,
+        width: '9%',
         sortable: false,
         hidden: !station,
         render: (record) =>
@@ -102,6 +105,7 @@ export function MachineComponentTable({
       {
         accessor: 'name',
         title: t`Component`,
+        width: station ? '18%' : '20%',
         sortable: false,
         render: (record) => (
           <Stack gap={0} align='flex-start'>
@@ -125,21 +129,16 @@ export function MachineComponentTable({
         // R6 P13: where this slot sits on the reference model (owner rule O11).
         accessor: 'reference_position',
         title: t`3D position`,
+        width: '9%',
         sortable: false,
         render: (record) => {
           // An older server does not say; that is not "not in the model".
           if (record.reference_position === undefined)
             return (
-              <Text size='sm' c='dimmed'>
-                {t`Not available`}
-              </Text>
+              <MissingPartFact reason={t`3D position could not be read`} />
             );
           if (record.reference_position === null)
-            return (
-              <Text size='sm' c='dimmed'>
-                {t`Not in the model`}
-              </Text>
-            );
+            return <MissingPartFact reason={t`Not in the model`} />;
           // A position this build does not know is still not "not in it".
           const position = REFERENCE_PARTS.find(
             (part) => part.id === record.reference_position
@@ -155,30 +154,28 @@ export function MachineComponentTable({
         // A successful empty fit read differs from a withheld/unavailable read.
         accessor: 'fitted_item',
         title: t`Fitted item`,
+        width: '9%',
         sortable: false,
         render: (record) =>
           showStock && record.fitted?.current ? (
             <FittedItemFact fit={record.fitted.current} compact />
           ) : (
-            <Text
-              size='sm'
-              c='dimmed'
-              title={
+            <MissingPartFact
+              reason={
                 showStock && record.fitted
                   ? t`No verified fitted identity is recorded for this slot.`
                   : t`Fitted identity could not be read.`
               }
-            >
-              {showStock && record.fitted ? t`Not recorded` : t`Not available`}
-            </Text>
+            />
           )
       },
       {
         accessor: 'part_name',
         title: t`Catalogue part`,
+        width: station ? '23%' : '27%',
         sortable: false,
         render: (record) => (
-          <Group gap='xs' wrap='nowrap'>
+          <>
             {linkParts ? (
               <Anchor
                 component={Link}
@@ -190,57 +187,69 @@ export function MachineComponentTable({
             ) : (
               <Text size='sm'>{record.part_name}</Text>
             )}
-            {record.virtual && (
-              <Badge size='sm' variant='light' color='gray'>
-                {t`Logical group`}
-              </Badge>
-            )}
-          </Group>
+          </>
         )
       },
       {
         accessor: 'status',
         title: t`Fit basis`,
+        width: '7%',
         sortable: false,
-        // The review state, then what it means for the fit, in full: a
-        // narrow column must not cut "not verified" off the end.
+        // Keep the explanation on focus/hover while the table stays compact.
         render: (record) => (
-          <Stack gap={2} align='flex-start'>
-            <Badge
-              size='sm'
-              variant='light'
-              color={record.status === 'verified' ? 'green' : 'yellow'}
-            >
-              {record.status === 'verified' ? t`Verified` : t`Draft`}
-            </Badge>
-            <Text size='xs' c='dimmed'>
-              {record.status === 'verified'
+          <Tooltip
+            label={
+              record.status === 'verified'
                 ? t`Assignment verified`
-                : t`Slot assignment not verified`}
-            </Text>
-          </Stack>
+                : t`Slot assignment not verified`
+            }
+            events={{ hover: true, focus: true, touch: true }}
+          >
+            <Box
+              component='span'
+              role='img'
+              tabIndex={0}
+              data-table-tooltip
+              aria-label={
+                record.status === 'verified'
+                  ? t`Verified: assignment verified`
+                  : t`Draft: slot assignment not verified`
+              }
+              className={classes.fitTarget}
+            >
+              <Badge
+                className={classes.fit}
+                data-verified={record.status === 'verified'}
+                size='sm'
+                variant='light'
+                color={record.status === 'verified' ? 'green' : 'yellow'}
+              >
+                {record.status === 'verified' ? t`Verified` : t`Draft`}
+              </Badge>
+            </Box>
+          </Tooltip>
         )
       },
       {
         accessor: 'provenance',
         title: t`Source`,
-        sortable: false
+        width: '14%',
+        sortable: false,
+        render: (record) => <ComponentProvenance record={record} />
       },
       {
         accessor: 'open_work',
         title: t`Open work`,
+        width: '7%',
+        textAlign: 'right',
         sortable: false,
         render: (record) =>
           record.open_work === null || record.open_work === undefined ? (
-            <Text size='sm' c='dimmed' title={t`Work could not be checked`}>
-              {t`Not available`}
-            </Text>
+            <MissingPartFact reason={t`Work could not be checked`} />
           ) : record.open_work.count ? (
-            <Text size='sm'>{t`${record.open_work.count} open`}</Text>
+            <Text size='sm'>{record.open_work.count}</Text>
           ) : (
-            <Text size='sm' c='dimmed'>
-              {t`None open`}
-            </Text>
+            <Text size='sm'>0</Text>
           )
       },
       {
@@ -249,17 +258,15 @@ export function MachineComponentTable({
         // readers who may see stock.
         accessor: 'stock',
         title: t`Catalogue stock`,
+        width: '9%',
+        textAlign: 'right',
         sortable: false,
         hidden: !showStock,
         render: (record) =>
           record.virtual ? (
-            <Text size='sm' c='dimmed'>
-              {t`Not stocked`}
-            </Text>
+            <MissingPartFact reason={t`Not stocked: a logical group`} />
           ) : !record.stock ? (
-            <Text size='sm' c='dimmed'>
-              {t`Not available`}
-            </Text>
+            <MissingPartFact reason={t`Catalogue stock could not be read`} />
           ) : record.stock.quantity > 0 && linkParts ? (
             <Anchor
               component={Link}
@@ -271,12 +278,22 @@ export function MachineComponentTable({
           ) : record.stock.quantity > 0 ? (
             <Text size='sm'>{t`${record.stock.quantity} in stock`}</Text>
           ) : (
-            <Text size='sm' c='dimmed'>
-              {t`None in stock`}
-            </Text>
+            <Text size='sm'>0</Text>
           )
       }
     ];
+    return columns.map((column) => ({
+      ...column,
+      render: (record: MachineComponent) => (
+        <div
+          className={classes.cell}
+          data-label={column.title}
+          data-field={column.accessor}
+        >
+          {column.render?.(record)}
+        </div>
+      )
+    }));
   }, [machine.pk, machine.name, station, linkParts, showStock, openSlot]);
 
   const records = table.records as MachineComponent[];
@@ -296,25 +313,32 @@ export function MachineComponentTable({
         showStock={showStock}
         onClose={() => openSlot(null)}
       />
-      <InvenTreeTable<MachineComponent>
-        url={`${apiUrl(ApiEndpoints.equipment_registry)}${machine.pk}/components/`}
-        tableState={table}
-        columns={tableColumns}
-        props={{
-          enableSearch: false,
-          enablePagination: true,
-          enableRefresh: true,
-          // The URL holds the open slot, not filters for this table.
-          enableQueryFilters: false,
-          tableFilters,
-          // A row opens its slot, except from a link or button inside it.
-          onRowClick: (row, _index, event) => {
-            if ((event?.target as HTMLElement | null)?.closest('a, button'))
-              return;
-            openSlot(row.pk);
-          }
-        }}
-      />
+      <Box className={classes.partsTable}>
+        <InvenTreeTable<MachineComponent>
+          url={`${apiUrl(ApiEndpoints.equipment_registry)}${machine.pk}/components/`}
+          tableState={table}
+          columns={tableColumns}
+          props={{
+            enableSearch: false,
+            minHeight: 0,
+            enablePagination: true,
+            enableRefresh: true,
+            // The URL holds the open slot, not filters for this table.
+            enableQueryFilters: false,
+            tableFilters,
+            // A row opens its slot, except from a link or button inside it.
+            onRowClick: (row, _index, event) => {
+              if (
+                (event?.target as HTMLElement | null)?.closest(
+                  'a, button, [data-table-tooltip]'
+                )
+              )
+                return;
+              openSlot(row.pk);
+            }
+          }}
+        />
+      </Box>
     </>
   );
 }

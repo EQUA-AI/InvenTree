@@ -27,13 +27,21 @@ test('Machines separates loaded-page counts, stale signals and unavailable opera
   await openExplorer(page, '/machines/index/sites/?location=12', 'dark');
   const summary = page.getByRole('region', { name: 'Loaded page summary' });
   await expect(summary).toContainText('25 of 80');
-  await expect(summary).toContainText('Stale signals on 10 machines');
-  await expect(summary).toContainText(
-    'Stale-signal coverage unavailable for 1 machine'
+  await expect(summary.getByTestId('machine-page-count')).toHaveAttribute(
+    'aria-label',
+    /Stale signals on 10 machines/
   );
-  await expect(summary).toContainText(
-    'Telemetry, run/stop and communication status unavailable here.'
+  await expect(summary.getByTestId('machine-page-count')).toHaveAttribute(
+    'aria-label',
+    /Stale-signal coverage unavailable for 1 machine/
   );
+  await expect(summary.getByTestId('machine-page-count')).toHaveAttribute(
+    'aria-label',
+    /Telemetry, run\/stop and communication status unavailable here\./
+  );
+  await page
+    .getByRole('button', { name: 'Location details', exact: true })
+    .click();
   await expect(page.getByText(/Times: your clock/)).toBeVisible();
   await expect(page.getByTestId('machine-count-view')).toHaveText('80');
   await expect(
@@ -52,8 +60,9 @@ test('missing condition leaves stale-signal coverage unavailable instead of zero
   for (const machine of fixture.machines) machine.condition = null;
   await openExplorer(page, '/machines/index/sites/?location=12');
   const summary = page.getByRole('region', { name: 'Loaded page summary' });
-  await expect(summary).toContainText(
-    'Stale-signal coverage unavailable for 25 machines'
+  await expect(summary.getByTestId('machine-page-count')).toHaveAttribute(
+    'aria-label',
+    /Stale-signal coverage unavailable for 25 machines/
   );
   await expect(summary).not.toContainText('Stale signals on 0 machines');
   for (const name of ['Critical · 0', 'Warning · 0']) {

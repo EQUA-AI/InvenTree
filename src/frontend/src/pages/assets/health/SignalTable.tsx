@@ -30,28 +30,18 @@ import type {
 import { useApi } from '../../../contexts/ApiContext';
 
 import { SignalAnomalyContext, conditionText } from './SignalCondition';
+import { SignalTooltip, SignalValue } from './SignalReading';
 import classes from './SignalTable.module.css';
 import { SignalTrendSparkline } from './SignalTrend';
+import { StatusBadge } from './StatusBadge';
 import {
   FreshnessText,
   HealthStateBadge,
   SourceTypeBadge,
-  Unit,
   formatSignalLimits,
   qualityLabel
 } from './common';
 import { indexSuppliedTrends, suppliedTrend } from './suppliedTrends';
-
-function formatValue(signal: MachineSignal): string {
-  if (signal.value === null || signal.value === undefined) {
-    return t`Unavailable · no observation`;
-  }
-  const value =
-    typeof signal.value === 'number'
-      ? Number.parseFloat(signal.value.toFixed(3)).toString()
-      : String(signal.value);
-  return `${value} ${unitLabel(signal.unit)}`;
-}
 
 /**
  * Mapped signals with their current value, provenance and freshness.
@@ -188,7 +178,7 @@ export function SignalTable({
 
   return (
     <Stack gap='xs'>
-      <Group align='flex-end'>
+      <Group align='flex-end' className={classes.filters}>
         <TextInput
           label={t`Search signals`}
           placeholder={t`Signal, tag, component or unit`}
@@ -219,11 +209,6 @@ export function SignalTable({
           w={140}
         />
       </Group>
-      <MetaText size='xs'>
-        {signals.some((signal) => signal.active === false)
-          ? t`${visibleSignals.length} of ${signals.length} signal records in this table, including inactive retained bindings. Condition and coverage above describe the whole machine.`
-          : t`${visibleSignals.length} of ${signals.length} mapped signals in this table. Condition and coverage above describe the whole machine.`}
-      </MetaText>
       {selectedBinding &&
         !visibleSignals.some(
           (signal) => String(signal.binding_id) === selectedBinding
@@ -302,7 +287,11 @@ export function SignalTable({
                   onClick={
                     onInspect
                       ? (event) => {
-                          if ((event.target as HTMLElement).closest('button,a'))
+                          if (
+                            (event.target as HTMLElement).closest(
+                              'button,a,[data-signal-tooltip]'
+                            )
+                          )
                             return;
                           const trigger =
                             event.currentTarget.querySelector('button');
@@ -363,21 +352,6 @@ export function SignalTable({
                         ) : (
                           <Text size='sm'>{signal.display_name}</Text>
                         )}
-                        <MetaText
-                          size='xs'
-                          title={signal.external_key}
-                          truncate='end'
-                        >
-                          {signal.external_key}
-                        </MetaText>
-                        {signal.component && (
-                          <MetaText size='xs'>
-                            {signal.component.name} · {signal.component.code}
-                            {signal.component.status !== 'verified'
-                              ? ` · ${t`Draft inference`}`
-                              : ''}
-                          </MetaText>
-                        )}
                         {signal.critical_designation?.critical && (
                           <Text size='xs' fw={600}>
                             {signal.critical_designation.review_required ||
@@ -407,53 +381,60 @@ export function SignalTable({
                       fw={signal.stale ? 400 : 500}
                       className={signal.stale ? monitoring.meta : undefined}
                     >
-                      {signal.stale && signal.value != null
-                        ? t`Last known `
-                        : ''}
-                      {signal.value == null ? (
-                        t`Unavailable · no observation`
-                      ) : (
-                        <>
-                          {typeof signal.value === 'number'
-                            ? Number.parseFloat(
-                                signal.value.toFixed(3)
-                              ).toString()
-                            : String(signal.value)}{' '}
-                          <Unit code={signal.unit} />
-                        </>
-                      )}
+                      <SignalValue signal={signal} />
                     </Text>
                   </Table.Td>
                   {/* biome-ignore lint/a11y/useSemanticElements: Preserve the native role through phone card CSS. */}
                   <Table.Td role='cell' data-label={t`State`}>
-                    <Stack gap={2}>
-                      {!signal.stale && (
+                    <SignalTooltip label={conditionText(signal)}>
+                      {signal.state === 'unknown' ||
+                      (signal.stale && signal.state !== 'offline') ? (
+                        '—'
+                      ) : (
                         <HealthStateBadge state={signal.state} size='sm' />
                       )}
-                      <Text size='xs' lh={1.15}>
-                        {conditionText(signal)}
-                      </Text>
-                    </Stack>
+                    </SignalTooltip>
                   </Table.Td>
                   {/* biome-ignore lint/a11y/useSemanticElements: Preserve the native role through phone card CSS. */}
                   <Table.Td role='cell' data-label={t`Limits`}>
-                    <Text size='xs'>
-                      {formatSignalLimits(signal) || t`Not configured`}
-                    </Text>
-                    <MetaText size='xs'>{t`on signal mapping · approval not supplied`}</MetaText>
+                    <SignalTooltip
+                      label={`${formatSignalLimits(signal) ?? t`No limits set`} · ${t`Limits on signal mapping; engineering approval not supplied`}`}
+                    >
+                      {formatSignalLimits(signal) ? (
+                        <Text component='span' size='xs'>
+                          {formatSignalLimits(signal)}
+                        </Text>
+                      ) : (
+                        <StatusBadge tone='neutral' size='sm'>
+                          {t`No limits set`}
+                        </StatusBadge>
+                      )}
+                    </SignalTooltip>
                   </Table.Td>
                   {/* biome-ignore lint/a11y/useSemanticElements: Preserve the native role through phone card CSS. */}
                   <Table.Td role='cell' data-label={t`Observed`}>
-                    <FreshnessText
-                      observedAt={signal.observed_at}
-                      stale={signal.stale}
-                      thresholdSeconds={signal.freshness_threshold_seconds}
-                      now={now}
-                    />
+                    {signal.observed_at ? (
+                      <FreshnessText
+                        observedAt={signal.observed_at}
+                        stale={signal.stale}
+                        thresholdSeconds={signal.freshness_threshold_seconds}
+                        now={now}
+                      />
+                    ) : (
+                      <SignalTooltip
+                        label={t`Observation time not reported by the plant`}
+                      />
+                    )}
                   </Table.Td>
                   {/* biome-ignore lint/a11y/useSemanticElements: Preserve the native role through phone card CSS. */}
                   <Table.Td role='cell' data-label={t`Quality`}>
-                    <Text size='sm'>{qualityLabel(signal.quality)}</Text>
+                    {signal.quality === 'unknown' ? (
+                      <SignalTooltip
+                        label={t`Quality not reported by the plant`}
+                      />
+                    ) : (
+                      <Text size='sm'>{qualityLabel(signal.quality)}</Text>
+                    )}
                   </Table.Td>
                   {/* biome-ignore lint/a11y/useSemanticElements: Preserve the native role through phone card CSS. */}
                   <Table.Td role='cell' data-label={t`Trend`}>
@@ -500,6 +481,18 @@ export function SignalTable({
                             </MetaText>
                             <MetaText size='xs'>{signal.signal_kind}</MetaText>
                           </Stack>
+                          {signal.component && (
+                            <Stack gap={2}>
+                              <Text size='sm' fw={500}>{t`Component`}</Text>
+                              <Text size='sm'>
+                                {signal.component.name} ·{' '}
+                                {signal.component.code}
+                              </Text>
+                              {signal.component.status !== 'verified' && (
+                                <MetaText size='xs'>{t`Draft inference`}</MetaText>
+                              )}
+                            </Stack>
+                          )}
                         </Group>
                       </Collapse>
                     </Table.Td>

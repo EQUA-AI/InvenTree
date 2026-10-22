@@ -1,5 +1,7 @@
 """Scoped equipment registry and offline dictionary review APIs."""
 
+import re
+
 from django.core.exceptions import ValidationError as ModelValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Q
@@ -84,6 +86,36 @@ class ComponentSerializer(serializers.ModelSerializer):
     open_work = serializers.SerializerMethodField()
     stock = serializers.SerializerMethodField()
     fitted = serializers.SerializerMethodField()
+    provenance_display = serializers.SerializerMethodField()
+    provenance_imported_at = serializers.SerializerMethodField()
+
+    def get_provenance_display(self, obj) -> str:
+        """Name the recorded source without exposing its internal workbook hash."""
+        if self._is_workbook_import(obj):
+            return 'Equipment register import'
+        if obj.provenance == (
+            'Inferred from source tags; physical assignment is unverified.'
+        ):
+            return 'SCADA tag mapping'
+        return obj.provenance
+
+    def get_provenance_imported_at(self, obj) -> str | None:
+        """Return the stored original import time only for a workbook-created slot.
+
+        The population importer sets workbook provenance only in the defaults
+        used to create the component. Replays preserve both that provenance and
+        ``created_at``; a later review is not a new import. Other sources have
+        no recorded workbook import time and must not borrow their creation or
+        review timestamps.
+        """
+        if not self._is_workbook_import(obj):
+            return None
+        return InvenTreeIsoDateTimeField().to_representation(obj.created_at)
+
+    @staticmethod
+    def _is_workbook_import(obj) -> bool:
+        """Recognize the exact provenance spelling emitted by the importer."""
+        return bool(re.fullmatch(r'Workbook population [0-9a-f]{12}', obj.provenance))
 
     def get_fitted(self, obj):
         """Only a stock-authorized list supplies fitted history."""
@@ -137,6 +169,8 @@ class ComponentSerializer(serializers.ModelSerializer):
             'name',
             'status',
             'provenance',
+            'provenance_display',
+            'provenance_imported_at',
             'review_note',
             'reviewed_at',
             'reference_position',

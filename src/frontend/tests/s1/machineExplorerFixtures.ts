@@ -114,6 +114,7 @@ export async function mockExplorer(page: Page) {
   const requests: { method: string; params: URLSearchParams }[] = [];
   const state = {
     status: 200,
+    canChange: false,
     locationStatus: 200,
     totalLimit: 110,
     // No machine matches any criticality filter.
@@ -144,7 +145,7 @@ export async function mockExplorer(page: Page) {
         workspaces: [{ pk: 1, name: 'Synthetic workspace' }],
         plant_timezone: null,
         can_add: false,
-        can_change: false
+        can_change: state.canChange
       }
     })
   );
