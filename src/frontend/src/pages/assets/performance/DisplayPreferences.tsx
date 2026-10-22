@@ -23,6 +23,7 @@ import {
   displayViewKey,
   parseDisplayViews
 } from './comparisonViews';
+import { useComparisonDropdown } from './useComparisonDropdown';
 
 export function DisplayPreferences({
   machineId,
@@ -73,6 +74,7 @@ function ScopedPreferences({
   const [name, setName] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
+  const savedDropdown = useComparisonDropdown();
   const persist = (next: DisplayView[]) => {
     try {
       const serialized = JSON.stringify(next);
@@ -139,6 +141,9 @@ function ScopedPreferences({
       </SimpleGrid>
       <SimpleGrid cols={{ base: 1, sm: 3 }} style={{ alignItems: 'end' }}>
         <Select
+          ref={savedDropdown.ref}
+          onDropdownOpen={savedDropdown.reveal}
+          onDropdownClose={savedDropdown.cancel}
           classNames={{ input: monitoring.input }}
           label={t`Saved view`}
           value={selected}

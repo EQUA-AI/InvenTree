@@ -18,7 +18,6 @@ import {
 } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
-import dayjs from 'dayjs';
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { HistoryProvenance } from '../investigation/HistoryProvenance';
@@ -32,15 +31,24 @@ import {
 import { HistoryReadStack } from './HistoryReadContext';
 import { failedHistoryTargets } from './historyBatches';
 
+import { MissingValue } from '../../../components/items/ValueTooltip';
 import { useApi } from '../../../contexts/ApiContext';
 import type { MimicData } from '../health/PumphouseMimic';
+import { Timestamp } from '../health/Timestamp';
+import { relativeAge } from '../health/relativeTime';
 import { KpiStrip, type KpiTile } from './KpiStrip';
 import type { PerformanceMachine } from './PerformancePanel';
 import { useClock, useWindowState, windowInfoFrom } from './PerformancePanel';
 import { LiveIndicator, TimeRangeControl } from './TimeRangeControl';
 import { TrendChart, type TrendSeries, familyColors } from './TrendChart';
-import { WindowStatus, clockLabel } from './WindowStatus';
-import { formatAge, formatAt, formatDuration, precisionFor } from './format';
+import { WindowStatus } from './WindowStatus';
+import {
+  formatAt,
+  formatDuration,
+  formatInstant,
+  precisionFor
+} from './format';
+import { pumpColorMap } from './pumpColors';
 import { resolveParameters, withRole } from './resolve';
 import { CardGrid, ChartCard, ScaledTrend } from './sections/common';
 import {
@@ -226,6 +234,7 @@ export function StationPerformance({
           ? new Date(forebay.signal.observed_at).getTime()
           : null,
         stale: forebay.signal.stale,
+        freshnessSeconds: forebay.signal.freshness_threshold_seconds,
         state: 'unconfigured',
         series: series.get(forebay.signal.binding_id)
       });
@@ -243,6 +252,7 @@ export function StationPerformance({
           ? new Date(count.signal.observed_at).getTime()
           : null,
         stale: count.signal.stale,
+        freshnessSeconds: count.signal.freshness_threshold_seconds,
         state: 'unconfigured',
         series: series.get(count.signal.binding_id),
         denominator: bays.length
@@ -338,27 +348,21 @@ export function StationPerformance({
     return out;
   }, [parameters, series, bays, byKey, window.resolutionSeconds, range.live]);
 
-  const bayLines = (
-    pick: (k: ReturnType<typeof bayKeys>) => string,
-    hue: string
-  ) => {
-    // Fourteen bays need fourteen legible colours, and each scheme has only a
-    // few shades that clear 3:1; the variety comes from more hues rather than
-    // from shades that vanish into the card.
-    // Bays are separate machines, not one sensor family, so each wants its
-    // own colour. Warm and cyan hues keep only three legible shades on a
-    // white card, so fourteen distinct colours need more hues than four.
-    const colors = familyColors(
-      bays.length,
-      [hue, 'cyan', 'grape', 'orange', 'blue', 'violet', 'red'],
-      theme,
-      scheme
-    );
-    const items = bays.map((bay, i) => ({
+  const bayColors = useMemo(
+    () =>
+      pumpColorMap(
+        bays.map((bay) => bay.key),
+        theme,
+        scheme
+      ),
+    [bays, theme, scheme]
+  );
+  const bayLines = (pick: (k: ReturnType<typeof bayKeys>) => string) => {
+    const items = bays.map((bay) => ({
       key: bay.key,
       label: bay.name.split('/').pop()?.trim() || bay.key,
       entry: byKey.get(pick(bayKeys(bay.key))),
-      color: colors[i]
+      color: bayColors.get(bay.key)!
     }));
     const present = items.filter((item) => item.entry?.available);
     const rows = alignRows(
@@ -419,9 +423,10 @@ export function StationPerformance({
   };
 
   const power = useMemo(
-    () => bayLines((k) => k.power, 'blue'),
+    () => bayLines((k) => k.power),
     [
       bays,
+      bayColors,
       byKey,
       window.resolutionSeconds,
       theme,
@@ -432,9 +437,10 @@ export function StationPerformance({
     ]
   );
   const flow = useMemo(
-    () => bayLines((k) => k.flow, 'teal'),
+    () => bayLines((k) => k.flow),
     [
       bays,
+      bayColors,
       byKey,
       window.resolutionSeconds,
       theme,
@@ -600,9 +606,7 @@ export function StationPerformance({
     ? mimicGeneratedAt
     : baysQuery.dataUpdatedAt;
   const mimicLabel =
-    mimicTime > 0
-      ? `${dayjs(mimicTime).format('D MMM YYYY HH:mm:ss')} ${clockLabel(mimicTime)}`
-      : t`time not recorded`;
+    mimicTime > 0 ? formatInstant(mimicTime) : t`time not recorded`;
   const freshness = signalsQuery.data?.[0]?.freshness_threshold_seconds ?? null;
   // The station view had no word for a source that served nothing: its bay
   // cards emptied and the page looked merely quiet.
@@ -635,13 +639,14 @@ export function StationPerformance({
             status={(controls) => (
               <LiveIndicator
                 controls={controls}
+                tiles={tiles}
                 information={
                   <HistoryProvenance
                     compact
                     response={response}
                     loading={seriesQuery.isFetching && !response}
                     updating={seriesQuery.isPlaceholderData}
-                    failed={seriesQuery.isError}
+                    failed={seriesQuery.isError || signalsQuery.isError}
                     extent={dataRange.data}
                     onRetry={() => seriesQuery.refetch()}
                     currentDescription={t`Station source tiles use current observations. Calculated bay totals and bay tables use last usable readings in the selected window, with their own timestamps and coverage. These are separate origins; retained snapshots are separate evidence.`}
@@ -739,7 +744,12 @@ export function StationPerformance({
         />
       )}
 
-      <KpiStrip tiles={tiles} now={now} window={window} />
+      <KpiStrip
+        tiles={tiles}
+        now={now}
+        readAt={signalsQuery.dataUpdatedAt || null}
+        window={window}
+      />
 
       {seriesQuery.isError && (
         <Alert
@@ -987,9 +997,21 @@ export function StationPerformance({
                           </Table.Td>
                           <Table.Td>
                             <Text size='xs' c='dimmed'>
-                              {newest > 0
-                                ? formatAge(newest, now)
-                                : t`No reading`}
+                              {newest > 0 ? (
+                                <Timestamp
+                                  value={newest}
+                                  relative={relativeAge(
+                                    Math.max(0, (now - newest) / 1000),
+                                    true
+                                  )}
+                                  relativeOnly
+                                />
+                              ) : (
+                                <MissingValue
+                                  label={t`Observed`}
+                                  reason={t`No reading supplied`}
+                                />
+                              )}
                             </Text>
                           </Table.Td>
                         </Table.Tr>

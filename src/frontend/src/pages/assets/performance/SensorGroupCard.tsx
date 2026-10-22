@@ -1,6 +1,7 @@
 import { t } from '@lingui/core/macro';
 import { ScatterChart } from '@mantine/charts';
 import {
+  Box,
   Group,
   Paper,
   SimpleGrid,
@@ -10,7 +11,11 @@ import {
   useMantineTheme
 } from '@mantine/core';
 import { useMemo } from 'react';
-import { ValueTooltip } from '../../../components/items/ValueTooltip';
+import {
+  MissingValue,
+  ValueTooltip
+} from '../../../components/items/ValueTooltip';
+import operational from '../health/OperationalTokens.module.css';
 import { StatusBadge } from '../health/StatusBadge';
 import { MetaText } from '../health/common';
 import { hasLimits } from './evaluation';
@@ -266,6 +271,13 @@ function SensorGroupCardBody({
             .map((c) => ({
               sensor: c.parameter.label,
               value: c.good && !c.stale ? c.value : null,
+              stale: c.stale,
+              quality: c.parameter.signal.quality,
+              missingReason: c.stale
+                ? t`Stale current reading; not plotted`
+                : !c.good
+                  ? t`No usable current reading; not plotted`
+                  : t`Current reading not supplied`,
               color: colors[0]
             }))
             .sort(
@@ -315,6 +327,9 @@ function SensorGroupCardBody({
     dotMin === dotMax ? dotMax + 1 : dotMax
   );
   const dotDomain: [number, number] = [dotTicks[0], dotTicks.at(-1)!];
+  const comparisonLimits = referenceLines.filter(
+    (line) => line.y >= dotDomain[0] && line.y <= dotDomain[1]
+  );
   const windowStats = useMemo(() => {
     let max: { label: string; value: number } | null = null;
     for (const p of parameters) {
@@ -348,7 +363,7 @@ function SensorGroupCardBody({
   }
 
   return (
-    <Paper withBorder p='md'>
+    <Paper withBorder p='md' className={operational.warning}>
       <Stack gap='sm'>
         <Group justify='space-between' align='flex-start' wrap='wrap' gap='xs'>
           <Stack gap={2}>
@@ -449,10 +464,32 @@ function SensorGroupCardBody({
               </Stack>
             )}
             {readable.length > 1 && (
-              <Stack gap={4}>
+              <Stack gap={4} data-testid='sensor-comparison'>
                 <Text size='sm' fw={500}>
                   {t`Current reading by sensor`}
                 </Text>
+                {comparisonLimits.length > 0 && (
+                  <Group gap='sm' data-testid='sensor-comparison-limits'>
+                    {comparisonLimits.map((line) => (
+                      <Group key={line.label} gap={5} wrap='nowrap'>
+                        <Box
+                          component='span'
+                          aria-hidden='true'
+                          c={
+                            line.severity === 'warning'
+                              ? 'var(--aimms-warning)'
+                              : scheme === 'dark'
+                                ? `${line.severity === 'critical' ? 'red' : 'yellow'}.4`
+                                : line.color
+                          }
+                          w={16}
+                          style={{ borderTop: '2px dashed currentColor' }}
+                        />
+                        <Text size='xs'>{line.label}</Text>
+                      </Group>
+                    ))}
+                  </Group>
+                )}
                 <ScatterChart
                   textColor='var(--mantine-color-text)'
                   h={Math.max(160, readable.length * 34 + 64)}
@@ -471,7 +508,7 @@ function SensorGroupCardBody({
                   styles={{ axisLabel: { fill: 'var(--mantine-color-text)' } }}
                   withLegend={false}
                   scatterChartProps={{
-                    margin: { top: 28, right: 64, bottom: 24, left: 8 }
+                    margin: { top: 12, right: 24, bottom: 24, left: 8 }
                   }}
                   xAxisProps={{
                     domain: dotDomain,
@@ -508,31 +545,49 @@ function SensorGroupCardBody({
                       formatValue(value, decimals, unit, summary?.spread),
                     y: (index: number) => readable[index]?.sensor ?? ''
                   }}
-                  referenceLines={referenceLines
-                    .filter(
-                      (line) => line.y >= dotDomain[0] && line.y <= dotDomain[1]
-                    )
-                    .map((line, index) => ({
-                      x: line.y,
-                      color:
-                        scheme === 'dark'
+                  referenceLines={comparisonLimits.map((line) => ({
+                    x: line.y,
+                    color:
+                      line.severity === 'warning'
+                        ? 'var(--aimms-warning)'
+                        : scheme === 'dark'
                           ? `${line.severity === 'critical' ? 'red' : 'yellow'}.4`
-                          : line.color,
-                      label: {
-                        value: line.label,
-                        position: 'insideTopRight',
-                        dy: 2 + index * 18,
-                        fontSize: 11,
-                        fill: 'var(--mantine-color-text)'
-                      }
-                    }))}
+                          : line.color
+                  }))}
                   scatterProps={{ isAnimationActive: false }}
                   tooltipAnimationDuration={0}
                 />
                 {unreadable.length > 0 && (
-                  <MetaText size='xs'>
-                    {t`No usable current reading, so not plotted: ${unreadable.map((b) => b.sensor).join(', ')}`}
-                  </MetaText>
+                  <Stack gap={2}>
+                    {unreadable.map((sensor) => (
+                      <Group
+                        key={sensor.sensor}
+                        justify='space-between'
+                        gap='sm'
+                      >
+                        <MetaText size='xs'>{sensor.sensor}</MetaText>
+                        {sensor.stale || sensor.quality !== 'good' ? (
+                          <ValueTooltip label={sensor.missingReason}>
+                            <StatusBadge
+                              tone={sensor.stale ? 'stale' : 'neutral'}
+                              size='xs'
+                            >
+                              {sensor.stale
+                                ? t`Stale`
+                                : sensor.quality === 'bad'
+                                  ? t`Bad quality`
+                                  : t`Uncertain quality`}
+                            </StatusBadge>
+                          </ValueTooltip>
+                        ) : (
+                          <MissingValue
+                            label={sensor.sensor}
+                            reason={sensor.missingReason}
+                          />
+                        )}
+                      </Group>
+                    ))}
+                  </Stack>
                 )}
               </Stack>
             )}

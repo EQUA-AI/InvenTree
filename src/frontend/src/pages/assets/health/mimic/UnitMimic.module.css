@@ -44,13 +44,16 @@
 	color: inherit;
 }
 
+.host {
+	container-type: inline-size;
+}
+
 .workspace {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);
 	gap: var(--mantine-spacing-md);
 	align-items: start;
 	padding-block: var(--mantine-spacing-md);
-	container-type: inline-size;
 }
 
 .callouts {
@@ -61,7 +64,7 @@
 
 .column {
 	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
+	grid-template-columns: minmax(0, 1fr);
 	align-content: start;
 	gap: 8px;
 	min-width: 0;
@@ -71,7 +74,8 @@
 	display: block;
 	min-width: 0;
 	width: 100%;
-	height: max(560px, 75dvh, 50cqw);
+	height: auto;
+	aspect-ratio: 680 / 520;
 	align-self: start;
 }
 
@@ -161,6 +165,22 @@
 	margin: 0;
 }
 
+.legendGroup {
+	margin: 0;
+	padding: 0;
+	border: 0;
+	min-width: 0;
+	display: inline-flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 8px var(--mantine-spacing-sm);
+}
+
+.legendGroup + .legendGroup {
+	border-inline-start: 1px solid var(--mantine-color-default-border);
+	padding-inline-start: var(--mantine-spacing-sm);
+}
+
 .legendItem {
 	display: inline-flex;
 	align-items: center;
@@ -216,20 +236,6 @@
 	white-space: nowrap;
 }
 
-@media (max-width: 64em) {
-	.workspace {
-		gap: var(--mantine-spacing-sm);
-	}
-
-	.drawing {
-		height: auto;
-	}
-
-	.column {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-	}
-}
-
 @media (max-width: 47.99375em) {
 	.filterInput {
 		min-height: 44px;
@@ -283,8 +289,13 @@
 }
 
 .readingLegendMark {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 	width: 14px;
 	height: 14px;
+	font-size: 10px;
+	line-height: 1;
 	border: 1.5px solid
 		light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-0));
 	border-radius: 50%;
@@ -317,10 +328,8 @@
 }
 
 .readingLegendMark[data-verdict="normal"] {
-	background: var(
-		--aimms-normal,
-		light-dark(var(--mantine-color-green-9), var(--mantine-color-green-5))
-	);
+	color: var(--aimms-normal);
+	background: var(--mantine-color-body);
 	border-color: var(
 		--aimms-normal,
 		light-dark(var(--mantine-color-green-9), var(--mantine-color-green-5))
@@ -336,12 +345,12 @@
 	background: var(--mantine-color-body);
 }
 
-@media (min-width: 64em) {
+@container (min-width: 1100px) {
   .workspace[data-has-parts] { grid-template-columns: minmax(0, .9fr) minmax(0, 3.2fr) minmax(0, .9fr); gap: 10px; }
   .workspace[data-has-parts] .drawing { grid-column: 2; grid-row: 1; height: auto; aspect-ratio: 680 / 520; }
   .workspace[data-has-parts] .callouts { display: contents; }
   .workspace[data-has-parts] .column { grid-template-columns: minmax(0, 1fr); grid-row: 1; }
   .workspace[data-has-parts] .column[data-callout-column="left"] { grid-column: 1; }
   .workspace[data-has-parts] .column[data-callout-column="right"] { grid-column: 3; }
-  .callout { gap: 3px; padding: 5px 6px; }
+  .callout { min-height: 60px; gap: 3px; padding: 5px 6px; }
 }

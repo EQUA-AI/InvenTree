@@ -115,7 +115,7 @@ export function MachineComponentTable({
       {
         accessor: 'name',
         title: t`Component`,
-        width: station ? '16%' : '20%',
+        width: station ? '14%' : '18%',
         sortable: false,
         render: (record) => (
           <div className={classes.nameActions}>
@@ -228,7 +228,7 @@ export function MachineComponentTable({
       {
         accessor: 'part_name',
         title: t`Catalogue part`,
-        width: station ? '16%' : '20%',
+        width: station ? '14%' : '18%',
         sortable: false,
         render: (record) => (
           <>
@@ -257,7 +257,7 @@ export function MachineComponentTable({
       {
         accessor: 'open_work',
         title: t`Open work`,
-        width: '10%',
+        width: '14%',
         textAlign: 'right',
         sortable: false,
         render: (record) =>

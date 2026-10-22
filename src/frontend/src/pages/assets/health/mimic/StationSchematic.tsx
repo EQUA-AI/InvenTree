@@ -16,8 +16,7 @@ import {
 import { unitLabel } from '../../performance/format';
 import { recordedTelemetryAsLive } from '../../telemetryPresentation';
 import { Timestamp } from '../Timestamp';
-import { StatusBadge as Badge } from '../common';
-import { MimicAlarmCoverage } from './MimicAlarmCoverage';
+import { MimicLiveBadge } from './MimicLiveBadge';
 import { AlarmAttentionRings, MimicMotionControl } from './MimicMotion';
 import { alarmColor, alarmLabel, stateStyle } from './MimicSchematic';
 import { UnavailableReading, failedReading } from './MimicValue';
@@ -37,6 +36,7 @@ import {
   alarmAttention,
   hasDischargeFlow,
   knownNoActiveAlarms,
+  missingContributors,
   operatingState,
   readingSeverity
 } from './mimicVisuals';
@@ -128,7 +128,7 @@ export function StationSchematic({
         <Group gap={4} wrap='nowrap'>
           <Title order={4}>{t`Station schematic`}</Title>
           <ValueTooltip
-            label={`${data.layout.review_status !== 'approved' ? t`Layout pending plant approval` : t`Schematic layout`} · ${provenance}`}
+            label={`${data.layout.review_status !== 'approved' ? t`Layout pending plant approval` : t`Schematic layout`} · ${provenance} · ${data.unconfigured_thresholds} · ${t`Station readings without configured limits`}`}
             className={classes.info}
             accessibleLabel={
               data.layout.review_status !== 'approved'
@@ -140,12 +140,8 @@ export function StationSchematic({
           </ValueTooltip>
         </Group>
         <Group gap='xs' wrap='nowrap'>
-          {currentSource &&
-            data.enabled &&
-            data.reporting &&
-            !data.last_error_code && (
-              <Badge color='blue' variant='outline'>{t`Live`}</Badge>
-            )}
+          <MimicLiveBadge data={data} />
+          <MimicMotionControl />
           {actions}
         </Group>
         <Group gap='md' className={classes.observed}>
@@ -154,12 +150,10 @@ export function StationSchematic({
             clock={clock}
             compactOnPhone
           />
-          <MimicMotionControl />
-          <MimicAlarmCoverage
-            station
-            count={data.unconfigured_thresholds}
-            knownEmpty={knownNoActiveAlarms(data)}
-          />
+          {knownNoActiveAlarms(data) && (
+            <Text size='xs'>{t`No active alarms`}</Text>
+          )}
+          <Text size='xs'>{t`${data.unconfigured_thresholds} signals without limits`}</Text>
         </Group>
       </div>
       <div className={classes.metrics} data-station-metrics>
@@ -223,6 +217,7 @@ export function StationSchematic({
             );
           })}
         {Object.entries(data.totals).map(([name, total]) => {
+          const missing = missingContributors(total, bays);
           const label =
             name === 'power'
               ? t`Plant power`
@@ -262,17 +257,8 @@ export function StationSchematic({
                   <MissingValue
                     label={label}
                     reason={
-                      total.derived &&
-                      total.contributors.some(
-                        (pointer) =>
-                          !data.bays.some(
-                            (bay) =>
-                              usable(bay.points[pointer]) &&
-                              !failedReading(bay.points[pointer])
-                          )
-                      )
-                        ? t`${total.contributors.filter((pointer) => !Object.values(data.bays).some((bay) => usable(bay.points[pointer]) && !failedReading(bay.points[pointer]))).length} of ${bays.length} bays not reporting`
-                        : reasonLabel(total.reason) || t`Reason not supplied`
+                      missing ??
+                      (reasonLabel(total.reason) || t`Reason not supplied`)
                     }
                   />
                 ) : (
@@ -282,6 +268,11 @@ export function StationSchematic({
                   </ValueTooltip>
                 )}
               </Text>
+              {missing && (
+                <Text size='xs' className={classes.totalReason}>
+                  {missing}
+                </Text>
+              )}
             </Paper>
           );
         })}

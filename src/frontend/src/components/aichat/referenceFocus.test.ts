@@ -126,12 +126,43 @@ describe('canonical reference focus', () => {
       )
     ).not.toBeNull();
   });
-  it('returns to exact position and preserves only the supported schematic mode', () => {
+  it.each(['model', 'schematic'])(
+    'returns to the exact position and preserves explicit %s view state',
+    (view) => {
+      const identity = parseWorkFocusIdentity(focus)!;
+      expect(
+        focusReturnPath(
+          identity,
+          `/machines/machine/18/equipment/?position=motor&view=${view}`
+        )
+      ).toBe(`/machines/machine/18/equipment/?position=bearing&view=${view}`);
+    }
+  );
+  it('preserves launch query state within the same Equipment route', () => {
     const identity = parseWorkFocusIdentity(focus)!;
     expect(
-      focusReturnPath(identity, 'https://evil.invalid/?view=schematic')
-    ).toBe('/machines/machine/18/equipment/?position=bearing&view=schematic');
-    expect(focusReturnPath(identity)).toBe(
+      focusReturnPath(
+        identity,
+        '/machines/machine/18/equipment?view=model&position=motor&context=seal+%26+bearing&filter=one&filter=two&position=seal'
+      )
+    ).toBe(
+      '/machines/machine/18/equipment/?position=bearing&view=model&context=seal+%26+bearing&filter=one&filter=two'
+    );
+  });
+  it.each([
+    ['another machine', '/machines/machine/19/equipment/?view=model'],
+    ['another panel', '/machines/machine/18/performance/?view=model'],
+    ['an absolute URL', 'https://evil.invalid/?view=schematic'],
+    [
+      'a protocol-relative URL',
+      '//evil.invalid/machines/machine/18/equipment/?view=model'
+    ],
+    ['a nested path', '/machines/machine/18/equipment/../?view=model'],
+    ['a fragment', '/machines/machine/18/equipment/?view=model#other'],
+    ['nothing', undefined]
+  ])('uses the canonical reference route for %s', (_label, launchPath) => {
+    const identity = parseWorkFocusIdentity(focus)!;
+    expect(focusReturnPath(identity, launchPath)).toBe(
       '/machines/machine/18/equipment/?position=bearing'
     );
   });

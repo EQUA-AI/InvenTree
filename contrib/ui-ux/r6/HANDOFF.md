@@ -1,5 +1,45 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## UI round 2 Follow-up 8 — 23 October 2026 (ready for coordinator review)
+
+Built on `713b22b65`: exact Equipment return query state, compact stressed-font
+phone location controls and contained keyboard-focused history tooltip repaired.
+All 8 strict focused cases from the byte-identical `abd133010` specs pass; no lane
+specs edited. First phone card ends at 820.08px in an 844px viewport; focused
+tooltip ends at 368px in a 390px viewport, in both themes. 16 final PNGs reviewed.
+107 units, all 9 TypeScript projects, Lingui with 117 bytewise locale restores
+and changed-file prek pass. Digest `355cc847847d`;
+[execution report](reports/ui-r2.md) lists source/test files and evidence.
+Owned WS3012/harness15250 stopped; ports clear. Fixture/source evidence only;
+owner data untouched, no Git writes, deployment and parent acceptance unchanged.
+
+
+## UI round 2 Follow-up 7 — 23 October 2026 (ready for coordinator review)
+
+Built on `a2eff8510`: container-gated unit mimic and honest Equipment default,
+Performance freshness/limit colours and labelled deltas, keyboard tooltip facts,
+compact CMMS history, shared bay colours and Register import copy implemented.
+25 focused cases, 4 final Equipment repeats, 23 numbered captures and one retained
+Attachments case pass. All 49 final7 PNGs inspected; 112 changed-module units,
+24 retained trend units, 3 isolated DB-backed cusec cases, all 9 TypeScript projects,
+Lingui with 117 bytewise restores and changed-file prek pass.
+Digest `18499d49eafd`; [execution report](reports/ui-r2.md) lists every disposition
+and source/test file. Fault descriptions retain raw-code fallback because no
+backend description dictionary exists. Owned WS3012/harness15250 stopped; ports
+clear. Fixture evidence only, owner data untouched. Full host suites and deployed
+acceptance remain with the coordinator; parent dispositions unchanged.
+
+## UI round 2 Follow-up 6 — 22 October 2026 (ready for coordinator review)
+
+Built on `1d3c7b513`: native Parts failure wrapping, hovered phone link contrast,
+sensor threshold/category collision and comparison dropdown clipping repaired.
+12 focused cases pass across 68 runs; each phone comparison case passed nine
+repetitions. All 18 final captures inspected; 13 units, all 9 TypeScript projects,
+Lingui with 117 bytewise locale restores and changed-file prek pass.
+Digest `d81a18b68e8e`; [execution report](reports/ui-r2.md) lists fixes and tests.
+Original S2/S3 specs untouched. Owned WS3012/harness15250 stopped; fixture evidence
+only, owner data untouched and parent/deployed acceptance unchanged.
+
 ## UI round 2 Follow-up 5 — 22 October 2026 (ready for coordinator review)
 
 Built on `f5455e279`: compact full-width station/pump Performance KPIs and one
