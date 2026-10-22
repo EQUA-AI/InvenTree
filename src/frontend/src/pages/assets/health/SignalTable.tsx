@@ -24,6 +24,7 @@ import monitoring from '../monitoring.module.css';
 import { unitLabel } from '../performance/format';
 import { useNow } from '../useNow';
 import { MetaText } from './common';
+import { signalLabel } from './readingPresentation';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
@@ -153,7 +154,7 @@ export function SignalTable({
                 signal.component.code,
                 {
                   value: signal.component.code,
-                  label: `${signal.component.name} · ${signal.component.code}`
+                  label: signal.component.name
                 }
               ] as const
             ]
@@ -381,7 +382,7 @@ export function SignalTable({
                         <ActionIcon
                           variant='subtle'
                           className={monitoring.link}
-                          aria-label={t`Details for ${signal.display_name}`}
+                          aria-label={t`Details for ${signalLabel(signal)}`}
                           aria-expanded={!!detailsOpen[signal.binding_id]}
                           aria-controls={`${instanceId}-${signal.binding_id}`}
                           onClick={() =>
@@ -415,7 +416,7 @@ export function SignalTable({
                                 textAlign: 'left'
                               }
                             }}
-                            aria-label={t`Inspect signal: ${signal.display_name}`}
+                            aria-label={t`Inspect signal: ${signalLabel(signal)}`}
                             aria-pressed={
                               selectedBinding === String(signal.binding_id)
                             }
@@ -423,10 +424,10 @@ export function SignalTable({
                               onInspect(signal.binding_id, event.currentTarget)
                             }
                           >
-                            {signal.display_name}
+                            {signalLabel(signal)}
                           </Button>
                         ) : (
-                          <Text size='sm'>{signal.display_name}</Text>
+                          <Text size='sm'>{signalLabel(signal)}</Text>
                         )}
                         {signal.critical_designation?.critical && (
                           <Text size='xs' fw={600}>
@@ -438,7 +439,7 @@ export function SignalTable({
                           </Text>
                         )}
                         {signal.active === false && (
-                          <MetaText size='xs'>{t`Inactive binding — retained for critical coverage review`}</MetaText>
+                          <MetaText size='xs'>{t`Inactive signal`}</MetaText>
                         )}
                       </Stack>
                     </Group>
@@ -461,7 +462,16 @@ export function SignalTable({
                     </Text>
                   </Table.Td>
                   {/* biome-ignore lint/a11y/useSemanticElements: Preserve the native role through phone card CSS. */}
-                  <Table.Td role='cell' data-label={t`State`}>
+                  <Table.Td
+                    role='cell'
+                    data-label={t`State`}
+                    data-no-state={
+                      (signal.state === 'unknown' &&
+                        !signal.stale &&
+                        !formatSignalLimits(signal)) ||
+                      undefined
+                    }
+                  >
                     {signal.stale && signal.state !== 'offline' ? (
                       <ValueTooltip
                         label={conditionText(signal)}
@@ -578,10 +588,7 @@ export function SignalTable({
                           {signal.component && (
                             <Stack gap={2}>
                               <Text size='sm' fw={500}>{t`Component`}</Text>
-                              <Text size='sm'>
-                                {signal.component.name} ·{' '}
-                                {signal.component.code}
-                              </Text>
+                              <Text size='sm'>{signal.component.name}</Text>
                               {signal.component.status !== 'verified' && (
                                 <MetaText size='xs'>{t`Draft inference`}</MetaText>
                               )}

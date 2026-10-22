@@ -1,10 +1,11 @@
 import { t } from '@lingui/core/macro';
 import dayjs from 'dayjs';
 import { displayInstant } from '../displayClock';
+import type { DisplayClock } from '../health/mimic/observedTime';
 
 /** Lossless typography only: no unit conversion or inferred dimension. */
 export function unitLabel(code: string | null | undefined): string {
-  if (!code?.trim()) return t`unit not recorded`;
+  if (!code?.trim() || code.trim() === '1') return '';
   return (
     (
       {
@@ -119,7 +120,21 @@ export function formatRange(
 }
 
 /** A clock time, with seconds only when the window is short enough to need them. */
-export function formatTick(ms: number, windowSeconds: number): string {
+export function formatTick(
+  ms: number,
+  windowSeconds: number,
+  clock?: DisplayClock
+): string {
+  if (clock)
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: clock.zone,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: windowSeconds <= 1800 ? '2-digit' : undefined,
+      day: windowSeconds > 43200 ? 'numeric' : undefined,
+      month: windowSeconds > 43200 ? 'short' : undefined,
+      hourCycle: 'h23'
+    }).format(ms);
   const moment = dayjs(ms);
   if (windowSeconds > 12 * 3600) {
     // Over half a day the date matters, and minutes are noise.

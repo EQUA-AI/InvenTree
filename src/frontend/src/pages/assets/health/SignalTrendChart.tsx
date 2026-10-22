@@ -2,7 +2,6 @@ import { t } from '@lingui/core/macro';
 import { AreaChart } from '@mantine/charts';
 import {
   Alert,
-  Badge,
   Box,
   Button,
   Group,
@@ -12,7 +11,6 @@ import {
   Select,
   Stack,
   Text,
-  Tooltip,
   useComputedColorScheme,
   useMantineTheme
 } from '@mantine/core';
@@ -31,7 +29,7 @@ import {
 } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ReferenceArea } from 'recharts';
-import { displayClockLabel, displayInstant } from '../displayClock';
+import { displayInstant } from '../displayClock';
 import monitoring from '../monitoring.module.css';
 import { ThresholdKey } from '../performance/ThresholdKey';
 import { legibleColor } from '../performance/TrendChart';
@@ -39,8 +37,7 @@ import { limitLines } from '../performance/limitLines';
 import { splitLimits, thresholdBands } from '../performance/thresholdBands';
 import {
   LIVE_TELEMETRY_WINDOW_SECONDS,
-  recordedTelemetryAsLive,
-  showRecordedTelemetry
+  recordedTelemetryAsLive
 } from '../telemetryPresentation';
 import { useNow } from '../useNow';
 import { MetaText } from './common';
@@ -65,8 +62,11 @@ import {
   type InvestigationWindow,
   displayLinkedWindow
 } from '../investigation/windows';
+import { presentationTicks } from '../performance/axisPresentation';
 import { niceTicks, timeTicks, unitLabel } from '../performance/format';
+import { resolveSignal } from '../performance/resolve';
 import { HealthHistoryProvenance } from './HealthHistoryProvenance';
+import { signalLabel } from './readingPresentation';
 import {
   type PreparedTrend,
   type TrendRow,
@@ -639,7 +639,7 @@ export function SignalTrendChart({
             w='fit-content'
             aria-expanded={investigationOpen || needsSlice}
             onClick={() => setInvestigationOpen((value) => !value)}
-          >{t`Case span investigation`}</Button>
+          >{t`Investigate this period`}</Button>
           {!expanded && (
             <Button
               ref={expandTrigger}
@@ -664,8 +664,8 @@ export function SignalTrendChart({
             data={selectable.map((signal) => ({
               value: String(signal.binding_id),
               label: signal.unit
-                ? `${signal.display_name} (${unitLabel(signal.unit)})`
-                : signal.display_name
+                ? `${signalLabel(signal)} (${unitLabel(signal.unit)})`
+                : signalLabel(signal)
             }))}
             // 320 px from the xs breakpoint up, as before; on a phone the
             // card is narrower than that, so the field takes its width.
@@ -752,35 +752,7 @@ export function SignalTrendChart({
             </>
           )}
         </Group>
-        <Group gap={6}>
-          {' '}
-          {trend?.available && (
-            <Badge
-              variant='outline'
-              color='gray'
-              tt='none'
-              c='var(--mantine-color-text)'
-            >
-              {t`${prepared.measured} samples`}
-            </Badge>
-          )}
-          {dataRange?.available && (
-            <Tooltip
-              events={{ hover: true, focus: true, touch: false }}
-              label={t`Reported source extent: ${formatRangeEdge(dataRange.from)} to ${formatRangeEdge(dataRange.to)}. Extent metadata does not establish samples or completeness in any selected window.`}
-            >
-              <Badge
-                tabIndex={0}
-                variant='outline'
-                color='gray'
-                tt='none'
-                c='var(--mantine-color-text)'
-              >
-                {t`Data to ${formatRangeEdge(dataRange.to)}`}
-              </Badge>
-            </Tooltip>
-          )}
-        </Group>
+        <Group gap={6}> </Group>
 
         {!selectedIsMapped && (
           <Alert
@@ -859,6 +831,9 @@ export function SignalTrendChart({
             trend={trend}
             prepared={prepared}
             withDate={withDate}
+            parameter={signals.find(
+              (signal) => String(signal.binding_id) === bindingId
+            )}
             limits={
               signals.find((signal) => String(signal.binding_id) === bindingId)
                 ?.limits
@@ -879,33 +854,6 @@ export function SignalTrendChart({
           </Alert>
         )}
 
-        {trend?.available && (
-          <Stack gap={2}>
-            <MetaText size='xs'>
-              {t`Selected window: ${formatInstant(prepared.start)} to ${formatInstant(prepared.end)}.`}{' '}
-              {expanded && (
-                <>{t`Times: your clock (${displayClockLabel()})`}. </>
-              )}
-              {t`Read from ${trend.source_name}. AIMMS does not store this history.`}
-            </MetaText>
-            {showRecordedTelemetry(trend) ? (
-              <MetaText size='xs'>
-                {shift.seconds === null
-                  ? t`Source history is display shifted; the amount is unavailable.`
-                  : t`Times are shown on the dashboard clock, ${shiftWords(shift.seconds)} ${shift.direction === 'earlier' ? t`earlier than the source recorded them` : t`later than the source recorded them`}.`}
-              </MetaText>
-            ) : null}
-            {trend.sampled && (
-              <MetaText size='xs'>{t`Sampled real readings; one reading per ${trend.resolution_seconds ?? t`unspecified`} s slot. Fast transients may be absent; gaps are not filled.`}</MetaText>
-            )}
-          </Stack>
-        )}
-        {!trend?.sampled && (
-          <MetaText
-            maw='70ch'
-            size='xs'
-          >{t`Current values and recent row trends differ from selected history; retained snapshots keep their capture-time origin. No resampling resolution or retention completeness is supplied. Fast transients may be absent; gaps are not filled.`}</MetaText>
-        )}
         {trend?.available && <RecordGaps trend={trend} prepared={prepared} />}
         {evidence?.(prepared, !!trend?.available, provenance)}
       </Stack>
@@ -1006,8 +954,10 @@ export function TrendPlot({
   prepared,
   withDate,
   height = 320,
-  limits
+  limits,
+  parameter
 }: Readonly<{
+  parameter?: MachineSignal;
   trend: SignalTrend;
   prepared: PreparedTrend;
   withDate: boolean;
@@ -1036,9 +986,18 @@ export function TrendPlot({
   const scaleValues = includeLimits
     ? [...extent, ...lines.map((line) => line.y)]
     : extent;
-  const scaleTicks = includeLimits
-    ? niceTicks(Math.min(...scaleValues), Math.max(...scaleValues))
-    : dataTicks;
+  const role = parameter ? resolveSignal(parameter).definition.role : '';
+  const status = ['status', 'station_status', 'motor_status'].includes(role);
+  const scaleTicks = status
+    ? [...new Set([0, 1, ...values])].sort((a, b) => a - b)
+    : presentationTicks(
+        includeLimits
+          ? niceTicks(Math.min(...scaleValues), Math.max(...scaleValues))
+          : dataTicks,
+        extent[0],
+        unit,
+        role === 'pump_count'
+      );
   const domain: [number, number] = [scaleTicks[0], scaleTicks.at(-1)!];
   // Ticks sized to the plot, as on the Performance charts: a clock label
   // needs about 90 px, so a phone gets a five-minute grid rather than only
@@ -1109,7 +1068,21 @@ export function TrendPlot({
         yAxisProps={{
           domain,
           ticks: scaleTicks,
-          tickFormatter: (value: number) => String(value),
+          tickFormatter: (value: number) =>
+            status
+              ? value !== 0 && value !== 1
+                ? value === -1 && role !== 'motor_status'
+                  ? t`Fault`
+                  : t`Unknown`
+                : value === 1
+                  ? role === 'motor_status'
+                    ? t`On`
+                    : t`Running`
+                  : role === 'motor_status'
+                    ? t`Off`
+                    : t`Idle`
+              : String(value),
+          allowDecimals: !status && role !== 'pump_count',
           allowDataOverflow: true
         }}
         referenceLines={lines.map((line) => ({

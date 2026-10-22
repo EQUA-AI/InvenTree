@@ -253,9 +253,6 @@ export function SensorHeatmap({
         <Text size='xs'>
           {formatValue(matrix.max, decimals, unit, matrix.max - matrix.min)}
         </Text>
-        <MetaText size='xs'>
-          {t`· each cell is the mean of the readings in its column`}
-        </MetaText>
       </Group>
     </Stack>
   );

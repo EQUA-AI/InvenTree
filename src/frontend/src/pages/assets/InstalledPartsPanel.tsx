@@ -71,7 +71,7 @@ function RecordedParts({ machineId }: Readonly<{ machineId: number }>) {
 
   return (
     <Stack gap='xs'>
-      <Title order={5}>{t`Recorded as fitted`}</Title>
+      <Title order={5}>{t`Reference parts list`}</Title>
       <MachinePartTable machineId={machineId} />
     </Stack>
   );

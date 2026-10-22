@@ -7,12 +7,14 @@ import useTable from '@lib/hooks/UseTable';
 import type { MachinePart } from '@lib/types/Assets';
 import type { TableFilter } from '@lib/types/Filters';
 import type { TableColumn } from '@lib/types/Tables';
+import { MissingValue } from '../../components/items/ValueTooltip';
 import {
   CreatedAfterFilter,
   CreatedBeforeFilter,
   PartCategoryFilter
 } from '../../components/tables/Filter';
 import { InvenTreeTable } from '../../components/tables/InvenTreeTable';
+import classes from './ReferenceParts.module.css';
 
 /**
  * Table component for displaying parts installed on a machine.
@@ -59,23 +61,34 @@ export function MachinePartTable({
         title: t`Notes`,
         sortable: false
       }
-    ];
+    ].map((column) => ({
+      ...column,
+      render: (row: MachinePart) => (
+        <div data-label={column.title}>
+          {String(row[column.accessor as keyof MachinePart] ?? '') || (
+            <MissingValue reason={t`Not recorded`} />
+          )}
+        </div>
+      )
+    }));
   }, []);
 
   return (
-    <InvenTreeTable<MachinePart>
-      url={apiUrl(ApiEndpoints.asset_machine_part_list)}
-      tableState={table}
-      columns={tableColumns}
-      props={{
-        enableSearch: true,
-        enablePagination: true,
-        enableRefresh: true,
-        tableFilters,
-        params: {
-          machine: machineId
-        }
-      }}
-    />
+    <div className={classes.table}>
+      <InvenTreeTable<MachinePart>
+        url={apiUrl(ApiEndpoints.asset_machine_part_list)}
+        tableState={table}
+        columns={tableColumns}
+        props={{
+          enableSearch: true,
+          enablePagination: true,
+          enableRefresh: true,
+          tableFilters,
+          params: {
+            machine: machineId
+          }
+        }}
+      />
+    </div>
   );
 }

@@ -2,10 +2,7 @@ import { t } from '@lingui/core/macro';
 import { Stack, Switch } from '@mantine/core';
 import { MetaText } from '../health/common';
 import monitoring from '../monitoring.module.css';
-import {
-  type TelemetryPresentation,
-  recordedTelemetryAsLive
-} from '../telemetryPresentation';
+import type { TelemetryPresentation } from '../telemetryPresentation';
 import { useHistoryReadFailures } from './HistoryReadContext';
 import type { ReferenceLine } from './TrendChart';
 import { formatValue } from './format';
@@ -51,22 +48,14 @@ export function ThresholdKey({
         />
       )}
       <MetaText size='xs'>
-        {t`Configured binding limits (current Health signal mapping)`}.{' '}
-        {drawn.length > 0
-          ? t`Drawn: ${drawn.map((line) => line.label).join(' · ')}.`
-          : t`Drawn: no configured boundaries inside this scale.`}{' '}
-        {offScale.length > 0 &&
-          t`Outside this scale: ${offScale.map((line) => line.label).join(' · ')}.`}{' '}
-        {above.length > 0 &&
-          below.length === 0 &&
-          t`Window values are at least ${formatValue(Math.min(...above), 2, unit)} below the nearest limit.`}
-        {below.length > 0 &&
-          above.length === 0 &&
-          t`Window values are at least ${formatValue(Math.min(...below), 2, unit)} above the nearest limit.`}{' '}
-        {shaded && t`Shaded regions compare against these limits.`}{' '}
-        {recordedTelemetryAsLive(presentation ?? history)
-          ? t`Engineering approval and limit applicability unavailable.`
-          : t`Engineering approval and historical applicability unavailable.`}
+        {[
+          ...new Map(
+            lines.map((line) => [
+              `${line.severity}:${line.y}`,
+              `${line.severity === 'critical' ? t`Critical` : t`Warning`} ${formatValue(line.y, 2, unit)}`
+            ])
+          ).values()
+        ].join(' · ')}
       </MetaText>
     </Stack>
   );

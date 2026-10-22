@@ -13,6 +13,8 @@ import {
 } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
+import { ValueTooltip } from '../../components/items/ValueTooltip';
+import { Timestamp } from './health/Timestamp';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
@@ -48,6 +50,27 @@ interface FaultHistory {
   };
 }
 
+export function faultDescription(code?: string): string {
+  const suffix = code?.replace(/^CC-PUMP-/, '');
+  return (
+    (
+      {
+        LOW_FLOW: t`Low flow`,
+        BEARING_VIBRATION: t`Bearing vibration`,
+        OVER_TEMPERATURE: t`High temperature`,
+        MOTOR_OVERLOAD: t`Motor overload`
+      } as Record<string, string>
+    )[suffix ?? ''] ??
+    (code?.startsWith('CC-PUMP-')
+      ? code
+          .slice(8)
+          .replaceAll('_', ' ')
+          .toLowerCase()
+          .replace(/^./, (letter) => letter.toUpperCase())
+      : t`Unclassified fault`)
+  );
+}
+
 function CountTable({
   title,
   source,
@@ -65,9 +88,7 @@ function CountTable({
         <Text fw={600} size='sm'>
           {title}
         </Text>
-        <Text size='xs' className={operations.meta}>
-          {source}
-        </Text>
+
         {rows.length === 0 ? (
           <Text size='xs' className={operations.meta}>{t`No records`}</Text>
         ) : (
@@ -76,7 +97,17 @@ function CountTable({
               {rows.map((row) => (
                 <Table.Tr key={row[labelKey]}>
                   <Table.Td>
-                    <Text size='xs'>{row[labelKey]}</Text>
+                    <ValueTooltip
+                      label={
+                        row[labelKey] ?? t`Fault classification not recorded`
+                      }
+                    >
+                      <Text size='xs'>
+                        {labelKey === 'code'
+                          ? faultDescription(row.code)
+                          : row.cause}
+                      </Text>
+                    </ValueTooltip>
                   </Table.Td>
                   <Table.Td width={60}>
                     <Badge variant='light' color='gray'>
@@ -112,10 +143,7 @@ export default function FaultHistoryPanel({
           />
         )}
       />
-      <Divider
-        label={t`Maintenance history · recorded aggregates`}
-        labelPosition='left'
-      />
+      <Divider label={t`Maintenance history`} labelPosition='left' />
       <FaultHistoryRollup machineId={machineId} />
     </Stack>
   );
@@ -162,34 +190,15 @@ function FaultHistoryRollup({ machineId }: Readonly<{ machineId: number }>) {
           </Badge>
         )}
       </Group>
-      {maintenance.count > 0 && (
-        <Text size='xs' className={operations.meta}>
-          {t`First`} {maintenance.first_date} — {t`last`}{' '}
-          {maintenance.last_date}
-          {maintenance.gap_days.median != null && (
-            <>
-              {' - '}
-              {t`gap days (min/median/max)`}: {maintenance.gap_days.min}/
-              {maintenance.gap_days.median}/{maintenance.gap_days.max}
-            </>
-          )}
-        </Text>
-      )}
-      {data.declared.fault_codes.length > 0 && (
-        <Group gap={4}>
-          <Text size='xs' className={operations.meta}>
-            {t`Declared fault codes`}:
-          </Text>
-          {data.declared.fault_codes.map((code) => (
-            <Badge key={code} variant='outline' color='gray'>
-              {code}
-            </Badge>
-          ))}
+      {maintenance.last_date && (
+        <Group gap={6}>
+          <Text size='sm'>{t`Last maintenance`}</Text>
+          <Timestamp value={maintenance.last_date} dateOnly />
         </Group>
       )}
       <SimpleGrid cols={{ base: 1, md: 2 }}>
         <CountTable
-          title={t`Top failure codes`}
+          title={t`Frequent faults`}
           source={t`From approved repair scopes`}
           rows={data.observed.failure_codes.top}
           labelKey='code'

@@ -376,9 +376,6 @@ function OpenWork({
       {rows &&
         (rows.results.length ? (
           <>
-            <Text size='xs' c='dimmed'>
-              {t`Open means Planned, Ready, In progress, On hold or Verifying. Windows are in your local timezone; assignment does not indicate acceptance.`}
-            </Text>
             {phone ? (
               // Phones reorganize the same fields into one card per job,
               // so lifecycle and owner are not hidden behind a side scroll.
@@ -473,13 +470,9 @@ function OpenWork({
               <Title order={5}>
                 {search.trim()
                   ? t`No open work matches this search`
-                  : t`No open work on this machine`}
+                  : t`No open work`}
               </Title>
-              <Text size='sm' c='dimmed'>
-                {search.trim()
-                  ? t`Other open work on this machine may not match the search.`
-                  : t`Nothing planned, ready, in progress, on hold or verifying in your authorized scope.`}
-              </Text>
+
               <Group gap='xs'>
                 {search.trim() ? (
                   <Button
@@ -645,11 +638,7 @@ export function MachineMaintenancePanel({
           </Group>
         </Alert>
       )}
-      {!!open && !!completed && (
-        <Text size='sm' c='dimmed'>
-          {t`Each job keeps its own outcome: a completed job does not close the open work, and open work does not undo a recorded completion.`}
-        </Text>
-      )}
+
       {state.view === 'open' ? (
         <OpenWork
           machineId={machineId}
@@ -664,9 +653,6 @@ export function MachineMaintenancePanel({
         />
       ) : (
         <Stack gap='xs'>
-          <Text size='xs' c='dimmed'>
-            {t`Completed maintenance records for this machine. A record links its work order when you can open it. An unavailable link does not establish that no work was recorded.`}
-          </Text>
           <MaintenanceRecordTable machineId={machineId} boundToMachine />
         </Stack>
       )}

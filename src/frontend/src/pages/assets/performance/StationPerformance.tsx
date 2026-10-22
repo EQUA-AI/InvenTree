@@ -39,7 +39,7 @@ import type { PerformanceMachine } from './PerformancePanel';
 import { useClock, useWindowState, windowInfoFrom } from './PerformancePanel';
 import { LiveIndicator, TimeRangeControl } from './TimeRangeControl';
 import { TrendChart, type TrendSeries, familyColors } from './TrendChart';
-import { WindowStatus, clockLabel, formatWindow } from './WindowStatus';
+import { WindowStatus, clockLabel } from './WindowStatus';
 import { formatAge, formatAt, formatDuration, precisionFor } from './format';
 import { resolveParameters, withRole } from './resolve';
 import { CardGrid, ChartCard, ScaledTrend } from './sections/common';
@@ -211,6 +211,10 @@ export function StationPerformance({
     if (forebay) {
       out.push({
         key: 'forebay',
+        valueText:
+          typeof forebay.signal.value === 'number'
+            ? formatAt(forebay.signal.value, 2, forebay.signal.unit)
+            : undefined,
         label: forebay.label,
         value:
           typeof forebay.signal.value === 'number'
@@ -241,8 +245,7 @@ export function StationPerformance({
         stale: count.signal.stale,
         state: 'unconfigured',
         series: series.get(count.signal.binding_id),
-        caption:
-          bays.length > 0 ? t`of ${bays.length} registered bays` : undefined
+        denominator: bays.length
       });
     }
     // Plant totals are sums of the bays' newest readings: calculated, and said so.
@@ -276,7 +279,23 @@ export function StationPerformance({
       const lasts = entries
         .map((e) => [...e.samples].reverse().find(usable))
         .filter((s): s is SeriesSample => !!s);
-      if (lasts.length === 0) return;
+      if (lasts.length !== bays.length || !bays.length) {
+        out.push({
+          key,
+          label,
+          value: null,
+          unit: entries[0]?.unit ?? '',
+          decimals: 1,
+          observedAt: null,
+          stale: false,
+          state: 'unconfigured',
+          calculated: true,
+          missingReason: excluded.length
+            ? t`Bays report incompatible units`
+            : t`${bays.length - lasts.length} of ${bays.length} bays not reporting`
+        });
+        return;
+      }
       const sum = lasts.reduce((acc, s) => acc + (s.v as number), 0);
       // A sum is only as current as its oldest input. Dated by the freshest
       // bay, the tile read "27 s ago" over a total that included a bay which
@@ -437,6 +456,10 @@ export function StationPerformance({
     const items = [
       forebay && {
         key: 'forebay',
+        valueText:
+          typeof forebay.signal.value === 'number'
+            ? formatAt(forebay.signal.value, 2, forebay.signal.unit)
+            : undefined,
         p: forebay,
         color: levels[0],
         axis: 'left' as const,
@@ -626,6 +649,12 @@ export function StationPerformance({
           freshnessSeconds={freshness}
           now={now}
         />
+        <Button
+          variant='subtle'
+          size='xs'
+          aria-expanded={investigationOpen}
+          onClick={() => setInvestigationOpen((value) => !value)}
+        >{t`Investigate this period`}</Button>
       </Group>
 
       {invalidLink && (
@@ -685,6 +714,7 @@ export function StationPerformance({
       )}
       <LinkedEvidence machineId={station.pk} />
       <HistoryProvenance
+        compact
         response={response}
         loading={seriesQuery.isFetching && !response}
         updating={seriesQuery.isPlaceholderData}
@@ -693,22 +723,16 @@ export function StationPerformance({
         onRetry={() => seriesQuery.refetch()}
         currentDescription={t`Station source tiles use current observations. Calculated bay totals and bay tables use last usable readings in the selected window, with their own timestamps and coverage. These are separate origins; retained snapshots are separate evidence.`}
       />
-      <Paper withBorder radius='md' p='sm'>
-        <Button
-          variant='subtle'
-          size='xs'
-          aria-expanded={investigationOpen}
-          onClick={() => setInvestigationOpen((value) => !value)}
-        >{t`Case span investigation`}</Button>
-        {investigationOpen && (
-          <InvestigationSlices
-            initial={resolveWindow(range.window, now)}
-            onRead={(span) => {
-              range.onCustom(span.from, span.to);
-            }}
-          />
-        )}
-      </Paper>
+
+      {investigationOpen && (
+        <InvestigationSlices
+          initial={resolveWindow(range.window, now)}
+          onRead={(span) => {
+            range.onCustom(span.from, span.to);
+          }}
+        />
+      )}
+
       <KpiStrip tiles={tiles} now={now} window={window} />
 
       {seriesQuery.isError && (
@@ -741,15 +765,7 @@ export function StationPerformance({
         <Stack gap='md'>
           <CardGrid>
             {stationLines.lines.length > 0 && (
-              <ChartCard
-                title={t`Forebay level and pumps running`}
-                description={
-                  stationLines.lines.some((l) => l.yAxisId === 'right') &&
-                  stationLines.lines.some((l) => l.yAxisId !== 'right')
-                    ? t`Level on the left axis; the running count on the right, as steps.`
-                    : undefined
-                }
-              >
+              <ChartCard title={t`Forebay level and pumps running`}>
                 <ScaledTrend
                   rows={stationLines.rows}
                   lines={stationLines.lines}
@@ -976,13 +992,6 @@ export function StationPerformance({
                   </Table.Tbody>
                 </Table>
               </Table.ScrollContainer>
-              {response && (
-                <Text size='xs' c='dimmed' px='sm' py={6}>
-                  {range.live
-                    ? t`Each bay's newest usable reading in the window on screen (${formatWindow(window.start, window.end, now)}); window peak over the same span.`
-                    : t`Each bay's last usable reading in the selected window (${formatWindow(window.start, window.end, now)}), not its present value; window peak over the same span.`}
-                </Text>
-              )}
             </Paper>
           )}
         </Stack>

@@ -18,6 +18,10 @@ export interface PositionComponent {
   name: string;
   status: 'draft' | 'verified';
   provenance: string;
+  provenance_kind?: 'register' | 'scada' | 'tag_review' | 'manual' | 'unknown';
+  provenance_display?: string;
+  provenance_imported_at?: string | null;
+  review_note?: string;
   part: { pk: number; name: string; IPN: string };
 }
 

@@ -38,6 +38,7 @@ import type { TableFilter } from '@lib/types/Filters';
 import type { ApiFormFieldSet } from '@lib/types/Forms';
 import type { TableColumn } from '@lib/types/Tables';
 import { AttachmentLink } from '../../components/items/AttachmentLink';
+import { MissingValue } from '../../components/items/ValueTooltip';
 import { InvenTreeTable } from '../../components/tables/InvenTreeTable';
 import { useApi } from '../../contexts/ApiContext';
 import { formatFileSize } from '../../defaults/formatters';
@@ -46,9 +47,11 @@ import {
   useDeleteApiFormModal,
   useEditApiFormModal
 } from '../../hooks/UseForm';
+import { Timestamp } from '../../pages/assets/health/Timestamp';
 import { useEvidenceViewerState } from '../../states/EvidenceViewerState';
 import { useGlobalSettingsState } from '../../states/SettingsStates';
 import { useUserState } from '../../states/UserState';
+import classes from './AttachmentTable.module.css';
 import {
   type AttachmentPreviewRecord,
   attachmentPreviewItem
@@ -65,13 +68,15 @@ function attachmentTableColumns(
   return [
     {
       accessor: 'attachment',
+      title: t`Attachment`,
+      width: '26%',
       sortable: false,
       switchable: false,
-      noWrap: true,
+      noWrap: false,
       render: (record: any) => {
         if (record.attachment) {
           return (
-            <Group gap='xs' wrap='nowrap'>
+            <Group gap='xs' wrap='nowrap' className={classes.attachmentCell}>
               <AttachmentLink
                 thumbnail={record.thumbnail}
                 attachment={record.attachment}
@@ -109,27 +114,40 @@ function attachmentTableColumns(
         } else if (record.link) {
           return <AttachmentLink attachment={record.link} external />;
         } else {
-          return '-';
+          return <MissingValue reason={t`Not supplied`} />;
         }
       },
       noContext: true
     },
     {
       accessor: 'comment',
+      title: t`Comment`,
       sortable: false,
 
       render: (record: any) => {
-        return record.comment;
+        return (
+          <Text
+            size='sm'
+            style={{
+              whiteSpace: 'normal',
+              overflowWrap: 'break-word',
+              maxWidth: 360
+            }}
+          >
+            {record.comment || <MissingValue reason={t`No comment recorded`} />}
+          </Text>
+        );
       }
     },
     {
       accessor: 'upload_date',
+      title: t`Uploaded`,
       sortable: true,
 
       render: (record: any) => {
         return (
           <Group justify='space-between'>
-            <Text>{record.upload_date}</Text>
+            <Timestamp value={record.upload_date} />
             {record.user_detail && (
               <Badge size='xs'>{record.user_detail.username}</Badge>
             )}
@@ -139,11 +157,12 @@ function attachmentTableColumns(
     },
     {
       accessor: 'file_size',
+      title: t`Size`,
       sortable: true,
       switchable: true,
       render: (record: any) => {
         if (!record.attachment) {
-          return '-';
+          return <MissingValue reason={t`Not supplied`} />;
         } else {
           return formatFileSize(record.file_size);
         }

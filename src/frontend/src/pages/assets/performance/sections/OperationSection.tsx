@@ -120,16 +120,7 @@ export function OperationSection({
     <Stack gap='md'>
       <CardGrid>
         {(speed.length > 0 || status.length > 0) && (
-          <ChartCard
-            title={t`Shaft speed and status`}
-            description={
-              status.length > 0 && speed.length > 0
-                ? t`Speed on the left axis; the plant's run/stop status on the right, drawn as steps (1 running, 0 idle).`
-                : status.length > 0
-                  ? t`The plant's run/stop status, drawn as steps (1 running, 0 idle).`
-                  : undefined
-            }
-          >
+          <ChartCard title={t`Shaft speed and status`}>
             <ParameterTrend
               parameters={[...speed, ...status, ...motorStatus]}
               lines={[
@@ -155,11 +146,10 @@ export function OperationSection({
         )}
         {(pressure.length > 0 || valves.length > 0) && (
           <ChartCard
-            title={t`Discharge pressure and valve position`}
-            description={
-              valves.length > 0 && pressure.length > 0
-                ? t`Pressure on the left axis, valve positions on the right.`
-                : undefined
+            title={
+              pressure.length
+                ? t`Discharge pressure and valve position`
+                : t`Valve position`
             }
           >
             <ParameterTrend
@@ -178,14 +168,7 @@ export function OperationSection({
           </ChartCard>
         )}
         {(forebay.length > 0 || flow.length > 0 || surge.length > 0) && (
-          <ChartCard
-            title={t`Forebay level and discharge flow`}
-            description={
-              forebay.length > 0 && flow.length > 0
-                ? t`Level on the left axis, flow on the right.`
-                : undefined
-            }
-          >
+          <ChartCard title={t`Forebay level and discharge flow`}>
             <ParameterTrend
               parameters={[...forebay, ...surge, ...flow]}
               lines={[

@@ -16,24 +16,20 @@ import { useMediaQuery } from '@mantine/hooks';
 import { IconRefresh, IconZoomReset } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { ValueTooltip } from '../../../components/items/ValueTooltip';
 import { displayInstant } from '../displayClock';
 import { StatusBadge } from '../health/StatusBadge';
+import { Timestamp } from '../health/Timestamp';
 import { MetaText } from '../health/common';
 import monitoring from '../monitoring.module.css';
 import {
   LIVE_TELEMETRY_WINDOW_SECONDS,
-  recordedTelemetryAsLive,
-  showRecordedTelemetry
+  recordedTelemetryAsLive
 } from '../telemetryPresentation';
 
 import type { SeriesResponse } from '@lib/types/MachineHealth';
 
-import {
-  formatClock,
-  formatClockOn,
-  formatDuration,
-  formatTick
-} from './format';
+import { formatDuration, formatTick } from './format';
 import {
   type DataRange,
   type RangePreset,
@@ -440,32 +436,16 @@ export function LiveIndicator({
           {word}
         </StatusBadge>
         {controls}
-        <MetaText size='xs'>
-          {updatedAt == null || updatedAt <= 0
-            ? t`Not read yet`
-            : t`Updated ${formatClock(updatedAt)}`}
-          {!empty && currentAt != null
-            ? ` · ${recordedTelemetryAsLive(response) && ageSeconds !== null && ageSeconds < 60 ? t`newest reading just now` : t`newest reading ${formatClockOn(currentAt, now)}`}`
-            : ''}
-          {newestAt != null &&
-          currentAt != null &&
-          newestAt !== currentAt &&
-          response?.mode === 'sampled'
-            ? ` · ${t`latest chart sample ${formatClockOn(newestAt, now)}`}`
-            : ''}
-          {poll != null && !recordedTelemetryAsLive(response)
-            ? ` · ${t`polled every ${formatDuration(poll)}`}`
-            : ''}
-        </MetaText>
+        <ValueTooltip
+          focusable={false}
+          label={modeText ?? t`Latest source history read`}
+        >
+          <Group gap={4}>
+            <MetaText size='xs'>{t`Updated`}</MetaText>
+            <Timestamp value={updatedAt} timeOnly />
+          </Group>
+        </ValueTooltip>
       </Group>
-      {showRecordedTelemetry(response) && response && (
-        <MetaText size='xs'>{t`Source history display shift: ${formatDuration(Math.abs(response.display_shift_seconds))} ${response.display_shift_seconds >= 0 ? t`later than recorded` : t`earlier than recorded`}.`}</MetaText>
-      )}
-      {modeText && (
-        <MetaText size='xs' maw='70ch'>
-          {modeText}
-        </MetaText>
-      )}
     </Stack>
   );
 }

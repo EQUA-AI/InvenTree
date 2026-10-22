@@ -34,13 +34,7 @@ import { displayClock, formatInstant } from './mimic/observedTime';
 export function MonitoringContinuityNotice({
   compact = false
 }: { compact?: boolean }) {
-  if (compact)
-    return (
-      <Text size='sm'>{t`Configured monitoring spans maintenance and Closeout; its availability is separate.`}</Text>
-    );
-  return (
-    <Text size='sm'>{t`Configured proactive monitoring applies before, during and after maintenance and Closeout. Its current availability is separate from repair, test and service outcomes.`}</Text>
-  );
+  return null;
 }
 
 const unavailableInScope = (error: unknown) =>

@@ -17,7 +17,9 @@ import AttachmentPanel from '../../components/panels/AttachmentPanel';
 
 import { UserRoles } from '@lib/enums/Roles';
 import { BarcodeActionDropdown } from '../../components/items/ActionDropdown';
+import { MissingValue } from '../../components/items/ValueTooltip';
 import { useUserState } from '../../states/UserState';
+import classes from './MachineDetails.module.css';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { ModelType } from '@lib/enums/ModelType';
@@ -40,15 +42,16 @@ import { EquipmentViewPanel } from './equipment/EquipmentViewPanel';
 import { MachineHealthPanel } from './health/MachineHealthPanel';
 import PumpMimic from './health/PumpMimic';
 import PumphouseMimic from './health/PumphouseMimic';
+import {
+  DisplayClockContext,
+  useDisplayClock
+} from './health/mimic/observedTime';
 import { machineTrail } from './machineTrail';
 import { MachineMaintenancePanel } from './maintenance/MachineMaintenancePanel';
 import operations from './operations.module.css';
 import { PerformancePanel } from './performance/PerformancePanel';
 
-import {
-  MachineLocationCard,
-  MachinePlacementPath
-} from './locations/MachineLocationCard';
+import { MachineLocationCard } from './locations/MachineLocationCard';
 import { machinesReturnHref } from './locations/locationTree';
 
 export default function MachineDetail() {
@@ -74,6 +77,8 @@ export default function MachineDetail() {
     pk: id,
     params: {}
   });
+
+  const clock = useDisplayClock(machine?.plant_timezone);
 
   // R6 P08: a pump's process schematic is its station's mimic for its bay,
   // and it lives inside Equipment view rather than as a competing tab.
@@ -129,20 +134,26 @@ export default function MachineDetail() {
       {
         name: 'name',
         type: 'text',
-        label: t`Name`
+        label: t`Name`,
+        value_formatter: () =>
+          machine?.name || <MissingValue reason={t`Name not recorded`} />
       },
       {
         name: 'active',
-        type: 'boolean',
-        label: t`Active record`
-      },
-      {
-        name: 'location',
         type: 'text',
-        label: t`Legacy location label`
+        icon: 'status',
+        label: t`Status`,
+        value_formatter: () =>
+          machine?.active == null ? (
+            <MissingValue reason={t`Service status not recorded`} />
+          ) : machine.active ? (
+            t`In service`
+          ) : (
+            t`Out of service`
+          )
       }
     ],
-    []
+    [machine?.name, machine?.active]
   );
 
   // Right-hand details fields
@@ -151,20 +162,31 @@ export default function MachineDetail() {
       {
         name: 'manufacturer',
         type: 'text',
-        label: t`Manufacturer`
+        label: t`Manufacturer`,
+        icon: 'manufacturers',
+        value_formatter: () =>
+          machine?.manufacturer || (
+            <MissingValue reason={t`Manufacturer not recorded`} />
+          )
       },
       {
         name: 'model',
         type: 'text',
-        label: t`Model`
+        label: t`Model`,
+        icon: 'part',
+        value_formatter: () =>
+          machine?.model || <MissingValue reason={t`Model not recorded`} />
       },
       {
         name: 'serial',
         type: 'text',
-        label: t`Serial Number`
+        label: t`Serial Number`,
+        icon: 'serial',
+        value_formatter: () =>
+          machine?.serial || <MissingValue reason={t`Serial not recorded`} />
       }
     ],
-    []
+    [machine?.manufacturer, machine?.model, machine?.serial]
   );
 
   // Description is a free-text field: render it across the full panel width,
@@ -184,7 +206,9 @@ export default function MachineDetail() {
               wordBreak: 'break-word'
             }}
           >
-            {machine?.description}
+            {machine?.description || (
+              <MissingValue reason={t`Description not recorded`} />
+            )}
           </Text>
         )
       }
@@ -202,11 +226,23 @@ export default function MachineDetail() {
           <Stack>
             <MachineLocationCard machineId={machine.pk} />
             <ItemDetailsGrid>
-              <DetailsTable fields={detailsLeft} item={machine} />
-              <DetailsTable fields={detailsRight} item={machine} />
+              <DetailsTable
+                className={classes.details}
+                fields={detailsLeft}
+                item={machine}
+              />
+              <DetailsTable
+                className={classes.details}
+                fields={detailsRight}
+                item={machine}
+              />
               {!!machine.description && (
                 <div style={{ gridColumn: '1 / -1' }}>
-                  <DetailsTable fields={detailsDescription} item={machine} />
+                  <DetailsTable
+                    className={classes.details}
+                    fields={detailsDescription}
+                    item={machine}
+                  />
                 </div>
               )}
             </ItemDetailsGrid>
@@ -322,108 +358,109 @@ export default function MachineDetail() {
   ]);
 
   return (
-    <InstanceDetail query={instanceQuery}>
-      <Stack className={operations.machineShell}>
-        <PageDetail
-          title={machine?.name ?? t`Machine Detail`}
-          breadcrumbs={breadcrumbs}
-          lastCrumb={trail.lastCrumb}
-          actions={[
-            // S32a: view the machine QR, or link/unlink a third-party tag.
-            <BarcodeActionDropdown
-              key='barcode_actions'
-              model={ModelType.assetmachine}
-              pk={machine?.pk}
-              hash={machine?.barcode_hash}
-              perm={user.hasChangeRole(UserRoles.work_order)}
-            />,
-            // S14 B5: opens the main chat drawer with this machine preloaded
-            // as a VISIBLE routing hint — never authority. Every tool call
-            // re-authorizes server-side; a denied or out-of-scope machine is
-            // indistinguishable from a nonexistent one.
-            <Button
-              key='ask-ai'
-              variant='light'
-              leftSection={<IconMessageChatbot size={16} />}
-              onClick={() =>
-                machine?.pk &&
-                openGlobalAIChat({
-                  machineId: machine.pk,
-                  machineName: machine.name ?? `Machine ${machine.pk}`
-                })
-              }
-              disabled={!machine?.pk}
-            >
-              {t`Ask about this machine`}
-            </Button>,
-            // Create repair plans work for this asset. Starting it is a
-            // separate, readiness-gated transition and is not offered here.
-            user.hasAddRole(UserRoles.work_order) && (
+    <DisplayClockContext value={clock}>
+      <InstanceDetail query={instanceQuery}>
+        <Stack className={operations.machineShell}>
+          <PageDetail
+            title={machine?.name ?? t`Machine Detail`}
+            breadcrumbs={breadcrumbs}
+            lastCrumb={trail.lastCrumb}
+            actions={[
+              // S32a: view the machine QR, or link/unlink a third-party tag.
+              <BarcodeActionDropdown
+                key='barcode_actions'
+                model={ModelType.assetmachine}
+                pk={machine?.pk}
+                hash={machine?.barcode_hash}
+                perm={user.hasChangeRole(UserRoles.work_order)}
+              />,
+              // S14 B5: opens the main chat drawer with this machine preloaded
+              // as a VISIBLE routing hint — never authority. Every tool call
+              // re-authorizes server-side; a denied or out-of-scope machine is
+              // indistinguishable from a nonexistent one.
               <Button
-                key='create-repair'
-                leftSection={<IconTool size={16} />}
-                onClick={() => setCreateRepairOpen(true)}
-                disabled={
-                  !machine?.pk || !user.hasAddRole(UserRoles.work_order)
+                key='ask-ai'
+                variant='light'
+                leftSection={<IconMessageChatbot size={16} />}
+                onClick={() =>
+                  machine?.pk &&
+                  openGlobalAIChat({
+                    machineId: machine.pk,
+                    machineName: machine.name ?? `Machine ${machine.pk}`
+                  })
                 }
+                disabled={!machine?.pk}
               >
-                {t`Create repair`}
-              </Button>
-            ),
-            // Starting is a separate, readiness-gated transition. The modal
-            // asks the server what is startable rather than deciding here.
-            user.hasChangeRole(UserRoles.work_order) &&
-              (user.isSuperuser() ||
-                user.user?.permissions?.workorder?.includes('execute')) && (
+                {t`Ask about this machine`}
+              </Button>,
+              // Create repair plans work for this asset. Starting it is a
+              // separate, readiness-gated transition and is not offered here.
+              user.hasAddRole(UserRoles.work_order) && (
                 <Button
-                  key='start-repair'
-                  variant='light'
-                  leftSection={<IconPlayerPlay size={16} />}
-                  onClick={() => setStartRepairOpen(true)}
+                  key='create-repair'
+                  leftSection={<IconTool size={16} />}
+                  onClick={() => setCreateRepairOpen(true)}
                   disabled={
-                    !machine?.pk ||
-                    !user.hasChangeRole(UserRoles.work_order) ||
-                    (!user.isSuperuser() &&
-                      !user.user?.permissions?.workorder?.includes('execute'))
+                    !machine?.pk || !user.hasAddRole(UserRoles.work_order)
                   }
                 >
-                  {t`Start repair`}
+                  {t`Create repair`}
                 </Button>
-              )
-          ]}
-        />
-        {machine?.pk && <MachinePlacementPath machineId={machine.pk} />}
-        <PanelGroup
-          denseTabs
-          pageKey='asset-machine-detail'
-          panels={machinePanels}
-          instance={machine}
-          model={ModelType.assetmachine}
-          id={machine?.pk ?? null}
-        />
-        {machine?.pk && (
-          <WorkOrderCreateModal
-            opened={createRepairOpen}
-            onClose={() => setCreateRepairOpen(false)}
-            machineId={machine.pk}
-            origin='manual'
-            onCreated={(result) =>
-              navigate(`/maintenance/work-orders/${result.work_order_id}/`)
-            }
+              ),
+              // Starting is a separate, readiness-gated transition. The modal
+              // asks the server what is startable rather than deciding here.
+              user.hasChangeRole(UserRoles.work_order) &&
+                (user.isSuperuser() ||
+                  user.user?.permissions?.workorder?.includes('execute')) && (
+                  <Button
+                    key='start-repair'
+                    variant='light'
+                    leftSection={<IconPlayerPlay size={16} />}
+                    onClick={() => setStartRepairOpen(true)}
+                    disabled={
+                      !machine?.pk ||
+                      !user.hasChangeRole(UserRoles.work_order) ||
+                      (!user.isSuperuser() &&
+                        !user.user?.permissions?.workorder?.includes('execute'))
+                    }
+                  >
+                    {t`Start repair`}
+                  </Button>
+                )
+            ]}
           />
-        )}
-        {machine?.pk && (
-          <StartRepairModal
-            opened={startRepairOpen}
-            onClose={() => setStartRepairOpen(false)}
-            machineId={machine.pk}
-            onStarted={(repair) =>
-              repair.work_order_id &&
-              navigate(`/maintenance/work-orders/${repair.work_order_id}/`)
-            }
+          <PanelGroup
+            denseTabs
+            pageKey='asset-machine-detail'
+            panels={machinePanels}
+            instance={machine}
+            model={ModelType.assetmachine}
+            id={machine?.pk ?? null}
           />
-        )}
-      </Stack>
-    </InstanceDetail>
+          {machine?.pk && (
+            <WorkOrderCreateModal
+              opened={createRepairOpen}
+              onClose={() => setCreateRepairOpen(false)}
+              machineId={machine.pk}
+              origin='manual'
+              onCreated={(result) =>
+                navigate(`/maintenance/work-orders/${result.work_order_id}/`)
+              }
+            />
+          )}
+          {machine?.pk && (
+            <StartRepairModal
+              opened={startRepairOpen}
+              onClose={() => setStartRepairOpen(false)}
+              machineId={machine.pk}
+              onStarted={(repair) =>
+                repair.work_order_id &&
+                navigate(`/maintenance/work-orders/${repair.work_order_id}/`)
+              }
+            />
+          )}
+        </Stack>
+      </InstanceDetail>
+    </DisplayClockContext>
   );
 }

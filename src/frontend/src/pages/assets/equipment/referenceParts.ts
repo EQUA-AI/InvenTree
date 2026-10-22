@@ -41,12 +41,9 @@ export function referenceDepth(id: TwinPartId): number {
  * internals, base) rather than in the scene's numbering.
  */
 export function referenceListOrder(): TwinPartId[] {
-  const children = (parent: TwinPartId): TwinPartId[] =>
-    REFERENCE_PARTS.filter((part) => part.parent === parent).flatMap((part) => [
-      part.id,
-      ...children(part.id)
-    ]);
-  return ['machine', ...children('machine')];
+  return [...REFERENCE_PARTS]
+    .sort((a, b) => a.number - b.number)
+    .map((part) => part.id);
 }
 
 export function referencePartLabel(id: TwinPartId): string {

@@ -431,11 +431,8 @@ export function CoolingSection({
   const cold = withRole(parameters, 'cold_air');
   const hot = withRole(parameters, 'hot_air');
 
-  const water = useMemo(
-    () => subtractable(pairByIndex(outlet, inlet)),
-    [outlet, inlet]
-  );
-  const air = useMemo(() => subtractable(pairByIndex(hot, cold)), [hot, cold]);
+  const water = useMemo(() => subtractable([]), [outlet, inlet]);
+  const air = useMemo(() => subtractable([]), [hot, cold]);
   const waterPairs = water.pairs;
   const airPairs = air.pairs;
 

@@ -1,0 +1,6 @@
+@media (max-width: 47.99375em) {
+  .details table, .details tbody { display: block; width: 100%; }
+  .details tr { display: grid; grid-template-columns: minmax(0, 1fr); padding-block: var(--mantine-spacing-xs); }
+  .details td { width: 100%; min-width: 0; }
+  .details td:empty { display: none; }
+}

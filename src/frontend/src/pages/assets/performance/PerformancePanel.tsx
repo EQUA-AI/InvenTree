@@ -15,9 +15,8 @@ import {
 import { IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { displayClockLabel } from '../displayClock';
+import { ValueTooltip } from '../../../components/items/ValueTooltip';
 import { StatusBadge } from '../health/StatusBadge';
-import { MetaText } from '../health/common';
 import { HistoryProvenance } from '../investigation/HistoryProvenance';
 import { InvestigationSlices } from '../investigation/InvestigationSlices';
 import { LinkedEvidence } from '../investigation/LinkedEvidence';
@@ -427,19 +426,8 @@ function PumpPerformance({
       gap='xs'
       className={monitoring.scope}
       data-testid='pump-performance'
-      aria-labelledby='pump-performance-title'
+      aria-label={t`Performance`}
     >
-      <Group justify='space-between' className={monitoring.band}>
-        <Title
-          id='pump-performance-title'
-          order={4}
-        >{t`Performance workspace`}</Title>
-        <MetaText size='xs'>{t`Times: your clock (${displayClockLabel()}) · plant timezone not supplied`}</MetaText>
-      </Group>
-      <MetaText
-        size='sm'
-        maw='70ch'
-      >{t`KPIs show latest observations; trends use selected source history.`}</MetaText>
       <Group justify='space-between' align='flex-start' wrap='wrap' gap='md'>
         <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
           <TimeRangeControl
@@ -477,6 +465,13 @@ function PumpPerformance({
             now={now}
           />
         </Stack>
+        <Button
+          className={monitoring.link}
+          variant='subtle'
+          size='xs'
+          aria-expanded={investigationOpen}
+          onClick={() => setInvestigationOpen((value) => !value)}
+        >{t`Investigate this period`}</Button>
       </Group>
 
       {invalidLink && (
@@ -781,6 +776,7 @@ function PumpPerformance({
       </div>
 
       <HistoryProvenance
+        compact
         response={response}
         loading={seriesQuery.isFetching && !response}
         updating={seriesQuery.isPlaceholderData}
@@ -788,27 +784,14 @@ function PumpPerformance({
         extent={dataRange.data}
         onRetry={() => seriesQuery.refetch()}
       />
-      <Paper withBorder p='sm'>
-        <Button
-          className={monitoring.link}
-          variant='subtle'
-          size='xs'
-          aria-expanded={investigationOpen}
-          onClick={() => setInvestigationOpen((value) => !value)}
-        >{t`Case span investigation`}</Button>
-        {investigationOpen && (
-          <InvestigationSlices
-            initial={resolveWindow(range.window, now)}
-            onRead={(span) => {
-              range.onCustom(span.from, span.to);
-            }}
-          />
-        )}
-      </Paper>
-      {response && (
-        <MetaText size='xs'>
-          {t`Read from ${response.series[0]?.source_name ?? t`the source`}. Every window chart here is a bounded read of source history; retained evidence is identified separately.`}
-        </MetaText>
+
+      {investigationOpen && (
+        <InvestigationSlices
+          initial={resolveWindow(range.window, now)}
+          onRead={(span) => {
+            range.onCustom(span.from, span.to);
+          }}
+        />
       )}
     </HistoryReadStack>
   );
@@ -960,7 +943,7 @@ function UnusualStrip({
           >
             {failedTargets.bindings.size + failedTargets.keys.size > 0
               ? t`Current evaluated readings within limits; history coverage incomplete`
-              : t`Nothing outside configured limits`}
+              : t`No exceptions`}
           </StatusBadge>
         )}
         {evaluation.verdict.kind === 'no-limits' && (
@@ -973,10 +956,12 @@ function UnusualStrip({
             {t`Evaluation unavailable`}
           </StatusBadge>
         )}
-        <MetaText size='xs' data-evaluated={evaluation.evaluated}>
-          {t`${evaluation.evaluated} of ${evaluation.total} evaluated against their limits now.`}{' '}
-          {t`${evaluation.configured} of ${evaluation.total} signals have limits configured; the rest are drawn without a verdict.`}
-        </MetaText>
+        <ValueTooltip
+          label={t`${evaluation.evaluated} of ${evaluation.total} evaluated; ${evaluation.configured} have configured limits`}
+          accessibleLabel={t`Assessment coverage`}
+        >
+          <IconInfoCircle size={16} />
+        </ValueTooltip>
       </Group>
     </Paper>
   );

@@ -16,6 +16,7 @@ import {
 } from '@mantine/core';
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { MissingValue } from '../../components/items/ValueTooltip';
 import { returnState } from '../../components/nav/returnPath';
 import { RecordCommandState } from '../../components/records/RecordCommandState';
 import { useRecordedCommand } from '../../components/records/useRecordedCommand';
@@ -129,18 +130,9 @@ export function FittedIdentity({
       {facts?.current ? (
         <FittedItemFact fit={facts.current} />
       ) : facts ? (
-        <Text size='sm' c='dimmed'>
-          {facts.pending.length ||
-          facts.history.length ||
-          facts.retracted?.length
-            ? t`No verified current fit is recorded. Existing entries are shown below.`
-            : t`Not recorded: no fitted part, serial, lot, quantity or fitted date is recorded for this slot, and no replacement history.`}
-        </Text>
+        <MissingValue reason={t`No fit recorded`} />
       ) : (
-        <Text
-          size='sm'
-          c='dimmed'
-        >{t`Fitted identity unavailable. No authorized fit read was supplied.`}</Text>
+        <MissingValue reason={t`Fitted identity unavailable for your role`} />
       )}
       {!!facts?.history.length && (
         <details>

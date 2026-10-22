@@ -1,5 +1,6 @@
 import { t } from '@lingui/core/macro';
 import { Group, Text } from '@mantine/core';
+import { IconInfoCircle } from '@tabler/icons-react';
 import {
   MissingValue,
   ValueTooltip
@@ -27,24 +28,20 @@ export function MimicAlarmCoverage({
     typeof count === 'number' && Number.isInteger(count) && count >= 0;
   return (
     <Group gap={6} data-limit-coverage>
-      {knownEmpty && <Text size='xs'>{t`No active alarms`} ·</Text>}
+      {knownEmpty && <Text size='xs'>{t`No active alarms`}</Text>}
       {supplied ? (
         <ValueTooltip
-          focusable={false}
-          label={
+          accessibleLabel={t`Limit coverage`}
+          label={`${count} · ${
             station
               ? t`Station readings without configured limits`
               : t`Selected pump readings without configured limits`
-          }
+          }`}
         >
-          <Text
-            component='span'
-            size='xs'
-          >{t`${count} signals without limits`}</Text>
+          <IconInfoCircle size={16} />
         </ValueTooltip>
       ) : (
         <>
-          <Text size='xs'>{t`Limit coverage`}</Text>
           <MissingValue reason={t`Limit coverage not supplied`} />
         </>
       )}

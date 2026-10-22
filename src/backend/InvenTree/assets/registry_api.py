@@ -26,6 +26,7 @@ from users.permissions import check_user_role
 from .activation import activate_station, activation_plan, live_status
 from .health_models import HealthSource
 from .models import AssetComponent, AssetMachine, Client, DictionaryPoint
+from .provenance import ProvenanceKind, component_provenance_kind
 from .registry import (
     MAX_BYTES,
     ensure_pump,
@@ -86,8 +87,13 @@ class ComponentSerializer(serializers.ModelSerializer):
     open_work = serializers.SerializerMethodField()
     stock = serializers.SerializerMethodField()
     fitted = serializers.SerializerMethodField()
+    provenance_kind = serializers.SerializerMethodField()
     provenance_display = serializers.SerializerMethodField()
     provenance_imported_at = serializers.SerializerMethodField()
+
+    def get_provenance_kind(self, obj) -> ProvenanceKind:
+        """Return the typed recorded source without changing stored provenance."""
+        return component_provenance_kind(obj.provenance)
 
     def get_provenance_display(self, obj) -> str:
         """Name the recorded source without exposing its internal workbook hash."""
@@ -169,6 +175,7 @@ class ComponentSerializer(serializers.ModelSerializer):
             'name',
             'status',
             'provenance',
+            'provenance_kind',
             'provenance_display',
             'provenance_imported_at',
             'review_note',

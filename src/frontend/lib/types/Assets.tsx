@@ -6,6 +6,7 @@ import type { FitProjection } from './RecordedFacts';
 
 export interface AssetMachine {
   pk: number;
+  plant_timezone?: string | null;
   name: string;
   description: string;
   active: boolean;
@@ -68,6 +69,7 @@ export interface MachineComponent {
   provenance: string;
   /** Human-readable source; raw provenance remains available for traceability. */
   provenance_display?: string;
+  provenance_kind?: 'register' | 'scada' | 'tag_review' | 'manual' | 'unknown';
   /** Original import timestamp, only when the source records one. */
   provenance_imported_at?: string | null;
   review_note: string;
@@ -93,6 +95,7 @@ export interface AssetMaintenanceRecord {
    * the id is withheld rather than rendered as a dead link.
    */
   work_order: number | null;
+  work_order_link_state?: 'none' | 'available' | 'unknown';
   work_order_reference: string | null;
   work_order_title: string | null;
   work_order_type: string | null;

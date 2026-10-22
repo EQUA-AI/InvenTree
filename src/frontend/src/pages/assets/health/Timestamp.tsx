@@ -9,6 +9,7 @@ import { StatusBadge } from './StatusBadge';
 import classes from './Timestamp.module.css';
 import {
   type DisplayClock,
+  displayClock,
   formatInstant,
   useDisplayClock
 } from './mimic/observedTime';
@@ -38,7 +39,11 @@ export function Timestamp({
   focusable?: boolean;
 }>) {
   const inherited = useDisplayClock();
-  const clock = suppliedClock ?? inherited;
+  const calendarDate =
+    dateOnly && typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const clock = calendarDate
+    ? displayClock('UTC')
+    : (suppliedClock ?? inherited);
   const full = formatInstant(value, clock);
   if (!full)
     return value == null || value === '' ? (
@@ -57,11 +62,11 @@ export function Timestamp({
   const contents = (
     <Text
       component='time'
-      dateTime={new Date(value!).toISOString()}
+      dateTime={calendarDate ? String(value) : new Date(value!).toISOString()}
       size='sm'
       style={{
         fontVariantNumeric: 'tabular-nums',
-        whiteSpace: relativeOnly ? 'nowrap' : undefined
+        whiteSpace: relativeOnly || dateOnly ? 'nowrap' : undefined
       }}
     >
       {relativeOnly && relative ? (
@@ -79,7 +84,7 @@ export function Timestamp({
   );
   return (
     <ValueTooltip
-      label={`${label ? `${label}: ` : ''}${full} · ${clock.label}`}
+      label={`${label ? `${label}: ` : ''}${calendarDate ? text : `${full} · ${clock.label}`}`}
       focusable={focusable}
     >
       {stale ? (

@@ -20,13 +20,13 @@ export default function MobileAppView() {
       <Center h='100vh'>
         <Container>
           <Stack>
-            <Title c='red'>
-              <Trans>Mobile viewport detected</Trans>
+            <Title>
+              <Trans>Full application</Trans>
             </Title>
             <Text>
               <Trans>
-                The full app is optimized for tablets and desktops. Voice is
-                available in this browser when enabled by your administrator.
+                Use a tablet or desktop for the full app. Voice is available in
+                this browser when enabled by your administrator.
               </Trans>
             </Text>
             <Button
@@ -43,7 +43,7 @@ export default function MobileAppView() {
                 onClick={ignore}
                 style={{ cursor: 'pointer', textDecoration: 'underline' }}
               >
-                <Trans>Open full app (not optimized for phones)</Trans>
+                <Trans>Continue to full app</Trans>
               </Text>
             )}
           </Stack>

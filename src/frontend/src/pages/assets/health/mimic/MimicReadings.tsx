@@ -339,8 +339,10 @@ export function ReadingSections({
                     </Group>
                   </Stack>
                   <Group gap='xs' wrap='wrap'>
-                    {section.points.length > 0 &&
-                    section.points.every(failedReading) ? (
+                    {section.key === 'station' ? (
+                      <Text size='xs'>{section.points.length}</Text>
+                    ) : section.points.length > 0 &&
+                      section.points.every(failedReading) ? (
                       <StatusBadge
                         tone='failed'
                         color='red'

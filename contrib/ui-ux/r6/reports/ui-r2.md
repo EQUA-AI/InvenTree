@@ -1,6 +1,6 @@
 # UI round 2 — Hyperagent review repair
 
-Latest work continues on `270bb4be3`; see the owner/Fable follow-up below.
+Latest work is Follow-up 4, built on `59e6f6eaa`; see its finding table below.
 The earlier sections record the committed baseline. Final screenshots are
 replaced by the latest follow-up captures rather than reused from that baseline.
 
@@ -911,3 +911,209 @@ Owned browser container (auto-removed after stop) and harness are stopped; neith
 3012 nor 15250 has a listener (`runtime-cleanup.json`). Findings 1–12 have no
 remaining implementation work; full Mac suites, the separate stale-spec update
 and human review remain with the coordinator.
+
+## Follow-up 4
+
+Built on `59e6f6eaa`. Read all 92 audit findings and verified against current source; prior repairs were retained. This is source/fixture evidence only, not deployed or human product acceptance. No database data, owner localhost, Azure connection, other worktree or other container was accessed.
+
+Parts uses a shared truthful assignment basis and additive typed provenance projection; Details, Health, Performance, equipment, maintenance and fault presentation now omit the listed developer prose. Missing and failed states remain distinct. Unconfirmed thermal pairs are hidden; supplied negative readings remain unchanged. The retained O27 recorded-as-live policy is unchanged.
+
+The two shared InvenTree changes are pure improvements: DetailsTable wraps on word boundaries and accepts an optional className (phone stacking is AIMMS-only); AttachmentTable has human column titles, wrapping comments/names and Timestamp. Asset-machine barcode wording is scoped to that model. MobileAppView wording changes only the existing gate, not access. Machine APIs add read-only presentation fields; no schema migration or data update is introduced.
+
+| Finding | Disposition | Source check / result |
+| --- | --- | --- |
+| 1 | Skipped | Stored test/demo machines require owner data changes; no records read or changed. |
+| 2 | Done; data skipped | LocationWorkspace root overview omits codes; stored site names/codes remain owner decisions. |
+| 3 | Skipped | Stored serials require owner-supplied identities; Details now handles absent serials truthfully. |
+| 4 | Already done | LocationWorkspace already passes compactCoverage; Normal retains the partial icon and coverage tooltip. |
+| 5 | Done | MachinePageSummary renders 25 of 111 without the This page prefix. |
+| 6 | Already done | Selected-location totals explanation already lives in its tooltip. |
+| 7 | Done | LocationWorkspace uses placement paths relative to the selected ancestor, collapses the chooser, and preserves a Choose location action/focus return. |
+| 8 | Skipped | Placement changes are stored data and need the owner. |
+| 9 | Skipped | Superuser banner is account configuration; retained, including in superuser fixtures. |
+| 10 | Skipped | Navigation rulesets are operator configuration; no global role/nav changes. |
+| 11 | Done | MachineIndex gates Equipment Registry by its existing work_order view permission and uses a secondary button. |
+| 12 | Done | MachineDetail removes the duplicate header placement line; Details location card remains. |
+| 13 | Done | MachineDetail removes Legacy location label. |
+| 14 | Done | MachineDetail renders In service / Out of service from active, or a missing reason. |
+| 15 | Done | MachineDetail supplies Manufacturer, Model and Serial icons explicitly. |
+| 16 | Done | Missing Manufacturer/Model/Serial/Name/Description use shared keyboard-accessible missing values. |
+| 17 | Done | DetailsTable uses word-boundary wrapping instead of lineBreak:anywhere. |
+| 18 | Done | MachineDetails.module.css stacks AIMMS labels and values at full phone width, preserving tr boxes. |
+| 19 | Skipped | Stored descriptions require owner edits; no fabricated replacement descriptions. |
+| 20 | Skipped | Stored manufacturer/model/duty descriptions require owner confirmation. |
+| 21 | Already done | StationSchematic adaptive slots already fit all 14 bays at desktop; final4 includes 1366x768. |
+| 22 | Done | MimicAlarmCoverage keeps honest No active alarms and moves unconfigured-limit counts to its info tooltip. |
+| 23 | Done; labels already done | Total labels already lacked Sigma; StationSchematic now explains missing contributor counts. |
+| 24 | Done | Pumphouse layout requests cusec. Checked-in dictionary review approvals report cusec (Cedar Creek 14 flow approvals; other station packs also cusec); migration 0015 defines cubic-foot/second. Existing backend Pint conversion remains authoritative; no relabelling of raw magnitudes. |
+| 25 | Done | StationSchematic and PumpMimic use Layout pending plant approval / Schematic layout in one source/layout tooltip. |
+| 26 | Done | MimicReadings collapsed station summary shows the number of readings. |
+| 27 | Done | Forebay level uses two decimal places in readingPresentation, mimic format and Performance. |
+| 28 | Skipped | Source record name remains unchanged and is honestly available in source tooltips/status. |
+| 29 | Done; data skipped | signalLabel and reviewed parameter patterns supply Pumps running, Discharge flow and Active/Input power labels for known pc/dv/pmw/sl keys. Stored renaming remains owner work. |
+| 30 | Done; bare value already done | readingPresentation omits unit-missing explanations for known dimensionless power factor/counts and explicitly dimensionless units. |
+| 31 | Skipped | Vibration dictionary units remain unchanged; unconfirmed units stay neutral with a reason. |
+| 32 | Done | readingPresentation maps declared I/R to Idle/Running and motor 0/1 to Off/On; unknown codes stay Unknown; raw code is tooltip-only. |
+| 33 | Done | HealthSummary requests compact Normal; coverage counts and partial/full distinction remain in its tooltip/icon. |
+| 34 | Done; prose already removed | Current condition keeps badge and observation; coverage explanation stays in the condition tooltip. |
+| 35 | Done | SignalTable component options/details show names; internal codes remain filter identities/search metadata. |
+| 36 | Already done | SignalTable observed cells already use relative-only Timestamp with the complete instant/zone in the tooltip. |
+| 37 | Done | Phone SignalTable hides an unconfigured unknown State cell on closed cards; Details retains the labelled reason. |
+| 38 | Done | HealthHistoryProvenance is a single history-information tooltip; no expandable developer read report. |
+| 39 | Done | SignalTrendChart removes selected-window/storage/projection paragraphs; chart, gaps and failures remain. |
+| 40 | Done | SignalTrendChart drops sample/extent chips and uses Investigate this period. |
+| 41 | Done | Blank units have no axis title; known status axes label Idle/Running or Off/On. Supplied exceptional values remain represented. |
+| 42 | Done | RetainedHealthEvidence is Fault snapshots without preservation prose. |
+| 43 | Done | MonitoringContinuityNotice no longer renders the developer monitoring paragraph on AIMMS tabs. |
+| 44 | Done | HealthSourceStatus uses Status/Reporting, Stale after in minutes, Timestamp dates and quiet missing-error dashes. |
+| 45 | Done | Performance uses compact HistoryProvenance info; full investigation-specific provenance remains available in investigation views. |
+| 46 | Done | Compact Performance history omits last poll attempt; current readings and source failures retain their own states. |
+| 47 | Done | Empty-history tooltip deduplicates Pump identities from known pump keys instead of repeating parameter names; no zero-equivalence paragraph. |
+| 48 | Done | TimeRangeControl shows live/read status and Updated time; sampling facts move to the tooltip. WindowStatus keeps updating/failure behavior without clock prose. |
+| 49 | Done | PerformancePanel and StationPerformance put Investigate this period in the toolbar. |
+| 50 | Done | StationPerformance/KpiStrip render running count of total bays and omit dimensionless unit/window filler. |
+| 51 | Done | StationPerformance requires usable history from every bay for totals; absent contributors yield a dash/reason; incompatible units have a separate reason. |
+| 52 | Done | axisPresentation/TrendChart floor known nonnegative axes only when supplied data are nonnegative, with integer count ticks. Actual negative readings remain untouched. |
+| 53 | Done | StationPerformance, OperationSection and RelationChart remove the listed chart-explaining captions. |
+| 54 | Done | Performance workspace/clock/KPI paragraphs removed. MachineDetail passes API-projected plant_timezone through DisplayClockContext to all tabs. |
+| 55 | Done | Performance exceptions use No exceptions and an info tooltip for assessment coverage; failures/poor-quality/alarms remain visible. |
+| 56 | Done | KpiStrip shows bare vibration with Unit not confirmed tooltip and no unit text for power factor. |
+| 57 | Done | SensorGroupCard uses a Unit not confirmed badge/tooltip instead of raw-unit paragraphs. |
+| 58 | Done | SensorGroupCard keeps Highest now and limit state, omitting mean/spread/window-peak chips. |
+| 59 | Done | ThresholdKey lists actual configured warning/critical bounds and units without engineering prose. |
+| 60 | Done | SensorGroupCard reserves plot margins and 34px sensor rows; shortened sensor ticks have full SVG title tooltips. |
+| 61 | Done | SensorHeatmap drops the orphan mean-cell caption. |
+| 62 | Done | ThermalSections hides unconfirmed water/air temperature differences. Current dictionary projection supplies no explicit pair relationship; inlet/outlet channels remain separate. |
+| 63 | Done | OperationSection titles the valve-only panel Valve position when no pressure series exists. |
+| 64 | Done | ChannelNavigator removes its channel-mapping paragraph. |
+| 65 | Skipped | Signed source readings remain unchanged; deadbands require owner/source engineering decisions. |
+| 66 | Done | EquipmentViewPanel defaults to schematic; explicit view=model preserves access to the conceptual vertical reference model. |
+| 67 | Done | EquipmentScene provides one Reference model badge with a tooltip; repeated disclaimers removed. |
+| 68 | Done | Equipment/PositionInspector read-time captions removed; inherited machine plant clock remains available for actual timestamps. |
+| 69 | Done | Equipment/PositionInspector remove listed prose; model rotation/zoom help lives in the reference badge tooltip; component/work controls remain. |
+| 70 | Done | referenceListOrder sorts by marker number, with a unit assertion for 0 through 8. |
+| 71 | Done | Reference-position and Ask about this position controls render only in model view. |
+| 72 | Done | UnitMimicHeader uses the supplied machine-name leaf, falling back to Pump rather than inventing a machine name. |
+| 73 | Done | MimicParts groups by quantity and unit; unconfirmed vibration groups identify the quantity and keep the unit reason in the tooltip. |
+| 74 | Done | UnitMimic uses Other readings. |
+| 75 | Done | UnitMimic renders one compact legend with state and reading cues. |
+| 76 | Done | MachineComponentTable/ComponentFacts/componentPresentation use Verified only for verified status, otherwise truthful provenance-based labels; Source column merged. |
+| 77 | Done | Read-only provenance_kind API projection and provenance_display fallback avoid raw hashes; basis tooltip includes supplied import date/plain reason. |
+| 78 | Done | Reference design / Inferred from tags / Tag review / Pending check are shared by table, drawer and reference inspector. |
+| 79 | Done | ComponentSlotDetail removes code/logical-group/provenance paragraphs; codes stay in name tooltips. Review enums become plain language; empty fit uses No fit recorded. |
+| 80 | Done; data skipped | InstalledPartsPanel titles recorded quantities Reference parts list; stored notes remain unchanged for the owner. |
+| 81 | Done | MachineComponentTable hides Fitted item when the loaded page contains no current fit; reference position is pump-only; phone Details preserves secondary facts. |
+| 82 | Done | MachinePartTable uses owned phone cards with wrapping notes and labelled facts. |
+| 83 | Skipped | Catalogue Part names require owner normalisation; no stored catalogue data edited. |
+| 84 | Done | MachineMaintenancePanel removes listed outcome/open/history explanations; empty state is No open work. |
+| 85 | Done | MaintenanceRecordTable uses a dash with No linked work order only for API link state none; withheld/older unknown projections say Work order link not available. Additive serializer projection preserves permission boundaries. |
+| 86 | Done | MaintenanceRecordTable missing component/type/outcome/downtime/follow-up/technician facts have keyboard reasons; actual zero downtime remains zero. |
+| 87 | Done | Maintenance dates use nowrap Timestamp. Civil dates preserve the stored calendar day across plant zones. |
+| 88 | Skipped | Maintenance-record provenance requires owner review; no history records changed. |
+| 89 | Done | FaultOccurrences drops read/projection/monitoring prose. Event codes/IDs are in a compact tooltip; visible titles describe events; severity columns keep words intact. |
+| 90 | Done | FaultHistoryPanel shows Last maintenance using Timestamp; cadence/declared-code paragraphs removed; known fault codes have plain descriptions. |
+| 91 | Done | FaultHistoryPanel drops recorded-aggregates/approved-scopes/verified-closeout source captions. |
+| 92 | Done a/b/d; c skipped | AttachmentTable titles Attachment/Comment/Uploaded/Size, wraps names/comments, uses Timestamp and missing reasons. Mobile gate is neutral; asset-machine barcode menu says Machine QR label / Link tag. Stored attachment names/comments remain owner data. |
+
+Verification passed on final source digest `1c1c716ede7e`:
+
+- `pui_ui_followup4.spec.ts`: 9/9 targeted fixture cases. Covers keyboard missing/link reasons, Details identity, truthful Parts bases, schematic default/reference toggle, compact Performance/thermal-pair absence, non-overlapping sensor limit labels, fault presentation, attachment wrapping and complete-contributor station totals.
+- Unmodified `pui_ui_round2_captures.spec.ts`: 23/23 passed; final4 metadata carries the final source digest. Both phone Parts first cards remain above the fold; 768px filters/Refresh and all 14 station bays at 1366px remain present.
+- Vitest: 112/112 across 14 targeted unit files (Performance units plus changed provenance/reading/date/mimic/reference modules). Pure backend provenance unittest: 2/2, with no Django/DB initialization. Changed backend files also parse; Ruff passes. Backend API/database integration tests were deliberately not run under the no-database-write constraint.
+- TypeScript: `tsconfig.json` and all eight `tsconfig.s*.json` pass; S8 rechecked after the final sensor-label adjustment. Lingui extract and compile pass; all 117 locale files restored bytewise. Changed-file `prek` and `git diff --check` pass. Logs: `data/devscratch/ui-r2/followup4/`.
+- Renders use Linux Chromium in the owned WS3012 container and fixture-only Vite15250 harness. All 31 viewport PNGs and three full pump PNGs were opened and inspected. Final visual inspection fixed basis truncation, severity word breaks, an orphan coverage icon and overlapping sensor-limit labels. Full host suites, real deployment checks and human review remain with the coordinator.
+
+Captures: `data/devscratch/ui-r2/final4/01-…23-*.png` retain the requested names. Additional captures are `24-details-desktop-light.png`, `25-details-phone-light.png`, `26-performance-desktop-light.png`, `27-maintenance-desktop-light.png`, `28-fault-history-desktop-light.png`, `29-attachments-desktop-light.png`, `30-equipment-view-desktop-light.png` and `31-performance-sensors-desktop-light.png`; pump full pages are in `final4/full/`. SHA256 review inventory: `followup4/capture-review.json`.
+
+All stored-data findings remain owner work: 1, 2 (renaming/archive), 3, 8, 19, 20, 28 (source name), 29 (stored signal names), 31, 65, 80 (notes), 83, 88 and 92c. Configuration 9/10 is also retained. No frontend fix was substituted for an invented measurement, fitted identity or verification status.
+
+Source/config files changed (73):
+
+- `src/backend/InvenTree/assets/equipment_positions.py`
+- `src/backend/InvenTree/assets/provenance.py`
+- `src/backend/InvenTree/assets/registry_api.py`
+- `src/backend/InvenTree/assets/serializers.py`
+- `src/backend/InvenTree/machine_health/layouts/pumphouse.layout.json`
+- `src/frontend/lib/types/Assets.tsx`
+- `src/frontend/src/components/details/Details.tsx`
+- `src/frontend/src/components/items/ActionDropdown.tsx`
+- `src/frontend/src/pages/assets/FaultHistoryPanel.tsx`
+- `src/frontend/src/pages/assets/FittedIdentity.tsx`
+- `src/frontend/src/pages/assets/InstalledPartsPanel.tsx`
+- `src/frontend/src/pages/assets/MachineDetail.tsx`
+- `src/frontend/src/pages/assets/MachineDetails.module.css`
+- `src/frontend/src/pages/assets/MachineIndex.tsx`
+- `src/frontend/src/pages/assets/equipment/EquipmentScene.tsx`
+- `src/frontend/src/pages/assets/equipment/EquipmentViewPanel.tsx`
+- `src/frontend/src/pages/assets/equipment/PositionInspector.tsx`
+- `src/frontend/src/pages/assets/equipment/machinePositions.ts`
+- `src/frontend/src/pages/assets/equipment/referenceParts.ts`
+- `src/frontend/src/pages/assets/faults/FaultOccurrences.tsx`
+- `src/frontend/src/pages/assets/health/HealthHistoryProvenance.tsx`
+- `src/frontend/src/pages/assets/health/HealthSourceStatus.tsx`
+- `src/frontend/src/pages/assets/health/HealthSummary.tsx`
+- `src/frontend/src/pages/assets/health/MonitoringContinuity.tsx`
+- `src/frontend/src/pages/assets/health/PumpMimic.tsx`
+- `src/frontend/src/pages/assets/health/RetainedHealthEvidence.tsx`
+- `src/frontend/src/pages/assets/health/SignalEvidence.tsx`
+- `src/frontend/src/pages/assets/health/SignalReading.tsx`
+- `src/frontend/src/pages/assets/health/SignalTable.module.css`
+- `src/frontend/src/pages/assets/health/SignalTable.tsx`
+- `src/frontend/src/pages/assets/health/SignalTrendChart.tsx`
+- `src/frontend/src/pages/assets/health/SourcePollStatus.tsx`
+- `src/frontend/src/pages/assets/health/Timestamp.tsx`
+- `src/frontend/src/pages/assets/health/mimic/MimicAlarmCoverage.tsx`
+- `src/frontend/src/pages/assets/health/mimic/MimicParts.tsx`
+- `src/frontend/src/pages/assets/health/mimic/MimicReadings.tsx`
+- `src/frontend/src/pages/assets/health/mimic/StationSchematic.tsx`
+- `src/frontend/src/pages/assets/health/mimic/UnitMimic.tsx`
+- `src/frontend/src/pages/assets/health/mimic/format.ts`
+- `src/frontend/src/pages/assets/health/readingPresentation.ts`
+- `src/frontend/src/pages/assets/investigation/HistoryProvenance.tsx`
+- `src/frontend/src/pages/assets/locations/LocationWorkspace.tsx`
+- `src/frontend/src/pages/assets/locations/MachinePageSummary.tsx`
+- `src/frontend/src/pages/assets/locations/locations.module.css`
+- `src/frontend/src/pages/assets/maintenance/MachineMaintenancePanel.tsx`
+- `src/frontend/src/pages/assets/performance/ChannelNavigator.tsx`
+- `src/frontend/src/pages/assets/performance/KpiStrip.tsx`
+- `src/frontend/src/pages/assets/performance/PerformancePanel.tsx`
+- `src/frontend/src/pages/assets/performance/RelationChart.tsx`
+- `src/frontend/src/pages/assets/performance/SensorGroupCard.tsx`
+- `src/frontend/src/pages/assets/performance/SensorHeatmap.tsx`
+- `src/frontend/src/pages/assets/performance/StationPerformance.tsx`
+- `src/frontend/src/pages/assets/performance/ThresholdKey.tsx`
+- `src/frontend/src/pages/assets/performance/TimeRangeControl.tsx`
+- `src/frontend/src/pages/assets/performance/TrendChart.tsx`
+- `src/frontend/src/pages/assets/performance/WindowStatus.tsx`
+- `src/frontend/src/pages/assets/performance/axisPresentation.ts`
+- `src/frontend/src/pages/assets/performance/format.ts`
+- `src/frontend/src/pages/assets/performance/kpis.ts`
+- `src/frontend/src/pages/assets/performance/parameters.ts`
+- `src/frontend/src/pages/assets/performance/sections/OperationSection.tsx`
+- `src/frontend/src/pages/assets/performance/sections/ThermalSections.tsx`
+- `src/frontend/src/tables/assets/ComponentFacts.tsx`
+- `src/frontend/src/tables/assets/ComponentSlotDetail.tsx`
+- `src/frontend/src/tables/assets/MachineComponentTable.tsx`
+- `src/frontend/src/tables/assets/MachinePartTable.tsx`
+- `src/frontend/src/tables/assets/MaintenanceRecordTable.tsx`
+- `src/frontend/src/tables/assets/ReferenceParts.module.css`
+- `src/frontend/src/tables/assets/componentPresentation.ts`
+- `src/frontend/src/tables/general/AttachmentTable.module.css`
+- `src/frontend/src/tables/general/AttachmentTable.tsx`
+- `src/frontend/src/views/MobileAppView.tsx`
+- `src/frontend/tsconfig.s8.json`
+
+Test files changed (8):
+
+- `src/backend/InvenTree/assets/tests/test_provenance_presentation.py`
+- `src/frontend/src/pages/assets/equipment/referenceParts.test.ts`
+- `src/frontend/src/pages/assets/health/Timestamp.test.ts`
+- `src/frontend/src/pages/assets/health/readingPresentation.test.ts`
+- `src/frontend/src/pages/assets/performance/axisPresentation.test.ts`
+- `src/frontend/src/pages/assets/performance/monitoringHelpers.test.ts`
+- `src/frontend/src/tables/assets/componentPresentation.test.ts`
+- `src/frontend/tests/s8/pui_ui_followup4.spec.ts`
+
+No old wording/clock Playwright spec was edited. The numbered capture spec is unchanged. Unit expectations changed only for intentional new contracts: blank axis units, numeric component order and safe provenance. No git write commands or database mutations were run.
+
+Owned `r6-uir2-browser-3012` and Vite15250 stopped; both listener checks are clear.

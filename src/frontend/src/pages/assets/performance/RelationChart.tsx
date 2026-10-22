@@ -203,9 +203,6 @@ export function RelationChart({
                 )
               }}
             />
-            <MetaText size='xs'>
-              {t`Each point is one snapshot in which both were read; colour strengthens toward the present. A pattern here is an operating pattern, not a cause.`}
-            </MetaText>
           </>
         )}
       </Stack>

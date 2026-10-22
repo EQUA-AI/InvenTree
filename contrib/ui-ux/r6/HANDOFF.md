@@ -1,5 +1,19 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## UI round 2 Follow-up 4 — 22 October 2026 (ready for coordinator review)
+
+Built on `59e6f6eaa`: production audit findings 1–92 checked individually;
+frontend/API presentation fixes applied and owner data/configuration exclusions
+retained. Truthful Parts bases, compact telemetry/equipment/history views,
+complete-contributor totals and schematic default verified. 9 focused browser
+cases and 23 final4 capture cases pass; all 34 PNGs inspected. 112 frontend units,
+2 pure backend units, all 9 TypeScript projects, Lingui with 117 bytewise locale
+restores and changed-file prek pass. Source digest `1c1c716ede7e`.
+See [execution report](reports/ui-r2.md) for every finding and file inventory.
+Owned browser container WS3012 and harness15250 are stopped; both ports clear.
+No owner localhost, real data or database writes; backend DB integration and full
+host suites remain with the coordinator. Parent acceptance unchanged.
+
 ## UI round 2 Follow-up 3 — 22 October 2026 (ready for coordinator review)
 
 Built on `dedc7a678`: remaining Fable findings 1–12 repaired, including P9

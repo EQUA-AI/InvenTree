@@ -128,7 +128,7 @@ export function StationSchematic({
         <Group gap={4} wrap='nowrap'>
           <Title order={4}>{t`Station schematic`}</Title>
           <ValueTooltip
-            label={`${data.layout.review_status !== 'approved' ? t`Reference schematic · physical arrangement unverified. Awaiting plant review.` : t`Reference schematic · physical arrangement unverified`} · ${provenance}`}
+            label={`${data.layout.review_status !== 'approved' ? t`Layout pending plant approval` : t`Schematic layout`} · ${provenance}`}
             className={classes.info}
             accessibleLabel={
               data.layout.review_status !== 'approved'
@@ -261,7 +261,19 @@ export function StationSchematic({
                 {total.value === null ? (
                   <MissingValue
                     label={label}
-                    reason={reasonLabel(total.reason) || t`Reason not supplied`}
+                    reason={
+                      total.derived &&
+                      total.contributors.some(
+                        (pointer) =>
+                          !data.bays.some(
+                            (bay) =>
+                              usable(bay.points[pointer]) &&
+                              !failedReading(bay.points[pointer])
+                          )
+                      )
+                        ? t`${total.contributors.filter((pointer) => !Object.values(data.bays).some((bay) => usable(bay.points[pointer]) && !failedReading(bay.points[pointer]))).length} of ${bays.length} bays not reporting`
+                        : reasonLabel(total.reason) || t`Reason not supplied`
+                    }
                   />
                 ) : (
                   <ValueTooltip label={detail}>

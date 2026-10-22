@@ -9,9 +9,11 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 
 import { ModelType } from '@lib/enums/ModelType';
+import { UserRoles } from '@lib/enums/Roles';
 import type { PanelType } from '@lib/types/Panel';
 import { PageDetail } from '../../components/nav/PageDetail';
 import { PanelGroup } from '../../components/panels/PanelGroup';
+import { useUserState } from '../../states/UserState';
 import classes from './MachineIndex.module.css';
 import { LocationWorkspace } from './locations/LocationWorkspace';
 
@@ -19,6 +21,7 @@ import { LocationWorkspace } from './locations/LocationWorkspace';
  * Index page for listing equipment asset machines.
  */
 export default function MachineIndex() {
+  const user = useUserState();
   const panels: PanelType[] = useMemo(() => {
     return [
       {
@@ -50,13 +53,16 @@ export default function MachineIndex() {
       <PageDetail
         title={t`Machines`}
         actions={[
-          <Button
-            key='registry'
-            color='var(--mantine-primary-color-7)'
-            component={Link}
-            to='/machines/registry/'
-            w='fit-content'
-          >{t`Equipment Registry`}</Button>
+          user.hasViewRole(UserRoles.work_order) && (
+            <Button
+              variant='default'
+              key='registry'
+              color='var(--mantine-primary-color-7)'
+              component={Link}
+              to='/machines/registry/'
+              w='fit-content'
+            >{t`Equipment Registry`}</Button>
+          )
         ]}
       />
       <PanelGroup

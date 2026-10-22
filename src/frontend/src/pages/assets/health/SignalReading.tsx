@@ -12,7 +12,7 @@ export function SignalValue({
   focusable = true
 }: Readonly<{
   signal: Pick<MachineSignal, 'value' | 'unit' | 'stale'> &
-    Partial<Pick<MachineSignal, 'quality'>>;
+    Partial<Pick<MachineSignal, 'quality' | 'external_key' | 'display_name'>>;
   focusable?: boolean;
 }>) {
   const reading = signalReading(signal);

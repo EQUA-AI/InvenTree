@@ -1,8 +1,10 @@
 import { t } from '@lingui/core/macro';
-import { Box, Group, Paper, Stack, Table, Text } from '@mantine/core';
-import { displayInstant } from '../displayClock';
+import { Box, Group, Paper, Table, Text } from '@mantine/core';
+import { MissingValue } from '../../../components/items/ValueTooltip';
+import { formatDuration } from '../performance/format';
 import { recordedTelemetryAsLive } from '../telemetryPresentation';
 import { SourcePollStatus } from './SourcePollStatus';
+import { Timestamp } from './Timestamp';
 import { MetaText } from './common';
 
 import type { HealthSourceStatus } from '@lib/types/MachineHealth';
@@ -40,14 +42,7 @@ export function HealthSourceStatusTable({
         <Table.Thead>
           <Table.Tr>
             <Table.Th>{t`Source`}</Table.Th>
-            <Table.Th>
-              {sources.some(
-                (source) =>
-                  recordedTelemetryAsLive(source) && source.reporting != null
-              )
-                ? t`Source reporting`
-                : t`Last poll`}
-            </Table.Th>
+            <Table.Th>{t`Status`}</Table.Th>
             <Table.Th>
               {sources.some(
                 (source) =>
@@ -57,7 +52,7 @@ export function HealthSourceStatusTable({
                 : t`Last success`}
             </Table.Th>
             <Table.Th>{t`Last error`}</Table.Th>
-            <Table.Th>{t`Freshness budget`}</Table.Th>
+            <Table.Th>{t`Stale after`}</Table.Th>
             <Table.Th>{t`Mapped tags`}</Table.Th>
           </Table.Tr>
         </Table.Thead>
@@ -76,37 +71,27 @@ export function HealthSourceStatusTable({
                 <SourcePollStatus source={source} />
               </Table.Td>
               <Table.Td>
-                <Text size='sm'>
-                  {(
+                <Timestamp
+                  value={
                     recordedTelemetryAsLive(source) && source.reporting != null
                       ? source.last_observed_at
                       : source.last_success_at
-                  )
-                    ? (displayInstant(
-                        recordedTelemetryAsLive(source) &&
-                          source.reporting != null
-                          ? source.last_observed_at
-                          : source.last_success_at
-                      ) ?? t`Time unavailable`)
-                    : t`Not recorded`}
-                </Text>
+                  }
+                />
               </Table.Td>
               <Table.Td>
-                <Stack gap={0}>
-                  <Text size='sm'>
-                    {source.last_error_at
-                      ? (displayInstant(source.last_error_at) ??
-                        t`Time unavailable`)
-                      : t`Not recorded`}
-                  </Text>
-                  {source.last_error_code && (
-                    <MetaText size='xs'>{source.last_error_code}</MetaText>
-                  )}
-                </Stack>
+                {source.last_error_at ? (
+                  <Timestamp
+                    value={source.last_error_at}
+                    label={t`Last error`}
+                  />
+                ) : (
+                  <MissingValue reason={t`No source error recorded`} />
+                )}
               </Table.Td>
               <Table.Td>
                 <Text size='sm'>
-                  {t`${source.freshness_threshold_seconds} s`}
+                  {formatDuration(source.freshness_threshold_seconds)}
                 </Text>
               </Table.Td>
               <Table.Td>

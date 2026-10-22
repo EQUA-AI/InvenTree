@@ -27,18 +27,24 @@ export function compactReadings(
       states.push(display(point));
       continue;
     }
-    const unit = point.unit ? unitLabel(point.unit) : '';
-    groups.set(unit, [...(groups.get(unit) ?? []), point.value]);
+    const unit = point.unit && point.unit !== '1' ? unitLabel(point.unit) : '';
+    const quantity =
+      !unit && /(?:VIBRATION|VIB|VELOMETER)/i.test(point.pointer)
+        ? t`Vibration`
+        : '';
+    const key = `${quantity}\u0000${unit}`;
+    groups.set(key, [...(groups.get(key) ?? []), point.value]);
   }
   return [
-    ...[...groups].map(([unit, values]) => {
+    ...[...groups].map(([key, values]) => {
+      const [quantity, unit] = key.split('\u0000');
       const low = Math.min(...values);
       const high = Math.max(...values);
       const value =
         low === high
           ? numberText(low)
           : `${numberText(low)} – ${numberText(high)}`;
-      return `${value}${unit ? ` ${unit}` : ''}`;
+      return `${quantity ? `${quantity} ` : ''}${value}${unit ? ` ${unit}` : ''}`;
     }),
     ...new Set(states)
   ].join(' · ');
@@ -317,7 +323,17 @@ export function MimicParts({
                   )
               )
             ].join(' · ');
-        const description = [state.name, ...state.lines, missing]
+        const description = [
+          state.name,
+          ...state.lines,
+          missing,
+          state.points.some(
+            (point) =>
+              !point.unit && /(?:VIBRATION|VIB|VELOMETER)/i.test(point.pointer)
+          )
+            ? t`Unit not confirmed`
+            : null
+        ]
           .filter(Boolean)
           .join('\n');
         const summary = compactReadings(state.points, display);

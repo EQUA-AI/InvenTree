@@ -86,7 +86,7 @@ export const PARAMETERS: readonly ParameterDefinition[] = [
     label: () => t`Active power`,
     category: 'electrical',
     role: 'active_power',
-    match: /^ACTIVE_POWER$/i,
+    match: /^(?:ACTIVE_POWER|pmw|pd:pmw)$/i,
     decimals: 2,
     chart: 'area',
     kpi: 'power'
@@ -204,7 +204,7 @@ export const PARAMETERS: readonly ParameterDefinition[] = [
     label: () => t`Motor status`,
     category: 'operation',
     role: 'motor_status',
-    match: /^MOTOR_(?<side>ON|OFF)_STATUS$/i,
+    match: /^MOTOR_(?:(?<side>ON|OFF)_|ON_?OFF_)STATUS$/i,
     decimals: 0,
     chart: 'step'
   },
@@ -243,7 +243,7 @@ export const PARAMETERS: readonly ParameterDefinition[] = [
     label: () => t`Discharge flow`,
     category: 'hydraulic',
     role: 'flow',
-    match: /^pd:dv$/i,
+    match: /^(?:pd:)?dv$/i,
     decimals: 1,
     chart: 'area',
     kpi: 'flow'
@@ -533,7 +533,7 @@ export const PARAMETERS: readonly ParameterDefinition[] = [
     label: () => t`Forebay level`,
     category: 'station',
     role: 'forebay',
-    match: /^COMMAN_FORBAY_LEVEL$/i,
+    match: /^(?:COMMAN_FORBAY_LEVEL|sl)$/i,
     decimals: 2,
     chart: 'area'
   },

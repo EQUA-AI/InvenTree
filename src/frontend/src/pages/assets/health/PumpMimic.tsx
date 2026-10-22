@@ -103,8 +103,8 @@ export default function PumpMimic({
                     <Tooltip
                       label={`${
                         data && data.layout.review_status !== 'approved'
-                          ? t`Reference schematic · physical arrangement unverified. Awaiting plant review.`
-                          : t`Reference schematic · physical arrangement unverified`
+                          ? t`Layout pending plant approval`
+                          : t`Schematic layout`
                       }\n${provenance}`}
                       multiline
                       maw={360}
@@ -206,6 +206,12 @@ export default function PumpMimic({
                   </Group>
                 )}
               <Group gap='sm' className={operations.pumpActions}>
+                {data && !query.isError && (
+                  <MimicAlarmCoverage
+                    count={unconfiguredCount(Object.values(data.points))}
+                    knownEmpty={knownEmptyAlarms}
+                  />
+                )}
                 {controls}
                 <MimicMotionControl />
                 <RefreshAction
@@ -221,12 +227,7 @@ export default function PumpMimic({
                 >{t`Open station mimic`}</Anchor>
               </Group>
             </Group>
-            {data && !query.isError && (
-              <MimicAlarmCoverage
-                count={unconfiguredCount(Object.values(data.points))}
-                knownEmpty={knownEmptyAlarms}
-              />
-            )}
+
             {query.isError && (
               <Alert
                 color='gray'

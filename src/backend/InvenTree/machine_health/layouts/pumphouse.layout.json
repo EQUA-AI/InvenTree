@@ -31,6 +31,6 @@
   ],
   "totals": [
     {"id": "power", "direct": "/pmw", "per_pump": "/dex/PUMP{pump_number}_ACTIVE_POWER", "unit": "MW"},
-    {"id": "flow", "direct": "/dv", "per_pump": "/pd/{pump}/dv", "unit": "m^3/s"}
+    {"id": "flow", "direct": "/dv", "per_pump": "/pd/{pump}/dv", "unit": "cusec"}
   ]
 }

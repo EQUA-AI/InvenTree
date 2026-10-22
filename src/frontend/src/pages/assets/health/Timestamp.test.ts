@@ -47,3 +47,11 @@ it('keeps a relative column compact while retaining the full observation instant
   expect(markup).toContain('dateTime="2026-10-20T08:00:00.000Z"');
   expect(markup).toContain('white-space:nowrap');
 });
+
+it('keeps civil maintenance dates on their supplied calendar day in all plant zones', () => {
+  for (const zone of ['America/Los_Angeles', 'Asia/Riyadh']) {
+    expect(
+      render({ value: '2026-09-18', dateOnly: true, clock: displayClock(zone) })
+    ).toContain('>18 Sept 2026</time>');
+  }
+});

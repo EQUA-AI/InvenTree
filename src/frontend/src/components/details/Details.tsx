@@ -471,6 +471,7 @@ export function DetailsTableField({
   item: any;
   field: DetailsField;
   showIcons?: boolean;
+  className?: string;
 }>) {
   function getFieldType(type: string) {
     switch (type) {
@@ -514,7 +515,8 @@ export function DetailsTableField({
       </Table.Td>
       <Table.Td
         style={{
-          lineBreak: 'anywhere',
+          lineBreak: 'auto',
+          overflowWrap: 'break-word',
           minWidth: 100,
           flex: 10,
           display: 'inline-block'
@@ -534,13 +536,15 @@ export interface DetailsTableProps {
   fields: DetailsField[];
   title?: string;
   showIcons?: boolean;
+  className?: string;
 }
 
 export function DetailsTable({
   item,
   fields,
   title,
-  showIcons = true
+  showIcons = true,
+  className
 }: Readonly<DetailsTableProps>) {
   const visibleFields = useMemo(() => {
     return fields.filter((field) => !field.hidden);
@@ -552,6 +556,7 @@ export function DetailsTable({
 
   return (
     <Paper
+      className={className}
       p='xs'
       withBorder
       style={{ overflowX: 'hidden', width: '100%', minWidth: 200 }}

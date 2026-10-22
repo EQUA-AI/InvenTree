@@ -1,7 +1,6 @@
 import { t } from '@lingui/core/macro';
 import {
   Anchor,
-  Badge,
   Divider,
   Drawer,
   Group,
@@ -15,18 +14,14 @@ import { Link, useLocation } from 'react-router-dom';
 import { ModelType } from '@lib/enums/ModelType';
 import { getDetailUrl } from '@lib/functions/Navigation';
 import type { MachineComponent } from '@lib/types/Assets';
-import {
-  FailedValue,
-  MissingValue,
-  ValueTooltip
-} from '../../components/items/ValueTooltip';
+import { FailedValue, MissingValue } from '../../components/items/ValueTooltip';
 import { returnState } from '../../components/nav/returnPath';
 import { FittedIdentity } from '../../pages/assets/FittedIdentity';
 import {
   REFERENCE_PARTS,
   referencePartLabel
 } from '../../pages/assets/equipment/referenceParts';
-import { ComponentProvenance } from './ComponentFacts';
+import { ComponentBasis } from './ComponentFacts';
 
 function Fact({
   label,
@@ -98,9 +93,6 @@ export function ComponentSlotDetail({
         )
       ) : (
         <Stack gap='md' data-slot-detail={record.pk}>
-          <Text size='xs' c='dimmed'>
-            {record.code}
-          </Text>
           <Fact label={t`Position`}>
             <Text size='sm'>
               {ownMachine
@@ -112,7 +104,7 @@ export function ComponentSlotDetail({
                 <Text size='sm'>{referencePartLabel(position.id)}</Text>
                 <Anchor
                   component={Link}
-                  to={`${getDetailUrl(ModelType.assetmachine, record.machine)}equipment/?position=${position.id}`}
+                  to={`${getDetailUrl(ModelType.assetmachine, record.machine)}equipment/?view=model&position=${position.id}`}
                   size='sm'
                 >
                   {t`View in 3D`}
@@ -142,45 +134,10 @@ export function ComponentSlotDetail({
           <Fact label={t`Catalogue part`}>
             <Group gap='xs'>
               <Text size='sm'>{record.part_name}</Text>
-              {record.virtual && (
-                <Badge size='sm' variant='light' color='gray'>
-                  {t`Logical group`}
-                </Badge>
-              )}
             </Group>
-            <Text size='xs' c='dimmed'>
-              {t`The family this slot belongs to - not what is fitted.`}
-            </Text>
           </Fact>
           <Fact label={t`Fit basis`}>
-            <ValueTooltip
-              label={
-                record.status === 'verified'
-                  ? t`Assignment verified`
-                  : t`Slot assignment not verified`
-              }
-              accessibleLabel={
-                record.status === 'verified'
-                  ? t`Verified: assignment verified`
-                  : t`Draft: slot assignment not verified`
-              }
-            >
-              <Badge
-                component='span'
-                size='sm'
-                c='var(--mantine-color-text)'
-                variant='outline'
-                color={record.status === 'verified' ? 'green' : 'gray'}
-              >
-                {record.status === 'verified' ? t`Verified` : t`Draft`}
-              </Badge>
-            </ValueTooltip>
-            <ComponentProvenance record={record} />
-            {record.review_note && (
-              <Text size='sm' c='dimmed'>
-                {record.review_note}
-              </Text>
-            )}
+            <ComponentBasis record={record} />
           </Fact>
           <Fact label={t`Work`}>
             {record.open_work === null || record.open_work === undefined ? (

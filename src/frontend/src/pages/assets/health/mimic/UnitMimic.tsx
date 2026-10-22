@@ -64,7 +64,7 @@ export function UnitMimicHeader({
                 : undefined
             }
           >
-            {t`Pump unit`}: {unit}
+            {bay?.name?.split('/').pop()?.trim() || t`Pump`}
           </Title>
           {information}
         </Group>
@@ -170,13 +170,13 @@ export function UnitMimic({
         .includes(search.toLowerCase())
     )
       continue;
-    const group = point.group || t`Other reviewed points`;
+    const group = point.group || t`Other readings`;
     groups[group] ??= [];
     groups[group].push(point);
   }
   // Drawn parts first, in the order the drawing numbers them; then the
   // systems that are not drawn, by name; then the points no system claims.
-  const unnamed = t`Other reviewed points`;
+  const unnamed = t`Other readings`;
   const numberOf = (points: MimicPoint[]) =>
     numbers.get(points.find((point) => point.part_code)?.part_code ?? '');
   const sections: ReadingSection[] = Object.entries(groups)
@@ -222,16 +222,19 @@ export function UnitMimic({
         <UnitMimicHeader
           data={data}
           unit={unit}
-          actions={actions}
+          actions={
+            <Group gap='xs'>
+              {actions}
+              <MimicAlarmCoverage
+                count={unconfiguredCount(Object.values(data.points))}
+                knownEmpty={knownEmptyAlarms}
+              />
+            </Group>
+          }
           headingRef={headingRef}
         />
       )}
-      {header && (
-        <MimicAlarmCoverage
-          count={unconfiguredCount(Object.values(data.points))}
-          knownEmpty={knownEmptyAlarms}
-        />
-      )}
+
       <Paper withBorder p='md' className={operations.mimicPanel}>
         <MimicSchematic
           data={data}
@@ -243,7 +246,6 @@ export function UnitMimic({
           className={classes.legend}
           aria-label={t`Schematic state legend`}
         >
-          <legend>{t`Pump`}</legend>
           {['running', 'idle', 'fault', 'stale', 'unknown'].map((state) => (
             <span key={state} className={classes.legendItem}>
               <span
@@ -254,18 +256,11 @@ export function UnitMimic({
               {stateLabel(state)}
             </span>
           ))}
-        </fieldset>
-        <fieldset
-          className={classes.legend}
-          aria-label={t`Reading condition legend`}
-        >
-          <legend>{t`Readings`}</legend>
           {[
             ['critical', t`Critical`],
             ['warning', t`Warning`],
             ['normal', t`Normal`],
             ['unconfigured', t`No limits`],
-            ['unknown', t`Unknown`],
             ['unavailable', t`No readings`]
           ].map(([verdict, label]) => (
             <span className={classes.legendItem} key={verdict}>

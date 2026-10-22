@@ -3,11 +3,8 @@ import { Group, Loader, Text } from '@mantine/core';
 import dayjs from 'dayjs';
 import { displayClockLabel } from '../displayClock';
 import { StatusBadge } from '../health/StatusBadge';
-import { MetaText } from '../health/common';
 
 import type { SeriesResponse } from '@lib/types/MachineHealth';
-
-import { formatDuration } from './format';
 
 /** The viewer's clock, named: "Europe/London (UTC+01:00)". */
 export const clockLabel = displayClockLabel;
@@ -76,12 +73,6 @@ export function WindowStatus({
         </StatusBadge>
       )}
       {announcement}
-      <MetaText component='div' size='xs' aria-live='off'>
-        {updating
-          ? t`Charts still show the previous window, ${formatWindow(start, end, now)} (${formatDuration(seconds)}), until the new one arrives.`
-          : t`Window on screen: ${formatWindow(start, end, now)} (${formatDuration(seconds)}).`}{' '}
-        {showClock && t`Times in ${clockLabel(end)}.`}
-      </MetaText>
     </Group>
   );
 }

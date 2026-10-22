@@ -15,6 +15,10 @@ import {
   IconArrowUpRight,
   IconMinus
 } from '@tabler/icons-react';
+import {
+  MissingValue,
+  ValueTooltip
+} from '../../../components/items/ValueTooltip';
 import { StatusBadge } from '../health/StatusBadge';
 import { MetaText } from '../health/common';
 import monitoring from '../monitoring.module.css';
@@ -32,7 +36,7 @@ import {
   Unit,
   formatSignalLimits
 } from '../health/common';
-import { formatRange, formatValue } from './format';
+import { formatValue } from './format';
 import { type Trend, seriesStats, trendOf } from './series';
 
 /**
@@ -45,6 +49,7 @@ export interface KpiTile {
   value: number | null;
   /** Text shown instead of a number - a status word, say. */
   valueText?: string;
+  denominator?: number;
   unit: string;
   decimals: number;
   observedAt: number | null;
@@ -154,12 +159,17 @@ export function KpiTileCard({
       <Stack gap={6} h='100%' justify='space-between'>
         <Stack gap={4}>
           <MetaText size='xs' fw={500}>
-            {tile.label}
+            <ValueTooltip focusable={false} label={tile.caption ?? tile.label}>
+              {tile.label}
+            </ValueTooltip>
           </MetaText>
           {missing ? (
-            <MetaText>
-              {tile.missingReason || t`Unavailable · no usable observation`}
-            </MetaText>
+            <Text size='xl' data-kpi-value>
+              <MissingValue
+                label={tile.label}
+                reason={tile.missingReason || t`No usable observation`}
+              />
+            </Text>
           ) : (
             <Stack gap={2}>
               <Group gap={4} align='baseline'>
@@ -172,9 +182,18 @@ export function KpiTileCard({
                   style={{ fontVariantNumeric: 'tabular-nums' }}
                 >
                   {tile.stale ? t`Last known ` : ''}
-                  {shown}
+                  {!tile.unit && tile.key === 'vibration' ? (
+                    <ValueTooltip label={t`Unit not confirmed`}>
+                      {shown}
+                    </ValueTooltip>
+                  ) : (
+                    shown
+                  )}
+                  {tile.denominator != null
+                    ? ` ${t`of`} ${tile.denominator}`
+                    : ''}
                 </Text>
-                {!tile.valueText && (
+                {!tile.valueText && !!tile.unit && tile.unit !== '1' && (
                   <MetaText component='span' size='sm'>
                     <Unit code={tile.unit} />
                   </MetaText>
@@ -188,29 +207,9 @@ export function KpiTileCard({
               {tile.series && <Sparkline entry={tile.series} window={window} />}
             </Stack>
           )}
-          {tile.caption && <MetaText size='xs'>{tile.caption}</MetaText>}
         </Stack>
         <Stack gap={4} data-kpi-footer>
-          {stats && (
-            <MetaText size='xs'>
-              {t`Window`}{' '}
-              {formatRange(stats.min, stats.max, tile.decimals, tile.unit)}
-            </MetaText>
-          )}
-          {configuredText ? (
-            <MetaText size='xs'>
-              {configuredText} · {t`on signal mapping`}
-            </MetaText>
-          ) : (
-            !tile.calculated &&
-            !tile.valueText && (
-              <MetaText size='xs'>
-                {tile.limitsConfigured
-                  ? t`Limits apply to other family channels; see their signal mappings.`
-                  : t`no limit configured`}
-              </MetaText>
-            )
-          )}
+          {configuredText && <MetaText size='xs'>{configuredText}</MetaText>}
           {(!missing || tile.observedAt != null) && (
             <FreshnessText
               observedAt={tile.observedAt}

@@ -42,3 +42,27 @@ describe('signal readings retain supplied facts without inventing units', () => 
     });
   });
 });
+
+it('uses declared plant status labels and keeps unknown codes honest', () => {
+  expect(
+    signalReading({ value: 'I', unit: '', external_key: '/pd/P7/st' }).text
+  ).toBe('Idle');
+  expect(
+    signalReading({ value: 'R', unit: '', external_key: '/pd/P7/st' }).text
+  ).toBe('Running');
+  expect(
+    signalReading({ value: 'F', unit: '', external_key: '/pd/P7/st' }).text
+  ).toBe('Unknown');
+  expect(
+    signalReading({
+      value: 0,
+      unit: '',
+      external_key: '/dex/PUMP7_MOTOR_ON_OFF_STATUS'
+    }).text
+  ).toBe('Off');
+});
+it('uses two decimal places for forebay level without changing other measurements', () => {
+  expect(
+    signalReading({ value: 120.9724, unit: 'm', external_key: '/sl' }).text
+  ).toBe('120.97 m');
+});

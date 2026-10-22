@@ -22,11 +22,11 @@ import { useMediaQuery } from '@mantine/hooks';
 import {
   IconChevronDown,
   IconChevronRight,
-  IconClockExclamation
+  IconClockExclamation,
+  IconInfoCircle
 } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import { MonitoringContinuityNotice } from '../health/MonitoringContinuity';
 import { ageLabel } from '../health/mimic/FreshnessLabel';
 import {
   type DisplayClock,
@@ -35,16 +35,14 @@ import {
   useDisplayClock
 } from '../health/mimic/observedTime';
 import operations from '../operations.module.css';
-import {
-  recordedTelemetryAsLive,
-  showRecordedTelemetry
-} from '../telemetryPresentation';
+import { showRecordedTelemetry } from '../telemetryPresentation';
 
 import { type ReactNode, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
+import { ValueTooltip } from '../../../components/items/ValueTooltip';
 import { useApi } from '../../../contexts/ApiContext';
 import {
   AlarmStateBadge,
@@ -123,11 +121,12 @@ function EventIdentity({
     occurrence.external_id && t`Source alarm ${occurrence.external_id}`
   ].filter(Boolean);
   return (
-    <Text size='xs' className={operations.meta}>
-      {ids.length ? ids.join(' · ') : t`No source alarm id`}
-      {' · '}
-      {t`Record ${occurrence.id}`}
-    </Text>
+    <ValueTooltip
+      accessibleLabel={t`Event information`}
+      label={[...ids, t`Record ${occurrence.id}`].join(' · ')}
+    >
+      <IconInfoCircle size={14} />
+    </ValueTooltip>
   );
 }
 
@@ -467,7 +466,7 @@ function OccurrenceAccount({
       </Group>
       <Text className={operations.meta}>
         {t`Occurrence ${occurrence.id}`} ·{' '}
-        {occurrence.alarm_code || t`Code not recorded`} ·{' '}
+        <EventIdentity occurrence={occurrence} /> ·{' '}
         {occurrence.components.map((c) => c.name).join(', ') ||
           t`Component not recorded`}
       </Text>
@@ -733,11 +732,6 @@ export function FaultOccurrences({
                 order={4}
                 id='fault-history-title'
               >{t`Alarm and fault investigation`}</Title>
-              <Badge color='gray' variant='outline'>
-                {recordedTelemetryAsLive(list)
-                  ? t`Occurrences`
-                  : t`Recorded occurrences`}
-              </Badge>
             </Group>
             <Button
               size='xs'
@@ -746,21 +740,6 @@ export function FaultOccurrences({
               onClick={() => query.refetch()}
             >{t`Refresh`}</Button>
           </div>
-          <Text className={operations.meta}>
-            {t`Records read`}{' '}
-            {formatInstant(query.dataUpdatedAt || null, clock) ??
-              t`Time unavailable`}{' '}
-            · {t`Times`}: {clock.label}
-          </Text>
-          <Text
-            className={operations.caveat}
-          >{t`Resolved does not always mean cleared. Acknowledged conditions remain active.`}</Text>
-          <Text
-            className={operations.caveat}
-          >{t`Retained evidence is not current readings. Read the resolution note.`}</Text>
-          <Box maw='70ch'>
-            <MonitoringContinuityNotice compact />
-          </Box>
         </Paper>
         <Group justify='space-between' align='flex-end' gap='sm'>
           <Stack gap={2}>
@@ -906,7 +885,7 @@ export function FaultOccurrences({
               >
                 <Table.Thead>
                   <Table.Tr>
-                    <Table.Th w={95}>{t`Severity`}</Table.Th>
+                    <Table.Th w={115}>{t`Severity`}</Table.Th>
                     <Table.Th w={200}>{t`State`}</Table.Th>
                     <Table.Th w={165}>
                       {t`Observed`}

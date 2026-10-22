@@ -11,7 +11,6 @@ import {
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { useEffect, useMemo, useState } from 'react';
-import { MetaText } from '../health/common';
 import monitoring from '../monitoring.module.css';
 import {
   PERFORMANCE_SECTIONS,
@@ -76,7 +75,9 @@ export function ChannelNavigator({
           }
           data={[
             { value: 'all', label: t`Full overview` },
-            ...PERFORMANCE_SECTIONS.map((key) => ({
+            ...PERFORMANCE_SECTIONS.filter((key) =>
+              parameters.some((p) => sectionOf(p) === key)
+            ).map((key) => ({
               value: key,
               label: `${sectionTitle(key)} · ${parameters.filter((p) => sectionOf(p) === key).length}`
             })),
@@ -91,7 +92,7 @@ export function ChannelNavigator({
           ]}
         />
       </SimpleGrid>
-      <MetaText size='xs'>{t`Channels are the signals mapped to this machine. Search by name, tag or unit keeps the history scope and chart selections.`}</MetaText>
+
       {!matched.length && (
         <Text size='sm'>{t`No matching channels. Clear the search or select Full overview.`}</Text>
       )}

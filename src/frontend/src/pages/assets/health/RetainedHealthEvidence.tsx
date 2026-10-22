@@ -78,12 +78,12 @@ export function RetainedHealthEvidence({
       component='section'
       withBorder
       p='md'
-      aria-label={t`Retained evidence`}
+      aria-label={t`Fault snapshots`}
     >
       <Stack gap='sm'>
         <Group justify='space-between'>
           <Text size='sm' fw={600}>
-            {snapshotId ? t`Retained incident evidence` : t`Retained evidence`}
+            {snapshotId ? t`Fault snapshot` : t`Fault snapshots`}
           </Text>
           <Button
             className={monitoring.link}
@@ -93,20 +93,14 @@ export function RetainedHealthEvidence({
             onClick={() => setListed((value) => !value)}
             aria-expanded={listed}
           >
-            {listed
-              ? t`Hide retained evidence list`
-              : t`Browse retained evidence`}
+            {listed ? t`Hide snapshots` : t`Browse snapshots`}
           </Button>
         </Group>
-        <MetaText size='sm'>{t`Current readings and condition remain above. Retained snapshots preserve the original fault-time values and clock; reconnecting a source does not replace them.`}</MetaText>
         {listed && (
           <Stack gap='xs'>
             {list.isLoading && <Loader size='xs' />}
             {list.isError && (
-              <Text size='sm'>{t`Retained evidence could not be read; absence is not established.`}</Text>
-            )}
-            {list.isSuccess && (
-              <MetaText size='xs'>{t`Latest ${list.data.length} machine snapshots (maximum 50); older citations remain accessible by their exact links.`}</MetaText>
+              <Text size='sm'>{t`Fault snapshots could not be read; absence is not established.`}</Text>
             )}
             {list.data?.map((row) => (
               <Button

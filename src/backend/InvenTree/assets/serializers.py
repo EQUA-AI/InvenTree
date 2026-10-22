@@ -31,6 +31,12 @@ class AssetMachineSerializer(serializers.ModelSerializer):
     names.
     """
 
+    plant_timezone = serializers.SerializerMethodField()
+
+    def get_plant_timezone(self, machine) -> str | None:
+        """Use the same declared plant clock as the read-only mimic."""
+        return settings.AIMMS_PLANT_TIMEZONE or None
+
     parent_name = serializers.CharField(
         source='parent.name', read_only=True, default=None
     )
@@ -65,6 +71,7 @@ class AssetMachineSerializer(serializers.ModelSerializer):
             'asset_type',
             'parent',
             'parent_name',
+            'plant_timezone',
             'source_key',
             'open_alarms',
             'open_critical_alarms',
@@ -179,6 +186,7 @@ class AssetMaintenanceRecordSerializer(serializers.ModelSerializer):
     dead reference.
     """
 
+    work_order_link_state = serializers.SerializerMethodField()
     work_order_reference = serializers.SerializerMethodField()
     work_order_title = serializers.SerializerMethodField()
     work_order_type = serializers.SerializerMethodField()
@@ -202,6 +210,7 @@ class AssetMaintenanceRecordSerializer(serializers.ModelSerializer):
             'details',
             'performed_by',
             'work_order',
+            'work_order_link_state',
             'work_order_reference',
             'work_order_title',
             'work_order_type',
@@ -216,6 +225,12 @@ class AssetMaintenanceRecordSerializer(serializers.ModelSerializer):
             'updated_at',
         )
         read_only_fields = ('pk', 'created_at', 'updated_at')
+
+    def get_work_order_link_state(self, record):
+        """Distinguish an absent link from one outside the caller's scope."""
+        if record.work_order_id is None:
+            return 'none'
+        return 'available' if self._visible_work_order(record) else 'unknown'
 
     def _visible_work_order(self, record):
         """Return the linked work order if this caller may see it.

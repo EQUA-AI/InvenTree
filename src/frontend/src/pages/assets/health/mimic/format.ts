@@ -89,7 +89,12 @@ export function valueText(point?: MimicPoint) {
   if (!usable(point)) return t`Unavailable`;
   if (typeof point.value === 'boolean') return point.value ? t`Yes` : t`No`;
   const value =
-    typeof point.value === 'number' ? numberText(point.value) : point.value;
+    typeof point.value === 'number'
+      ? numberText(
+          point.value,
+          /(?:FORBAY_LEVEL|^\/sl$)/i.test(point.pointer) ? 2 : 3
+        )
+      : point.value;
   return `${value}${point.unit ? ` ${unitLabel(point.unit)}` : ''}`;
 }
 

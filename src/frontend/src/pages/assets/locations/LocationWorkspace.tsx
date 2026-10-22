@@ -69,8 +69,7 @@ import {
   type LocationContext,
   type LocationNode,
   type PageResult,
-  locationApi,
-  locationPath
+  locationApi
 } from './locationTypes';
 import classes from './locations.module.css';
 import { type MachineCoverage, machineCondition } from './machineCondition';
@@ -444,6 +443,7 @@ export function ScopedMachineList({
                               <Table.Td>
                                 <MachineIdentity
                                   machine={machine}
+                                  scopeLocation={location}
                                   href={machineDetailHref(machine.pk, rowScope)}
                                   showPlacement={
                                     includeDescendants &&
@@ -516,6 +516,7 @@ export function ScopedMachineList({
                     >
                       <MachineIdentity
                         machine={machine}
+                        scopeLocation={location}
                         href={machineDetailHref(machine.pk, rowScope)}
                         showPlacement={
                           includeDescendants &&
@@ -708,6 +709,7 @@ function MachineIdentity({
   machine,
   href,
   showPlacement,
+  scopeLocation,
   canChange,
   checked,
   onChecked
@@ -715,6 +717,7 @@ function MachineIdentity({
   machine: LocatedMachine;
   href: string;
   showPlacement: boolean;
+  scopeLocation?: number | null;
   canChange: boolean;
   checked: boolean;
   onChecked: (checked: boolean) => void;
@@ -742,7 +745,17 @@ function MachineIdentity({
     machine.serial,
     showPlacement &&
       machine.physical_location &&
-      locationPath(machine.physical_location)
+      machine.physical_location.path
+        .slice(
+          Math.max(
+            0,
+            machine.physical_location.path.findIndex(
+              (node) => node.pk === scopeLocation
+            ) + 1
+          )
+        )
+        .map((node) => node.name)
+        .join(' / ')
   ]
     .filter(Boolean)
     .join(' · ');
@@ -1067,13 +1080,6 @@ function RootOverview({
                   </Text>
                 )}
               </Group>
-              <Text
-                component='code'
-                size='sm'
-                className={`${operations.meta} ${classes.rootCode}`}
-              >
-                {node.code}
-              </Text>
             </li>
           ))}
         </ul>
@@ -1164,7 +1170,7 @@ export function LocationWorkspace({
     }
   }, [selected?.pk, mobileOpen]);
   const select = (id: number | null) => {
-    if (mobileOpen && id !== null) choiceFocus.current = id;
+    if (id !== null) choiceFocus.current = id;
     setParams((previous) => machineLocationParams(previous, id));
     if (id !== null) setMobileOpen(false);
   };
@@ -1254,6 +1260,7 @@ export function LocationWorkspace({
                 id='machine-location-browser'
                 className={classes.browser}
                 data-mobile-open={mobileOpen ? 'true' : 'false'}
+                hidden={!!selected && !mobileOpen}
                 visibleFrom={mobileOpen ? undefined : 'lg'}
                 span={{ base: 12, lg: 4 }}
               >
@@ -1264,7 +1271,9 @@ export function LocationWorkspace({
                   workspaces={workspaces}
                 />
               </Grid.Col>
-              <Grid.Col span={{ base: 12, lg: 8 }}>
+              <Grid.Col
+                span={{ base: 12, lg: selected && !mobileOpen ? 12 : 8 }}
+              >
                 <Stack gap='xs' className={operations.phoneStack}>
                   {rawLocation && !locationId && (
                     <Alert color='red'>{t`The location link is invalid.`}</Alert>
@@ -1314,7 +1323,6 @@ export function LocationWorkspace({
                           </Group>
                           <Group gap={4} className={operations.phoneActions}>
                             <Button
-                              hiddenFrom='lg'
                               size='xs'
                               className={operations.phoneTarget}
                               variant='default'

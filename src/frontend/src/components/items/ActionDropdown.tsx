@@ -21,7 +21,7 @@ import {
 import { type ReactNode, useMemo } from 'react';
 
 import { StylishText } from '@lib/components/StylishText';
-import type { ModelType } from '@lib/enums/ModelType';
+import { ModelType } from '@lib/enums/ModelType';
 import { identifierString } from '@lib/functions/Conversion';
 import { InvenTreeIcon } from '../../functions/icons';
 import { InvenTreeQRCode, QRCodeLink, QRCodeUnlink } from '../barcodes/QRCode';
@@ -177,7 +177,10 @@ export function BarcodeActionDropdown({
       actions={[
         GeneralBarcodeAction({
           mdl_prop: prop,
-          title: t`View Barcode`,
+          title:
+            model === ModelType.assetmachine
+              ? t`Machine QR label`
+              : t`View Barcode`,
           icon: <IconQrcode />,
           tooltip: t`View barcode`,
           ChildItem: InvenTreeQRCode
@@ -185,7 +188,8 @@ export function BarcodeActionDropdown({
         GeneralBarcodeAction({
           hidden: hidden || hash || !permission,
           mdl_prop: prop,
-          title: t`Link Barcode`,
+          title:
+            model === ModelType.assetmachine ? t`Link tag` : t`Link Barcode`,
           icon: <IconLink />,
           tooltip: t`Link a custom barcode to this item`,
           ChildItem: QRCodeLink,

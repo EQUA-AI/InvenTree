@@ -10,6 +10,7 @@ import {
   useMantineTheme
 } from '@mantine/core';
 import { useMemo } from 'react';
+import { ValueTooltip } from '../../../components/items/ValueTooltip';
 import { StatusBadge } from '../health/StatusBadge';
 import { MetaText } from '../health/common';
 import { hasLimits } from './evaluation';
@@ -352,7 +353,15 @@ function SensorGroupCardBody({
         <Group justify='space-between' align='flex-start' wrap='wrap' gap='xs'>
           <Stack gap={2}>
             <Text fw={600}>{title}</Text>
-            {description && <MetaText size='xs'>{description}</MetaText>}
+            {!unit && (
+              <ValueTooltip label={description || t`Unit not confirmed`}>
+                <StatusBadge
+                  tone='neutral'
+                  size='sm'
+                  color='gray'
+                >{t`Unit not confirmed`}</StatusBadge>
+              </ValueTooltip>
+            )}
           </Stack>
           {summary && (
             <Group gap='xs' wrap='wrap'>
@@ -364,34 +373,7 @@ function SensorGroupCardBody({
               >
                 {t`Highest now: ${summary.highest.parameter.label} ${formatValue(summary.highest.value, decimals, unit, summary.spread)}`}
               </StatusBadge>
-              <StatusBadge
-                tone='neutral'
-                variant='outline'
-                color='gray'
-                size='sm'
-              >
-                {t`Mean ${formatValue(summary.mean, decimals, unit, summary.spread)}`}
-              </StatusBadge>
-              {summary.live > 1 && (
-                <StatusBadge
-                  tone='neutral'
-                  variant='outline'
-                  color='gray'
-                  size='sm'
-                >
-                  {t`Spread ${formatValue(summary.spread, decimals, unit, summary.spread)} (calculated)`}
-                </StatusBadge>
-              )}
-              {windowStats.max && (
-                <StatusBadge
-                  tone='neutral'
-                  variant='outline'
-                  color='gray'
-                  size='sm'
-                >
-                  {t`Window peak ${formatValue(windowStats.max.value, decimals, unit)} (${windowStats.max.label})`}
-                </StatusBadge>
-              )}
+
               {summary.configured > 0 ? (
                 <StatusBadge
                   variant={summary.over > 0 ? 'filled' : 'outline'}
@@ -473,7 +455,7 @@ function SensorGroupCardBody({
                 </Text>
                 <ScatterChart
                   textColor='var(--mantine-color-text)'
-                  h={Math.max(140, readable.length * 26 + 42)}
+                  h={Math.max(160, readable.length * 34 + 64)}
                   data={[
                     {
                       name: t`Current readings`,
@@ -488,6 +470,9 @@ function SensorGroupCardBody({
                   xAxisLabel={unitLabel(unit)}
                   styles={{ axisLabel: { fill: 'var(--mantine-color-text)' } }}
                   withLegend={false}
+                  scatterChartProps={{
+                    margin: { top: 28, right: 64, bottom: 24, left: 8 }
+                  }}
                   xAxisProps={{
                     domain: dotDomain,
                     ticks: dotTicks,
@@ -500,7 +485,23 @@ function SensorGroupCardBody({
                     width: barAxis.width,
                     tickFormatter: (index: number) =>
                       readable[index]?.sensor ?? '',
-                    interval: 0
+                    interval: 0,
+                    tick: ({ x, y, payload }) => (
+                      <text
+                        x={Number(x) - 8}
+                        y={y}
+                        textAnchor='end'
+                        dominantBaseline='middle'
+                        fill='var(--mantine-color-text)'
+                        fontSize={11}
+                      >
+                        <title>{readable[Number(payload.value)]?.sensor}</title>
+                        {(readable[Number(payload.value)]?.sensor ?? '')
+                          .length > 28
+                          ? `${readable[Number(payload.value)].sensor.slice(0, 27)}…`
+                          : readable[Number(payload.value)]?.sensor}
+                      </text>
+                    )
                   }}
                   valueFormatter={{
                     x: (value: number) =>
@@ -511,7 +512,7 @@ function SensorGroupCardBody({
                     .filter(
                       (line) => line.y >= dotDomain[0] && line.y <= dotDomain[1]
                     )
-                    .map((line) => ({
+                    .map((line, index) => ({
                       x: line.y,
                       color:
                         scheme === 'dark'
@@ -519,6 +520,9 @@ function SensorGroupCardBody({
                           : line.color,
                       label: {
                         value: line.label,
+                        position: 'insideTopRight',
+                        dy: 2 + index * 18,
+                        fontSize: 11,
                         fill: 'var(--mantine-color-text)'
                       }
                     }))}

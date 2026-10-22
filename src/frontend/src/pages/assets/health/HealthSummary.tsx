@@ -94,6 +94,7 @@ export function HealthSummaryPanel({
             <HealthStateBadge
               state={summary.state}
               size='lg'
+              compactCoverage
               neutralNormal={fact.coverageIncomplete}
               coverage={
                 coverage

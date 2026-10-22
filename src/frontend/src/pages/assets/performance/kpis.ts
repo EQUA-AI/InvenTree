@@ -136,7 +136,7 @@ function highestTile(
     caption: [
       top.signal.unit
         ? t`Highest of ${pool.length}: ${top.label}`
-        : t`Highest of ${pool.length}: ${top.label} · unit unconfirmed, raw source value`,
+        : t`Highest of ${pool.length}: ${top.label}`,
       uncompared > 0
         ? t`${uncompared} in ${groups
             .filter((g) => !g.items.includes(top))

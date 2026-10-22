@@ -15,8 +15,9 @@ import { IconFlag } from '@tabler/icons-react';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { Link } from 'react-router-dom';
+import { ComponentBasis } from '../../../tables/assets/ComponentFacts';
 import { FreshnessLabel } from '../health/mimic/FreshnessLabel';
-import { formatInstant, useDisplayClock } from '../health/mimic/observedTime';
+import { useDisplayClock } from '../health/mimic/observedTime';
 import { machineOpenWorkHref } from '../maintenance/machineWorkViews';
 import operations from '../operations.module.css';
 
@@ -66,7 +67,7 @@ function Section({
 }: Readonly<{ title: string; children: React.ReactNode }>) {
   return (
     <Stack gap={4}>
-      <Text size='xs' fw={600} className={operations.meta} tt='uppercase'>
+      <Text size='xs' fw={600} className={operations.meta} tt='none'>
         {title}
       </Text>
       {children}
@@ -90,18 +91,10 @@ function ComponentSlot({ slot }: Readonly<{ slot: PositionComponent }>) {
         <Text size='sm' fw={500}>
           {slot.name}
         </Text>
-        <Badge
-          size='xs'
-          variant='light'
-          color={slot.status === 'verified' ? 'green' : 'gray'}
-        >
-          {slot.status === 'verified' ? t`Verified` : t`Draft inference`}
-        </Badge>
+        <ComponentBasis
+          record={{ ...slot, review_note: slot.review_note ?? '' }}
+        />
       </Group>
-      <Text size='xs' className={operations.meta}>
-        {slot.code}
-        {slot.provenance ? ` · ${slot.provenance}` : ''}
-      </Text>
       {user.hasViewRole(UserRoles.stock) && slot.fitted?.current && (
         <FittedItemFact fit={slot.fitted.current} />
       )}
@@ -281,17 +274,6 @@ export function PositionInspector({
       <Stack gap='sm'>
         <Stack gap={2}>
           <Title order={5}>{referencePartLabel(selected)}</Title>
-          <Text
-            size='xs'
-            className={operations.meta}
-            data-family={summary && 'family' in summary ? summary.family : ''}
-          >
-            {selected === 'machine'
-              ? t`The whole machine`
-              : summary && 'family' in summary
-                ? t`Catalogue family: ${summary.familyName ?? summary.family} (${summary.family})`
-                : t`Reference model position`}
-          </Text>
         </Stack>
         <Divider />
         {query.isPending ? (
@@ -347,9 +329,7 @@ export function PositionInspector({
                   : t`${summary.machineWork} open on this machine`}
               </Anchor>
             </Section>
-            <Absent>
-              {t`Select a component to see its own component records, readings and work.`}
-            </Absent>
+
             {links}
           </Stack>
         ) : summary.kind === 'unbound' ? (
@@ -407,15 +387,6 @@ export function PositionInspector({
             </Section>
             {links}
           </Stack>
-        )}
-        {query.isSuccess && (
-          <Text
-            size='xs'
-            className={operations.meta}
-            data-records-read={query.dataUpdatedAt}
-          >
-            {t`Records read at ${formatInstant(query.dataUpdatedAt, clock) ?? t`Time unavailable`}`}
-          </Text>
         )}
       </Stack>
     </Paper>

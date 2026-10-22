@@ -19,8 +19,8 @@ describe('lossless monitoring units', () => {
     ['m3/s', 'm³/s'],
     ['cusec', 'cusec'],
     ['raw-word', 'raw-word'],
-    ['', 'unit not recorded'],
-    [null, 'unit not recorded']
+    ['', ''],
+    [null, '']
   ])('displays %s', (raw, label) => expect(unitLabel(raw)).toBe(label));
 });
 it('separates actual drawn and off-scale boundaries, including scale edges', () => {

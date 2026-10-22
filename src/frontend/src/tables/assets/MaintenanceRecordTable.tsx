@@ -9,7 +9,12 @@ import { apiUrl } from '@lib/functions/Api';
 import useTable from '@lib/hooks/UseTable';
 import type { AssetMaintenanceRecord } from '@lib/types/Assets';
 import type { TableColumn } from '@lib/types/Tables';
+import {
+  MissingValue,
+  ValueTooltip
+} from '../../components/items/ValueTooltip';
 import { InvenTreeTable } from '../../components/tables/InvenTreeTable';
+import { Timestamp } from '../../pages/assets/health/Timestamp';
 
 const WORK_ORDER_TYPE_LABELS: Record<string, () => string> = {
   corrective: () => t`Corrective`,
@@ -54,12 +59,15 @@ export function MaintenanceRecordTable({
       {
         accessor: 'date',
         title: t`Date`,
-        sortable: true
+        sortable: true,
+        render: (record) => <Timestamp value={record.date} dateOnly />
       },
       {
         accessor: 'summary',
         title: t`Summary`,
-        sortable: true
+        sortable: true,
+        render: (record) =>
+          record.summary || <MissingValue reason={t`Summary not recorded`} />
       },
       {
         accessor: 'work_order',
@@ -68,9 +76,13 @@ export function MaintenanceRecordTable({
         render: (record: AssetMaintenanceRecord) => {
           if (!record.work_order) {
             return (
-              <Text size='sm' c='dimmed'>
-                {t`No work order you can open`}
-              </Text>
+              <MissingValue
+                reason={
+                  record.work_order_link_state === 'none'
+                    ? t`No linked work order`
+                    : t`Work order link not available`
+                }
+              />
             );
           }
 
@@ -104,9 +116,7 @@ export function MaintenanceRecordTable({
           record.work_order_component ? (
             record.work_order_component
           ) : (
-            <Text size='sm' c='dimmed'>
-              {record.work_order ? t`Not recorded` : t`Not available`}
-            </Text>
+            <MissingValue reason={t`Component not recorded`} />
           )
       },
       {
@@ -118,7 +128,7 @@ export function MaintenanceRecordTable({
         minWidth: 120,
         render: (record: AssetMaintenanceRecord) => {
           if (!record.work_order_type) {
-            return '';
+            return <MissingValue reason={t`Work type not recorded`} />;
           }
           const label =
             WORK_ORDER_TYPE_LABELS[record.work_order_type]?.() ??
@@ -133,16 +143,26 @@ export function MaintenanceRecordTable({
       {
         accessor: 'performed_by',
         title: t`Performed By`,
-        sortable: false
+        sortable: false,
+        render: (record) =>
+          record.performed_by || (
+            <MissingValue reason={t`Technician not recorded`} />
+          )
       },
       {
         accessor: 'lifecycle_status',
         title: t`Outcome`,
         sortable: false,
         render: (record: AssetMaintenanceRecord) =>
-          record.lifecycle_status === 'completed'
-            ? t`Completed`
-            : (record.lifecycle_status ?? '')
+          record.lifecycle_status === 'completed' ? (
+            t`Completed`
+          ) : record.lifecycle_status ? (
+            <ValueTooltip
+              label={t`Outcome classification not recognized`}
+            >{t`Unknown`}</ValueTooltip>
+          ) : (
+            <MissingValue reason={t`Outcome not recorded`} />
+          )
       },
       {
         accessor: 'downtime_minutes',
@@ -156,6 +176,8 @@ export function MaintenanceRecordTable({
                 {t`Amended`}
               </Badge>
             </Group>
+          ) : record.downtime_minutes == null ? (
+            <MissingValue reason={t`Downtime not recorded`} />
           ) : (
             formatDowntime(record.downtime_minutes)
           )
@@ -190,7 +212,7 @@ export function MaintenanceRecordTable({
               <Text size='sm'>{t`Follow-up required`}</Text>
             </Group>
           ) : (
-            ''
+            <MissingValue reason={t`No follow-up recorded`} />
           )
       },
       {

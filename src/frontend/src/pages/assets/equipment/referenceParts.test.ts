@@ -15,18 +15,23 @@ describe('reference model positions', () => {
     expect(PARTS.every((part) => part.conceptual)).toBe(true);
   });
 
-  it('lists each assembly before what it holds, every position once', () => {
+  it('lists every position once in numeric marker order', () => {
     expect(referenceListOrder()).toEqual([
       'machine',
       'motor',
       'bearing',
       'coupling',
-      'pump',
       'seal',
       'impeller',
+      'pump',
       'discharge',
       'base'
     ]);
+    expect(
+      referenceListOrder().map(
+        (id) => REFERENCE_PARTS.find((part) => part.id === id)!.number
+      )
+    ).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
   });
 
   it('indents by how far a position sits below the machine', () => {

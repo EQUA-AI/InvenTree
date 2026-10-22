@@ -17,6 +17,7 @@ import {
   useRef,
   useState
 } from 'react';
+import { ValueTooltip } from '../../../components/items/ValueTooltip';
 import { StatusBadge } from '../health/common';
 import operations from '../operations.module.css';
 
@@ -234,18 +235,17 @@ export function EquipmentScene({
       }}
     >
       <Box ref={host} pos='absolute' inset={0} />
-      <Box
-        pos='absolute'
-        top={8}
-        left={8}
-        style={{ zIndex: 7, pointerEvents: 'none' }}
-      >
-        <StatusBadge
-          size='sm'
-          color='gray'
-          variant='outline'
-          bg='var(--mantine-color-body)'
-        >{t`Reference model · geometry unverified`}</StatusBadge>
+      <Box pos='absolute' top={8} left={8} style={{ zIndex: 7 }}>
+        <ValueTooltip
+          label={t`Vertical reference model. Use the process schematic for this machine. Drag to rotate; arrow keys rotate, + and − zoom.`}
+        >
+          <StatusBadge
+            size='sm'
+            color='gray'
+            variant='outline'
+            bg='var(--mantine-color-body)'
+          >{t`Reference model`}</StatusBadge>
+        </ValueTooltip>
       </Box>
       {phase === 'loading' && (
         <Skeleton

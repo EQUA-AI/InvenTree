@@ -26,7 +26,9 @@ import {
 } from 'react';
 import { ReferenceArea } from 'recharts';
 import { MetaText } from '../health/common';
+import { useDisplayClock } from '../health/mimic/observedTime';
 import { ThresholdKey } from './ThresholdKey';
+import { presentationTicks } from './axisPresentation';
 import { thresholdBands } from './thresholdBands';
 
 import { useHistoryReadFailures } from './HistoryReadContext';
@@ -294,6 +296,7 @@ function ChartBody({
     end: number;
   } | null>(null);
   const [dragging, setDragging] = useState(false);
+  const displayClock = useDisplayClock();
   const [includeLimits, setIncludeLimits] = useState(false);
 
   const plotted = useMemo(
@@ -406,7 +409,18 @@ function ChartBody({
             domain: axisDomain(min, max)
           };
         }
-        const ticks = niceTicks(low, high);
+        const counted =
+          own.length > 0 &&
+          own.every(
+            (line) =>
+              (line.stepped || stepped) && (!line.unit || line.unit === '1')
+          );
+        const ticks = presentationTicks(
+          niceTicks(low, high),
+          min,
+          own[0]?.unit ?? '',
+          counted
+        );
         if (ticks.length < 2) {
           return { width: widthFor([String(min)]), domain: [low, high] };
         }
@@ -414,7 +428,7 @@ function ChartBody({
           width: widthFor(ticks.map(String)),
           domain: [ticks[0], ticks[ticks.length - 1]] as [number, number],
           ticks,
-          allowDecimals: true
+          allowDecimals: !counted
         };
       }
       // A count or a state has no quarter: 0.25 of a running pump is not a
@@ -422,8 +436,17 @@ function ChartBody({
       // values. Whole readings, not merely a catalogue that rounds to whole
       // ones - a shaft speed printed as "745" still drifts between ticks.
       const counted =
-        max - min <= 1 && Number.isInteger(min) && Number.isInteger(max);
-      const ticks = counted ? [min, max] : niceTicks(min, max);
+        own.length > 0 &&
+        own.every(
+          (line) =>
+            (line.stepped || stepped) && (!line.unit || line.unit === '1')
+        );
+      const ticks = presentationTicks(
+        niceTicks(min, max),
+        min,
+        own[0]?.unit ?? '',
+        counted
+      );
       return {
         width: widthFor(ticks.map(String)),
         domain: [ticks[0], ticks[ticks.length - 1]] as [number, number],
@@ -589,7 +612,8 @@ function ChartBody({
           allowDataOverflow: true,
           ticks,
           interval: 0,
-          tickFormatter: (value: number) => formatTick(value, windowSeconds)
+          tickFormatter: (value: number) =>
+            formatTick(value, windowSeconds, displayClock)
         }}
         referenceLines={referenceLines?.map((line) => ({
           y: line.y,

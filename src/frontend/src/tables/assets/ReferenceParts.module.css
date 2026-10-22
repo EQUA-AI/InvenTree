@@ -1,0 +1,8 @@
+@media (max-width: 47.99375em) {
+  .table table, .table tbody { display: block; width: 100%; }
+  .table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .table tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); border: 1px solid var(--mantine-color-default-border); margin-block: var(--mantine-spacing-xs); }
+  .table td { display: block; min-width: 0; white-space: normal; overflow-wrap: break-word; }
+  .table td:first-child, .table td:last-child { grid-column: 1 / -1; }
+  .table [data-label]::before { content: attr(data-label); display: block; font-weight: 600; font-size: var(--mantine-font-size-xs); margin-bottom: 4px; }
+}

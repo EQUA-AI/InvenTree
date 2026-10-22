@@ -9,6 +9,8 @@ import {
   Stack,
   Text
 } from '@mantine/core';
+import { IconInfoCircle } from '@tabler/icons-react';
+import { ValueTooltip } from '../../../components/items/ValueTooltip';
 import { AttentionAlert, MetaText } from '../health/common';
 import { formatInstant, useDisplayClock } from '../health/mimic/observedTime';
 import monitoring from '../monitoring.module.css';
@@ -26,7 +28,8 @@ export function HistoryProvenance({
   failed,
   extent,
   onRetry,
-  currentDescription
+  currentDescription,
+  compact = false
 }: Readonly<{
   response: SeriesResponse | undefined;
   loading: boolean;
@@ -35,6 +38,7 @@ export function HistoryProvenance({
   extent: DataRange | undefined;
   onRetry: () => void;
   currentDescription?: string;
+  compact?: boolean;
 }>) {
   const clock = useDisplayClock();
   const entries = response?.series ?? [];
@@ -42,6 +46,38 @@ export function HistoryProvenance({
   const empty = entries.filter(
     (entry) => entry.available && entry.samples.length === 0
   );
+  if (compact)
+    return (
+      <ValueTooltip
+        accessibleLabel={t`History information`}
+        label={
+          [
+            ...new Set(entries.map((entry) => entry.source_name)),
+            response?.resolution_seconds
+              ? t`Sample interval ${response.resolution_seconds} s`
+              : null,
+            empty.length
+              ? t`No samples: ${[
+                  ...new Set(
+                    empty.map((entry) => {
+                      const number = entry.external_key?.match(
+                        /PUMP(\d+)|\/pd\/P(\d+)/i
+                      );
+                      return number
+                        ? t`Pump ${number[1] ?? number[2]}`
+                        : entry.display_name;
+                    })
+                  )
+                ].join(', ')}`
+              : null
+          ]
+            .filter(Boolean)
+            .join(' · ') || t`History not yet read`
+        }
+      >
+        <IconInfoCircle size={18} />
+      </ValueTooltip>
+    );
   return (
     <Paper withBorder p='sm' data-testid='history-provenance'>
       <Stack gap={4}>

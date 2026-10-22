@@ -238,12 +238,6 @@ export function SignalEvidence({
               {signal.component ? (
                 <Group gap={6} wrap='wrap'>
                   <Text size='sm'>{signal.component.name}</Text>
-                  <MetaText
-                    size='sm'
-                    style={{ fontVariantNumeric: 'tabular-nums' }}
-                  >
-                    {signal.component.code}
-                  </MetaText>
                   <Badge
                     size='sm'
                     variant='outline'

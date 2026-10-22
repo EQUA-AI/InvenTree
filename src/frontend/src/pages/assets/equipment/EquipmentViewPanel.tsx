@@ -1,7 +1,6 @@
 import { displayComponent } from '@lib/types/CanonicalDisplay';
 import { t } from '@lingui/core/macro';
 import {
-  Accordion,
   ActionIcon,
   Button,
   Group,
@@ -29,7 +28,7 @@ import { type ReactNode, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { openGlobalAIChatAboutWork } from '../../../states/AIChatState';
 import { StatusBadge as Badge } from '../health/common';
-import { formatInstant, useDisplayClock } from '../health/mimic/observedTime';
+import { useDisplayClock } from '../health/mimic/observedTime';
 import { EquipmentViewControls } from './ViewControls';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
@@ -43,7 +42,6 @@ import classes from './equipment.module.css';
 import type { MachinePositions } from './machinePositions';
 import {
   REFERENCE_PARTS,
-  referenceDepth,
   referenceListOrder,
   referenceModeLabel,
   referencePartLabel
@@ -106,7 +104,7 @@ function ComponentList({
                   </Badge>
                 }
                 style={{
-                  paddingLeft: `calc(var(--mantine-spacing-xs) + ${referenceDepth(id) * 14}px)`,
+                  paddingLeft: 'var(--mantine-spacing-xs)',
                   borderRadius: 'var(--mantine-radius-default)'
                 }}
               />
@@ -304,36 +302,6 @@ function ModelView({
                   )
                 }
               />
-              <Text size='xs' className={operations.meta}>
-                {t`Drag to rotate. Scroll zooms once the model has focus, or hold Ctrl. Arrow keys rotate; + and − zoom.`}
-              </Text>
-              {mode === 'cutaway' && (
-                <Text
-                  size='xs'
-                  className={operations.meta}
-                  data-mode-note='cutaway'
-                >
-                  {t`Cutaway shows reference internals, not this machine's verified design.`}
-                </Text>
-              )}
-              {mode === 'exploded' && (
-                <Text
-                  size='xs'
-                  className={operations.meta}
-                  data-mode-note='exploded'
-                >
-                  {t`Exploded for orientation only; not a disassembly procedure.`}
-                </Text>
-              )}
-              <Text
-                className={operations.meta}
-                aria-live='polite'
-                data-hidden-markers
-              >
-                {hiddenParts.length
-                  ? t`Hidden in this view: ${hiddenParts.map((p) => `${referencePartLabel(p.id)} (${p.number})`).join(', ')} — use Cutaway or the component list.`
-                  : t`No components hidden in this view.`}
-              </Text>
             </Stack>
           </div>
           <div>
@@ -362,9 +330,6 @@ function ModelView({
             </Button>
           )}
         </Group>
-        <Text size='xs' className={operations.meta}>
-          {t`Reference model: conceptual geometry, not this machine's verified design.`}
-        </Text>
       </Group>
     </Stack>
   );
@@ -373,8 +338,8 @@ function ModelView({
 export type EquipmentView = 'model' | 'schematic';
 
 /**
- * R6 UI03 Equipment view for a pump: one panel, the 3D model first and the
- * native process schematic as the secondary view where the pump has one
+ * R6 UI03 Equipment view for a pump: one panel, the process schematic first and an
+ * explicitly selected reference 3D view
  * (R6 P08). The choice lives in the link (`?view=schematic`), so the old
  * mimic route can land here. Selection, mode and labels outlast a switch.
  */
@@ -406,7 +371,7 @@ export function EquipmentViewPanel({
   });
   const [params, setParams] = useSearchParams();
   const view: EquipmentView =
-    schematic && params.get('view') === 'schematic' ? 'schematic' : 'model';
+    params.get('view') === 'model' ? 'model' : 'schematic';
   // Parts and saved-answer links select the same position even when this
   // panel stays mounted. Replace selection in the URL without making every
   // model click a browser-history entry; view/mode switches retain it.
@@ -430,8 +395,7 @@ export function EquipmentViewPanel({
     setParams(
       (previous) => {
         const nextParams = new URLSearchParams(previous);
-        if (next === 'schematic') nextParams.set('view', 'schematic');
-        else nextParams.delete('view');
+        nextParams.set('view', next);
         return nextParams;
       },
       { replace: true }
@@ -444,7 +408,7 @@ export function EquipmentViewPanel({
       : null;
   const theme = useMantineTheme();
   const clock = useDisplayClock();
-  const controls = schematic ? (
+  const controls = (
     <SegmentedControl
       size='xs'
       aria-label={t`Equipment view`}
@@ -458,7 +422,7 @@ export function EquipmentViewPanel({
         { value: 'schematic', label: t`Process schematic` }
       ]}
     />
-  ) : null;
+  );
   return (
     <EquipmentViewControls value={controls}>
       <Stack
@@ -479,11 +443,6 @@ export function EquipmentViewPanel({
                     ? t`Inspect equipment positions`
                     : t`Process readings`}
                 </Title>
-                <Text className={operations.caveat}>
-                  {view === 'model'
-                    ? t`Reference model · geometry unverified`
-                    : t`Reference schematic · physical arrangement unverified`}
-                </Text>
               </Stack>
               <Group gap={4}>
                 {controls}
@@ -493,33 +452,22 @@ export function EquipmentViewPanel({
                   loading={positions.isFetching}
                   onClick={() => positions.refetch()}
                 >{t`Refresh`}</Button>
-                <Badge
-                  color='gray'
-                  variant='outline'
-                  c='var(--mantine-color-text)'
-                >{t`Reference view`}</Badge>
               </Group>
             </Group>
-            <Text className={operations.meta}>
-              {t`Records read`}{' '}
-              {formatInstant(positions.dataUpdatedAt || null, clock) ??
-                t`Time unavailable`}{' '}
-              · {t`Times`}: {clock.label}
-            </Text>
           </Paper>
         )}
         {view === 'schematic' ? (
           <>
-            <div data-equipment-view='schematic'>{schematic}</div>
-            {/* The same keyboard list selects the position used by the launcher. */}
-            <Accordion variant='contained'>
-              <Accordion.Item value='reference-positions'>
-                <Accordion.Control>{t`Select a reference position`}</Accordion.Control>
-                <Accordion.Panel>
-                  <ComponentList selected={selected} onSelect={setSelected} />
-                </Accordion.Panel>
-              </Accordion.Item>
-            </Accordion>
+            <div data-equipment-view='schematic'>
+              {schematic ?? (
+                <Paper withBorder p='sm'>
+                  <Group justify='space-between'>
+                    {controls}
+                    <Text size='sm'>{t`Process schematic unavailable`}</Text>
+                  </Group>
+                </Paper>
+              )}
+            </div>
           </>
         ) : (
           <ModelView
@@ -533,37 +481,29 @@ export function EquipmentViewPanel({
             positions={positions}
           />
         )}
-        <Group justify='space-between' wrap='wrap'>
-          <Stack gap={2}>
-            <Text size='sm' fw={600}>
-              {t`Selected reference position`}: {referencePartLabel(selected)}
-            </Text>
-            <Text
-              size='sm'
-              className={operations.caveat}
-            >{t`Reference model; physical part identity is not verified.`}</Text>
-          </Stack>
-          <Button
-            size='xs'
-            variant='light'
-            disabled={!component}
-            onClick={() => {
-              if (!component) return;
-              openGlobalAIChatAboutWork({
-                workOrderId: null,
-                lifecycleVersion: null,
-                component,
-                label: `${machine.name} · ${referencePartLabel(selected)}`,
-                returnPath: `/machines/machine/${machine.pk}/equipment/?position=${selected}${view === 'schematic' ? '&view=schematic' : ''}`
-              });
-            }}
-          >{t`Ask about this position`}</Button>
-        </Group>
-        {!component && (
-          <Text
-            size='sm'
-            className={operations.meta}
-          >{t`Position focus is unavailable until the current reference records are read.`}</Text>
+        {view === 'model' && (
+          <Group justify='space-between' wrap='wrap'>
+            <Stack gap={2}>
+              <Text size='sm' fw={600}>
+                {t`Selected reference position`}: {referencePartLabel(selected)}
+              </Text>
+            </Stack>
+            <Button
+              size='xs'
+              variant='light'
+              disabled={!component}
+              onClick={() => {
+                if (!component) return;
+                openGlobalAIChatAboutWork({
+                  workOrderId: null,
+                  lifecycleVersion: null,
+                  component,
+                  label: `${machine.name} · ${referencePartLabel(selected)}`,
+                  returnPath: `/machines/machine/${machine.pk}/equipment/?position=${selected}&view=model`
+                });
+              }}
+            >{t`Ask about this position`}</Button>
+          </Group>
         )}
       </Stack>
     </EquipmentViewControls>

@@ -30,7 +30,7 @@ export function MachinePageSummary({
   const pageDescription = t`Page counts only. ${facts.normal} normal; ${facts.unknown} condition unknown; ${facts.offline} with no current data. Stale signals on ${facts.stale} machines. ${coverage}. Telemetry, run/stop and communication status unavailable here.`;
   const countLabel =
     rows.length < total
-      ? t`This page · ${rows.length} of ${total} machines`
+      ? t`${rows.length} of ${total}`
       : plural(total, { one: '# machine', other: '# machines' });
   const alarmToggle = (
     <UnstyledButton

@@ -1,5 +1,5 @@
 import { t } from '@lingui/core/macro';
-import { Anchor, Badge, Box, Text, useMatches } from '@mantine/core';
+import { Anchor, Box, Text, Tooltip, useMatches } from '@mantine/core';
 import { useCallback, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { RefreshAction } from '../../components/buttons/RefreshAction';
@@ -25,7 +25,7 @@ import {
   referencePartLabel
 } from '../../pages/assets/equipment/referenceParts';
 import { useUserState } from '../../states/UserState';
-import { ComponentProvenance } from './ComponentFacts';
+import { ComponentBasis } from './ComponentFacts';
 import { ComponentSlotDetail } from './ComponentSlotDetail';
 import classes from './MachineComponentTable.module.css';
 
@@ -77,7 +77,7 @@ export function MachineComponentTable({
         description: t`Filter by review status`,
         type: 'choice',
         choices: [
-          { value: 'draft', label: t`Draft` },
+          { value: 'draft', label: t`Pending check` },
           { value: 'verified', label: t`Verified` }
         ]
       }
@@ -119,17 +119,22 @@ export function MachineComponentTable({
         sortable: false,
         render: (record) => (
           <div className={classes.nameActions}>
-            <Anchor
-              className={classes.link}
-              component='button'
-              type='button'
-              size='sm'
-              ta='left'
-              onClick={() => openSlot(record.pk)}
-              aria-haspopup='dialog'
+            <Tooltip
+              label={record.code}
+              events={{ hover: true, focus: true, touch: true }}
             >
-              {record.name}
-            </Anchor>
+              <Anchor
+                className={classes.link}
+                component='button'
+                type='button'
+                size='sm'
+                ta='left'
+                onClick={() => openSlot(record.pk)}
+                aria-haspopup='dialog'
+              >
+                {record.name}
+              </Anchor>
+            </Tooltip>
             {phone && (
               <details className={classes.phoneDetails}>
                 <summary
@@ -137,10 +142,8 @@ export function MachineComponentTable({
                 >{t`Details`}</summary>
                 <div className={classes.secondaryFacts}>
                   {[
-                    ...(station ? ['machine_name'] : []),
-                    'reference_position',
-                    'fitted_item',
-                    'provenance'
+                    ...(station ? ['machine_name'] : ['reference_position']),
+                    'fitted_item'
                   ].map((accessor) => {
                     const column = columns.find(
                       (item) => item.accessor === accessor
@@ -166,7 +169,7 @@ export function MachineComponentTable({
         // R6 P13: where this slot sits on the reference model (owner rule O11).
         accessor: 'reference_position',
         title: t`3D position`,
-        hidden: phone,
+        hidden: phone || station,
         width: '10%',
         sortable: false,
         render: (record) => {
@@ -199,7 +202,9 @@ export function MachineComponentTable({
         // A successful empty fit read differs from a withheld/unavailable read.
         accessor: 'fitted_item',
         title: t`Fitted item`,
-        hidden: phone,
+        hidden:
+          phone ||
+          !table.records.some((row: MachineComponent) => !!row.fitted?.current),
         width: '10%',
         sortable: false,
         render: (record) =>
@@ -245,45 +250,9 @@ export function MachineComponentTable({
       {
         accessor: 'status',
         title: t`Fit basis`,
-        width: '8%',
+        width: '20%',
         sortable: false,
-        // Keep the explanation on focus/hover while the table stays compact.
-        render: (record) => (
-          <ValueTooltip
-            focusable={record.status !== 'verified'}
-            label={
-              record.status === 'verified'
-                ? t`Assignment verified`
-                : t`Slot assignment not verified`
-            }
-            accessibleLabel={
-              record.status === 'verified'
-                ? t`Verified: assignment verified`
-                : t`Draft: slot assignment not verified`
-            }
-            data-table-tooltip
-            className={classes.fitTarget}
-          >
-            <Badge
-              component='span'
-              className={classes.fit}
-              data-verified={record.status === 'verified'}
-              size='sm'
-              variant='outline'
-              color={record.status === 'verified' ? 'green' : 'gray'}
-            >
-              {record.status === 'verified' ? t`Verified` : t`Draft`}
-            </Badge>
-          </ValueTooltip>
-        )
-      },
-      {
-        accessor: 'provenance',
-        title: t`Source`,
-        hidden: phone,
-        width: '12%',
-        sortable: false,
-        render: (record) => <ComponentProvenance record={record} />
+        render: (record) => <ComponentBasis record={record} />
       },
       {
         accessor: 'open_work',
@@ -370,7 +339,8 @@ export function MachineComponentTable({
     linkParts,
     showStock,
     openSlot,
-    phone
+    phone,
+    table.records
   ]);
 
   const records = table.records as MachineComponent[];

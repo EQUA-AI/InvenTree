@@ -136,6 +136,7 @@ def machine_positions(actor, machine, *, now=None) -> dict:
 
     from users.permissions import check_user_role
 
+    from .provenance import component_provenance_kind
     from .recorded_facts import fit_projection, fit_queryset
 
     if check_user_role(actor, 'stock', 'view'):
@@ -225,6 +226,8 @@ def machine_positions(actor, machine, *, now=None) -> dict:
                     'name': slot.name,
                     'status': slot.status,
                     'provenance': slot.provenance,
+                    'provenance_kind': component_provenance_kind(slot.provenance),
+                    'review_note': slot.review_note,
                     'part': {
                         'pk': slot.part.pk,
                         'name': slot.part.name,
