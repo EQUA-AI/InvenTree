@@ -45,6 +45,20 @@ then `runmigrations`, then `--check` again). Take a fresh backup first. For an
 IOT-Merge build this replaces the "the deployer does not run migrations" rule
 below. Agree the run with the IOT-Merge maintainer before touching Azure.
 
+**Update, 23 October: UI polish build.** The IOT-Merge and `inventTree-aniket`
+heads from 23 October add no migrations: Azure still needs only the no-op aichat
+`0056` above. Backend changes are read-path only: the pumphouse layout reports
+plant flow in cusec (the plant's recorded unit), the Parts API returns a typed
+`provenance_kind` with `provenance_display`, and the machines and location APIs
+accept `active` / `active_only` filters (the UI hides inactive machines and
+archived locations by default). On 22 October the owner approved data-only
+changes on Azure, applied row by row with guards and backed up: six demo sites
+archived, 32 demo/test machines inactive, the health source renamed "Cedar
+Creek SCADA", placeholder serials blanked, plain machine descriptions, tidied
+parts notes, attachment comments and part names, and readable signal names.
+Provisional bearing alarm limits and the local `operator` account exist only in
+the coordinator's local copy, not on Azure.
+
 ---
 
 ## 1. Purpose and scope
