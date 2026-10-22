@@ -1,4 +1,3 @@
-import { historyInformation, samplingInformation } from './presentationAssertions';
 import { expect, test } from '@playwright/test';
 import type { FaultOccurrence } from '../../src/pages/assets/faults/occurrenceModel';
 import { nativeBaseline } from '../s0/guards';
@@ -9,6 +8,10 @@ import {
   openFaultHistory
 } from './machineWorkFixtures';
 import { openPerformance } from './performanceFixtures';
+import {
+  historyInformation,
+  samplingInformation
+} from './presentationAssertions';
 
 nativeBaseline();
 for (const asLive of [true, false]) {
@@ -182,13 +185,21 @@ for (const asLive of [true, false]) {
           Date.parse(series[0].searchParams.get('from')!)
       ).toBe(30 * 86400_000);
       expect(series[0].searchParams.get('points')).toBe('240');
-      await historyInformation(page, card, 'Sampled history; gaps are not filled');
+      await historyInformation(
+        page,
+        card,
+        'Sampled history; gaps are not filled'
+      );
     } else {
       await expect(
         page.getByTestId('anomaly-time-shift').first()
       ).toContainText('Shifted +3 h');
-      await expect(card.getByText('Times are shown on the dashboard clock')).toHaveCount(0);
-      await expect(page.getByTestId('anomaly-time-shift').first()).toContainText('Shifted +3 h');
+      await expect(
+        card.getByText('Times are shown on the dashboard clock')
+      ).toHaveCount(0);
+      await expect(
+        page.getByTestId('anomaly-time-shift').first()
+      ).toContainText('Shifted +3 h');
       await card.getByRole('combobox', { name: 'Range', exact: true }).click();
       await expect(
         page.getByRole('option', { name: '30 days', exact: true })
@@ -255,7 +266,9 @@ for (const asLive of [true, false]) {
         )
         .toBe(true);
       await samplingInformation(page, 'Sampled: one reading every 3 h');
-      await expect(status.getByRole('switch', { name: 'Live updates: Live', exact: true })).toBeChecked();
+      await expect(
+        status.getByRole('switch', { name: 'Live updates: Live', exact: true })
+      ).toBeChecked();
       await expect(status.locator('time')).toHaveCount(1);
       await expect(status.getByText('Live', { exact: true })).toHaveCount(1);
     } else {

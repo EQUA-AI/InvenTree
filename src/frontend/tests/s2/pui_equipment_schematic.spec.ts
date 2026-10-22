@@ -44,7 +44,9 @@ function stationMimic(unit: string | null) {
     station_points: {},
     bays: ['P1', 'P2'].map((key) => ({
       key,
-      name: key,
+      // The mimic API supplies the pump machine's name, separate from its key.
+      machine: key === 'P1' ? 18 : 19,
+      name: key === 'P1' ? 'Synthetic pump' : 'Pump 02',
       active: true,
       state: 'running',
       points: {}
@@ -159,7 +161,9 @@ test('a schematic link opens the schematic, and a missing schematic offers the r
   await page.goto(
     `/playwright/s2-equipment.html?kind=panel&entry=${encodeURIComponent('/machines/machine/18/equipment/?view=schematic')}`
   );
-  await expect(page.getByText('Process schematic unavailable', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('Process schematic unavailable', { exact: true })
+  ).toBeVisible();
   await chooseView(page, '3D model');
   await expect(page.locator('[data-scene-phase="ready"]')).toBeVisible();
 });
@@ -180,12 +184,16 @@ test('a pump in a station has one Equipment tab whose schematic is its native mi
   );
   // No competing tab beside it.
   await expect(tab(page, 'Pump mimic')).toHaveCount(0);
-  await chooseView(page, 'Process schematic');
-  await expect(page.getByRole('heading', { name: 'Synthetic pump', exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole('radiogroup', { name: 'Equipment view' })
+      .getByRole('radio', { name: 'Process schematic', exact: true })
+  ).toBeChecked();
+  await expect(
+    page.getByRole('heading', { name: 'Synthetic pump', exact: true })
+  ).toBeVisible();
   expect(reads).toContain('P1');
-  await expect(destination(page)).toHaveText(
-    '/machines/machine/18/equipment/?view=schematic'
-  );
+  await expect(destination(page)).toHaveText('/machines/machine/18/equipment/');
   // The station crumb opens the station's own mimic, not Details.
   await expect(
     page.getByRole('link', {
@@ -216,7 +224,9 @@ test('the old pump mimic link opens Equipment view on the schematic, keeping wha
     'aria-selected',
     'true'
   );
-  await expect(page.getByRole('heading', { name: 'Synthetic pump', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Synthetic pump', exact: true })
+  ).toBeVisible();
 });
 
 test("Health's mimic link leads to the pump's schematic", async ({ page }) => {
@@ -264,7 +274,9 @@ test("Health's mimic link leads to the pump's schematic", async ({ page }) => {
     'aria-selected',
     'true'
   );
-  await expect(page.getByRole('heading', { name: 'Synthetic pump', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Synthetic pump', exact: true })
+  ).toBeVisible();
 });
 
 test('a station keeps its own mimic tab and gets no 3D view', async ({
@@ -326,7 +338,9 @@ test("following the station crumb or the station mimic link from a pump's schema
         .click()
   ]) {
     await machinePage(page, '/machines/machine/18/equipment/?view=schematic');
-    await expect(page.getByRole('heading', { name: 'Synthetic pump', exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Synthetic pump', exact: true })
+    ).toBeVisible();
     await follow(page);
     // The station's own mimic - not a bounce back to the pump it came from.
     await expect(tab(page, 'Pumphouse mimic')).toHaveAttribute(
@@ -347,10 +361,16 @@ for (const scheme of ['light', 'dark'])
     await page.goto(
       `/playwright/s2-equipment.html?kind=panel&schematic=yes&scheme=${scheme}`
     );
-    await page.getByText('Process schematic', { exact: true }).click();
+    await expect(
+      page.getByRole('radio', { name: 'Process schematic', exact: true })
+    ).toBeChecked();
     await expect(page.getByTestId('fixture-schematic')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Ask about this position' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Select a reference position' })).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: 'Ask about this position' })
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: 'Select a reference position' })
+    ).toHaveCount(0);
     await chooseView(page, '3D model');
     await page.locator('[data-position="bearing"]').click();
     await page.getByRole('button', { name: 'Ask about this position' }).click();

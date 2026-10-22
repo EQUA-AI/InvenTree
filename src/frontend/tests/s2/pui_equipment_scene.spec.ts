@@ -228,7 +228,9 @@ test('the Equipment view says it is a reference model and owns the selection', a
     await openScene(page, { view: 'panel', scheme });
     await expect(ready(page)).toBeVisible();
     await page.getByText('Reference model', { exact: true }).hover();
-    await expect(page.getByRole('tooltip')).toContainText('Vertical reference model');
+    await expect(page.getByRole('tooltip')).toContainText(
+      'Vertical reference model'
+    );
     await expect(page.locator('[data-selected-position]')).toHaveText(
       'Selected: Complete pump train'
     );
@@ -268,7 +270,9 @@ test("a pump's native machine page explicitly opens the reference model", async 
   await expect(ready(page)).toBeVisible();
   await expect(canvases(page)).toHaveCount(1);
   await page.getByText('Reference model', { exact: true }).hover();
-    await expect(page.getByRole('tooltip')).toContainText('Vertical reference model');
+  await expect(page.getByRole('tooltip')).toContainText(
+    'Vertical reference model'
+  );
   // Native panels stay where they were; Details remains the first.
   const tabs = await page.getByRole('tab').allInnerTexts();
   expect(tabs.slice(0, 2)).toEqual(['Details', 'Equipment view']);

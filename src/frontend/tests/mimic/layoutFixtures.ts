@@ -19,6 +19,23 @@ export const layout = JSON.parse(
 export const observed = '2026-10-22T06:32:41Z';
 export const bearingName =
   'Motor non-drive-end bearing vibration and temperature';
+// Reviewed stand-off annotations deliberately differ from the catalogue's
+// native geometry coordinates. Keep this expected drawing contract explicit.
+export const markerCoordinates = [
+  [468, 68],
+  [702, 160],
+  [430, 198],
+  [436, 246],
+  [480, 280],
+  [656, 349],
+  [730, 272],
+  [594, 390],
+  [488, 351],
+  [484, 518],
+  [646, 395],
+  [708, 352],
+  [786, 352]
+] as const;
 function point(
   pointer: string,
   label: string,

@@ -74,8 +74,17 @@ test('pending and partial batches never start per-row trend reads', async ({
   const missing = page.getByRole('button', { name: /^Not returned:/ });
   await expect(missing).toHaveCount(2);
   await expect(missing.first()).toHaveText('—');
+  // All-columns selection uses a pointer on phone; enter keyboard modality
+  // before checking a tooltip that deliberately opens on visible focus.
+  await page.keyboard.press('Tab');
   await missing.first().focus();
-  await expect(page.getByRole('tooltip')).toContainText('completed trend read did not return this signal');
+  await expect(missing.first()).toBeFocused();
+  await expect(page.getByRole('tooltip')).toContainText(
+    'completed trend read did not return this signal'
+  );
+  await expect(missing.first()).toHaveAccessibleDescription(
+    /completed trend read did not return this signal/
+  );
   await expect(
     page.getByRole('cell', { name: '0 MW', exact: true })
   ).toBeVisible();

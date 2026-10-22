@@ -1,6 +1,12 @@
 import { type Locator, type Page, expect, test } from '@playwright/test';
 import { nativeBaseline } from '../s0/guards';
-import { bearingName, fixture, layout, observed } from './layoutFixtures';
+import {
+  bearingName,
+  fixture,
+  layout,
+  markerCoordinates,
+  observed
+} from './layoutFixtures';
 import { mimicEntry } from './navigation';
 
 nativeBaseline();
@@ -48,7 +54,13 @@ async function contained(page: Page, phone: boolean) {
     await page.evaluate(() => document.documentElement.scrollWidth)
   ).toBeLessThanOrEqual((page.viewportSize()?.width ?? 0) + 1);
   if (!phone) return;
-  const targets = await page.locator('button, a, input').evaluateAll((nodes) =>
+  // Measure the production mimic controls, excluding the native harness's
+  // separate fixture-refresh toolbar.
+  const controls = page.locator(
+    '[data-mimic-motion] button, [data-mimic-motion] a, [data-mimic-motion] input'
+  );
+  expect(await controls.count()).toBeGreaterThan(0);
+  const targets = await controls.evaluateAll((nodes) =>
     nodes
       .map((node) => {
         const rectangle = node.getBoundingClientRect();
@@ -88,6 +100,9 @@ async function noCaptions(page: Page) {
     page.getByText(/^Points without configured thresholds/)
   ).toBeHidden();
   await expect(page.getByText(/^\d+ unavailable$/)).toBeHidden();
+  await expect(
+    page.getByText('Times: your clock', { exact: true })
+  ).toHaveCount(0);
 }
 
 async function focusTooltip(page: Page, target: Locator) {
@@ -150,7 +165,12 @@ for (const size of sizes) {
         }
         await expect(
           page.locator('[data-station-metric="forebay"] [data-reading-value]')
-        ).toHaveText('120.972 m');
+        ).toHaveText('120.97 m');
+        await expect(
+          page.locator(
+            '[data-station-metric="pumps-running"] [data-reading-value]'
+          )
+        ).toHaveText('0 of 14');
         await expect(
           page.locator(
             '[data-station-metric="station-status"] [data-reading-value]'
@@ -185,7 +205,7 @@ for (const size of sizes) {
         } else {
           await expect(
             page.getByText('Swipe to view all pump bays', { exact: true })
-          ).toBeVisible();
+          ).toHaveCount(0);
           expect(
             await strip.evaluate(
               (node) =>
@@ -223,13 +243,13 @@ for (const size of sizes) {
         );
         await page.keyboard.press('Enter');
         await expect(
-          page.getByRole('heading', { name: 'Pump unit: P14', exact: true })
+          page.getByRole('heading', { name: 'Synthetic pump 14', exact: true })
         ).toBeVisible();
         await page
           .getByRole('button', { name: 'Overview only', exact: true })
           .click();
         await expect(
-          page.getByRole('heading', { name: 'Pump unit: P14', exact: true })
+          page.getByRole('heading', { name: 'Synthetic pump 14', exact: true })
         ).toHaveCount(0);
         await expect(stripMetrics).toHaveCount(5);
         await expect(page.locator('[data-section="station"]')).toHaveCount(0);
@@ -251,11 +271,11 @@ for (const size of sizes) {
         await expect(
           page
             .getByRole('tooltip')
-            .filter({ hasText: 'physical arrangement unverified' })
-        ).toBeVisible();
+            .filter({ hasText: 'Layout pending plant approval' })
+        ).toContainText('Synthetic regression fixture');
       });
 
-      test('P7 values, full part labels and native markers stay clear of the pump', async ({
+      test('P7 values, full part labels and stand-off markers stay clear of the pump', async ({
         page
       }) => {
         await page.goto(mimicEntry(`/?scheme=${scheme}&pump=P7`));
@@ -296,10 +316,25 @@ for (const size of sizes) {
           expect(geometry.width).toBeGreaterThanOrEqual(contentBox.width * 0.5);
           expect(geometry.height).toBeGreaterThanOrEqual(size.height * 0.6);
         }
-        for (const callout of await callouts.all()) {
-          expect((await box(callout)).y).toBeGreaterThanOrEqual(
-            drawingBox.y + drawingBox.height - 1
-          );
+        for (const side of ['left', 'right'] as const) {
+          for (const callout of await page
+            .locator(`[data-callout-column="${side}"] button[data-part]`)
+            .all()) {
+            const calloutBox = await box(callout);
+            if (size.name === 'phone') {
+              expect(calloutBox.y).toBeGreaterThanOrEqual(
+                drawingBox.y + drawingBox.height - 1
+              );
+            } else if (side === 'left') {
+              expect(calloutBox.x + calloutBox.width).toBeLessThanOrEqual(
+                drawingBox.x + 1
+              );
+            } else {
+              expect(calloutBox.x).toBeGreaterThanOrEqual(
+                drawingBox.x + drawingBox.width - 1
+              );
+            }
+          }
         }
         for (const name of await callouts.locator('[data-part-label]').all()) {
           const bounds = await name.evaluate((node) => {
@@ -342,6 +377,11 @@ for (const size of sizes) {
             ).toBeLessThanOrEqual(1);
           }
         }
+        const expectedMarkers = (layout.parts ?? []).map((part, index) => ({
+          ...part,
+          x: markerCoordinates[index][0],
+          y: markerCoordinates[index][1]
+        }));
         const markers = await page
           .locator('[data-part-markers] > [data-part]')
           .evaluateAll(
@@ -375,18 +415,18 @@ for (const size of sizes) {
                     Math.hypot(matrix.a, matrix.b)
                 };
               }),
-            layout.parts ?? []
+            expectedMarkers
           );
         expect(markers).toHaveLength(13);
         for (const [index, marker] of markers.entries()) {
           expect(marker.number).toBe(String(index + 1));
           expect(
             marker.xError,
-            `${marker.code}: native position x`
+            `${marker.code}: reviewed annotation x`
           ).toBeLessThanOrEqual(1);
           expect(
             marker.yError,
-            `${marker.code}: native position y`
+            `${marker.code}: reviewed annotation y`
           ).toBeLessThanOrEqual(1);
           expect(
             marker.font,
@@ -419,7 +459,7 @@ for (const size of sizes) {
             .evaluateAll((nodes) =>
               nodes.map((node) => node.getAttribute('data-part'))
             );
-          const expected = (layout.parts ?? [])
+          const expected = expectedMarkers
             .filter((part) => (side === 'left' ? part.x < 550 : part.x >= 550))
             .sort((a, b) => a.y - b.y || a.x - b.x)
             .map((part) => part.code);

@@ -2,7 +2,7 @@ import { type Page, expect, test } from '@playwright/test';
 import type { RecurrencePolicy } from '../../lib/types/WorkExecution';
 import type { FaultOccurrence } from '../../src/pages/assets/faults/occurrenceModel';
 import { nativeBaseline } from '../s0/guards';
-import { openHealth } from '../s3/healthFixtures';
+import { openHealth, signalTable } from '../s3/healthFixtures';
 import {
   mockFaultHistory,
   occurrences,
@@ -208,7 +208,15 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(
       disclosure.getByText('Recorded active deviations', { exact: true })
     ).toBeVisible();
-    await expect(disclosure).toContainText('before, during and after');
+    await expect(disclosure).not.toContainText('before, during and after');
+    const current = disclosure.getByTestId('current-monitoring');
+    await expect(
+      current.getByText('Current Health state', { exact: true })
+    ).toBeVisible();
+    await expect(current.getByText('Warning', { exact: true })).toBeVisible();
+    await expect(disclosure.getByTestId('current-monitoring')).toContainText(
+      'Synthetic SCADA'
+    );
     await expect(disclosure).toContainText('NEW-903');
     await expect(disclosure).toContainText(
       'Latest observation: 20 Oct 2026 11:10:00'
@@ -427,7 +435,13 @@ test('Health keeps current observations distinct from retained occurrence eviden
       'Configured proactive monitoring applies before, during and after maintenance and Closeout.',
       { exact: false }
     )
-  ).toBeVisible();
+  ).toHaveCount(0);
+  const currentFlow = signalTable(page).getByRole('row', {
+    name: /Discharge flow/
+  });
+  await expect(currentFlow).toContainText('812.5');
+  await expect(currentFlow).not.toContainText('118.4');
+  await expect(signalTable(page)).not.toContainText('Retained snapshot');
   await containment(page);
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({

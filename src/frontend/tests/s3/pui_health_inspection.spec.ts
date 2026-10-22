@@ -89,7 +89,9 @@ for (const scheme of ['light', 'dark'] as const) {
     );
     // Expansion retains the same parameter, range and exact provider window.
     expect(requests.chart.at(-1)!.search).toBe(selectedWindow);
-    await expect(modal.getByText(/^Selected window:|Times: your clock/)).toHaveCount(0);
+    await expect(
+      modal.getByText(/^Selected window:|Times: your clock/)
+    ).toHaveCount(0);
     await expect(modal.locator('.recharts-area-curve')).toHaveAttribute(
       'stroke',
       /blue-6/
