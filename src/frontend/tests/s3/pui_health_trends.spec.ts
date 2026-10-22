@@ -186,15 +186,38 @@ test('recorded zero, empty read, no source history and a missing row stay distin
   expect(subpaths(await rowGraphPath(page, 'Bypass flow'))).toHaveLength(1);
   const row = (name: string) =>
     table.getByRole('row').filter({ hasText: name });
-  for (const [name, reason] of [['Seal flush flow', 'No samples'], ['Cooling water flow', 'History unavailable'], ['Winding temperature', 'Not returned']]) {
+  for (const [name, reason] of [
+    ['Seal flush flow', 'No samples in window'],
+    ['Cooling water flow', 'History unavailable'],
+    ['Winding temperature', 'Not returned']
+  ]) {
     const reading = row(name);
-    const details = reading.getByRole('button', { name: `Details for ${name}`, exact: true });
-    if (await details.isVisible() && await details.getAttribute('aria-expanded') === 'false') await details.click();
-    const missing = reading.getByRole('button', { name: new RegExp(`^${reason}:`) });
+    const details = reading.getByRole('button', {
+      name: `Details for ${name}`,
+      exact: true
+    });
+    if (
+      (await details.isVisible()) &&
+      (await details.getAttribute('aria-expanded')) === 'false'
+    )
+      await details.click();
+    const missing = reading.getByRole('button', {
+      name: new RegExp(`^${reason}:`)
+    });
     await expect(missing).toHaveText('—');
+    await page.mouse.move(0, 0);
     await page.keyboard.press('Tab');
+    await expect(page.locator('[role="tooltip"]:visible')).toHaveCount(0);
     await missing.focus();
-    await expect(page.getByRole('tooltip')).toContainText(reason);
+    await expect(missing).toBeFocused();
+    await expect(missing).toHaveAttribute('aria-describedby', /.+/);
+    const description = await missing.getAttribute('aria-describedby');
+    await expect(
+      page.locator(`[role="tooltip"][id="${description}"]`)
+    ).toBeVisible();
+    await expect(
+      page.locator(`[role="tooltip"][id="${description}"]`)
+    ).toContainText(reason);
   }
 
   await chooseParameter(page, 'Bypass flow (m³/h)');
@@ -247,7 +270,9 @@ test('source outages, timeouts, unsupported history and missing batch rows have 
         : index === 2
           ? 'No history'
           : 'History unavailable';
-    const status = row.getByRole('button', { name: index < 2 ? 'Read failed' : new RegExp(`^${label}:`) });
+    const status = row.getByRole('button', {
+      name: index < 2 ? 'Read failed' : new RegExp(`^${label}:`)
+    });
     if (info.project.name.includes('phone')) {
       // Phone cards keep three facts; the Trend status is in the row details.
       const details = row.getByRole('button', {
@@ -259,8 +284,14 @@ test('source outages, timeouts, unsupported history and missing batch rows have 
     }
     await expect(status).toBeVisible();
     // Missing/failed history remains a real keyboard target.
-    await page.keyboard.press('Tab');
-    await status.focus();
+    await page.mouse.move(0, 0);
+    await row
+      .getByRole('button', { name: `Inspect signal: ${reason}`, exact: true })
+      .focus();
+    for (let step = 0; step < 8; step++) {
+      await page.keyboard.press('Tab');
+      if (await status.evaluate((el) => el === document.activeElement)) break;
+    }
     await expect(status).toBeFocused();
     await expect(status).toHaveAttribute('aria-describedby', /.+/);
     const reasonId = await status.getAttribute('aria-describedby');
@@ -284,7 +315,12 @@ test('source outages, timeouts, unsupported history and missing batch rows have 
         'No history for this signal'
       );
   }
-  await expect(table.getByRole('row').filter({ hasText: 'Missing batch row' }).getByRole('button', { name: /^Not returned:/, includeHidden: true })).toHaveText('—');
+  await expect(
+    table
+      .getByRole('row')
+      .filter({ hasText: 'Missing batch row' })
+      .getByRole('button', { name: /^Not returned:/, includeHidden: true })
+  ).toHaveText('—');
 });
 
 test('invalid readings stay distinct from a sparse record with truthful drawable counts', async ({
@@ -298,10 +334,19 @@ test('invalid readings stay distinct from a sparse record with truthful drawable
   });
   const table = signalTable(page);
   await expect(
-    table.getByRole('row').filter({ hasText: 'All invalid' }).getByRole('button', { name: /^No drawable readings:/, includeHidden: true })
+    table
+      .getByRole('row')
+      .filter({ hasText: 'All invalid' })
+      .getByRole('button', {
+        name: /^No drawable readings:/,
+        includeHidden: true
+      })
   ).toHaveText('—');
   await expect(
-    table.getByRole('row').filter({ hasText: 'One drawable' }).getByRole('button', { name: /^1 of 121 drawable:/, includeHidden: true })
+    table
+      .getByRole('row')
+      .filter({ hasText: 'One drawable' })
+      .getByRole('button', { name: /^1 of 121 drawable:/, includeHidden: true })
   ).toHaveText('—');
   await expect(trendCard(page)).toContainText('No drawable readings');
   await expect(curve(page)).toHaveCount(0);
@@ -419,17 +464,21 @@ test('a raw unitless vibration channel keeps its own units', async ({
   await inspect.press('Shift+Tab');
   await expect(details).toBeFocused();
   const detailTooltip = page.getByRole('tooltip', {
-    name: /^1834/
+    name: /^Unit not reported by the plant/
   });
   await expect(detailTooltip).toBeVisible();
   await expect(details).toHaveAttribute(
     'aria-describedby',
     (await detailTooltip.getAttribute('id'))!
   );
+  await expect(details).toHaveAccessibleDescription(
+    /^Unit not reported by the plant/
+  );
   await details.press('Tab');
   await expect(inspect).toBeFocused();
-  await expect(trendCard(page).getByText('unit not recorded', { exact: true })).toHaveCount(0);
-  await expect(details).toHaveAccessibleDescription(/unit not confirmed|unit not recorded|unit unavailable|No unit/i);
+  await expect(
+    trendCard(page).getByText('unit not recorded', { exact: true })
+  ).toHaveCount(0);
   await expect(
     trendCard(page).locator('.recharts-cartesian-axis-tick-value')
   ).not.toContainText(['unit not recorded']);

@@ -1,7 +1,7 @@
-import { samplingInformation } from './presentationAssertions';
 import { expect, test } from '@playwright/test';
 import { nativeBaseline } from '../s0/guards';
 import { NATIVE_SIGNALS, openPausedPerformance } from './performanceFixtures';
+import { samplingInformation } from './presentationAssertions';
 
 nativeBaseline();
 for (const scheme of ['light', 'dark'] as const)
@@ -150,15 +150,16 @@ for (const scheme of ['light', 'dark'] as const)
     page
   }, info) => {
     const signals = [
+      ...NATIVE_SIGNALS.filter((s) =>
+        /PUMP1_(ACTIVE_POWER|SPEED)$/.test(s.key)
+      ),
       ...Array.from({ length: 200 }, (_, i) => ({
         key: `/dex/PUMP1_EXTRA_CADENCE_${i}`,
         name: `Extra cadence ${i}`,
         value: i,
         unit: 'bar'
       })),
-      ...NATIVE_SIGNALS.filter((s) =>
-        /PUMP1_(ACTIVE_POWER|SPEED)$|WINDING_TEMPERATURED[1-4]$/.test(s.key)
-      )
+      ...NATIVE_SIGNALS.filter((s) => /WINDING_TEMPERATURED[1-4]$/.test(s.key))
     ];
     const requests = await openPausedPerformance(page, {
       recordedTelemetryAsLive: false,
@@ -192,7 +193,8 @@ for (const scheme of ['light', 'dark'] as const)
     await expect(curve).toHaveAttribute('d', /L/);
     await expect(page.getByTestId('history-provenance')).toHaveCount(0);
     await samplingInformation(page, '2 bounded history batches');
-    const powerPoints = ((await curve.getAttribute('d'))!.match(/[ML]/g) ?? []).length;
+    const powerPoints = ((await curve.getAttribute('d'))!.match(/[ML]/g) ?? [])
+      .length;
     expect(powerPoints).toBeGreaterThan(2);
     await page
       .getByRole('button', {
@@ -204,7 +206,12 @@ for (const scheme of ['light', 'dark'] as const)
     await expect(
       winding.locator('path.recharts-line-curve').first()
     ).toHaveAttribute('d', /L/);
-    const windingPoints = ((await winding.locator('path.recharts-line-curve').first().getAttribute('d'))!.match(/[ML]/g) ?? []).length;
+    const windingPoints = (
+      (await winding
+        .locator('path.recharts-line-curve')
+        .first()
+        .getAttribute('d'))!.match(/[ML]/g) ?? []
+    ).length;
     expect(windingPoints).toBeGreaterThan(2);
     expect(windingPoints).toBeLessThan(powerPoints);
     await section.screenshot({

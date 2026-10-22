@@ -1,5 +1,5 @@
-import { historyInformation, samplingInformation } from './presentationAssertions';
 import { expect, test } from '@playwright/test';
+import { NOW } from '../performance/fixtures';
 import { nativeBaseline } from '../s0/guards';
 import {
   mockFaultHistory,
@@ -8,6 +8,10 @@ import {
   openFaultHistory
 } from './machineWorkFixtures';
 import { openPerformance } from './performanceFixtures';
+import {
+  historyInformation,
+  samplingInformation
+} from './presentationAssertions';
 
 nativeBaseline();
 const from = '2026-10-01T00:00:00.000Z';
@@ -51,9 +55,18 @@ for (const scheme of ['light', 'dark'] as const)
     await expect.poll(() => requests.length).toBe(1);
     expect(requests[0].searchParams.get('from')).toBe(from);
     expect(requests[0].searchParams.get('to')).toBe(to);
+    const currentPower = page.locator('[data-kpi="power"]');
+    await expect(currentPower.locator('[data-kpi-value]')).toHaveText('8.42');
+    await expect(currentPower.locator('time')).toHaveAttribute(
+      'datetime',
+      new Date(NOW - 20_000).toISOString()
+    );
     await expect(page.getByTestId('history-provenance')).toHaveCount(0);
     await historyInformation(page);
-    await page.getByRole('button', { name: 'History information', exact: true }).screenshot({ path: info.outputPath(`history-${scheme}.png`) });
+    await samplingInformation(page, 'Sampled: one reading every');
+    await page
+      .getByRole('button', { name: 'History information', exact: true })
+      .screenshot({ path: info.outputPath(`history-${scheme}.png`) });
     await page
       .getByRole('button', { name: 'Investigate this period', exact: true })
       .click();
@@ -132,7 +145,10 @@ test('partial bindings failure names affected charts, comparison and Other cover
     signals,
     failSeries: (url) => !!url.searchParams.get('bindings')
   });
-  await samplingInformation(page, 'Partial history: some bounded batches failed');
+  await samplingInformation(
+    page,
+    'Partial history: some bounded batches failed'
+  );
   await expect(page.getByTestId('history-provenance')).toHaveCount(0);
   await page.getByRole('combobox', { name: 'Section', exact: true }).click();
   await page
@@ -345,7 +361,10 @@ for (const scheme of ['light', 'dark'] as const)
           .includes('/dex/PUMP1_ACTIVE_POWER')
     });
     await expect.poll(() => requests.length).toBe(2);
-    await samplingInformation(page, 'Partial history: some bounded batches failed');
+    await samplingInformation(
+      page,
+      'Partial history: some bounded batches failed'
+    );
     await expect(page.getByTestId('history-provenance')).toHaveCount(0);
     const card = page
       .locator('.mantine-Paper-root')

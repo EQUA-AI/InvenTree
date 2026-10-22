@@ -101,8 +101,15 @@ for (const scheme of ['light', 'dark'] as const) {
       await expect(row.locator('td').nth(3)).toContainText(
         'Warning below 600 cusec'
       );
+      await details.blur();
+      await page.mouse.move(0, 0);
+      await expect(page.locator('[role="tooltip"]:visible')).toHaveCount(0);
       await row.locator('td').nth(4).locator('time').hover();
-      await expect(page.getByRole('tooltip')).toContainText('18 Oct 2026');
+      await expect(
+        page.getByRole('tooltip', { name: /^Observed: 18 Oct 2026/ })
+      ).toBeVisible();
+      await page.mouse.move(0, 0);
+      await expect(page.locator('[role="tooltip"]:visible')).toHaveCount(0);
       await expect(row.locator('td').nth(5)).toHaveText('Good');
       await expect(
         row
@@ -148,6 +155,7 @@ for (const scheme of ['light', 'dark'] as const) {
       .filter({ hasText: 'Stale discharge flow' })
       .getByRole('button', { name: 'Stale', exact: true });
     await expect(stale).toBeVisible();
+    await page.keyboard.press('Tab');
     await stale.focus();
     await expect(page.getByRole('tooltip')).toHaveText(
       'Not assessed: stale last-known reading'
@@ -243,6 +251,9 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(page.getByRole('tooltip')).toContainText(
       'No critical-signal designation is supplied.'
     );
+    await coverage.blur();
+    await page.mouse.move(0, 0);
+    await expect(page.locator('[role="tooltip"]:visible')).toHaveCount(0);
     const table = signalTable(page);
     await expect(table.getByRole('columnheader')).toHaveCount(7);
     expect(await table.locator('th').allTextContents()).toEqual([
@@ -265,7 +276,15 @@ for (const scheme of ['light', 'dark'] as const) {
       await expect(badge).toBeVisible();
       await expect(
         row.getByRole('button', { name: state, exact: true })
-      ).toBeVisible();
+      ).toHaveCount(0);
+      await badge.hover();
+      await expect(page.getByRole('tooltip')).toContainText(
+        state === 'Normal'
+          ? "Normal within this signal's configured limits"
+          : `${state} against configured limits`
+      );
+      await page.mouse.move(0, 0);
+      await expect(page.locator('[role="tooltip"]:visible')).toHaveCount(0);
       expect(
         await badge
           .locator('.mantine-Badge-label')
@@ -489,7 +508,7 @@ test('filter keeps component scope and selected chart instead of silently select
   await rawInspect.press('Shift+Tab');
   await expect(rawDetails).toBeFocused();
   const detailTooltip = page.getByRole('tooltip', {
-    name: /^1834 \(no unit\)/
+    name: /^Unit not reported by the plant/
   });
   await expect(detailTooltip).toBeVisible();
   await expect(rawDetails).toHaveAttribute(
@@ -503,11 +522,16 @@ test('filter keeps component scope and selected chart instead of silently select
     .evaluateAll((nodes) =>
       nodes
         .filter((node) => node.tabIndex >= 0)
-        .map((node) => node.getAttribute('aria-label'))
+        .map(
+          (node) => node.getAttribute('aria-label') ?? node.textContent?.trim()
+        )
     );
   expect(stops).toEqual([
     'Details for Motor DE vibration (raw)',
-    'Inspect signal: Motor DE vibration (raw)'
+    'Inspect signal: Motor DE vibration (raw)',
+    '1834',
+    'State: Not assessed: limits not configured',
+    'Limits: No limits set · Limits on signal mapping; engineering approval not supplied'
   ]);
   await expect(
     page.getByRole('region', {
@@ -545,7 +569,7 @@ test('filter keeps component scope and selected chart instead of silently select
   ).toBeVisible();
   await expect(
     page.getByRole('combobox', { name: 'Component filter' })
-  ).toHaveValue('Bearing · BRG:1');
+  ).toHaveValue('Bearing');
   expect(requests.batch).toHaveLength(1);
 });
 
@@ -592,9 +616,7 @@ test('retained exact entry preserves fault evidence beside a normal current asse
     .click();
   await expect(page.getByTestId('destination')).not.toContainText('snapshot=');
   await expect(retained).not.toContainText('380 m³/h');
-  await retained
-    .getByRole('button', { name: 'Browse snapshots' })
-    .click();
+  await retained.getByRole('button', { name: 'Browse snapshots' }).click();
   await retained
     .getByRole('button', { name: /^Retained: Fault-time discharge flow/ })
     .click();
@@ -664,7 +686,9 @@ for (const scheme of ['light', 'dark'] as const) {
         .getByText('Normal', { exact: true })
     ).toHaveCount(0);
     await expect(
-      condition.getByRole('button', { name: /Assessed on 0 of 6 signals.*Critical signals: not designated/ })
+      condition.getByRole('button', {
+        name: /Assessed on 0 of 6 signals.*Critical signals: not designated/
+      })
     ).toBeVisible();
     const limits = signalTable(page).getByRole('button', {
       name: 'Limits: No limits set · Limits on signal mapping; engineering approval not supplied',
@@ -679,9 +703,33 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(
       signalTable(page).getByRole('button', {
         name: 'State: Not assessed: limits not configured',
-        exact: true
+        exact: true,
+        includeHidden: true
       })
     ).toHaveCount(6);
+    if (info.project.name.includes('phone')) {
+      const first = signalTable(page).locator('tbody tr').first();
+      await expect(first.locator('[data-no-state="true"]')).toBeHidden();
+      const details = first.getByRole('button', { name: /^Details for/ });
+      await details.click();
+      await details.blur();
+      await page.mouse.move(0, 0);
+      await expect(page.locator('[role="tooltip"]:visible')).toHaveCount(0);
+      const missingState = first.getByRole('button', {
+        name: 'State: Not assessed: limits not configured',
+        exact: true
+      });
+      await first.getByRole('button', { name: /^Inspect signal:/ }).focus();
+      await page.keyboard.press('Tab');
+      await expect(missingState).toBeFocused();
+      await expect(missingState).toHaveAccessibleDescription(
+        'State: Not assessed: limits not configured'
+      );
+      const description = await missingState.getAttribute('aria-describedby');
+      await expect(
+        page.locator(`[role="tooltip"][id="${description}"]`)
+      ).toBeVisible();
+    }
     await expect(
       signalTable(page).getByText('Unknown', { exact: true })
     ).toHaveCount(0);
@@ -719,18 +767,17 @@ for (const newest of ['future', 'expired', 'current'] as const) {
         state: newest === 'current' ? 'normal' : 'unknown'
       }
     });
-    const observation = page.getByTestId('health-summary').locator('time').locator('..');
-    await expect(observation.getByRole('button')).toHaveCount(0);
-    await expect(observation.locator('[data-tone="stale"]')).toHaveCount(
-      newest === 'current' ? 0 : 1
-    );
+    const observation = page.getByTestId('health-summary').locator('time');
+    await expect(
+      page.getByTestId('health-summary').locator('[data-tone="stale"]')
+    ).toHaveCount(newest === 'current' ? 0 : 1);
     if (newest === 'future')
       await expect(observation).toContainText(
-        'Stale · 0 s old'
+        'Stale (server flag) · 3 h ahead of your clock · freshness budget 300 s'
       );
     if (newest === 'expired')
       await expect(observation).toContainText(
-        'Stale · 20 s old'
+        'Stale · 20 s old · freshness budget 10 s'
       );
     if (newest === 'current')
       await expect(observation).toContainText('just now');
@@ -998,10 +1045,7 @@ for (const scheme of ['light', 'dark'] as const) {
       page.getByText('Designated critical coverage', { exact: true })
     ).toHaveCount(0);
     await expect(
-      page.getByText(
-        'Inactive binding — retained for critical coverage review',
-        { exact: true }
-      )
+      page.getByText('Inactive signal', { exact: true })
     ).toBeVisible();
     await page
       .getByRole('button', {
@@ -1032,7 +1076,7 @@ for (const scheme of ['light', 'dark'] as const) {
       signalTable(page)
         .getByRole('row')
         .filter({ hasText: 'Retired critical flow' })
-    ).toContainText('Inactive binding — retained for critical coverage review');
+    ).toContainText('Inactive signal');
     const evidence = page.locator('#health-signal-evidence');
     await expect(
       evidence.getByText(/Selected history window, read from the source:/)
