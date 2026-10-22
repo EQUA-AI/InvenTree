@@ -119,9 +119,7 @@ for (const scheme of ['light', 'dark'] as const) {
     // threshold reading is unavailable; color is not the only severity cue.
     await expect(
       page
-        .locator('[data-alarm-status="open"]')
-        .first()
-        .locator('..')
+        .locator('tr[data-anomaly="901"] [data-label="Alarm"]')
         .getByText('Warning', { exact: true })
     ).toBeVisible();
     await expect(
@@ -154,16 +152,19 @@ for (const scheme of ['light', 'dark'] as const) {
         .click();
       await expect(canvas).toHaveCSS('touch-action', 'none');
     }
-    await expect(page.locator('[data-hidden-markers]')).toContainText(
-      'Motor drive-end bearing (2)'
+    const bearingMarker = page.locator(
+      '.aimms-twin-hotspot[title="Motor drive-end bearing"]'
     );
-    await expect(page.locator('[data-hidden-markers]')).toContainText(
-      'Impeller (5)'
+    const impellerMarker = page.locator(
+      '.aimms-twin-hotspot[title="Impeller"]'
     );
+    await expect(bearingMarker).toHaveCount(1);
+    await expect(impellerMarker).toHaveCount(1);
+    await expect(bearingMarker).toBeHidden();
+    await expect(impellerMarker).toBeHidden();
+    await expect(page.locator('[data-hidden-markers]')).toHaveCount(0);
     await page.getByText('Cutaway', { exact: true }).click();
-    await expect(page.locator('[data-hidden-markers]')).not.toContainText(
-      'Impeller (5)'
-    );
+    await expect(impellerMarker).toBeVisible();
     await page.locator('[data-position="bearing"]').click();
     await expect(
       page.getByRole('status').filter({ hasText: 'Selected:' })
@@ -171,12 +172,12 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(
       page
         .locator('[data-scene-phase]')
-        .getByText('Reference model · geometry unverified')
+        .getByRole('button', { name: 'Reference model', exact: true })
     ).toBeVisible();
     await readable(page.locator('[data-scene-phase] .mantine-Badge-root'));
     await expect(
       page.getByText(/your clock|plant clock/).filter({ visible: true })
-    ).toHaveCount(1);
+    ).toHaveCount(0);
     await expect(
       page.locator('[data-operational-panel]').first().getByRole('status')
     ).toHaveCount(1);
@@ -211,7 +212,9 @@ for (const scheme of ['light', 'dark'] as const) {
       sw.locator('..').locator('.mantine-Switch-track'),
       page.locator('#location-name')
     );
-    await page.getByRole('button', { name: /^In alarm 8$/ }).click();
+    await page
+      .getByRole('button', { name: 'In alarm · 25', exact: true })
+      .click();
     await expect
       .poll(() => fixture.requests.at(-1)?.params.get('has_alarms'))
       .toBe('true');
@@ -223,7 +226,8 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(readTime).toHaveText(
       /^\d{1,2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2}$/
     );
-    await keyboardFocus(page, readTime.locator('..'));
+    await expect(readTime.locator('..')).not.toHaveAttribute('tabindex');
+    await readTime.hover();
     const clockDetail = page
       .getByRole('tooltip')
       .filter({ hasText: 'your clock (Asia/Riyadh' });
@@ -244,7 +248,7 @@ for (const scheme of ['light', 'dark'] as const) {
     if (info.project.name.endsWith('phone'))
       await expect(page.locator('[data-machine-card]').first()).toBeVisible();
   });
-  test(`opened occurrences show state, detector metrics and one clock in ${scheme}`, async ({
+  test(`opened occurrences show state and detector metrics without a clock caption in ${scheme}`, async ({
     page
   }) => {
     await mockFaultHistory(page);
@@ -266,7 +270,7 @@ for (const scheme of ['light', 'dark'] as const) {
     ).toHaveCount(0);
     await expect(
       page.getByText(/your clock|plant clock/).filter({ visible: true })
-    ).toHaveCount(1);
+    ).toHaveCount(0);
     await expect(
       page.locator('[data-operational-panel]').first().getByRole('status')
     ).toHaveCount(1);
@@ -304,26 +308,35 @@ for (const scheme of ['light', 'dark'] as const)
       await page.getByRole('button', { name: 'Refresh', exact: true }).click();
       const part = page
         .locator('g[data-part="PS-MOTOR"]')
-        .filter({ has: page.locator('circle + text') });
+        .filter({ has: page.locator('[data-number-surface] + text') });
       await expect(part).toHaveCount(1);
       await expect(part).toHaveAttribute('data-verdict', condition);
       const callout = page.locator('button[data-part="PS-MOTOR"]');
       await expect(callout).toHaveAttribute('data-verdict', condition);
       const label = callout.locator('[data-part-label]');
-      await expect(label).toHaveCSS('-webkit-line-clamp', '2');
+      await expect(label).toHaveCSS('-webkit-line-clamp', 'none');
       await expect(label).toHaveCSS('text-overflow', 'clip');
+      expect(
+        await label.evaluate((el) => el.scrollHeight <= el.clientHeight + 1)
+      ).toBe(true);
+      await page.mouse.move(0, 0);
       await keyboardFocus(page, callout);
       const fullLabel = await label.innerText();
-      await expect(
-        page.getByRole('tooltip').filter({ hasText: fullLabel })
-      ).toContainText(fullLabel);
+      await expect(callout).toHaveAttribute('aria-describedby', /\S+/);
+      const tooltip = page.locator(
+        `[role="tooltip"][id="${await callout.getAttribute('aria-describedby')}"]`
+      );
+      await expect(tooltip).toBeVisible();
+      await expect(tooltip).toContainText(fullLabel);
       // The callout and corresponding native drawing marker carry one numeral each.
-      await expect(part.locator('circle + text')).toHaveCount(1);
+      await expect(part.locator('[data-number-surface] + text')).toHaveCount(1);
       await expect(
-        callout.locator('[data-part-number] circle + text')
+        callout.locator('[data-part-number] [data-number-surface] + text')
       ).toHaveCount(1);
-      await readable(part.locator('circle + text'));
-      await readable(callout.locator('[data-part-number] circle + text'));
+      await readable(part.locator('[data-number-surface] + text'));
+      await readable(
+        callout.locator('[data-part-number] [data-number-surface] + text')
+      );
       await part.screenshot({
         path: info.outputPath(`mapped-part-${condition}-${scheme}.png`)
       });

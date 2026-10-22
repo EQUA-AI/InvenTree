@@ -33,10 +33,10 @@ test('Machines separates loaded-page counts, stale signals and unavailable opera
   await mockExplorer(page);
   await openExplorer(page, '/machines/index/sites/?location=12', 'dark');
   const summary = page.getByRole('region', { name: 'Loaded page summary' });
-  await expect(summary).toContainText('25 of 80');
+  await expect(summary).toContainText('25 of 79');
   await expect(summary.getByTestId('machine-page-count')).toHaveAttribute(
     'aria-label',
-    /Stale signals on 10 machines/
+    /Stale signals on 9 machines/
   );
   await expect(summary.getByTestId('machine-page-count')).toHaveAttribute(
     'aria-label',
@@ -54,13 +54,14 @@ test('Machines separates loaded-page counts, stale signals and unavailable opera
   await expect(readTime).toHaveText(
     /^\d{1,2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2}$/
   );
-  await keyboardFocus(page, readTime.locator('..'));
+  await expect(readTime.locator('..')).not.toHaveAttribute('tabindex');
+  await readTime.hover();
   const clockDetail = page
     .getByRole('tooltip')
     .filter({ hasText: 'your clock (Asia/Riyadh' });
   await expect(clockDetail).toContainText(await readTime.innerText());
   await expect(clockDetail).toContainText('UTC+03:00');
-  await expect(page.getByTestId('machine-count-view')).toHaveText('80');
+  await expect(page.getByTestId('machine-count-view')).toHaveText('79');
   await expect(
     page.locator('td[data-condition="offline"]').first()
   ).toContainText('No current data');
@@ -150,9 +151,9 @@ for (const state of ['running', 'stale', 'unknown']) {
     );
     await expect(
       page.getByRole('tooltip').filter({
-        hasText: 'Reference schematic · physical arrangement unverified'
+        hasText: 'Layout pending plant approval'
       })
-    ).toContainText('Reference schematic · physical arrangement unverified');
+    ).toContainText('Layout pending plant approval');
     await expect(page.getByRole('tooltip')).toContainText(
       'Source: Synthetic SCADA'
     );
@@ -169,7 +170,7 @@ for (const state of ['running', 'stale', 'unknown']) {
       )
     ).toHaveCount(0);
     if (state === 'stale')
-      await expect(page.getByText('7.5 MW', { exact: true })).toHaveCount(0);
+      await expect(page.getByText('7.5 kW', { exact: true })).toHaveCount(0);
     await expect(
       page.getByText('Active · not acknowledged', { exact: true })
     ).toBeVisible();
@@ -224,9 +225,14 @@ test('model reference label leads and keyboard selection keeps exact component r
   await mockEquipment(page);
   await openEquipment(page, false, 'dark');
   await expect(page.locator('[data-scene-phase="ready"]')).toBeVisible();
-  await expect(
-    page.getByText('Reference model · geometry unverified').first()
-  ).toBeVisible();
+  const reference = page.getByRole('button', {
+    name: 'Reference model',
+    exact: true
+  });
+  await keyboardFocus(page, reference);
+  await expect(page.getByRole('tooltip')).toHaveText(
+    'Vertical reference model. Use the process schematic for this machine. Drag to rotate; arrow keys rotate, + and − zoom.'
+  );
   const bearing = page.locator('[data-position="bearing"]');
   await bearing.focus();
   await bearing.press('Enter');
@@ -260,7 +266,13 @@ test('Fault History distinguishes active, acknowledged and resolved without asse
     page.getByText(
       'Resolved does not always mean cleared. Acknowledged conditions remain active.'
     )
-  ).toBeVisible();
+  ).toHaveCount(0);
+  await expect(
+    page
+      .locator('[data-occurrence="901"]')
+      .first()
+      .getByText('Cleared', { exact: true })
+  ).toHaveCount(0);
 });
 
 test('event trend adds a labelled bounded context and preserves the canonical occurrence', async ({
@@ -366,6 +378,7 @@ test('a mapped numeric zero discharge flow is shown with its source unit without
 }) => {
   const data = await mockEquipment(page, 'unknown');
   data.alarms = [];
+  data.alarm = null;
   data.bays.find((bay) => bay.key === 'P1')!.alarm = null;
   data.points['/pd/P1/dv'] = {
     ...data.points['/pd/P1/dv'],
@@ -377,19 +390,16 @@ test('a mapped numeric zero discharge flow is shown with its source unit without
     reason: null
   };
   await openEquipment(page, true);
-  await expect(
-    page
-      .locator('[data-reading]')
-      .filter({ hasText: 'Discharge flow' })
-      .getByRole('button', { name: '0 m³/s', exact: true })
-  ).toBeVisible();
   const zeroFlow = page
     .locator('[data-reading][data-point="/pd/P1/dv"]')
-    .getByRole('button', { name: '0 m³/s', exact: true });
-  await keyboardFocus(page, zeroFlow);
+    .locator('[data-value]');
+  await expect(zeroFlow).toHaveText('0 m³/s');
+  await expect(zeroFlow.getByRole('button')).toHaveCount(0);
+  await zeroFlow.getByText('0 m³/s', { exact: true }).hover();
   await expect(
-    page.getByRole('tooltip', { name: 'Discharge flow: 0 m³/s', exact: true })
-  ).toHaveText('Discharge flow: 0 m³/s');
+    page.getByRole('tooltip').filter({ hasText: 'Discharge flow: 0 m³/s' })
+  ).toContainText('Discharge flow: 0 m³/s');
+  await page.mouse.move(0, 0);
   await keyboardFocus(
     page,
     page.getByRole('button', { name: 'Schematic information', exact: true })
@@ -406,8 +416,16 @@ test('a mapped numeric zero discharge flow is shown with its source unit without
   await expect(page.locator('[data-limit-coverage]')).toContainText(
     'No active alarms'
   );
-  await expect(page.locator('[data-limit-coverage]')).toContainText(
-    `${Object.values(data.points).filter((point) => !point.thresholds_configured).length} without limits`
+  await keyboardFocus(
+    page,
+    page.getByRole('button', { name: 'Limit coverage', exact: true })
+  );
+  await expect(
+    page
+      .getByRole('tooltip')
+      .filter({ hasText: 'Selected pump readings without configured limits' })
+  ).toHaveText(
+    `${Object.values(data.points).filter((point) => !point.thresholds_configured).length} · Selected pump readings without configured limits`
   );
   await expect(
     page.getByRole('heading', { name: 'Threshold alarms', exact: true })

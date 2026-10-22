@@ -221,13 +221,17 @@ export async function captureState(
       const firstRow = facts.kpis.filter(
         (k) => Math.abs(k.box!.y - facts.kpis[0].box!.y) < 2
       );
-      const gridWidth = Math.max(...facts.kpis.map((k) => k.box!.x + k.box!.width)) - facts.kpis[0].box!.x;
+      const gridWidth =
+        Math.max(...facts.kpis.map((k) => k.box!.x + k.box!.width)) -
+        facts.kpis[0].box!.x;
       expect(firstRow).toHaveLength(Math.floor((gridWidth + 12) / 232));
       const widths = firstRow.map((k) => k.box!.width);
       expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(2);
       for (const kpi of firstRow) {
         expect(kpi.box!.width).toBeGreaterThanOrEqual(220);
-        expect(kpi.footer!.y + kpi.footer!.height).toBeLessThanOrEqual(kpi.box!.y + kpi.box!.height);
+        expect(kpi.footer!.y + kpi.footer!.height).toBeLessThanOrEqual(
+          kpi.box!.y + kpi.box!.height
+        );
       }
     }
     if (base && width === 390) {

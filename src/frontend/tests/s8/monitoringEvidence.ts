@@ -158,8 +158,7 @@ export async function captureMatrix(
     expect(measurements.clocks).toBe(0);
     await expect(
       page.getByRole('region', {
-        name:
-          screen === 'health' ? 'Current condition' : 'Performance workspace',
+        name: screen === 'health' ? 'Current condition' : 'Performance',
         exact: true
       })
     ).toBeVisible();

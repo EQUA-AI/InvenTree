@@ -17,6 +17,8 @@ for (const scheme of ['light', 'dark'] as const) {
     test(`follow-up 2 ${screen} geometry, alarm identity and contrast ${scheme}`, async ({
       page
     }, info) => {
+      if (!info.project.name.endsWith('phone'))
+        await page.setViewportSize({ width: 1440, height: 900 });
       await page.clock.setFixedTime(new Date(observed));
       await page.route('**/api/machine-health/station/17/mimic/**', (route) =>
         route.fulfill({

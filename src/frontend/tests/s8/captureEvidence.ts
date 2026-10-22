@@ -44,6 +44,44 @@ export async function captureEvidence(
     const visible = (el: Element) =>
       el.getClientRects().length > 0 &&
       getComputedStyle(el).visibility !== 'hidden';
+    const firstMachineFold = () => {
+      const card = document.querySelector('[data-machine]');
+      if (!card) return null;
+      const bottoms: number[] = [];
+      const walker = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (
+          !node.textContent?.trim() ||
+          !node.parentElement?.checkVisibility({
+            checkOpacity: true,
+            checkVisibilityCSS: true
+          })
+        )
+          continue;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const rect = range.getBoundingClientRect();
+        if (rect.width && rect.height) bottoms.push(rect.bottom);
+      }
+      for (const control of card.querySelectorAll(
+        'a[href], button, input, summary, [role="button"]'
+      )) {
+        if (
+          control.checkVisibility({
+            checkOpacity: true,
+            checkVisibilityCSS: true
+          })
+        )
+          bottoms.push(control.getBoundingClientRect().bottom);
+      }
+      return {
+        ...box('[data-machine]')!,
+        contentBottom: Math.max(...bottoms),
+        measured: bottoms.length,
+        pixelRatio: devicePixelRatio,
+        viewportHeight: innerHeight
+      };
+    };
     const tableWidths = [
       ...document.querySelectorAll('.mantine-TableScrollContainer-viewport')
     ]
@@ -121,8 +159,8 @@ export async function captureEvidence(
       };
     });
     const markers = [
-      ...(svg?.querySelectorAll<SVGCircleElement>(
-        '[data-part-markers] circle'
+      ...(svg?.querySelectorAll<SVGGElement>(
+        '[data-part-markers] > g[data-part]'
       ) ?? [])
     ].map((el) => {
       const r = el.getBoundingClientRect();
@@ -142,7 +180,7 @@ export async function captureEvidence(
         visibleRows: rows.length,
         machineRows: fullyVisible('[data-machine]'),
         occurrenceRows: fullyVisible('tr[data-occurrence]'),
-        firstMachine: box('[data-machine]'),
+        firstMachine: firstMachineFold(),
         pageFacts: box(
           '[aria-label="Loaded page summary"] [data-testid="machine-page-count"]'
         ),

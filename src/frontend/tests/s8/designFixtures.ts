@@ -132,7 +132,7 @@ export async function openEquipment(
   scheme = 'light',
   query: Record<string, string> = {}
 ) {
-  const entry = `/machines/machine/18/equipment/${schematic ? '?view=schematic' : ''}`;
+  const entry = `/machines/machine/18/equipment/${schematic ? '?view=schematic' : '?view=model'}`;
   await page.goto(
     `/playwright/s8-design.html?${new URLSearchParams({ screen: 'equipment-model', entry, scheme, ...query })}`,
     { waitUntil: 'domcontentloaded' }
@@ -154,7 +154,7 @@ export async function openEquipment(
     await page.getByRole('alert').first().waitFor();
   else
     await page
-      .getByText('Pump unit: P1', { exact: true })
+      .getByRole('heading', { name: 'Synthetic pump', exact: true })
       .waitFor({ timeout: 30_000 });
 }
 

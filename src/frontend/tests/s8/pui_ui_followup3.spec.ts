@@ -69,7 +69,7 @@ for (const scheme of ['light', 'dark'] as const) {
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await page.locator('[data-bay="P9"]').click();
       const heading = page.getByRole('heading', {
-        name: 'Pump unit: P9',
+        name: 'Synthetic pump 9',
         exact: true
       });
       await expect(heading).toBeFocused();
@@ -251,7 +251,18 @@ for (const scheme of ['light', 'dark'] as const) {
         .locator('label')
         .filter({ hasText: /^Search machines$|^Criticality$/ })
     ).toHaveCount(0);
-    await page.getByRole('checkbox').first().check();
+    const selection = page.getByRole('checkbox', {
+      name: 'Select Synthetic pump 001',
+      exact: true
+    });
+    await selection.check();
+    await expect(selection).toBeChecked();
+    const filters = page.getByRole('button', { name: 'Filters', exact: true });
+    if (await filters.isVisible()) {
+      await expect(filters).toHaveAttribute('aria-expanded', 'false');
+      await filters.click();
+      await expect(filters).toHaveAttribute('aria-expanded', 'true');
+    }
     await expect(
       page.getByRole('button', { name: /Move selected/ })
     ).toBeVisible();

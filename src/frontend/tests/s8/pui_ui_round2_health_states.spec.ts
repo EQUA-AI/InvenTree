@@ -94,7 +94,10 @@ for (const scheme of ['light', 'dark'] as const) {
         });
         await details.click();
         await expect(details).toHaveAttribute('aria-expanded', 'true');
+        await details.blur();
       }
+      await page.mouse.move(0, 0);
+      await expect(page.getByRole('tooltip')).toHaveCount(0);
     }
 
     await expect(stale.locator('[data-label="Value"]')).toHaveText(
@@ -103,9 +106,20 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(
       stale.locator('[data-label="State"]').getByText('Stale', { exact: true })
     ).toBeVisible();
-    await expect(stale.locator('[data-label="Observed"]')).toContainText(
-      'Stale · 10 min old · freshness budget 60 s'
+    const observed = stale.locator('[data-label="Observed"] time');
+    await expect(observed).toHaveText('10 min old');
+    await expect(observed).toHaveAttribute(
+      'datetime',
+      new Date(NOW - 600_000).toISOString()
     );
+    await observed.hover();
+    const observationTime = page.getByRole('tooltip', {
+      name: /^Observed: 18 Oct 2026 /
+    });
+    await expect(observationTime).toContainText('18 Oct 2026');
+    await expect(observationTime).toContainText('your clock');
+    await page.mouse.move(0, 0);
+    await page.keyboard.press('Escape');
     await expect(
       stale.locator('[data-label="State"]').getByText('Normal', { exact: true })
     ).toHaveCount(0);
@@ -113,22 +127,42 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(badQuality.locator('[data-label="Value"]')).toContainText(
       '95 °C'
     );
+    const badQualityValue = badQuality.getByRole('button', {
+      name: 'Value: Bad quality',
+      exact: true
+    });
+    await expect(badQualityValue).toBeVisible();
+    await badQualityValue.focus();
+    await expect(badQualityValue).toBeFocused();
     await expect(
-      badQuality.getByRole('button', {
-        name: 'Value: Bad quality',
+      page.getByRole('tooltip', {
+        name: 'Bad quality reported by the source',
         exact: true
       })
-    ).toBeVisible();
+    ).toContainText('Bad quality reported by the source');
+    await expect(badQualityValue).toHaveAccessibleDescription(
+      'Bad quality reported by the source'
+    );
     await expect(badQuality.locator('[data-label="Quality"]')).toHaveText(
       'Bad'
     );
     const missingValue = missing.locator('[data-label="Value"]');
+    const missingReason = missingValue.getByRole('button', {
+      name: 'Value: No observation available',
+      exact: true
+    });
+    await expect(missingReason).toHaveText('—');
+    await missingReason.focus();
+    await expect(missingReason).toBeFocused();
     await expect(
-      missingValue.getByRole('button', {
+      page.getByRole('tooltip', {
         name: 'Value: No observation available',
         exact: true
       })
-    ).toHaveText('—');
+    ).toHaveText('Value: No observation available');
+    await expect(missingReason).toHaveAccessibleDescription(
+      'Value: No observation available'
+    );
     await expect(missingValue).not.toContainText('Read failed');
     await expect(zero.locator('[data-label="Value"]')).toHaveText('0 m³/h');
 
@@ -149,7 +183,10 @@ for (const scheme of ['light', 'dark'] as const) {
 
     await page.mouse.move(0, 0);
     await page.keyboard.press('Escape');
-    const directory = resolve('../../data/devscratch/ui-r2/states');
+    const directory = resolve(
+      process.env.AIMMS_UI_STATE_EVIDENCE_ROOT ??
+        '../../data/devscratch/ui-r2/states'
+    );
     await mkdir(directory, { recursive: true });
     await captureFromTop(page);
     await page.screenshot({
