@@ -99,7 +99,7 @@ for (const scheme of ['light', 'dark'] as const) {
     for (const [name, id] of [
       ['Critical · 4', 8],
       ['Warning · 5', 2],
-      ['Unavailable · 1', 3]
+      ['Read failed · 1', 3]
     ] as const) {
       const control = summary.getByRole('button', { name, exact: true });
       await expect(control).toBeVisible();
@@ -128,7 +128,7 @@ for (const scheme of ['light', 'dark'] as const) {
       expect(
         refreshBox.x - chooseBox.x - chooseBox.width
       ).toBeGreaterThanOrEqual(8);
-      await touchTarget(summary.getByRole('button', { name: /^In alarm:/ }));
+      await touchTarget(summary.getByRole('button', { name: /^In alarm/ }));
       for (const name of ['Choose location', 'Refresh', 'Location details']) {
         const control = page.getByRole('button', { name, exact: true }).first();
         await touchTarget(control);

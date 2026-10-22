@@ -101,7 +101,8 @@ for (const scheme of ['light', 'dark'] as const) {
       await expect(row.locator('td').nth(3)).toContainText(
         'Warning below 600 cusec'
       );
-      await expect(row.locator('td').nth(4)).toContainText('18 Oct 2026');
+      await row.locator('td').nth(4).locator('time').hover();
+      await expect(page.getByRole('tooltip')).toContainText('18 Oct 2026');
       await expect(row.locator('td').nth(5)).toHaveText('Good');
       await expect(
         row
@@ -231,12 +232,13 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(
       page
         .getByTestId('health-summary')
-        .getByText('Normal · 3/5', { exact: true })
+        .getByRole('button', { name: /^Normal.*Assessed on 3 of 5/ })
     ).toBeVisible();
     const coverage = page.getByRole('button', {
-      name: /Critical signals: not designated$/
+      name: /Critical signals: not designated/
     });
     await expect(coverage).toBeVisible();
+    await page.keyboard.press('Tab');
     await coverage.focus();
     await expect(page.getByRole('tooltip')).toContainText(
       'No critical-signal designation is supplied.'
@@ -473,7 +475,7 @@ test('filter keeps component scope and selected chart instead of silently select
     .getByRole('row')
     .filter({ hasText: 'Motor DE vibration (raw)' });
   await expect(
-    raw.getByRole('cell', { name: '1834 (no unit)', exact: true })
+    raw.getByRole('cell', { name: '1834', exact: true })
   ).toBeVisible();
   const rawDetails = raw.getByRole('button', {
     name: 'Details for Motor DE vibration (raw)',
@@ -525,7 +527,7 @@ test('filter keeps component scope and selected chart instead of silently select
   await rawDetails.click();
   await openSignalFilters(page);
   await page.getByRole('combobox', { name: 'Component filter' }).click();
-  await page.getByRole('option', { name: 'Bearing · BRG:1' }).click();
+  await page.getByRole('option', { name: 'Bearing' }).click();
   await expect(signalTable(page).getByRole('row')).toHaveCount(2);
   await expect(
     page.getByText('The selected signal is outside this table filter.', {
@@ -555,7 +557,7 @@ test('retained exact entry preserves fault evidence beside a normal current asse
     entrySearch: `?snapshot=${snapshot.id}`
   });
   const retained = page.getByRole('region', {
-    name: 'Retained evidence',
+    name: 'Fault snapshots',
     exact: true
   });
   await expect(retained).toContainText('Retained; not current');
@@ -591,7 +593,7 @@ test('retained exact entry preserves fault evidence beside a normal current asse
   await expect(page.getByTestId('destination')).not.toContainText('snapshot=');
   await expect(retained).not.toContainText('380 m³/h');
   await retained
-    .getByRole('button', { name: 'Browse retained evidence' })
+    .getByRole('button', { name: 'Browse snapshots' })
     .click();
   await retained
     .getByRole('button', { name: /^Retained: Fault-time discharge flow/ })
@@ -612,11 +614,17 @@ test('missing retained citation and failed current reads never become empty heal
     anomaliesStatus: 503
   });
   await expect(
-    page.getByRole('region', { name: 'Retained evidence', exact: true })
+    page.getByRole('region', { name: 'Fault snapshots', exact: true })
   ).toContainText('Retained snapshot unavailable');
-  await expect(
-    page.getByText('Signal coverage unavailable:', { exact: false })
-  ).toBeVisible();
+  // The failed coverage read stays a visible label; its reason is on hover.
+  const coverageFailure = page
+    .getByTestId('health-summary')
+    .getByText('Read failed', { exact: true });
+  await expect(coverageFailure).toBeVisible();
+  await coverageFailure.hover();
+  await expect(page.getByRole('tooltip')).toContainText(
+    'Signal coverage unavailable: signal read failed'
+  );
   await expect(
     page.getByText('Active anomalies unavailable', { exact: true })
   ).toBeVisible();
@@ -656,12 +664,7 @@ for (const scheme of ['light', 'dark'] as const) {
         .getByText('Normal', { exact: true })
     ).toHaveCount(0);
     await expect(
-      page.getByText(
-        'Assessed on 0 of 6 signals · Critical signals: not designated',
-        {
-          exact: true
-        }
-      )
+      condition.getByRole('button', { name: /Assessed on 0 of 6 signals.*Critical signals: not designated/ })
     ).toBeVisible();
     const limits = signalTable(page).getByRole('button', {
       name: 'Limits: No limits set · Limits on signal mapping; engineering approval not supplied',
@@ -671,7 +674,7 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(limits).toHaveCount(6);
     for (const limit of await limits.all()) {
       await expect(limit).toHaveText('—');
-      await expect(limit).toHaveAttribute('tabindex', '-1');
+      await expect(limit).not.toHaveAttribute('tabindex', '-1');
     }
     await expect(
       signalTable(page).getByRole('button', {
@@ -716,24 +719,22 @@ for (const newest of ['future', 'expired', 'current'] as const) {
         state: newest === 'current' ? 'normal' : 'unknown'
       }
     });
-    const observation = page
-      .getByTestId('health-summary')
-      .getByRole('button')
-      .last();
+    const observation = page.getByTestId('health-summary').locator('time').locator('..');
+    await expect(observation.getByRole('button')).toHaveCount(0);
     await expect(observation.locator('[data-tone="stale"]')).toHaveCount(
       newest === 'current' ? 0 : 1
     );
     if (newest === 'future')
       await expect(observation).toContainText(
-        'Stale (server flag) · 180 min ahead of your clock · freshness budget 300 s'
+        'Stale · 0 s old'
       );
     if (newest === 'expired')
       await expect(observation).toContainText(
-        'Stale · 20 s old · freshness budget 10 s'
+        'Stale · 20 s old'
       );
     if (newest === 'current')
       await expect(observation).toContainText('just now');
-    await observation.focus();
+    await observation.hover();
     await expect(page.getByRole('tooltip')).toContainText(
       newest === 'future'
         ? 'Last observation: 18 Oct 2026 12:00:00'
@@ -759,7 +760,7 @@ test('retained recorder uses the human name and states missing provenance', asyn
     entrySearch: `?snapshot=${snapshot.id}`
   });
   const retained = page.getByRole('region', {
-    name: 'Retained evidence',
+    name: 'Fault snapshots',
     exact: true
   });
   await expect(retained).toContainText('Captured by Recorded Technician');
@@ -847,7 +848,7 @@ test('preliminary analysis citation opens its exact retained incident', async ({
   );
   await citation.click();
   const retained = page.getByRole('region', {
-    name: 'Retained evidence',
+    name: 'Fault snapshots',
     exact: true
   });
   await expect(retained).toContainText(snapshot.content_hash);
@@ -885,11 +886,12 @@ for (const scheme of ['light', 'dark'] as const) {
       summary: { state: 'normal' }
     });
     await expect(
-      page.getByText(/Critical signals: 1 of 2 assessed/)
+      page.getByRole('button', { name: /Critical signals: 1 of 2 assessed/ })
     ).toBeVisible();
+    await page.keyboard.press('Tab');
     await page
       .getByRole('button', {
-        name: /Critical signals: 1 of 2 assessed$/
+        name: /Critical signals: 1 of 2 assessed/
       })
       .focus();
     await expect(page.getByRole('tooltip')).toContainText(
@@ -914,7 +916,7 @@ for (const scheme of ['light', 'dark'] as const) {
         (node) => node.scrollWidth <= node.clientWidth + 1
       )
     ).toBe(true);
-    const connected = sourceTable.getByText(/^Succeeded /);
+    const connected = sourceTable.locator('time').first();
     await expect(connected).toBeVisible();
     expect(
       await connected.evaluate(
@@ -978,11 +980,12 @@ for (const scheme of ['light', 'dark'] as const) {
       ]
     });
     await expect(
-      page.getByText(/Critical signals: 0 of 2 assessed/)
+      page.getByRole('button', { name: /Critical signals: 0 of 2 assessed/ })
     ).toBeVisible();
+    await page.keyboard.press('Tab');
     await page
       .getByRole('button', {
-        name: /Critical signals: 0 of 2 assessed$/
+        name: /Critical signals: 0 of 2 assessed/
       })
       .focus();
     await expect(page.getByRole('tooltip')).toContainText(

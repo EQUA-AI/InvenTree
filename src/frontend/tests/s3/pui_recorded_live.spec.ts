@@ -1,3 +1,4 @@
+import { historyInformation, samplingInformation } from './presentationAssertions';
 import { expect, test } from '@playwright/test';
 import type { FaultOccurrence } from '../../src/pages/assets/faults/occurrenceModel';
 import { nativeBaseline } from '../s0/guards';
@@ -160,13 +161,14 @@ for (const asLive of [true, false]) {
       ]
     });
     const card = trendCard(page);
-    await expect(card.getByText(/^Selected window:/)).toBeVisible();
+    await expect(card.getByText(/^Selected window:/)).toHaveCount(0);
+    await historyInformation(page, card, 'Fixture historian');
     if (asLive) {
       await expect(page.getByTestId('health-summary')).toContainText(
         'just now'
       );
       await expect(
-        page.getByText('Source reporting', { exact: true }).first()
+        page.getByText('Reporting', { exact: true }).first()
       ).toBeVisible();
       await expect(page.getByTestId('anomaly-time-shift')).toHaveCount(0);
       await expect(card).not.toContainText(
@@ -180,14 +182,13 @@ for (const asLive of [true, false]) {
           Date.parse(series[0].searchParams.get('from')!)
       ).toBe(30 * 86400_000);
       expect(series[0].searchParams.get('points')).toBe('240');
-      await expect(card).toContainText('Sampled real readings');
+      await historyInformation(page, card, 'Sampled history; gaps are not filled');
     } else {
       await expect(
         page.getByTestId('anomaly-time-shift').first()
       ).toContainText('Shifted +3 h');
-      await expect(card).toContainText(
-        'Times are shown on the dashboard clock'
-      );
+      await expect(card.getByText('Times are shown on the dashboard clock')).toHaveCount(0);
+      await expect(page.getByTestId('anomaly-time-shift').first()).toContainText('Shifted +3 h');
       await card.getByRole('combobox', { name: 'Range', exact: true }).click();
       await expect(
         page.getByRole('option', { name: '30 days', exact: true })
@@ -253,12 +254,13 @@ for (const asLive of [true, false]) {
           )
         )
         .toBe(true);
-      await expect(status).toContainText('Sampled: one reading every 3 h');
-      await expect(status.locator('[data-tone="live"]')).toHaveText('Live');
-      await expect(status).toContainText('newest reading just now');
-      await expect(status).toContainText('latest chart sample');
+      await samplingInformation(page, 'Sampled: one reading every 3 h');
+      await expect(status.getByRole('switch', { name: 'Live updates: Live', exact: true })).toBeChecked();
+      await expect(status.locator('time')).toHaveCount(1);
+      await expect(status.getByText('Live', { exact: true })).toHaveCount(1);
     } else {
-      await expect(status).toContainText('Source history display shift');
+      await expect(status).not.toContainText('Source history display shift');
+      await historyInformation(page);
       await expect(page.getByText('30 d', { exact: true })).toHaveCount(0);
     }
     await status.screenshot({

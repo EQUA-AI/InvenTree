@@ -143,7 +143,9 @@ export async function captureEvidence(
         machineRows: fullyVisible('[data-machine]'),
         occurrenceRows: fullyVisible('tr[data-occurrence]'),
         firstMachine: box('[data-machine]'),
-        pageFacts: box('[aria-label="Loaded page summary"] output'),
+        pageFacts: box(
+          '[aria-label="Loaded page summary"] [data-testid="machine-page-count"]'
+        ),
         componentsHeading: box('ul[aria-label="Model components"]'),
         keyReadings: box('[aria-label="Key readings"]'),
         svg: box('svg[aria-label="Pump unit schematic"]'),

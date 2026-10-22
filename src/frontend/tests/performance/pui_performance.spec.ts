@@ -24,13 +24,12 @@ test('the KPI strip shows fixture values and states what it cannot show', async 
   await expect(power).toContainText('8.42');
   await expect(power).toContainText('MW');
   await expect(page.locator('[data-kpi="speed"]')).toContainText('745');
-  await expect(page.locator('[data-kpi="vibration"]')).toContainText(
-    'Unavailable · no vibration channel with a confirmed role and unit'
-  );
+  await expect(page.locator('[data-kpi="vibration"]').getByRole('button', { name: /no vibration channel with a confirmed role and unit/i })).toHaveText('—');
   // Winding 4 is pegged at the over-range marker with quality bad: it is not
   // the highest sensor, and 3276.7 appears nowhere on the tile.
   const winding = page.locator('[data-kpi="winding"]');
-  await expect(winding).toContainText('Highest of 10');
+  await winding.getByText('Winding temperature', { exact: true }).hover();
+  await expect(page.getByRole('tooltip')).toContainText('Highest of 10');
   await expect(winding).not.toContainText('3,276.7');
   await expect(winding).toContainText('82');
   await expect(page.locator('[data-kpi="status"]')).toContainText('Running');
@@ -42,12 +41,11 @@ test('the KPI strip shows fixture values and states what it cannot show', async 
   await expect(page.getByText('Nothing outside configured limits')).toHaveCount(
     0
   );
-  await expect(
-    page.getByText(`11 of ${SIGNALS.length} signals have limits configured`)
-  ).toBeVisible();
+  await page.getByRole('button', { name: 'Assessment coverage', exact: true }).focus();
+  await expect(page.getByRole('tooltip')).toContainText('11 have configured limits');
 });
 
-test('families are drawn as sections with a heatmap and calculated rises', async ({
+test('families retain heatmaps and omit unconfirmed temperature rises', async ({
   page
 }) => {
   await mount(page);
@@ -56,25 +54,19 @@ test('families are drawn as sections with a heatmap and calculated rises', async
   ).toBeVisible();
   await expect(page.getByText(/Highest now: Winding 11/)).toBeVisible();
   await expect(page.getByText(/Highest now: Winding 4/)).toHaveCount(0);
-  await expect(
-    page.getByText(/Spread .* \(calculated\)/).first()
-  ).toBeVisible();
+  await expect(page.getByText(/Spread .* \(calculated\)/)).toHaveCount(0);
   await expect(
     page.getByRole('img', { name: 'Sensor heatmap' }).first()
   ).toBeVisible();
   await expect(
     page.getByText('Cooling water rise (outlet − inlet)')
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page.getByText('Relationship: active power and shaft speed')
   ).toBeVisible();
   // Said twice on purpose: on the KPI tile and as the section's own state.
-  await expect(
-    page.getByText(
-      'Unavailable · no vibration channel with a confirmed role and unit',
-      { exact: true }
-    )
-  ).toHaveCount(2);
+  await expect(page.locator('[data-kpi="vibration"]')).toContainText('—');
+  await expect(page.getByText('Unavailable · no vibration channel with a confirmed role and unit', { exact: true })).toHaveCount(1);
   // Absent families stay out of navigation; their mounted fallback must still explain why.
   await expect(
     page.locator('[data-section="Vibration and mechanical"]')
@@ -102,9 +94,13 @@ test('the time range control changes what is asked of the server', async ({
   const requests = await mount(page);
   // An hour is 720 snapshots, past the complete-read bound, so the default
   // window is sampled; fifteen minutes is read whole.
-  await expect(page.getByText(/Sampled: one reading every/)).toBeVisible();
+  await page.getByText('Updated', { exact: true }).hover();
+  await expect(page.getByRole('tooltip')).toContainText('Sampled: one reading every');
+  await page.mouse.move(0, 0);
   await page.getByText('15 min', { exact: true }).click();
-  await expect(page.getByText(/Every reading in the window/)).toBeVisible();
+  await page.getByText('Updated', { exact: true }).hover();
+  await expect(page.getByRole('tooltip')).toContainText('Every reading in the window');
+  await page.mouse.move(0, 0);
   const before = requests.length;
   await page.getByText('6 h', { exact: true }).click();
   await expect.poll(() => requests.length).toBeGreaterThan(before);
@@ -113,14 +109,16 @@ test('the time range control changes what is asked of the server', async ({
     Date.parse(last.searchParams.get('to')!) -
     Date.parse(last.searchParams.get('from')!);
   expect(Math.round(span / 3600_000)).toBe(6);
-  await expect(page.getByText(/Sampled: one reading every/)).toBeVisible();
+  await page.getByText('Updated', { exact: true }).hover();
+  await expect(page.getByRole('tooltip')).toContainText('Sampled: one reading every');
+  await page.mouse.move(0, 0);
 });
 
 test('live can be paused and says so', async ({ page }) => {
   await mount(page);
   await expect(page.getByText('Live', { exact: true }).first()).toBeVisible();
   // Mantine's track label sits over the input; the click must go through it.
-  await page.getByRole('switch').click({ force: true });
+  await page.getByRole('switch', { name: /^Live updates:/ }).click({ force: true });
   await expect(page.getByText('Paused', { exact: true })).toBeVisible();
 });
 
@@ -141,7 +139,9 @@ test('dragging across a chart offers a zoom, and taking it narrows the window', 
   page
 }) => {
   const requests = await mount(page);
-  await expect(page.getByText(/Sampled: one reading every/)).toBeVisible();
+  await page.getByText('Updated', { exact: true }).hover();
+  await expect(page.getByRole('tooltip')).toContainText('Sampled: one reading every');
+  await page.mouse.move(0, 0);
   const chart = page
     .locator('[data-section="Electrical"] .recharts-wrapper')
     .first();

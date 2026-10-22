@@ -123,17 +123,12 @@ test('a sensor family in two units gets a card per unit, and the hottest-sensor 
     await expect(
       section.getByText('Stator winding temperature (°F)', { exact: true })
     ).toBeVisible();
-    await expect(
-      section
-        .getByText(
-          "This family reports in °C, °F; each unit has its own card, so no reading is compared on another's scale."
-        )
-        .first()
-    ).toBeVisible();
+    await expect(section.getByText(/This family reports in/)).toHaveCount(0);
     const tile = page.locator('[data-kpi="winding"]');
     await expect(tile).toContainText('84');
-    await expect(tile).toContainText('Highest of 3: Winding 3');
-    await expect(tile).toContainText('1 in °F not compared');
+    await tile.getByText('Winding temperature', { exact: true }).hover();
+    await expect(page.getByRole('tooltip')).toContainText('Highest of 3: Winding 3');
+    await expect(page.getByRole('tooltip')).toContainText('1 in °F not compared');
     await expect(tile).not.toContainText('190');
     await section.screenshot({
       path: testInfo.outputPath(`winding-split-${scheme}.png`),
@@ -142,7 +137,7 @@ test('a sensor family in two units gets a card per unit, and the hottest-sensor 
   }
 });
 
-test('a temperature rise is calculated only where both sensors share a unit', async ({
+test('unconfirmed temperature pairs omit rises and keep each supplied sensor', async ({
   page
 }) => {
   await openPerformance(page, {
@@ -154,12 +149,11 @@ test('a temperature rise is calculated only where both sensors share a unit', as
       signal('/dex/PUMP1_PUMP_COOLING_WATER_OUTLET_TEMP2', 34, 'degC', 'Out 2')
     ]
   });
-  const rise = card(page, 'Cooling water rise (outlet − inlet)');
-  await expect(rise).toContainText(
-    'Not calculated, because the paired units differ: Cooling water outlet 1 (°F) − Cooling water inlet 1 (°C).'
-  );
-  await expect(rise).toContainText(/ΔT 2: /);
-  await expect(rise).not.toContainText(/ΔT 1: /);
+  await expect(page.getByText('Cooling water rise (outlet − inlet)', { exact: true })).toHaveCount(0);
+  const section = page.locator('[data-section="Cooling and thermal"]');
+  await expect(section).toContainText('Cooling water');
+  await expect(section.locator('[data-axis-title]')).toContainText(['°C', '°F', '°C']);
+  await expect(section.locator('[data-difference-unit]')).toHaveCount(0);
 });
 
 test('a bay in another unit is drawn apart, left out of the plant sum and labelled in the table', async ({
@@ -176,8 +170,11 @@ test('a bay in another unit is drawn apart, left out of the plant sum and labell
     );
     await expect(comparison.locator('.recharts-surface')).toHaveCount(2);
     const total = page.locator('[data-kpi="plant-power"]');
-    await expect(total).toContainText("sum of 3 of 4 bays' newest readings");
-    await expect(total).toContainText('not summed, unit differs: Pump 3 (kW)');
+    const missing = total.getByRole('button', { name: 'Plant power: Bays report incompatible units', exact: true });
+    await expect(missing).toHaveText('—');
+    await page.keyboard.press('Tab');
+    await missing.focus();
+    await expect(page.getByRole('tooltip')).toHaveText('Plant power: Bays report incompatible units');
     const row = page.locator('tbody tr').filter({ hasText: 'Pump 3' });
     await expect(row.locator('td').nth(2)).toContainText('kW');
     await expect(

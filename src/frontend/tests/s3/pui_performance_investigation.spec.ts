@@ -1,3 +1,4 @@
+import { historyInformation, samplingInformation } from './presentationAssertions';
 import { expect, test } from '@playwright/test';
 import { nativeBaseline } from '../s0/guards';
 import {
@@ -50,28 +51,11 @@ for (const scheme of ['light', 'dark'] as const)
     await expect.poll(() => requests.length).toBe(1);
     expect(requests[0].searchParams.get('from')).toBe(from);
     expect(requests[0].searchParams.get('to')).toBe(to);
-    await expect(page.getByTestId('history-provenance')).toContainText(
-      'not the selected range'
-    );
-    await expect(page.getByTestId('history-provenance')).toContainText('24 h');
-    await expect(page.getByTestId('history-provenance')).not.toContainText(
-      'T12:00:00.000Z'
-    );
-    await expect(page.getByTestId('history-provenance')).toContainText(
-      'fast transients may be absent'
-    );
-    await page.getByTestId('history-provenance').scrollIntoViewIfNeeded();
-    expect(
-      await page
-        .getByTestId('history-provenance')
-        .evaluate((el) => el.scrollWidth <= el.clientWidth + 1)
-    ).toBe(true);
-    await page.getByTestId('history-provenance').screenshot({
-      path: info.outputPath(`history-${scheme}.png`),
-      animations: 'disabled'
-    });
+    await expect(page.getByTestId('history-provenance')).toHaveCount(0);
+    await historyInformation(page);
+    await page.getByRole('button', { name: 'History information', exact: true }).screenshot({ path: info.outputPath(`history-${scheme}.png`) });
     await page
-      .getByRole('button', { name: 'Case span investigation', exact: true })
+      .getByRole('button', { name: 'Investigate this period', exact: true })
       .click();
     await page.getByTestId('investigation-slices').screenshot({
       path: info.outputPath(`performance-investigation-${scheme}.png`),
@@ -126,7 +110,8 @@ test('lost retained reference never substitutes current or other snapshot eviden
     page.getByText(/Linked retained evidence unavailable or not permitted/)
   ).toBeVisible();
   await expect(page.getByTestId('linked-evidence')).toHaveCount(0);
-  await expect(page.getByTestId('history-provenance')).toContainText('Source');
+  await expect(page.getByTestId('history-provenance')).toHaveCount(0);
+  await historyInformation(page);
 });
 test('partial bindings failure names affected charts, comparison and Other coverage', async ({
   page
@@ -147,12 +132,8 @@ test('partial bindings failure names affected charts, comparison and Other cover
     signals,
     failSeries: (url) => !!url.searchParams.get('bindings')
   });
-  await expect(page.getByTestId('history-provenance')).toContainText(
-    'Partial history read'
-  );
-  await expect(page.getByTestId('history-provenance')).toContainText(
-    '1 of 2 bounded batches failed'
-  );
+  await samplingInformation(page, 'Partial history: some bounded batches failed');
+  await expect(page.getByTestId('history-provenance')).toHaveCount(0);
   await page.getByRole('combobox', { name: 'Section', exact: true }).click();
   await page
     .getByRole('option', { name: 'Full overview', exact: true })
@@ -278,9 +259,8 @@ for (const scheme of ['light', 'dark'] as const)
       '2026-10-01T05:00:00.000Z'
     );
     expect(history[0].searchParams.get('to')).toBe('2026-10-01T06:00:00.000Z');
-    await expect(page.getByTestId('history-provenance')).toContainText(
-      'Source timestamps are moved by 31536000 seconds onto the display clock.'
-    );
+    await expect(page.getByTestId('history-provenance')).toHaveCount(0);
+    await historyInformation(page);
     await page.getByRole('link', { name: /Retained occurrence 902/ }).click();
     await expect(page.getByTestId('occurrence-investigation')).toBeVisible();
     const slices = page.getByTestId('investigation-slices');
@@ -365,9 +345,8 @@ for (const scheme of ['light', 'dark'] as const)
           .includes('/dex/PUMP1_ACTIVE_POWER')
     });
     await expect.poll(() => requests.length).toBe(2);
-    await expect(page.getByTestId('history-provenance')).toContainText(
-      'Partial history read'
-    );
+    await samplingInformation(page, 'Partial history: some bounded batches failed');
+    await expect(page.getByTestId('history-provenance')).toHaveCount(0);
     const card = page
       .locator('.mantine-Paper-root')
       .filter({ has: page.getByText('Active power by bay', { exact: true }) });

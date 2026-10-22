@@ -40,7 +40,7 @@ async function rowRequests(page: Page) {
 
 test('pending and partial batches never start per-row trend reads', async ({
   page
-}) => {
+}, testInfo) => {
   const requests = await rowRequests(page);
   let releaseBatch!: () => void;
   const pendingBatch = new Promise<void>((resolve) => {
@@ -59,10 +59,23 @@ test('pending and partial batches never start per-row trend reads', async ({
   expect(requests).toEqual([]);
   releaseBatch();
   await expect(page.getByTestId('fixture-fetching')).toHaveText('0');
+  if (testInfo.project.name.includes('phone')) {
+    // Phone cards keep three facts; the Trend column is in the all-columns view.
+    await page
+      .getByRole('button', { name: 'Signal filters', exact: true })
+      .click();
+    await page
+      .getByRole('button', { name: 'All columns table', exact: true })
+      .click();
+  }
   await expect(
     page.getByRole('img', { name: 'Recent trend for Active Power' })
   ).toBeVisible();
-  await expect(page.getByText('Not returned', { exact: true })).toHaveCount(2);
+  const missing = page.getByRole('button', { name: /^Not returned:/ });
+  await expect(missing).toHaveCount(2);
+  await expect(missing.first()).toHaveText('—');
+  await missing.first().focus();
+  await expect(page.getByRole('tooltip')).toContainText('completed trend read did not return this signal');
   await expect(
     page.getByRole('cell', { name: '0 MW', exact: true })
   ).toBeVisible();

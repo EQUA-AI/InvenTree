@@ -13,7 +13,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 async function openPanel(page: Page, scheme: 'light' | 'dark' = 'light') {
-  await page.goto(`/playwright/s2-equipment.html?kind=panel&scheme=${scheme}`);
+  await page.goto(`/playwright/s2-equipment.html?kind=panel&entry=${encodeURIComponent('/machines/machine/18/equipment/?view=model')}&scheme=${scheme}`);
   await expect(page.locator('[data-scene-phase="ready"]')).toBeVisible();
 }
 
@@ -120,9 +120,9 @@ test('visual modes switch and switch back without losing the selection', async (
       animations: 'disabled'
     });
   }
-  await expect(page.locator('[data-mode-note="exploded"]')).toHaveText(
-    'Exploded for orientation only; not a disassembly procedure.'
-  );
+  await expect(page.locator('[data-mode-note="exploded"]')).toHaveCount(0);
+  await page.getByText('Reference model', { exact: true }).hover();
+  await expect(page.getByRole('tooltip')).toContainText('Vertical reference model');
   await chooseMode(page, 'Assembled');
   await button(page, 'Clear selection').click();
   // Back where it started: the same assembly from the same direction.

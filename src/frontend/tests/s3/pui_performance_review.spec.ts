@@ -34,8 +34,9 @@ test('P11-1 an uncompared critical sensor keeps the family tile critical', async
   });
   const tile = page.locator('[data-kpi="winding"]');
   await expect(tile.getByText('Critical', { exact: true })).toBeVisible();
-  await expect(tile).toContainText('Winding 4 (°F) critical, not compared');
-  await expect(tile).toContainText('Highest of 3');
+  await tile.getByText('Winding temperature', { exact: true }).hover();
+  await expect(page.getByRole('tooltip')).toContainText('Winding 4 (°F) critical, not compared');
+  await expect(page.getByRole('tooltip')).toContainText('Highest of 3');
   await expect(tile).not.toContainText('no limit configured');
   await tile.screenshot({
     path: info.outputPath('mixed-unit-critical-kpi.png'),
@@ -141,14 +142,16 @@ test('P11-6 split families keep caller caveats and explain heatmap threshold', a
     ]
   });
   const section = page.locator('[data-section="Motor winding temperature"]');
-  await expect(section).toContainText('Every winding RTD on one axis.');
+  await expect(section.getByText(/Every winding RTD on one axis/)).toHaveCount(0);
+  await expect(section.getByText('Stator winding temperature (°C)', { exact: true })).toBeVisible();
+  await expect(section.getByText('Stator winding temperature (°F)', { exact: true })).toBeVisible();
   await expect(
     section.getByText(
       /Heatmap not drawn: this unit group has fewer than four sensors/
     )
   ).toHaveCount(2);
 });
-test('P11-7 delta pairs with different units have separate axes', async ({
+test('P11-7 unconfirmed delta pairs retain separate inlet and outlet axes', async ({
   page
 }) => {
   await openPerformance(page, {
@@ -161,15 +164,9 @@ test('P11-7 delta pairs with different units have separate axes', async ({
     ]
   });
   const section = page.locator('[data-section="Cooling and thermal"]');
-  await expect(
-    section.getByText(/Drawn apart: temperature rises in °C, °F/)
-  ).toBeVisible();
-  await expect(
-    section.locator('[data-difference-unit="degC"] [data-axis-title="left"]')
-  ).toHaveText('°C');
-  await expect(
-    section.locator('[data-difference-unit="degF"] [data-axis-title="left"]')
-  ).toHaveText('°F');
+  await expect(section.locator('[data-difference-unit]')).toHaveCount(0);
+  await expect(section).toContainText('Cooling water');
+  await expect(section.locator('[data-axis-title]')).toContainText(['°C', '°F', '°C', '°F']);
 });
 test('P11-8 failed pump read cannot show green Live', async ({ page }) => {
   await openPerformance(page, { harness: 's3', failSeries: () => true });
@@ -193,15 +190,13 @@ for (const scheme of ['light', 'dark'] as const)
     });
     const region = page.locator('[data-window-status] [aria-live="polite"]');
     await expect(region).toBeEmpty();
-    await expect(
-      page.locator('[data-window-status] [aria-live="off"]')
-    ).toContainText('Window on screen:');
+    await expect(page.getByText('Window on screen:', { exact: true })).toHaveCount(0);
+    await expect(page.getByTestId('live-indicator')).toHaveAttribute('aria-live', 'off');
     const element = await region.elementHandle();
     await page.getByText('6 h', { exact: true }).click();
     await expect(region).toHaveText('Updating selected history window.');
-    await expect(
-      page.locator('[data-window-status] [aria-live="off"]')
-    ).toContainText('Charts still show the previous window');
+    await expect(page.locator('[data-window-status]')).toContainText('Updating');
+    await expect(page.getByText(/Charts still show the previous window/)).toHaveCount(0);
     expect(await element?.evaluate((el) => el.isConnected)).toBe(true);
     await page.locator('[data-window-status]').screenshot({
       path: info.outputPath(`window-announcement-${scheme}.png`),

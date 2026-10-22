@@ -405,7 +405,28 @@ test.beforeEach(() => {
   locationsError = false;
 });
 
-test('chevron expands without selecting; label selects without collapsing', async ({
+
+const treeNode = (page: Page, name: string) => {
+  const location = LOCATIONS.find((location) => location.name === name)!;
+  return page.locator(`[role="treeitem"][data-value="${location.pk}"]`);
+};
+
+async function openLocationBrowser(page: Page) {
+  const tree = page.getByRole('tree', { name: 'Location tree' });
+  if (!(await tree.isVisible()))
+    await page.getByRole('button', { name: 'Choose location', exact: true }).click();
+  await expect(tree).toBeVisible();
+}
+
+async function expandLocation(page: Page, name: string) {
+  await openLocationBrowser(page);
+  const node = treeNode(page, name);
+  await node.focus();
+  await node.press('ArrowRight');
+  await expect(node.locator(':scope > [data-depth] > span[aria-hidden]')).toHaveAttribute('data-expanded', 'true');
+}
+
+test('Space expands without selecting; Enter selects without collapsing', async ({
   page
 }) => {
   await installMocks(page);
@@ -417,10 +438,10 @@ test('chevron expands without selecting; label selects without collapsing', asyn
     page.locator('[role="treeitem"][data-value="3"]')
   ).toHaveAttribute('aria-selected', 'true');
 
-  await page.getByRole('button', { name: 'Expand North Site' }).click();
-  await expect(
-    page.getByRole('button', { name: 'Collapse North Site' })
-  ).toBeVisible();
+  await openLocationBrowser(page);
+  await treeNode(page, 'North Site').focus();
+  await treeNode(page, 'North Site').press('Space');
+  await expect(treeNode(page, 'North Site').locator(':scope > [data-depth] > span[aria-hidden]')).toHaveAttribute('data-expanded', 'true');
   // Expansion must not change the selection.
   await expect(
     page.locator('[role="treeitem"][data-value="3"]')
@@ -429,26 +450,27 @@ test('chevron expands without selecting; label selects without collapsing', asyn
     page.locator('[role="treeitem"][data-value="1"]')
   ).toHaveAttribute('aria-selected', 'false');
   await expect(
-    page.getByRole('button', { name: 'Building B', exact: true })
+    treeNode(page, 'Building B')
   ).toBeVisible();
 
   // Expand Building B first so "selecting does not collapse" is observable.
-  await page.getByRole('button', { name: 'Expand Building B' }).click();
+  await expandLocation(page, 'Building B');
   await expect(
-    page.getByRole('button', { name: 'Area C', exact: true })
+    treeNode(page, 'Area C')
   ).toBeVisible();
 
   // Selecting the label changes the selection and must not collapse the branch.
-  await page.getByRole('button', { name: 'Building B', exact: true }).click();
+  await treeNode(page, 'Building B').press('Enter');
+  await openLocationBrowser(page);
   await expect(
     page.locator('[role="treeitem"][data-value="11"]')
   ).toHaveAttribute('aria-selected', 'true');
   await expect(
-    page.getByRole('button', { name: 'Area C', exact: true })
+    treeNode(page, 'Area C')
   ).toBeVisible();
 });
 
-test('tree rows show type labels, codes, and chevrons only for branches', async ({
+test('tree rows keep type and code in the name tooltip, and chevrons only for branches', async ({
   page
 }) => {
   await installMocks(page);
@@ -456,22 +478,31 @@ test('tree rows show type labels, codes, and chevrons only for branches', async 
   const tree = page.getByRole('tree', { name: 'Location tree' });
   await expect(tree).toBeVisible();
 
+  // A row is an icon and the full name; type and code are not printed beside it.
   const northSite = tree.locator('[role="treeitem"][data-value="1"]');
-  await expect(
-    northSite.getByText('North Site', { exact: true })
-  ).toBeVisible();
-  await expect(northSite.getByText('Site', { exact: true })).toBeVisible();
-  await expect(northSite.getByText('NS', { exact: true })).toBeVisible();
-  await expect(
-    page.getByRole('button', { name: 'Expand North Site' })
-  ).toBeVisible();
+  const northName = northSite.getByText(/^North Site/);
+  await expect(northSite.getByRole('button')).toHaveCount(0);
+  await expect(northName).toBeVisible();
+  await expect(northSite.getByText('Site', { exact: true })).toHaveCount(0);
+  await expect(northSite.getByText('NS', { exact: true })).toHaveCount(0);
+  await northName.hover();
+  const northTip = page.getByRole('tooltip').filter({ hasText: 'North Site' });
+  await expect(northTip).toContainText('NS');
+  await expect(northTip).toContainText('Site');
+  await expect(treeNode(page, 'North Site').locator(':scope > [data-depth] > span[aria-hidden]')).not.toHaveAttribute('data-expanded', 'true');
 
   // Leaves never render a chevron; the label stays a plain selection target.
   const warehouse = tree.locator('[role="treeitem"][data-value="3"]');
-  await expect(warehouse.getByText('Facility', { exact: true })).toBeVisible();
-  await expect(
-    page.getByRole('button', { name: /Expand Warehouse/ })
-  ).toHaveCount(0);
+  await expect(warehouse.getByText('Facility', { exact: true })).toHaveCount(0);
+  await warehouse
+    .getByText(/^Warehouse/)
+    .hover();
+  const warehouseTip = page
+    .getByRole('tooltip')
+    .filter({ hasText: 'Warehouse' });
+  await expect(warehouseTip).toContainText('Facility');
+  await expect(warehouseTip).toContainText('WH');
+  await expect(warehouse.locator(':scope > [data-depth] > span[aria-hidden]')).toHaveCount(0);
 });
 
 test('keyboard: Enter selects the focused node; Home/End and type-ahead move focus', async ({
@@ -486,6 +517,7 @@ test('keyboard: Enter selects the focused node; Home/End and type-ahead move foc
   await expect(southSite).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByTestId('destination')).toContainText('location=2');
 
+  await openLocationBrowser(page);
   const first = page.locator('[role="treeitem"]').first();
   await first.focus();
   await page.keyboard.press('End');
@@ -524,21 +556,21 @@ test('branch pagination: Load more locations continues the branch', async ({
 }) => {
   await installMocks(page);
   await page.goto('/playwright/machine-locations.html?mode=workspace');
-  await page.getByRole('button', { name: 'Expand North Site' }).click();
-  await page.getByRole('button', { name: 'Expand Building B' }).click();
+  await expandLocation(page, 'North Site');
+  await expandLocation(page, 'Building B');
   await expect(
-    page.getByRole('button', { name: 'Area C', exact: true })
+    treeNode(page, 'Area C')
   ).toBeVisible();
   // Zenith Cell is past the first 100-row branch page.
   await expect(
-    page.getByRole('button', { name: 'Zenith Cell', exact: true })
+    treeNode(page, 'Zenith Cell')
   ).toHaveCount(0);
 
   const loadMore = page.getByRole('button', { name: /Load more locations/ });
   await expect(loadMore).toBeVisible();
   await loadMore.click();
   await expect(
-    page.getByRole('button', { name: 'Zenith Cell', exact: true })
+    treeNode(page, 'Zenith Cell')
   ).toBeVisible({ timeout: 15_000 });
 });
 
@@ -549,6 +581,7 @@ test('deep link beyond the first branch page is revealed in the tree', async ({
   await page.goto(
     '/playwright/machine-locations.html?mode=workspace&location=150'
   );
+  await openLocationBrowser(page);
   await expect(
     page.getByRole('heading', { name: 'Zenith Cell' })
   ).toBeVisible();
@@ -557,9 +590,7 @@ test('deep link beyond the first branch page is revealed in the tree', async ({
   await expect(revealed).toBeVisible({ timeout: 15_000 });
   await expect(revealed).toHaveAttribute('aria-selected', 'true');
   // The revealed path is expanded: its parent is visible and open.
-  await expect(
-    page.getByRole('button', { name: 'Collapse Building B' })
-  ).toBeVisible();
+  await expect(treeNode(page, 'Building B').locator(':scope > [data-depth] > span[aria-hidden]')).toHaveAttribute('data-expanded', 'true');
 });
 
 test('root overview: Browse top-level locations lists roots when nothing is selected', async ({
@@ -650,7 +681,9 @@ test('location change resets table page and selection', async ({ page }) => {
   await page.goto(
     '/playwright/machine-locations.html?mode=workspace&location=21'
   );
-  await expect(page.getByText('30 machines', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('25 of 30', { exact: true })
+  ).toBeVisible();
   await page
     .getByRole('navigation', { name: /pagination/i })
     .getByRole('button', { name: '2' })
@@ -687,9 +720,9 @@ test('each machine shows its alarms and the list narrows to them', async ({
   );
   await expect(page.getByText('9 machines', { exact: true })).toBeVisible();
   const row = (name: string) => page.getByRole('row').filter({ hasText: name });
-  await expect(row('Pump 1').getByText('2 critical')).toBeVisible();
-  await expect(row('Pump 1').getByText('1 warning')).toBeVisible();
-  await expect(row('Pump 3').getByText('1 warning')).toBeVisible();
+  await expect(row('Pump 1').getByText('Critical · 2', { exact: true })).toBeVisible();
+  await expect(row('Pump 1').getByText('Warning · 1', { exact: true })).toBeVisible();
+  await expect(row('Pump 3').getByText('Warning · 1', { exact: true })).toBeVisible();
   await expect(row('Pump 3').getByText(/critical/)).toHaveCount(0);
   await expect(row('Compressor 1').locator('td[data-alarms]')).toHaveText('0');
 
@@ -703,11 +736,11 @@ test('each machine shows its alarms and the list narrows to them', async ({
   await expect(page.getByText('Compressor 1')).toHaveCount(0);
 
   // Another location starts unnarrowed, as it starts with an empty search.
-  await page
-    .getByRole('button', { name: 'Expand South Site', exact: true })
-    .click();
-  await page.getByRole('button', { name: 'Line One', exact: true }).click();
-  await expect(page.getByText('30 machines', { exact: true })).toBeVisible();
+  await expandLocation(page, 'South Site');
+  await treeNode(page, 'Line One').press('Enter');
+  await expect(
+    page.getByText('25 of 30', { exact: true })
+  ).toBeVisible();
   const narrow = page.getByRole('switch', { name: 'In alarm only' });
   await expect(narrow).not.toBeChecked();
 
@@ -718,7 +751,9 @@ test('each machine shows its alarms and the list narrows to them', async ({
     page.getByText('No machine in this list has an active alarm.')
   ).toBeVisible();
   await page.getByRole('button', { name: 'Show all machines' }).click();
-  await expect(page.getByText('30 machines', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('25 of 30', { exact: true })
+  ).toBeVisible();
   await expect(narrow).not.toBeChecked();
 });
 
@@ -735,12 +770,15 @@ test('search shows location-total labeling and a truthful empty state', async ({
   await expect(page.getByText('No machines match your search.')).toBeVisible();
   const clear = page.getByRole('button', { name: 'Clear search' });
   await expect(clear).toBeVisible();
-  // Aggregate cards are location totals, not search matches.
-  await expect(page.getByTestId('location-totals-note')).toHaveAttribute(
-    'aria-label',
-    'Location totals — machine search and alarm filters do not change these counts.'
+  // Aggregate cards are location totals, not search matches: the note says
+  // so briefly, and the count's tooltip gives the full reason.
+  await expect(page.getByTestId('location-totals-note')).toHaveCount(0);
+  const total = page.getByTestId('machine-count-view');
+  await expect(total).toHaveText('9');
+  await total.hover();
+  await expect(page.getByRole('tooltip')).toContainText(
+    'Location totals are independent of the loaded machine page and its search, alarm and criticality filters.'
   );
-  await expect(page.getByTestId('machine-count-view')).toHaveText('9');
 
   await clear.click();
   await expect(page.getByText('Pump 1')).toBeVisible();
@@ -776,15 +814,18 @@ test.describe('mobile', () => {
     // The tree is collapsed by default on narrow screens; the path and the
     // result summary stay visible above the table.
     await expect(
-      page.getByRole('tree', { name: 'Location tree' })
+      page.getByRole('list', { name: 'Location drill-down' })
     ).toBeHidden();
     await expect(
       page.getByRole('region', { name: 'Loaded page summary' })
-    ).toContainText('This page · 9 of 9 machines');
+    ).toContainText('9 machines');
+    await expect(
+      page.getByRole('region', { name: 'Loaded page summary' })
+    ).not.toContainText('This page');
 
     await choose.click();
     await expect(
-      page.getByRole('tree', { name: 'Location tree' })
+      page.getByRole('list', { name: 'Location drill-down' })
     ).toBeVisible();
 
     // No document-wide horizontal overflow at phone widths.
@@ -808,7 +849,7 @@ test.describe('mobile', () => {
       await expect(choose).toBeVisible();
       await choose.click();
       await expect(
-        page.getByRole('tree', { name: 'Location tree' })
+        page.getByRole('list', { name: 'Location drill-down' })
       ).toBeVisible();
       // Tree rows pack name/type/code/workspace on one nowrap line; opening
       // the browser must still fit the narrowest phone width.
@@ -834,7 +875,7 @@ test('machine return routes preserve the source view and filters', async ({
     '/machines/machine/5/details?from=sites&location=12&scope=direct'
   );
   // Detail labels: the boolean is a record flag, not a run state.
-  await expect(page.getByText('Active record')).toBeVisible();
+  await expect(page.getByText('In service', { exact: true })).toBeVisible();
   const breadcrumb = page.getByRole('link', { name: 'Machines' });
   await expect(breadcrumb).toHaveAttribute(
     'href',
@@ -861,23 +902,19 @@ test('collapsing an ancestor keeps the selection and stays collapsed', async ({
   await page.goto(
     '/playwright/machine-locations.html?mode=workspace&location=150'
   );
+  await openLocationBrowser(page);
   await expect(page.locator('[role="treeitem"][data-value="150"]')).toBeVisible(
     { timeout: 15_000 }
   );
-  await expect(
-    page.getByRole('button', { name: 'Collapse Building B' })
-  ).toBeVisible();
+  await expect(treeNode(page, 'Building B').locator(':scope > [data-depth] > span[aria-hidden]')).toHaveAttribute('data-expanded', 'true');
 
-  await page.getByRole('button', { name: 'Collapse Building B' }).click();
+  await treeNode(page, 'Building B').focus();
+  await treeNode(page, 'Building B').press('ArrowLeft');
   // The selection still targets Zenith Cell inside Building B; no background
   // reveal pass may reopen the branch the user just collapsed.
-  await expect(
-    page.getByRole('button', { name: 'Expand Building B' })
-  ).toBeVisible();
+  await expect(treeNode(page, 'Building B').locator(':scope > [data-depth] > span[aria-hidden]')).not.toHaveAttribute('data-expanded', 'true');
   await page.waitForTimeout(1000);
-  await expect(
-    page.getByRole('button', { name: 'Collapse Building B' })
-  ).toHaveCount(0);
+  await expect(treeNode(page, 'Building B').locator(':scope > [data-depth] > span[aria-hidden]')).not.toHaveAttribute('data-expanded', 'true');
   await expect(page.getByTestId('destination')).toContainText('location=150');
 });
 
@@ -891,6 +928,7 @@ test('reveal stops at an exhausted branch instead of paging past it', async ({
   await page.goto(
     '/playwright/machine-locations.html?mode=workspace&location=999'
   );
+  await openLocationBrowser(page);
   await expect(
     page.getByText(
       'This location cannot be found in the tree. Use the search above to look for it.'

@@ -1,3 +1,4 @@
+import { samplingInformation } from './presentationAssertions';
 import { expect, test } from '@playwright/test';
 import { nativeBaseline } from '../s0/guards';
 import { NATIVE_SIGNALS, openPausedPerformance } from './performanceFixtures';
@@ -189,17 +190,10 @@ for (const scheme of ['light', 'dark'] as const)
     const section = page.locator('[data-section="Electrical"]');
     const curve = section.locator('path.recharts-line-curve').first();
     await expect(curve).toHaveAttribute('d', /L/);
-    const provenance = page.getByTestId('history-provenance');
-    await provenance
-      .locator('summary')
-      .filter({ hasText: 'Per-batch resolution and clock' })
-      .click();
-    await expect(provenance).toContainText(
-      'Resolution 5 s; measured cadence 5 s'
-    );
-    await expect(provenance).toContainText(
-      'Resolution 20 s; measured cadence 20 s'
-    );
+    await expect(page.getByTestId('history-provenance')).toHaveCount(0);
+    await samplingInformation(page, '2 bounded history batches');
+    const powerPoints = ((await curve.getAttribute('d'))!.match(/[ML]/g) ?? []).length;
+    expect(powerPoints).toBeGreaterThan(2);
     await page
       .getByRole('button', {
         name: 'Open Motor winding temperature',
@@ -210,6 +204,9 @@ for (const scheme of ['light', 'dark'] as const)
     await expect(
       winding.locator('path.recharts-line-curve').first()
     ).toHaveAttribute('d', /L/);
+    const windingPoints = ((await winding.locator('path.recharts-line-curve').first().getAttribute('d'))!.match(/[ML]/g) ?? []).length;
+    expect(windingPoints).toBeGreaterThan(2);
+    expect(windingPoints).toBeLessThan(powerPoints);
     await section.screenshot({
       path: info.outputPath(`batch-cadence-curve-${scheme}.png`),
       animations: 'disabled'
@@ -218,7 +215,7 @@ for (const scheme of ['light', 'dark'] as const)
       path: info.outputPath(`batch-cadence-sensors-${scheme}.png`),
       animations: 'disabled'
     });
-    await provenance.screenshot({
+    await page.getByTestId('live-indicator').screenshot({
       path: info.outputPath(`batch-cadence-metadata-${scheme}.png`),
       animations: 'disabled'
     });

@@ -106,13 +106,15 @@ for (const scheme of ['light', 'dark'] as const) {
     const root = page.getByTestId('pump-health');
     const refresh = root.getByRole('button', { name: 'Refresh', exact: true });
     const x = (await refresh.boundingBox())!.x;
+    // The live region is an <output> (implicit status role), not an element
+    // with a role attribute.
     const announced = await root
-      .locator('[role="status"][aria-atomic="true"]')
+      .locator('output[aria-atomic="true"]')
       .textContent();
     await refresh.click();
-    await expect(
-      root.locator('[role="status"][aria-atomic="true"]')
-    ).toHaveText(announced!);
+    await expect(root.locator('output[aria-atomic="true"]')).toHaveText(
+      announced!
+    );
     expect(
       await root
         .getByRole('heading', { name: 'Active anomalies', exact: true })

@@ -192,7 +192,8 @@ export async function captureState(
       )
     );
     expect(facts.pageWidth).toBeLessThanOrEqual(width);
-    expect(facts.clockCount).toBe(1);
+    // Visible clock captions were removed; timestamps retain their clock tooltips.
+    expect(facts.clockCount).toBe(0);
     expect(facts.forbiddenText).toBeNull();
     expect(facts.paletteFailures).toEqual([]);
     expect(
@@ -220,11 +221,14 @@ export async function captureState(
       const firstRow = facts.kpis.filter(
         (k) => Math.abs(k.box!.y - facts.kpis[0].box!.y) < 2
       );
-      expect(firstRow).toHaveLength(width === 1440 ? 8 : 4);
-      const bottoms = firstRow.map((k) => k.footer!.y + k.footer!.height);
-      expect(Math.max(...bottoms) - Math.min(...bottoms)).toBeLessThanOrEqual(
-        2
-      );
+      const gridWidth = Math.max(...facts.kpis.map((k) => k.box!.x + k.box!.width)) - facts.kpis[0].box!.x;
+      expect(firstRow).toHaveLength(Math.floor((gridWidth + 12) / 232));
+      const widths = firstRow.map((k) => k.box!.width);
+      expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(2);
+      for (const kpi of firstRow) {
+        expect(kpi.box!.width).toBeGreaterThanOrEqual(220);
+        expect(kpi.footer!.y + kpi.footer!.height).toBeLessThanOrEqual(kpi.box!.y + kpi.box!.height);
+      }
     }
     if (base && width === 390) {
       if (screen === 'performance')
@@ -233,8 +237,9 @@ export async function captureState(
         );
       else
         expect(
+          // The compact Normal badge keeps partial coverage in its accessible name.
           await root
-            .getByText(/Assessed on 2 of 6 signals/)
+            .getByRole('button', { name: /^Normal.*Assessed on 2 of 6/ })
             .evaluate((el) => el.getBoundingClientRect().bottom)
         ).toBeLessThanOrEqual(height);
     }

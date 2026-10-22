@@ -14,8 +14,7 @@ test('native Details fields and machine placement remain available with the Move
   );
   for (const label of [
     'Name',
-    'Active record',
-    'Legacy location label',
+    'In service',
     'Manufacturer',
     'Model',
     'Serial Number',
@@ -23,6 +22,7 @@ test('native Details fields and machine placement remain available with the Move
   ]) {
     await expect(page.getByText(label, { exact: true })).toBeVisible();
   }
+  await expect(page.getByText('Legacy location label', { exact: true })).toHaveCount(0);
   await expect(
     page.getByText('Synthetic description retained in native Details')
   ).toBeVisible();
@@ -64,7 +64,7 @@ test('viewer keeps QR access while barcode mutations and Move stay hidden', asyn
     .click();
   await expect(
     page.getByRole('menuitem', {
-      name: 'action-menu-barcode-actions-link-barcode',
+      name: 'action-menu-barcode-actions-link-tag',
       exact: true
     })
   ).toHaveCount(0);
@@ -76,7 +76,7 @@ test('viewer keeps QR access while barcode mutations and Move stay hidden', asyn
   ).toHaveCount(0);
   await page
     .getByRole('menuitem', {
-      name: 'action-menu-barcode-actions-view-barcode',
+      name: 'action-menu-barcode-actions-machine-qr-label',
       exact: true
     })
     .click();
@@ -97,12 +97,12 @@ test('an editor with an unlinked machine can reach Link Barcode', async ({
     .click();
   await page
     .getByRole('menuitem', {
-      name: 'action-menu-barcode-actions-link-barcode',
+      name: 'action-menu-barcode-actions-link-tag',
       exact: true
     })
     .click();
   await expect(
-    page.getByRole('dialog', { name: 'Link Barcode', exact: true })
+    page.getByRole('dialog', { name: 'Link tag', exact: true })
   ).toBeVisible();
   await expect(
     page.getByRole('dialog').getByText('Scan or enter barcode data')
@@ -121,7 +121,7 @@ test('an editor with a linked machine can reach Unlink Barcode', async ({
     .click();
   await expect(
     page.getByRole('menuitem', {
-      name: 'action-menu-barcode-actions-link-barcode',
+      name: 'action-menu-barcode-actions-link-tag',
       exact: true
     })
   ).toHaveCount(0);
@@ -226,7 +226,7 @@ test('the production layout preserves native Details and QR access with syntheti
     .click();
   await page
     .getByRole('menuitem', {
-      name: 'action-menu-barcode-actions-view-barcode',
+      name: 'action-menu-barcode-actions-machine-qr-label',
       exact: true
     })
     .click();

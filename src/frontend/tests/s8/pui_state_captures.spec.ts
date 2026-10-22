@@ -372,11 +372,21 @@ for (const state of states)
             exact: true
           });
           await details.click();
+          // No "Times:" caption; the clock is in the tooltip of the time shown.
           await expect(
             page.getByText(/Times: your clock|Times: plant clock/)
+          ).toHaveCount(0);
+          await page
+            .getByText(/^Records read/)
+            .locator('time')
+            .hover();
+          await expect(
+            page
+              .getByRole('tooltip')
+              .filter({ hasText: /your clock|plant clock/ })
           ).toBeVisible();
           await details.click();
-        } else expect(metadata.clockStatements).toBe(1);
+        } else expect(metadata.clockStatements).toBe(0);
         expect(
           metadata.drawing.tags.filter(
             (tag) => tag.valueOverlapsLabel || tag.labelOutsideTag

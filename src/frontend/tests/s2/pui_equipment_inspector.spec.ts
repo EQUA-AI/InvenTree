@@ -13,7 +13,7 @@ async function openPanel(
   pauseScheduledPolling = false
 ) {
   await page.goto(
-    `/playwright/s2-equipment.html?kind=panel&scheme=${scheme}${pauseScheduledPolling ? '&polling=paused' : ''}`
+    `/playwright/s2-equipment.html?kind=panel&entry=${encodeURIComponent('/machines/machine/18/equipment/?view=model')}&scheme=${scheme}${pauseScheduledPolling ? '&polling=paused' : ''}`
   );
   await expect(page.locator('[data-scene-phase="ready"]')).toBeVisible();
 }
@@ -35,12 +35,13 @@ test('a bound position shows its own slot, reading and work, and the rest as par
     await expect(
       panel.getByRole('heading', { name: 'Motor drive-end bearing' })
     ).toBeVisible();
-    await expect(panel).toContainText(
-      'Catalogue family: Motor Drive-End Bearing (MOTOR-DE-BRG)'
-    );
+    await expect(panel).not.toContainText('Catalogue family:');
+    await expect(panel).toContainText('Motor Drive-End Bearing');
     const slot = panel.locator('[data-slot="PS-MOTOR-DE-BRG:1"]');
-    await expect(slot).toContainText('Draft inference');
-    await expect(slot).toContainText('physical assignment is unverified');
+    await expect(slot).toContainText('Inferred from tags');
+    await page.keyboard.press('Tab');
+    await slot.getByRole('button', { name: /^Inferred from tags:/ }).focus();
+    await expect(page.getByRole('tooltip')).toContainText('not checked on site');
     const reading = panel.locator('[data-signal="202"]');
     await expect(reading).toContainText('DE bearing temperature');
     await expect(reading).toContainText('95 °C');
@@ -57,9 +58,7 @@ test('a bound position shows its own slot, reading and work, and the rest as par
     // Positions does not supply server-relative age; never infer it from the browser.
     await expect(reading).toContainText('age unavailable');
     await expect(reading).toContainText('15:00:00');
-    await expect(panel.locator('[data-records-read]')).toContainText(
-      'Records read at'
-    );
+    await expect(panel.locator('[data-records-read]')).toHaveCount(0);
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth)
     ).toBeLessThanOrEqual(page.viewportSize()!.width);
@@ -128,9 +127,8 @@ test('the whole machine shows its work and asks for a component', async ({
   await expect(panel.locator('[data-machine-work]')).toHaveText(
     '3 open on this machine'
   );
-  await expect(panel).toContainText(
-    'Select a component to see its own component records, readings and work.'
-  );
+  await expect(page.getByRole('list', { name: 'Model components' }).getByRole('listitem')).toHaveCount(9);
+  await expect(panel.getByRole('link', { name: 'View Health', exact: true })).toBeVisible();
 });
 
 test('records that cannot be loaded show nothing cached and can be retried', async ({
@@ -234,7 +232,7 @@ test('records the reader may not see say so, with no retry that cannot help', as
 test('a Parts slot opens the model on its own position', async ({ page }) => {
   await mockPositions(page);
   await page.goto(
-    `/playwright/s2-equipment.html?kind=panel&entry=${encodeURIComponent('/machines/machine/18/equipment/?position=bearing')}`
+    `/playwright/s2-equipment.html?kind=panel&entry=${encodeURIComponent('/machines/machine/18/equipment/?view=model&position=bearing')}`
   );
   await expect(page.locator('[data-scene-phase="ready"]')).toBeVisible();
   await expect(
@@ -251,7 +249,7 @@ test('an unknown position in the link falls back to the whole machine', async ({
 }) => {
   await mockPositions(page);
   await page.goto(
-    `/playwright/s2-equipment.html?kind=panel&entry=${encodeURIComponent('/machines/machine/18/equipment/?position=gearbox')}`
+    `/playwright/s2-equipment.html?kind=panel&entry=${encodeURIComponent('/machines/machine/18/equipment/?view=model&position=gearbox')}`
   );
   await expect(page.locator('[data-scene-phase="ready"]')).toBeVisible();
   await expect(page.locator('[data-position="machine"]')).toHaveAttribute(

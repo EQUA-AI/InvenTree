@@ -51,7 +51,7 @@ test.describe('R6 P12 machine Maintenance: Open work and Completed history', () 
       // Both kinds of work exist; neither is read as the machine's verdict.
       await expect(
         page.getByText('a completed job does not close the open work')
-      ).toBeVisible();
+      ).toHaveCount(0);
       const table = page.getByTestId('machine-open-work');
       await expect(table.locator('[data-work]')).toHaveCount(20);
       await expect(page.getByText('20 open work orders')).toBeVisible();
@@ -172,13 +172,13 @@ test.describe('R6 P12 machine Maintenance: Open work and Completed history', () 
         page.getByRole('link', { name: 'Open work order WO-60' })
       ).toBeVisible();
       await expect(
-        page.getByText('No work order you can open', { exact: true })
-      ).toBeVisible();
+        page.getByRole('button', { name: 'Work order link not available', exact: true })
+      ).toHaveText('—');
       await expect(page.getByText('Follow-up required')).toBeVisible();
       const component = page
         .getByRole('row')
         .filter({ hasText: 'Legacy service visit' });
-      await expect(component).toContainText('Not available');
+      await expect(component.getByRole('button', { name: 'Component not recorded', exact: true })).toHaveText('—');
       await expectContained(page);
       await page.screenshot({
         path: testInfo.outputPath(`maintenance-completed-${scheme}.png`),
@@ -207,7 +207,7 @@ test.describe('R6 P12 machine Maintenance: Open work and Completed history', () 
     await expect(
       page.getByText('This is not the same as having no open work.')
     ).toBeVisible();
-    await expect(page.getByText('No open work on this machine')).toHaveCount(0);
+    await expect(page.getByText('No open work')).toHaveCount(0);
     expect(requests.list).toHaveLength(0);
   });
 
@@ -222,7 +222,7 @@ test.describe('R6 P12 machine Maintenance: Open work and Completed history', () 
     await expect(
       page.getByRole('radiogroup', { name: 'Maintenance view' })
     ).toContainText('not available');
-    await expect(page.getByText('No open work on this machine')).toHaveCount(0);
+    await expect(page.getByText('No open work')).toHaveCount(0);
     await expect(
       page.getByText('Open work could not be checked')
     ).toBeVisible();
@@ -272,7 +272,7 @@ test.describe('R6 P12 machine Maintenance: Open work and Completed history', () 
   }) => {
     await mockMachineWork(page, { jobs: 0, open: 0 });
     await openMaintenance(page);
-    await expect(page.getByText('No open work on this machine')).toBeVisible();
+    await expect(page.getByText('No open work')).toBeVisible();
     await page.getByRole('button', { name: 'Show completed history' }).click();
     await expect(page.getByText('Drive-end bearing replaced')).toBeVisible();
     await expect(page.getByTestId('destination')).toContainText(
@@ -345,9 +345,12 @@ test.describe('R6 P12 Fault History: occurrences, retained evidence and owning w
       await expect(page.getByText('3 occurrences')).toBeVisible();
       const bearing = page.locator('[data-occurrence="901"]').first();
       await expect(bearing).toContainText('Drive-end bearing high temperature');
-      await expect(bearing).toContainText('Code TT-HI');
-      await expect(bearing).toContainText('Source alarm ALM-77812');
-      await expect(bearing).toContainText('Record 901');
+      const information = bearing.getByRole('button', { name: 'Event information', exact: true });
+      await page.keyboard.press('Tab');
+      await information.focus();
+      await expect(page.getByRole('tooltip')).toContainText('Code TT-HI');
+      await expect(page.getByRole('tooltip')).toContainText('Source alarm ALM-77812');
+      await expect(page.getByRole('tooltip')).toContainText('Record 901');
       await expect(bearing).toContainText('Drive-end bearing');
       await expect(bearing).toContainText('unverified assignment');
       await expect(bearing).toContainText('1 retained snapshot');
@@ -355,7 +358,10 @@ test.describe('R6 P12 Fault History: occurrences, retained evidence and owning w
       await expect(bearing).toContainText('Resolved');
       // No source id is invented where the source sent none.
       const pressure = page.locator('[data-occurrence="902"]').first();
-      await expect(pressure).toContainText('No source alarm id');
+      await page.keyboard.press('Tab');
+      await pressure.getByRole('button', { name: 'Event information', exact: true }).focus();
+      await expect(page.getByRole('tooltip')).toContainText('Record 902');
+      await expect(page.getByRole('tooltip')).not.toContainText('Source alarm');
       await expect(pressure).toContainText('Signal not mapped to a component');
       await expect(pressure).toContainText('No retained snapshot');
       await expect(
@@ -410,9 +416,9 @@ test.describe('R6 P12 Fault History: occurrences, retained evidence and owning w
         'href',
         '/machines/machine/18/health/?snapshot=a3f1c2d4-0000-4000-8000-000000000001'
       );
-      await expect(page.getByTestId('fault-occurrences')).toContainText(
-        'Times: your clock'
-      );
+      await expect(page.getByTestId('fault-occurrences')).not.toContainText('Times: your clock');
+      await page.getByTestId('fault-occurrences').locator('time').first().hover();
+      await expect(page.getByRole('tooltip')).toContainText('your clock');
       await expect(
         evidence.getByRole('link', {
           name: 'Current readings are on the Health tab'
