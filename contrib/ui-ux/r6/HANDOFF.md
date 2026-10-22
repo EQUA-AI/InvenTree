@@ -1,5 +1,19 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## Station and pump mimics — 22 October 2026 (coordinator replay pending)
+
+Bounded UI repair on `r6/ui-mimic` from `8a8335959`: responsive station
+readouts/pump row and larger pump schematic with separate callout columns.
+The latest owner direction removes redundant captions and chips; missing values
+use an em dash with an accessible hover/focus reason. Failed reads and active
+alarms remain explicit. Verification is restricted to owned Linux Chromium
+WS 3010 / harness 15245 and synthetic fixtures. See
+[the execution report](reports/ui-mimic.md). P08/P31/P35 parent dispositions
+remain unchanged; no deployment or product acceptance is claimed. Final owner
+direction assigns full browser suites and fresh final-source captures to the
+coordinator on the Mac. Completed sandbox checks and exact source checkpoints
+are recorded in the report; discovery listings are not suite passes.
+
 ## O27 live-view — 21 October 2026 (in progress)
 
 `r6/live-view` implements owner O27 behind default-on

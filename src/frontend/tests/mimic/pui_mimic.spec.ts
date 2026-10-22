@@ -1,4 +1,10 @@
-import { expect, test } from '@playwright/test';
+import { type Locator, type Page, expect, test } from '@playwright/test';
+
+async function keyboardFocus(page: Page, target: Locator) {
+  await page.keyboard.press('Tab');
+  await target.focus();
+  await expect(target).toBeFocused();
+}
 
 function fixture(unit: string | null, stale = false, enabled = true) {
   const point = (pointer: string, value: number | string | null) => ({
@@ -155,15 +161,26 @@ test('sparse bays bind the selected pointer and never invent totals or threshold
   );
   await page.goto('/');
   await page.getByRole('button', { name: 'P17: Running', exact: true }).click();
-  await expect(page.locator('g[data-point="/dex/PUMP17_POWER"]')).toContainText(
-    '7.5 MW'
-  );
   await expect(
-    page.getByText('No threshold configured', { exact: true })
-  ).toBeVisible();
+    page.locator('[data-reading][data-point="/dex/PUMP17_POWER"]')
+  ).toContainText('7.5 MW');
+  const missingPower = page.getByLabel('Plant power: Missing contributors', {
+    exact: true
+  });
+  await expect(missingPower).toHaveText('—');
+  await keyboardFocus(page, missingPower);
   await expect(
-    page.getByText('Missing contributors', { exact: true })
-  ).toBeVisible();
+    page.getByRole('tooltip').filter({ hasText: 'Missing contributors' })
+  ).toContainText('Missing contributors');
+  await page.getByRole('button', { name: 'Motor', exact: false }).click();
+  const condition = page
+    .locator('tr[data-point="/dex/PUMP17_POWER"]')
+    .getByLabel('No threshold configured', { exact: true });
+  await expect(condition).toHaveText('—');
+  await keyboardFocus(page, condition);
+  await expect(
+    page.getByRole('tooltip').filter({ hasText: 'No threshold configured' })
+  ).toHaveText('No threshold configured');
   await expect(
     page.getByRole('button', { name: 'P2: Running', exact: true })
   ).toHaveCount(0);
@@ -184,9 +201,14 @@ test('stale and disabled readings remain explicitly unavailable', async ({
   );
   await page.goto('/');
   await page.getByRole('button', { name: 'P17: Stale', exact: true }).click();
-  await expect(page.locator('g[data-point="/dex/PUMP17_POWER"]')).toContainText(
-    'Unavailable'
-  );
+  await expect(
+    page.locator('[data-reading][data-point="/dex/PUMP17_POWER"]')
+  ).toContainText('—');
+  await expect(
+    page.locator(
+      '[data-reading][data-point="/dex/PUMP17_POWER"] [data-value] [aria-label]'
+    )
+  ).toHaveAttribute('aria-label', /Stale/);
   await expect(page.getByText('7.5 MW', { exact: true })).toHaveCount(0);
   enabled = false;
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
@@ -213,9 +235,9 @@ test('request failure hides cached readings and hidden views stop polling', asyn
   });
   await page.goto('/');
   await page.getByRole('button', { name: 'P17: Running', exact: true }).click();
-  await expect(page.locator('g[data-point="/dex/PUMP17_POWER"]')).toContainText(
-    '7.5 MW'
-  );
+  await expect(
+    page.locator('[data-reading][data-point="/dex/PUMP17_POWER"]')
+  ).toContainText('7.5 MW');
   failed = true;
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(
@@ -224,9 +246,9 @@ test('request failure hides cached readings and hidden views stop polling', asyn
       { exact: true }
     )
   ).toBeVisible();
-  await expect(page.locator('g[data-point="/dex/PUMP17_POWER"]')).toHaveCount(
-    0
-  );
+  await expect(
+    page.locator('[data-reading][data-point="/dex/PUMP17_POWER"]')
+  ).toHaveCount(0);
   await page.locator('#root').evaluate((node) => {
     node.style.display = 'none';
   });
@@ -368,8 +390,9 @@ test('bays are drawn in the order they are numbered, each in its state', async (
   await second.click();
   await expect(second).toHaveAttribute('aria-pressed', 'false');
   await expect(
-    page.getByText('Select a pump bay to view its instruments and readings.')
-  ).toBeVisible();
+    page.getByRole('heading', { name: 'Pump unit: P2', exact: true })
+  ).toHaveCount(0);
+  await expect(page.locator('[data-bay][aria-pressed="true"]')).toHaveCount(0);
 });
 
 test('a status code is given in words, and an unknown code as it came', async ({
@@ -385,7 +408,7 @@ test('a status code is given in words, and an unknown code as it came', async ({
     })
   );
   await page.goto('/');
-  const value = page.locator('g[data-point="/st"] text').last();
+  const value = page.locator('[data-point="/st"] [data-reading-value]');
   await expect(value).toHaveText('Running');
 
   // Nothing guesses at a code the layout has not been told the meaning of.
@@ -395,15 +418,23 @@ test('a status code is given in words, and an unknown code as it came', async ({
 
   // The pump's own tag, its summary line and its table agree with the words.
   await page.getByRole('button', { name: 'P10: Idle', exact: true }).click();
-  await expect(
-    page.locator('g[data-point="/pd/P10/st"] text').last()
-  ).toHaveText('Idle');
+  await expect(page.locator('[data-unit-header]')).toContainText('Idle');
   const group = page.getByRole('button', { name: 'Equipment Status Group' });
-  await expect(group).toContainText('Equipment Status: Idle');
+  await keyboardFocus(page, group);
+  await expect(
+    page.getByRole('tooltip').filter({ hasText: 'Equipment Status: Idle' })
+  ).toContainText('Equipment Status: Idle');
   await group.click();
   const row = page.locator('tr[data-point="/pd/P10/st"]');
   await expect(row).toContainText('Idle');
-  await expect(row).toContainText('Source code: I');
+  const source = row.getByRole('button', {
+    name: 'Idle · Source code: I',
+    exact: true
+  });
+  await keyboardFocus(page, source);
+  await expect(
+    page.getByRole('tooltip').filter({ hasText: 'Source code: I' })
+  ).toHaveText('Source code: I');
 });
 
 test('a system is one line until it is opened', async ({ page }) => {
@@ -418,13 +449,26 @@ test('a system is one line until it is opened', async ({ page }) => {
   const motor = page.getByRole('button', { name: 'Electric Motor' });
   // A family is a span; a lone reading is named. Neither is ranked against
   // the other, and nothing is called normal without a limit to be normal by.
-  await expect(motor).toContainText('3 readings: 30 – 50.5 degC');
-  await expect(motor).toContainText('Shaft speed: 745 rpm');
-  await expect(motor).toContainText('No threshold configured');
+  await keyboardFocus(page, motor);
+  await expect(
+    page.getByRole('tooltip').filter({ hasText: '3 readings: 30 – 50.5 degC' })
+  ).toContainText('3 readings: 30 – 50.5 degC');
+  await expect(
+    page.getByRole('tooltip').filter({ hasText: 'Shaft speed: 745 rpm' })
+  ).toContainText('Shaft speed: 745 rpm');
+  await expect(motor).not.toContainText('Normal');
   await expect(page.locator('tr[data-point="/w1"]')).toHaveCount(0);
 
   await motor.click();
   await expect(page.locator('tr[data-point="/w1"]')).toContainText('30 degC');
+  const condition = page
+    .locator('tr[data-point="/w1"]')
+    .getByLabel('No threshold configured', { exact: true });
+  await expect(condition).toHaveText('—');
+  await keyboardFocus(page, condition);
+  await expect(
+    page.getByRole('tooltip').filter({ hasText: 'No threshold configured' })
+  ).toHaveText('No threshold configured');
   await expect(page.locator('tr[data-point="/w2"]')).toContainText('50.5 degC');
 });
 
@@ -441,11 +485,16 @@ test('a reading that cannot be shown says why, on the drawing', async ({
   );
   await page.goto('/');
   await page.getByRole('button', { name: 'P17: Stale', exact: true }).click();
-  const tag = page.locator('g[data-point="/dex/PUMP17_POWER"]');
-  await expect(tag).toContainText('Stale');
-  await expect(tag).toContainText('15:00:00');
+  const tag = page.locator('[data-reading][data-point="/dex/PUMP17_POWER"]');
+  const missing = tag.locator('[data-value] [aria-label]');
+  await expect(missing).toHaveText('—');
+  await expect(missing).toHaveAttribute('aria-label', /Stale/);
+  await keyboardFocus(page, missing);
+  await expect(
+    page.getByRole('tooltip').filter({ hasText: 'Stale' })
+  ).toContainText('Stale');
+  await expect(missing).toHaveAttribute('aria-label', /15:00:00/);
   await expect(tag).not.toContainText('7.5');
-  await expect(tag.locator('rect')).toHaveAttribute('stroke-dasharray', '4 3');
 });
 
 /** A pump with parts: a motor with a limit, a bearing, and one it lacks. */
@@ -582,8 +631,14 @@ test('a pump page shows the pump with its parts numbered and summarised', async 
   await expect(bearing).toContainText('Thrust pad: 42 degC');
 
   // A part this pump reports nothing for is still drawn, and says so.
+  const absent = page.getByRole('button', {
+    name: '3. Guide radial bearing',
+    exact: true
+  });
+  await expect(absent.locator('[data-part-summary]')).toHaveText('—');
+  await keyboardFocus(page, absent);
   await expect(
-    page.getByRole('button', { name: '3. Guide radial bearing', exact: true })
+    page.getByRole('tooltip').filter({ hasText: 'No readings on this pump' })
   ).toContainText('No readings on this pump');
 
   // The list beneath carries the same numbers; a system that is not a part
@@ -591,7 +646,10 @@ test('a pump page shows the pump with its parts numbered and summarised', async 
   const drive = page.locator('[data-section="Drive motor"]');
   await expect(drive.locator('[data-number]')).toHaveText('1');
   const electrical = page.locator('[data-section="Motor Electrical System"]');
-  await expect(electrical).toContainText('Active power: 8.4 MW');
+  await keyboardFocus(page, electrical.getByRole('button'));
+  await expect(
+    page.getByRole('tooltip').filter({ hasText: 'Active power: 8.4 MW' })
+  ).toContainText('Active power: 8.4 MW');
   await expect(electrical.locator('[data-number]')).toHaveCount(0);
 
   // Each winding is a bar, as tall as its reading against the others; the
@@ -600,10 +658,13 @@ test('a pump page shows the pump with its parts numbered and summarised', async 
   await expect(bars).toHaveCount(3);
   const heights = async () =>
     bars.evaluateAll((nodes) =>
-      nodes.map((node) => [
-        node.getAttribute('data-bar'),
-        Number(node.getAttribute('height'))
-      ])
+      nodes.map(
+        (node) =>
+          [
+            node.getAttribute('data-bar'),
+            Number(node.getAttribute('height'))
+          ] as const
+      )
     );
   let [w1, w2, w3] = await heights();
   expect(w1[1]).toBeGreaterThan(w3[1]);
@@ -614,7 +675,9 @@ test('a pump page shows the pump with its parts numbered and summarised', async 
   await motor.click();
   await expect(page.locator('tr[data-point="/w1"]')).toContainText('61 degC');
 
-  // Pointing at a part outlines it; take the pointer away to see its own colour.
+  // Pointer and keyboard focus both outline a part. Leave both before
+  // checking that a normal reading does not itself add an outline.
+  await page.getByLabel('Filter unit readings', { exact: true }).focus();
   await page.mouse.move(0, 0);
   // Nothing is outlined while every reading is within its limit...
   const drawing = page.getByRole('img', { name: 'Pump unit schematic' });
@@ -717,14 +780,18 @@ test('an alarm is acknowledged with a note where it is seen, and leads to Health
   ).toHaveAttribute('href', '/machines/machine/1/health');
   await expect(pending).toContainText('Not raised yet');
   await expect(
-    pending.getByRole('button', { name: 'Acknowledge' })
+    pending.getByRole('button', { name: 'Acknowledge /w9', exact: true })
   ).toHaveCount(0);
 
-  await raised.getByRole('button', { name: 'Acknowledge' }).click();
+  await raised
+    .getByRole('button', { name: 'Acknowledge /w1', exact: true })
+    .click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('/w1: 159.5 degC');
   await dialog.getByLabel('Note').fill('Seen; winding fan checked.');
-  await dialog.getByRole('button', { name: 'Acknowledge' }).click();
+  await dialog
+    .getByRole('button', { name: 'Acknowledge', exact: true })
+    .click();
 
   await expect(dialog).toHaveCount(0);
   expect(posted).toEqual([
@@ -735,12 +802,11 @@ test('an alarm is acknowledged with a note where it is seen, and leads to Health
       body: { note: 'Seen; winding fan checked.' }
     }
   ]);
-  // The page re-reads, and the alarm is shown as acknowledged with nothing
-  // left to press.
+  // The page re-reads, and no second acknowledgement can be submitted.
   await expect(raised).toContainText('Active · acknowledged');
-  await expect(raised.getByRole('button', { name: 'Acknowledge' })).toHaveCount(
-    0
-  );
+  await expect(
+    raised.getByRole('button', { name: 'Acknowledge /w1', exact: true })
+  ).toHaveCount(0);
 });
 
 test('a refused acknowledgement keeps the note and says why', async ({
@@ -766,10 +832,14 @@ test('a refused acknowledgement keeps the note and says why', async ({
   await expect(page.locator('tr[data-point="/w1"]')).toHaveCount(1);
   await expect(page.locator('tr[data-point="/w9"]')).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Acknowledge' }).click();
+  await page
+    .getByRole('button', { name: 'Acknowledge /w1', exact: true })
+    .click();
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Note').fill('Trying anyway');
-  await dialog.getByRole('button', { name: 'Acknowledge' }).click();
+  await dialog
+    .getByRole('button', { name: 'Acknowledge', exact: true })
+    .click();
   await expect(dialog).toContainText(
     'You do not have permission to perform this action.'
   );
@@ -809,7 +879,7 @@ test('a repair is raised from the alarm row, against the anomaly', async ({
 
   await page
     .locator('tr[data-point="/w1"]')
-    .getByRole('button', { name: 'Create repair' })
+    .getByRole('button', { name: 'Create repair for /w1', exact: true })
     .click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('New work order');
@@ -817,8 +887,7 @@ test('a repair is raised from the alarm row, against the anomaly', async ({
     '/w1 outside configured limits'
   );
   await dialog
-    .getByRole('button', { name: /^Create/ })
-    .last()
+    .getByRole('button', { name: 'Create work order', exact: true })
     .click();
 
   await expect(dialog).toHaveCount(0);
@@ -866,7 +935,7 @@ test('a bay with an alarm is marked on the drawing, and counted beside the state
   await expect(page.locator('[data-legend="alarm-warning"]')).toHaveCount(0);
 });
 
-test('an alarm is dismissed only with a reason, and then offers nothing more', async ({
+test('an alarm is dismissed only with a reason, retaining inspection without further mutation', async ({
   page
 }) => {
   let status: 'open' | 'suppressed' = 'open';
@@ -890,10 +959,10 @@ test('an alarm is dismissed only with a reason, and then offers nothing more', a
   await page.goto('/?pump=P1');
 
   const row = page.locator('tr[data-point="/w1"]');
-  await row.getByRole('button', { name: 'Dismiss' }).click();
+  await row.getByRole('button', { name: 'Dismiss /w1', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('Dismiss alarm');
-  const confirm = dialog.getByRole('button', { name: 'Dismiss' });
+  const confirm = dialog.getByRole('button', { name: 'Dismiss', exact: true });
   // Waving an alarm away has to say why.
   await expect(confirm).toBeDisabled();
   await dialog.getByLabel('Reason').fill('Limit set too tight');
@@ -909,7 +978,32 @@ test('an alarm is dismissed only with a reason, and then offers nothing more', a
     }
   ]);
   await expect(row).toContainText('Dismissed');
-  await expect(row.getByRole('button')).toHaveCount(0);
+  for (const action of [
+    'Acknowledge /w1',
+    'Create repair for /w1',
+    'Dismiss /w1'
+  ]) {
+    await expect(
+      row.getByRole('button', { name: action, exact: true })
+    ).toHaveCount(0);
+  }
+  const signal = row.getByRole('button', { name: '/w1', exact: true });
+  const statusInspector = row.locator('[data-alarm-info]');
+  await expect(signal).toBeVisible();
+  await expect(statusInspector).toContainText('Dismissed');
+  await keyboardFocus(page, signal);
+  await expect(
+    page.getByRole('tooltip').filter({ hasText: /^\/w1$/ })
+  ).toBeVisible();
+  await keyboardFocus(page, statusInspector);
+  await expect(
+    page.getByRole('tooltip').filter({
+      hasText: 'Acknowledgement records that someone saw the application alarm'
+    })
+  ).toBeVisible();
+  // Looking up the signal and status never repeats the dismissal or submits
+  // another alarm mutation.
+  expect(posted).toHaveLength(1);
   await expect(
     row.getByRole('link', { name: 'Open /w1 in Health' })
   ).toBeVisible();

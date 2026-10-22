@@ -1,8 +1,17 @@
 import { t } from '@lingui/core/macro';
-import { Accordion, Group, Stack, Table, Text } from '@mantine/core';
+import {
+  Accordion,
+  Group,
+  Stack,
+  Table,
+  Text,
+  Tooltip,
+  UnstyledButton
+} from '@mantine/core';
 import { useState } from 'react';
 import operations from '../../operations.module.css';
 import { StatusBadge as Badge } from '../common';
+import { MissingValue } from './MissingValue';
 import { formatInstant, useDisplayClock } from './observedTime';
 
 import {
@@ -85,18 +94,7 @@ export function summarize(points: MimicPoint[], display: Display = valueText) {
 }
 
 function VerdictBadge({ verdict }: Readonly<{ verdict: Verdict }>) {
-  if (verdict === null) {
-    return (
-      <Badge
-        variant='outline'
-        color='gray'
-        h='auto'
-        styles={{
-          label: { whiteSpace: 'normal', lineHeight: 1.4, paddingBlock: 3 }
-        }}
-      >{t`No threshold configured`}</Badge>
-    );
-  }
+  if (verdict === null) return null;
   const look: Record<string, { color: string; label: string }> = {
     critical: { color: 'red', label: t`Critical` },
     warning: { color: 'yellow', label: t`Warning` },
@@ -143,59 +141,103 @@ export function PointTable({
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {points.map((point) => (
-            <Table.Tr key={point.pointer} data-point={point.pointer}>
-              <Table.Td>
-                {point.label}
-                <Text size='xs' className={operations.meta}>
-                  {point.pointer}
-                </Text>
-              </Table.Td>
-              <Table.Td>
-                {display(point)}
-                {point.reason && (
-                  <Text size='xs'>{reasonLabel(point.reason)}</Text>
-                )}
-                {/* A status given in words keeps the code it was read from. */}
-                {usable(point) && display(point) !== valueText(point) && (
-                  <Text size='xs' className={operations.meta}>
-                    {t`Source code`}: {valueText(point)}
-                  </Text>
-                )}
-              </Table.Td>
-              <Table.Td>
-                {point.quality === 'good' ? t`Good` : t`Unusable or unknown`}
-              </Table.Td>
-              <Table.Td>
-                {point.observed_at
-                  ? (formatInstant(point.observed_at, clock) ??
-                    t`Time unavailable`)
-                  : t`No reading`}
-                {point.age_seconds !== null && (
-                  <Text size='xs'>
-                    {/* A reading a few seconds ahead of the server is current,
-                        not from the future: a plant clock's small lead is
-                        shown as no age rather than a negative one. */}
-                    {t`Age at response`}:{' '}
-                    {Math.max(0, Math.round(point.age_seconds))} {t`seconds`}
-                  </Text>
-                )}
-                {/* How long the reading has held the same number. Shown as a
-                    fact rather than a verdict: a stopped bay's run status is
-                    correctly constant for ever, while a winding temperature
-                    that has not moved in days is an acquisition nobody is
-                    watching. Only the person reading it can tell which. */}
-                {point.unchanged_for_seconds !== null &&
-                  point.unchanged_for_seconds > 0 && (
-                    <Text size='xs' className={operations.meta}>
-                      {t`Unchanged for`}:{' '}
-                      {unchangedLabel(point.unchanged_for_seconds)}
-                    </Text>
+          {points.map((point) => {
+            const shown = point.value !== null && !point.reason;
+            const value = display(point);
+            const observed = formatInstant(point.observed_at, clock);
+            const valueDetail =
+              shown && value !== valueText(point)
+                ? `${t`Source code`}: ${valueText(point)}`
+                : point.pointer;
+            const timeDetail = [
+              clock.label,
+              ...(point.age_seconds != null
+                ? [
+                    `${t`Age at response`}: ${Math.max(0, Math.round(point.age_seconds))} ${t`seconds`}`
+                  ]
+                : []),
+              ...(point.unchanged_for_seconds != null &&
+              point.unchanged_for_seconds > 0
+                ? [
+                    `${t`Unchanged for`}: ${unchangedLabel(point.unchanged_for_seconds)}`
+                  ]
+                : [])
+            ].join(' · ');
+            return (
+              <Table.Tr key={point.pointer} data-point={point.pointer}>
+                <Table.Td>
+                  <Tooltip
+                    label={point.pointer}
+                    events={{ hover: true, focus: true, touch: true }}
+                  >
+                    <UnstyledButton className={operations.phoneTarget}>
+                      {point.label}
+                    </UnstyledButton>
+                  </Tooltip>
+                </Table.Td>
+                <Table.Td>
+                  {shown ? (
+                    <Tooltip
+                      label={valueDetail}
+                      events={{ hover: true, focus: true, touch: true }}
+                    >
+                      <UnstyledButton
+                        className={operations.phoneTarget}
+                        aria-label={`${value} · ${valueDetail}`}
+                      >
+                        {value}
+                      </UnstyledButton>
+                    </Tooltip>
+                  ) : (
+                    <MissingValue
+                      reason={
+                        reasonLabel(point.reason) ||
+                        t`Not reported by the plant`
+                      }
+                      label={point.label}
+                    />
                   )}
-              </Table.Td>
-              <Table.Td>{conditionText(point)}</Table.Td>
-            </Table.Tr>
-          ))}
+                </Table.Td>
+                <Table.Td>
+                  {point.quality === 'good' ? (
+                    t`Good`
+                  ) : point.quality && point.quality !== 'unknown' ? (
+                    t`Unusable quality`
+                  ) : (
+                    <MissingValue
+                      reason={t`Quality not reported by the plant`}
+                    />
+                  )}
+                </Table.Td>
+                <Table.Td>
+                  {observed ? (
+                    <Tooltip
+                      label={timeDetail}
+                      events={{ hover: true, focus: true, touch: true }}
+                    >
+                      <UnstyledButton
+                        className={operations.phoneTarget}
+                        aria-label={`${observed} · ${timeDetail}`}
+                      >
+                        {observed}
+                      </UnstyledButton>
+                    </Tooltip>
+                  ) : (
+                    <MissingValue
+                      reason={t`Observation time not reported by the plant`}
+                    />
+                  )}
+                </Table.Td>
+                <Table.Td>
+                  {!point.thresholds_configured || point.reason ? (
+                    <MissingValue reason={conditionText(point)} />
+                  ) : (
+                    conditionText(point)
+                  )}
+                </Table.Td>
+              </Table.Tr>
+            );
+          })}
         </Table.Tbody>
       </Table>
     </Table.ScrollContainer>
@@ -236,53 +278,56 @@ export function ReadingSections({
     >
       {sections.map((section) => {
         const summary = summarize(section.points, display);
-        const shown = summary.lines.slice(0, 3);
-        const more = summary.lines.length - shown.length;
-        const unavailable = summary.unavailable;
+        const detail =
+          summary.lines.join(' · ') ||
+          [
+            ...new Set(
+              section.points.map(
+                (point) =>
+                  reasonLabel(point.reason) || t`Not reported by the plant`
+              )
+            )
+          ].join(' · ');
         return (
           <Accordion.Item
             key={section.key}
             value={section.key}
             data-section={section.key}
           >
-            <Accordion.Control>
-              <Group justify='space-between' wrap='wrap' gap='sm'>
-                <Stack gap={2} flex='1 1 220px' miw={0}>
-                  <Group gap={8} wrap='nowrap'>
-                    {section.number !== undefined && (
-                      <Badge
-                        size='sm'
-                        variant='filled'
-                        color='gray'
-                        radius='xl'
-                        px={6}
-                        miw={22}
-                        data-number={section.number}
-                      >
-                        {section.number}
-                      </Badge>
-                    )}
-                    <Text fw={600} size='sm'>
-                      {section.title}
-                    </Text>
+            <Tooltip
+              label={detail}
+              multiline
+              maw={480}
+              events={{ hover: true, focus: true, touch: true }}
+            >
+              <Accordion.Control aria-label={section.title}>
+                <Group justify='space-between' wrap='wrap' gap='sm'>
+                  <Stack gap={2} flex='1 1 220px' miw={0}>
+                    <Group gap={8} wrap='nowrap'>
+                      {section.number !== undefined && (
+                        <Badge
+                          size='sm'
+                          variant='filled'
+                          color='gray'
+                          radius='xl'
+                          px={6}
+                          miw={22}
+                          data-number={section.number}
+                        >
+                          {section.number}
+                        </Badge>
+                      )}
+                      <Text fw={600} size='sm'>
+                        {section.title}
+                      </Text>
+                    </Group>
+                  </Stack>
+                  <Group gap='xs' wrap='wrap'>
+                    <VerdictBadge verdict={summary.verdict} />
                   </Group>
-                  <Text size='xs' className={operations.meta}>
-                    {[
-                      ...shown,
-                      ...(more > 0 ? [t`and ${more} more`] : [])
-                    ].join(' · ') || t`No reading`}
-                  </Text>
-                </Stack>
-                <Group gap='xs' wrap='wrap'>
-                  {unavailable > 0 && (
-                    <Badge variant='light' color='gray'>
-                      {t`${unavailable} unavailable`}
-                    </Badge>
-                  )}
-                  <VerdictBadge verdict={summary.verdict} />
                 </Group>
-              </Group>
-            </Accordion.Control>
+              </Accordion.Control>
+            </Tooltip>
             <Accordion.Panel>
               {open.includes(section.key) && (
                 <PointTable points={section.points} display={display} />

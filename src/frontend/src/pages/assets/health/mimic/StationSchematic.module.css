@@ -1,0 +1,139 @@
+.header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--mantine-spacing-xs);
+	margin-bottom: var(--mantine-spacing-sm);
+}
+
+.metrics {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+	gap: var(--mantine-spacing-sm);
+}
+
+.metric {
+	min-width: 0;
+	min-height: 84px;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+}
+
+.label {
+	color: var(--mantine-color-text);
+	overflow-wrap: anywhere;
+}
+
+.reading {
+	font-variant-numeric: tabular-nums;
+	overflow-wrap: anywhere;
+	line-height: 1.35;
+}
+
+.viewport {
+	max-width: 100%;
+	min-width: 0;
+	overflow-x: auto;
+	padding-block: var(--mantine-spacing-xs);
+	scrollbar-width: thin;
+}
+
+.viewport:focus-visible {
+	outline: 2px solid var(--mantine-primary-color-filled);
+	outline-offset: 2px;
+}
+
+.drawing {
+	display: block;
+	width: 100%;
+	font-family: inherit;
+	color: var(--mantine-color-text);
+	--mimic-stale-line: currentColor;
+}
+
+.bay {
+	cursor: pointer;
+	outline: none;
+}
+
+.focus {
+	fill: transparent;
+	stroke: transparent;
+	stroke-width: 2;
+}
+
+.bay:hover .focus,
+.bay:focus-visible .focus {
+	fill: var(--mantine-primary-color-light);
+	stroke: var(--mantine-primary-color-filled);
+}
+
+.totals {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+	gap: var(--mantine-spacing-sm);
+}
+
+.total {
+	min-width: 0;
+	min-height: 92px;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+}
+
+.totalValue {
+	min-height: 36px;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.origin {
+	cursor: help;
+}
+
+.origin:focus-visible {
+	outline: 2px solid var(--mantine-primary-color-filled);
+	outline-offset: 2px;
+}
+
+@media (max-width: 48em) {
+	.metrics {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: var(--mantine-spacing-xs);
+	}
+
+	.metric:first-child {
+		grid-column: 1 / -1;
+	}
+
+	.metric {
+		min-height: 76px;
+	}
+
+	.info {
+		min-width: 44px;
+		min-height: 44px;
+	}
+
+	.refresh {
+		min-height: 44px;
+		min-width: 44px;
+	}
+
+	.origin {
+		min-height: 44px;
+		min-width: 44px;
+	}
+
+	.totalValue {
+		min-height: 44px;
+	}
+
+	.totals {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: var(--mantine-spacing-xs);
+	}
+}

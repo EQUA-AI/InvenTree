@@ -3,7 +3,7 @@ import type { FaultOccurrence } from '../../src/pages/assets/faults/occurrenceMo
 import { nativeBaseline } from '../s0/guards';
 import { mockExplorer } from '../s1/machineExplorerFixtures';
 import { mockFaultHistory, occurrences } from '../s3/machineWorkFixtures';
-import { readable, svgEdge } from './contrast';
+import { contrast, readable } from './contrast';
 import {
   captureFromTop,
   mockEquipment,
@@ -245,29 +245,34 @@ for (const scheme of ['light', 'dark'] as const) {
     point.part_code = 'PS-MOTOR';
     point.thresholds_configured = true;
     await openEquipment(page, true, scheme);
-    const part = page
-      .locator('g[data-part="PS-MOTOR"]')
-      .filter({ has: page.locator('circle + text') });
-    const button = part.getByRole('button');
-    const ring = button.locator('[data-focus-ring]');
+    const button = page.locator('button[data-part="PS-MOTOR"]');
     for (const condition of ['normal', 'warning', 'critical', 'unknown']) {
       point.condition = condition;
       await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-      await expect(part).toHaveAttribute('data-verdict', condition);
+      await expect(button).toHaveAttribute('data-verdict', condition);
       await page.keyboard.press('Tab');
       await button.focus();
       await expect(button).toBeFocused();
-      await expect(ring).toHaveCSS('visibility', 'visible');
-      await svgEdge(ring);
+      const focused = await button.evaluate((node) => ({
+        width: getComputedStyle(node).outlineWidth,
+        style: getComputedStyle(node).outlineStyle,
+        color: getComputedStyle(node).outlineColor,
+        text: getComputedStyle(node).color
+      }));
+      expect(focused.width).toBe('3px');
+      expect(focused.style).toBe('solid');
+      expect(focused.color).toBe(focused.text);
+      expect((await contrast(button)).ratio).toBeGreaterThanOrEqual(3);
       await page.mouse.move(0, 0);
-      await expect(ring).toHaveCSS('visibility', 'visible');
+      await expect(button).toHaveCSS('outline-width', '3px');
     }
     await button.scrollIntoViewIfNeeded();
     await page.screenshot({
       path: info.outputPath(`schematic-focus-${scheme}.png`)
     });
     await button.press('Tab');
-    await expect(ring).toHaveCSS('visibility', 'hidden');
+    await expect(button).not.toBeFocused();
+    await expect(button).not.toHaveCSS('outline-style', 'solid');
   });
 
   test(`occurrence observations preserve both endpoints and phone evidence hit area ${scheme}`, async ({

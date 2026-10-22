@@ -69,50 +69,60 @@ export async function captureEvidence(
       'svg[aria-label="Pump unit schematic"]'
     );
     const tags = [
-      ...(svg?.querySelectorAll<SVGGElement>(':scope > g[data-point]') ?? [])
+      ...document.querySelectorAll<HTMLElement>(
+        '[data-unit-schematic] [data-reading]'
+      )
     ].map((el) => {
-      const rect = el.querySelector('rect')!.getBoundingClientRect();
-      const label = el.querySelector('text')!;
+      const rect = el.getBoundingClientRect();
+      const label = el.querySelector<HTMLElement>('[data-tag-label]')!;
       const labelRect = label.getBoundingClientRect();
-      const age = el.querySelector('[data-tag-age]')?.getBoundingClientRect();
-      const matrix = label.getScreenCTM()!;
       return {
         pointer: el.dataset.point,
         x: rect.x,
         y: rect.y,
         right: rect.right,
         bottom: rect.bottom,
-        labelSize:
-          Number.parseFloat(getComputedStyle(label).fontSize) *
-          Math.hypot(matrix.a, matrix.b),
-        ageOverlapsLabel: !!age && labelRect.right > age.left - 1,
+        labelSize: Number.parseFloat(getComputedStyle(label).fontSize),
+        valueOverlapsLabel:
+          labelRect.bottom >
+          el.querySelector('[data-value]')!.getBoundingClientRect().top + 1,
         labelOutsideTag:
-          labelRect.left < rect.left || labelRect.right > rect.right
+          labelRect.left < rect.left - 1 || labelRect.right > rect.right + 1
+      };
+    });
+    const callouts = [
+      ...document.querySelectorAll<HTMLButtonElement>('button[data-part]')
+    ].map((el) => {
+      const r = el.getBoundingClientRect();
+      return {
+        code: el.dataset.part,
+        x: r.x,
+        y: r.y,
+        right: r.right,
+        bottom: r.bottom
       };
     });
     const partLabels = [
-      ...(svg?.querySelectorAll<SVGForeignObjectElement>('[data-part-label]') ??
-        [])
+      ...document.querySelectorAll<HTMLElement>(
+        'button[data-part] [data-part-label]'
+      )
     ].map((el) => {
-      const rect = el
-        .closest('g[role="button"]')!
-        .querySelector('rect')!
-        .getBoundingClientRect();
+      const rect = el.closest('button')!.getBoundingClientRect();
       const label = el.getBoundingClientRect();
-      const text = el.firstElementChild!;
       return {
-        text: text.textContent,
-        truncated: getComputedStyle(text).textOverflow === 'ellipsis',
+        text: el.textContent,
+        lineClamp: getComputedStyle(el).webkitLineClamp,
+        hardTruncated: getComputedStyle(el).textOverflow === 'ellipsis',
         outside:
-          label.left < rect.left ||
-          label.right > rect.right ||
-          label.top < rect.top ||
-          label.bottom > rect.bottom
+          label.left < rect.left - 1 ||
+          label.right > rect.right + 1 ||
+          label.top < rect.top - 1 ||
+          label.bottom > rect.bottom + 1
       };
     });
     const markers = [
       ...(svg?.querySelectorAll<SVGCircleElement>(
-        'g[data-part] > g[aria-hidden] circle'
+        '[data-part-markers] circle'
       ) ?? [])
     ].map((el) => {
       const r = el.getBoundingClientRect();
@@ -135,21 +145,7 @@ export async function captureEvidence(
         firstMachine: box('[data-machine]'),
         pageFacts: box('[aria-label="Loaded page summary"] output'),
         componentsHeading: box('ul[aria-label="Model components"]'),
-        keyReadings: (() => {
-          const heading = [...document.querySelectorAll('h5')].find(
-            (el) => el.textContent === 'Key readings'
-          );
-          const r = heading?.getBoundingClientRect();
-          return r
-            ? {
-                x: r.x,
-                y: r.y,
-                bottom: r.bottom,
-                width: r.width,
-                height: r.height
-              }
-            : null;
-        })(),
+        keyReadings: box('[aria-label="Key readings"]'),
         svg: box('svg[aria-label="Pump unit schematic"]'),
         canvas: box('.aimms-twin-canvas'),
         inspector: box('[aria-label="Selected position"]'),
@@ -163,6 +159,17 @@ export async function captureEvidence(
       drawing: {
         tags,
         partLabels,
+        calloutOverlaps: callouts.flatMap((callout, i) =>
+          callouts
+            .slice(i + 1)
+            .filter((other) => intersects(callout, other))
+            .map((other) => [callout.code, other.code])
+        ),
+        drawingOverlaps: svg
+          ? [...tags.map((tag) => ({ ...tag, code: tag.pointer })), ...callouts]
+              .filter((el) => intersects(el, svg.getBoundingClientRect()))
+              .map((el) => el.code)
+          : [],
         tagOverlaps: tags.flatMap((tag, i) =>
           tags
             .slice(i + 1)

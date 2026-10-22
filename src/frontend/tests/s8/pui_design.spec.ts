@@ -1,5 +1,5 @@
 import { writeFile } from 'node:fs/promises';
-import { expect, test } from '@playwright/test';
+import { type Locator, type Page, expect, test } from '@playwright/test';
 import { nativeBaseline } from '../s0/guards';
 import { mockExplorer } from '../s1/machineExplorerFixtures';
 import {
@@ -16,6 +16,12 @@ import {
   openFaultHistory
 } from './designFixtures';
 import { nativeThemeFixtures } from './themeFixtures';
+
+async function keyboardFocus(page: Page, target: Locator) {
+  await page.keyboard.press('Tab');
+  await target.focus();
+  await expect(target).toBeFocused();
+}
 
 nativeBaseline();
 nativeThemeFixtures();
@@ -127,9 +133,27 @@ for (const state of ['running', 'stale', 'unknown']) {
         .getByLabel('Process data')
         .getByText('Communication status', { exact: true })
     ).toBeVisible();
+    await keyboardFocus(
+      page,
+      page.getByRole('button', { name: 'Schematic information', exact: true })
+    );
     await expect(
-      page.getByText('Reference schematic · physical arrangement unverified')
-    ).toBeVisible();
+      page.getByRole('tooltip').filter({
+        hasText: 'Reference schematic · physical arrangement unverified'
+      })
+    ).toContainText('Reference schematic · physical arrangement unverified');
+    for (const label of ['Flow direction', 'Communication status']) {
+      const missing = page.getByRole('button', {
+        name: `${label}: Not reported by the plant`,
+        exact: true
+      });
+      await expect(missing).toHaveText('—');
+      await keyboardFocus(page, missing);
+      const reason = `${label}: Not reported by the plant`;
+      await expect(
+        page.getByRole('tooltip').filter({ hasText: reason })
+      ).toHaveText(reason);
+    }
     if (state === 'stale')
       await expect(page.getByText('7.5 MW', { exact: true })).toHaveCount(0);
     await expect(
@@ -147,11 +171,15 @@ for (const state of ['running', 'stale', 'unknown']) {
     await expect(
       unknown.getByRole('button', { name: 'Dismiss', exact: true })
     ).toHaveCount(0);
+    await keyboardFocus(page, page.locator('[data-alarm-info]').first());
     await expect(
-      page.getByText(
-        'Acknowledgement records that someone saw the application alarm; it does not clear the condition.'
-      )
-    ).toBeVisible();
+      page.getByRole('tooltip').filter({
+        hasText:
+          'Acknowledgement records that someone saw the application alarm; it does not clear the condition.'
+      })
+    ).toHaveText(
+      'Acknowledgement records that someone saw the application alarm; it does not clear the condition.'
+    );
   });
 }
 

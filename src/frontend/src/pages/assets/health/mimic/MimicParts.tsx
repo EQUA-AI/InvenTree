@@ -1,14 +1,11 @@
 import { t } from '@lingui/core/macro';
-import { Text } from '@mantine/core';
-import { type KeyboardEvent, useState } from 'react';
+import { Text, Tooltip, UnstyledButton } from '@mantine/core';
+import { useId, useState } from 'react';
 
-import operations from '../../operations.module.css';
 import { type Display, summarize } from './MimicReadings';
-import { usable } from './format';
+import classes from './UnitMimic.module.css';
+import { reasonLabel, usable } from './format';
 import type { LayoutPart, MimicData, MimicPoint } from './types';
-
-/** The size of a part's entry in the key, in the drawing's own units. */
-const ENTRY = { width: 220, height: 74, pitch: 77, top: 20 };
 
 /** One bar of a part's strip: a sensor, its height its reading. */
 type Bar = {
@@ -55,12 +52,11 @@ export function sensorBars(points: MimicPoint[]): Bar[] {
 }
 
 function barColor(point: MimicPoint) {
-  if (!point.thresholds_configured) return 'var(--mantine-color-gray-5)';
+  if (!point.thresholds_configured) return 'var(--mimic-bar-neutral)';
   if (point.condition === 'critical') return 'var(--mantine-color-red-filled)';
-  if (point.condition === 'warning')
-    return 'var(--mantine-color-yellow-filled)';
-  if (point.condition === 'normal') return 'var(--mantine-color-green-filled)';
-  return 'var(--mantine-color-gray-5)';
+  if (point.condition === 'warning') return 'var(--mantine-color-orange-9)';
+  if (point.condition === 'normal') return 'var(--mantine-color-green-9)';
+  return 'var(--mimic-bar-neutral)';
 }
 
 /** What is known of one part of the pump from its readings. */
@@ -103,10 +99,10 @@ export function partStates(data: MimicData, display: Display): PartState[] {
 }
 
 /** The colour a part's verdict is marked in; null when it has none. */
-function verdictColor(state: PartState) {
+export function verdictColor(state: PartState) {
   if (!state.points.length) return null;
   if (state.verdict === 'critical') return 'var(--mantine-color-red-9)';
-  if (state.verdict === 'warning') return 'var(--mantine-color-yellow-9)';
+  if (state.verdict === 'warning') return 'var(--mantine-color-orange-9)';
   if (state.verdict === 'normal') return 'var(--mantine-color-green-9)';
   return 'var(--mantine-color-gray-9)';
 }
@@ -132,233 +128,231 @@ export function partOutlines(states: PartState[], active: string | null) {
   return outlines;
 }
 
-/**
- * The pump's parts, numbered on the drawing and listed down its two sides.
- *
- * Thirteen parts with a box and a leader each would bury the drawing they
- * describe, so a part is a number on the drawing and an entry in the key with
- * the same number. The entry says what the part's readings amount to; pointing
- * at either lights the region, and choosing either opens the part's readings.
- */
+/** One consistent number, shared by the callout and the native drawing. */
+function PartNumber({
+  state,
+  x,
+  y,
+  active = false,
+  scale = 1
+}: Readonly<{
+  state: PartState;
+  x: number;
+  y: number;
+  active?: boolean;
+  scale?: number;
+}>) {
+  const color = verdictColor(state);
+  return (
+    <>
+      <circle
+        cx={x}
+        cy={y}
+        r={12 * scale}
+        fill={color ?? 'var(--mantine-color-body)'}
+        stroke={
+          active
+            ? 'var(--mantine-primary-color-filled)'
+            : color
+              ? 'var(--mantine-color-body)'
+              : 'var(--mantine-color-text)'
+        }
+        strokeWidth={(active ? 3 : 1.5) * scale}
+        strokeDasharray={color || active ? undefined : '3 2'}
+      />
+      <text
+        x={x}
+        y={y + 5 * scale}
+        textAnchor='middle'
+        fontSize={15 * scale}
+        fontWeight={700}
+        fill={
+          color
+            ? state.verdict === 'warning' || state.verdict === 'normal'
+              ? 'var(--mantine-color-black)'
+              : 'var(--mantine-color-white)'
+            : 'var(--mantine-color-text)'
+        }
+      >
+        {state.number}
+      </text>
+    </>
+  );
+}
+
+/** Native coordinates are unchanged; HTML callouts provide the hit targets. */
+export function MimicPartMarkers({
+  states,
+  active,
+  scale = 1,
+  onPart,
+  onActive
+}: Readonly<{
+  states: PartState[];
+  active: string | null;
+  scale?: number;
+  onPart?: (state: PartState) => void;
+  onActive: (code: string | null) => void;
+}>) {
+  return (
+    <g data-part-markers>
+      {states.map((state) => (
+        // biome-ignore lint/a11y/useKeyWithClickEvents: each marker has the same action as its named, keyboard-accessible HTML callout
+        <g
+          key={state.part.code}
+          data-part={state.part.code}
+          data-verdict={state.verdict}
+          onClick={() => onPart?.(state)}
+          onMouseEnter={() => onActive(state.part.code)}
+          onMouseLeave={() => onActive(null)}
+          style={{ cursor: 'pointer' }}
+        >
+          <PartNumber
+            state={state}
+            x={state.part.x}
+            y={state.part.y}
+            active={active === state.part.code}
+            scale={scale}
+          />
+        </g>
+      ))}
+    </g>
+  );
+}
+
+/** Semantic callouts flow in the page grid instead of sharing SVG coordinates. */
 export function MimicParts({
   states,
-  width,
   active,
   onActive,
   onPart,
   display
 }: Readonly<{
   states: PartState[];
-  /** Width of the drawing, to stand the second column against its edge. */
-  width: number;
+  /** Retained for the legacy station renderer's component contract. */
+  width?: number;
   active: string | null;
   onActive: (code: string | null) => void;
   onPart?: (state: PartState) => void;
-  /** How a bar's reading is written in its tooltip. */
   display: Display;
 }>) {
-  // The keyboard's place, kept apart from the pointer's so that tabbing away
-  // from an entry does not leave a region lit.
   const [focused, setFocused] = useState<string | null>(null);
-  const rows = Math.ceil(states.length / 2);
-
+  const id = useId();
   return (
     <>
-      {states.map((state, index) => {
+      {states.map((state) => {
         const { part } = state;
-        const column = index < rows ? 0 : 1;
-        const x = column === 0 ? 16 : width - 16 - ENTRY.width;
-        const y = ENTRY.top + (index - column * rows) * ENTRY.pitch;
         const empty = !state.points.length;
-        const color = verdictColor(state);
         const bars = sensorBars(state.points);
         const lit = active === part.code || focused === part.code;
-        const unavailable = state.unavailable;
-        const missing = unavailable ? t`${unavailable} unavailable` : '';
-        const first = state.lines[0] ?? missing;
-        const second = state.lines[1] ?? (state.lines[0] ? missing : '');
-        const press = (event: KeyboardEvent) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            onPart?.(state);
-          }
-        };
-        const marker = (cx: number, cy: number, r: number) => (
-          <>
-            <circle
-              cx={cx}
-              cy={cy}
-              r={r}
-              fill={color ?? 'var(--mantine-color-body)'}
-              stroke={
-                lit
-                  ? 'var(--mantine-color-gray-filled)'
-                  : color
-                    ? 'var(--mantine-color-body)'
-                    : 'var(--mantine-color-text)'
-              }
-              strokeWidth={lit ? 2.5 : 1.5}
-              strokeDasharray={color || lit ? undefined : '3 2'}
-            />
-            <text
-              x={cx}
-              y={cy + 5.6}
-              textAnchor='middle'
-              fontSize={16}
-              fontWeight={700}
-              fill={
-                color
-                  ? state.verdict === 'warning' || state.verdict === 'normal'
-                    ? 'var(--mantine-color-black)'
-                    : 'var(--mantine-color-white)'
-                  : 'var(--mantine-color-text)'
-              }
-            >
-              {state.number}
-            </text>
-          </>
-        );
-
+        const missing = empty
+          ? t`No readings on this pump`
+          : [
+              ...new Set(
+                state.points
+                  .filter((point) => point.value === null || !!point.reason)
+                  .map((point) => reasonLabel(point.reason ?? 'no_data'))
+              )
+            ].join(' · ');
+        const description = [state.name, ...state.lines, missing]
+          .filter(Boolean)
+          .join('\n');
+        const descriptionId = `${id}-${state.number}`;
+        const summary = state.lines.slice(0, 2);
         return (
-          <g
-            key={part.id}
-            data-part={part.code}
-            data-verdict={state.verdict}
-            onMouseEnter={() => onActive(part.code)}
-            onMouseLeave={() => onActive(null)}
-            style={{ cursor: empty ? 'default' : 'pointer' }}
+          <Tooltip
+            key={part.code}
+            label={description}
+            multiline
+            maw={360}
+            events={{ hover: true, focus: true, touch: true }}
           >
-            <g
-              // biome-ignore lint/a11y/useSemanticElements: an SVG has no button element to draw with; this is one in role, focus and keys
-              className={operations.mimicPart}
-              role='button'
-              tabIndex={0}
+            <UnstyledButton
+              className={classes.callout}
+              data-part={part.code}
+              data-verdict={state.verdict}
+              data-active={lit || undefined}
               aria-label={`${state.number}. ${state.name}`}
+              aria-describedby={descriptionId}
               onClick={() => onPart?.(state)}
-              onKeyDown={press}
-              onFocus={() => setFocused(part.code)}
-              onBlur={() => setFocused(null)}
-              style={{ outline: 'none' }}
+              onMouseEnter={() => onActive(part.code)}
+              onMouseLeave={() => onActive(focused)}
+              onFocus={() => {
+                setFocused(part.code);
+                onActive(part.code);
+              }}
+              onBlur={() => {
+                setFocused(null);
+                onActive(null);
+              }}
             >
-              <title>
-                {[state.name, ...state.lines].join('\n') || state.name}
-              </title>
-              <rect
-                x={x}
-                y={y}
-                width={ENTRY.width}
-                height={ENTRY.height}
-                rx={6}
-                fill={
-                  lit
-                    ? 'var(--mantine-color-gray-light)'
-                    : 'var(--mantine-color-body)'
-                }
-                stroke={
-                  lit
-                    ? 'var(--mantine-color-gray-filled)'
-                    : 'var(--mantine-color-default-border)'
-                }
-                strokeWidth={1.2}
-                strokeDasharray={empty && !lit ? '4 3' : undefined}
-              />
-              <rect
-                className={operations.mimicFocusRing}
-                data-focus-ring
-                x={x - 4}
-                y={y - 4}
-                width={ENTRY.width + 8}
-                height={ENTRY.height + 8}
-                rx={9}
-                fill='none'
-                stroke='var(--mantine-color-text)'
-                strokeWidth={3}
-                vectorEffect='non-scaling-stroke'
-              />
-              {marker(x + 17, y + 18, 9.5)}
-              {[
-                {
-                  text: state.name,
-                  dx: 33,
-                  dy: 4,
-                  size: 18,
-                  weight: 600,
-                  height: 23
-                },
-                {
-                  text: empty ? t`No readings on this pump` : first,
-                  dx: 12,
-                  dy: 25,
-                  size: 16,
-                  weight: 400,
-                  height: 18
-                },
-                {
-                  text: empty ? '' : second,
-                  dx: 12,
-                  dy: 40,
-                  size: 16,
-                  weight: 400,
-                  height: 18
-                }
-              ].map((line, lineIndex) => (
-                <foreignObject
-                  key={line.dy}
-                  x={x + line.dx}
-                  y={y + line.dy}
-                  width={ENTRY.width - line.dx - 10}
-                  height={line.height}
+              <span className={classes.calloutHeading}>
+                <svg
+                  width={26}
+                  height={26}
+                  viewBox='0 0 28 28'
+                  aria-hidden='true'
+                  data-part-number
+                >
+                  <PartNumber state={state} x={14} y={14} />
+                </svg>
+                <Text
+                  component='span'
+                  className={classes.calloutName}
                   data-part-label
                 >
-                  <Text
-                    truncate
-                    fz={line.size}
-                    fw={line.weight}
-                    lh={1.1}
-                    c='var(--mantine-color-text)'
-                    title={line.text}
-                    fs={empty && lineIndex === 1 ? 'italic' : undefined}
-                  >
-                    {line.text}
-                  </Text>
-                </foreignObject>
-              ))}
-              {bars.map((bar, slot) => {
-                const gap = 2;
-                const width = Math.min(
-                  10,
-                  (ENTRY.width - 24 - gap * (bars.length - 1)) / bars.length
-                );
-                const height = bar.level === null ? 3 : 3 + bar.level * 9;
-                return (
-                  <rect
-                    key={bar.point.pointer}
-                    data-bar={bar.point.pointer}
-                    x={x + 12 + slot * (width + gap)}
-                    y={y + ENTRY.height - 5 - height}
-                    width={width}
-                    height={height}
-                    rx={1}
-                    fill={bar.level === null ? 'none' : barColor(bar.point)}
-                    stroke={
-                      bar.level === null ? 'var(--mantine-color-text)' : 'none'
-                    }
-                    strokeWidth={1}
-                    strokeDasharray={bar.level === null ? '2 1' : undefined}
-                  >
-                    <title>
-                      {bar.point.label}: {display(bar.point)}
-                    </title>
-                  </rect>
-                );
-              })}
-            </g>
-            {/* The same number, on the part itself. */}
-            {/* biome-ignore lint/a11y/useKeyWithClickEvents: the entry above is this part's button and takes the keys; this is the same part under the pointer */}
-            <g aria-hidden onClick={() => onPart?.(state)}>
-              {marker(part.x, part.y, 10)}
-            </g>
-          </g>
+                  {state.name}
+                </Text>
+              </span>
+              <span className={classes.calloutSummary} data-part-summary>
+                {summary.length ? (
+                  summary.join(' · ')
+                ) : (
+                  <span aria-label={missing}>—</span>
+                )}
+              </span>
+              <span id={descriptionId} className={classes.srOnly}>
+                {description}
+              </span>
+              {!!bars.length && (
+                <svg
+                  className={classes.sensorBars}
+                  width='100%'
+                  height={13}
+                  viewBox={`0 0 ${Math.max(1, bars.length * 12)} 13`}
+                  preserveAspectRatio='xMinYMid meet'
+                  aria-hidden='true'
+                >
+                  {bars.map((bar, slot) => {
+                    const height = bar.level === null ? 3 : 3 + bar.level * 9;
+                    return (
+                      <rect
+                        key={bar.point.pointer}
+                        data-bar={bar.point.pointer}
+                        x={slot * 12}
+                        y={13 - height}
+                        width={10}
+                        height={height}
+                        rx={1}
+                        fill={bar.level === null ? 'none' : barColor(bar.point)}
+                        stroke={
+                          bar.level === null
+                            ? 'var(--mantine-color-text)'
+                            : 'none'
+                        }
+                        strokeWidth={1}
+                        strokeDasharray={bar.level === null ? '2 1' : undefined}
+                      >
+                        <title>
+                          {bar.point.label}: {display(bar.point)}
+                        </title>
+                      </rect>
+                    );
+                  })}
+                </svg>
+              )}
+            </UnstyledButton>
+          </Tooltip>
         );
       })}
     </>

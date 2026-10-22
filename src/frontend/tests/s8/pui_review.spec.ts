@@ -51,7 +51,12 @@ for (const scheme of ['light', 'dark'] as const) {
         .getByText('Communication status', { exact: true }),
       14
     );
-    await expect(page.getByText(/Times: your clock/)).toBeVisible();
+    const clock = page
+      .locator('[data-operational-panel]')
+      .first()
+      .getByRole('status', { name: /Times: your clock/ });
+    await expect(clock).toBeVisible();
+    await expect(clock).toContainText('your clock');
     await expect(page.locator('tr[data-anomaly="901"]')).toContainText(
       '20 Oct 2026 11:00:00'
     );
@@ -179,9 +184,12 @@ test('supplied plant timezone is used for alarm observations', async ({
   data.plant_timezone = 'America/Chicago';
   await openEquipment(page, true, 'light');
   const row = page.locator('tr[data-anomaly="901"]');
-  await expect(page.getByText(/Times: plant clock/)).toContainText(
-    'America/Chicago'
-  );
+  await expect(
+    page
+      .locator('[data-operational-panel]')
+      .first()
+      .getByRole('status', { name: /Times: plant clock.*America\/Chicago/ })
+  ).toBeVisible();
   await expect(row).toContainText('20 Oct 2026 03:00:00');
 });
 
