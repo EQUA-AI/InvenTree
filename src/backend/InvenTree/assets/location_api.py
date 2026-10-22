@@ -192,6 +192,10 @@ class LocationDetail(LocationView):
         machines = AssetMachine.objects.filter(
             client_id=graph[pk].client_id, physical_location_id__in=ids
         )
+        if 'active' in request.query_params:
+            machines = machines.filter(
+                active=_boolean(request.query_params.get('active'), 'active')
+            )
         direct = machines.filter(physical_location_id=pk).count()
         try:
             orders = WorkOrder.objects.filter(
@@ -314,6 +318,10 @@ class LocationMachines(LocationView):
         rows = AssetMachine.objects.filter(
             client_id__in=locations.client_ids(request.user)
         ).order_by('name', 'pk')
+        if 'active' in request.query_params:
+            rows = rows.filter(
+                active=_boolean(request.query_params.get('active'), 'active')
+            )
         location = request.query_params.get('location')
         unassigned = _boolean(request.query_params.get('unassigned'), 'unassigned')
         include = _boolean(

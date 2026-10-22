@@ -280,6 +280,7 @@ export async function openStation(
   options: {
     recordedTelemetryAsLive?: boolean;
     bays?: readonly BaySpec[];
+    stationSignals?: readonly SignalSpec[];
     scheme?: 'light' | 'dark';
     fail?: boolean;
     delaySeriesMs?: number;
@@ -297,11 +298,13 @@ export async function openStation(
   await page.route(
     `**/api/machine-health/machines/${STATION}/health/signals/**`,
     (route: Route) => {
-      const rows = signalRows(STATION_SIGNALS).map((row) => ({
-        ...row,
-        recorded_telemetry_as_live: options.recordedTelemetryAsLive ?? true,
-        binding_id: row.binding_id + 400
-      }));
+      const rows = signalRows(options.stationSignals ?? STATION_SIGNALS).map(
+        (row) => ({
+          ...row,
+          recorded_telemetry_as_live: options.recordedTelemetryAsLive ?? true,
+          binding_id: row.binding_id + 400
+        })
+      );
       return route.fulfill({ json: { count: rows.length, results: rows } });
     }
   );

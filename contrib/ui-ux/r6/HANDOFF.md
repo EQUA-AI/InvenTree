@@ -1,5 +1,18 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## UI round 2 Follow-up 5 — 22 October 2026 (ready for coordinator review)
+
+Built on `f5455e279`: compact full-width station/pump Performance KPIs and one
+live switch/status; active machine scopes and archived-location inclusion filters
+with matching API counts. Existing blank identity facts verified by keyboard.
+11 focused cases, 9 retained tab cases and 23 final5 capture cases pass; all 38
+PNGs inspected. 78 targeted units, all 9 TypeScript projects, Lingui with 117
+bytewise locale restores and changed-file prek pass. Digest `45533030b695`.
+See [execution report](reports/ui-r2.md) for source/test inventory and evidence.
+Owned WS3012/harness15250 stopped. Fixture verification only; owner data untouched.
+Backend DB integration, full host suites and deployed acceptance remain with the
+coordinator. Parent acceptance unchanged.
+
 ## UI round 2 Follow-up 4 — 22 October 2026 (ready for coordinator review)
 
 Built on `59e6f6eaa`: production audit findings 1–92 checked individually;

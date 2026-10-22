@@ -5,6 +5,7 @@ import {
   Anchor,
   Box,
   Button,
+  Checkbox,
   Group,
   Loader,
   Pagination,
@@ -118,8 +119,12 @@ export function LocationBrowser({
   selected,
   onSelect,
   identity,
-  workspaces
+  workspaces,
+  showArchived = false,
+  onShowArchived
 }: {
+  showArchived?: boolean;
+  onShowArchived?: (show: boolean) => void;
   selected?: LocationNode;
   onSelect: (id: number | null) => void;
   identity: number;
@@ -154,9 +159,19 @@ export function LocationBrowser({
     queries: parents.flatMap((parent) => {
       const pageCount = Math.max(1, pages[parent] ?? 1);
       return Array.from({ length: pageCount }, (_, pageIndex) => {
-        const params = branchPageParams(parent, pageIndex);
+        const params = {
+          ...branchPageParams(parent, pageIndex),
+          active_only: !showArchived
+        };
         return {
-          queryKey: ['asset-locations', identity, 'branch', parent, pageIndex],
+          queryKey: [
+            'asset-locations',
+            identity,
+            'branch',
+            parent,
+            showArchived,
+            pageIndex
+          ],
           queryFn: async ({ signal }: { signal: AbortSignal }) =>
             (await api.get(locationApi, { signal, params }))
               .data as PageResult<LocationNode>
@@ -166,12 +181,20 @@ export function LocationBrowser({
   });
 
   const searchQuery = useQuery<PageResult<LocationNode>>({
-    queryKey: ['asset-locations', identity, 'search', debounced, searchPage],
+    queryKey: [
+      'asset-locations',
+      identity,
+      'search',
+      debounced,
+      showArchived,
+      searchPage
+    ],
     queryFn: async ({ signal }) =>
       (
         await api.get(locationApi, {
           signal,
           params: {
+            active_only: !showArchived,
             search: debounced,
             limit: 10,
             offset: (searchPage - 1) * 10
@@ -181,11 +204,12 @@ export function LocationBrowser({
     enabled: !!debounced
   });
 
-  const querySignature = branchQueries
-    .map(
+  const querySignature = [
+    showArchived,
+    ...branchQueries.map(
       (query) => `${query.dataUpdatedAt}-${query.isError}-${query.isFetching}`
     )
-    .join(',');
+  ].join(',');
   const parentsKey = parents.join(',');
   const pagesKey = JSON.stringify(pages);
 
@@ -507,6 +531,25 @@ export function LocationBrowser({
             setSearchPage(1);
           }}
         />
+        {onShowArchived && (
+          <Checkbox
+            label={t`Show archived locations`}
+            styles={{
+              body: { alignItems: 'center' },
+              label: {
+                minHeight: phone ? 44 : undefined,
+                display: 'flex',
+                alignItems: 'center'
+              }
+            }}
+            checked={showArchived}
+            onChange={(event) => {
+              setSearchPage(1);
+              setPages({});
+              onShowArchived(event.currentTarget.checked);
+            }}
+          />
+        )}
         {debounced ? (
           <>
             {searchQuery.isFetching && <Loader size='sm' />}

@@ -62,7 +62,7 @@ export interface TimeRangeControlProps {
   onRefresh: () => void;
   refreshing: boolean;
   dataRange: DataRange | undefined;
-  status?: (controls: ReactNode) => ReactNode;
+  status?: (controls: (state: string) => ReactNode) => ReactNode;
 }
 
 /**
@@ -86,8 +86,8 @@ export function TimeRangeControl({
   dataRange,
   status
 }: Readonly<TimeRangeControlProps>) {
-  const theme = useMantineTheme();
   const scheme = useComputedColorScheme('light');
+  const theme = useMantineTheme();
   const phone = useMediaQuery('(max-width: 47.99em)');
   const [customFrom, setCustomFrom] = useState<string | null>(null);
   const [customTo, setCustomTo] = useState<string | null>(null);
@@ -133,7 +133,7 @@ export function TimeRangeControl({
   const maxDate =
     dataRange?.available && dataRange.to ? new Date(dataRange.to) : new Date();
 
-  const controls = (
+  const controls = (state = t`Live`) => (
     <Group gap={6} ml='auto' wrap='wrap'>
       <Tooltip
         events={{ hover: true, focus: true, touch: false }}
@@ -147,11 +147,12 @@ export function TimeRangeControl({
           classNames={{ track: monitoring.track, thumb: monitoring.thumb }}
           styles={{ root: { minHeight: phone ? 40 : undefined } }}
           size={phone ? 'md' : 'sm'}
+          aria-label={`${t`Live updates`}: ${state}`}
           checked={live}
           onChange={(event) => onLive(event.currentTarget.checked)}
           label={
             <Text size='xs' fw={500}>
-              {t`Live`}
+              {state}
             </Text>
           }
           labelPosition='left'
@@ -221,7 +222,7 @@ export function TimeRangeControl({
               : t`Zoomed`}
           </StatusBadge>
         )}
-        {status ? status(controls) : controls}
+        {status ? status(controls) : controls()}
       </Group>
 
       {pickingCustom && (
@@ -316,7 +317,8 @@ export interface LiveIndicatorProps {
   response: SeriesResponse | undefined;
   freshnessSeconds: number | null;
   now: number;
-  controls?: ReactNode;
+  controls?: (state: string) => ReactNode;
+  information?: ReactNode;
 }
 
 /**
@@ -338,9 +340,9 @@ export function LiveIndicator({
   response,
   freshnessSeconds,
   now,
-  controls
+  controls,
+  information
 }: Readonly<LiveIndicatorProps>) {
-  const scheme = useComputedColorScheme('light');
   const sourceAt = response?.live.last_observed_at
     ? Date.parse(response.live.last_observed_at)
     : Number.NaN;
@@ -416,26 +418,25 @@ export function LiveIndicator({
   return (
     <Stack gap={2} data-testid='live-indicator'>
       <Group gap={6}>
-        <StatusBadge
-          tone={
-            word === t`Live` ? 'live' : word === t`Stale` ? 'stale' : 'neutral'
-          }
-          color={
-            word === t`Live`
-              ? `var(--mantine-primary-color-${scheme === 'dark' ? 4 : 7})`
-              : 'gray'
-          }
-          c={
-            word === t`Live`
-              ? `var(--mantine-primary-color-${scheme === 'dark' ? 4 : 7})`
-              : 'var(--mantine-color-text)'
-          }
-          variant='outline'
-          size='sm'
-        >
-          {word}
-        </StatusBadge>
-        {controls}
+        {controls ? (
+          controls(word)
+        ) : (
+          <StatusBadge
+            tone={
+              word === t`Live`
+                ? 'live'
+                : word === t`Stale`
+                  ? 'stale'
+                  : 'neutral'
+            }
+            color='gray'
+            variant='outline'
+            size='sm'
+            styles={{ label: { whiteSpace: 'nowrap' } }}
+          >
+            {word}
+          </StatusBadge>
+        )}
         <ValueTooltip
           focusable={false}
           label={modeText ?? t`Latest source history read`}
@@ -445,6 +446,7 @@ export function LiveIndicator({
             <Timestamp value={updatedAt} timeOnly />
           </Group>
         </ValueTooltip>
+        {information}
       </Group>
     </Stack>
   );

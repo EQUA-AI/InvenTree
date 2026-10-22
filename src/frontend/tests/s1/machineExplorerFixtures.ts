@@ -159,17 +159,36 @@ export async function mockExplorer(page: Page) {
       }
     });
   });
-  await page.route(/\/api\/assets\/locations\/\d+\/$/, (route) =>
-    route.fulfill({
+  await page.route(/\/api\/assets\/locations\/\d+\/(?:\?.*)?$/, (route) => {
+    const url = new URL(route.request().url());
+    const node = url.pathname.includes('/21/') ? child : location;
+    const rows = machines
+      .slice(0, state.totalLimit)
+      .filter(
+        (machine) =>
+          (!url.searchParams.has('active') ||
+            machine.active === (url.searchParams.get('active') === 'true')) &&
+          (node.pk === 21
+            ? machine.physical_location?.pk === 21
+            : machine.physical_location != null)
+      );
+    return route.fulfill({
       status: state.locationStatus,
       json:
         state.locationStatus === 200
-          ? route.request().url().includes('/21/')
-            ? child
-            : location
+          ? {
+              ...node,
+              counts: {
+                ...node.counts,
+                direct_machines: rows.filter(
+                  (machine) => machine.physical_location?.pk === node.pk
+                ).length,
+                total_machines: rows.length
+              }
+            }
           : { detail: 'Not found' }
-    })
-  );
+    });
+  });
   await page.route('**/api/assets/locations/machines/**', (route) => {
     const params = new URL(route.request().url()).searchParams;
     requests.push({ method: route.request().method(), params });
@@ -192,6 +211,11 @@ export async function mockExplorer(page: Page) {
     }
     const search = (params.get('search') ?? '').trim().toLowerCase();
     const rows = machines.slice(0, state.totalLimit).filter((machine) => {
+      if (
+        params.has('active') &&
+        machine.active !== (params.get('active') === 'true')
+      )
+        return false;
       const placement = machine.physical_location?.pk;
       if (params.get('unassigned') === 'true' && placement != null)
         return false;

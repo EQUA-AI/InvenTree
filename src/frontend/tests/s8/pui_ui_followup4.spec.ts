@@ -20,7 +20,10 @@ nativeThemeFixtures();
 test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(new Date(NOW));
 });
-const directory = resolve('../../data/devscratch/ui-r2/final4');
+const directory = resolve(
+  '../../data/devscratch/ui-r2',
+  process.env.AIMMS_R2_CAPTURE_PHASE ?? 'final4'
+);
 async function open(page: Page, tab: string) {
   await page.goto(
     `/playwright/s8-design.html?${new URLSearchParams({ screen: 'machine', entry: `/machines/machine/18/${tab}/`, scheme: 'light' })}`

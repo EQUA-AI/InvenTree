@@ -617,7 +617,7 @@ export function StationPerformance({
   return (
     <HistoryReadStack response={response} gap='lg'>
       <Group justify='space-between' align='flex-start' wrap='wrap' gap='md'>
-        <Stack gap={4} style={{ flex: 1, minWidth: 320 }}>
+        <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
           <TimeRangeControl
             preset={range.preset}
             onPreset={range.onPreset}
@@ -632,6 +632,31 @@ export function StationPerformance({
             }}
             refreshing={seriesQuery.isFetching}
             dataRange={dataRange.data}
+            status={(controls) => (
+              <LiveIndicator
+                controls={controls}
+                information={
+                  <HistoryProvenance
+                    compact
+                    response={response}
+                    loading={seriesQuery.isFetching && !response}
+                    updating={seriesQuery.isPlaceholderData}
+                    failed={seriesQuery.isError}
+                    extent={dataRange.data}
+                    onRetry={() => seriesQuery.refetch()}
+                    currentDescription={t`Station source tiles use current observations. Calculated bay totals and bay tables use last usable readings in the selected window, with their own timestamps and coverage. These are separate origins; retained snapshots are separate evidence.`}
+                  />
+                }
+                live={range.live}
+                fetching={seriesQuery.isFetching}
+                failed={seriesQuery.isError}
+                newestAt={newestAt}
+                updatedAt={seriesQuery.dataUpdatedAt || null}
+                response={response}
+                freshnessSeconds={freshness}
+                now={now}
+              />
+            )}
           />
           <WindowStatus
             response={response}
@@ -639,16 +664,7 @@ export function StationPerformance({
             now={now}
           />
         </Stack>
-        <LiveIndicator
-          live={range.live}
-          fetching={seriesQuery.isFetching}
-          failed={seriesQuery.isError}
-          newestAt={newestAt}
-          updatedAt={seriesQuery.dataUpdatedAt || null}
-          response={response}
-          freshnessSeconds={freshness}
-          now={now}
-        />
+
         <Button
           variant='subtle'
           size='xs'
@@ -713,16 +729,6 @@ export function StationPerformance({
         </Alert>
       )}
       <LinkedEvidence machineId={station.pk} />
-      <HistoryProvenance
-        compact
-        response={response}
-        loading={seriesQuery.isFetching && !response}
-        updating={seriesQuery.isPlaceholderData}
-        failed={seriesQuery.isError}
-        extent={dataRange.data}
-        onRetry={() => seriesQuery.refetch()}
-        currentDescription={t`Station source tiles use current observations. Calculated bay totals and bay tables use last usable readings in the selected window, with their own timestamps and coverage. These are separate origins; retained snapshots are separate evidence.`}
-      />
 
       {investigationOpen && (
         <InvestigationSlices

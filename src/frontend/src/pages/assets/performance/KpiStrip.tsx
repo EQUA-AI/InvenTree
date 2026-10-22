@@ -5,7 +5,6 @@ import {
   Box,
   Group,
   Paper,
-  SimpleGrid,
   Stack,
   Text,
   Tooltip
@@ -20,8 +19,12 @@ import {
   ValueTooltip
 } from '../../../components/items/ValueTooltip';
 import { StatusBadge } from '../health/StatusBadge';
+import { Timestamp } from '../health/Timestamp';
 import { MetaText } from '../health/common';
+import { useDisplayClock } from '../health/mimic/observedTime';
+import { relativeAge } from '../health/relativeTime';
 import monitoring from '../monitoring.module.css';
+import classes from './KpiStrip.module.css';
 import { performanceSparkline } from './sparkline';
 
 import type {
@@ -31,10 +34,10 @@ import type {
 } from '@lib/types/MachineHealth';
 
 import {
-  FreshnessText,
   HealthStateBadge,
   Unit,
-  formatSignalLimits
+  formatSignalLimits,
+  freshnessFacts
 } from '../health/common';
 import { formatValue } from './format';
 import { type Trend, seriesStats, trendOf } from './series';
@@ -141,6 +144,22 @@ export function KpiTileCard({
   now: number;
   window?: { start: number; end: number; resolutionSeconds?: number };
 }>) {
+  const clock = useDisplayClock();
+  const freshness = freshnessFacts(
+    tile.observedAt,
+    tile.stale,
+    tile.freshnessSeconds,
+    now,
+    clock
+  );
+  const age = freshness
+    ? relativeAge(
+        freshness.future ? 0 : freshness.seconds,
+        true,
+        tile.stale,
+        false
+      )
+    : undefined;
   const stats = tile.series ? seriesStats(tile.series) : null;
   const missing = tile.value == null && !tile.valueText;
   const shown =
@@ -155,11 +174,23 @@ export function KpiTileCard({
     ? formatSignalLimits({ limits: tile.limits, unit: tile.unit })
     : null;
   return (
-    <Paper withBorder p='sm' data-kpi={tile.key} h='100%'>
-      <Stack gap={6} h='100%' justify='space-between'>
+    <Paper withBorder p='sm' data-kpi={tile.key} className={classes.card}>
+      <Stack gap={6}>
         <Stack gap={4}>
           <MetaText size='xs' fw={500}>
-            <ValueTooltip focusable={false} label={tile.caption ?? tile.label}>
+            <ValueTooltip
+              focusable={false}
+              className={classes.label}
+              label={[
+                tile.caption ?? tile.label,
+                stats
+                  ? t`Range ${formatValue(stats.min, tile.decimals, tile.unit)} – ${formatValue(stats.max, tile.decimals, tile.unit)}`
+                  : null,
+                configuredText
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            >
               {tile.label}
             </ValueTooltip>
           </MetaText>
@@ -181,7 +212,6 @@ export function KpiTileCard({
                   className={tile.stale ? monitoring.meta : undefined}
                   style={{ fontVariantNumeric: 'tabular-nums' }}
                 >
-                  {tile.stale ? t`Last known ` : ''}
                   {!tile.unit && tile.key === 'vibration' ? (
                     <ValueTooltip label={t`Unit not confirmed`}>
                       {shown}
@@ -208,15 +238,31 @@ export function KpiTileCard({
             </Stack>
           )}
         </Stack>
-        <Stack gap={4} data-kpi-footer>
-          {configuredText && <MetaText size='xs'>{configuredText}</MetaText>}
+        <Group gap={6} data-kpi-footer>
+          {tile.stale && !missing && (
+            <ValueTooltip
+              label={
+                freshness
+                  ? `${freshness.serverFlag ? t`Stale (server flag)` : t`Stale`} · ${freshness.budget}${freshness.future && freshness.seconds > 0 ? ` · ${relativeAge(freshness.seconds, false, true, true)}` : ''}`
+                  : t`Observation time unavailable`
+              }
+            >
+              <StatusBadge
+                tone='stale'
+                size='xs'
+                styles={{ label: { whiteSpace: 'nowrap' } }}
+              >{t`Stale`}</StatusBadge>
+            </ValueTooltip>
+          )}
           {(!missing || tile.observedAt != null) && (
-            <FreshnessText
-              observedAt={tile.observedAt}
-              stale={tile.stale}
-              thresholdSeconds={tile.freshnessSeconds}
-              now={now}
-            />
+            <div className={classes.observed} data-kpi-observed>
+              <Timestamp
+                value={tile.observedAt}
+                timeOnly
+                relative={age}
+                label={freshness?.budget}
+              />
+            </div>
           )}
           {!tile.stale && !missing && tile.state !== 'unconfigured' && (
             <HealthStateBadge state={tile.state} size='sm' />
@@ -226,7 +272,7 @@ export function KpiTileCard({
               {tile.quality === 'bad' ? t`Bad quality` : t`Uncertain quality`}
             </StatusBadge>
           )}
-        </Stack>
+        </Group>
       </Stack>
     </Paper>
   );
@@ -242,16 +288,11 @@ export function KpiStrip({
 }>) {
   if (!tiles.length) return null;
   return (
-    <SimpleGrid
-      type='container'
-      cols={{ base: 2, '560px': 3, '760px': 4, '1140px': 8 }}
-      spacing='sm'
-      data-testid='kpi-strip'
-    >
+    <div className={classes.strip} data-testid='kpi-strip'>
       {tiles.map((tile) => (
         <KpiTileCard key={tile.key} tile={tile} now={now} window={window} />
       ))}
-    </SimpleGrid>
+    </div>
   );
 }
 export default KpiStrip;

@@ -18,6 +18,8 @@ import {
 describe('machine list URL state', () => {
   it('defaults only unsupported or absent state', () => {
     expect(machineListState(new URLSearchParams())).toEqual({
+      showInactive: false,
+      showArchived: false,
       search: '',
       alarmsOnly: false,
       criticality: '',
@@ -28,6 +30,8 @@ describe('machine list URL state', () => {
         new URLSearchParams('search=S1+%26+pump&has_alarms=true&page=2')
       )
     ).toEqual({
+      showInactive: false,
+      showArchived: false,
       search: 'S1 & pump',
       alarmsOnly: true,
       criticality: '',
@@ -62,6 +66,8 @@ describe('machine list URL state', () => {
     );
     const searched = machineListParams(origin, { search: 'S1 & pump' });
     expect(machineListState(searched)).toEqual({
+      showInactive: false,
+      showArchived: false,
       search: 'S1 & pump',
       alarmsOnly: true,
       criticality: '',
@@ -80,6 +86,8 @@ describe('machine list URL state', () => {
     const origin = new URLSearchParams('search=pump&has_alarms=true&page=2');
     expect(machineListParams(origin, { search: 'pump' }).get('page')).toBe('2');
     expect(machineListState(machineListParams(origin, { page: 3 }))).toEqual({
+      showInactive: false,
+      showArchived: false,
       search: 'pump',
       alarmsOnly: true,
       criticality: '',
@@ -89,6 +97,8 @@ describe('machine list URL state', () => {
 
   it('restores a complete state atomically and omits default query values', () => {
     const restored = machineListParams(new URLSearchParams(), {
+      showInactive: false,
+      showArchived: false,
       search: 'pump',
       alarmsOnly: true,
       page: 2
@@ -96,6 +106,8 @@ describe('machine list URL state', () => {
     expect(restored.toString()).toBe('search=pump&has_alarms=true&page=2');
     expect(
       machineListParams(restored, {
+        showInactive: false,
+        showArchived: false,
         search: '',
         alarmsOnly: false,
         page: 1
@@ -117,6 +129,8 @@ describe('machine list URL state', () => {
     'round-trips supported state for %s without forwarding unrelated detail parameters',
     (source) => {
       const list = {
+        showInactive: false,
+        showArchived: false,
         search: 'S1 & pump',
         alarmsOnly: true,
         criticality: 'critical' as const,
@@ -230,4 +244,46 @@ describe('machine list URL state', () => {
       'no-machines-in-alarm'
     );
   });
+});
+
+describe('machine activity scope', () => {
+  it('defaults to active-only and preserves an explicit inclusion through navigation', () => {
+    expect(machineListState(new URLSearchParams()).showInactive).toBe(false);
+    const params = machineListParams(new URLSearchParams('page=3'), {
+      showInactive: true
+    });
+    expect(params.get('show_inactive')).toBe('true');
+    expect(params.get('page')).toBeNull();
+    expect(
+      machineListState(machineLocationParams(params, 12)).showInactive
+    ).toBe(true);
+    expect(
+      machineListParams(params, { showInactive: false }).has('show_inactive')
+    ).toBe(false);
+  });
+});
+
+it('carries explicit inactive and archived scope into a machine and back', () => {
+  const scope = machineListState(
+    new URLSearchParams('show_inactive=true&show_archived=true')
+  );
+  const href = machineDetailHref(26, {
+    source: 'sites',
+    location: 12,
+    direct: false,
+    list: scope
+  });
+  const returned = machinesReturnHref(
+    new URL(href, 'https://example.invalid').searchParams
+  );
+  expect(
+    new URL(returned, 'https://example.invalid').searchParams.get(
+      'show_archived'
+    )
+  ).toBe('true');
+  expect(
+    new URL(returned, 'https://example.invalid').searchParams.get(
+      'show_inactive'
+    )
+  ).toBe('true');
 });

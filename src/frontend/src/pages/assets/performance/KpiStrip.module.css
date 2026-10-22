@@ -1,0 +1,13 @@
+.strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  align-items: start;
+  gap: var(--mantine-spacing-sm);
+  width: 100%;
+  min-width: 0;
+}
+.card { min-width: 0; }
+.observed { min-width: 0; }
+.observed time { white-space: nowrap; }
+
+.card .label, .observed > span { min-height: 0; min-width: 0; }

@@ -1,6 +1,6 @@
 # UI round 2 — Hyperagent review repair
 
-Latest work is Follow-up 4, built on `59e6f6eaa`; see its finding table below.
+Latest work is Follow-up 5, built on `f5455e279`; see its finding table below.
 The earlier sections record the committed baseline. Final screenshots are
 replaced by the latest follow-up captures rather than reused from that baseline.
 
@@ -1117,3 +1117,49 @@ Test files changed (8):
 No old wording/clock Playwright spec was edited. The numbered capture spec is unchanged. Unit expectations changed only for intentional new contracts: blank axis units, numeric component order and safe provenance. No git write commands or database mutations were run.
 
 Owned `r6-uir2-browser-3012` and Vite15250 stopped; both listener checks are clear.
+
+## Follow-up 5
+
+Built on `f5455e279`; source/test digest `45533030b695` (full manifest: `data/devscratch/ui-r2/followup5/source.json`).
+
+- Station and pump Performance share a full-width auto-fit grid with 220px minimum cards and natural content heights. Values retain actual units; count reads `1 of 14`. Window ranges and limit details move into label tooltips. Stale is a short badge with keyboard-accessible detail; timestamp/age stays on a separate single line. Future clock offsets remain in the tooltip, with visible age clamped to zero. O27 recorded-live handling is retained.
+- One live switch now also reports Paused, Stale or Read failed; no duplicate Live badge when paired with it.
+- All Machines, Unassigned and selected-location lists request active machines by default. Show inactive includes both statuses. Roots, branches and location search request `active_only=true`; Show archived locations includes archived branches. Both flags persist in URL/detail-return state. Query keys, cached tree signatures, paging and selected rows follow the scope. Leaving archive inclusion clears the selected branch to avoid a hidden selection.
+- Location machine-list and detail APIs now accept optional `active` before pagination/counts. Selected-location machine/open-work totals use the same active population as its list. Omission preserves existing API behavior. Existing archive-descendant exclusion is reused.
+- Blank Manufacturer, Model and Serial already render dashes with accessible reasons, including Serial not recorded. Verified all three using fixtures and keyboard focus; no Details source change needed. Owner data was neither read nor changed.
+
+| Verification on final source | Result |
+| --- | --- |
+| `pui_ui_followup5.spec.ts` | 11/11: compact light/dark/phone KPIs, stale/future timestamps, count units, single Live switch, failed read, active counts, archived root/search/tree/drill-down and cached scope toggles, blank identity reasons |
+| `pui_ui_followup4.spec.ts` | 9/9; only capture-directory selection changed |
+| Unchanged `pui_ui_round2_captures.spec.ts` | 23/23 |
+| Vitest | 78/78 across machineListState, locationTree, monitoringHelpers and KpiStrip |
+| TypeScript | All 9 projects pass (`tsconfig.json` and every existing `tsconfig.s*.json`); app/S8 rechecked after final edits |
+| Lingui | Extract/compile pass; all 117 locale files restored bytewise |
+| Python | Changed API parses; Ruff passes through prek. Database integration not run |
+| Hooks | Changed-file prek and whitespace checks pass |
+
+Fresh captures: `data/devscratch/ui-r2/final5/01-*.png` through `31-*.png`, plus `32-station-performance-phone-light.png`, `33-station-performance-desktop-light.png`, `34-station-performance-desktop-dark.png`, `35-station-performance-stale-desktop-light.png` and three full-page pump views in `final5/full/`. All **38 PNGs** inspected individually, including Health at 768px and station at 1366px. New Performance views show full-width compact cards, single-line time/age and a short Stale badge without stretched empty height. Review hashes: `data/devscratch/ui-r2/followup5/capture-review.json`. Linux Chromium used only fixture-intercepted pages on WS3012/harness15250. Fixture names/harness annotations are not production copy. Logs in `data/devscratch/ui-r2/followup5/`: `browser-final.log`, `tabs-final.log`, `captures-final.log`, `units-final.log`, `types-final.log`, `lingui-final.log`, `prek-final.log`.
+
+Source/configuration files changed (9):
+
+- `src/backend/InvenTree/assets/location_api.py`
+- `src/frontend/src/pages/assets/locations/LocationBrowser.tsx`
+- `src/frontend/src/pages/assets/locations/LocationWorkspace.tsx`
+- `src/frontend/src/pages/assets/locations/machineListState.ts`
+- `src/frontend/src/pages/assets/performance/KpiStrip.module.css`
+- `src/frontend/src/pages/assets/performance/KpiStrip.tsx`
+- `src/frontend/src/pages/assets/performance/StationPerformance.tsx`
+- `src/frontend/src/pages/assets/performance/TimeRangeControl.tsx`
+- `src/frontend/tsconfig.s8.json`
+
+Test/fixture files changed (6):
+
+- `src/frontend/src/pages/assets/locations/machineListState.test.ts`
+- `src/frontend/src/pages/assets/performance/KpiStrip.test.ts`
+- `src/frontend/tests/s1/machineExplorerFixtures.ts`
+- `src/frontend/tests/s3/stationFixtures.ts`
+- `src/frontend/tests/s8/pui_ui_followup4.spec.ts`
+- `src/frontend/tests/s8/pui_ui_followup5.spec.ts`
+
+No outdated wording/clock spec edited; numbered capture spec unchanged. No database or git writes, owner localhost captures or real data inspection. Backend database integration, full Mac suites and deployed acceptance remain with the coordinator. Owned `r6-uir2-browser-3012` and Vite15250 stopped. Parent acceptance unchanged.

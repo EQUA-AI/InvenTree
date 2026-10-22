@@ -113,7 +113,7 @@ export function ScopedMachineList({
   const phone = useMatches({ base: true, sm: false });
   const api = useApi();
   const identity = useUserState((s) => s.authGeneration);
-  const { search, alarmsOnly, criticality, page } = state;
+  const { search, alarmsOnly, criticality, page, showInactive = false } = state;
   const [debounced] = useDebouncedValue(search, 200);
   const searchPending = search !== debounced;
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -128,6 +128,7 @@ export function ScopedMachineList({
     unassigned,
     machineId,
     alarmsOnly,
+    showInactive,
     criticality,
     page,
     identity
@@ -143,6 +144,7 @@ export function ScopedMachineList({
       unassigned,
       machineId,
       alarmsOnly,
+      showInactive,
       criticality,
       debounced,
       page
@@ -154,6 +156,7 @@ export function ScopedMachineList({
           signal,
           params: {
             location,
+            active: showInactive ? undefined : true,
             include_descendants: includeDescendants,
             unassigned,
             machine: machineId,
@@ -279,6 +282,21 @@ export function ScopedMachineList({
                 }
               />
             </Box>
+            <Checkbox
+              label={t`Show inactive`}
+              styles={{
+                body: { alignItems: 'center' },
+                label: {
+                  minHeight: phone ? 44 : undefined,
+                  display: 'flex',
+                  alignItems: 'center'
+                }
+              }}
+              checked={showInactive}
+              onChange={(event) =>
+                onStateChange({ showInactive: event.currentTarget.checked })
+              }
+            />
             <Select
               size='sm'
               aria-label={t`Criticality`}
@@ -1009,8 +1027,10 @@ function MachineCriticalityCell({ value }: Readonly<{ value: unknown }>) {
 /** Paginated root-location overview for the unselected main pane (M1). */
 function RootOverview({
   identity,
-  workspaces
+  workspaces,
+  showArchived
 }: {
+  showArchived: boolean;
   identity: number;
   workspaces: { pk: number; name: string }[];
 }) {
@@ -1018,13 +1038,20 @@ function RootOverview({
   const [params] = useSearchParams();
   const [rootPage, setRootPage] = useState(1);
   const rootQuery = useQuery<PageResult<LocationNode>>({
-    queryKey: ['asset-locations', identity, 'root-overview', rootPage],
+    queryKey: [
+      'asset-locations',
+      identity,
+      'root-overview',
+      showArchived,
+      rootPage
+    ],
     queryFn: async ({ signal }) =>
       (
         await api.get(locationApi, {
           signal,
           params: {
             parent: 'root',
+            active_only: !showArchived,
             limit: ROOT_PAGE_SIZE,
             offset: (rootPage - 1) * ROOT_PAGE_SIZE
           }
@@ -1116,6 +1143,18 @@ export function LocationWorkspace({
   const locationId = machineLocationId(params) ?? undefined;
   const direct = params.get('scope') === 'direct';
   const listState = machineListState(params);
+  const showArchived = params.get('show_archived') === 'true';
+  const updateArchived = (show: boolean) =>
+    setParams((previous) => {
+      const next = new URLSearchParams(previous);
+      if (show) next.set('show_archived', 'true');
+      else {
+        next.delete('show_archived');
+        next.delete('location');
+      }
+      next.delete('page');
+      return next;
+    });
   const updateListState = (
     updates: Partial<MachineListState>,
     replace = false
@@ -1150,10 +1189,17 @@ export function LocationWorkspace({
       (await api.get(`${locationApi}context/`, { signal })).data
   });
   const detail = useQuery<LocationNode>({
-    queryKey: ['asset-locations', identity, 'detail', locationId],
+    queryKey: [
+      'asset-locations',
+      identity,
+      'detail',
+      locationId,
+      !!listState.showInactive
+    ],
     queryFn: async ({ signal }) =>
       (
         await api.get(`${locationApi}${locationId}/`, {
+          params: { active: listState.showInactive ? undefined : true },
           signal
         })
       ).data,
@@ -1266,6 +1312,8 @@ export function LocationWorkspace({
               >
                 <LocationBrowser
                   selected={selected}
+                  showArchived={showArchived}
+                  onShowArchived={updateArchived}
                   onSelect={select}
                   identity={identity}
                   workspaces={workspaces}
@@ -1469,6 +1517,8 @@ export function LocationWorkspace({
                   ) : (
                     !locationId && (
                       <RootOverview
+                        key={String(showArchived)}
+                        showArchived={showArchived}
                         identity={identity}
                         workspaces={workspaces}
                       />
