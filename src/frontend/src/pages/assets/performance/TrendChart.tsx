@@ -25,6 +25,7 @@ import {
   useState
 } from 'react';
 import { ReferenceArea } from 'recharts';
+import operational from '../health/OperationalTokens.module.css';
 import { MetaText } from '../health/common';
 import { useDisplayClock } from '../health/mimic/observedTime';
 import { ThresholdKey } from './ThresholdKey';
@@ -173,7 +174,10 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
     () =>
       props.referenceLines?.map((line) => ({
         ...line,
-        color: legibleColor(line.color, theme, scheme)
+        color:
+          line.severity === 'warning'
+            ? 'var(--aimms-warning)'
+            : legibleColor(line.color, theme, scheme)
       })),
     [props.referenceLines, theme, scheme]
   );
@@ -238,7 +242,11 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
   );
 
   return (
-    <Stack gap={6} data-trend-sync={props.syncId}>
+    <Stack
+      gap={6}
+      data-trend-sync={props.syncId}
+      className={operational.warning}
+    >
       {header}
       {failureText &&
         props.rows.some((row) =>
@@ -525,7 +533,7 @@ function ChartBody({
   }
 
   return (
-    <Box ref={plotRef}>
+    <Box ref={plotRef} className={operational.warning}>
       {/* Units sit upright above their axis; a one-letter unit rotated
           through ninety degrees ("V", "m") reads as a chevron or an E. */}
       {(leftTitle || rightTitle) && (
@@ -670,7 +678,11 @@ function ChartBody({
               yAxisId={side === 'right' && withRight ? 'right' : 0}
               y1={band.from}
               y2={band.to}
-              fill={`var(--mantine-color-${band.severity === 'critical' ? 'red' : 'yellow'}-6)`}
+              fill={
+                band.severity === 'warning'
+                  ? 'var(--aimms-warning)'
+                  : 'var(--mantine-color-red-6)'
+              }
               fillOpacity={0.08}
               strokeOpacity={0}
             />

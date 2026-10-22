@@ -101,8 +101,13 @@
   .machineCheckbox { flex-basis: 44px; width: 44px; min-height: 44px; }
   .listToolbar, .listFilters { width: 100%; }
   .listFilters > div { width: 100%; }
-  .pageSummary { padding-block: var(--mantine-spacing-xs); }
-  .locationTotals { gap: var(--mantine-spacing-sm); }
+  .pageSummary { padding-block: 4px; row-gap: 6px; }
+  .locationTotals { gap: var(--mantine-spacing-sm); padding-top: 0; }
+  .locationActions { width: 100%; gap: 4px; }
+  .locationActions > button[aria-expanded] { flex: 1 1 0; min-width: 0; }
+  .locationActions > .locationWriteAction { flex: 1 1 100%; min-width: 0; }
+  .locationActionLabel { white-space: normal; }
+  .locationScope { align-items: center; }
   .placementPath { margin-block: 0; font-size: var(--mantine-font-size-xs); line-height: 1.35; }
 }
 
@@ -146,3 +151,5 @@
 @media (max-width: 47.99375em) { .summaryHeading { width: 100%; flex-wrap: nowrap; } }
 
 .summaryAction[aria-pressed='true'] { background: var(--mantine-primary-color-light); outline: 2px solid light-dark(var(--mantine-primary-color-7), var(--mantine-primary-color-4)); outline-offset: 2px; border-radius: var(--mantine-radius-sm); }
+
+.pageSummary[data-compact] { border: 0; padding-block: 0; }

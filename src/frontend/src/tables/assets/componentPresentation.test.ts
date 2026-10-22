@@ -10,7 +10,7 @@ import {
 } from './componentPresentation';
 describe('component assignment basis', () => {
   it.each([
-    ['register', 'Reference design'],
+    ['register', 'Register import'],
     ['scada', 'Inferred from tags'],
     ['tag_review', 'Tag review'],
     ['unknown', 'Pending check'],
@@ -77,4 +77,23 @@ describe('component assignment basis', () => {
     ).toBe('Engineering review pending · Compatibility not approved');
     expect(componentReview('Review f9006a91f8a9')).toBe('Review');
   });
+});
+
+it('uses a register-review note as a truthful basis only when the source is absent', () => {
+  const record = {
+    status: 'draft' as const,
+    provenance: '',
+    review_note:
+      'engineering=ENGINEERED_REFERENCE_PENDING_REVIEW compatibility=NOT_APPROVED'
+  };
+  expect(componentBasis(record)).toMatchObject({
+    kind: 'register',
+    label: 'Register import'
+  });
+  expect(componentBasis({ ...record, provenance_kind: 'scada' })).toMatchObject(
+    { kind: 'scada', label: 'Inferred from tags' }
+  );
+  expect(componentBasis({ ...record, status: 'verified' }).label).toBe(
+    'Verified'
+  );
 });

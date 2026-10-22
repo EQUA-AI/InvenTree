@@ -1,10 +1,10 @@
 .table { width: 100%; min-width: 920px; table-layout: fixed; }
 .table th, .table td { vertical-align: middle; padding-block: 8px; overflow-wrap: anywhere; }
 .table th { font-weight: 600; }
-.table th:nth-child(1) { width: 22%; }
+.table th:nth-child(1) { width: 20%; }
 .table th:nth-child(2) { width: 12%; text-align: right; }
 .table th:nth-child(3) { width: 11%; }
-.table th:nth-child(4) { width: 16%; }
+.table th:nth-child(4) { width: 18%; }
 .table th:nth-child(5) { width: 18%; }
 .table th:nth-child(6) { width: 8%; }
 .table th:nth-child(7) { width: 13%; }
@@ -50,3 +50,6 @@
  .table[data-cards='true'] td:nth-child(5) { grid-row: 4; }
  .table[data-cards='true'] .details td { grid-row: auto; grid-column: 1 / -1; }
 }
+
+.limit { display: block; white-space: nowrap; }
+@media (min-width: 48em) and (max-width: 89.99em) { .scroller { mask-image: linear-gradient(to right, var(--mantine-color-black) calc(100% - 14px), transparent); } }

@@ -26,6 +26,11 @@
 	overflow-wrap: anywhere;
 }
 
+.totalReason {
+	color: var(--mantine-color-dimmed);
+	line-height: 1.3;
+}
+
 .reading {
 	font-variant-numeric: tabular-nums;
 	overflow-wrap: anywhere;
@@ -144,12 +149,17 @@
 	}
 
 	.metrics {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
+		grid-template-columns: repeat(6, minmax(0, 1fr));
 		gap: var(--mantine-spacing-xs);
 	}
 
 	.metric {
 		min-height: 60px;
+		grid-column: span 2;
+	}
+
+	.metric:nth-child(-n + 2) {
+		grid-column: span 3;
 	}
 
 	.info {

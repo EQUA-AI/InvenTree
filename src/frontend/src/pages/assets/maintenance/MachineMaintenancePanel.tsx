@@ -17,8 +17,8 @@ import {
   Title
 } from '@mantine/core';
 import { useDebouncedValue, useMediaQuery } from '@mantine/hooks';
-import { IconRefresh, IconSearch } from '@tabler/icons-react';
-import { useQuery } from '@tanstack/react-query';
+import { IconSearch } from '@tabler/icons-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import dayjs from 'dayjs';
 import { type ReactNode, useEffect } from 'react';
@@ -27,6 +27,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import type { WorkOrder } from '@lib/types/Tasks';
+import { RefreshAction } from '../../../components/buttons/RefreshAction';
 import { useApi } from '../../../contexts/ApiContext';
 import { MaintenanceRecordTable } from '../../../tables/assets/MaintenanceRecordTable';
 import {
@@ -242,7 +243,7 @@ function OpenWork({
   onRefreshCounts: () => void;
 }>) {
   const api = useApi();
-  const phone = useMediaQuery('(max-width: 48em)');
+  const phone = useMediaQuery('(max-width: 47.99375em)');
   const [search] = useDebouncedValue(state.search, 200);
   const searchPending = search !== state.search;
   const request = openWorkRequest(machineId, { search, page: state.page });
@@ -504,8 +505,9 @@ export function MachineMaintenancePanel({
   machineId
 }: Readonly<{ machineId: number }>) {
   const api = useApi();
+  const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
-  const phone = useMediaQuery('(max-width: 48em)');
+  const phone = useMediaQuery('(max-width: 47.99375em)');
   const state = machineWorkState(params);
   const summary = useQuery({
     queryKey: ['machine-work-summary', machineId],
@@ -606,15 +608,16 @@ export function MachineMaintenancePanel({
             }
           ]}
         />
-        {!summaryDenied && (
-          <Button
-            variant='default'
-            size='xs'
-            w={phone ? 'fit-content' : undefined}
-            leftSection={<IconRefresh size={14} />}
+        {!summaryDenied && state.view === 'open' && (
+          <RefreshAction
             loading={summary.isFetching}
-            onClick={() => void summary.refetch()}
-          >{t`Refresh counts`}</Button>
+            onClick={() => {
+              void summary.refetch();
+              void queryClient.invalidateQueries({
+                queryKey: ['machine-open-work', machineId]
+              });
+            }}
+          />
         )}
       </Group>
       {summary.isError && (
@@ -653,7 +656,11 @@ export function MachineMaintenancePanel({
         />
       ) : (
         <Stack gap='xs'>
-          <MaintenanceRecordTable machineId={machineId} boundToMachine />
+          <MaintenanceRecordTable
+            machineId={machineId}
+            boundToMachine
+            onRefresh={() => void summary.refetch()}
+          />
         </Stack>
       )}
     </Stack>

@@ -1,7 +1,7 @@
 .meta { color: var(--mantine-color-gray-7); }
 :global([data-mantine-color-scheme='dark']) .meta { color: var(--mantine-color-dark-1); }
-.link:not(:disabled):not([data-disabled]) { color: var(--mantine-primary-color-7); overflow-wrap: anywhere; }
-:global([data-mantine-color-scheme='dark']) .link:not(:disabled):not([data-disabled]) { color: var(--mantine-primary-color-4); }
+.link:not(:disabled):not([data-disabled]) { color: var(--mantine-primary-color-8); overflow-wrap: anywhere; }
+:global([data-mantine-color-scheme='dark']) .link:not(:disabled):not([data-disabled]) { color: var(--mantine-primary-color-3); }
 .band {
   padding: var(--mantine-spacing-sm);
   border: 1px solid var(--mantine-color-default-border);

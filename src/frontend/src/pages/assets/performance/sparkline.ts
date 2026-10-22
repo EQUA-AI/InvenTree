@@ -1,5 +1,33 @@
 import type { SeriesEntry } from '@lib/types/MachineHealth';
 import { usable } from './series';
+
+/** The actual usable endpoints in the drawn interval; no interpolation or forecast. */
+export function endpointDelta(
+  entry: SeriesEntry,
+  window?: { start: number; end: number }
+): { change: number; percent: boolean; seconds: number } | null {
+  if (!entry.available) return null;
+  const samples = entry.samples
+    .filter(
+      (sample) =>
+        usable(sample) &&
+        Number.isFinite(sample.t) &&
+        (!window || (sample.t >= window.start && sample.t <= window.end))
+    )
+    .sort((a, b) => a.t - b.t);
+  const first = samples[0];
+  const last = samples.at(-1);
+  if (!first || !last || first.t >= last.t) return null;
+  const difference = (last.v as number) - (first.v as number);
+  return {
+    change:
+      first.v === 0
+        ? difference
+        : (difference / Math.abs(first.v as number)) * 100,
+    percent: first.v !== 0,
+    seconds: (last.t - first.t) / 1000
+  };
+}
 /** Samples stay at their actual times; unreadable points and long gaps break the path. */
 export function performanceSparkline(
   entry: SeriesEntry,
@@ -8,7 +36,11 @@ export function performanceSparkline(
   height = 24
 ): string | null {
   const samples = [...entry.samples]
-    .filter((s) => Number.isFinite(s.t))
+    .filter(
+      (s) =>
+        Number.isFinite(s.t) &&
+        (!window || (s.t >= window.start && s.t <= window.end))
+    )
     .sort((a, b) => a.t - b.t);
   const values = samples.filter(usable).map((s) => s.v as number);
   if (values.length < 2) return null;

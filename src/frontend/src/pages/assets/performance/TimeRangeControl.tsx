@@ -1,6 +1,7 @@
 import { t } from '@lingui/core/macro';
 import {
   ActionIcon,
+  Box,
   Button,
   Group,
   SegmentedControl,
@@ -29,7 +30,10 @@ import {
 
 import type { SeriesResponse } from '@lib/types/MachineHealth';
 
+import type { KpiTile } from './KpiStrip';
+import classes from './TimeRangeControl.module.css';
 import { formatDuration, formatTick } from './format';
+import { staleTileCount } from './liveState';
 import {
   type DataRange,
   type RangePreset,
@@ -62,7 +66,9 @@ export interface TimeRangeControlProps {
   onRefresh: () => void;
   refreshing: boolean;
   dataRange: DataRange | undefined;
-  status?: (controls: (state: string) => ReactNode) => ReactNode;
+  status?: (
+    controls: (state: string, disclosure?: string) => ReactNode
+  ) => ReactNode;
 }
 
 /**
@@ -88,7 +94,7 @@ export function TimeRangeControl({
 }: Readonly<TimeRangeControlProps>) {
   const scheme = useComputedColorScheme('light');
   const theme = useMantineTheme();
-  const phone = useMediaQuery('(max-width: 47.99em)');
+  const phone = useMediaQuery('(max-width: 47.99375em)');
   const [customFrom, setCustomFrom] = useState<string | null>(null);
   const [customTo, setCustomTo] = useState<string | null>(null);
   // Opening the custom form is local, but the window it belongs to is not:
@@ -133,21 +139,22 @@ export function TimeRangeControl({
   const maxDate =
     dataRange?.available && dataRange.to ? new Date(dataRange.to) : new Date();
 
-  const controls = (state = t`Live`) => (
+  const controls = (state = t`Live`, disclosure?: string) => (
     <Group gap={6} ml='auto' wrap='wrap'>
       <Tooltip
         events={{ hover: true, focus: true, touch: false }}
         label={
-          live
+          (live
             ? t`Live: the window follows the clock and re-reads as the source is polled.`
-            : t`Paused: the window is frozen where you left it.`
+            : t`Paused: the window is frozen where you left it.`) +
+          (disclosure ? ` ${disclosure}` : '')
         }
       >
         <Switch
           classNames={{ track: monitoring.track, thumb: monitoring.thumb }}
           styles={{ root: { minHeight: phone ? 40 : undefined } }}
           size={phone ? 'md' : 'sm'}
-          aria-label={`${t`Live updates`}: ${state}`}
+          aria-label={`${t`Live updates`}: ${state}${disclosure ? ` · ${disclosure}` : ''}`}
           checked={live}
           onChange={(event) => onLive(event.currentTarget.checked)}
           label={
@@ -177,29 +184,29 @@ export function TimeRangeControl({
   return (
     <Stack gap='xs'>
       <Group gap='sm' align='center' wrap='wrap'>
-        <SegmentedControl
-          color={`${theme.primaryColor}.${scheme === 'dark' ? 4 : 7}`}
-          autoContrast
-          size={phone ? 'sm' : 'xs'}
-          fullWidth={phone}
-          w={phone ? '100%' : undefined}
-          classNames={{ label: monitoring.segment }}
-          value={pickingCustom ? CUSTOM : preset}
-          onChange={(value) => {
-            if (value === CUSTOM) {
-              setManualOpen(true);
-              return;
-            }
-            setManualOpen(false);
-            onPreset(value as RangePreset);
-          }}
-          data={[
-            ...PRESETS.filter(
-              (p) => asLive || !['7d', '30d'].includes(p.value)
-            ).map((p) => ({ value: p.value, label: p.label() })),
-            { value: CUSTOM, label: t`Custom` }
-          ]}
-        />
+        <Box className={classes.ranges}>
+          <SegmentedControl
+            color={`${theme.primaryColor}.${scheme === 'dark' ? 4 : 7}`}
+            autoContrast
+            size='xs'
+            classNames={{ label: monitoring.segment }}
+            value={pickingCustom ? CUSTOM : preset}
+            onChange={(value) => {
+              if (value === CUSTOM) {
+                setManualOpen(true);
+                return;
+              }
+              setManualOpen(false);
+              onPreset(value as RangePreset);
+            }}
+            data={[
+              ...PRESETS.filter(
+                (p) => asLive || !['7d', '30d'].includes(p.value)
+              ).map((p) => ({ value: p.value, label: p.label() })),
+              { value: CUSTOM, label: t`Custom` }
+            ]}
+          />
+        </Box>
         {zoomed && (
           <StatusBadge
             tone='neutral'
@@ -317,8 +324,9 @@ export interface LiveIndicatorProps {
   response: SeriesResponse | undefined;
   freshnessSeconds: number | null;
   now: number;
-  controls?: (state: string) => ReactNode;
+  controls?: (state: string, disclosure?: string) => ReactNode;
   information?: ReactNode;
+  tiles?: readonly KpiTile[];
 }
 
 /**
@@ -341,7 +349,8 @@ export function LiveIndicator({
   freshnessSeconds,
   now,
   controls,
-  information
+  information,
+  tiles = []
 }: Readonly<LiveIndicatorProps>) {
   const sourceAt = response?.live.last_observed_at
     ? Date.parse(response.live.last_observed_at)
@@ -359,6 +368,10 @@ export function LiveIndicator({
     freshnessSeconds !== null &&
     ageSeconds > freshnessSeconds;
   const disabled = response ? !response.live.enabled : false;
+  const staleCount = staleTileCount(tiles, now);
+  const recordedDisclosure = response?.display_shifted
+    ? t`Recorded source presented on the live clock; timestamps shifted by ${formatDuration(Math.abs(response.display_shift_seconds))}.`
+    : undefined;
 
   // A read that returned no reading at all has nothing to be fresh: green
   // "Live" over a source that served nothing read as a healthy feed.
@@ -369,11 +382,8 @@ export function LiveIndicator({
     word = t`Read failed`;
   } else if (!response) {
     word = fetching ? t`Reading` : t`Not read yet`;
-  } else if (
-    recordedTelemetryAsLive(response) &&
-    (response.live.read_failed ?? !!response.live.last_error_code)
-  ) {
-    word = t`Source read failed`;
+  } else if (response.live.read_failed ?? !!response.live.last_error_code) {
+    word = t`Read failed`;
   } else if (
     recordedTelemetryAsLive(response) &&
     response.series?.length > 0 &&
@@ -384,6 +394,8 @@ export function LiveIndicator({
     word = t`Polling off`;
   } else if (live && empty) {
     word = t`No readings`;
+  } else if (live && staleCount > 0) {
+    word = t`Live · ${staleCount} stale`;
   } else if (live && (freshnessSeconds === null || freshnessSeconds <= 0)) {
     word = t`Freshness unavailable`;
   } else if (live && stale) {
@@ -419,23 +431,30 @@ export function LiveIndicator({
     <Stack gap={2} data-testid='live-indicator'>
       <Group gap={6}>
         {controls ? (
-          controls(word)
+          controls(word, recordedDisclosure)
         ) : (
-          <StatusBadge
-            tone={
-              word === t`Live`
-                ? 'live'
-                : word === t`Stale`
-                  ? 'stale'
-                  : 'neutral'
-            }
-            color='gray'
-            variant='outline'
-            size='sm'
-            styles={{ label: { whiteSpace: 'nowrap' } }}
+          <ValueTooltip
+            label={recordedDisclosure ?? word}
+            accessibleLabel={[word, recordedDisclosure]
+              .filter(Boolean)
+              .join(' · ')}
           >
-            {word}
-          </StatusBadge>
+            <StatusBadge
+              tone={
+                word === t`Live`
+                  ? 'live'
+                  : word === t`Stale`
+                    ? 'stale'
+                    : 'neutral'
+              }
+              color='gray'
+              variant='outline'
+              size='sm'
+              styles={{ label: { whiteSpace: 'nowrap' } }}
+            >
+              {word}
+            </StatusBadge>
+          </ValueTooltip>
         )}
         <ValueTooltip
           focusable={false}
