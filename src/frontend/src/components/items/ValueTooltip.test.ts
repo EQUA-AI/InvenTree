@@ -30,6 +30,8 @@ it('distinguishes a failed read from a missing fact and retains a supplied zero 
     createElement(FailedValue, { reason: 'Source read failed' })
   );
   expect(failed).toContain('Read failed');
+  expect(failed).toContain('white-space:nowrap');
+  expect(failed).toContain('overflow-wrap:normal');
   expect(failed).not.toContain('>—<');
   const quality = render(
     createElement(FailedValue, { reason: 'Quality flag bad', value: '0 bar' })
@@ -39,15 +41,17 @@ it('distinguishes a failed read from a missing fact and retains a supplied zero 
   expect(quality).not.toContain('Read failed');
 });
 
-it('allows repeated fact targets to leave the tab order without losing their native role', () => {
+it('keeps non-focusable facts as plain content without adding a button or tab stop', () => {
   const html = render(
     createElement(MissingValue, {
       reason: 'No observation available',
       focusable: false
     })
   );
-  expect(html).toContain('<button');
-  expect(html).toContain('tabindex="-1"');
+  expect(html).toContain('>—<span');
+  expect(html).toContain('No observation available');
+  expect(html).not.toContain('<button');
+  expect(html).not.toContain('tabindex=');
   expect(html).not.toContain('role="img"');
 });
 
@@ -63,4 +67,19 @@ it('renders a missing fact as an em dash with the field and reason available to 
   );
   expect(html).toMatch(/<button[^>]*>—<\/button>/);
   expect(html).not.toContain('role="img"');
+});
+
+it('retains an accessible explanation in noninteractive content', () => {
+  const html = render(
+    ValueTooltip({
+      label: 'Plant timezone: Asia/Riyadh',
+      accessibleLabel: 'Full instant in plant time',
+      focusable: false,
+      children: '20 s ago'
+    })
+  );
+  expect(html).toContain('20 s ago');
+  expect(html).toContain('Full instant in plant time');
+  expect(html).toContain('mantine-VisuallyHidden');
+  expect(html).not.toContain('<button');
 });

@@ -7,7 +7,7 @@ vi.mock('@lingui/core/macro', () => ({
 import { matchesChannel } from './channelNavigation';
 import { unitLabel } from './format';
 import { limitLines } from './limitLines';
-import { performanceSparkline } from './sparkline';
+import { endpointDelta, performanceSparkline } from './sparkline';
 import { splitLimits } from './thresholdBands';
 describe('lossless monitoring units', () => {
   it.each([
@@ -56,6 +56,42 @@ it('also breaks on null and bad-quality readings instead of dropping them', () =
     { start: 0, end: 25000, resolutionSeconds: 5 }
   );
   expect(path?.match(/M/g)).toHaveLength(3);
+});
+
+it('labels the change between usable sparkline endpoints with their actual elapsed time', () => {
+  expect(
+    endpointDelta(
+      entry([
+        { t: 0, v: 100, q: 'good' },
+        { t: 3600000, v: 97, q: 'good' }
+      ])
+    )
+  ).toEqual({ change: -3, percent: true, seconds: 3600 });
+});
+it('uses absolute change from zero and never divides by zero', () => {
+  expect(
+    endpointDelta(
+      entry([
+        { t: 0, v: 0, q: 'good' },
+        { t: 5000, v: 2, q: 'good' }
+      ])
+    )
+  ).toEqual({ change: 2, percent: false, seconds: 5 });
+});
+it('uses only the drawn window and usable observations for the delta', () => {
+  expect(
+    endpointDelta(
+      entry([
+        { t: 0, v: 100, q: 'good' },
+        { t: 5000, v: 40, q: 'good' },
+        { t: 7500, v: 900, q: 'bad' },
+        { t: 10000, v: 60, q: 'good' },
+        { t: 15000, v: null, q: 'unknown' }
+      ]),
+      { start: 5000, end: 10000 }
+    )
+  ).toEqual({ change: 50, percent: true, seconds: 5 });
+  expect(endpointDelta(entry([{ t: 0, v: 100, q: 'good' }]))).toBeNull();
 });
 
 it('finds both the displayed and recorded unit without changing comparison identities', () => {

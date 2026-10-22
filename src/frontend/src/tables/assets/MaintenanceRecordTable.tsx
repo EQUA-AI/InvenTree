@@ -1,7 +1,11 @@
 import { t } from '@lingui/core/macro';
-import { Anchor, Badge, Group, Text } from '@mantine/core';
-import { IconAlertTriangle, IconCircleCheck } from '@tabler/icons-react';
-import { useMemo } from 'react';
+import { Anchor, Badge, Group, Text, VisuallyHidden } from '@mantine/core';
+import {
+  IconAlertTriangle,
+  IconCircleCheck,
+  IconInfoCircle
+} from '@tabler/icons-react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
@@ -9,12 +13,17 @@ import { apiUrl } from '@lib/functions/Api';
 import useTable from '@lib/hooks/UseTable';
 import type { AssetMaintenanceRecord } from '@lib/types/Assets';
 import type { TableColumn } from '@lib/types/Tables';
+import { RefreshAction } from '../../components/buttons/RefreshAction';
 import {
   MissingValue,
   ValueTooltip
 } from '../../components/items/ValueTooltip';
 import { InvenTreeTable } from '../../components/tables/InvenTreeTable';
 import { Timestamp } from '../../pages/assets/health/Timestamp';
+import {
+  emptyMaintenanceColumns,
+  maintenanceMissingReasons
+} from '../../pages/assets/maintenance/maintenancePresentation';
 
 const WORK_ORDER_TYPE_LABELS: Record<string, () => string> = {
   corrective: () => t`Corrective`,
@@ -50,16 +59,68 @@ function formatDowntime(minutes: number | null) {
  */
 export function MaintenanceRecordTable({
   machineId,
-  boundToMachine = false
-}: Readonly<{ machineId: number; boundToMachine?: boolean }>) {
+  boundToMachine = false,
+  onRefresh
+}: Readonly<{
+  machineId: number;
+  boundToMachine?: boolean;
+  onRefresh?: () => void;
+}>) {
   const table = useTable('maintenance-record');
+  const records = table.records as AssetMaintenanceRecord[];
+  const emptyColumns = useMemo(
+    () => emptyMaintenanceColumns(records),
+    [records]
+  );
+  const pageSignature = JSON.stringify([
+    records.map((record) => record.pk),
+    emptyColumns
+  ]);
+  const previousPage = useRef<string>('');
+  const automaticallyHidden = useRef<string[]>([]);
+  // Apply the compact default once per loaded page. A user can still reveal a
+  // column from the native chooser; an unrelated render never hides it again.
+  useEffect(() => {
+    if (previousPage.current === pageSignature) return;
+    previousPage.current = pageSignature;
+    const next = Object.keys(emptyColumns);
+    const manual = table.hiddenColumns.filter(
+      (column) => !automaticallyHidden.current.includes(column)
+    );
+    automaticallyHidden.current = next;
+    table.setHiddenColumns([...new Set([...manual, ...next])]);
+  }, [
+    pageSignature,
+    emptyColumns,
+    table.hiddenColumns,
+    table.setHiddenColumns
+  ]);
 
   const tableColumns: TableColumn<AssetMaintenanceRecord>[] = useMemo(() => {
     return [
       {
+        accessor: 'record_information',
+        title: <VisuallyHidden>{t`Record information`}</VisuallyHidden>,
+        switchable: false,
+        width: 40,
+        minWidth: 40,
+        render: (record) => {
+          const reasons = Object.values(maintenanceMissingReasons(record));
+          return reasons.length ? (
+            <ValueTooltip
+              label={reasons.join(' · ')}
+              accessibleLabel={t`Record information`}
+            >
+              <IconInfoCircle size={16} />
+            </ValueTooltip>
+          ) : null;
+        }
+      },
+      {
         accessor: 'date',
         title: t`Date`,
         sortable: true,
+        noWrap: true,
         render: (record) => <Timestamp value={record.date} dateOnly />
       },
       {
@@ -67,7 +128,9 @@ export function MaintenanceRecordTable({
         title: t`Summary`,
         sortable: true,
         render: (record) =>
-          record.summary || <MissingValue reason={t`Summary not recorded`} />
+          record.summary || (
+            <MissingValue focusable={false} reason={t`Summary not recorded`} />
+          )
       },
       {
         accessor: 'work_order',
@@ -77,6 +140,7 @@ export function MaintenanceRecordTable({
           if (!record.work_order) {
             return (
               <MissingValue
+                focusable={false}
                 reason={
                   record.work_order_link_state === 'none'
                     ? t`No linked work order`
@@ -105,7 +169,11 @@ export function MaintenanceRecordTable({
         accessor: 'work_order_title',
         title: t`Job`,
         sortable: false,
-        defaultVisible: false
+        defaultVisible: false,
+        render: (record) =>
+          record.work_order_title || (
+            <MissingValue focusable={false} reason={t`Job not recorded`} />
+          )
       },
       {
         // R6 P12: the component the linked work order recorded.
@@ -116,7 +184,10 @@ export function MaintenanceRecordTable({
           record.work_order_component ? (
             record.work_order_component
           ) : (
-            <MissingValue reason={t`Component not recorded`} />
+            <MissingValue
+              focusable={false}
+              reason={t`Component not recorded`}
+            />
           )
       },
       {
@@ -128,7 +199,12 @@ export function MaintenanceRecordTable({
         minWidth: 120,
         render: (record: AssetMaintenanceRecord) => {
           if (!record.work_order_type) {
-            return <MissingValue reason={t`Work type not recorded`} />;
+            return (
+              <MissingValue
+                focusable={false}
+                reason={t`Work type not recorded`}
+              />
+            );
           }
           const label =
             WORK_ORDER_TYPE_LABELS[record.work_order_type]?.() ??
@@ -146,7 +222,10 @@ export function MaintenanceRecordTable({
         sortable: false,
         render: (record) =>
           record.performed_by || (
-            <MissingValue reason={t`Technician not recorded`} />
+            <MissingValue
+              focusable={false}
+              reason={t`Technician not recorded`}
+            />
           )
       },
       {
@@ -161,7 +240,7 @@ export function MaintenanceRecordTable({
               label={t`Outcome classification not recognized`}
             >{t`Unknown`}</ValueTooltip>
           ) : (
-            <MissingValue reason={t`Outcome not recorded`} />
+            <MissingValue focusable={false} reason={t`Outcome not recorded`} />
           )
       },
       {
@@ -177,7 +256,7 @@ export function MaintenanceRecordTable({
               </Badge>
             </Group>
           ) : record.downtime_minutes == null ? (
-            <MissingValue reason={t`Downtime not recorded`} />
+            <MissingValue focusable={false} reason={t`Downtime not recorded`} />
           ) : (
             formatDowntime(record.downtime_minutes)
           )
@@ -194,9 +273,15 @@ export function MaintenanceRecordTable({
               <Text size='sm'>{t`Verified`}</Text>
             </Group>
           ) : (
-            <Text size='sm' c='dimmed'>
+            <Badge
+              variant='outline'
+              color='gray'
+              c='var(--mantine-color-text)'
+              tt='none'
+              styles={{ label: { whiteSpace: 'nowrap' } }}
+            >
               {t`Not verified`}
-            </Text>
+            </Badge>
           )
       },
       {
@@ -211,15 +296,24 @@ export function MaintenanceRecordTable({
               <IconAlertTriangle size={16} />
               <Text size='sm'>{t`Follow-up required`}</Text>
             </Group>
+          ) : record.follow_up_required === false ? (
+            t`No`
           ) : (
-            <MissingValue reason={t`No follow-up recorded`} />
+            <MissingValue
+              focusable={false}
+              reason={t`Follow-up status not recorded`}
+            />
           )
       },
       {
         accessor: 'details',
         title: t`Details`,
         sortable: false,
-        defaultVisible: false
+        defaultVisible: false,
+        render: (record) =>
+          record.details || (
+            <MissingValue focusable={false} reason={t`Details not recorded`} />
+          )
       }
     ];
   }, []);
@@ -228,11 +322,29 @@ export function MaintenanceRecordTable({
     <InvenTreeTable<AssetMaintenanceRecord>
       url={apiUrl(ApiEndpoints.asset_maintenance_list)}
       tableState={table}
-      columns={tableColumns}
+      columns={tableColumns.map((column) => ({
+        ...column,
+        title: emptyColumns[column.accessor] ? (
+          <ValueTooltip focusable={false} label={emptyColumns[column.accessor]}>
+            {column.title}
+          </ValueTooltip>
+        ) : (
+          column.title
+        )
+      }))}
       props={{
         enableSearch: true,
         enablePagination: true,
         enableRefresh: true,
+        refreshControl: (
+          <RefreshAction
+            onClick={() => {
+              table.refreshTable();
+              onRefresh?.();
+            }}
+          />
+        ),
+        hideSinglePagePagination: true,
         ...(boundToMachine ? { enableQueryFilters: false } : {}),
         params: {
           machine: machineId

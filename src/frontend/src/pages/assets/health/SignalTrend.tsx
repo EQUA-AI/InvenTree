@@ -6,7 +6,6 @@ import {
   FailedValue,
   MissingValue
 } from '../../../components/items/ValueTooltip';
-import { monitoringTerms } from '../monitoringTerms';
 import { MetaText } from './common';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
@@ -14,6 +13,7 @@ import { apiUrl } from '@lib/functions/Api';
 import type { SignalTrend } from '@lib/types/MachineHealth';
 
 import { useApi } from '../../../contexts/ApiContext';
+import { type TrendStatusFact, trendStatusFact } from './trendPresentation';
 import { prepareTrend, sparklinePath } from './trendSamples';
 
 const WIDTH = 120;
@@ -54,7 +54,8 @@ export function SignalTrendSparkline({
   enabled = true,
   trend: supplied,
   supplierPending = false,
-  supplierFailed = false
+  supplierFailed = false,
+  focusable = true
 }: Readonly<{
   machineId: number;
   bindingId: number;
@@ -83,6 +84,8 @@ export function SignalTrendSparkline({
    * of data, so it says so rather than reading "No trend".
    */
   supplierFailed?: boolean;
+  /** A dense table exposes this same fact through its row-info control. */
+  focusable?: boolean;
 }>) {
   const api = useApi();
 
@@ -143,66 +146,13 @@ export function SignalTrendSparkline({
     return <Loader size='xs' />;
   }
 
-  if (managed ? supplierFailed && !supplied : trendQuery.isError) {
-    return (
-      <TrendStatus
-        label={t`Read failed`}
-        detail={t`The trend read failed. The current reading is unaffected.`}
-      />
-    );
-  }
-
-  if (!trend) {
-    return (
-      <TrendStatus
-        label={t`Not returned`}
-        detail={t`The completed trend read did not return this signal. Its history is unknown; the current reading is unaffected.`}
-      />
-    );
-  }
-
-  if (!trend.available) {
-    const label =
-      trend.reason === 'SOURCE_UNAVAILABLE' || trend.reason === 'SOURCE_TIMEOUT'
-        ? t`Read failed`
-        : trend.reason === 'NO_CONNECTOR'
-          ? t`History unavailable`
-          : trend.reason === 'HISTORY_UNSUPPORTED'
-            ? t`No history`
-            : t`History unavailable`;
-    return (
-      <TrendStatus
-        label={label}
-        detail={
-          trend.detail ?? t`The source could not serve history for this signal.`
-        }
-      />
-    );
-  }
-
-  if (prepared.measured === 0 && prepared.undated === 0) {
-    return (
-      <TrendStatus
-        label={monitoringTerms.noSamples()}
-        detail={t`${trend.source_name} answered for this window but held no readings for this signal.`}
-      />
-    );
-  }
-
-  if (path === null) {
-    const label =
-      prepared.drawn === 0
-        ? t`No drawable readings`
-        : prepared.measured > 1
-          ? t`1 of ${prepared.measured} drawable`
-          : t`Only one reading`;
-    return (
-      <TrendStatus
-        label={label}
-        detail={t`${prepared.drawn} of ${prepared.measured} timed readings in this window can be drawn; ${prepared.undated} readings have no readable time.`}
-      />
-    );
-  }
+  const status = trendStatusFact(trend, {
+    failed: managed ? supplierFailed && !supplied : trendQuery.isError,
+    prepared
+  });
+  if (status) return <TrendStatus fact={status} focusable={focusable} />;
+  // A successful status means there are at least two drawable observations.
+  if (!trend || path === null) return null;
 
   const breaks = prepared.silences + prepared.notNumeric + prepared.notGood;
 
@@ -244,13 +194,16 @@ export function SignalTrendSparkline({
 
 /** Visible state and a reason available on keyboard focus and touch. */
 function TrendStatus({
-  label,
-  detail
-}: Readonly<{ label: string; detail: string }>) {
-  return label === t`Read failed` ? (
-    <FailedValue reason={detail} />
+  fact,
+  focusable
+}: Readonly<{ fact: TrendStatusFact; focusable: boolean }>) {
+  return fact.failed ? (
+    <FailedValue reason={fact.detail} focusable={focusable} />
   ) : (
-    <MissingValue reason={`${label}: ${detail}`} />
+    <MissingValue
+      reason={`${fact.label}: ${fact.detail}`}
+      focusable={focusable}
+    />
   );
 }
 

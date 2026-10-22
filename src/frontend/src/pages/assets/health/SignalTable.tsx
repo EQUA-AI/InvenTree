@@ -60,6 +60,7 @@ import {
 } from './mimic/observedTime';
 import { signalReading } from './readingPresentation';
 import { indexSuppliedTrends, suppliedTrend } from './suppliedTrends';
+import { type TrendStatusFact, trendStatusFact } from './trendPresentation';
 
 /**
  * Mapped signals with their current value, provenance and freshness.
@@ -72,16 +73,25 @@ const SPARKLINE_WINDOW_SECONDS = 10 * 60;
 
 function readingDescription(
   signal: MachineSignal,
-  clock: DisplayClock
+  clock: DisplayClock,
+  trendStatus?: TrendStatusFact | null
 ): string {
   const reading = signalReading(signal);
   return [
-    reading.reason ?? reading.text,
+    reading.text,
+    reading.reason,
     conditionText(signal),
     formatSignalLimits(signal) ?? t`No limits set`,
-    formatInstant(signal.observed_at, clock) ?? t`Observation time unavailable`,
-    qualityLabel(signal.quality)
-  ].join(' · ');
+    formatInstant(signal.observed_at, clock)
+      ? `${formatInstant(signal.observed_at, clock)} · ${clock.label}`
+      : t`Observation time unavailable`,
+    qualityLabel(signal.quality),
+    trendStatus
+      ? `${t`Trend`}: ${trendStatus.label} · ${trendStatus.detail}`
+      : null
+  ]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 export function SignalTable({
@@ -209,6 +219,23 @@ export function SignalTable({
     [trendsQuery.data]
   );
 
+  const trendFactsByBinding = useMemo(
+    () =>
+      new Map(
+        signals.map(({ binding_id: bindingId }) => {
+          const trend = suppliedTrend(trendByBinding, bindingId);
+          return [
+            bindingId,
+            trendStatusFact(trend, {
+              pending: trendsQuery.isLoading,
+              failed: trendsQuery.isError && !trend
+            })
+          ];
+        })
+      ),
+    [signals, trendByBinding, trendsQuery.isLoading, trendsQuery.isError]
+  );
+
   if (signals.length === 0) {
     return (
       <Paper withBorder p='md'>
@@ -299,6 +326,7 @@ export function SignalTable({
         <Text size='sm'>{t`No mapped signals match these filters. Clear the filters to see all signals.`}</Text>
       )}
       <Paper
+        className={classes.scroller}
         component='section'
         aria-label={t`Signal readings; scroll for all columns`}
         tabIndex={0}
@@ -376,7 +404,11 @@ export function SignalTable({
                   <Table.Td role='cell' data-label={t`Signal`}>
                     <Group gap={4} wrap='nowrap' align='flex-start'>
                       <Tooltip
-                        label={readingDescription(signal, clock)}
+                        label={readingDescription(
+                          signal,
+                          clock,
+                          trendFactsByBinding.get(signal.binding_id)
+                        )}
                         {...factTooltipProps}
                       >
                         <ActionIcon
@@ -458,7 +490,7 @@ export function SignalTable({
                       fw={signal.stale ? 400 : 500}
                       className={signal.stale ? monitoring.meta : undefined}
                     >
-                      <SignalValue signal={signal} focusable={true} />
+                      <SignalValue signal={signal} focusable={false} />
                     </Text>
                   </Table.Td>
                   {/* biome-ignore lint/a11y/useSemanticElements: Preserve the native role through phone card CSS. */}
@@ -475,7 +507,7 @@ export function SignalTable({
                     {signal.stale && signal.state !== 'offline' ? (
                       <ValueTooltip
                         label={conditionText(signal)}
-                        focusable={true}
+                        focusable={false}
                       >
                         <StatusBadge
                           tone='stale'
@@ -486,7 +518,7 @@ export function SignalTable({
                       <MissingValue
                         label={t`State`}
                         reason={conditionText(signal)}
-                        focusable={true}
+                        focusable={false}
                       />
                     ) : (
                       <ValueTooltip
@@ -505,14 +537,20 @@ export function SignalTable({
                         label={`${formatSignalLimits(signal)} · ${t`Limits on signal mapping; engineering approval not supplied`}`}
                       >
                         <Text component='span' size='xs'>
-                          {formatSignalLimits(signal)}
+                          {formatSignalLimits(signal)
+                            ?.split(' · ')
+                            .map((limit) => (
+                              <span key={limit} className={classes.limit}>
+                                {limit}
+                              </span>
+                            ))}
                         </Text>
                       </ValueTooltip>
                     ) : (
                       <MissingValue
                         label={t`Limits`}
                         reason={`${t`No limits set`} · ${t`Limits on signal mapping; engineering approval not supplied`}`}
-                        focusable={true}
+                        focusable={false}
                       />
                     )}
                   </Table.Td>
@@ -534,7 +572,7 @@ export function SignalTable({
                       <MissingValue
                         label={t`Quality`}
                         reason={t`Quality unavailable`}
-                        focusable={true}
+                        focusable={false}
                       />
                     ) : (
                       <Text size='sm'>{qualityLabel(signal.quality)}</Text>
@@ -545,6 +583,7 @@ export function SignalTable({
                     <SignalTrendSparkline
                       machineId={machineId}
                       bindingId={signal.binding_id}
+                      focusable={false}
                       trend={suppliedTrend(trendByBinding, signal.binding_id)}
                       supplierPending={trendsQuery.isLoading}
                       supplierFailed={trendsQuery.isError}
