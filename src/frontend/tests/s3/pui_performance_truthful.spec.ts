@@ -222,7 +222,7 @@ test('station values say they are the window’s, and a paused window is not the
   await live.blur();
   await page
     .locator('[data-kpi="plant-power"]')
-    .getByText('Plant power', { exact: true })
+    .getByText(/^Plant power/)
     .hover();
   await expect(
     page.getByRole('tooltip', { name: /^Calculated: sum of 4 of 4 bays'/ })

@@ -227,7 +227,7 @@ export async function captureEvidence(
           [...el.childNodes].some(
             (n) =>
               n.nodeType === Node.TEXT_NODE &&
-              /your clock|plant clock/.test(n.textContent ?? '')
+              /Times: (?:your|plant) clock/.test(n.textContent ?? '')
           )
         )
         .filter(visible).length

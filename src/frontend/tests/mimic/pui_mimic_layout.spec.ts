@@ -206,12 +206,15 @@ for (const size of sizes) {
           await expect(
             page.getByText('Swipe to view all pump bays', { exact: true })
           ).toHaveCount(0);
-          expect(
-            await strip.evaluate(
-              (node) =>
-                getComputedStyle(node).gridTemplateColumns.split(' ').length
-            )
-          ).toBe(2);
+          const cardsPerRow = await stripMetrics.evaluateAll((nodes) => {
+            const rows = new Map<number, number>();
+            for (const node of nodes) {
+              const top = Math.round(node.getBoundingClientRect().top);
+              rows.set(top, (rows.get(top) ?? 0) + 1);
+            }
+            return [...rows.values()];
+          });
+          expect(cardsPerRow).toEqual([2, 3]);
         }
         await expect(
           page.locator('[data-total="power"] button').last()
@@ -299,6 +302,7 @@ for (const size of sizes) {
         ]);
         const drawingBox = await box(drawing);
         const contentBox = await box(page.locator('[data-unit-schematic]'));
+        const sideColumns = contentBox.width >= 1100;
         expect(drawingBox.width).toBeGreaterThanOrEqual(contentBox.width * 0.5);
         if (size.name === 'desktop') {
           expect(drawingBox.height).toBeGreaterThanOrEqual(size.height * 0.6);
@@ -321,7 +325,7 @@ for (const size of sizes) {
             .locator(`[data-callout-column="${side}"] button[data-part]`)
             .all()) {
             const calloutBox = await box(callout);
-            if (size.name === 'phone') {
+            if (!sideColumns) {
               expect(calloutBox.y).toBeGreaterThanOrEqual(
                 drawingBox.y + drawingBox.height - 1
               );

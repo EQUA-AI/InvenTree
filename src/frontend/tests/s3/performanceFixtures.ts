@@ -205,14 +205,19 @@ export async function openPausedPerformance(
     ...options,
     settleInitialRead: true
   });
-  const live = page.getByRole('switch', { name: /^Live updates:/ });
-  if (await live.isChecked()) {
-    await live.click({ force: true });
-    await expect(live).not.toBeChecked();
-    await expect(live).toHaveAccessibleName('Live updates: Paused');
-  }
+  await pausePerformanceLiveUpdates(page);
   await expect(page.getByTestId('fixture-fetching')).toHaveText('0', {
     timeout: 60000
   });
   return requests;
+}
+
+/** Pause the single Live control while retaining any recorded-source disclosure. */
+export async function pausePerformanceLiveUpdates(page: Page) {
+  const live = page.getByRole('switch', { name: /^Live updates:/ });
+  if (await live.isChecked()) await live.click({ force: true });
+  await expect(live).not.toBeChecked();
+  await expect(live).toHaveAccessibleName(
+    /^Live updates: Paused(?: · Recorded source presented on the live clock; timestamps shifted by .+\.)?$/
+  );
 }

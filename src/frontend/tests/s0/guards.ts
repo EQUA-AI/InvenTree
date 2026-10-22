@@ -53,7 +53,7 @@ export function nativeBaseline(
       // Fulfil them locally with no bytes; every other external read still fails.
       if (
         url.origin === 'https://cdn.svar.dev' &&
-        /^\/fonts\/roboto\/500\.woff2?$/.test(url.pathname)
+        /^\/fonts\/roboto\/(?:500|regular)\.woff2?$/.test(url.pathname)
       ) {
         await route.fulfill({ status: 204, body: '' });
         return;

@@ -331,9 +331,10 @@ test('location selection starts a fresh population while explicit history restor
   await expect(
     page.getByRole('heading', { name: 'Synthetic pump hall', exact: true })
   ).toBeFocused();
+  await expectLocationTotals(page, 20, true);
   await expect(
     page.getByRole('region', { name: 'Loaded page summary' })
-  ).toContainText('20 machines');
+  ).toHaveAttribute('aria-description', /^Page counts only\./);
   await expect(page.locator('[data-machine]')).toHaveCount(20);
   await showExplorerControls(page);
   await expect(
@@ -342,9 +343,7 @@ test('location selection starts a fresh population while explicit history restor
   await expect(
     page.getByRole('switch', { name: 'In alarm only', exact: true })
   ).not.toBeChecked();
-  await expect(
-    page.getByTestId('machine-page-count').filter({ hasText: /^20 machines$/ })
-  ).toBeVisible();
+  await expect(page.getByTestId('machine-page-count')).toHaveCount(0);
   expect((await explorerParams(page)).get('location')).toBe('21');
   expect((await explorerParams(page)).has('page')).toBe(false);
   await page.getByRole('button', { name: 'Fixture back', exact: true }).click();
@@ -369,14 +368,13 @@ test('location selection starts a fresh population while explicit history restor
   await page
     .getByRole('button', { name: 'Fixture forward', exact: true })
     .click();
+  await expectLocationTotals(page, 20, true);
   await expect(
     page.getByRole('region', { name: 'Loaded page summary' })
-  ).toContainText('20 machines');
+  ).toHaveAttribute('aria-description', /^Page counts only\./);
   await expect(page.locator('[data-machine]')).toHaveCount(20);
   await showExplorerControls(page);
-  await expect(
-    page.getByTestId('machine-page-count').filter({ hasText: /^20 machines$/ })
-  ).toBeVisible();
+  await expect(page.getByTestId('machine-page-count')).toHaveCount(0);
 });
 
 for (const status of [403, 500]) {
@@ -594,6 +592,8 @@ test('the criticality filter narrows on the server, resets the page and survives
     name: 'Criticality',
     exact: true
   });
+  await filter.scrollIntoViewIfNeeded();
+  await expect(filter).toBeInViewport({ ratio: 1 });
   await filter.click();
   await page.getByRole('option', { name: 'Critical', exact: true }).click();
   await expect(filter).toHaveValue('Criticality: Critical');

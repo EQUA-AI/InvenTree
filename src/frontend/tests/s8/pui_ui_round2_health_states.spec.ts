@@ -107,7 +107,7 @@ for (const scheme of ['light', 'dark'] as const) {
       stale.locator('[data-label="State"]').getByText('Stale', { exact: true })
     ).toBeVisible();
     const observed = stale.locator('[data-label="Observed"] time');
-    await expect(observed).toHaveText('10 min old');
+    await expect(observed).toHaveText('10 min ago');
     await expect(observed).toHaveAttribute(
       'datetime',
       new Date(NOW - 600_000).toISOString()
@@ -127,42 +127,65 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(badQuality.locator('[data-label="Value"]')).toContainText(
       '95 °C'
     );
-    const badQualityValue = badQuality.getByRole('button', {
-      name: 'Value: Bad quality',
+    const badQualityValue = badQuality.locator('[data-label="Value"]');
+    await expect(
+      badQualityValue.getByText('Bad quality', { exact: true })
+    ).toBeVisible();
+    await expect(badQualityValue.getByRole('button')).toHaveCount(0);
+    const badQualityDetails = badQuality.getByRole('button', {
+      name: 'Details for Winding temperature',
       exact: true
     });
-    await expect(badQualityValue).toBeVisible();
-    await badQualityValue.focus();
-    await expect(badQualityValue).toBeFocused();
-    await expect(
-      page.getByRole('tooltip', {
-        name: 'Bad quality reported by the source',
-        exact: true
-      })
-    ).toContainText('Bad quality reported by the source');
-    await expect(badQualityValue).toHaveAccessibleDescription(
-      'Bad quality reported by the source'
+    await badQualityDetails.focus();
+    await expect(badQualityDetails).toBeFocused();
+    const qualityReason = page.getByRole('tooltip').filter({
+      hasText: 'Not assessed: quality is not good'
+    });
+    await expect(qualityReason).toContainText('95 °C');
+    await expect(qualityReason).toContainText('Bad');
+    await expect(badQualityDetails).toHaveAccessibleDescription(
+      /95 °C.*Not assessed: quality is not good/
     );
+    await page.keyboard.press('Escape');
+    await expect(qualityReason).toBeHidden();
+    await badQualityDetails.blur();
     await expect(badQuality.locator('[data-label="Quality"]')).toHaveText(
       'Bad'
     );
     const missingValue = missing.locator('[data-label="Value"]');
-    const missingReason = missingValue.getByRole('button', {
-      name: 'Value: No observation available',
-      exact: true
-    });
-    await expect(missingReason).toHaveText('—');
-    await missingReason.focus();
-    await expect(missingReason).toBeFocused();
-    await expect(
-      page.getByRole('tooltip', {
-        name: 'Value: No observation available',
-        exact: true
-      })
-    ).toHaveText('Value: No observation available');
-    await expect(missingReason).toHaveAccessibleDescription(
+    const missingReason = missingValue.locator('p > span').first();
+    expect(
+      await missingReason.evaluate((node) =>
+        [...node.childNodes]
+          .filter((child) => child.nodeType === Node.TEXT_NODE)
+          .map((child) => child.textContent)
+          .join('')
+          .trim()
+      )
+    ).toBe('—');
+    await expect(missingReason).toContainText(
       'Value: No observation available'
     );
+    await expect(missingReason).not.toHaveAttribute('tabindex');
+    await expect(missingValue.getByRole('button')).toHaveCount(0);
+    const missingDetails = missing.getByRole('button', {
+      name: 'Details for Seal flush flow',
+      exact: true
+    });
+    await missingDetails.focus();
+    await expect(missingDetails).toBeFocused();
+    const observationReason = page.getByRole('tooltip').filter({
+      hasText: 'No observation available'
+    });
+    await expect(observationReason).toContainText(
+      'Not assessed: no observation'
+    );
+    await expect(missingDetails).toHaveAccessibleDescription(
+      /No observation available.*Not assessed: no observation/
+    );
+    await page.keyboard.press('Escape');
+    await expect(observationReason).toBeHidden();
+    await missingDetails.blur();
     await expect(missingValue).not.toContainText('Read failed');
     await expect(zero.locator('[data-label="Value"]')).toHaveText('0 m³/h');
 

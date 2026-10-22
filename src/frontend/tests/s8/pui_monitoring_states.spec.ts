@@ -196,7 +196,14 @@ for (const scheme of ['light', 'dark'] as const) {
       let feature = () => root.getByTestId('health-summary');
       if (state === 'stale') {
         await expect(signalTable(page)).toContainText('Last known');
-        await expect(signalTable(page)).toContainText('1 h old');
+        const observed = signalTable(page).locator(
+          '[data-label="Observed"] time'
+        );
+        await expect(observed).toHaveText('1 h ago');
+        await expect(observed).toHaveAttribute(
+          'datetime',
+          new Date(NOW - 3600_000).toISOString()
+        );
         await expect(
           signalTable(page).getByText('Normal', { exact: true })
         ).toHaveCount(0);
@@ -492,15 +499,34 @@ for (const scheme of ['light', 'dark'] as const) {
           tile.getByRole('button', { name: 'Stale', exact: true })
         ).toBeVisible();
         await expect(tile).not.toContainText('Last known');
-        await expect(tile).toContainText('1 h old');
+        await expect(tile.locator('[data-kpi-observed] time')).toHaveText(
+          '11:00:00 · 1 h ago'
+        );
         const stale = tile.getByRole('button', { name: 'Stale', exact: true });
         await stale.focus();
         await expect(
           page.getByRole('tooltip', { name: /freshness budget 300 s/ })
         ).toContainText('freshness budget 300 s');
         await expect(stale).toHaveAccessibleDescription(
-          /freshness budget 300 s/
+          /Source flagged stale.*Observed.*18 Oct 2026 11:00:00.*Read.*18 Oct 2026 12:00:00.*freshness budget 300 s/
         );
+        await stale.blur();
+        await page.mouse.move(0, 0);
+        await expect(
+          page.getByRole('tooltip', { name: /Source flagged stale/ })
+        ).toBeHidden();
+        const live = root.getByRole('switch', { name: /^Live updates:/ });
+        await live.focus();
+        await live.press('Space');
+        await expect(live).toBeChecked();
+        await expect(live).toHaveAccessibleName('Live updates: Live · 1 stale');
+        await live.press('Space');
+        await expect(live).not.toBeChecked();
+        await expect(live).toHaveAccessibleName('Live updates: Paused');
+        await live.blur();
+        await expect(
+          page.getByRole('tooltip', { name: /^Paused:/ })
+        ).toBeHidden();
         await expect(tile.locator('[data-kpi-value]')).toHaveCSS(
           'font-weight',
           '400'

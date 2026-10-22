@@ -111,29 +111,49 @@ export async function captureState(
         return b ? { x: b.x, y: b.y, width: b.width, height: b.height } : null;
       };
       const theme = getComputedStyle(document.documentElement);
+      const renderedColor = (color: string) => {
+        const span = document.createElement('span');
+        span.style.color = color;
+        document.body.append(span);
+        const rgb = getComputedStyle(span).color;
+        span.remove();
+        return rgb;
+      };
       const forbidden = ['red', 'orange', 'yellow', 'green', 'lime', 'pink']
         .flatMap((h) =>
           Array.from({ length: 10 }, (_, i) =>
             theme.getPropertyValue(`--mantine-color-${h}-${i}`).trim()
           )
         )
-        .map((hex) => {
-          const span = document.createElement('span');
-          span.style.color = hex;
-          document.body.append(span);
-          const rgb = getComputedStyle(span).color;
-          span.remove();
-          return rgb;
-        });
+        .map(renderedColor);
       const palette = [
         ...root.querySelectorAll(
           '.recharts-line-curve,.recharts-bar-rectangle path,[data-heatmap-cell]'
         )
-      ].map((el) => ({
-        kind: el.tagName,
-        stroke: getComputedStyle(el).stroke,
-        fill: getComputedStyle(el).fill
-      }));
+      ].map((el) => {
+        const style = getComputedStyle(el);
+        const state = el.hasAttribute('data-heatmap-cell')
+          ? el.getAttribute('data-limit-state')
+          : null;
+        const dark =
+          document.documentElement.dataset.mantineColorScheme === 'dark';
+        return {
+          kind: el.tagName,
+          state,
+          stroke: style.stroke,
+          fill: style.fill,
+          expectedAlarmFill:
+            state === 'warning'
+              ? renderedColor(style.getPropertyValue('--aimms-warning').trim())
+              : state === 'critical'
+                ? renderedColor(
+                    theme
+                      .getPropertyValue(`--mantine-color-red-${dark ? 4 : 9}`)
+                      .trim()
+                  )
+                : null
+        };
+      });
       const table = root.querySelector(
         'table[aria-label="Mapped signal readings"]'
       );
@@ -158,8 +178,10 @@ export async function captureState(
         rows,
         kpis,
         palette,
-        paletteFailures: palette.filter(
-          (p) => forbidden.includes(p.stroke) || forbidden.includes(p.fill)
+        paletteFailures: palette.filter((p) =>
+          p.expectedAlarmFill
+            ? p.fill !== p.expectedAlarmFill || forbidden.includes(p.stroke)
+            : forbidden.includes(p.stroke) || forbidden.includes(p.fill)
         ),
         clockCount: (root.textContent?.match(/Times: your clock/g) ?? [])
           .length,
@@ -224,13 +246,23 @@ export async function captureState(
       const gridWidth =
         Math.max(...facts.kpis.map((k) => k.box!.x + k.box!.width)) -
         facts.kpis[0].box!.x;
-      expect(firstRow).toHaveLength(Math.floor((gridWidth + 12) / 232));
+      expect(firstRow).toHaveLength(
+        Math.min(4, Math.floor((gridWidth + 12) / 232))
+      );
       const widths = firstRow.map((k) => k.box!.width);
       expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(2);
       for (const kpi of firstRow) {
         expect(kpi.box!.width).toBeGreaterThanOrEqual(220);
         expect(kpi.footer!.y + kpi.footer!.height).toBeLessThanOrEqual(
           kpi.box!.y + kpi.box!.height
+        );
+      }
+      for (const top of new Set(facts.kpis.map((k) => Math.round(k.box!.y)))) {
+        const row = facts.kpis.filter((k) => Math.round(k.box!.y) === top);
+        const heights = row.map((k) => k.box!.height);
+        expect(row.length).toBeLessThanOrEqual(4);
+        expect(Math.max(...heights) - Math.min(...heights)).toBeLessThanOrEqual(
+          2
         );
       }
     }

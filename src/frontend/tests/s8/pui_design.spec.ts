@@ -259,9 +259,20 @@ test('Fault History distinguishes active, acknowledged and resolved without asse
   await expect(page.locator('[data-occurrence="900"]').first()).toContainText(
     'Active · acknowledged'
   );
-  await expect(page.locator('[data-occurrence="901"]').first()).toContainText(
-    'Reading back inside its limits.'
-  );
+  const resolved = page.locator('[data-occurrence="901"]').first();
+  const outcome = resolved.getByRole('button', {
+    name: 'Resolved',
+    exact: true
+  });
+  await page.mouse.move(0, 0);
+  await keyboardFocus(page, outcome);
+  const reason =
+    "Resolved does not always mean cleared. The occurrence's recorded outcome does not establish the equipment's current condition. · Reading back inside its limits.";
+  const explanation = page.getByRole('tooltip').filter({ hasText: reason });
+  await expect(explanation).toHaveText(reason);
+  await expect(outcome).toHaveAccessibleDescription(reason);
+  await page.keyboard.press('Escape');
+  await expect(explanation).toBeHidden();
   await expect(
     page.getByText(
       'Resolved does not always mean cleared. Acknowledged conditions remain active.'
@@ -393,9 +404,20 @@ test('a mapped numeric zero discharge flow is shown with its source unit without
   const zeroFlow = page
     .locator('[data-reading][data-point="/pd/P1/dv"]')
     .locator('[data-value]');
-  await expect(zeroFlow).toHaveText('0 m³/s');
+  const value = zeroFlow.locator(':scope > span');
+  await expect(value).toBeVisible();
+  expect(
+    await value.evaluate((node) =>
+      Array.from(node.childNodes)
+        .filter((child) => child.nodeType === Node.TEXT_NODE)
+        .map((child) => child.textContent)
+        .join('')
+    )
+  ).toBe('0 m³/s');
+  await expect(value).toContainText('Discharge flow: 0 m³/s');
+  await expect(value).not.toHaveAttribute('tabindex');
   await expect(zeroFlow.getByRole('button')).toHaveCount(0);
-  await zeroFlow.getByText('0 m³/s', { exact: true }).hover();
+  await value.hover();
   await expect(
     page.getByRole('tooltip').filter({ hasText: 'Discharge flow: 0 m³/s' })
   ).toContainText('Discharge flow: 0 m³/s');

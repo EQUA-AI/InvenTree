@@ -228,6 +228,7 @@ for (const asLive of [true, false]) {
     let failure: 'none' | 'source' | 'unavailable' | 'empty' = 'none';
     const requests = await openPerformance(page, {
       harness: 's3',
+      settleInitialRead: true,
       recordedTelemetryAsLive: asLive,
       displayShift: 400 * 86400,
       mapSeriesResponse: (response) => ({
@@ -251,9 +252,24 @@ for (const asLive of [true, false]) {
       })
     });
     const status = page.getByTestId('live-indicator');
+    const disclosure =
+      'Recorded source presented on the live clock; timestamps shifted by 400 d.';
+    const live = status.getByRole('switch', {
+      name: `Live updates: Live · ${disclosure}`,
+      exact: true
+    });
     await expect(status).toBeVisible();
     if (asLive) {
       await expect(status).not.toContainText('Source history display shift');
+      const selectedRangeRead = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return (
+          url.pathname === '/api/machine-health/machines/18/health/series/' &&
+          Date.parse(url.searchParams.get('to')!) -
+            Date.parse(url.searchParams.get('from')!) ===
+            30 * 86400_000
+        );
+      });
       await page.getByText('30 d', { exact: true }).click();
       await expect
         .poll(() =>
@@ -265,10 +281,13 @@ for (const asLive of [true, false]) {
           )
         )
         .toBe(true);
+      await (await selectedRangeRead).finished();
+      await expect(status).toContainText('Sampled: one reading every 3 h', {
+        timeout: 60000
+      });
+      await expect(page.getByTestId('fixture-fetching')).toHaveText('0');
       await samplingInformation(page, 'Sampled: one reading every 3 h');
-      await expect(
-        status.getByRole('switch', { name: 'Live updates: Live', exact: true })
-      ).toBeChecked();
+      await expect(live).toBeChecked();
       await expect(status.locator('time')).toHaveCount(1);
       await expect(status.getByText('Live', { exact: true })).toHaveCount(1);
     } else {
@@ -276,6 +295,14 @@ for (const asLive of [true, false]) {
       await historyInformation(page);
       await expect(page.getByText('30 d', { exact: true })).toHaveCount(0);
     }
+    await page.keyboard.press('Tab');
+    await live.focus();
+    await expect(
+      page.getByRole('tooltip', {
+        name: /Recorded source presented on the live clock/
+      })
+    ).toContainText(disclosure);
+    await live.blur();
     await status.screenshot({
       path: info.outputPath(`o27-performance-${asLive ? 'on' : 'off'}.png`),
       animations: 'disabled'
@@ -283,7 +310,9 @@ for (const asLive of [true, false]) {
     if (asLive) {
       failure = 'source';
       await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-      await expect(status).toContainText('Source read failed');
+      await expect(
+        status.getByText('Read failed', { exact: true })
+      ).toBeVisible();
       failure = 'unavailable';
       await page.getByRole('button', { name: 'Refresh', exact: true }).click();
       await expect(status).toContainText('Readings unavailable');

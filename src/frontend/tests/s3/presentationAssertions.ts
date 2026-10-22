@@ -1,5 +1,20 @@
 import { type Locator, type Page, expect } from '@playwright/test';
 
+export async function informationTooltip(
+  page: Page,
+  control: Locator,
+  expected: string | RegExp
+) {
+  await expect(control).toBeFocused();
+  await expect(control).toHaveAttribute('aria-describedby', /.+/);
+  const description = await control.getAttribute('aria-describedby');
+  const tooltip = page.locator(`[role="tooltip"][id="${description}"]`);
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip).toContainText(expected);
+  await expect(control).toHaveAccessibleDescription(await tooltip.innerText());
+  return tooltip;
+}
+
 export async function historyInformation(
   page: Page,
   scope: Page | Locator = page,
