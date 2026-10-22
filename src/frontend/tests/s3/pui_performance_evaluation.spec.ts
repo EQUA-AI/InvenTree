@@ -36,7 +36,10 @@ test('a machine with no configured limits is never called calm', async ({
   await expect(page.getByText('No exceptions')).toHaveCount(0);
   await page.keyboard.press('Tab');
   await strip(page)
-    .getByRole('button', { name: 'Assessment coverage', exact: true })
+    .getByRole('button', {
+      name: 'Exceptions: assessment coverage',
+      exact: true
+    })
     .focus();
   await expect(page.getByRole('tooltip')).toHaveText(
     '0 of 2 evaluated; 0 have configured limits'
@@ -59,7 +62,10 @@ test('limits that cannot be judged now say evaluation is unavailable', async ({
   await expect(page.getByText('No exceptions')).toHaveCount(0);
   await page.keyboard.press('Tab');
   await strip(page)
-    .getByRole('button', { name: 'Assessment coverage', exact: true })
+    .getByRole('button', {
+      name: 'Exceptions: assessment coverage',
+      exact: true
+    })
     .focus();
   await expect(page.getByRole('tooltip')).toHaveText(
     '0 of 3 evaluated; 2 have configured limits'
@@ -78,11 +84,21 @@ test('calm is claimed only when every judged reading is in limits, and says how 
     await expect(strip(page).getByText('No exceptions')).toBeVisible();
     await page.keyboard.press('Tab');
     await strip(page)
-      .getByRole('button', { name: 'Assessment coverage', exact: true })
+      .getByRole('button', {
+        name: 'Exceptions: assessment coverage',
+        exact: true
+      })
       .focus();
     await expect(page.getByRole('tooltip')).toHaveText(
       '3 of 5 evaluated; 3 have configured limits'
     );
+    await strip(page)
+      .getByRole('button', {
+        name: 'Exceptions: assessment coverage',
+        exact: true
+      })
+      .blur();
+    await expect(page.getByRole('tooltip')).toBeHidden();
     await strip(page).screenshot({
       path: testInfo.outputPath(`unusual-calm-${scheme}.png`),
       animations: 'disabled'

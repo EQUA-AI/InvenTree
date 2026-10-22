@@ -126,7 +126,7 @@ test('a sensor family in two units gets a card per unit, and the hottest-sensor 
     await expect(section.getByText(/This family reports in/)).toHaveCount(0);
     const tile = page.locator('[data-kpi="winding"]');
     await expect(tile).toContainText('84');
-    await tile.getByText('Winding temperature', { exact: true }).hover();
+    await tile.getByText(/^Winding temperature/).hover();
     await expect(page.getByRole('tooltip')).toContainText(
       'Highest of 3: Winding 3'
     );

@@ -13,6 +13,7 @@ import {
   sparkline,
   trendCard
 } from './healthFixtures';
+import { informationTooltip } from './presentationAssertions';
 
 nativeBaseline();
 test.use({ timezoneId: 'UTC' });
@@ -150,17 +151,27 @@ for (const scheme of ['light', 'dark'] as const) {
         }
       ]
     });
-    const stale = signalTable(page)
+    const staleRow = signalTable(page)
       .getByRole('row')
-      .filter({ hasText: 'Stale discharge flow' })
-      .getByRole('button', { name: 'Stale', exact: true });
-    await expect(stale).toBeVisible();
-    await page.keyboard.press('Tab');
-    await stale.focus();
-    await expect(page.getByRole('tooltip')).toHaveText(
-      'Not assessed: stale last-known reading'
-    );
-    await expect(stale).toHaveAccessibleDescription(
+      .filter({ hasText: 'Stale discharge flow' });
+    await expect(staleRow.getByText('Stale', { exact: true })).toBeVisible();
+    await expect(
+      staleRow.getByRole('button', { name: 'Stale', exact: true })
+    ).toHaveCount(0);
+    const staleDetails = staleRow.getByRole('button', {
+      name: 'Details for Stale discharge flow',
+      exact: true
+    });
+    await staleRow
+      .getByRole('button', {
+        name: 'Inspect signal: Stale discharge flow',
+        exact: true
+      })
+      .focus();
+    await page.keyboard.press('Shift+Tab');
+    await informationTooltip(
+      page,
+      staleDetails,
       'Not assessed: stale last-known reading'
     );
     await expect(
@@ -353,18 +364,36 @@ for (const scheme of ['light', 'dark'] as const) {
     const unknown = table
       .getByRole('row')
       .filter({ hasText: 'Signal unknown' });
-    await expect(
-      unknown.getByRole('button', {
-        name: 'State: Not assessed: no observation',
+    for (const name of [
+      '— State: Not assessed: no observation',
+      '— Value: No observation available'
+    ]) {
+      const missing = unknown.getByRole('cell', { name, exact: true });
+      await expect(missing).toBeVisible();
+      await expect(missing.getByRole('button')).toHaveCount(0);
+    }
+    const unknownDetails = unknown.getByRole('button', {
+      name: 'Details for Signal unknown',
+      exact: true
+    });
+    await unknown
+      .getByRole('button', {
+        name: 'Inspect signal: Signal unknown',
         exact: true
       })
-    ).toHaveText('—');
-    await expect(
-      unknown.getByRole('button', {
-        name: 'Value: No observation available',
-        exact: true
-      })
-    ).toHaveText('—');
+      .focus();
+    await page.keyboard.press('Shift+Tab');
+    const unknownInformation = await informationTooltip(
+      page,
+      unknownDetails,
+      'No observation available'
+    );
+    await expect(unknownInformation).toContainText(
+      'Not assessed: no observation'
+    );
+    await unknownDetails.blur();
+    await page.mouse.move(0, 0);
+    await expect(page.locator('[role="tooltip"]:visible')).toHaveCount(0);
     await expect(unknown.getByText('Unknown', { exact: true })).toHaveCount(0);
     if (info.project.name.includes('phone')) await details.click();
     const graph = sparkline(page, 'Signal normal');
@@ -494,7 +523,10 @@ test('filter keeps component scope and selected chart instead of silently select
     .getByRole('row')
     .filter({ hasText: 'Motor DE vibration (raw)' });
   await expect(
-    raw.getByRole('cell', { name: '1834', exact: true })
+    raw.getByRole('cell', {
+      name: '1834 Unit not reported by the plant',
+      exact: true
+    })
   ).toBeVisible();
   const rawDetails = raw.getByRole('button', {
     name: 'Details for Motor DE vibration (raw)',
@@ -507,16 +539,23 @@ test('filter keeps component scope and selected chart instead of silently select
   await rawInspect.focus();
   await rawInspect.press('Shift+Tab');
   await expect(rawDetails).toBeFocused();
-  const detailTooltip = page.getByRole('tooltip', {
-    name: /^Unit not reported by the plant/
-  });
-  await expect(detailTooltip).toBeVisible();
-  await expect(rawDetails).toHaveAttribute(
-    'aria-describedby',
-    (await detailTooltip.getAttribute('id'))!
+  const detailTooltip = await informationTooltip(
+    page,
+    rawDetails,
+    'Unit not reported by the plant'
   );
+  await expect(detailTooltip).toContainText(
+    'Not assessed: limits not configured'
+  );
+  await expect(detailTooltip).toContainText('No limits set');
   await rawDetails.click();
   await expect(rawDetails).toHaveAttribute('aria-expanded', 'true');
+  await expect(
+    raw.getByRole('cell', {
+      name: '— Limits: No limits set · Limits on signal mapping; engineering approval not supplied',
+      exact: true
+    })
+  ).toBeVisible();
   const stops = await raw
     .locator('button')
     .evaluateAll((nodes) =>
@@ -528,10 +567,7 @@ test('filter keeps component scope and selected chart instead of silently select
     );
   expect(stops).toEqual([
     'Details for Motor DE vibration (raw)',
-    'Inspect signal: Motor DE vibration (raw)',
-    '1834',
-    'State: Not assessed: limits not configured',
-    'Limits: No limits set · Limits on signal mapping; engineering approval not supplied'
+    'Inspect signal: Motor DE vibration (raw)'
   ]);
   await expect(
     page.getByRole('region', {
@@ -690,46 +726,49 @@ for (const scheme of ['light', 'dark'] as const) {
         name: /Assessed on 0 of 6 signals.*Critical signals: not designated/
       })
     ).toBeVisible();
-    const limits = signalTable(page).getByRole('button', {
-      name: 'Limits: No limits set · Limits on signal mapping; engineering approval not supplied',
+    const limits = signalTable(page).getByRole('cell', {
+      name: '— Limits: No limits set · Limits on signal mapping; engineering approval not supplied',
       exact: true,
       includeHidden: true
     });
     await expect(limits).toHaveCount(6);
     for (const limit of await limits.all()) {
-      await expect(limit).toHaveText('—');
-      await expect(limit).not.toHaveAttribute('tabindex', '-1');
+      await expect(limit).toContainText('—');
+      await expect(
+        limit.getByRole('button', { includeHidden: true })
+      ).toHaveCount(0);
     }
     await expect(
-      signalTable(page).getByRole('button', {
-        name: 'State: Not assessed: limits not configured',
+      signalTable(page).getByRole('cell', {
+        name: '— State: Not assessed: limits not configured',
         exact: true,
         includeHidden: true
       })
     ).toHaveCount(6);
+    const first = signalTable(page).locator('tbody tr').first();
+    const details = first.getByRole('button', { name: /^Details for/ });
     if (info.project.name.includes('phone')) {
-      const first = signalTable(page).locator('tbody tr').first();
       await expect(first.locator('[data-no-state="true"]')).toBeHidden();
-      const details = first.getByRole('button', { name: /^Details for/ });
       await details.click();
-      await details.blur();
-      await page.mouse.move(0, 0);
-      await expect(page.locator('[role="tooltip"]:visible')).toHaveCount(0);
-      const missingState = first.getByRole('button', {
-        name: 'State: Not assessed: limits not configured',
-        exact: true
-      });
-      await first.getByRole('button', { name: /^Inspect signal:/ }).focus();
-      await page.keyboard.press('Tab');
-      await expect(missingState).toBeFocused();
-      await expect(missingState).toHaveAccessibleDescription(
-        'State: Not assessed: limits not configured'
-      );
-      const description = await missingState.getAttribute('aria-describedby');
-      await expect(
-        page.locator(`[role="tooltip"][id="${description}"]`)
-      ).toBeVisible();
+      await expect(first.locator('[data-no-state="true"]')).toBeVisible();
     }
+    await first.getByRole('button', { name: /^Inspect signal:/ }).focus();
+    await page.keyboard.press('Shift+Tab');
+    const information = await informationTooltip(
+      page,
+      details,
+      'Not assessed: limits not configured'
+    );
+    await expect(information).toContainText('No limits set');
+    await details.press('Tab');
+    await expect(
+      first.getByRole('button', { name: /^Inspect signal:/ })
+    ).toBeFocused();
+    await expect(
+      first
+        .locator('td:not(:first-child)')
+        .getByRole('button', { includeHidden: true })
+    ).toHaveCount(0);
     await expect(
       signalTable(page).getByText('Unknown', { exact: true })
     ).toHaveCount(0);
@@ -777,10 +816,10 @@ for (const newest of ['future', 'expired', 'current'] as const) {
       );
     if (newest === 'expired')
       await expect(observation).toContainText(
-        'Stale · 20 s old · freshness budget 10 s'
+        'Stale · 20 s ago · freshness budget 10 s'
       );
     if (newest === 'current')
-      await expect(observation).toContainText('just now');
+      await expect(observation).toContainText('20 s ago');
     await observation.hover();
     await expect(page.getByRole('tooltip')).toContainText(
       newest === 'future'

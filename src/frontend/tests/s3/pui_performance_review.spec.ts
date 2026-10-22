@@ -34,7 +34,7 @@ test('P11-1 an uncompared critical sensor keeps the family tile critical', async
   });
   const tile = page.locator('[data-kpi="winding"]');
   await expect(tile.getByText('Critical', { exact: true })).toBeVisible();
-  await tile.getByText('Winding temperature', { exact: true }).hover();
+  await tile.getByText(/^Winding temperature/).hover();
   await expect(page.getByRole('tooltip')).toContainText(
     'Winding 4 (°F) critical, not compared'
   );

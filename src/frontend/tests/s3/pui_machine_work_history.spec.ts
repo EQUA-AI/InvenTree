@@ -10,6 +10,7 @@ import {
   openFaultHistory,
   openMaintenance
 } from './machineWorkFixtures';
+import { informationTooltip } from './presentationAssertions';
 
 nativeBaseline();
 
@@ -34,6 +35,26 @@ async function expectContained(page: import('@playwright/test').Page) {
     expect(box.right, `${id} right edge`).toBeLessThanOrEqual(width);
     expect(box.scroll, `${id} overflow`).toBeLessThanOrEqual(box.client + 1);
   }
+}
+
+async function expectOccurrenceCount(
+  page: import('@playwright/test').Page,
+  count: number
+) {
+  const panel = page.getByTestId('fault-occurrences');
+  await expect(
+    panel.getByRole('heading', { name: 'Occurrences', level: 4, exact: true })
+  ).toBeVisible();
+  const badge = panel.getByRole('button', { name: String(count), exact: true });
+  await expect(badge).toBeVisible();
+  await page.mouse.move(0, 0);
+  await page.keyboard.press('Tab');
+  await badge.focus();
+  await informationTooltip(
+    page,
+    badge,
+    `${count} ${count === 1 ? 'occurrence' : 'occurrences'} · Newest first`
+  );
 }
 
 test.describe('R6 P12 machine Maintenance: Open work and Completed history', () => {
@@ -171,22 +192,32 @@ test.describe('R6 P12 machine Maintenance: Open work and Completed history', () 
       await expect(
         page.getByRole('link', { name: 'Open work order WO-60' })
       ).toBeVisible();
-      await expect(
-        page.getByRole('button', {
-          name: 'Work order link not available',
-          exact: true
-        })
-      ).toHaveText('—');
       await expect(page.getByText('Follow-up required')).toBeVisible();
       const component = page
         .getByRole('row')
         .filter({ hasText: 'Legacy service visit' });
+      for (const name of [
+        '— Work order link not available',
+        '— Component not recorded'
+      ]) {
+        const missing = component.getByRole('cell', { name, exact: true });
+        await expect(missing).toBeVisible();
+        await expect(missing.getByRole('button')).toHaveCount(0);
+      }
       await expect(
-        component.getByRole('button', {
-          name: 'Component not recorded',
-          exact: true
-        })
-      ).toHaveText('—');
+        component.getByRole('cell', { name: 'No', exact: true })
+      ).toBeVisible();
+      const information = component.getByRole('button', {
+        name: 'Record information',
+        exact: true
+      });
+      await information.focus();
+      const missingInformation = await informationTooltip(
+        page,
+        information,
+        'Work order link not available'
+      );
+      await expect(missingInformation).toContainText('Component not recorded');
       await expectContained(page);
       await page.screenshot({
         path: testInfo.outputPath(`maintenance-completed-${scheme}.png`),
@@ -354,7 +385,7 @@ test.describe('R6 P12 Fault History: occurrences, retained evidence and owning w
       // The native rollup is kept above the occurrences.
       await expect(page.getByTestId('fault-history-panel')).toBeVisible();
       await expect(page.getByText('Verified causes')).toBeVisible();
-      await expect(page.getByText('3 occurrences')).toBeVisible();
+      await expectOccurrenceCount(page, 3);
       const bearing = page.locator('[data-occurrence="901"]').first();
       await expect(bearing).toContainText('Drive-end bearing high temperature');
       const information = bearing.getByRole('button', {
@@ -363,13 +394,15 @@ test.describe('R6 P12 Fault History: occurrences, retained evidence and owning w
       });
       await page.keyboard.press('Tab');
       await information.focus();
-      await expect(page.getByRole('tooltip')).toContainText('Code TT-HI');
-      await expect(page.getByRole('tooltip')).toContainText(
-        'Source alarm ALM-77812'
+      const eventInformation = await informationTooltip(
+        page,
+        information,
+        'Code TT-HI'
       );
-      await expect(page.getByRole('tooltip')).toContainText('Record 901');
+      await expect(eventInformation).toContainText('Source alarm ALM-77812');
+      await expect(eventInformation).toContainText('Record 901');
       await expect(bearing).toContainText('Drive-end bearing');
-      await expect(bearing).toContainText('unverified assignment');
+      await expect(bearing).toContainText('Unverified component assignment');
       await expect(bearing).toContainText('1 retained snapshot');
       await expect(bearing.getByRole('link', { name: 'WO-86' })).toBeVisible();
       await expect(bearing).toContainText('Resolved');
@@ -379,16 +412,25 @@ test.describe('R6 P12 Fault History: occurrences, retained evidence and owning w
       await expect(page.locator('[role="tooltip"]:visible')).toHaveCount(0);
       const pressure = page.locator('[data-occurrence="902"]').first();
       await page.keyboard.press('Tab');
-      await pressure
-        .getByRole('button', { name: 'Event information', exact: true })
-        .focus();
-      await expect(page.getByRole('tooltip')).toContainText('Record 902');
-      await expect(page.getByRole('tooltip')).not.toContainText('Source alarm');
+      const pressureInformation = pressure.getByRole('button', {
+        name: 'Event information',
+        exact: true
+      });
+      await pressureInformation.focus();
+      const pressureTooltip = await informationTooltip(
+        page,
+        pressureInformation,
+        'Record 902'
+      );
+      await expect(pressureTooltip).not.toContainText('Source alarm');
       await expect(pressure).toContainText('Signal not mapped to a component');
       await expect(pressure).toContainText('No retained snapshot');
       await expect(
-        page.locator('[data-occurrence="900"]').first()
-      ).toContainText('No owning work you can open');
+        page.locator('[data-occurrence="900"]').first().getByRole('button', {
+          name: 'No linked work order is available to you',
+          exact: true
+        })
+      ).toHaveText('—');
       await expectContained(page);
       await page.screenshot({
         path: testInfo.outputPath(`fault-history-${scheme}.png`),
@@ -510,13 +552,20 @@ test.describe('R6 P12 Fault History: occurrences, retained evidence and owning w
       .getByRole('radiogroup', { name: 'Occurrence status' })
       .getByText('Resolved')
       .click();
-    await expect(page.getByText('1 occurrence · resolved')).toBeVisible();
+    await expectOccurrenceCount(page, 1);
+    await expect(
+      page.getByRole('radio', { name: 'Resolved', exact: true })
+    ).toBeChecked();
     expect(requests.list.at(-1)!.searchParams.get('status')).toBe('resolved');
     await page
       .getByRole('radiogroup', { name: 'Occurrence status' })
       .getByText('Active')
       .click();
-    await expect(page.getByText('2 occurrences · active now')).toBeVisible();
+    await expectOccurrenceCount(page, 2);
+    await expect(
+      page.getByRole('radio', { name: 'Active', exact: true })
+    ).toBeChecked();
+    expect(requests.list.at(-1)!.searchParams.get('status')).toBe('active');
   });
 
   test('no recorded occurrence is a successful empty state', async ({
@@ -574,7 +623,7 @@ test('a missing linked occurrence states unavailable independently of the list',
   await expect(
     page.getByText('This occurrence is not available to you.')
   ).toBeVisible();
-  await expect(page.getByText('3 occurrences')).toBeVisible();
+  await expectOccurrenceCount(page, 3);
 });
 
 test('out-of-range occurrence pages recover without claiming an empty history', async ({
@@ -662,7 +711,10 @@ test('a failed refresh removes stale counts and open-work rows', async ({
       json: { detail: 'Synthetic unavailable source' }
     })
   );
-  await page.getByRole('button', { name: 'Refresh counts' }).click();
+  await page
+    .getByTestId('machine-maintenance')
+    .getByRole('button', { name: 'Refresh', exact: true })
+    .click();
   await expect(page.getByText('Open work could not be checked')).toBeVisible();
   const views = page.getByRole('radiogroup', { name: 'Maintenance view' });
   await expect(views).toContainText('not available');
