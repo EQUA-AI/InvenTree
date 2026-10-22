@@ -702,3 +702,117 @@ remain with the coordinator. Parent work/contract acceptance dispositions are
 unchanged; these are isolated fixture results, not deployment or plant mapping
 acceptance. No Git write, PR/issue, Azure connection or data env access was used.
 Owned browser and harness cleanup is recorded in `owner/checks/runtime-cleanup.log`.
+
+
+## Follow-up 2 — 22 October 2026
+
+Completed on `ad22ab1b1`, preserving previous round-2 work and O27. All confirmed
+A–G items were checked against source and accepted. The G3 URL was already
+canonical; the defect was its link being conditional on visible anomalies.
+The link now remains available for mapped pumps with no anomalies.
+
+| Findings | Repair and principal files (under `src/frontend/src/`) |
+| --- | --- |
+| A1–A2 | Station alarm rows identify P1/P7 in a Pump column; single-unit tables retain their columns. Badge attention replaces the radio-like circle. `health/mimic/AlarmTable.tsx`, `health/PumphouseMimic.tsx`, `mimicVisuals.module.css`. |
+| A3–A7 | Raised manifold and separated markers/halos; fault glyph inside motor with impeller retained; double-wall forebay without an invented level; date and “signals without limits” inline; shared darker state fills pass stroke/fill contrast checks. `StationSchematic.tsx`/CSS, `MimicAlarmCoverage.tsx`, `mimicVisuals.ts`. |
+| B1–B4 | Desktop side columns, cropped native viewBox, all 13 callouts visible at 1440×900. Painted pump width 814 px of 1406 px content (58%). Annotation positions/backing and centred warning numeral clear bearing geometry and neighbouring marks. Callout names include reading/reason and verdict. Compact alarm badges; phone Live stays in row one and alarm callouts lead. `UnitSchematic.tsx`, `UnitMimic.module.css`, `MimicParts.tsx`, `UnitMimic.tsx`, `PumpMimic.tsx`. |
+| C1–C4 | One page clock and O27 age rule; raw value 1834 with unit reason in tooltip; unavailable/empty histories use quiet dashes while failed history remains labelled; phone State keeps its label. `MachineHealthPanel.tsx`, `HealthSummary.tsx`, `SignalTable.tsx`/CSS, `SignalTrend.tsx`, `SignalReading.tsx`, `readingPresentation.ts`. |
+| D | Missing/failed values are keyboard targets in Signals/history, Parts (including disclosed phone details), PointTable, AlarmTable, coverage and location rows. Collapsed reading sections expose their same reason through the native accordion control. Present values/timestamps render plain text; the shared tooltip no longer leaves hidden buttons behind. `ValueTooltip.tsx`, `Timestamp.tsx`, `common.tsx`, table consumers and `ComponentFacts.tsx`. |
+| E1–E6 | Normal keeps its half icon, with coverage in its tooltip/name; summary pills wrap and use “In alarm · 8”; phone tr boxes remain; tree labels are non-interactive with native arrow/Space expansion and Enter selection, 32 px desktop rows and coarse-pointer targets; chooser has an open chevron and branch links look clickable; scope prose moves to totals tooltip. `LocationWorkspace.tsx`, `LocationBrowser.tsx`, `MachinePageSummary.tsx`, `locations.module.css`, `health/common.tsx`. |
+| F1–F3 | Stock shows 6 with “6 in stock” accessible name; Draft/Verified borders meet 3:1; phone facts share a baseline and complete first Parts cards fit above 844 px. `MachineComponentTable.tsx`/CSS. |
+| G | Wider-font machine cards fit in both themes after compacting the selected-location summary. Valid speed timestamps are plain text, leaving the intended single trend button. Canonical Health-to-schematic navigation passes desktop/phone. Existing host regression specs were run without editing them. |
+
+Paths abbreviated as `health/` above are under `pages/assets/health/`; mimic files
+are under its `mimic/` directory. Native geometry, supplied values, limits,
+acknowledgement, roles and reduced-motion behaviour remain authoritative.
+
+### Verification
+
+Evidence: `data/devscratch/ui-r2/followup2/`.
+
+| Check | Result |
+| --- | --- |
+| Focused Playwright | 40 unique applicable cases pass across targeted runs and corrective replays; the two desktop instances of the phone-only font test skip as designed. `targeted-current.log`, `targeted-final.log`, `final-pump-phone.log`. Covers A–G, native tree keyboard navigation, missing/history reasons, Parts baselines/borders, actual state stroke/fill contrast, owner state/acknowledgement/reduced-motion checks, all four speed KPI cases and both Health links. |
+| Final capture spec | All 21 pass, `final2-captures.log`. Overlays/focus cleared explicitly; screenshots and metadata share source manifest `8baa12bf4aa5`. Every PNG opened and inspected individually. |
+| TypeScript | `tsconfig.json` and changed test project `tsconfig.s8.json` pass; `types-app.log`, `types-s8.log`. |
+| Vitest | 71/71 across six affected units, `units.log`. |
+| Lingui | Extract and TypeScript compile pass; 117 locale files restored bytewise, zero mismatches; `lingui-results.json`. |
+| Hooks | Changed-file prek (Homebrew PATH) passes, `prek-final.log`; `git diff --check` clean. |
+
+Early runs exposed overlapping enlarged phone annotations and selected-location
+font overflow; both were corrected and replayed. The new age assertion compares
+identical observation instants and relative ages rather than concatenating hidden
+desktop/phone date variants; keyboard checks use actual Tab navigation. The fixture
+server was restarted to discard stale transformed modules before verification and
+capture. No unrelated stale wording/clock specs were edited. Checks are isolated
+Linux Chromium fixtures, not Mac full-suite, deployment or plant acceptance.
+
+### Fresh captures inspected
+
+All paths below are relative to `data/devscratch/ui-r2/final2/`.
+
+| Files | Inspection |
+| --- | --- |
+| `01-mimic-station-desktop-light.png`<br>`02-mimic-station-desktop-dark.png`<br>`03-mimic-station-phone-light.png` | Station: identities, marker clearance, tank, states and phone scroll cue. |
+| `04-mimic-pump-desktop-light.png`<br>`05-mimic-pump-desktop-dark.png`<br>`06-mimic-pump-phone-light.png` | Pump: dominant drawing, all 13 desktop callouts, separated markers and phone alarm priority. |
+| `07-machines-light-desktop.png`<br>`08-machines-dark-desktop.png`<br>`09-machines-light-phone.png` | Machines: compact partial Normal, aligned facts, wrapped count pills and complete phone card. |
+| `10-location-light-desktop.png`<br>`19-location-dark-desktop.png`<br>`20-location-light-phone.png` | Location: full names including Low Voltage Electrical Room; clean guides, codes and open phone drill-down. |
+| `11-health-light-desktop.png`<br>`12-health-dark-desktop.png`<br>`13-health-light-phone.png` | Health: matching ages, quiet unavailable history, raw value without invented unit, labelled phone State. |
+| `14-station-parts-light-desktop.png`<br>`15-station-parts-light-phone.png`<br>`16-pump-parts-light-desktop.png`<br>`17-pump-parts-dark-desktop.png`<br>`18-pump-parts-light-phone.png` | Parts: numeric stock, stronger badge borders, aligned phone values and complete first card. |
+| `21-location-selected-light-desktop.png` | Selected location: machines shown; totals and scope controls without repeated prose. |
+
+### Changed files
+
+Source (31 files):
+
+- `src/frontend/src/components/items/ValueTooltip.tsx`
+- `src/frontend/src/pages/assets/health/HealthSummary.module.css`
+- `src/frontend/src/pages/assets/health/HealthSummary.tsx`
+- `src/frontend/src/pages/assets/health/MachineHealthPanel.tsx`
+- `src/frontend/src/pages/assets/health/PumpMimic.tsx`
+- `src/frontend/src/pages/assets/health/PumphouseMimic.tsx`
+- `src/frontend/src/pages/assets/health/SignalReading.tsx`
+- `src/frontend/src/pages/assets/health/SignalTable.module.css`
+- `src/frontend/src/pages/assets/health/SignalTable.tsx`
+- `src/frontend/src/pages/assets/health/SignalTrend.tsx`
+- `src/frontend/src/pages/assets/health/Timestamp.tsx`
+- `src/frontend/src/pages/assets/health/common.tsx`
+- `src/frontend/src/pages/assets/health/mimic/AlarmTable.tsx`
+- `src/frontend/src/pages/assets/health/mimic/MimicAlarmCoverage.tsx`
+- `src/frontend/src/pages/assets/health/mimic/MimicParts.tsx`
+- `src/frontend/src/pages/assets/health/mimic/MimicReadings.tsx`
+- `src/frontend/src/pages/assets/health/mimic/StationSchematic.module.css`
+- `src/frontend/src/pages/assets/health/mimic/StationSchematic.tsx`
+- `src/frontend/src/pages/assets/health/mimic/UnitMimic.module.css`
+- `src/frontend/src/pages/assets/health/mimic/UnitMimic.tsx`
+- `src/frontend/src/pages/assets/health/mimic/UnitSchematic.tsx`
+- `src/frontend/src/pages/assets/health/mimic/mimicVisuals.module.css`
+- `src/frontend/src/pages/assets/health/mimic/mimicVisuals.ts`
+- `src/frontend/src/pages/assets/health/readingPresentation.ts`
+- `src/frontend/src/pages/assets/locations/LocationBrowser.tsx`
+- `src/frontend/src/pages/assets/locations/LocationWorkspace.tsx`
+- `src/frontend/src/pages/assets/locations/MachinePageSummary.tsx`
+- `src/frontend/src/pages/assets/locations/locations.module.css`
+- `src/frontend/src/tables/assets/ComponentFacts.tsx`
+- `src/frontend/src/tables/assets/MachineComponentTable.module.css`
+- `src/frontend/src/tables/assets/MachineComponentTable.tsx`
+
+Tests (all five touched files):
+
+- `src/frontend/src/pages/assets/health/Timestamp.test.ts`
+- `src/frontend/src/pages/assets/health/readingPresentation.test.ts`
+- `src/frontend/tests/s8/pui_ui_owner_followup.spec.ts`
+- `src/frontend/tests/s8/pui_ui_round2_captures.spec.ts`
+- `src/frontend/tests/s8/pui_ui_followup2.spec.ts`
+
+The owner location spec now proves expansion through native treeitems and the
+hidden-code/tooltip structure. Unit expectations assert the new unit tooltip and
+non-interactive timestamp. The capture spec adds 19–21 and clears overlays. The
+new focused spec verifies behaviour, geometry, contrast and keyboard reach.
+`tsconfig.s8.json` includes it. HANDOFF, sprint backlog and contract evidence are
+updated without changing parent acceptance dispositions.
+
+Owned browser `r6-uir2-browser-3012` and harness15250 are stopped; cleanup recorded
+in `followup2/runtime-cleanup.json`. No Git writes, Azure/data-env reads, other
+worktrees, other containers or other ports. Full Mac suites and human review
+remain with the coordinator. Nothing from A–G is left unimplemented.

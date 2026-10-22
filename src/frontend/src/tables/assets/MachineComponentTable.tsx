@@ -173,15 +173,12 @@ export function MachineComponentTable({
           if (record.reference_position === undefined)
             return (
               <FailedValue
-                focusable={false}
                 reason={t`3D position could not be read`}
                 label={t`3D position`}
               />
             );
           if (record.reference_position === null)
-            return (
-              <MissingValue reason={t`Not in the model`} focusable={false} />
-            );
+            return <MissingValue reason={t`Not in the model`} />;
           // A position this build does not know is still not "not in it".
           const position = REFERENCE_PARTS.find(
             (part) => part.id === record.reference_position
@@ -209,7 +206,6 @@ export function MachineComponentTable({
             <FittedItemFact fit={record.fitted.current} compact />
           ) : !showStock || record.fitted ? (
             <MissingValue
-              focusable={false}
               reason={
                 showStock
                   ? t`No verified fitted identity is recorded for this slot.`
@@ -218,7 +214,6 @@ export function MachineComponentTable({
             />
           ) : (
             <FailedValue
-              focusable={false}
               reason={t`Fitted identity could not be read.`}
               label={t`Fitted item`}
             />
@@ -254,6 +249,7 @@ export function MachineComponentTable({
         // Keep the explanation on focus/hover while the table stays compact.
         render: (record) => (
           <ValueTooltip
+            focusable={record.status !== 'verified'}
             label={
               record.status === 'verified'
                 ? t`Assignment verified`
@@ -265,7 +261,6 @@ export function MachineComponentTable({
                 : t`Draft: slot assignment not verified`
             }
             data-table-tooltip
-            focusable={false}
             className={classes.fitTarget}
           >
             <Badge
@@ -297,7 +292,6 @@ export function MachineComponentTable({
         render: (record) =>
           record.open_work === null || record.open_work === undefined ? (
             <FailedValue
-              focusable={false}
               reason={t`Work could not be checked`}
               label={t`Open work`}
             />
@@ -319,13 +313,9 @@ export function MachineComponentTable({
         hidden: !showStock,
         render: (record) =>
           record.virtual ? (
-            <MissingValue
-              reason={t`Not stocked: a logical group`}
-              focusable={false}
-            />
+            <MissingValue reason={t`Not stocked: a logical group`} />
           ) : !record.stock ? (
             <FailedValue
-              focusable={false}
               reason={t`Catalogue stock could not be read`}
               label={t`Catalogue stock`}
             />
@@ -334,12 +324,15 @@ export function MachineComponentTable({
               className={classes.link}
               component={Link}
               to={`${getDetailUrl(ModelType.part, record.part)}stock`}
+              aria-label={t`${record.stock.quantity} in stock`}
               size='sm'
             >
-              {t`${record.stock.quantity} in stock`}
+              {record.stock.quantity}
             </Anchor>
           ) : record.stock.quantity > 0 ? (
-            <Text size='sm'>{t`${record.stock.quantity} in stock`}</Text>
+            <Text size='sm' aria-label={t`${record.stock.quantity} in stock`}>
+              {record.stock.quantity}
+            </Text>
           ) : (
             <Text size='sm'>0</Text>
           )

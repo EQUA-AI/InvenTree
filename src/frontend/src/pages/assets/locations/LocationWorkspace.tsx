@@ -28,6 +28,7 @@ import {
 } from '@mantine/core';
 import { useDebouncedValue, useId } from '@mantine/hooks';
 import {
+  IconChevronRight,
   IconFlag,
   IconMapPin,
   IconPlus,
@@ -225,14 +226,24 @@ export function ScopedMachineList({
         />
       )}
 
-      <Button
-        h={44}
-        hiddenFrom='sm'
-        variant='default'
-        size='xs'
-        aria-expanded={filtersOpen}
-        onClick={() => setFiltersOpen((value) => !value)}
-      >{t`Filters`}</Button>
+      <Group hiddenFrom='sm' grow wrap='nowrap'>
+        <Button
+          h={44}
+          variant='default'
+          size='xs'
+          aria-expanded={filtersOpen}
+          onClick={() => setFiltersOpen((value) => !value)}
+        >{t`Filters`}</Button>
+        {location == null && (
+          <Button
+            h={44}
+            variant='default'
+            size='xs'
+            loading={query.isFetching}
+            onClick={() => query.refetch()}
+          >{t`Refresh`}</Button>
+        )}
+      </Group>
       <Collapse
         expanded={!phone || filtersOpen}
         display={phone && !filtersOpen ? 'none' : undefined}
@@ -777,10 +788,7 @@ function MachineIdentity({
           </Text>
         )}
         {showPlacement && !machine.physical_location && (
-          <MissingValue
-            reason={t`Physical location not assigned`}
-            focusable={false}
-          />
+          <MissingValue reason={t`Physical location not assigned`} />
         )}
         {!machine.active && (
           <Badge
@@ -816,10 +824,7 @@ function MachineWorkCell({
   if (summary.kind === 'unavailable') {
     return (
       <Table.Td data-label={t`Work`} data-open-work='unavailable' ta='left'>
-        <FailedValue
-          reason={t`Open work could not be checked`}
-          focusable={false}
-        />
+        <FailedValue reason={t`Open work could not be checked`} />
       </Table.Td>
     );
   }
@@ -901,10 +906,7 @@ function MachineConditionCell({ value }: Readonly<{ value: unknown }>) {
   if (condition.kind === 'unavailable') {
     return (
       <Table.Td data-label={t`Condition`} data-condition='unavailable'>
-        <FailedValue
-          reason={t`Condition could not be checked`}
-          focusable={false}
-        />
+        <FailedValue reason={t`Condition could not be checked`} />
       </Table.Td>
     );
   }
@@ -916,14 +918,18 @@ function MachineConditionCell({ value }: Readonly<{ value: unknown }>) {
   if (condition.state === 'unknown')
     return (
       <Table.Td data-label={t`Condition`} data-condition='unknown'>
-        <MissingValue reason={note ?? t`Condition unknown`} focusable={false} />
+        <MissingValue reason={note ?? t`Condition unknown`} />
       </Table.Td>
     );
   return (
     <Table.Td data-label={t`Condition`} data-condition={condition.state}>
       {note ? (
-        <ValueTooltip label={note} focusable={false}>
+        <ValueTooltip
+          label={note}
+          accessibleLabel={`${condition.state === 'normal' ? t`Normal` : condition.state} · ${note}`}
+        >
           <HealthStateBadge
+            compactCoverage
             state={condition.state}
             size='sm'
             partial={
@@ -936,6 +942,7 @@ function MachineConditionCell({ value }: Readonly<{ value: unknown }>) {
         </ValueTooltip>
       ) : (
         <HealthStateBadge
+          compactCoverage
           state={condition.state}
           size='sm'
           partial={
@@ -983,10 +990,7 @@ function MachineCriticalityCell({ value }: Readonly<{ value: unknown }>) {
         {level ? (
           criticalityLabel(level)
         ) : (
-          <MissingValue
-            reason={t`Criticality not declared`}
-            focusable={false}
-          />
+          <MissingValue reason={t`Criticality not declared`} />
         )}
       </Text>
     </Table.Td>
@@ -1190,7 +1194,10 @@ export function LocationWorkspace({
         {refreshResult}
       </VisuallyHidden>
       {(!selected || context.data?.can_add) && (
-        <Group justify='space-between'>
+        <Group
+          justify='space-between'
+          visibleFrom={view === 'sites' ? undefined : 'sm'}
+        >
           <Box>
             {view !== 'sites' && (
               <Title order={4}>
@@ -1208,6 +1215,14 @@ export function LocationWorkspace({
                   variant='default'
                   leftSection={<IconMapPin size={16} />}
                   aria-expanded={mobileOpen}
+                  rightSection={
+                    <IconChevronRight
+                      size={16}
+                      style={{
+                        transform: mobileOpen ? 'rotate(90deg)' : undefined
+                      }}
+                    />
+                  }
                   aria-controls='machine-location-browser'
                   onClick={() => setMobileOpen((open) => !open)}
                 >
@@ -1297,6 +1312,7 @@ export function LocationWorkspace({
                         className={operations.band}
                         component='section'
                         aria-labelledby='location-name'
+                        p={{ base: 8, sm: 12 }}
                       >
                         <Group justify='space-between' gap={4}>
                           <Group
@@ -1320,6 +1336,16 @@ export function LocationWorkspace({
                               className={operations.phoneTarget}
                               variant='default'
                               aria-expanded={mobileOpen}
+                              rightSection={
+                                <IconChevronRight
+                                  size={16}
+                                  style={{
+                                    transform: mobileOpen
+                                      ? 'rotate(90deg)'
+                                      : undefined
+                                  }}
+                                />
+                              }
                               aria-controls='machine-location-browser'
                               onClick={() => setMobileOpen((value) => !value)}
                             >{t`Choose location`}</Button>
@@ -1390,21 +1416,10 @@ export function LocationWorkspace({
                           component='section'
                           aria-label={t`Location totals`}
                         >
-                          <Text
-                            size='xs'
-                            className={operations.meta}
-                            data-testid='location-totals-note'
-                          >
-                            {direct
-                              ? t`Location totals · directly here`
-                              : t`Location totals · including sublocations`}
-                            {summary.locationTotalsOnly
-                              ? t` · unaffected by list filters`
-                              : ''}
-                          </Text>
                           {summary.view != null ? (
                             <ValueTooltip
-                              label={t`Location totals are independent of the loaded machine page and its search, alarm and criticality filters.`}
+                              label={`${direct ? t`Direct placements only` : t`Descendant placements included`} · ${t`Location totals are independent of the loaded machine page and its search, alarm and criticality filters.`}`}
+                              focusable={false}
                             >
                               <Group component='span' gap={4} wrap='nowrap'>
                                 <span data-testid='machine-count-view'>

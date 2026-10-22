@@ -89,7 +89,9 @@ export function SignalTable({
   selectedBinding,
   onInspect,
   anomalies = null,
-  onRefresh
+  onRefresh,
+  preferJustNow = false,
+  now: suppliedNow
 }: Readonly<{
   signals: MachineSignal[];
   machineId: number;
@@ -97,11 +99,14 @@ export function SignalTable({
   selectedBinding?: string | null;
   onInspect?: (binding: number, trigger: HTMLElement) => void;
   onRefresh?: () => void;
+  preferJustNow?: boolean;
+  now?: number;
 }>) {
   const api = useApi();
   const [phoneCards, setPhoneCards] = useState(true);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const now = useNow();
+  const pageNow = useNow(1000, suppliedNow == null);
+  const now = suppliedNow ?? pageNow;
   const clock = useDisplayClock();
   const instanceId = useId();
   const [order, setOrder] = useState<string>('severity');
@@ -461,7 +466,7 @@ export function SignalTable({
                       fw={signal.stale ? 400 : 500}
                       className={signal.stale ? monitoring.meta : undefined}
                     >
-                      <SignalValue signal={signal} focusable={false} />
+                      <SignalValue signal={signal} focusable={true} />
                     </Text>
                   </Table.Td>
                   {/* biome-ignore lint/a11y/useSemanticElements: Preserve the native role through phone card CSS. */}
@@ -469,7 +474,7 @@ export function SignalTable({
                     {signal.stale && signal.state !== 'offline' ? (
                       <ValueTooltip
                         label={conditionText(signal)}
-                        focusable={false}
+                        focusable={true}
                       >
                         <StatusBadge
                           tone='stale'
@@ -480,7 +485,7 @@ export function SignalTable({
                       <MissingValue
                         label={t`State`}
                         reason={conditionText(signal)}
-                        focusable={false}
+                        focusable={true}
                       />
                     ) : (
                       <ValueTooltip
@@ -506,7 +511,7 @@ export function SignalTable({
                       <MissingValue
                         label={t`Limits`}
                         reason={`${t`No limits set`} · ${t`Limits on signal mapping; engineering approval not supplied`}`}
-                        focusable={false}
+                        focusable={true}
                       />
                     )}
                   </Table.Td>
@@ -518,6 +523,7 @@ export function SignalTable({
                       thresholdSeconds={signal.freshness_threshold_seconds}
                       now={now}
                       focusable={false}
+                      preferJustNow={preferJustNow}
                     />
                   </Table.Td>
                   {/* biome-ignore lint/a11y/useSemanticElements: Preserve the native role through phone card CSS. */}
@@ -526,7 +532,7 @@ export function SignalTable({
                       <MissingValue
                         label={t`Quality`}
                         reason={t`Quality unavailable`}
-                        focusable={false}
+                        focusable={true}
                       />
                     ) : (
                       <Text size='sm'>{qualityLabel(signal.quality)}</Text>

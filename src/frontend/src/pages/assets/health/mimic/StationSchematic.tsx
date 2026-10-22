@@ -116,26 +116,26 @@ export function StationSchematic({
             )}
           {actions}
         </Group>
-        <Text component='div' size='xs' className={classes.observed}>
+        <Group gap='md' className={classes.observed}>
           <Timestamp
             value={currentSource ? data.last_observed_at : data.last_poll_at}
             clock={clock}
             compactOnPhone
           />
-        </Text>
-        <MimicAlarmCoverage
-          station
-          count={data.unconfigured_thresholds}
-          knownEmpty={
-            data.alarm === null &&
-            data.bays.every((bay) => bay.alarm === null) &&
-            !data.alarms.some(
-              (alarm) =>
-                alarm.anomaly !== null &&
-                ['open', 'acknowledged'].includes(alarm.anomaly_status ?? '')
-            )
-          }
-        />
+          <MimicAlarmCoverage
+            station
+            count={data.unconfigured_thresholds}
+            knownEmpty={
+              data.alarm === null &&
+              data.bays.every((bay) => bay.alarm === null) &&
+              !data.alarms.some(
+                (alarm) =>
+                  alarm.anomaly !== null &&
+                  ['open', 'acknowledged'].includes(alarm.anomaly_status ?? '')
+              )
+            }
+          />
+        </Group>
       </div>
       <div className={classes.metrics} data-station-metrics>
         {data.layout.elements
@@ -298,13 +298,17 @@ export function StationSchematic({
                 strokeLinecap='round'
                 strokeLinejoin='round'
               >
-                <path d='M18 60V228H126V60' />
+                <path
+                  d='M18 60H24V222H120V60H126V228H18Z'
+                  className={classes.manifold}
+                  data-forebay-tank
+                />
                 <path
                   d={`M126 ${bottom}H${width - 18}v12H126`}
                   className={classes.manifold}
                 />
                 <path
-                  d={`M${start - 8} 32H${width - 10}v12H${start - 8}z`}
+                  d={`M${start - 8} 10H${width - 10}v12H${start - 8}z`}
                   className={classes.manifold}
                 />
                 {bays.map((bay, index) => {
@@ -365,16 +369,16 @@ export function StationSchematic({
                         }
                       />
                       <path
-                        d={`M${x} 196V${bottom}M${x + 20} 176h6V44`}
+                        d={`M${x} 196V${bottom}M${x + 20} 176h6V22`}
                         className={classes.pipeEdge}
                       />
                       <path
-                        d={`M${x} 196V${bottom}M${x + 20} 176h6V44`}
+                        d={`M${x} 196V${bottom}M${x + 20} 176h6V22`}
                         className={classes.pipeCore}
                       />
                       {hasDischargeFlow(data, bay) && (
                         <path
-                          d={`M${x + 20} 176h6V44`}
+                          d={`M${x + 20} 176h6V22`}
                           className={visual.flow}
                           data-discharge-flow
                         />
@@ -393,6 +397,7 @@ export function StationSchematic({
                         }
                         stroke={state.line}
                         strokeDasharray={state.dashed ? '5 4' : undefined}
+                        data-state-body
                       />
                       <circle
                         cx={x}
@@ -405,8 +410,22 @@ export function StationSchematic({
                         }
                         stroke={state.line}
                         strokeDasharray={state.dashed ? '5 4' : undefined}
+                        data-state-body
                       />
-                      {operation === 'fault' ? (
+                      <circle
+                        cx={x}
+                        cy={176}
+                        r={3}
+                        fill={state.line}
+                        stroke='none'
+                        data-impeller
+                      />
+                      <path
+                        d={`M${x} 173q8-1 10-10M${x + 3} 178q-2 8 8 10M${x - 3} 178q-7-5-13 2`}
+                        stroke={state.line}
+                        strokeWidth={1.5}
+                      />
+                      {operation === 'fault' && (
                         <g
                           data-fault-icon
                           stroke='light-dark(var(--mantine-color-red-9), var(--mantine-color-red-1))'
@@ -414,24 +433,9 @@ export function StationSchematic({
                           strokeWidth={2}
                         >
                           <path
-                            d={`M${x} 163l12 22h-24zM${x} 170v6M${x} 180v1`}
+                            d={`M${x} 93l11 21h-22zM${x} 100v6M${x} 109v1`}
                           />
                         </g>
-                      ) : (
-                        <>
-                          <circle
-                            cx={x}
-                            cy={176}
-                            r={3}
-                            fill={state.line}
-                            stroke='none'
-                          />
-                          <path
-                            d={`M${x} 173q8-1 10-10M${x + 3} 178q-2 8 8 10M${x - 3} 178q-7-5-13 2`}
-                            stroke={state.line}
-                            strokeWidth={1.5}
-                          />
-                        </>
                       )}
                       {operation === 'running' && (
                         <path
@@ -453,8 +457,8 @@ export function StationSchematic({
                           {attention && (
                             <circle
                               cx={x}
-                              cy={56}
-                              r={16}
+                              cy={44}
+                              r={13}
                               stroke={alarm}
                               strokeWidth={2}
                               className={visual.attention}
@@ -464,8 +468,8 @@ export function StationSchematic({
                           <polygon
                             points={
                               bay.alarm === 'critical'
-                                ? `${x},44 ${x + 12},56 ${x},68 ${x - 12},56`
-                                : `${x},43 ${x + 13},67 ${x - 13},67`
+                                ? `${x},33 ${x + 11},44 ${x},55 ${x - 11},44`
+                                : `${x},32 ${x + 12},55 ${x - 12},55`
                             }
                             fill={alarm}
                             stroke={alarm}
@@ -473,7 +477,7 @@ export function StationSchematic({
                           />
                           <text
                             x={x}
-                            y={60}
+                            y={48}
                             textAnchor='middle'
                             fontSize={14}
                             fontWeight={700}

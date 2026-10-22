@@ -9,8 +9,8 @@
   grid-template-columns: 32px 20px minmax(0, 1fr) auto;
   gap: 6px;
   align-items: center;
-  min-height: 44px;
-  padding-block: 5px;
+  min-height: 32px;
+  padding-block: 3px;
   padding-inline-end: 6px;
   position: relative;
 }
@@ -24,7 +24,7 @@
   border-color: var(--mantine-color-default-border);
 }
 .nodeLabel:not([data-depth='1'])::before { top: 0; bottom: 0; border-inline-start: 1px solid var(--mantine-color-default-border); }
-.nodeLabel:not([data-depth='1'])::after { top: 22px; width: 8px; border-top: 1px solid var(--mantine-color-default-border); }
+.nodeLabel:not([data-depth='1'])::after { top: 16px; width: 8px; border-top: 1px solid var(--mantine-color-default-border); }
 
 .nodeLabel[data-selected] {
 	background: var(--mantine-primary-color-light);
@@ -116,7 +116,7 @@
 .switchTrack { border: 1px solid light-dark(var(--mantine-color-gray-6), var(--mantine-color-dark-1)); }
 .help { font: inherit; text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
 .summaryCount { font-size: var(--mantine-font-size-sm); font-weight: 600; }
-.summaryStatuses { overflow-x: auto; max-width: 100%; scrollbar-width: thin; }
+.summaryStatuses { max-width: 100%; }
 .summaryAction { display: inline-flex; align-items: center; flex-shrink: 0; }
 
 .summaryAction:focus-visible { outline: 2px solid var(--aimms-focus, light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3))); outline-offset: 2px; }
@@ -130,8 +130,17 @@
   .workLink { min-height: 44px; display: inline-flex; align-items: center; }
   .phoneFacts thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .phoneFacts tbody { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 16px; }
-  .phoneFacts tr { display: contents; }
+  .phoneFacts tr { display: grid; min-width: 0; }
+  .phoneFacts tr:first-child { grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
   .phoneFacts td:not([data-label]) { display: none; }
   .phoneFacts td { padding: 0; min-width: 0; }
   .phoneFacts td[data-label]::before { content: attr(data-label); display: block; font-size: var(--mantine-font-size-xs); font-weight: 500; margin-bottom: 2px; }
 }
+
+.chevron { display: flex; align-items: center; justify-content: center; width: 32px; min-height: 32px; }
+.drillParent { color: light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-2)); text-decoration: underline; text-underline-offset: 3px; min-height: 44px; }
+.treeDetail { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (pointer: coarse) { .nodeLabel, .chevron { min-height: 44px; } }
+
+.summaryHeading { min-width: 0; }
+@media (max-width: 48em) { .summaryHeading { width: 100%; flex-wrap: nowrap; } }

@@ -1,4 +1,5 @@
 import { t } from '@lingui/core/macro';
+import { useMediaQuery } from '@mantine/hooks';
 import { type CSSProperties, useLayoutEffect, useRef, useState } from 'react';
 import unitDrawing from '../../../../assets/mimic/pump-unit.svg?raw';
 import { ValueTooltip } from '../../../../components/items/ValueTooltip';
@@ -7,6 +8,7 @@ import {
   MimicPartMarkers,
   MimicParts,
   type PartState,
+  markerPosition,
   partOutlines,
   partStates
 } from './MimicParts';
@@ -30,7 +32,7 @@ import { formatInstant, useDisplayClock } from './observedTime';
 import type { MimicData } from './types';
 
 /** The native geometry occupies these bounds; its coordinates are not changed. */
-const UNIT_VIEWBOX = '214 18 676 510';
+const UNIT_VIEWBOX = '210 30 680 520';
 const NATIVE_DRAWING = unitDrawing.replace(
   '<svg ',
   '<svg width="1100" height="580" '
@@ -70,14 +72,19 @@ export function UnitSchematic({
       window.removeEventListener('resize', fit);
     };
   }, [unit]);
+  const phone = useMediaQuery('(max-width: 48em)');
   const parts = partStates(data, display);
   // Match the side and vertical order of the native markers. Catalogue
   // numbering remains unchanged on both the drawing and the reading groups.
   const spatialOrder = (a: PartState, b: PartState) =>
-    a.part.y - b.part.y || a.part.x - b.part.x;
-  const leftParts = parts.filter(({ part }) => part.x < 550).sort(spatialOrder);
+    (phone ? Number(!!b.attention) - Number(!!a.attention) : 0) ||
+    markerPosition(a)[1] - markerPosition(b)[1] ||
+    markerPosition(a)[0] - markerPosition(b)[0];
+  const leftParts = parts
+    .filter((part) => markerPosition(part)[0] < 550)
+    .sort(spatialOrder);
   const rightParts = parts
-    .filter(({ part }) => part.x >= 550)
+    .filter((part) => markerPosition(part)[0] >= 550)
     .sort(spatialOrder);
   const bay = data.bays.find((item) => item.key === unit);
   const operation = operatingState(data, bay);
@@ -124,7 +131,11 @@ export function UnitSchematic({
                 data-severity={readingSeverity(point)}
               >
                 {shown ? (
-                  <ValueTooltip label={detail} className={classes.valueTarget}>
+                  <ValueTooltip
+                    label={detail}
+                    focusable={false}
+                    className={classes.valueTarget}
+                  >
                     {display(point)}
                   </ValueTooltip>
                 ) : (

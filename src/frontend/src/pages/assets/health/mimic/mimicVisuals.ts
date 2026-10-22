@@ -40,12 +40,12 @@ export function stateStyle(state: string) {
   switch (state) {
     case 'running':
       return {
-        fill: 'light-dark(var(--mantine-color-green-1), var(--mantine-color-green-9))',
+        fill: 'light-dark(var(--mantine-color-green-1), color-mix(in srgb, var(--mantine-color-green-9) 45%, var(--mantine-color-dark-7)))',
         line: 'var(--aimms-normal, light-dark(var(--mantine-color-green-9), var(--mantine-color-green-5)))'
       };
     case 'fault':
       return {
-        fill: 'light-dark(var(--mantine-color-red-1), var(--mantine-color-red-9))',
+        fill: 'light-dark(var(--mantine-color-red-1), color-mix(in srgb, var(--mantine-color-red-9) 40%, var(--mantine-color-dark-7)))',
         line: 'var(--aimms-critical, light-dark(var(--mantine-color-red-9), var(--mantine-color-red-5)))'
       };
     case 'idle':

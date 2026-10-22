@@ -4,7 +4,7 @@
 @media (max-width: 48em) {
   .fullTime { display: none; }
   .phoneTime { display: inline; }
-  .conditionHeader {
+  .conditionHeader > h4 {
     position: absolute;
     width: 1px;
     height: 1px;

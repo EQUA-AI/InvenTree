@@ -208,6 +208,11 @@ export default function PumphouseMimic({ stationId }: { stationId: number }) {
                 <Title order={4}>{t`Threshold alarms`}</Title>
                 <AlarmTable
                   alarms={data.alarms}
+                  units={Object.fromEntries(
+                    data.bays
+                      .filter((bay) => bay.machine != null)
+                      .map((bay) => [bay.machine!, bay.key])
+                  )}
                   display={display}
                   onAcknowledged={() => query.refetch()}
                 />

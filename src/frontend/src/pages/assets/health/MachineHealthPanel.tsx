@@ -18,6 +18,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import monitoring from '../monitoring.module.css';
+import { recordedTelemetryAsLive } from '../telemetryPresentation';
+import { useNow } from '../useNow';
 import {
   AttentionAlert,
   MetaText,
@@ -123,6 +125,7 @@ export function MachineHealthPanel({
     {}
   );
 
+  const now = useNow();
   const summaryQuery = useQuery<MachineHealthSummary>({
     queryKey: ['machine-health-summary', machineId],
     queryFn: async () => {
@@ -279,6 +282,13 @@ export function MachineHealthPanel({
               size='sm'
               style={{ whiteSpace: 'nowrap' }}
             >{t`Current condition`}</Title>
+            {mimicHref && (
+              <MonitoringLink
+                component={Link}
+                to={mimicHref}
+                size='sm'
+              >{t`See the readings on the mimic`}</MonitoringLink>
+            )}
             <Button
               visibleFrom='sm'
               size='xs'
@@ -311,6 +321,7 @@ export function MachineHealthPanel({
               ) : (
                 <HealthSummaryPanel
                   summary={summary}
+                  now={now}
                   signals={signalsQuery.isError ? null : signals}
                   anomalies={anomalyAssociationKnown ? anomalies : null}
                   onSelect={inspectSignal}
@@ -325,13 +336,6 @@ export function MachineHealthPanel({
                     tabIndex={-1}
                     order={4}
                   >{t`Active anomalies`}</Title>
-                  {/* Where the reading behind an alarm is drawn, on the part it
-              belongs to. */}
-                  {mimicHref && (
-                    <MonitoringLink component={Link} to={mimicHref} size='sm'>
-                      {t`See the readings on the mimic`}
-                    </MonitoringLink>
-                  )}
                 </Group>
                 {!anomalyAssociationKnown && !anomaliesQuery.isError && (
                   <AttentionAlert>{t`The active anomaly list is incomplete. Row association cannot establish an absence of anomalies.`}</AttentionAlert>
@@ -390,6 +394,8 @@ export function MachineHealthPanel({
         ) : (
           <SignalTable
             signals={signals}
+            now={now}
+            preferJustNow={recordedTelemetryAsLive(summary)}
             machineId={machineId}
             selectedBinding={bindingId}
             onInspect={inspectSignal}

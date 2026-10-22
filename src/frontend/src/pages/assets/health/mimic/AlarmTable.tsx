@@ -41,13 +41,17 @@ import type { MimicAlarm } from './types';
 export function AlarmTable({
   alarms,
   display = valueText,
-  onAcknowledged
+  onAcknowledged,
+  units
 }: Readonly<{
   alarms: MimicAlarm[];
+  units?: Record<number, string>;
   display?: Display;
   /** Called once an alarm's state has changed, so the page re-reads. */
   onAcknowledged?: () => void;
 }>) {
+  const showUnit =
+    !!units && new Set(alarms.map((alarm) => alarm.machine)).size > 1;
   const [params] = useSearchParams();
   const user = useUserState();
   const clock = useDisplayClock();
@@ -69,6 +73,7 @@ export function AlarmTable({
         <Table striped className={`${operations.alarmTable} ${visual.surface}`}>
           <Table.Thead>
             <Table.Tr>
+              {showUnit && <Table.Th>{t`Pump`}</Table.Th>}
               <Table.Th>{t`Signal`}</Table.Th>
               <Table.Th>{t`Alarm`}</Table.Th>
               <Table.Th>{t`Value`}</Table.Th>
@@ -89,8 +94,18 @@ export function AlarmTable({
                   data-point={alarm.pointer}
                   data-anomaly={alarm.anomaly ?? undefined}
                 >
+                  {showUnit && (
+                    <Table.Td data-label={t`Pump`}>
+                      {alarm.machine != null && units?.[alarm.machine] ? (
+                        units[alarm.machine]
+                      ) : (
+                        <MissingValue reason={t`Pump identity not supplied`} />
+                      )}
+                    </Table.Td>
+                  )}
                   <Table.Td>
                     <ValueTooltip
+                      focusable={false}
                       label={alarm.pointer}
                       className={operations.phoneTarget}
                     >
@@ -112,7 +127,6 @@ export function AlarmTable({
                         point={alarm}
                         label={alarm.label}
                         display={display}
-                        focusable={false}
                       />
                     ) : (
                       display(alarm)
@@ -124,13 +138,9 @@ export function AlarmTable({
                         <UnavailableReading
                           point={{ ...alarm, value: null }}
                           label={t`Condition`}
-                          focusable={false}
                         />
                       ) : (
-                        <MissingValue
-                          reason={conditionText(alarm)}
-                          focusable={false}
-                        />
+                        <MissingValue reason={conditionText(alarm)} />
                       )
                     ) : (
                       conditionText(alarm)
@@ -140,11 +150,7 @@ export function AlarmTable({
                     data-label={t`Observed at`}
                     style={{ whiteSpace: 'nowrap' }}
                   >
-                    <Timestamp
-                      value={alarm.observed_at}
-                      clock={clock}
-                      focusable={false}
-                    />
+                    <Timestamp value={alarm.observed_at} clock={clock} />
                   </Table.Td>
                   <Table.Td className={operations.alarmActions}>
                     <Group
@@ -289,23 +295,16 @@ function AlarmStatus({ alarm }: Readonly<{ alarm: MimicAlarm }>) {
       data-alarm-info
     >
       <Group component='span' gap={6} align='center'>
-        {alarmAttention([alarm]) && (
-          <svg width={14} height={14} aria-hidden='true'>
-            <circle
-              cx={7}
-              cy={7}
-              r={5}
-              stroke='currentColor'
-              strokeWidth={2}
-              className={visual.attention}
-              data-attention={alarmAttention([alarm])}
-            />
-          </svg>
-        )}
-        <AlarmStateBadge
-          status={alarm.anomaly_status}
-          severity={alarm.severity}
-        />
+        <span
+          className={visual.badgeAttention}
+          data-attention={alarmAttention([alarm])}
+          data-severity={alarm.severity}
+        >
+          <AlarmStateBadge
+            status={alarm.anomaly_status}
+            severity={alarm.severity}
+          />
+        </span>
         <SeverityBadge severity={alarm.severity} />
       </Group>
     </ValueTooltip>

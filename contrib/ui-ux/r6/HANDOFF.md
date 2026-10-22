@@ -1,5 +1,15 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## UI round 2 Follow-up 2 — 22 October 2026 (ready for coordinator review)
+
+Built on `ad22ab1b1`: confirmed A–G repairs, dominant desktop drawing with all
+13 callouts visible, keyboard reasons, compact Health/list/Parts and native tree
+navigation. 40 unique focused cases and all 21 final2 captures pass; every PNG
+was opened and inspected. App/S8 TypeScript, 71 units, Lingui with 117 bytewise
+restores and changed-file prek pass. Source manifest `8baa12bf4aa5`;
+[execution report](reports/ui-r2.md). Owned WS3012/harness15250 stopped. Full Mac
+suites/human review and parent acceptance remain with the coordinator.
+
 ## UI round 2 owner follow-up — 22 October 2026 (ready for coordinator review)
 
 Continuing on committed `270bb4be3`: compact critical-designation wording,

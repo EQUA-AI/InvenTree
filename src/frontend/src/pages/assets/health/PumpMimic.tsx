@@ -3,7 +3,6 @@ import {
   ActionIcon,
   Alert,
   Anchor,
-  Box,
   Button,
   Group,
   Loader,
@@ -162,40 +161,30 @@ export default function PumpMimic({
                       {t`Active alarm`} · {worstLabel} · {t`Count unavailable`}
                     </StatusBadge>
                   ) : (
-                    <StatusBadge
-                      color={
-                        worst === 'critical'
-                          ? 'red'
-                          : worst === 'warning'
-                            ? 'yellow'
-                            : 'gray'
-                      }
-                      className={operations.pumpAlarmCounts}
-                      miw={0}
+                    <Tooltip
+                      label={`${t`Active alarms shown`}: ${activeAlarms.length}`}
                     >
-                      <Box component='span' visibleFrom='sm'>
-                        {[
-                          `${t`Active alarms shown`}: ${activeAlarms.length}`,
-                          ...(critical ? [`${t`Critical`}: ${critical}`] : []),
-                          ...(warning ? [`${t`Warning`}: ${warning}`] : [])
-                        ].join(' · ')}
-                      </Box>
-                      <Box component='span' hiddenFrom='sm'>
-                        <Box component='span' display='block'>
-                          {t`Active alarms shown`}: {activeAlarms.length}
-                        </Box>
-                        {(critical > 0 || warning > 0) && (
-                          <Box component='span' display='block'>
-                            {[
-                              ...(critical
-                                ? [`${t`Critical`}: ${critical}`]
-                                : []),
-                              ...(warning ? [`${t`Warning`}: ${warning}`] : [])
-                            ].join(' · ')}
-                          </Box>
+                      <Group
+                        component='fieldset'
+                        bd={0}
+                        m={0}
+                        p={0}
+                        miw={0}
+                        gap={6}
+                        aria-label={`${t`Active alarms shown`}: ${activeAlarms.length}`}
+                      >
+                        {critical > 0 && (
+                          <StatusBadge color='red'>
+                            {t`Critical`} · {critical}
+                          </StatusBadge>
                         )}
-                      </Box>
-                    </StatusBadge>
+                        {warning > 0 && (
+                          <StatusBadge color='yellow'>
+                            {t`Warning`} · {warning}
+                          </StatusBadge>
+                        )}
+                      </Group>
+                    </Tooltip>
                   )}
                   {other > 0 && (
                     <Text size='sm'>

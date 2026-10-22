@@ -77,16 +77,16 @@ export function UnitMimicHeader({
             {stateLabel(operation)}
           </Badge>
         )}
-        <FreshnessLabel
-          point={statusPoint}
-          preferJustNow={data.recorded_telemetry_as_live !== false}
-        />
         {data.recorded_telemetry_as_live !== false &&
           data.enabled &&
           data.reporting &&
           !data.last_error_code && (
             <Badge color='blue' variant='outline'>{t`Live`}</Badge>
           )}
+        <FreshnessLabel
+          point={statusPoint}
+          preferJustNow={data.recorded_telemetry_as_live !== false}
+        />
         {showRecordedTelemetry(data) && (
           <Tooltip
             label={t`Times moved ${shiftSpan(data.display_shift_seconds ?? 0) ?? t`an unspecified interval`} onto the display clock; plant times are earlier`}

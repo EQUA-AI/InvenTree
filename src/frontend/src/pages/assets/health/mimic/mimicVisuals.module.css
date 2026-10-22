@@ -33,3 +33,9 @@
   .flow { animation: none; stroke-dasharray: 9 12; }
   .attention[data-attention='unacknowledged'] { animation: none; opacity: 1; stroke-width: 3; }
 }
+
+.badgeAttention { display: inline-flex; border-radius: var(--mantine-radius-xl); color: var(--mimic-warning-text); }
+.badgeAttention[data-severity='critical'] { color: var(--mimic-critical-text); }
+.badgeAttention[data-attention='unacknowledged'] { animation: alarm-badge-attention 1s steps(2, end) infinite; }
+@keyframes alarm-badge-attention { 0%, 100% { box-shadow: 0 0 0 2px currentColor; } 50% { box-shadow: none; } }
+@media (prefers-reduced-motion: reduce) { .badgeAttention[data-attention='unacknowledged'] { animation: none; box-shadow: 0 0 0 2px currentColor; } }

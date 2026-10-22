@@ -187,6 +187,7 @@ export function PointTable({
               <Table.Tr key={point.pointer} data-point={point.pointer}>
                 <Table.Td>
                   <ValueTooltip
+                    focusable={false}
                     label={[point.pointer, observed, timeDetail]
                       .filter(Boolean)
                       .join(' · ')}
@@ -203,6 +204,7 @@ export function PointTable({
                   {shown ? (
                     valueDetail ? (
                       <ValueTooltip
+                        focusable={false}
                         label={valueDetail}
                         className={operations.phoneTarget}
                         accessibleLabel={`${value} · ${valueDetail}`}
@@ -217,7 +219,6 @@ export function PointTable({
                       point={point}
                       label={readingLabel(point)}
                       display={display}
-                      focusable={false}
                     />
                   )}
                 </Table.Td>
@@ -229,7 +230,6 @@ export function PointTable({
                   ) : (
                     <MissingValue
                       reason={t`Quality not reported by the plant`}
-                      focusable={false}
                     />
                   )}
                 </Table.Td>
@@ -241,7 +241,6 @@ export function PointTable({
                   ) : (
                     <MissingValue
                       reason={t`Observation time not reported by the plant`}
-                      focusable={false}
                     />
                   )}
                 </Table.Td>
@@ -251,13 +250,9 @@ export function PointTable({
                       <UnavailableReading
                         point={{ ...point, value: null }}
                         label={t`Condition`}
-                        focusable={false}
                       />
                     ) : (
-                      <MissingValue
-                        reason={conditionText(point)}
-                        focusable={false}
-                      />
+                      <MissingValue reason={conditionText(point)} />
                     )
                   ) : (
                     conditionText(point)

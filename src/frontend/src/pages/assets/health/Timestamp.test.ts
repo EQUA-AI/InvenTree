@@ -30,3 +30,9 @@ it('distinguishes absent and invalid timestamps without nesting buttons', () => 
     /<button\b[^>]*>(?:(?!<\/button>)[\s\S])*<button\b/
   );
 });
+
+it('keeps a valid timestamp as plain text without an extra keyboard stop', () => {
+  const markup = render({ value: '2026-10-20T08:00:00Z' });
+  expect(markup).toContain('<time');
+  expect(markup).not.toContain('<button');
+});

@@ -23,8 +23,8 @@ describe('signal readings retain supplied facts without inventing units', () => 
     'keeps a supplied value visible without inventing a missing unit (%j)',
     (unit) => {
       expect(signalReading({ value: 1834, unit })).toEqual({
-        text: '1834 (no unit)',
-        reason: null,
+        text: '1834',
+        reason: 'Unit not reported by the plant',
         kind: 'value'
       });
     }

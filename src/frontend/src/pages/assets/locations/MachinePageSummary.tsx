@@ -32,6 +32,23 @@ export function MachinePageSummary({
     rows.length < total
       ? t`This page · ${rows.length} of ${total} machines`
       : plural(total, { one: '# machine', other: '# machines' });
+  const alarmToggle = (
+    <UnstyledButton
+      className={classes.summaryAction}
+      aria-pressed={!!alarmsOnly}
+      onClick={onAlarmsChange}
+    >
+      <StatusBadge
+        tone='warning'
+        color='yellow'
+        size='sm'
+        variant='outline'
+        leftSection={<IconBellRinging size={13} />}
+      >
+        {t`In alarm`} · {facts.alarmRows ?? t`Unavailable`}
+      </StatusBadge>
+    </UnstyledButton>
+  );
   return (
     <Group
       gap='xs'
@@ -39,17 +56,20 @@ export function MachinePageSummary({
       component='section'
       aria-label={t`Loaded page summary`}
     >
-      <ValueTooltip
-        label={pageDescription}
-        accessibleLabel={`${countLabel} · ${pageDescription}`}
-        data-testid='machine-page-count'
-        className={classes.summaryCount}
-      >
-        {countLabel}
-      </ValueTooltip>
+      <Group className={classes.summaryHeading} gap={8} justify='space-between'>
+        <ValueTooltip
+          label={pageDescription}
+          accessibleLabel={`${countLabel} · ${pageDescription}`}
+          data-testid='machine-page-count'
+          className={classes.summaryCount}
+        >
+          {countLabel}
+        </ValueTooltip>
+        {alarmToggle}
+      </Group>
       <Group
         gap={8}
-        wrap='nowrap'
+        wrap='wrap'
         className={classes.summaryStatuses}
         component='fieldset'
         aria-label={t`Condition totals`}
@@ -92,21 +112,6 @@ export function MachinePageSummary({
             </StatusBadge>
           </UnstyledButton>
         ))}
-        <UnstyledButton
-          className={classes.summaryAction}
-          aria-pressed={!!alarmsOnly}
-          onClick={onAlarmsChange}
-        >
-          <StatusBadge
-            tone='warning'
-            color='yellow'
-            size='sm'
-            variant='outline'
-            leftSection={<IconBellRinging size={13} />}
-          >
-            {t`In alarm`} {facts.alarmRows ?? t`Unavailable`}
-          </StatusBadge>
-        </UnstyledButton>
       </Group>
     </Group>
   );

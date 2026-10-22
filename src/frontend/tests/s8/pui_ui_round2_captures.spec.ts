@@ -9,7 +9,7 @@ import { components } from '../s2/partsFixtures';
 import { openHealth } from '../s3/healthFixtures';
 import { readable } from './contrast';
 import { captureFromTop, openExplorer } from './designFixtures';
-import { ownerMimicFixture } from './ownerFixtures';
+import { mockOwnerLocations, ownerMimicFixture } from './ownerFixtures';
 import { nativeThemeFixtures } from './themeFixtures';
 
 nativeBaseline();
@@ -33,7 +33,10 @@ const views = [
   ['15-station-parts-light-phone', 'station-parts', 'light', 390],
   ['16-pump-parts-light-desktop', 'pump-parts', 'light', 1440],
   ['17-pump-parts-dark-desktop', 'pump-parts', 'dark', 1440],
-  ['18-pump-parts-light-phone', 'pump-parts', 'light', 390]
+  ['18-pump-parts-light-phone', 'pump-parts', 'light', 390],
+  ['19-location-dark-desktop', 'location', 'dark', 1440],
+  ['20-location-light-phone', 'location', 'light', 390],
+  ['21-location-selected-light-desktop', 'location-selected', 'light', 1440]
 ] as const;
 
 for (const [name, screen, scheme, width] of views) {
@@ -79,29 +82,65 @@ for (const [name, screen, scheme, width] of views) {
           page.locator('[data-callout-column]').filter({ hasText: 'degC' })
         ).toHaveCount(0);
       }
-    } else if (screen === 'machines' || screen === 'location') {
-      const data = await mockExplorer(page);
-      data.state.totalLimit = 8;
-      data.state.canChange = true;
-      data.location.counts.direct_machines = 8;
-      data.location.counts.total_machines = 8;
-      await openExplorer(
-        page,
-        screen === 'machines'
-          ? '/machines/index/machines/'
-          : '/machines/index/sites/?location=12',
-        scheme
-      );
-      await expect(page.locator('[data-machine]')).toHaveCount(8);
-      await expect(page.locator('output button')).toHaveCount(0);
-      if (width !== 390)
-        for (const header of await page.locator('thead th').all())
-          if ((await header.textContent())?.trim()) await readable(header);
-      if (width === 390) {
-        const checkbox = page.getByRole('checkbox').first();
-        const box = (await checkbox.boundingBox())!;
-        expect(box.width).toBe(20);
-        expect(box.height).toBe(20);
+    } else if (
+      screen === 'machines' ||
+      screen === 'location' ||
+      screen === 'location-selected'
+    ) {
+      if (screen === 'location') {
+        const nodes = await mockOwnerLocations(page);
+        await page.goto(
+          `/playwright/s8-design.html?${new URLSearchParams({ screen: 'machines', entry: '/machines/index/sites/', scheme })}`
+        );
+        await expect(
+          page
+            .getByRole('list', { name: 'Top-level locations', exact: true })
+            .getByRole('listitem')
+        ).toHaveCount(7);
+        if (width === 390) {
+          await page
+            .getByRole('button', { name: 'Choose location', exact: true })
+            .click();
+          for (const pk of [12, 20, 30])
+            await page
+              .getByRole('list', { name: 'Location drill-down' })
+              .getByRole('button', { name: nodes.get(pk)!.name, exact: true })
+              .click();
+        } else {
+          const tree = page.getByRole('tree');
+          for (const pk of [10, 11, 12, 20, 30]) {
+            const item = tree.locator(`[role="treeitem"][data-value="${pk}"]`);
+            await item.focus();
+            await item.press('ArrowRight');
+            await expect(
+              item.locator('[role="treeitem"]').first()
+            ).toBeVisible();
+          }
+        }
+      } else {
+        const data = await mockExplorer(page);
+        data.state.totalLimit = 8;
+        data.state.canChange = true;
+        data.location.counts.direct_machines = 8;
+        data.location.counts.total_machines = 8;
+        await openExplorer(
+          page,
+          screen === 'machines'
+            ? '/machines/index/machines/'
+            : '/machines/index/sites/?location=12',
+          scheme
+        );
+        await expect(page.locator('[data-machine]')).toHaveCount(8);
+        await expect(page.locator('output button')).toHaveCount(0);
+        if (width !== 390)
+          for (const header of await page.locator('thead th').all())
+            if ((await header.textContent())?.trim()) await readable(header);
+        if (width === 390) {
+          const checkbox = page.getByRole('checkbox').first();
+          const box = (await checkbox.boundingBox())!;
+          expect(box.width).toBe(20);
+          expect(box.height).toBe(20);
+        }
       }
     } else if (screen === 'health') {
       await openHealth(page, {
@@ -132,6 +171,10 @@ for (const [name, screen, scheme, width] of views) {
       await expect(page.getByTestId('fixture-fetching')).toHaveText('0');
       await expect(page.locator('[data-field="name"]')).toHaveCount(3);
     }
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
+    await page.mouse.move(0, 0);
+    await expect(page.getByRole('tooltip')).toHaveCount(0);
     await page.evaluate(() => document.fonts.ready);
     await captureFromTop(page);
     expect(
@@ -216,7 +259,7 @@ for (const [name, screen, scheme, width] of views) {
       animations: 'disabled'
     });
     if (screen === 'pump') {
-      const fullDirectory = resolve('../../data/devscratch/ui-r2/full');
+      const fullDirectory = resolve(directory, 'full');
       await mkdir(fullDirectory, { recursive: true });
       await page.screenshot({
         path: resolve(fullDirectory, `${name}.png`),

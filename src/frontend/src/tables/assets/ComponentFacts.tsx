@@ -33,7 +33,12 @@ export function ComponentProvenance({
     .filter(Boolean)
     .join(' · ');
   return (
-    <ValueTooltip label={detail} className={classes.source} data-table-tooltip>
+    <ValueTooltip
+      focusable={false}
+      label={detail}
+      className={classes.source}
+      data-table-tooltip
+    >
       <span className={classes.sourceText}>{label}</span>
     </ValueTooltip>
   );

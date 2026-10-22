@@ -23,7 +23,7 @@ export function Timestamp({
   compactOnPhone = false,
   timeOnly = false,
   dateOnly = false,
-  focusable = true
+  focusable = false
 }: Readonly<{
   value: string | number | null | undefined;
   clock?: DisplayClock;
@@ -43,13 +43,11 @@ export function Timestamp({
       <MissingValue
         label={label ?? t`Time`}
         reason={t`Observation time unavailable`}
-        focusable={focusable}
       />
     ) : (
       <FailedValue
         label={label ?? t`Time`}
         reason={t`Invalid observation time`}
-        focusable={focusable}
       />
     );
   const text = formatInstant(value, clock, { timeOnly, dateOnly });

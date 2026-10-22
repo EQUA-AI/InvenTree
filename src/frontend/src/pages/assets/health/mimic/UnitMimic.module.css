@@ -114,7 +114,7 @@
 
 .calloutHeading {
 	display: grid;
-	grid-template-columns: 26px minmax(0, 1fr);
+	grid-template-columns: 28px minmax(0, 1fr);
 	align-items: start;
 	gap: 6px;
 	width: 100%;
@@ -334,4 +334,14 @@
 
 .readingLegendMark[data-verdict="unknown"] {
 	background: var(--mantine-color-body);
+}
+
+@media (min-width: 64em) {
+  .workspace[data-has-parts] { grid-template-columns: minmax(0, .9fr) minmax(0, 3.2fr) minmax(0, .9fr); gap: 10px; }
+  .workspace[data-has-parts] .drawing { grid-column: 2; grid-row: 1; height: auto; aspect-ratio: 680 / 520; }
+  .workspace[data-has-parts] .callouts { display: contents; }
+  .workspace[data-has-parts] .column { grid-template-columns: minmax(0, 1fr); grid-row: 1; }
+  .workspace[data-has-parts] .column[data-callout-column="left"] { grid-column: 1; }
+  .workspace[data-has-parts] .column[data-callout-column="right"] { grid-column: 3; }
+  .callout { gap: 3px; padding: 5px 6px; }
 }

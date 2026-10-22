@@ -26,7 +26,7 @@ export function MimicAlarmCoverage({
   const supplied =
     typeof count === 'number' && Number.isInteger(count) && count >= 0;
   return (
-    <Group gap={6} data-limit-coverage mt={4}>
+    <Group gap={6} data-limit-coverage>
       {knownEmpty && <Text size='xs'>{t`No active alarms`} ·</Text>}
       {supplied ? (
         <ValueTooltip
@@ -37,15 +37,15 @@ export function MimicAlarmCoverage({
               : t`Selected pump readings without configured limits`
           }
         >
-          <Text component='span' size='xs'>{t`${count} without limits`}</Text>
+          <Text
+            component='span'
+            size='xs'
+          >{t`${count} signals without limits`}</Text>
         </ValueTooltip>
       ) : (
         <>
           <Text size='xs'>{t`Limit coverage`}</Text>
-          <MissingValue
-            reason={t`Limit coverage not supplied`}
-            focusable={false}
-          />
+          <MissingValue reason={t`Limit coverage not supplied`} />
         </>
       )}
     </Group>

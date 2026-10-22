@@ -32,12 +32,14 @@ export function HealthSummaryPanel({
   summary,
   signals,
   anomalies = null,
-  onSelect
+  onSelect,
+  now
 }: Readonly<{
   summary: MachineHealthSummary;
   signals: MachineSignal[] | null;
   anomalies?: MachineAnomaly[] | null;
   onSelect?: (binding: number, trigger: HTMLElement) => void;
+  now?: number;
 }>) {
   const id = useId();
   const fact = headlineFacts(summary, signals, anomalies);
@@ -177,6 +179,7 @@ export function HealthSummaryPanel({
             <MetaText size='xs'>{t`0 active anomalies`}</MetaText>
           ) : null}
           <FreshnessText
+            now={now}
             preferJustNow={recordedTelemetryAsLive(summary)}
             observedAt={summary.last_observed_at}
             stale={newest?.stale ?? false}

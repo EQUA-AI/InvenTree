@@ -1,8 +1,11 @@
 import { t } from '@lingui/core/macro';
-import { Box, Group, Loader, Tooltip, UnstyledButton } from '@mantine/core';
+import { Box, Group, Loader, Tooltip } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import monitoring from '../monitoring.module.css';
+import {
+  FailedValue,
+  MissingValue
+} from '../../../components/items/ValueTooltip';
 import { monitoringTerms } from '../monitoringTerms';
 import { MetaText } from './common';
 
@@ -214,7 +217,7 @@ export function SignalTrendSparkline({
       multiline={breaks > 0}
       w={breaks > 0 ? 260 : undefined}
     >
-      <Group gap={4} wrap='nowrap' tabIndex={0}>
+      <Group gap={4} wrap='nowrap'>
         <Box
           component='svg'
           width={WIDTH}
@@ -244,22 +247,10 @@ function TrendStatus({
   label,
   detail
 }: Readonly<{ label: string; detail: string }>) {
-  return (
-    <Tooltip
-      label={detail}
-      multiline
-      w={260}
-      events={{ hover: true, focus: true, touch: true }}
-    >
-      <UnstyledButton
-        tabIndex={-1}
-        fz='xs'
-        className={monitoring.meta}
-        aria-label={`${label}: ${detail}`}
-      >
-        {label}
-      </UnstyledButton>
-    </Tooltip>
+  return label === t`Read failed` ? (
+    <FailedValue reason={detail} />
+  ) : (
+    <MissingValue reason={`${label}: ${detail}`} />
   );
 }
 

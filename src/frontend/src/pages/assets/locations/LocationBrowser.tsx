@@ -129,6 +129,8 @@ export function LocationBrowser({
   const phone = useMatches({ base: true, sm: false });
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [focusedNode, setFocusedNode] = useState<string | null>(null);
+  const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [debounced] = useDebouncedValue(search, 200);
   const [searchPage, setSearchPage] = useState(1);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -369,6 +371,11 @@ export function LocationBrowser({
    * focused control (chevron, label button) keep their native semantics.
    */
   const handleTreeKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      setFocusedNode(null);
+      setHoveredNode(null);
+      return;
+    }
     const target = event.target as HTMLElement;
     const item = target.closest('[role="treeitem"]');
     if (!item || target !== item) return;
@@ -421,44 +428,51 @@ export function LocationBrowser({
     const KindIcon = LOCATION_KIND_ICONS[kind];
     const label = location?.name ?? String(node.label ?? '');
     return (
-      <Box
-        {...elementProps}
-        className={`${elementProps.className} ${classes.nodeLabel}`}
-        data-depth={level}
-        onClick={(event) => {
-          // Keeps the treeitem focused (library behaviour) and selects.
-          elementProps.onClick(event);
-          selectValue(node.value);
-        }}
+      <Tooltip
+        label={nodeDetail(location) || label}
+        {...factTooltipProps}
+        opened={focusedNode === node.value || hoveredNode === node.value}
       >
-        {hasChildren ? (
-          <ActionIcon
-            className={classes.chevron}
-            data-expanded={isExpanded || undefined}
-            variant='transparent'
-            size={32}
-            aria-expanded={isExpanded}
-            aria-label={`${isExpanded ? t`Collapse` : t`Expand`} ${label}`}
-            onClick={(event) => {
-              event.stopPropagation();
-              controller.toggleExpanded(node.value);
-            }}
-          >
-            <IconChevronRight size={16} />
-          </ActionIcon>
-        ) : (
-          <Box w={32} />
-        )}
-        <KindIcon size={16} aria-hidden />
-        <Tooltip label={nodeDetail(location) || label} {...factTooltipProps}>
-          <button type='button' className={classes.nodeName}>
+        <Box
+          {...elementProps}
+          onMouseEnter={() => setHoveredNode(node.value)}
+          onMouseLeave={() => setHoveredNode(null)}
+          className={`${elementProps.className} ${classes.nodeLabel}`}
+          data-depth={level}
+          onClick={(event) => {
+            // Keeps the treeitem focused (library behaviour) and selects.
+            elementProps.onClick(event);
+            selectValue(node.value);
+          }}
+        >
+          {hasChildren ? (
+            <Box
+              component='span'
+              className={classes.chevron}
+              data-expanded={isExpanded || undefined}
+              aria-hidden='true'
+              onClick={(event) => {
+                event.stopPropagation();
+                controller.toggleExpanded(node.value);
+              }}
+            >
+              <IconChevronRight size={16} />
+            </Box>
+          ) : (
+            <Box w={32} />
+          )}
+          <KindIcon size={16} aria-hidden />
+          <span className={classes.nodeName}>
             {label}
-          </button>
-        </Tooltip>
-        {location?.archived && (
-          <IconArchive size={16} aria-label={t`Archived`} />
-        )}
-      </Box>
+            <span className={classes.treeDetail}>
+              {location?.code ? ` · ${location.code}` : ''}
+            </span>
+          </span>
+          {location?.archived && (
+            <IconArchive size={16} aria-label={t`Archived`} />
+          )}
+        </Box>
+      </Tooltip>
     );
   };
 
@@ -585,7 +599,7 @@ export function LocationBrowser({
                     <Anchor
                       component='button'
                       ta='left'
-                      className={classes.nodeName}
+                      className={`${classes.nodeName} ${classes.drillParent}`}
                       aria-label={t`View ${nodeLocations.get(drillParent)?.name ?? ''}`}
                       onClick={() => selectValue(drillParent)}
                     >
@@ -638,6 +652,14 @@ export function LocationBrowser({
                 ref={containerRef}
                 className={classes.treeViewport}
                 onKeyDown={handleTreeKeyDown}
+                onFocusCapture={(event) =>
+                  setFocusedNode(
+                    (event.target as HTMLElement)
+                      .closest('[role="treeitem"]')
+                      ?.getAttribute('data-value') ?? null
+                  )
+                }
+                onBlurCapture={() => setFocusedNode(null)}
               >
                 <Tree
                   data={data}

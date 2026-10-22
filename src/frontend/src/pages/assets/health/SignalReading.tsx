@@ -2,7 +2,8 @@ import type { MachineSignal } from '@lib/types/MachineHealth';
 import { t } from '@lingui/core/macro';
 import {
   FailedValue,
-  MissingValue
+  MissingValue,
+  ValueTooltip
 } from '../../../components/items/ValueTooltip';
 import { signalReading } from './readingPresentation';
 
@@ -19,18 +20,27 @@ export function SignalValue({
     return (
       <FailedValue
         label={t`Value`}
-        reason={reading.reason ?? t`Bad quality reported by the source`}
+        reason={
+          signal.quality === 'bad'
+            ? t`Bad quality reported by the source`
+            : reading.reason!
+        }
         value={reading.kind === 'value' ? reading.text : undefined}
         focusable={focusable}
       />
     );
-  if (reading.reason)
+  if (reading.kind === 'missing')
     return (
       <MissingValue
         label={t`Value`}
-        reason={reading.reason}
+        reason={reading.reason!}
         focusable={focusable}
       />
     );
-  return <>{signal.stale ? t`Last known ${reading.text}` : reading.text}</>;
+  const value = signal.stale ? t`Last known ${reading.text}` : reading.text;
+  return reading.reason ? (
+    <ValueTooltip label={reading.reason}>{value}</ValueTooltip>
+  ) : (
+    <>{value}</>
+  );
 }

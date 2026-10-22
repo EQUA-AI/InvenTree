@@ -228,6 +228,7 @@ export function HealthStateBadge({
   neutralNormal = false,
   partial = false,
   coverageUnknown = false,
+  compactCoverage = false,
   coverage,
   describedBy
 }: Readonly<{
@@ -236,6 +237,7 @@ export function HealthStateBadge({
   neutralNormal?: boolean;
   partial?: boolean;
   coverageUnknown?: boolean;
+  compactCoverage?: boolean;
   coverage?: { evaluated: number; mapped: number } | null;
   describedBy?: string;
 }>) {
@@ -246,13 +248,14 @@ export function HealthStateBadge({
       partial ||
       neutralNormal ||
       (!!coverage && coverage.evaluated < coverage.mapped));
-  const label = limited
-    ? coverageUnknown
-      ? t`Normal · coverage unknown`
-      : coverage
-        ? t`Normal · ${coverage.evaluated}/${coverage.mapped}`
-        : t`Normal · partial`
-    : visual.label;
+  const label =
+    limited && !compactCoverage
+      ? coverageUnknown
+        ? t`Normal · coverage unknown`
+        : coverage
+          ? t`Normal · ${coverage.evaluated}/${coverage.mapped}`
+          : t`Normal · partial`
+      : visual.label;
   return (
     <MonitoringStatusBadge
       tone={limited ? 'partial' : statusTone(state)}
@@ -427,7 +430,7 @@ export function FreshnessText({
   preferJustNow = false,
   compactOnPhone = false,
   label = t`Observed`,
-  focusable = true
+  focusable = false
 }: Readonly<{
   observedAt: string | number | null;
   stale: boolean;

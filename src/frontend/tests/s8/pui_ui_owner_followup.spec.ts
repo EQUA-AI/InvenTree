@@ -287,17 +287,17 @@ for (const scheme of ['light', 'dark'] as const) {
       ).toBeVisible();
     } else {
       const tree = page.getByRole('tree', { name: 'Location tree' });
-      for (const pk of [10, 11, 12, 20, 30])
-        await tree
-          .getByRole('button', {
-            name: `Expand ${nodes.get(pk)!.name}`,
-            exact: true
-          })
-          .click();
+      await expect(tree.locator('button, a, input')).toHaveCount(0);
+      for (const pk of [10, 11, 12, 20, 30]) {
+        const item = tree.locator(`[role="treeitem"][data-value="${pk}"]`);
+        await item.focus();
+        await item.press('ArrowRight');
+        await expect(item.locator('[role="treeitem"]').first()).toBeVisible();
+      }
       const browser = page.locator('#machine-location-browser');
       expect((await browser.boundingBox())!.width).toBeGreaterThanOrEqual(360);
       for (const name of await tree
-        .locator('button')
+        .locator('[data-depth] > span:not([aria-hidden])')
         .filter({ hasText: /Cedar Creek|ACME Manufacturing/ })
         .all()) {
         await expect(name).toHaveCSS('text-overflow', 'clip');
@@ -308,11 +308,13 @@ for (const scheme of ['light', 'dark'] as const) {
           )
         ).toBe(true);
       }
-      await expect(tree.getByText('cc-feps', { exact: true })).toHaveCount(0);
-      const name = tree.getByRole('button', {
-        name: nodes.get(30)!.name,
-        exact: true
-      });
+      await expect(
+        tree.locator('[data-value="30"] > [data-depth] [class*="treeDetail"]')
+      ).toHaveText('· cc-feps');
+      await expect(
+        tree.locator('[data-value="30"] > [data-depth] [class*="treeDetail"]')
+      ).toHaveCSS('clip-path', 'inset(50%)');
+      const name = tree.locator('[role="treeitem"][data-value="30"]');
       await page.keyboard.press('Tab');
       await name.focus();
       await expect(

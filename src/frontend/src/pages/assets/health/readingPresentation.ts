@@ -20,8 +20,8 @@ export function signalReading(signal: Pick<MachineSignal, 'value' | 'unit'>): {
       : String(signal.value);
   if (!signal.unit?.trim()) {
     return {
-      text: t`${value} (no unit)`,
-      reason: null,
+      text: value,
+      reason: t`Unit not reported by the plant`,
       kind: 'value'
     };
   }

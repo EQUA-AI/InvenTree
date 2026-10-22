@@ -1,6 +1,6 @@
 import { t } from '@lingui/core/macro';
 import { Group, Text, Tooltip, UnstyledButton } from '@mantine/core';
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
 import { StatusBadge } from '../../pages/assets/health/StatusBadge';
 import classes from './ValueTooltip.module.css';
 
@@ -36,15 +36,24 @@ export function ValueTooltip({
       {...factTooltipProps}
       events={{ hover: true, focus: true, touch: !props.onClick }}
     >
-      <UnstyledButton
-        type='button'
-        {...props}
-        tabIndex={focusable ? props.tabIndex : -1}
-        aria-label={accessibleLabel ?? props['aria-label']}
-        className={`${classes.target}${className ? ` ${className}` : ''}`}
-      >
-        {children}
-      </UnstyledButton>
+      {!focusable && !props.onClick ? (
+        <span
+          {...(props as HTMLAttributes<HTMLSpanElement>)}
+          className={`${classes.target}${className ? ` ${className}` : ''}`}
+        >
+          {children}
+        </span>
+      ) : (
+        <UnstyledButton
+          type='button'
+          {...props}
+          tabIndex={focusable ? props.tabIndex : -1}
+          aria-label={accessibleLabel ?? props['aria-label']}
+          className={`${classes.target}${className ? ` ${className}` : ''}`}
+        >
+          {children}
+        </UnstyledButton>
+      )}
     </Tooltip>
   );
 }

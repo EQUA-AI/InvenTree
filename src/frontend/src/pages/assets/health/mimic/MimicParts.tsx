@@ -143,6 +143,21 @@ function PartNumber({
   );
   return (
     <>
+      <circle
+        data-marker-backing
+        cx={x}
+        cy={y}
+        r={
+          (state.attention ||
+          state.verdict === 'warning' ||
+          state.verdict === 'critical'
+            ? 15
+            : 13) * scale
+        }
+        fill='var(--mantine-color-body)'
+        stroke='var(--mantine-color-body)'
+        strokeWidth={scale}
+      />
       {state.attention && (
         <circle
           cx={x}
@@ -190,7 +205,7 @@ function PartNumber({
       )}
       <text
         x={x}
-        y={y + 5 * scale}
+        y={y + (state.verdict === 'warning' ? 8 : 5) * scale}
         textAnchor='middle'
         fontSize={15 * scale}
         fontWeight={700}
@@ -208,7 +223,27 @@ function PartNumber({
   );
 }
 
-/** Native coordinates are unchanged; HTML callouts provide the hit targets. */
+/** Stand-off annotations leave the engineering geometry unchanged. */
+const markerPositions: Record<number, readonly [number, number]> = {
+  1: [468, 68],
+  2: [702, 160],
+  3: [430, 198],
+  4: [436, 246],
+  5: [476, 283],
+  6: [656, 349],
+  7: [730, 272],
+  8: [594, 390],
+  9: [488, 351],
+  10: [484, 518],
+  11: [646, 395],
+  12: [708, 352],
+  13: [786, 352]
+};
+
+export function markerPosition(state: PartState): readonly [number, number] {
+  return markerPositions[state.number] ?? [state.part.x, state.part.y];
+}
+
 export function MimicPartMarkers({
   states,
   active,
@@ -237,8 +272,8 @@ export function MimicPartMarkers({
         >
           <PartNumber
             state={state}
-            x={state.part.x}
-            y={state.part.y}
+            x={markerPosition(state)[0]}
+            y={markerPosition(state)[1]}
             active={active === state.part.code}
             scale={scale}
           />
@@ -301,7 +336,24 @@ export function MimicParts({
             data-verdict={state.verdict}
             data-alarm-attention={state.attention}
             data-active={lit || undefined}
-            accessibleLabel={`${state.number}. ${state.name}`}
+            accessibleLabel={[
+              `${state.number}. ${state.name}`,
+              summary ||
+                retained ||
+                (failures.length ? t`Read failed` : `— · ${missing}`),
+              failures.length
+                ? retained
+                  ? t`Bad quality`
+                  : t`Read failed`
+                : '',
+              state.verdict === 'critical'
+                ? t`Critical`
+                : state.verdict === 'warning'
+                  ? t`Warning`
+                  : ''
+            ]
+              .filter(Boolean)
+              .join(' · ')}
             onClick={() => onPart?.(state)}
             onMouseEnter={() => onActive(part.code)}
             onMouseLeave={() => onActive(focused)}
@@ -316,9 +368,9 @@ export function MimicParts({
           >
             <span className={classes.calloutHeading}>
               <svg
-                width={26}
-                height={26}
-                viewBox='0 0 28 28'
+                width={28}
+                height={28}
+                viewBox='-3 -3 34 34'
                 aria-hidden='true'
                 data-part-number
               >
