@@ -381,6 +381,7 @@ function SensorGroupCardBody({
           {summary && (
             <Group gap='xs' wrap='wrap'>
               <StatusBadge
+                multiline
                 tone='neutral'
                 variant='outline'
                 color='gray'
@@ -391,6 +392,7 @@ function SensorGroupCardBody({
 
               {summary.configured > 0 ? (
                 <StatusBadge
+                  multiline
                   variant={summary.over > 0 ? 'filled' : 'outline'}
                   color={
                     summary.over > 0

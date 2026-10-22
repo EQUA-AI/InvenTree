@@ -892,10 +892,10 @@ export function FaultOccurrences({
                         {t`Observed`}
                       </ValueTooltip>
                     </Table.Th>
-                    <Table.Th w='26%'>{t`Event / finding`}</Table.Th>
-                    <Table.Th>{t`Component`}</Table.Th>
-                    <Table.Th>{t`Evidence`}</Table.Th>
-                    <Table.Th>{t`Owning work`}</Table.Th>
+                    <Table.Th>{t`Event / finding`}</Table.Th>
+                    <Table.Th w={120}>{t`Component`}</Table.Th>
+                    <Table.Th w={110}>{t`Evidence`}</Table.Th>
+                    <Table.Th w={136}>{t`Owning work`}</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>

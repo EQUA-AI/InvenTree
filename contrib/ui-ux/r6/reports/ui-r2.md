@@ -1298,3 +1298,30 @@ Source files changed (4):
 - `src/frontend/src/pages/assets/locations/locations.module.css`
 
 Test file changed (1): `src/frontend/src/components/aichat/referenceFocus.test.ts` — model/schematic and extra-query preservation, confirmed-position precedence and route-boundary coverage. No Playwright spec edited. No database, dependency or Git writes. Parent acceptance unchanged.
+
+## Follow-up 9
+
+Built on `1baa15d4d`. All five findings were verified against source and the archived fixture evidence; none skipped. The three host-only findings are implemented and checked on Linux, with Mac confirmation remaining with the coordinator.
+
+| Finding | Fix / evidence |
+| --- | --- |
+| 1. Phone Filters resets on Show inactive | The scoped machine list mounts independently of the location-detail count query, keyed by location identity. Successful scope refreshes preserve the disclosure, checkbox DOM node, focus and IDs. Filters has a stable aria-controls target. Four supplemental light/dark, Machines/By-location cases exercise four toggles each; selected-location cases delay detail reads and verify denied detail removes rows/totals. Both unchanged active-scope cases pass. |
+| 2. Equipment callouts below Mac fold | Desktop callouts use smaller padding/gaps/markers while retaining at least 44px targets and the original dominant drawing width. All 13 remain visible at 1440×900; the wider-text Linux probe ends at **817.95px**, leaving **82.05px**. Four unchanged 1440/1280 theme cases pass, preserving the narrower-container stacked layout. |
+| 3. Default phone first-card fold | Full-word condition chips have less horizontal padding, keeping spare width for font differences; original 8px action gaps remain. Phone cards have tighter padding/fact spacing, with all facts and controls retained. Linux default first-card bottom **804.08px**, wider text **805.67px**, leaving **38–40px** in 844px. Default viewport matrices, unchanged wider-font cases and condition-action/44px checks pass in both themes. |
+| 4. Reference model badge blocks motor hotspot | The accessible badge occupies a normal-flow row before the scene, outside its interactive area. Both phone themes prove the row ends before the canvas begins and select the motor through its actual hotspot after selecting the casing. The unchanged S2 one-read case also passes. |
+| 5. Completed badge breaks mid-word | Shared AIMMS status/lifecycle badges default to nowrap and intrinsic minimum width. Descriptive evidence explicitly retains wrapping. Fault History reserves space for Owning work, Component and Evidence; Event/finding takes the remaining width. Wider-text probes at 1280×720 prove one text line, the entire badge inside its cell and clipping ancestors, and header text inside each column. The unchanged S7 continuity case passes. |
+
+Verification: **26 unique focused browser cases pass** (14 unchanged lane cases plus 12 supplemental checks). The three affected Fault checks were repeated after final column refinement. **84/84 units**, all **9 TypeScript projects**, final app/S7/S8 type rechecks, Lingui extract/compile with **117 files restored bytewise**, changed-file prek and whitespace checks pass. No tracked test files changed. Exact read-only lane specs are byte-identical to `87ef2537c` (`r6/ui-r2-testfix`, merged lanes): `s8/pui_ui_followup5.spec.ts`, `s8/pui_ui_followup7.spec.ts`, `s8/pui_state_captures.spec.ts`, `s8/pui_design.spec.ts`, `s8/pui_design_review_fixes.spec.ts`, `s2/pui_equipment_inspector.spec.ts`, `s7/pui_monitoring_continuity.spec.ts` (all under `src/frontend/tests/`). Supplemental assertions live only in `data/devscratch/ui-r2/followup9/probes.spec.ts`; no lane assertion changed.
+
+All **16 final per-screen PNGs** in `data/devscratch/ui-r2/followup9/captures/` were individually inspected. Review caught and corrected a too-wide interim Fault table and then its cramped adjacent columns before the final captures. An initial scratch whitespace matcher was corrected, and a stricter badge probe exposed stale modules in the HMR-disabled harness; the harness was restarted and the relevant final runs used fresh source. These preliminary results are retained separately and are not counted as final passes. Linux Chromium used only owned WS3012/harness15250 and intercepted fixtures; no owner localhost, real records or database accessed. Mac-only layout reproduction is **not** claimed.
+
+Evidence in `data/devscratch/ui-r2/followup9/`: `*-final.log`, `probe-final.log`, `lifecycle-balanced{,-lane}.log`, `types{,-balanced}.json`, `units.log`, `lingui-result.json`, `prek-final.log`, `lane-specs.json`, `capture-review.json`, `source.json`. Final digest `d6474d4a30ae`. Owned runtime stopped and ports clear; no dependency or Git writes. Full host suites, deployment and parent acceptance remain with the coordinator.
+
+Source files changed (15), under `src/frontend/src/`:
+
+- `pages/assets/equipment/EquipmentScene.tsx`; `pages/assets/faults/FaultOccurrences.tsx`
+- `pages/assets/health/{StatusBadge,common,AnomalyList,AnomalyTimeShift,PreliminaryResults,PumpMimic}.tsx`; `pages/assets/health/mimic/UnitMimic.module.css`
+- `pages/assets/locations/{LocationWorkspace,MachinePageSummary}.tsx`; `pages/assets/locations/locations.module.css`
+- `pages/assets/performance/{PerformancePanel,SensorGroupCard}.tsx`; `pages/assets/performance/sections/ThermalSections.tsx`
+
+The additional descriptive-badge call sites preserve their existing wrapping when semantic badges become atomic; no new prose, values or dependencies. Tests changed: **none tracked**; seven lane specs copied/read unchanged, one supplemental scratch spec authored for these behaviours only.
