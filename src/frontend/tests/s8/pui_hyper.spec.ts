@@ -71,7 +71,12 @@ for (const scheme of ['light', 'dark'] as const) {
       page.locator('[data-unit-schematic] [data-reading][data-point]')
     ).toHaveCount(4);
     const status = page.locator('[data-unit-header]');
-    await expect(status).toContainText('2 s old');
+    const observed = status.locator('time');
+    await expect(observed).toHaveAttribute(
+      'datetime',
+      '2026-10-20T08:00:00.000Z'
+    );
+    await expect(observed).toContainText('2 s ago');
     await expect(page.getByLabel('Process data')).toHaveCount(0);
     await expect(page.locator('[data-unit-drawing] animateMotion')).toHaveCount(
       0
@@ -175,9 +180,22 @@ for (const scheme of ['light', 'dark'] as const) {
         .getByRole('button', { name: 'Reference model', exact: true })
     ).toBeVisible();
     await readable(page.locator('[data-scene-phase] .mantine-Badge-root'));
-    await expect(
-      page.getByText(/your clock|plant clock/).filter({ visible: true })
-    ).toHaveCount(0);
+    await expect(page.getByText(/^Times: (your|plant) clock/)).toHaveCount(0);
+    const observed = page
+      .getByRole('region', { name: 'Selected position', exact: true })
+      .locator('time');
+    await expect(observed).toHaveAttribute(
+      'datetime',
+      '2026-10-19T12:00:00.000Z'
+    );
+    await observed.hover();
+    const clock = page.getByRole('tooltip').filter({
+      hasText:
+        'Last observation: 19 Oct 2026 15:00:00 · your clock (Asia/Riyadh, UTC+03:00) · plant timezone not supplied'
+    });
+    await expect(clock).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(clock).toBeHidden();
     await expect(
       page.locator('[data-operational-panel]').first().getByRole('status')
     ).toHaveCount(1);
@@ -268,12 +286,22 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(
       evidence.getByText('Outside occurrence span', { exact: true })
     ).toHaveCount(0);
+    await expect(page.getByText(/^Times: (your|plant) clock/)).toHaveCount(0);
+    const occurrences = page.getByTestId('fault-occurrences');
+    await expect(occurrences.getByRole('status')).toHaveCount(0);
     await expect(
-      page.getByText(/your clock|plant clock/).filter({ visible: true })
-    ).toHaveCount(0);
-    await expect(
-      page.locator('[data-operational-panel]').first().getByRole('status')
-    ).toHaveCount(1);
+      occurrences.getByRole('heading', {
+        name: 'Occurrences',
+        exact: true,
+        level: 4
+      })
+    ).toBeVisible();
+    const refresh = occurrences.getByRole('button', {
+      name: 'Refresh',
+      exact: true
+    });
+    await expect(refresh).toHaveCount(1);
+    await expect(refresh).toBeVisible();
     await expect(page.getByText(/dashboard time shift/)).toHaveCount(0);
     await expect(
       page.getByRole('button', { name: 'Acknowledge', exact: true })

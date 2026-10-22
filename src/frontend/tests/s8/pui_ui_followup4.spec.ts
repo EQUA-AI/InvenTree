@@ -115,9 +115,36 @@ test('production Performance uses labels and compact history while retaining mea
   await expect(
     page.getByText('Performance workspace', { exact: true })
   ).toHaveCount(0);
-  await expect(
-    page.locator('[data-kpi="speed"]').getByRole('button')
-  ).toHaveCount(1);
+  const speed = page.locator('[data-kpi="speed"]');
+  const sparkline = speed.getByRole('img', {
+    name: 'Trend over the selected window',
+    exact: true
+  });
+  await expect(speed.getByRole('button')).toHaveCount(0);
+  await expect(speed.locator('[data-kpi-value]')).toHaveText('745');
+  await expect(speed.getByText('rpm', { exact: true })).toBeVisible();
+  await expect(sparkline).toBeVisible();
+  await expect(sparkline).not.toHaveAttribute('tabindex');
+  await expect(sparkline.locator('path')).toHaveAttribute('d', /M.+L/);
+  await expect(speed.locator('[data-kpi-delta]')).toHaveText(
+    'Δ +1.2 % / 59.5 min'
+  );
+  const observed = speed.locator('[data-kpi-observed] time');
+  await expect(observed).toHaveText('11:59:40 · 20 s ago');
+  await expect(observed).toHaveAttribute(
+    'datetime',
+    new Date(NOW - 20_000).toISOString()
+  );
+  await expect(observed.locator('..')).not.toHaveAttribute('tabindex');
+  await observed.hover();
+  const observationTime = page.getByRole('tooltip', {
+    name: /^freshness budget 300 s: 18 Oct 2026 11:59:40 · your clock/
+  });
+  await expect(observationTime).toBeVisible();
+  await expect(observationTime).toContainText('Asia/Riyadh');
+  await page.mouse.move(0, 0);
+  await page.keyboard.press('Escape');
+  await expect(observationTime).toBeHidden();
   await expect(
     page.getByText('Cooling water rise (outlet − inlet)', { exact: true })
   ).toHaveCount(0);
@@ -125,10 +152,17 @@ test('production Performance uses labels and compact history while retaining mea
     page.getByText('Air rise (hot − cold)', { exact: true })
   ).toHaveCount(0);
   await capture(page, '26-performance-desktop-light');
-  for (const chart of await page.locator('.mantine-ScatterChart-root').all()) {
-    const labels = await chart
-      .locator('.recharts-reference-line .recharts-label')
-      .all();
+  const configured = page.getByTestId('sensor-comparison').filter({
+    has: page.getByTestId('sensor-comparison-limits')
+  });
+  await expect(configured).toHaveCount(1);
+  for (const comparison of await configured.all()) {
+    const key = comparison.getByTestId('sensor-comparison-limits');
+    await expect(key).toContainText('Warning above 125 °C');
+    await expect(key).toContainText('Critical above 145 °C');
+    const labelTargets = key.locator('p');
+    await expect(labelTargets).toHaveCount(2);
+    const labels = await labelTargets.all();
     for (let i = 0; i < labels.length; i++)
       for (let j = i + 1; j < labels.length; j++) {
         const a = (await labels[i].boundingBox())!;
@@ -141,6 +175,14 @@ test('production Performance uses labels and compact history while retaining mea
           'Configured limit labels must not overlap'
         ).toBe(true);
       }
+    const bounds = (await key.boundingBox())!;
+    const plot = (await comparison
+      .locator('svg.recharts-surface')
+      .boundingBox())!;
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(plot.y);
+    await expect(
+      comparison.locator('.recharts-reference-line-line')
+    ).toHaveCount(2);
   }
   const sensors = page
     .getByText('Current reading by sensor', { exact: true })
@@ -180,36 +222,65 @@ test('production Maintenance distinguishes absent and unavailable work links', a
   await open(page, 'maintenance');
   await expect(page.getByText('No open work', { exact: true })).toBeVisible();
   await page.getByText('Completed history', { exact: true }).click();
-  await page.keyboard.press('Tab');
-  const none = page.getByRole('button', {
-    name: 'No linked work order',
-    exact: true
-  });
-  await expect
-    .poll(async () => {
-      await none.focus();
-      return none.evaluate((node) => node === document.activeElement);
-    })
-    .toBe(true);
+  const panel = page.getByTestId('machine-maintenance');
   await expect(
-    page.getByRole('tooltip', { name: 'No linked work order', exact: true })
+    panel.getByRole('columnheader', { name: 'Work Order', exact: true })
   ).toBeVisible();
-  await page
-    .getByRole('button', { name: 'Work order link not available', exact: true })
-    .focus();
-  await expect(
-    page.getByRole('button', {
-      name: 'Work order link not available',
+  for (const [summary, reason, otherReason] of [
+    [
+      'Legacy service visit',
+      'No linked work order',
+      'Work order link not available'
+    ],
+    [
+      'Restricted linked visit',
+      'Work order link not available',
+      'No linked work order'
+    ]
+  ]) {
+    const row = panel
+      .getByRole('row')
+      .filter({ has: page.getByText(summary, { exact: true }) });
+    const work = row.getByRole('cell').filter({ hasText: reason });
+    await expect(work).toHaveCount(1);
+    const dash = work.locator('span').filter({ hasText: reason }).first();
+    await expect(dash).toBeVisible();
+    expect(
+      await dash.evaluate((node) =>
+        [...node.childNodes]
+          .filter((child) => child.nodeType === Node.TEXT_NODE)
+          .map((child) => child.textContent)
+          .join('')
+          .trim()
+      )
+    ).toBe('—');
+    await expect(dash).not.toHaveAttribute('tabindex');
+    await expect(work.getByRole('button')).toHaveCount(0);
+    const information = row.getByRole('button', {
+      name: 'Record information',
       exact: true
-    })
-  ).toBeFocused();
-  await expect(
-    page.getByRole('tooltip', {
-      name: 'Work order link not available',
-      exact: true
-    })
-  ).toBeVisible();
-  await page.keyboard.press('Escape');
+    });
+    await page.mouse.move(0, 0);
+    await page.keyboard.press('Tab');
+    await information.focus();
+    await expect(information).toBeFocused();
+    await expect(information).toHaveAttribute('aria-describedby', /\S+/);
+    const tooltip = page.locator(
+      `[role="tooltip"][id="${await information.getAttribute('aria-describedby')}"]`
+    );
+    await expect(tooltip).toBeVisible();
+    await expect(tooltip).toContainText(reason);
+    await expect(tooltip).not.toContainText(otherReason);
+    await expect(tooltip).toContainText('Downtime not recorded');
+    await expect(information).toHaveAccessibleDescription(
+      await tooltip.innerText()
+    );
+    await page.keyboard.press('Escape');
+    await expect(tooltip).toBeHidden();
+    await information.blur();
+    await expect(row.getByRole('link')).toHaveCount(0);
+    await expect(row.getByText('0 min', { exact: true })).toHaveCount(0);
+  }
   await expect(
     page.getByText('No work order you can open', { exact: true })
   ).toHaveCount(0);
@@ -299,16 +370,17 @@ test('production Parts basis merges source and never elevates reference imports 
     route.fulfill({ json: { count: 0, results: [] } })
   );
   await open(page, 'parts');
-  for (const label of ['Reference design', 'Inferred from tags', 'Tag review'])
+  for (const label of ['Register import', 'Inferred from tags', 'Tag review'])
     await expect(page.getByText(label, { exact: true })).toBeVisible();
   await expect(
     page.getByRole('columnheader', { name: 'Source', exact: true })
   ).toHaveCount(0);
   await expect(page.getByText('Verified', { exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: /Reference design/ }).focus();
+  await page.getByRole('button', { name: /Register import/ }).focus();
   await expect(page.getByRole('tooltip')).toContainText(
     'Engineering review pending · Compatibility not approved'
   );
+  await expect(page.getByRole('tooltip')).toContainText('not field-verified');
   await expect(page.getByRole('tooltip')).not.toContainText('f9006');
 });
 

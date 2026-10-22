@@ -3,7 +3,12 @@ import { observed } from '../mimic/layoutFixtures';
 import { nativeBaseline } from '../s0/guards';
 import { mockMachine } from '../s0/machineFixtures';
 import { components } from '../s2/partsFixtures';
-import { HEALTH_SIGNALS, openHealth, signalTable } from '../s3/healthFixtures';
+import {
+  HEALTH_SIGNALS,
+  NOW,
+  openHealth,
+  signalTable
+} from '../s3/healthFixtures';
 import { nonText, readable } from './contrast';
 import { captureFromTop } from './designFixtures';
 import { ownerMimicFixture } from './ownerFixtures';
@@ -231,55 +236,107 @@ for (const scheme of ['light', 'dark'] as const) {
     expect((await rowTime.textContent())!.split(' · ').at(-1)).toBe(
       (await summaryTime.textContent())!.split(' · ').at(-1)
     );
-    await expect(rowTime).toContainText('just now');
+    await expect(rowTime).toHaveText('20 s ago');
+    await expect(rowTime).toHaveAttribute(
+      'datetime',
+      new Date(NOW - 20_000).toISOString()
+    );
     await expect(
       table
         .locator('time')
         .locator('..')
         .filter({ has: page.locator('button') })
     ).toHaveCount(0);
-    const unit = row('Motor DE vibration (raw)').getByRole('button', {
-      name: '1834',
-      exact: true
-    });
-    await unit.focus();
-    await expect(page.getByRole('tooltip')).toContainText(
+    const details = (name: string) =>
+      row(name).getByRole('button', {
+        name: `Details for ${name}`,
+        exact: true
+      });
+    const keyboardReason = async (name: string, explanation: string) => {
+      const target = details(name);
+      await page.mouse.move(0, 0);
+      await target.blur();
+      await expect(page.getByRole('tooltip')).toHaveCount(0);
+      await page.keyboard.press('Tab');
+      await target.focus();
+      await expect(target).toBeFocused();
+      await expect(target).toHaveAttribute('aria-describedby', /\S+/);
+      const reason = page.locator(
+        `[role="tooltip"][id="${await target.getAttribute('aria-describedby')}"]`
+      );
+      await expect(reason).toBeVisible();
+      await expect(reason).toContainText(explanation);
+      await expect(target).toHaveAccessibleDescription(
+        await reason.innerText()
+      );
+      expect(
+        await target.evaluate((node) => (node as HTMLElement).tabIndex)
+      ).toBe(0);
+      await page.keyboard.press('Shift+Tab');
+      await expect(target).not.toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(target).toBeFocused();
+      await expect(reason).toBeVisible();
+      await expect(reason).toContainText(explanation);
+      await page.keyboard.press('Escape');
+      await expect(reason).toBeHidden();
+      await target.blur();
+    };
+    const unit = row('Motor DE vibration (raw)').locator(
+      '[data-label="Value"] > p > span'
+    );
+    await expect(unit).toBeVisible();
+    await expect(unit).not.toHaveAttribute('tabindex');
+    await expect(
+      row('Motor DE vibration (raw)')
+        .locator('[data-label="Value"]')
+        .getByRole('button')
+    ).toHaveCount(0);
+    expect(
+      await unit.evaluate((node) =>
+        [...node.childNodes]
+          .filter((child) => child.nodeType === Node.TEXT_NODE)
+          .map((child) => child.textContent)
+          .join('')
+          .trim()
+      )
+    ).toBe('1834');
+    await keyboardReason(
+      'Motor DE vibration (raw)',
       'Unit not reported by the plant'
     );
-    await expect(unit).toHaveText('1834');
-    await page.keyboard.press('Escape');
     for (const name of [
       'Seal flush flow',
       'Cooling water flow',
       'Winding temperature'
     ]) {
-      if (info.project.name.endsWith('phone'))
-        await row(name)
-          .getByRole('button', { name: `Details for ${name}`, exact: true })
-          .click();
-      await page.mouse.move(0, 0);
-      const reason = row(name).locator('td').last().getByRole('button');
-      await expect(reason).toHaveText('—');
-      await page.keyboard.press('Tab');
-      await reason.focus();
-      await expect(
-        page.getByRole('tooltip').filter({
-          hasText:
-            name === 'Seal flush flow'
-              ? 'No samples in window'
-              : name === 'Cooling water flow'
-                ? 'History unavailable'
-                : 'Not returned'
-        })
-      ).toBeVisible();
-      await expect(reason).toBeFocused();
+      if (info.project.name.endsWith('phone')) {
+        await details(name).click();
+        await expect(details(name)).toHaveAttribute('aria-expanded', 'true');
+      }
+      const trend = row(name).locator('[data-label="Trend"]');
+      const dash = trend.locator(':scope > span');
+      await expect(dash).toBeVisible();
+      await expect(dash).not.toHaveAttribute('tabindex');
+      await expect(trend.getByRole('button')).toHaveCount(0);
       expect(
-        await reason.evaluate((node) => (node as HTMLElement).tabIndex)
-      ).toBe(0);
-      await page.keyboard.press('Shift+Tab');
-      await page.keyboard.press('Tab');
-      await expect(reason).toBeFocused();
-      await page.keyboard.press('Escape');
+        await dash.evaluate((node) =>
+          [...node.childNodes]
+            .filter((child) => child.nodeType === Node.TEXT_NODE)
+            .map((child) => child.textContent)
+            .join('')
+            .trim()
+        )
+      ).toBe('—');
+      await expect(trend).not.toContainText('Read failed');
+      await keyboardReason(
+        name,
+        name === 'Seal flush flow'
+          ? 'Trend: No samples in window · Fixture historian answered for this window but held no readings for this signal.'
+          : name === 'Cooling water flow'
+            ? 'Trend: History unavailable · This source has no configured connector to read history from.'
+            : 'Trend: Not returned · The completed trend read did not return this signal. Its history is unknown; the current reading is unaffected.'
+      );
     }
     if (info.project.name.endsWith('phone'))
       await row('Failed history')
@@ -289,8 +346,17 @@ for (const scheme of ['light', 'dark'] as const) {
         })
         .click();
     await expect(
-      row('Failed history').locator('td').last().getByRole('button')
-    ).toHaveText('Read failed');
+      row('Failed history')
+        .locator('[data-label="Trend"]')
+        .getByText('Read failed', { exact: true })
+    ).toBeVisible();
+    await expect(
+      row('Failed history').locator('[data-label="Trend"]').getByRole('button')
+    ).toHaveCount(0);
+    await keyboardReason(
+      'Failed history',
+      'Trend: Read failed · The source did not answer within the read timeout.'
+    );
   });
 
   test(`follow-up 2 Parts stock, borders, reasons and phone baseline ${scheme}`, async ({

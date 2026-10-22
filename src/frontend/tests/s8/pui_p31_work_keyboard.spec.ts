@@ -172,16 +172,23 @@ for (const width of [1440, 390]) {
       });
       await filters.focus();
       await page.keyboard.press('Enter');
-      await expect(
-        page.getByRole('dialog', { name: 'Work filters', exact: true })
-      ).toBeVisible();
-      await expect(
-        page.getByRole('button', { name: 'Close Work filters', exact: true })
-      ).toHaveAccessibleName('Close Work filters');
+      const dialog = page.getByRole('dialog', {
+        name: 'Work filters',
+        exact: true
+      });
+      await expect(dialog).toBeVisible();
+      const close = dialog.getByRole('button', {
+        name: 'Close Work filters',
+        exact: true
+      });
+      await expect(close).toHaveAccessibleName('Close Work filters');
+      await expect(close).toBeFocused();
       await page.keyboard.press('Escape');
+      await expect(dialog).toBeHidden();
       await expect(filters).toBeFocused();
     }
     await table.focus();
+    await expect(table).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(
       page.getByRole('link', { name: 'WO-73', exact: true })

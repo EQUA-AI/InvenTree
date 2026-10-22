@@ -490,7 +490,15 @@ for (const state of states)
               await reading.locator('[data-tag-label]').innerText()
             ).trim();
             const target = reading.locator('[data-value] > span');
-            const value = (await target.innerText()).trim();
+            const value = await target.evaluate((node) =>
+              [...node.childNodes]
+                .filter((child) => child.nodeType === Node.TEXT_NODE)
+                .map((child) => child.textContent)
+                .join('')
+                .trim()
+            );
+            expect(value).not.toBe('');
+            await expect(target).toContainText(`${label}: ${value}`);
             await expect(target).not.toHaveAttribute('tabindex');
             await target.hover();
             const tooltip = page
@@ -554,8 +562,7 @@ for (const state of states)
               });
             expect(bounds.width).toBeGreaterThanOrEqual(content.width * 0.5);
             expect(painted.width).toBeGreaterThanOrEqual(content.width * 0.5);
-            // The side-column layout keeps the cropped native aspect instead
-            // of sizing the old full-width drawing against viewport height.
+            // Both container layouts keep the cropped native aspect.
             expect(
               Math.abs(bounds.height - bounds.width / painted.nativeAspect)
             ).toBeLessThanOrEqual(1);
@@ -567,15 +574,31 @@ for (const state of states)
             expect(painted.bottom).toBeLessThanOrEqual(
               bounds.y + bounds.height + 1
             );
+            const hostWidth = await drawing.evaluate((node) => {
+              let host: HTMLElement | null = node as HTMLElement;
+              while (
+                host &&
+                getComputedStyle(host).containerType !== 'inline-size'
+              )
+                host = host.parentElement;
+              return host?.getBoundingClientRect().width ?? 0;
+            });
+            expect(hostWidth).toBeGreaterThan(0);
             for (const callout of await page
               .locator('[data-unit-callouts] button[data-part]')
               .all()) {
               const box = (await callout.boundingBox())!;
-              expect(
-                box.x + box.width <= bounds.x + 1 ||
-                  box.x >= bounds.x + bounds.width - 1,
-                'Desktop callouts stay in side columns beside the drawing'
-              ).toBe(true);
+              if (hostWidth >= 1100)
+                expect(
+                  box.x + box.width <= bounds.x + 1 ||
+                    box.x >= bounds.x + bounds.width - 1,
+                  'Wide-container callouts stay beside the drawing'
+                ).toBe(true);
+              else
+                expect(
+                  box.y,
+                  'Narrow-container callouts stay below the drawing'
+                ).toBeGreaterThanOrEqual(bounds.y + bounds.height - 1);
             }
           }
           if (width === 390) {

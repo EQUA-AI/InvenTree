@@ -131,6 +131,7 @@ for (const scheme of ['light', 'dark'] as const) {
       await expect(page.locator(`#machine-row-${id}`)).toBeInViewport();
     }
     if (info.project.name.endsWith('phone')) {
+      await captureFromTop(page);
       const criticalBox = (await summary
         .getByRole('button', { name: 'Critical · 4', exact: true })
         .boundingBox())!;
@@ -140,20 +141,26 @@ for (const scheme of ['light', 'dark'] as const) {
       expect(
         warningBox.x - criticalBox.x - criticalBox.width
       ).toBeGreaterThanOrEqual(8);
-      const chooseBox = (await page
-        .getByRole('button', { name: 'Choose location', exact: true })
-        .boundingBox())!;
-      const refreshBox = (await page
-        .getByRole('button', { name: 'Refresh', exact: true })
-        .first()
-        .boundingBox())!;
-      expect(
-        refreshBox.x - chooseBox.x - chooseBox.width
-      ).toBeGreaterThanOrEqual(8);
       await touchTarget(summary.getByRole('button', { name: /^In alarm/ }));
+      const actionBoxes = [];
       for (const name of ['Choose location', 'Refresh', 'Location details']) {
         const control = page.getByRole('button', { name, exact: true }).first();
         await touchTarget(control);
+        await expect(control).toBeInViewport({ ratio: 1 });
+        actionBoxes.push((await control.boundingBox())!);
+      }
+      // Follow-up 8 groups the default actions into one compact phone row.
+      // Their full touch targets must fit without overlapping or wrapping.
+      for (const [index, box] of actionBoxes.entries()) {
+        expect(Math.abs(box.y - actionBoxes[0].y)).toBeLessThanOrEqual(1);
+        expect(box.x).toBeGreaterThanOrEqual(0);
+        expect(box.x + box.width).toBeLessThanOrEqual(
+          page.viewportSize()!.width
+        );
+        if (index)
+          expect(box.x).toBeGreaterThanOrEqual(
+            actionBoxes[index - 1].x + actionBoxes[index - 1].width
+          );
       }
     }
     await captureFromTop(page);

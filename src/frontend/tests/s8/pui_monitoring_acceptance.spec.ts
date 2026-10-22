@@ -267,8 +267,28 @@ for (const scheme of ['light', 'dark'] as const) {
     ).toHaveCount(0);
     await expect(root).not.toContainText('last poll attempt');
     await page.keyboard.press('Escape');
-    const trendTrigger = root.locator('[data-kpi="speed"]').getByRole('button');
-    await focusCapture(page, trendTrigger, 'trend-mark', scheme);
+    const speed = root.locator('[data-kpi="speed"]');
+    const trendMark = speed.getByRole('img', {
+      name: 'Trend over the selected window',
+      exact: true
+    });
+    await expect(trendMark).toBeVisible();
+    await expect(trendMark.locator('path')).toHaveAttribute('d', /M.+L/);
+    await expect(speed.locator('[data-kpi-delta]')).toHaveText(
+      'Δ +1.2 % / 59.5 min'
+    );
+    await expect(speed.getByRole('button')).toHaveCount(0);
+    await expect(trendMark).not.toHaveAttribute('tabindex');
+    await speed.screenshot({
+      path: resolve(
+        evidenceRoot,
+        'browser/captures/focus/s8-01-part2-pass2',
+        `trend-mark-${scheme}.png`
+      )
+    });
+    await expect(speed.locator('[data-kpi-observed] time')).toHaveText(
+      '11:59:40 · 20 s ago'
+    );
     const live = root.getByRole('switch', { name: /^Live updates:/ });
     await expect(live).toHaveAccessibleName('Live updates: Paused');
     await focusCapture(page, live, 'live', scheme);
