@@ -1,5 +1,20 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## UI round 2 Follow-up 7 — 23 October 2026 (ready for coordinator review)
+
+Built on `a2eff8510`: container-gated unit mimic and honest Equipment default,
+Performance freshness/limit colours and labelled deltas, keyboard tooltip facts,
+compact CMMS history, shared bay colours and Register import copy implemented.
+25 focused cases, 4 final Equipment repeats, 23 numbered captures and one retained
+Attachments case pass. All 49 final7 PNGs inspected; 112 changed-module units,
+24 retained trend units, 3 isolated DB-backed cusec cases, all 9 TypeScript projects,
+Lingui with 117 bytewise restores and changed-file prek pass.
+Digest `18499d49eafd`; [execution report](reports/ui-r2.md) lists every disposition
+and source/test file. Fault descriptions retain raw-code fallback because no
+backend description dictionary exists. Owned WS3012/harness15250 stopped; ports
+clear. Fixture evidence only, owner data untouched. Full host suites and deployed
+acceptance remain with the coordinator; parent dispositions unchanged.
+
 ## UI round 2 Follow-up 6 — 22 October 2026 (ready for coordinator review)
 
 Built on `1d3c7b513`: native Parts failure wrapping, hovered phone link contrast,

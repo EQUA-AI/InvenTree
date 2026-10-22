@@ -203,6 +203,27 @@ export function AlarmStateBadge({
   return (
     <StatusBadge
       data-alarm-status={status ?? 'unknown'}
+      size='sm'
+      maw='none'
+      h={24}
+      styles={{
+        root: {
+          flexShrink: 0,
+          ...(visual.color === 'yellow'
+            ? {
+                borderColor: 'var(--aimms-warning)',
+                ...(visual.variant === 'filled'
+                  ? { backgroundColor: 'var(--aimms-warning)' }
+                  : {})
+              }
+            : {})
+        },
+        label: {
+          whiteSpace: 'nowrap',
+          overflowWrap: 'normal',
+          overflow: 'visible'
+        }
+      }}
       color={visual.color}
       variant={visual.variant}
       leftSection={visual.icon}
@@ -423,7 +444,7 @@ export function FreshnessText({
   compactOnPhone = false,
   relativeOnly = false,
   label = t`Observed`,
-  focusable = false
+  focusable = relativeOnly
 }: Readonly<{
   observedAt: string | number | null;
   stale: boolean;

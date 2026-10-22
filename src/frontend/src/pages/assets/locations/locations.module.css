@@ -146,3 +146,5 @@
 @media (max-width: 47.99375em) { .summaryHeading { width: 100%; flex-wrap: nowrap; } }
 
 .summaryAction[aria-pressed='true'] { background: var(--mantine-primary-color-light); outline: 2px solid light-dark(var(--mantine-primary-color-7), var(--mantine-primary-color-4)); outline-offset: 2px; border-radius: var(--mantine-radius-sm); }
+
+.pageSummary[data-compact] { border: 0; padding-block: 0; }

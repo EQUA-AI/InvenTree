@@ -1,19 +1,6 @@
 import type { MachineSignalLimits } from '@lib/types/MachineHealth';
 import { t } from '@lingui/core/macro';
-import {
-  ActionIcon,
-  Box,
-  Group,
-  Paper,
-  Stack,
-  Text,
-  Tooltip
-} from '@mantine/core';
-import {
-  IconArrowDownRight,
-  IconArrowUpRight,
-  IconMinus
-} from '@tabler/icons-react';
+import { Box, Group, Paper, Stack, Text } from '@mantine/core';
 import {
   MissingValue,
   ValueTooltip
@@ -25,7 +12,8 @@ import { useDisplayClock } from '../health/mimic/observedTime';
 import { relativeAge } from '../health/relativeTime';
 import monitoring from '../monitoring.module.css';
 import classes from './KpiStrip.module.css';
-import { performanceSparkline } from './sparkline';
+import { tileIsStale } from './liveState';
+import { endpointDelta, performanceSparkline } from './sparkline';
 
 import type {
   HealthState,
@@ -39,8 +27,8 @@ import {
   formatSignalLimits,
   freshnessFacts
 } from '../health/common';
-import { formatValue } from './format';
-import { type Trend, seriesStats, trendOf } from './series';
+import { formatDuration, formatInstant, formatValue } from './format';
+import { seriesStats } from './series';
 
 /**
  * One tile's worth of fact. Built by the panel from a signal and its series;
@@ -107,60 +95,36 @@ export function Sparkline({
     </Box>
   );
 }
-export function TrendMark({ trend }: Readonly<{ trend: Trend | null }>) {
-  if (trend == null) return null;
-  const label =
-    trend === 'up'
-      ? t`Rising over the window`
-      : trend === 'down'
-        ? t`Falling over the window`
-        : t`Steady over the window`;
-  return (
-    <Tooltip label={label} events={{ hover: true, focus: true, touch: false }}>
-      <ActionIcon
-        variant='transparent'
-        className={monitoring.link}
-        aria-label={label}
-      >
-        <span role='img' aria-label={label}>
-          {trend === 'up' ? (
-            <IconArrowUpRight size={14} />
-          ) : trend === 'down' ? (
-            <IconArrowDownRight size={14} />
-          ) : (
-            <IconMinus size={14} />
-          )}
-        </span>
-      </ActionIcon>
-    </Tooltip>
-  );
-}
 export function KpiTileCard({
   tile,
   now,
+  readAt,
   window
 }: Readonly<{
   tile: KpiTile;
   now: number;
+  readAt?: number | null;
   window?: { start: number; end: number; resolutionSeconds?: number };
 }>) {
   const clock = useDisplayClock();
+  const stale = tileIsStale(tile, now);
   const freshness = freshnessFacts(
     tile.observedAt,
-    tile.stale,
+    stale,
     tile.freshnessSeconds,
     now,
     clock
   );
   const age = freshness
     ? relativeAge(
-        freshness.future ? 0 : freshness.seconds,
+        freshness.seconds,
         true,
-        tile.stale,
-        false
+        stale,
+        freshness.future && freshness.seconds >= 1
       )
     : undefined;
   const stats = tile.series ? seriesStats(tile.series) : null;
+  const delta = tile.series ? endpointDelta(tile.series, window) : null;
   const missing = tile.value == null && !tile.valueText;
   const shown =
     tile.valueText ??
@@ -207,9 +171,9 @@ export function KpiTileCard({
                 <Text
                   data-kpi-value
                   fz={shown.length > 7 ? 20 : 24}
-                  fw={tile.stale ? 400 : 600}
+                  fw={stale ? 400 : 600}
                   lh={1.1}
-                  className={tile.stale ? monitoring.meta : undefined}
+                  className={stale ? monitoring.meta : undefined}
                   style={{ fontVariantNumeric: 'tabular-nums' }}
                 >
                   {!tile.unit && tile.key === 'vibration' ? (
@@ -228,22 +192,29 @@ export function KpiTileCard({
                     <Unit code={tile.unit} />
                   </MetaText>
                 )}
-                {!tile.stale && (
-                  <TrendMark
-                    trend={tile.series ? trendOf(tile.series) : null}
-                  />
-                )}
               </Group>
               {tile.series && <Sparkline entry={tile.series} window={window} />}
+              {delta && (
+                <MetaText size='xs' data-kpi-delta>
+                  {`Δ ${delta.change > 0 ? '+' : ''}${formatValue(delta.change, 1, delta.percent ? '%' : tile.unit)} / ${formatDuration(delta.seconds)}`}
+                </MetaText>
+              )}
             </Stack>
           )}
         </Stack>
         <Group gap={6} data-kpi-footer>
-          {tile.stale && !missing && (
+          {stale && !missing && (
             <ValueTooltip
               label={
                 freshness
-                  ? `${freshness.serverFlag ? t`Stale (server flag)` : t`Stale`} · ${freshness.budget}${freshness.future && freshness.seconds > 0 ? ` · ${relativeAge(freshness.seconds, false, true, true)}` : ''}`
+                  ? [
+                      tile.stale ? t`Source flagged stale` : t`Stale`,
+                      t`Observed ${formatInstant(tile.observedAt)}`,
+                      readAt != null ? t`Read ${formatInstant(readAt)}` : null,
+                      freshness.budget
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')
                   : t`Observation time unavailable`
               }
             >
@@ -264,7 +235,7 @@ export function KpiTileCard({
               />
             </div>
           )}
-          {!tile.stale && !missing && tile.state !== 'unconfigured' && (
+          {!stale && !missing && tile.state !== 'unconfigured' && (
             <HealthStateBadge state={tile.state} size='sm' />
           )}
           {!missing && tile.quality && tile.quality !== 'good' && (
@@ -280,17 +251,25 @@ export function KpiTileCard({
 export function KpiStrip({
   tiles,
   now,
+  readAt,
   window
 }: Readonly<{
   tiles: KpiTile[];
   now: number;
+  readAt?: number | null;
   window?: { start: number; end: number; resolutionSeconds?: number };
 }>) {
   if (!tiles.length) return null;
   return (
     <div className={classes.strip} data-testid='kpi-strip'>
       {tiles.map((tile) => (
-        <KpiTileCard key={tile.key} tile={tile} now={now} window={window} />
+        <KpiTileCard
+          key={tile.key}
+          tile={tile}
+          now={now}
+          readAt={readAt}
+          window={window}
+        />
       ))}
     </div>
   );

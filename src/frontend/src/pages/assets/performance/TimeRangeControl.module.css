@@ -1,0 +1,14 @@
+.ranges {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+@media (max-width: 47.99375em) {
+  .ranges {
+    flex: 1 0 100%;
+    padding-bottom: 3px;
+    mask-image: linear-gradient(to right, transparent, var(--mantine-color-black) 8px, var(--mantine-color-black) calc(100% - 12px), transparent);
+  }
+}

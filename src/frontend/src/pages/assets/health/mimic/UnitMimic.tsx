@@ -18,6 +18,7 @@ import { shiftSpan } from '../../faults/occurrenceLabels';
 import { StatusBadge as Badge } from '../common';
 import { FreshnessLabel } from './FreshnessLabel';
 import { MimicAlarmCoverage, unconfiguredCount } from './MimicAlarmCoverage';
+import { MimicLiveBadge } from './MimicLiveBadge';
 import type { PartState } from './MimicParts';
 import { type ReadingSection, ReadingSections } from './MimicReadings';
 import { MimicSchematic } from './MimicSchematic';
@@ -89,12 +90,7 @@ export function UnitMimicHeader({
             {stateLabel(operation)}
           </Badge>
         )}
-        {data.recorded_telemetry_as_live !== false &&
-          data.enabled &&
-          data.reporting &&
-          !data.last_error_code && (
-            <Badge color='blue' variant='outline'>{t`Live`}</Badge>
-          )}
+        <MimicLiveBadge data={data} />
         <FreshnessLabel
           point={statusPoint}
           preferJustNow={data.recorded_telemetry_as_live !== false}
@@ -246,32 +242,41 @@ export function UnitMimic({
           className={classes.legend}
           aria-label={t`Schematic state legend`}
         >
-          {['running', 'idle', 'fault', 'stale', 'unknown'].map((state) => (
-            <span key={state} className={classes.legendItem}>
-              <span
-                className={classes.legendMark}
-                data-state={state}
-                aria-hidden='true'
-              />
-              {stateLabel(state)}
-            </span>
-          ))}
-          {[
-            ['critical', t`Critical`],
-            ['warning', t`Warning`],
-            ['normal', t`Normal`],
-            ['unconfigured', t`No limits`],
-            ['unavailable', t`No readings`]
-          ].map(([verdict, label]) => (
-            <span className={classes.legendItem} key={verdict}>
-              <span
-                className={classes.readingLegendMark}
-                data-verdict={verdict}
-                aria-hidden='true'
-              />
-              {label}
-            </span>
-          ))}
+          <fieldset className={classes.legendGroup} aria-label={t`Pump states`}>
+            {['running', 'idle', 'fault', 'stale', 'unknown'].map((state) => (
+              <span key={state} className={classes.legendItem}>
+                <span
+                  className={classes.legendMark}
+                  data-state={state}
+                  aria-hidden='true'
+                />
+                {stateLabel(state)}
+              </span>
+            ))}
+          </fieldset>
+          <fieldset
+            className={classes.legendGroup}
+            aria-label={t`Reading states`}
+          >
+            {[
+              ['critical', t`Critical`],
+              ['warning', t`Warning`],
+              ['normal', t`Normal`],
+              ['unconfigured', t`No limits`],
+              ['unavailable', t`No readings`]
+            ].map(([verdict, label]) => (
+              <span className={classes.legendItem} key={verdict}>
+                <span
+                  className={classes.readingLegendMark}
+                  data-verdict={verdict}
+                  aria-hidden='true'
+                >
+                  {verdict === 'normal' ? '✓' : null}
+                </span>
+                {label}
+              </span>
+            ))}
+          </fieldset>
         </fieldset>
       </Paper>
       {alarmPanel}

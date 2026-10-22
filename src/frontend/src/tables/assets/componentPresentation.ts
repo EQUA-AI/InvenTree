@@ -65,10 +65,17 @@ export type ComponentBasisRecord = Pick<
 >;
 export function componentBasis(record: ComponentBasisRecord) {
   const source = componentSource(record);
+  if (
+    (source.kind === 'missing' || source.kind === 'other') &&
+    record.review_note?.includes(
+      'engineering=ENGINEERED_REFERENCE_PENDING_REVIEW'
+    )
+  )
+    source.kind = 'register';
   if (record.status === 'verified')
     return { ...source, label: t`Verified`, reason: t`Assignment verified` };
   const labels = {
-    register: t`Reference design`,
+    register: t`Register import`,
     scada: t`Inferred from tags`,
     tag_review: t`Tag review`,
     manual: t`Pending check`,
@@ -76,7 +83,7 @@ export function componentBasis(record: ComponentBasisRecord) {
     missing: t`Pending check`
   };
   const reasons = {
-    register: t`From the equipment register's reference design; variant and compatibility not approved`,
+    register: t`From the equipment register's reference design; not field-verified. Variant and compatibility not approved`,
     scada: t`Matched from SCADA tag names; not checked on site`,
     tag_review: t`Mapped in a tag dictionary review; not checked on site`,
     manual: t`Assignment has not been verified`,

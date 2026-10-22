@@ -211,21 +211,29 @@ export function ScopedMachineList({
     locationSelected: location != null,
     includeDescendants
   });
+  const pageSummary = query.data &&
+    !query.isError &&
+    !searchPending &&
+    !pageOutOfRange && (
+      <MachinePageSummary
+        rows={query.data.results}
+        total={query.data.count}
+        updatedAt={query.dataUpdatedAt}
+        updating={query.isFetching}
+        alarmsOnly={alarmsOnly}
+        onAlarmsChange={() => onStateChange({ alarmsOnly: !alarmsOnly })}
+        showCount={
+          location == null || !!debounced.trim() || alarmsOnly || !!criticality
+        }
+        compact={!phone}
+      />
+    );
   return (
     <Stack
       gap='sm'
       className={`${operations.phoneStack} ${classes.machineList}`}
     >
-      {query.data && !query.isError && !searchPending && !pageOutOfRange && (
-        <MachinePageSummary
-          rows={query.data.results}
-          total={query.data.count}
-          updatedAt={query.dataUpdatedAt}
-          updating={query.isFetching}
-          alarmsOnly={alarmsOnly}
-          onAlarmsChange={() => onStateChange({ alarmsOnly: !alarmsOnly })}
-        />
-      )}
+      {phone && pageSummary}
 
       <Group hiddenFrom='sm' grow wrap='nowrap'>
         <Button
@@ -251,6 +259,7 @@ export function ScopedMachineList({
           align='flex-end'
           className={classes.listToolbar}
         >
+          {!phone && pageSummary}
           <Group align='flex-end' className={classes.listFilters}>
             <TextInput
               size='sm'
@@ -1369,9 +1378,13 @@ export function LocationWorkspace({
                               {selected.name}
                             </Title>
                           </Group>
-                          <Group gap={4} className={operations.phoneActions}>
+                          <Button.Group
+                            className={operations.phoneActions}
+                            style={{ flexWrap: 'wrap' }}
+                          >
                             <Button
                               size='xs'
+                              h={36}
                               className={operations.phoneTarget}
                               variant='default'
                               aria-expanded={mobileOpen}
@@ -1391,6 +1404,7 @@ export function LocationWorkspace({
                             <RefreshAction onClick={refreshLocations} />
                             <Button
                               size='xs'
+                              h={36}
                               variant='default'
                               className={operations.phoneTarget}
                               aria-expanded={detailsOpen}
@@ -1399,6 +1413,7 @@ export function LocationWorkspace({
                             {context.data.can_add && !selected.archived && (
                               <Button
                                 size='xs'
+                                h={36}
                                 className={operations.phoneTarget}
                                 variant='default'
                                 onClick={() => setEditing({ parent: selected })}
@@ -1407,12 +1422,13 @@ export function LocationWorkspace({
                             {context.data.can_change && (
                               <Button
                                 size='xs'
+                                h={36}
                                 className={operations.phoneTarget}
                                 variant='default'
                                 onClick={() => setEditing({ node: selected })}
                               >{t`Edit location`}</Button>
                             )}
-                          </Group>
+                          </Button.Group>
                           <Switch
                             size='xs'
                             label={t`Include sublocations`}
