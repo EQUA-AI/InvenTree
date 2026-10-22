@@ -104,7 +104,22 @@ export function FailedValue({
         accessibleLabel={label ? `${label}: ${status}` : undefined}
         focusable={focusable}
       >
-        <StatusBadge tone='failed' color='red' variant='outline' size='sm'>
+        <StatusBadge
+          tone='failed'
+          color='red'
+          variant='outline'
+          size='sm'
+          maw='none'
+          styles={{
+            root: { flexShrink: 0 },
+            label: {
+              whiteSpace: 'nowrap',
+              overflowWrap: 'normal',
+              overflow: 'visible',
+              textOverflow: 'clip'
+            }
+          }}
+        >
           {status}
         </StatusBadge>
       </ValueTooltip>

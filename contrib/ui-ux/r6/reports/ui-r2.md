@@ -1,6 +1,6 @@
 # UI round 2 — Hyperagent review repair
 
-Latest work is Follow-up 5, built on `f5455e279`; see its finding table below.
+Latest work is Follow-up 6, built on `1d3c7b513`; see its finding table below.
 The earlier sections record the committed baseline. Final screenshots are
 replaced by the latest follow-up captures rather than reused from that baseline.
 
@@ -1163,3 +1163,27 @@ Test/fixture files changed (6):
 - `src/frontend/tests/s8/pui_ui_followup5.spec.ts`
 
 No outdated wording/clock spec edited; numbered capture spec unchanged. No database or git writes, owner localhost captures or real data inspection. Backend database integration, full Mac suites and deployed acceptance remain with the coordinator. Owned `r6-uir2-browser-3012` and Vite15250 stopped. Parent acceptance unchanged.
+
+## Follow-up 6
+
+Built on `1d3c7b513`; all four test-lane findings confirmed against source/evidence and repaired. Frozen source/test digest `d81a18b68e8e` (`data/devscratch/ui-r2/followup6/source.json`).
+
+| Finding | Fix and evidence |
+| --- | --- |
+| 1. Parts failure badge wraps at 1280×720 | FailedValue keeps its phrase on one line without truncation. Open work receives 14% instead of 10%, balanced by narrower component/catalogue columns. Pump and station native-shell checks prove one text line, badge containment, full header text and right-aligned numeric columns. |
+| 2. Hovered phone component link contrast | Machines, Health and Parts share primary-8 light / primary-3 dark link tokens. Rendered 14px hovered component links measure **5.095:1** on gray-1 and **4.894:1** on the dark hover surface; catalogue links also pass 4.5:1. No hex colours introduced. |
+| 3. Sensor threshold/category collision | Existing configured threshold labels move to a wrapping key above the scatter plot; vertical limit lines remain. Geometry checks prove the key ends before the plot begins, all three sensor labels remain visible and both configured lines remain, at 390px and 1440px in both themes. |
+| 4. Intermittently hidden comparison dropdown | The comparison Accordion's 200ms opening transition temporarily clipped/scrolled its panel, then reset the scroll position and moved the focused trigger below the viewport. That Accordion now opens without a height transition. A small shared hook keeps mode/channels/machine/saved-view inputs comfortably in view on open or channel selection, using one cancellable animation frame and instant scrolling without moving focus. Mantine's portal and detached-trigger protection remain. No refresh-driven measuring or observer added. |
+
+Verification: **12 unique focused browser cases, 68 passing executions**: 36/36 (three complete repeats), 20/20 (five extra repeats of four phone comparison cases), 12/12 final capture run. Each phone comparison case passed nine times, covering channel selection, compatible/incompatible grouping, saved-view restore, mode changes and permitted-machine selection; dark machine comparison explicitly uses reduced motion. **13/13 units**, all **9 TypeScript projects** plus final S8 recheck, Lingui extract/compile with **117 files restored bytewise**, changed-file prek and whitespace checks pass. Logs: `data/devscratch/ui-r2/followup6/{browser-repeat,comparisons-repeat,browser-final,units-final,types-final,types-s8-freeze,lingui,prek-final}.log`. Initial local test-authoring issues (missing parts-list fixture, SVG title matching, duplicate test registration) were corrected before the successful runs; no assertion was removed to accommodate a product failure.
+
+The final **18 PNGs** in `data/devscratch/ui-r2/followup6/captures/` were individually inspected, including hovered phone cards, native-shell pump/station tables, sensor plots and open comparison menus. Hashes: `followup6/capture-review.json`; measured hover colours/ratios: `captures/parts-hover-{light,dark}.json`. Renders came from Linux Chromium in owned `r6-uir2-browser-3012` with fixture-intercepted harness15250; no owner localhost or real data inspected. Full suites/deployed acceptance remain with the coordinator.
+
+Source/config changed (11): `components/items/ValueTooltip.tsx`; `pages/assets/{monitoring,operations}.module.css`; `pages/assets/performance/{ComparisonWorkbench,DisplayPreferences,PerformancePanel,SensorGroupCard}.tsx`; new `pages/assets/performance/useComparisonDropdown.ts`; `tables/assets/MachineComponentTable.{tsx,module.css}`; `tsconfig.s8.json` (paths under `src/frontend/src/`, except the config under `src/frontend/`).
+
+Test files touched (2):
+
+- `src/frontend/tests/s8/pui_ui_followup6.spec.ts` — new focused regressions using current fixture controls; original S2/S3 specs and their outdated helpers remain untouched for the test lanes.
+- `src/frontend/src/components/items/ValueTooltip.test.ts` — failure phrase/nowrap assertions; corrected the existing obsolete focusable=false button expectation to prove plain span content with no button or tab stop. Missing/failed/zero assertions remain.
+
+Owned browser container and Vite stopped; ports3012/15250 clear. No database, dependency or git writes. Parent acceptance unchanged.

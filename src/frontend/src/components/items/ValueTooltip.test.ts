@@ -30,6 +30,8 @@ it('distinguishes a failed read from a missing fact and retains a supplied zero 
     createElement(FailedValue, { reason: 'Source read failed' })
   );
   expect(failed).toContain('Read failed');
+  expect(failed).toContain('white-space:nowrap');
+  expect(failed).toContain('overflow-wrap:normal');
   expect(failed).not.toContain('>—<');
   const quality = render(
     createElement(FailedValue, { reason: 'Quality flag bad', value: '0 bar' })
@@ -39,15 +41,16 @@ it('distinguishes a failed read from a missing fact and retains a supplied zero 
   expect(quality).not.toContain('Read failed');
 });
 
-it('allows repeated fact targets to leave the tab order without losing their native role', () => {
+it('keeps non-focusable facts as plain content without adding a button or tab stop', () => {
   const html = render(
     createElement(MissingValue, {
       reason: 'No observation available',
       focusable: false
     })
   );
-  expect(html).toContain('<button');
-  expect(html).toContain('tabindex="-1"');
+  expect(html).toContain('>—</span>');
+  expect(html).not.toContain('<button');
+  expect(html).not.toContain('tabindex=');
   expect(html).not.toContain('role="img"');
 });
 

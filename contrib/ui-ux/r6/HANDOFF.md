@@ -1,5 +1,16 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## UI round 2 Follow-up 6 — 22 October 2026 (ready for coordinator review)
+
+Built on `1d3c7b513`: native Parts failure wrapping, hovered phone link contrast,
+sensor threshold/category collision and comparison dropdown clipping repaired.
+12 focused cases pass across 68 runs; each phone comparison case passed nine
+repetitions. All 18 final captures inspected; 13 units, all 9 TypeScript projects,
+Lingui with 117 bytewise locale restores and changed-file prek pass.
+Digest `d81a18b68e8e`; [execution report](reports/ui-r2.md) lists fixes and tests.
+Original S2/S3 specs untouched. Owned WS3012/harness15250 stopped; fixture evidence
+only, owner data untouched and parent/deployed acceptance unchanged.
+
 ## UI round 2 Follow-up 5 — 22 October 2026 (ready for coordinator review)
 
 Built on `f5455e279`: compact full-width station/pump Performance KPIs and one
