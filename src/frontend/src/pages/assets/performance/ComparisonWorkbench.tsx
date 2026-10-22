@@ -111,8 +111,7 @@ export function ComparisonWorkbench({
           <SimpleGrid cols={{ base: 1, sm: 2 }}>
             <Select
               ref={modeDropdown.ref}
-              onDropdownOpen={modeDropdown.reveal}
-              onDropdownClose={modeDropdown.cancel}
+              {...modeDropdown.dropdownProps}
               classNames={{ input: monitoring.input }}
               label={t`Comparison mode`}
               value={mode}
@@ -129,8 +128,8 @@ export function ComparisonWorkbench({
             />
             <MultiSelect
               ref={channelsDropdown.ref}
-              onDropdownOpen={channelsDropdown.reveal}
-              onDropdownClose={channelsDropdown.cancel}
+              {...channelsDropdown.dropdownProps}
+              onSearchChange={channelsDropdown.reveal}
               classNames={{ input: monitoring.input }}
               label={t`Comparison channels`}
               searchable
@@ -553,8 +552,8 @@ function MachineComparison({
       ) : (
         <Select
           ref={machineDropdown.ref}
-          onDropdownOpen={machineDropdown.reveal}
-          onDropdownClose={machineDropdown.cancel}
+          {...machineDropdown.dropdownProps}
+          onSearchChange={machineDropdown.reveal}
           classNames={{ input: monitoring.input }}
           label={t`Comparison machine`}
           data={candidates.map((item) => ({

@@ -142,8 +142,7 @@ function ScopedPreferences({
       <SimpleGrid cols={{ base: 1, sm: 3 }} style={{ alignItems: 'end' }}>
         <Select
           ref={savedDropdown.ref}
-          onDropdownOpen={savedDropdown.reveal}
-          onDropdownClose={savedDropdown.cancel}
+          {...savedDropdown.dropdownProps}
           classNames={{ input: monitoring.input }}
           label={t`Saved view`}
           value={selected}
