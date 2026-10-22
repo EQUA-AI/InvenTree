@@ -1,8 +1,19 @@
-import { expect, test } from '@playwright/test';
+import { type Locator, expect, test } from '@playwright/test';
 
 import { MACHINE, SIGNALS, mount } from './fixtures';
 
 void MACHINE;
+
+async function expectFactTooltip(target: Locator, name: string | RegExp) {
+  await expect(target).toHaveAttribute('aria-describedby', /\S+/);
+  const id = await target.getAttribute('aria-describedby');
+  expect(id).toBeTruthy();
+  // Use the target association to keep lookup local on the large heatmap page.
+  const tooltip = target.page().locator(`[id="${id}"]`);
+  await expect(tooltip).toHaveAttribute('role', 'tooltip');
+  await expect(tooltip).toHaveAccessibleName(name);
+  await expect(tooltip).toBeVisible();
+}
 
 let pageErrors: string[] = [];
 test.beforeEach(({ page }) => {
@@ -32,10 +43,15 @@ test('the KPI strip shows fixture values and states what it cannot show', async 
   // Winding 4 is pegged at the over-range marker with quality bad: it is not
   // the highest sensor, and 3276.7 appears nowhere on the tile.
   const winding = page.locator('[data-kpi="winding"]');
-  await winding.getByText('Winding temperature', { exact: true }).hover();
-  await expect(page.getByRole('tooltip')).toContainText('Highest of 10');
+  const windingLabel = winding.locator('p').first().locator(':scope > span');
+  await expect(windingLabel).toHaveCount(1);
+  await expect(windingLabel).toContainText('Highest of 10: Winding 11');
+  await windingLabel.hover();
+  await expectFactTooltip(windingLabel, /^Highest of 10:/);
   await expect(winding).not.toContainText('3,276.7');
   await expect(winding).toContainText('82');
+  await expect(power.locator('time')).toContainText('20 s ago');
+  await expect(power.locator('time')).not.toContainText('just now');
   await expect(page.locator('[data-kpi="status"]')).toContainText('Running');
   // The one sensor without a reading is reported as poor quality, so the
   // strip is not calm - and must not claim to be.
@@ -45,17 +61,15 @@ test('the KPI strip shows fixture values and states what it cannot show', async 
   await expect(page.getByText('No exceptions', { exact: true })).toHaveCount(0);
   await page.keyboard.press('Tab');
   const coverage = page.getByRole('button', {
-    name: 'Assessment coverage',
+    name: 'Exceptions: assessment coverage',
     exact: true
   });
   await coverage.focus();
   await expect(coverage).toBeFocused();
+  await expectFactTooltip(coverage, /11 have configured limits/);
   await expect(coverage).toHaveAccessibleDescription(
     /11 have configured limits/
   );
-  await expect(
-    page.getByRole('tooltip', { name: /11 have configured limits/ })
-  ).toBeVisible();
 });
 
 test('families retain heatmaps and omit unconfirmed temperature rises', async ({
@@ -68,9 +82,11 @@ test('families retain heatmaps and omit unconfirmed temperature rises', async ({
   await expect(page.getByText(/Highest now: Winding 11/)).toBeVisible();
   await expect(page.getByText(/Highest now: Winding 4/)).toHaveCount(0);
   await expect(page.getByText(/Spread .* \(calculated\)/)).toHaveCount(0);
+  const winding = page.locator('[data-section="Motor winding temperature"]');
+  await winding.scrollIntoViewIfNeeded();
   await expect(
-    page.getByRole('img', { name: 'Sensor heatmap' }).first()
-  ).toBeVisible();
+    winding.getByRole('img', { name: 'Sensor heatmap', exact: true })
+  ).toBeVisible({ timeout: 20_000 });
   await expect(
     page.getByText('Cooling water rise (outlet − inlet)')
   ).toHaveCount(0);
@@ -94,16 +110,49 @@ test('families retain heatmaps and omit unconfirmed temperature rises', async ({
   await expect(
     page.getByText(/Unclassified tags remain in Other signals/)
   ).toHaveCount(0);
-  // A sensor without a usable reading is named as one the chart left out,
-  // and no bar of its own is drawn for it.
-  await expect(
-    page.getByText(/No usable current reading, so not plotted:.*Winding 4/)
-  ).toBeVisible();
-  await expect(
-    page
-      .locator('.recharts-cartesian-axis-tick-value')
-      .filter({ hasText: /^Winding 4$/ })
-  ).toHaveCount(0);
+  // Unusable current readings are named beside their quality; the tooltip
+  // explains why they have no plotted point.
+  const comparison = winding.getByTestId('sensor-comparison');
+  const omitted = comparison
+    .getByText('Winding 4', { exact: true })
+    .locator('..');
+  await expect(omitted).toBeVisible();
+  const quality = omitted.getByRole('button', {
+    name: 'Bad quality',
+    exact: true
+  });
+  await page.keyboard.press('Tab');
+  await quality.scrollIntoViewIfNeeded();
+  await expect(quality).toBeInViewport();
+  await quality.focus();
+  await expect(quality).toBeFocused();
+  await expectFactTooltip(quality, 'No usable current reading; not plotted');
+  await expect(quality).toHaveAccessibleDescription(
+    'No usable current reading; not plotted'
+  );
+  const plottedSensors = comparison
+    .locator('svg text title')
+    .filter({ hasText: /^Winding \d+$/ });
+  await expect(plottedSensors).toHaveCount(10);
+  await expect(plottedSensors).toHaveText(
+    [11, 10, 9, 8, 7, 6, 5, 3, 2, 1].map((number) => `Winding ${number}`)
+  );
+  await expect(plottedSensors.filter({ hasText: /^Winding 4$/ })).toHaveCount(
+    0
+  );
+  const healthyCells = winding.locator(
+    '[data-heatmap-cell][data-limit-state="normal"]'
+  );
+  expect(await healthyCells.count()).toBeGreaterThan(0);
+  const fills = await healthyCells.evaluateAll((nodes) =>
+    nodes.map((node) => node.getAttribute('fill'))
+  );
+  expect(
+    fills.every(
+      (fill) => fill !== null && fill.trim() !== '' && fill.trim() !== 'none'
+    )
+  ).toBe(true);
+  expect(new Set(fills).size).toBe(1);
 });
 
 test('the time range control changes what is asked of the server', async ({

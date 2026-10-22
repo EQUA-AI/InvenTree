@@ -71,20 +71,39 @@ test('pending and partial batches never start per-row trend reads', async ({
   await expect(
     page.getByRole('img', { name: 'Recent trend for Active Power' })
   ).toBeVisible();
-  const missing = page.getByRole('button', { name: /^Not returned:/ });
+  const missing = page.getByRole('cell', { name: /^— Not returned:/ });
   await expect(missing).toHaveCount(2);
-  await expect(missing.first()).toHaveText('—');
-  // All-columns selection uses a pointer on phone; enter keyboard modality
-  // before checking a tooltip that deliberately opens on visible focus.
+  // Dense rows keep their dash facts plain and expose the same explanation
+  // through the row's single keyboard information control.
   await page.keyboard.press('Tab');
-  await missing.first().focus();
-  await expect(missing.first()).toBeFocused();
-  await expect(page.getByRole('tooltip')).toContainText(
-    'completed trend read did not return this signal'
-  );
-  await expect(missing.first()).toHaveAccessibleDescription(
-    /completed trend read did not return this signal/
-  );
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('tooltip')).toBeHidden();
+  for (const name of ['Discharge Pressure', 'Motor Shaft Speed']) {
+    const info = page.getByRole('button', {
+      name: `Details for ${name}`,
+      exact: true
+    });
+    const row = page.getByRole('row').filter({ has: info });
+    const trendCell = row.locator('td[data-label="Trend"]');
+    await expect(trendCell).toBeVisible();
+    await expect(trendCell).toHaveAccessibleName(/^— Not returned:/);
+    await expect(trendCell.getByRole('button')).toHaveCount(0);
+    const reason = trendCell.locator('.mantine-VisuallyHidden-root');
+    await expect(reason).toContainText(
+      'Not returned: The completed trend read did not return this signal'
+    );
+    await expect(reason).toHaveCSS('clip', 'rect(0px, 0px, 0px, 0px)');
+    await info.focus();
+    await expect(info).toBeFocused();
+    await expect(page.getByRole('tooltip')).toContainText(
+      'Trend: Not returned · The completed trend read did not return this signal'
+    );
+    await expect(info).toHaveAccessibleDescription(
+      /completed trend read did not return this signal/
+    );
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('tooltip')).toBeHidden();
+  }
   await expect(
     page.getByRole('cell', { name: '0 MW', exact: true })
   ).toBeVisible();

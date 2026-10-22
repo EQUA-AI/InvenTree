@@ -10,6 +10,21 @@ async function keyboardFocus(page: Page, target: Locator) {
   await expect(target).toBeFocused();
 }
 
+async function expectPlainText(target: Locator, text: string) {
+  await expect(target).toBeVisible();
+  // A plain ValueTooltip also carries a visually hidden explanation. Check
+  // the rendered value separately so that explanation cannot satisfy it.
+  expect(
+    await target.evaluate((node) =>
+      [...node.childNodes]
+        .filter((child) => child.nodeType === Node.TEXT_NODE)
+        .map((child) => child.textContent)
+        .join('')
+        .trim()
+    )
+  ).toBe(text);
+}
+
 function fixture(unit: string | null, stale = false, enabled = true) {
   const point = (pointer: string, value: number | string | null) => ({
     pointer,
@@ -452,7 +467,12 @@ test('a status code is given in words, and an unknown code as it came', async ({
   await group.click();
   const row = page.locator('tr[data-point="/pd/P10/st"]');
   await expect(row).toContainText('Idle');
-  const source = row.getByText('Idle', { exact: true }).first();
+  const valueCell = row.getByRole('cell').nth(1);
+  const source = valueCell.locator(':scope > span');
+  await expect(source).toHaveCount(1);
+  await expectPlainText(source, 'Idle');
+  await expect(source).toContainText('Idle · Source code: I');
+  await expect(valueCell.getByRole('button')).toHaveCount(0);
   await expect(
     row.getByRole('button', { name: 'Idle · Source code: I', exact: true })
   ).toHaveCount(0);
@@ -1009,7 +1029,9 @@ test('an alarm is dismissed only with a reason, retaining inspection without fur
       row.getByRole('button', { name: action, exact: true })
     ).toHaveCount(0);
   }
-  const signal = row.getByText('/w1', { exact: true });
+  const signal = row.getByRole('cell').first().locator(':scope > span');
+  await expect(signal).toHaveCount(1);
+  await expectPlainText(signal, '/w1');
   await expect(
     row.getByRole('button', { name: '/w1', exact: true })
   ).toHaveCount(0);
