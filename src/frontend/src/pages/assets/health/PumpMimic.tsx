@@ -20,6 +20,7 @@ import { useContext } from 'react';
 import { Link } from 'react-router-dom';
 import { EquipmentViewControls } from '../equipment/ViewControls';
 import operations from '../operations.module.css';
+import { recordedTelemetryAsLive } from '../telemetryPresentation';
 import { StatusBadge } from './common';
 import { AlarmTable } from './mimic/AlarmTable';
 import { UnitMimic, UnitMimicHeader } from './mimic/UnitMimic';
@@ -183,8 +184,16 @@ export default function PumpMimic({
           <Text className={operations.meta} component='output'>
             {t`Source`}:{' '}
             {data?.source?.name ?? t`Unavailable · source not supplied`} ·{' '}
-            {t`Last poll attempt`}:{' '}
-            {formatInstant(data?.last_poll_at, clock) ??
+            {recordedTelemetryAsLive(data) && data?.reporting != null
+              ? t`Last reading`
+              : t`Last poll attempt`}
+            :{' '}
+            {formatInstant(
+              recordedTelemetryAsLive(data) && data?.reporting != null
+                ? data.last_observed_at
+                : data?.last_poll_at,
+              clock
+            ) ??
               (data && !query.isError
                 ? t`none recorded`
                 : t`time not supplied`)}{' '}
@@ -225,7 +234,11 @@ export default function PumpMimic({
               color='gray'
               icon={<IconPlayerPause />}
               c='var(--mantine-color-text)'
-            >{t`Polling is disabled for this station. Live values are unavailable.`}</Alert>
+            >
+              {recordedTelemetryAsLive(data)
+                ? t`Readings are unavailable for this station. Check station activation and source configuration.`
+                : t`Polling is disabled for this station. Live values are unavailable.`}
+            </Alert>
           )}
           {data && data.layout.review_status !== 'approved' && (
             <Group role='note' gap='xs'>

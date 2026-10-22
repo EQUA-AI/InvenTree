@@ -318,6 +318,9 @@ def machine_health(machine) -> dict[str, Any]:
 
     summary = health_summary(machine)
     return {
+        'telemetry_presentation': summary['telemetry_presentation'],
+        'display_shifted': summary['display_shifted'],
+        'display_shift_seconds': summary['display_shift_seconds'],
         'state': summary['state'],
         'configured': summary['configured'],
         'signal_count': summary['signal_count'],
@@ -333,6 +336,12 @@ def machine_health(machine) -> dict[str, Any]:
                 'source_type': row['source_type'],
                 'active': row['active'],
                 'healthy': row['healthy'],
+                'reporting': row['reporting'],
+                'read_failed': row['read_failed'],
+                'last_observed_at': _iso(row['last_observed_at']),
+                'telemetry_presentation': row['telemetry_presentation'],
+                'display_shifted': row['display_shifted'],
+                'display_shift_seconds': row['display_shift_seconds'],
                 'last_success_at': _iso(row['last_success_at']),
                 'last_error_at': _iso(row['last_error_at']),
                 'last_error_code': row['last_error_code'],
@@ -358,6 +367,9 @@ def machine_signals(machine) -> dict[str, Any]:
     for row in rows:
         value = row['value']
         signals.append({
+            'telemetry_presentation': row['telemetry_presentation'],
+            'display_shifted': row['display_shifted'],
+            'display_shift_seconds': row['display_shift_seconds'],
             'binding_id': row['binding_id'],
             'active': row['active'],
             'display_name': fence(row['display_name'], limit=200),
@@ -418,6 +430,9 @@ def machine_signal_trend(machine, *, binding_id: int, hours: int = 1) -> dict[st
         and not isinstance(s.get('value'), bool)
     ]
     return {
+        'telemetry_presentation': trend['telemetry_presentation'],
+        'display_shifted': trend['display_shifted'],
+        'display_shift_seconds': trend['display_shift_seconds'],
         'binding_id': trend['binding_id'],
         'display_name': fence(trend['display_name'], limit=200),
         'unit': fence(trend['unit'], limit=32),
@@ -447,6 +462,15 @@ def machine_anomalies(
     context rather than a payload dump, and "peak 8.2 mm/s against a 6.0
     threshold" is the difference between naming an alarm and explaining it.
     """
+    from django.utils import timezone
+
+    from machine_health.services.display_time import (
+        display_shift,
+        presentation_metadata,
+        recorded_telemetry_as_live,
+        to_display,
+    )
+
     rows = MachineAnomaly.objects.filter(machine=machine).select_related(
         'source', 'acknowledged_by', 'work_order'
     )
@@ -457,9 +481,22 @@ def machine_anomalies(
     rows = rows.order_by('-last_observed_at')[:bounded]
 
     anomalies = []
+    station = machine if machine.asset_type == 'pumphouse' else machine.parent
+    now = timezone.now()
     for anomaly in rows:
+        shift = display_shift(station, anomaly.source, now=now)
+        # O23's assistant projection used plant observation times. O27 moves
+        # observations only; acknowledgement/resolution retain the real time
+        # the person acted, just as they do on the machine page.
+        observation_shift = (
+            shift if recorded_telemetry_as_live() else timezone.timedelta(0)
+        )
         metrics = anomaly.metrics if isinstance(anomaly.metrics, dict) else {}
         anomalies.append({
+            **presentation_metadata(observation_shift),
+            'telemetry_presentation': presentation_metadata(shift)[
+                'telemetry_presentation'
+            ],
             'anomaly_id': anomaly.pk,
             'title': fence(anomaly.title, limit=255),
             # Ingested verbatim from webhook alarm messages: always fenced.
@@ -473,8 +510,12 @@ def machine_anomalies(
                 for key, value in list(metrics.items())[:20]
                 if isinstance(value, (int, float, str, bool, type(None)))
             },
-            'first_observed_at': _iso(anomaly.first_observed_at),
-            'last_observed_at': _iso(anomaly.last_observed_at),
+            'first_observed_at': _iso(
+                to_display(anomaly.first_observed_at, observation_shift)
+            ),
+            'last_observed_at': _iso(
+                to_display(anomaly.last_observed_at, observation_shift)
+            ),
             'acknowledged_at': _iso(anomaly.acknowledged_at),
             # S5b (Q15): role label, never the username — identities are
             # omitted from AI projections by default.

@@ -53,3 +53,31 @@ vi.mock('@lingui/core/macro', () => ({
   t: (parts: TemplateStringsArray, ...values: unknown[]) =>
     parts.reduce((text, part, index) => text + part + (values[index] ?? ''), '')
 }));
+
+it('O27 compares immutable retained evidence to the plant occurrence clock; O23 keeps its raw clock', () => {
+  const snapshot = {
+    window_start: '2025-07-20T00:00:00Z',
+    window_end: '2025-07-20T01:00:00Z'
+  };
+  const raw = {
+    first_observed_at: snapshot.window_start,
+    last_observed_at: snapshot.window_end,
+    display_shifted: true,
+    display_shift_seconds: 86400,
+    recorded_telemetry_as_live: false
+  };
+  expect(outsideOccurrenceSpan(snapshot, raw)).toBe(false);
+  const shifted = {
+    ...raw,
+    recorded_telemetry_as_live: true,
+    first_observed_at: '2025-07-21T00:00:00Z',
+    last_observed_at: '2025-07-21T01:00:00Z'
+  };
+  expect(outsideOccurrenceSpan(snapshot, shifted)).toBe(false);
+  expect(
+    outsideOccurrenceSpan(
+      { ...snapshot, window_start: '2025-07-22T00:00:00Z' },
+      shifted
+    )
+  ).toBe(true);
+});

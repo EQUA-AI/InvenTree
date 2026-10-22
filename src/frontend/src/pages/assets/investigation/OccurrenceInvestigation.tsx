@@ -3,6 +3,7 @@ import { Anchor, Spoiler, Stack, Text } from '@mantine/core';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { FaultOccurrence } from '../faults/occurrenceModel';
 import operations from '../operations.module.css';
+import { recordedTelemetryAsLive } from '../telemetryPresentation';
 import { InvestigationSlices } from './InvestigationSlices';
 import {
   boundedWindow,
@@ -18,9 +19,18 @@ export function OccurrenceInvestigation({
 }: Readonly<{ machineId: number; occurrence: FaultOccurrence }>) {
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  // Links retain plant instants even while O27 displays this occurrence as live.
+  const shift =
+    recordedTelemetryAsLive(occurrence) && occurrence.display_shifted
+      ? occurrence.display_shift_seconds * 1000
+      : 0;
   const from = Date.parse(occurrence.first_observed_at ?? '');
   const to = Date.parse(occurrence.last_observed_at ?? '');
-  const context = boundedWindow(from - 30 * 60_000, from + 30 * 60_000);
+  const sourceFrom = from - shift;
+  const context = boundedWindow(
+    sourceFrom - 30 * 60_000,
+    sourceFrom + 30 * 60_000
+  );
   return (
     <Stack gap='xs' data-testid='occurrence-investigation'>
       <Text fw={600} size='sm'>{t`Investigate source history`}</Text>
@@ -31,10 +41,11 @@ export function OccurrenceInvestigation({
         hideLabel={t`Show less`}
         maw='70ch'
       >
-        <Text
-          size='xs'
-          className={operations.meta}
-        >{t`A new historian read can differ from the retained evidence below. It does not replace, extend or recapture a snapshot. Source retention, resolution and permissions apply. Case and snapshot bounds retain their recorded instants; Performance converts them only with a known display-clock offset.`}</Text>
+        <Text size='xs' className={operations.meta}>
+          {recordedTelemetryAsLive(occurrence)
+            ? t`A new source read can differ from the retained evidence below. It does not replace, extend or recapture a snapshot. Source retention, resolution and permissions apply.`
+            : t`A new historian read can differ from the retained evidence below. It does not replace, extend or recapture a snapshot. Source retention, resolution and permissions apply. Case and snapshot bounds retain their recorded instants; Performance converts them only with a known display-clock offset.`}
+        </Text>
       </Spoiler>
       {context && (
         <Anchor
@@ -64,7 +75,7 @@ export function OccurrenceInvestigation({
             navigate(
               investigationHref(
                 machineId,
-                span,
+                { from: span.from - shift, to: span.to - shift },
                 occurrence.id,
                 undefined,
                 'recorded',

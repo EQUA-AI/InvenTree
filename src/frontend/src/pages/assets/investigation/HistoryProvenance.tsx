@@ -14,6 +14,10 @@ import { formatInstant, useDisplayClock } from '../health/mimic/observedTime';
 import monitoring from '../monitoring.module.css';
 import { formatDuration } from '../performance/format';
 import type { DataRange } from '../performance/usePerformanceData';
+import {
+  recordedTelemetryAsLive,
+  showRecordedTelemetry
+} from '../telemetryPresentation';
 
 export function HistoryProvenance({
   response,
@@ -106,7 +110,7 @@ export function HistoryProvenance({
                 {t`Returned series`}: {entries.length}
               </Text>
             </Spoiler>
-            {response.display_shifted && (
+            {showRecordedTelemetry(response) && (
               <AttentionAlert>{t`Source timestamps are moved by ${response.display_shift_seconds} seconds onto the display clock. This is not the plant's original clock.`}</AttentionAlert>
             )}
             {(unavailable.length > 0 || empty.length > 0) && (
@@ -143,7 +147,11 @@ export function HistoryProvenance({
             )}
             {response.read_batches && response.read_batches.length > 1 && (
               <details>
-                <summary>{t`Per-batch resolution and clock`}</summary>
+                <summary>
+                  {recordedTelemetryAsLive(response)
+                    ? t`Per-batch resolution`
+                    : t`Per-batch resolution and clock`}
+                </summary>
                 {response.read_batches.map((batch, i) => (
                   <Text
                     maw='70ch'
@@ -153,7 +161,9 @@ export function HistoryProvenance({
                     {t`Batch ${i + 1}`}:{' '}
                     {batch.failed
                       ? t`History read failed; coverage unknown.`
-                      : t`Resolution ${batch.resolution_seconds ?? t`not supplied`} s; measured cadence ${batch.cadence_seconds ?? t`not supplied`} s; display shift ${batch.display_shift_seconds ?? t`not supplied`} s.`}
+                      : recordedTelemetryAsLive(response)
+                        ? t`Resolution ${batch.resolution_seconds ?? t`not supplied`} s; measured cadence ${batch.cadence_seconds ?? t`not supplied`} s.`
+                        : t`Resolution ${batch.resolution_seconds ?? t`not supplied`} s; measured cadence ${batch.cadence_seconds ?? t`not supplied`} s; display shift ${batch.display_shift_seconds ?? t`not supplied`} s.`}
                   </Text>
                 ))}
               </details>

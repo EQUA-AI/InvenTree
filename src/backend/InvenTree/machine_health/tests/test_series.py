@@ -7,9 +7,11 @@ series is the machine and its station, not the whole estate.
 """
 
 from datetime import UTC, datetime, timedelta
+from itertools import count, pairwise
+from unittest import mock
 from uuid import uuid4
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from assets.health_models import HealthSource, MachineSignalBinding, SourceType
@@ -27,6 +29,7 @@ from machine_health.connectors.base import (
     register,
     slot_edges,
 )
+from machine_health.connectors.cosmos_pumphouse import to_epoch_ms
 from machine_health.services.series import (
     MODE_COMPLETE,
     MODE_SAMPLED,
@@ -132,9 +135,9 @@ class SeriesReadTest(HealthEnvMixin, TestCase):
     def test_a_short_window_is_read_whole(self):
         """Ten minutes holds fewer snapshots than the complete-read bound."""
         start = self.now - timedelta(minutes=10)
-        _SeriesHistorian.canned = {self.binding.external_key: steady(
-            self.binding.external_key, start, 120
-        )}
+        _SeriesHistorian.canned = {
+            self.binding.external_key: steady(self.binding.external_key, start, 120)
+        }
 
         result = self.read(minutes=10, points=50)
 
@@ -161,7 +164,8 @@ class SeriesReadTest(HealthEnvMixin, TestCase):
         past_bound = read_series(
             self.machine,
             binding_ids=[self.binding.pk],
-            start=self.now - timedelta(seconds=exact + EXPECTED_SAMPLE_INTERVAL_SECONDS),
+            start=self.now
+            - timedelta(seconds=exact + EXPECTED_SAMPLE_INTERVAL_SECONDS),
             end=self.now,
             now=self.now,
         )
@@ -186,7 +190,9 @@ class SeriesReadTest(HealthEnvMixin, TestCase):
         # it said, and it is the first one in its slot.
         held = {r.observed_at: r.value for r in readings}
         edges = slot_edges(start, self.now, 60)
-        for (slot_start, _slot_end), sample in zip(edges, series['samples']):
+        for (slot_start, _slot_end), sample in zip(
+            edges, series['samples'], strict=True
+        ):
             moment = moment_of(sample, self.now)
             self.assertIn(moment, held)
             self.assertEqual(sample['v'], held[moment])
@@ -208,16 +214,70 @@ class SeriesReadTest(HealthEnvMixin, TestCase):
         # Ten slots an hour; the middle hour is missing from the source.
         self.assertEqual(series['count'], 20)
         stamps = [sample['t'] for sample in series['samples']]
-        gap = max(later - earlier for earlier, later in zip(stamps, stamps[1:]))
+        gap = max(later - earlier for earlier, later in pairwise(stamps))
         self.assertGreaterEqual(gap, timedelta(hours=1).total_seconds() * 1000)
         self.assertTrue(all(sample['v'] is not None for sample in series['samples']))
 
+    @override_settings(AIMMS_RECORDED_TELEMETRY_AS_LIVE=False)
     def test_a_window_longer_than_a_day_is_refused(self):
         """The bound is the server's, and it is stated before any read."""
         with self.assertRaises(SeriesError) as caught:
             self.read(hours=MAX_SERIES_WINDOW_SECONDS // 3600 + 1)
         self.assertEqual(caught.exception.code, 'WINDOW_TOO_LONG')
         self.assertEqual(_SeriesHistorian.asked, [])
+
+    @override_settings(AIMMS_RECORDED_TELEMETRY_AS_LIVE=True)
+    def test_live_month_uses_bounded_sampling_and_refuses_more_than_thirty_days(self):
+        """The month expands the sampled horizon without expanding document cost."""
+        from .test_cosmos_pumphouse import connector_for, snapshot
+
+        start = self.now - timedelta(days=30)
+        documents = [
+            snapshot(to_epoch_ms(start + timedelta(hours=index * 30)))
+            for index in range(24)
+        ]
+        connector = connector_for(documents)
+        self.binding.external_key = '/sl'
+        self.binding.save()
+        with mock.patch(
+            'machine_health.services.series.get_connector', return_value=connector
+        ):
+            result = self.read(hours=30 * 24, points=24)
+        self.assertEqual(result['mode'], MODE_SAMPLED)
+        self.assertEqual(result['slots'], 24)
+        self.assertEqual(result['limits']['max_window_seconds'], 30 * 24 * 3600)
+        self.assertLessEqual(result['documents_read'], 24)
+        self.assertTrue(result['series'][0]['available'])
+        self.assertEqual(result['series'][0]['count'], 24)
+        self.assertTrue(result['recorded_telemetry_as_live'])
+        _SeriesHistorian.asked = []
+        with self.assertRaises(SeriesError) as caught:
+            self.read(hours=30 * 24 + 1)
+        self.assertEqual(caught.exception.code, 'WINDOW_TOO_LONG')
+        self.assertEqual(_SeriesHistorian.asked, [])
+
+    @override_settings(AIMMS_RECORDED_TELEMETRY_AS_LIVE=True)
+    def test_empty_live_month_stops_at_the_read_deadline_and_reports_timeout(self):
+        """Empty partitions cannot keep running after the chart abandons the read."""
+        from .test_cosmos_pumphouse import connector_for
+
+        connector = connector_for([], config={'request_timeout_seconds': 180})
+        container = connector._container
+        ticks = count()
+        with (
+            mock.patch(
+                'machine_health.services.series.get_connector', return_value=connector
+            ),
+            mock.patch('machine_health.connectors.cosmos_pumphouse.SAMPLE_WORKERS', 1),
+            mock.patch('time.monotonic', side_effect=lambda: next(ticks)),
+        ):
+            result = self.read(hours=30 * 24, points=24)
+        [entry] = result['series']
+        self.assertFalse(entry['available'])
+        self.assertEqual(entry['reason'], 'SOURCE_TIMEOUT')
+        self.assertEqual(entry['samples'], [])
+        self.assertLess(len(container.calls), 60)
+        self.assertTrue(all(call['timeout'] <= 60 for call in container.calls))
 
     def test_a_reversed_window_is_refused(self):
         """An end before its start is a request that means nothing."""
@@ -233,9 +293,9 @@ class SeriesReadTest(HealthEnvMixin, TestCase):
     def test_points_are_clamped_to_the_service_bounds(self):
         """Too few points draws nothing useful; too many is a full read in disguise."""
         start = self.now - timedelta(hours=6)
-        _SeriesHistorian.canned = {self.binding.external_key: steady(
-            self.binding.external_key, start, 6 * 720
-        )}
+        _SeriesHistorian.canned = {
+            self.binding.external_key: steady(self.binding.external_key, start, 6 * 720)
+        }
         self.assertEqual(self.read(hours=6, points=1)['slots'], MIN_SERIES_POINTS)
         self.assertEqual(self.read(hours=6, points=10_000)['slots'], MAX_SERIES_POINTS)
         with self.assertRaises(SeriesError):
@@ -253,7 +313,7 @@ class SeriesReadTest(HealthEnvMixin, TestCase):
         self.assertEqual(series['reason'], 'WINDOW_TOO_LONG')
 
     def test_a_status_code_is_plotted_and_carried_raw(self):
-        """"R" draws as a number the chart can place, and still says "R"."""
+        """A status "R" draws as a number the chart can place and retains "R"."""
         status = MachineSignalBinding.objects.create(
             machine=self.machine,
             source=self.source,
@@ -283,9 +343,9 @@ class SeriesReadTest(HealthEnvMixin, TestCase):
             [(1.0, 'R'), (0.0, 'I')],
         )
         # A plain number carries no `raw`: the value drawn is the value said.
-        _SeriesHistorian.canned = {self.binding.external_key: steady(
-            self.binding.external_key, start, 3
-        )}
+        _SeriesHistorian.canned = {
+            self.binding.external_key: steady(self.binding.external_key, start, 3)
+        }
         [numeric] = self.read(minutes=5)['series']
         self.assertNotIn('raw', numeric['samples'][0])
 
@@ -330,9 +390,7 @@ class SeriesReadTest(HealthEnvMixin, TestCase):
         """An unparameterised read gets a bounded, recent window."""
         result = read_series(self.machine, binding_ids=[self.binding.pk], now=self.now)
         self.assertEqual(result['window_seconds'], 3600)
-        self.assertEqual(
-            datetime.fromisoformat(result['window_end']), self.now
-        )
+        self.assertEqual(datetime.fromisoformat(result['window_end']), self.now)
 
 
 class SeriesScopeTest(TestCase):
@@ -340,7 +398,9 @@ class SeriesScopeTest(TestCase):
 
     def setUp(self):
         """A station with two bays, each with one bound tag, plus the station's own."""
-        self.tenant = Client.objects.create(name='Series', code=f'series-{uuid4().hex[:6]}')
+        self.tenant = Client.objects.create(
+            name='Series', code=f'series-{uuid4().hex[:6]}'
+        )
         self.station = register_station(
             client=self.tenant,
             name='Station',
@@ -407,7 +467,11 @@ class SeriesScopeTest(TestCase):
         """A mapped key is a convenience for the client, not a wider reach."""
         found = self.read(
             self.pump_a,
-            keys=['/dex/PUMP1_ACTIVE_POWER', '/dex/PUMP2_ACTIVE_POWER', '/dex/NOT_A_TAG'],
+            keys=[
+                '/dex/PUMP1_ACTIVE_POWER',
+                '/dex/PUMP2_ACTIVE_POWER',
+                '/dex/NOT_A_TAG',
+            ],
         )
         self.assertEqual(found, {self.power_a.pk})
 
@@ -429,7 +493,9 @@ class SeriesDisplayShiftTest(TestCase):
 
     def setUp(self):
         """A station whose recorded range ended long before now."""
-        self.tenant = Client.objects.create(name='Shift', code=f'shift-{uuid4().hex[:6]}')
+        self.tenant = Client.objects.create(
+            name='Shift', code=f'shift-{uuid4().hex[:6]}'
+        )
         self.station = register_station(
             client=self.tenant,
             name='Recorded station',
@@ -470,22 +536,31 @@ class SeriesDisplayShiftTest(TestCase):
         source_start = self.recorded_end - timedelta(minutes=5)
         _SeriesHistorian.canned = {'/sl': steady('/sl', source_start, 3)}
 
-        result = read_series(
-            self.station,
-            binding_ids=[self.binding.pk],
-            start=self.now - timedelta(minutes=5),
-            end=self.now,
-            now=self.now,
-        )
+        for live in (True, False):
+            with (
+                self.subTest(live=live),
+                override_settings(AIMMS_RECORDED_TELEMETRY_AS_LIVE=live),
+            ):
+                _SeriesHistorian.asked = []
+                result = read_series(
+                    self.station,
+                    binding_ids=[self.binding.pk],
+                    start=self.now - timedelta(minutes=5),
+                    end=self.now,
+                    now=self.now,
+                )
 
-        self.assertTrue(result['display_shifted'])
-        self.assertEqual(result['display_shift_seconds'], int(shift.total_seconds()))
-        [(asked_start, asked_end)] = _SeriesHistorian.asked
-        self.assertEqual(asked_start, source_start)
-        self.assertEqual(asked_end, self.recorded_end)
-        [series] = result['series']
-        first = moment_of(series['samples'][0], self.now)
-        self.assertEqual(first, source_start + shift)
+                self.assertEqual(result['recorded_telemetry_as_live'], live)
+                self.assertTrue(result['display_shifted'])
+                self.assertEqual(
+                    result['display_shift_seconds'], int(shift.total_seconds())
+                )
+                [(asked_start, asked_end)] = _SeriesHistorian.asked
+                self.assertEqual(asked_start, source_start)
+                self.assertEqual(asked_end, self.recorded_end)
+                [series] = result['series']
+                first = moment_of(series['samples'][0], self.now)
+                self.assertEqual(first, source_start + shift)
 
 
 class SeriesApiTest(HealthEnvMixin, InvenTreeAPITestCase):
@@ -501,9 +576,11 @@ class SeriesApiTest(HealthEnvMixin, InvenTreeAPITestCase):
         self.source.save(update_fields=['connector_type'])
         self.now = timezone.now().replace(microsecond=0)
         self.set_signal(3.0, observed_at=self.now)
-        _SeriesHistorian.canned = {self.binding.external_key: steady(
-            self.binding.external_key, self.now - timedelta(minutes=5), 60
-        )}
+        _SeriesHistorian.canned = {
+            self.binding.external_key: steady(
+                self.binding.external_key, self.now - timedelta(minutes=5), 60
+            )
+        }
         _SeriesHistorian.asked = []
         _SeriesHistorian.failure = None
 
@@ -523,6 +600,7 @@ class SeriesApiTest(HealthEnvMixin, InvenTreeAPITestCase):
         )
         self.assertEqual(response.data['code'], 'BINDINGS_INVALID')
 
+    @override_settings(AIMMS_RECORDED_TELEMETRY_AS_LIVE=False)
     def test_a_window_over_the_limit_is_400(self):
         """The service's bound surfaces as a client error with its code."""
         response = self.get(
@@ -530,6 +608,20 @@ class SeriesApiTest(HealthEnvMixin, InvenTreeAPITestCase):
             {
                 'bindings': str(self.binding.pk),
                 'from': (self.now - timedelta(hours=30)).isoformat(),
+                'to': self.now.isoformat(),
+            },
+            expected_code=400,
+        )
+        self.assertEqual(response.data['code'], 'WINDOW_TOO_LONG')
+
+    @override_settings(AIMMS_RECORDED_TELEMETRY_AS_LIVE=True)
+    def test_a_window_over_the_live_month_limit_is_400(self):
+        """The longer O27 horizon is still bounded before any connector read."""
+        response = self.get(
+            self.url('series/'),
+            {
+                'bindings': str(self.binding.pk),
+                'from': (self.now - timedelta(days=30, seconds=1)).isoformat(),
                 'to': self.now.isoformat(),
             },
             expected_code=400,

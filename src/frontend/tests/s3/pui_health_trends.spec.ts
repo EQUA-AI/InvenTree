@@ -214,6 +214,7 @@ test('source outages, timeouts, unsupported history and missing batch rows have 
     trend: { reason }
   }));
   await openHealth(page, {
+    recordedTelemetryAsLive: false,
     signals: [
       ...signals,
       {

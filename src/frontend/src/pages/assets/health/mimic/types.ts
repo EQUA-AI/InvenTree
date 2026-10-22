@@ -93,6 +93,10 @@ export type MimicLayout = {
 };
 
 export type MimicData = {
+  recorded_telemetry_as_live?: boolean;
+  last_observed_at?: string | null;
+  reporting?: boolean | null;
+  read_failed?: boolean | null;
   station: number;
   name: string;
   /** The worst active alarm on the station's own readings. */
@@ -104,6 +108,7 @@ export type MimicData = {
   last_error_at?: string | null;
   last_success_at?: string | null;
   enabled: boolean;
+  polling_enabled?: boolean;
   source: { pk: number; name: string } | null;
   last_poll_at: string | null;
   last_error_code: string;

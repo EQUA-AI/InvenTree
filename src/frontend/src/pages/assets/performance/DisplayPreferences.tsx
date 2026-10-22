@@ -13,6 +13,10 @@ import { useLocalState } from '../../../states/LocalState';
 import { useUserState } from '../../../states/UserState';
 import { MetaText } from '../health/common';
 import monitoring from '../monitoring.module.css';
+import {
+  type TelemetryPresentation,
+  recordedTelemetryAsLive
+} from '../telemetryPresentation';
 import { SharedDisplayViews } from './SharedDisplayViews';
 import {
   type DisplayView,
@@ -23,11 +27,13 @@ import {
 export function DisplayPreferences({
   machineId,
   current,
-  onRestore
+  onRestore,
+  presentation
 }: Readonly<{
   machineId: number;
   current: Omit<DisplayView, 'name'>;
   onRestore: (view: DisplayView) => void;
+  presentation?: TelemetryPresentation;
 }>) {
   const host = useLocalState((state) => state.hostKey);
   const actor = useUserState((state) => state.user?.pk);
@@ -40,6 +46,7 @@ export function DisplayPreferences({
       scope={displayViewKey(host, actor, machineId)}
       current={current}
       onRestore={onRestore}
+      presentation={presentation}
     />
   );
 }
@@ -47,12 +54,14 @@ function ScopedPreferences({
   machineId,
   scope,
   current,
-  onRestore
+  onRestore,
+  presentation
 }: Readonly<{
   machineId: number;
   scope: string;
   current: Omit<DisplayView, 'name'>;
   onRestore: (view: DisplayView) => void;
+  presentation?: TelemetryPresentation;
 }>) {
   const [views, save] = useLocalStorage<DisplayView[]>({
     key: scope,
@@ -88,9 +97,14 @@ function ScopedPreferences({
         machineId={machineId}
         current={current}
         onRestore={onRestore}
+        presentation={presentation}
       />
       <Text fw={600} size='sm'>{t`Personal display views`}</Text>
-      <MetaText size='sm'>{t`Saved only in this browser for this signed-in user, server and machine. Display choices only; no historical evidence or access grant is saved. Changes remain unsaved until Save view.`}</MetaText>
+      <MetaText size='sm'>
+        {recordedTelemetryAsLive(presentation)
+          ? t`Saved only in this browser for this signed-in user, server and machine. Display choices only; no source evidence or access grant is saved. Changes remain unsaved until Save view.`
+          : t`Saved only in this browser for this signed-in user, server and machine. Display choices only; no historical evidence or access grant is saved. Changes remain unsaved until Save view.`}
+      </MetaText>
       <SimpleGrid cols={{ base: 1, sm: 2 }} style={{ alignItems: 'end' }}>
         <TextInput
           classNames={{ input: monitoring.input }}

@@ -33,6 +33,7 @@ export const NATIVE_SIGNALS: readonly SignalSpec[] = [
  * Health reads the panel makes are answered; anything else fails the guard.
  */
 type PerformanceOptions = {
+  recordedTelemetryAsLive?: boolean;
   now?: number;
   /** Await the actual initial history response for non-loading scenarios. */
   settleInitialRead?: boolean;
@@ -75,6 +76,7 @@ export async function mockPerformance(
       route.fulfill({
         json: {
           available: true,
+          recorded_telemetry_as_live: options.recordedTelemetryAsLive ?? true,
           ...(options.displayShift === null
             ? {}
             : { display_shift_seconds: options.displayShift ?? 0 }),
@@ -114,6 +116,7 @@ export async function mockPerformance(
         .fulfill({
           json: {
             ...mapped,
+            recorded_telemetry_as_live: options.recordedTelemetryAsLive ?? true,
             display_shifted: !!options.displayShift,
             display_shift_seconds: options.displayShift ?? 0
           }

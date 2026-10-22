@@ -18,6 +18,7 @@ import { type ReactNode, type RefObject, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { displayInstant } from '../displayClock';
 import { unitLabel } from '../performance/format';
+import { recordedTelemetryAsLive } from '../telemetryPresentation';
 import { useNow } from '../useNow';
 import { SourcePollStatus } from './SourcePollStatus';
 import { MetaText, MonitoringLink, Unit } from './common';
@@ -266,7 +267,13 @@ export function SignalEvidence({
                 {signal.signal_kind ? ` · ${signal.signal_kind}` : ''}
               </Text>
             </Fact>
-            <Fact label={t`Latest recorded reading`}>
+            <Fact
+              label={
+                recordedTelemetryAsLive(signal)
+                  ? t`Latest reading`
+                  : t`Latest recorded reading`
+              }
+            >
               {reading ? (
                 <Group gap={6} wrap='wrap'>
                   <Text size='sm' fw={500}>
@@ -280,7 +287,13 @@ export function SignalEvidence({
                 <Missing>{t`No reading`}</Missing>
               )}
             </Fact>
-            <Fact label={t`Observed (dashboard clock)`}>
+            <Fact
+              label={
+                recordedTelemetryAsLive(signal)
+                  ? t`Observed`
+                  : t`Observed (dashboard clock)`
+              }
+            >
               {fullInstant(signal.observed_at) ? (
                 <Text size='sm'>{fullInstant(signal.observed_at)}</Text>
               ) : (

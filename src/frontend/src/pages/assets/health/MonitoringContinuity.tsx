@@ -26,6 +26,7 @@ import {
   occurrenceRequest
 } from '../faults/occurrenceModel';
 import operations from '../operations.module.css';
+import { recordedTelemetryAsLive } from '../telemetryPresentation';
 import { HealthStateBadge, qualityLabel } from './common';
 import { displayClock, formatInstant } from './mimic/observedTime';
 
@@ -234,12 +235,25 @@ function CurrentMonitoring({
                   {!source.active
                     ? t`Disabled`
                     : source.healthy
-                      ? t`Connected source`
+                      ? source.recorded_telemetry_as_live !== false &&
+                        source.reporting != null
+                        ? t`Source reporting`
+                        : t`Connected source`
                       : t`Source unavailable`}
                 </Badge>
               </Group>
               <Text size='sm'>
-                {t`Last source success`}: {when(source.last_success_at)}
+                {source.recorded_telemetry_as_live !== false &&
+                source.reporting != null
+                  ? t`Last reading`
+                  : t`Last source success`}
+                :{' '}
+                {when(
+                  source.recorded_telemetry_as_live !== false &&
+                    source.reporting != null
+                    ? source.last_observed_at
+                    : source.last_success_at
+                )}
               </Text>
               <Text size='sm'>
                 {t`Last source error`}: {when(source.last_error_at)}
@@ -254,9 +268,17 @@ function CurrentMonitoring({
         to={`/machines/machine/${machineId}/health/`}
         size='sm'
       >{t`Current signals, quality and configured limits`}</Anchor>
-      <Text size='sm' fw={600}>{t`Recorded active deviations`}</Text>
+      <Text size='sm' fw={600}>
+        {recordedTelemetryAsLive(data)
+          ? t`Active deviations`
+          : t`Recorded active deviations`}
+      </Text>
       {occurrences.isPending ? (
-        <Text size='sm'>{t`Reading recorded deviations…`}</Text>
+        <Text size='sm'>
+          {recordedTelemetryAsLive(data)
+            ? t`Reading active deviations…`
+            : t`Reading recorded deviations…`}
+        </Text>
       ) : occurrences.isError || !occurrences.data ? (
         <Alert role='note' color='gray'>
           <Stack gap='xs'>

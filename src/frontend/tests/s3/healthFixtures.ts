@@ -327,6 +327,7 @@ export function signalRow(spec: HealthSignalSpec) {
 }
 
 export interface HealthFixtureOptions {
+  recordedTelemetryAsLive?: boolean;
   signals?: readonly HealthSignalSpec[];
   scheme?: 'light' | 'dark';
   nativeTheme?: boolean;
@@ -420,6 +421,7 @@ export async function openHealth(
   await page.route(`${health}/`, (route: Route) =>
     route.fulfill({
       json: {
+        recorded_telemetry_as_live: options.recordedTelemetryAsLive ?? true,
         state: 'normal',
         configured: true,
         signal_count: specs.filter((spec) => spec.active !== false).length,
@@ -452,7 +454,10 @@ export async function openHealth(
     })
   );
   await page.route(`${health}/signals/**`, (route: Route) => {
-    const rows = specs.map(signalRow);
+    const rows = specs.map((spec) => ({
+      ...signalRow(spec),
+      recorded_telemetry_as_live: options.recordedTelemetryAsLive ?? true
+    }));
     return route.fulfill({
       status: options.signalsStatus ?? 200,
       json: { count: rows.length, results: rows }
@@ -478,6 +483,7 @@ export async function openHealth(
         from: iso(NOW - 10 * 86_400_000),
         to: iso(NOW),
         display_shift_seconds: 0,
+        recorded_telemetry_as_live: options.recordedTelemetryAsLive ?? true,
         ...options.dataRange
       }
     });
@@ -530,6 +536,7 @@ export async function openHealth(
               to,
               { cadence: options.cadence ?? true }
             ),
+            recorded_telemetry_as_live: options.recordedTelemetryAsLive ?? true,
             ...options.chartOverrides
           }
         : { detail: 'Unknown binding' },

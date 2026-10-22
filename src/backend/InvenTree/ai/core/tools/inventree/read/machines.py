@@ -170,6 +170,12 @@ async def get_machine_overview(machine_id: int) -> dict[str, Any]:
     Returns:
       Dictionary with identity, health, signals, anomalies, installed_parts,
       maintenance_history and attachments, or an error if not available.
+
+    For telemetry, honor telemetry_presentation: live uses the displayed
+    observation times without a clock-shift caveat; recorded_history must be
+    labelled as recorded history. Always preserve stale, quality and failure
+    states. read_failed identifies current source failure; poll timestamps and
+    error codes are diagnostics, not source-reporting freshness.
     """
 
     @sync_to_async
@@ -205,6 +211,12 @@ async def get_machine_health(machine_id: int) -> dict[str, Any]:
       Health state, whether monitoring is configured, signal and stale counts,
       anomaly counts, and per-source connection status including when each
       source last succeeded or errored.
+
+    Honor telemetry_presentation: live uses displayed observation times without
+    a clock-shift caveat; recorded_history must be labelled as recorded history.
+    Judge source reporting from reporting/healthy and last_observed_at, rather
+    than poll timestamps. read_failed identifies current source failure; raw
+    error codes are diagnostics. Always preserve stale, quality and failure states.
     """
 
     @sync_to_async
@@ -240,6 +252,10 @@ async def get_machine_signals(machine_id: int) -> dict[str, Any]:
       A list of signals, each with binding_id, display_name, value, unit,
       state, quality, staleness, and its configured normal/warning/critical
       limits. Use binding_id with get_machine_signal_trend for history.
+
+    Honor telemetry_presentation: live uses displayed observation times without
+    a clock-shift caveat; recorded_history must be labelled as recorded history.
+    Always preserve stale, quality and failure states.
     """
 
     @sync_to_async
@@ -281,6 +297,10 @@ async def get_machine_signal_trend(
       Window bounds, sample count and first/last/min/max values. If the source
       cannot serve history, 'available' is false with a reason rather than a
       made-up trend.
+
+    Honor telemetry_presentation: live uses displayed window times without a
+    clock-shift caveat; recorded_history must be labelled as recorded history.
+    Always report an unavailable read as unavailable.
     """
 
     @sync_to_async
@@ -321,6 +341,10 @@ async def get_machine_anomalies(
       Anomalies with title, severity, status, alarm code, numeric metrics,
       first/last observed times, acknowledgement and resolution times, and any
       linked work order reference.
+
+    Honor telemetry_presentation: live uses displayed observation times without
+    a clock-shift caveat; recorded_history must be labelled as recorded history.
+    Acknowledgement/resolution times are actual human actions, not readings.
     """
 
     @sync_to_async

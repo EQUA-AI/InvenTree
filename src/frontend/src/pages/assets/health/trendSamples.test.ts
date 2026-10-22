@@ -142,6 +142,21 @@ describe('Health trend reading', () => {
     expect(prepared.silences).toBe(0);
   });
 
+  it('uses sampled slot resolution to connect contiguous slots and break missing consecutive slots', () => {
+    const prepared = prepareTrend(
+      trend(
+        [0, 10800, 21600, 64800].map((seconds) => sample(seconds, 1)),
+        { sampled: true, resolution_seconds: 10800 }
+      )
+    );
+    // Sampling resolution takes precedence over a separately reported plant
+    // cadence, so normal slot spacing does not become a missing-data claim.
+    expect(prepared.gapMs).toBe(27000_000);
+    expect(prepared.silences).toBe(1);
+    expect(segments(sparklinePath(prepared, 120, 28)!)).toHaveLength(2);
+    expect(prepared.measured).toBe(4);
+  });
+
   it('uses the expected interval when no cadence was measured, and nothing when neither is stated', () => {
     expect(
       trendResolutionSeconds({

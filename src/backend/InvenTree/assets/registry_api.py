@@ -309,6 +309,13 @@ class LiveStatusSerializer(serializers.Serializer):
 
     activated = serializers.BooleanField()
     enabled = serializers.BooleanField()
+    polling_enabled = serializers.BooleanField()
+    recorded_telemetry_as_live = serializers.BooleanField()
+    display_shifted = serializers.BooleanField()
+    display_shift_seconds = serializers.IntegerField()
+    last_observed_at = InvenTreeIsoDateTimeField(allow_null=True)
+    reporting = serializers.BooleanField(allow_null=True)
+    read_failed = serializers.BooleanField(allow_null=True)
     source = LiveSourceSerializer(allow_null=True)
     sources = LiveSourceSerializer(many=True)
     bound = serializers.IntegerField()

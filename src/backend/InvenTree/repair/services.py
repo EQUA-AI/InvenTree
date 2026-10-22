@@ -2096,6 +2096,9 @@ def read_diagnostic_health_summary(
             'stale_signal_count': summary['stale_signal_count'],
             'degraded_data': summary['degraded_data'],
             'active_anomaly_count': summary['active_anomaly_count'],
+            'telemetry_presentation': summary['telemetry_presentation'],
+            'display_shifted': summary['display_shifted'],
+            'display_shift_seconds': summary['display_shift_seconds'],
             'last_observed_at': (
                 summary['last_observed_at'].isoformat()
                 if summary['last_observed_at']
@@ -2120,6 +2123,9 @@ def read_diagnostic_health_summary(
     for row in signal_rows(machine, now=now)[:_DIAGNOSTIC_HEALTH_SIGNAL_LIMIT]:
         signal_claim = json.dumps(
             {
+                'telemetry_presentation': row['telemetry_presentation'],
+                'display_shifted': row['display_shifted'],
+                'display_shift_seconds': row['display_shift_seconds'],
                 'signal': row['display_name'],
                 'active': row['active'],
                 'value': row['value'],
@@ -2168,16 +2174,38 @@ def read_diagnostic_health_anomalies(
         return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
 
     from assets.health_models import ACTIVE_ANOMALY_STATUSES, MachineAnomaly
+    from machine_health.services.display_time import (
+        display_shift,
+        presentation_metadata,
+        recorded_telemetry_as_live,
+        to_display,
+    )
 
-    anomalies = MachineAnomaly.objects.filter(
-        machine_id=machine_id,
-        status__in=[status.value for status in ACTIVE_ANOMALY_STATUSES],
-    ).order_by('-last_observed_at')[:limit]
+    anomalies = (
+        MachineAnomaly.objects
+        .filter(
+            machine_id=machine_id,
+            status__in=[status.value for status in ACTIVE_ANOMALY_STATUSES],
+        )
+        .select_related('machine__parent', 'source')
+        .order_by('-last_observed_at')[:limit]
+    )
 
     evidence = []
+    now = timezone.now()
     for anomaly in anomalies:
+        machine = anomaly.machine
+        station = machine if machine.asset_type == 'pumphouse' else machine.parent
+        shift = display_shift(station, anomaly.source, now=now)
+        observation_shift = (
+            shift if recorded_telemetry_as_live() else timezone.timedelta(0)
+        )
         claim = json.dumps(
             {
+                **presentation_metadata(observation_shift),
+                'telemetry_presentation': presentation_metadata(shift)[
+                    'telemetry_presentation'
+                ],
                 'title': anomaly.title,
                 'severity': anomaly.severity,
                 'status': anomaly.status,
@@ -2185,8 +2213,12 @@ def read_diagnostic_health_anomalies(
                 'detector': anomaly.detector,
                 'detector_version': anomaly.detector_version,
                 'evidence_summary': anomaly.evidence_summary,
-                'first_observed_at': anomaly.first_observed_at.isoformat(),
-                'last_observed_at': anomaly.last_observed_at.isoformat(),
+                'first_observed_at': to_display(
+                    anomaly.first_observed_at, observation_shift
+                ).isoformat(),
+                'last_observed_at': to_display(
+                    anomaly.last_observed_at, observation_shift
+                ).isoformat(),
                 'work_order_id': anomaly.work_order_id,
             },
             ensure_ascii=True,
@@ -2198,7 +2230,9 @@ def read_diagnostic_health_anomalies(
                 source_id=anomaly.pk,
                 revision=_diagnostic_revision(anomaly),
                 locator=f'/machines/{machine_id}/health/anomalies/{anomaly.pk}',
-                as_of=anomaly.updated_at,
+                as_of=to_display(anomaly.last_observed_at, observation_shift)
+                if recorded_telemetry_as_live()
+                else anomaly.updated_at,
                 claim=claim,
                 untrusted=True,
             )

@@ -20,6 +20,11 @@ import { displayInstant } from '../displayClock';
 import { StatusBadge } from '../health/StatusBadge';
 import { MetaText } from '../health/common';
 import monitoring from '../monitoring.module.css';
+import {
+  LIVE_TELEMETRY_WINDOW_SECONDS,
+  recordedTelemetryAsLive,
+  showRecordedTelemetry
+} from '../telemetryPresentation';
 
 import type { SeriesResponse } from '@lib/types/MachineHealth';
 
@@ -41,7 +46,9 @@ const PRESETS: { value: RangePreset; label: () => string }[] = [
   { value: '1h', label: () => t`1 h` },
   { value: '6h', label: () => t`6 h` },
   { value: '12h', label: () => t`12 h` },
-  { value: '24h', label: () => t`24 h` }
+  { value: '24h', label: () => t`24 h` },
+  { value: '7d', label: () => t`7 d` },
+  { value: '30d', label: () => t`30 d` }
 ];
 
 const CUSTOM = 'custom';
@@ -95,6 +102,10 @@ export function TimeRangeControl({
   // custom, so the highlighted segment is always the one being drawn.
   const [manualOpen, setManualOpen] = useState(false);
   const pickingCustom = preset === CUSTOM || manualOpen;
+  const asLive = recordedTelemetryAsLive(dataRange);
+  const maxCustomSeconds = asLive
+    ? LIVE_TELEMETRY_WINDOW_SECONDS
+    : MAX_CUSTOM_SECONDS;
   useEffect(() => {
     if (preset !== CUSTOM) setManualOpen(false);
   }, [preset]);
@@ -106,11 +117,13 @@ export function TimeRangeControl({
     if (!from.isValid() || !to.isValid())
       return t`That is not a readable date and time.`;
     if (!to.isAfter(from)) return t`The end must come after the start.`;
-    if (to.diff(from, 'second') > MAX_CUSTOM_SECONDS) {
-      return t`A window may not exceed 24 hours.`;
+    if (to.diff(from, 'second') > maxCustomSeconds) {
+      return asLive
+        ? t`A window may not exceed 30 days.`
+        : t`A window may not exceed 24 hours.`;
     }
     return null;
-  }, [customFrom, customTo]);
+  }, [customFrom, customTo, maxCustomSeconds, asLive]);
 
   // An empty field is guidance; a filled pair the page refuses is a refusal,
   // and a refusal printed in the same dimmed grey as the help text beside it
@@ -184,7 +197,9 @@ export function TimeRangeControl({
             onPreset(value as RangePreset);
           }}
           data={[
-            ...PRESETS.map((p) => ({ value: p.value, label: p.label() })),
+            ...PRESETS.filter(
+              (p) => asLive || !['7d', '30d'].includes(p.value)
+            ).map((p) => ({ value: p.value, label: p.label() })),
             { value: CUSTOM, label: t`Custom` }
           ]}
         />
@@ -330,8 +345,17 @@ export function LiveIndicator({
   controls
 }: Readonly<LiveIndicatorProps>) {
   const scheme = useComputedColorScheme('light');
+  const sourceAt = response?.live.last_observed_at
+    ? Date.parse(response.live.last_observed_at)
+    : Number.NaN;
+  const currentAt =
+    recordedTelemetryAsLive(response) && response?.live.reporting != null
+      ? Number.isFinite(sourceAt)
+        ? sourceAt
+        : null
+      : newestAt;
   const ageSeconds =
-    newestAt === null ? null : Math.max(0, (now - newestAt) / 1000);
+    currentAt === null ? null : Math.max(0, (now - currentAt) / 1000);
   const stale =
     ageSeconds !== null &&
     freshnessSeconds !== null &&
@@ -347,6 +371,17 @@ export function LiveIndicator({
     word = t`Read failed`;
   } else if (!response) {
     word = fetching ? t`Reading` : t`Not read yet`;
+  } else if (
+    recordedTelemetryAsLive(response) &&
+    (response.live.read_failed ?? !!response.live.last_error_code)
+  ) {
+    word = t`Source read failed`;
+  } else if (
+    recordedTelemetryAsLive(response) &&
+    response.series?.length > 0 &&
+    response.series.every((entry) => !entry.available)
+  ) {
+    word = t`Readings unavailable`;
   } else if (live && disabled) {
     word = t`Polling off`;
   } else if (live && empty) {
@@ -355,6 +390,12 @@ export function LiveIndicator({
     word = t`Freshness unavailable`;
   } else if (live && stale) {
     word = t`Stale`;
+  } else if (
+    live &&
+    recordedTelemetryAsLive(response) &&
+    response.live.reporting === false
+  ) {
+    word = t`Source unavailable`;
   } else if (live) {
     word = t`Live`;
   }
@@ -403,13 +444,21 @@ export function LiveIndicator({
           {updatedAt == null || updatedAt <= 0
             ? t`Not read yet`
             : t`Updated ${formatClock(updatedAt)}`}
-          {newestAt != null
-            ? ` · ${t`newest reading ${formatClockOn(newestAt, now)}`}`
+          {!empty && currentAt != null
+            ? ` · ${recordedTelemetryAsLive(response) && ageSeconds !== null && ageSeconds < 60 ? t`newest reading just now` : t`newest reading ${formatClockOn(currentAt, now)}`}`
             : ''}
-          {poll != null ? ` · ${t`polled every ${formatDuration(poll)}`}` : ''}
+          {newestAt != null &&
+          currentAt != null &&
+          newestAt !== currentAt &&
+          response?.mode === 'sampled'
+            ? ` · ${t`latest chart sample ${formatClockOn(newestAt, now)}`}`
+            : ''}
+          {poll != null && !recordedTelemetryAsLive(response)
+            ? ` · ${t`polled every ${formatDuration(poll)}`}`
+            : ''}
         </MetaText>
       </Group>
-      {response?.display_shifted && (
+      {showRecordedTelemetry(response) && response && (
         <MetaText size='xs'>{t`Source history display shift: ${formatDuration(Math.abs(response.display_shift_seconds))} ${response.display_shift_seconds >= 0 ? t`later than recorded` : t`earlier than recorded`}.`}</MetaText>
       )}
       {modeText && (

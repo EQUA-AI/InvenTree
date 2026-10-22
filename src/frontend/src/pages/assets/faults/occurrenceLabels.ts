@@ -111,12 +111,20 @@ export function outsideOccurrenceSpan(
   occurrence: {
     first_observed_at: string | null;
     last_observed_at: string | null;
+    display_shifted?: boolean;
+    display_shift_seconds?: number;
+    recorded_telemetry_as_live?: boolean;
   }
 ): boolean {
+  const shift =
+    occurrence.recorded_telemetry_as_live !== false &&
+    occurrence.display_shifted
+      ? (occurrence.display_shift_seconds ?? 0) * 1000
+      : 0;
   return (
     Date.parse(snapshot.window_end ?? '') <
-      Date.parse(occurrence.first_observed_at ?? '') ||
+      Date.parse(occurrence.first_observed_at ?? '') - shift ||
     Date.parse(snapshot.window_start ?? '') >
-      Date.parse(occurrence.last_observed_at ?? '')
+      Date.parse(occurrence.last_observed_at ?? '') - shift
   );
 }

@@ -21,14 +21,15 @@ its retained window. Work is re-authorized per row against the reader's
 canonical Work scope (resolved once for this projection); work outside it is withheld entirely rather than shown
 as a dead reference.
 
-Observation, snapshot window, sample and capture times retain their recorded
-clock. Dashboard display shifts never alter these historical evidence facts.
+O27 presents occurrence observations on the dashboard clock. Snapshot windows,
+samples and capture times retain their immutable recorded evidence clock.
 """
 
 from __future__ import annotations
 
 from django.conf import settings
 from django.db.models import Prefetch
+from django.utils import timezone
 
 from tasks.dashboard_metrics import OPEN
 from tasks.scope import scoped_work_orders
@@ -41,6 +42,12 @@ from assets.health_models import (
     MachineSignalBinding,
 )
 from assets.models import AssetMaintenanceRecord
+from machine_health.services.display_time import (
+    display_shift,
+    presentation_metadata,
+    recorded_telemetry_as_live,
+    to_display,
+)
 
 MACHINE_WORK_VIEWS_RULE = 'machine_work_views.v1'
 FAULT_OCCURRENCES_RULE = 'fault_occurrences.v1'
@@ -207,6 +214,7 @@ def _snapshot(snapshot, *, with_samples: bool) -> dict:
         'content_hash': snapshot.content_hash,
         'display_shifted': False,
         'display_shift_seconds': 0,
+        'recorded_telemetry_as_live': recorded_telemetry_as_live(),
     }
     if with_samples:
         row['samples'] = snapshot.samples
@@ -220,6 +228,12 @@ def _snapshot(snapshot, *, with_samples: bool) -> dict:
 def _occurrence(scopes, anomaly, machine, snapshots) -> dict:
     work, packet = _work_for(scopes, anomaly, machine)
     acknowledged_by = anomaly.acknowledged_by
+    station = machine if machine.asset_type == 'pumphouse' else machine.parent
+    shift = (
+        display_shift(station, anomaly.source)
+        if recorded_telemetry_as_live()
+        else timezone.timedelta(0)
+    )
     return {
         'id': anomaly.pk,
         'external_id': anomaly.external_id,
@@ -241,10 +255,9 @@ def _occurrence(scopes, anomaly, machine, snapshots) -> dict:
         else None,
         'signals': _signals(anomaly),
         'components': _components(anomaly),
-        'first_observed_at': anomaly.first_observed_at.isoformat(),
-        'last_observed_at': anomaly.last_observed_at.isoformat(),
-        'display_shifted': False,
-        'display_shift_seconds': 0,
+        'first_observed_at': to_display(anomaly.first_observed_at, shift).isoformat(),
+        'last_observed_at': to_display(anomaly.last_observed_at, shift).isoformat(),
+        **presentation_metadata(shift),
         'acknowledged_at': anomaly.acknowledged_at.isoformat()
         if anomaly.acknowledged_at
         else None,
@@ -336,6 +349,7 @@ def fault_occurrences(actor, machine, *, status='all', limit=None, offset=None):
         'machine': machine.pk,
         'status': status,
         'plant_timezone': settings.AIMMS_PLANT_TIMEZONE or None,
+        'recorded_telemetry_as_live': recorded_telemetry_as_live(),
         'count': count,
         'limit': limit,
         'offset': offset,

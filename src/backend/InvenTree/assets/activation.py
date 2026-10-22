@@ -6,7 +6,7 @@ import json
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Max, Q
 from django.utils import timezone
 
 from assets.health_models import HealthSource, MachineSignalBinding, MachineSignalState
@@ -16,7 +16,16 @@ from InvenTree.conversion import convert_physical_value
 from InvenTree.validators import validate_physical_units
 from machine_health.connectors.base import PUMPHOUSE_CONNECTOR_TYPES
 from machine_health.connectors.cosmos_pumphouse import bucket_of, to_epoch_ms
-from machine_health.services.display_time import MINIMUM_SHIFT, recorded_range
+from machine_health.services.display_time import (
+    MINIMUM_SHIFT,
+    display_shift,
+    presentation_metadata,
+    recorded_range,
+    recorded_telemetry_as_live,
+    source_read_failed,
+    source_reporting,
+    to_display,
+)
 
 
 def _initial_cursor(station, source, now):
@@ -172,7 +181,7 @@ def activation_plan(station, source):
     return {'source': source.pk, 'source_hash': source_hash, 'approved': len(points)}
 
 
-def live_status(station):
+def live_status(station, *, now=None):
     """Return station state without endpoint, configuration or credential references."""
     checkpoints = IngestionCheckpoint.objects.filter(
         station=station, active=True, source__client_id=station.client_id
@@ -187,11 +196,43 @@ def live_status(station):
         station=station, status='approved'
     ).count()
     total = DictionaryPoint.objects.filter(station=station).count()
-    bound = bindings.count()
+    source = checkpoint.source if checkpoint else None
+    binding_facts = bindings.aggregate(
+        total=Count('pk'), latest=Max('state__observed_at', filter=Q(source=source))
+    )
+    bound = binding_facts['total']
+    now = now or timezone.now()
+    shift = display_shift(station, source, now=now)
+    last_error_code = checkpoint.last_error_code if checkpoint else ''
+    if (
+        recorded_telemetry_as_live()
+        and source
+        and source.last_error_at
+        and (
+            source.last_success_at is None
+            or source.last_error_at > source.last_success_at
+        )
+    ):
+        last_error_code = (
+            last_error_code or source.last_error_code or 'SOURCE_UNAVAILABLE'
+        )
+    last_observed_at = to_display(binding_facts['latest'], shift)
     return {
+        **presentation_metadata(shift),
+        'last_observed_at': last_observed_at,
+        'reporting': source_reporting(
+            source, last_observed_at, now=now, error_code=last_error_code
+        ),
+        'read_failed': source_read_failed(source, error_code=last_error_code)
+        if recorded_telemetry_as_live()
+        else None,
         'activated': checkpoint is not None and bound > 0,
+        'polling_enabled': settings.AIMMS_COSMOS_PUMPHOUSE_ENABLED,
         'enabled': bool(
-            settings.AIMMS_COSMOS_PUMPHOUSE_ENABLED
+            (
+                settings.AIMMS_COSMOS_PUMPHOUSE_ENABLED
+                or (recorded_telemetry_as_live() and shift)
+            )
             and checkpoint
             and checkpoint.source.active
             and station.active
@@ -209,7 +250,7 @@ def live_status(station):
         'unbound': max(0, total - bound),
         'approved': approved,
         'last_poll_at': checkpoint.last_poll_at if checkpoint else None,
-        'last_error_code': checkpoint.last_error_code if checkpoint else '',
+        'last_error_code': last_error_code,
         'last_error_at': checkpoint.source.last_error_at if checkpoint else None,
         'last_success_at': checkpoint.source.last_success_at if checkpoint else None,
     }

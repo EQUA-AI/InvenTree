@@ -25,6 +25,7 @@ nativeBaseline();
 test.use({ timezoneId: 'UTC' });
 
 const summary = {
+  recorded_telemetry_as_live: false,
   configured: true,
   state: 'warning',
   signal_count: 2,
@@ -180,7 +181,7 @@ async function capture(page: Page, path: string) {
       path: path.replace('.png', '-configuration-detail.png')
     });
     await current
-      .getByText('Recorded active deviations', { exact: true })
+      .getByText(/^(Recorded active|Active) deviations$/)
       .evaluate((element) => element.scrollIntoView({ block: 'start' }));
     await page.evaluate(() => window.scrollBy(0, -220));
     await page.screenshot({
@@ -204,6 +205,9 @@ for (const scheme of ['light', 'dark'] as const) {
     const disclosure = visibleContinuity(page);
     await disclosure.locator('summary').click();
     await expect(disclosure).toContainText('Current configured monitoring');
+    await expect(
+      disclosure.getByText('Recorded active deviations', { exact: true })
+    ).toBeVisible();
     await expect(disclosure).toContainText('before, during and after');
     await expect(disclosure).toContainText('NEW-903');
     await expect(disclosure).toContainText(

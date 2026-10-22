@@ -47,7 +47,13 @@ from .serializers import (
 )
 from .services import anomalies as anomaly_services
 from .services import snapshots as snapshot_services
-from .services.display_time import display_shift, to_display
+from .services.display_time import (
+    LIVE_WINDOW_SECONDS,
+    display_shift,
+    presentation_metadata,
+    recorded_telemetry_as_live,
+    to_display,
+)
 from .services.ingestion import IngestionError, coerce_datetime, ingest_readings
 from .services.preliminary import analyze_anomaly
 from .services.series import MAX_SERIES_TARGETS, SeriesError, read_series
@@ -104,6 +110,7 @@ class MachineHealthSignals(_MachineHealthView):
         machine = _machine(request, pk)
         rows = signal_rows(machine)
         return Response({
+            'recorded_telemetry_as_live': recorded_telemetry_as_live(),
             'count': len(rows),
             'results': MachineSignalSerializer(rows, many=True).data,
         })
@@ -144,6 +151,7 @@ class MachineHealthAnomalies(_MachineHealthView):
 
         queryset = queryset[:MAX_ANOMALY_PAGE]
         return Response({
+            'recorded_telemetry_as_live': recorded_telemetry_as_live(),
             'count': len(queryset),
             'results': MachineAnomalySerializer(queryset, many=True).data,
         })
@@ -362,7 +370,11 @@ class MachineHealthDataRange(_MachineHealthView):
         source_id = (status or {}).get('source', {}) or {}
 
         if station is None or not source_id.get('pk'):
-            return Response({'available': False, 'reason': 'NO_SOURCE'})
+            return Response({
+                **presentation_metadata(timezone.timedelta(0)),
+                'available': False,
+                'reason': 'NO_SOURCE',
+            })
 
         source = HealthSource.objects.filter(pk=source_id['pk']).first()
         recorded = ((source.config or {}).get('data_ranges') or {}).get(
@@ -370,6 +382,7 @@ class MachineHealthDataRange(_MachineHealthView):
         )
         if not recorded:
             return Response({
+                **presentation_metadata(timezone.timedelta(0)),
                 'available': False,
                 'reason': 'NOT_DISCOVERED',
                 'detail': 'The span of history for this station has not been recorded yet.',
@@ -382,6 +395,8 @@ class MachineHealthDataRange(_MachineHealthView):
         shift = display_shift(station, source)
         start = timezone.datetime.fromisoformat(recorded['from'])
         end = timezone.datetime.fromisoformat(recorded['to'])
+        if recorded_telemetry_as_live():
+            start = max(start, end - timezone.timedelta(seconds=LIVE_WINDOW_SECONDS))
 
         return Response({
             'available': True,
@@ -389,8 +404,7 @@ class MachineHealthDataRange(_MachineHealthView):
             'to': to_display(end, shift).isoformat(),
             'source_from': recorded['from'],
             'source_to': recorded['to'],
-            'display_shifted': bool(shift),
-            'display_shift_seconds': int(shift.total_seconds()),
+            **presentation_metadata(shift),
             'hours_with_data': recorded.get('hours_with_data'),
             'hours_probed': recorded.get('hours_probed'),
             'discovered_at': recorded.get('discovered_at'),

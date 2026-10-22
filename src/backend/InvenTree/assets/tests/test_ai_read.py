@@ -8,7 +8,9 @@ asset/health model graph.
 from __future__ import annotations
 
 import unittest
+import uuid
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.apps import apps
 
@@ -35,6 +37,8 @@ from assets.health_models import (
     HealthSource,
     MachineAnomaly,
     MachineSignalBinding,
+    MachineSignalState,
+    SignalQuality,
     SourceType,
 )
 from assets.models import AssetMachine, AssetMaintenanceRecord, Client, MachinePart
@@ -347,6 +351,135 @@ class ProjectionTests(MachineAiReadTestCase):
         self.assertEqual(signals[0]['binding_id'], self.binding.pk)
         self.assertEqual(signals[0]['limits']['normal_max'], 70.0)
         self.assertTrue(signals[0]['stale'])
+
+    def _recorded_telemetry(self):
+        """Attach the one-month source range without changing stored clocks."""
+        end = timezone.datetime.fromisoformat('2025-08-01T00:00:00+00:00')
+        station = AssetMachine.objects.create(
+            name='Recorded station',
+            asset_type='pumphouse',
+            client=self.client_tenant,
+            source_namespace='cosmos-test',
+            source_entity_uuid=uuid.uuid4(),
+        )
+        self.machine.parent = station
+        self.machine.asset_type = 'pump'
+        self.machine.source_key = 'pump01'
+        self.machine.save(update_fields=['parent', 'asset_type', 'source_key'])
+        self.source.config['data_ranges'] = {
+            str(station.source_entity_uuid): {
+                'from': '2025-07-01T00:00:00+00:00',
+                'to': end.isoformat(),
+            }
+        }
+        self.source.last_success_at = end
+        self.source.save(update_fields=['config', 'last_success_at'])
+        MachineSignalState.objects.create(
+            binding=self.binding,
+            value={'value': 42},
+            observed_at=end,
+            received_at=end,
+            quality=SignalQuality.GOOD,
+        )
+        return end
+
+    @override_settings(USE_TZ=True)
+    def test_recorded_health_and_signals_follow_both_presentation_modes(self):
+        """AI uses displayed freshness and preserves O23's off-state label."""
+        end = self._recorded_telemetry()
+        now = timezone.datetime.fromisoformat('2026-10-21T12:00:00+00:00')
+        for enabled in (True, False):
+            with self.subTest(enabled=enabled), self.settings(
+                AIMMS_RECORDED_TELEMETRY_AS_LIVE=enabled
+            ), patch('django.utils.timezone.now', return_value=now):
+                health = ai_read.machine_health(self.machine)
+                [signal] = ai_read.machine_signals(self.machine)['signals']
+                [source] = health['sources']
+                mode = 'live' if enabled else 'recorded_history'
+                self.assertEqual(health['telemetry_presentation'], mode)
+                self.assertEqual(signal['telemetry_presentation'], mode)
+                self.assertEqual(source['telemetry_presentation'], mode)
+                self.assertEqual(health['last_observed_at'], now.isoformat())
+                self.assertEqual(signal['observed_at'], now.isoformat())
+                self.assertEqual(source['last_observed_at'], now.isoformat())
+                self.assertEqual(source['last_success_at'], end.isoformat())
+                # O23 retains the last attempt's success result; O27 reports
+                # current shifted observations without rewriting that attempt.
+                self.assertTrue(source['healthy'])
+                self.assertEqual(source['reporting'], True if enabled else None)
+                self.assertEqual(source['read_failed'], False if enabled else None)
+                self.assertFalse(signal['stale'])
+                self.assertTrue(health['display_shifted'])
+                self.assertEqual(
+                    health['display_shift_seconds'], int((now - end).total_seconds())
+                )
+
+    @override_settings(USE_TZ=True)
+    def test_anomaly_observations_shift_only_in_live_presentation(self):
+        """O27 moves readings; actual human actions and O23 clocks survive."""
+        end = self._recorded_telemetry()
+        now = timezone.datetime.fromisoformat('2026-10-21T12:00:00+00:00')
+        self.anomaly.first_observed_at = end - timedelta(days=2)
+        self.anomaly.last_observed_at = end
+        self.anomaly.acknowledged_at = now - timedelta(hours=1)
+        self.anomaly.save()
+        for enabled in (True, False):
+            with self.subTest(enabled=enabled), self.settings(
+                AIMMS_RECORDED_TELEMETRY_AS_LIVE=enabled
+            ), patch('django.utils.timezone.now', return_value=now):
+                [anomaly] = ai_read.machine_anomalies(self.machine)['anomalies']
+                displayed_end = now if enabled else end
+                self.assertEqual(anomaly['last_observed_at'], displayed_end.isoformat())
+                self.assertEqual(
+                    anomaly['first_observed_at'],
+                    (displayed_end - timedelta(days=2)).isoformat(),
+                )
+                self.assertEqual(
+                    anomaly['acknowledged_at'], self.anomaly.acknowledged_at.isoformat()
+                )
+                self.assertEqual(anomaly['display_shifted'], enabled)
+                self.assertEqual(
+                    anomaly['display_shift_seconds'],
+                    int((now - end).total_seconds()) if enabled else 0,
+                )
+                self.assertEqual(
+                    anomaly['telemetry_presentation'],
+                    'live' if enabled else 'recorded_history',
+                )
+        self.anomaly.refresh_from_db()
+        self.assertEqual(self.anomaly.last_observed_at, end)
+
+    @override_settings(USE_TZ=True)
+    def test_unavailable_trend_stays_unavailable_in_both_modes(self):
+        """Presentation policy cannot turn a failed trend into a current read."""
+        self._recorded_telemetry()
+        for enabled in (True, False):
+            mode = 'live' if enabled else 'recorded_history'
+            with self.subTest(enabled=enabled), self.settings(
+                AIMMS_RECORDED_TELEMETRY_AS_LIVE=enabled
+            ), patch('machine_health.services.trends.read_trend', return_value={
+                'binding_id': self.binding.pk,
+                'display_name': self.binding.display_name,
+                'unit': self.binding.unit,
+                'window_start': '2026-10-21T11:00:00+00:00',
+                'window_end': '2026-10-21T12:00:00+00:00',
+                'available': False,
+                'reason': 'SOURCE_UNAVAILABLE',
+                'detail': 'Read failed.',
+                'samples': [],
+                'telemetry_presentation': mode,
+                'display_shifted': True,
+                'display_shift_seconds': 38_836_800,
+            }):
+                trend = ai_read.machine_signal_trend(
+                    self.machine, binding_id=self.binding.pk
+                )
+                self.assertFalse(trend['available'])
+                self.assertEqual(trend['reason'], 'SOURCE_UNAVAILABLE')
+                self.assertEqual(trend['detail'], 'Read failed.')
+                self.assertEqual(trend['telemetry_presentation'], mode)
+                self.assertTrue(trend['display_shifted'])
+                self.assertEqual(trend['sample_count'], 0)
 
     def test_anomalies_carry_metrics_and_resolution_state(self):
         """Naming an alarm is not explaining it; metrics are the difference."""

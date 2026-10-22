@@ -17,7 +17,11 @@ from machine_health.services.anomalies import (
     THRESHOLD_DETECTOR,
     fingerprint_for,
 )
-from machine_health.services.display_time import display_shift, to_display
+from machine_health.services.display_time import (
+    display_shift,
+    presentation_metadata,
+    to_display,
+)
 from machine_health.services.ingestion import MAX_CLOCK_SKEW_SECONDS
 
 STATUS_POINTER = '/pd/{pump}/st'
@@ -219,7 +223,7 @@ def station_mimic(station, *, unit=None, now=None):
     selected = next((pump for pump in pumps if pump.source_key == unit), None)
     if unit is not None and selected is None:
         raise ValidationError('Unknown pump key for this station.')
-    status = live_status(station)
+    status = live_status(station, now=now)
     enabled = status['enabled']
     dictionary = list(
         DictionaryPoint.objects
@@ -363,8 +367,11 @@ def station_mimic(station, *, unit=None, now=None):
         'name': station.name,
         'alarm': worst.get(station.pk),
         'generated_at': now,
-        'display_shifted': bool(shift.total_seconds()),
-        'display_shift_seconds': int(shift.total_seconds()),
+        **presentation_metadata(shift),
+        'last_observed_at': status['last_observed_at'],
+        'reporting': status['reporting'],
+        'read_failed': status['read_failed'],
+        'polling_enabled': status['polling_enabled'],
         'plant_timezone': settings.AIMMS_PLANT_TIMEZONE or None,
         'source': status['source'],
         'last_poll_at': status['last_poll_at'],

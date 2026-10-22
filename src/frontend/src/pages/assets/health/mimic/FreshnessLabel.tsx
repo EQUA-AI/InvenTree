@@ -24,19 +24,31 @@ type FreshnessPoint = Pick<
 >;
 export function freshnessText(
   point: FreshnessPoint | undefined,
-  clock: DisplayClock
+  clock: DisplayClock,
+  preferJustNow = false
 ): string {
   const time = formatInstant(point?.observed_at, clock, { timeOnly: true });
   if (!time) return t`Observation time unavailable`;
   const age = ageLabel(point?.age_seconds ?? null);
-  const ageText = point?.age_seconds == null ? age : `${age} old`;
+  const ageText =
+    point?.age_seconds == null
+      ? age
+      : preferJustNow &&
+          point.reason !== 'stale' &&
+          point.age_seconds >= 0 &&
+          point.age_seconds < 60
+        ? t`just now`
+        : `${age} old`;
   return point?.reason === 'stale'
     ? t`Stale · last observed ${time} (${ageText})`
     : `${ageText} · ${time}`;
 }
-export function FreshnessLabel({ point }: { point?: FreshnessPoint }) {
+export function FreshnessLabel({
+  point,
+  preferJustNow = false
+}: { point?: FreshnessPoint; preferJustNow?: boolean }) {
   const clock = useDisplayClock();
-  const label = freshnessText(point, clock);
+  const label = freshnessText(point, clock, preferJustNow);
   return (
     <Tooltip
       label={`${formatInstant(point?.observed_at, clock) ?? t`Time unavailable`} · ${clock.zone}`}

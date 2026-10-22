@@ -34,6 +34,10 @@ export type HealthSourceType =
   | 'manual';
 
 export interface HealthSourceStatus {
+  recorded_telemetry_as_live?: boolean;
+  last_observed_at?: string | null;
+  reporting?: boolean | null;
+  read_failed?: boolean | null;
   source_id: number;
   name: string;
   source_type: HealthSourceType;
@@ -48,6 +52,7 @@ export interface HealthSourceStatus {
 }
 
 export interface MachineHealthSummary {
+  recorded_telemetry_as_live?: boolean;
   state: HealthState;
   /** False when no source is mapped: an empty state, not a healthy machine. */
   configured: boolean;
@@ -70,6 +75,7 @@ export interface MachineSignalLimits {
 }
 
 export interface MachineSignal {
+  recorded_telemetry_as_live?: boolean;
   active?: boolean;
   critical_designation?: CriticalDesignation | null;
   binding_id: number;
@@ -101,6 +107,7 @@ export interface AnomalySignalRef {
 }
 
 export interface MachineAnomaly {
+  recorded_telemetry_as_live?: boolean;
   pk: number;
   machine: number;
   source: number | null;
@@ -236,6 +243,9 @@ export interface TrendSample {
  * gets no sparkline rather than a line synthesized from its current value.
  */
 export interface SignalTrend {
+  recorded_telemetry_as_live?: boolean;
+  sampled?: boolean;
+  resolution_seconds?: number;
   binding_id: number;
   display_name: string;
   unit: string;
@@ -302,6 +312,10 @@ export interface SeriesEntry {
 export type SeriesMode = 'complete' | 'sampled';
 
 export interface SeriesLive {
+  recorded_telemetry_as_live?: boolean;
+  last_observed_at?: string | null;
+  reporting?: boolean | null;
+  read_failed?: boolean | null;
   enabled: boolean;
   last_poll_at: string | null;
   last_error_code: string;
@@ -316,6 +330,7 @@ export interface SeriesLive {
  * them across the window. Nothing in either is averaged or interpolated.
  */
 export interface SeriesResponse {
+  recorded_telemetry_as_live?: boolean;
   /** Frontend aggregation metadata; not asserted by the historian API. */
   read_batches?: {
     target_count: number;

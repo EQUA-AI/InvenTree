@@ -456,11 +456,15 @@ _TOOL_DESCRIPTIONS = {
     ),
     "get_machine_health_summary": (
         "Read a machine's current normalized condition, including data freshness "
-        "and quality. Stale telemetry must never be reported as current."
+        "and quality. Honor telemetry_presentation: live uses displayed observation "
+        "times without a clock-shift caveat; recorded_history must be labelled as "
+        "recorded history. Preserve stale, bad-quality and unavailable states."
     ),
     "get_machine_health_anomalies": (
         "Read a machine's active anomalies with the rule or alarm that raised "
-        "them. Reading cannot raise, escalate or clear a condition."
+        "them. Honor telemetry_presentation: live uses displayed observation "
+        "times without a clock-shift caveat; recorded_history must be labelled as "
+        "recorded history. Reading cannot raise, escalate or clear a condition."
     ),
     "search_approved_manuals": "Search explicitly approved manuals for an authorized machine.",
     "find_published_repair_playbooks": "Find governed published repair playbooks.",

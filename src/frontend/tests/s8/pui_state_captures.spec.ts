@@ -221,6 +221,7 @@ for (const state of states)
             })
           );
         if (state === 'schematic-shifted-history') {
+          data.recorded_telemetry_as_live = false;
           data.display_shifted = true;
           data.display_shift_seconds = 400 * 86400;
         }

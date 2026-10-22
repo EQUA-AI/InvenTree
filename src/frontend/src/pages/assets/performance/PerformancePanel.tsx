@@ -23,6 +23,10 @@ import { InvestigationSlices } from '../investigation/InvestigationSlices';
 import { LinkedEvidence } from '../investigation/LinkedEvidence';
 import { displayLinkedWindow } from '../investigation/windows';
 import monitoring from '../monitoring.module.css';
+import {
+  LIVE_TELEMETRY_WINDOW_SECONDS,
+  recordedTelemetryAsLive
+} from '../telemetryPresentation';
 import { useNow } from '../useNow';
 import { HistoryReadStack } from './HistoryReadContext';
 import { failedHistoryTargets } from './historyBatches';
@@ -251,13 +255,19 @@ function PumpPerformance({
     params,
     dataRange.isFetching || dataRange.isError
       ? undefined
-      : dataRange.data?.display_shift_seconds
+      : dataRange.data?.display_shift_seconds,
+    (dataRange.data && recordedTelemetryAsLive(dataRange.data)
+      ? LIVE_TELEMETRY_WINDOW_SECONDS
+      : 86400) * 1000
   );
   const invalidLink = linked.present && !linked.window;
   const range = useWindowState(
     linked.window ? { kind: 'absolute', ...linked.window } : undefined
   );
   const signalsQuery = useMachineSignals(machine.pk, range.live);
+  const asLive = recordedTelemetryAsLive(
+    dataRange.data ?? signalsQuery.data?.[0]
+  );
   const [investigationOpen, setInvestigationOpen] = useState(false);
   const [comparisonOpen, setComparisonOpen] = useState(() =>
     params.has('compare')
@@ -474,13 +484,19 @@ function PumpPerformance({
           color='yellow'
           title={
             linked.clockUnknown
-              ? t`Recorded clock unknown`
+              ? asLive
+                ? t`Time range unavailable`
+                : t`Recorded clock unknown`
               : t`Invalid investigation window`
           }
         >
           {linked.clockUnknown
-            ? t`The recorded-to-display clock offset is unavailable or still loading. No history read is made until the clock is known. Retry the source extent or choose a display-clock range.`
-            : t`The linked window must have valid increasing timestamps and be no longer than 24 h. No history has been requested from this link.`}
+            ? asLive
+              ? t`The time reference for this link is unavailable or still loading. No source window is read until it is known. Retry the source extent or choose a new range.`
+              : t`The recorded-to-display clock offset is unavailable or still loading. No history read is made until the clock is known. Retry the source extent or choose a display-clock range.`
+            : asLive
+              ? t`The linked window must have valid increasing timestamps and be no longer than 30 days. No source window has been requested from this link.`
+              : t`The linked window must have valid increasing timestamps and be no longer than 24 h. No history has been requested from this link.`}
           {linked.clockUnknown && (
             <Button
               className={monitoring.link}

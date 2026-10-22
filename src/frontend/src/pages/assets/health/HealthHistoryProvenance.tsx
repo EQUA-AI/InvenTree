@@ -84,7 +84,9 @@ export function HealthHistoryProvenance({
               {trend.limits.expected_sample_interval_seconds != null
                 ? t`Expected interval: ${trend.limits.expected_sample_interval_seconds} s (server default).`
                 : t`Expected interval not supplied.`}{' '}
-              {t`No resampling resolution or retention completeness is supplied by this endpoint. Fast transients may be absent; gaps are not filled.`}
+              {trend.sampled
+                ? t`Sampled real readings; resolution ${trend.resolution_seconds ?? t`not supplied`} s. Retention completeness is unavailable. Fast transients may be absent; gaps are not filled.`
+                : t`No resampling resolution or retention completeness is supplied by this endpoint. Fast transients may be absent; gaps are not filled.`}
             </Text>
           </>
         )}

@@ -141,7 +141,11 @@ for (const scheme of ['light', 'dark'] as const) {
               ? -10800
               : 0;
         anomalies = [
-          anomaly({ display_shifted: !!shift, display_shift_seconds: shift })
+          anomaly({
+            recorded_telemetry_as_live: !shift,
+            display_shifted: !!shift,
+            display_shift_seconds: shift
+          })
         ];
         summary = activeSummary;
       }

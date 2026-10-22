@@ -5,7 +5,8 @@ import { failedHistoryTargets } from './historyBatches';
 
 const HistoryReadContext = createContext({
   ...failedHistoryTargets(undefined),
-  missing: false
+  missing: false,
+  recorded_telemetry_as_live: undefined as boolean | undefined
 });
 
 /** Scope failure identity to the read actually supplying these charts. */
@@ -20,7 +21,11 @@ export function HistoryReadStack({
   } & StackProps
 >) {
   const failed = useMemo(
-    () => ({ ...failedHistoryTargets(response), missing: !response }),
+    () => ({
+      ...failedHistoryTargets(response),
+      missing: !response,
+      recorded_telemetry_as_live: response?.recorded_telemetry_as_live
+    }),
     [response]
   );
   return (

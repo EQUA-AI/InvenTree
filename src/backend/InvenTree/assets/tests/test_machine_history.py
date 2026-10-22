@@ -523,30 +523,96 @@ class FaultOccurrenceTests(TestCase):
         ):
             self.read(expected=400, **params)
 
+    @override_settings(AIMMS_RECORDED_TELEMETRY_AS_LIVE=False)
     def test_recorded_evidence_times_do_not_follow_the_dashboard_clock(self):
         """A migrated source's moving display clock cannot alter evidence."""
-        self.source.config = {'data_ranges': {
-            str(self.station.source_entity_uuid): {
-                'from': (self.now - timedelta(days=450)).isoformat(),
-                'to': (self.now - timedelta(days=442)).isoformat(),
+        self.source.config = {
+            'data_ranges': {
+                str(self.station.source_entity_uuid): {
+                    'from': (self.now - timedelta(days=450)).isoformat(),
+                    'to': (self.now - timedelta(days=442)).isoformat(),
+                }
             }
-        }}
+        }
         self.source.save()
         for now in (self.now, self.now + timedelta(days=1)):
             with mock.patch('django.utils.timezone.now', return_value=now):
                 detail = self.read(f'{self.resolved.pk}/')
                 listed = self.read(status='resolved')['results'][0]
             for row in (detail, listed):
-                self.assertEqual(row['first_observed_at'], self.resolved.first_observed_at.isoformat())
-                self.assertEqual(row['last_observed_at'], self.resolved.last_observed_at.isoformat())
+                self.assertEqual(
+                    row['first_observed_at'],
+                    self.resolved.first_observed_at.isoformat(),
+                )
+                self.assertEqual(
+                    row['last_observed_at'], self.resolved.last_observed_at.isoformat()
+                )
                 self.assertFalse(row['display_shifted'])
                 snapshot = row['snapshots'][0]
-                self.assertEqual(snapshot['window_start'], self.snapshot.window_start.isoformat())
-                self.assertEqual(snapshot['window_end'], self.snapshot.window_end.isoformat())
-                self.assertEqual(snapshot['captured_at'], self.snapshot.captured_at.isoformat())
+                self.assertEqual(
+                    snapshot['window_start'], self.snapshot.window_start.isoformat()
+                )
+                self.assertEqual(
+                    snapshot['window_end'], self.snapshot.window_end.isoformat()
+                )
+                self.assertEqual(
+                    snapshot['captured_at'], self.snapshot.captured_at.isoformat()
+                )
                 self.assertEqual(snapshot['content_hash'], self.snapshot.content_hash)
                 self.assertFalse(snapshot['display_shifted'])
             self.assertEqual(detail['snapshots'][0]['samples'], self.snapshot.samples)
+
+    @override_settings(AIMMS_RECORDED_TELEMETRY_AS_LIVE=True)
+    def test_live_occurrence_times_move_while_retained_evidence_stays_immutable(self):
+        """Only the occurrence's presentation moves; evidence and human acts do not."""
+        end = self.now - timedelta(days=442)
+        self.source.config = {
+            'data_ranges': {
+                str(self.station.source_entity_uuid): {
+                    'from': (end - timedelta(days=31)).isoformat(),
+                    'to': end.isoformat(),
+                }
+            }
+        }
+        self.source.save()
+        shift = self.now - end
+        with mock.patch('django.utils.timezone.now', return_value=self.now):
+            detail = self.read(f'{self.resolved.pk}/')
+            listed = self.read(status='resolved')['results'][0]
+        for row in (detail, listed):
+            self.assertEqual(
+                row['first_observed_at'],
+                (self.resolved.first_observed_at + shift).isoformat(),
+            )
+            self.assertEqual(
+                row['last_observed_at'],
+                (self.resolved.last_observed_at + shift).isoformat(),
+            )
+            self.assertTrue(row['recorded_telemetry_as_live'])
+            self.assertTrue(row['display_shifted'])
+            self.assertEqual(row['display_shift_seconds'], int(shift.total_seconds()))
+            self.assertEqual(row['resolved_at'], self.resolved.resolved_at.isoformat())
+            [snapshot] = row['snapshots']
+            self.assertEqual(
+                snapshot['window_start'], self.snapshot.window_start.isoformat()
+            )
+            self.assertEqual(
+                snapshot['window_end'], self.snapshot.window_end.isoformat()
+            )
+            self.assertEqual(
+                snapshot['captured_at'], self.snapshot.captured_at.isoformat()
+            )
+            self.assertEqual(snapshot['content_hash'], self.snapshot.content_hash)
+            self.assertFalse(snapshot['display_shifted'])
+        self.assertEqual(detail['snapshots'][0]['samples'], self.snapshot.samples)
+        self.resolved.refresh_from_db()
+        self.snapshot.refresh_from_db()
+        self.assertEqual(
+            self.resolved.first_observed_at.isoformat(),
+            (
+                timezone.datetime.fromisoformat(detail['first_observed_at']) - shift
+            ).isoformat(),
+        )
 
     def test_snapshot_retains_human_and_system_recorder(self):
         """Names follow Work's full-name / username convention; no guess."""
@@ -554,37 +620,65 @@ class FaultOccurrenceTests(TestCase):
         self.reader.last_name = 'Technician'
         self.reader.save()
         retained = HealthEvidenceSnapshot.objects.create(
-            machine=self.machine, anomaly=self.resolved, source=self.source,
-            created_by=self.reader, system_actor='historian-import',
-            signal_label='Retained attribution', window_start=self.now,
-            window_end=self.now, content_hash='r' * 64,
+            machine=self.machine,
+            anomaly=self.resolved,
+            source=self.source,
+            created_by=self.reader,
+            system_actor='historian-import',
+            signal_label='Retained attribution',
+            window_start=self.now,
+            window_end=self.now,
+            content_hash='r' * 64,
         )
+
         def captured(snapshot_id):
-            return next(row for row in self.read(f'{self.resolved.pk}/')['snapshots'] if row['id'] == str(snapshot_id))
+            return next(
+                row
+                for row in self.read(f'{self.resolved.pk}/')['snapshots']
+                if row['id'] == str(snapshot_id)
+            )
+
         snapshot = captured(retained.pk)
         self.assertEqual(snapshot['captured_by_name'], 'Recorded Technician')
         self.assertEqual(snapshot['system_actor'], 'historian-import')
         self.reader.first_name = self.reader.last_name = ''
         self.reader.save()
-        self.assertEqual(captured(retained.pk)['captured_by_name'], self.reader.username)
+        self.assertEqual(
+            captured(retained.pk)['captured_by_name'], self.reader.username
+        )
         self.assertIsNone(captured(self.snapshot.pk)['captured_by_name'])
 
     def test_occurrence_queries_stay_flat_with_more_work_and_snapshots(self):
         """Scope grants, work machines and snapshot recorders load in batches."""
         for index in range(7):
-            owning = WorkOrder.objects.create(title=f'Owner {index}', machine=self.machine)
-            related = WorkOrder.objects.create(title=f'Packet job {index}', machine=self.machine)
-            packet = RepairPacket.objects.create(machine=self.machine, work_order=related, symptom='Retained alarm')
+            owning = WorkOrder.objects.create(
+                title=f'Owner {index}', machine=self.machine
+            )
+            related = WorkOrder.objects.create(
+                title=f'Packet job {index}', machine=self.machine
+            )
+            packet = RepairPacket.objects.create(
+                machine=self.machine, work_order=related, symptom='Retained alarm'
+            )
             anomaly = MachineAnomaly.objects.create(
-                machine=self.machine, source=self.source, fingerprint=f'scale-{index}',
-                title=f'Scale alarm {index}', first_observed_at=self.now,
-                last_observed_at=self.now, work_order=owning, repair_packet=packet,
+                machine=self.machine,
+                source=self.source,
+                fingerprint=f'scale-{index}',
+                title=f'Scale alarm {index}',
+                first_observed_at=self.now,
+                last_observed_at=self.now,
+                work_order=owning,
+                repair_packet=packet,
             )
             anomaly.bindings.add(self.binding)
             HealthEvidenceSnapshot.objects.create(
-                machine=self.machine, anomaly=anomaly, source=self.source,
-                created_by=self.reader, signal_label='Retained value',
-                window_start=self.now, window_end=self.now,
+                machine=self.machine,
+                anomaly=anomaly,
+                source=self.source,
+                created_by=self.reader,
+                signal_label='Retained value',
+                window_start=self.now,
+                window_end=self.now,
                 content_hash=str(index) * 64,
             )
         with CaptureQueriesContext(connection) as small:

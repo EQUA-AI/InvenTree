@@ -278,6 +278,7 @@ export function stationMimic(bays: readonly BaySpec[]) {
 export async function openStation(
   page: Page,
   options: {
+    recordedTelemetryAsLive?: boolean;
     bays?: readonly BaySpec[];
     scheme?: 'light' | 'dark';
     fail?: boolean;
@@ -298,6 +299,7 @@ export async function openStation(
     (route: Route) => {
       const rows = signalRows(STATION_SIGNALS).map((row) => ({
         ...row,
+        recorded_telemetry_as_live: options.recordedTelemetryAsLive ?? true,
         binding_id: row.binding_id + 400
       }));
       return route.fulfill({ json: { count: rows.length, results: rows } });
@@ -309,6 +311,7 @@ export async function openStation(
       route.fulfill({
         json: {
           available: true,
+          recorded_telemetry_as_live: options.recordedTelemetryAsLive ?? true,
           ...(options.displayShift === null
             ? {}
             : { display_shift_seconds: options.displayShift ?? 0 }),
@@ -350,6 +353,8 @@ export async function openStation(
                 fail: options.fail,
                 absentKeys: options.absentKeys
               }),
+              recorded_telemetry_as_live:
+                options.recordedTelemetryAsLive ?? true,
               display_shifted: !!options.displayShift,
               display_shift_seconds: options.displayShift ?? 0
             }

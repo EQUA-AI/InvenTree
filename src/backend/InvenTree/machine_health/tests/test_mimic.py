@@ -116,8 +116,14 @@ class MimicTests(InvenTreeAPITestCase):
         self.assertFalse(response['display_shifted'])
         self.assertEqual(response['display_shift_seconds'], 0)
         self.assertIsNone(response['plant_timezone'])
-        self.assertEqual(response['last_error_at'], self.source.last_error_at.isoformat().replace('+00:00', 'Z'))
-        self.assertEqual(response['last_success_at'], self.source.last_success_at.isoformat().replace('+00:00', 'Z'))
+        self.assertEqual(
+            response['last_error_at'],
+            self.source.last_error_at.isoformat().replace('+00:00', 'Z'),
+        )
+        self.assertEqual(
+            response['last_success_at'],
+            self.source.last_success_at.isoformat().replace('+00:00', 'Z'),
+        )
         self.assertIsNone(response['last_poll_at'])
 
     @override_settings(AIMMS_PLANT_TIMEZONE='Asia/Kolkata')
@@ -125,15 +131,147 @@ class MimicTests(InvenTreeAPITestCase):
         """The same offset that ages readings is disclosed by the serializer."""
         now = timezone.now()
         end = now - timedelta(days=400)
-        self.source.config['data_ranges'] = {str(self.station.source_entity_uuid): {
-            'from': (end - timedelta(days=10)).isoformat(), 'to': end.isoformat()
-        }}
+        self.source.config['data_ranges'] = {
+            str(self.station.source_entity_uuid): {
+                'from': (end - timedelta(days=10)).isoformat(),
+                'to': end.isoformat(),
+            }
+        }
         self.source.save()
         self.add_point('/pd/P1/st', 'R', unit='', age=400 * 86400)
         response = self.get_mimic(unit='P1').data
         self.assertTrue(response['display_shifted'])
         self.assertGreaterEqual(response['display_shift_seconds'], 400 * 86400)
         self.assertEqual(response['plant_timezone'], 'Asia/Kolkata')
+
+    def recorded_month(self):
+        """The plant month stays on its clock, with no recent poll or success."""
+        now = timezone.now()
+        end = now - timedelta(days=400)
+        self.source.config['data_ranges'] = {
+            str(self.station.source_entity_uuid): {
+                'from': (end - timedelta(days=31)).isoformat(),
+                'to': end.isoformat(),
+            }
+        }
+        self.source.save()
+        return end
+
+    @override_settings(AIMMS_COSMOS_PUMPHOUSE_ENABLED=False)
+    def test_live_month_can_be_read_without_restarting_the_poller(self):
+        """O27 changes presentation; O23 still blanks scheduler-disabled values."""
+        self.recorded_month()
+        self.add_point('/pd/P1/st', 'R', unit='', age=400 * 86400 + 5)
+        for live in (True, False):
+            with (
+                self.subTest(live=live),
+                override_settings(AIMMS_RECORDED_TELEMETRY_AS_LIVE=live),
+            ):
+                response = self.get_mimic(unit='P1').data
+                self.assertEqual(response['recorded_telemetry_as_live'], live)
+                self.assertTrue(response['display_shifted'])
+                self.assertGreater(response['display_shift_seconds'], 0)
+                self.assertFalse(response['polling_enabled'])
+                self.assertIsNone(response['last_poll_at'])
+                self.assertIsNone(response['last_success_at'])
+                self.assertEqual(response['enabled'], live)
+                self.assertEqual(response['reporting'], True if live else None)
+                point = response['points']['/pd/P1/st']
+                self.assertEqual(point['value'], 'R' if live else None)
+                self.assertEqual(point['reason'], None if live else 'disabled')
+
+    def test_source_health_uses_the_reading_and_preserves_connector_failures(self):
+        """A missing poll is harmless; an unresolved read failure is still failed."""
+        self.recorded_month()
+        self.add_point('/pd/P1/st', 'R', unit='', age=400 * 86400 + 5)
+        for live in (True, False):
+            with (
+                self.subTest(live=live),
+                override_settings(AIMMS_RECORDED_TELEMETRY_AS_LIVE=live),
+            ):
+                response = self.client.get(
+                    f'/api/machine-health/machines/{self.pump.pk}/health/'
+                ).data
+                self.assertEqual(response['recorded_telemetry_as_live'], live)
+                self.assertTrue(response['display_shifted'])
+                self.assertEqual(response['stale_signal_count'], 0)
+                [source] = response['sources']
+                self.assertEqual(source['healthy'], live)
+                self.assertEqual(source['reporting'], True if live else None)
+                self.assertEqual(source['read_failed'], False if live else None)
+                self.assertIsNotNone(source['last_observed_at'])
+        checkpoint = IngestionCheckpoint.objects.get(
+            source=self.source, station=self.station
+        )
+        checkpoint.last_error_code = 'TIMEOUT'
+        checkpoint.save()
+        summary = self.client.get(
+            f'/api/machine-health/machines/{self.pump.pk}/health/'
+        ).data
+        self.assertFalse(summary['sources'][0]['reporting'])
+        self.assertFalse(summary['sources'][0]['healthy'])
+        self.assertTrue(summary['sources'][0]['read_failed'])
+        self.assertEqual(summary['sources'][0]['last_error_code'], 'TIMEOUT')
+        self.assertFalse(self.get_mimic(unit='P1').data['reporting'])
+        checkpoint.last_error_code = ''
+        checkpoint.save()
+        self.source.last_error_at = timezone.now()
+        self.source.last_error_code = 'NETWORK'
+        self.source.save()
+        summary = self.client.get(
+            f'/api/machine-health/machines/{self.pump.pk}/health/'
+        ).data
+        self.assertFalse(summary['sources'][0]['reporting'])
+        self.assertFalse(summary['sources'][0]['healthy'])
+        self.assertTrue(summary['sources'][0]['read_failed'])
+        self.assertEqual(summary['sources'][0]['last_error_code'], 'NETWORK')
+        self.assertFalse(self.get_mimic(unit='P1').data['reporting'])
+
+    def test_live_presentation_preserves_stale_and_bad_quality_readings(self):
+        """Moving the month never promotes an aged or unusable point to current."""
+        self.recorded_month()
+        self.add_point('/pd/P1/st', 'R', unit='', age=400 * 86400 + 5)
+        self.add_point('/old', 1, age=400 * 86400 + 1000)
+        self.add_point('/bad', 2, age=400 * 86400 + 5, quality='bad')
+        for live in (True, False):
+            with (
+                self.subTest(live=live),
+                override_settings(AIMMS_RECORDED_TELEMETRY_AS_LIVE=live),
+            ):
+                points = self.get_mimic(unit='P1').data['points']
+                self.assertEqual(points['/old']['reason'], 'stale')
+                self.assertIsNone(points['/old']['value'])
+                self.assertEqual(points['/bad']['reason'], 'bad_quality')
+                self.assertIsNone(points['/bad']['value'])
+                response = self.client.get(
+                    f'/api/machine-health/machines/{self.pump.pk}/health/signals/'
+                ).data
+                self.assertEqual(response['recorded_telemetry_as_live'], live)
+                self.assertTrue(
+                    all(row['display_shifted'] for row in response['results'])
+                )
+                self.assertEqual(sum(row['stale'] for row in response['results']), 1)
+
+    def test_live_date_picker_offers_thirty_days_and_keeps_the_plant_extent(self):
+        """O27 bounds the visible month; O23 and the original source span survive."""
+        end = self.recorded_month()
+        for live, days in ((True, 30), (False, 31)):
+            with (
+                self.subTest(live=live),
+                override_settings(AIMMS_RECORDED_TELEMETRY_AS_LIVE=live),
+            ):
+                result = self.client.get(
+                    f'/api/machine-health/machines/{self.pump.pk}/health/data-range/'
+                ).data
+                start = timezone.datetime.fromisoformat(result['from'])
+                finish = timezone.datetime.fromisoformat(result['to'])
+                self.assertEqual(finish - start, timedelta(days=days))
+                self.assertEqual(
+                    result['source_from'], (end - timedelta(days=31)).isoformat()
+                )
+                self.assertEqual(result['source_to'], end.isoformat())
+                self.assertEqual(result['recorded_telemetry_as_live'], live)
+                self.assertTrue(result['display_shifted'])
 
     def test_selected_values_alarms_and_unconfigured_thresholds(self):
         """Only configured limits produce alarms; no limits means unknown health."""
@@ -417,7 +555,7 @@ class MimicTests(InvenTreeAPITestCase):
 
 
 class UnusableReasonTests(MimicTests):
-    """"Unusable" is not one fact, and the mimic is where an operator reads it.
+    """The "Unusable" label covers several facts the operator must distinguish.
 
     A channel pegged at the source's over-range marker, one sitting on a
     converter rail and one whose reading will not parse are three different

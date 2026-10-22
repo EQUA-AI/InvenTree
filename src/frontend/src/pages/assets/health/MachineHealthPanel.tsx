@@ -18,6 +18,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import monitoring from '../monitoring.module.css';
+import { recordedTelemetryAsLive } from '../telemetryPresentation';
 import {
   AttentionAlert,
   MetaText,
@@ -282,7 +283,11 @@ export function MachineHealthPanel({
               >{t`Refresh`}</Button>
             </Group>
           </Group>
-          <MetaText size='xs'>{t`Condition read ${displayInstant(summaryQuery.dataUpdatedAt) ?? t`Time unavailable`} · Times: your clock (${displayClockLabel()}) for unshifted times · shifted anomaly times are labelled separately · plant timezone not supplied`}</MetaText>
+          <MetaText size='xs'>
+            {recordedTelemetryAsLive(summary)
+              ? t`Condition read ${displayInstant(summaryQuery.dataUpdatedAt) ?? t`Time unavailable`} · Times: your clock (${displayClockLabel()})`
+              : t`Condition read ${displayInstant(summaryQuery.dataUpdatedAt) ?? t`Time unavailable`} · Times: your clock (${displayClockLabel()}) for unshifted times · shifted anomaly times are labelled separately · plant timezone not supplied`}
+          </MetaText>
           <SimpleGrid
             type='container'
             cols={{ base: 1, '1400px': 2 }}

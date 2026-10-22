@@ -18,11 +18,18 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../../App';
 import { showApiErrorMessage } from '../../functions/notifications';
+import { SourcePollingBadge } from './health/SourcePollingBadge';
+import { recordedTelemetryAsLive } from './telemetryPresentation';
 
 type Source = { pk: number; name: string };
 export type StationLiveStatus = {
+  recorded_telemetry_as_live?: boolean;
+  last_observed_at?: string | null;
+  reporting?: boolean | null;
+  read_failed?: boolean | null;
   activated: boolean;
   enabled: boolean;
+  polling_enabled?: boolean;
   source: Source | null;
   sources: Source[];
   approved: number;
@@ -125,9 +132,11 @@ export function StationLiveSource({
                 <Badge color={status.activated ? 'green' : 'gray'}>
                   {status.activated ? t`Activated` : t`Not activated`}
                 </Badge>
-                <Badge color={status.enabled ? 'blue' : 'yellow'}>
-                  {status.enabled ? t`Polling enabled` : t`Polling paused`}
-                </Badge>
+                <SourcePollingBadge
+                  enabled={status.enabled}
+                  polling_enabled={status.polling_enabled}
+                  recorded_telemetry_as_live={status.recorded_telemetry_as_live}
+                />
               </Group>
               <Select
                 label={t`Source`}
@@ -155,10 +164,24 @@ export function StationLiveSource({
                 </Text>
               </Group>
               <Text size='sm'>
-                {t`Last poll`}:{' '}
-                {status.last_poll_at
-                  ? new Date(status.last_poll_at).toLocaleString()
-                  : t`Not polled yet`}
+                {recordedTelemetryAsLive(status) && status.reporting != null
+                  ? t`Last reading`
+                  : t`Last poll`}
+                :{' '}
+                {(
+                  recordedTelemetryAsLive(status) && status.reporting != null
+                    ? status.last_observed_at
+                    : status.last_poll_at
+                )
+                  ? new Date(
+                      (recordedTelemetryAsLive(status) &&
+                      status.reporting != null
+                        ? status.last_observed_at
+                        : status.last_poll_at)!
+                    ).toLocaleString()
+                  : recordedTelemetryAsLive(status) && status.reporting != null
+                    ? t`No current reading`
+                    : t`Not polled yet`}
               </Text>
               {status.last_error_code && (
                 <Alert color='red'>
@@ -169,7 +192,9 @@ export function StationLiveSource({
                 <Alert color='red'>{t`Source preview could not be loaded. Refresh before trying again.`}</Alert>
               )}
               <Text size='sm' c='dimmed'>
-                {t`Activation binds approved mappings. Polling must also be enabled by your administrator. Deactivation stops this station and clears its managed live values.`}
+                {recordedTelemetryAsLive(status)
+                  ? t`Activation binds approved mappings. Deactivation stops this station and clears its managed live values.`
+                  : t`Activation binds approved mappings. Polling must also be enabled by your administrator. Deactivation stops this station and clears its managed live values.`}
               </Text>
               <Group>
                 <Button

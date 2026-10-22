@@ -36,6 +36,7 @@ export interface RetainedSample {
 }
 
 export interface RetainedSnapshot {
+  recorded_telemetry_as_live?: boolean;
   id: string;
   signal_label: string;
   unit: string;
@@ -65,6 +66,7 @@ export interface OccurrenceComponent {
 }
 
 export interface FaultOccurrence {
+  recorded_telemetry_as_live?: boolean;
   id: number;
   external_id: string;
   alarm_code: string;
@@ -94,6 +96,7 @@ export interface FaultOccurrence {
 }
 
 export interface OccurrencePage {
+  recorded_telemetry_as_live?: boolean;
   plant_timezone?: string | null;
   rule: string;
   count: number;

@@ -18,6 +18,7 @@ for (const scheme of ['light', 'dark'] as const) {
     page
   }) => {
     const data = await mockEquipment(page);
+    data.recorded_telemetry_as_live = false;
     data.display_shifted = true;
     data.display_shift_seconds = 400 * 86400;
     data.alarms[0].label = 'DE bearing temperature';
@@ -248,3 +249,61 @@ for (const scheme of ['light', 'dark'] as const)
       });
     }
   });
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`O27 shifted pump readings present as live in ${scheme}`, async ({
+    page
+  }, info) => {
+    const data = await mockEquipment(page);
+    data.recorded_telemetry_as_live = true;
+    data.display_shifted = true;
+    data.display_shift_seconds = 400 * 86400;
+    data.reporting = true;
+    data.polling_enabled = false;
+    data.last_observed_at = data.generated_at;
+    data.last_poll_at = '2025-08-01T00:00:00Z';
+    await openEquipment(page, true, scheme);
+    await expect(
+      page.getByText('Recorded history shown as current', { exact: true })
+    ).toHaveCount(0);
+    await expect(
+      page.getByText(/Times moved .*onto the display clock/)
+    ).toHaveCount(0);
+    await expect(page.getByText('Live', { exact: true })).toBeVisible();
+    await expect(
+      page
+        .getByLabel('Process data')
+        .locator('dt')
+        .filter({ hasText: /^Polling$/ })
+        .locator('..')
+        .locator('dd')
+    ).toHaveText('disabled');
+    await expect(page.locator('[data-equipment-view]')).toContainText(
+      'Last reading'
+    );
+    await page.locator('[data-equipment-view]').screenshot({
+      path: info.outputPath(`o27-mimic-${scheme}.png`),
+      animations: 'disabled'
+    });
+    // Current timestamps cannot promote unavailable equipment to Live.
+    data.enabled = false;
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await expect(page.getByText('Live', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('alert')).toContainText(
+      'Readings are unavailable for this station. Check station activation and source configuration.'
+    );
+    data.recorded_telemetry_as_live = false;
+    data.polling_enabled = true;
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await expect(page.getByText('Live', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('alert')).toContainText(
+      'Polling is disabled for this station. Live values are unavailable.'
+    );
+    await expect(
+      page
+        .getByLabel('Process data')
+        .locator('dd')
+        .filter({ hasText: /^disabled$/ })
+    ).toHaveCount(1);
+  });
+}

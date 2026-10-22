@@ -50,6 +50,7 @@ for (const scheme of ['light', 'dark'] as const) {
       (route) => route.fulfill({ json: occurrence })
     );
     const requests = await openHealth(page, {
+      recordedTelemetryAsLive: false,
       scheme,
       signals: specs,
       entrySearch: search(
@@ -141,6 +142,7 @@ test('a 13-hour linked case needs explicit contiguous six-hour reads without pre
 }, info) => {
   const end = '2026-10-17T19:00:00.000Z';
   const requests = await openHealth(page, {
+    recordedTelemetryAsLive: false,
     signals: [{ ...specs[0], trend: 'empty' }],
     entrySearch: search(from, end)
   });
@@ -224,10 +226,15 @@ test('recorded snapshot links convert once with a fresh offset and keep the exac
       })
   );
   const requests = await openHealth(page, {
+    recordedTelemetryAsLive: false,
     signals: specs,
     snapshots: [snapshot],
     dataRange: { display_shift_seconds: 31536000 },
-    chartOverrides: { display_shifted: true, display_shift_seconds: 31536000 }
+    chartOverrides: {
+      recorded_telemetry_as_live: false,
+      display_shifted: true,
+      display_shift_seconds: 31536000
+    }
   });
   await signalTable(page)
     .getByRole('button', {
@@ -278,6 +285,7 @@ for (const mode of ['missing', 'failed'] as const)
     page
   }) => {
     const requests = await openHealth(page, {
+      recordedTelemetryAsLive: false,
       signals: specs,
       entrySearch: search(
         snapshot.window_start,
@@ -312,6 +320,7 @@ test('malformed and over-24-hour links fail closed with native recovery', async 
     (route) => route.fulfill({ status: 403, json: { detail: 'Denied' } })
   );
   const requests = await openHealth(page, {
+    recordedTelemetryAsLive: false,
     signals: specs,
     entrySearch: search(from, '2026-10-19T06:00:00Z', '&occurrence=901')
   });
@@ -334,6 +343,7 @@ test('permission loss never substitutes retained evidence or reports an empty re
     (route) => route.fulfill({ status: 403, json: { detail: 'Denied' } })
   );
   await openHealth(page, {
+    recordedTelemetryAsLive: false,
     signals: specs,
     entrySearch: search(from, to, `&occurrence=901&snapshot=${snapshot.id}`),
     snapshotsStatus: 403,
@@ -354,6 +364,7 @@ test('a capped read and unavailable cadence keep partial coverage visible', asyn
   page
 }, info) => {
   await openHealth(page, {
+    recordedTelemetryAsLive: false,
     signals: specs,
     entrySearch: search(),
     cadence: false,
@@ -378,6 +389,7 @@ test('point anomalies and snapshots get no inferred duration; occurrence links r
 }) => {
   const point = { ...snapshot, window_end: snapshot.window_start };
   const requests = await openHealth(page, {
+    recordedTelemetryAsLive: false,
     signals: specs,
     snapshots: [point],
     anomalies: [
@@ -461,6 +473,7 @@ for (const anomalyShift of [31536000, 0]) {
     let bindingShift = 31536000;
     const sourceReads: { from: string; to: string }[] = [];
     const requests = await openHealth(page, {
+      recordedTelemetryAsLive: false,
       signals: specs,
       dataRange: { display_shift_seconds: bindingShift },
       anomalies: [
@@ -573,6 +586,7 @@ for (const anomalyShift of [31536000, 0]) {
     // Open the canonical recorded URL checked by the link test in an independent
     // browser context, like a shared/bookmarked URL rather than fixture memory.
     const requests = await openHealth(page, {
+      recordedTelemetryAsLive: false,
       signals: specs,
       entrySearch: search(
         recordedFrom,
@@ -630,6 +644,7 @@ test('an occurrence without its own clock offset has no source-window link', asy
   page
 }) => {
   await openHealth(page, {
+    recordedTelemetryAsLive: false,
     signals: specs,
     anomalies: [
       anomaly({
@@ -672,6 +687,7 @@ for (const scheme of ['light', 'dark'] as const)
       releaseExtent = resolve;
     });
     const requests = await openHealth(page, {
+      recordedTelemetryAsLive: false,
       scheme,
       signals: [{ ...specs[0], trend: 'empty' }],
       dataRangeReady
@@ -799,6 +815,7 @@ test('late history cannot replace a newer binding and loading is explicit', asyn
   page.on('requestfinished', settled);
   page.on('requestfailed', settled);
   const requests = await openHealth(page, {
+    recordedTelemetryAsLive: false,
     signals: specs,
     entrySearch: search(),
     chartHandler: async (route, url) => {

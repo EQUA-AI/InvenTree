@@ -4,6 +4,7 @@ import { Stack } from '@mantine/core';
 import { IconClockShare } from '@tabler/icons-react';
 import { displayInstant } from '../displayClock';
 import { shiftSpan } from '../faults/occurrenceLabels';
+import { showRecordedTelemetry } from '../telemetryPresentation';
 import { StatusBadge } from './StatusBadge';
 import { MetaText } from './common';
 import { shiftFacts } from './shiftFacts';
@@ -12,7 +13,7 @@ export function AnomalyTimeShift({
   anomaly,
   time
 }: Readonly<{ anomaly: MachineAnomaly; time?: string | null }>) {
-  if (!anomaly.display_shifted) return null;
+  if (!showRecordedTelemetry(anomaly)) return null;
   const fact = shiftFacts(anomaly.display_shift_seconds, time);
   const span = fact.seconds == null ? null : shiftSpan(fact.seconds);
   return (

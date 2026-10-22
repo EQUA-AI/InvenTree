@@ -1,6 +1,7 @@
 import { t } from '@lingui/core/macro';
 import { Box, Group, Paper, Stack, Table, Text } from '@mantine/core';
 import { displayInstant } from '../displayClock';
+import { recordedTelemetryAsLive } from '../telemetryPresentation';
 import { SourcePollStatus } from './SourcePollStatus';
 import { MetaText } from './common';
 
@@ -39,8 +40,22 @@ export function HealthSourceStatusTable({
         <Table.Thead>
           <Table.Tr>
             <Table.Th>{t`Source`}</Table.Th>
-            <Table.Th>{t`Last poll`}</Table.Th>
-            <Table.Th>{t`Last success`}</Table.Th>
+            <Table.Th>
+              {sources.some(
+                (source) =>
+                  recordedTelemetryAsLive(source) && source.reporting != null
+              )
+                ? t`Source reporting`
+                : t`Last poll`}
+            </Table.Th>
+            <Table.Th>
+              {sources.some(
+                (source) =>
+                  recordedTelemetryAsLive(source) && source.reporting != null
+              )
+                ? t`Last reading`
+                : t`Last success`}
+            </Table.Th>
             <Table.Th>{t`Last error`}</Table.Th>
             <Table.Th>{t`Freshness budget`}</Table.Th>
             <Table.Th>{t`Mapped tags`}</Table.Th>
@@ -62,9 +77,17 @@ export function HealthSourceStatusTable({
               </Table.Td>
               <Table.Td>
                 <Text size='sm'>
-                  {source.last_success_at
-                    ? (displayInstant(source.last_success_at) ??
-                      t`Time unavailable`)
+                  {(
+                    recordedTelemetryAsLive(source) && source.reporting != null
+                      ? source.last_observed_at
+                      : source.last_success_at
+                  )
+                    ? (displayInstant(
+                        recordedTelemetryAsLive(source) &&
+                          source.reporting != null
+                          ? source.last_observed_at
+                          : source.last_success_at
+                      ) ?? t`Time unavailable`)
                     : t`Not recorded`}
                 </Text>
               </Table.Td>

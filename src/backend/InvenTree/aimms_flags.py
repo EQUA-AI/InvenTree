@@ -295,6 +295,17 @@ REGISTRY: tuple[FlagEntry, ...] = (
         description='Comma-separated rule codes; empty enables nothing',
     ),
     FlagEntry(
+        'AIMMS_RECORDED_TELEMETRY_AS_LIVE',
+        'bool',
+        True,
+        'django',
+        config_key='aimms_recorded_telemetry_as_live',
+        description=(
+            'O27: present the recorded station month as current telemetry; '
+            'off restores O23 history labels without changing source clocks'
+        ),
+    ),
+    FlagEntry(
         'AIMMS_COSMOS_PUMPHOUSE_ENABLED',
         'bool',
         False,

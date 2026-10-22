@@ -8,6 +8,7 @@ import { Button, Group, SimpleGrid, Stack, Text } from '@mantine/core';
 import { useId } from 'react';
 import { displayInstant } from '../displayClock';
 import monitoring from '../monitoring.module.css';
+import { recordedTelemetryAsLive } from '../telemetryPresentation';
 import { conditionText } from './SignalCondition';
 import { StatusBadge, statusTone } from './StatusBadge';
 import {
@@ -137,6 +138,7 @@ export function HealthSummaryPanel({
         </Group>
         <MetaText size='xs'>{t`Last observation`}</MetaText>
         <FreshnessText
+          preferJustNow={recordedTelemetryAsLive(summary)}
           observedAt={summary.last_observed_at}
           stale={newest?.stale ?? false}
           thresholdSeconds={newest?.freshness_threshold_seconds}
@@ -166,7 +168,11 @@ export function HealthSummaryPanel({
           </AttentionAlert>
         )}
         {summary.state === 'offline' && (
-          <MetaText>{t`Every mapped signal is older than its source's freshness budget. Values are historical, not the machine's current state.`}</MetaText>
+          <MetaText>
+            {recordedTelemetryAsLive(summary)
+              ? t`Every mapped signal is older than its source's freshness budget. Current readings are unavailable.`
+              : t`Every mapped signal is older than its source's freshness budget. Values are historical, not the machine's current state.`}
+          </MetaText>
         )}
         {summary.degraded_data && summary.state !== 'offline' && (
           <AttentionAlert

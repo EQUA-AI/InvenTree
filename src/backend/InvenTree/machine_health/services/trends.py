@@ -34,7 +34,12 @@ from machine_health.connectors.base import (
     get_connector,
 )
 from machine_health.mimic_layout import load_layout
-from machine_health.services.display_time import display_shift, to_display, to_source
+from machine_health.services.display_time import (
+    display_shift,
+    presentation_metadata,
+    to_display,
+    to_source,
+)
 
 logger = logging.getLogger('inventree')
 
@@ -167,8 +172,7 @@ def read_trend(
         'max_samples': samples,
         # Said plainly rather than left for the reader to infer: these times are
         # not the plant's. Subtract the shift to recover them.
-        'display_shifted': bool(shift),
-        'display_shift_seconds': int(shift.total_seconds()),
+        **presentation_metadata(shift),
         'limits': {
             'max_window_seconds': MAX_TREND_WINDOW_SECONDS,
             'max_samples': MAX_TREND_SAMPLES,
@@ -341,8 +345,7 @@ def read_trends(
             'window_start': start.isoformat(),
             'window_end': end.isoformat(),
             'max_samples': samples,
-            'display_shifted': bool(shift),
-            'display_shift_seconds': int(shift.total_seconds()),
+            **presentation_metadata(shift),
             'limits': {
                 'max_window_seconds': MAX_TREND_WINDOW_SECONDS,
                 'max_samples': MAX_TREND_SAMPLES,

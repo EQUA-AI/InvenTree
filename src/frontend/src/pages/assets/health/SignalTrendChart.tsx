@@ -37,13 +37,23 @@ import { ThresholdKey } from '../performance/ThresholdKey';
 import { legibleColor } from '../performance/TrendChart';
 import { limitLines } from '../performance/limitLines';
 import { splitLimits, thresholdBands } from '../performance/thresholdBands';
+import {
+  LIVE_TELEMETRY_WINDOW_SECONDS,
+  recordedTelemetryAsLive,
+  showRecordedTelemetry
+} from '../telemetryPresentation';
 import { useNow } from '../useNow';
 import { MetaText } from './common';
 import { shiftFacts } from './shiftFacts';
+import { trendFromSeries } from './trendFromSeries';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
-import type { MachineSignal, SignalTrend } from '@lib/types/MachineHealth';
+import type {
+  MachineSignal,
+  SeriesResponse,
+  SignalTrend
+} from '@lib/types/MachineHealth';
 
 import { useApi } from '../../../contexts/ApiContext';
 import {
@@ -80,6 +90,7 @@ const MAX_WINDOW_SECONDS = 6 * 3600;
 /** Sentinel for the range select; not a duration. */
 /** What the source reports about the history it holds for this station. */
 interface DataRange {
+  recorded_telemetry_as_live?: boolean;
   available: boolean;
   from: string;
   to: string;
@@ -140,7 +151,8 @@ function toIso(value: string | null): string | null {
  */
 function customWindowError(
   from: string | null,
-  to: string | null
+  to: string | null,
+  maxWindowSeconds = MAX_WINDOW_SECONDS
 ): string | null {
   if (!from || !to) {
     return t`Pick both a start and an end for the window.`;
@@ -156,9 +168,9 @@ function customWindowError(
   }
 
   const seconds = end.diff(start, 'second');
-  if (seconds > MAX_WINDOW_SECONDS) {
+  if (seconds > maxWindowSeconds) {
     const hours = (seconds / 3600).toFixed(1);
-    return t`That window is ${hours} hours long. Health's source reader accepts at most ${MAX_WINDOW_SECONDS / 3600} hours per read.`;
+    return t`That window is ${hours} hours long. Health's source reader accepts at most ${maxWindowSeconds / 3600} hours per read.`;
   }
 
   return null;
@@ -225,7 +237,9 @@ function unavailableMessage(trend: SignalTrend): string {
     case 'NO_CONNECTOR':
       return t`This source has no configured connector, so no history can be read.`;
     case 'HISTORY_UNSUPPORTED':
-      return t`${trend.source_name} does not support historical windows. Check the separately reported current reading.`;
+      return recordedTelemetryAsLive(trend)
+        ? t`${trend.source_name} does not support this time window. Check the separately reported current reading.`
+        : t`${trend.source_name} does not support historical windows. Check the separately reported current reading.`;
     case 'SOURCE_TIMEOUT':
       return t`${trend.source_name} did not answer within the read timeout. The failed read does not establish an empty record.`;
     case 'SOURCE_UNAVAILABLE':
@@ -317,6 +331,9 @@ export function SignalTrendChart({
   const rangeQuery = useQuery<DataRange>({
     queryKey: ['machine-health-data-range', machineId],
     staleTime: params.get('history_clock') === 'recorded' ? 0 : 60 * 60 * 1000,
+    refetchInterval: (query) =>
+      recordedTelemetryAsLive(query.state.data) ? 60_000 : false,
+    refetchIntervalInBackground: false,
     queryFn: async () => {
       const response = await api.get(
         apiUrl(ApiEndpoints.machine_health_data_range, machineId)
@@ -333,11 +350,16 @@ export function SignalTrendChart({
     if (recordedLinkKey) void refreshRange();
   }, [recordedLinkKey, refreshRange]);
   const dataRange = rangeQuery.data;
+  const asLive = recordedTelemetryAsLive(dataRange ?? selectable[0]);
+  const maxWindowSeconds = asLive
+    ? LIVE_TELEMETRY_WINDOW_SECONDS
+    : MAX_WINDOW_SECONDS;
   const linked = displayLinkedWindow(
     params,
     rangeQuery.isFetching || rangeQuery.isError
       ? undefined
-      : dataRange?.display_shift_seconds
+      : dataRange?.display_shift_seconds,
+    (asLive ? LIVE_TELEMETRY_WINDOW_SECONDS : 86400) * 1000
   );
   // Only a recorded-clock link depends on the offset: a fresh offset converts
   // it again. Manual and display-clock reads keep their slice when the source
@@ -352,7 +374,7 @@ export function SignalTrendChart({
   const needsSlice =
     !slice &&
     !!linked.window &&
-    linked.window.to - linked.window.from > MAX_WINDOW_SECONDS * 1000;
+    linked.window.to - linked.window.from > maxWindowSeconds * 1000;
   const blockedLink = linked.present && (!linked.window || needsSlice);
   const fixedWindow = slice ?? linked.window;
   const fixedRange =
@@ -374,8 +396,11 @@ export function SignalTrendChart({
   const isCustom = rangeSeconds === CUSTOM;
 
   const rangeError = useMemo(
-    () => (isCustom ? customWindowError(customFrom, customTo) : null),
-    [isCustom, customFrom, customTo]
+    () =>
+      isCustom
+        ? customWindowError(customFrom, customTo, maxWindowSeconds)
+        : null,
+    [isCustom, customFrom, customTo, maxWindowSeconds]
   );
 
   // The explicit window, when one was picked and is readable.
@@ -404,8 +429,9 @@ export function SignalTrendChart({
   // A window that starts on an earlier day needs its date on the axis.
   const withDate = useMemo(
     () =>
-      !!requestedRange && !dayjs(requestedRange.from).isSame(dayjs(), 'day'),
-    [requestedRange?.from]
+      (asLive && windowSeconds >= 86400) ||
+      (!!requestedRange && !dayjs(requestedRange.from).isSame(dayjs(), 'day')),
+    [requestedRange?.from, asLive, windowSeconds]
   );
 
   const selectedIsMapped = selectable.some(
@@ -443,6 +469,31 @@ export function SignalTrendChart({
         from: new Date(end - windowSeconds * 1000).toISOString(),
         to: new Date(end).toISOString()
       };
+      // Long windows use the bounded sampled-series reader. The complete
+      // trend endpoint keeps its six-hour source-work limit in both modes.
+      if (
+        asLive &&
+        Date.parse(window.to) - Date.parse(window.from) >
+          MAX_WINDOW_SECONDS * 1000
+      ) {
+        const response = await api.get<SeriesResponse>(
+          apiUrl(ApiEndpoints.machine_health_series, machineId),
+          {
+            params: {
+              bindings: bindingId,
+              from: window.from,
+              to: window.to,
+              points: 240
+            },
+            signal,
+            timeout: 90 * 1000
+          }
+        );
+        return trendFromSeries(
+          response.data,
+          selectable.find((item) => String(item.binding_id) === bindingId)!
+        );
+      }
       const response = await api.get(
         apiUrl(ApiEndpoints.machine_health_trend, machineId),
         {
@@ -514,17 +565,27 @@ export function SignalTrendChart({
             color='yellow'
             title={
               linked.clockUnknown
-                ? t`Recorded clock unknown`
+                ? asLive
+                  ? t`Time range unavailable`
+                  : t`Recorded clock unknown`
                 : needsSlice
-                  ? t`Choose a six-hour slice`
+                  ? asLive
+                    ? t`Choose a bounded window`
+                    : t`Choose a six-hour slice`
                   : t`Invalid investigation window`
             }
           >
             {linked.clockUnknown
-              ? t`The recorded-to-display clock offset is unavailable or still loading. No selected history is read until the clock is known.`
+              ? asLive
+                ? t`The time reference for this link is unavailable or still loading. No source window is read until it is known. Retry the source extent or choose a new range.`
+                : t`The recorded-to-display clock offset is unavailable or still loading. No selected history is read until the clock is known.`
               : needsSlice
-                ? t`This linked span exceeds Health's 6 h read limit. Choose and explicitly read a slice below; the span is not silently shortened.`
-                : t`Linked bounds must be valid, increasing and at most 24 h. No history was requested from this link.`}
+                ? asLive
+                  ? t`This linked span exceeds the read limit of ${maxWindowSeconds / 3600} h. Choose and explicitly read a slice below; the span is not silently shortened.`
+                  : t`This linked span exceeds Health's 6 h read limit. Choose and explicitly read a slice below; the span is not silently shortened.`
+                : asLive
+                  ? t`The linked window must have valid increasing timestamps and be no longer than 30 days. No source window has been requested from this link.`
+                  : t`Linked bounds must be valid, increasing and at most 24 h. No history was requested from this link.`}
             {linked.clockUnknown && (
               <Button
                 className={monitoring.link}
@@ -561,7 +622,7 @@ export function SignalTrendChart({
                 to: requestedRange ? Date.parse(requestedRange.to) : now
               }
             }
-            maxWindowMs={MAX_WINDOW_SECONDS * 1000}
+            maxWindowMs={maxWindowSeconds * 1000}
             onRead={(window) => {
               setInvestigationOpen(true);
               // Keep the case span and its form identity separate from the read
@@ -636,6 +697,16 @@ export function SignalTrendChart({
                 value: range.value,
                 label: range.label()
               })),
+              ...(asLive
+                ? [
+                    { value: String(24 * 3600), label: t`24 hours` },
+                    { value: String(7 * 24 * 3600), label: t`7 days` },
+                    {
+                      value: String(LIVE_TELEMETRY_WINDOW_SECONDS),
+                      label: t`30 days`
+                    }
+                  ]
+                : []),
               { value: CUSTOM, label: t`Custom range…` }
             ]}
             allowDeselect={false}
@@ -817,19 +888,24 @@ export function SignalTrendChart({
               )}
               {t`Read from ${trend.source_name}. AIMMS does not store this history.`}
             </MetaText>
-            {trend.display_shifted ? (
+            {showRecordedTelemetry(trend) ? (
               <MetaText size='xs'>
                 {shift.seconds === null
                   ? t`Source history is display shifted; the amount is unavailable.`
                   : t`Times are shown on the dashboard clock, ${shiftWords(shift.seconds)} ${shift.direction === 'earlier' ? t`earlier than the source recorded them` : t`later than the source recorded them`}.`}
               </MetaText>
             ) : null}
+            {trend.sampled && (
+              <MetaText size='xs'>{t`Sampled real readings; one reading per ${trend.resolution_seconds ?? t`unspecified`} s slot. Fast transients may be absent; gaps are not filled.`}</MetaText>
+            )}
           </Stack>
         )}
-        <MetaText
-          maw='70ch'
-          size='xs'
-        >{t`Current values and recent row trends differ from selected history; retained snapshots keep their capture-time origin. No resampling resolution or retention completeness is supplied. Fast transients may be absent; gaps are not filled.`}</MetaText>
+        {!trend?.sampled && (
+          <MetaText
+            maw='70ch'
+            size='xs'
+          >{t`Current values and recent row trends differ from selected history; retained snapshots keep their capture-time origin. No resampling resolution or retention completeness is supplied. Fast transients may be absent; gaps are not filled.`}</MetaText>
+        )}
         {trend?.available && <RecordGaps trend={trend} prepared={prepared} />}
         {evidence?.(prepared, !!trend?.available, provenance)}
       </Stack>
@@ -868,9 +944,11 @@ function RecordGaps({
   const lines: string[] = [];
   if (prepared.silences > 0 && cadence !== null) {
     lines.push(
-      trend.cadence_seconds != null && trend.cadence_seconds > 0
-        ? t`Gaps longer than ${prepared.gapMs! / 1000} seconds: ${prepared.silences}. Based on the measured ${cadence}-second interval.`
-        : t`Gaps longer than ${prepared.gapMs! / 1000} seconds: ${prepared.silences}. Based on the expected ${cadence}-second interval (server default).`
+      trend.sampled
+        ? t`Gaps longer than ${prepared.gapMs! / 1000} seconds: ${prepared.silences}. Based on the ${cadence}-second sampling resolution.`
+        : trend.cadence_seconds != null && trend.cadence_seconds > 0
+          ? t`Gaps longer than ${prepared.gapMs! / 1000} seconds: ${prepared.silences}. Based on the measured ${cadence}-second interval.`
+          : t`Gaps longer than ${prepared.gapMs! / 1000} seconds: ${prepared.silences}. Based on the expected ${cadence}-second interval (server default).`
     );
   }
   if (prepared.notNumeric > 0) {
@@ -1077,6 +1155,7 @@ export function TrendPlot({
         ))}
       </AreaChart>
       <ThresholdKey
+        presentation={trend}
         unit={unit}
         lines={lines}
         low={domain[0]}

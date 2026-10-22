@@ -1,3 +1,4 @@
+import './aichat-drawer-lingui';
 import { i18n } from '@lingui/core';
 import { Stack, Text } from '@mantine/core';
 import '@mantine/core/styles.css';

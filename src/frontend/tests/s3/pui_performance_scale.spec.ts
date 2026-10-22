@@ -160,6 +160,7 @@ for (const scheme of ['light', 'dark'] as const)
       )
     ];
     const requests = await openPausedPerformance(page, {
+      recordedTelemetryAsLive: false,
       harness: 's3',
       scheme,
       signals,

@@ -27,6 +27,10 @@ import { MetaText } from '../health/common';
 import { HistoryProvenance } from '../investigation/HistoryProvenance';
 import { pickerInstant } from '../investigation/windows';
 import monitoring from '../monitoring.module.css';
+import {
+  LIVE_TELEMETRY_WINDOW_SECONDS,
+  recordedTelemetryAsLive
+} from '../telemetryPresentation';
 import { useNow } from '../useNow';
 import { DisplayPreferences } from './DisplayPreferences';
 import { HistoryReadStack } from './HistoryReadContext';
@@ -169,6 +173,7 @@ export function ComparisonWorkbench({
               machineId={machineId}
               parameters={chosen}
               anchor={anchor}
+              asLive={recordedTelemetryAsLive(response)}
             />
           ) : (
             <MachineComparison
@@ -177,11 +182,13 @@ export function ComparisonWorkbench({
               assetType={assetType}
               parameters={chosen}
               window={anchor}
+              asLive={recordedTelemetryAsLive(response)}
             />
           )}
         </Stack>
         <Stack gap='sm'>
           <DisplayPreferences
+            presentation={response}
             machineId={machineId}
             current={{ search, section, bindings: selected.map(Number) }}
             onRestore={restore}
@@ -368,22 +375,25 @@ function HistoryComparison({
 function BeforeAfter({
   machineId,
   parameters,
-  anchor
+  anchor,
+  asLive
 }: Readonly<{
   machineId: number;
   parameters: ResolvedParameter[];
   anchor: WindowSpec;
+  asLive: boolean;
 }>) {
   const [from, setFrom] = useState<string | null>(null);
   const [to, setTo] = useState<string | null>(null);
   const [after, setAfter] = useState<WindowSpec | null>(null);
   const start = pickerInstant(from);
   const end = pickerInstant(to);
+  const maxWindowMs = (asLive ? LIVE_TELEMETRY_WINDOW_SECONDS : 86400) * 1000;
   const valid =
     Number.isFinite(start) &&
     Number.isFinite(end) &&
     end > start &&
-    end - start <= 86400_000;
+    end - start <= maxWindowMs;
   return (
     <Stack gap='sm'>
       <Button
@@ -396,7 +406,7 @@ function BeforeAfter({
             Date.now()
           );
           const span = originTo - originFrom;
-          if (span <= 0 || span > 86400_000) return;
+          if (span <= 0 || span > maxWindowMs) return;
           const previous = {
             kind: 'absolute' as const,
             from: originFrom - span,
@@ -407,7 +417,11 @@ function BeforeAfter({
           setAfter(previous);
         }}
       >{t`Read preceding equal window as B`}</Button>
-      <MetaText size='sm'>{t`A is the selected window frozen when this mode opens. B is an independent source read, up to 24 h. Timestamps remain absolute in the browser timezone; charts do not shift events to imply a repair effect. The preceding-window shortcut does not infer a repair boundary. Select the actual repair boundaries and check duty/load yourself.`}</MetaText>
+      <MetaText size='sm'>
+        {asLive
+          ? t`A is the selected window frozen when this mode opens. B is an independent source read, up to 30 days. Timestamps use the browser timezone. The preceding-window shortcut does not infer a repair boundary. Select the actual repair boundaries and check duty/load yourself.`
+          : t`A is the selected window frozen when this mode opens. B is an independent source read, up to 24 h. Timestamps remain absolute in the browser timezone; charts do not shift events to imply a repair effect. The preceding-window shortcut does not infer a repair boundary. Select the actual repair boundaries and check duty/load yourself.`}
+      </MetaText>
       <SimpleGrid
         cols={{ base: 1, sm: 2, lg: 3 }}
         style={{ alignItems: 'end' }}
@@ -425,10 +439,11 @@ function BeforeAfter({
         >{t`Read window B`}</Button>
       </SimpleGrid>
       {(from || to) && !valid && (
-        <Text
-          size='sm'
-          className={monitoring.error}
-        >{t`Choose an increasing window no longer than 24 h.`}</Text>
+        <Text size='sm' className={monitoring.error}>
+          {asLive
+            ? t`Choose an increasing window no longer than 30 days.`
+            : t`Choose an increasing window no longer than 24 h.`}
+        </Text>
       )}
       <HistoryComparison
         machineId={machineId}
@@ -454,12 +469,14 @@ function MachineComparison({
   machineId,
   assetType,
   parameters,
-  window
+  window,
+  asLive
 }: Readonly<{
   machineId: number;
   assetType: string | undefined;
   parameters: ResolvedParameter[];
   window: WindowSpec;
+  asLive: boolean;
 }>) {
   const api = useApi();
   const host = useLocalState((state) => state.hostKey);
@@ -499,7 +516,11 @@ function MachineComparison({
     candidates.find((item) => String(item.pk) === candidate);
   return (
     <Stack gap='sm'>
-      <MetaText size='sm'>{t`Candidates come from your permitted machine list, with the same recorded asset type. This does not establish equivalent duty or load. No operational ranking is made. Both machines use the same absolute display-time bounds. Crosshairs synchronize only when their recorded-to-display clock offsets are known and equal.`}</MetaText>
+      <MetaText size='sm'>
+        {asLive
+          ? t`Candidates come from your permitted machine list, with the same asset type. This does not establish equivalent duty or load. No operational ranking is made. Both machines use the same time bounds. Select comparable duty and load yourself.`
+          : t`Candidates come from your permitted machine list, with the same recorded asset type. This does not establish equivalent duty or load. No operational ranking is made. Both machines use the same absolute display-time bounds. Crosshairs synchronize only when their recorded-to-display clock offsets are known and equal.`}
+      </MetaText>
       <Group align='flex-end' grow>
         <TextInput
           classNames={{ input: monitoring.input }}

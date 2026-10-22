@@ -10,9 +10,11 @@ vi.mock('@lingui/core/macro', () => ({
     (n === 1 ? forms.one : forms.other).replace('#', String(n))
 }));
 import { HistoryProvenance } from '../investigation/HistoryProvenance';
+import { ThresholdKey } from '../performance/ThresholdKey';
 import { LiveIndicator } from '../performance/TimeRangeControl';
 import { WindowStatus } from '../performance/WindowStatus';
 import { SourcePollStatus } from './SourcePollStatus';
+import { SourcePollingBadge } from './SourcePollingBadge';
 import { StatusBadge, type StatusTone } from './StatusBadge';
 import { HealthStateBadge } from './common';
 import { FreshnessText, freshnessFacts } from './common';
@@ -305,4 +307,201 @@ it('keeps one silent window status without a response and none in comparison chi
   expect(
     render(createElement(WindowStatus, { ...props, announce: false }))
   ).not.toContain('<output');
+});
+
+describe('O27 current presentation and O23 fallback', () => {
+  const response = {
+    recorded_telemetry_as_live: true,
+    display_shifted: true,
+    display_shift_seconds: 400 * 86400,
+    mode: 'sampled',
+    resolution_seconds: 60,
+    documents_read: 3,
+    expected_documents: 3,
+    limits: {},
+    live: { enabled: true, last_error_code: '', poll_interval_seconds: null }
+  } as any;
+  const indicator = (recorded_telemetry_as_live: boolean) =>
+    text(
+      render(
+        createElement(LiveIndicator, {
+          live: true,
+          fetching: false,
+          newestAt: 1000,
+          updatedAt: 1000,
+          response: { ...response, recorded_telemetry_as_live },
+          freshnessSeconds: 300,
+          now: 1000
+        })
+      )
+    );
+  it('shows the shifted newest reading as live and just now without clock caveats', () => {
+    expect(indicator(true)).toContain('newest reading just now');
+    expect(indicator(true)).not.toContain('Source history display shift');
+  });
+  it('keeps the existing O23 clock caveat when off', () => {
+    expect(indicator(false)).toContain(
+      'Source history display shift: 400 d later than recorded'
+    );
+  });
+  it('judges source reporting by the shifted reading while retaining failures', () => {
+    const source = {
+      active: true,
+      healthy: true,
+      recorded_telemetry_as_live: true,
+      reporting: true,
+      last_observed_at: '2026-10-21T00:00:00Z',
+      last_success_at: '2025-08-01T00:00:00Z',
+      last_error_code: '',
+      freshness_threshold_seconds: 300
+    } as any;
+    const show = (extra: object) =>
+      text(
+        render(
+          createElement(SourcePollStatus, { source: { ...source, ...extra } })
+        )
+      );
+    expect(show({})).toContain('Source reporting');
+    expect(show({})).not.toContain('Succeeded 1 Aug 2025');
+    expect(show({ recorded_telemetry_as_live: false })).toContain(
+      'Succeeded 1 Aug 2025'
+    );
+    expect(
+      show({
+        healthy: false,
+        reporting: false,
+        read_failed: false,
+        last_error_code: 'OLD_RESOLVED_ERROR'
+      })
+    ).toContain('No current reading');
+    expect(
+      show({
+        healthy: false,
+        reporting: false,
+        last_error_code: 'SOURCE_TIMEOUT',
+        last_error_at: '2026-10-21T00:00:00Z'
+      })
+    ).toContain('Failed 21 Oct 2026');
+  });
+});
+
+it('O27 sampled windows use current source freshness and retain unavailable and failed states', () => {
+  const now = Date.parse('2026-10-21T00:00:00Z');
+  const response = {
+    recorded_telemetry_as_live: true,
+    display_shifted: true,
+    display_shift_seconds: 400 * 86400,
+    mode: 'sampled',
+    resolution_seconds: 10800,
+    expected_documents: 1000,
+    documents_read: 240,
+    limits: {},
+    series: [{ available: true }],
+    live: {
+      enabled: true,
+      reporting: true,
+      last_observed_at: new Date(now).toISOString(),
+      last_error_code: '',
+      poll_interval_seconds: 60
+    }
+  } as any;
+  const show = (
+    extra: object = {},
+    live: object = {},
+    sampleTime: number | null = now - 10800_000
+  ) =>
+    text(
+      render(
+        createElement(LiveIndicator, {
+          live: true,
+          fetching: false,
+          newestAt: sampleTime,
+          updatedAt: now,
+          response: {
+            ...response,
+            ...extra,
+            live: { ...response.live, ...live }
+          },
+          freshnessSeconds: 300,
+          now
+        })
+      )
+    );
+  expect(show()).toContain('newest reading just now');
+  expect(show()).toContain('latest chart sample');
+  expect(show()).not.toContain('Stale');
+  expect(show({}, { reporting: false })).toContain('Source unavailable');
+  expect(
+    show({}, { last_error_code: 'SOURCE_TIMEOUT', reporting: false })
+  ).toContain('Source read failed');
+  expect(show({ series: [{ available: false }] })).toContain(
+    'Readings unavailable'
+  );
+  expect(
+    show({ series: [{ available: true, samples: [] }] }, {}, null)
+  ).toContain('No readings');
+  expect(
+    show({ series: [{ available: true, samples: [] }] }, {}, null)
+  ).not.toContain('newest reading just now');
+  expect(show({ recorded_telemetry_as_live: false })).toContain('Stale');
+});
+
+it.each([true, false])(
+  'O27 threshold copy follows the source policy (%s) and retains limit uncertainty',
+  (asLive) => {
+    const output = text(
+      render(
+        createElement(ThresholdKey, {
+          presentation: { recorded_telemetry_as_live: asLive },
+          lines: [{ y: 50, label: 'Warning above 50 bar', color: 'yellow' }],
+          unit: 'bar',
+          low: 0,
+          high: 100,
+          include: false,
+          onInclude: vi.fn(),
+          hasOffScale: false
+        })
+      )
+    );
+    expect(output).toContain(
+      asLive
+        ? 'Engineering approval and limit applicability unavailable.'
+        : 'Engineering approval and historical applicability unavailable.'
+    );
+    if (asLive) expect(output).not.toContain('historical');
+  }
+);
+
+it.each([true, false])(
+  'scheduler status uses the policy clock when telemetry is effectively enabled (%s)',
+  (asLive) => {
+    const output = text(
+      render(
+        createElement(SourcePollingBadge, {
+          enabled: true,
+          polling_enabled: false,
+          recorded_telemetry_as_live: asLive
+        })
+      )
+    );
+    expect(output).toBe(asLive ? 'Polling paused' : 'Polling enabled');
+  }
+);
+it('keeps the original off-state effective source status when the scheduler is enabled', () => {
+  expect(
+    text(
+      render(
+        createElement(SourcePollingBadge, {
+          enabled: false,
+          polling_enabled: true,
+          recorded_telemetry_as_live: false
+        })
+      )
+    )
+  ).toBe('Polling paused');
+});
+it('keeps legacy polling status when the explicit scheduler field is absent', () => {
+  expect(
+    text(render(createElement(SourcePollingBadge, { enabled: true })))
+  ).toBe('Polling enabled');
 });

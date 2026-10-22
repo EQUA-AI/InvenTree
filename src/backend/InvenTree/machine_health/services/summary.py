@@ -31,8 +31,16 @@ from assets.health_models import (
     MachineSignalBinding,
     SignalQuality,
 )
+from assets.ingestion_models import IngestionCheckpoint
 from assets.models import AssetMachine
-from machine_health.services.display_time import display_shift, to_display
+from machine_health.services.display_time import (
+    display_shift,
+    presentation_metadata,
+    recorded_telemetry_as_live,
+    source_read_failed,
+    source_reporting,
+    to_display,
+)
 
 #: Anomaly severity mapped onto the machine's overall condition.
 _SEVERITY_STATE = {
@@ -89,9 +97,14 @@ def _binding_rows(bindings, station, now, *, include_designation=True):
     )
 
     for binding in bindings:
+        binding_shift = (
+            display_shift(station, binding.source, now=now)
+            if recorded_telemetry_as_live()
+            else shift
+        )
         state = getattr(binding, 'state', None) if binding.active else None
         threshold = binding.source.freshness_threshold_seconds
-        observed_at = to_display(state.observed_at, shift) if state else None
+        observed_at = to_display(state.observed_at, binding_shift) if state else None
         # Too old and dated-in-the-future are both "not a current reading". A
         # future observation means the stored value sits outside the span this
         # station is presenting - a leftover from an earlier load, say - and
@@ -110,6 +123,7 @@ def _binding_rows(bindings, station, now, *, include_designation=True):
         from assets.recorded_facts import current_designation
 
         rows.append({
+            **presentation_metadata(binding_shift),
             'critical_designation': current_designation(binding)
             if include_designation
             else None,
@@ -228,12 +242,19 @@ def health_conditions(machines, *, now=None) -> dict:
             if machine.asset_type == 'pumphouse'
             else parents.get(machine.parent_id)
         )
-        conditions[machine.pk] = _condition(
-            _binding_rows(
-                bindings.get(machine.pk, []), station, now, include_designation=False
-            ),
-            severities.get(machine.pk, []),
+        machine_bindings = bindings.get(machine.pk, [])
+        shift = display_shift(
+            station, machine_bindings[0].source if machine_bindings else None, now=now
         )
+        conditions[machine.pk] = {
+            **presentation_metadata(shift),
+            **_condition(
+                _binding_rows(
+                    machine_bindings, station, now, include_designation=False
+                ),
+                severities.get(machine.pk, []),
+            ),
+        }
     return conditions
 
 
@@ -305,16 +326,21 @@ def source_rows(machine, *, now=None):
     """Return connection health for every source mapped to this machine."""
     now = now or timezone.now()
     seen = {}
+    sources = {}
 
-    bindings = MachineSignalBinding.objects.select_related('source').filter(
+    bindings = MachineSignalBinding.objects.select_related('source', 'state').filter(
         machine=machine
     )
+    station = machine if machine.asset_type == 'pumphouse' else machine.parent
 
     for binding in bindings:
         source = binding.source
+        sources[source.pk] = source
+        shift = display_shift(station, source, now=now)
         entry = seen.setdefault(
             source.pk,
             {
+                **presentation_metadata(shift),
                 'source_id': source.pk,
                 'name': source.name,
                 'source_type': source.source_type,
@@ -326,8 +352,44 @@ def source_rows(machine, *, now=None):
                 'last_error_code': source.last_error_code,
                 'freshness_threshold_seconds': source.freshness_threshold_seconds,
                 'mapped_tag_count': 0,
+                'last_observed_at': None,
+                'reporting': None,
             },
         )
         entry['mapped_tag_count'] += 1
+        state = getattr(binding, 'state', None) if binding.active else None
+        observed_at = to_display(state.observed_at, shift) if state else None
+        if observed_at and (
+            entry['last_observed_at'] is None or observed_at > entry['last_observed_at']
+        ):
+            entry['last_observed_at'] = observed_at
+
+    checkpoint_errors = (
+        dict(
+            IngestionCheckpoint.objects.filter(
+                station=station, source_id__in=seen, active=True
+            ).values_list('source_id', 'last_error_code')
+        )
+        if recorded_telemetry_as_live() and station and seen
+        else {}
+    )
+    for source_id, entry in seen.items():
+        source = sources[source_id]
+        entry['reporting'] = source_reporting(
+            source,
+            entry['last_observed_at'],
+            now=now,
+            error_code=checkpoint_errors.get(source_id, ''),
+        )
+        entry['read_failed'] = (
+            source_read_failed(source, error_code=checkpoint_errors.get(source_id, ''))
+            if recorded_telemetry_as_live()
+            else None
+        )
+        if recorded_telemetry_as_live() and entry['display_shifted']:
+            entry['healthy'] = entry['reporting']
+            entry['last_error_code'] = (
+                checkpoint_errors.get(source_id) or entry['last_error_code']
+            )
 
     return sorted(seen.values(), key=lambda row: row['name'])

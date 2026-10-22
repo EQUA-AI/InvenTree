@@ -13,6 +13,10 @@ import {
 import { IconClockExclamation } from '@tabler/icons-react';
 import { type ReactNode, useRef, useState } from 'react';
 import operations from '../../operations.module.css';
+import {
+  recordedTelemetryAsLive,
+  showRecordedTelemetry
+} from '../../telemetryPresentation';
 
 import { shiftSpan } from '../../faults/occurrenceLabels';
 import { StatusBadge as Badge } from '../common';
@@ -72,8 +76,17 @@ export function UnitMimicHeader({
             {stateLabel(bay.state)}
           </Badge>
         )}
-        <FreshnessLabel point={statusPoint} />
-        {data.display_shifted && (
+        <FreshnessLabel
+          point={statusPoint}
+          preferJustNow={data.recorded_telemetry_as_live !== false}
+        />
+        {data.recorded_telemetry_as_live !== false &&
+          data.enabled &&
+          data.reporting &&
+          !data.last_error_code && (
+            <Badge color='blue' variant='outline'>{t`Live`}</Badge>
+          )}
+        {showRecordedTelemetry(data) && (
           <Badge
             color='gray'
             variant='outline'
@@ -176,7 +189,7 @@ export function UnitMimic({
   return (
     <Stack gap='md'>
       {header && <UnitMimicHeader data={data} unit={unit} actions={actions} />}
-      {data.display_shifted && (
+      {showRecordedTelemetry(data) && (
         <Text
           className={operations.meta}
         >{t`Times moved ${shiftSpan(data.display_shift_seconds ?? 0) ?? t`an unspecified interval`} onto the display clock; plant times are earlier`}</Text>
@@ -197,7 +210,12 @@ export function UnitMimic({
                         ? display(point)
                         : `${t`Unavailable`} · ${reasonLabel(data.points[expandPointer(e.pointer, unit)]?.reason ?? 'not_bound')}`}
                       <br />
-                      <FreshnessLabel point={point} />
+                      <FreshnessLabel
+                        point={point}
+                        preferJustNow={
+                          data.recorded_telemetry_as_live !== false
+                        }
+                      />
                     </Table.Td>
                   </Table.Tr>
                 );
@@ -271,7 +289,9 @@ export function UnitMimic({
             [t`Communication status`, t`Unavailable · not supplied`],
             [
               t`Polling`,
-              !data.enabled
+              !(recordedTelemetryAsLive(data)
+                ? (data.polling_enabled ?? data.enabled)
+                : data.enabled)
                 ? t`disabled`
                 : data.last_error_code
                   ? t`Reported error (${pollErrorLabel(data.last_error_code)})`

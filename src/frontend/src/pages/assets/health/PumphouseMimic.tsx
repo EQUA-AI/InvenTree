@@ -14,6 +14,8 @@ import {
 } from '@mantine/core';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { recordedTelemetryAsLive } from '../telemetryPresentation';
+import { formatInstant, useDisplayClock } from './mimic/observedTime';
 
 import { AlarmTable } from './mimic/AlarmTable';
 import { ReadingSections } from './mimic/MimicReadings';
@@ -145,6 +147,9 @@ export default function PumphouseMimic({ stationId }: { stationId: number }) {
   const [unit, setUnit] = useState<string | null>(null);
   const { ref, query } = useStationMimic(stationId, unit);
   const data = query.data;
+  const clock = useDisplayClock(data?.plant_timezone);
+  const currentSource =
+    recordedTelemetryAsLive(data) && data?.reporting != null;
   const display = displayFor(data, unit);
   const stationPoints = Object.values(data?.station_points ?? {});
   const bay = data?.bays.find((b) => b.key === unit);
@@ -161,11 +166,20 @@ export default function PumphouseMimic({ stationId }: { stationId: number }) {
                 {t`Source`}: {data.source?.name ?? t`Not bound`}
               </Text>
               <Text size='xs' c='dimmed'>
-                {t`Last poll`}:{' '}
-                {data.last_poll_at
-                  ? new Date(data.last_poll_at).toLocaleString()
-                  : t`Not polled yet`}
+                {currentSource ? t`Last reading` : t`Last poll`}:{' '}
+                {currentSource
+                  ? (formatInstant(data.last_observed_at, clock) ??
+                    t`Observation time unavailable`)
+                  : data.last_poll_at
+                    ? new Date(data.last_poll_at).toLocaleString()
+                    : t`Not polled yet`}
               </Text>
+              {currentSource &&
+                data.enabled &&
+                data.reporting &&
+                !data.last_error_code && (
+                  <Badge color='blue' variant='outline'>{t`Live`}</Badge>
+                )}
               <Text size='xs' c='dimmed'>
                 {t`Response time`}:{' '}
                 {new Date(data.generated_at).toLocaleString()}
@@ -198,7 +212,11 @@ export default function PumphouseMimic({ stationId }: { stationId: number }) {
             <Alert color='yellow'>{t`This schematic awaits plant review. Missing mappings are shown as unavailable.`}</Alert>
           )}
           {!data.enabled && (
-            <Alert color='yellow'>{t`Polling is disabled for this station. Live values are unavailable.`}</Alert>
+            <Alert color='yellow'>
+              {recordedTelemetryAsLive(data)
+                ? t`Readings are unavailable for this station. Check station activation and source configuration.`
+                : t`Polling is disabled for this station. Live values are unavailable.`}
+            </Alert>
           )}
           {data.last_error_code && (
             <Alert color='red'>

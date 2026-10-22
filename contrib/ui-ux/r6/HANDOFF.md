@@ -1,5 +1,17 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## O27 live-view — 21 October 2026 (in progress)
+
+`r6/live-view` implements owner O27 behind default-on
+`AIMMS_RECORDED_TELEMETRY_AS_LIVE`; off retains O23 presentation. See
+[the execution ledger/report](reports/O27-live-view.md). Backend/frontend and
+assistant source work is implemented. 940 units, focused O27 12/12, O23 clock
+8/8 and 103 selected backend tests with explicit synthetic schema pass;
+175 inherited backend failure/error signatures match HEAD. Full S3 plus corrective replay verifies 304 unique cases; S7 verifies 178 unique cases after corrective replay; full S8 browser
+replay remains in progress. Verification uses only task-owned browser
+WS 3009 / harness 15242 and the offline backend runner. Parent backlog statuses
+are unchanged; no deployment or product acceptance.
+
 ## IOT-Merge integration — 21 October 2026 (worktree ready for review)
 
 Coordinator-started `git merge --no-commit inventTree-aniket` on `IOT-Merge`

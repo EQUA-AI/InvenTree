@@ -24,11 +24,10 @@ export function validSpan(from: number, to: number) {
 }
 export function boundedWindow(
   from: number,
-  to: number
+  to: number,
+  maxWindowMs = MAX_HISTORY_WINDOW_MS
 ): InvestigationWindow | null {
-  return validSpan(from, to) && to - from <= MAX_HISTORY_WINDOW_MS
-    ? { from, to }
-    : null;
+  return validSpan(from, to) && to - from <= maxWindowMs ? { from, to } : null;
 }
 export function sliceCount(
   span: InvestigationWindow,
@@ -50,7 +49,10 @@ export function sliceAt(
   const from = span.from + index * limit;
   return { from, to: Math.min(span.to, from + limit) };
 }
-export function linkedWindow(params: URLSearchParams): {
+export function linkedWindow(
+  params: URLSearchParams,
+  maxWindowMs = MAX_HISTORY_WINDOW_MS
+): {
   present: boolean;
   window: InvestigationWindow | null;
 } {
@@ -59,7 +61,10 @@ export function linkedWindow(params: URLSearchParams): {
   const to = params.get('history_to');
   return {
     present,
-    window: from && to ? boundedWindow(Date.parse(from), Date.parse(to)) : null
+    window:
+      from && to
+        ? boundedWindow(Date.parse(from), Date.parse(to), maxWindowMs)
+        : null
   };
 }
 export function investigationHref(
@@ -86,8 +91,12 @@ export function investigationHref(
 }
 
 /** Series reads accept display-clock bounds. Never guess an unknown offset. */
-export function displayLinkedWindow(params: URLSearchParams, shift?: number) {
-  const linked = linkedWindow(params);
+export function displayLinkedWindow(
+  params: URLSearchParams,
+  shift?: number,
+  maxWindowMs = MAX_HISTORY_WINDOW_MS
+) {
+  const linked = linkedWindow(params, maxWindowMs);
   const clock = params.get('history_clock') ?? 'display';
   const clockUnknown =
     linked.present &&
@@ -101,7 +110,11 @@ export function displayLinkedWindow(params: URLSearchParams, shift?: number) {
   const delta = clock === 'recorded' ? shift! * 1000 : 0;
   return {
     ...linked,
-    window: boundedWindow(linked.window.from + delta, linked.window.to + delta),
+    window: boundedWindow(
+      linked.window.from + delta,
+      linked.window.to + delta,
+      maxWindowMs
+    ),
     clockUnknown: false
   };
 }

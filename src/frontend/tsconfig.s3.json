@@ -2,6 +2,8 @@
 	"extends": "./tsconfig.s0.json",
 	"files": [
 		"tests/s3/pui_critical_designation.spec.ts",
+        "tests/s3/pui_recorded_live.spec.ts",
+        "tests/s3/pui_recorded_live_failures.spec.ts",
 		"playwright.s3.config.ts",
 		"tests/performance/fixtures.ts",
 		"tests/s3/performanceFixtures.ts",

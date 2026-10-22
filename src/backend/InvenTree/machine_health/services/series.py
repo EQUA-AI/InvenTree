@@ -26,6 +26,7 @@ read a sibling's - that is a different machine's telemetry.
 from __future__ import annotations
 
 import logging
+import time
 from datetime import timedelta
 
 from django.db.models import Q
@@ -43,7 +44,18 @@ from machine_health.connectors.base import (
     MIN_SERIES_POINTS,
     get_connector,
 )
-from machine_health.services.display_time import display_shift, to_display, to_source
+from machine_health.connectors.cosmos_pumphouse import (
+    CosmosPumphouseConnector,
+    PollBudgetError,
+)
+from machine_health.services.display_time import (
+    LIVE_WINDOW_SECONDS,
+    display_shift,
+    presentation_metadata,
+    recorded_telemetry_as_live,
+    to_display,
+    to_source,
+)
 from machine_health.services.trends import measured_interval, plottable, status_numbers
 
 logger = logging.getLogger('inventree')
@@ -52,6 +64,10 @@ logger = logging.getLogger('inventree')
 #: direction, and at the source's cadence still within a complete read's reach
 #: of the sampled path.
 DEFAULT_SERIES_WINDOW_SECONDS = 3600
+
+#: New month-length reads must finish before the browser's 90-second timeout.
+#: Every partition request shares this deadline, including empty-hour probes.
+LONG_SERIES_READ_SECONDS = 60
 
 MODE_COMPLETE = 'complete'
 MODE_SAMPLED = 'sampled'
@@ -124,9 +140,14 @@ def read_series(
         raise SeriesError('Series window end must come after its start.')
 
     span = (end - start).total_seconds()
-    if span > MAX_SERIES_WINDOW_SECONDS:
+    max_window = (
+        LIVE_WINDOW_SECONDS
+        if recorded_telemetry_as_live()
+        else MAX_SERIES_WINDOW_SECONDS
+    )
+    if span > max_window:
         raise SeriesError(
-            f'A series window may not exceed {MAX_SERIES_WINDOW_SECONDS // 3600} hours.',
+            f'A series window may not exceed {max_window // 3600} hours.',
             'WINDOW_TOO_LONG',
         )
     points = clamp_points(points)
@@ -163,6 +184,11 @@ def read_series(
         by_source.setdefault(binding.source_id, []).append(binding)
 
     documents_read = 0
+    long_read_deadline = (
+        time.monotonic() + LONG_SERIES_READ_SECONDS
+        if recorded_telemetry_as_live() and span > MAX_SERIES_WINDOW_SECONDS
+        else None
+    )
     for group in by_source.values():
         source = group[0].source
         connector = get_connector(source, machine=machine)
@@ -174,6 +200,13 @@ def read_series(
                     'This source has no configured connector to read history from.',
                 )
             continue
+
+        if long_read_deadline is not None and isinstance(
+            connector, CosmosPumphouseConnector
+        ):
+            connector.deadline = min(
+                connector.deadline or long_read_deadline, long_read_deadline
+            )
 
         external_keys = sorted({binding.external_key for binding in group})
         try:
@@ -207,7 +240,9 @@ def read_series(
                 results[binding.pk] = _unavailable(binding, 'WINDOW_TOO_LONG', str(exc))
             continue
         except Exception as exc:
-            timed_out = 'timeout' in type(exc).__name__.lower()
+            timed_out = isinstance(exc, (TimeoutError, PollBudgetError)) or (
+                'timeout' in type(exc).__name__.lower()
+            )
             logger.warning(
                 'machine_health.series_failed source=%s bindings=%s mode=%s error=%s timeout=%s',
                 source.pk,
@@ -248,7 +283,7 @@ def read_series(
 
     series = [results[binding.pk] for binding in bindings if binding.pk in results]
 
-    status = live_status(station) if station is not None else None
+    status = live_status(station, now=now) if station is not None else None
 
     return {
         'machine': machine.pk,
@@ -262,11 +297,10 @@ def read_series(
         'cadence_seconds': _measured_cadence(series) if mode == MODE_COMPLETE else None,
         'expected_documents': expected,
         'documents_read': documents_read,
-        'display_shifted': bool(shift),
-        'display_shift_seconds': int(shift.total_seconds()),
+        **presentation_metadata(shift),
         'live': _live(status),
         'limits': {
-            'max_window_seconds': MAX_SERIES_WINDOW_SECONDS,
+            'max_window_seconds': max_window,
             'complete_read_max_documents': COMPLETE_READ_MAX_DOCUMENTS,
             'min_points': MIN_SERIES_POINTS,
             'max_points': MAX_SERIES_POINTS,
@@ -347,14 +381,28 @@ def _live(status) -> dict:
 
     if not status:
         return {
+            **presentation_metadata(timedelta(0)),
             'enabled': False,
+            'last_observed_at': None,
+            'reporting': False if recorded_telemetry_as_live() else None,
+            'read_failed': False if recorded_telemetry_as_live() else None,
             'last_poll_at': None,
             'last_error_code': '',
             'poll_interval_seconds': POLL_INTERVAL_SECONDS,
         }
     last_poll = status.get('last_poll_at')
+    last_observed = status.get('last_observed_at')
+    last_error = status.get('last_error_at')
+    last_success = status.get('last_success_at')
     return {
+        'recorded_telemetry_as_live': recorded_telemetry_as_live(),
         'enabled': bool(status.get('enabled')),
+        'polling_enabled': status.get('polling_enabled'),
+        'last_observed_at': last_observed.isoformat() if last_observed else None,
+        'reporting': status.get('reporting'),
+        'read_failed': status.get('read_failed'),
+        'last_error_at': last_error.isoformat() if last_error else None,
+        'last_success_at': last_success.isoformat() if last_success else None,
         'last_poll_at': last_poll.isoformat() if last_poll else None,
         'last_error_code': status.get('last_error_code') or '',
         'poll_interval_seconds': POLL_INTERVAL_SECONDS,

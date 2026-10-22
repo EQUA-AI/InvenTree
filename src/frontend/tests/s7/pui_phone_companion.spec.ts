@@ -233,6 +233,13 @@ for (const width of [360, 390]) {
     await page.getByRole('button', { name: /^Attachments \(/ }).focus();
     await page.keyboard.press('Tab');
     await expect(
+      page.getByRole('button', {
+        name: 'Talk about this work order',
+        exact: true
+      })
+    ).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(
       page.getByRole('button', { name: 'Ask about this work', exact: true })
     ).toBeFocused();
     await page.keyboard.press('Tab');

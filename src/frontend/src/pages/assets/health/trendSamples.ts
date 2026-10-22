@@ -95,12 +95,18 @@ export function numericValue(sample: {
 }
 
 /**
- * The cadence the server states for this read, in seconds: measured from the
- * readings when there were enough, else the server's expected interval (a global default, not a source fact).
+ * The plot spacing the server states for this read: sampled slot resolution,
+ * otherwise measured cadence or the server's expected interval.
  */
 export function trendResolutionSeconds(
-  trend: Pick<SignalTrend, 'cadence_seconds' | 'limits'>
+  trend: Pick<
+    SignalTrend,
+    'cadence_seconds' | 'limits' | 'sampled' | 'resolution_seconds'
+  >
 ): number | null {
+  const resolution = trend.resolution_seconds;
+  if (trend.sampled && typeof resolution === 'number' && resolution > 0)
+    return resolution;
   const measured = trend.cadence_seconds;
   if (typeof measured === 'number' && measured > 0) {
     return measured;

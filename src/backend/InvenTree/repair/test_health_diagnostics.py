@@ -6,8 +6,10 @@ summarized as current, reads are capability-gated separately from the machine
 dossier, and nothing here can raise, escalate or clear an anomaly.
 """
 
+import json
 import uuid
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
@@ -275,6 +277,82 @@ class HealthDiagnosticReadTest(TestCase):
         )
 
         self.assertEqual(result['evidence'], ())
+
+    @override_settings(USE_TZ=True)
+    def test_recorded_health_uses_live_or_o23_presentation(self):
+        """Both diagnostic readers share O27 policy with plant-clock storage."""
+        end = timezone.datetime.fromisoformat('2025-08-01T00:00:00+00:00')
+        now = timezone.datetime.fromisoformat('2026-10-21T12:00:00+00:00')
+        station = AssetMachine.objects.create(
+            name='Recorded station',
+            asset_type='pumphouse',
+            client=self.client_tenant,
+            source_namespace='cosmos-test',
+            source_entity_uuid=uuid.uuid4(),
+        )
+        self.machine.parent = station
+        self.machine.asset_type = 'pump'
+        self.machine.source_key = 'pump01'
+        self.machine.save(update_fields=['parent', 'asset_type', 'source_key'])
+        # The inherited setup used the runner's default clock setting. Reload
+        # the persisted root under this UTC case before computing its revision.
+        self.machine.refresh_from_db()
+        self.source.config = {
+            'data_ranges': {
+                str(station.source_entity_uuid): {
+                    'from': '2025-07-01T00:00:00+00:00',
+                    'to': end.isoformat(),
+                }
+            }
+        }
+        self.source.save(update_fields=['config'])
+        self.now = end
+        self._set_signal(3.0)
+        anomaly, _ = record_anomaly(
+            machine=self.machine,
+            source=self.source,
+            fingerprint=fingerprint_for('diag', 'recorded'),
+            title='Vibration above limit',
+            severity=AnomalySeverity.CRITICAL,
+            observed_at=end,
+        )
+        for enabled in (True, False):
+            with (
+                self.subTest(enabled=enabled),
+                self.settings(AIMMS_RECORDED_TELEMETRY_AS_LIVE=enabled),
+                patch('django.utils.timezone.now', return_value=now),
+            ):
+                evidence = self._read_summary()['evidence']
+                summary, signal = [json.loads(item['claim']) for item in evidence]
+                mode = 'live' if enabled else 'recorded_history'
+                self.assertEqual(summary['telemetry_presentation'], mode)
+                self.assertEqual(signal['telemetry_presentation'], mode)
+                self.assertEqual(summary['last_observed_at'], now.isoformat())
+                self.assertFalse(signal['stale'])
+                self.assertTrue(summary['display_shifted'])
+                result = services.read_diagnostic_health_anomalies(
+                    actor=self.actor,
+                    authorization=self._authorization(),
+                    machine_id=self.machine.pk,
+                    expected_revision=services._diagnostic_revision(self.machine),
+                    limit=10,
+                )
+                [anomaly_evidence] = result['evidence']
+                claim = json.loads(anomaly_evidence['claim'])
+                self.assertEqual(claim['telemetry_presentation'], mode)
+                self.assertEqual(
+                    claim['last_observed_at'], (now if enabled else end).isoformat()
+                )
+                self.assertEqual(claim['display_shifted'], enabled)
+                self.assertEqual(
+                    claim['display_shift_seconds'],
+                    int((now - end).total_seconds()) if enabled else 0,
+                )
+                self.assertEqual(
+                    anomaly_evidence['as_of'], now if enabled else anomaly.updated_at
+                )
+        anomaly.refresh_from_db()
+        self.assertEqual(anomaly.last_observed_at, end)
 
 
 class HealthCapabilityTest(TestCase):

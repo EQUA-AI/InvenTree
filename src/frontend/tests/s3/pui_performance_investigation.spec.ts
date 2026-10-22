@@ -22,6 +22,7 @@ for (const scheme of ['light', 'dark'] as const)
       (route) => route.fulfill({ json: occurrenceDetail(901) })
     );
     const requests = await openPerformance(page, {
+      recordedTelemetryAsLive: false,
       harness: 's3',
       scheme,
       harnessParams: {
@@ -96,6 +97,7 @@ test('an invalid linked window issues no history read and has an explicit recove
     encodeURIComponent('2026-10-04T00:00:00.000Z')
   );
   const requests = await openPerformance(page, {
+    recordedTelemetryAsLive: false,
     harness: 's3',
     harnessParams: { entry: bad }
   });
@@ -116,6 +118,7 @@ test('lost retained reference never substitutes current or other snapshot eviden
     (route) => route.fulfill({ status: 404, json: { detail: 'Unavailable' } })
   );
   await openPerformance(page, {
+    recordedTelemetryAsLive: false,
     harness: 's3',
     harnessParams: { entry: entry('&occurrence=901&snapshot=missing') }
   });
@@ -139,6 +142,7 @@ test('partial bindings failure names affected charts, comparison and Other cover
     }))
   ];
   const requests = await openPerformance(page, {
+    recordedTelemetryAsLive: false,
     harness: 's3',
     signals,
     failSeries: (url) => !!url.searchParams.get('bindings')
@@ -200,7 +204,14 @@ for (const scheme of ['light', 'dark'] as const)
     await page.route(
       '**/api/machine-health/machines/18/health/signals/**',
       (route) =>
-        route.fulfill({ json: { results: signalRows(NATIVE_SIGNALS) } })
+        route.fulfill({
+          json: {
+            results: signalRows(NATIVE_SIGNALS).map((row) => ({
+              ...row,
+              recorded_telemetry_as_live: false
+            }))
+          }
+        })
     );
     await page.route(
       '**/api/machine-health/machines/18/health/data-range/**',
@@ -208,6 +219,7 @@ for (const scheme of ['light', 'dark'] as const)
         route.fulfill({
           json: {
             available: true,
+            recorded_telemetry_as_live: false,
             display_shift_seconds: 31536000,
             from: '2026-10-01T00:00:00Z',
             to: '2026-10-04T01:00:00Z'
@@ -222,6 +234,7 @@ for (const scheme of ['light', 'dark'] as const)
         return route.fulfill({
           json: {
             ...seriesFor(url, {}, NATIVE_SIGNALS),
+            recorded_telemetry_as_live: false,
             display_shifted: true,
             display_shift_seconds: 31536000
           }
@@ -234,6 +247,7 @@ for (const scheme of ['light', 'dark'] as const)
         route.fulfill({
           json: {
             ...occurrenceDetail(902),
+            recorded_telemetry_as_live: false,
             first_observed_at: '2025-10-01T00:00:00Z',
             last_observed_at: '2025-10-04T01:00:00Z',
             snapshots: [
@@ -301,6 +315,7 @@ test('a recorded link with unknown clock requests no history', async ({
   page
 }, info) => {
   const requests = await openPerformance(page, {
+    recordedTelemetryAsLive: false,
     harness: 's3',
     displayShift: null,
     harnessParams: { entry: entry('&history_clock=recorded') }
@@ -376,6 +391,7 @@ test('station recorded links convert bounds and block an unknown offset', async 
   const linkedEntry =
     '/machines/machine/17/performance?history_from=2025-09-20T00:00:00Z&history_to=2025-09-20T01:00:00Z&history_clock=recorded';
   const requests = await openStation(page, {
+    recordedTelemetryAsLive: false,
     entry: linkedEntry,
     displayShift: 31536000
   });
@@ -383,6 +399,7 @@ test('station recorded links convert bounds and block an unknown offset', async 
   expect(requests[0].searchParams.get('from')).toBe('2026-09-20T00:00:00.000Z');
   expect(requests[0].searchParams.get('to')).toBe('2026-09-20T01:00:00.000Z');
   const unknown = await openStation(page, {
+    recordedTelemetryAsLive: false,
     entry: linkedEntry,
     displayShift: null
   });

@@ -2,6 +2,11 @@ import { t } from '@lingui/core/macro';
 import { Stack, Switch } from '@mantine/core';
 import { MetaText } from '../health/common';
 import monitoring from '../monitoring.module.css';
+import {
+  type TelemetryPresentation,
+  recordedTelemetryAsLive
+} from '../telemetryPresentation';
+import { useHistoryReadFailures } from './HistoryReadContext';
 import type { ReferenceLine } from './TrendChart';
 import { formatValue } from './format';
 import { splitLimits, thresholdBands } from './thresholdBands';
@@ -13,7 +18,8 @@ export function ThresholdKey({
   high,
   include,
   onInclude,
-  hasOffScale
+  hasOffScale,
+  presentation
 }: Readonly<{
   lines: readonly ReferenceLine[];
   unit?: string;
@@ -22,7 +28,9 @@ export function ThresholdKey({
   include: boolean;
   onInclude: (value: boolean) => void;
   hasOffScale: boolean;
+  presentation?: TelemetryPresentation;
 }>) {
+  const history = useHistoryReadFailures();
   if (!lines.length) return null;
   const { drawn, offScale } = splitLimits(lines, low, high);
   const above = offScale
@@ -56,7 +64,9 @@ export function ThresholdKey({
           above.length === 0 &&
           t`Window values are at least ${formatValue(Math.min(...below), 2, unit)} above the nearest limit.`}{' '}
         {shaded && t`Shaded regions compare against these limits.`}{' '}
-        {t`Engineering approval and historical applicability unavailable.`}
+        {recordedTelemetryAsLive(presentation ?? history)
+          ? t`Engineering approval and limit applicability unavailable.`
+          : t`Engineering approval and historical applicability unavailable.`}
       </MetaText>
     </Stack>
   );

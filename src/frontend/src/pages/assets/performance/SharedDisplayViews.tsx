@@ -24,6 +24,10 @@ import { displayInstant } from '../displayClock';
 import { StatusBadge } from '../health/StatusBadge';
 import { MetaText } from '../health/common';
 import monitoring from '../monitoring.module.css';
+import {
+  type TelemetryPresentation,
+  recordedTelemetryAsLive
+} from '../telemetryPresentation';
 import type { DisplayView } from './comparisonViews';
 const recordedTime = (value: string) =>
   displayInstant(value) ?? t`Time unavailable`;
@@ -43,11 +47,13 @@ type SharedView = {
 export function SharedDisplayViews({
   machineId,
   current,
-  onRestore
+  onRestore,
+  presentation
 }: Readonly<{
   machineId: number;
   current: Omit<DisplayView, 'name'>;
   onRestore: (view: DisplayView) => void;
+  presentation?: TelemetryPresentation;
 }>) {
   const user = useUserState();
   const host = useLocalState((state) => state.hostKey);
@@ -83,7 +89,11 @@ export function SharedDisplayViews({
       style={{ minWidth: 0, overflowWrap: 'anywhere' }}
     >
       <Text fw={600} size='sm'>{t`Shared display views`}</Text>
-      <MetaText size='sm'>{t`Visible to everyone who can read this machine. The creator owns each view; engineers curate the default set. Display choices do not save historical evidence or grant access.`}</MetaText>
+      <MetaText size='sm'>
+        {recordedTelemetryAsLive(presentation)
+          ? t`Visible to everyone who can read this machine. The creator owns each view; engineers curate the default set. Display choices do not save source evidence or grant access.`
+          : t`Visible to everyone who can read this machine. The creator owns each view; engineers curate the default set. Display choices do not save historical evidence or grant access.`}
+      </MetaText>
       {!read && (
         <Button
           variant='default'

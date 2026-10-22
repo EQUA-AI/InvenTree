@@ -6,6 +6,7 @@ import { apiUrl } from '@lib/functions/Api';
 import type { MachineSignal, SeriesResponse } from '@lib/types/MachineHealth';
 
 import { useApi } from '../../../contexts/ApiContext';
+import { recordedTelemetryAsLive } from '../telemetryPresentation';
 import { seriesBatches } from './channelNavigation';
 import { mergeHistoryBatches } from './historyBatches';
 
@@ -22,14 +23,16 @@ import { mergeHistoryBatches } from './historyBatches';
  * values a little more often. Anything faster would be theatre.
  */
 
-export type RangePreset = '15m' | '1h' | '6h' | '12h' | '24h';
+export type RangePreset = '15m' | '1h' | '6h' | '12h' | '24h' | '7d' | '30d';
 
 export const PRESET_SECONDS: Record<RangePreset, number> = {
   '15m': 15 * 60,
   '1h': 3600,
   '6h': 6 * 3600,
   '12h': 12 * 3600,
-  '24h': 24 * 3600
+  '24h': 24 * 3600,
+  '7d': 7 * 24 * 3600,
+  '30d': 30 * 24 * 3600
 };
 
 /** Either "the last N seconds", re-anchored at every fetch, or a fixed span. */
@@ -165,6 +168,7 @@ export function useMachineSeries(
 
 /** What history the source holds for this machine's station. */
 export interface DataRange {
+  recorded_telemetry_as_live?: boolean;
   available: boolean;
   from?: string;
   to?: string;
@@ -180,6 +184,11 @@ export function useDataRange(machineId: number, recordedLink = false) {
   return useQuery<DataRange>({
     queryKey: ['machine-health-data-range', machineId],
     staleTime: recordedLink ? 0 : 60 * 60 * 1000,
+    refetchInterval: (query) =>
+      recordedTelemetryAsLive(query.state.data)
+        ? LIVE_SERIES_INTERVAL_MS
+        : false,
+    refetchIntervalInBackground: false,
     queryFn: async () => {
       const response = await api.get(
         apiUrl(ApiEndpoints.machine_health_data_range, machineId)

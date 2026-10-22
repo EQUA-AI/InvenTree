@@ -18,6 +18,7 @@ function fixture(unit: string | null, stale = false, enabled = true) {
     station: 17,
     name: 'Fixture station',
     generated_at: '2026-09-13T12:00:02Z',
+    recorded_telemetry_as_live: false,
     enabled,
     source: { pk: 1, name: 'Fixture source' },
     last_poll_at: null,
@@ -67,6 +68,82 @@ function fixture(unit: string | null, stale = false, enabled = true) {
     unconfigured_thresholds: 1
   };
 }
+
+test('O27 station readings use display freshness while unavailable states stay explicit', async ({
+  page
+}, info) => {
+  await page.clock.install({ time: new Date('2026-09-13T12:00:02Z') });
+  let asLive = true;
+  let enabled = true;
+  await page.route('**/api/machine-health/station/17/mimic/**', (route) =>
+    route.fulfill({
+      json: {
+        ...fixture(
+          new URL(route.request().url()).searchParams.get('unit'),
+          false,
+          enabled
+        ),
+        recorded_telemetry_as_live: asLive,
+        display_shifted: true,
+        display_shift_seconds: 400 * 86400,
+        reporting: true,
+        polling_enabled: false,
+        last_observed_at: '2026-09-13T12:00:00Z',
+        last_poll_at: '2025-08-01T00:00:00Z'
+      }
+    })
+  );
+  await page.goto('/');
+  await expect(page.getByText(/^Last reading:/)).toBeVisible();
+  await expect(page.getByText(/^Last poll:/)).toHaveCount(0);
+  await expect(page.getByText('Live', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(/recorded history|Times moved .*onto the display clock/i)
+  ).toHaveCount(0);
+  await page.screenshot({
+    path: info.outputPath('o27-station-on.png'),
+    fullPage: true
+  });
+
+  asLive = false;
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect(page.getByText(/^Last poll:/)).toBeVisible();
+  await expect(page.getByText(/^Last reading:/)).toHaveCount(0);
+  await expect(page.getByText('Live', { exact: true })).toHaveCount(0);
+  await page.screenshot({
+    path: info.outputPath('o27-station-off.png'),
+    fullPage: true
+  });
+
+  asLive = true;
+  enabled = false;
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect(page.getByText('Live', { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByText(
+      'Readings are unavailable for this station. Check station activation and source configuration.',
+      { exact: true }
+    )
+  ).toBeVisible();
+  await page.screenshot({
+    path: info.outputPath('o27-station-disabled-on.png'),
+    fullPage: true
+  });
+
+  asLive = false;
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect(page.getByText('Live', { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByText(
+      'Polling is disabled for this station. Live values are unavailable.',
+      { exact: true }
+    )
+  ).toBeVisible();
+  await page.screenshot({
+    path: info.outputPath('o27-station-disabled-off.png'),
+    fullPage: true
+  });
+});
 
 test('sparse bays bind the selected pointer and never invent totals or thresholds', async ({
   page

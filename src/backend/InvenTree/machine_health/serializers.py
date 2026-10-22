@@ -16,10 +16,22 @@ from InvenTree.serializers import (
     InvenTreeIsoDateTimeField,
     InvenTreeIsoDateTimeModelSerializerMixin,
 )
-from machine_health.services.display_time import display_shift, to_display
+from machine_health.services.display_time import (
+    display_shift,
+    recorded_telemetry_as_live,
+    to_display,
+)
 
 
-class MachineSignalSerializer(serializers.Serializer):
+class TelemetryPresentationSerializer(serializers.Serializer):
+    """Recoverable display-clock provenance and the owner-selected UI policy."""
+
+    recorded_telemetry_as_live = serializers.BooleanField(read_only=True)
+    display_shifted = serializers.BooleanField(read_only=True)
+    display_shift_seconds = serializers.IntegerField(read_only=True)
+
+
+class MachineSignalSerializer(TelemetryPresentationSerializer):
     """One mapped signal with its current value, freshness and limits."""
 
     active = serializers.BooleanField(read_only=True)
@@ -44,7 +56,7 @@ class MachineSignalSerializer(serializers.Serializer):
     limits = serializers.JSONField(read_only=True)
 
 
-class HealthSourceStatusSerializer(serializers.Serializer):
+class HealthSourceStatusSerializer(TelemetryPresentationSerializer):
     """Connection health for one source mapped to a machine."""
 
     source_id = serializers.IntegerField(read_only=True)
@@ -52,6 +64,9 @@ class HealthSourceStatusSerializer(serializers.Serializer):
     source_type = serializers.CharField(read_only=True)
     active = serializers.BooleanField(read_only=True)
     healthy = serializers.BooleanField(read_only=True)
+    reporting = serializers.BooleanField(read_only=True, allow_null=True)
+    read_failed = serializers.BooleanField(read_only=True, allow_null=True)
+    last_observed_at = InvenTreeIsoDateTimeField(read_only=True, allow_null=True)
     last_success_at = InvenTreeIsoDateTimeField(read_only=True, allow_null=True)
     last_error_at = InvenTreeIsoDateTimeField(read_only=True, allow_null=True)
     # Redacted classification only; connector messages never reach a client.
@@ -60,7 +75,7 @@ class HealthSourceStatusSerializer(serializers.Serializer):
     mapped_tag_count = serializers.IntegerField(read_only=True)
 
 
-class MachineHealthSummarySerializer(serializers.Serializer):
+class MachineHealthSummarySerializer(TelemetryPresentationSerializer):
     """Current condition for one machine."""
 
     state = serializers.CharField(read_only=True)
@@ -104,6 +119,11 @@ class MachineAnomalySerializer(
     last_observed_at = serializers.SerializerMethodField()
     display_shifted = serializers.SerializerMethodField()
     display_shift_seconds = serializers.SerializerMethodField()
+    recorded_telemetry_as_live = serializers.SerializerMethodField()
+
+    def get_recorded_telemetry_as_live(self, anomaly) -> bool:
+        """Which owner-approved telemetry presentation the client should use."""
+        return recorded_telemetry_as_live()
 
     def _shift(self, anomaly):
         """The station's presentation offset, resolved once per anomaly."""
@@ -158,6 +178,7 @@ class MachineAnomalySerializer(
             'last_observed_at',
             'display_shifted',
             'display_shift_seconds',
+            'recorded_telemetry_as_live',
             'acknowledged_at',
             'acknowledged_by_name',
             'acknowledgement_note',

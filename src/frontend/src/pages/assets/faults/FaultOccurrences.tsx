@@ -35,6 +35,10 @@ import {
   useDisplayClock
 } from '../health/mimic/observedTime';
 import operations from '../operations.module.css';
+import {
+  recordedTelemetryAsLive,
+  showRecordedTelemetry
+} from '../telemetryPresentation';
 
 import { type ReactNode, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -541,7 +545,7 @@ function OccurrenceAccount({
             .join(', ')}
         </Text>
       )}
-      {occurrence.display_shifted && (
+      {showRecordedTelemetry(occurrence) && (
         <Text
           className={operations.meta}
         >{t`Shown ${shiftSpan(occurrence.display_shift_seconds) ?? t`an unspecified interval`} later than recorded`}</Text>
@@ -729,10 +733,11 @@ export function FaultOccurrences({
                 order={4}
                 id='fault-history-title'
               >{t`Alarm and fault investigation`}</Title>
-              <Badge
-                color='gray'
-                variant='outline'
-              >{t`Recorded occurrences`}</Badge>
+              <Badge color='gray' variant='outline'>
+                {recordedTelemetryAsLive(list)
+                  ? t`Occurrences`
+                  : t`Recorded occurrences`}
+              </Badge>
             </Group>
             <Button
               size='xs'

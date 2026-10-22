@@ -84,7 +84,7 @@ const bayCard = (page: Page, title: string) =>
 test('a station whose source serves nothing says so and keeps its bay cards', async ({
   page
 }, testInfo) => {
-  await openStation(page, { fail: true });
+  await openStation(page, { fail: true, recordedTelemetryAsLive: false });
   await expect(
     page.getByText('The source could not serve this window')
   ).toBeVisible();
@@ -105,6 +105,21 @@ test('a station whose source serves nothing says so and keeps its bay cards', as
   }
   await page.screenshot({
     path: testInfo.outputPath('station-no-history.png'),
+    fullPage: true,
+    animations: 'disabled'
+  });
+  await openStation(page, { fail: true, recordedTelemetryAsLive: true });
+  await expect(
+    page.getByTestId('live-indicator').locator('[data-tone="live"]')
+  ).toHaveCount(0);
+  await expect(page.getByTestId('live-indicator')).toContainText(
+    'Readings unavailable'
+  );
+  await expect(
+    page.getByText('The source could not serve this window')
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath('station-unavailable-live.png'),
     fullPage: true,
     animations: 'disabled'
   });

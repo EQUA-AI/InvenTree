@@ -397,18 +397,20 @@ export function freshnessFacts(
   const serverFlag =
     stale &&
     (future || (thresholdSeconds != null && seconds <= thresholdSeconds));
-  return { time, age, budget, serverFlag, future };
+  return { time, age, seconds, budget, serverFlag, future };
 }
 export function FreshnessText({
   observedAt,
   stale,
   thresholdSeconds,
-  now: suppliedNow
+  now: suppliedNow,
+  preferJustNow = false
 }: Readonly<{
   observedAt: string | number | null;
   stale: boolean;
   thresholdSeconds?: number | null;
   now?: number;
+  preferJustNow?: boolean;
 }>) {
   const pageNow = useNow(1000, suppliedNow == null);
   const fact = freshnessFacts(
@@ -433,7 +435,9 @@ export function FreshnessText({
           {fact.time} ·{' '}
           {fact.future
             ? t`${fact.age} ahead of your clock`
-            : t`${fact.age} old`}
+            : preferJustNow && fact.seconds < 60
+              ? t`just now`
+              : t`${fact.age} old`}
         </MetaText>
       )}
     </Group>
