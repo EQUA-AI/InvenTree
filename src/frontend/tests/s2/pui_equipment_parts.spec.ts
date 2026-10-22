@@ -98,7 +98,7 @@ test('the Parts tab keeps its route and says what is known about each slot', asy
     ...(page.viewportSize()!.width > 768 ? ['3D position'] : []),
     'Fit basis',
     'Open work',
-    'Catalogue stock'
+    'In stock'
   ])
     await expect(
       page.getByRole('columnheader', { name: header, exact: true })
@@ -108,15 +108,31 @@ test('the Parts tab keeps its route and says what is known about each slot', asy
   await expect(bearing).toContainText('Motor drive-end bearing');
   // The dash still explains absence accessibly; the catalogue is not a fit.
   if (page.viewportSize()!.width > 768) {
-    await expect(page.getByRole('columnheader', { name: 'Fitted item', exact: true })).toHaveCount(0);
-    await bearing.getByRole('button', { name: 'Motor Drive-End Bearing', exact: true }).click();
-    await expect(page.getByRole('dialog').getByRole('button', { name: 'No fit recorded', exact: true })).toHaveText('—');
+    await expect(
+      page.getByRole('columnheader', { name: 'Fitted item', exact: true })
+    ).toHaveCount(0);
+    await bearing
+      .getByRole('button', { name: 'Motor Drive-End Bearing', exact: true })
+      .click();
+    await expect(
+      page
+        .getByRole('dialog')
+        .getByRole('button', { name: 'No fit recorded', exact: true })
+    ).toHaveText('—');
     await page.keyboard.press('Escape');
   } else {
-    await expect(bearing.getByRole('button', { name: 'No verified fitted identity is recorded for this slot.', exact: true })).toHaveText('—');
+    await expect(
+      bearing.getByRole('button', {
+        name: 'No verified fitted identity is recorded for this slot.',
+        exact: true
+      })
+    ).toHaveText('—');
   }
   await expect(
-    bearing.getByLabel('Inferred from tags: Matched from SCADA tag names; not checked on site', { exact: true })
+    bearing.getByLabel(
+      'Inferred from tags: Matched from SCADA tag names; not checked on site',
+      { exact: true }
+    )
   ).toHaveText('Inferred from tags');
   await expect(bearing.locator('[data-field="open_work"]')).toHaveText('1');
   // The catalogue part opens its own native page; nothing is duplicated here.
@@ -129,7 +145,9 @@ test('the Parts tab keeps its route and says what is known about each slot', asy
 
   const motor = row(page, 'PS-MOTOR:1');
   await expect(
-    motor.getByLabel('Verified: Assignment verified · 10 Oct 2026', { exact: true })
+    motor.getByLabel('Verified: Assignment verified · 10 Oct 2026', {
+      exact: true
+    })
   ).toHaveText('Verified');
   // Work that could not be checked is not shown as none.
   await expect(
@@ -138,8 +156,14 @@ test('the Parts tab keeps its route and says what is known about each slot', asy
       exact: true
     })
   ).toHaveText('Read failed');
+  await page.keyboard.press('Tab');
   await motor.getByRole('button', { name: /^Verified:/ }).focus();
-  await expect(page.getByRole('tooltip')).toContainText('Assignment verified');
+  await expect(
+    page.getByRole('tooltip', {
+      name: 'Assignment verified · 10 Oct 2026',
+      exact: true
+    })
+  ).toBeVisible();
   await expect(motor.locator('[data-field="provenance"]')).toHaveCount(0);
 
   const thrust = row(page, 'PS-THRUST-BRG:1');
@@ -168,8 +192,15 @@ test('a reader without stock access sees no stock column and no part links', asy
       { exact: true }
     )
   ).toHaveText('Inferred from tags');
-  await row(page, 'PS-MOTOR-DE-BRG:1').getByRole('button', { name: 'Motor Drive-End Bearing', exact: true }).click();
-  await expect(page.getByRole('dialog').getByRole('button', { name: 'Fitted identity unavailable for your role', exact: true })).toHaveText('—');
+  await row(page, 'PS-MOTOR-DE-BRG:1')
+    .getByRole('button', { name: 'Motor Drive-End Bearing', exact: true })
+    .click();
+  await expect(
+    page.getByRole('dialog').getByRole('button', {
+      name: 'Fitted identity unavailable for your role',
+      exact: true
+    })
+  ).toHaveText('—');
   await page.keyboard.press('Escape');
   await expect(
     page.getByRole('columnheader', { name: 'In stock' })
@@ -192,16 +223,15 @@ test('rows from a server without Parts context are not shown as known', async ({
   await openParts(page, { legacy: true });
   const bearing = row(page, 'PS-MOTOR-DE-BRG:1');
   await expect(
-    bearing.getByLabel('Inferred from tags: Matched from SCADA tag names; not checked on site', { exact: true })
+    bearing.getByLabel(
+      'Inferred from tags: Matched from SCADA tag names; not checked on site',
+      { exact: true }
+    )
   ).toHaveText('Inferred from tags');
   // Not "Not in the model", "None open" or "None in stock": it was not said.
   await expect(bearing).not.toContainText('Not in the model');
   await expect(bearing).not.toContainText('None');
-  for (const label of [
-    '3D position',
-    'Open work',
-    'Catalogue stock'
-  ]) {
+  for (const label of ['3D position', 'Open work', 'Catalogue stock']) {
     await expect(
       bearing.getByRole('button', {
         name: `${label}: Read failed`,
@@ -218,7 +248,10 @@ for (const scheme of ['light', 'dark'] as const) {
     await openParts(page, { scheme });
     const thrust = row(page, 'PS-THRUST-BRG:1');
     await expect(
-      thrust.getByRole('button', { name: 'Inferred from tags: Matched from SCADA tag names; not checked on site', exact: true })
+      thrust.getByRole('button', {
+        name: 'Inferred from tags: Matched from SCADA tag names; not checked on site',
+        exact: true
+      })
     ).toBeVisible();
     await readable(thrust.getByText('Inferred from tags', { exact: true }));
     await readable(
@@ -233,14 +266,13 @@ for (const scheme of ['light', 'dark'] as const) {
       exact: true
     });
     await trigger.focus();
+    await expect(page.getByRole('tooltip')).toHaveText('PS-THRUST-BRG:1');
     await trigger.press('Enter');
     const detail = page.getByRole('dialog', {
       name: 'Thrust Bearing',
       exact: true
     });
     await expect(detail).not.toContainText('PS-THRUST-BRG:1');
-    await detail.getByRole('heading', { name: 'Thrust Bearing', exact: true }).hover();
-    await expect(page.getByRole('tooltip')).toContainText('PS-THRUST-BRG:1');
     const drawerReason = detail.getByRole('button', {
       name: 'Not in the 3D model',
       exact: true
@@ -265,9 +297,12 @@ for (const scheme of ['light', 'dark'] as const) {
     ).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
 
-    const draft = thrust.getByLabel('Inferred from tags: Matched from SCADA tag names; not checked on site', {
-      exact: true
-    });
+    const draft = thrust.getByLabel(
+      'Inferred from tags: Matched from SCADA tag names; not checked on site',
+      {
+        exact: true
+      }
+    );
     await page.keyboard.press('Tab');
     await draft.focus();
     await expect(draft).toBeFocused();
@@ -283,7 +318,9 @@ for (const scheme of ['light', 'dark'] as const) {
       name: /^Verified:/,
       exact: true
     });
-    await expect(motor.locator('[data-field="status"]')).not.toContainText('4c1f00a2e9b1');
+    await expect(motor.locator('[data-field="status"]')).not.toContainText(
+      '4c1f00a2e9b1'
+    );
     await page.keyboard.press('Tab');
     await source.focus();
     await expect(source).toBeFocused();
@@ -448,17 +485,23 @@ for (const assetType of ['pump', 'pumphouse'] as const) {
       await expect(
         bearing.locator('[data-field="machine_name"]')
       ).toBeVisible();
-    if (assetType === 'pump') await expect(
-      bearing.locator('[data-field="reference_position"]')
-    ).toContainText('Motor drive-end bearing');
-    else await expect(bearing.locator('[data-field="reference_position"]')).toHaveCount(0);
+    if (assetType === 'pump')
+      await expect(
+        bearing.locator('[data-field="reference_position"]')
+      ).toContainText('Motor drive-end bearing');
+    else
+      await expect(
+        bearing.locator('[data-field="reference_position"]')
+      ).toHaveCount(0);
     await expect(
       bearing.getByRole('button', {
         name: 'No verified fitted identity is recorded for this slot.',
         exact: true
       })
     ).toHaveText('—');
-    await expect(bearing.locator('[data-field="status"]')).toHaveText('Inferred from tags');
+    await expect(bearing.locator('[data-field="status"]')).toHaveText(
+      'Inferred from tags'
+    );
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await disclosure.press('Enter');
     await expect(details).not.toHaveAttribute('open');
@@ -489,9 +532,14 @@ test('a slot opens its own detail, and its native records lead back to it', asyn
   await expect(detail).toContainText('Motor drive-end bearing');
   await expect(
     detail.getByRole('link', { name: 'View in 3D' })
-  ).toHaveAttribute('href', '/machines/machine/18/equipment/?view=model&position=bearing');
+  ).toHaveAttribute(
+    'href',
+    '/machines/machine/18/equipment/?view=model&position=bearing'
+  );
   // Each fact on its own: nothing fitted is recorded; the family is not it.
-  await expect(detail.getByRole('button', { name: 'No fit recorded', exact: true })).toHaveText('—');
+  await expect(
+    detail.getByRole('button', { name: 'No fit recorded', exact: true })
+  ).toHaveText('—');
   await expect(detail).toContainText('Catalogue part');
   await expect(
     detail.getByRole('button', {
@@ -738,7 +786,9 @@ test('O15 a manually recorded existing fit stays pending verification', async ({
   await expect(detail).toContainText(
     'A different authorized registry reviewer must verify this entry.'
   );
-  await expect(detail.getByRole('button', { name: 'No fit recorded', exact: true })).toHaveText('—');
+  await expect(
+    detail.getByRole('button', { name: 'No fit recorded', exact: true })
+  ).toHaveText('—');
   await expect(detail).not.toContainText('no fitted part, serial, lot');
   await page.screenshot({
     path: info.outputPath('o15-manual-fit-pending.png'),

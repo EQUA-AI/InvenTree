@@ -6,6 +6,7 @@ import { mockPositions, positionsFixture } from './equipmentFixtures';
 
 nativeBaseline();
 nativeThemeFixtures();
+test.use({ timezoneId: 'Asia/Riyadh' });
 
 async function openPanel(
   page: Page,
@@ -41,7 +42,9 @@ test('a bound position shows its own slot, reading and work, and the rest as par
     await expect(slot).toContainText('Inferred from tags');
     await page.keyboard.press('Tab');
     await slot.getByRole('button', { name: /^Inferred from tags:/ }).focus();
-    await expect(page.getByRole('tooltip')).toContainText('not checked on site');
+    await expect(page.getByRole('tooltip')).toContainText(
+      'not checked on site'
+    );
     const reading = panel.locator('[data-signal="202"]');
     await expect(reading).toContainText('DE bearing temperature');
     await expect(reading).toContainText('95 °C');
@@ -127,8 +130,12 @@ test('the whole machine shows its work and asks for a component', async ({
   await expect(panel.locator('[data-machine-work]')).toHaveText(
     '3 open on this machine'
   );
-  await expect(page.getByRole('list', { name: 'Model components' }).getByRole('listitem')).toHaveCount(9);
-  await expect(panel.getByRole('link', { name: 'View Health', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('list', { name: 'Model components' }).getByRole('listitem')
+  ).toHaveCount(9);
+  await expect(
+    panel.getByRole('link', { name: 'View Health', exact: true })
+  ).toBeVisible();
 });
 
 test('records that cannot be loaded show nothing cached and can be retried', async ({
