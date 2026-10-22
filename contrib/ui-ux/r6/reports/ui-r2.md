@@ -1273,3 +1273,28 @@ Tests touched (18):
 Only the two new focused Playwright specs cover this pass; no other lane's S1/S8 or outdated wording/clock specs were edited. No git writes or owner data changes. Database creation/migrations were confined to an isolated test database inside the owned browser container; no stored plant records were accessed. Parent acceptance is unchanged.
 
 The shared ValueTooltip change is a general accessibility improvement: plain text facts expose their explanation to assistive technology, and positioned targets contain hidden content inside table scrollers. Other layout changes stay within AIMMS pages. Final contrast review caught and repaired the new Normal marker numeral (now normal text; ring/check remain green) and Not verified badge text; rendered text/UI checks cover both themes. Future observations retain their real clock offset rather than being clamped to zero age.
+
+## Follow-up 8
+
+Built on `713b22b65`. All three confirmed test-lane bugs were verified against current source and fixed; no finding skipped.
+
+| Finding | Fix and final evidence |
+| --- | --- |
+| 1. Reference-answer return drops model view | `focusReturnPath` preserves query state from the exact same-machine native Equipment route, including explicit model/schematic and repeated/encoded parameters. The confirmed position overrides launch positions. Other routes and external destinations retain the canonical fallback. Four unchanged strict desktop/phone, light/dark cases prove the return is `/machines/machine/18/equipment/?position=bearing&view=model`. |
+| 2. Wider-font phone Machines card below fold | Phone selected-location controls share one row; chooser text wraps within its button, and scope/summary spacing is compact. Optional write actions retain separate rows. No facts or controls hidden, no smaller type; 44px targets and desktop styling preserved. Both themes pass with Arial, 1.65 line height and 0.2px letter spacing: first card bottom **820.08px**, previously **900.08px**, within **844px**. |
+| 3. Focused history tooltip clips | UnitMimic uses shared `factTooltipProps` for multiline wrapping, 360px maximum width and hover/focus/touch access. Both strict viewport-matrix cases pass. Focused phone tooltip is **360px** wide, right edge **368px**, document/viewport **390px**; complete explanation and Escape dismissal remain asserted. |
+
+Verification: **8/8 focused Playwright cases**, **107/107 units** across three files, all **9 TypeScript projects**, Lingui extract/compile with all **117 locale files restored bytewise**, changed-file prek and whitespace checks pass. The two phone cases also passed an earlier smoke run. Final source digest: `355cc847847d`.
+
+The exact lane specs at `abd133010` were copied byte-for-byte into an isolated scratch mirror that uses this checkout's current source. The originals, copied assertions and all tracked Playwright specs remain unchanged: `tests/s1/pui_reference_focus.spec.ts` (four exact-return cases), `tests/s8/pui_design.spec.ts` (two wider-font cases), `tests/s8/pui_state_captures.spec.ts` (two shifted-history cases covering 1100/1440/1920/390px). Checksums: `data/devscratch/ui-r2/followup8/lane-specs.json`.
+
+Evidence in `data/devscratch/ui-r2/followup8/`: `{reference,phone,history}-final.log`, corresponding `*-results/` screenshots/geometry, `units.log`, `types.json`, `lingui-result.json`, `prek-final.log` and `source.json`. Reviewed **16 final PNGs**: four reference-answer views, both stressed-font phone views, both focused history tooltips and eight schematic viewport views. Individual paths/hashes are in `capture-review.json`. Fixture-only Linux Chromium on owned WS3012/harness15250; no owner localhost or real records opened. Owned runtime stopped and both ports clear; deployed acceptance/full suites remain with the coordinator.
+
+Source files changed (4):
+
+- `src/frontend/src/components/aichat/workFocus.ts`
+- `src/frontend/src/pages/assets/health/mimic/UnitMimic.tsx`
+- `src/frontend/src/pages/assets/locations/LocationWorkspace.tsx`
+- `src/frontend/src/pages/assets/locations/locations.module.css`
+
+Test file changed (1): `src/frontend/src/components/aichat/referenceFocus.test.ts` — model/schematic and extra-query preservation, confirmed-position precedence and route-boundary coverage. No Playwright spec edited. No database, dependency or Git writes. Parent acceptance unchanged.

@@ -1,5 +1,19 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## UI round 2 Follow-up 8 — 23 October 2026 (ready for coordinator review)
+
+Built on `713b22b65`: exact Equipment return query state, compact stressed-font
+phone location controls and contained keyboard-focused history tooltip repaired.
+All 8 strict focused cases from the byte-identical `abd133010` specs pass; no lane
+specs edited. First phone card ends at 820.08px in an 844px viewport; focused
+tooltip ends at 368px in a 390px viewport, in both themes. 16 final PNGs reviewed.
+107 units, all 9 TypeScript projects, Lingui with 117 bytewise locale restores
+and changed-file prek pass. Digest `355cc847847d`;
+[execution report](reports/ui-r2.md) lists source/test files and evidence.
+Owned WS3012/harness15250 stopped; ports clear. Fixture/source evidence only;
+owner data untouched, no Git writes, deployment and parent acceptance unchanged.
+
+
 ## UI round 2 Follow-up 7 — 23 October 2026 (ready for coordinator review)
 
 Built on `a2eff8510`: container-gated unit mimic and honest Equipment default,

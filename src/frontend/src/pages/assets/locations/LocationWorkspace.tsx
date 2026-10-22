@@ -1379,13 +1379,16 @@ export function LocationWorkspace({
                             </Title>
                           </Group>
                           <Button.Group
-                            className={operations.phoneActions}
+                            className={`${operations.phoneActions} ${classes.locationActions}`}
                             style={{ flexWrap: 'wrap' }}
                           >
                             <Button
                               size='xs'
                               h={36}
                               className={operations.phoneTarget}
+                              classNames={{
+                                label: classes.locationActionLabel
+                              }}
                               variant='default'
                               aria-expanded={mobileOpen}
                               rightSection={
@@ -1407,6 +1410,9 @@ export function LocationWorkspace({
                               h={36}
                               variant='default'
                               className={operations.phoneTarget}
+                              classNames={{
+                                label: classes.locationActionLabel
+                              }}
                               aria-expanded={detailsOpen}
                               onClick={() => setDetailsOpen((value) => !value)}
                             >{t`Location details`}</Button>
@@ -1414,7 +1420,10 @@ export function LocationWorkspace({
                               <Button
                                 size='xs'
                                 h={36}
-                                className={operations.phoneTarget}
+                                className={`${operations.phoneTarget} ${classes.locationWriteAction}`}
+                                classNames={{
+                                  label: classes.locationActionLabel
+                                }}
                                 variant='default'
                                 onClick={() => setEditing({ parent: selected })}
                               >{t`Add sublocation`}</Button>
@@ -1423,7 +1432,10 @@ export function LocationWorkspace({
                               <Button
                                 size='xs'
                                 h={36}
-                                className={operations.phoneTarget}
+                                className={`${operations.phoneTarget} ${classes.locationWriteAction}`}
+                                classNames={{
+                                  label: classes.locationActionLabel
+                                }}
                                 variant='default'
                                 onClick={() => setEditing({ node: selected })}
                               >{t`Edit location`}</Button>
@@ -1439,6 +1451,7 @@ export function LocationWorkspace({
                                 : t`Descendant placements included`
                             }
                             classNames={{
+                              body: classes.locationScope,
                               track: classes.switchTrack,
                               label: classes.switchLabel,
                               description: operations.meta

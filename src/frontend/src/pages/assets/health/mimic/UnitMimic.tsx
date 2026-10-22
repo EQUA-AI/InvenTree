@@ -11,6 +11,7 @@ import {
 } from '@mantine/core';
 import { IconClockExclamation, IconSearch } from '@tabler/icons-react';
 import { type ReactNode, useRef, useState } from 'react';
+import { factTooltipProps } from '../../../../components/items/ValueTooltip';
 import operations from '../../operations.module.css';
 import { showRecordedTelemetry } from '../../telemetryPresentation';
 
@@ -98,7 +99,7 @@ export function UnitMimicHeader({
         {showRecordedTelemetry(data) && (
           <Tooltip
             label={t`Times moved ${shiftSpan(data.display_shift_seconds ?? 0) ?? t`an unspecified interval`} onto the display clock; plant times are earlier`}
-            events={{ hover: true, focus: true, touch: true }}
+            {...factTooltipProps}
           >
             <UnstyledButton
               className={operations.phoneTarget}
