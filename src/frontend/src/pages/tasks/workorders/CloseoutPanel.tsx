@@ -34,6 +34,7 @@ import {
 } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { InfoTooltip } from '../../../components/items/ValueTooltip';
 import { WorkTableScroll } from '../../../components/tables/WorkTableScroll';
 import { CloseoutReconciliation } from './CloseoutReconciliation';
 import DictateCloseoutModal from './DictateCloseoutModal';
@@ -308,6 +309,22 @@ export function CloseoutPanel({
     captureSave.state != null ||
     dictateOpen ||
     ['pending', 'uncertain', 'confirmed'].includes(update.state.status);
+  // Retained commands still require today's authority and readable sources.
+  // Their own recovery state must not prevent an authorized exact retry.
+  const captureRetryLocked =
+    !(captureSave.state?.intent.command === 'closeout_decisions'
+      ? canReview
+      : canCapture) ||
+    wizardBlocked ||
+    busy ||
+    dictateOpen ||
+    ['pending', 'uncertain', 'confirmed'].includes(update.state.status);
+  const finalUpdateLocked =
+    !canComplete ||
+    wizardBlocked ||
+    busy ||
+    dictateOpen ||
+    captureSave.state != null;
   const effectsQuery = useQuery({
     queryKey: ['closeout-effects', woId],
     enabled:
@@ -621,6 +638,7 @@ export function CloseoutPanel({
       {captureEnabled && (
         <DictateCloseoutModal
           opened={dictateOpen}
+          locked={!canCapture || wizardBlocked}
           onClose={() => setDictateOpen(false)}
           workOrderId={workOrder.id}
           workOrderVersion={workOrder.lifecycle_version}
@@ -632,16 +650,11 @@ export function CloseoutPanel({
         !capturesQuery.isPending &&
         !capturesQuery.isError &&
         !proposalQuery.isFetching &&
-        !proposalQuery.isError && (
+        !proposalQuery.isError &&
+        REQUIRED_FIELDS.some((field) => !effectiveFieldValue(field).trim()) && (
           <Card withBorder mb='md' data-testid='closeout-questions'>
             <Stack gap='xs'>
-              <Title order={3} size='h5'>
-                {REQUIRED_FIELDS.some(
-                  (field) => !effectiveFieldValue(field).trim()
-                )
-                  ? t`Missing account questions`
-                  : t`Known account facts`}
-              </Title>
+              <Title order={3} size='h5'>{t`Complete account`}</Title>
               {!capture && capturesQuery.data?.length === 0 && (
                 <Group>
                   <Button
@@ -663,37 +676,33 @@ export function CloseoutPanel({
               )}
               {REQUIRED_FIELDS.filter(
                 (field) => !effectiveFieldValue(field).trim()
-              ).length ? (
-                REQUIRED_FIELDS.filter(
-                  (field) => !effectiveFieldValue(field).trim()
-                ).map((field) => (
-                  <Button
-                    key={field}
-                    variant='subtle'
-                    styles={{
-                      label: { whiteSpace: 'normal' },
-                      root: { height: 'auto' }
-                    }}
-                    onClick={() => {
-                      setCaptureEditing(true);
-                      setStep(1);
-                    }}
-                  >
-                    {field === 'action'
-                      ? t`What work was actually done, and why?`
-                      : field === 'result'
-                        ? t`What was the observed result?`
-                        : t`What verification was recorded?`}
-                  </Button>
-                ))
-              ) : (
-                <Text size='sm'>{t`Required account facts are already supplied; no re-entry is needed.`}</Text>
-              )}
-              <Text size='xs' c='dimmed'>
-                {capturesQuery.data?.length
-                  ? t`Saved story and answers are reused. Coverage of finding, failed approaches, practical advice and residual uncertainty has no structured provider; unasked topics are not marked complete.`
-                  : t`Add the finding and supporting evidence, what changed the diagnosis, useful practical advice and remaining uncertainty to the existing story capture. Cause may remain not established.`}
-              </Text>
+              ).map((field) => (
+                <Button
+                  key={field}
+                  variant='subtle'
+                  styles={{
+                    label: { whiteSpace: 'normal' },
+                    root: { height: 'auto' }
+                  }}
+                  onClick={() => {
+                    setCaptureEditing(true);
+                    setStep(1);
+                  }}
+                >
+                  {field === 'action'
+                    ? t`What work was actually done, and why?`
+                    : field === 'result'
+                      ? t`What was the observed result?`
+                      : t`What verification was recorded?`}
+                </Button>
+              ))}
+              <InfoTooltip
+                label={
+                  capturesQuery.data?.length
+                    ? t`Saved story and answers are reused. Coverage of finding, failed approaches, practical advice and residual uncertainty has no structured provider; unasked topics are not marked complete.`
+                    : t`Add the finding and supporting evidence, what changed the diagnosis, useful practical advice and remaining uncertainty to the existing story capture. Cause may remain not established.`
+                }
+              />
             </Stack>
           </Card>
         )}
@@ -796,9 +805,12 @@ export function CloseoutPanel({
           }
           onRetry={
             ['uncertain', 'failed'].includes(captureSave.state.status)
-              ? () => void captureSave.save()
+              ? () => {
+                  if (!captureRetryLocked) void captureSave.save();
+                }
               : undefined
           }
+          retryDisabled={captureRetryLocked}
           onKeep={
             latestReview &&
             !(
@@ -837,7 +849,7 @@ export function CloseoutPanel({
             setFieldValues((current) => ({ ...current, [field]: value }));
           }}
           onSubmit={() => {}}
-          busy={mutationLocked}
+          busy={!canComplete || mutationLocked}
           saving={false}
         />
       )}
@@ -982,7 +994,9 @@ export function CloseoutPanel({
               completedAt={accepted?.completed_at}
               completedId={accepted?.id}
               onSubmit={complete}
-              onReconcile={() => update.execute()}
+              onReconcile={() => {
+                if (!finalUpdateLocked) return update.execute();
+              }}
               onReview={() => {
                 return update
                   .reviewLatest()
@@ -1016,9 +1030,7 @@ export function CloseoutPanel({
                   }
                 });
               }}
-              locked={
-                !canComplete || busy || dictateOpen || captureSave.state != null
-              }
+              locked={finalUpdateLocked}
             />
           </>
         }

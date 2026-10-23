@@ -22,6 +22,8 @@ import {
 import dayjs from 'dayjs';
 import type { ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { MissingValue } from '../../../../components/items/ValueTooltip';
+import { InfoTooltip } from '../../../../components/items/ValueTooltip';
 
 import type {
   EvidenceRelation,
@@ -278,11 +280,10 @@ export function DiagnoseProjection({
           icon={<IconStethoscope size={18} />}
           testId='diagnose-explanation'
         >
-          <Text size='sm'>
-            {hasRequests
-              ? t`No repair packet diagnosis is saved for this Work. Its saved investigation requests and evidence are shown below; they do not establish a cause or authorize physical work.`
-              : t`This work order has no repair packet, so no diagnosis, cited evidence or findings are saved for it. This does not establish a cause or mean that evidence was checked.`}
-          </Text>
+          <MissingValue
+            label={t`Diagnosis`}
+            reason={t`No diagnosis recorded`}
+          />
           {!hasRequests && <ContinueInvestigation workOrder={workOrder} />}
         </Section>
         {noRequests}
@@ -338,9 +339,9 @@ export function DiagnoseProjection({
             t`No explanation has been saved for this investigation.`}
         </Text>
         {qualification === 'preliminary' && (
-          <Text size='sm'>
-            {t`The initiating cause is not established. This restates what the cited evidence shows, with the gaps below, and authorizes nothing.`}
-          </Text>
+          <InfoTooltip
+            label={t`The initiating cause is not established. This restates what the cited evidence shows, with the gaps below, and authorizes nothing.`}
+          />
         )}
         {(disputed.length > 0 ||
           investigation.requests.items?.some((r) =>
@@ -353,7 +354,9 @@ export function DiagnoseProjection({
             color='orange'
             title={t`Investigation decision unresolved`}
           >
-            {t`The saved explanation retains its recorded verification. Conflicting or unavailable evidence still needs a decision on the affected request; this does not invalidate unrelated findings or authorize work.`}
+            <InfoTooltip
+              label={t`The saved explanation retains its recorded verification. Conflicting or unavailable evidence still needs a decision on the affected request; this does not invalidate unrelated findings or authorize work.`}
+            />
           </Alert>
         )}
         {explanation && <ExplanationBasis explanation={explanation} />}
@@ -377,9 +380,9 @@ export function DiagnoseProjection({
                 <List.Item key={`${index}-${check}`}>{check}</List.Item>
               ))}
             </List>
-            <Text size='xs'>
-              {t`Proposed by the diagnosis, not assigned, scheduled or confirmed. The order is the diagnosis's, not a priority decision.`}
-            </Text>
+            <InfoTooltip
+              label={t`Proposed by the diagnosis, not assigned, scheduled or confirmed. The order is the diagnosis's, not a priority decision.`}
+            />
           </>
         ) : (
           <Text size='sm'>{t`The diagnosis proposes no checks.`}</Text>
@@ -416,9 +419,9 @@ export function DiagnoseProjection({
                     : ''}
                 </Text>
               ))}
-              <Text size='xs'>
-                {t`A disputed finding stays visible beside the explanation. Discuss it in the assistant; chat does not save its correction or resolution. Use the native repair packet to record supported changes. It does not block unrelated work.`}
-              </Text>
+              <InfoTooltip
+                label={t`A disputed finding stays visible beside the explanation. Discuss it in the assistant; chat does not save its correction or resolution. Use the native repair packet to record supported changes. It does not block unrelated work.`}
+              />
             </Stack>
           </Alert>
         )}
@@ -469,7 +472,9 @@ export function DiagnoseProjection({
         )}
         {investigation.finding_history === 'preserved_revisions' && (
           <Stack gap='sm' data-testid='finding-revisions'>
-            <Text size='sm'>{t`Original observations are retained when corrected. Values overwritten before history was introduced cannot be reconstructed. A correction does not invalidate unrelated findings.`}</Text>
+            <InfoTooltip
+              label={t`Original observations are retained when corrected. Values overwritten before history was introduced cannot be reconstructed. A correction does not invalidate unrelated findings.`}
+            />
             {(investigation.finding_revisions ?? []).map((revision) => {
               const original = revision.snapshot;
               const current = investigation.findings.find(
@@ -574,9 +579,9 @@ export function DiagnoseProjection({
             </Anchor>
           </>
         ) : (
-          <Text size='sm'>
-            {t`No approved intervention scope is recorded. Nothing here authorizes physical work.`}
-          </Text>
+          <MissingValue
+            reason={t`No approved intervention scope is recorded. Nothing here authorizes physical work.`}
+          />
         )}
       </Section>
 

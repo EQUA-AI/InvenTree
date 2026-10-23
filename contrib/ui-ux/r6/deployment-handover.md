@@ -59,6 +59,18 @@ parts notes, attachment comments and part names, and readable signal names.
 Provisional bearing alarm limits and the local `operator` account exist only in
 the coordinator's local copy, not on Azure.
 
+**Update, 23 October: R8 procurement (when merged).** A build that includes R8
+adds three migrations, all new tables or a nullable column, safe for the
+running old code: `order 0123_purchaseorderdocumentevidence`,
+`tasks 0050_maintenance_receipts` and `tasks 0060_jobkitallocation_issued_by`.
+Apply them with the same `runmigrations --check` / `runmigrations` / `--check`
+sequence, after a fresh backup and only with the owner's go-ahead for Azure.
+R8 needs `AIMMS_WORK_ORDERS_ENABLED`, `AIMMS_JOB_KITS_ENABLED` and
+`AIMMS_CLOSEOUT_WIZARD_ENABLED`; purchase orders are approved by a named person
+in the app; supplier email is recorded evidence only and is never sent. The
+`seed_r8_procurement` command is a local demo tool that refuses any database
+except `r8_demo`/test databases: never run it on Azure.
+
 ---
 
 ## 1. Purpose and scope

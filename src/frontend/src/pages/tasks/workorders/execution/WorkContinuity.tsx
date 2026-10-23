@@ -17,12 +17,17 @@ import {
 } from '@mantine/core';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import {
+  InfoTooltip,
+  MissingValue
+} from '../../../../components/items/ValueTooltip';
 import { useActionFocus } from '../useActionFocus';
 import { workPanelParams } from '../workPanelState';
 import { ContinueInvestigation } from './ContinueInvestigation';
 import {
   ExecutionFact,
   ExecutionSection,
+  dependencyLabel,
   executionBadgeStyles,
   recordedTime
 } from './ExecutionFacts';
@@ -97,7 +102,9 @@ function HoldResumeRecord({
       data-testid='hold-resume-record'
     >
       <Text size='sm' fw={600}>{t`Hold / resume work record`}</Text>
-      <Text size='sm'>{t`These actions update this Work record through its existing permissions and server checks. Physical conditions, operating permission and site ownership acceptance remain separate.`}</Text>
+      <InfoTooltip
+        label={t`These actions update this Work record through its existing permissions and server checks. Physical conditions, operating permission and site ownership acceptance remain separate.`}
+      />
       {state.status === 'confirmed' && (
         <Alert
           color='blue'
@@ -320,7 +327,7 @@ export function WorkContinuity({
   if (!value)
     return (
       <Text size='sm' data-testid='work-continuity-not-supplied'>
-        {t`Work continuity is not supplied by this server. See “Not supplied by this server” at the end of this panel.`}
+        {t`Continuity unavailable`}
       </Text>
     );
   const requests = workOrder.investigation?.requests;
@@ -369,9 +376,7 @@ export function WorkContinuity({
             ? t`Pending saved requests (${pending.length})`
             : t`Pending request queue not supplied`}
         </Text>
-        {pending?.length === 0 && (
-          <Text size='sm'>{t`No unresolved requests returned for this Work. This does not establish readiness or close a separate work order.`}</Text>
-        )}
+        {pending?.length === 0 && <Text size='sm'>{t`No open requests`}</Text>}
         {pending && pending.length > 0 && (
           <SimpleGrid
             cols={{ base: 1, lg: pending.length > 1 ? 2 : 1 }}
@@ -387,7 +392,9 @@ export function WorkContinuity({
           </SimpleGrid>
         )}
         {pending === null && (
-          <Text size='sm'>{t`Owners, constraints and checkpoints cannot be reconstructed from a chat visit or an unavailable queue.`}</Text>
+          <InfoTooltip
+            label={t`Owners, constraints and checkpoints cannot be reconstructed from a chat visit or an unavailable queue.`}
+          />
         )}
         <Anchor
           component={Link}
@@ -403,7 +410,9 @@ export function WorkContinuity({
               fw={600}
               size='sm'
             >{t`Physical state and safe boundary`}</Text>
-            <Text size='sm'>{t`Prepared gates, a restored lockout point or a Work status do not establish permission to act. Review the attributed authority in its owning panel; missing current facts remain unknown.`}</Text>
+            <InfoTooltip
+              label={t`Prepared gates, a restored lockout point or a Work status do not establish permission to act. Review the attributed authority in its owning panel; missing current facts remain unknown.`}
+            />
             <Anchor
               component={Link}
               replace
@@ -450,7 +459,7 @@ export function WorkContinuity({
                 fw={600}
               >{t`Recorded material requirements (${workOrder.parts.length})`}</Text>
               {workOrder.parts.length === 0 && (
-                <Text size='sm'>{t`No native requirement rows returned. Installed material state is not supplied.`}</Text>
+                <Text size='sm'>{t`No material requirements`}</Text>
               )}
               {workOrder.parts.map((part) => (
                 <Text key={part.id} size='sm'>
@@ -486,7 +495,7 @@ export function WorkContinuity({
             <Accordion.Panel>
               <Stack gap='sm'>
                 {workOrder.repair_packet.gates.length === 0 ? (
-                  <Text size='sm'>{t`No gate requirements returned from this packet. Physical permission is not established.`}</Text>
+                  <Text size='sm'>{t`No gate requirements recorded`}</Text>
                 ) : (
                   workOrder.repair_packet.gates.map((gate) => (
                     <Text key={gate.id} size='sm'>
@@ -507,9 +516,11 @@ export function WorkContinuity({
           <Accordion.Panel>
             <Stack gap='sm'>
               {!verification ? (
-                <Text size='sm'>{t`Energy-control projection not supplied.`}</Text>
+                <MissingValue
+                  reason={t`Energy-control projection not supplied.`}
+                />
               ) : verification.lockouts.length === 0 ? (
-                <Text size='sm'>{t`No lockout points returned for this Work. Current isolation and independent restrictions are not established.`}</Text>
+                <Text size='sm'>{t`No lockout points recorded`}</Text>
               ) : (
                 verification.lockouts.map((point) => (
                   <Paper key={point.id} withBorder p='xs'>
@@ -539,7 +550,7 @@ export function WorkContinuity({
           <Accordion.Panel>
             <Stack gap='sm'>
               {workOrder.dependencies.length === 0 && (
-                <Text size='sm'>{t`No visible dependency links returned. Shared-investigation membership and wider crew relationships are not supplied.`}</Text>
+                <Text size='sm'>{t`No dependencies recorded`}</Text>
               )}
               {workOrder.dependencies.map((dependency) => (
                 <Paper key={dependency.id} withBorder p='sm'>
@@ -564,13 +575,15 @@ export function WorkContinuity({
                       {dependency.direction === 'predecessor'
                         ? t`Predecessor`
                         : t`Successor`}{' '}
-                      · {dependency.dependency_type} · {t`Lag`}:{' '}
-                      {dependency.lag_minutes} {t`min`}
+                      · {dependencyLabel(dependency.dependency_type)} · {t`Lag`}
+                      : {dependency.lag_minutes} {t`min`}
                     </Text>
                   </Stack>
                 </Paper>
               ))}
-              <Text size='sm'>{t`These links are scheduling dependencies, not proof of a shared investigation or a concurrency agreement. Each Work keeps its own owner, evidence, permissions and lifecycle. Sharing evidence or resuming this Work does not complete sibling work or release another crew’s restriction.`}</Text>
+              <InfoTooltip
+                label={t`These links are scheduling dependencies, not proof of a shared investigation or a concurrency agreement. Each Work keeps its own owner, evidence, permissions and lifecycle. Sharing evidence or resuming this Work does not complete sibling work or release another crew’s restriction.`}
+              />
               <ExecutionFact
                 label={t`Cross-crew concurrency / clearance agreement`}
               >{t`Not recorded`}</ExecutionFact>
@@ -598,7 +611,7 @@ export function WorkContinuityHistory({
       testId='continuity-history'
     >
       {value.history.length === 0 ? (
-        <Text size='sm'>{t`No native hold/resume events returned. This does not establish that physical conditions or shift ownership are unchanged.`}</Text>
+        <Text size='sm'>{t`No hold or resume history`}</Text>
       ) : (
         value.history.map((event) => (
           <Stack key={event.event_id} gap={3}>
@@ -618,10 +631,9 @@ export function WorkContinuityHistory({
           </Stack>
         ))
       )}
-      <Text
-        size='sm'
-        c='dimmed'
-      >{t`Work record transitions do not record incoming acceptance or physical release.`}</Text>
+      <InfoTooltip
+        label={t`Work record transitions do not record incoming acceptance or physical release.`}
+      />
     </ExecutionSection>
   );
 }
@@ -671,7 +683,9 @@ export function WorkContinuityConstraints({
             </Text>
           </Stack>
         ))}
-        <Text size='sm'>{t`These requests keep their own scope and unresolved status. Their relationship to other executable tasks or permissions is not recorded.`}</Text>
+        <InfoTooltip
+          label={t`These requests keep their own scope and unresolved status. Their relationship to other executable tasks or permissions is not recorded.`}
+        />
         <Anchor
           component={Link}
           replace

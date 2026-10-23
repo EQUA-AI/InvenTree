@@ -19,6 +19,7 @@ import {
   Textarea
 } from '@mantine/core';
 import { useEffect, useRef, useState } from 'react';
+import { MissingValue } from '../../../../components/items/ValueTooltip';
 import { useUserState } from '../../../../states/UserState';
 import { recordedTime } from './ExecutionFacts';
 import {
@@ -168,7 +169,9 @@ export function AuthorityRecords({
           <AuthorityFact key={`${row.kind}:${row.id}`} record={row} />
         ))
       ) : (
-        <Text size='sm'>{t`Not recorded — no attributed authority facts supplied for this section.`}</Text>
+        <MissingValue
+          reason={t`Not recorded — no attributed authority facts supplied for this section.`}
+        />
       )}
       {history.length > 0 && (
         <Accordion variant='contained'>

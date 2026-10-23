@@ -552,7 +552,7 @@ class PurchaseOrderIssueSerializer(OrderAdjustSerializer):
 
     def save(self):
         """Save the serializer to 'place' the order."""
-        self.order.place_order()
+        self.order.place_order(notify=self.context.get('notify', True))
 
 
 @register_importer()
@@ -994,7 +994,20 @@ class PurchaseOrderReceiveSerializer(serializers.Serializer):
     class Meta:
         """Metaclass options."""
 
-        fields = ['items', 'location']
+        fields = [
+            'items',
+            'location',
+            'maintenance_operation_key',
+            'maintenance_requirement_version',
+        ]
+
+    maintenance_operation_key = serializers.CharField(
+        max_length=128, required=False, allow_blank=False, write_only=True
+    )
+
+    maintenance_requirement_version = serializers.IntegerField(
+        min_value=1, required=False, write_only=True
+    )
 
     items = PurchaseOrderLineItemReceiveSerializer(many=True)
 
@@ -1099,7 +1112,10 @@ class PurchaseOrderReceiveSerializer(serializers.Serializer):
                 batch_offload_tasks(),
             ):
                 items = order.receive_line_items(
-                    location, items, request.user if request else None
+                    location,
+                    items,
+                    request.user if request else None,
+                    notify=not bool(data.get('maintenance_operation_key')),
                 )
         except (ValidationError, DjangoValidationError) as exc:
             # Catch model errors and re-throw as DRF errors
@@ -3078,3 +3094,17 @@ class TransferOrderSerialAllocationSerializer(serializers.Serializer):
             raise ValidationError({'serial_numbers': error_msg})
 
         order.models.TransferOrderAllocation.objects.bulk_create(allocations)
+
+
+class PurchaseOrderRecordedEvidenceSerializer(serializers.Serializer):
+    """Record exact documents; this contract never sends a message."""
+
+    operation_key = serializers.RegexField(r'^[A-Za-z0-9_.:-]{1,128}$')
+    to = serializers.EmailField()
+    from_address = serializers.EmailField()
+    ship_to = serializers.CharField(max_length=4000)
+    buyer_name = serializers.CharField(max_length=4000)
+    internal_ref = serializers.CharField(
+        max_length=1000, required=False, allow_blank=True
+    )
+    provenance_kind = serializers.ChoiceField(choices=('native_record', 'fixture'))

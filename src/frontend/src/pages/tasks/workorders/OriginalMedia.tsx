@@ -2,6 +2,7 @@ import type { CaptureOriginal } from '@lib/types/Closeout';
 import { t } from '@lingui/core/macro';
 import { Alert, Button, Stack, Text } from '@mantine/core';
 import { useState } from 'react';
+import { MissingValue } from '../../../components/items/ValueTooltip';
 import { useApi } from '../../../contexts/ApiContext';
 import { recordedTime } from './execution/ExecutionFacts';
 
@@ -35,7 +36,9 @@ export function OriginalMedia({
         <Alert color='red'>{t`Original media could not be read. Retry the download; no replacement media is shown.`}</Alert>
       )}
       {!originals?.length ? (
-        <Text size='sm'>{t`Original media is not supplied by this readout. Audio playback and timing are unavailable without a linked source.`}</Text>
+        <MissingValue
+          reason={t`Original media is not supplied by this readout. Audio playback and timing are unavailable without a linked source.`}
+        />
       ) : (
         originals.map((row) => (
           <Stack gap={2} key={row.id}>

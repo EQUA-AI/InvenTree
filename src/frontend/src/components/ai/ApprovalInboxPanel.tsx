@@ -16,6 +16,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { api } from '../../App';
 import { useVoiceDecisionState } from '../../states/VoiceDecisionState';
+import { usePurchaseApprovalRecovery } from '../records/useProcurementRecovery';
 import { MailboxApprovalReview } from './MailboxApprovalReview';
 import { matchesConfirmPhrase } from './confirmPhrase';
 
@@ -46,18 +47,25 @@ const approvalRequest = { timeout: 30_000 };
 /** All-tab screen review consumes the same sections, hashes and action endpoints. */
 export function ApprovalInboxPanel({
   statuses,
-  emptyText
-}: Readonly<{ statuses: string[]; emptyText: string }>) {
+  emptyText,
+  approvalId,
+  workOrderId
+}: Readonly<{
+  statuses: string[];
+  emptyText: string;
+  approvalId?: string;
+  workOrderId?: number;
+}>) {
   const client = useQueryClient();
   const decision = useVoiceDecisionState((state) => state.decision);
   const sessionId = useVoiceDecisionState((state) => state.sessionId);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(approvalId ?? null);
   const statusKey = statuses.join(',');
   // A filter switch must show the new section's list, never a detail left
   // selected under the previous statuses. Ordinary refreshes keep it.
   useEffect(() => {
-    setSelected(null);
-  }, [statusKey]);
+    setSelected(approvalId ?? null);
+  }, [statusKey, approvalId]);
   const list = useQuery({
     queryKey: ['approval-inbox', statusKey],
     queryFn: async () => {
@@ -161,6 +169,7 @@ export function ApprovalInboxPanel({
           <ApprovalScreenReview
             key={`${selected}:${review.data.review_hash}`}
             review={review.data}
+            workOrderId={workOrderId}
             onChanged={() => {
               void client.invalidateQueries({ queryKey: ['approval-inbox'] });
               void client.invalidateQueries({ queryKey: ['approval-review'] });
@@ -174,8 +183,9 @@ export function ApprovalInboxPanel({
 
 function ApprovalScreenReview({
   review,
-  onChanged
-}: { review: Review; onChanged: () => void }) {
+  onChanged,
+  workOrderId
+}: { review: Review; onChanged: () => void; workOrderId?: number }) {
   const [checked, setChecked] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [preview, setPreview] = useState<{
@@ -198,6 +208,13 @@ function ApprovalScreenReview({
     revision: review.current_revision_number,
     review_hash: review.review_hash
   };
+  const purchase = usePurchaseApprovalRecovery({
+    workOrderId,
+    approvalId: review.id,
+    onSaved: onChanged
+  });
+  const purchaseUncertain =
+    review.action_type === 'purchase_order' && !!purchase.retained;
   const mutation = useMutation({
     mutationFn: async (action: string) => {
       const latest = (await api.get(`${path}card-package/`, approvalRequest))
@@ -219,6 +236,12 @@ function ApprovalScreenReview({
         );
       if (!preview || !matchesConfirmPhrase(phrase, preview.phrase))
         throw new Error('Confirmation required');
+      if (action === 'approve' && review.action_type === 'purchase_order')
+        return purchase.submit({
+          ...focus,
+          reason: preview.reason,
+          instructions: preview.reason
+        });
       return api.post(
         `${path}${action}/`,
         {
@@ -257,6 +280,22 @@ function ApprovalScreenReview({
     <Stack data-testid='approval-screen-review'>
       <Text fw={600}>{review.summary}</Text>
       <Badge>{review.status}</Badge>
+      {review.action_type === 'purchase_order' && purchase.notice && (
+        <Alert color={purchase.retained ? 'orange' : 'blue'}>
+          <Stack gap='xs'>
+            {terminal && purchase.retained
+              ? t`Approval result recorded. Complete the original confirmation.`
+              : purchase.notice}
+            {purchase.retained && (
+              <Button
+                disabled={purchase.blocked}
+                loading={purchase.pending}
+                onClick={() => void purchase.retry()}
+              >{t`Recover original approval`}</Button>
+            )}
+          </Stack>
+        </Alert>
+      )}
       {terminal && (
         <Alert
           color={review.status === 'succeeded' ? 'green' : 'blue'}
@@ -294,83 +333,86 @@ function ApprovalScreenReview({
       {mutation.isError && (
         <Alert color='red'>{t`The decision was not verified. Refresh and review the current request before trying again.`}</Alert>
       )}
-      {!terminal && review.action_type !== 'email' && (
-        <>
-          {['pending', 'changes_requested'].includes(review.status) && (
-            <Button
-              loading={mutation.isPending}
-              onClick={() => mutation.mutate('open')}
-            >{t`Open for review`}</Button>
-          )}
-          {review.status === 'in_review' && (
-            <>
-              <Checkbox
-                checked={checked}
-                onChange={(event) => setChecked(event.currentTarget.checked)}
-                label={t`I have reviewed every required section of this request.`}
-              />
+      {!terminal &&
+        !purchaseUncertain &&
+        !purchase.blocked &&
+        review.action_type !== 'email' && (
+          <>
+            {['pending', 'changes_requested'].includes(review.status) && (
               <Button
-                disabled={!checked || mutation.isPending}
-                onClick={() => mutation.mutate('confirm-viewed')}
-              >{t`Confirm reviewed`}</Button>
-              <Textarea
-                label={t`Reason or requested changes`}
-                {...form.getInputProps('reason')}
-              />
-              <Group>
-                <Button
-                  disabled={!acknowledged || mutation.isPending}
-                  onClick={() =>
-                    propose('approve', `approve ${review.id.slice(0, 8)}`)
-                  }
-                >{t`Prepare approval`}</Button>
-                <Button
-                  disabled={mutation.isPending}
-                  color='red'
-                  onClick={() => propose('deny', 'confirm rejection')}
-                >{t`Prepare rejection`}</Button>
-                <Button
-                  disabled={mutation.isPending}
-                  variant='light'
-                  onClick={() =>
-                    propose('request-changes', 'confirm request changes')
-                  }
-                >{t`Request changes`}</Button>
-              </Group>
-            </>
-          )}
-          <Button
-            variant='subtle'
-            disabled={mutation.isPending}
-            onClick={() => propose('cancel', 'confirm cancel request')}
-          >{t`Prepare cancellation`}</Button>
-          {preview && (
-            <Paper withBorder p='sm' data-testid='approval-action-preview'>
-              <Stack>
-                <Text>
-                  {review.id.slice(0, 8)} · {preview.action}
-                </Text>
-                {preview.reason && <Text>{preview.reason}</Text>}
-                <TextInput
-                  label={t`Type the required confirmation phrase`}
-                  placeholder={preview.phrase}
-                  value={phrase}
-                  onChange={(event) => setPhrase(event.currentTarget.value)}
+                loading={mutation.isPending}
+                onClick={() => mutation.mutate('open')}
+              >{t`Open for review`}</Button>
+            )}
+            {review.status === 'in_review' && (
+              <>
+                <Checkbox
+                  checked={checked}
+                  onChange={(event) => setChecked(event.currentTarget.checked)}
+                  label={t`I have reviewed every required section of this request.`}
                 />
                 <Button
-                  disabled={!matchesConfirmPhrase(phrase, preview.phrase)}
-                  loading={mutation.isPending}
-                  onClick={() => mutation.mutate(preview.action)}
-                >{t`Confirm decision`}</Button>
-                <Button
-                  variant='subtle'
-                  onClick={() => setPreview(null)}
-                >{t`Set aside`}</Button>
-              </Stack>
-            </Paper>
-          )}
-        </>
-      )}
+                  disabled={!checked || mutation.isPending}
+                  onClick={() => mutation.mutate('confirm-viewed')}
+                >{t`Confirm reviewed`}</Button>
+                <Textarea
+                  label={t`Reason or requested changes`}
+                  {...form.getInputProps('reason')}
+                />
+                <Group>
+                  <Button
+                    disabled={!acknowledged || mutation.isPending}
+                    onClick={() =>
+                      propose('approve', `approve ${review.id.slice(0, 8)}`)
+                    }
+                  >{t`Prepare approval`}</Button>
+                  <Button
+                    disabled={mutation.isPending}
+                    color='red'
+                    onClick={() => propose('deny', 'confirm rejection')}
+                  >{t`Prepare rejection`}</Button>
+                  <Button
+                    disabled={mutation.isPending}
+                    variant='light'
+                    onClick={() =>
+                      propose('request-changes', 'confirm request changes')
+                    }
+                  >{t`Request changes`}</Button>
+                </Group>
+              </>
+            )}
+            <Button
+              variant='subtle'
+              disabled={mutation.isPending}
+              onClick={() => propose('cancel', 'confirm cancel request')}
+            >{t`Prepare cancellation`}</Button>
+            {preview && (
+              <Paper withBorder p='sm' data-testid='approval-action-preview'>
+                <Stack>
+                  <Text>
+                    {review.id.slice(0, 8)} · {preview.action}
+                  </Text>
+                  {preview.reason && <Text>{preview.reason}</Text>}
+                  <TextInput
+                    label={t`Type the required confirmation phrase`}
+                    placeholder={preview.phrase}
+                    value={phrase}
+                    onChange={(event) => setPhrase(event.currentTarget.value)}
+                  />
+                  <Button
+                    disabled={!matchesConfirmPhrase(phrase, preview.phrase)}
+                    loading={mutation.isPending}
+                    onClick={() => mutation.mutate(preview.action)}
+                  >{t`Confirm decision`}</Button>
+                  <Button
+                    variant='subtle'
+                    onClick={() => setPreview(null)}
+                  >{t`Set aside`}</Button>
+                </Stack>
+              </Paper>
+            )}
+          </>
+        )}
     </Stack>
   );
 }

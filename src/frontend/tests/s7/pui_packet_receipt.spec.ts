@@ -410,9 +410,16 @@ for (const scheme of ['light', 'dark'] as const) {
         exact: true
       })
     ).toBeEnabled();
+    // Completed manual fields hide the duplicate question card. The native
+    // capture editor remains available, and dictation must still lock update.
+    await expect(page.getByTestId('closeout-questions')).toHaveCount(0);
+    await page
+      .getByTestId('closeout-capture-disclosure')
+      .getByText('Narrative', { exact: true })
+      .click();
     await page
       .getByRole('button', {
-        name: 'Start voice-transcript capture',
+        name: 'Dictate',
         exact: true
       })
       .click();
@@ -426,7 +433,8 @@ for (const scheme of ['light', 'dark'] as const) {
     });
     await expect(update).toBeDisabled();
     await page.screenshot({
-      path: info.outputPath(`packet-voice-locked-${scheme}.png`)
+      path: info.outputPath(`packet-voice-locked-${scheme}.png`),
+      animations: 'disabled'
     });
     await page
       .getByRole('button', { name: 'Close dictation', exact: true })

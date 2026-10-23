@@ -1,30 +1,36 @@
 """Approval purchasing commands reuse the order serializers and state machine.
 
-Only three explicit operations exist. Creating a draft never issues it or emails
-a supplier. Reviewed prices are explicit and never replaced by auto-pricing.
+Explicit reviewed operations reuse the durable approval execution ledger.
+Creating a draft never issues it or emails a supplier. Reviewed prices are explicit and never replaced by auto-pricing.
 """
 
+import json
 from copy import deepcopy
 from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth import get_user_model
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 
 from company.models import Company, SupplierPart
 from order.models import PurchaseOrder
 from order.serializers import (
+    PurchaseOrderExtraLineSerializer,
     PurchaseOrderIssueSerializer,
     PurchaseOrderLineItemSerializer,
     PurchaseOrderSerializer,
 )
 from order.status_codes import PurchaseOrderStatus
+from part.models import Part
 from plugin.events import batch_events
 
 OPERATIONS = frozenset((
     'create_purchase_order',
     'add_po_line_item',
     'issue_purchase_order',
+    'place_purchase_order',
 ))
+CREATE_OPERATIONS = frozenset(('create_purchase_order', 'place_purchase_order'))
 
 
 def notifications_possible(order):
@@ -45,7 +51,7 @@ def _number(value, *, positive=False):
 
 
 def _supplier(payload):
-    if payload.get('operation', 'create_purchase_order') != 'create_purchase_order':
+    if payload.get('operation', 'create_purchase_order') not in CREATE_OPERATIONS:
         order = PurchaseOrder.objects.select_related('supplier').get(
             pk=payload.get('order_id')
         )
@@ -76,7 +82,7 @@ def prepare_payload(payload):
         or currency != currency.upper()
     ):
         raise ValueError('An explicit three-letter currency is required')
-    if operation != 'create_purchase_order':
+    if operation not in CREATE_OPERATIONS:
         order = PurchaseOrder.objects.get(pk=result['order_id'])
         if order.status not in (
             PurchaseOrderStatus.PENDING.value,
@@ -93,7 +99,15 @@ def prepare_payload(payload):
             raise ValueError('Review at least one line before issuing an order')
         result['line_items'] = [
             {
+                'pk': line.pk,
                 'supplier_part_id': line.part_id,
+                'discount': str(line.discount),
+                'reference': line.reference,
+                'notes': line.notes,
+                'destination': line.destination_id,
+                'target_date': line.target_date.isoformat()
+                if line.target_date
+                else None,
                 'quantity': str(line.quantity),
                 'unit_price': str(line.purchase_price.amount)
                 if line.purchase_price is not None
@@ -104,8 +118,23 @@ def prepare_payload(payload):
             }
             for line in order.lines.order_by('pk')
         ]
-        if order.extra_lines.exists():
-            raise ValueError('Orders with extra charges require a full screen workflow')
+        result['extra_lines'] = [
+            {
+                'pk': line.pk,
+                'description': line.description,
+                'quantity': str(line.quantity),
+                'unit_price': str(line.price.amount)
+                if line.price is not None
+                else None,
+                'currency': str(line.price.currency)
+                if line.price is not None
+                else currency,
+                'discount': str(line.discount),
+                'reference': line.reference,
+                'notes': line.notes,
+            }
+            for line in order.extra_lines.order_by('pk')
+        ]
     lines = result.get('line_items', [])
     if not isinstance(lines, list) or len(lines) > 100:
         raise ValueError('Line items must be a list of at most 100 reviewed lines')
@@ -141,28 +170,86 @@ def prepare_payload(payload):
             'supplier_part_id': supplier_part.pk,
             'part_id': supplier_part.part_id,
             'part_name': supplier_part.part.name,
-            'unit': supplier_part.part.units or 'each',
+            'unit': supplier_part.packaging
+            or (
+                (supplier_part.part.units or 'each')
+                if supplier_part.pack_quantity_native == 1
+                else 'order unit'
+            ),
+            'base_unit': supplier_part.part.units or 'each',
+            'pack_quantity': str(supplier_part.pack_quantity_native),
+            'supplier_sku': supplier_part.SKU,
+            'discount': str(_discount(line.get('discount', '0'))),
             'quantity': str(quantity),
             'unit_price': str(price),
             'currency': currency,
         })
     result['line_items'] = normalized
-    total = sum(
-        (
-            Decimal(line['quantity']) * Decimal(line['unit_price'])
-            for line in normalized
-        ),
-        Decimal(0),
+    charges = result.get('extra_lines', [])
+    if not isinstance(charges, list) or len(charges) > 100:
+        raise ValueError('Extra lines must be a list of at most 100 reviewed charges')
+    if operation == 'add_po_line_item' and charges:
+        raise ValueError('Add charges with the reviewed draft or placement operation')
+    result['extra_lines'] = []
+    for charge in charges:
+        if (
+            not isinstance(charge, dict)
+            or not isinstance(charge.get('description'), str)
+            or not charge['description'].strip()
+        ):
+            raise ValueError('Each charge requires a description')
+        quantity = _number(charge.get('quantity'), positive=True)
+        price = _number(charge.get('unit_price'))
+        if quantity.as_tuple().exponent < -5 or price.as_tuple().exponent < -6:
+            raise ValueError('Charge exceeds supported decimal precision')
+        if charge.get('currency', currency) != currency:
+            raise ValueError('Charges must use the reviewed order currency')
+        result['extra_lines'].append({
+            **charge,
+            'quantity': str(quantity),
+            'unit_price': str(price),
+            'currency': currency,
+            'discount': str(_discount(charge.get('discount', '0'))),
+        })
+    if operation == 'place_purchase_order' and not normalized:
+        raise ValueError('Placement requires at least one reviewed goods line')
+    goods = sum((_line_total(line) for line in normalized), Decimal(0))
+    charges_total = sum(
+        (_line_total(line) for line in result['extra_lines']), Decimal(0)
     )
+    total = goods + charges_total
     if 'total' in result and _number(result['total']) != total:
-        raise ValueError('Total differs from the reviewed quantities and prices')
-    result['total'] = str(total)
+        raise ValueError('Total differs from the reviewed goods and charges')
+    result.update(
+        goods_total=str(goods), charges_total=str(charges_total), total=str(total)
+    )
     return result
+
+
+def _discount(value):
+    discount = _number(value)
+    if discount > 100 or discount.as_tuple().exponent < -2:
+        raise ValueError('Discount must be between 0 and 100 with at most two decimals')
+    return discount
+
+
+def _line_total(line):
+    return (
+        Decimal(line['quantity'])
+        * Decimal(line['unit_price'])
+        * (1 - Decimal(line['discount']) / 100)
+    )
+
+
+def _rows(queryset):
+    # values() preserves every commercial field, including currencies, discounts,
+    # metadata, references, destinations and charge context, without Money coercion.
+    return json.loads(json.dumps(list(queryset.values()), cls=DjangoJSONEncoder))
 
 
 def baseline(payload):
     """Capture the mutable order state independently of client-supplied baselines."""
-    if payload.get('operation', 'create_purchase_order') == 'create_purchase_order':
+    if payload.get('operation', 'create_purchase_order') in CREATE_OPERATIONS:
         return {}
     order = PurchaseOrder.objects.get(pk=payload['order_id'])
     return {
@@ -175,19 +262,9 @@ def baseline(payload):
             user.pk for user in order.subscribed_users()
         ),
         'currency': order.order_currency,
-        'lines': [
-            [
-                line.pk,
-                line.part_id,
-                str(line.quantity),
-                str(line.purchase_price),
-                line.destination_id,
-            ]
-            for line in order.lines.order_by('pk')
-        ],
-        'extra_lines': list(
-            order.extra_lines.order_by('pk').values_list('pk', flat=True)
-        ),
+        'header': _rows(PurchaseOrder.objects.filter(pk=order.pk))[0],
+        'lines': _rows(order.lines.order_by('pk')),
+        'extra_lines': _rows(order.extra_lines.order_by('pk')),
     }
 
 
@@ -208,6 +285,11 @@ def _actor(actor, operation):
     owner = get_user_model().objects.get(pk=actor.pk, is_active=True)
     permissions = {
         'create_purchase_order': ('order.add_purchaseorder',),
+        'place_purchase_order': (
+            'order.add_purchaseorder',
+            'order.change_purchaseorder',
+            'order.add_purchaseorderlineitem',
+        ),
         'add_po_line_item': (
             'order.change_purchaseorder',
             'order.add_purchaseorderlineitem',
@@ -225,24 +307,51 @@ def execute(approval, *, actor):
     payload = approval.payload
     operation = payload['operation']
     owner = _actor(actor, operation)
-    if operation != 'create_purchase_order':
+    if operation == 'place_purchase_order' and approval.assigned_to_user_id != owner.pk:
+        raise PermissionError('Placement requires the named assigned approver')
+    if (
+        approval.status != 'executing'
+        or not approval.executions.filter(actor=owner, state='submitting').exists()
+    ):
+        raise PermissionError('Durable authenticated approval execution is required')
+    if operation not in CREATE_OPERATIONS:
         order = PurchaseOrder.objects.select_for_update().get(pk=payload['order_id'])
         # Lock parent and children, then recheck drift inside the effect txn.
         list(order.lines.select_for_update().order_by('pk'))
+        list(order.extra_lines.select_for_update().order_by('pk'))
         if baseline(payload) != approval.baseline_context:
             raise ValueError('Order changed since review; no action completed')
+    Company.objects.select_for_update().get(pk=payload['supplier_id'])
+    list(
+        SupplierPart.objects
+        .select_for_update()
+        .filter(pk__in=[line['supplier_part_id'] for line in payload['line_items']])
+        .order_by('pk')
+    )
+    list(
+        Part.objects
+        .select_for_update()
+        .filter(pk__in=[line['part_id'] for line in payload['line_items']])
+        .order_by('pk')
+    )
     errors = validate(payload)
     if errors:
         raise ValueError('; '.join(errors))
     if (
         payload['line_items']
-        and operation == 'create_purchase_order'
+        and operation in CREATE_OPERATIONS
         and not owner.has_perm('order.add_purchaseorderlineitem')
     ):
         raise PermissionError('Purchase order line permission is required')
+    if (
+        payload['extra_lines']
+        and operation in CREATE_OPERATIONS
+        and not owner.has_perm('order.add_purchaseorderextraline')
+    ):
+        raise PermissionError('Purchase order charge permission is required')
     # Defer plugin event processing until the effect and its receipt commit.
     with batch_events():
-        if operation == 'create_purchase_order':
+        if operation in CREATE_OPERATIONS:
             data = {
                 'supplier': payload['supplier_id'],
                 'order_currency': payload['currency'],
@@ -261,11 +370,7 @@ def execute(approval, *, actor):
             serializer = PurchaseOrderSerializer(data=data)
             serializer.is_valid(raise_exception=True)
             order = serializer.save(created_by=owner)
-        if operation == 'issue_purchase_order':
-            serializer = PurchaseOrderIssueSerializer(data={}, context={'order': order})
-            serializer.is_valid(raise_exception=True)
-            serializer.save()
-        else:
+        if operation != 'issue_purchase_order':
             for line in payload['line_items']:
                 data = {
                     'order': order.pk,
@@ -273,6 +378,7 @@ def execute(approval, *, actor):
                     'quantity': line['quantity'],
                     'purchase_price': line['unit_price'],
                     'purchase_price_currency': payload['currency'],
+                    'discount': line['discount'],
                     'auto_pricing': False,
                     'merge_items': False,
                 }
@@ -282,13 +388,49 @@ def execute(approval, *, actor):
                 serializer = PurchaseOrderLineItemSerializer(data=data)
                 serializer.is_valid(raise_exception=True)
                 serializer.save()
+            for charge in payload['extra_lines']:
+                data = {
+                    'order': order.pk,
+                    'description': charge['description'],
+                    'quantity': charge['quantity'],
+                    'price': charge['unit_price'],
+                    'price_currency': payload['currency'],
+                    'discount': charge['discount'],
+                }
+                for key in ('reference', 'notes', 'target_date', 'link'):
+                    if key in charge:
+                        data[key] = charge[key]
+                serializer = PurchaseOrderExtraLineSerializer(data=data)
+                serializer.is_valid(raise_exception=True)
+                serializer.save()
+        if operation in ('issue_purchase_order', 'place_purchase_order'):
+            serializer = PurchaseOrderIssueSerializer(
+                data={},
+                context={'order': order, 'notify': operation != 'place_purchase_order'},
+            )
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
     order.refresh_from_db()
+    if operation in CREATE_OPERATIONS or operation == 'issue_purchase_order':
+        if order.total_price is None or order.total_price.amount != Decimal(
+            payload['total']
+        ):
+            raise ValueError('Persisted native total differs from the reviewed total')
     return {
         'order_id': order.pk,
         'reference': order.reference,
         'status': order.status,
         'operation': operation,
         'line_ids': list(order.lines.order_by('pk').values_list('pk', flat=True)),
+        'charge_ids': list(
+            order.extra_lines.order_by('pk').values_list('pk', flat=True)
+        ),
+        'total': str(order.total_price.amount)
+        if order.total_price is not None
+        else None,
+        'currency': order.currency,
+        'approved_by_id': owner.pk,
+        'approved_by': owner.get_username(),
         'supplier_email_sent': False,
         'email_sent': None if payload.get('notifications_possible') else False,
         'internal_notifications_possible': bool(payload.get('notifications_possible')),

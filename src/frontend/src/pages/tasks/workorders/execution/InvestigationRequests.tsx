@@ -8,6 +8,10 @@ import { t } from '@lingui/core/macro';
 import { Alert, Badge, Group, List, Paper, Stack, Text } from '@mantine/core';
 import { useSearchParams } from 'react-router-dom';
 import { InvestigationArtifactReview } from '../../../../components/aichat/InvestigationArtifactReview';
+import {
+  InfoTooltip,
+  MissingValue
+} from '../../../../components/items/ValueTooltip';
 import { formatDate } from '../../../../defaults/formatters';
 import { OriginalMedia } from '../OriginalMedia';
 import { ContinueInvestigation } from './ContinueInvestigation';
@@ -141,6 +145,7 @@ export function InvestigationRequests({
                       ? 'orange'
                       : 'blue'
                 }
+                tt='none'
                 variant='light'
                 styles={{
                   root: { height: 'auto' },
@@ -157,21 +162,55 @@ export function InvestigationRequests({
               {t`Decision purpose`}: {r.purpose}
             </Text>
             <Text size='sm'>
-              {t`Owner`}: {r.owner_name || t`Not recorded`} ·{' '}
-              {t`Next checkpoint`}: {when(r.next_checkpoint)}
+              {t`Owner`}:{' '}
+              {r.owner_name || (
+                <MissingValue label={t`Owner`} reason={t`No value recorded`} />
+              )}{' '}
+              · {t`Next checkpoint`}:{' '}
+              {r.next_checkpoint ? (
+                when(r.next_checkpoint)
+              ) : (
+                <MissingValue
+                  label={t`Next checkpoint`}
+                  reason={t`No value recorded`}
+                />
+              )}
             </Text>
             <Text size='sm'>
-              {t`Priority`}: {r.priority ?? t`Not recorded`} · {t`Saved`}:{' '}
-              {when(r.updated_at)} · {t`Updated by`}:{' '}
-              {r.updated_by_name || t`Not recorded`}
+              {t`Priority`}:{' '}
+              {r.priority ?? (
+                <MissingValue
+                  label={t`Priority`}
+                  reason={t`No value recorded`}
+                />
+              )}{' '}
+              · {t`Saved`}: {when(r.updated_at)} · {t`Updated by`}:{' '}
+              {r.updated_by_name || (
+                <MissingValue
+                  label={t`Updated by`}
+                  reason={t`No value recorded`}
+                />
+              )}
             </Text>
             {r.required_artifacts.length > 0 ? (
               <List size='sm' spacing={3}>
                 {r.required_artifacts.map((a, i) => (
                   <List.Item key={`${r.id}-${i}`}>
                     {investigationKindLabel(a.kind)} · {a.description} ·{' '}
-                    {t`Unit`}: {a.unit || t`Not recorded`} · {t`Conditions`}:{' '}
-                    {a.conditions || t`Not recorded`}
+                    {t`Unit`}:{' '}
+                    {a.unit || (
+                      <MissingValue
+                        label={t`Unit`}
+                        reason={t`No value recorded`}
+                      />
+                    )}{' '}
+                    · {t`Conditions`}:{' '}
+                    {a.conditions || (
+                      <MissingValue
+                        label={t`Conditions`}
+                        reason={t`No value recorded`}
+                      />
+                    )}
                   </List.Item>
                 ))}
               </List>
@@ -198,11 +237,13 @@ export function InvestigationRequests({
                   }
                 >
                   <Text size='sm'>{r.blocked_reason}</Text>
-                  <Text size='xs'>
-                    {r.status === 'resolved'
-                      ? t`This earlier blocked reason is retained with the resolved request. Other findings and unrelated work retain their own status.`
-                      : t`This decision remains unresolved until addressed. Other findings and unrelated work retain their own status.`}
-                  </Text>
+                  <InfoTooltip
+                    label={
+                      r.status === 'resolved'
+                        ? t`This earlier blocked reason is retained with the resolved request. Other findings and unrelated work retain their own status.`
+                        : t`This decision remains unresolved until addressed. Other findings and unrelated work retain their own status.`
+                    }
+                  />
                 </Alert>
               )}
             <ExpertEscalation workOrder={workOrder} request={r} />
@@ -268,10 +309,9 @@ export function InvestigationRequests({
         </Paper>
       ))}
       {items.length > 0 && (
-        <Text
-          size='xs'
-          c='dimmed'
-        >{t`Saved evidence informs a decision; it does not establish physical readiness or resolve a request automatically. Typed evidence is shown only after a confirmed save.`}</Text>
+        <InfoTooltip
+          label={t`Saved evidence informs a decision; it does not establish physical readiness or resolve a request automatically. Typed evidence is shown only after a confirmed save.`}
+        />
       )}
     </Stack>
   );

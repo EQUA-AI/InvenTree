@@ -141,12 +141,11 @@ async def add_po_line_item(
 
     data: dict[str, Any] = {
         "order": order_id,
-        "part": part_id,
+        # Native `part` is a SupplierPart, resolved below against this PO.
+        "part": supplier_part_id,
         "quantity": quantity,
     }
 
-    if supplier_part_id:
-        data["supplier_part"] = supplier_part_id
     if purchase_price is not None:
         data["purchase_price"] = purchase_price
     if reference:
@@ -160,6 +159,25 @@ async def add_po_line_item(
         from ai.core.integrations.inventree.client import get_inventree_client
 
         client = get_inventree_client()
+
+        order = await client.get_purchase_order(order_id)
+        if not order or not order.get("supplier"):
+            raise ValueError("Purchase order supplier could not be resolved")
+        rows = await client.get_supplier_parts(supplier_id=order["supplier"], part_id=part_id)
+        candidates = [
+            row
+            for row in rows
+            if row.get("active") is True
+            and row.get("supplier") == order["supplier"]
+            and row.get("part") == part_id
+            and (supplier_part_id is None or row.get("pk") == supplier_part_id)
+            and row.get("part_detail", {}).get("active") is True
+            and row.get("part_detail", {}).get("purchaseable") is True
+        ]
+        if len(candidates) != 1:
+            raise ValueError("Name one unambiguous active supplier part for the order supplier")
+        data["part"] = candidates[0]["pk"]
+        data.update(auto_pricing=purchase_price is None, merge_items=False)
 
         result = await client._request("POST", "/order/po-line/", json_data=data)
 
@@ -183,7 +201,7 @@ async def issue_purchase_order(
     Issue a purchase order to the supplier.
 
     Changes the PO status from 'Pending' to 'Placed'. This indicates
-    the order has been sent to the supplier.
+    the order is placed. Supplier email is a separate operation.
 
     Args:
         order_id: The purchase order ID to issue (required)

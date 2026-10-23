@@ -3,7 +3,6 @@ import type { WorkOrderOverview } from '@lib/types/WorkOrderOverview';
 import { t } from '@lingui/core/macro';
 import {
   Accordion,
-  Alert,
   Anchor,
   Badge,
   Group,
@@ -12,6 +11,10 @@ import {
   Text
 } from '@mantine/core';
 import { Link, useSearchParams } from 'react-router-dom';
+import {
+  InfoTooltip,
+  MissingValue
+} from '../../../../components/items/ValueTooltip';
 import { workPanelParams } from '../workPanelState';
 import {
   ExecutionFact,
@@ -84,7 +87,9 @@ function TestResult({ test }: Readonly<{ test: VerificationTest }>) {
         </ExecutionFact>
       </SimpleGrid>
       {evaluation === 'not_evaluated' && (
-        <Text size='sm'>{t`The saved result does not establish a pass against applicable criteria. A completed step or an unbounded numeric check is not accepted equipment verification.`}</Text>
+        <InfoTooltip
+          label={t`The saved result does not establish a pass against applicable criteria. A completed step or an unbounded numeric check is not accepted equipment verification.`}
+        />
       )}
       {note && <Text size='sm'>{note}</Text>}
       <Accordion variant='contained'>
@@ -92,7 +97,9 @@ function TestResult({ test }: Readonly<{ test: VerificationTest }>) {
           <Accordion.Control>{t`Retained attempt events (${test.events.length})`}</Accordion.Control>
           <Accordion.Panel>
             <Stack gap='sm'>
-              <Text size='sm'>{t`Earlier outcomes, recorders, times and any recorded attempt notes are retained. Previous values and complete test conditions are not available here; the current reading is never substituted for them.`}</Text>
+              <InfoTooltip
+                label={t`Earlier outcomes, recorders, times and any recorded attempt notes are retained. Previous values and complete test conditions are not available here; the current reading is never substituted for them.`}
+              />
               {test.events.map((event) => (
                 <Stack key={event.id} gap={2}>
                   <Text size='sm' fw={600}>
@@ -124,7 +131,7 @@ function TestResult({ test }: Readonly<{ test: VerificationTest }>) {
                   {event.recorded_note_truncated && (
                     <Text size='xs'>{t`First 4000 characters shown; the full note remains in the native event record.`}</Text>
                   )}
-                  <Text size='sm'>{t`Historical value: not available`}</Text>
+                  <MissingValue reason={t`Historical value: not available`} />
                   {event.evidence_ids.length > 0 && (
                     <Text size='sm'>
                       {t`Recorded evidence references`}:{' '}
@@ -151,11 +158,17 @@ export function VerificationReturn({
     <Stack gap='md' data-testid='verification-return'>
       <ExecutionSection title={t`Physical verification`}>
         {!supplied ? (
-          <Text size='sm'>{t`Physical test criteria and attempts are not supplied by this server. Not evaluated.`}</Text>
+          <MissingValue
+            reason={t`Physical test criteria and attempts are not supplied by this server. Not evaluated.`}
+          />
         ) : value.procedures_state !== 'read' ? (
-          <Text size='sm'>{t`Governed test records are not enabled. Not evaluated.`}</Text>
+          <MissingValue
+            reason={t`Governed test records are not enabled. Not evaluated.`}
+          />
         ) : value.tests.length === 0 ? (
-          <Text size='sm'>{t`No procedure test records returned. Applicable criteria and physical verification are not established.`}</Text>
+          <MissingValue
+            reason={t`No procedure test records returned. Applicable criteria and physical verification are not established.`}
+          />
         ) : (
           value.tests.map((test) => <TestResult key={test.id} test={test} />)
         )}
@@ -168,7 +181,10 @@ export function VerificationReturn({
           </ExecutionFact>
         )}
       </ExecutionSection>
-      <ExecutionSection title={t`Release and operating return`}>
+      <ExecutionSection
+        title={t`Release and operating return`}
+        info={t`Restoring a lockout point does not clear independent restrictions or establish job-wide release. Operating permission and observed return require their own records.`}
+      >
         {supplied && value.lockouts.length > 0 ? (
           value.lockouts.map((point) => (
             <Stack key={point.id} gap={4}>
@@ -187,9 +203,9 @@ export function VerificationReturn({
             </Stack>
           ))
         ) : (
-          <Text size='sm'>{t`Awaiting release record — no lockout-point records supplied here.`}</Text>
+          <Text size='sm'>{t`Awaiting release record`}</Text>
         )}
-        <Text size='sm'>{t`A restored lockout point is one source record. It does not clear independent restrictions or establish job-wide release.`}</Text>
+
         {workOrder.operational_authority && (
           <SimpleGrid cols={{ base: 1, sm: 2 }}>
             <ExecutionFact label={t`Operating permission`}>
@@ -219,10 +235,6 @@ export function VerificationReturn({
         <ExecutionFact label={t`Recorded verification time`}>
           {recordedTime(workOrder.structured_closeout?.verified_at)}
         </ExecutionFact>
-        <Alert
-          role='note'
-          color='gray'
-        >{t`A recorded summary or completed work order does not establish permission to operate.`}</Alert>
       </ExecutionSection>
       <Anchor
         component={Link}

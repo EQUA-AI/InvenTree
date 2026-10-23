@@ -12,9 +12,9 @@
   <div>
     <table class="meta">
       <tr><td class="label">Reference</td><td>{{ reference }}</td></tr>
-      <tr><td class="label">Status</td><td>{{ status }}</td></tr>
-      <tr><td class="label">Issue Date</td><td>{{ issue_date }}</td></tr>
-      <tr><td class="label">Target Date</td><td>{{ target_date }}</td></tr>
+      <tr><td class="label">Status</td><td>{{ status_label | default(status) }}</td></tr>
+      <tr><td class="label">Issue Date</td><td>{{ issue_date | default("Not placed", true) }}</td></tr>
+      <tr><td class="label">Target Date</td><td>{{ target_date | default("Not recorded", true) }}</td></tr>
       {% if internal_ref %}
       <tr><td class="label">Internal Ref</td><td>{{ internal_ref }}</td></tr>
       {% endif %}
@@ -41,6 +41,10 @@
 </div>
 {% endif %}
 
+{% if buyer_name %}<p>Buyer: {{ buyer_name }} · {{ buyer_email }}</p>{% endif %}
+{% if provenance_kind == "fixture" %}<p>Representative fixture — not a real supplier transaction.</p>{% endif %}
+<p>Recorded document only. Supplier email has not been sent.</p>
+
 <!-- ── Line items ─────────────────────────────────────────────── -->
 <table class="line-items">
   <thead>
@@ -60,35 +64,47 @@
       <td>
         {{ line.part_name }}
         {% if line.supplier_part_number %}<br><span class="text-muted text-sm">SKU: {{ line.supplier_part_number }}</span>{% endif %}
+        {% if line.pack_quantity is defined and (line.pack_quantity | quantity) != "1" %}<br><span class="text-muted text-sm">1 order unit = {{ line.pack_quantity | quantity }} {{ line.base_unit }}</span>{% endif %}
       </td>
       <td>{{ line.description | default("", true) }}</td>
-      <td class="center">{{ line.quantity | number(0) }}</td>
-      <td class="right">{{ line.unit_price | currency(currency_symbol | default("$", true)) }}</td>
-      <td class="right">{{ line.total_price | currency(currency_symbol | default("$", true)) }}</td>
+      <td class="center">{{ line.quantity | quantity }} {{ line.unit | default("", true) }}</td>
+      <td class="right">{{ line.unit_price | currency(currency_symbol | default("", true)) if line.unit_price is defined and line.unit_price is not none else "Unknown" }}</td>
+      <td class="right">{{ line.total_price | currency(currency_symbol | default("", true)) if line.total_price is defined and line.total_price is not none else "Unknown" }}</td>
     </tr>
     {% endfor %}
 
-    {% if subtotal and tax %}
+    {% for charge in extra_lines | default([]) %}
+    <tr>
+      <td colspan="3">{{ charge.description }}</td>
+      <td class="center">{{ charge.quantity | quantity }}</td>
+      <td class="right">{{ charge.unit_price | currency(currency_symbol | default("", true)) }}</td>
+      <td class="right">{{ charge.total_price | currency(currency_symbol | default("", true)) }}</td>
+    </tr>
+    {% endfor %}
+
+    {% if subtotal is defined and subtotal is not none %}
     <tr class="subtotal-row">
       <td colspan="5" class="text-right">Subtotal</td>
-      <td class="right">{{ subtotal | currency(currency_symbol | default("$", true)) }}</td>
+      <td class="right">{{ subtotal | currency(currency_symbol | default("", true)) }}</td>
     </tr>
+    {% endif %}
+    {% if tax is defined and tax is not none %}
     <tr>
       <td colspan="5" class="text-right">Tax ({{ tax_rate | default("", true) }})</td>
-      <td class="right">{{ tax | currency(currency_symbol | default("$", true)) }}</td>
+      <td class="right">{{ tax | currency(currency_symbol | default("", true)) }}</td>
     </tr>
     {% endif %}
 
-    {% if shipping_cost %}
+    {% if shipping_cost is defined and shipping_cost is not none and not extra_lines %}
     <tr>
       <td colspan="5" class="text-right">Shipping</td>
-      <td class="right">{{ shipping_cost | currency(currency_symbol | default("$", true)) }}</td>
+      <td class="right">{{ shipping_cost | currency(currency_symbol | default("", true)) }}</td>
     </tr>
     {% endif %}
 
     <tr class="total-row">
       <td colspan="5" class="text-right">Total ({{ currency | default("USD", true) }})</td>
-      <td class="right">{{ total_price | currency(currency_symbol | default("$", true)) }}</td>
+      <td class="right">{{ total_price | currency(currency_symbol | default("", true)) }}</td>
     </tr>
   </tbody>
 </table>

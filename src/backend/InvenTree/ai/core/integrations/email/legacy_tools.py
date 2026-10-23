@@ -757,8 +757,8 @@ async def generate_and_send_document(
         document_type: One of ``"sales_order"``, ``"purchase_order"``,
                        ``"bom"``, ``"quote"``, ``"rfq"``, ``"work_order"``.
         to: Recipient email address(es).
-        document_data: Optional data dict for the template.  If omitted,
-                       realistic sample data is generated automatically.
+        document_data: Required sourced data dict for the template. Missing data
+                       fails preparation; sample values are never sent.
                        Key shapes vary by type (see
                        ``ai.core.pdf.service.TEMPLATE_MAP``).
         subject: Email subject (auto-generated from *document_type* + reference
@@ -781,9 +781,22 @@ async def generate_and_send_document(
             ),
         }
 
-    # Auto-generate sample data when none provided
-    if not document_data:
-        document_data = _build_sample_data(document_type)
+    if (
+        not isinstance(document_data, dict)
+        or not document_data
+        or not document_data.get("reference")
+    ):
+        return {
+            "success": False,
+            "outcome": "failed_before_effect",
+            "error": "Sourced document data and reference are required; no sample fallback.",
+        }
+    if document_type == "purchase_order":
+        return {
+            "success": False,
+            "outcome": "failed_before_effect",
+            "error": "Purchase orders require the native recorded-evidence operation; no email is sent.",
+        }
 
     pdf_service = get_pdf_service()
 

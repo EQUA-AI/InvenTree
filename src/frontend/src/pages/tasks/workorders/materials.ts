@@ -5,6 +5,7 @@
  * recorder or stage is "not recorded", never filled in from a neighbour.
  */
 
+import type { MaintenanceProcurementContext } from '@lib/types/Procurement';
 import type { FittedRecord } from '@lib/types/RecordedFacts';
 
 export interface MaterialPart {
@@ -59,6 +60,7 @@ export interface MaterialReservation {
 }
 
 export interface MaterialRequirement {
+  fulfillment_mode?: string;
   key: string;
   part: MaterialPart | null;
   requested_part: MaterialPart | null;
@@ -88,6 +90,8 @@ export interface MaterialRequirement {
 }
 
 export interface MaterialReadout {
+  custody_writable?: boolean;
+  procurement?: MaintenanceProcurementContext;
   work_order: number;
   source: 'job_kit' | 'requirements';
   kits_enabled: boolean;

@@ -9,6 +9,7 @@ import {
   HoverCard,
   Modal,
   Table,
+  Text,
   TextInput
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
@@ -25,7 +26,7 @@ import {
   IconUser,
   IconUsers
 } from '@tabler/icons-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { ActionButton } from '@lib/components/ActionButton';
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
@@ -58,6 +59,8 @@ import {
 } from '../hooks/UseGenerator';
 import { useGlobalSettingsState } from '../states/SettingsStates';
 import { ProjectCodeField, TagsField } from './CommonFields';
+import receivingClasses from './PurchaseOrderReceiving.module.css';
+import { useMaintenanceReceiving } from './useMaintenanceReceiving';
 /*
  * Construct a set of fields for creating / editing a PurchaseOrderLineItem instance
  */
@@ -345,11 +348,13 @@ export function usePurchaseOrderFields({
 function LineItemFormRow({
   props,
   record,
-  statuses
+  statuses,
+  batchRequired = false
 }: Readonly<{
   props: TableFieldRowProps;
   record: any;
   statuses: any;
+  batchRequired?: boolean;
 }>) {
   // Barcode Modal state
   const [opened, { open, close }] = useDisclosure(false, {
@@ -542,7 +547,9 @@ function LineItemFormRow({
           />
         </FocusTrap>
       </Modal>
-      <Table.Tr>
+      <Table.Tr
+        className={batchRequired ? receivingClasses.maintenanceRow : undefined}
+      >
         <Table.Td>
           <Group gap='xs' justify='space-between'>
             <Group gap='xs' justify='left'>
@@ -578,6 +585,9 @@ function LineItemFormRow({
           />
         </Table.Td>
         <Table.Td style={{ whiteSpace: 'nowrap' }}>
+          {batchRequired && (
+            <Text hiddenFrom='sm' size='sm'>{t`Quantity`}</Text>
+          )}
           <TableFieldQuantityInput
             min={0}
             value={props.item.quantity ?? ''}
@@ -767,15 +777,18 @@ function LineItemFormRow({
         </Table.Tr>
       )}
       <TableFieldExtraRow
-        visible={batchOpen}
+        visible={batchRequired || batchOpen}
         onValueChange={(value) => {
           props.changeFn(props.rowId, 'batch_code', value);
         }}
         fieldName='batch_code'
         fieldDefinition={{
           field_type: 'string',
-          label: t`Batch Code`,
-          description: t`Enter batch code for received items`,
+          label: batchRequired ? t`Batch` : t`Batch Code`,
+          required: batchRequired,
+          description: batchRequired
+            ? undefined
+            : t`Enter batch code for received items`,
           value: props.item.batch_code,
           placeholderAutofill: true,
           placeholder:
@@ -830,7 +843,7 @@ function LineItemFormRow({
         error={props.rowErrors?.packaging?.message}
       />
       <TableFieldExtraRow
-        visible={statusOpen}
+        visible={batchRequired || statusOpen}
         defaultValue={10}
         fieldName='status'
         onValueChange={(value) => props.changeFn(props.rowId, 'status', value)}
@@ -869,6 +882,9 @@ type LineItemsForm = {
 };
 
 export function useReceiveLineItems(props: LineItemsForm) {
+  const [opened, setOpened] = useState(false);
+  const endpoint = apiUrl(ApiEndpoints.purchase_order_receive, props.orderPk);
+  const receiving = useMaintenanceReceiving(endpoint, opened);
   const stockStatusCodes = useMemo(
     () => getStatusCodeOptions(ModelType.stockitem),
     []
@@ -889,7 +905,8 @@ export function useReceiveLineItems(props: LineItemsForm) {
       });
   }, [props.items]);
 
-  const fields: ApiFormFieldSet = useMemo(() => {
+  const fields = useMemo<ApiFormFieldSet>((): ApiFormFieldSet => {
+    if (receiving.intent) return {};
     return {
       id: {
         value: props.orderPk,
@@ -929,6 +946,7 @@ export function useReceiveLineItems(props: LineItemsForm) {
               record={record}
               statuses={stockStatusCodes}
               key={row.rowId}
+              batchRequired={receiving.context?.maintenance}
             />
           );
         },
@@ -947,17 +965,58 @@ export function useReceiveLineItems(props: LineItemsForm) {
         }
       }
     };
-  }, [filteredItems, records, props.orderPk, stockStatusCodes]);
+  }, [
+    filteredItems,
+    records,
+    props.orderPk,
+    stockStatusCodes,
+    receiving.context?.maintenance,
+    receiving.intent
+  ]);
 
-  return useCreateApiFormModal({
+  const recoveredOnMount = useRef(false);
+  const modal = useCreateApiFormModal({
     ...props.formProps,
     url: apiUrl(ApiEndpoints.purchase_order_receive, props.orderPk),
-    title: t`Receive Line Items`,
+    title: receiving.context?.maintenance
+      ? t`Receive stock`
+      : t`Receive Line Items`,
+    onOpen: () => {
+      recoveredOnMount.current = true;
+      setOpened(true);
+      props.formProps?.onOpen?.();
+    },
+    onClose: () => {
+      setOpened(false);
+      receiving.dismiss();
+      props.formProps?.onClose?.();
+    },
+    preFormContent: receiving.content,
+    submitDisabled: receiving.disabled,
+    formIdentity: receiving.context?.maintenance
+      ? receiving.formIdentity
+      : undefined,
+    hideErrorNotification: receiving.context?.maintenance,
+    processFormData: receiving.prepare,
+    onFormSuccess: receiving.onSuccess,
+    onFormError: receiving.onError,
+    checkClose: () => !receiving.context?.maintenance,
+    submitText: t`Receive`,
+    cancelText: receiving.intent ? t`Close` : t`Cancel`,
     fields: fields,
     initialData: {
       location: props.destinationPk
     },
-    size: '80%',
-    successMessage: t`Items received`
+    size: receiving.context?.maintenance ? 'min(1100px, 100%)' : '80%',
+    successMessage: receiving.context?.maintenance
+      ? undefined
+      : t`Items received`
   });
+  useEffect(() => {
+    if (receiving.intent && !opened && !recoveredOnMount.current) {
+      recoveredOnMount.current = true;
+      modal.open();
+    }
+  }, [receiving.intent, opened, modal.open]);
+  return modal;
 }

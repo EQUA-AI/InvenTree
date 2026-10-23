@@ -8,6 +8,7 @@ import copy
 from decimal import Decimal
 from typing import Any, Optional, TypedDict
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
@@ -871,20 +872,21 @@ class PurchaseOrder(TotalPriceMixin, Order):
         target=PurchaseOrderStatus.PLACED,
         event=PurchaseOrderEvents.PLACED,
     )
-    def place_order(self):
+    def place_order(self, *, notify=True):
         """Transition this PurchaseOrder to PLACED status.
 
         The order must currently be PENDING or ON_HOLD.
         """
         self.issue_date = InvenTree.helpers.current_date()
 
-        notify_responsible(
-            self,
-            PurchaseOrder,
-            exclude=self.created_by,
-            content=InvenTreeNotificationBodies.NewOrder,
-            extra_users=self.subscribed_users(),
-        )
+        if notify:
+            notify_responsible(
+                self,
+                PurchaseOrder,
+                exclude=self.created_by,
+                content=InvenTreeNotificationBodies.NewOrder,
+                extra_users=self.subscribed_users(),
+            )
 
     @deprecated('Use place_order() instead', version='1.5.0')
     def issue_order(self):
@@ -1319,14 +1321,15 @@ class PurchaseOrder(TotalPriceMixin, Order):
             self.received_by = user
             self.complete_order()
 
-        # Send notification
-        notify_responsible(
-            self,
-            PurchaseOrder,
-            exclude=user,
-            content=InvenTreeNotificationBodies.ItemsReceived,
-            extra_users=notify_users,
-        )
+        # Recorded maintenance receiving never dispatches email notifications.
+        if kwargs.get('notify', True):
+            notify_responsible(
+                self,
+                PurchaseOrder,
+                exclude=user,
+                content=InvenTreeNotificationBodies.ItemsReceived,
+                extra_users=notify_users,
+            )
 
         # Return a list of the created stock items
         return stock.models.StockItem.objects.filter(
@@ -4326,3 +4329,26 @@ def _touch_order_updated_at(instance):
 def update_order_on_lineitem_change(sender, instance, **kwargs):
     """Update parent order updated_at when any line item is saved or deleted."""
     _touch_order_updated_at(instance)
+
+
+class PurchaseOrderDocumentEvidence(models.Model):
+    """Immutable exact PDF and email specimen; recording never transmits mail."""
+
+    operation_key = models.CharField(max_length=128, unique=True)
+    order = models.ForeignKey(
+        PurchaseOrder, on_delete=models.PROTECT, related_name='recorded_documents'
+    )
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    request_hash = models.CharField(max_length=64)
+    context = models.JSONField()
+    pdf_bytes = models.BinaryField()
+    email_bytes = models.BinaryField()
+    pdf_sha256 = models.CharField(max_length=64)
+    email_sha256 = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        """Preserve earlier recorded bytes when the native order changes."""
+        if self.pk and type(self).objects.filter(pk=self.pk).exists():
+            raise ValueError('Recorded purchase documents are immutable')
+        return super().save(*args, **kwargs)

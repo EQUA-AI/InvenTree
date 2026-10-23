@@ -1,6 +1,8 @@
 import type { WorkOrderOverview } from '@lib/types/WorkOrderOverview';
 import { t } from '@lingui/core/macro';
-import { Accordion, List, Text } from '@mantine/core';
+import { ActionIcon, Box, Stack, Text, Tooltip } from '@mantine/core';
+import { IconInfoCircle } from '@tabler/icons-react';
+import { factTooltipProps } from '../../../../components/items/ValueTooltip';
 import type { WorkPanel } from '../workPanelState';
 
 /** Schema/provider gaps, distinct from empty records and omitted human entries. */
@@ -92,21 +94,28 @@ export function NotSupplied({
     );
   if (!gaps.length) return null;
   return (
-    <Accordion variant='contained' data-testid='not-supplied'>
-      <Accordion.Item value='gaps'>
-        <Accordion.Control>{t`Not supplied by this server (${gaps.length})`}</Accordion.Control>
-        <Accordion.Panel>
-          <Text
-            size='sm'
-            mb='xs'
-          >{t`Unavailable facts remain unknown. This summary does not establish readiness, acceptance or closed obligations.`}</Text>
-          <List size='sm' spacing='xs'>
+    <Box data-testid='not-supplied'>
+      <Tooltip
+        {...factTooltipProps}
+        withinPortal={false}
+        label={
+          <Stack gap='xs' mah='65dvh' style={{ overflowY: 'auto' }}>
             {gaps.map((gap) => (
-              <List.Item key={gap}>{gap}</List.Item>
+              <Text key={gap} size='xs'>
+                {gap}
+              </Text>
             ))}
-          </List>
-        </Accordion.Panel>
-      </Accordion.Item>
-    </Accordion>
+          </Stack>
+        }
+      >
+        <ActionIcon
+          variant='subtle'
+          color='gray'
+          aria-label={t`Record coverage`}
+        >
+          <IconInfoCircle size={16} aria-hidden />
+        </ActionIcon>
+      </Tooltip>
+    </Box>
   );
 }

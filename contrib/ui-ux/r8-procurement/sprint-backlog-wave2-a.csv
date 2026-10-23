@@ -1,0 +1,5 @@
+item,status,evidence,remaining_gate
+U1,Ready for review,reports/wave2-a.md,Human review and integrated real-data acceptance
+U2,Ready for review,reports/wave2-a.md,Human review and integrated real-data acceptance
+Lane A verification,Ready for review,data/devscratch/r8-w2a,Mac host and authenticated integration review
+R8 product acceptance,Planned,reports/integration-wave1.md,Human review integrated real data and deployment acceptance

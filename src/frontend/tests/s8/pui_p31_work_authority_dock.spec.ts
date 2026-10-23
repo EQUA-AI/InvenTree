@@ -59,18 +59,20 @@ for (const scheme of ['light', 'dark'] as const) {
       await openExecutionPanel(page, 'work', scheme);
       const boundary = page.getByTestId('work-phone-boundary');
       const label = ['absent', 'missing', 'superseded'].includes(state)
-        ? 'Physical authority not supplied'
+        ? 'Plan & Safety · —'
         : state === 'expired'
-          ? 'Physical authority recorded · expired'
+          ? 'Authority expired'
           : state === 'future'
-            ? 'Physical authority recorded · not yet effective'
+            ? 'Authority not yet effective'
             : state === 'unverified'
-              ? 'Physical authority recorded · awaiting independent verification'
-              : 'Physical authority recorded';
+              ? 'Authority awaiting verification'
+              : 'Authority recorded';
       await expect(boundary).toContainText(label);
-      await expect(boundary).toContainText(
-        'View Plan & Safety. This does not authorize work.'
+      await boundary.focus();
+      await expect(page.getByRole('tooltip')).toContainText(
+        'This record does not authorize work.'
       );
+      await page.keyboard.press('Escape');
       await expect(boundary).toBeInViewport({ ratio: 1 });
       for (const heading of await page
         .locator('[data-stylish-heading]:visible')
@@ -100,8 +102,8 @@ test('phone dock removes currency when a recorded authority expires while open',
   await mockAuthority(page, value);
   await openExecutionPanel(page, 'work');
   const boundary = page.getByTestId('work-phone-boundary');
-  await expect(boundary).toContainText('Physical authority recorded');
+  await expect(boundary).toContainText('Authority recorded');
   await expect(boundary).not.toContainText('expired');
   await page.clock.fastForward(10 * 60 * 1000);
-  await expect(boundary).toContainText('Physical authority recorded · expired');
+  await expect(boundary).toContainText('Authority expired');
 });

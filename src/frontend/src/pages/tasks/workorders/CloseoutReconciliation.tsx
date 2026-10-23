@@ -1,8 +1,12 @@
 import type { WorkOrderOverview } from '@lib/types/WorkOrderOverview';
 import { t } from '@lingui/core/macro';
-import { Anchor, Stack, Text, Title } from '@mantine/core';
+import { Anchor, Group, Stack, Text, Title } from '@mantine/core';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  InfoTooltip,
+  MissingValue
+} from '../../../components/items/ValueTooltip';
 import { RecordedDowntime } from './RecordedDowntime';
 import { WorkMaterialsPanel } from './WorkMaterialsPanel';
 import { TimeAssignment } from './execution/TimeAssignment';
@@ -15,11 +19,15 @@ export function CloseoutReconciliation({
   return (
     <Stack gap='sm' data-testid='closeout-reconciliation'>
       <Stack gap='sm'>
-        <Title
-          order={3}
-          size='h5'
-        >{t`Material custody, time and downtime`}</Title>
-        <Text size='sm'>{t`Usage and custody are separate records. A reservation or a reconciled usage row does not prove fitted identity or stock release.`}</Text>
+        <Group gap='xs'>
+          <Title
+            order={3}
+            size='h5'
+          >{t`Material custody, time and downtime`}</Title>
+          <InfoTooltip
+            label={t`Usage and custody are separate records. A reservation or a reconciled usage row does not prove fitted identity or stock release. Removed-item identity, retained-for-analysis, repair/refurbishment, quarantine release and warranty/core context are not supplied by this readout. Keep an unresolved item in its true custody; no material movement is performed here. Discrepancy owners, business-record ownership and next checkpoints are unavailable where the source does not name them. A recorded resolver is not an assigned owner.`}
+          />
+        </Group>
         <details
           onToggle={(event) => {
             if (event.currentTarget.open) setReadMaterials(true);
@@ -37,20 +45,20 @@ export function CloseoutReconciliation({
             />
           )}
         </details>
-        <Text size='sm'>{t`Removed-item identity, retained-for-analysis, repair/refurbishment, quarantine release and warranty/core context are not supplied by this readout. Keep an unresolved item in its true custody; no material movement is performed here.`}</Text>
-        <Text
-          size='xs'
-          c='dimmed'
-        >{t`Discrepancy owners, business-record ownership and next checkpoints are unavailable where the source does not name them. A recorded resolver is not an assigned owner.`}</Text>
         <Anchor
           component={Link}
           replace
           to='?work_panel=parts'
         >{t`Open Parts and native inventory records`}</Anchor>
         <Text size='sm' fw={600}>
-          {workOrder.time_assignment?.time_records?.intervals.length
-            ? t`Recorded person-work intervals available · coverage partial`
-            : t`Attributed time: unavailable · coverage unknown`}
+          {workOrder.time_assignment?.time_records?.intervals.length ? (
+            t`Recorded person-work intervals available · coverage partial`
+          ) : (
+            <MissingValue
+              label={t`Person-work time`}
+              reason={t`Coverage unknown`}
+            />
+          )}
         </Text>
         <details>
           <summary>{t`Read assignment provenance and native time`}</summary>

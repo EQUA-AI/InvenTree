@@ -82,10 +82,16 @@ for (const scheme of ['light', 'dark'] as const) {
     });
     await openCloseout(page, scheme);
     const reconciliation = page.getByTestId('closeout-reconciliation');
-    await expect(reconciliation).toContainText('Service downtime: unavailable');
-    await expect(reconciliation).toContainText(
-      'Attributed time: unavailable · coverage unknown'
-    );
+    await expect(
+      reconciliation.getByRole('button', {
+        name: /Information: Service downtime: unavailable/
+      })
+    ).toBeVisible();
+    await expect(
+      reconciliation.getByRole('button', {
+        name: 'Person-work time: Coverage unknown'
+      })
+    ).toHaveText('—');
     expect(materialReads).toBe(0);
     await reconciliation
       .getByText('Read material custody and serial / lot records', {
@@ -100,7 +106,11 @@ for (const scheme of ['light', 'dark'] as const) {
     ).toHaveAttribute('href', '/stock/item/91/');
     await expect(reconciliation).toContainText('Retained for analysis');
     await expect(reconciliation).toContainText('variance_open');
-    await expect(reconciliation).toContainText('Discrepancy owners');
+    await expect(
+      reconciliation.getByRole('button', {
+        name: /Information: Usage and custody.*Discrepancy owners/
+      })
+    ).toBeVisible();
     await page
       .getByRole('textbox', { name: 'Downtime (minutes)', exact: true })
       .fill('0');
@@ -108,7 +118,11 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(
       page.getByTestId('prepared-closeout').locator('pre')
     ).toContainText('Downtime (minutes): 0');
-    await expect(reconciliation).toContainText('Service downtime: unavailable');
+    await expect(
+      reconciliation.getByRole('button', {
+        name: /Information: Service downtime: unavailable/
+      })
+    ).toBeVisible();
     expect(commands).toEqual([]);
     await page.getByText('Read report', { exact: true }).click();
     await containment(page);
@@ -179,7 +193,11 @@ for (const scheme of ['light', 'dark'] as const) {
     const value = page.getByTestId('recorded-downtime');
     await expect(value).toContainText('Confirmed machine stop window');
     await expect(value).toContainText('Synthetic technician');
-    await expect(value).toContainText('Service downtime: unavailable');
+    await expect(
+      value.getByRole('button', {
+        name: /Information: Service downtime: unavailable/
+      })
+    ).toBeVisible();
     await value.screenshot({
       path: info.outputPath(`o15-downtime-${scheme}.png`),
       animations: 'disabled'
@@ -244,7 +262,11 @@ test('O15 technician confirms a sourced stop window without claiming service ret
     .getByRole('button', { name: 'Confirm machine downtime', exact: true })
     .click();
   await expect(section).toContainText('Confirmed machine stop window');
-  await expect(section).toContainText('Service downtime: unavailable');
+  await expect(
+    section.getByRole('button', {
+      name: /Information: Service downtime: unavailable/
+    })
+  ).toBeVisible();
   expect(sent).toHaveLength(1);
   expect(sent[0]).toMatchObject({
     operation: 'downtime',

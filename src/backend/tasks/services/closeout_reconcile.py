@@ -80,6 +80,30 @@ class NumericAmbiguityBlocking(WorkOrderCommandError):  # noqa: N818 - establish
     code = 'NUMERIC_AMBIGUITY_BLOCKING'
 
 
+def _require_mutable_materials(work_order):
+    if work_order.lifecycle_status in ('completed', 'canceled'):
+        raise ReconciliationError('Completed Closeout materials are immutable')
+
+
+def sync_pending_custody_usage(work_order, allocation, actor):
+    """Bind pending usage inside the custody transaction, without moving stock.
+
+    Explicit reconciled dispositions remain human decisions. Completed accounts
+    retain their original rows and frozen reports.
+    """
+    _require_mutable_materials(work_order)
+    for row in CloseoutPartUsage.objects.select_for_update().filter(
+        work_order=work_order,
+        allocation=allocation,
+        state=CloseoutPartUsageState.PENDING,
+        disposition='',
+    ):
+        _sync_row_from_allocation(row, allocation)
+        row.resolved_by = actor
+        row.version += 1
+        row.save()
+
+
 def _sync_row_from_allocation(row: CloseoutPartUsage, allocation: JobKitAllocation):
     """Refresh custody-derived values on one row; never touches stock."""
     row.part_id = allocation.line.selected_part_id
@@ -113,6 +137,7 @@ def refresh_closeout_reconciliation(*, work_order_id, actor, correlation_id=None
     work_order = _locked_work_order(work_order_id)
     require_permission(actor, CAPTURE_CLOSEOUT)
     _require_scope(actor, work_order)
+    _require_mutable_materials(work_order)
 
     kit = JobKit.objects.filter(work_order=work_order).first()
     created = updated = flagged = 0
@@ -145,6 +170,16 @@ def refresh_closeout_reconciliation(*, work_order_id, actor, correlation_id=None
                 row.disposition = ''
                 flagged += 1
             _sync_row_from_allocation(row, allocation)
+            if (
+                row.state == CloseoutPartUsageState.RECONCILED
+                and not row.resolved_by_id
+            ):
+                from stock.models import StockItemTracking
+
+                track = StockItemTracking.objects.filter(
+                    pk=allocation.stock_tracking_id, item_id=allocation.stock_item_id
+                ).first()
+                row.resolved_by_id = track.user_id if track else None
             row.version = row.version + 1 if not was_created else row.version
             row.save()
             from assets.recorded_facts import promote_usage
@@ -182,6 +217,7 @@ def add_walkup_usage(
     work_order = _locked_work_order(work_order_id)
     require_permission(actor, RECONCILE_CLOSEOUT_PARTS)
     _require_scope(actor, work_order)
+    _require_mutable_materials(work_order)
 
     from stock.models import StockItem, StockItemTracking
 
@@ -224,6 +260,7 @@ def add_narrative_candidate(*, work_order_id, actor, candidate_text):
     work_order = _locked_work_order(work_order_id)
     require_permission(actor, CAPTURE_CLOSEOUT)
     _require_scope(actor, work_order)
+    _require_mutable_materials(work_order)
     text = (candidate_text or '').strip()
     if not text:
         raise ReconciliationError('A candidate requires its narrative text')
@@ -259,6 +296,7 @@ def resolve_part_usage(
     work_order = _locked_work_order(work_order_id)
     require_permission(actor, RECONCILE_CLOSEOUT_PARTS)
     _require_scope(actor, work_order)
+    _require_mutable_materials(work_order)
 
     # Lock only the usage row (of=('self',)); allocation is a nullable FK and
     # PostgreSQL rejects FOR UPDATE across its outer join.

@@ -1,10 +1,11 @@
 import { t } from '@lingui/core/macro';
-import { Button, Stack, Text } from '@mantine/core';
+import { Button, Stack } from '@mantine/core';
 import { IconMessageChatbot } from '@tabler/icons-react';
 import { useLocation } from 'react-router-dom';
 
 import type { WorkOrderOverview } from '@lib/types/WorkOrderOverview';
 
+import { InfoTooltip } from '../../../../components/items/ValueTooltip';
 import { openGlobalAIChatAboutWork } from '../../../../states/AIChatState';
 import { diagnoseReturnPath } from './investigationProjection';
 
@@ -73,12 +74,13 @@ export function ContinueInvestigation({
         {label ?? t`Continue investigation`}
       </Button>
       {caption && (
-        <Text size='sm' maw={560}>
-          {request
-            ? t`Opens the existing assistant on this saved request. Review and approve the assistant’s proposal in chat to share typed evidence. Chat alone does not resolve the request.`
-            : t`Opens the existing assistant on this Work. To share evidence for a saved request, use that request’s Discuss action. Name any other finding in your message.`}{' '}
-          {t`Chat does not save finding corrections, resolutions or agreed checks; use the native repair packet to record supported changes.`}
-        </Text>
+        <InfoTooltip
+          label={`${
+            request
+              ? t`Opens the existing assistant on this saved request. Review and approve the assistant’s proposal in chat to share typed evidence. Chat alone does not resolve the request.`
+              : t`Opens the existing assistant on this Work. To share evidence for a saved request, use that request’s Discuss action. Name any other finding in your message.`
+          } ${t`Chat does not save finding corrections, resolutions or agreed checks; use the native repair packet to record supported changes.`}`}
+        />
       )}
     </Stack>
   );

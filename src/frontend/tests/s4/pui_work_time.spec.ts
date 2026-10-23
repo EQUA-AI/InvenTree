@@ -172,7 +172,7 @@ test('legacy or missing assignment provenance stays unknown', async ({
     .getByRole('button', { name: 'Recorded assignment changes (0)' })
     .click();
   await expect(
-    time.getByText(/Assignment time and rationale remain unknown/)
+    time.getByText('No assignment changes recorded', { exact: true })
   ).toBeVisible();
   await capturePanel(page, info.outputPath('time-legacy-unknown.png'));
   await mockExecutionWork(page);

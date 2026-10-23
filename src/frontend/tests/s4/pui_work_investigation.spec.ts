@@ -149,8 +149,12 @@ test('missing updater and checkpoint remain unrecorded while zero keeps its unit
   const card = panelRegion(page, 'Diagnose').getByTestId(
     'investigation-request-401'
   );
-  await expect(card.getByText(/Updated by: Not recorded/)).toBeVisible();
-  await expect(card.getByText(/Next checkpoint: Not recorded/)).toBeVisible();
+  await expect(
+    card.getByRole('button', { name: 'Updated by: No value recorded' })
+  ).toHaveText('—');
+  await expect(
+    card.getByRole('button', { name: 'Next checkpoint: No value recorded' })
+  ).toHaveText('—');
   await expect(card.getByText(/Particles: 0 count\/mL/)).toBeVisible();
   await expect(card.getByText(/Updated by: 9/)).toHaveCount(0);
   await capturePanel(page, info.outputPath('request-missing-updater.png'));
@@ -325,8 +329,10 @@ test('cannot-perform and conflicting evidence stay attributed and unresolved', a
     card.getByText('Cannot perform — unresolved').first()
   ).toBeVisible();
   await expect(
-    card.getByText(/Owner: Not recorded.*Next checkpoint: Not recorded/)
-  ).toBeVisible();
+    card.getByRole('button', {
+      name: /^(Owner|Next checkpoint): No value recorded$/
+    })
+  ).toHaveCount(2);
   await expect(
     card.getByText('Synthetic calibrated instrument unavailable')
   ).toBeVisible();
@@ -427,7 +433,9 @@ for (const scheme of ['light', 'dark'] as const) {
     await openExecutionPanel(page, 'diagnose', scheme);
     const panel = panelRegion(page, 'Diagnose');
     await expect(panel.getByText(/Priority next check/)).toHaveCount(0);
-    await expect(panel.getByText(/Priority: Not recorded/)).toBeVisible();
+    await expect(
+      panel.getByRole('button', { name: 'Priority: No value recorded' })
+    ).toHaveText('—');
     await expect(
       panel.getByRole('button', { name: 'Discuss request 401' })
     ).toBeVisible();
@@ -802,7 +810,9 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(
       card.getByText('Pending external — unresolved').first()
     ).toBeVisible();
-    await expect(card.getByText(/Owner: Not recorded/)).toBeVisible();
+    await expect(
+      card.getByRole('button', { name: 'Owner: No value recorded' })
+    ).toHaveText('—');
     await expect(card.getByText(/internal coordinator/)).toHaveCount(0);
     await expect(
       card.getByText(/Sample handling supplied by technician/)

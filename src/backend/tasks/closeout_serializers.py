@@ -265,6 +265,15 @@ class CloseoutPartUsageSerializer(serializers.ModelSerializer):
         if not visibility[work_order.pk]:
             data['stock_item'] = None
             data['stock_tracking_id'] = None
+        if request:
+            from .materials_readout import closeout_material_context
+
+            cache = self.context.setdefault('_material_context', {})
+            if work_order.pk not in cache:
+                cache[work_order.pk] = closeout_material_context(
+                    request.user, work_order
+                )
+            data['material'] = cache[work_order.pk].get(instance.pk)
         return data
 
     class Meta:

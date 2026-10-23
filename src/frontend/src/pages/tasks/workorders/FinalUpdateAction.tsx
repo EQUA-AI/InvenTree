@@ -11,6 +11,7 @@ import {
 } from '@mantine/core';
 import dayjs from 'dayjs';
 import { Link } from 'react-router-dom';
+import { InfoTooltip } from '../../../components/items/ValueTooltip';
 import { useActionFocus } from './useActionFocus';
 import type { UpdateState } from './workRecordUpdate';
 
@@ -73,7 +74,6 @@ export function WorkRecordUpdate({
       mt='md'
       data-testid='work-record-update'
     >
-      <Text size='sm'>{t`Updates the internal AIMMS maintenance record. Physical return and external-system acknowledgement are separate.`}</Text>
       {state.status === 'confirmed' ? (
         <Alert color='green'>
           {t`Record updated`} ·{' '}
@@ -247,6 +247,9 @@ export function WorkRecordUpdate({
         replace
         to='?work_panel=verify'
       >{t`View Verify & Return`}</Anchor>
+      <InfoTooltip
+        label={t`Updates the internal AIMMS maintenance record. Physical return and external-system acknowledgement are separate.`}
+      />
     </Stack>
   );
 }

@@ -19,6 +19,10 @@ import { IconChevronDown, IconChevronUp, IconRobot } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import {
+  InfoTooltip,
+  MissingValue
+} from '../../../../components/items/ValueTooltip';
 
 import type {
   HandledAction,
@@ -337,9 +341,7 @@ export function HandledByAimms({ value }: Readonly<{ value: unknown }>) {
             <IconRobot size={18} />
             <Title order={2} size='h4'>{t`Handled by AIMMS`}</Title>
           </Group>
-          <Text size='sm' c='dimmed'>
-            {t`This server does not supply a record of AIMMS digital work for this work order. Nothing here means AIMMS did or did not act.`}
-          </Text>
+          <MissingValue reason={t`AIMMS activity records unavailable`} />
         </Stack>
       </Card>
     );
@@ -439,13 +441,16 @@ export function HandledByAimms({ value }: Readonly<{ value: unknown }>) {
         ) : null}
 
         <Divider />
-        <Text size='xs' c='dimmed'>
-          {checked.length > 0
-            ? t`Checked: ${checked.join(', ')}.`
-            : t`No AIMMS record source was read.`}
-          {notEnabled.length > 0 &&
-            ` ${t`Not enabled on this server: ${notEnabled.map(sourceLabel).join(', ')}.`}`}
-        </Text>
+        <InfoTooltip
+          label={
+            (checked.length > 0
+              ? t`Checked: ${checked.join(', ')}.`
+              : t`No AIMMS record source was read.`) +
+            (notEnabled.length > 0
+              ? ` ${t`Not enabled on this server: ${notEnabled.map(sourceLabel).join(', ')}.`}`
+              : '')
+          }
+        />
         {counts.failed + counts.unknown > 0 && (
           <Alert role='note' color='gray' variant='light' p='xs'>
             <Text size='sm'>

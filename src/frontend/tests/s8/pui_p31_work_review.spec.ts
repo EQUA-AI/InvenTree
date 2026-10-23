@@ -68,7 +68,7 @@ for (const scheme of ['light', 'dark'] as const) {
     const badge = page
       .getByRole('main')
       .locator('.mantine-Badge-root')
-      .filter({ hasText: 'Lifecycle:' })
+      .filter({ hasText: /^In progress$/i })
       .first();
     await badge.evaluate((node) => {
       node.style.maxWidth = '8em';
@@ -93,12 +93,17 @@ for (const scheme of ['light', 'dark'] as const) {
 for (const width of [1000, 1100])
   for (const surface of ['work', 'list'] as const) {
     test(`D6 saved wide assistant preserves ${surface} width and uses a modal overlay at ${width}`, async ({
-      page
+      page,
+      baseURL
     }, info) => {
       await page.setViewportSize({ width, height: 800 });
-      await page.addInitScript(() =>
-        localStorage.setItem('ai-chat-drawer-width', '900')
-      );
+      await page.addInitScript((origin) => {
+        // Navigation-error documents have opaque origins and no storage.
+        // A harness outage must remain a navigation failure, not a spurious
+        // application runtime error. Storage failures on our page still fail.
+        if (window.location.origin === origin)
+          localStorage.setItem('ai-chat-drawer-width', '900');
+      }, new URL(baseURL!).origin);
       if (surface === 'work') {
         await closeoutWork(page);
         await phoneAssistant(page);
@@ -109,6 +114,9 @@ for (const width of [1000, 1100])
         await phoneAssistant(page);
         await openWorkList(page);
       }
+      expect(
+        await page.evaluate(() => localStorage.getItem('ai-chat-drawer-width'))
+      ).toBe('900');
       const main = page.getByRole('main', { includeHidden: true });
       const trigger =
         surface === 'work'

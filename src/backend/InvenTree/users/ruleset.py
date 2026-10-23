@@ -454,6 +454,11 @@ def get_ruleset_ignore() -> list[str]:
         'tasks_investigationrequest',
         'tasks_jobkit',
         'tasks_jobkitallocation',
+        # R8 receipt/document ledgers are accessible only through scoped parent
+        # commands/readbacks, never through generic model CRUD role grants.
+        'tasks_maintenancereceipt',
+        'tasks_maintenancereceiptstock',
+        'order_purchaseorderdocumentevidence',
         'tasks_jobkitline',
         'tasks_jobkitshortage',
         'tasks_jobkitsubstitution',

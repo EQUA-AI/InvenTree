@@ -551,10 +551,58 @@ class PurchaseOrderViewSet(
         serializer.save()
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    @extend_schema(responses={201: stock_serializers.StockItemSerializer(many=True)})
+    @extend_schema(responses={200: OpenApiTypes.OBJECT, 201: OpenApiTypes.OBJECT})
     @action(
         detail=True,
-        methods=['post'],
+        methods=['get', 'post'],
+        url_path='recorded-evidence',
+        serializer_class=serializers.PurchaseOrderRecordedEvidenceSerializer,
+        output_options=None,
+    )
+    def recorded_evidence(self, request, pk=None):
+        """Record/reconcile exact PDF and email bytes. Nothing is transmitted."""
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from rest_framework.exceptions import ValidationError
+
+        from order.procurement_evidence import (
+            evidence_result,
+            record_documents,
+            require_access,
+        )
+
+        self.get_order()
+        require_access(request.user, write=request.method == 'POST')
+        if request.method == 'POST':
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            try:
+                evidence, created = record_documents(
+                    order_id=pk, actor=request.user, data=serializer.validated_data
+                )
+            except DjangoValidationError as exc:
+                raise ValidationError(exc.messages) from exc
+            return Response(evidence_result(evidence), status=201 if created else 200)
+        rows = models.PurchaseOrderDocumentEvidence.objects.filter(
+            order_id=pk
+        ).order_by('pk')
+        key = request.query_params.get('operation_key')
+        if key:
+            evidence = rows.filter(operation_key=key).first()
+            if evidence is None:
+                raise NotFound(_('Recorded evidence not found'))
+            return Response(evidence_result(evidence, include_bytes=True))
+        return Response([evidence_result(row) for row in rows])
+
+    @extend_schema(
+        responses={
+            200: OpenApiTypes.OBJECT,
+            201: stock_serializers.StockItemSerializer(many=True),
+        }
+    )
+    @action(
+        detail=True,
+        methods=['get', 'post'],
         serializer_class=serializers.PurchaseOrderReceiveSerializer,
         pagination_class=None,
         filter_backends=[],
@@ -564,13 +612,18 @@ class PurchaseOrderViewSet(
         """API endpoint to receive stock items against a PurchaseOrder."""
         self.get_order()
 
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        items = serializer.save()
-        queryset = stock_serializers.StockItemSerializer.annotate_queryset(items)
+        from tasks.services.maintenance_receipts import (
+            maintenance_receiving_context,
+            receive_purchase_order,
+        )
 
-        response = stock_serializers.StockItemSerializer(queryset, many=True)
-        return Response(response.data, status=status.HTTP_201_CREATED)
+        if request.method == 'GET':
+            return Response(maintenance_receiving_context(request=request, order_id=pk))
+
+        data = receive_purchase_order(
+            request=request, order_id=pk, serializer_factory=self.get_serializer
+        )
+        return Response(data, status=status.HTTP_201_CREATED)
 
 
 order_router.register('po', PurchaseOrderViewSet, basename='api-po')

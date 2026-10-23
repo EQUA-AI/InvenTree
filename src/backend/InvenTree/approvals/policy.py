@@ -59,6 +59,14 @@ def effective_risk_tier(approval):
 
 def require_policy(approval, *, actor, channel):
     """Fail closed on missing policy, step-up, second approver or unsafe route."""
+    if (
+        approval.action_type == ActionType.PURCHASE_ORDER
+        and approval.payload.get('operation') == 'place_purchase_order'
+        and channel != 'screen'
+    ):
+        raise ApprovalPolicyError(
+            'Recorded procurement placement requires the named approver on screen.'
+        )
     policy = ACTION_POLICIES.get(approval.action_type)
     if policy is None or not policy.governing_reference:
         raise ApprovalPolicyError(

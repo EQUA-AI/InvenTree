@@ -1,4 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
+import type { WorkOrderPart } from '../../lib/types/Tasks';
 
 import { nativeBaseline } from '../s0/guards';
 import { workOrder } from '../s0/workFixtures';
@@ -106,12 +107,19 @@ async function openParts(
     body = readout(),
     status = 200,
     role,
-    scheme
-  }: { body?: object; status?: number; role?: 'viewer'; scheme?: 'dark' } = {}
+    scheme,
+    parts = []
+  }: {
+    body?: object;
+    status?: number;
+    role?: 'viewer';
+    scheme?: 'dark';
+    parts?: WorkOrderPart[];
+  } = {}
 ) {
   await mockWorkList(page);
   await page.route('**/api/kanban/work-orders/73/overview/', (route) =>
-    route.fulfill({ json: workOrder() })
+    route.fulfill({ json: { ...workOrder(), parts } })
   );
   const reads: string[] = [];
   await page.route('**/api/tasks/work-orders/73/**', (route) => {
@@ -143,7 +151,7 @@ test('each material stage keeps its own record and recorder', async ({
   await expect(line).toContainText('Required 2 ea');
   await expect(line).toContainText('Source: Procedure requirement');
   await expect(line).toContainText('19 Oct 2026,');
-  await expect(line).toContainText('Reserved 2 ea of 2 ea');
+  await expect(line).toContainText('Allocated 2 ea of 2 ea');
   const used = line.locator('[data-reservation="1"]');
   await expect(used).toContainText('planner');
   // Issue records when, not who; use comes with its recorder.
@@ -163,9 +171,9 @@ test('each material stage keeps its own record and recorder', async ({
     'Available stock used for this job'
   );
   await expect(
-    page.getByText(
-      'Fitted identity requires an exact registry slot and a recorded serial or lot. Material use alone does not establish a fitted item.'
-    )
+    page.getByRole('button', {
+      name: 'Information: Fitted identity requires an exact registry slot and a recorded serial or lot. Material use alone does not establish a fitted item.'
+    })
   ).toBeVisible();
   await expect(
     page.getByRole('link', { name: 'Mechanical Seal', exact: true })
@@ -215,7 +223,7 @@ test('a short line names its owner and never says stock covered the job', async 
     }
   ];
   await openParts(page, { body });
-  await expect(requirement(page)).toContainText('Reserved 1 ea of 2 ea');
+  await expect(requirement(page)).toContainText('Allocated 1 ea of 2 ea');
   await expect(requirement(page)).toContainText(
     '1 ea · ordered · purchase order line 31'
   );
@@ -292,13 +300,65 @@ test('a reader without stock or part roles sees quantities, not items or links',
   });
 });
 
-test('a server without the readout keeps the native requirement table', async ({
+test('an unavailable readout does not turn empty fallback parts into zero requirements', async ({
   page
-}) => {
+}, info) => {
   await openParts(page, { status: 404 });
+  const parts = page.getByRole('tabpanel', { name: 'Parts', exact: true });
   await expect(
-    page.getByText('Detailed material records are not available on this server')
+    parts.getByRole('heading', { name: 'Parts for this job', exact: true })
   ).toBeVisible();
+  await expect(parts.getByRole('alert')).toContainText(
+    'Detailed parts records not available'
+  );
+  await expect(
+    parts.getByText('No required parts.', { exact: true })
+  ).toHaveCount(0);
+  await expect(requirement(page)).toHaveCount(0);
+  await page.screenshot({
+    path: info.outputPath('parts-unavailable-empty.png'),
+    fullPage: true,
+    animations: 'disabled'
+  });
+});
+
+test('an unavailable detailed readout retains recorded native requirements', async ({
+  page
+}, info) => {
+  await openParts(page, {
+    status: 404,
+    parts: [
+      {
+        id: 901,
+        part: 5,
+        part_name: 'Synthetic recorded seal requirement',
+        part_ipn: 'FIXTURE-SEAL',
+        part_thumbnail: null,
+        quantity: 2,
+        allocated_quantity: 1,
+        allocation_status: 'partial',
+        allocation_note: '',
+        created_at: '2026-10-19T08:00:00Z',
+        updated_at: '2026-10-19T08:00:00Z'
+      }
+    ]
+  });
+  const parts = page.getByRole('tabpanel', { name: 'Parts', exact: true });
+  await expect(parts.getByRole('alert')).toContainText(
+    'Detailed parts records not available'
+  );
+  const row = parts
+    .getByRole('row')
+    .filter({ hasText: 'Synthetic recorded seal requirement' });
+  await expect(row).toBeVisible();
+  await expect(row.getByRole('cell').nth(1)).toHaveText('2');
+  await expect(row.getByRole('cell').nth(2)).toHaveText('1');
+  await expect(parts).not.toContainText('No required parts.');
+  await page.screenshot({
+    path: info.outputPath('parts-unavailable-recorded.png'),
+    fullPage: true,
+    animations: 'disabled'
+  });
 });
 
 test('a failed read shows nothing old and offers retry', async ({ page }) => {

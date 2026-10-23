@@ -98,7 +98,9 @@ test('missing story does not prefill the mutually exclusive typed fallback or st
     page.getByRole('textbox', { name: 'What did you do?', exact: true })
   ).toHaveValue('');
   await expect(page.getByTestId('dictate-closeout')).toBeEnabled();
-  await expect(page.getByText(/No saved technician story/)).toBeVisible();
+  await expect(
+    page.getByText('No technician story recorded', { exact: true })
+  ).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Update maintenance record', exact: true })
   ).toBeDisabled();
@@ -373,7 +375,12 @@ test('missing recorder names remain Not recorded in the story, revisions and sav
   const account = page.getByTestId('prepared-closeout');
   await expect(
     account.locator('p').filter({ hasText: /Recorded by Not recorded/ })
-  ).toHaveCount(6);
+  ).toHaveCount(3);
+  await expect(
+    account.getByRole('button', {
+      name: /^Information: accepted · Not recorded ·/
+    })
+  ).toHaveCount(3);
   await expect(account).not.toContainText('Recorded by user');
 });
 
@@ -386,10 +393,18 @@ test('review regression: accepted consumed capture retains field recorders and c
   });
   await openCloseout(page);
   const account = page.getByTestId('prepared-closeout');
-  await expect(account).toContainText('Completed by Synthetic Technician');
+  await expect(
+    account
+      .getByTestId('closeout-account')
+      .getByText(/ · Synthetic Technician$/)
+  ).toBeVisible();
   await expect(account).toContainText('Acceptance: Not recorded');
   await expect(account).not.toContainText('Accepted by');
-  await expect(account.getByText(/Saved decision: accepted/)).toHaveCount(3);
+  await expect(
+    account.getByRole('button', {
+      name: /^Information: accepted · Synthetic Technician ·/
+    })
+  ).toHaveCount(3);
   await page.getByText('Read report', { exact: true }).click();
   await expect(account.locator('pre')).toContainText(
     'Completed by Synthetic Technician'
@@ -562,7 +577,11 @@ test('accepted export waits for the fresh consumed-capture link instead of cache
     .getByRole('button', { name: 'Refresh fixture', exact: true })
     .click();
   const account = page.getByTestId('prepared-closeout');
-  await expect(account).toContainText('Completed by Synthetic Technician');
+  await expect(
+    account
+      .getByTestId('closeout-account')
+      .getByText(/ · Synthetic Technician$/)
+  ).toBeVisible();
   await expect(account).toContainText('Corrected the recorded observation');
   await expect(page.getByTestId('fixture-fetching')).toHaveText('1');
   await expect(
@@ -573,7 +592,11 @@ test('accepted export waits for the fresh consumed-capture link instead of cache
   );
   releaseCapture!();
   await expect(page.getByTestId('fixture-fetching')).toHaveText('0');
-  await expect(account.getByText(/Saved decision: accepted/)).toHaveCount(3);
+  await expect(
+    account.getByRole('button', {
+      name: /^Information: accepted · Synthetic Technician ·/
+    })
+  ).toHaveCount(3);
   await expect(
     page.getByRole('button', { name: 'Download account (.txt)', exact: true })
   ).toBeEnabled();

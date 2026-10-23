@@ -18,6 +18,7 @@ export function DraftRecovery({
   onKeep,
   onLatest,
   onRetry,
+  retryDisabled = false,
   busy = false
 }: Readonly<{
   title: string;
@@ -28,6 +29,7 @@ export function DraftRecovery({
   onKeep?: () => void;
   onLatest?: () => void;
   onRetry?: () => void;
+  retryDisabled?: boolean;
   busy?: boolean;
 }>) {
   const fieldLabel = (key: string) =>
@@ -89,7 +91,7 @@ export function DraftRecovery({
             <Button
               variant='light'
               onClick={onRetry}
-              disabled={busy}
+              disabled={busy || retryDisabled}
             >{t`Check original save`}</Button>
           )}
           {onKeep && (

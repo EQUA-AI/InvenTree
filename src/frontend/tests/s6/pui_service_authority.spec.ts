@@ -110,9 +110,11 @@ test('O15 no bound tags remains not recorded; operations can record a sourced ex
   const brief = panelRegion(page, 'Verify & Return').getByTestId(
     'service-restoration'
   );
-  await expect(brief).toContainText(
-    'Not recorded — no reviewed bound tags supplied'
-  );
+  await expect(
+    brief.getByRole('button', {
+      name: 'Duty / standby / run telemetry: Not recorded — no reviewed bound tags supplied.'
+    })
+  ).toHaveText('—');
   await brief
     .getByRole('button', {
       name: 'Record operator duty / standby context',

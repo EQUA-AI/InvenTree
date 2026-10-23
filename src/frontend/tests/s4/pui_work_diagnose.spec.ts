@@ -163,7 +163,9 @@ test('Diagnose projects the saved investigation with its qualification and gaps'
     explanation.getByText('Synthetic drive-end bearing wear', { exact: true })
   ).toBeVisible();
   await expect(
-    explanation.getByText(/The initiating cause is not established/)
+    explanation.getByRole('button', {
+      name: /Information: The initiating cause is not established/
+    })
   ).toBeVisible();
   await expect(
     explanation.getByText('12 snapshot(s)', { exact: false })
@@ -178,7 +180,9 @@ test('Diagnose projects the saved investigation with its qualification and gaps'
     next.getByText('Measure DE envelope acceleration')
   ).toBeVisible();
   await expect(
-    next.getByText(/not assigned, scheduled or confirmed/)
+    next.getByRole('button', {
+      name: /Information: Proposed by the diagnosis, not assigned, scheduled or confirmed/
+    })
   ).toBeVisible();
   // Evidence by recorded relation; contradiction and dispute stay visible.
   const evidence = diagnose.getByTestId('diagnose-evidence');
@@ -283,7 +287,9 @@ test('a verified explanation names its verifier and the Work panel shows no scor
     diagnose.getByText('The diagnosis proposes no checks.')
   ).toBeVisible();
   await expect(
-    diagnose.getByText(/No approved intervention scope is recorded/)
+    diagnose.getByRole('button', {
+      name: /No approved intervention scope is recorded/
+    })
   ).toBeVisible();
   await expectNoPageOverflow(page);
   await capturePanel(page, testInfo.outputPath('diagnose-verified-dark.png'));
@@ -317,9 +323,7 @@ test('standalone work says no investigation is saved and keeps chat primary', as
   await openExecutionPanel(page, 'diagnose');
   const diagnose = panelRegion(page, 'Diagnose');
   await expect(
-    diagnose.getByText(
-      /no repair packet, so no diagnosis, cited evidence or findings/
-    )
+    diagnose.getByRole('button', { name: 'Diagnosis: No diagnosis recorded' })
   ).toBeVisible();
   await expect(
     diagnose.getByText('Saved requests not available')
@@ -384,9 +388,9 @@ for (const scheme of ['light', 'dark'] as const) {
       )
     ).toHaveCount(0);
     await expect(
-      diagnose.getByText(
-        /Chat does not save finding corrections, resolutions or agreed checks; use the native repair packet to record supported changes\./
-      )
+      diagnose.getByRole('button', {
+        name: /Information: .*Chat does not save finding corrections, resolutions or agreed checks; use the native repair packet to record supported changes\./
+      })
     ).toBeVisible();
     await expect(
       diagnose.getByText(

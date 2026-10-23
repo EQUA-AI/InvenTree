@@ -542,11 +542,19 @@ class JobKitAllocationIssue(_JobKitCustodyCommand):
 
     service = staticmethod(issue_allocation)
 
+    def service_kwargs(self, request):
+        """Recover an attributed issue without performing another transition."""
+        return {'reconcile_only': request.headers.get('X-AIMMS-Reconcile-Only') == '1'}
+
 
 class JobKitAllocationConsume(_JobKitCustodyCommand):
     """Consume an allocation with a real stock removal effect."""
 
     service = staticmethod(consume_allocation)
+
+    def service_kwargs(self, request):
+        """Read an uncertain native use without applying another stock movement."""
+        return {'reconcile_only': request.headers.get('X-AIMMS-Reconcile-Only') == '1'}
 
 
 class JobKitAllocationReturn(_JobKitCustodyCommand):

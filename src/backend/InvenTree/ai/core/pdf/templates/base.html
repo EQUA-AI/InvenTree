@@ -158,8 +158,8 @@
       {% if company_logo %}
         <img class="logo" src="{{ company_logo }}" alt="Company logo">
       {% endif %}
-      {% if company_name %}
-        <div style="font-weight:600; margin-top:4px;">{{ company_name }}</div>
+      {% if company_name | default("EQUA AIMMS", true) %}
+        <div style="font-weight:600; margin-top:4px;">{{ company_name | default("EQUA AIMMS", true) }}</div>
       {% endif %}
     </div>
     <div class="title-block">

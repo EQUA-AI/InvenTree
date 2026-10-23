@@ -8,6 +8,7 @@ layer only -- it performs no stock reservation and touches no allocation
 accounting (that is the later ME5 stock-gate slice).
 """
 
+import hashlib
 import uuid
 from decimal import Decimal
 
@@ -35,6 +36,7 @@ from tasks.services.procedure_execution import _command_replay, _record_command
 from tasks.services.stock_allocation import StockOverAllocation, mutate_stock_allocation
 from tasks.services.work_orders import (
     WorkOrderCommandError,
+    WorkOrderScopeError,
     _canonical_hash,
     _locked_work_order,
     _require_scope,
@@ -118,6 +120,14 @@ def _locked_kit(work_order_id):
     if kit is None:
         raise JobKitStateError('Work order has no Job Kit; build it first')
     return kit
+
+
+def _require_stock_scope(actor, work_order):
+    """Shared Work visibility never grants another machine's stock authority."""
+    from tasks.scope import work_machine_authorized
+
+    if work_order.machine_id and not work_machine_authorized(actor, work_order):
+        raise WorkOrderScopeError('Machine scope is required for stock reservation')
 
 
 def _require_kit_version(kit, expected_version):
@@ -339,19 +349,11 @@ def build_job_kit(
     return kit
 
 
-def _active_reserved_for_line(line):
-    """Return the quantity already actively reserved against a line."""
-    total = line.allocations.filter(status__in=_ACTIVE_STATUS_VALUES).aggregate(
-        q=models.Sum('quantity')
-    )['q']
-    return total or Decimal('0')
-
-
 def _fulfilled_for_line(line):
     """Return the quantity fulfilling a line (active reservations + consumed)."""
-    total = line.allocations.filter(status__in=_FULFILLED_STATUS_VALUES).aggregate(
-        q=models.Sum('quantity')
-    )['q']
+    total = line.allocations.filter(
+        status__in=_FULFILLED_STATUS_VALUES, stock_item__part_id=line.selected_part_id
+    ).aggregate(q=models.Sum('quantity'))['q']
     return total or Decimal('0')
 
 
@@ -370,15 +372,31 @@ def _candidate_stock(line):
 
 
 def _reconcile_line_shortage(line, shortfall):
-    """Replace this line's open shortage with the current unmet quantity."""
-    line.shortages.filter(status='open').delete()
-    if shortfall > 0:
-        JobKitShortage.objects.create(
-            line=line,
-            quantity=shortfall,
-            status='open',
-            reason='Insufficient unallocated stock at reservation',
-        )
+    """Update current demand without deleting procurement or receipt history.
+
+    Linked rows remain unresolved until an exact committed receipt continuation
+    proves fulfillment. Unrelated stock must never manufacture a received fact.
+    """
+    linked = line.shortages.filter(
+        status__in=_OPEN_SHORTAGE_STATES, purchase_order_line__isnull=False
+    ).exists()
+    rows = line.shortages.filter(
+        status__in=_OPEN_SHORTAGE_STATES, purchase_order_line__isnull=True
+    )
+    current = rows.order_by('pk').first()
+    if shortfall > 0 and not linked:
+        if current:
+            current.quantity = shortfall
+            current.save(update_fields=['quantity'])
+        else:
+            JobKitShortage.objects.create(
+                line=line,
+                quantity=shortfall,
+                status='open',
+                reason='Insufficient unallocated stock at reservation',
+            )
+    else:
+        rows.update(status='canceled', resolved_at=timezone.now())
 
 
 def _derive_kit_status(kit):
@@ -406,6 +424,9 @@ def reserve_job_kit(
     remainder; and derives kit readiness. Idempotent on the command ledger.
     """
     work_order = _locked_work_order(work_order_id)
+    require_permission(actor, RESERVE_JOBKIT)
+    _require_scope(actor, work_order)
+    _require_stock_scope(actor, work_order)
     payload = {'work_order_id': work_order_id, 'expected_version': expected_version}
     request_hash = _canonical_hash('reserve_job_kit', actor, payload)
     replay = _command_replay(
@@ -415,8 +436,6 @@ def reserve_job_kit(
         return JobKit.objects.get(pk=replay.metadata['kit_id'])
 
     _require_version(work_order, expected_version)
-    require_permission(actor, RESERVE_JOBKIT)
-    _require_scope(actor, work_order)
     kit = _locked_kit(work_order_id)
     _require_reservable(kit)
 
@@ -429,7 +448,7 @@ def reserve_job_kit(
 
     reservations_made = 0
     for line in required_lines:
-        needed = Decimal(line.required_quantity) - _active_reserved_for_line(line)
+        needed = Decimal(line.required_quantity) - _fulfilled_for_line(line)
         if needed <= 0:
             _reconcile_line_shortage(line, Decimal('0'))
             continue
@@ -445,7 +464,9 @@ def reserve_job_kit(
                     line_id=line.pk,
                     requested_quantity=take,
                     actor=actor,
-                    idempotency_key=f'{idempotency_key}:{line.pk}:{candidate.pk}',
+                    idempotency_key=hashlib.sha256(
+                        f'{idempotency_key}:{line.pk}:{candidate.pk}'.encode()
+                    ).hexdigest(),
                 )
             except StockOverAllocation:
                 # A competing writer took it first; try the next candidate.
@@ -671,6 +692,7 @@ def release_allocation(*, work_order_id, allocation_id, actor, correlation_id=No
     work_order = _locked_work_order(work_order_id)
     require_permission(actor, RESERVE_JOBKIT)
     _require_scope(actor, work_order)
+    _require_stock_scope(actor, work_order)
     kit = _locked_kit(work_order_id)
 
     allocation = (
@@ -682,6 +704,8 @@ def release_allocation(*, work_order_id, allocation_id, actor, correlation_id=No
     )
     if allocation is None:
         raise JobKitLineError('Allocation does not belong to this work order')
+    if allocation.status == JobKitAllocationStatus.RELEASED:
+        return allocation
     if allocation.status not in _ACTIVE_STATUS_VALUES:
         raise JobKitStateError('Only active reservations can be released')
 
@@ -693,7 +717,7 @@ def release_allocation(*, work_order_id, allocation_id, actor, correlation_id=No
 
     line = allocation.line
     if line.required and line.fulfillment_mode == FulfillmentMode.RESERVE_CONSUME:
-        shortfall = Decimal(line.required_quantity) - _active_reserved_for_line(line)
+        shortfall = Decimal(line.required_quantity) - _fulfilled_for_line(line)
         _reconcile_line_shortage(line, max(shortfall, Decimal('0')))
 
     kit.status = _derive_kit_status(kit)
@@ -738,7 +762,10 @@ def reconcile_job_kit(*, work_order_id, actor, correlation_id=None):
         shortfall = Decimal(line.required_quantity) - _fulfilled_for_line(line)
         _reconcile_line_shortage(line, max(shortfall, Decimal('0')))
 
-    kit.status = _derive_kit_status(kit)
+    # Reconciliation derives supply readiness; it must not erase a recorded
+    # staging/release lifecycle position. Explicit mutations own those changes.
+    if kit.status in RESERVABLE_KIT_STATUSES:
+        kit.status = _derive_kit_status(kit)
     kit.version = kit.version + 1
     kit.save(update_fields=['status', 'version', 'updated_at'])
 
@@ -761,11 +788,15 @@ def link_po_to_shortage(*, work_order_id, shortage_id, purchase_order_line_id, a
     ``ordered`` requires a real ``PurchaseOrderLineItem``; a stub effect can never
     mark a shortage ordered (FR-JK-013).
     """
-    from order.models import PurchaseOrderLineItem
+    from company.models import SupplierPart
+    from order.models import PurchaseOrder, PurchaseOrderLineItem
+    from order.status_codes import PurchaseOrderStatus
+    from users.permissions import check_user_permission
 
     work_order = _locked_work_order(work_order_id)
     require_permission(actor, MANAGE_JOBKIT)
     _require_scope(actor, work_order)
+    _require_stock_scope(actor, work_order)
     kit = _locked_kit(work_order_id)
     shortage = (
         JobKitShortage.objects
@@ -775,11 +806,104 @@ def link_po_to_shortage(*, work_order_id, shortage_id, purchase_order_line_id, a
     )
     if shortage is None:
         raise JobKitLineError('Shortage does not belong to this work order')
-    po_line = PurchaseOrderLineItem.objects.filter(pk=purchase_order_line_id).first()
+    if not (
+        actor.has_perm('order.view_purchaseorder')
+        or check_user_permission(actor, PurchaseOrder, 'view')
+    ):
+        raise JobKitLineError('Purchasing read permission is required')
+    order_id = (
+        PurchaseOrderLineItem.objects
+        .filter(pk=purchase_order_line_id)
+        .values_list('order_id', flat=True)
+        .first()
+    )
+    if order_id is None:
+        raise JobKitLineError('Purchase order line not found')
+    order = PurchaseOrder.objects.select_for_update().get(pk=order_id)
+    po_line = (
+        PurchaseOrderLineItem.objects
+        .select_for_update()
+        .filter(pk=purchase_order_line_id)
+        .first()
+    )
     if po_line is None:
         raise JobKitLineError('Purchase order line not found')
+    if po_line.order_id != order.pk:
+        raise JobKitLineError('Purchase order line binding changed; retry the link')
+    if po_line.part_id:
+        # Nullable line.part makes an outer join which PostgreSQL cannot lock.
+        # Lock the line first, then its actual SupplierPart/Part/supplier with
+        # nonnullable joins, retaining all original commercial identity locks.
+        po_line.part = (
+            SupplierPart.objects
+            .select_for_update()
+            .select_related('part', 'supplier')
+            .get(pk=po_line.part_id)
+        )
 
+    if order.status not in (
+        PurchaseOrderStatus.PLACED.value,
+        PurchaseOrderStatus.COMPLETE.value,
+    ):
+        raise JobKitLineError(
+            'Draft or unplaced purchase orders cannot cover a shortage'
+        )
+    # The shortage/line pair is the stable link identity; replay never emits another effect.
+    if shortage.purchase_order_line_id == po_line.pk and shortage.status in (
+        'ordered',
+        'partial',
+        'received',
+    ):
+        return shortage
+    if (
+        shortage.status not in ('open', 'requested')
+        or shortage.purchase_order_line_id is not None
+    ):
+        raise JobKitLineError(
+            'Shortage already resolved or linked; reconcile before relinking'
+        )
+    supplier_part = po_line.part
+    if order.status != PurchaseOrderStatus.PLACED.value:
+        raise JobKitLineError(
+            'Only an actually placed purchase order can cover a shortage'
+        )
+    if (
+        not supplier_part
+        or supplier_part.part_id
+        != (shortage.line.selected_part_id or shortage.line.requested_part_id)
+        or supplier_part.supplier_id != order.supplier_id
+        or not supplier_part.active
+        or not supplier_part.part.active
+        or not supplier_part.part.purchaseable
+        or not supplier_part.supplier.active
+        or not supplier_part.supplier.is_supplier
+        or po_line.purchase_price is None
+    ):
+        raise JobKitLineError(
+            'Placed line must match the active selected part and supplier with a known price'
+        )
+    remaining = (
+        po_line.quantity - po_line.received
+    ) * supplier_part.pack_quantity_native
+    committed = sum(
+        JobKitShortage.objects
+        .filter(purchase_order_line=po_line, status__in=_OPEN_SHORTAGE_STATES)
+        .exclude(pk=shortage.pk)
+        .values_list('quantity', flat=True),
+        Decimal('0'),
+    )
+    if remaining - committed < shortage.quantity:
+        raise JobKitLineError('Unreceived order quantity does not cover this shortage')
     shortage.purchase_order_line = po_line
     shortage.status = 'ordered'
     shortage.save(update_fields=['purchase_order_line', 'status'])
+    from tasks.services.procurement import record_po_binding
+
+    record_po_binding(work_order, shortage.line, po_line, actor, shortage)
+    # Recording and linking may arrive in either order. Retained bytes already
+    # identify their exact native goods lines; attach only to this scoped link.
+    from order.procurement_evidence import record_work_document_references
+
+    for evidence in order.recorded_documents.select_related('actor').order_by('pk'):
+        record_work_document_references([work_order], evidence, evidence.actor)
     return shortage

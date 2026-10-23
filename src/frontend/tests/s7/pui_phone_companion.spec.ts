@@ -30,7 +30,7 @@ async function phoneDock(page: Page) {
   const dock = page.getByTestId('work-panel-navigation');
   await expect(dock).toBeInViewport({ ratio: 1 });
   await expect(page.getByTestId('work-phone-boundary')).toContainText(
-    'Physical authority not supplied'
+    'Plan & Safety · —'
   );
   for (const name of panels) {
     const tab = dock.getByRole('tab', { name, exact: true });
@@ -130,16 +130,20 @@ for (const width of [390, 360]) {
       await expect(
         page.getByRole('tab', { name: 'Plan & Safety', exact: true })
       ).toHaveAttribute('aria-selected', 'true');
-      await expect(page.getByTestId('prepared-package')).toContainText(
-        'no physical-authority provider'
-      );
+      await expect(
+        page
+          .getByTestId('prepared-package')
+          .getByRole('button', { name: /no physical-authority provider/ })
+      ).toHaveText('—');
       await page.getByRole('tab', { name: 'Work', exact: true }).click();
       await expect(page.getByTestId('work-continuity')).toContainText(
         'Synthetic equipment access unavailable'
       );
-      await expect(page.getByTestId('work-continuity')).toContainText(
-        'do not accept responsibility'
-      );
+      await expect(
+        page.getByTestId('work-continuity').getByRole('button', {
+          name: /Information: Assignment, a read receipt.*do not accept responsibility/
+        })
+      ).toBeVisible();
       await page.getByRole('button', { name: /^Attachments \(/ }).click();
       await expect(
         page.getByRole('heading', { name: 'Work attachments', exact: true })
@@ -350,11 +354,13 @@ test('narrow phone retains targeted Closeout and its draft across panels, keyboa
   await page.setViewportSize({ width: 360, height: 844 });
   const fixture = await closeoutWork(page, { captures: [] });
   await openExecutionPanel(page, 'closeout', 'dark');
-  await expect(page.getByTestId('closeout-account')).toContainText(
-    'Action takenNot recorded'
-  );
+  await expect(
+    page
+      .getByTestId('closeout-account')
+      .getByRole('button', { name: 'Action taken: No value recorded' })
+  ).toHaveText('—');
   await expect(page.getByTestId('closeout-questions')).toContainText(
-    'Missing account questions'
+    'Complete account'
   );
   await expect(
     page.getByTestId('closeout-questions').getByRole('button', {

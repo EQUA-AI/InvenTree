@@ -1,6 +1,7 @@
 import type { WorkOrderOverview } from '@lib/types/WorkOrderOverview';
 import { t } from '@lingui/core/macro';
 import { Alert, Button, Stack, Text } from '@mantine/core';
+import { InfoTooltip } from '../../../../components/items/ValueTooltip';
 import { ExecutionFact, recordedTime } from './ExecutionFacts';
 import { useContinuityCommand } from './useContinuityCommand';
 
@@ -20,7 +21,9 @@ export function HandoverAcceptance({
         <ExecutionFact
           label={t`Site acceptance requirement / escalation owner`}
         >{t`Not supplied`}</ExecutionFact>
-        <Text size='sm'>{t`Assignment, a read receipt and opening this brief or chat do not accept responsibility. No accepted-handover record or site acceptance action is supplied here. Continue through the existing site process.`}</Text>
+        <InfoTooltip
+          label={t`Assignment, a read receipt and opening this brief or chat do not accept responsibility. No accepted-handover record or site acceptance action is supplied here. Continue through the existing site process.`}
+        />
       </>
     );
   const busy = ['pending', 'uncertain'].includes(state.status);
@@ -53,7 +56,9 @@ export function HandoverAcceptance({
             {t`Work version`}: {value.accepted_version}
           </Text>
         ) : (
-          <Text size='sm'>{t`No incoming acceptance is pending. The recorded responsible owner is retained; releasing or restoring assignment does not record a new acceptance.`}</Text>
+          <InfoTooltip
+            label={t`No incoming acceptance is pending. The recorded responsible owner is retained; releasing or restoring assignment does not record a new acceptance.`}
+          />
         )}
       </Alert>
       <Text size='sm'>

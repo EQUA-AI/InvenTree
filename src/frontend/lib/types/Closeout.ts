@@ -1,3 +1,6 @@
+import type { ProcurementActor, ProcurementReceiptStock } from './Procurement';
+import type { FittedRecord } from './RecordedFacts';
+
 export interface CaptureOriginal {
   id: number;
   filename: string;
@@ -94,6 +97,13 @@ export interface CloseoutPartUsageRow {
   source: string;
   state: string;
   candidate_text: string;
+  work_order?: number;
+  allocation?: number | null;
+  part?: number | null;
+  stock_item?: number | null;
+  stock_tracking_id?: number | null;
+  resolved_by?: number | null;
+  material?: CloseoutMaterial | null;
   planned_quantity: string | null;
   issued_quantity: string | null;
   used_quantity: string | null;
@@ -152,4 +162,32 @@ export interface CloseoutAmendment {
   applied_at: string | null;
   base_content_hash: string;
   effective_snapshot: { closeout?: Record<string, unknown> };
+}
+
+/** Live supporting records; frozen completed-account snapshots stay separate. */
+export interface CloseoutMaterial {
+  part: { pk: number; name: string; ipn: string; units: string } | null;
+  stock_item: {
+    pk: number | null;
+    hidden: boolean;
+    batch?: string;
+    serial?: string;
+    location?: string;
+  } | null;
+  stock_tracking_id: number | null;
+  fitted_record: FittedRecord | null;
+  issued?: { by: string | null; at: string | null } | null;
+  receipts: {
+    event_id: number;
+    recorded_at: string;
+    actor: ProcurementActor;
+    stocks: ProcurementReceiptStock[];
+    purchase_order_id: number;
+    purchase_order_line_id: number;
+    reference: string;
+    goods_total: string | null;
+    charges_total: string | null;
+    order_total: string | null;
+    currency: string;
+  }[];
 }

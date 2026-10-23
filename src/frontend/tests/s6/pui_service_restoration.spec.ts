@@ -66,18 +66,27 @@ for (const scheme of ['light', 'dark'] as const) {
     const brief = closeout.getByTestId('service-restoration');
     await expect(brief).toContainText('Updated · Closeout 301');
     await expect(brief).toContainText('Recorded passes: 1');
-    await expect(brief).toContainText('Test acceptance: unavailable');
-    await expect(brief).toContainText(
-      'Service restoration is not established by Work completion.'
-    );
+    await expect(
+      brief.getByRole('button', { name: 'Test acceptance: unavailable' })
+    ).toHaveText('—');
+    await expect(
+      brief.getByRole('button', {
+        name: /Information: Work completion, test results and telemetry are separate from test acceptance, operating permission, service capacity and remaining obligations/
+      })
+    ).toBeVisible();
     const gaps = closeout.getByTestId('not-supplied');
     await gaps.getByRole('button').click();
     await expect(gaps).toContainText(
       'required service and standby capacity: authoritative records are not supplied'
     );
     await expect(brief).toContainText(accepted!.follow_up);
-    await expect(brief).toContainText(
-      'Follow-up owner, original trigger, checkpoint and resolution are not supplied'
+    await expect(
+      brief.getByRole('button', {
+        name: /Information: .*Follow-up owner, original trigger, checkpoint and resolution are not supplied\. The maintenance update does not resolve this follow-up\./
+      })
+    ).toBeVisible();
+    await expect(gaps).toContainText(
+      'accepted owners and deadlines are unknown'
     );
     await expect(brief).not.toContainText('Obligations closed');
     await containment(page);
@@ -176,7 +185,9 @@ test('P49 saved request retains source, owner and checkpoint independently of re
     .getByTestId('service-restoration');
   await expect(brief).toContainText('Internal Coordinator');
   await expect(brief).toContainText('21 Oct 2026, 13:00');
-  await expect(brief).toContainText('Original trigger: unavailable');
+  await expect(
+    brief.getByRole('button', { name: 'Original trigger: unavailable' })
+  ).toHaveText('—');
   await expect(brief.getByRole('link', { name: /Request 44/ })).toHaveAttribute(
     'href',
     /work_panel=diagnose.*investigation_request=44/

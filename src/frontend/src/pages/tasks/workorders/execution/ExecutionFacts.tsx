@@ -3,6 +3,10 @@ import { Card, Group, Stack, Text, Title } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import type { ReactNode } from 'react';
+import {
+  InfoTooltip,
+  MissingValue
+} from '../../../../components/items/ValueTooltip';
 
 export function recordedTime(value: string | null | undefined): string {
   return value && dayjs(value).isValid()
@@ -20,9 +24,14 @@ export function ExecutionFact({
         {label}
       </Text>
       <Text component='div' size='sm' style={{ overflowWrap: 'anywhere' }}>
-        {children === null || children === undefined || children === ''
-          ? t`Not recorded`
-          : children}
+        {children === null ||
+        children === undefined ||
+        children === '' ||
+        children === t`Not recorded` ? (
+          <MissingValue label={label} reason={t`No value recorded`} />
+        ) : (
+          children
+        )}
       </Text>
     </Stack>
   );
@@ -31,8 +40,14 @@ export function ExecutionFact({
 export function ExecutionSection({
   title,
   children,
-  testId
-}: Readonly<{ title: string; children: ReactNode; testId?: string }>) {
+  testId,
+  info
+}: Readonly<{
+  title: string;
+  children: ReactNode;
+  testId?: string;
+  info?: string;
+}>) {
   return (
     <Card
       withBorder
@@ -41,9 +56,12 @@ export function ExecutionSection({
       style={{ overflowWrap: 'anywhere' }}
     >
       <Stack gap='sm'>
-        <Title order={2} size='h4'>
-          {title}
-        </Title>
+        <Group justify='space-between' gap='xs' wrap='nowrap'>
+          <Title order={2} size='h4'>
+            {title}
+          </Title>
+          {info && <InfoTooltip label={info} />}
+        </Group>
         {children}
       </Stack>
     </Card>
@@ -51,7 +69,12 @@ export function ExecutionSection({
 }
 
 export const executionBadgeStyles = {
-  root: { height: 'auto', paddingBlock: 2, maxWidth: '100%' },
+  root: {
+    height: 'auto',
+    paddingBlock: 2,
+    maxWidth: '100%',
+    textTransform: 'none' as const
+  },
   label: { whiteSpace: 'normal' as const, overflow: 'visible' }
 };
 
@@ -94,5 +117,19 @@ export function WarningText({
         {t`Warning:`} {children}
       </Text>
     </Group>
+  );
+}
+
+/** Native dependency types from tasks.KanbanCardDependency.TYPE_CHOICES. */
+export function dependencyLabel(value: string): string {
+  return (
+    (
+      {
+        FS: t`Finish to start`,
+        SS: t`Start to start`,
+        FF: t`Finish to finish`,
+        SF: t`Start to finish`
+      } as Record<string, string>
+    )[value] ?? t`Dependency`
   );
 }

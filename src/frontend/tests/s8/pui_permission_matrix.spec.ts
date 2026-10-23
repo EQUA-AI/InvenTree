@@ -36,7 +36,11 @@ function watchWrites(page: Page) {
 }
 
 async function noWriteControls(page: Page, names: RegExp, minimum = 0) {
-  const controls = page.getByRole('button', { name: names });
+  // Match commands, not verbs embedded in information/dash descriptions
+  // (for example "Extracted text…" or "Saved request queue unavailable…").
+  const controls = page.getByRole('button', {
+    name: new RegExp(`^(?:${names.source})(?:\\b|$)`, names.flags)
+  });
   expect(
     await controls.count(),
     'Expected permission controls to be present'
@@ -78,6 +82,225 @@ async function presentPermissions(
     const state = useUserState.getState();
     state.setUser({ ...state.user, permissions });
   }, permissions);
+}
+
+test('open dictation locks immediately when capture permission is removed', async ({
+  page
+}, info) => {
+  const writes = watchWrites(page);
+  await closeoutWork(page, { captures: [] });
+  await viewerEntry(
+    page,
+    '/maintenance/work-orders/73/?work_panel=closeout',
+    'light'
+  );
+  await presentPermissions(page, { closeout: ['capture'] });
+  await page
+    .getByRole('button', {
+      name: 'Start voice-transcript capture',
+      exact: true
+    })
+    .click();
+  const dialog = page.getByRole('dialog', {
+    name: 'Dictate closeout narrative'
+  });
+  const consent = dialog.getByTestId('dictate-consent');
+  await expect(consent).toBeEnabled();
+  await presentPermissions(page, {});
+  await expect(dialog).toContainText('Capture locked');
+  await expect(consent).toBeDisabled();
+  await consent.evaluate((node: HTMLButtonElement) => node.click());
+  expect(writes).toEqual([]);
+  await page.mouse.move(0, 0);
+  await dialog
+    .getByRole('button', { name: 'Close dictation', exact: true })
+    .focus();
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await page.screenshot({
+    path: info.outputPath('dictation-permission-removed.png'),
+    animations: 'disabled'
+  });
+  await presentPermissions(page, { closeout: ['capture'] });
+  await expect(consent).toBeEnabled();
+  await presentPermissions(page, {});
+  // Permission fixture updates can leave a background header tooltip hovered.
+  // Clear pointer hover and keep keyboard focus in the modal before closing.
+  await page.mouse.move(0, 0);
+  await dialog
+    .getByRole('button', { name: 'Close dictation', exact: true })
+    .focus();
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await dialog
+    .getByRole('button', { name: 'Close dictation', exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  expect(writes).toEqual([]);
+});
+
+for (const command of ['capture', 'decisions'] as const) {
+  test(`retained ${command} save is locked after permission loss`, async ({
+    page
+  }, info) => {
+    const { commands } = await closeoutWork(
+      page,
+      command === 'capture' ? { captures: [] } : {}
+    );
+    await viewerEntry(
+      page,
+      '/maintenance/work-orders/73/?work_panel=closeout',
+      'light'
+    );
+    await presentPermissions(page, {
+      closeout: [command === 'capture' ? 'capture' : 'review']
+    });
+    const editor = page.getByTestId('closeout-capture-disclosure');
+    await editor
+      .getByText('Edit or add to the capture', { exact: true })
+      .click();
+    if (command === 'capture') {
+      await editor
+        .getByRole('textbox', { name: 'What did you do?', exact: true })
+        .fill('Synthetic retained technician story');
+      await editor
+        .getByRole('textbox', {
+          name: 'Why voice is unavailable or unusable',
+          exact: true
+        })
+        .fill('Synthetic microphone unavailable');
+      await editor
+        .getByRole('button', { name: 'Capture narrative', exact: true })
+        .click();
+    } else {
+      await editor.getByText('Review', { exact: true }).click();
+      await editor
+        .getByRole('button', { name: 'Record decisions', exact: true })
+        .click();
+    }
+    const retry = page.getByRole('button', {
+      name: 'Check original save',
+      exact: true
+    });
+    await expect(retry).toBeEnabled();
+    expect(commands).toHaveLength(1);
+    await presentPermissions(page, {});
+    await expect(retry).toBeDisabled();
+    // Native disabled controls must also reject a programmatic DOM click.
+    await retry.evaluate((node: HTMLButtonElement) => node.click());
+    expect(commands).toHaveLength(1);
+    await expect(page.getByTestId('draft-recovery')).toContainText(
+      'Retained draft'
+    );
+    await retry.scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: info.outputPath(`retained-${command}-viewer.png`),
+      animations: 'disabled'
+    });
+    await presentPermissions(page, {
+      closeout: [command === 'capture' ? 'capture' : 'review']
+    });
+    await expect(retry).toBeEnabled();
+    expect(commands).toHaveLength(1);
+    const status = command === 'capture' ? 403 : 404;
+    await page.route(
+      '**/api/tasks/work-orders/73/closeout/captures/',
+      (route) =>
+        route.fulfill({ status, json: { detail: 'Synthetic refused source' } })
+    );
+    await page.reload();
+    await expect(
+      page
+        .getByRole('alert')
+        .filter({ hasText: 'Closeout source unavailable.' })
+    ).toBeVisible();
+    await presentPermissions(page, {
+      closeout: [command === 'capture' ? 'capture' : 'review']
+    });
+    await expect(retry).toBeDisabled();
+    await retry.evaluate((node: HTMLButtonElement) => node.click());
+    expect(commands).toHaveLength(1);
+    await retry.scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: info.outputPath(`retained-${command}-refused-${status}.png`),
+      animations: 'disabled'
+    });
+  });
+}
+
+test('manual account without capture support still requires complete permission', async ({
+  page
+}, info) => {
+  const { commands, setOverview } = await closeoutWork(page, { captures: [] });
+  setOverview({ closeout_wizard_enabled: false });
+  await viewerEntry(
+    page,
+    '/maintenance/work-orders/73/?work_panel=closeout',
+    'light'
+  );
+  const action = page.getByRole('textbox', {
+    name: 'Action taken',
+    exact: true
+  });
+  await expect(action).toBeDisabled();
+  await presentPermissions(page, { closeout: ['review'] });
+  await expect(action).toBeDisabled();
+  await presentPermissions(page, { workorder: ['complete'] });
+  await expect(action).toBeEnabled();
+  await action.fill('Synthetic local manual account');
+  await presentPermissions(page, {});
+  await expect(action).toBeDisabled();
+  await expect(action).toHaveValue('Synthetic local manual account');
+  await expect(
+    page.getByRole('button', { name: 'Update maintenance record', exact: true })
+  ).toBeDisabled();
+  expect(commands).toHaveLength(0);
+  await action.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: info.outputPath('manual-account-viewer.png'),
+    animations: 'disabled'
+  });
+});
+
+for (const status of [403, 404]) {
+  test(`refused ${status} sources lock an authorized retained final update`, async ({
+    page
+  }, info) => {
+    const { commands } = await closeoutWork(page);
+    await viewerEntry(
+      page,
+      '/maintenance/work-orders/73/?work_panel=closeout',
+      'dark'
+    );
+    await presentPermissions(page, { workorder: ['complete'] });
+    await page
+      .getByRole('button', { name: 'Update maintenance record', exact: true })
+      .click();
+    const retry = page.getByRole('button', {
+      name: 'Retry original update',
+      exact: true
+    });
+    await expect(retry).toBeEnabled();
+    expect(commands).toHaveLength(1);
+    await page.route(
+      '**/api/tasks/work-orders/73/closeout/captures/',
+      (route) =>
+        route.fulfill({ status, json: { detail: 'Synthetic refused source' } })
+    );
+    await page.reload();
+    await expect(
+      page
+        .getByRole('alert')
+        .filter({ hasText: 'Closeout source unavailable.' })
+    ).toBeVisible();
+    await presentPermissions(page, { workorder: ['complete'] });
+    await expect(retry).toBeDisabled();
+    await retry.evaluate((node: HTMLButtonElement) => node.click());
+    expect(commands).toHaveLength(1);
+    await retry.scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: info.outputPath(`retained-update-refused-${status}.png`),
+      animations: 'disabled'
+    });
+  });
 }
 
 for (const permission of ['capture', 'reconcile'] as const) {
@@ -559,7 +782,8 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(page.getByTestId('prepared-closeout')).toBeVisible();
     await noWriteControls(
       page,
-      /Start voice-transcript capture|Use typed story fallback|Save|Update maintenance record|Accept|Reject|Reconcile|Extract|Record reading/
+      /Start voice-transcript capture|Use typed story fallback|Save|Update maintenance record|Accept|Reject|Reconcile|Extract|Record reading|Record decisions|Capture narrative|Dictate|Resolve|Refresh from custody truth|Check original save|Check original update|Retry original update/,
+      1
     );
     await expectNoPageOverflow(page);
     await capturePanel(page, info.outputPath(`viewer-closeout-${scheme}.png`));
@@ -838,6 +1062,7 @@ for (const status of [403, 404]) {
         .first()
     ).toBeVisible();
     await expect(panel).not.toContainText('No material requirements');
+    await expect(panel).not.toContainText('No required parts.');
     await noWriteControls(
       page,
       /Reserve|Issue|Consume|Return|Allocate|Add part/

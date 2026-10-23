@@ -1,11 +1,13 @@
 """Serializers for the AI Agent Approval Queue API."""
 
+import hashlib
 import json
 
 from django.db import IntegrityError
 
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
+from rest_framework.exceptions import APIException
 
 from InvenTree.serializers import InvenTreeModelSerializer
 
@@ -185,6 +187,24 @@ class ApprovalDetailSerializer(InvenTreeModelSerializer):
         return None
 
 
+class PurchasingReplayConflict(APIException):
+    """One purchase intent key cannot identify two different instructions."""
+
+    status_code = 409
+
+
+def _purchase_replay(existing, attrs):
+    if (
+        attrs['action_type'] == 'purchase_order'
+        or existing.action_type == 'purchase_order'
+    ) and existing.preconditions.get('_purchase_request_hash') != attrs.get(
+        'preconditions', {}
+    ).get('_purchase_request_hash'):
+        raise PurchasingReplayConflict(
+            'Purchase operation key already belongs to different instructions'
+        )
+
+
 class ApprovalCreateSerializer(serializers.Serializer):
     """Serializer for creating a new approval (agent/service-internal).
 
@@ -238,6 +258,30 @@ class ApprovalCreateSerializer(serializers.Serializer):
         # Sanitize payload (D-5)
         if not self.context.get('mailbox_service'):
             attrs['payload'] = sanitize_payload(attrs['payload'], attrs['action_type'])
+
+        if attrs['action_type'] == 'purchase_order':
+            if not isinstance(attrs.get('preconditions', {}), dict):
+                raise serializers.ValidationError({
+                    'preconditions': 'Must be an object'
+                })
+            fingerprint = hashlib.sha256(
+                json.dumps(
+                    attrs['payload'], sort_keys=True, separators=(',', ':')
+                ).encode()
+            ).hexdigest()
+            attrs['preconditions'] = {
+                **attrs.get('preconditions', {}),
+                '_purchase_request_hash': fingerprint,
+            }
+            existing = Approval.objects.filter(
+                idempotency_key=attrs['idempotency_key']
+            ).first()
+            if existing:
+                _purchase_replay(existing, attrs)
+                # Reconcile before state-dependent validation (e.g. PO already Placed).
+                attrs['payload'] = existing.payload
+                attrs['baseline_context'] = existing.baseline_context
+                return attrs
 
         # Executor validation (E-3): surface warnings from executor.validate()
         from .executors import registry
@@ -302,6 +346,7 @@ class ApprovalCreateSerializer(serializers.Serializer):
             idempotency_key=validated_data['idempotency_key']
         ).first()
         if existing:
+            _purchase_replay(existing, validated_data)
             existing._was_existing = True
             return existing
 
@@ -361,6 +406,7 @@ class ApprovalCreateSerializer(serializers.Serializer):
             approval = Approval.objects.get(
                 idempotency_key=validated_data['idempotency_key']
             )
+            _purchase_replay(approval, validated_data)
             approval._was_existing = True
 
         return approval

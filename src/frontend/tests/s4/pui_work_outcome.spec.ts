@@ -85,9 +85,11 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(brief).toContainText(
       'Operations restriction remains independent'
     );
-    await expect(panel.getByTestId('service-restoration')).toContainText(
-      'Service restoration is not established by Work completion.'
-    );
+    await expect(
+      panel.getByTestId('service-restoration').getByRole('button', {
+        name: /Information: Work completion, test results and telemetry are separate from test acceptance, operating permission, service capacity and remaining obligations/
+      })
+    ).toBeVisible();
     await expect(brief).toContainText(
       'Amended account · 1 retained amendments'
     );
@@ -123,12 +125,17 @@ test('routine inspection remains neutral in dark mode and task paths remain reac
   });
   await openExecutionPanel(page, 'work', 'dark');
   const panel = panelRegion(page, 'Work');
-  await expect(panel.getByTestId('work-brief')).toContainText(
-    'does not require an invented fault cause'
-  );
-  await expect(panel.getByTestId('work-brief')).toContainText(
-    'Saved request queue not supplied'
-  );
+  await revealWorkContext(page, 'Investigation and preparation summary');
+  await expect(
+    panel.getByTestId('work-brief').getByRole('button', {
+      name: /No saved explanation supplied.*does not require an invented fault cause/
+    })
+  ).toHaveText('—');
+  await expect(
+    panel
+      .getByTestId('work-brief')
+      .getByRole('button', { name: 'Saved request queue not supplied' })
+  ).toHaveText('—');
   await expect(
     panel.getByRole('heading', { name: 'Board cards', exact: true })
   ).toBeVisible();

@@ -271,6 +271,13 @@ class JobKitAllocation(models.Model):
     )
     staged_at = models.DateTimeField(null=True, blank=True)
     issued_at = models.DateTimeField(null=True, blank=True)
+    issued_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='+',
+    )
     disposed_at = models.DateTimeField(null=True, blank=True)
     stock_tracking_id = models.IntegerField(null=True, blank=True)
     idempotency_key = models.CharField(max_length=128)

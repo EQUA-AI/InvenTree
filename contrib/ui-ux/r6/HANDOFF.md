@@ -28,6 +28,115 @@ Owned WS3012/harness15250 stopped; ports clear. Linux fixture verification only;
 Mac confirmation remains with the coordinator. No tracked specs, owner data or
 Git writes; parent/deployed acceptance unchanged.
 
+## R8 polish fix round 1 — 23 October 2026 (ready for human review)
+
+From `4175a75aa`: restore visible Parts 404 refusal; retain actual native requirements without claiming zero; gate retained Closeout retries by current authority and source availability; gate capture-disabled manual fields. Host viewer failures matched information controls rather than a dropped normal command gate. Packet lock spec uses the retained Narrative → Dictate action. D6 fixture storage seeding now checks the fixture origin; application errors remain checked. [Fix-round ledger](../r8-procurement/reports/polish.md#fix-round-1) records attribution and actual checks. Broad replay 312/318; all six discovered keyboard failures resolved and included in the clean 70-case follow-up. Two settled locked-dialog capture replays and two controlled storage-origin checks pass; 174 units, six TypeScript projects, Lingui with 40 bytewise locale restores and final changed-file checks pass. All 65 curated before/after PNGs inspected. Owned browser removed and ports3025/15275 clear. Already-open dictation also locks on permission/source loss. This is fixture evidence; coordinator Mac-host and authenticated local acceptance remain separate. No backend, owner data, Azure or Git writes.
+
+## R8 production polish — 23 October 2026 (ready for human review)
+
+`r8-polish` from `3f82042d0`: U1 aligned procurement commands, U2 Work/source
+heading, U3 maintenance receiving labels and U4 account/material wording; all
+seven Work tabs use compact facts, normal-case badges and accessible information.
+Missing facts use dashes with reasons. Original keyboard order, native commands,
+permissions, independent authority/acceptance, named approval, recorded-only
+email, replay and Materials read-only boundaries remain. No backend changes.
+
+[Ledger, findings, exact spec inventory and verification](../r8-procurement/reports/polish.md):
+R8 148 pass / 7 intentional duplicate audit skips; native S7/S8 54 pass;
+native R8 smoke 3 pass; 174 units; isolated backend 325, PostgreSQL behavior 200,
+concurrency 5 and email policy 23 pass. App and R8/S1/S4/S6/S7/S8 types and Lingui
+(40 bytewise `.po` restores) pass. Broad browser failures were resolved through
+explicitly recorded focused replays, rather than labelled as a single clean run.
+72 primary before/after PNGs plus 79 supporting PNGs inspected. Own browser/PG/network removed; ports3025/15275 clear. Cleanup
+evidence is in the lane report. Parent migration/tracking gates remain
+open. Fixture/source evidence only; no owner stock/commitment/Closeout, Azure,
+Git-write, issue, PR, deployment or product-acceptance change. Next: human review
+and coordinator authenticated local integration/showcase acceptance.
+
+## R8 wave 2 lane A — 23 October 2026 (ready for human review)
+
+U1 Work Parts and U2 native PO are implemented in `r8-w2a` from `1778fb6c2`.
+Six factual procurement columns, inline original source evidence, stable retained
+commands, named in-app PO approval and independent recorded-not-sent/ack facts.
+Native commercial panels and R6 fallback/custody remain. 110 isolated offline
+backend checks, 77 standard fresh PostgreSQL checks, 18 units and 61 unique
+browser fixture cases pass; settled/responsive capture replays also pass. App and
+harness types, Lingui (40 bytewise `.po` restores) and final changed-file checks
+are in the [lane report](../r8-procurement/reports/wave2-a.md). All 48 exact-size
+light/dark desktop/phone PNGs inspected. New PG/network removed; owned
+browser3021/harness15271 stopped and ports clear. Fixture/component evidence only;
+Mac host, real-data, deployment and product acceptance remain open. Direct PO
+entry has no reverse Work lookup in wave 1; Work-linked navigation carries exact
+scope. No receiving-form, Closeout, seed/recovery, owner-data, Azure, email-send,
+Git write, issue or PR change. Next: human/coordinator U1–U4 integration review.
+
+## R8 procurement wave 2 — lane B (23 October 2026; ready for human review)
+
+Native receiving exact-request recovery, issue-actor/pending-usage reconciliation
+and Closeout Part/batch/stock/tracking/PO-cost/receipt/fit context are implemented
+in `r8/w2b` on `1778fb6c2`. [Lane B ledger/backlog/contracts/report](../r8-procurement/reports/wave2-b.md):
+SQLite118, PostgreSQL133 + supplemental3 + concurrency5, units15, lane browser11
++ viewport4 + retained S6 regression4 pass. App/fixture tsc, Lingui (40 bytewise
+.po restores) and changed-file prek pass. All 19 final PNGs inspected. PG resources
+removed, owned browser3022 stopped and harness15272 clear. Global migration drift
+and inherited broad-suite failures remain open. Fixture/source evidence only;
+no showcase, existing database/container, Azure, email, Git or deployment/product
+acceptance changes. Lane A/C files and parent dispositions unchanged.
+
+## R8 wave 2 A+B integration — 23 October 2026 (coordinator review)
+
+A and B notes above are retained in lane order. One shared Work/PO/receiving/
+Closeout fixture passes A61 + B11 browser cases; offline backend233 and units26
+pass. App/library/S0–S8/R8 types pass; two other TypeScript projects retain
+baseline-identical errors. Migration graph has one leaf/app and tasks0050→0060;
+global migration drift remains open. Lingui restores all 40 .po files bytewise.
+See [merged results and next gates](../r8-procurement/reports/integration-wave1.md#wave-2-merge).
+Owned browser3024/harness15274 stopped. Next: coordinator lane C merge, then
+integrated real-data/human review; no deployment/product acceptance inferred.
+
+## R8 wave 2 lane C integration — 23 October 2026 (coordinator review)
+
+C's custody recovery is combined with B's issue attribution and pending-usage
+reconciliation. Shared recovery is mounted in native A/B commands, approval,
+receiving and explicit issue/use controls. Offline325, fresh PostgreSQL329,
+concurrency5, email-policy23, units32 and all93 current browser cases are covered
+by passing matrix/focused runs. Standalone private seed dry-run/apply/remove
+passes; no owner seed occurred. See [contracts, evidence and localhost preview/removal](../r8-procurement/reports/integration-wave1.md#lane-c-merge).
+Migration drift, two baseline type projects and the staged-index synthetic-key
+scanner gate remain open; working-file scan is clean. Owned resources removed.
+Next: coordinator stages the resolution and performs human/authenticated review;
+R6 parent deployment/product acceptance stays unchanged.
+
+## R8 backend wave 1 integration — 23 October 2026 (human review; baseline gates open)
+
+P1/P2/P3 are integrated in `r8/integration`; the Work audit conflict uses
+`{"hidden": true}`. Exact PO-link/named execution/document references and scoped
+receipt/reservation projections connect the producer chain. See the
+[integration ledger/contracts/results](../r8-procurement/reports/integration-wave1.md).
+Final PostgreSQL focus: 269/269; explicit concurrency cleanup profile: 5/5;
+AI email policy: 23/23. Final offline full suites: 2,212 run, 3 failures,
+22 errors, 6 skips; all 102 R8 cases pass. Standard PostgreSQL full suites:
+2,215 run, 3 failures, 30 errors before the final fixture-only correction.
+Global migration drift reproduces at R6 `270b3b74e`; fresh PostgreSQL application
+and single leaves pass. Full-suite/migration acceptance remains open.
+All applicable prek hooks and standalone shared types pass. Disposable PG
+containers/networks removed. No owner-data, existing-container, Azure, email-send
+or Git writes; coordinator stages the resolved index and performs human review.
+No UI, deployment or product acceptance; parent R6 dispositions unchanged.
+
+## R8 P1 backend wave 1 — 23 October 2026 (human integration review)
+
+Job Kit configuration activation, additive typed procurement context and
+append-only source/acknowledgment commands are implemented in `r8/p1` on merged
+R6 `270b3b74e`. See [P1 report](../r8-procurement/reports/P1.md) for contracts,
+execution ledger, exact checks and dependencies. 76/76 supplemented offline
+checks, app TypeScript and changed-file prek pass. The original SQLite legacy
+checkpoint profile remains blocked by inherited missing runtime schema; the
+report preserves its failures and describes the guarded synthetic supplement.
+No new migrations, changes to running databases, email, Azure, Git writes
+or UI implementation. B04–B09 producer and deployed/product acceptance gates
+remain open; existing R6 acceptance dispositions are unchanged.
+
 ## UI round 2 Follow-up 10 — 23 October 2026 (ready for coordinator review)
 
 Built on `79c9540fa`: comparison menus use fixed positioning; active editors
@@ -669,3 +778,16 @@ Next (owner first): choose the showcase case (D23) for P34; decide whether to ap
 - **2026-10-18 — explicit S1 overlap:** user says “meanwhile start s1”. Started P14 native machine Preview/return, reusing the existing indexed-media viewer with exact source identity and native actions preserved. Final S1 suite26, units68, backend388 and S1/S0 types pass; Biome35/touched Python lint pass. Shared media drift fixture cleanup and production-style/non-superuser browser fixtures corrected; failed evidence retained. Full preservation replay/current hashes in S1 ledger/manifest. P14 and candidate22/23 In progress; S0 not accepted, other S1 tickets Planned. No commit/push/PR, existing DB/service, Azure or OT change.
 
 - **2026-10-21 — design-pass-2 host browser repairs verified:** bounded S8-01 part 2 task: Health history locator scope, explicit missing-batch “Not returned”, current closeout disclosure label, phone Other-channel pagination containment, and measured capture/key-focus helpers. Final full Linux Chromium fixture replays passed S8 **222/222**, S0 **95/95**, S7 **172/172**; two restored S3 trend contracts passed **4/4** across desktop/phone. Default/S0/S7/S8/S3 types, **733 units in 73 files**, all applicable prek checks on **91 changed files**, tracking validation and Lingui extraction/compilation passed; **117 locale files restored bytewise**. Representative screenshots inspected. The first-phase browser was removed and Vite config restored bytewise. On the second-host-replay resumption, prior harness PID 17707 was absent and port 15224 was free; its earlier cleanup blocker is resolved. The current managed runtime and subsequent capture-helper verification are recorded in the report. See `reports/S8-01-part2.md#host-replay-fixes`; evidence is `data/devscratch/r6-s8/S8-01-part2/host-replay/`. Parent S8/R6, deployment and product acceptance remain unchanged; coordinator host review and O22 rescore remain separate. No Git write, external service or Azure access.
+
+
+- **2026-10-23 — R8 backend P2 dedicated worktree:** B04/B05 implemented in
+  `r8-p2` from 270b3b74e: assigned named screen placement, complete native charges,
+  stable approval replay, validated shortage links and exact recorded PDF/MIME
+  evidence without sending. No frontend/showcase/shared-service/Azure/Git writes.
+  Final focused tests 31/31; separately disclosed synthetic Work/RuleSet/policy-key
+  supplement 47/47. Real rendered PDF inspected. See
+  [P2 report](../r8-procurement/reports/P2.md),
+  [execution ledger](../r8-procurement/execution-ledger-p2.md),
+  [lane backlog](../r8-procurement/sprint-backlog-p2.csv) and
+  [contract](../r8-procurement/contracts/p2.md). Ready for review; parent R6/R8,
+  PostgreSQL concurrency, merged UI, real-data and deployment acceptance unchanged.

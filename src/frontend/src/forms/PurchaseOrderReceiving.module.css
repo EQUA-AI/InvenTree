@@ -1,0 +1,40 @@
+@media (max-width: 48em) {
+  table:has(.maintenanceRow) {
+    width: 100%;
+    table-layout: fixed;
+  }
+
+  table:has(.maintenanceRow) thead {
+    display: none;
+  }
+
+  table:has(.maintenanceRow) tbody,
+  table:has(.maintenanceRow) tr,
+  table:has(.maintenanceRow) td {
+    display: block;
+    width: 100% !important;
+    min-width: 0 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
+
+  .maintenanceRow td:nth-child(2),
+  .maintenanceRow td:nth-child(3) {
+    padding-top: 0;
+    padding-bottom: var(--mantine-spacing-xs);
+  }
+
+  table:has(.maintenanceRow) td[colspan] > :global(.mantine-Group-root) {
+    flex-wrap: nowrap;
+    padding: 0;
+  }
+
+  table:has(.maintenanceRow) td[colspan] > :global(.mantine-Group-root) > :global(.mantine-Container-root),
+  .maintenanceRow td:first-child img {
+    display: none;
+  }
+
+  .maintenanceRow td:last-child {
+    display: none;
+  }
+}
