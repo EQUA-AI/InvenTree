@@ -11,7 +11,6 @@ import {
   Grid,
   Group,
   Loader,
-  Badge as MantineBadge,
   Pagination,
   Paper,
   Select,
@@ -42,7 +41,8 @@ import { MachineAlarmBadges } from '../../../components/items/MachineAlarmBadges
 import {
   FailedValue,
   MissingValue,
-  ValueTooltip
+  ValueTooltip,
+  factTooltipProps
 } from '../../../components/items/ValueTooltip';
 import { useApi } from '../../../contexts/ApiContext';
 import { useUserState } from '../../../states/UserState';
@@ -62,6 +62,7 @@ import {
   machineDetailHref,
   machineEmptyKind,
   machineLocationId,
+  machinePlacementPath,
   workspaceLabel
 } from './locationTree';
 import {
@@ -89,6 +90,7 @@ const ROOT_PAGE_SIZE = 10;
 
 export function ScopedMachineList({
   location,
+  activeLocationsOnly,
   includeDescendants = true,
   unassigned = false,
   machineId,
@@ -98,6 +100,7 @@ export function ScopedMachineList({
   source
 }: {
   location?: number;
+  activeLocationsOnly?: boolean;
   includeDescendants?: boolean;
   unassigned?: boolean;
   machineId?: number;
@@ -125,6 +128,7 @@ export function ScopedMachineList({
   }, [
     search,
     location,
+    activeLocationsOnly,
     includeDescendants,
     unassigned,
     machineId,
@@ -141,6 +145,7 @@ export function ScopedMachineList({
       identity,
       'machines',
       location,
+      activeLocationsOnly,
       includeDescendants,
       unassigned,
       machineId,
@@ -157,6 +162,7 @@ export function ScopedMachineList({
           signal,
           params: {
             location,
+            active_only: activeLocationsOnly,
             active: showInactive ? undefined : true,
             include_descendants: includeDescendants,
             unassigned,
@@ -245,7 +251,7 @@ export function ScopedMachineList({
           aria-controls={filtersId}
           onClick={() => setFiltersOpen((value) => !value)}
         >{t`Filters`}</Button>
-        {location == null && (
+        {location == null && source !== 'sites' && (
           <RefreshAction
             loading={query.isFetching}
             onClick={() => query.refetch()}
@@ -475,11 +481,16 @@ export function ScopedMachineList({
                               <Table.Td>
                                 <MachineIdentity
                                   machine={machine}
+                                  compactPlacement={
+                                    source === 'sites' && location == null
+                                  }
                                   scopeLocation={location}
                                   href={machineDetailHref(machine.pk, rowScope)}
                                   showPlacement={
-                                    includeDescendants &&
-                                    machine.physical_location?.pk !== location
+                                    (source === 'sites' && location == null) ||
+                                    (includeDescendants &&
+                                      machine.physical_location?.pk !==
+                                        location)
                                   }
                                   canChange={canChange}
                                   checked={selection.includes(machine.pk)}
@@ -548,11 +559,15 @@ export function ScopedMachineList({
                     >
                       <MachineIdentity
                         machine={machine}
+                        compactPlacement={
+                          source === 'sites' && location == null
+                        }
                         scopeLocation={location}
                         href={machineDetailHref(machine.pk, rowScope)}
                         showPlacement={
-                          includeDescendants &&
-                          machine.physical_location?.pk !== location
+                          (source === 'sites' && location == null) ||
+                          (includeDescendants &&
+                            machine.physical_location?.pk !== location)
                         }
                         canChange={canChange}
                         checked={selection.includes(machine.pk)}
@@ -675,16 +690,24 @@ export function ScopedMachineList({
               )}
               {emptyKind === 'no-machines-here' && (
                 <Stack gap='xs'>
-                  <IconServerOff />
-                  <Title order={5}>{t`No machines at this location`}</Title>
-                  <Text
-                    className={operations.meta}
-                  >{t`No machine is placed at this location or its sublocations.`}</Text>
-                  <Anchor
-                    className={operations.link}
-                    component={Link}
-                    to='/machines/index/machines/'
-                  >{t`Browse all machines`}</Anchor>
+                  {location == null ? (
+                    <Title order={5}>
+                      {showInactive ? t`No machines` : t`No active machines`}
+                    </Title>
+                  ) : (
+                    <>
+                      <IconServerOff />
+                      <Title order={5}>{t`No machines at this location`}</Title>
+                      <Text
+                        className={operations.meta}
+                      >{t`No machine is placed at this location or its sublocations.`}</Text>
+                      <Anchor
+                        className={operations.link}
+                        component={Link}
+                        to='/machines/index/machines/'
+                      >{t`Browse all machines`}</Anchor>
+                    </>
+                  )}
                 </Stack>
               )}
               {emptyKind === 'no-unassigned-machines' && (
@@ -742,6 +765,7 @@ function MachineIdentity({
   href,
   showPlacement,
   scopeLocation,
+  compactPlacement = false,
   canChange,
   checked,
   onChecked
@@ -750,12 +774,17 @@ function MachineIdentity({
   href: string;
   showPlacement: boolean;
   scopeLocation?: number | null;
+  compactPlacement?: boolean;
   canChange: boolean;
   checked: boolean;
   onChecked: (checked: boolean) => void;
 }>) {
   const condition = machineCondition(machine.condition);
   const work = machineWorkSummary(machine.open_work);
+  const placement = machinePlacementPath(
+    machine.physical_location?.path ?? [],
+    scopeLocation
+  );
   const contextReason = [
     condition.kind === 'unavailable'
       ? t`Condition could not be checked`
@@ -769,7 +798,8 @@ function MachineIdentity({
       : null,
     showPlacement && !machine.physical_location
       ? t`Physical location not assigned`
-      : null
+      : null,
+    compactPlacement && placement.full ? placement.full : null
   ]
     .filter(Boolean)
     .join(' · ');
@@ -777,17 +807,19 @@ function MachineIdentity({
     machine.serial,
     showPlacement &&
       machine.physical_location &&
-      machine.physical_location.path
-        .slice(
-          Math.max(
-            0,
-            machine.physical_location.path.findIndex(
-              (node) => node.pk === scopeLocation
-            ) + 1
-          )
-        )
-        .map((node) => node.name)
-        .join(' / ')
+      (compactPlacement
+        ? placement.compact
+        : machine.physical_location.path
+            .slice(
+              Math.max(
+                0,
+                machine.physical_location.path.findIndex(
+                  (node) => node.pk === scopeLocation
+                ) + 1
+              )
+            )
+            .map((node) => node.name)
+            .join(' / '))
   ]
     .filter(Boolean)
     .join(' · ');
@@ -824,9 +856,22 @@ function MachineIdentity({
           </Anchor>
         </Tooltip>
         {identity && (
-          <Text size='xs' className={operations.meta}>
-            {identity}
-          </Text>
+          <Tooltip
+            label={placement.full}
+            disabled={!compactPlacement || !placement.full}
+            {...factTooltipProps}
+          >
+            <Text
+              size='xs'
+              className={operations.meta}
+              lineClamp={compactPlacement ? 2 : undefined}
+              data-location-path={
+                compactPlacement ? placement.full || undefined : undefined
+              }
+            >
+              {identity}
+            </Text>
+          </Tooltip>
         )}
         {showPlacement && !machine.physical_location && (
           <MissingValue reason={t`Physical location not assigned`} />
@@ -1038,13 +1083,15 @@ function MachineCriticalityCell({ value }: Readonly<{ value: unknown }>) {
   );
 }
 
-/** Paginated root-location overview for the unselected main pane (M1). */
+/** Full-population site counts beside the root machine list. */
 function RootOverview({
   identity,
   workspaces,
-  showArchived
+  showArchived,
+  showInactive
 }: {
   showArchived: boolean;
+  showInactive: boolean;
   identity: number;
   workspaces: { pk: number; name: string }[];
 }) {
@@ -1057,6 +1104,7 @@ function RootOverview({
       identity,
       'root-overview',
       showArchived,
+      showInactive,
       rootPage
     ],
     queryFn: async ({ signal }) =>
@@ -1066,8 +1114,32 @@ function RootOverview({
           params: {
             parent: 'root',
             active_only: !showArchived,
+            include_counts: true,
+            active: showInactive ? undefined : true,
             limit: ROOT_PAGE_SIZE,
             offset: (rootPage - 1) * ROOT_PAGE_SIZE
+          }
+        })
+      ).data
+  });
+  const unassigned = useQuery<PageResult<LocatedMachine>>({
+    queryKey: [
+      'asset-locations',
+      identity,
+      'unassigned-count',
+      showInactive,
+      showArchived
+    ],
+    queryFn: async ({ signal }) =>
+      (
+        await api.get(`${locationApi}machines/`, {
+          signal,
+          params: {
+            unassigned: true,
+            active_only: !showArchived,
+            active: showInactive ? undefined : true,
+            limit: 1,
+            offset: 0
           }
         })
       ).data
@@ -1077,8 +1149,8 @@ function RootOverview({
     return `?${next.toString()}`;
   };
   return (
-    <Paper withBorder p='md'>
-      <Stack>
+    <Paper withBorder p='sm'>
+      <Stack gap='xs'>
         <Title order={4}>{t`Browse top-level locations`}</Title>
         {rootQuery.isPending && <Loader size='sm' />}
         {rootQuery.isError && (
@@ -1092,37 +1164,40 @@ function RootOverview({
           </Alert>
         )}
         <ul aria-label={t`Top-level locations`} className={classes.rootList}>
-          {rootQuery.data?.results.map((node) => (
-            <li key={node.pk} className={classes.rootRow}>
-              <Anchor
-                className={operations.link}
-                component={Link}
-                to={locationHref(node.pk)}
-              >
-                {node.name}
-              </Anchor>
-              <Group gap={4}>
-                <MantineBadge
-                  variant='outline'
-                  color='gray'
-                  c='var(--mantine-color-text)'
-                  tt='none'
+          {!rootQuery.isError &&
+            rootQuery.data?.results.map((node) => (
+              <li key={node.pk} className={classes.rootRow}>
+                <Anchor
+                  className={operations.link}
+                  component={Link}
+                  to={locationHref(node.pk)}
                 >
-                  {locationKindLabel(locationKind(node.kind))}
-                </MantineBadge>
-                {node.archived && (
-                  <Badge size='xs' color='gray' variant='light'>
-                    {t`Archived`}
-                  </Badge>
-                )}
-                {workspaces.length > 1 && (
-                  <Text size='xs' className={operations.meta}>
-                    {workspaceLabel(node.client, workspaces)}
+                  {node.name}
+                </Anchor>
+                <Group gap={4} justify='flex-end'>
+                  <Text size='xs' ta='right' data-site-machine-count={node.pk}>
+                    {node.counts ? (
+                      plural(node.counts.total_machines, {
+                        one: '# machine',
+                        other: '# machines'
+                      })
+                    ) : (
+                      <MissingValue reason={t`Machine count not supplied`} />
+                    )}
                   </Text>
-                )}
-              </Group>
-            </li>
-          ))}
+                  {node.archived && (
+                    <Badge size='xs' color='gray' variant='light'>
+                      {t`Archived`}
+                    </Badge>
+                  )}
+                  {workspaces.length > 1 && (
+                    <Text size='xs' className={operations.meta}>
+                      {workspaceLabel(node.client, workspaces)}
+                    </Text>
+                  )}
+                </Group>
+              </li>
+            ))}
         </ul>
         {(rootQuery.data?.count ?? 0) > ROOT_PAGE_SIZE && (
           <nav aria-label={t`Location overview pagination`}>
@@ -1135,12 +1210,22 @@ function RootOverview({
             />
           </nav>
         )}
-        <Button
-          component={Link}
-          to='/machines/index/unassigned/'
-          variant='default'
-          w='fit-content'
-        >{t`View unassigned machines`}</Button>
+        {unassigned.isError ? (
+          <FailedValue
+            label={t`Unassigned machines`}
+            reason={t`Unassigned machine count could not be checked`}
+          />
+        ) : unassigned.data && unassigned.data.count > 0 ? (
+          <Button
+            component={Link}
+            to={`/machines/index/unassigned/${showInactive ? '?show_inactive=true' : ''}`}
+            variant='default'
+            w='fit-content'
+            h={{ base: 44, sm: 36 }}
+          >
+            {t`View unassigned machines`} · {unassigned.data.count}
+          </Button>
+        ) : null}
       </Stack>
     </Paper>
   );
@@ -1324,14 +1409,25 @@ export function LocationWorkspace({
                 visibleFrom={mobileOpen ? undefined : 'lg'}
                 span={{ base: 12, lg: 4 }}
               >
-                <LocationBrowser
-                  selected={selected}
-                  showArchived={showArchived}
-                  onShowArchived={updateArchived}
-                  onSelect={select}
-                  identity={identity}
-                  workspaces={workspaces}
-                />
+                <Stack gap='sm'>
+                  <LocationBrowser
+                    selected={selected}
+                    showArchived={showArchived}
+                    onShowArchived={updateArchived}
+                    onSelect={select}
+                    identity={identity}
+                    workspaces={workspaces}
+                  />
+                  {!locationId && (
+                    <RootOverview
+                      key={`${showArchived}:${!!listState.showInactive}`}
+                      showArchived={showArchived}
+                      showInactive={!!listState.showInactive}
+                      identity={identity}
+                      workspaces={workspaces}
+                    />
+                  )}
+                </Stack>
               </Grid.Col>
               <Grid.Col
                 span={{ base: 12, lg: selected && !mobileOpen ? 12 : 8 }}
@@ -1540,24 +1636,18 @@ export function LocationWorkspace({
                         </Collapse>
                       </Paper>
                     </>
-                  ) : (
-                    !locationId && (
-                      <RootOverview
-                        key={String(showArchived)}
-                        showArchived={showArchived}
-                        identity={identity}
-                        workspaces={workspaces}
-                      />
-                    )
-                  )}
+                  ) : null}
                   {/* Scope changes reload the location counts. Keep the list
                       mounted independently so its open Filters disclosure and
                       native input identities survive that pending detail read. */}
-                  {locationId && !detail.isError && (
+                  {(!locationId || !detail.isError) && (
                     <ScopedMachineList
-                      key={locationId}
+                      key={locationId ?? 'root'}
                       location={locationId}
-                      includeDescendants={!direct}
+                      activeLocationsOnly={
+                        locationId == null ? !showArchived : undefined
+                      }
+                      includeDescendants={locationId == null || !direct}
                       canChange={context.data.can_change}
                       state={listState}
                       onStateChange={updateListState}

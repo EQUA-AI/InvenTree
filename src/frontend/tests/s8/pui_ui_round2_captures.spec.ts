@@ -94,34 +94,54 @@ for (const [name, screen, scheme, width] of views) {
       screen === 'location-selected'
     ) {
       if (screen === 'location') {
-        const nodes = await mockOwnerLocations(page);
+        await mockOwnerLocations(page);
         await page.goto(
           `/playwright/s8-design.html?${new URLSearchParams({ screen: 'machines', entry: '/machines/index/sites/', scheme })}`
         );
+        // Cold Vite module loading is fixture setup. Keep the initial phone
+        // disclosure state and begin strict data checks once native inputs mount.
         await expect(
-          page
-            .getByRole('list', { name: 'Top-level locations', exact: true })
-            .getByRole('listitem')
-        ).toHaveCount(7);
+          page.getByRole('textbox', {
+            name: 'Search machines',
+            exact: true,
+            includeHidden: true
+          })
+        ).toBeAttached({ timeout: 60_000 });
+        await expect(page.locator('[data-machine]')).toHaveCount(25);
+        await expect(page.getByTestId('machine-page-count')).toHaveText(
+          '25 of 86'
+        );
+        await expect(
+          page.locator('[data-machine="1"] [data-location-path]')
+        ).toHaveAttribute(
+          'data-location-path',
+          /Cedar Creek Houston Regional Site.*Pump Bay 01/
+        );
+        await expect(
+          page.getByRole('link', { name: /View unassigned machines/ })
+        ).toHaveCount(0);
         if (width === 390) {
-          await page
-            .getByRole('button', { name: 'Choose location', exact: true })
-            .click();
-          for (const pk of [12, 20, 30])
-            await page
-              .getByRole('list', { name: 'Location drill-down' })
-              .getByRole('button', { name: nodes.get(pk)!.name, exact: true })
-              .click();
+          await expect(
+            page.getByRole('button', { name: 'Choose location', exact: true })
+          ).toHaveAttribute('aria-expanded', 'false');
+          const first = (await page
+            .locator('[data-machine="1"]')
+            .boundingBox())!;
+          expect(
+            first.y + first.height,
+            'The complete root machine card is visible without choosing a site'
+          ).toBeLessThanOrEqual(844);
         } else {
-          const tree = page.getByRole('tree');
-          for (const pk of [10, 11, 12, 20, 30]) {
-            const item = tree.locator(`[role="treeitem"][data-value="${pk}"]`);
-            await item.focus();
-            await item.press('ArrowRight');
-            await expect(
-              item.locator('[role="treeitem"]').first()
-            ).toBeVisible();
-          }
+          const roots = page.getByRole('list', {
+            name: 'Top-level locations',
+            exact: true
+          });
+          await expect(roots.getByRole('listitem')).toHaveCount(7);
+          await expect(
+            roots
+              .getByRole('listitem')
+              .filter({ hasText: 'Cedar Creek Houston Regional Site' })
+          ).toContainText('63 machines');
         }
       } else {
         const data = await mockExplorer(page);

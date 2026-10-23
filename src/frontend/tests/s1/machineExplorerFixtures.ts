@@ -32,6 +32,20 @@ export async function mockExplorer(page: Page) {
     path: [...location.path, { pk: 21, name: 'Synthetic pump hall' }],
     has_children: false
   };
+  const archivedLocation = {
+    ...location,
+    pk: 90,
+    name: 'Archived synthetic site',
+    archived: true,
+    path: [{ pk: 90, name: 'Archived synthetic site' }]
+  };
+  const archivedChild = {
+    ...child,
+    pk: 91,
+    parent: 90,
+    name: 'Archived-site room',
+    path: [...archivedLocation.path, { pk: 91, name: 'Archived-site room' }]
+  };
   const machines = Array.from({ length: 110 }, (_, index) => ({
     pk: index + 1,
     name: `Synthetic pump ${String(index + 1).padStart(3, '0')}`,
@@ -112,11 +126,13 @@ export async function mockExplorer(page: Page) {
     ]
   }));
   const requests: { method: string; params: URLSearchParams }[] = [];
+  const locationRequests: URLSearchParams[] = [];
   const state = {
     status: 200,
     canChange: false,
     locationStatus: 200,
     totalLimit: 110,
+    withArchivedLocation: false,
     // No machine matches any criticality filter.
     noCriticalityMatch: false
   };
@@ -149,12 +165,46 @@ export async function mockExplorer(page: Page) {
       }
     })
   );
+  const countAt = (node: { pk: number }, activeOnly: boolean) => {
+    const rows = machines
+      .slice(0, state.totalLimit)
+      .filter(
+        (machine) =>
+          (!activeOnly || machine.active) &&
+          machine.physical_location?.path.some((part) => part.pk === node.pk)
+      );
+    return {
+      direct_machines: rows.filter(
+        (machine) => machine.physical_location?.pk === node.pk
+      ).length,
+      total_machines: rows.length
+    };
+  };
   await page.route('**/api/assets/locations/?*', (route) => {
-    const parent = new URL(route.request().url()).searchParams.get('parent');
+    const params = new URL(route.request().url()).searchParams;
+    locationRequests.push(params);
+    const parent = params.get('parent');
+    const nodes = [location, child];
+    if (state.withArchivedLocation) nodes.push(archivedLocation, archivedChild);
+    const rows = nodes.filter(
+      (node) =>
+        (parent == null ||
+          (parent === 'root'
+            ? node.parent == null
+            : node.parent === Number(parent))) &&
+        (params.get('active_only') !== 'true' ||
+          !node.path.some((part) => part.pk === archivedLocation.pk))
+    );
     return route.fulfill({
       json: {
-        count: 1,
-        results: parent === '12' ? [child] : [location],
+        count: rows.length,
+        results: rows.map((node) => ({
+          ...node,
+          counts:
+            params.get('include_counts') === 'true'
+              ? countAt(node, params.get('active') === 'true')
+              : node.counts
+        })),
         next: null
       }
     });
@@ -168,9 +218,7 @@ export async function mockExplorer(page: Page) {
         (machine) =>
           (!url.searchParams.has('active') ||
             machine.active === (url.searchParams.get('active') === 'true')) &&
-          (node.pk === 21
-            ? machine.physical_location?.pk === 21
-            : machine.physical_location != null)
+          machine.physical_location?.path.some((part) => part.pk === node.pk)
       );
     return route.fulfill({
       status: state.locationStatus,
@@ -217,15 +265,22 @@ export async function mockExplorer(page: Page) {
       )
         return false;
       const placement = machine.physical_location?.pk;
+      if (
+        params.get('active_only') === 'true' &&
+        machine.physical_location?.path.some(
+          (part) => part.pk === archivedLocation.pk
+        )
+      )
+        return false;
       if (params.get('unassigned') === 'true' && placement != null)
         return false;
       if (
         params.has('location') &&
-        (params.get('location') === '21'
-          ? placement !== 21
-          : params.get('include_descendants') === 'false'
-            ? placement !== 12
-            : placement == null)
+        (params.get('include_descendants') === 'false'
+          ? placement !== Number(params.get('location'))
+          : !machine.physical_location?.path.some(
+              (part) => part.pk === Number(params.get('location'))
+            ))
       )
         return false;
       if (params.get('has_alarms') === 'true' && !machine.open_alarms)
@@ -258,7 +313,16 @@ export async function mockExplorer(page: Page) {
       json: machines.find((machine) => machine.pk === machinePk)
     });
   });
-  return { requests, state, location, child, machines };
+  return {
+    requests,
+    locationRequests,
+    state,
+    location,
+    child,
+    machines,
+    archivedLocation,
+    archivedChild
+  };
 }
 
 export async function openExplorer(

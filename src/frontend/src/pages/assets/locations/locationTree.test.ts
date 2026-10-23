@@ -17,6 +17,7 @@ import {
   machineDetailHref,
   machineEmptyKind,
   machinePanelHref,
+  machinePlacementPath,
   machineSourceView,
   machinesReturnHref,
   missingRevealEdge,
@@ -460,4 +461,41 @@ it('preserves a panel query when URLSearchParams has no size accessor (Safari 16
     if (descriptor)
       Object.defineProperty(URLSearchParams.prototype, 'size', descriptor);
   }
+});
+
+describe('machinePlacementPath', () => {
+  const path = ['Site', 'Facility', 'Building', 'Room', 'Bay'].map(
+    (name, index) => ({ pk: index + 1, name })
+  );
+
+  it('keeps the full breadcrumb while explicitly shortening a deep root placement', () => {
+    expect(machinePlacementPath(path)).toEqual({
+      full: 'Site › Facility › Building › Room › Bay',
+      compact: 'Site › … › Room › Bay'
+    });
+  });
+
+  it('shows short paths without omissions or invented levels', () => {
+    expect(machinePlacementPath(path.slice(0, 3))).toEqual({
+      full: 'Site › Facility › Building',
+      compact: 'Site › Facility › Building'
+    });
+    expect(machinePlacementPath(path.slice(0, 1))).toEqual({
+      full: 'Site',
+      compact: 'Site'
+    });
+  });
+
+  it('is relative to the selected location, with the complete path as fallback for an unknown scope', () => {
+    expect(machinePlacementPath(path, 3)).toEqual({
+      full: 'Room › Bay',
+      compact: 'Room › Bay'
+    });
+    expect(machinePlacementPath(path, 999)).toEqual(machinePlacementPath(path));
+    expect(machinePlacementPath(path, 5)).toEqual({ full: '', compact: '' });
+  });
+
+  it('does not invent an unassigned placement', () => {
+    expect(machinePlacementPath([])).toEqual({ full: '', compact: '' });
+  });
 });

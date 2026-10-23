@@ -23,8 +23,8 @@ export interface LocationNode {
   counts?: {
     direct_machines: number;
     total_machines: number;
-    direct_open_work_orders: number | null;
-    total_open_work_orders: number | null;
+    direct_open_work_orders?: number | null;
+    total_open_work_orders?: number | null;
   };
 }
 

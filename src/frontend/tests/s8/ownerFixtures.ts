@@ -172,6 +172,27 @@ export async function mockOwnerLocations(page: Page) {
       }
     });
   }
+  // The root list uses complete API counts, independently of its loaded page.
+  const machines = base.machines.slice(0, 86).map((machine, index) => ({
+    ...machine,
+    active: true,
+    physical_location: nodes.get(
+      index < 63 ? 101 + (index % 14) : index < 68 ? 10 : index < 81 ? 50 : 60
+    )!
+  }));
+  const counts = (node: LocationNode, activeOnly: boolean) => {
+    const placed = machines.filter(
+      (machine) =>
+        (!activeOnly || machine.active) &&
+        machine.physical_location.path.some((part) => part.pk === node.pk)
+    );
+    return {
+      direct_machines: placed.filter(
+        (machine) => machine.physical_location.pk === node.pk
+      ).length,
+      total_machines: placed.length
+    };
+  };
   await page.route('**/api/assets/locations/?*', (route) => {
     const params = new URL(route.request().url()).searchParams;
     const search = (params.get('search') ?? '').toLowerCase();
@@ -188,7 +209,13 @@ export async function mockOwnerLocations(page: Page) {
     return route.fulfill({
       json: {
         count: rows.length,
-        results: rows.slice(offset, offset + limit),
+        results: rows.slice(offset, offset + limit).map((node) => ({
+          ...node,
+          counts:
+            params.get('include_counts') === 'true'
+              ? counts(node, params.get('active') === 'true')
+              : undefined
+        })),
         next: offset + limit < rows.length ? 'next' : null
       }
     });
@@ -197,10 +224,53 @@ export async function mockOwnerLocations(page: Page) {
     const pk = Number(
       new URL(route.request().url()).pathname.split('/').filter(Boolean).at(-1)
     );
-    return route.fulfill({ json: nodes.get(pk) });
+    const node = nodes.get(pk)!;
+    const params = new URL(route.request().url()).searchParams;
+    return route.fulfill({
+      json: {
+        ...node,
+        counts: {
+          ...counts(node, params.get('active') === 'true'),
+          direct_open_work_orders: 0,
+          total_open_work_orders: 0
+        }
+      }
+    });
   });
-  await page.route('**/api/assets/locations/machines/**', (route) =>
-    route.fulfill({ json: { count: 0, results: [], next: null } })
-  );
+  await page.route('**/api/assets/locations/machines/**', (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    const search = (params.get('search') ?? '').toLowerCase();
+    const rows = machines.filter((machine) => {
+      if (params.get('unassigned') === 'true') return false;
+      if (params.has('location')) {
+        const pk = Number(params.get('location'));
+        if (
+          params.get('include_descendants') === 'false'
+            ? machine.physical_location.pk !== pk
+            : !machine.physical_location.path.some((part) => part.pk === pk)
+        )
+          return false;
+      }
+      if (params.get('has_alarms') === 'true' && !machine.open_alarms)
+        return false;
+      if (
+        params.has('criticality') &&
+        machine.criticality !== params.get('criticality')
+      )
+        return false;
+      return `${machine.name} ${machine.serial} ${machine.manufacturer}`
+        .toLowerCase()
+        .includes(search);
+    });
+    const offset = Number(params.get('offset') ?? 0);
+    const limit = Number(params.get('limit') ?? 25);
+    return route.fulfill({
+      json: {
+        count: rows.length,
+        results: rows.slice(offset, offset + limit),
+        next: offset + limit < rows.length ? 'next' : null
+      }
+    });
+  });
   return nodes;
 }

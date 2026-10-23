@@ -252,6 +252,12 @@ for (const scheme of ['light', 'dark'] as const) {
     await page.goto(
       `/playwright/s8-design.html?${new URLSearchParams({ screen: 'machines', entry: '/machines/index/sites/', scheme })}`
     );
+    await expect(page.locator('[data-machine]')).toHaveCount(25);
+    await expect(page.getByTestId('machine-page-count')).toHaveText('25 of 86');
+    if (phone)
+      await page
+        .getByRole('button', { name: 'Choose location', exact: true })
+        .click();
     await expect(
       page.getByRole('heading', {
         name: 'Browse top-level locations',
@@ -263,6 +269,14 @@ for (const scheme of ['light', 'dark'] as const) {
       exact: true
     });
     await expect(overview.getByRole('listitem')).toHaveCount(7);
+    await expect(
+      overview
+        .getByRole('listitem')
+        .filter({ hasText: 'Cedar Creek Houston Regional Site' })
+    ).toContainText('63 machines');
+    await expect(
+      page.getByRole('link', { name: /View unassigned machines/ })
+    ).toHaveCount(0);
     for (const code of await overview.locator('code').all())
       await readable(code);
     if (phone) {
@@ -271,7 +285,7 @@ for (const scheme of ['light', 'dark'] as const) {
         exact: true
       });
       await expect(chooser).toBeVisible();
-      await chooser.click();
+      await expect(chooser).toHaveAttribute('aria-expanded', 'true');
       for (const pk of [12, 20, 30]) {
         await page
           .getByRole('list', { name: 'Location drill-down' })

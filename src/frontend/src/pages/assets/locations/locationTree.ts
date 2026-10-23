@@ -195,6 +195,23 @@ export interface MachineCountTotals {
   total_machines: number;
 }
 
+/** Relative placement names, with explicit omission for deep root paths. */
+export function machinePlacementPath(
+  path: readonly { pk: number; name: string }[],
+  scope?: number | null
+): { full: string; compact: string } {
+  const start =
+    scope == null ? 0 : path.findIndex((node) => node.pk === scope) + 1;
+  const names = path.slice(start).map((node) => node.name);
+  return {
+    full: names.join(' › '),
+    compact: (names.length > 3
+      ? [names[0], '…', ...names.slice(-2)]
+      : names
+    ).join(' › ')
+  };
+}
+
 export interface CountSummary {
   /** "Machines in this view" value; null keeps unknown distinct from zero. */
   view: number | null;

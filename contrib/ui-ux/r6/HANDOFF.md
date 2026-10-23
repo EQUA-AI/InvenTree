@@ -1,5 +1,20 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## UI round 2 Follow-up 12 — 23 October 2026 (ready for coordinator review)
+
+Built on `5a1753b00`: By location root immediately shows all active machines
+across non-archived placements and unassigned records, with server paging,
+filters, compact paths and full API site counts. Unassigned action hides at
+zero; selected-location descendants stay on by default. 20 focused browser
+executions pass (including three final captures), all three PNGs inspected;
+70 units, 31 real-migration offline API tests, app/all eight sprint types plus
+isolated S0, Lingui with 117 bytewise locale restores and changed-file prek pass.
+Digest `ac05f4e63a5a`; [report](reports/ui-r2.md) lists source/test files and the
+unrelated extra legacy TypeScript and stock SQLite checkpoint-profile errors.
+Owned WS3012/harness15250 stopped; ports clear. Synthetic fixture checks only;
+no owner data, product migrations or Git writes. Mac/deployment/parent acceptance
+remain with the coordinator.
+
 ## UI round 2 Follow-up 11 — 23 October 2026 (ready for coordinator review)
 
 Built on `e1d89dd61`: phone Filters opens without a height transition, avoiding

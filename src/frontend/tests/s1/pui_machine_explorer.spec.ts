@@ -62,6 +62,337 @@ async function expectFactLabel(scope: Locator, name: string) {
   }
 }
 
+async function openRootLocations(page: Page) {
+  const chooser = page.getByRole('button', {
+    name: 'Choose location',
+    exact: true
+  });
+  if (
+    (await chooser.isVisible()) &&
+    (await chooser.getAttribute('aria-expanded')) === 'false'
+  )
+    await chooser.click();
+  return page.getByRole('list', { name: 'Top-level locations', exact: true });
+}
+
+/** Wait for the fixture's complete HTTP reply before timing native UI facts. */
+async function afterRootMachineRead(
+  page: Page,
+  action: () => Promise<unknown>,
+  match: (params: URLSearchParams) => boolean = () => true,
+  status = 200
+) {
+  const reply = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.pathname === '/api/assets/locations/machines/' &&
+      response.status() === status &&
+      url.searchParams.get('limit') === '25' &&
+      !url.searchParams.has('location') &&
+      match(url.searchParams)
+    );
+  });
+  await action();
+  await (await reply).finished();
+}
+
+test('By location root immediately lists all active machines with server paging, paths and exact return scope', async ({
+  page
+}) => {
+  const fixture = await mockExplorer(page);
+  fixture.state.withArchivedLocation = true;
+  fixture.machines[109].physical_location = fixture.archivedChild;
+  await afterRootMachineRead(page, () =>
+    openExplorer(page, '/machines/index/sites/')
+  );
+  const results = page.getByTestId('machine-results');
+  await expect(results.locator('[data-machine]')).toHaveCount(25);
+  await expect(page.getByTestId('machine-page-count')).toHaveText('25 of 108');
+  await expect(
+    page.getByRole('region', { name: 'Loaded page summary' })
+  ).toContainText('In alarm · 25');
+  const listRequests = () =>
+    fixture.requests.filter((request) => request.params.get('limit') === '25');
+  expect(
+    listRequests().every(
+      ({ params }) =>
+        params.get('active') === 'true' &&
+        params.get('active_only') === 'true' &&
+        params.get('unassigned') === 'false' &&
+        !params.has('location')
+    )
+  ).toBe(true);
+  const pagination = page.getByRole('navigation', {
+    name: 'Machine results pagination',
+    exact: true
+  });
+  await afterRootMachineRead(
+    page,
+    () => pagination.getByRole('button', { name: '2', exact: true }).click(),
+    (params) => params.get('offset') === '25'
+  );
+  await expect
+    .poll(() => listRequests().at(-1)?.params.get('offset'))
+    .toBe('25');
+  await expect(
+    results.getByRole('link', { name: 'Synthetic pump 027', exact: true })
+  ).toBeVisible();
+  const search = page.getByRole('textbox', {
+    name: 'Search machines',
+    exact: true
+  });
+  await afterRootMachineRead(
+    page,
+    () => search.fill('S1-61'),
+    (params) => params.get('search') === 'S1-61' && params.get('offset') === '0'
+  );
+  await expect(page.getByTestId('machine-page-count')).toHaveText('1 machine');
+  await expect
+    .poll(() => listRequests().at(-1)?.params.get('offset'))
+    .toBe('0');
+  expect((await explorerParams(page)).has('page')).toBe(false);
+  const row = results.locator('[data-machine="61"]');
+  await expect(row).toContainText(
+    'Synthetic maintenance site › Synthetic pump hall'
+  );
+  await expect(row.locator('[data-location-path]')).toHaveAttribute(
+    'data-location-path',
+    'Synthetic maintenance site › Synthetic pump hall'
+  );
+  const machine = row.getByRole('link', {
+    name: 'Synthetic pump 061',
+    exact: true
+  });
+  await keyboardTooltip(page, machine);
+  await expect(page.getByRole('tooltip')).toContainText(
+    'Synthetic maintenance site › Synthetic pump hall'
+  );
+  await page.keyboard.press('Escape');
+  await expect(machine).toHaveAttribute('href', /from=sites&search=S1-61$/);
+  await machine.click();
+  const back = machineReturnLink(page);
+  await expect(back).toHaveAttribute(
+    'href',
+    '/web/machines/index/sites/?search=S1-61'
+  );
+  await back.click();
+  await expect(page.getByTestId('machine-page-count')).toHaveText('1 machine');
+  await expect(results.locator('[data-machine="61"]')).toBeVisible();
+  await showExplorerControls(page);
+  await afterRootMachineRead(
+    page,
+    () => search.fill('S1-81'),
+    (params) => params.get('search') === 'S1-81' && params.get('offset') === '0'
+  );
+  await expect(page.getByTestId('machine-page-count')).toHaveText('1 machine');
+  const unassigned = results.locator('[data-machine="81"]');
+  await expect(
+    unassigned.getByRole('link', { name: 'Synthetic pump 081', exact: true })
+  ).toBeVisible();
+  await expect(
+    unassigned.getByRole('button', {
+      name: 'Physical location not assigned',
+      exact: true
+    })
+  ).toBeVisible();
+  await afterRootMachineRead(
+    page,
+    () => search.fill(''),
+    (params) => params.get('search') === '' && params.get('offset') === '0'
+  );
+  await expect(page.getByTestId('machine-page-count')).toHaveText('25 of 108');
+  await afterRootMachineRead(
+    page,
+    () =>
+      page.getByRole('switch', { name: 'In alarm only', exact: true }).check(),
+    (params) => params.get('has_alarms') === 'true'
+  );
+  await expect(page.getByTestId('machine-page-count')).toHaveText('25 of 78');
+  await expect
+    .poll(() => listRequests().at(-1)?.params.get('has_alarms'))
+    .toBe('true');
+  expect(listRequests().at(-1)?.params.get('active_only')).toBe('true');
+  expect(fixture.requests.every((request) => request.method === 'GET')).toBe(
+    true
+  );
+});
+
+test('By location root site and unassigned counts use the full active scope and explicit inclusion filters', async ({
+  page
+}) => {
+  const fixture = await mockExplorer(page);
+  fixture.state.withArchivedLocation = true;
+  fixture.machines[109].physical_location = fixture.archivedChild;
+  await afterRootMachineRead(page, () =>
+    openExplorer(page, '/machines/index/sites/')
+  );
+  await expect(page.getByTestId('machine-page-count')).toHaveText('25 of 108');
+  const roots = await openRootLocations(page);
+  const site = roots
+    .getByRole('listitem')
+    .filter({ hasText: 'Synthetic maintenance site' });
+  await expect(site).toContainText('79 machines');
+  await expect(
+    roots.getByText('Archived synthetic site', { exact: true })
+  ).toHaveCount(0);
+  const unassigned = page.getByRole('link', {
+    name: /View unassigned machines.*29/
+  });
+  await expect(unassigned).toBeVisible();
+  await expect(unassigned).toHaveAttribute(
+    'href',
+    '/machines/index/unassigned/'
+  );
+  expect(
+    fixture.locationRequests.some(
+      (params) =>
+        params.get('parent') === 'root' &&
+        params.get('include_counts') === 'true' &&
+        params.get('active') === 'true' &&
+        params.get('active_only') === 'true'
+    )
+  ).toBe(true);
+  expect(
+    fixture.requests.some(
+      ({ params }) =>
+        params.get('unassigned') === 'true' &&
+        params.get('limit') === '1' &&
+        params.get('active') === 'true' &&
+        params.get('active_only') === 'true'
+    )
+  ).toBe(true);
+  await afterRootMachineRead(
+    page,
+    () =>
+      page
+        .getByRole('checkbox', { name: 'Show archived locations', exact: true })
+        .check(),
+    (params) => params.get('active_only') === 'false'
+  );
+  await expect(page.getByTestId('machine-page-count')).toHaveText('25 of 109');
+  await expect(
+    roots.getByRole('listitem').filter({ hasText: 'Archived synthetic site' })
+  ).toContainText('1 machine');
+  await afterRootMachineRead(
+    page,
+    () =>
+      page
+        .getByRole('checkbox', { name: 'Show inactive', exact: true })
+        .check(),
+    (params) => !params.has('active')
+  );
+  await expect(page.getByTestId('machine-page-count')).toHaveText('25 of 110');
+  await expect(site).toContainText('80 machines');
+  expect(
+    fixture.requests.some(
+      ({ params }) =>
+        params.get('limit') === '25' &&
+        params.get('active_only') === 'false' &&
+        !params.has('active')
+    )
+  ).toBe(true);
+  await roots
+    .getByRole('link', { name: 'Synthetic maintenance site', exact: true })
+    .click();
+  await showExplorerControls(page);
+  await expect(
+    page.getByRole('switch', { name: 'Include sublocations', exact: true })
+  ).toBeChecked();
+  await expectLocationTotals(page, 80, true);
+  const selected = fixture.requests
+    .filter(({ params }) => params.get('location') === '12')
+    .at(-1)!.params;
+  expect(selected.get('include_descendants')).toBe('true');
+  expect(selected.has('active_only')).toBe(false);
+});
+
+test('By location root hides the unassigned action when the API count is zero', async ({
+  page
+}) => {
+  const fixture = await mockExplorer(page);
+  fixture.state.totalLimit = 80;
+  await afterRootMachineRead(page, () =>
+    openExplorer(page, '/machines/index/sites/')
+  );
+  await expect(page.getByTestId('machine-page-count')).toHaveText('25 of 79');
+  const roots = await openRootLocations(page);
+  await expect(
+    roots
+      .getByRole('listitem')
+      .filter({ hasText: 'Synthetic maintenance site' })
+  ).toContainText('79 machines');
+  await expect(
+    page.getByRole('link', { name: /View unassigned machines/ })
+  ).toHaveCount(0);
+  expect(
+    fixture.requests.some(
+      ({ params }) =>
+        params.get('unassigned') === 'true' && params.get('limit') === '1'
+    )
+  ).toBe(true);
+});
+
+test('By location root distinguishes a globally empty active scope from a failed machine read', async ({
+  page
+}) => {
+  const fixture = await mockExplorer(page);
+  fixture.state.totalLimit = 0;
+  await afterRootMachineRead(page, () =>
+    openExplorer(page, '/machines/index/sites/')
+  );
+  await expect(
+    page.getByRole('heading', { name: 'No active machines', exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByText('No machines at this location', { exact: true })
+  ).toHaveCount(0);
+  await expect(
+    page.getByText(
+      'No machine is placed at this location or its sublocations.',
+      { exact: true }
+    )
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('link', { name: 'Browse all machines', exact: true })
+  ).toHaveCount(0);
+  await expect(page.locator('[data-machine]')).toHaveCount(0);
+  await openRootLocations(page);
+  await expect(
+    page.getByRole('link', { name: /View unassigned machines/ })
+  ).toHaveCount(0);
+  fixture.state.status = 503;
+  await afterRootMachineRead(
+    page,
+    () => page.getByRole('button', { name: 'Refresh', exact: true }).click(),
+    () => true,
+    503
+  );
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'Machines unavailable' })
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'No active machines', exact: true })
+  ).toHaveCount(0);
+  await expect(page.getByTestId('machine-results')).toHaveCount(0);
+  await expect(page.getByTestId('machine-page-count')).toHaveCount(0);
+  await expect(
+    page.getByRole('region', { name: 'Loaded page summary', exact: true })
+  ).toHaveCount(0);
+  fixture.state.status = 200;
+  await afterRootMachineRead(page, () =>
+    page.getByRole('button', { name: 'Retry', exact: true }).click()
+  );
+  await expect(
+    page.getByRole('heading', { name: 'No active machines', exact: true })
+  ).toBeVisible();
+  const latest = fixture.requests
+    .filter(({ params }) => params.get('limit') === '25')
+    .at(-1)!.params;
+  expect(latest.get('active')).toBe('true');
+  expect(latest.get('active_only')).toBe('true');
+  expect(latest.has('location')).toBe(false);
+});
+
 test('machine return restores direct location search alarms page and selected path', async ({
   page
 }, testInfo) => {

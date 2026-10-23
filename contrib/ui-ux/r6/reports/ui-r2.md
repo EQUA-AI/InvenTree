@@ -1347,3 +1347,46 @@ Verification: **25 consecutive unchanged phone-case passes, zero retries; comple
 No tracked tests changed. The complete `tests/s1/pui_machine_explorer.spec.ts` and helpers were copied read-only from `r6/ui-r2-testfix` at `f9bda9fb4`; the spec remains byte-identical (`spec.json`). Supplemental checks are only in `data/devscratch/ui-r2/followup11/probe.spec.ts`. Six final menu/filtered/reopened PNGs in `data/devscratch/ui-r2/followup11/captures/` individually inspected; paths/hashes in `capture-review.json`.
 
 Evidence: `data/devscratch/ui-r2/followup11/{host-trace-summary,source,spec,types,lingui-result}.json`, `{smoke,repeated,explorer,probe,units,prek-final}.log`, matching browser results and per-frame geometry JSON. Frozen source digest `c22493dd50a6`. Linux Chromium used only owned WS3012/harness15250 and synthetic intercepted fixtures; runtime stopped and ports clear. No owner records, dependencies, strings, stored data or Git writes. **Mac host confirmation remains with the coordinator**; parent/deployed acceptance unchanged.
+
+
+## Follow-up 12
+
+Built on `5a1753b00`. By location now opens with the same server-paged machine table used for a selected location: all active machines across non-archived placements, plus unassigned machines. Search, criticality, alarm filters, paging and summary counts use that scope. Archive/inactive filters remain explicit, and selecting a location still includes sublocations by default.
+
+The existing machine API already expresses the all-location scope; it gains an opt-in archive/ancestor filter. The location list gains an opt-in grouped count projection, independent of its page and the machine table page. The left pane retains the tree and top-level site navigation with full API machine counts; the unassigned action appears only for a positive API count. Root machine rows show compact placement names with the complete path available on hover and keyboard focus. Phone opens with the machine cards visible and the chooser closed. A globally empty scope says “No active machines”; a failed read stays visibly distinct.
+
+Source files changed (4):
+
+- `src/backend/InvenTree/assets/location_api.py`
+- `src/frontend/src/pages/assets/locations/LocationWorkspace.tsx`
+- `src/frontend/src/pages/assets/locations/locationTree.ts`
+- `src/frontend/src/pages/assets/locations/locationTypes.ts`
+
+Test files changed (8):
+
+- `src/backend/InvenTree/assets/tests/test_location_root_population.py` (new)
+- `src/frontend/src/pages/assets/locations/locationTree.test.ts`
+- `src/frontend/tests/pages/pui_asset_locations.spec.ts`
+- `src/frontend/tests/s1/machineExplorerFixtures.ts`
+- `src/frontend/tests/s1/pui_machine_explorer.spec.ts`
+- `src/frontend/tests/s8/ownerFixtures.ts`
+- `src/frontend/tests/s8/pui_ui_owner_followup.spec.ts`
+- `src/frontend/tests/s8/pui_ui_round2_captures.spec.ts`
+
+Verification: **20/20 focused browser executions pass**: eight new root desktop/phone cases, three retained S0 location cases, four S8 location-browser theme/device cases, two retained archive-scope cases and three final captures. Root cases cover full counts beyond the loaded page, server paging/filtering, exact return links, focused full-path tooltips, unassigned inclusion/zero hiding, archive/inactive scope changes, selected descendants and empty/failed/retry states. S0's root fixture contains both complete site cohorts (41 machines), with API counts independent of the 25-row page. No unrelated outdated wording/clock specs changed.
+
+Units: **70/70** across locationTree, machineListState and pageFacts. The app and all eight sprint TypeScript projects pass, along with an isolated S0 spec typecheck; app/S1/S8/S0 rechecks cover the final source. An extra legacy `tsconfig.playwright.json` check still reports three errors in untouched `playwright/g2-rv0809.vite.ts`, `playwright/voice-rv15.vite.ts` and `playwright/voice-deferred-focus.tsx` (two unbuilt version-info declarations and a missing demo-metrics-lingui side-effect import); no unrelated harness files changed. Lingui extract and compile pass with all **117 locale files restored bytewise**.
+
+Backend: **31/31 real API tests pass**, including four new root-population cases, existing PhysicalLocation and criticality coverage. The stock offline SQLite profile first produced 20 passes and 11 inherited checkpoint-schema errors. The passing disposable network-disabled runner uses the retained original migrations with only `legacy_boundary` excluded from scratch settings, so SQLite receives the real ORM columns; no schema supplements or permission mocks were used. System checks pass and all retained migrations are applied (the runner also reports pre-existing model/migration drift outside this change). Evidence: `data/devscratch/ui-r2/followup12/backend-orm-final/`; the initial profile result remains in `followup12/backend/`. No product migration, model or stored plant data changed.
+
+Final source digest: `ac05f4e63a5a`. Evidence under `data/devscratch/ui-r2/followup12/` includes `source.json`, `units.log`, `types.json`, `types-final.json`, `lingui-result-final.json`, matching browser logs/results and changed-file prek logs. Initial cold browser/harness setup timeouts and test-authoring runs are preserved separately; they are not counted as final passes. Final tests register response waits before actions and retain their normal DOM assertion budgets. Browser verification uses intercepted synthetic fixtures only, owned WS3012/harness15250; no owner localhost, real records, Azure, dependencies or Git writes. Deployment, Mac host and parent acceptance remain with the coordinator.
+
+Fresh final captures, all personally inspected, in `data/devscratch/ui-r2/final12/`:
+
+- `10-location-light-desktop.png`
+- `19-location-dark-desktop.png`
+- `20-location-light-phone.png`
+
+Each metadata file identifies final source `5a1753b00+f12-ac05f4e63a5a`; `followup12/capture-review.json` records PNG hashes and review. Desktop shows the initial root table alongside the tree/site counts. Phone starts with the chooser closed and the complete first card above the 844px fold (around 720px), with all facts and compact placement visible. No overlaps or horizontal clipping found. The fixture retains seven synthetic navigation sites and 86 machines; it does not read or assume the owner's current site records.
+
+Browser evidence: `root-final7.log`, `s0-final.log`, `s8-owner-final.log`, `s8-archived-final.log`, `captures-final.log`, their result directories and capture metadata. Owned browser container and harness stopped; ports 3012/15250 clear. Final changed-file prek, whitespace checks and source-hash verification pass. Remaining limitations are the documented legacy extra TypeScript config and stock SQLite checkpoint profile; app/sprint checks and the real-migration API runner pass. No requested product change skipped; no deployment or Mac acceptance claimed.

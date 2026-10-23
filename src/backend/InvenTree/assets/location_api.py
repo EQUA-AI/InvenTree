@@ -110,6 +110,15 @@ def _boolean(value, field, default=False):
     return value == 'true'
 
 
+def _active_location_ids(graph):
+    """Exclude archived nodes and every node beneath an archived ancestor."""
+    return {
+        pk
+        for pk in graph
+        if not any(node.archived for node in locations.ancestors(graph, pk))
+    }
+
+
 class LocationContext(LocationView):
     """Only the workspaces this actor can use for a new physical location."""
 
@@ -136,6 +145,8 @@ class LocationList(LocationView):
         """Return locations with authorized breadcrumbs and child hints."""
         graph = locations.graph_for(request.user)
         rows = list(graph.values())
+        active_only = _boolean(request.query_params.get('active_only'), 'active_only')
+        active_locations = _active_location_ids(graph) if active_only else None
         parent = request.query_params.get('parent')
         search = request.query_params.get('search', '').strip().casefold()
         if parent is not None:
@@ -152,18 +163,37 @@ class LocationList(LocationView):
                 for row in rows
                 if search in row.name.casefold() or search in row.code.casefold()
             ]
-        if _boolean(request.query_params.get('active_only'), 'active_only'):
-            rows = [
-                row
-                for row in rows
-                if not any(p.archived for p in locations.ancestors(graph, row.pk))
-            ]
+        if active_only:
+            rows = [row for row in rows if row.pk in active_locations]
         rows.sort(key=lambda row: (row.name.casefold(), row.pk))
         pagination = LocationPagination()
         page = pagination.paginate_queryset(rows, request, view=self)
-        return pagination.get_paginated_response([
-            locations.location_data(row, graph) for row in page
-        ])
+        data = [locations.location_data(row, graph) for row in page]
+        if _boolean(request.query_params.get('include_counts'), 'include_counts'):
+            machines = AssetMachine.objects.filter(
+                client_id__in=locations.client_ids(request.user)
+            )
+            if 'active' in request.query_params:
+                machines = machines.filter(
+                    active=_boolean(request.query_params.get('active'), 'active')
+                )
+            if active_only:
+                machines = machines.filter(physical_location_id__in=active_locations)
+            direct = {
+                row['physical_location_id']: row['count']
+                for row in machines.values('physical_location_id').annotate(
+                    count=Count('pk')
+                )
+            }
+            for row in data:
+                row['counts'] = {
+                    'direct_machines': direct.get(row['pk'], 0),
+                    'total_machines': sum(
+                        direct.get(pk, 0)
+                        for pk in locations.descendants(graph, row['pk'])
+                    ),
+                }
+        return pagination.get_paginated_response(data)
 
     @extend_schema(request=LocationInput, responses={201: dict})
     def post(self, request):
@@ -321,6 +351,11 @@ class LocationMachines(LocationView):
         if 'active' in request.query_params:
             rows = rows.filter(
                 active=_boolean(request.query_params.get('active'), 'active')
+            )
+        if _boolean(request.query_params.get('active_only'), 'active_only'):
+            rows = rows.filter(
+                Q(physical_location__isnull=True)
+                | Q(physical_location_id__in=_active_location_ids(graph))
             )
         location = request.query_params.get('location')
         unassigned = _boolean(request.query_params.get('unassigned'), 'unassigned')

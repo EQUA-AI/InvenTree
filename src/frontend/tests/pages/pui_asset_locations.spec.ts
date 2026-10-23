@@ -327,18 +327,33 @@ async function installMocks(page: Page) {
         ];
         if (!includeDescendants) rows = rows.slice(0, count);
       } else {
-        count = 12;
+        // Complete cross-site scope: 11 active North machines, 30 active
+        // South machines, plus the explicitly includable unassigned record.
         rows = [
-          machineRow(5, 'Pump 1', { locationPk: 12 }),
+          machineRow(5, 'Pump 1', {
+            locationPk: 12,
+            alarms: { open: 3, critical: 2, warning: 1 }
+          }),
+          machineRow(7, 'Pump 3', {
+            locationPk: 12,
+            alarms: { open: 1, critical: 0, warning: 1 }
+          }),
+          ...Array.from({ length: 6 }, (_, i) =>
+            machineRow(30 + i, `Compressor ${i + 1}`, { locationPk: 12 })
+          ),
+          ...Array.from({ length: 3 }, (_, i) =>
+            machineRow(40 + i, `Grinder ${i + 1}`, { locationPk: 1 })
+          ),
+          ...Array.from({ length: 30 }, (_, i) =>
+            machineRow(60 + i, `Fan ${i + 1}`, { locationPk: 21 })
+          ),
           machineRow(6, 'Pump 2', {
             locationPk: null,
             active: false,
             legacy: 'Old line 3'
-          }),
-          ...Array.from({ length: 10 }, (_, i) =>
-            machineRow(40 + i, `Grinder ${i + 1}`, { locationPk: 12 })
-          )
+          })
         ];
+        count = rows.length;
       }
       if (params.get('active') === 'true') {
         rows = rows.filter((row) => row.active);
@@ -386,7 +401,17 @@ async function installMocks(page: Page) {
       return json({
         count: rows.length,
         next: offset + limit < rows.length ? 'next' : null,
-        results: rows.slice(offset, offset + limit).map(locationRow)
+        results: rows.slice(offset, offset + limit).map((loc) => ({
+          ...locationRow(loc),
+          ...(params.get('include_counts') === 'true'
+            ? {
+                counts: {
+                  direct_machines: loc.pk === 1 ? 3 : 0,
+                  total_machines: loc.pk === 1 ? 11 : loc.pk === 2 ? 30 : 0
+                }
+              }
+            : {})
+        }))
       });
     }
 
@@ -629,12 +654,34 @@ test('deep link beyond the first branch page is revealed in the tree', async ({
   ).toHaveAttribute('data-expanded', 'true');
 });
 
-test('root overview: Browse top-level locations lists roots when nothing is selected', async ({
+test('By location root immediately lists machines and keeps paginated site navigation', async ({
   page
 }) => {
-  const { listRequests } = await installMocks(page);
+  const { listRequests, machineListRequests } = await installMocks(page);
+  const initialRead = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.pathname.endsWith('/locations/machines/') &&
+      response.status() === 200 &&
+      url.searchParams.get('limit') === '25' &&
+      !url.searchParams.has('location')
+    );
+  });
   await page.goto('/playwright/machine-locations.html?mode=workspace');
+  await (await initialRead).finished();
   await expect(page.getByText('Choose a location')).toHaveCount(0);
+  await expect(page.locator('[data-machine]')).toHaveCount(25);
+  await expect(page.getByTestId('machine-page-count')).toHaveText('25 of 41');
+  const rootRequest = machineListRequests.find(
+    (request) => request.params.get('limit') === '25'
+  )!.params;
+  expect(rootRequest.get('active')).toBe('true');
+  expect(rootRequest.get('active_only')).toBe('true');
+  expect(rootRequest.has('location')).toBe(false);
+  expect(rootRequest.get('unassigned')).toBe('false');
+  await expect(
+    page.getByRole('link', { name: /View unassigned machines/ })
+  ).toHaveCount(0);
   await expect(
     page.getByRole('heading', { name: 'Browse top-level locations' })
   ).toBeVisible();
@@ -646,17 +693,73 @@ test('root overview: Browse top-level locations lists roots when nothing is sele
   await expect(page.getByRole('link', { name: 'Warehouse' })).toHaveCount(0);
 
   await page
-    .getByRole('navigation', { name: /pagination/i })
+    .getByRole('navigation', {
+      name: 'Location overview pagination',
+      exact: true
+    })
     .getByRole('button', { name: '2' })
     .click();
   await expect(page.getByRole('link', { name: 'Warehouse' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'North Site' })).toBeVisible();
+  const overview = page.getByRole('list', {
+    name: 'Top-level locations',
+    exact: true
+  });
+  await expect(
+    overview.getByRole('listitem').filter({ hasText: 'North Site' })
+  ).toContainText('11 machines');
+  await expect(
+    overview.getByRole('listitem').filter({ hasText: 'South Site' })
+  ).toContainText('30 machines');
+  await expect(
+    overview.getByRole('listitem').filter({ hasText: 'Warehouse' })
+  ).toContainText('0 machines');
+  // Site paging leaves the global machine scope and its independent pager intact.
+  await expect(page.getByTestId('machine-page-count')).toHaveText('25 of 41');
+  const secondPageRead = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.pathname.endsWith('/locations/machines/') &&
+      response.status() === 200 &&
+      url.searchParams.get('offset') === '25' &&
+      !url.searchParams.has('location')
+    );
+  });
+  await page
+    .getByRole('navigation', {
+      name: 'Machine results pagination',
+      exact: true
+    })
+    .getByRole('button', { name: '2', exact: true })
+    .click();
+  await (await secondPageRead).finished();
+  await expect(page.getByTestId('machine-page-count')).toHaveText('16 of 41');
+  await expect(page.locator('[data-machine]')).toHaveCount(16);
+  const fan = page.locator('[data-machine="74"]');
+  await expect(
+    fan.getByRole('link', { name: 'Fan 15', exact: true })
+  ).toBeVisible();
+  await expect(fan.locator('[data-location-path]')).toHaveAttribute(
+    'data-location-path',
+    'South Site › Line One'
+  );
+  expect(lastMachineRequest(machineListRequests).params.get('offset')).toBe(
+    '25'
+  );
+  expect(lastMachineRequest(machineListRequests).params.has('location')).toBe(
+    false
+  );
   await expect
     .poll(() => {
       const root = listRequests.filter(
         (r) => r.params.get('parent') === 'root'
       );
-      return root.some((r) => r.params.get('offset') === '10');
+      return root.some(
+        (r) =>
+          r.params.get('offset') === '10' &&
+          r.params.get('include_counts') === 'true' &&
+          r.params.get('active') === 'true'
+      );
     })
     .toBe(true);
 });
