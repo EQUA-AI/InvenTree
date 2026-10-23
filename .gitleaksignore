@@ -28,3 +28,11 @@ src/backend/InvenTree/assets/demo_metrics/resources/demo_fixture.json:generic-ap
 src/backend/InvenTree/assets/demo_metrics/resources/demo_fixture.json:generic-api-key:841
 src/backend/InvenTree/assets/demo_metrics/resources/demo_fixture.json:generic-api-key:861
 src/backend/InvenTree/assets/test_demo_metrics_cohort_api.py:generic-api-key:651
+
+# R8 procurement (2026-10-23, coordinator review): synthetic fixture operation/policy keys such as
+# 'r8-fixture-1', 'r8-fixture-policy', 'r8-fixture-evidence-1'; no credentials.
+d362990f6b4e8f290f5582e795eff98ede3c5be0:src/backend/tasks/tests/test_r8_acceptance.py:generic-api-key:47
+d362990f6b4e8f290f5582e795eff98ede3c5be0:src/backend/tasks/tests/test_r8_acceptance.py:generic-api-key:124
+097fd3da4450d7a609e2f76a3dd2a117034c4da6:src/frontend/playwright/r8-procurement.tsx:generic-api-key:26
+ba2c4593c65ced4dc2954a3c46b8e974665a0d0c:src/backend/InvenTree/order/r8_fixture_checks.py:generic-api-key:57
+ba2c4593c65ced4dc2954a3c46b8e974665a0d0c:src/backend/InvenTree/order/test_procurement_evidence.py:generic-api-key:76
