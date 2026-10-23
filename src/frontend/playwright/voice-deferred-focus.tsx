@@ -12,7 +12,7 @@
  * AnalysisScopeMode has no 'machines' member).
  * This is MOCKED BROWSER RENDERING — not a live backend E2E run.
  */
-import './demo-metrics-lingui';
+import './test-lingui';
 
 import { MantineProvider } from '@mantine/core';
 import '@mantine/core/styles.css';

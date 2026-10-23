@@ -222,6 +222,8 @@ async function installMocks(page: Page) {
   const listRequests: RecordedRequest[] = [];
   const detailRequests: RecordedRequest[] = [];
   const machineListRequests: RecordedRequest[] = [];
+  const healthRequests: RecordedRequest[] = [];
+  const workMetricRequests: RecordedRequest[] = [];
 
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
@@ -367,7 +369,7 @@ async function installMocks(page: Page) {
       return json({
         count,
         next: offset + limit < count ? 'next' : null,
-        results: rows.slice(offset, offset + limit)
+        results: rows.slice(offset, Math.min(count, offset + limit))
       });
     }
 
@@ -427,14 +429,44 @@ async function installMocks(page: Page) {
       });
     }
 
+    if (path.endsWith('/health/')) {
+      healthRequests.push({ path, params });
+      return json({
+        configured: false,
+        state: 'unknown',
+        signal_count: 0,
+        stale_signal_count: 0,
+        degraded_data: false,
+        last_observed_at: null,
+        anomaly_counts: {},
+        sources: []
+      });
+    }
+    if (path.endsWith('/maintenance-metrics/')) {
+      workMetricRequests.push({ path, params });
+      return json({
+        id: params.get('metric'),
+        version: 1,
+        state: 'unavailable',
+        complete: false
+      });
+    }
     return json({});
   });
 
-  return { listRequests, detailRequests, machineListRequests };
+  return {
+    listRequests,
+    detailRequests,
+    machineListRequests,
+    healthRequests,
+    workMetricRequests
+  };
 }
 
 function lastMachineRequest(requests: RecordedRequest[]) {
-  return requests[requests.length - 1];
+  return requests
+    .filter((request) => request.params.get('limit') === '25')
+    .at(-1);
 }
 
 async function expectSelectedLocationMachines(page: Page, count: number) {
@@ -743,10 +775,10 @@ test('By location root immediately lists machines and keeps paginated site navig
     'data-location-path',
     'South Site › Line One'
   );
-  expect(lastMachineRequest(machineListRequests).params.get('offset')).toBe(
+  expect(lastMachineRequest(machineListRequests)?.params.get('offset')).toBe(
     '25'
   );
-  expect(lastMachineRequest(machineListRequests).params.has('location')).toBe(
+  expect(lastMachineRequest(machineListRequests)?.params.has('location')).toBe(
     false
   );
   await expect
@@ -791,6 +823,55 @@ test('Include sublocations toggle drives table scope and wording', async ({
       return req?.params.get('include_descendants');
     })
     .toBe('false');
+});
+
+test('location metrics disclosure reads the same active population and preserves inventory', async ({
+  page
+}) => {
+  const { machineListRequests, healthRequests, workMetricRequests } =
+    await installMocks(page);
+  await page.goto(
+    '/playwright/machine-locations.html?mode=workspace&location=12'
+  );
+  await expectSelectedLocationMachines(page, 8);
+  const disclosure = page.getByRole('button', {
+    name: 'Machine metrics',
+    exact: true
+  });
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+  expect(healthRequests).toHaveLength(0);
+  expect(workMetricRequests).toHaveLength(0);
+  await disclosure.focus();
+  await page.keyboard.press('Enter');
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+  await expect(
+    page.getByRole('heading', { name: 'Needs attention', exact: true })
+  ).toBeVisible();
+  await expect.poll(() => healthRequests.length).toBe(8);
+  await expect.poll(() => workMetricRequests.length).toBeGreaterThan(0);
+  const population = () =>
+    machineListRequests.filter((read) => read.params.get('limit') === '100');
+  expect(population().at(-1)?.params.get('active')).toBe('true');
+  expect(population().at(-1)?.params.get('include_descendants')).toBe('true');
+
+  await page
+    .getByRole('checkbox', { name: 'Show inactive', exact: true })
+    .check();
+  await expectSelectedLocationMachines(page, 9);
+  await expect
+    .poll(() => population().at(-1)?.params.has('active'))
+    .toBe(false);
+  await expect
+    .poll(() => healthRequests.some((read) => read.path.includes('/6/')))
+    .toBe(true);
+  expect(
+    [...population(), ...healthRequests, ...workMetricRequests].every(
+      (read) => !read.params.has('demo_session')
+    )
+  ).toBe(true);
+  await disclosure.click();
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+  await expectSelectedLocationMachines(page, 9);
 });
 
 test('native summary and machine rows remain aligned for an old cohort link', async ({
@@ -926,7 +1007,9 @@ test('search shows location-total labeling and a truthful empty state', async ({
   await page.goto(
     '/playwright/machine-locations.html?mode=workspace&location=12'
   );
-  await expect(page.getByText('Pump 1')).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'Pump 1', exact: true })
+  ).toBeVisible();
 
   await page.getByRole('textbox', { name: 'Search machines' }).fill('zzz');
   await expect(page.getByText('No machines match your search.')).toBeVisible();
@@ -943,7 +1026,9 @@ test('search shows location-total labeling and a truthful empty state', async ({
   );
 
   await clear.click();
-  await expect(page.getByText('Pump 1')).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'Pump 1', exact: true })
+  ).toBeVisible();
 });
 
 test('a failed machine read is not a zero count', async ({ page }) => {
@@ -957,7 +1042,12 @@ test('a failed machine read is not a zero count', async ({ page }) => {
   await expect(page.getByText('Machines unavailable')).toBeVisible({
     timeout: 20_000
   });
-  await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+  await expect(
+    page
+      .getByRole('alert')
+      .filter({ hasText: 'Machines unavailable' })
+      .getByRole('button', { name: 'Retry', exact: true })
+  ).toBeVisible();
   await expect(page.getByText(/0 machines/)).toHaveCount(0);
 });
 

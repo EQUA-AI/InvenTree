@@ -83,11 +83,19 @@ export function numericValue(sample: {
   value: unknown;
   plot_value?: number | null;
 }): number | null {
-  if (typeof sample.plot_value === 'number') {
+  if (
+    typeof sample.plot_value === 'number' &&
+    Number.isFinite(sample.plot_value)
+  ) {
     return sample.plot_value;
   }
   const { value } = sample;
-  if (value === null || value === undefined || typeof value === 'boolean') {
+  if (
+    value === null ||
+    value === undefined ||
+    typeof value === 'boolean' ||
+    (typeof value === 'string' && value.trim() === '')
+  ) {
     return null;
   }
   const parsed = Number(value);

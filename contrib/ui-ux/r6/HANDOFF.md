@@ -1,5 +1,29 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## Machine metrics review fixes — 23 October 2026 (ready for coordinator review)
+
+Restoring independent Health reads during summary failure, required quantity/note
+for absent allocation, and the unassigned ownership fact after independent review.
+All 13 frontend types and 216 focused units pass; metrics 69+9 intentional skips,
+Health 42+4 and native Board navigation 6 pass. Captures inspected; no parent
+acceptance change. See [Review fixes](reports/machine-metrics-merge.md#review-fixes).
+
+## Machine metrics merge — 23 October 2026 (ready for coordinator review)
+
+Integrated Lowkey `d26cce7bd` into `537b6f4de` by source edits only, preserving
+R6 follow-ups 2–12 and R8 Work/Closeout behavior. [Merge report](reports/machine-metrics-merge.md)
+records all 15 conflict resolutions and production-look changes. All 13 frontend
+TypeScript projects and 1101 units pass. Final metrics 55+9 intentional capture skips,
+locations 20, owner 16, maintenance 20 and R8 148+7 intentional skips pass; broad S8
+269/276 followed by 18 clean unchanged setup replays; S1 51/52 plus clean unchanged
+failed-case replay. Three scope regressions fail against old behaviors and pass
+restored; nine final matrix images inspected/byte-matched. Backend ORM 566 pass,
+3 errors reproduced on HEAD, 1 skip; stock checkpoint, migration drift and tracking
+inventory remain inherited gates. All 79 `.po` restored bytewise; Git index/HEAD/
+MERGE_HEAD unchanged. Owned browser removed, ports 3026/15276 clear. Coordinator
+staging/human review, authenticated integration, deployment and parent acceptance
+remain separate; no PR, issue or Git write.
+
 ## UI round 2 Follow-up 12 — 23 October 2026 (ready for coordinator review)
 
 Built on `5a1753b00`: By location root immediately shows all active machines
@@ -99,7 +123,7 @@ integrated real-data/human review; no deployment/product acceptance inferred.
 C's custody recovery is combined with B's issue attribution and pending-usage
 reconciliation. Shared recovery is mounted in native A/B commands, approval,
 receiving and explicit issue/use controls. Offline325, fresh PostgreSQL329,
-concurrency5, email-policy23, units32 and all93 current browser cases are covered
+concurrency5, email-policy23, units32 and all 93 current browser cases are covered
 by passing matrix/focused runs. Standalone private seed dry-run/apply/remove
 passes; no owner seed occurred. See [contracts, evidence and localhost preview/removal](../r8-procurement/reports/integration-wave1.md#lane-c-merge).
 Migration drift, two baseline type projects and the staged-index synthetic-key

@@ -267,7 +267,8 @@ export function MachineMoveDialog({
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['asset-locations'] }),
-        queryClient.invalidateQueries({ queryKey: ['maintenance-metrics'] })
+        queryClient.invalidateQueries({ queryKey: ['maintenance-metrics'] }),
+        queryClient.invalidateQueries({ queryKey: ['machine-metrics'] })
       ]);
       onSaved();
     }

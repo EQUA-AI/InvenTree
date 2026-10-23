@@ -6,13 +6,13 @@
  * MemoryRouter; every API response is supplied by Playwright route mocks from
  * tests/pages/pui_asset_locations.spec.ts. This is MOCKED BROWSER RENDERING —
  * not a real backend E2E run. Unique machine-* filenames keep this harness
- * independent of the chat worker's fixtures.
+ * independent of the chat worker's fixtures and machine-metrics entrypoint.
  * The provider follows the emulated system theme for visual QA.
  *
- * The Lingui bootstrap is shared with the chat fixture so
+ * The shared test Lingui bootstrap initializes translations before imports so
  * module-level translation calls stay safe during static imports.
  */
-import './aichat-drawer-lingui';
+import './test-lingui';
 
 import { i18n } from '@lingui/core';
 import { I18nProvider } from '@lingui/react';
@@ -50,7 +50,7 @@ function Destination() {
   );
 }
 
-/** Test hook: mutate the router query string (cohort changes, back/forward). */
+/** Test hook: mutate the router query string (scope changes, back/forward). */
 function TestHooks() {
   const [params, setParams] = useSearchParams();
   (window as any).__machineTest = {

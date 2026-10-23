@@ -13,8 +13,10 @@ import { apiUrl } from '@lib/functions/Api';
 import type { SignalTrend } from '@lib/types/MachineHealth';
 
 import { useApi } from '../../../contexts/ApiContext';
+import { formatInstant, useDisplayClock } from './mimic/observedTime';
+import { trendGeometry } from './trendGeometry';
 import { type TrendStatusFact, trendStatusFact } from './trendPresentation';
-import { prepareTrend, sparklinePath } from './trendSamples';
+import { prepareTrend } from './trendSamples';
 
 const WIDTH = 120;
 const HEIGHT = 28;
@@ -88,6 +90,7 @@ export function SignalTrendSparkline({
   focusable?: boolean;
 }>) {
   const api = useApi();
+  const clock = useDisplayClock();
 
   // `undefined` is the only value that means nobody is supplying a trend.
   // Testing for it directly here is what went wrong before: the table hands
@@ -133,9 +136,9 @@ export function SignalTrendSparkline({
   // dropped unreadable ones first, so a silence of minutes drew as one step
   // and the readings either side of it were joined.
   const prepared = useMemo(() => prepareTrend(trend), [trend]);
-  const path = useMemo(
-    () => sparklinePath(prepared, WIDTH, HEIGHT),
-    [prepared]
+  const geometry = useMemo(
+    () => trendGeometry(trend?.samples ?? [], WIDTH, HEIGHT, prepared),
+    [trend, prepared]
   );
 
   if (!enabled) {
@@ -152,32 +155,34 @@ export function SignalTrendSparkline({
   });
   if (status) return <TrendStatus fact={status} focusable={focusable} />;
   // A successful status means there are at least two drawable observations.
-  if (!trend || path === null) return null;
+  if (!trend || geometry === null) return null;
 
-  const breaks = prepared.silences + prepared.notNumeric + prepared.notGood;
-
+  const windowText = `${formatInstant(trend.window_start, clock) ?? '—'} – ${formatInstant(trend.window_end, clock) ?? '—'} (${clock.label})`;
+  const scaleText = `${geometry.min.toLocaleString()}–${geometry.max.toLocaleString()} ${trend.unit}`;
+  const summary = t`Recent trend for ${trend.display_name}: ${scaleText}. ${windowText}. Source: ${trend.source_name}. ${geometry.excluded} excluded readings; ${geometry.uncertain} uncertain, ${geometry.bad} bad.`;
   return (
     <Tooltip
       events={{ hover: true, focus: true, touch: false }}
-      label={
-        breaks > 0
-          ? t`${prepared.measured} samples from ${trend.source_name}. The line breaks where the source was silent or a reading could not be drawn.`
-          : t`${prepared.measured} samples from ${trend.source_name}`
-      }
-      multiline={breaks > 0}
-      w={breaks > 0 ? 260 : undefined}
+      label={summary}
+      multiline
+      w={320}
     >
-      <Group gap={4} wrap='nowrap'>
+      <Group
+        gap={4}
+        wrap='nowrap'
+        tabIndex={focusable ? 0 : undefined}
+        aria-label={focusable ? summary : undefined}
+      >
         <Box
           component='svg'
           width={WIDTH}
           height={HEIGHT}
-          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+          viewBox={`-2 -2 ${WIDTH + 4} ${HEIGHT + 4}`}
           role='img'
-          aria-label={t`Recent trend for ${trend.display_name}`}
+          aria-label={summary}
         >
           <path
-            d={path}
+            d={geometry.path}
             fill='none'
             stroke='var(--mantine-color-blue-6)'
             strokeWidth={1.5}
@@ -185,6 +190,15 @@ export function SignalTrendSparkline({
             strokeLinecap='round'
             opacity={0.75}
           />
+          {geometry.points.map((point, index) => (
+            <circle
+              key={index}
+              cx={point.x}
+              cy={point.y}
+              r={1.5}
+              fill='var(--mantine-color-blue-6)'
+            />
+          ))}
         </Box>
         {trend.truncated && <MetaText size='xs'>{t`(trimmed)`}</MetaText>}
       </Group>

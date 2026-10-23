@@ -19,9 +19,9 @@ describe('response-time freshness without a client threshold', () => {
       reason: null
     } as MimicPoint;
     const clock = displayClock('UTC');
-    expect(freshnessText(point, clock)).toBe('2 s old · 08:00:00');
+    expect(freshnessText(point, clock)).toBe('2 s ago · 08:00:00');
     expect(freshnessText({ ...point, reason: 'stale' }, clock)).toBe(
-      'Stale · last observed 08:00:00 (2 s old)'
+      'Stale · last observed 08:00:00 (2 s ago)'
     );
     expect(freshnessText({ ...point, observed_at: null }, clock)).toBe(
       'Observation time unavailable'

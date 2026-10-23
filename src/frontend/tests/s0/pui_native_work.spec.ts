@@ -20,9 +20,15 @@ for (const card of boardCards) {
     const cardContainer = page
       .locator('.mantine-Card-root')
       .filter({ has: title });
-    await cardContainer
-      .getByRole('button', { name: 'Open work order detail', exact: true })
-      .click();
+    const detailLink = cardContainer.getByRole('link', {
+      name: `Open work order: ${card.title}`,
+      exact: true
+    });
+    await expect(detailLink).toHaveAttribute(
+      'href',
+      `/maintenance/work-orders/${card.work_order}/`
+    );
+    await detailLink.click();
     await expect(page.getByTestId('destination')).toHaveText(
       `/maintenance/work-orders/${card.work_order}/`
     );

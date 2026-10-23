@@ -248,6 +248,11 @@ describe('Health trend reading', () => {
     expect(numericValue({ value: 'R', plot_value: null })).toBeNull();
     expect(numericValue({ value: true })).toBeNull();
     expect(numericValue({ value: null })).toBeNull();
+    expect(numericValue({ value: '' })).toBeNull();
+    expect(numericValue({ value: '  ' })).toBeNull();
+    expect(
+      numericValue({ value: 'R', plot_value: Number.POSITIVE_INFINITY })
+    ).toBeNull();
   });
 
   it('prepares nothing from a missing trend', () => {

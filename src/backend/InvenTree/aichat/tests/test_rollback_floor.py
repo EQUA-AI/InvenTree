@@ -47,7 +47,7 @@ class RollbackFloorCheckTests(TestCase):
     def test_missing_marker_read_is_read_only(self):
         """Looking up an absent marker must never write it into existence.
 
-        Read-only commands (demo-metrics bootstrap) run these checks; a
+        Read-only commands run these checks; a
         default-creating lookup turns a read into a refused INSERT per
         process. With cold caches and the marker absent, the check must
         leave no row behind and issue no write SQL.

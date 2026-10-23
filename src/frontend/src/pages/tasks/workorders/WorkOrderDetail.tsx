@@ -73,6 +73,10 @@ import { useApi } from '../../../contexts/ApiContext';
 import { openGlobalAIChatAboutWork } from '../../../states/AIChatState';
 import { useUserState } from '../../../states/UserState';
 import { MonitoringContinuity } from '../../assets/health/MonitoringContinuity';
+import {
+  machineScopeHref,
+  parseMachineScope
+} from '../../assets/locations/machineMetrics';
 import { InvestigationSection } from '../../maintenance/workorders/components/InvestigationSection';
 import { WorkOrderAlertContext } from '../../maintenance/workorders/components/WorkOrderAlertContext';
 import { WorkOrderProblemPanel } from '../../maintenance/workorders/components/WorkOrderProblemPanel';
@@ -132,6 +136,11 @@ const LIFECYCLE_COLORS: Record<string, string> = {
 export default function WorkOrderDetail() {
   const { id } = useParams();
   const api = useApi();
+  const [searchParams] = useSearchParams();
+  const boardHref = machineScopeHref(
+    '/maintenance/board/',
+    parseMachineScope(searchParams)
+  );
   const workOrderId = id && /^\d+$/.test(id) ? Number(id) : Number.NaN;
 
   const workOrderQuery = useQuery({
@@ -168,7 +177,7 @@ export default function WorkOrderDetail() {
           >{t`Retry Work`}</Button>
           <Anchor
             component={Link}
-            to='/maintenance/board'
+            to={boardHref}
           >{t`Return to the work-order board`}</Anchor>
         </Stack>
       </Alert>
@@ -187,7 +196,7 @@ export default function WorkOrderDetail() {
           <Text size='sm'>
             {t`This work order does not exist or is outside your access scope.`}
           </Text>
-          <Anchor component={Link} to='/maintenance/board' size='sm'>
+          <Anchor component={Link} to={boardHref} size='sm'>
             {t`Return to the work-order board`}
           </Anchor>
         </Stack>
@@ -238,6 +247,10 @@ function WorkOrderWorkspace({
   const directEntry = useRef(location.key === 'default');
   const [params, setParams] = useSearchParams();
   const activePanel = workPanelState(params);
+  const boardHref = machineScopeHref(
+    '/maintenance/board/',
+    parseMachineScope(params)
+  );
   const isPhone = useMediaQuery('(max-width: 47.99em)');
   const assistantSurface = useWorkAssistantClearance(isPhone);
   const navigationRef = useRef<HTMLDivElement>(null);
@@ -772,9 +785,7 @@ function WorkOrderWorkspace({
             size={isPhone ? 44 : 28}
             style={{ flexShrink: 0 }}
             onClick={() =>
-              directEntry.current
-                ? navigate('/maintenance/board')
-                : navigate(-1)
+              directEntry.current ? navigate(boardHref) : navigate(-1)
             }
           >
             <IconArrowLeft size={16} />

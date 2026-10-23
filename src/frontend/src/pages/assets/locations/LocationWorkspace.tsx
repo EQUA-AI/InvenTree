@@ -26,6 +26,7 @@ import {
 } from '@mantine/core';
 import { useDebouncedValue, useId } from '@mantine/hooks';
 import {
+  IconChartBar,
   IconChevronRight,
   IconFlag,
   IconMapPin,
@@ -55,6 +56,7 @@ import { MachinePageSummary } from './MachinePageSummary';
 import { machineOpenWorkHref } from '../maintenance/machineWorkViews';
 import { LocationBrowser, locationKindLabel } from './LocationBrowser';
 import { LocationEditDialog, MachineMoveDialog } from './LocationDialogs';
+import { MachineMetricsPanel } from './MachineMetricsPanel';
 import {
   type MachineSourceView,
   countSummary,
@@ -1267,13 +1269,25 @@ export function LocationWorkspace({
   const [mobileOpen, setMobileOpen] = useState(false);
   const choiceFocus = useRef<number | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [metricsOpen, setMetricsOpen] = useState(false);
+  const metricsId = useId();
+  useEffect(() => setMetricsOpen(false), [locationId]);
   const [refreshResult, setRefreshResult] = useState('');
   const refreshLocations = async () => {
     setRefreshResult('');
-    await queryClient.invalidateQueries({ queryKey: ['asset-locations'] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['asset-locations'] }),
+      queryClient.invalidateQueries({ queryKey: ['machine-metrics'] })
+    ]);
     const failed = queryClient
       .getQueryCache()
-      .findAll({ queryKey: ['asset-locations'], type: 'active' })
+      .findAll({
+        type: 'active',
+        predicate: (query) =>
+          ['asset-locations', 'machine-metrics'].includes(
+            String(query.queryKey[0])
+          )
+      })
       .some((query) => query.state.status === 'error');
     setRefreshResult(
       failed
@@ -1451,6 +1465,9 @@ export function LocationWorkspace({
                                 key={node.pk}
                                 component={Link}
                                 to={`?${machineLocationParams(params, node.pk)}`}
+                                aria-current={
+                                  node.pk === selected.pk ? 'page' : undefined
+                                }
                               >
                                 {node.name}
                               </Anchor>
@@ -1570,6 +1587,26 @@ export function LocationWorkspace({
                               })
                             }
                           />
+                          <Tooltip
+                            label={t`Machine metrics`}
+                            events={{ hover: true, focus: true, touch: true }}
+                          >
+                            <Button
+                              size='compact-xs'
+                              variant='subtle'
+                              px={8}
+                              className={operations.phoneTarget}
+                              leftSection={<IconChartBar size={16} />}
+                              aria-label={t`Machine metrics`}
+                              aria-expanded={metricsOpen}
+                              aria-controls={metricsId}
+                              onClick={() => setMetricsOpen((value) => !value)}
+                            >
+                              <Box component='span' visibleFrom='sm'>
+                                {t`Machine metrics`}
+                              </Box>
+                            </Button>
+                          </Tooltip>
                         </Group>
                         <Group
                           gap='sm'
@@ -1635,6 +1672,19 @@ export function LocationWorkspace({
                           </Stack>
                         </Collapse>
                       </Paper>
+                      <Collapse
+                        id={metricsId}
+                        expanded={metricsOpen}
+                        transitionDuration={0}
+                      >
+                        {metricsOpen && (
+                          <MachineMetricsPanel
+                            locationId={selected.pk}
+                            descendants={!direct}
+                            showInactive={listState.showInactive}
+                          />
+                        )}
+                      </Collapse>
                     </>
                   ) : null}
                   {/* Scope changes reload the location counts. Keep the list

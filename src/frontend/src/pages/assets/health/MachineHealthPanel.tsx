@@ -1,7 +1,6 @@
 import { plural, t } from '@lingui/core/macro';
 import {
   Alert,
-  Center,
   Group,
   Loader,
   Paper,
@@ -22,6 +21,7 @@ import { recordedTelemetryAsLive } from '../telemetryPresentation';
 import { useNow } from '../useNow';
 import {
   AttentionAlert,
+  HealthStateBadge,
   MetaText,
   MonitoringLink,
   healthStateVisual
@@ -41,6 +41,7 @@ import { showApiErrorMessage } from '../../../functions/notifications';
 import { WorkOrderCreateModal } from '../../maintenance/components/WorkOrderCreateModal';
 import { AlarmHistory } from './AlarmHistory';
 import { AnomalyList } from './AnomalyList';
+import { HealthQuerySection } from './HealthQuerySection';
 import { HealthSourceStatusTable } from './HealthSourceStatus';
 import { HealthSummaryPanel } from './HealthSummary';
 import classes from './HealthSummary.module.css';
@@ -158,9 +159,13 @@ export function MachineHealthPanel({
 
   const refreshAll = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['machine-health-summary'] });
+    queryClient.invalidateQueries({ queryKey: ['machine-metrics'] });
     queryClient.invalidateQueries({ queryKey: ['machine-health-signals'] });
     queryClient.invalidateQueries({ queryKey: ['machine-health-anomalies'] });
-  }, [queryClient]);
+    queryClient.invalidateQueries({
+      queryKey: ['machine-health-trend', machineId]
+    });
+  }, [queryClient, machineId]);
 
   const handleAcknowledge = useCallback(
     async (anomaly: MachineAnomaly) => {
@@ -213,39 +218,15 @@ export function MachineHealthPanel({
     [api, machineId]
   );
 
-  const isLoading =
-    summaryQuery.isLoading ||
-    signalsQuery.isLoading ||
-    anomaliesQuery.isLoading;
-
-  if (isLoading) {
-    return (
-      <Center p='xl'>
-        <Loader />
-      </Center>
-    );
-  }
-
-  if (summaryQuery.isError) {
-    return (
-      <Alert color='red' variant='light' title={t`Health data unavailable`}>
-        {t`The health service could not be reached. Work-order creation is unaffected.`}
-      </Alert>
-    );
-  }
-
-  const summary = summaryQuery.data;
+  const summary = summaryQuery.isError ? undefined : summaryQuery.data;
   const signals = signalsQuery.data ?? [];
   const anomalies = anomaliesQuery.data ?? [];
   const anomalyAssociationKnown =
     !anomaliesQuery.isError &&
+    !anomaliesQuery.isPending &&
     Number.isInteger(summary?.active_anomaly_count) &&
     anomalies.length >=
       (summary?.active_anomaly_count ?? Number.POSITIVE_INFINITY);
-
-  if (!summary) {
-    return null;
-  }
 
   const bindingId =
     linkedBinding ??
@@ -263,11 +244,13 @@ export function MachineHealthPanel({
       className={monitoring.scope}
       data-testid='pump-health'
     >
-      <VisuallyHidden
-        component='output'
-        aria-live='polite'
-        aria-atomic='true'
-      >{t`Condition now ${healthStateVisual(summary.state).label}; ${plural(summary.active_anomaly_count, { one: '# active anomaly', other: '# active anomalies' })}`}</VisuallyHidden>
+      {summary && (
+        <VisuallyHidden
+          component='output'
+          aria-live='polite'
+          aria-atomic='true'
+        >{t`Condition now ${healthStateVisual(summary.state).label}; ${plural(summary.active_anomaly_count, { one: '# active anomaly', other: '# active anomalies' })}`}</VisuallyHidden>
+      )}
       <Paper withBorder p={{ base: 8, sm: 'sm' }}>
         <Stack gap='xs'>
           <Group
@@ -295,31 +278,42 @@ export function MachineHealthPanel({
             spacing='sm'
           >
             <Stack gap='xs'>
-              {!summary.configured ? (
-                <Alert
-                  color='blue'
-                  variant='light'
-                  icon={<IconInfoCircle size={16} />}
-                  title={t`No health source is configured for this machine`}
-                >
-                  <Stack gap='xs'>
-                    <Text size='sm'>
-                      {t`Map this machine's tags to a health source to see live signals and anomalies here. Until then, its condition is unknown rather than healthy.`}
-                    </Text>
-                    <Text size='sm'>
-                      {t`Creating work orders for this machine works normally in the meantime.`}
-                    </Text>
-                  </Stack>
-                </Alert>
-              ) : (
-                <HealthSummaryPanel
-                  summary={summary}
-                  now={now}
-                  signals={signalsQuery.isError ? null : signals}
-                  anomalies={anomalyAssociationKnown ? anomalies : null}
-                  onSelect={inspectSignal}
-                />
-              )}
+              <HealthQuerySection
+                query={summaryQuery}
+                title={t`Health data unavailable`}
+              >
+                {summary &&
+                  (!summary.configured ? (
+                    <Alert
+                      color='blue'
+                      variant='light'
+                      icon={<IconInfoCircle size={16} />}
+                      title={t`No health source is configured for this machine`}
+                    >
+                      <Stack gap='xs'>
+                        <Text size='sm'>
+                          {t`Map this machine's tags to a health source to see live signals and anomalies here. Until then, its condition is unknown rather than healthy.`}
+                        </Text>
+                        <Text size='sm'>
+                          {t`Creating work orders for this machine works normally in the meantime.`}
+                        </Text>
+                      </Stack>
+                    </Alert>
+                  ) : signalsQuery.isPending ? (
+                    <Group gap='sm'>
+                      <HealthStateBadge state={summary.state} coverageUnknown />
+                      <Loader size='xs' aria-label={t`Loading health data`} />
+                    </Group>
+                  ) : (
+                    <HealthSummaryPanel
+                      summary={summary}
+                      now={now}
+                      signals={signalsQuery.isError ? null : signals}
+                      anomalies={anomalyAssociationKnown ? anomalies : null}
+                      onSelect={inspectSignal}
+                    />
+                  ))}
+              </HealthQuerySection>
             </Stack>
             {showAnomalies && (
               <Stack gap='xs'>
@@ -330,28 +324,29 @@ export function MachineHealthPanel({
                     order={4}
                   >{t`Active anomalies`}</Title>
                 </Group>
-                {!anomalyAssociationKnown && !anomaliesQuery.isError && (
-                  <AttentionAlert>{t`The active anomaly list is incomplete. Row association cannot establish an absence of anomalies.`}</AttentionAlert>
-                )}
-                {anomalies.length >= 200 && (
-                  <MetaText size='xs'>{t`Showing the first 200 active anomalies`}</MetaText>
-                )}
-                {anomaliesQuery.isError ? (
-                  <AttentionAlert
-                    title={t`Active anomalies unavailable`}
-                  >{t`The anomaly read failed. An empty list cannot be inferred.`}</AttentionAlert>
-                ) : anomalies.length > 0 ? (
-                  <AnomalyList
-                    anomalies={anomalies}
-                    acknowledging={acknowledging}
-                    analyzing={analyzing}
-                    results={results}
-                    onAcknowledge={handleAcknowledge}
-                    onCreateRepair={setRepairAnomaly}
-                    onAnalyze={handleAnalyze}
-                    onDismiss={setDismissing}
-                  />
-                ) : null}
+                <HealthQuerySection
+                  query={anomaliesQuery}
+                  title={t`Active anomalies unavailable`}
+                >
+                  {!anomalyAssociationKnown && !anomaliesQuery.isError && (
+                    <AttentionAlert>{t`The active anomaly list is incomplete. Row association cannot establish an absence of anomalies.`}</AttentionAlert>
+                  )}
+                  {anomalies.length >= 200 && (
+                    <MetaText size='xs'>{t`Showing the first 200 active anomalies`}</MetaText>
+                  )}
+                  {anomalies.length > 0 ? (
+                    <AnomalyList
+                      anomalies={anomalies}
+                      acknowledging={acknowledging}
+                      analyzing={analyzing}
+                      results={results}
+                      onAcknowledge={handleAcknowledge}
+                      onCreateRepair={setRepairAnomaly}
+                      onAnalyze={handleAnalyze}
+                      onDismiss={setDismissing}
+                    />
+                  ) : null}
+                </HealthQuerySection>
               </Stack>
             )}
           </SimpleGrid>
@@ -374,22 +369,21 @@ export function MachineHealthPanel({
             <RefreshAction hiddenFrom='sm' onClick={refreshAll} />
           )}
         </Group>
-        {signalsQuery.isError ? (
-          <AttentionAlert
-            title={t`Signal readings unavailable`}
-          >{t`The signal read failed; mapping and coverage are unavailable.`}</AttentionAlert>
-        ) : (
+        <HealthQuerySection
+          query={signalsQuery}
+          title={t`Signal readings unavailable`}
+        >
           <SignalTable
             signals={signals}
             now={now}
-            preferJustNow={recordedTelemetryAsLive(summary)}
+            preferJustNow={summary ? recordedTelemetryAsLive(summary) : false}
             machineId={machineId}
             selectedBinding={bindingId}
             onInspect={inspectSignal}
             anomalies={anomalyAssociationKnown ? anomalies : null}
             onRefresh={refreshAll}
           />
-        )}
+        </HealthQuerySection>
       </Stack>
 
       {!signalsQuery.isError && (
@@ -411,7 +405,7 @@ export function MachineHealthPanel({
                       machineId={machineId}
                       bindingId={Number(bindingId)}
                       signal={signal}
-                      source={summary.sources?.find(
+                      source={summary?.sources?.find(
                         (source) => source.source_id === signal?.source_id
                       )}
                       anomalies={anomalyAssociationKnown ? anomalies : null}
@@ -447,11 +441,13 @@ export function MachineHealthPanel({
       </Stack>
 
       <RetainedHealthEvidence machineId={machineId} />
-      <Stack gap='sm'>
-        <Title order={4}>{t`Source connections`}</Title>
-        <MonitoringContinuityNotice />
-        <HealthSourceStatusTable sources={summary.sources ?? []} />
-      </Stack>
+      {summary && (
+        <Stack gap='sm'>
+          <Title order={4}>{t`Source connections`}</Title>
+          <MonitoringContinuityNotice />
+          <HealthSourceStatusTable sources={summary.sources ?? []} />
+        </Stack>
+      )}
 
       <AlarmNoteModal
         action='dismiss'
