@@ -1,3 +1,5 @@
+.details td p { font-size: var(--mantine-font-size-sm); }
+.details td:first-child p { color: var(--mantine-color-dimmed); }
 @media (max-width: 47.99375em) {
   .details table, .details tbody { display: block; width: 100%; }
   .details tr { display: grid; grid-template-columns: minmax(0, 1fr); padding-block: var(--mantine-spacing-xs); }

@@ -693,25 +693,51 @@ for (const scheme of ['light', 'dark'] as const) {
       route.fulfill({ json: { count: 0, results: [], next: null } })
     );
     await viewerEntry(page, '/machines/machine/18/parts/', scheme, 'machine');
-    const row = page.getByRole('row').filter({ hasText: 'PS-MOTOR:1' });
+    const row = page
+      .getByRole('row')
+      .filter({ hasText: 'P32 synthetic motor' });
     await expect(
-      row.getByLabel('Draft: slot assignment not verified', { exact: true })
-    ).toHaveText('Draft');
-    await expect(row).toContainText(
+      row.getByRole('button', { name: /^Pending check:/ })
+    ).toHaveText('Pending check');
+    await page.keyboard.press('Tab');
+    await row.getByRole('button', { name: /^Pending check:/ }).focus();
+    await expect(page.getByRole('tooltip')).toContainText(
+      'Assignment basis is not confirmed'
+    );
+    await expect(row).not.toContainText(
       'P32 synthetic inferred assignment; fit unverified.'
     );
     await expect(
-      row.getByRole('img', { name: 'Work could not be checked', exact: true })
-    ).toHaveText('—');
-    await expect(
-      row.getByRole('img', {
-        name: 'Fitted identity could not be read.',
+      row.getByRole('button', { name: 'Open work: Read failed', exact: true })
+    ).toHaveText('Read failed');
+    const details = row.locator('summary');
+    if (await details.isVisible()) {
+      await details.focus();
+      await details.press('Enter');
+      const fitted = row.getByRole('button', {
+        name: 'Fitted identity is unavailable for your role.',
         exact: true
-      })
-    ).toHaveText('—');
+      });
+      await expect(fitted).toHaveText('—');
+      await fitted.focus();
+      await expect(fitted).toBeFocused();
+      await expect(
+        page.getByRole('tooltip', {
+          name: 'Fitted identity is unavailable for your role.',
+          exact: true
+        })
+      ).toHaveText('Fitted identity is unavailable for your role.');
+      await expect(fitted).toHaveAccessibleDescription(
+        'Fitted identity is unavailable for your role.'
+      );
+    } else {
+      await expect(
+        page.getByRole('columnheader', { name: 'Fitted item', exact: true })
+      ).toHaveCount(0);
+    }
     await expect(row.getByRole('link')).toHaveCount(0);
     await expect(
-      page.getByRole('columnheader', { name: 'Catalogue stock' })
+      page.getByRole('columnheader', { name: 'In stock', exact: true })
     ).toHaveCount(0);
     await noWriteControls(
       page,

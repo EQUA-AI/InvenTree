@@ -2,8 +2,8 @@ import { test } from '@playwright/test';
 import { NOW as PERFORMANCE_NOW } from '../performance/fixtures';
 import { nativeBaseline } from '../s0/guards';
 import { openHealth } from '../s3/healthFixtures';
-import { openPausedPerformance } from '../s3/performanceFixtures';
 import { captureState } from './hyperagentEvidence';
+import { openPausedPerformance } from './monitoringFixtures';
 
 nativeBaseline();
 const phase = process.env.AIMMS_CAPTURE_PHASE || 'final';

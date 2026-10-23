@@ -1,7 +1,7 @@
 import { t } from '@lingui/core/macro';
 import { failedReading } from './MimicValue';
 import { expandPointer, usable } from './format';
-import type { Bay, MimicAlarm, MimicData, MimicPoint } from './types';
+import type { Bay, MimicAlarm, MimicData, MimicPoint, Total } from './types';
 
 /** Source failure cannot leave a previously running symbol green. */
 export function operatingState(data: MimicData, bay?: Bay): string {
@@ -108,6 +108,11 @@ export function alarmAttention(
 export function knownNoActiveAlarms(data: MimicData | undefined): boolean {
   return (
     !!data &&
+    data.enabled &&
+    data.source != null &&
+    data.reporting !== false &&
+    !data.read_failed &&
+    !data.last_error_code &&
     data.alarm === null &&
     data.bays.length > 0 &&
     data.bays.every((bay) => bay.machine != null && bay.alarm === null) &&
@@ -117,4 +122,19 @@ export function knownNoActiveAlarms(data: MimicData | undefined): boolean {
         ['open', 'acknowledged'].includes(alarm.anomaly_status ?? '')
     )
   );
+}
+
+/** Missing contributors explain an unavailable sum without treating them as zero. */
+export function missingContributors(total: Total, bays: Bay[]): string | null {
+  if (!total.derived || total.value !== null) return null;
+  const missing = total.contributors.filter(
+    (pointer) =>
+      !bays.some(
+        (bay) =>
+          usable(bay.points[pointer]) && !failedReading(bay.points[pointer])
+      )
+  );
+  return missing.length
+    ? t`${missing.length} of ${bays.length} bays not reporting`
+    : null;
 }

@@ -19,7 +19,8 @@ async function openScene(
 ) {
   const query = new URLSearchParams({
     kind: options.view ?? 'scene',
-    scheme: options.scheme ?? 'light'
+    scheme: options.scheme ?? 'light',
+    entry: '/machines/machine/18/equipment/?view=model'
   });
   await page.goto(`/playwright/s2-equipment.html?${query}`);
 }
@@ -226,12 +227,10 @@ test('the Equipment view says it is a reference model and owns the selection', a
   for (const scheme of ['light', 'dark'] as const) {
     await openScene(page, { view: 'panel', scheme });
     await expect(ready(page)).toBeVisible();
-    await expect(
-      page.getByText(
-        "Reference model: conceptual geometry, not this machine's verified design.",
-        { exact: true }
-      )
-    ).toBeVisible();
+    await page.getByText('Reference model', { exact: true }).hover();
+    await expect(page.getByRole('tooltip')).toContainText(
+      'Vertical reference model'
+    );
     await expect(page.locator('[data-selected-position]')).toHaveText(
       'Selected: Complete pump train'
     );
@@ -258,24 +257,22 @@ test('the Equipment view says it is a reference model and owns the selection', a
   }
 });
 
-test("a pump's native machine page opens the Equipment view with the reference model", async ({
+test("a pump's native machine page explicitly opens the reference model", async ({
   page
 }, testInfo) => {
   await mockMachine(page);
   await page.goto(
-    '/playwright/s0-native.html?surface=machine&entry=/machines/machine/18/equipment/'
+    '/playwright/s0-native.html?surface=machine&entry=/machines/machine/18/equipment/?view=model'
   );
   await expect(
     page.getByRole('tab', { name: 'Equipment view', exact: true })
   ).toHaveAttribute('aria-selected', 'true');
   await expect(ready(page)).toBeVisible();
   await expect(canvases(page)).toHaveCount(1);
-  await expect(
-    page.getByText(
-      "Reference model: conceptual geometry, not this machine's verified design.",
-      { exact: true }
-    )
-  ).toBeVisible();
+  await page.getByText('Reference model', { exact: true }).hover();
+  await expect(page.getByRole('tooltip')).toContainText(
+    'Vertical reference model'
+  );
   // Native panels stay where they were; Details remains the first.
   const tabs = await page.getByRole('tab').allInnerTexts();
   expect(tabs.slice(0, 2)).toEqual(['Details', 'Equipment view']);

@@ -13,7 +13,9 @@ test.beforeEach(async ({ page }) => {
 });
 
 async function openPanel(page: Page, scheme: 'light' | 'dark' = 'light') {
-  await page.goto(`/playwright/s2-equipment.html?kind=panel&scheme=${scheme}`);
+  await page.goto(
+    `/playwright/s2-equipment.html?kind=panel&entry=${encodeURIComponent('/machines/machine/18/equipment/?view=model')}&scheme=${scheme}`
+  );
   await expect(page.locator('[data-scene-phase="ready"]')).toBeVisible();
 }
 
@@ -71,8 +73,11 @@ const anchorOf = (page: Page, label: string) =>
 
 /** The model as drawn, after the scene's next frame has landed. */
 async function frame(page: Page) {
+  // A closed View menu can leave the pointer over the reference badge.
+  // Keep its transient hover tooltip out of the camera's pixel comparison.
+  await page.mouse.move(page.viewportSize()!.width - 1, 0);
   await page.waitForTimeout(350);
-  // Keep exact scene-pixel comparisons; omit only the new HTML provenance
+  // Keep exact scene-pixel comparisons; omit only the HTML reference
   // overlay, whose text rasterization changes when the page scrolls.
   return canvas(page).screenshot({
     animations: 'disabled',
@@ -120,8 +125,10 @@ test('visual modes switch and switch back without losing the selection', async (
       animations: 'disabled'
     });
   }
-  await expect(page.locator('[data-mode-note="exploded"]')).toHaveText(
-    'Exploded for orientation only; not a disassembly procedure.'
+  await expect(page.locator('[data-mode-note="exploded"]')).toHaveCount(0);
+  await page.getByText('Reference model', { exact: true }).hover();
+  await expect(page.getByRole('tooltip')).toContainText(
+    'Vertical reference model'
   );
   await chooseMode(page, 'Assembled');
   await button(page, 'Clear selection').click();

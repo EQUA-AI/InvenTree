@@ -10,6 +10,21 @@ async function keyboardFocus(page: Page, target: Locator) {
   await expect(target).toBeFocused();
 }
 
+async function expectPlainText(target: Locator, text: string) {
+  await expect(target).toBeVisible();
+  // A plain ValueTooltip also carries a visually hidden explanation. Check
+  // the rendered value separately so that explanation cannot satisfy it.
+  expect(
+    await target.evaluate((node) =>
+      [...node.childNodes]
+        .filter((child) => child.nodeType === Node.TEXT_NODE)
+        .map((child) => child.textContent)
+        .join('')
+        .trim()
+    )
+  ).toBe(text);
+}
+
 function fixture(unit: string | null, stale = false, enabled = true) {
   const point = (pointer: string, value: number | string | null) => ({
     pointer,
@@ -109,7 +124,7 @@ test('O27 station readings use display freshness while unavailable states stay e
     exact: true
   });
   const provenanceTooltip = page.getByRole('tooltip').filter({
-    hasText: 'Reference schematic · physical arrangement unverified.'
+    hasText: 'Layout pending plant approval'
   });
   await expect(page.locator('time')).toHaveAttribute(
     'datetime',
@@ -407,11 +422,13 @@ test('bays are drawn in the order they are numbered, each in its state', async (
   const second = page.getByRole('button', { name: 'P2: Unknown', exact: true });
   await second.click();
   await expect(second).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByText('Pump unit: P2')).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Pump 2', exact: true })
+  ).toBeVisible();
   await second.click();
   await expect(second).toHaveAttribute('aria-pressed', 'false');
   await expect(
-    page.getByRole('heading', { name: 'Pump unit: P2', exact: true })
+    page.getByRole('heading', { name: 'Pump 2', exact: true })
   ).toHaveCount(0);
   await expect(page.locator('[data-bay][aria-pressed="true"]')).toHaveCount(0);
 });
@@ -440,7 +457,9 @@ test('a status code is given in words, and an unknown code as it came', async ({
   // The pump's own tag, its summary line and its table agree with the words.
   await page.getByRole('button', { name: 'P10: Idle', exact: true }).click();
   await expect(page.locator('[data-unit-header]')).toContainText('Idle');
-  const group = page.getByRole('button', { name: 'Equipment Status Group' });
+  const group = page
+    .locator('[data-section="Equipment Status Group"]')
+    .getByRole('button');
   await keyboardFocus(page, group);
   await expect(
     page.getByRole('tooltip').filter({ hasText: 'Equipment Status: Idle' })
@@ -448,11 +467,16 @@ test('a status code is given in words, and an unknown code as it came', async ({
   await group.click();
   const row = page.locator('tr[data-point="/pd/P10/st"]');
   await expect(row).toContainText('Idle');
-  const source = row.getByRole('button', {
-    name: 'Idle · Source code: I',
-    exact: true
-  });
-  await keyboardFocus(page, source);
+  const valueCell = row.getByRole('cell').nth(1);
+  const source = valueCell.locator(':scope > span');
+  await expect(source).toHaveCount(1);
+  await expectPlainText(source, 'Idle');
+  await expect(source).toContainText('Idle · Source code: I');
+  await expect(valueCell.getByRole('button')).toHaveCount(0);
+  await expect(
+    row.getByRole('button', { name: 'Idle · Source code: I', exact: true })
+  ).toHaveCount(0);
+  await source.hover();
   await expect(
     page.getByRole('tooltip').filter({ hasText: 'Source code: I' })
   ).toHaveText('Source code: I');
@@ -640,24 +664,23 @@ test('a pump page shows the pump with its parts numbered and summarised', async 
     })
   );
   await page.goto(mimicEntry('/?pump=P1'));
-  await expect(page.getByText('Pump unit: P1')).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Pump 1', exact: true })
+  ).toBeVisible();
 
   // A part is known by its catalogue code, and named as this pump names it.
   const motor = page.getByRole('button', {
-    name: '1. Drive motor',
-    exact: true
+    name: /^1\. Drive motor ·/
   });
   await expect(motor.locator('[data-part-summary]')).toHaveText('58 – 61 °C');
   const bearing = page.getByRole('button', {
-    name: '2. Thrust Bearing',
-    exact: true
+    name: /^2\. Thrust Bearing ·/
   });
   await expect(bearing.locator('[data-part-summary]')).toHaveText('42 °C');
 
   // A part this pump reports nothing for is still drawn, and says so.
   const absent = page.getByRole('button', {
-    name: '3. Guide radial bearing',
-    exact: true
+    name: /^3\. Guide radial bearing ·/
   });
   await expect(absent.locator('[data-part-summary]')).toHaveText('—');
   await keyboardFocus(page, absent);
@@ -730,7 +753,7 @@ test('a station shows the same pump view for the bay chosen on it', async ({
   await page.goto(mimicEntry('/'));
   await page.getByRole('button', { name: 'P1: Running', exact: true }).click();
   await expect(
-    page.getByRole('button', { name: '1. Drive motor', exact: true })
+    page.getByRole('button', { name: /^1\. Drive motor ·/ })
   ).toContainText('58 – 61 °C');
 });
 
@@ -949,7 +972,9 @@ test('a bay with an alarm is marked on the drawing, and counted beside the state
   await expect(page.locator('[data-legend="alarm-critical"]')).toContainText(
     'Critical alarm'
   );
-  await expect(page.locator('[data-legend="alarm-warning"]')).toHaveCount(0);
+  await expect(page.locator('[data-legend="alarm-warning"]')).toHaveText(
+    'Warning alarm'
+  );
 });
 
 test('an alarm is dismissed only with a reason, retaining inspection without further mutation', async ({
@@ -1004,11 +1029,16 @@ test('an alarm is dismissed only with a reason, retaining inspection without fur
       row.getByRole('button', { name: action, exact: true })
     ).toHaveCount(0);
   }
-  const signal = row.getByRole('button', { name: '/w1', exact: true });
+  const signal = row.getByRole('cell').first().locator(':scope > span');
+  await expect(signal).toHaveCount(1);
+  await expectPlainText(signal, '/w1');
+  await expect(
+    row.getByRole('button', { name: '/w1', exact: true })
+  ).toHaveCount(0);
   const statusInspector = row.locator('[data-alarm-info]');
   await expect(signal).toBeVisible();
   await expect(statusInspector).toContainText('Dismissed');
-  await keyboardFocus(page, signal);
+  await signal.hover();
   await expect(
     page.getByRole('tooltip').filter({ hasText: /^\/w1$/ })
   ).toBeVisible();

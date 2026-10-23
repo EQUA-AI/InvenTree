@@ -1,49 +1,37 @@
-# Next session: pending tasks (22 October 2026)
+# Next session: state on 23 October 2026
 
-Repo `/Users/Aniketkumar/IdeaProjects/InvenTree`. `IOT-Merge` and `inventTree-aniket`
-are identical at `c55227c95` locally. Localhost (http://localhost:5173, backend
-:8000, local copy of Azure from 21 Oct 17:03 UTC) runs that commit.
+Repo `/Users/Aniketkumar/IdeaProjects/InvenTree`. `IOT-Merge` and
+`inventTree-aniket` are identical at the 23 October UI polish merge, 38 commits
+ahead of GitHub and **not pushed**: push both after the owner's go-ahead.
+Localhost (http://localhost:5173, backend :8000, local copy of Azure) runs the
+same product code from the `viewer` worktree.
 
-## Done today
+## Done on 22-23 October
 
-- O27: recorded Cosmos month (1 Jul–1 Aug 2025) shown as live, switch
-  `AIMMS_RECORDED_TELEMETRY_AS_LIVE` (default on).
-- UI polish, following "avoid secondary labels and descriptions; let the layout
-  explain":
-  - station mimic and pump-unit mimic (`r6/ui-mimic`);
-  - machines list, Health signals and Parts tables (`r6/ui-tables`).
+- UI rounds 2-11 from the owner's feedback and three advisory Hyperagent reviews
+  (Fable 55 → 68 → 76, Gemini 64 → 78): station and pump mimics coloured by
+  state, pump labels beside the drawing, alarm pump identity, Health freshness,
+  Performance KPI cards, truthful Parts fit-basis labels, production wording on
+  every machine tab, phone layouts, keyboard reach of missing/failed reasons.
+  Details: `contrib/ui-ux/r6/reports/ui-r2.md`.
+- Outdated Playwright specs updated to the new wording by three parallel test
+  lanes. Last full Mac run before the final fixes: 2,330 passed, 7 failed; the
+  final targeted re-runs pass except one phone case under follow-up 11.
+- Data (owner-approved): demo-data cleanup, data tidy and readable signal names
+  on Azure and the local copy; provisional bearing alarm limits and a local
+  `operator` login in the local copy only. Backups and restore scripts:
+  `data/devscratch/{local-cleanup,local-tidy,local-facts,local-limits,local-config,azure-*}`.
 
 ## Pending
 
-1. **Push** `IOT-Merge` and `inventTree-aniket` (local is 4 commits ahead of
-   GitHub on both), after the owner's go-ahead.
-2. **Update the failing tests** that still assert removed wording. The list is at
-   the top of `contrib/ui-ux/r6/HANDOFF.md` ("UI polish checkpoint"). Then re-run
-   S0-S8 on the Mac GPU (`src/frontend/playwright.gpu-s*.config.ts`, one suite at a
-   time).
-3. **Hyperagent design review** of the polished screens (see the prompt below),
-   and fix what both agents flag until both score 95+.
-4. Remaining "Unknown" / "not supplied" places the owner may still spot: apply the
-   same rule (a dash plus a tooltip, no extra captions).
-5. Parked: `r6/backend-fix-a` (79 pre-existing backend test failures); the R8
-   procurement demo (`contrib/ui-ux/r8-procurement/gap-analysis.md`).
-6. Deployment of aimms-dev: by the deployment team, per
-   `contrib/ui-ux/r6/deployment-handover.md`. Azure has 988 migrations; an
-   IOT-Merge build adds only the no-op aichat 0056.
-
-## Prompt for the new session (hyperagent-frontend skill)
-
-> Use the hyperagent-frontend skill. Review the AIMMS UI polish on branch
-> IOT-Merge (commit c55227c95) in /Users/Aniketkumar/IdeaProjects/InvenTree,
-> running at http://localhost:5173. Screens: Machines list
-> (/web/machines/index/), Cedar Creek station Pumphouse mimic, a pump unit
-> mimic (e.g. P7), Health, Performance, and the station and Pump 08 Parts tabs.
-> Changed files: `git diff 8a8335959 c55227c95 -- src/frontend`. Reports:
-> contrib/ui-ux/r6/reports/ui-mimic.md and ui-tables.md. Owner rules: follow
-> contrib/ui-ux/r6/masterdesignprompt.md and designprompt1.md; avoid secondary
-> labels and descriptions and let the layout explain; never invent values
-> (missing = dash plus tooltip). Have "Mantine & InvenTree Frontend Engineer
-> (Fable)" and "(Gemini)" each score the screens out of 100 from fresh desktop
-> (1440x900) and phone (390x844) screenshots in light and dark mode. Fix their
-> findings and repeat until both give 95+. Send only code, diffs and fixture or
-> local screenshots, never credentials or Azure data.
+1. Push `IOT-Merge` and `inventTree-aniket` (owner go-ahead).
+2. Follow-up 11 (phone page jump on the machines Criticality filter): merge when
+   it lands, then re-run `tests/s1/pui_machine_explorer.spec.ts` on the Mac.
+3. Owner input: real serials, station locations for Maple Grove, Millbrook and
+   Pine Hollow, vibration unit, engineering alarm limits (provisional bearing
+   limits on Azure only on request), field-verified parts.
+4. R8 procurement: owner decisions in `contrib/ui-ux/r8-procurement/owner-decisions.md`;
+   backend wave 1 in worktrees `InvenTree-r6/r8-p1..p3` (branches `r8/p1..p3`).
+5. Parked: `r6/backend-fix-a` (pre-existing backend test failures).
+6. aimms-dev deployment by the deployment team per `deployment-handover.md`
+   (no new migrations since the aichat 0056 note).

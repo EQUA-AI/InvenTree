@@ -94,6 +94,7 @@ export function AnomalyList({
                     <SourceTypeBadge type={anomaly.source_type} />
                     {anomaly.alarm_code && (
                       <StatusBadge
+                        multiline
                         tone='neutral'
                         variant='outline'
                         color='gray'

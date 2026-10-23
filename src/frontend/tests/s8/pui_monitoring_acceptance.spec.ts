@@ -9,10 +9,11 @@ import {
   signalTable,
   trendCard
 } from '../s3/healthFixtures';
-import { openPausedPerformance, signal } from '../s3/performanceFixtures';
+import { signal } from '../s3/performanceFixtures';
 import { contrast, nonText, textSweep } from './contrast';
 import { drawnBoundary } from './hyperagentEvidence';
 import { evidenceRoot } from './monitoringEvidence';
+import { openPausedPerformance } from './monitoringFixtures';
 
 nativeBaseline();
 async function keyboardFocus(page: Page, target: Locator) {
@@ -106,13 +107,15 @@ for (const scheme of ['light', 'dark'] as const) {
     const root = page.getByTestId('pump-health');
     const refresh = root.getByRole('button', { name: 'Refresh', exact: true });
     const x = (await refresh.boundingBox())!.x;
+    // The live region is an <output> (implicit status role), not an element
+    // with a role attribute.
     const announced = await root
-      .locator('[role="status"][aria-atomic="true"]')
+      .locator('output[aria-atomic="true"]')
       .textContent();
     await refresh.click();
-    await expect(
-      root.locator('[role="status"][aria-atomic="true"]')
-    ).toHaveText(announced!);
+    await expect(root.locator('output[aria-atomic="true"]')).toHaveText(
+      announced!
+    );
     expect(
       await root
         .getByRole('heading', { name: 'Active anomalies', exact: true })
@@ -174,12 +177,17 @@ for (const scheme of ['light', 'dark'] as const) {
       )
     );
     await drawnBoundary(trend.locator('.recharts-reference-line line').first());
-    await expect(trend.getByTestId('threshold-key')).toContainText('Drawn:');
+    await expect(trend.getByTestId('threshold-key')).toContainText(
+      'Warning 600 cusec · Critical 400 cusec'
+    );
+    await expect(include).toBeChecked();
     await root
       .getByRole('button', { name: 'Expand chart', exact: true })
       .click();
     const modal = page.getByRole('dialog', { name: 'Expanded signal trend' });
-    await expect(modal).toContainText('Times: your clock');
+    await expect(modal).toBeVisible();
+    await expect(modal).not.toContainText('Times: your clock');
+    await drawnBoundary(modal.locator('.recharts-reference-line line').first());
     await page.keyboard.press('Escape');
     const badges = await root
       .locator('.mantine-Badge-root')
@@ -241,46 +249,59 @@ for (const scheme of ['light', 'dark'] as const) {
       harnessParams: { role: 'engineer' }
     });
     const root = page.getByTestId('pump-performance');
-    // Cadence, poll and window metadata belong to the same selected-history
-    // read. Keep one disclosure and establish its measured final tab order.
-    const readDetails = root.getByRole('button', {
-      name: 'Show read details',
+    // Performance retains source and cadence in a keyboard-readable info tooltip.
+    const historyInformation = root.getByRole('button', {
+      name: 'History information',
       exact: true
     });
-    await expect(readDetails).toHaveCount(1);
-    await expect(readDetails).toBeVisible();
+    await expect(historyInformation).toHaveCount(1);
+    await focusCapture(page, historyInformation, 'history-information', scheme);
+    await expect(page.getByRole('tooltip')).toContainText('Fixture source');
+    await expect(page.getByRole('tooltip')).toContainText('Sample interval');
+    await expect(historyInformation).toHaveAccessibleDescription(
+      /Fixture source.*Sample interval/
+    );
+    await expect(root.getByTestId('history-provenance')).toHaveCount(0);
     await expect(
-      root
-        .getByTestId('live-indicator')
-        .getByRole('button', { name: 'Show read details', exact: true })
+      root.getByRole('button', { name: 'Show read details', exact: true })
     ).toHaveCount(0);
-    await readDetails.click();
-    const provenance = root.getByTestId('history-provenance');
-    await expect(
-      provenance.getByText('Expected sample interval', { exact: false })
-    ).toBeVisible();
-    await expect(
-      provenance.getByText('last poll attempt', { exact: false })
-    ).toBeVisible();
-    await expect(provenance.getByText(/^Window:/)).toBeVisible();
-    await expect(provenance.getByText(/^Single-window limit:/)).toBeVisible();
-    await provenance
-      .getByRole('button', { name: 'Hide read details', exact: true })
-      .click();
-    await expect(readDetails).toHaveCount(1);
-    await expect(readDetails).toBeVisible();
-    const trendTrigger = root.locator('[data-kpi="speed"]').getByRole('button');
-    await focusCapture(page, trendTrigger, 'trend-mark', scheme);
-    const live = root.getByRole('switch', { name: 'Live', exact: true });
+    await expect(root).not.toContainText('last poll attempt');
+    await page.keyboard.press('Escape');
+    const speed = root.locator('[data-kpi="speed"]');
+    const trendMark = speed.getByRole('img', {
+      name: 'Trend over the selected window',
+      exact: true
+    });
+    await expect(trendMark).toBeVisible();
+    await expect(trendMark.locator('path')).toHaveAttribute('d', /M.+L/);
+    await expect(speed.locator('[data-kpi-delta]')).toHaveText(
+      'Δ +1.2 % / 59.5 min'
+    );
+    await expect(speed.getByRole('button')).toHaveCount(0);
+    await expect(trendMark).not.toHaveAttribute('tabindex');
+    await speed.screenshot({
+      path: resolve(
+        evidenceRoot,
+        'browser/captures/focus/s8-01-part2-pass2',
+        `trend-mark-${scheme}.png`
+      )
+    });
+    await expect(speed.locator('[data-kpi-observed] time')).toHaveText(
+      '11:59:40 · 20 s ago'
+    );
+    const live = root.getByRole('switch', { name: /^Live updates:/ });
+    await expect(live).toHaveAccessibleName('Live updates: Paused');
     await focusCapture(page, live, 'live', scheme);
     const track = root.locator('.mantine-Switch-track').first();
     const thumb = root.locator('.mantine-Switch-thumb').first();
     await nonText(track, track.locator('xpath=..'));
     await nonText(thumb, track);
     await live.check({ force: true });
+    await expect(live).toHaveAccessibleName('Live updates: Live');
     await nonText(track, track.locator('xpath=..'));
     await nonText(thumb, track);
     await live.uncheck({ force: true });
+    await expect(live).toHaveAccessibleName('Live updates: Paused');
     const section = root.getByRole('combobox', {
       name: 'Section',
       exact: true
@@ -296,10 +317,11 @@ for (const scheme of ['light', 'dark'] as const) {
     expect((await contrast(selected)).ratio).toBeGreaterThanOrEqual(4.5);
     await page.keyboard.press('Escape');
     const key = root.getByTestId('threshold-key');
-    await expect(key).toContainText(
-      'Outside this scale: Warning above 125 °C · Critical above 145 °C.'
+    await expect(key).toContainText('Warning 125 °C · Critical 145 °C');
+    const windingLines = root.locator(
+      '[data-section="Motor winding temperature"] .recharts-reference-line line'
     );
-    await expect(key).not.toContainText('Shaded regions');
+    await expect(windingLines).toHaveCount(0);
     const include = root.getByRole('switch', {
       name: 'Include limits in scale'
     });
@@ -326,7 +348,8 @@ for (const scheme of ['light', 'dark'] as const) {
         )
         .first()
     );
-    await expect(key).toContainText('Shaded regions');
+    await expect(include).toBeChecked();
+    await expect(key).toContainText('Warning 125 °C · Critical 145 °C');
     await expect(root.locator('.recharts-bar-rectangle')).toHaveCount(0);
     const text = await textSweep(root);
     expect(text.filter((t) => t.ratio < 4.5)).toEqual([]);

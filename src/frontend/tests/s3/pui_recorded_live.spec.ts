@@ -8,6 +8,10 @@ import {
   openFaultHistory
 } from './machineWorkFixtures';
 import { openPerformance } from './performanceFixtures';
+import {
+  historyInformation,
+  samplingInformation
+} from './presentationAssertions';
 
 nativeBaseline();
 for (const asLive of [true, false]) {
@@ -160,13 +164,14 @@ for (const asLive of [true, false]) {
       ]
     });
     const card = trendCard(page);
-    await expect(card.getByText(/^Selected window:/)).toBeVisible();
+    await expect(card.getByText(/^Selected window:/)).toHaveCount(0);
+    await historyInformation(page, card, 'Fixture historian');
     if (asLive) {
       await expect(page.getByTestId('health-summary')).toContainText(
         'just now'
       );
       await expect(
-        page.getByText('Source reporting', { exact: true }).first()
+        page.getByText('Reporting', { exact: true }).first()
       ).toBeVisible();
       await expect(page.getByTestId('anomaly-time-shift')).toHaveCount(0);
       await expect(card).not.toContainText(
@@ -180,14 +185,21 @@ for (const asLive of [true, false]) {
           Date.parse(series[0].searchParams.get('from')!)
       ).toBe(30 * 86400_000);
       expect(series[0].searchParams.get('points')).toBe('240');
-      await expect(card).toContainText('Sampled real readings');
+      await historyInformation(
+        page,
+        card,
+        'Sampled history; gaps are not filled'
+      );
     } else {
       await expect(
         page.getByTestId('anomaly-time-shift').first()
       ).toContainText('Shifted +3 h');
-      await expect(card).toContainText(
-        'Times are shown on the dashboard clock'
-      );
+      await expect(
+        card.getByText('Times are shown on the dashboard clock')
+      ).toHaveCount(0);
+      await expect(
+        page.getByTestId('anomaly-time-shift').first()
+      ).toContainText('Shifted +3 h');
       await card.getByRole('combobox', { name: 'Range', exact: true }).click();
       await expect(
         page.getByRole('option', { name: '30 days', exact: true })
@@ -216,6 +228,7 @@ for (const asLive of [true, false]) {
     let failure: 'none' | 'source' | 'unavailable' | 'empty' = 'none';
     const requests = await openPerformance(page, {
       harness: 's3',
+      settleInitialRead: true,
       recordedTelemetryAsLive: asLive,
       displayShift: 400 * 86400,
       mapSeriesResponse: (response) => ({
@@ -239,9 +252,24 @@ for (const asLive of [true, false]) {
       })
     });
     const status = page.getByTestId('live-indicator');
+    const disclosure =
+      'Recorded source presented on the live clock; timestamps shifted by 400 d.';
+    const live = status.getByRole('switch', {
+      name: `Live updates: Live · ${disclosure}`,
+      exact: true
+    });
     await expect(status).toBeVisible();
     if (asLive) {
       await expect(status).not.toContainText('Source history display shift');
+      const selectedRangeRead = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return (
+          url.pathname === '/api/machine-health/machines/18/health/series/' &&
+          Date.parse(url.searchParams.get('to')!) -
+            Date.parse(url.searchParams.get('from')!) ===
+            30 * 86400_000
+        );
+      });
       await page.getByText('30 d', { exact: true }).click();
       await expect
         .poll(() =>
@@ -253,14 +281,28 @@ for (const asLive of [true, false]) {
           )
         )
         .toBe(true);
-      await expect(status).toContainText('Sampled: one reading every 3 h');
-      await expect(status.locator('[data-tone="live"]')).toHaveText('Live');
-      await expect(status).toContainText('newest reading just now');
-      await expect(status).toContainText('latest chart sample');
+      await (await selectedRangeRead).finished();
+      await expect(status).toContainText('Sampled: one reading every 3 h', {
+        timeout: 60000
+      });
+      await expect(page.getByTestId('fixture-fetching')).toHaveText('0');
+      await samplingInformation(page, 'Sampled: one reading every 3 h');
+      await expect(live).toBeChecked();
+      await expect(status.locator('time')).toHaveCount(1);
+      await expect(status.getByText('Live', { exact: true })).toHaveCount(1);
     } else {
-      await expect(status).toContainText('Source history display shift');
+      await expect(status).not.toContainText('Source history display shift');
+      await historyInformation(page);
       await expect(page.getByText('30 d', { exact: true })).toHaveCount(0);
     }
+    await page.keyboard.press('Tab');
+    await live.focus();
+    await expect(
+      page.getByRole('tooltip', {
+        name: /Recorded source presented on the live clock/
+      })
+    ).toContainText(disclosure);
+    await live.blur();
     await status.screenshot({
       path: info.outputPath(`o27-performance-${asLive ? 'on' : 'off'}.png`),
       animations: 'disabled'
@@ -268,7 +310,9 @@ for (const asLive of [true, false]) {
     if (asLive) {
       failure = 'source';
       await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-      await expect(status).toContainText('Source read failed');
+      await expect(
+        status.getByText('Read failed', { exact: true })
+      ).toBeVisible();
       failure = 'unavailable';
       await page.getByRole('button', { name: 'Refresh', exact: true }).click();
       await expect(status).toContainText('Readings unavailable');

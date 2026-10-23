@@ -224,18 +224,8 @@ export function EquipmentScene({
   }, [rotate, phase]);
 
   return (
-    <Box
-      ref={frame}
-      pos='relative'
-      h={height}
-      data-scene-phase={phase}
-      style={{
-        borderRadius: 'var(--mantine-radius-default)',
-        overflow: 'hidden'
-      }}
-    >
-      <Box ref={host} pos='absolute' inset={0} />
-      <Box pos='absolute' top={8} left={8} style={{ zIndex: 7 }}>
+    <>
+      <Box data-reference-model>
         <ValueTooltip
           label={t`Vertical reference model. Use the process schematic for this machine. Drag to rotate; arrow keys rotate, + and − zoom.`}
         >
@@ -247,39 +237,51 @@ export function EquipmentScene({
           >{t`Reference model`}</StatusBadge>
         </ValueTooltip>
       </Box>
-      {phase === 'loading' && (
-        <Skeleton
-          pos='absolute'
-          inset={0}
-          h='100%'
-          aria-label={t`Loading 3D view`}
-        />
-      )}
-      {phase === 'failed' && (
-        <Paper
-          pos='absolute'
-          inset={0}
-          withBorder
-          p='lg'
-          // A status the screen reader announces, not just a picture of one.
-          component='output'
-          style={{ display: 'grid', placeItems: 'center' }}
-        >
-          <Stack gap='xs' align='center' maw={360} ta='center'>
-            <Text fw={600}>{t`3D view unavailable`}</Text>
-            <Text size='sm' className={operations.meta}>
-              {t`The 3D renderer could not start in this browser. Nothing else on this machine depends on it.`}
-            </Text>
-            <Button
-              variant='light'
-              size='xs'
-              onClick={() => setAttempt((value) => value + 1)}
-            >
-              {t`Retry 3D view`}
-            </Button>
-          </Stack>
-        </Paper>
-      )}
-    </Box>
+      <Box
+        ref={frame}
+        pos='relative'
+        h={height}
+        data-scene-phase={phase}
+        style={{
+          borderRadius: 'var(--mantine-radius-default)',
+          overflow: 'hidden'
+        }}
+      >
+        <Box ref={host} pos='absolute' inset={0} />
+        {phase === 'loading' && (
+          <Skeleton
+            pos='absolute'
+            inset={0}
+            h='100%'
+            aria-label={t`Loading 3D view`}
+          />
+        )}
+        {phase === 'failed' && (
+          <Paper
+            pos='absolute'
+            inset={0}
+            withBorder
+            p='lg'
+            // A status the screen reader announces, not just a picture of one.
+            component='output'
+            style={{ display: 'grid', placeItems: 'center' }}
+          >
+            <Stack gap='xs' align='center' maw={360} ta='center'>
+              <Text fw={600}>{t`3D view unavailable`}</Text>
+              <Text size='sm' className={operations.meta}>
+                {t`The 3D renderer could not start in this browser. Nothing else on this machine depends on it.`}
+              </Text>
+              <Button
+                variant='light'
+                size='xs'
+                onClick={() => setAttempt((value) => value + 1)}
+              >
+                {t`Retry 3D view`}
+              </Button>
+            </Stack>
+          </Paper>
+        )}
+      </Box>
+    </>
   );
 }

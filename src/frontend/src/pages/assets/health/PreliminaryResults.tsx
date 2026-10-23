@@ -97,6 +97,7 @@ export function PreliminaryResultsPanel({
                 label={t`${declaredBy} raised this alarm against limits configured in that system. Whether the machine is outside them is its determination, not an inference made here.`}
               >
                 <StatusBadge
+                  multiline
                   tone='neutral'
                   color='blue'
                   variant='outline'

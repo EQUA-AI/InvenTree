@@ -68,10 +68,15 @@ test('every native Performance form is drawn, and the inventory is recorded', as
       'Frequency',
       'Shaft speed and status',
       'Stator winding temperature',
-      'Cooling water rise (outlet − inlet)',
       'Thrust bearing pads'
     ])
       await expect(page.getByText(card, { exact: true }).first()).toBeVisible();
+    await expect(
+      page.getByText('Cooling water rise (outlet − inlet)', { exact: true })
+    ).toHaveCount(0);
+    await expect(
+      page.locator('[data-section="Cooling and thermal"]')
+    ).toContainText('Cooling water');
     // Unmapped tags stay reachable in the Other table.
     expect(inventory.otherRows).toBeGreaterThan(0);
     await expect(

@@ -113,7 +113,7 @@ for (const scheme of ['light', 'dark'] as const) {
             page.locator(
               '[data-station-metric="pumps-running"] [data-reading-value]'
             )
-          ).toHaveText('3');
+          ).toHaveText('3 of 14');
           for (const state of [
             'Running',
             'Fault',
@@ -177,9 +177,21 @@ for (const scheme of ['light', 'dark'] as const) {
           nativeTheme: true,
           compactChrome: true
         });
-        await expect(
-          page.getByText(/Normal · (2\/6|partial)/).first()
-        ).toBeVisible();
+        const coverage = page
+          .getByTestId('health-summary')
+          .getByRole('button', {
+            name: /^Normal · Assessed on 2 of 6 signals\./
+          });
+        await expect(coverage).toHaveText('Normal');
+        await expect(coverage.locator('[data-tone="partial"]')).toBeVisible();
+        await coverage.focus();
+        await expect(coverage).toBeFocused();
+        await expect(page.getByRole('tooltip')).toContainText(
+          'Assessed on 2 of 6 signals.'
+        );
+        await expect(coverage).toHaveAccessibleDescription(
+          /Assessed on 2 of 6 signals/
+        );
         await expect(
           page.locator('tr').filter({ hasText: 'Motor DE vibration (raw)' })
         ).toContainText(/1,?834/);
@@ -213,7 +225,10 @@ for (const scheme of ['light', 'dark'] as const) {
           ).toBeVisible();
       }
       await captureFromTop(page);
-      const directory = resolve('../../data/devscratch/ui-r2/states');
+      const directory = resolve(
+        process.env.AIMMS_UI_STATE_EVIDENCE_ROOT ??
+          '../../data/devscratch/ui-r2/states'
+      );
       await mkdir(directory, { recursive: true });
       await page.screenshot({
         path: resolve(

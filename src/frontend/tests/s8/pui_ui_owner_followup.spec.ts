@@ -34,14 +34,12 @@ for (const scheme of ['light', 'dark'] as const) {
   }, info) => {
     await openHealth(page, { scheme, nativeTheme: true, compactChrome: true });
     const summary = page.getByTestId('health-summary');
-    await expect(
-      summary.getByText('Normal · 2/6', { exact: true })
-    ).toBeVisible();
+    await expect(summary.getByText('Normal', { exact: true })).toBeVisible();
     const designation = summary.getByRole('button', {
-      name: 'Critical signals: not designated',
-      exact: true
+      name: /^Normal · Assessed on 2 of 6 signals\. Critical signals: not designated\./
     });
     await expect(designation).toBeVisible();
+    await expect(designation.locator('[data-tone="partial"]')).toHaveCount(1);
     await readable(designation);
     await expect(summary.getByRole('alert')).toHaveCount(0);
     await expect(
@@ -250,6 +248,7 @@ for (const scheme of ['light', 'dark'] as const) {
   }, info) => {
     const nodes = await mockOwnerLocations(page);
     const phone = info.project.name.endsWith('phone');
+    if (!phone) await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(
       `/playwright/s8-design.html?${new URLSearchParams({ screen: 'machines', entry: '/machines/index/sites/', scheme })}`
     );

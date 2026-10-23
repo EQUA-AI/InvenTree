@@ -3,16 +3,17 @@ import {
   Box,
   Group,
   Stack,
-  Text,
   useComputedColorScheme,
   useMantineTheme
 } from '@mantine/core';
 import { useElementSize } from '@mantine/hooks';
 import { useMemo } from 'react';
+import operational from '../health/OperationalTokens.module.css';
 import { MetaText } from '../health/common';
 
 import { formatTick, formatValue, timeTicks } from './format';
 import type { HeatmapMatrix } from './series';
+import { limitState } from './series';
 
 //: Row labels are measured, not assumed; these only bound the result, so one
 //: long sensor name cannot eat the grid and a short one cannot strand it.
@@ -39,7 +40,10 @@ let canvasContext: CanvasRenderingContext2D | null | undefined;
 
 export function measureText(text: string): number {
   if (canvasContext === undefined) {
-    canvasContext = document.createElement('canvas').getContext('2d');
+    canvasContext =
+      typeof document === 'undefined'
+        ? null
+        : document.createElement('canvas').getContext('2d');
     if (canvasContext) canvasContext.font = LABEL_FONT;
   }
   // Without a canvas - jsdom, say - fall back to a width per character that
@@ -68,10 +72,9 @@ export interface SensorHeatmapProps {
  *
  * The point of a heatmap here is that twelve winding sensors or ten thrust
  * pads can be read at a glance: a sensor running hot is a bright row, a
- * change in the window is a change of shade left to right. The scale spans the
- * matrix's own observed range - it says so, with the two ends printed - so it
- * is a comparison of sensors against each other, never a verdict. Configured
- * limits and server-evaluated states are presented separately in the card.
+ * configured limit crossing is a change of colour and shape. A healthy spread
+ * cannot stretch an arbitrary observed range into alarm-like extremes. Without
+ * configured limits values remain neutral, with actual values in the tooltip.
  *
  * Plain SVG rather than a chart library: a grid of rectangles with native
  * tooltips is lighter than five hundred React tooltips and needs nothing more.
@@ -88,13 +91,7 @@ export function SensorHeatmap({
   const { ref, width } = useElementSize<HTMLDivElement>();
 
   const palette = theme.colors[hue] ?? theme.colors.indigo;
-  // Which end of the ramp is "low" depends on what the card is made of. On
-  // white, low is pale and high is saturated; on a dark card those same fills
-  // invert the meaning - the coolest sensors become the brightest rows - so
-  // low there is the shade nearest the background instead. Either way, further
-  // from the card means higher, which is what "a sensor running hot is a
-  // bright row" promises.
-  const [rampLow, rampHigh] = scheme === 'dark' ? [9, 3] : [1, 8];
+  const neutral = palette[scheme === 'dark' ? 4 : 7];
 
   // The row label is the sensor's name and nothing else. Appending the
   // window's last reading put a second, unlabelled number beside a name -
@@ -131,16 +128,6 @@ export function SensorHeatmap({
   const cellWidth = gridWidth / columns;
   const height = matrix.rows.length * ROW_HEIGHT + AXIS_HEIGHT;
 
-  const shade = useMemo(() => {
-    const span = matrix.max - matrix.min;
-    return (value: number) => {
-      if (span === 0)
-        return palette[rampLow + Math.round((rampHigh - rampLow) / 2)];
-      const norm = Math.max(0, Math.min(1, (value - matrix.min) / span));
-      return palette[rampLow + Math.round(norm * (rampHigh - rampLow))];
-    };
-  }, [matrix.min, matrix.max, palette, rampLow, rampHigh]);
-
   // A handful of time labels along the bottom, at the same instants the trend
   // chart in the same card prints: every nth column start gave 21:11, 21:21,
   // 21:31 under a chart ticking 21:15, 21:20, 21:25, so the two axes of one
@@ -156,7 +143,7 @@ export function SensorHeatmap({
   );
 
   return (
-    <Stack gap={4} ref={ref}>
+    <Stack gap={4} ref={ref} className={operational.warning}>
       <Box
         component='svg'
         width='100%'
@@ -178,6 +165,13 @@ export function SensorHeatmap({
             </text>
             {row.cells.map((cell, c) => {
               const column = matrix.columns[c];
+              const state = limitState(cell, row.limits);
+              const alarm = state === 'critical' || state === 'warning';
+              const fill = alarm
+                ? state === 'warning'
+                  ? 'var(--aimms-warning)'
+                  : `var(--mantine-color-red-${scheme === 'dark' ? 4 : 9})`
+                : neutral;
 
               // A cell resting on one reading is that reading, not a mean of
               // one: "mean of 1 readings" claims an average that averages
@@ -189,23 +183,45 @@ export function SensorHeatmap({
                     ? t`${row.label} · ${formatTick(column.start, windowSeconds)}–${formatTick(column.end, windowSeconds)} · ${formatValue(cell, decimals, unit, matrix.max - matrix.min)} (one reading)`
                     : t`${row.label} · ${formatTick(column.start, windowSeconds)}–${formatTick(column.end, windowSeconds)} · ${formatValue(cell, decimals, unit, matrix.max - matrix.min)} (mean of ${row.counts[c]} readings)`;
               return (
-                <rect
-                  key={c}
-                  x={labelWidth + c * cellWidth + GAP / 2}
-                  y={GAP}
-                  width={Math.max(0.5, cellWidth - GAP)}
-                  height={ROW_HEIGHT - GAP * 2}
-                  rx={1}
-                  fill={
-                    cell === null
-                      ? 'var(--mantine-color-default-border)'
-                      : shade(cell)
-                  }
-                  fillOpacity={cell === null ? 0.35 : 1}
-                  data-heatmap-cell='true'
-                >
-                  <title>{title}</title>
-                </rect>
+                <g key={c}>
+                  <rect
+                    x={labelWidth + c * cellWidth + GAP / 2}
+                    y={GAP}
+                    width={Math.max(0.5, cellWidth - GAP)}
+                    height={ROW_HEIGHT - GAP * 2}
+                    rx={1}
+                    fill={
+                      cell === null
+                        ? 'var(--mantine-color-default-border)'
+                        : fill
+                    }
+                    fillOpacity={cell === null ? 0.35 : 1}
+                    data-heatmap-cell='true'
+                    data-limit-state={state}
+                  >
+                    <title>{`${title}${alarm ? ` · ${state === 'critical' ? t`Critical` : t`Warning`}` : ''}`}</title>
+                  </rect>
+                  {alarm && cellWidth >= 5 && (
+                    <path
+                      d={
+                        state === 'critical'
+                          ? 'M-2,-2 L2,2 M-2,2 L2,-2'
+                          : 'M0,-3 L3,3 L-3,3 Z'
+                      }
+                      transform={`translate(${labelWidth + (c + 0.5) * cellWidth}, ${ROW_HEIGHT / 2})`}
+                      fill='none'
+                      stroke={
+                        state === 'warning'
+                          ? 'var(--aimms-warning-ink)'
+                          : scheme === 'dark'
+                            ? 'var(--mantine-color-dark-9)'
+                            : 'var(--mantine-color-white)'
+                      }
+                      strokeWidth={1}
+                      pointerEvents='none'
+                    />
+                  )}
+                </g>
               );
             })}
           </g>
@@ -238,21 +254,6 @@ export function SensorHeatmap({
       <Group gap='xs' justify='flex-end'>
         <Box w={12} h={12} bg='var(--mantine-color-default-border)' />
         <MetaText size='xs'>{t`No reading`}</MetaText>
-        <MetaText size='xs'>{t`Scale spans the observed range:`}</MetaText>
-        <Text size='xs'>
-          {formatValue(matrix.min, decimals, unit, matrix.max - matrix.min)}
-        </Text>
-        <Box
-          w={96}
-          h={8}
-          style={{
-            borderRadius: 2,
-            background: `linear-gradient(90deg, ${palette[rampLow]}, ${palette[rampHigh]})`
-          }}
-        />
-        <Text size='xs'>
-          {formatValue(matrix.max, decimals, unit, matrix.max - matrix.min)}
-        </Text>
       </Group>
     </Stack>
   );

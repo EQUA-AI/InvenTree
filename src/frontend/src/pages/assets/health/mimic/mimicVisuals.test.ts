@@ -3,6 +3,7 @@ import {
   alarmAttention,
   hasDischargeFlow,
   knownNoActiveAlarms,
+  missingContributors,
   operatingState,
   readingSeverity
 } from './mimicVisuals';
@@ -171,6 +172,14 @@ it('requires every mapped bay to be quiet and no active/acknowledged anomaly bef
   expect(knownNoActiveAlarms(source)).toBe(true);
   expect(knownNoActiveAlarms(undefined)).toBe(false);
   expect(knownNoActiveAlarms({ ...source, bays: [] })).toBe(false);
+  for (const extra of [
+    { enabled: false },
+    { source: null },
+    { reporting: false },
+    { read_failed: true },
+    { last_error_code: 'source_unavailable' }
+  ])
+    expect(knownNoActiveAlarms({ ...source, ...extra })).toBe(false);
   for (const alarm of [undefined, 'warning', 'critical'] as const)
     expect(knownNoActiveAlarms({ ...source, alarm })).toBe(false);
   expect(
@@ -200,4 +209,28 @@ it('requires every mapped bay to be quiet and no active/acknowledged anomaly bef
       !['open', 'acknowledged'].includes(status)
     );
   }
+});
+
+it('explains only unavailable derived totals and includes failed contributors', () => {
+  const source = data();
+  const total = {
+    value: null,
+    unit: 'cusec',
+    derived: true,
+    reason: 'missing_contributors',
+    contributors: ['/pd/P7/dv', '/pd/P8/dv']
+  };
+  const bays = [source.bays[0], { ...source.bays[0], key: 'P8', points: {} }];
+  expect(missingContributors(total, bays)).toBe('1 of 2 bays not reporting');
+  expect(missingContributors({ ...total, value: 0 }, bays)).toBeNull();
+  expect(missingContributors({ ...total, derived: false }, bays)).toBeNull();
+  expect(
+    missingContributors(total, [
+      source.bays[0],
+      { ...bays[1], points: { '/pd/P8/dv': point({ quality: 'bad' }) } }
+    ])
+  ).toBe('1 of 2 bays not reporting');
+  expect(
+    missingContributors({ ...total, contributors: ['/pd/P7/dv'] }, bays)
+  ).toBeNull();
 });

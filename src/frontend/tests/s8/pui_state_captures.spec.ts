@@ -99,7 +99,10 @@ for (const state of states)
         } else {
           await expect(
             page.getByRole('region', { name: 'Loaded page summary' })
-          ).toContainText('This page');
+          ).toContainText('25 of 79');
+          await expect(
+            page.getByRole('region', { name: 'Loaded page summary' })
+          ).not.toContainText('This page');
           if (state === 'station-condition-unavailable') {
             const summary = page.getByRole('region', {
               name: 'Loaded page summary'
@@ -307,6 +310,47 @@ for (const state of states)
                   : 900
         });
         await captureFromTop(page);
+        if (state === 'schematic-shifted-history' && width === 390) {
+          const history = page.getByRole('button', {
+            name: 'Recorded history shown as current',
+            exact: true
+          });
+          await page.mouse.move(1, 1);
+          await history.focus();
+          await expect(history).toBeFocused();
+          const reason = page.getByRole('tooltip').filter({
+            hasText:
+              /^Times moved 400 d onto the display clock; plant times are earlier$/
+          });
+          await expect(reason).toBeVisible();
+          await expect(reason).toHaveCSS('opacity', '1');
+          const bounds = (await reason.boundingBox())!;
+          await page.screenshot({
+            path: info.outputPath(`history-tooltip-${scheme}.png`)
+          });
+          await writeFile(
+            info.outputPath(`history-tooltip-${scheme}.json`),
+            JSON.stringify(
+              {
+                ...bounds,
+                viewportWidth: width,
+                documentWidth: await page.evaluate(
+                  () => document.documentElement.scrollWidth
+                )
+              },
+              null,
+              2
+            )
+          );
+          expect(bounds.x).toBeGreaterThanOrEqual(0);
+          expect(
+            bounds.x + bounds.width,
+            'The focused history reason must fit the phone viewport'
+          ).toBeLessThanOrEqual(width);
+          await page.keyboard.press('Escape');
+          await expect(reason).toBeHidden();
+          await history.blur();
+        }
         const { metadata, stem } = await captureEvidence(
           page,
           info,
@@ -372,11 +416,21 @@ for (const state of states)
             exact: true
           });
           await details.click();
+          // No "Times:" caption; the clock is in the tooltip of the time shown.
           await expect(
             page.getByText(/Times: your clock|Times: plant clock/)
+          ).toHaveCount(0);
+          await page
+            .getByText(/^Records read/)
+            .locator('time')
+            .hover();
+          await expect(
+            page
+              .getByRole('tooltip')
+              .filter({ hasText: /your clock|plant clock/ })
           ).toBeVisible();
           await details.click();
-        } else expect(metadata.clockStatements).toBe(1);
+        } else expect(metadata.clockStatements).toBe(0);
         expect(
           metadata.drawing.tags.filter(
             (tag) => tag.valueOverlapsLabel || tag.labelOutsideTag
@@ -386,7 +440,7 @@ for (const state of states)
         expect(
           metadata.drawing.partLabels.filter(
             (label) =>
-              label.outside || label.hardTruncated || label.lineClamp !== '2'
+              label.outside || label.hardTruncated || label.lineClamp !== 'none'
           )
         ).toEqual([]);
         expect(metadata.drawing.tagOverlaps).toEqual([]);
@@ -402,8 +456,22 @@ for (const state of states)
             expect(metadata.fold.machineRows).toBeGreaterThanOrEqual(5);
           if (width === 1920)
             expect(metadata.fold.machineRows).toBeGreaterThanOrEqual(8);
-          if (width === 390)
-            expect(metadata.fold.firstMachine?.bottom).toBeLessThanOrEqual(844);
+          if (width === 390) {
+            const fold = metadata.fold.firstMachine!;
+            await writeFile(
+              info.outputPath(`machine-fold-${scheme}.json`),
+              JSON.stringify(fold, null, 2)
+            );
+            expect(fold.measured).toBeGreaterThan(0);
+            // Compare the painted border in physical pixels; text and controls
+            // must still fit without any rounding allowance.
+            expect(
+              Math.round(fold.bottom * fold.pixelRatio)
+            ).toBeLessThanOrEqual(
+              Math.round(fold.viewportHeight * fold.pixelRatio)
+            );
+            expect(fold.contentBottom).toBeLessThanOrEqual(fold.viewportHeight);
+          }
         }
         if (state === 'base-fault-history' && width === 1440)
           expect(metadata.fold.occurrenceRows).toBeGreaterThanOrEqual(3);
@@ -415,17 +483,24 @@ for (const state of states)
         }
         if (state === 'base-schematic') {
           const readings = page.locator('[data-unit-schematic] [data-reading]');
-          await expect(readings.locator('[data-value] button')).toHaveCount(4);
+          await expect(readings).toHaveCount(4);
+          await expect(readings.locator('[data-value] button')).toHaveCount(0);
           for (const reading of await readings.all()) {
             const label = (
               await reading.locator('[data-tag-label]').innerText()
             ).trim();
-            const target = reading.locator('[data-value]').getByRole('button');
-            const value = (await target.innerText()).trim();
-            await expect(target).toHaveAccessibleName(value);
-            await page.keyboard.press('Tab');
-            await target.focus();
-            await expect(target).toBeFocused();
+            const target = reading.locator('[data-value] > span');
+            const value = await target.evaluate((node) =>
+              [...node.childNodes]
+                .filter((child) => child.nodeType === Node.TEXT_NODE)
+                .map((child) => child.textContent)
+                .join('')
+                .trim()
+            );
+            expect(value).not.toBe('');
+            await expect(target).toContainText(`${label}: ${value}`);
+            await expect(target).not.toHaveAttribute('tabindex');
+            await target.hover();
             const tooltip = page
               .getByRole('tooltip')
               .filter({ hasText: `${label}: ${value}` });
@@ -459,23 +534,71 @@ for (const state of states)
                 const svg = node as SVGSVGElement;
                 const box = svg.getBBox();
                 const transform = svg.getScreenCTM();
-                const scale = transform
-                  ? Math.hypot(transform.a, transform.b)
-                  : 0;
-                return { width: box.width * scale, height: box.height * scale };
+                if (!transform)
+                  throw new Error('Schematic has no screen transform');
+                const corners = [
+                  new DOMPoint(box.x, box.y),
+                  new DOMPoint(box.x + box.width, box.y),
+                  new DOMPoint(box.x, box.y + box.height),
+                  new DOMPoint(box.x + box.width, box.y + box.height)
+                ].map((point) => point.matrixTransform(transform));
+                const frame = svg.closest<SVGSVGElement>(
+                  '[data-unit-drawing]'
+                )!;
+                const left = Math.min(...corners.map((point) => point.x));
+                const right = Math.max(...corners.map((point) => point.x));
+                const top = Math.min(...corners.map((point) => point.y));
+                const bottom = Math.max(...corners.map((point) => point.y));
+                return {
+                  width: right - left,
+                  height: bottom - top,
+                  left,
+                  right,
+                  top,
+                  bottom,
+                  nativeAspect:
+                    frame.viewBox.baseVal.width / frame.viewBox.baseVal.height
+                };
               });
             expect(bounds.width).toBeGreaterThanOrEqual(content.width * 0.5);
             expect(painted.width).toBeGreaterThanOrEqual(content.width * 0.5);
-            expect(painted.height).toBeGreaterThanOrEqual(
-              page.viewportSize()!.height * 0.6
+            // Both container layouts keep the cropped native aspect.
+            expect(
+              Math.abs(bounds.height - bounds.width / painted.nativeAspect)
+            ).toBeLessThanOrEqual(1);
+            expect(painted.left).toBeGreaterThanOrEqual(bounds.x - 1);
+            expect(painted.right).toBeLessThanOrEqual(
+              bounds.x + bounds.width + 1
             );
+            expect(painted.top).toBeGreaterThanOrEqual(bounds.y - 1);
+            expect(painted.bottom).toBeLessThanOrEqual(
+              bounds.y + bounds.height + 1
+            );
+            const hostWidth = await drawing.evaluate((node) => {
+              let host: HTMLElement | null = node as HTMLElement;
+              while (
+                host &&
+                getComputedStyle(host).containerType !== 'inline-size'
+              )
+                host = host.parentElement;
+              return host?.getBoundingClientRect().width ?? 0;
+            });
+            expect(hostWidth).toBeGreaterThan(0);
             for (const callout of await page
               .locator('[data-unit-callouts] button[data-part]')
               .all()) {
               const box = (await callout.boundingBox())!;
-              expect(box.y).toBeGreaterThanOrEqual(
-                bounds.y + bounds.height - 1
-              );
+              if (hostWidth >= 1100)
+                expect(
+                  box.x + box.width <= bounds.x + 1 ||
+                    box.x >= bounds.x + bounds.width - 1,
+                  'Wide-container callouts stay beside the drawing'
+                ).toBe(true);
+              else
+                expect(
+                  box.y,
+                  'Narrow-container callouts stay below the drawing'
+                ).toBeGreaterThanOrEqual(bounds.y + bounds.height - 1);
             }
           }
           if (width === 390) {

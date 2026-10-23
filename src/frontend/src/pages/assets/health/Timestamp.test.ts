@@ -44,6 +44,7 @@ it('keeps a relative column compact while retaining the full observation instant
     relativeOnly: true
   });
   expect(markup).toContain('>just now</time>');
+  expect(markup).toContain('<button');
   expect(markup).toContain('dateTime="2026-10-20T08:00:00.000Z"');
   expect(markup).toContain('white-space:nowrap');
 });
@@ -54,4 +55,18 @@ it('keeps civil maintenance dates on their supplied calendar day in all plant zo
       render({ value: '2026-09-18', dateOnly: true, clock: displayClock(zone) })
     ).toContain('>18 Sept 2026</time>');
   }
+});
+
+it('exposes full instant and zone to AT even when a relative table cell uses its row control', () => {
+  const html = render({
+    value: '2026-10-20T08:00:00Z',
+    relative: '20 s ago',
+    relativeOnly: true,
+    focusable: false,
+    clock: displayClock('Asia/Riyadh')
+  });
+  expect(html).not.toContain('<button');
+  expect(html).toContain('20 Oct 2026 11:00:00');
+  expect(html).toContain('Asia/Riyadh');
+  expect(html).toContain('mantine-VisuallyHidden');
 });

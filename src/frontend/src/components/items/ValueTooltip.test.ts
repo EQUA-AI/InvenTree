@@ -48,7 +48,8 @@ it('keeps non-focusable facts as plain content without adding a button or tab st
       focusable: false
     })
   );
-  expect(html).toContain('>—</span>');
+  expect(html).toContain('>—<span');
+  expect(html).toContain('No observation available');
   expect(html).not.toContain('<button');
   expect(html).not.toContain('tabindex=');
   expect(html).not.toContain('role="img"');
@@ -66,4 +67,19 @@ it('renders a missing fact as an em dash with the field and reason available to 
   );
   expect(html).toMatch(/<button[^>]*>—<\/button>/);
   expect(html).not.toContain('role="img"');
+});
+
+it('retains an accessible explanation in noninteractive content', () => {
+  const html = render(
+    ValueTooltip({
+      label: 'Plant timezone: Asia/Riyadh',
+      accessibleLabel: 'Full instant in plant time',
+      focusable: false,
+      children: '20 s ago'
+    })
+  );
+  expect(html).toContain('20 s ago');
+  expect(html).toContain('Full instant in plant time');
+  expect(html).toContain('mantine-VisuallyHidden');
+  expect(html).not.toContain('<button');
 });

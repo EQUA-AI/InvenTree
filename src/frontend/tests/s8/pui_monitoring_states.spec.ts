@@ -10,12 +10,11 @@ import {
 } from '../s3/healthFixtures';
 import {
   NATIVE_SIGNALS,
-  openPausedPerformance,
   openPerformance,
   signal
 } from '../s3/performanceFixtures';
-import { contrast } from './contrast';
 import { auditAxe, captureState, drawnBoundary } from './hyperagentEvidence';
+import { openPausedPerformance } from './monitoringFixtures';
 
 nativeBaseline();
 const designation = {
@@ -197,7 +196,14 @@ for (const scheme of ['light', 'dark'] as const) {
       let feature = () => root.getByTestId('health-summary');
       if (state === 'stale') {
         await expect(signalTable(page)).toContainText('Last known');
-        await expect(signalTable(page)).toContainText('60 min old');
+        const observed = signalTable(page).locator(
+          '[data-label="Observed"] time'
+        );
+        await expect(observed).toHaveText('1 h ago');
+        await expect(observed).toHaveAttribute(
+          'datetime',
+          new Date(NOW - 3600_000).toISOString()
+        );
         await expect(
           signalTable(page).getByText('Normal', { exact: true })
         ).toHaveCount(0);
@@ -218,11 +224,17 @@ for (const scheme of ['light', 'dark'] as const) {
         );
       }
       if (state === 'critical-coverage-complete') {
+        feature = () =>
+          root.getByRole('button', { name: /Critical signals: 1 assessed\./ });
         await expect(
           root.getByRole('button', {
-            name: /Critical signals: 1 assessed$/
+            name: /Critical signals: 1 assessed\./
           })
         ).toBeVisible();
+        await feature().focus();
+        await expect(page.getByRole('tooltip')).toContainText(
+          'Critical signals: 1 assessed.'
+        );
         await expect(root.getByRole('alert')).toHaveCount(0);
       }
       if (state === 'signal-read-failed') {
@@ -251,7 +263,7 @@ for (const scheme of ['light', 'dark'] as const) {
           .first();
         await expect(badge).toHaveAttribute('data-variant', 'filled');
         await expect(root.getByTestId('threshold-key')).toContainText(
-          'Critical below 400 cusec'
+          'Critical 400 cusec'
         );
       }
       if (state.startsWith('shifted-')) {
@@ -456,10 +468,16 @@ for (const scheme of ['light', 'dark'] as const) {
       const root = page.getByTestId('pump-performance');
       let feature = () => root.locator('[data-kpi="winding"]');
       if (state === 'fresh-live') {
-        feature = () => root.getByText('Live', { exact: true }).last();
-        const badge = root.locator('[data-tone="live"]');
-        await expect(badge).toHaveAttribute('data-variant', 'outline');
-        expect((await contrast(badge)).ratio).toBeGreaterThanOrEqual(4.5);
+        feature = () => root.getByTestId('live-indicator');
+        const live = root.getByRole('switch', {
+          name: 'Live updates: Live',
+          exact: true
+        });
+        await expect(live).toBeChecked();
+        await expect(
+          root.getByRole('switch', { name: /^Live updates:/ })
+        ).toHaveCount(1);
+        await expect(root.locator('[data-tone="live"]')).toHaveCount(0);
       }
       if (state === 'viewer') {
         await expect(
@@ -477,9 +495,38 @@ for (const scheme of ['light', 'dark'] as const) {
       }
       if (state === 'stale') {
         const tile = root.locator('[data-kpi="winding"]');
-        await expect(tile).toContainText('Last known');
-        await expect(tile).toContainText('60 min old');
-        await expect(tile).toContainText('freshness budget 300 s');
+        await expect(
+          tile.getByRole('button', { name: 'Stale', exact: true })
+        ).toBeVisible();
+        await expect(tile).not.toContainText('Last known');
+        await expect(tile.locator('[data-kpi-observed] time')).toHaveText(
+          '11:00:00 · 1 h ago'
+        );
+        const stale = tile.getByRole('button', { name: 'Stale', exact: true });
+        await stale.focus();
+        await expect(
+          page.getByRole('tooltip', { name: /freshness budget 300 s/ })
+        ).toContainText('freshness budget 300 s');
+        await expect(stale).toHaveAccessibleDescription(
+          /Source flagged stale.*Observed.*18 Oct 2026 11:00:00.*Read.*18 Oct 2026 12:00:00.*freshness budget 300 s/
+        );
+        await stale.blur();
+        await page.mouse.move(0, 0);
+        await expect(
+          page.getByRole('tooltip', { name: /Source flagged stale/ })
+        ).toBeHidden();
+        const live = root.getByRole('switch', { name: /^Live updates:/ });
+        await live.focus();
+        await live.press('Space');
+        await expect(live).toBeChecked();
+        await expect(live).toHaveAccessibleName('Live updates: Live · 1 stale');
+        await live.press('Space');
+        await expect(live).not.toBeChecked();
+        await expect(live).toHaveAccessibleName('Live updates: Paused');
+        await live.blur();
+        await expect(
+          page.getByRole('tooltip', { name: /^Paused:/ })
+        ).toBeHidden();
         await expect(tile.locator('[data-kpi-value]')).toHaveCSS(
           'font-weight',
           '400'
@@ -507,10 +554,26 @@ for (const scheme of ['light', 'dark'] as const) {
         ).toBeVisible();
         await expect(root.getByText(/within limits/)).toHaveCount(0);
       }
-      if (state === 'no-data')
-        await expect(root.locator('[data-kpi="winding"]')).toContainText(
-          'Unavailable'
+      if (state === 'no-data') {
+        const missing = root
+          .locator('[data-kpi="winding"]')
+          .getByRole('button', {
+            name: 'Winding temperature: No usable observation',
+            exact: true
+          });
+        await expect(missing).toHaveText('—');
+        await missing.focus();
+        await expect(missing).toBeFocused();
+        await expect(
+          page.getByRole('tooltip', {
+            name: 'Winding temperature: No usable observation',
+            exact: true
+          })
+        ).toHaveText('Winding temperature: No usable observation');
+        await expect(missing).toHaveAccessibleDescription(
+          'Winding temperature: No usable observation'
         );
+      }
       if (state === 'comparison-incompatible') {
         feature = () => root.getByTestId('comparison-refusal');
         await expect(feature()).toContainText('Winding 1 (°C, winding)');
@@ -626,14 +689,25 @@ for (const scheme of ['light', 'dark'] as const) {
         feature = () =>
           root
             .getByRole('alert')
-            .filter({ hasText: 'History read failed' })
+            .filter({ hasText: 'Could not read history for this window' })
             .first();
         await expect(feature()).toBeVisible();
       }
       if (state === 'partial-history') {
         feature = () =>
-          root.getByRole('alert').filter({ hasText: 'Partial history read' });
+          root.getByText(
+            '52 history targets could not be read; coverage unknown',
+            { exact: true }
+          );
         await expect(feature()).toBeVisible();
+        const electrical = root.locator('[data-section="Electrical"]');
+        await electrical
+          .getByRole('button', { name: 'Open Electrical', exact: true })
+          .click();
+        await expect(
+          electrical.locator('.recharts-surface').first()
+        ).toBeVisible();
+        await expect(root).not.toContainText('No exceptions');
       }
       await captureState(
         page,

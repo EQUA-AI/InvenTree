@@ -1,5 +1,11 @@
 import { t } from '@lingui/core/macro';
-import { Group, Text, Tooltip, UnstyledButton } from '@mantine/core';
+import {
+  Group,
+  Text,
+  Tooltip,
+  UnstyledButton,
+  VisuallyHidden
+} from '@mantine/core';
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
 import { StatusBadge } from '../../pages/assets/health/StatusBadge';
 import classes from './ValueTooltip.module.css';
@@ -42,6 +48,7 @@ export function ValueTooltip({
           className={`${classes.target}${className ? ` ${className}` : ''}`}
         >
           {children}
+          <VisuallyHidden>{accessibleLabel ?? label}</VisuallyHidden>
         </span>
       ) : (
         <UnstyledButton
