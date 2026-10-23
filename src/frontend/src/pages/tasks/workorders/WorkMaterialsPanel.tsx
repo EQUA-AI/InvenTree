@@ -24,6 +24,7 @@ import { api } from '../../../App';
 import { returnState } from '../../../components/nav/returnPath';
 import { useUserState } from '../../../states/UserState';
 import { FittedItemFact } from '../../assets/FittedIdentity';
+import { WorkProcurement } from './WorkProcurement';
 import {
   type MaterialReadout,
   type MaterialRequirement,
@@ -221,12 +222,14 @@ function Requirement({
   requirement,
   linkParts,
   linkStock,
-  back
+  back,
+  inList = true
 }: Readonly<{
   requirement: MaterialRequirement;
   linkParts: boolean;
   linkStock: boolean;
   back: ReturnType<typeof returnState>;
+  inList?: boolean;
 }>) {
   const part = requirement.part;
   const units = part?.units;
@@ -239,7 +242,7 @@ function Requirement({
       withBorder
       p='sm'
       radius='sm'
-      component='li'
+      component={inList ? 'li' : 'div'}
       data-requirement={requirement.key}
     >
       <Stack gap='sm'>
@@ -400,7 +403,12 @@ export function WorkMaterialsPanel({
       </Stack>
     );
 
-  if (query.isError) {
+  const status = (query.error as { response?: { status?: number } })?.response
+    ?.status;
+  // Permission or scope loss must discard previously authorized facts. Transient
+  // refresh failures retain this exact Work query's last successful response.
+  const denied = query.isError && [401, 403, 404].includes(status ?? 0);
+  if (query.isError && (!query.data || denied)) {
     const status = (query.error as { response?: { status?: number } })?.response
       ?.status;
     if (status === 404)
@@ -419,7 +427,6 @@ export function WorkMaterialsPanel({
         title={t`Parts for this job could not be read`}
       >
         <Stack gap='xs' align='flex-start'>
-          <Text size='sm'>{t`Nothing is shown rather than an old or partial list.`}</Text>
           <Button size='xs' variant='light' onClick={() => query.refetch()}>
             {t`Retry`}
           </Button>
@@ -428,22 +435,42 @@ export function WorkMaterialsPanel({
     );
   }
 
-  const readout = query.data;
+  const readout = query.data!;
   const component = readout.component;
+  const procurementReady =
+    readout.procurement?.schema_version === 'r8.1' &&
+    readout.procurement.purchasing_visible &&
+    readout.procurement.lines.length > 0;
   return (
     <Stack gap='md' data-material-source={readout.source}>
-      <Group justify='space-between' wrap='wrap'>
-        <Text size='sm' c='dimmed' data-requirement-count>
-          {readout.requirements.length === 1
-            ? t`1 requirement`
-            : t`${readout.requirements.length} requirements`}
-        </Text>
-        {coveredByStock(readout) && (
-          <Text size='sm' c='dimmed' data-covered>
-            {t`Available stock used for this job`}
+      {query.isError && (
+        <Alert color='orange' title={t`Refresh failed · showing last read`}>
+          <Group justify='space-between'>
+            <Text size='sm'>
+              {dayjs(query.dataUpdatedAt).format('DD MMM YYYY, HH:mm')}
+            </Text>
+            <Button
+              size='xs'
+              variant='light'
+              onClick={() => query.refetch()}
+            >{t`Retry`}</Button>
+          </Group>
+        </Alert>
+      )}
+      {!procurementReady && (
+        <Group justify='space-between' wrap='wrap'>
+          <Text size='sm' c='dimmed' data-requirement-count>
+            {readout.requirements.length === 1
+              ? t`1 requirement`
+              : t`${readout.requirements.length} requirements`}
           </Text>
-        )}
-      </Group>
+          {coveredByStock(readout) && (
+            <Text size='sm' c='dimmed' data-covered>
+              {t`Available stock used for this job`}
+            </Text>
+          )}
+        </Group>
+      )}
       {component && (
         <Text size='sm'>
           {t`Component`}:{' '}
@@ -465,7 +492,21 @@ export function WorkMaterialsPanel({
           )}
         </Text>
       )}
-      {readout.requirements.length === 0 ? (
+      {procurementReady ? (
+        <WorkProcurement
+          readout={readout}
+          stale={query.isError || query.isFetching}
+          renderDetails={(requirement) => (
+            <Requirement
+              requirement={requirement}
+              linkParts={linkParts}
+              linkStock={linkStock && readout.stock_visible}
+              back={back}
+              inList={false}
+            />
+          )}
+        />
+      ) : readout.requirements.length === 0 ? (
         <Text size='sm' c='dimmed'>
           {t`No parts are required by this job.`}
         </Text>
@@ -507,9 +548,11 @@ export function WorkMaterialsPanel({
           ))}
         </Stack>
       )}
-      <Text size='xs' c='dimmed'>
-        {t`Fitted identity requires an exact registry slot and a recorded serial or lot. Material use alone does not establish a fitted item.`}
-      </Text>
+      {!procurementReady && (
+        <Text size='xs' c='dimmed'>
+          {t`Fitted identity requires an exact registry slot and a recorded serial or lot. Material use alone does not establish a fitted item.`}
+        </Text>
+      )}
     </Stack>
   );
 }

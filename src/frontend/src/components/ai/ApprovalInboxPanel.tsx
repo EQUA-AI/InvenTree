@@ -46,18 +46,19 @@ const approvalRequest = { timeout: 30_000 };
 /** All-tab screen review consumes the same sections, hashes and action endpoints. */
 export function ApprovalInboxPanel({
   statuses,
-  emptyText
-}: Readonly<{ statuses: string[]; emptyText: string }>) {
+  emptyText,
+  approvalId
+}: Readonly<{ statuses: string[]; emptyText: string; approvalId?: string }>) {
   const client = useQueryClient();
   const decision = useVoiceDecisionState((state) => state.decision);
   const sessionId = useVoiceDecisionState((state) => state.sessionId);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(approvalId ?? null);
   const statusKey = statuses.join(',');
   // A filter switch must show the new section's list, never a detail left
   // selected under the previous statuses. Ordinary refreshes keep it.
   useEffect(() => {
-    setSelected(null);
-  }, [statusKey]);
+    setSelected(approvalId ?? null);
+  }, [statusKey, approvalId]);
   const list = useQuery({
     queryKey: ['approval-inbox', statusKey],
     queryFn: async () => {

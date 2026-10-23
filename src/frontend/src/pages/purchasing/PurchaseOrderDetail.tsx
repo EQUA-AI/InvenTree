@@ -1,7 +1,7 @@
 import { t } from '@lingui/core/macro';
-import { Accordion, Stack } from '@mantine/core';
+import { Accordion, Modal, Stack } from '@mantine/core';
 import { IconInfoCircle, IconList, IconPackages } from '@tabler/icons-react';
-import { type ReactNode, useMemo } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 
 import { StylishText } from '@lib/components/StylishText';
@@ -27,6 +27,7 @@ import AttachmentPanel from '../../components/panels/AttachmentPanel';
 import NotesPanel from '../../components/panels/NotesPanel';
 import { PanelGroup } from '../../components/panels/PanelGroup';
 import ParametersPanel from '../../components/panels/ParametersPanel';
+import { NamedApproval } from '../../components/procurement/NamedApproval';
 import { StatusRenderer } from '../../components/render/StatusRenderer';
 import { usePurchaseOrderFields } from '../../forms/PurchaseOrderForms';
 import {
@@ -42,6 +43,7 @@ import ExtraLineItemTable from '../../tables/general/ExtraLineItemTable';
 import { PurchaseOrderLineItemTable } from '../../tables/purchasing/PurchaseOrderLineItemTable';
 import { StockItemTable } from '../../tables/stock/StockItemTable';
 import { PurchaseOrderDetailsPanel } from './PurchaseOrderDetailsPanel';
+import { PurchaseOrderProcurement } from './PurchaseOrderProcurement';
 
 /**
  * Detail page for a single PurchaseOrder
@@ -50,6 +52,7 @@ export default function PurchaseOrderDetail() {
   const { id } = useParams();
 
   const user = useUserState();
+  const [approvalOpen, setApprovalOpen] = useState(false);
   const globalSettings = useGlobalSettingsState();
 
   const {
@@ -226,14 +229,6 @@ export default function PurchaseOrderDetail() {
     ];
   }, [order, id, user, instanceInfo]);
 
-  const issueOrder = useCreateApiFormModal({
-    url: apiUrl(ApiEndpoints.purchase_order_issue, order.pk),
-    title: t`Issue Purchase Order`,
-    onFormSuccess: refreshInstance,
-    preFormWarning: t`Issue this order`,
-    successMessage: t`Order issued`
-  });
-
   const cancelOrder = useCreateApiFormModal({
     url: apiUrl(ApiEndpoints.purchase_order_cancel, order.pk),
     title: t`Cancel Purchase Order`,
@@ -282,11 +277,11 @@ export default function PurchaseOrderDetail() {
 
     return [
       <PrimaryActionButton
-        title={t`Issue Order`}
+        title={t`Request named approval`}
         icon='issue'
         hidden={!canIssue}
         color='blue'
-        onClick={issueOrder.open}
+        onClick={() => setApprovalOpen(true)}
       />,
       <PrimaryActionButton
         title={t`Complete Order`}
@@ -361,7 +356,26 @@ export default function PurchaseOrderDetail() {
 
   return (
     <>
-      {issueOrder.modal}
+      <Modal
+        opened={approvalOpen}
+        onClose={() => {
+          setApprovalOpen(false);
+          refreshInstance();
+        }}
+        title={t`Named PO approval`}
+        size='lg'
+      >
+        <NamedApproval
+          key={order.pk}
+          scope={`po:${order.pk}`}
+          summary={t`Issue ${order.reference}`}
+          payload={{
+            operation: 'issue_purchase_order',
+            order_id: order.pk,
+            currency: orderCurrency
+          }}
+        />
+      </Modal>
       {holdOrder.modal}
       {cancelOrder.modal}
       {completeOrder.modal}
@@ -387,6 +401,11 @@ export default function PurchaseOrderDetail() {
             badges={orderBadges}
             editAction={editPurchaseOrder.open}
             editEnabled={user.hasChangePermission(ModelType.purchaseorder)}
+          />
+          <PurchaseOrderProcurement
+            key={order.pk}
+            orderId={order.pk}
+            issueDate={order.issue_date}
           />
           <PanelGroup
             pageKey='purchaseorder'

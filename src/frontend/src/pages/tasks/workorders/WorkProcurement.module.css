@@ -1,0 +1,15 @@
+.cell {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.details {
+  margin-top: var(--mantine-spacing-sm);
+  font-size: var(--mantine-font-size-sm);
+}
+.details > summary {
+  cursor: pointer;
+  color: var(--mantine-primary-color-filled);
+}
+.detailContent {
+  margin-top: var(--mantine-spacing-sm);
+}

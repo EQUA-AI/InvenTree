@@ -1,0 +1,7 @@
+.context {
+  --mantine-color-anchor: light-dark(var(--mantine-primary-color-8), var(--mantine-primary-color-3));
+}
+.context a,
+.context summary {
+  color: light-dark(var(--mantine-primary-color-8), var(--mantine-primary-color-3));
+}

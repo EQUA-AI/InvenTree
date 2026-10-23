@@ -1,5 +1,22 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## R8 wave 2 lane A — 23 October 2026 (ready for human review)
+
+U1 Work Parts and U2 native PO are implemented in `r8-w2a` from `1778fb6c2`.
+Six factual procurement columns, inline original source evidence, stable retained
+commands, named in-app PO approval and independent recorded-not-sent/ack facts.
+Native commercial panels and R6 fallback/custody remain. 110 isolated offline
+backend checks, 77 standard fresh PostgreSQL checks, 18 units and 61 unique
+browser fixture cases pass; settled/responsive capture replays also pass. App and
+harness types, Lingui (40 bytewise `.po` restores) and final changed-file checks
+are in the [lane report](../r8-procurement/reports/wave2-a.md). All 48 exact-size
+light/dark desktop/phone PNGs inspected. New PG/network removed; owned
+browser3021/harness15271 stopped and ports clear. Fixture/component evidence only;
+Mac host, real-data, deployment and product acceptance remain open. Direct PO
+entry has no reverse Work lookup in wave 1; Work-linked navigation carries exact
+scope. No receiving-form, Closeout, seed/recovery, owner-data, Azure, email-send,
+Git write, issue or PR change. Next: human/coordinator U1–U4 integration review.
+
 ## R8 backend wave 1 integration — 23 October 2026 (human review; baseline gates open)
 
 P1/P2/P3 are integrated in `r8/integration`; the Work audit conflict uses
