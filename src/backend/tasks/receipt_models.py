@@ -9,10 +9,12 @@ class MaintenanceReceipt(models.Model):
 
     operation_key = models.CharField(max_length=128, unique=True)
     request_hash = models.CharField(max_length=64)
+    request_snapshot = models.JSONField()
     work_order = models.ForeignKey('tasks.WorkOrder', on_delete=models.PROTECT)
     kit_line = models.ForeignKey('tasks.JobKitLine', on_delete=models.PROTECT)
     purchase_order_line = models.ForeignKey(
-        'order.PurchaseOrderLineItem', on_delete=models.PROTECT,
+        'order.PurchaseOrderLineItem',
+        on_delete=models.PROTECT,
         related_name='maintenance_receipts',
     )
     shortage = models.ForeignKey('tasks.JobKitShortage', on_delete=models.PROTECT)

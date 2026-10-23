@@ -8,6 +8,7 @@ layer only -- it performs no stock reservation and touches no allocation
 accounting (that is the later ME5 stock-gate slice).
 """
 
+import hashlib
 import uuid
 from decimal import Decimal
 
@@ -35,6 +36,7 @@ from tasks.services.procedure_execution import _command_replay, _record_command
 from tasks.services.stock_allocation import StockOverAllocation, mutate_stock_allocation
 from tasks.services.work_orders import (
     WorkOrderCommandError,
+    WorkOrderScopeError,
     _canonical_hash,
     _locked_work_order,
     _require_scope,
@@ -118,6 +120,14 @@ def _locked_kit(work_order_id):
     if kit is None:
         raise JobKitStateError('Work order has no Job Kit; build it first')
     return kit
+
+
+def _require_stock_scope(actor, work_order):
+    """Shared Work visibility never grants another machine's stock authority."""
+    from tasks.scope import work_machine_authorized
+
+    if work_order.machine_id and not work_machine_authorized(actor, work_order):
+        raise WorkOrderScopeError('Machine scope is required for stock reservation')
 
 
 def _require_kit_version(kit, expected_version):
@@ -341,9 +351,9 @@ def build_job_kit(
 
 def _fulfilled_for_line(line):
     """Return the quantity fulfilling a line (active reservations + consumed)."""
-    total = line.allocations.filter(status__in=_FULFILLED_STATUS_VALUES).aggregate(
-        q=models.Sum('quantity')
-    )['q']
+    total = line.allocations.filter(
+        status__in=_FULFILLED_STATUS_VALUES, stock_item__part_id=line.selected_part_id
+    ).aggregate(q=models.Sum('quantity'))['q']
     return total or Decimal('0')
 
 
@@ -370,8 +380,9 @@ def _reconcile_line_shortage(line, shortfall):
     linked = line.shortages.filter(
         status__in=_OPEN_SHORTAGE_STATES, purchase_order_line__isnull=False
     ).exists()
-    rows = line.shortages.filter(status__in=_OPEN_SHORTAGE_STATES,
-                                 purchase_order_line__isnull=True)
+    rows = line.shortages.filter(
+        status__in=_OPEN_SHORTAGE_STATES, purchase_order_line__isnull=True
+    )
     current = rows.order_by('pk').first()
     if shortfall > 0 and not linked:
         if current:
@@ -379,7 +390,9 @@ def _reconcile_line_shortage(line, shortfall):
             current.save(update_fields=['quantity'])
         else:
             JobKitShortage.objects.create(
-                line=line, quantity=shortfall, status='open',
+                line=line,
+                quantity=shortfall,
+                status='open',
                 reason='Insufficient unallocated stock at reservation',
             )
     else:
@@ -411,6 +424,9 @@ def reserve_job_kit(
     remainder; and derives kit readiness. Idempotent on the command ledger.
     """
     work_order = _locked_work_order(work_order_id)
+    require_permission(actor, RESERVE_JOBKIT)
+    _require_scope(actor, work_order)
+    _require_stock_scope(actor, work_order)
     payload = {'work_order_id': work_order_id, 'expected_version': expected_version}
     request_hash = _canonical_hash('reserve_job_kit', actor, payload)
     replay = _command_replay(
@@ -420,8 +436,6 @@ def reserve_job_kit(
         return JobKit.objects.get(pk=replay.metadata['kit_id'])
 
     _require_version(work_order, expected_version)
-    require_permission(actor, RESERVE_JOBKIT)
-    _require_scope(actor, work_order)
     kit = _locked_kit(work_order_id)
     _require_reservable(kit)
 
@@ -450,7 +464,9 @@ def reserve_job_kit(
                     line_id=line.pk,
                     requested_quantity=take,
                     actor=actor,
-                    idempotency_key=f'{idempotency_key}:{line.pk}:{candidate.pk}',
+                    idempotency_key=hashlib.sha256(
+                        f'{idempotency_key}:{line.pk}:{candidate.pk}'.encode()
+                    ).hexdigest(),
                 )
             except StockOverAllocation:
                 # A competing writer took it first; try the next candidate.
@@ -676,6 +692,7 @@ def release_allocation(*, work_order_id, allocation_id, actor, correlation_id=No
     work_order = _locked_work_order(work_order_id)
     require_permission(actor, RESERVE_JOBKIT)
     _require_scope(actor, work_order)
+    _require_stock_scope(actor, work_order)
     kit = _locked_kit(work_order_id)
 
     allocation = (
@@ -687,6 +704,8 @@ def release_allocation(*, work_order_id, allocation_id, actor, correlation_id=No
     )
     if allocation is None:
         raise JobKitLineError('Allocation does not belong to this work order')
+    if allocation.status == JobKitAllocationStatus.RELEASED:
+        return allocation
     if allocation.status not in _ACTIVE_STATUS_VALUES:
         raise JobKitStateError('Only active reservations can be released')
 
@@ -743,7 +762,10 @@ def reconcile_job_kit(*, work_order_id, actor, correlation_id=None):
         shortfall = Decimal(line.required_quantity) - _fulfilled_for_line(line)
         _reconcile_line_shortage(line, max(shortfall, Decimal('0')))
 
-    kit.status = _derive_kit_status(kit)
+    # Reconciliation derives supply readiness; it must not erase a recorded
+    # staging/release lifecycle position. Explicit mutations own those changes.
+    if kit.status in RESERVABLE_KIT_STATUSES:
+        kit.status = _derive_kit_status(kit)
     kit.version = kit.version + 1
     kit.save(update_fields=['status', 'version', 'updated_at'])
 

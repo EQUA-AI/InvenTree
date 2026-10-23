@@ -876,5 +876,4 @@ from tasks.workorder_models import (  # noqa: F401
     WorkOrderEvent,
 )
 
-
-from .receipt_models import MaintenanceReceipt, MaintenanceReceiptStock  # noqa: E402, F401
+from .receipt_models import MaintenanceReceipt, MaintenanceReceiptStock  # noqa: F401

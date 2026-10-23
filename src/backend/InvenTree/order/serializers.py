@@ -994,10 +994,19 @@ class PurchaseOrderReceiveSerializer(serializers.Serializer):
     class Meta:
         """Metaclass options."""
 
-        fields = ['items', 'location', 'maintenance_operation_key']
+        fields = [
+            'items',
+            'location',
+            'maintenance_operation_key',
+            'maintenance_requirement_version',
+        ]
 
     maintenance_operation_key = serializers.CharField(
         max_length=128, required=False, allow_blank=False, write_only=True
+    )
+
+    maintenance_requirement_version = serializers.IntegerField(
+        min_value=1, required=False, write_only=True
     )
 
     items = PurchaseOrderLineItemReceiveSerializer(many=True)
@@ -1103,7 +1112,10 @@ class PurchaseOrderReceiveSerializer(serializers.Serializer):
                 batch_offload_tasks(),
             ):
                 items = order.receive_line_items(
-                    location, items, request.user if request else None
+                    location,
+                    items,
+                    request.user if request else None,
+                    notify=not bool(data.get('maintenance_operation_key')),
                 )
         except (ValidationError, DjangoValidationError) as exc:
             # Catch model errors and re-throw as DRF errors

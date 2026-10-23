@@ -155,6 +155,18 @@ class WorkOrderEventSerializer(serializers.ModelSerializer):
     def get_metadata(self, obj) -> dict:
         """O21 source identities follow the same scope as the origin projection."""
         metadata = obj.metadata if isinstance(obj.metadata, dict) else {}
+        if obj.event_type in ('PROC_RECEIPT_RECORDED', 'PROC_RECEIPT_ALLOCATED'):
+            from users.permissions import check_user_role
+
+            from .materials_readout import can_read_work_stock
+
+            request = self.context.get('request')
+            if (
+                not request
+                or not can_read_work_stock(request.user, obj.work_order)
+                or not check_user_role(request.user, 'purchase_order', 'view')
+            ):
+                return {'receipt_visible': False}
         result = metadata.get('result_metadata') or {}
         if not isinstance(result, dict):
             return metadata

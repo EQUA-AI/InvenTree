@@ -1319,14 +1319,15 @@ class PurchaseOrder(TotalPriceMixin, Order):
             self.received_by = user
             self.complete_order()
 
-        # Send notification
-        notify_responsible(
-            self,
-            PurchaseOrder,
-            exclude=user,
-            content=InvenTreeNotificationBodies.ItemsReceived,
-            extra_users=notify_users,
-        )
+        # Recorded maintenance receiving never dispatches email notifications.
+        if kwargs.get('notify', True):
+            notify_responsible(
+                self,
+                PurchaseOrder,
+                exclude=user,
+                content=InvenTreeNotificationBodies.ItemsReceived,
+                extra_users=notify_users,
+            )
 
         # Return a list of the created stock items
         return stock.models.StockItem.objects.filter(
