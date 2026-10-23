@@ -994,7 +994,11 @@ class PurchaseOrderReceiveSerializer(serializers.Serializer):
     class Meta:
         """Metaclass options."""
 
-        fields = ['items', 'location']
+        fields = ['items', 'location', 'maintenance_operation_key']
+
+    maintenance_operation_key = serializers.CharField(
+        max_length=128, required=False, allow_blank=False, write_only=True
+    )
 
     items = PurchaseOrderLineItemReceiveSerializer(many=True)
 

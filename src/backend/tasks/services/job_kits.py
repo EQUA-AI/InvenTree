@@ -339,14 +339,6 @@ def build_job_kit(
     return kit
 
 
-def _active_reserved_for_line(line):
-    """Return the quantity already actively reserved against a line."""
-    total = line.allocations.filter(status__in=_ACTIVE_STATUS_VALUES).aggregate(
-        q=models.Sum('quantity')
-    )['q']
-    return total or Decimal('0')
-
-
 def _fulfilled_for_line(line):
     """Return the quantity fulfilling a line (active reservations + consumed)."""
     total = line.allocations.filter(status__in=_FULFILLED_STATUS_VALUES).aggregate(
@@ -370,15 +362,28 @@ def _candidate_stock(line):
 
 
 def _reconcile_line_shortage(line, shortfall):
-    """Replace this line's open shortage with the current unmet quantity."""
-    line.shortages.filter(status='open').delete()
-    if shortfall > 0:
-        JobKitShortage.objects.create(
-            line=line,
-            quantity=shortfall,
-            status='open',
-            reason='Insufficient unallocated stock at reservation',
-        )
+    """Update current demand without deleting procurement or receipt history.
+
+    Linked rows remain unresolved until an exact committed receipt continuation
+    proves fulfillment. Unrelated stock must never manufacture a received fact.
+    """
+    linked = line.shortages.filter(
+        status__in=_OPEN_SHORTAGE_STATES, purchase_order_line__isnull=False
+    ).exists()
+    rows = line.shortages.filter(status__in=_OPEN_SHORTAGE_STATES,
+                                 purchase_order_line__isnull=True)
+    current = rows.order_by('pk').first()
+    if shortfall > 0 and not linked:
+        if current:
+            current.quantity = shortfall
+            current.save(update_fields=['quantity'])
+        else:
+            JobKitShortage.objects.create(
+                line=line, quantity=shortfall, status='open',
+                reason='Insufficient unallocated stock at reservation',
+            )
+    else:
+        rows.update(status='canceled', resolved_at=timezone.now())
 
 
 def _derive_kit_status(kit):
@@ -429,7 +434,7 @@ def reserve_job_kit(
 
     reservations_made = 0
     for line in required_lines:
-        needed = Decimal(line.required_quantity) - _active_reserved_for_line(line)
+        needed = Decimal(line.required_quantity) - _fulfilled_for_line(line)
         if needed <= 0:
             _reconcile_line_shortage(line, Decimal('0'))
             continue
@@ -693,7 +698,7 @@ def release_allocation(*, work_order_id, allocation_id, actor, correlation_id=No
 
     line = allocation.line
     if line.required and line.fulfillment_mode == FulfillmentMode.RESERVE_CONSUME:
-        shortfall = Decimal(line.required_quantity) - _active_reserved_for_line(line)
+        shortfall = Decimal(line.required_quantity) - _fulfilled_for_line(line)
         _reconcile_line_shortage(line, max(shortfall, Decimal('0')))
 
     kit.status = _derive_kit_status(kit)

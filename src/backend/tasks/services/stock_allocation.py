@@ -12,8 +12,10 @@ authority.
 from decimal import Decimal
 
 from django.db import transaction
+from django.utils import timezone
 
 from stock.models import StockItem
+from stock.status_codes import StockStatus
 from tasks.jobkit_models import (
     ACTIVE_ALLOCATION_STATUSES,
     JobKitAllocation,
@@ -35,6 +37,27 @@ class StockOverAllocation(StockAllocationError):  # noqa: N818 - established com
     """The requested quantity exceeds unallocated availability under lock."""
 
     code = 'STOCK_OVER_ALLOCATED'
+
+
+def usable_maintenance_stock(stock_item, actor):
+    """Require accepted condition, release, expiry and native ownership rights.
+
+    Custom statuses inherit their native logical status: only OK is accepted.
+    Native in-stock alone also admits damaged, returned and attention stock.
+    """
+    location = stock_item.location
+    return (
+        stock_item.in_stock
+        and stock_item.status == StockStatus.OK.value
+        and stock_item.part.active
+        and not stock_item.part.virtual
+        and (stock_item.expiry_date is None or stock_item.expiry_date >= timezone.localdate())
+        and (location is None or (
+            not location.structural and not location.external
+            and location.check_ownership(actor)
+        ))
+        and stock_item.check_ownership(actor)
+    )
 
 
 def _location_snapshot(stock_item):
@@ -78,6 +101,9 @@ def mutate_stock_allocation(
     if replay is not None:
         return replay
 
+    if not usable_maintenance_stock(stock_item, actor):
+        raise StockOverAllocation('Stock is not usable for maintenance reservation')
+
     # Merge into the one active reservation for this (line, stock_item), if any.
     active = (
         JobKitAllocation.objects
@@ -92,6 +118,8 @@ def mutate_stock_allocation(
         exclude_job_kit={'pk': active.pk} if active is not None else None
     )
     available = Decimal(stock_item.quantity) - committed
+    if active is not None:
+        available -= active.quantity
 
     if requested_quantity > available:
         raise StockOverAllocation(
