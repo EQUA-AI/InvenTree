@@ -94,6 +94,8 @@ def run_inside(labels, test_args):
     workspace = scratch / 'work'
     backend = workspace / 'src' / 'backend'
     shutil.copytree('/source/backend', backend, ignore=ignore_source)
+    # Tests write scratch files here; its local contents are never copied.
+    (backend / 'InvenTree' / '_testfolder').mkdir(exist_ok=True)
     # Repository data some backend tests read by path (pump-station packs,
     # limits, samples, the dev compose file and the mimic SVGs). Mounted
     # read-only when present; secrets and env files are never copied.
@@ -137,7 +139,7 @@ def run_inside(labels, test_args):
         'INVENTREE_STATIC_ROOT': str(scratch / 'static'),
         'INVENTREE_BACKUP_DIR': str(scratch / 'backup'),
         'INVENTREE_PLUGIN_FILE': str(config.parent / 'plugins.yaml'),
-        'INVENTREE_SITE_URL': 'http://localhost',
+        'INVENTREE_SITE_URL': os.environ.get('INVENTREE_SITE_URL', 'http://localhost'),
         'INVENTREE_DEBUG': 'true',
         'INVENTREE_LOG_LEVEL': 'WARNING',
         'INVENTREE_CONSOLE_LOG': 'false',
@@ -164,6 +166,17 @@ def run_inside(labels, test_args):
         }),
         flush=True,
     )
+    # Upstream CI prepares static files and compiled translations first.
+    for prepare in os.environ.get('BACKEND_TEST_PREPARE', '').split():
+        args = {
+            'static': ['collectstatic', '--noinput', '--verbosity=0'],
+            'translations': ['compilemessages', '--verbosity=0'],
+        }[prepare]
+        subprocess.run(
+            [sys.executable, 'manage.py', *args, *settings],
+            cwd=backend / 'InvenTree',
+            check=True,
+        )
     result = subprocess.run(
         [
             sys.executable,
@@ -323,7 +336,7 @@ def stop_postgres(resources):
     return cleanup
 
 
-def run_host(labels, image, output, test_args, plugins, pg_image, memory):
+def run_host(labels, image, output, test_args, plugins, pg_image, memory, profile):
     """Launch only new test containers and retain their synthetic output."""
     root = Path(__file__).resolve().parents[3]
     output = output.resolve()
@@ -391,6 +404,7 @@ def run_host(labels, image, output, test_args, plugins, pg_image, memory):
             'PYTHONUSERBASE=/root/.local',
             'LANG=C.UTF-8',
             f'INVENTREE_PLUGINS_ENABLED={"true" if plugins else "false"}',
+            *[f'{key}={value}' for key, value in profile.items()],
             *git_metadata(root),
             *database_env,
             'python3',
@@ -422,6 +436,7 @@ def run_host(labels, image, output, test_args, plugins, pg_image, memory):
         )
         + '; no existing DB or service lifecycle change',
         'plugins_enabled': plugins,
+        'profile': profile,
         'memory_limit': memory,
         'test_labels': labels,
         'test_args': test_args,
@@ -460,6 +475,18 @@ def main():
         help='Extra argument for manage.py test, e.g. --test-arg=--exclude-tag=x',
     )
     parser.add_argument(
+        '--site-url',
+        help='INVENTREE_SITE_URL for the run (upstream CI uses http://localhost:8000)',
+    )
+    parser.add_argument(
+        '--static', action='store_true', help='Run collectstatic before the tests'
+    )
+    parser.add_argument(
+        '--translations',
+        action='store_true',
+        help='Compile translations before the tests',
+    )
+    parser.add_argument(
         '--memory',
         default='4g',
         help='Memory cap for the test container (default %(default)s)',
@@ -469,6 +496,19 @@ def main():
     labels = arguments.labels or DEFAULT_TESTS
     if arguments.inside:
         return run_inside(labels, arguments.test_arg)
+    profile = {}
+    if arguments.site_url:
+        profile['INVENTREE_SITE_URL'] = arguments.site_url
+    prepare = [
+        name
+        for name, wanted in (
+            ('static', arguments.static),
+            ('translations', arguments.translations),
+        )
+        if wanted
+    ]
+    if prepare:
+        profile['BACKEND_TEST_PREPARE'] = ' '.join(prepare)
     return run_host(
         labels,
         arguments.image,
@@ -477,6 +517,7 @@ def main():
         arguments.plugins,
         arguments.postgres,
         arguments.memory,
+        profile,
     )
 
 
