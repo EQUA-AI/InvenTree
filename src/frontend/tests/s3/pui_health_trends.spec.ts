@@ -9,6 +9,7 @@ import {
   sparkline,
   trendCard
 } from './healthFixtures';
+import { informationTooltip } from './presentationAssertions';
 
 nativeBaseline();
 test.use({ timezoneId: 'UTC' });
@@ -48,20 +49,37 @@ async function chooseParameter(page: Page, label: string) {
   await page.getByRole('option', { name: label, exact: true }).click();
 }
 
+async function rowHistoryInformation(page: Page, row: Locator, label: string) {
+  const details = row.getByRole('button', { name: /^Details for/ });
+  const trend = row.locator('td[data-label="Trend"]');
+  if (!(await trend.isVisible())) await details.click();
+  await expect(trend).toBeVisible();
+  await expect(trend).toContainText(
+    label === 'Read failed' ? 'Read failed' : '—'
+  );
+  await expect(trend.getByRole('button')).toHaveCount(0);
+  await page.mouse.move(0, 0);
+  await row.getByRole('button', { name: /^Inspect signal:/ }).focus();
+  await page.keyboard.press('Shift+Tab');
+  return informationTooltip(page, details, `Trend: ${label}`);
+}
+
 const curve = (page: Page) => trendCard(page).locator('.recharts-area-curve');
 
 /** Each x-axis tick's position and the instant its label names (UTC). */
 async function axisTicks(card: Locator) {
-  const ticks = await card
-    .locator(
-      '.recharts-xAxis-tick-labels text.recharts-cartesian-axis-tick-value'
-    )
-    .evaluateAll((nodes) =>
-      nodes.map((node) => ({
-        x: Number(node.getAttribute('x')),
-        label: node.textContent ?? ''
-      }))
-    );
+  const labels = card.locator(
+    '.recharts-xAxis-tick-labels text.recharts-cartesian-axis-tick-value'
+  );
+  // Expanding remounts the responsive chart inside the modal. evaluateAll
+  // does not wait for its first layout or for the axis labels to render.
+  await expect(labels.nth(1)).toBeVisible();
+  const ticks = await labels.evaluateAll((nodes) =>
+    nodes.map((node) => ({
+      x: Number(node.getAttribute('x')),
+      label: node.textContent ?? ''
+    }))
+  );
   return ticks.map(({ x, label }) => {
     // Ticks are whole minutes: "08:52 AM".
     const match = label.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?/);
@@ -105,7 +123,7 @@ test('the full chart keeps the silence open on a proportional time axis', async 
     await openHealth(page, { scheme, nativeTheme: true, compactChrome: true });
     const card = trendCard(page);
     await expect(curve(page)).toHaveCount(1);
-    await expect(card.getByText('98 samples')).toBeVisible();
+    await expect(card.getByText('98 samples', { exact: true })).toHaveCount(0);
     const line = subpaths((await curve(page).getAttribute('d'))!);
     // Broken after the unreadable reading and across the silence.
     expect(line).toHaveLength(3);
@@ -136,9 +154,7 @@ test('the full chart keeps the silence open on a proportional time axis', async 
     );
     await expect(gaps).toContainText('Readings that are not numbers: 1 of 98.');
     await expect(gaps).toContainText('Nothing is filled in');
-    await expect(card).toContainText(
-      'Selected window: 18 Oct 2026 08:50:00 to 18 Oct 2026 09:00:00.'
-    );
+    await expect(card.getByText(/^Selected window:/)).toHaveCount(0);
     await card
       .getByRole('button', { name: 'Expand chart', exact: true })
       .click();
@@ -146,13 +162,18 @@ test('the full chart keeps the silence open on a proportional time axis', async 
       name: 'Expanded signal trend',
       exact: true
     });
-    await expect(expanded.getByText(/Selected window:/)).toContainText(
-      'Times: your clock (UTC, UTC+00:00)'
-    );
-    await expanded.getByText(/Selected window:/).scrollIntoViewIfNeeded();
-    await expect(expanded.getByText(/Selected window:/)).toBeInViewport({
-      ratio: 1
-    });
+    await expect(expanded).toBeVisible();
+    await expect(expanded.getByText(/Times: your clock/)).toHaveCount(0);
+    const expandedTicks = await axisTicks(expanded);
+    expect(expandedTicks.length).toBeGreaterThanOrEqual(2);
+    for (const tick of expandedTicks) {
+      expect(tick.at).toBeGreaterThanOrEqual(NOW - 600_000);
+      expect(tick.at).toBeLessThanOrEqual(NOW);
+    }
+    const expandedCurve = expanded.locator('.recharts-area-curve');
+    await expect(expandedCurve).toHaveCount(1);
+    await expect(expandedCurve).toHaveAttribute('d', /^M/);
+    expect(subpaths((await expandedCurve.getAttribute('d'))!)).toHaveLength(3);
     await expanded.screenshot({
       path: testInfo.outputPath(`expanded-clock-${scheme}.png`)
     });
@@ -188,9 +209,14 @@ test('recorded zero, empty read, no source history and a missing row stay distin
   expect(subpaths(await rowGraphPath(page, 'Bypass flow'))).toHaveLength(1);
   const row = (name: string) =>
     table.getByRole('row').filter({ hasText: name });
-  await expect(row('Seal flush flow')).toContainText('No samples');
-  await expect(row('Cooling water flow')).toContainText('History unavailable');
-  await expect(row('Winding temperature')).toContainText('Not returned');
+  for (const [name, reason] of [
+    ['Seal flush flow', 'No samples in window'],
+    ['Cooling water flow', 'History unavailable'],
+    ['Winding temperature', 'Not returned']
+  ]) {
+    const reading = row(name);
+    await rowHistoryInformation(page, reading, reason);
+  }
 
   await chooseParameter(page, 'Bypass flow (m³/h)');
   await expect(curve(page)).toHaveCount(1);
@@ -208,7 +234,7 @@ test('recorded zero, empty read, no source history and a missing row stay distin
 
 test('source outages, timeouts, unsupported history and missing batch rows have reachable distinct reasons', async ({
   page
-}) => {
+}, info) => {
   const reasons = [
     'SOURCE_UNAVAILABLE',
     'SOURCE_TIMEOUT',
@@ -242,22 +268,16 @@ test('source outages, timeouts, unsupported history and missing batch rows have 
         : index === 2
           ? 'No history'
           : 'History unavailable';
-    const status = row.getByRole('button', { name: new RegExp(`^${label}:`) });
-    await expect(status).toBeVisible();
-    await row
-      .getByRole('button', { name: `Inspect signal: ${reason}`, exact: true })
-      .focus();
-    // Value/state/limit explanations participate in the native tab order.
-    for (let step = 0; step < 6; step++) {
-      await page.keyboard.press('Tab');
-      if (await status.evaluate((el) => el === document.activeElement)) break;
-    }
-    await expect(status).toBeFocused();
-    await expect(status).toHaveAttribute('aria-describedby', /.+/);
-    const reasonId = await status.getAttribute('aria-describedby');
-    await expect(
-      page.locator(`[role="tooltip"][id="${reasonId}"]`)
-    ).toBeVisible();
+    const information = await rowHistoryInformation(page, row, label);
+    await expect(information).toContainText(
+      reason === 'SOURCE_TIMEOUT'
+        ? 'did not answer within the read timeout'
+        : reason === 'HISTORY_UNSUPPORTED'
+          ? 'does not support historical windows'
+          : reason === 'NO_CONNECTOR'
+            ? 'no configured connector'
+            : 'source could not be reached'
+    );
     await chooseParameter(page, `${reason} (cusec)`);
     await expect(trendCard(page)).toContainText(
       index < 2 ? 'Could not read the source' : 'No history for this signal'
@@ -275,9 +295,11 @@ test('source outages, timeouts, unsupported history and missing batch rows have 
         'No history for this signal'
       );
   }
-  await expect(
-    table.getByRole('row').filter({ hasText: 'Missing batch row' })
-  ).toContainText('Not returned');
+  await rowHistoryInformation(
+    page,
+    table.getByRole('row').filter({ hasText: 'Missing batch row' }),
+    'Not returned'
+  );
 });
 
 test('invalid readings stay distinct from a sparse record with truthful drawable counts', async ({
@@ -290,12 +312,16 @@ test('invalid readings stay distinct from a sparse record with truthful drawable
     ]
   });
   const table = signalTable(page);
-  await expect(
-    table.getByRole('row').filter({ hasText: 'All invalid' })
-  ).toContainText('No drawable readings');
-  await expect(
-    table.getByRole('row').filter({ hasText: 'One drawable' })
-  ).toContainText('1 of 121 drawable');
+  await rowHistoryInformation(
+    page,
+    table.getByRole('row').filter({ hasText: 'All invalid' }),
+    'No drawable readings'
+  );
+  await rowHistoryInformation(
+    page,
+    table.getByRole('row').filter({ hasText: 'One drawable' }),
+    '1 of 121 drawable'
+  );
   await expect(trendCard(page)).toContainText('No drawable readings');
   await expect(curve(page)).toHaveCount(0);
   await expect(trendCard(page)).not.toContainText('Each is drawn as a break');
@@ -397,7 +423,10 @@ test('a raw unitless vibration channel keeps its own units', async ({
       })
     });
   await expect(
-    raw.getByRole('cell', { name: '1834 (no unit)', exact: true })
+    raw.getByRole('cell', {
+      name: '1834 Unit not reported by the plant',
+      exact: true
+    })
   ).toBeVisible();
   const details = raw.getByRole('button', {
     name: 'Details for Motor DE vibration (raw)',
@@ -411,21 +440,12 @@ test('a raw unitless vibration channel keeps its own units', async ({
   await inspect.focus();
   await inspect.press('Shift+Tab');
   await expect(details).toBeFocused();
-  const detailTooltip = page.getByRole('tooltip', {
-    name: /^1834 \(no unit\)/
-  });
-  await expect(detailTooltip).toBeVisible();
-  await expect(details).toHaveAttribute(
-    'aria-describedby',
-    (await detailTooltip.getAttribute('id'))!
-  );
+  await informationTooltip(page, details, 'Unit not reported by the plant');
   await details.press('Tab');
   await expect(inspect).toBeFocused();
-  const axisUnit = trendCard(page).getByText('unit not recorded', {
-    exact: true
-  });
-  await expect(axisUnit).toHaveCount(1);
-  await expect(axisUnit).toBeVisible();
+  await expect(
+    trendCard(page).getByText('unit not recorded', { exact: true })
+  ).toHaveCount(0);
   await expect(
     trendCard(page).locator('.recharts-cartesian-axis-tick-value')
   ).not.toContainText(['unit not recorded']);

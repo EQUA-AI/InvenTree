@@ -12,7 +12,9 @@ export function MachinePageSummary({
   rows,
   total,
   alarmsOnly,
-  onAlarmsChange
+  onAlarmsChange,
+  showCount = true,
+  compact = false
 }: Readonly<{
   rows: LocatedMachine[];
   total: number;
@@ -20,6 +22,8 @@ export function MachinePageSummary({
   updating?: boolean;
   alarmsOnly?: boolean;
   onAlarmsChange?: () => void;
+  showCount?: boolean;
+  compact?: boolean;
 }>) {
   const facts = pageFacts(rows);
   if (total === 0) return null;
@@ -53,18 +57,22 @@ export function MachinePageSummary({
     <Group
       gap='xs'
       className={classes.pageSummary}
+      data-compact={compact || undefined}
       component='section'
       aria-label={t`Loaded page summary`}
+      aria-description={pageDescription}
     >
       <Group className={classes.summaryHeading} gap={8} justify='space-between'>
-        <ValueTooltip
-          label={pageDescription}
-          accessibleLabel={`${countLabel} · ${pageDescription}`}
-          data-testid='machine-page-count'
-          className={classes.summaryCount}
-        >
-          {countLabel}
-        </ValueTooltip>
+        {(showCount || rows.length < total) && (
+          <ValueTooltip
+            label={pageDescription}
+            accessibleLabel={`${countLabel} · ${pageDescription}`}
+            data-testid='machine-page-count'
+            className={classes.summaryCount}
+          >
+            {countLabel}
+          </ValueTooltip>
+        )}
         {alarmToggle}
       </Group>
       <Group
@@ -104,6 +112,7 @@ export function MachinePageSummary({
             }}
           >
             <StatusBadge
+              className={classes.summaryStatusBadge}
               tone={count ? tone : 'neutral'}
               color={count ? (kind === 'warning' ? 'yellow' : 'red') : 'gray'}
               size='sm'

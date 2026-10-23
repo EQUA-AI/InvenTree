@@ -4,7 +4,6 @@ import {
   type AlertProps,
   Anchor,
   type AnchorProps,
-  type BadgeProps,
   Text,
   type TextProps,
   createPolymorphicComponent
@@ -37,6 +36,7 @@ import { unitLabel } from '../performance/format';
 import { useNow } from '../useNow';
 import {
   StatusBadge as MonitoringStatusBadge,
+  type StatusBadgeProps,
   statusTone
 } from './StatusBadge';
 import { Timestamp } from './Timestamp';
@@ -135,9 +135,13 @@ export function StatusBadge({
   leftSection,
   color = 'gray',
   maw = '100%',
-  miw = 0,
+  multiline = false,
+  miw = multiline ? 0 : 'max-content',
   ...props
-}: BadgeProps & { children: ReactNode; 'data-alarm-status'?: string }) {
+}: Omit<StatusBadgeProps, 'tone'> & {
+  children: ReactNode;
+  'data-alarm-status'?: string;
+}) {
   return (
     <MonitoringStatusBadge
       tone='neutral'
@@ -146,6 +150,7 @@ export function StatusBadge({
       color={color}
       maw={maw}
       miw={miw}
+      multiline={multiline}
       leftSection={leftSection}
     >
       {children}
@@ -203,6 +208,27 @@ export function AlarmStateBadge({
   return (
     <StatusBadge
       data-alarm-status={status ?? 'unknown'}
+      size='sm'
+      maw='none'
+      h={24}
+      styles={{
+        root: {
+          flexShrink: 0,
+          ...(visual.color === 'yellow'
+            ? {
+                borderColor: 'var(--aimms-warning)',
+                ...(visual.variant === 'filled'
+                  ? { backgroundColor: 'var(--aimms-warning)' }
+                  : {})
+              }
+            : {})
+        },
+        label: {
+          whiteSpace: 'nowrap',
+          overflowWrap: 'normal',
+          overflow: 'visible'
+        }
+      }}
       color={visual.color}
       variant={visual.variant}
       leftSection={visual.icon}
@@ -423,7 +449,7 @@ export function FreshnessText({
   compactOnPhone = false,
   relativeOnly = false,
   label = t`Observed`,
-  focusable = false
+  focusable = relativeOnly
 }: Readonly<{
   observedAt: string | number | null;
   stale: boolean;

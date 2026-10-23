@@ -19,6 +19,7 @@ export function AnomalyTimeShift({
   return (
     <Stack gap={2} data-testid='anomaly-time-shift'>
       <StatusBadge
+        multiline
         tone='neutral'
         color='gray'
         variant='outline'

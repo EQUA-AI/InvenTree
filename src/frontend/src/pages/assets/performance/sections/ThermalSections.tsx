@@ -368,6 +368,7 @@ function SameScaleDifferenceCard({
           const stats = seriesStats(c.entry);
           return (
             <StatusBadge
+              multiline
               tone='neutral'
               key={c.key}
               variant='outline'

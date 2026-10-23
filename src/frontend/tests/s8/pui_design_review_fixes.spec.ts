@@ -1,4 +1,4 @@
-import { type Locator, expect, test } from '@playwright/test';
+import { type Locator, type Page, expect, test } from '@playwright/test';
 import type { FaultOccurrence } from '../../src/pages/assets/faults/occurrenceModel';
 import { nativeBaseline } from '../s0/guards';
 import { mockExplorer } from '../s1/machineExplorerFixtures';
@@ -21,6 +21,28 @@ async function touchTarget(control: Locator) {
   const box = (await control.boundingBox())!;
   expect(box.width).toBeGreaterThanOrEqual(44);
   expect(box.height).toBeGreaterThanOrEqual(44);
+}
+
+async function inspectLimitCoverage(
+  page: Page,
+  coverage: Locator,
+  count: number
+) {
+  const reason = `${count} · Selected pump readings without configured limits`;
+  const target = coverage.getByRole('button', {
+    name: 'Limit coverage',
+    exact: true
+  });
+  const tooltip = page.getByRole('tooltip', { name: reason, exact: true });
+  await page.mouse.move(0, 0);
+  await page.keyboard.press('Tab');
+  await target.focus();
+  await expect(target).toBeFocused();
+  await expect(tooltip).toHaveText(reason);
+  await expect(target).toHaveAccessibleDescription(reason);
+  // Close the inspected tooltip before clicking controls beneath it.
+  await page.keyboard.press('Escape');
+  await expect(tooltip).toHaveCount(0);
 }
 
 for (const scheme of ['light', 'dark'] as const) {
@@ -99,7 +121,7 @@ for (const scheme of ['light', 'dark'] as const) {
     for (const [name, id] of [
       ['Critical · 4', 8],
       ['Warning · 5', 2],
-      ['Unavailable · 1', 3]
+      ['Read failed · 1', 3]
     ] as const) {
       const control = summary.getByRole('button', { name, exact: true });
       await expect(control).toBeVisible();
@@ -109,6 +131,7 @@ for (const scheme of ['light', 'dark'] as const) {
       await expect(page.locator(`#machine-row-${id}`)).toBeInViewport();
     }
     if (info.project.name.endsWith('phone')) {
+      await captureFromTop(page);
       const criticalBox = (await summary
         .getByRole('button', { name: 'Critical · 4', exact: true })
         .boundingBox())!;
@@ -118,20 +141,26 @@ for (const scheme of ['light', 'dark'] as const) {
       expect(
         warningBox.x - criticalBox.x - criticalBox.width
       ).toBeGreaterThanOrEqual(8);
-      const chooseBox = (await page
-        .getByRole('button', { name: 'Choose location', exact: true })
-        .boundingBox())!;
-      const refreshBox = (await page
-        .getByRole('button', { name: 'Refresh', exact: true })
-        .first()
-        .boundingBox())!;
-      expect(
-        refreshBox.x - chooseBox.x - chooseBox.width
-      ).toBeGreaterThanOrEqual(8);
-      await touchTarget(summary.getByRole('button', { name: /^In alarm:/ }));
+      await touchTarget(summary.getByRole('button', { name: /^In alarm/ }));
+      const actionBoxes = [];
       for (const name of ['Choose location', 'Refresh', 'Location details']) {
         const control = page.getByRole('button', { name, exact: true }).first();
         await touchTarget(control);
+        await expect(control).toBeInViewport({ ratio: 1 });
+        actionBoxes.push((await control.boundingBox())!);
+      }
+      // Follow-up 8 groups the default actions into one compact phone row.
+      // Their full touch targets must fit without overlapping or wrapping.
+      for (const [index, box] of actionBoxes.entries()) {
+        expect(Math.abs(box.y - actionBoxes[0].y)).toBeLessThanOrEqual(1);
+        expect(box.x).toBeGreaterThanOrEqual(0);
+        expect(box.x + box.width).toBeLessThanOrEqual(
+          page.viewportSize()!.width
+        );
+        if (index)
+          expect(box.x).toBeGreaterThanOrEqual(
+            actionBoxes[index - 1].x + actionBoxes[index - 1].width
+          );
       }
     }
     await captureFromTop(page);
@@ -160,17 +189,29 @@ for (const scheme of ['light', 'dark'] as const) {
     const withoutLimits = Object.values(data.points).filter(
       (point) => point.thresholds_configured === false
     ).length;
-    await expect(coverage).toContainText(`${withoutLimits} without limits`);
+    await inspectLimitCoverage(page, coverage, withoutLimits);
     await expect(coverage).not.toContainText('No active alarms');
-    await expect(summary).toContainText(
-      'Active alarms shown: 2 · Critical: 1 · Warning: 1'
-    );
+    await expect(
+      summary.getByRole('group', {
+        name: 'Active alarms shown: 2',
+        exact: true
+      })
+    ).toBeVisible();
+    await expect(
+      summary.getByText('Critical · 1', { exact: true })
+    ).toBeVisible();
+    await expect(
+      summary.getByText('Warning · 1', { exact: true })
+    ).toBeVisible();
     if (info.project.name.endsWith('phone')) {
       await expect(
-        summary.getByText('Active alarms shown: 2', { exact: true })
+        summary.getByRole('group', {
+          name: 'Active alarms shown: 2',
+          exact: true
+        })
       ).toBeVisible();
       await expect(
-        summary.getByText('Critical: 1 · Warning: 1', { exact: true })
+        summary.getByText('Critical · 1', { exact: true })
       ).toBeVisible();
     }
     const drawing = page.getByRole('img', { name: 'Pump unit schematic' });
@@ -216,27 +257,43 @@ for (const scheme of ['light', 'dark'] as const) {
     const withoutLimits = Object.values(data.points).filter(
       (point) => point.thresholds_configured === false
     ).length;
-    await expect(coverage).toContainText(`${withoutLimits} without limits`);
+    await inspectLimitCoverage(page, coverage, withoutLimits);
     await expect(coverage).not.toContainText('No active alarms');
-    await expect(summary).toContainText('Active alarms shown: 2 · Warning: 1');
+    await expect(
+      summary.getByRole('group', {
+        name: 'Active alarms shown: 2',
+        exact: true
+      })
+    ).toBeVisible();
+    await expect(
+      summary.getByText('Warning · 1', { exact: true })
+    ).toBeVisible();
     await expect(summary).toContainText('Severity unavailable: 1');
-    await expect(summary).not.toContainText('Critical: 0');
+    await expect(
+      summary.getByText('Critical · 0', { exact: true })
+    ).toHaveCount(0);
     data.alarms = [];
     data.bays[0].alarm = 'critical';
     await page.getByRole('button', { name: 'Refresh', exact: true }).click();
     await expect(summary).toContainText(
       'Active alarm · Critical · Count unavailable'
     );
-    await expect(summary).not.toContainText('Active alarms shown: 0');
+    await expect(
+      summary.getByRole('group', {
+        name: 'Active alarms shown: 0',
+        exact: true
+      })
+    ).toHaveCount(0);
     await expect(coverage).not.toContainText('No active alarms');
     await expect(
       page.getByText('Active alarm details unavailable.', { exact: true })
     ).toBeVisible();
+    data.alarm = null;
     data.bays[0].alarm = null;
     await page.getByRole('button', { name: 'Refresh', exact: true }).click();
     await expect(summary).toHaveCount(0);
     await expect(coverage).toContainText('No active alarms');
-    await expect(coverage).toContainText(`${withoutLimits} without limits`);
+    await inspectLimitCoverage(page, coverage, withoutLimits);
     await expect(
       page.getByRole('heading', { name: 'Threshold alarms' })
     ).toHaveCount(0);
@@ -245,7 +302,12 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(summary).toContainText(
       'Active alarms unavailable · pump mapping not supplied'
     );
-    await expect(summary).not.toContainText('Active alarms shown: 0');
+    await expect(
+      summary.getByRole('group', {
+        name: 'Active alarms shown: 0',
+        exact: true
+      })
+    ).toHaveCount(0);
     await expect(coverage).not.toContainText('No active alarms');
     await expect(
       page.getByText('Alarm scope unavailable for this pump.', { exact: true })

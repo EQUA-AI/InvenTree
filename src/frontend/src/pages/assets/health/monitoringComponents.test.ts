@@ -141,11 +141,11 @@ describe('FreshnessText uses the observation and server budget', () => {
     );
   it('shows a full current instant and age', () =>
     expect(show('2026-10-18T08:59:40Z')).toContain(
-      '18 Oct 2026 08:59:40 · 20 s old'
+      '18 Oct 2026 08:59:40 · 20 s ago'
     ));
   it('shows stale age and the actual budget', () =>
     expect(show('2026-10-18T08:00:00Z', true, 300)).toContain(
-      'Stale · 1 h old · freshness budget 300 s'
+      'Stale · 1 h ago · freshness budget 300 s'
     ));
   it('keeps future observations explicit instead of reporting zero age', () =>
     expect(show('2026-10-18T12:00:00Z', true, 300)).toContain(
@@ -157,7 +157,7 @@ describe('FreshnessText uses the observation and server budget', () => {
     ));
   it('keeps a contradictory server stale flag explicit', () =>
     expect(show('2026-10-18T08:59:40Z', true, 300)).toContain(
-      'Stale (server flag) · 20 s old'
+      'Stale (server flag) · 20 s ago'
     ));
   it('never labels an expired last-known observation just now under O27', () => {
     const output = text(
@@ -171,7 +171,7 @@ describe('FreshnessText uses the observation and server budget', () => {
         })
       )
     );
-    expect(output).toContain('Stale · 20 s old · freshness budget 10 s');
+    expect(output).toContain('Stale · 20 s ago · freshness budget 10 s');
     expect(output).not.toContain('just now');
   });
   it('keeps absent and invalid observation times unavailable', () => {
@@ -202,7 +202,7 @@ it('uses the inherited plant clock for health observations even when the browser
       )
     )
   );
-  expect(output).toContain('18 Oct 2026 11:59:40 · 20 s old');
+  expect(output).toContain('18 Oct 2026 11:59:40 · 20 s ago');
 });
 
 it('keeps critical coverage inspectable without a duplicate prose alert or an empty count group', () => {
@@ -263,7 +263,7 @@ it('labels an invalid summary time as a failed read without nesting tooltip butt
   expect(text(html)).not.toContain('invalid');
 });
 
-it('keeps unknown poll results distinct from failed attempts and disabled sources', () => {
+it('keeps compact unknown, failed, disabled and reporting source states distinct', () => {
   const source = {
     active: true,
     healthy: false,
@@ -271,44 +271,29 @@ it('keeps unknown poll results distinct from failed attempts and disabled source
     last_error_at: null,
     last_error_code: ''
   } as any;
-  expect(text(render(createElement(SourcePollStatus, { source })))).toContain(
-    'Last poll result unavailable'
-  );
+  const show = (extra: object = {}) =>
+    render(
+      createElement(SourcePollStatus, { source: { ...source, ...extra } })
+    );
+  expect(text(show())).toBe('—');
+  expect(show()).toContain('aria-label="Source status not reported"');
+  expect(show()).toContain('<button');
+  expect(text(show({ active: false }))).toBe('Disabled');
+  const failed = show({
+    last_error_at: '2026-10-18T08:00:00Z',
+    last_error_code: 'SOURCE_TIMEOUT'
+  });
+  expect(text(failed)).toBe('Read failed');
+  expect(failed).toContain('<button');
   expect(
-    text(
-      render(
-        createElement(SourcePollStatus, {
-          source: { ...source, active: false }
-        })
-      )
-    )
-  ).toContain('Disabled');
+    SourcePollStatus({
+      source: { ...source, last_error_code: 'SOURCE_TIMEOUT' }
+    }).props.reason
+  ).toBe('The source could not be read');
+  expect(failed).not.toContain('SOURCE_TIMEOUT');
   expect(
-    text(
-      render(
-        createElement(SourcePollStatus, {
-          source: {
-            ...source,
-            last_error_at: '2026-10-18T08:00:00Z',
-            last_error_code: 'SOURCE_TIMEOUT'
-          }
-        })
-      )
-    )
-  ).toContain('Failed 18 Oct 2026 08:00:00 · SOURCE_TIMEOUT');
-  expect(
-    text(
-      render(
-        createElement(SourcePollStatus, {
-          source: {
-            ...source,
-            healthy: true,
-            last_success_at: '2026-10-18T08:00:00Z'
-          }
-        })
-      )
-    )
-  ).toContain('Succeeded 18 Oct 2026 08:00:00');
+    text(show({ healthy: true, last_success_at: '2026-10-18T08:00:00Z' }))
+  ).toBe('Reporting');
 });
 it('a partial Normal headline has its own tone while server breaches remain filled', () => {
   const partial = HealthStateBadge({ state: 'normal', neutralNormal: true });
@@ -492,27 +477,33 @@ describe('O27 current presentation and O23 fallback', () => {
     live: { enabled: true, last_error_code: '', poll_interval_seconds: null }
   } as any;
   const indicator = (recorded_telemetry_as_live: boolean) =>
-    text(
-      render(
-        createElement(LiveIndicator, {
-          live: true,
-          fetching: false,
-          newestAt: 1000,
-          updatedAt: 1000,
-          response: { ...response, recorded_telemetry_as_live },
-          freshnessSeconds: 300,
-          now: 1000
-        })
-      )
+    render(
+      createElement(LiveIndicator, {
+        live: true,
+        fetching: false,
+        newestAt: 1000,
+        updatedAt: 1000,
+        response: { ...response, recorded_telemetry_as_live },
+        freshnessSeconds: 300,
+        now: 1000
+      })
     );
-  it('shows the shifted newest reading as live and just now without clock caveats', () => {
-    expect(indicator(true)).toContain('newest reading just now');
-    expect(indicator(true)).not.toContain('Source history display shift');
+  it('shows the shifted reading as Live while keeping shift facts in the accessible control name', () => {
+    const html = indicator(true);
+    expect(html).toContain('data-tone="live"');
+    expect(html).toContain(
+      'aria-label="Live · Recorded source presented on the live clock; timestamps shifted by 400 d."'
+    );
+    expect(html).toContain('dateTime="1970-01-01T00:00:01.000Z"');
+    expect(text(html)).toContain('LiveUpdated00:00:01');
+    expect(text(html)).not.toContain('Recorded source');
+    expect(text(html)).not.toContain('Source history display shift');
   });
-  it('keeps the existing O23 clock caveat when off', () => {
-    expect(indicator(false)).toContain(
-      'Source history display shift: 400 d later than recorded'
-    );
+  it('retains the shift amount as an accessible fact when the O27 presentation is off', () => {
+    const html = indicator(false);
+    expect(html).toContain('timestamps shifted by 400 d.');
+    expect(html).toContain('dateTime="1970-01-01T00:00:01.000Z"');
+    expect(text(html)).not.toContain('timestamps shifted');
   });
   it('judges source reporting by the shifted reading while retaining failures', () => {
     const source = {
@@ -531,11 +522,9 @@ describe('O27 current presentation and O23 fallback', () => {
           createElement(SourcePollStatus, { source: { ...source, ...extra } })
         )
       );
-    expect(show({})).toContain('Source reporting');
+    expect(show({})).toBe('Reporting');
     expect(show({})).not.toContain('Succeeded 1 Aug 2025');
-    expect(show({ recorded_telemetry_as_live: false })).toContain(
-      'Succeeded 1 Aug 2025'
-    );
+    expect(show({ recorded_telemetry_as_live: false })).toBe('Reporting');
     expect(
       show({
         healthy: false,
@@ -551,7 +540,7 @@ describe('O27 current presentation and O23 fallback', () => {
         last_error_code: 'SOURCE_TIMEOUT',
         last_error_at: '2026-10-21T00:00:00Z'
       })
-    ).toContain('Failed 21 Oct 2026');
+    ).toContain('Read failed');
   });
 });
 
@@ -597,13 +586,15 @@ it('O27 sampled windows use current source freshness and retain unavailable and 
         })
       )
     );
-  expect(show()).toContain('newest reading just now');
-  expect(show()).toContain('latest chart sample');
+  expect(show()).toContain('LiveUpdated00:00:00');
+  expect(show()).toContain(
+    'Sampled: one reading every 3 h — 240 of about 1,000 snapshots.'
+  );
   expect(show()).not.toContain('Stale');
   expect(show({}, { reporting: false })).toContain('Source unavailable');
   expect(
     show({}, { last_error_code: 'SOURCE_TIMEOUT', reporting: false })
-  ).toContain('Source read failed');
+  ).toContain('Read failed');
   expect(show({ series: [{ available: false }] })).toContain(
     'Readings unavailable'
   );
@@ -617,28 +608,24 @@ it('O27 sampled windows use current source freshness and retain unavailable and 
 });
 
 it.each([true, false])(
-  'O27 threshold copy follows the source policy (%s) and retains limit uncertainty',
+  'keeps configured threshold facts without implying engineering approval under clock policy %s',
   (asLive) => {
-    const output = text(
-      render(
-        createElement(ThresholdKey, {
-          presentation: { recorded_telemetry_as_live: asLive },
-          lines: [{ y: 50, label: 'Warning above 50 bar', color: 'yellow' }],
-          unit: 'bar',
-          low: 0,
-          high: 100,
-          include: false,
-          onInclude: vi.fn(),
-          hasOffScale: false
-        })
-      )
+    const html = render(
+      createElement(ThresholdKey, {
+        presentation: { recorded_telemetry_as_live: asLive },
+        lines: [{ y: 50, label: 'Warning above 50 bar', color: 'yellow' }],
+        unit: 'bar',
+        low: 0,
+        high: 100,
+        include: false,
+        onInclude: vi.fn(),
+        hasOffScale: false
+      })
     );
-    expect(output).toContain(
-      asLive
-        ? 'Engineering approval and limit applicability unavailable.'
-        : 'Engineering approval and historical applicability unavailable.'
-    );
-    if (asLive) expect(output).not.toContain('historical');
+    expect(html).toContain('data-testid="threshold-key"');
+    expect(text(html)).toBe('Warning 50 bar');
+    expect(html).not.toContain('role="switch"');
+    expect(text(html)).not.toMatch(/approved|safe|engineering/i);
   }
 );
 

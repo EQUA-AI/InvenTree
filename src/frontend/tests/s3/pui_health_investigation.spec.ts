@@ -11,6 +11,7 @@ import {
   trendFor
 } from './healthFixtures';
 import { occurrenceDetail } from './machineWorkFixtures';
+import { historyInformation } from './presentationAssertions';
 
 nativeBaseline();
 test.use({ timezoneId: 'UTC' });
@@ -79,15 +80,22 @@ for (const scheme of ['light', 'dark'] as const) {
         () => document.documentElement.scrollWidth <= innerWidth + 1
       )
     ).toBe(true);
-    await expect(card).toContainText(
-      'Current values and recent row trends differ from selected history'
-    );
-    await card
-      .getByRole('button', { name: 'Show read details', exact: true })
-      .click();
-    await expect(card.getByText(/Measured interval: 5 s/)).toBeVisible();
-    await expect(card).toContainText('Most samples per read: 4320');
-    await expect(card).toContainText('Fast transients may be absent');
+    await expect(
+      card.getByText(
+        'Current values and recent row trends differ from selected history',
+        { exact: true }
+      )
+    ).toHaveCount(0);
+    await historyInformation(page, card, 'Sample interval 5 s');
+    await expect(
+      card.getByRole('button', { name: 'Show read details', exact: true })
+    ).toHaveCount(0);
+    await expect(
+      card.getByText('Most samples per read: 4320', { exact: true })
+    ).toHaveCount(0);
+    await expect(
+      card.getByText('Fast transients may be absent', { exact: true })
+    ).toHaveCount(0);
     await expect(card).toContainText('Gaps longer than 15 seconds');
     const retained = card.getByTestId('linked-evidence');
     await expect(retained).toContainText(occurrence.snapshots[0].content_hash);
@@ -105,7 +113,7 @@ for (const scheme of ['light', 'dark'] as const) {
       name: 'Signal evidence: Discharge flow'
     });
     await expect(evidence).toContainText(
-      'Chart origin: selected fixed source window'
+      'Selected history window, read from the source:'
     );
     await expect(evidence).toContainText('Latest recorded reading');
     await evidence.screenshot({
@@ -119,9 +127,14 @@ for (const scheme of ['light', 'dark'] as const) {
       .getByRole('button', { name: 'Expand chart', exact: true })
       .click();
     const dialog = page.getByRole('dialog', { name: 'Expanded signal trend' });
-    await expect(dialog.getByText(/^Selected window:/)).toContainText(
-      '17 Oct 2026'
-    );
+    await expect(dialog.getByText(/^Selected window:/)).toHaveCount(0);
+    await expect(
+      dialog.getByRole('button', {
+        name: 'Close expanded signal trend',
+        exact: true
+      })
+    ).toBeFocused();
+    await historyInformation(page, dialog, 'Fixture historian');
     await expect(dialog.locator('.recharts-area-curve')).toHaveAttribute(
       'stroke',
       /blue-6/
@@ -255,12 +268,14 @@ test('recorded snapshot links convert once with a fresh offset and keep the exac
   await expect(page.getByTestId('linked-evidence')).toContainText(
     snapshot.content_hash
   );
-  await expect(trendCard(page)).toContainText('365.0 days later');
   await expect(
-    page.getByRole('region', { name: 'Retained evidence', exact: true })
+    trendCard(page).getByText('365.0 days later', { exact: true })
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('region', { name: 'Fault snapshots', exact: true })
   ).toContainText('Original historian');
   await expect(
-    page.getByRole('region', { name: 'Retained evidence', exact: true })
+    page.getByRole('region', { name: 'Fault snapshots', exact: true })
   ).toContainText('380');
   await trendCard(page).screenshot({
     path: info.outputPath('health-recorded-clock.png')
@@ -355,7 +370,7 @@ test('permission loss never substitutes retained evidence or reports an empty re
   await expect(trendCard(page)).toContainText('History access denied');
   await expect(trendCard(page)).not.toContainText('No samples in this window');
   await expect(
-    page.getByRole('region', { name: 'Retained evidence', exact: true })
+    page.getByRole('region', { name: 'Fault snapshots', exact: true })
   ).toContainText('Retained snapshot unavailable');
   await expect(trendCard(page).locator('.recharts-area-curve')).toHaveCount(0);
 });
@@ -374,8 +389,12 @@ test('a capped read and unavailable cadence keep partial coverage visible', asyn
   await expect(trendCard(page)).toContainText(
     'most recent part of this window is not shown'
   );
-  await expect(trendCard(page)).toContainText('Measured interval unavailable');
-  await expect(trendCard(page)).toContainText('Expected interval not supplied');
+  await expect(
+    trendCard(page).getByText('Measured interval unavailable', { exact: true })
+  ).toHaveCount(0);
+  await expect(
+    trendCard(page).getByText('Expected interval not supplied', { exact: true })
+  ).toHaveCount(0);
   await expect(trendCard(page)).toContainText(
     'silences between readings are not marked'
   );
@@ -557,9 +576,11 @@ for (const anomalyShift of [31536000, 0]) {
     expect(requests.chart.at(-1)?.searchParams.get('from')).toBe(
       new Date(Date.parse(recordedFrom) + bindingShift * 1000).toISOString()
     );
-    await expect(trendCard(page)).toContainText(
-      'Chart origin: selected fixed source window'
-    );
+    await expect(
+      trendCard(page).getByText('Chart origin: selected fixed source window', {
+        exact: true
+      })
+    ).toHaveCount(0);
     await expect(page.getByTestId('linked-evidence')).toContainText(
       'Retained occurrence 901'
     );
@@ -623,9 +644,11 @@ for (const anomalyShift of [31536000, 0]) {
     expect(displayed.searchParams.get('to')).toBe(
       new Date(Date.parse(recordedTo) + bindingShift * 1000).toISOString()
     );
-    await expect(trendCard(page)).toContainText(
-      'Chart origin: selected fixed source window'
-    );
+    await expect(
+      trendCard(page).getByText('Chart origin: selected fixed source window', {
+        exact: true
+      })
+    ).toHaveCount(0);
     await expect(page.getByTestId('linked-evidence')).toContainText(
       'Retained occurrence 901'
     );
@@ -694,7 +717,7 @@ for (const scheme of ['light', 'dark'] as const)
     });
     await expect.poll(() => requests.chart.length).toBe(1);
     await page
-      .getByRole('button', { name: 'Case span investigation', exact: true })
+      .getByRole('button', { name: 'Investigate this period', exact: true })
       .click();
     const slices = page.getByTestId('investigation-slices');
     const setTime = async (label: string, hour: string) => {
@@ -730,7 +753,8 @@ for (const scheme of ['light', 'dark'] as const)
     );
     releaseExtent();
     await (await extentArrived).finished();
-    await expect(trendCard(page).getByText(/^Data to /)).toBeVisible();
+    await expect(page.getByTestId('fixture-fetching')).toHaveText('0');
+    await expect(trendCard(page).getByText(/^Data to /)).toHaveCount(0);
     const range = trendCard(page).getByRole('combobox', {
       name: 'Range',
       exact: true
@@ -761,9 +785,11 @@ for (const scheme of ['light', 'dark'] as const)
     await expect(
       slices.getByLabel('Case span to (UTC)', { exact: true })
     ).toContainText('17 Oct 2026 19:00');
-    await expect(trendCard(page)).toContainText(
-      'Chart origin: selected fixed source window'
-    );
+    await expect(
+      trendCard(page).getByText('Chart origin: selected fixed source window', {
+        exact: true
+      })
+    ).toHaveCount(0);
     await expect(
       trendCard(page).getByRole('combobox', { name: 'Range', exact: true })
     ).toHaveValue('Selected case slice');
@@ -787,9 +813,11 @@ for (const scheme of ['light', 'dark'] as const)
     await expect
       .poll(() => requests.chart.at(-1)?.searchParams.get('to'))
       .toBe(new Date(NOW).toISOString());
-    await expect(trendCard(page)).toContainText(
-      'Chart origin: recent source window'
-    );
+    await expect(
+      trendCard(page).getByText('Chart origin: recent source window', {
+        exact: true
+      })
+    ).toHaveCount(0);
   });
 
 test('late history cannot replace a newer binding and loading is explicit', async ({
@@ -843,7 +871,9 @@ test('late history cannot replace a newer binding and loading is explicit', asyn
     }
   });
   const card = trendCard(page);
-  await expect(card).toContainText('Reading source history');
+  await expect(
+    card.getByLabel('Reading signal history', { exact: true })
+  ).toBeVisible();
   await expect
     .poll(() =>
       requests.chart.some((url) => url.searchParams.get('binding') === '201')
@@ -853,9 +883,9 @@ test('late history cannot replace a newer binding and loading is explicit', asyn
   await page
     .getByRole('option', { name: 'Bypass flow (m³/h)', exact: true })
     .click();
-  await expect(card).toContainText('Source window returned');
-  await expect(card.getByText('7 samples', { exact: true })).toBeVisible();
-  await expect(card).toContainText('Binding 202 historian');
+  await historyInformation(page, card, 'Binding 202 historian');
+  await expect(card.getByText('7 samples', { exact: true })).toHaveCount(0);
+  await historyInformation(page, card, 'Binding 202 historian');
   const curve = card.locator('.recharts-area-curve');
   await expect(curve).toHaveCount(1);
   const newerPath = await curve.getAttribute('d');
@@ -873,8 +903,8 @@ test('late history cannot replace a newer binding and loading is explicit', asyn
   await expect(card.getByRole('combobox', { name: 'Parameter' })).toHaveValue(
     'Bypass flow (m³/h)'
   );
-  await expect(card.getByText('7 samples', { exact: true })).toBeVisible();
-  await expect(card).toContainText('Binding 202 historian');
+  await expect(card.getByText('7 samples', { exact: true })).toHaveCount(0);
+  await historyInformation(page, card, 'Binding 202 historian');
   await expect(card).not.toContainText('Binding 201 historian');
   await expect(curve).toHaveCount(1);
   await expect(curve).toHaveAttribute('d', newerPath!);

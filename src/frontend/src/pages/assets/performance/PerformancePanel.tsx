@@ -2,6 +2,7 @@ import { t } from '@lingui/core/macro';
 import {
   Accordion,
   Alert,
+  Badge,
   Button,
   Center,
   Group,
@@ -447,9 +448,10 @@ function PumpPerformance({
             status={(controls) => (
               <LiveIndicator
                 controls={controls}
+                tiles={tiles}
                 live={range.live}
                 fetching={seriesQuery.isFetching}
-                failed={seriesQuery.isError}
+                failed={seriesQuery.isError || signalsQuery.isError}
                 newestAt={newestAt}
                 updatedAt={seriesQuery.dataUpdatedAt || null}
                 response={response}
@@ -542,7 +544,12 @@ function PumpPerformance({
         qualityFiltered={qualityOnly}
         onClear={() => setQualityOnly(false)}
       />
-      <KpiStrip tiles={tiles} now={now} window={window} />
+      <KpiStrip
+        tiles={tiles}
+        now={now}
+        readAt={signalsQuery.dataUpdatedAt || null}
+        window={window}
+      />
       {!comparisonOpen && (
         <ChannelNavigator
           parameters={
@@ -872,11 +879,14 @@ function UnusualStrip({
   return (
     <Paper withBorder p='sm'>
       <Group gap='xs' wrap='wrap' align='center'>
-        <Text size='sm' fw={600}>
-          {t`Exceptions`}
-        </Text>
+        <ValueTooltip
+          label={t`${evaluation.evaluated} of ${evaluation.total} evaluated; ${evaluation.configured} have configured limits`}
+          accessibleLabel={t`Exceptions: assessment coverage`}
+        >
+          <Text component='span' size='sm' fw={600}>{t`Exceptions`}</Text>
+        </ValueTooltip>
         {critical.length > 0 && (
-          <StatusBadge tone='critical' color='red.9' variant='filled'>
+          <StatusBadge multiline tone='critical' color='red.9' variant='filled'>
             {t`${critical.length} critical: ${critical
               .map((p) => p.label)
               .slice(0, 3)
@@ -884,7 +894,12 @@ function UnusualStrip({
           </StatusBadge>
         )}
         {warning.length > 0 && (
-          <StatusBadge tone='warning' color='yellow.6' variant='filled'>
+          <StatusBadge
+            multiline
+            tone='warning'
+            color='yellow.6'
+            variant='filled'
+          >
             {t`${warning.length} warning: ${warning
               .map((p) => p.label)
               .slice(0, 3)
@@ -897,31 +912,39 @@ function UnusualStrip({
           </StatusBadge>
         )}
         {poor.length > 0 && (
-          <Button
-            variant='default'
-            className={monitoring.link}
-            size='compact-sm'
-            maw='100%'
-            h='auto'
-            py={4}
-            styles={{ label: { whiteSpace: 'normal' } }}
-            aria-pressed={qualityFiltered}
-            onClick={onPoor}
+          <ValueTooltip
+            focusable={false}
+            label={poor.map((parameter) => parameter.label).join(', ')}
           >
-            {t`${poor.length} with poor quality`}:{' '}
-            {poor.map((parameter) => parameter.label).join(', ')}
-          </Button>
-        )}
-        {qualityFiltered && (
-          <Button
-            variant='subtle'
-            className={monitoring.link}
-            size='compact-sm'
-            onClick={onClear}
-          >{t`Clear quality filter`}</Button>
+            <Badge
+              component='button'
+              type='button'
+              variant={qualityFiltered ? 'light' : 'outline'}
+              color='gray'
+              c='var(--mantine-color-text)'
+              size='lg'
+              styles={{
+                root: {
+                  cursor: 'pointer',
+                  borderColor:
+                    'light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-2))',
+                  backgroundColor: qualityFiltered
+                    ? 'var(--mantine-color-default-hover)'
+                    : 'transparent'
+                },
+                label: { whiteSpace: 'nowrap' }
+              }}
+              aria-pressed={qualityFiltered}
+              aria-label={t`${poor.length} with poor quality: ${poor.map((parameter) => parameter.label).join(', ')}`}
+              onClick={qualityFiltered ? onClear : onPoor}
+            >
+              {t`Poor quality · ${poor.length}`}
+            </Badge>
+          </ValueTooltip>
         )}
         {failedTargets.bindings.size + failedTargets.keys.size > 0 && (
           <StatusBadge
+            multiline
             tone='neutral'
             color='gray'
             variant='outline'
@@ -934,6 +957,7 @@ function UnusualStrip({
         )}
         {evaluation.verdict.kind === 'calm' && (
           <StatusBadge
+            multiline
             tone='neutral'
             color={
               failedTargets.bindings.size + failedTargets.keys.size > 0
@@ -957,12 +981,6 @@ function UnusualStrip({
             {t`Evaluation unavailable`}
           </StatusBadge>
         )}
-        <ValueTooltip
-          label={t`${evaluation.evaluated} of ${evaluation.total} evaluated; ${evaluation.configured} have configured limits`}
-          accessibleLabel={t`Assessment coverage`}
-        >
-          <IconInfoCircle size={16} />
-        </ValueTooltip>
       </Group>
     </Paper>
   );

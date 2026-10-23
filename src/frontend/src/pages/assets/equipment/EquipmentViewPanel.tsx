@@ -370,8 +370,13 @@ export function EquipmentViewPanel({
       ).data
   });
   const [params, setParams] = useSearchParams();
+  const requestedView = params.get('view');
   const view: EquipmentView =
-    params.get('view') === 'model' ? 'model' : 'schematic';
+    requestedView === 'model' || requestedView === 'schematic'
+      ? requestedView
+      : schematic
+        ? 'schematic'
+        : 'model';
   // Parts and saved-answer links select the same position even when this
   // panel stays mounted. Replace selection in the URL without making every
   // model click a browser-history entry; view/mode switches retain it.

@@ -3,13 +3,13 @@ import {
   Alert,
   Badge,
   Card,
-  Divider,
   Group,
   Loader,
   SimpleGrid,
   Stack,
   Table,
-  Text
+  Text,
+  Title
 } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
@@ -20,6 +20,11 @@ import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import { useApi } from '../../contexts/ApiContext';
 import { FaultOccurrences } from './faults/FaultOccurrences';
+import {
+  type FaultDictionary,
+  faultDescription
+} from './faults/faultPresentation';
+export { faultDescription } from './faults/faultPresentation';
 import { OccurrenceInvestigation } from './investigation/OccurrenceInvestigation';
 import operations from './operations.module.css';
 
@@ -27,10 +32,12 @@ interface CountRow {
   code?: string;
   cause?: string;
   count: number;
+  description?: string | null;
 }
 
 interface FaultHistory {
   window_days: number;
+  fault_dictionary?: FaultDictionary;
   declared: { fault_codes: string[] };
   observed: {
     maintenance: {
@@ -50,30 +57,10 @@ interface FaultHistory {
   };
 }
 
-export function faultDescription(code?: string): string {
-  const suffix = code?.replace(/^CC-PUMP-/, '');
-  return (
-    (
-      {
-        LOW_FLOW: t`Low flow`,
-        BEARING_VIBRATION: t`Bearing vibration`,
-        OVER_TEMPERATURE: t`High temperature`,
-        MOTOR_OVERLOAD: t`Motor overload`
-      } as Record<string, string>
-    )[suffix ?? ''] ??
-    (code?.startsWith('CC-PUMP-')
-      ? code
-          .slice(8)
-          .replaceAll('_', ' ')
-          .toLowerCase()
-          .replace(/^./, (letter) => letter.toUpperCase())
-      : t`Unclassified fault`)
-  );
-}
-
 function CountTable({
   title,
   source,
+  dictionary,
   rows,
   labelKey
 }: Readonly<{
@@ -81,6 +68,7 @@ function CountTable({
   source: string;
   rows: CountRow[];
   labelKey: 'code' | 'cause';
+  dictionary?: FaultDictionary;
 }>) {
   return (
     <Card withBorder padding='sm'>
@@ -98,13 +86,18 @@ function CountTable({
                 <Table.Tr key={row[labelKey]}>
                   <Table.Td>
                     <ValueTooltip
-                      label={
-                        row[labelKey] ?? t`Fault classification not recorded`
-                      }
+                      label={[
+                        row[labelKey] ?? t`Fault classification not recorded`,
+                        source
+                      ].join(' · ')}
                     >
                       <Text size='xs'>
                         {labelKey === 'code'
-                          ? faultDescription(row.code)
+                          ? faultDescription(
+                              row.code,
+                              row.description,
+                              dictionary
+                            )
                           : row.cause}
                       </Text>
                     </ValueTooltip>
@@ -143,7 +136,6 @@ export default function FaultHistoryPanel({
           />
         )}
       />
-      <Divider label={t`Maintenance history`} labelPosition='left' />
       <FaultHistoryRollup machineId={machineId} />
     </Stack>
   );
@@ -180,10 +172,14 @@ function FaultHistoryRollup({ machineId }: Readonly<{ machineId: number }>) {
   return (
     <Stack gap='sm' data-testid='fault-history-panel'>
       <Group gap='xs'>
-        <Text size='sm'>
-          {maintenance.count} {t`maintenance records in the last`}{' '}
-          {data.window_days} {t`days`}
-        </Text>
+        <Title order={4}>{t`Maintenance history`}</Title>
+        <ValueTooltip
+          label={t`${maintenance.count} maintenance records in the last ${data.window_days} days`}
+        >
+          <Badge component='span' color='gray' variant='light'>
+            {maintenance.count}
+          </Badge>
+        </ValueTooltip>
         {maintenance.repeat_window_flag && (
           <Badge color='orange' variant='filled'>
             {t`Repeat activity`}: {maintenance.repeat_window_count} / 30d
@@ -200,6 +196,7 @@ function FaultHistoryRollup({ machineId }: Readonly<{ machineId: number }>) {
         <CountTable
           title={t`Frequent faults`}
           source={t`From approved repair scopes`}
+          dictionary={data.fault_dictionary}
           rows={data.observed.failure_codes.top}
           labelKey='code'
         />

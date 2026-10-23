@@ -72,32 +72,59 @@ for (const scheme of ['light', 'dark'] as const) {
     const scope = page.getByTestId('machine-page-count');
     await expect(scope).toHaveAttribute('aria-label', /Page counts only/);
     await readable(scope, 14);
-    await expect(
-      page.getByRole('link', { name: 'Equipment Registry', exact: true })
-    ).toHaveCSS('background-color', 'rgb(66, 99, 235)');
+    const registry = page.getByRole('link', {
+      name: 'Equipment Registry',
+      exact: true
+    });
+    await expect(registry).toHaveAttribute('data-variant', 'default');
+    await readable(registry);
     await readable(scope, 14);
     await mockEquipment(page);
     await openEquipment(page, false, scheme);
     await expect(
       page.getByRole('tablist', { name: 'panel-tabs-asset-machine-detail' })
     ).toBeVisible();
-    await readable(
-      page.getByText('Reference model · geometry unverified').first(),
-      14
+    const reference = page.getByRole('button', {
+      name: 'Reference model',
+      exact: true
+    });
+    await readable(reference);
+    await page.keyboard.press('Tab');
+    await reference.focus();
+    const modelInfo = page
+      .getByRole('tooltip')
+      .filter({ hasText: 'Vertical reference model.' });
+    await expect(modelInfo).toHaveText(
+      'Vertical reference model. Use the process schematic for this machine. Drag to rotate; arrow keys rotate, + and − zoom.'
     );
-    await readable(page.getByText('Reference view', { exact: true }));
+    await readable(modelInfo, 14);
     await page.locator('[data-position="motor"]').click();
     await readable(page.locator('.aimms-twin-hotspot[aria-pressed="true"]'));
     await mockFaultHistory(page);
-    await openFaultHistory(page, { scheme });
-    const band = page.getByRole('region', {
-      name: 'Alarm and fault investigation'
-    });
-    await readable(band.getByText(/Resolved does not always mean cleared/), 14);
+    await openFaultHistory(page, { scheme, query: '?occurrence=901' });
+    const evidence = page.getByTestId('occurrence-evidence');
     await readable(
-      band.getByText(/Retained evidence is not current readings/),
+      evidence.getByText('Reading back inside its limits.', { exact: true }),
       14
     );
+    await readable(
+      evidence.getByRole('heading', {
+        name: 'Evidence retained at the time',
+        exact: true
+      }),
+      14
+    );
+    await readable(
+      evidence.getByRole('link', {
+        name: 'Current readings are on the Health tab',
+        exact: true
+      })
+    );
+    await expect(
+      page.getByText(
+        /Resolved does not always mean cleared|Retained evidence is not current readings/
+      )
+    ).toHaveCount(0);
   });
 }
 
@@ -152,7 +179,7 @@ for (const role of ['viewer', 'editor', 'acknowledger', 'creator']) {
   });
 }
 
-test('the theme lg boundary keeps the location tree and results in step', async ({
+test('the selected location chooser keeps the tree and results in step across the theme lg boundary', async ({
   page
 }) => {
   await mockExplorer(page);
@@ -161,16 +188,20 @@ test('the theme lg boundary keeps the location tree and results in step', async 
     await page.setViewportSize({ width, height: 900 });
     const tree = page.locator('#machine-location-browser');
     const disclosure = page.getByRole('button', { name: 'Choose location' });
+    await expect(tree).toBeHidden();
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    await disclosure.click();
+    await expect(tree).toBeVisible();
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+    const treeBox = (await tree.boundingBox())!;
+    const summaryBox = (await page
+      .getByRole('region', { name: 'Loaded page summary' })
+      .boundingBox())!;
     if (width < 1184) {
-      await expect(tree).toBeHidden();
-      await expect(disclosure).toBeVisible();
+      expect(summaryBox.y).toBeGreaterThanOrEqual(
+        treeBox.y + treeBox.height - 1
+      );
     } else {
-      await expect(tree).toBeVisible();
-      await expect(disclosure).toBeHidden();
-      const treeBox = (await tree.boundingBox())!;
-      const summaryBox = (await page
-        .getByRole('region', { name: 'Loaded page summary' })
-        .boundingBox())!;
       expect(summaryBox.x).toBeGreaterThanOrEqual(
         treeBox.x + treeBox.width - 1
       );
@@ -178,6 +209,8 @@ test('the theme lg boundary keeps the location tree and results in step', async 
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth)
     ).toBeLessThanOrEqual(width);
+    await disclosure.click();
+    await expect(tree).toBeHidden();
   }
 });
 

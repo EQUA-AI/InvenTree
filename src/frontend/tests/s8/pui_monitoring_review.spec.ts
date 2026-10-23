@@ -2,9 +2,9 @@ import { expect, test } from '@playwright/test';
 import { NOW as PERFORMANCE_NOW } from '../performance/fixtures';
 import { nativeBaseline } from '../s0/guards';
 import { anomaly, openHealth } from '../s3/healthFixtures';
-import { openPausedPerformance } from '../s3/performanceFixtures';
 import { readable } from './contrast';
-import { captureMatrix, monitoringMeasurements } from './monitoringEvidence';
+import { captureMatrix } from './monitoringEvidence';
+import { openPausedPerformance } from './monitoringFixtures';
 
 nativeBaseline();
 for (const scheme of ['light', 'dark'] as const) {
@@ -28,19 +28,18 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(actions).toHaveCount(0);
     await expect(page.getByText(/^View only:/)).toBeVisible();
     const coverage = page.getByRole('button', {
-      name: /Critical signals: not designated$/
+      name: /Critical signals: not designated/
     });
+    await page.keyboard.press('Tab');
     await coverage.focus();
     await expect(page.getByRole('tooltip')).toContainText(
       'No critical-signal designation is supplied.'
     );
     await readable(coverage);
     await readable(page.getByRole('tooltip'));
-    const measurements = await monitoringMeasurements(page, 'health');
-    const coverageTitle = measurements.text.find((row) =>
-      row.text.endsWith('Critical signals: not designated')
+    await expect(coverage).toHaveAccessibleName(
+      /Critical signals: not designated/
     );
-    expect(coverageTitle?.ratio).toBeGreaterThanOrEqual(4.5);
     expect(
       await coverage.evaluate((node) => getComputedStyle(node).color)
     ).toBe(

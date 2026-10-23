@@ -33,11 +33,16 @@ test('a machine with no configured limits is never called calm', async ({
   await expect(
     strip(page).getByText('No configured limits to evaluate')
   ).toBeVisible();
-  await expect(page.getByText('Nothing outside configured limits')).toHaveCount(
-    0
-  );
-  await expect(strip(page)).toContainText(
-    '0 of 2 evaluated against their limits now.'
+  await expect(page.getByText('No exceptions')).toHaveCount(0);
+  await page.keyboard.press('Tab');
+  await strip(page)
+    .getByRole('button', {
+      name: 'Exceptions: assessment coverage',
+      exact: true
+    })
+    .focus();
+  await expect(page.getByRole('tooltip')).toHaveText(
+    '0 of 2 evaluated; 0 have configured limits'
   );
 });
 
@@ -54,10 +59,17 @@ test('limits that cannot be judged now say evaluation is unavailable', async ({
   });
   await expect(strip(page).getByText('Evaluation unavailable')).toBeVisible();
   await expect(strip(page).getByText('2 of 3 signals stale')).toBeVisible();
-  await expect(page.getByText('Nothing outside configured limits')).toHaveCount(
-    0
+  await expect(page.getByText('No exceptions')).toHaveCount(0);
+  await page.keyboard.press('Tab');
+  await strip(page)
+    .getByRole('button', {
+      name: 'Exceptions: assessment coverage',
+      exact: true
+    })
+    .focus();
+  await expect(page.getByRole('tooltip')).toHaveText(
+    '0 of 3 evaluated; 2 have configured limits'
   );
-  await expect(strip(page)).toContainText('0 of 3 evaluated');
 });
 
 test('calm is claimed only when every judged reading is in limits, and says how many were judged', async ({
@@ -69,15 +81,24 @@ test('calm is claimed only when every judged reading is in limits, and says how 
       signals: [power, speed, winding(1), winding(2), winding(3)],
       scheme
     });
-    await expect(
-      strip(page).getByText('Nothing outside configured limits')
-    ).toBeVisible();
-    await expect(strip(page)).toContainText(
-      '3 of 5 evaluated against their limits now.'
+    await expect(strip(page).getByText('No exceptions')).toBeVisible();
+    await page.keyboard.press('Tab');
+    await strip(page)
+      .getByRole('button', {
+        name: 'Exceptions: assessment coverage',
+        exact: true
+      })
+      .focus();
+    await expect(page.getByRole('tooltip')).toHaveText(
+      '3 of 5 evaluated; 3 have configured limits'
     );
-    await expect(strip(page)).toContainText(
-      '3 of 5 signals have limits configured'
-    );
+    await strip(page)
+      .getByRole('button', {
+        name: 'Exceptions: assessment coverage',
+        exact: true
+      })
+      .blur();
+    await expect(page.getByRole('tooltip')).toBeHidden();
     await strip(page).screenshot({
       path: testInfo.outputPath(`unusual-calm-${scheme}.png`),
       animations: 'disabled'
@@ -89,9 +110,7 @@ test('calm is claimed only when every judged reading is in limits, and says how 
     signals: [power, winding(1, { state: 'warning' }), winding(2)]
   });
   await expect(strip(page).getByText(/1 warning: /)).toBeVisible();
-  await expect(page.getByText('Nothing outside configured limits')).toHaveCount(
-    0
-  );
+  await expect(page.getByText('No exceptions')).toHaveCount(0);
 });
 
 test('reactive power shares the power axis only at the same magnitude, and power factor keeps its own', async ({

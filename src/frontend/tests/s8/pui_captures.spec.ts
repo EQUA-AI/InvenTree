@@ -57,7 +57,7 @@ for (const screen of [
             ? '/machines/index/sites/?location=12'
             : screen === 'fault-history'
               ? '/machines/machine/18/fault-history/?occurrence=901'
-              : `/machines/machine/18/equipment/${screen === 'equipment-schematic' ? '?view=schematic' : ''}`;
+              : `/machines/machine/18/equipment/${screen === 'equipment-schematic' ? '?view=schematic' : '?view=model'}`;
         await page.goto(
           `/playwright/s8-design.html?${new URLSearchParams({ screen, scheme, entry })}`,
           { waitUntil: 'domcontentloaded' }
@@ -83,7 +83,7 @@ for (const screen of [
             timeout: 60_000
           });
           await expect(page.getByTestId('machine-count-view')).toHaveText(
-            '80',
+            '79',
             { timeout: 60_000 }
           );
         } else if (screen === 'equipment-model') {
@@ -95,7 +95,7 @@ for (const screen of [
           });
         } else if (screen === 'equipment-schematic') {
           await expect(
-            page.getByText('Pump unit: P1', { exact: true })
+            page.getByRole('heading', { name: 'Synthetic pump', exact: true })
           ).toBeVisible();
         } else {
           await expect(

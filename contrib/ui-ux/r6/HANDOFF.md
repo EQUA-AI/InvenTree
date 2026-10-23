@@ -1,5 +1,61 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## UI round 2 Follow-up 10 — 23 October 2026 (ready for coordinator review)
+
+Built on `79c9540fa`: comparison menus use fixed positioning; active editors
+reveal before opening and after committed edits, with no deferred frame scroll.
+The exact unchanged failing light case passes 25 consecutive times, zero retries;
+5 dark repeats, 4 retained editor/machine checks and 2 scroll/reopen probes also
+pass (36 executions). Six final menu PNGs inspected. 5 comparison units, all 9
+TypeScript projects, Lingui with 117 bytewise locale restores and prek pass.
+Digest `ba958119f0a7`; [report](reports/ui-r2.md) lists the three source files.
+Owned WS3012/harness15250 stopped; ports clear. Linux fixture verification only;
+Mac host confirmation remains with the coordinator. No tracked specs, owner
+data or Git writes; parent/deployed acceptance unchanged.
+
+## UI round 2 Follow-up 9 — 23 October 2026 (ready for coordinator review)
+
+Built on `1baa15d4d`: stable mounted phone filters, spare room in phone machine
+cards and Equipment callouts, a model badge outside the canvas and atomic
+lifecycle badges with balanced Fault History columns. All 5 findings addressed.
+14 unchanged lane cases plus 12 supplemental checks pass; affected Fault checks
+replayed after final layout refinement. 16 final per-screen PNGs inspected.
+84 units, all 9 TypeScript projects (app/S7/S8 rechecked), Lingui with 117 bytewise
+locale restores and changed-file prek pass. Digest `d6474d4a30ae`;
+[execution report](reports/ui-r2.md) lists source files and exact lane evidence.
+Owned WS3012/harness15250 stopped; ports clear. Linux fixture verification only:
+the three Mac-only findings still need coordinator host confirmation. No lane
+specs, owner data or Git writes; parent/deployed acceptance unchanged.
+
+## UI round 2 Follow-up 8 — 23 October 2026 (ready for coordinator review)
+
+Built on `713b22b65`: exact Equipment return query state, compact stressed-font
+phone location controls and contained keyboard-focused history tooltip repaired.
+All 8 strict focused cases from the byte-identical `abd133010` specs pass; no lane
+specs edited. First phone card ends at 820.08px in an 844px viewport; focused
+tooltip ends at 368px in a 390px viewport, in both themes. 16 final PNGs reviewed.
+107 units, all 9 TypeScript projects, Lingui with 117 bytewise locale restores
+and changed-file prek pass. Digest `355cc847847d`;
+[execution report](reports/ui-r2.md) lists source/test files and evidence.
+Owned WS3012/harness15250 stopped; ports clear. Fixture/source evidence only;
+owner data untouched, no Git writes, deployment and parent acceptance unchanged.
+
+
+## UI round 2 Follow-up 7 — 23 October 2026 (ready for coordinator review)
+
+Built on `a2eff8510`: container-gated unit mimic and honest Equipment default,
+Performance freshness/limit colours and labelled deltas, keyboard tooltip facts,
+compact CMMS history, shared bay colours and Register import copy implemented.
+25 focused cases, 4 final Equipment repeats, 23 numbered captures and one retained
+Attachments case pass. All 49 final7 PNGs inspected; 112 changed-module units,
+24 retained trend units, 3 isolated DB-backed cusec cases, all 9 TypeScript projects,
+Lingui with 117 bytewise restores and changed-file prek pass.
+Digest `18499d49eafd`; [execution report](reports/ui-r2.md) lists every disposition
+and source/test file. Fault descriptions retain raw-code fallback because no
+backend description dictionary exists. Owned WS3012/harness15250 stopped; ports
+clear. Fixture evidence only, owner data untouched. Full host suites and deployed
+acceptance remain with the coordinator; parent dispositions unchanged.
+
 ## UI round 2 Follow-up 6 — 22 October 2026 (ready for coordinator review)
 
 Built on `1d3c7b513`: native Parts failure wrapping, hovered phone link contrast,

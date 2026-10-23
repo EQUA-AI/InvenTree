@@ -58,9 +58,7 @@ async function compactCards(page: Page, phone: boolean) {
       expect(
         await observed.evaluate((node) => node.getBoundingClientRect().height)
       ).toBeLessThan(24);
-      await expect(observed).not.toContainText(
-        /ahead of your clock|server flag|budget/
-      );
+      await expect(observed).not.toContainText(/server flag|budget/);
     }
   }
   const rects = await cards.evaluateAll((nodes) =>
@@ -81,6 +79,7 @@ async function compactCards(page: Page, phone: boolean) {
 }
 for (const scheme of ['light', 'dark'] as const)
   test(`station compact full-width KPIs ${scheme}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
     await openStation(page, { bays, stationSignals, scheme });
     await compactCards(page, false);
     await expect(
@@ -116,6 +115,7 @@ test('station phone uses compact full-width cards', async ({ page }) => {
 test('stale KPIs keep a short badge and plain relative age', async ({
   page
 }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   await openStation(page, {
     bays,
     stationSignals: stationSignals.map((signal) => ({
@@ -130,15 +130,31 @@ test('stale KPIs keep a short badge and plain relative age', async ({
   const badge = count.getByRole('button', { name: 'Stale', exact: true });
   await page.keyboard.press('Tab');
   await badge.focus();
+  await expect(badge).toBeFocused();
   expect(
     (await badge.locator('.mantine-Badge-root').boundingBox())!.height
   ).toBeLessThan(32);
-  await expect(
-    page.getByRole('tooltip').filter({ hasText: 'Stale (server flag)' })
-  ).toBeVisible();
+  const staleReason = page.getByRole('tooltip', {
+    name: /Source flagged stale/
+  });
+  await expect(staleReason).toBeVisible();
+  await expect(staleReason).toContainText('Observed 18 Oct 2026 12:00:05');
+  await expect(staleReason).toContainText('Read 18 Oct 2026 12:00:00');
+  await expect(staleReason).toContainText('freshness budget 300 s');
+  await expect(badge).toHaveAccessibleDescription(
+    await staleReason.innerText()
+  );
   await expect(count.locator('.mantine-Badge-root time')).toHaveCount(0);
-  await expect(count.locator('[data-kpi-observed]')).toHaveText(/0 s old/);
+  const observed = count.locator('[data-kpi-observed] time');
+  await expect(observed).toHaveText(
+    /^\d{2}:\d{2}:\d{2} · 5 s ahead of your clock$/
+  );
+  await expect(observed).toHaveAttribute(
+    'datetime',
+    new Date(NOW + 5000).toISOString()
+  );
   await page.keyboard.press('Escape');
+  await expect(staleReason).toBeHidden();
   await capture(page, '35-station-performance-stale-desktop-light');
 });
 test('pump shares compact KPI cards and a single live control', async ({
@@ -190,6 +206,12 @@ for (const view of ['machines', 'sites'] as const)
       ).toContainText(/79\s*machines/);
     } else
       await expect(page.getByText('25 of 109', { exact: true })).toBeVisible();
+    const filters = page.getByRole('button', { name: 'Filters', exact: true });
+    if (await filters.isVisible()) {
+      await expect(filters).toHaveAttribute('aria-expanded', 'false');
+      await filters.click();
+      await expect(filters).toHaveAttribute('aria-expanded', 'true');
+    }
     await page
       .getByRole('checkbox', { name: 'Show inactive', exact: true })
       .check();

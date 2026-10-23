@@ -25,7 +25,7 @@ export function Timestamp({
   compactOnPhone = false,
   timeOnly = false,
   dateOnly = false,
-  focusable = false
+  focusable = relativeOnly
 }: Readonly<{
   value: string | number | null | undefined;
   clock?: DisplayClock;

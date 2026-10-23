@@ -196,7 +196,11 @@ function PartNumber({
           cx={x}
           cy={y}
           r={12 * scale}
-          fill={color ?? 'var(--mantine-color-body)'}
+          fill={
+            state.verdict === 'normal'
+              ? 'var(--mantine-color-body)'
+              : (color ?? 'var(--mantine-color-body)')
+          }
           stroke={
             active
               ? 'var(--aimms-focus, light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3)))'
@@ -209,23 +213,34 @@ function PartNumber({
         />
       )}
       <text
-        x={x}
+        x={state.verdict === 'normal' ? x - 3 * scale : x}
         y={y + (state.verdict === 'warning' ? 8 : 5) * scale}
         textAnchor='middle'
-        fontSize={15 * scale}
+        fontSize={(state.verdict === 'normal' ? 13 : 15) * scale}
         fontWeight={700}
         fill={
           assessed
             ? state.verdict === 'warning'
               ? 'var(--aimms-warning-ink)'
               : state.verdict === 'normal'
-                ? 'light-dark(var(--mantine-color-black), var(--mantine-color-dark-9))'
+                ? 'var(--mantine-color-text)'
                 : 'light-dark(var(--mantine-color-white), var(--mantine-color-dark-9))'
             : 'var(--mantine-color-text)'
         }
       >
         {state.number}
       </text>
+      {state.verdict === 'normal' && (
+        <path
+          data-normal-check
+          d={`M${x + 3 * scale} ${y - 1 * scale}l${2 * scale} ${2 * scale}l${4 * scale} ${-5 * scale}`}
+          fill='none'
+          stroke={color ?? undefined}
+          strokeWidth={1.8 * scale}
+          strokeLinecap='round'
+          strokeLinejoin='round'
+        />
+      )}
     </>
   );
 }

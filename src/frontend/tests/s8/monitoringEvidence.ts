@@ -154,11 +154,11 @@ export async function captureMatrix(
       JSON.stringify(measurements, null, 2)
     );
     expect(measurements.document).toBeLessThanOrEqual(width);
-    expect(measurements.clocks).toBe(1);
+    // Visible clock captions were removed; timestamps retain their clock tooltips.
+    expect(measurements.clocks).toBe(0);
     await expect(
       page.getByRole('region', {
-        name:
-          screen === 'health' ? 'Current condition' : 'Performance workspace',
+        name: screen === 'health' ? 'Current condition' : 'Performance',
         exact: true
       })
     ).toBeVisible();

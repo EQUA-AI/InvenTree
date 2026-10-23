@@ -114,6 +114,8 @@ async function focused(
   return { acks, sends };
 }
 async function equipment(page: Page, scheme = 'light') {
+  // The explicit model route also loads the reference renderer in remote Chromium.
+  test.setTimeout(90_000);
   await mockMachine(page, { assetType: 'pump' });
   const positions = positionsFixture();
   await page.route('**/api/assets/machines/18/positions/', (r) =>
@@ -128,7 +130,7 @@ async function equipment(page: Page, scheme = 'light') {
     })
   );
   await page.goto(
-    `/playwright/s0-native.html?surface=machine-shell&sprint=s2&role=viewer&work_access=reader&scheme=${scheme}&entry=${encodeURIComponent('/machines/machine/18/equipment/')}`
+    `/playwright/s0-native.html?surface=machine-shell&sprint=s2&role=viewer&work_access=reader&scheme=${scheme}&entry=${encodeURIComponent('/machines/machine/18/equipment/?view=model')}`
   );
   // Position focus remains available through the native component list while
   // the optional reference renderer loads. Renderer checks live in S2.
@@ -155,7 +157,7 @@ for (const scheme of ['light', 'dark'])
         'Synthetic focused answer; no physical state is inferred.',
         { exact: true }
       )
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15_000 });
     expect(observed.acks).toEqual([
       {
         work_order_id: null,
@@ -176,7 +178,7 @@ for (const scheme of ['light', 'dark'])
     await expect(chips).toHaveCount(2);
     await expect(chips.first().getByRole('link')).toHaveAttribute(
       'href',
-      '/machines/machine/18/equipment/?position=bearing'
+      '/machines/machine/18/equipment/?position=bearing&view=model'
     );
     expect(
       await page.evaluate(
@@ -231,7 +233,7 @@ for (const problem of ['refuse', 'mismatch', 'unsupported'] as const)
           'Synthetic focused answer; no physical state is inferred.',
           { exact: true }
         )
-      ).toBeVisible();
+      ).toBeVisible({ timeout: 15_000 });
       expect(observed.sends).toHaveLength(1);
       expect(observed.sends[0]).not.toHaveProperty('work_focus_receipt');
     }

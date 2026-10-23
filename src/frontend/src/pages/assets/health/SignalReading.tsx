@@ -39,7 +39,9 @@ export function SignalValue({
     );
   const value = signal.stale ? t`Last known ${reading.text}` : reading.text;
   return reading.reason ? (
-    <ValueTooltip label={reading.reason}>{value}</ValueTooltip>
+    <ValueTooltip label={reading.reason} focusable={focusable}>
+      {value}
+    </ValueTooltip>
   ) : (
     <>{value}</>
   );

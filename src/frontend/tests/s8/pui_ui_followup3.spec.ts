@@ -4,7 +4,7 @@ import { nativeBaseline } from '../s0/guards';
 import { mockMachine } from '../s0/machineFixtures';
 import { mockExplorer } from '../s1/machineExplorerFixtures';
 import { components } from '../s2/partsFixtures';
-import { openHealth, signalTable } from '../s3/healthFixtures';
+import { NOW, openHealth, signalTable } from '../s3/healthFixtures';
 import { readable } from './contrast';
 import { captureFromTop, openExplorer } from './designFixtures';
 import { mockOwnerLocations, ownerMimicFixture } from './ownerFixtures';
@@ -55,11 +55,17 @@ for (const scheme of ['light', 'dark'] as const) {
       if (width > 390) {
         for (const size of [1366, 1280, 1024]) {
           await page.setViewportSize({ width: size, height: 900 });
+          const lastBay = page.locator('[data-bay="P14"]');
+          await expect(lastBay).toBeVisible();
           await expect
             .poll(async () =>
-              page.locator('[data-bay="P14"]').evaluate((node) => {
+              lastBay.evaluate((node) => {
+                const viewport = node.closest('section');
+                // ResizeObserver can move this bay into a new row after the
+                // locator resolves. Poll the connected replacement's bounds.
+                if (!node.isConnected || !viewport) return false;
                 const a = node.getBoundingClientRect();
-                const b = node.closest('section')!.getBoundingClientRect();
+                const b = viewport.getBoundingClientRect();
                 return a.left >= b.left && a.right <= b.right;
               })
             )
@@ -69,7 +75,7 @@ for (const scheme of ['light', 'dark'] as const) {
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await page.locator('[data-bay="P9"]').click();
       const heading = page.getByRole('heading', {
-        name: 'Pump unit: P9',
+        name: 'Synthetic pump 9',
         exact: true
       });
       await expect(heading).toBeFocused();
@@ -220,7 +226,11 @@ for (const scheme of ['light', 'dark'] as const) {
       ).toBeVisible();
       await page.keyboard.press('Escape');
       const firstTime = signalTable(page).locator('tbody tr time').first();
-      await expect(firstTime).toHaveText('just now');
+      await expect(firstTime).toHaveText('20 s ago');
+      await expect(firstTime).toHaveAttribute(
+        'datetime',
+        new Date(NOW - 20_000).toISOString()
+      );
       await expect(firstTime).toHaveCSS('white-space', 'nowrap');
       if (width >= 768) {
         const titles = await Promise.all(
@@ -251,7 +261,18 @@ for (const scheme of ['light', 'dark'] as const) {
         .locator('label')
         .filter({ hasText: /^Search machines$|^Criticality$/ })
     ).toHaveCount(0);
-    await page.getByRole('checkbox').first().check();
+    const selection = page.getByRole('checkbox', {
+      name: 'Select Synthetic pump 001',
+      exact: true
+    });
+    await selection.check();
+    await expect(selection).toBeChecked();
+    const filters = page.getByRole('button', { name: 'Filters', exact: true });
+    if (await filters.isVisible()) {
+      await expect(filters).toHaveAttribute('aria-expanded', 'false');
+      await filters.click();
+      await expect(filters).toHaveAttribute('aria-expanded', 'true');
+    }
     await expect(
       page.getByRole('button', { name: /Move selected/ })
     ).toBeVisible();
