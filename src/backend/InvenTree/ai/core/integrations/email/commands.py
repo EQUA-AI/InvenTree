@@ -201,12 +201,25 @@ def reconcile_message(payload, *, operation_id):
             "\r\n", "\n"
         ):
             return unknown
-        # Do not claim an attachment-bearing effect from text/header evidence.
-        if (
-            payload.get("attachments")
-            or list(msg.iter_attachments())
-            or msg.get_body(preferencelist=("html",)) is not None
-        ):
+        if msg.get_body(preferencelist=("html",)) is not None:
+            return unknown
+        expected = sorted(
+            (
+                a["filename"],
+                a.get("mime_type", "application/pdf"),
+                hashlib.sha256(a["data_bytes"]).hexdigest(),
+            )
+            for a in payload.get("attachments") or []
+        )
+        actual = sorted(
+            (
+                a.get_filename() or "",
+                a.get_content_type(),
+                hashlib.sha256(a.get_payload(decode=True) or b"").hexdigest(),
+            )
+            for a in msg.iter_attachments()
+        )
+        if actual != expected:
             return unknown
         if not row.get("id") or not row.get("threadId"):
             return unknown

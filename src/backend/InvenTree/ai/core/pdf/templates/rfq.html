@@ -67,19 +67,19 @@
       <td class="center">{{ loop.index }}</td>
       <td>{{ line.part_name }}{% if line.part_ipn %} <span class="text-muted">({{ line.part_ipn }})</span>{% endif %}</td>
       <td>{{ line.description | default("", true) }}</td>
-      <td class="center">{{ line.quantity | number(0) }}</td>
+      <td class="center">{{ line.quantity | quantity }}</td>
       {% if show_target_price %}
-      <td class="right">{{ line.target_price | currency(currency_symbol | default("$", true)) if line.target_price else "—" }}</td>
+      <td class="right">{{ line.target_price | currency(currency_symbol | default("$", true)) if line.target_price is defined and line.target_price is not none else "—" }}</td>
       {% endif %}
-      <td class="right">{{ line.your_price | currency(currency_symbol | default("$", true)) if line.your_price else "" }}</td>
+      <td class="right">{{ line.your_price | currency(currency_symbol | default("$", true)) if line.your_price is defined and line.your_price is not none else "" }}</td>
       <td class="center">{{ line.lead_time | default("", true) }}</td>
-      <td class="right">{{ line.total_price | currency(currency_symbol | default("$", true)) if line.total_price else "" }}</td>
+      <td class="right">{{ line.total_price | currency(currency_symbol | default("$", true)) if line.total_price is defined and line.total_price is not none else "" }}</td>
     </tr>
     {% endfor %}
 
     <tr class="total-row">
       <td colspan="{{ 6 + (1 if show_target_price else 0) }}" class="text-right">Total ({{ currency | default("USD", true) }})</td>
-      <td class="right">{{ total_price | currency(currency_symbol | default("$", true)) if total_price else "—" }}</td>
+      <td class="right">{{ total_price | currency(currency_symbol | default("$", true)) if total_price is defined and total_price is not none else "—" }}</td>
     </tr>
   </tbody>
 </table>

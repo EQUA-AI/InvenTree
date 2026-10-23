@@ -7,6 +7,7 @@ from django.test import TestCase
 
 from company.models import Company, SupplierPart
 from order.models import PurchaseOrder, PurchaseOrderLineItem
+from order.status_codes import PurchaseOrderStatus
 from part.models import Part
 from stock.models import StockItem
 from tasks.models import (
@@ -126,9 +127,9 @@ class ReconcileJobKitTest(TestCase):
         supplier_part = SupplierPart.objects.create(
             part=self.part, supplier=supplier, SKU='SKU-1'
         )
-        po = PurchaseOrder.objects.create(reference='PO-0001', supplier=supplier)
+        po = PurchaseOrder.objects.create(reference='PO-0001', supplier=supplier, status=PurchaseOrderStatus.PLACED.value)
         po_line = PurchaseOrderLineItem.objects.create(
-            part=supplier_part, order=po, quantity=2
+            part=supplier_part, order=po, quantity=2, purchase_price=10, purchase_price_currency='USD'
         )
 
         linked = link_po_to_shortage(
@@ -144,3 +145,55 @@ class ReconcileJobKitTest(TestCase):
                 work_order_id=self.work_order.pk, shortage_id=999999,
                 purchase_order_line_id=1, actor=self.actor,
             )
+
+    def test_link_rejects_draft_wrong_part_and_insufficient_quantity(self):
+        """Pending or unvalidated native rows never produce Ordered readiness."""
+        self.reserve('r8-link-shortage')
+        shortage = JobKitShortage.objects.get(line=self.line, status='open')
+        supplier = Company.objects.create(name='R8 fixture supplier', is_supplier=True)
+        sp = SupplierPart.objects.create(part=self.part, supplier=supplier, SKU='R8-fixture')
+        po = PurchaseOrder.objects.create(reference='R8-FIXTURE-DRAFT', supplier=supplier)
+        line = PurchaseOrderLineItem.objects.create(order=po, part=sp, quantity=5, purchase_price=1, purchase_price_currency='USD')
+
+        def link():
+            return link_po_to_shortage(work_order_id=self.work_order.pk, shortage_id=shortage.pk, purchase_order_line_id=line.pk, actor=self.actor)
+
+        with self.assertRaises(JobKitLineError):
+            link()
+        po.status = PurchaseOrderStatus.PLACED.value
+        po.save()
+        line.quantity = 4
+        line.save()
+        with self.assertRaises(JobKitLineError):
+            link()
+        line.quantity = 5
+        line.purchase_price = None
+        line.save()
+        with self.assertRaises(JobKitLineError):
+            link()
+        line.purchase_price = 1
+        line.purchase_price_currency = 'USD'
+        wrong = Part.objects.create(name='R8 fixture unrelated', purchaseable=True)
+        sp.part = wrong
+        sp.save()
+        line.save()
+        with self.assertRaises(JobKitLineError):
+            link()
+        shortage.refresh_from_db()
+        self.assertEqual(shortage.status, 'open')
+        self.assertIsNone(shortage.purchase_order_line_id)
+
+    def test_link_respects_supplier_pack_conversion_and_replay(self):
+        """Two order packs of three cover five base units without duplicate links."""
+        self.reserve('r8-pack-shortage')
+        shortage = JobKitShortage.objects.get(line=self.line, status='open')
+        supplier = Company.objects.create(name='R8 fixture packs', is_supplier=True)
+        sp = SupplierPart.objects.create(part=self.part, supplier=supplier, SKU='R8-pack', pack_quantity='3')
+        sp.full_clean()
+        sp.save()
+        po = PurchaseOrder.objects.create(reference='R8-FIXTURE-PACK', supplier=supplier, status=PurchaseOrderStatus.PLACED.value)
+        line = PurchaseOrderLineItem.objects.create(order=po, part=sp, quantity=2, purchase_price=1, purchase_price_currency='USD')
+        for _ in range(2):
+            result = link_po_to_shortage(work_order_id=self.work_order.pk, shortage_id=shortage.pk, purchase_order_line_id=line.pk, actor=self.actor)
+            self.assertEqual(result.status, 'ordered')
+        self.assertEqual(JobKitShortage.objects.filter(line=self.line).count(), 1)

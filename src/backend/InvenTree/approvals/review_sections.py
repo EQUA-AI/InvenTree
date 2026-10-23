@@ -100,6 +100,7 @@ def build_review_sections(approval):
                 'external_effect',
                 'External effect',
                 {
+                    'place_purchase_order': 'Creates and places one order with all reviewed goods and charges, as the named approver. No supplier email or internal order notification is sent.',
                     'create_purchase_order': 'Creates a draft only; no order is issued and no email is sent.',
                     'add_po_line_item': 'Adds this reviewed line to the named draft; no email is sent.',
                     'issue_purchase_order': 'Changes the named order to Placed. No supplier email is sent. Normal internal order notifications may be delivered to responsible users or part subscribers.',
