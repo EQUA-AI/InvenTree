@@ -140,8 +140,11 @@ def material_readout(actor, work_order) -> dict:
     """Requirements, reservations, custody and recorded use for one job."""
     from tasks.closeout_models import CloseoutPartUsage
     from tasks.jobkit_models import JobKit
+    from tasks.procurement_readout import procurement_context
+    from tasks.services.procurement import can_read_procurement
 
     visible = can_read_work_stock(actor, work_order)
+    purchasing_visible = can_read_procurement(actor, work_order)
     kits_enabled = bool(getattr(settings, 'AIMMS_JOB_KITS_ENABLED', False))
 
     usage_query = CloseoutPartUsage.objects.filter(work_order=work_order)
@@ -257,7 +260,11 @@ def material_readout(actor, work_order) -> dict:
                         'id': shortage.pk,
                         'quantity': float(shortage.quantity),
                         'status': shortage.status,
-                        'purchase_order_line': shortage.purchase_order_line_id,
+                        'purchase_order_line': (
+                            shortage.purchase_order_line_id
+                            if purchasing_visible
+                            else None
+                        ),
                         'reason': shortage.reason or '',
                     }
                     for shortage in line.shortages.all()
@@ -294,4 +301,5 @@ def material_readout(actor, work_order) -> dict:
         'component': _component(work_order, actor),
         'requirements': requirements,
         'unmatched_usage': loose_usage,
+        'procurement': procurement_context(actor, work_order, stock_visible=visible),
     }

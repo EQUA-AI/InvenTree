@@ -1,5 +1,18 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## R8 P1 backend wave 1 — 23 October 2026 (human integration review)
+
+Job Kit configuration activation, additive typed procurement context and
+append-only source/acknowledgment commands are implemented in `r8/p1` on merged
+R6 `270b3b74e`. See [P1 report](../r8-procurement/reports/P1.md) for contracts,
+execution ledger, exact checks and dependencies. 76/76 supplemented offline
+checks, app TypeScript and changed-file prek pass. The original SQLite legacy
+checkpoint profile remains blocked by inherited missing runtime schema; the
+report preserves its failures and describes the guarded synthetic supplement.
+No new migrations, changes to running databases, email, Azure, Git writes
+or UI implementation. B04–B09 producer and deployed/product acceptance gates
+remain open; existing R6 acceptance dispositions are unchanged.
+
 ## UI round 2 Follow-up 10 — 23 October 2026 (ready for coordinator review)
 
 Built on `79c9540fa`: comparison menus use fixed positioning; active editors

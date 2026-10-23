@@ -100,6 +100,7 @@ from .procedure_execution_api import (
     StepExecutionReopen,
     WorkOrderDeviationList,
 )
+from .procurement_api import ProcurementAcknowledgment, ProcurementSourceSelection
 from .report_api import WorkAcceptedReport, WorkCaptureMedia, WorkCaptureMediaUpload
 from .scope import (
     ScopeError,
@@ -1784,6 +1785,16 @@ tasks_api_urls = [
                 '<int:pk>/materials/',
                 WorkOrderMaterials.as_view(),
                 name='work-order-materials',
+            ),
+            path(
+                '<int:pk>/procurement/source-selection/',
+                ProcurementSourceSelection.as_view(),
+                name='work-order-procurement-source-selection',
+            ),
+            path(
+                '<int:pk>/procurement/acknowledgment/',
+                ProcurementAcknowledgment.as_view(),
+                name='work-order-procurement-acknowledgment',
             ),
             path(
                 '<int:pk>/job-kit/', JobKitDetail.as_view(), name='work-order-job-kit'

@@ -57,3 +57,4 @@ L03,55,Later,later,Separately justified new Performance analytics,P11 P38 P39 P4
 L04,56,Later,later,Richer cross-system saved views over actual relationships,P03,Assets frontend and backend,Separate acceptance,Deferred
 L05,57,Later,conditional,Additional time-correction editor only if truly needed,P27,Workforce frontend and backend,A11 A14,Deferred
 L06,58,Later,conditional,Additional report-amendment editor only if truly needed,P24 P45,Reporting frontend and backend,A11 A18,Deferred
+R8-P1,B01 B02 B03 B06,R8 wave 1,backend,Job Kit activation; typed shared procurement context; append-only source and acknowledgment evidence,R6 270b3b74e; owner-decisions.md,P1 backend,R8 scoped runtime checks; original SQLite checkpoint gap remains,Ready for human integration review; 76/76 supplemented offline pass; original SQLite schema gap remains
