@@ -145,6 +145,14 @@ REGISTRY: tuple[FlagEntry, ...] = (
         description='Work-order surfaces master gate',
     ),
     FlagEntry(
+        'AIMMS_JOB_KITS_ENABLED',
+        'bool',
+        False,
+        'django',
+        config_key='aimms_job_kits_enabled',
+        description='Job Kit planning, custody and recorded procurement evidence',
+    ),
+    FlagEntry(
         'AIMMS_WORK_SUPERVISOR_GROUPS',
         'csv',
         '',
