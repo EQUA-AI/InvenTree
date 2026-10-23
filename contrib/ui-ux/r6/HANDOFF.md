@@ -1,5 +1,18 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## UI round 2 Follow-up 11 — 23 October 2026 (ready for coordinator review)
+
+Built on `e1d89dd61`: phone Filters opens without a height transition, avoiding
+the temporary clipped-container scroll lost in the Mac trace. Controls remain
+mounted with stable identity. Exact unchanged phone case passes 25 consecutive
+runs, zero retries; complete explorer spec passes 30/30, plus two theme probes
+and one smoke run (58 executions). Six final PNGs inspected; 34 units, all nine
+TypeScript projects, Lingui with 117 bytewise locale restores and prek pass.
+Digest `c22493dd50a6`; [report](reports/ui-r2.md) records trace and geometry proof.
+Owned WS3012/harness15250 stopped; ports clear. Linux fixture verification only;
+Mac confirmation remains with the coordinator. No tracked specs, owner data or
+Git writes; parent/deployed acceptance unchanged.
+
 ## UI round 2 Follow-up 10 — 23 October 2026 (ready for coordinator review)
 
 Built on `79c9540fa`: comparison menus use fixed positioning; active editors
