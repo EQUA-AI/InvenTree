@@ -22,6 +22,11 @@ MARKER = {
     'machine': 'Cedar Creek Pump 08',
     'email_policy': 'recorded_only',
 }
+# The registry names the showcase pump by its station path; older fixtures use the short form.
+SHOWCASE_MACHINE_NAMES = {
+    MARKER['machine'],
+    'Cedar Creek Final Effluent Pump Station / Pump 08',
+}
 REFERENCE = 'R8-FIXTURE-003826'
 GROUP = f'{PREFIX} named PO reviewers'
 
@@ -98,7 +103,7 @@ class Command(BaseCommand):
         if (
             target is None
             or not target.machine
-            or target.machine.name != MARKER['machine']
+            or target.machine.name not in SHOWCASE_MACHINE_NAMES
         ):
             raise CommandError(
                 'Expected Cedar Creek Pump 08 / WO-003826; no target is guessed.'
