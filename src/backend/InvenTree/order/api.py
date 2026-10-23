@@ -607,13 +607,12 @@ class PurchaseOrderViewSet(
         """API endpoint to receive stock items against a PurchaseOrder."""
         self.get_order()
 
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        items = serializer.save()
-        queryset = stock_serializers.StockItemSerializer.annotate_queryset(items)
+        from tasks.services.maintenance_receipts import receive_purchase_order
 
-        response = stock_serializers.StockItemSerializer(queryset, many=True)
-        return Response(response.data, status=status.HTTP_201_CREATED)
+        data = receive_purchase_order(
+            request=request, order_id=pk, serializer_factory=self.get_serializer
+        )
+        return Response(data, status=status.HTTP_201_CREATED)
 
 
 order_router.register('po', PurchaseOrderViewSet, basename='api-po')

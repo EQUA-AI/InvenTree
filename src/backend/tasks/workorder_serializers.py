@@ -156,22 +156,11 @@ class WorkOrderEventSerializer(serializers.ModelSerializer):
         """O21 source identities follow the same scope as the origin projection."""
         metadata = obj.metadata if isinstance(obj.metadata, dict) else {}
         if obj.event_type.startswith('PROC_'):
-            from tasks.materials_readout import can_read_work_stock
-            from tasks.services.procurement import (
-                can_read_procurement,
-                event_matches_context,
-            )
+            from tasks.services.procurement import can_read_procurement_event
 
             request = self.context.get('request')
             actor = request.user if request else None
-            if (
-                not can_read_procurement(actor, obj.work_order)
-                or not event_matches_context(obj, obj.work_order)
-                or (
-                    obj.event_type.startswith('PROC_RECEIPT_')
-                    and not can_read_work_stock(actor, obj.work_order)
-                )
-            ):
+            if not can_read_procurement_event(actor, obj, obj.work_order):
                 return {'hidden': True}
         result = metadata.get('result_metadata') or {}
         if not isinstance(result, dict):

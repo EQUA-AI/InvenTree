@@ -1,5 +1,22 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## R8 backend wave 1 integration — 23 October 2026 (human review; baseline gates open)
+
+P1/P2/P3 are integrated in `r8/integration`; the Work audit conflict uses
+`{"hidden": true}`. Exact PO-link/named execution/document references and scoped
+receipt/reservation projections connect the producer chain. See the
+[integration ledger/contracts/results](../r8-procurement/reports/integration-wave1.md).
+Final PostgreSQL focus: 269/269; explicit concurrency cleanup profile: 5/5;
+AI email policy: 23/23. Final offline full suites: 2,212 run, 3 failures,
+22 errors, 6 skips; all 102 R8 cases pass. Standard PostgreSQL full suites:
+2,215 run, 3 failures, 30 errors before the final fixture-only correction.
+Global migration drift reproduces at R6 `270b3b74e`; fresh PostgreSQL application
+and single leaves pass. Full-suite/migration acceptance remains open.
+All applicable prek hooks and standalone shared types pass. Disposable PG
+containers/networks removed. No owner-data, existing-container, Azure, email-send
+or Git writes; coordinator stages the resolved index and performs human review.
+No UI, deployment or product acceptance; parent R6 dispositions unchanged.
+
 ## R8 P1 backend wave 1 — 23 October 2026 (human integration review)
 
 Job Kit configuration activation, additive typed procurement context and

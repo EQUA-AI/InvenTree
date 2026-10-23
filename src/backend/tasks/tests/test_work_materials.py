@@ -303,7 +303,9 @@ class WorkMaterialsTests(CloseoutEnvMixin, TestCase):
             body = self.read().data
             self.assertEqual(len(body['requirements']), 8)
             self.assertEqual(
-                sum(len(r['reservations']) for r in body['requirements']), 9
+                # The original consumed line already fulfills its requirement.
+                # Only the seven new lines need another allocation/use.
+                sum(len(r['reservations']) for r in body['requirements']), 8
             )
             self.assertEqual(
                 sum(
@@ -311,6 +313,6 @@ class WorkMaterialsTests(CloseoutEnvMixin, TestCase):
                     for r in body['requirements']
                     for a in r['reservations']
                 ),
-                9,
+                8,
             )
         self.assertEqual(len(small), len(large))

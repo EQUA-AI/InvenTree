@@ -9,6 +9,7 @@ import hashlib
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
+from django.utils import timezone
 
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
@@ -48,6 +49,15 @@ PROCUREMENT_EVENT_TYPES = (
     RECEIPT_RECORDED,
     RECEIPT_ALLOCATED,
 )
+
+
+def procurement_instant(value):
+    """Keep native date-only facts separate; serialize instants with a timezone."""
+    if value is None:
+        return None
+    if timezone.is_naive(value):
+        value = timezone.make_aware(value, timezone.get_default_timezone())
+    return value.isoformat()
 
 
 class ProcurementError(WorkOrderCommandError):
@@ -161,12 +171,143 @@ def can_read_procurement(actor, work_order):
     )
 
 
+def can_read_procurement_event(actor, event, work_order):
+    """Use one scope/role contract in Materials and the generic audit timeline."""
+    from tasks.materials_readout import can_read_work_stock
+
+    return (
+        can_read_procurement(actor, work_order)
+        and event_matches_context(event, work_order)
+        and (
+            not event.event_type.startswith('PROC_RECEIPT_')
+            or can_read_work_stock(actor, work_order)
+        )
+        and (
+            event.event_type != EMAIL_RECORDED
+            or bool(actor and actor.has_perm('users.view_email'))
+        )
+    )
+
+
 def event_matches_context(event, work_order):
     """Neither a Work reassignment nor a tenant move transfers old evidence."""
+    if event.work_order_id != work_order.pk or not isinstance(event.metadata, dict):
+        return False
+    data = event.metadata
+    # P3's first receipt contract kept scope in the protected receipt ledger.
+    # Never recover it from today's mutable Work or shortage binding.
+    if (
+        event.event_type in (RECEIPT_RECORDED, RECEIPT_ALLOCATED)
+        and 'machine_id' not in data
+    ):
+        from tasks.receipt_models import MaintenanceReceipt
+
+        receipts = MaintenanceReceipt.objects.filter(work_order=work_order)
+        receipt = (
+            receipts.filter(event=event).first()
+            if event.event_type == RECEIPT_RECORDED
+            else receipts.filter(pk=data.get('receipt_id')).first()
+        )
+        snapshot = receipt.requirement_snapshot if receipt else {}
+        return (
+            work_order.machine is not None
+            and snapshot.get('machine') == work_order.machine_id
+            and snapshot.get('scope') == str(work_order.machine.client_id)
+        )
     return (
-        event.metadata.get('machine_id') == work_order.machine_id
+        data.get('machine_id') == work_order.machine_id
         and work_order.machine is not None
-        and event.metadata.get('machine_client_id') == work_order.machine.client_id
+        and data.get('machine_client_id') == work_order.machine.client_id
+    )
+
+
+def scope_snapshot(work_order, line_id):
+    """Common immutable identity for all newly recorded procurement events."""
+    return {
+        'schema_version': SCHEMA_VERSION,
+        'machine_id': work_order.machine_id,
+        'machine_client_id': work_order.machine.client_id
+        if work_order.machine
+        else None,
+        'kit_line_id': line_id,
+    }
+
+
+def record_po_binding(work_order, line, po_line, actor, shortage):
+    """Retain a validated exact link and the actual durable purchase execution."""
+    from approvals.models import ApprovalExecution
+
+    executions = (
+        ApprovalExecution.objects
+        .filter(
+            state='succeeded',
+            approval__action_type='purchase_order',
+            result__payload__order_id=po_line.order_id,
+        )
+        .select_related('actor', 'approval')
+        .order_by('-created_at')
+    )
+    execution = next(
+        (
+            row
+            for row in executions
+            if row.result.get('payload', {}).get('operation')
+            in ('place_purchase_order', 'issue_purchase_order')
+            and po_line.pk in row.result.get('payload', {}).get('line_ids', [])
+        ),
+        None,
+    )
+    sources = work_order.events.filter(
+        event_type=SOURCE_SELECTED, metadata__kit_line_id=line.pk
+    ).order_by('-pk')
+    source = next(
+        (
+            row
+            for row in sources
+            if event_matches_context(row, work_order)
+            and selection_is_current(row, work_order, line)
+            and any(
+                offer.get('key') == row.metadata.get('selected_offer_key')
+                and offer.get('supplier_part_id') == po_line.part_id
+                and offer.get('supplier_id') == po_line.order.supplier_id
+                for offer in row.metadata.get('offers', [])
+            )
+        ),
+        None,
+    )
+    key = hashlib.sha256(
+        f'procurement_link:{shortage.pk}:{po_line.pk}'.encode()
+    ).hexdigest()
+    metadata = {
+        **scope_snapshot(work_order, line.pk),
+        'purchase_order_id': po_line.order_id,
+        'purchase_order_line_id': po_line.pk,
+        'source_event_id': source.pk if source else None,
+        'shortage_id': shortage.pk,
+        'approval_execution': {
+            'operation_key': execution.pk,
+            'approval_id': str(execution.approval_id),
+            'revision': execution.revision,
+            'review_hash': execution.review_hash,
+            'actor_id': execution.actor_id,
+            'actor_label': execution.actor.get_username(),
+            'result': execution.result,
+        }
+        if execution
+        else None,
+    }
+    request_hash = _canonical_hash('procurement_link', actor, metadata)
+    replay = _command_replay(work_order, 'procurement_link', key, request_hash)
+    if replay:
+        return replay
+    return _record_command(
+        work_order=work_order,
+        actor=actor,
+        command='procurement_link',
+        event_type=PO_LINKED,
+        idempotency_key=key,
+        request_hash=request_hash,
+        metadata=metadata,
     )
 
 

@@ -11,6 +11,13 @@ from .jobkit_models import (
 )
 
 
+def _receipt_time(value):
+    """Return a zoned instant even on native deployments with USE_TZ disabled."""
+    from tasks.services.procurement import procurement_instant
+
+    return procurement_instant(value)
+
+
 class JobKitLineSerializer(serializers.ModelSerializer):
     """Read-only representation of a planned Job Kit line."""
 
@@ -43,6 +50,7 @@ class JobKitSerializer(serializers.ModelSerializer):
     """Read-only Job Kit with its ordered planned lines."""
 
     lines = serializers.SerializerMethodField()
+    receipts = serializers.SerializerMethodField()
 
     def to_representation(self, instance):
         """Keep staging stock identity behind the Materials stock boundary."""
@@ -74,8 +82,52 @@ class JobKitSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
             'lines',
+            'receipts',
         )
         read_only_fields = fields
+
+    def get_receipts(self, obj):
+        """Read durable receipt facts without triggering reservation or refresh."""
+        from users.permissions import check_user_role
+
+        from .materials_readout import can_read_work_stock
+        from .receipt_models import MaintenanceReceipt
+        from .services.procurement import can_read_procurement_event
+
+        request = self.context.get('request')
+        work_order = self.context.get('work_order') or obj.work_order
+        if (
+            not request
+            or not can_read_work_stock(request.user, work_order)
+            or not check_user_role(request.user, 'purchase_order', 'view')
+        ):
+            return []
+        return [
+            {
+                'id': receipt.pk,
+                'operation_key': receipt.operation_key,
+                'request': receipt.request_snapshot,
+                'event': receipt.event_id,
+                'kit_line': receipt.kit_line_id,
+                'purchase_order_line': receipt.purchase_order_line_id,
+                'shortage': receipt.shortage_id,
+                'actor': receipt.actor_id,
+                'recorded_at': _receipt_time(receipt.recorded_at),
+                'received_before': str(receipt.received_before),
+                'received_after': str(receipt.received_after),
+                'stocks': [row.snapshot for row in receipt.stocks.all()],
+                'reservation_state': receipt.reservation_state,
+                'reservation_code': receipt.reservation_code,
+                'allocation_ids': receipt.allocation_ids,
+                'continued_at': _receipt_time(receipt.continued_at),
+            }
+            for receipt in MaintenanceReceipt.objects
+            .filter(work_order=work_order)
+            .select_related('event')
+            .prefetch_related('stocks')
+            .order_by('pk')
+            if can_read_procurement_event(request.user, receipt.event, work_order)
+        ]
 
     def get_lines(self, obj):
         """Return the kit's lines ordered deterministically."""

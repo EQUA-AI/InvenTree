@@ -181,6 +181,18 @@ class ProcurementEvidenceTests(TestCase):
         self.assertEqual(bytes(first.pdf_bytes), bytes(second.pdf_bytes))
         self.assertEqual(PurchaseOrderDocumentEvidence.objects.count(), 1)
 
+    def test_authorized_replay_preserves_the_original_recorder(self):
+        """Another evidence reader may recover bytes without rewriting attribution."""
+        original, _ = self.record()
+        other = get_user_model().objects.create_superuser(username='r8-other-recorder')
+        replay, created = record_documents(
+            order_id=self.order.pk, actor=other, data=self.data
+        )
+        self.assertFalse(created)
+        self.assertEqual(replay.pk, original.pk)
+        self.assertEqual(replay.actor_id, self.actor.pk)
+        self.assertEqual(PurchaseOrderDocumentEvidence.objects.count(), 1)
+
     def test_changed_intent_same_key_conflicts(self):
         """Reusing an operation for a different address cannot replace the bytes."""
         self.record()

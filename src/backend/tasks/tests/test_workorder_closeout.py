@@ -5,20 +5,20 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from assets.models import AssetMachine, AssetMaintenanceRecord
+from assets.models import AssetMachine, AssetMaintenanceRecord, Client
 from company.models import Company
 from part.models import Part
 from stock.models import StockItem
 from tasks.models import (
     FulfillmentMode,
     JobKit,
-    KanbanCard,
     JobKitAllocation,
     JobKitAllocationStatus,
     JobKitLine,
     JobKitStatus,
-    WorkOrder,
+    KanbanCard,
     ProcedureResourceKind,
+    WorkOrder,
     WorkOrderCloseout,
     WorkOrderLifecycle,
     WorkOrderType,
@@ -37,28 +37,40 @@ class CompleteWorkOrderTest(TestCase):
         self.actor = get_user_model().objects.create_superuser(
             username='closeout-sup', email='co@example.com', password='pw'
         )
+        client_scope = Client.objects.create(
+            name='Closeout fixture client', code='CLOSEOUT-FIXTURE'
+        )
         self.actor.maintenance_scopes = {
-            MaintenanceScope(customer_id=self.customer.pk, site_key=None)
+            MaintenanceScope(
+                customer_id=None, site_key=None, client_id=client_scope.pk
+            ),
+            MaintenanceScope(customer_id=self.customer.pk, site_key=None),
         }
-        self.machine = AssetMachine.objects.create(name='Pump 1')
+        self.machine = AssetMachine.objects.create(name='Pump 1', client=client_scope)
         self.work_order = WorkOrder.objects.create(
-            title='Complete me', status=WorkOrder.STATUS_REVIEW,
-            priority=WorkOrder.PRIORITY_MEDIUM, customer=self.customer,
-            machine=self.machine, assigned_to=self.actor,
+            title='Complete me',
+            status=WorkOrder.STATUS_REVIEW,
+            priority=WorkOrder.PRIORITY_MEDIUM,
+            customer=self.customer,
+            machine=self.machine,
+            assigned_to=self.actor,
             work_order_type=WorkOrderType.PREVENTIVE,
             lifecycle_status=WorkOrderLifecycle.VERIFYING,
         )
         self.closeout = {
-            'action': 'Replaced filter', 'result': 'Restored flow',
+            'action': 'Replaced filter',
+            'result': 'Restored flow',
             'verification_summary': 'Flow verified at 20 GPM',
             'cause': 'Clogged filter',
         }
 
     def complete(self, key='complete-1', closeout=None):
         return complete_work_order(
-            work_order_id=self.work_order.pk, actor=self.actor,
+            work_order_id=self.work_order.pk,
+            actor=self.actor,
             expected_version=self.work_order.lifecycle_version,
-            idempotency_key=key, closeout=closeout or self.closeout,
+            idempotency_key=key,
+            closeout=closeout or self.closeout,
         )
 
     def test_completion_writes_closeout_and_asset_record(self):
@@ -66,9 +78,7 @@ class CompleteWorkOrderTest(TestCase):
         self.assertEqual(result.lifecycle_status, WorkOrderLifecycle.COMPLETED)
 
         self.work_order.refresh_from_db()
-        self.assertEqual(
-            self.work_order.lifecycle_status, WorkOrderLifecycle.COMPLETED
-        )
+        self.assertEqual(self.work_order.lifecycle_status, WorkOrderLifecycle.COMPLETED)
         self.assertIsNotNone(self.work_order.actual_completed_at)
 
         closeout = WorkOrderCloseout.objects.get(work_order=self.work_order)
@@ -91,17 +101,13 @@ class CompleteWorkOrderTest(TestCase):
         # S6d: a job cannot close out while a piece of its work is still open.
         # That piece is a card now, not a second work order.
         self.work_order.cards.create(
-            title='open child',
-            card_kind=KanbanCard.KIND_SUBTASK,
-            status='backlog',
+            title='open child', card_kind=KanbanCard.KIND_SUBTASK, status='backlog'
         )
         with self.assertRaises(CloseoutError):
             self.complete()
 
         self.work_order.refresh_from_db()
-        self.assertEqual(
-            self.work_order.lifecycle_status, WorkOrderLifecycle.VERIFYING
-        )
+        self.assertEqual(self.work_order.lifecycle_status, WorkOrderLifecycle.VERIFYING)
 
     def test_missing_required_closeout_fields_fail(self):
         with self.assertRaises(CloseoutError):
@@ -115,19 +121,22 @@ class CompleteWorkOrderTest(TestCase):
         self.assertEqual(AssetMaintenanceRecord.objects.count(), 1)
 
     def test_completion_closes_kit_and_releases_reservations(self):
-        kit = JobKit.objects.create(
-            work_order=self.work_order, created_by=self.actor
-        )
+        kit = JobKit.objects.create(work_order=self.work_order, created_by=self.actor)
         part = Part.objects.create(name='Seal', description='s', component=True)
         StockItem.objects.create(part=part, quantity=Decimal('10'))
         line = JobKitLine.objects.create(
-            kit=kit, sequence=1, kind=ProcedureResourceKind.PART,
-            requested_part=part, selected_part=part,
+            kit=kit,
+            sequence=1,
+            kind=ProcedureResourceKind.PART,
+            requested_part=part,
+            selected_part=part,
             required_quantity=Decimal('3'),
-            fulfillment_mode=FulfillmentMode.RESERVE_CONSUME, source='manual',
+            fulfillment_mode=FulfillmentMode.RESERVE_CONSUME,
+            source='manual',
         )
         reserve_job_kit(
-            work_order_id=self.work_order.pk, actor=self.actor,
+            work_order_id=self.work_order.pk,
+            actor=self.actor,
             expected_version=self.work_order.lifecycle_version,
             idempotency_key='reserve',
         )

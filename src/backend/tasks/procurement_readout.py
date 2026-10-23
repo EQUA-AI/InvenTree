@@ -7,41 +7,42 @@ continuations belong in this module.
 
 from decimal import Decimal
 
-from django.utils import timezone
+from django.db.models import Prefetch
 
 from djmoney.contrib.exchange.exceptions import MissingRate
 from djmoney.contrib.exchange.models import convert_money
 
-from tasks.jobkit_models import JobKit
+from tasks.jobkit_models import JobKit, JobKitAllocation
 from tasks.models import WorkOrderCommand
 from tasks.services.procurement import (
     EMAIL_RECORDED,
     PO_ACKNOWLEDGED,
     PO_LINKED,
     PROCUREMENT_EVENT_TYPES,
+    RECEIPT_ALLOCATED,
     RECEIPT_RECORDED,
     SCHEMA_VERSION,
     SOURCE_SELECTED,
     can_read_procurement,
+    can_read_procurement_event,
     configuration_revision,
     event_matches_context,
+    procurement_instant,
     purchase_order_revision,
     requirement_revision,
+    scope_snapshot,
     selection_is_current,
 )
 
 
 def event_fact(event):
     """Retain physical/source time separately from immutable ingestion time."""
-    recorded_at = event.created_at
-    if timezone.is_naive(recorded_at):
-        recorded_at = timezone.make_aware(recorded_at, timezone.get_default_timezone())
     return {
         'event_id': event.pk,
         'operation_key': event.idempotency_key,
         'event_type': event.event_type,
         'source_at': event.metadata.get('source_at'),
-        'recorded_at': recorded_at.isoformat(),
+        'recorded_at': procurement_instant(event.created_at),
         'actor': event.metadata.get('actor')
         or {
             'pk': event.actor_id,
@@ -91,6 +92,18 @@ def _order(po_line, events, selection=None):
     acknowledgments = _bound(events, PO_ACKNOWLEDGED, po_line.pk, po.pk)
     ack = acknowledgments[-1] if acknowledgments else None
     bindings = _bound(events, PO_LINKED, po_line.pk, po.pk)
+    document = None
+    if emails and emails[-1].metadata.get('document_evidence_id'):
+        from order.models import PurchaseOrderDocumentEvidence
+        from order.procurement_evidence import evidence_result
+
+        evidence = PurchaseOrderDocumentEvidence.objects.filter(
+            pk=emails[-1].metadata['document_evidence_id'], order=po
+        ).first()
+        if evidence and any(
+            row.get('pk') == po_line.pk for row in evidence.context.get('lines', [])
+        ):
+            document = evidence_result(evidence)
     offers = selection.metadata.get('offers', []) if selection else []
     selected_offer = next(
         (
@@ -138,6 +151,7 @@ def _order(po_line, events, selection=None):
         'target_date': po.target_date.isoformat() if po.target_date else None,
         'binding': event_fact(bindings[-1]) if bindings else None,
         'recorded_email': event_fact(emails[-1]) if emails else None,
+        'recorded_document': document,
         'email_status': 'recorded_only' if emails else 'not_recorded',
         'acknowledgment': event_fact(ack) if ack else None,
         'acknowledgment_current': (
@@ -175,7 +189,7 @@ def procurement_context(actor, work_order, *, stock_visible):
     }
     if kit is None or not visible:
         return body
-    events = list(
+    all_events = list(
         work_order.events
         .filter(event_type__in=PROCUREMENT_EVENT_TYPES)
         .select_related('actor')
@@ -184,10 +198,46 @@ def procurement_context(actor, work_order, *, stock_visible):
     # Moving shared Work never transfers its original machine's evidence.
     events = [
         event
-        for event in events
-        if event_matches_context(event, work_order)
-        and event.metadata.get('schema_version') == SCHEMA_VERSION
+        for event in all_events
+        if can_read_procurement_event(actor, event, work_order)
     ]
+    # Adapt P3's original compact keys from its protected receipt ledger. New
+    # producers write the common identity directly; no event is rewritten here.
+    from tasks.receipt_models import MaintenanceReceipt
+
+    receipts_by_event = {}
+    if stock_visible:
+        for receipt in MaintenanceReceipt.objects.filter(
+            work_order=work_order
+        ).select_related('event', 'purchase_order_line'):
+            if not event_matches_context(receipt.event, work_order):
+                continue
+            receipts_by_event[receipt.event_id] = receipt
+        for event in events:
+            if (
+                event.event_type not in (RECEIPT_RECORDED, RECEIPT_ALLOCATED)
+                or 'kit_line_id' in event.metadata
+            ):
+                continue
+            receipt = (
+                receipts_by_event.get(event.pk)
+                if event.event_type == RECEIPT_RECORDED
+                else next(
+                    (
+                        row
+                        for row in receipts_by_event.values()
+                        if row.pk == event.metadata.get('receipt_id')
+                    ),
+                    None,
+                )
+            )
+            if receipt:
+                event.metadata = {
+                    **event.metadata,
+                    **scope_snapshot(work_order, receipt.kit_line_id),
+                    'purchase_order_line_id': receipt.purchase_order_line_id,
+                    'purchase_order_id': receipt.purchase_order_line.order_id,
+                }
     configuration = None
     for line in (
         kit.lines
@@ -196,7 +246,10 @@ def procurement_context(actor, work_order, *, stock_visible):
             'shortages__purchase_order_line__part__part',
             'shortages__purchase_order_line__order__lines',
             'shortages__purchase_order_line__order__extra_lines',
-            'allocations',
+            Prefetch(
+                'allocations',
+                queryset=JobKitAllocation.objects.select_related('stock_item'),
+            ),
         )
         .order_by('sequence')
     ):
@@ -221,6 +274,18 @@ def procurement_context(actor, work_order, *, stock_visible):
         for shortage in line.shortages.all():
             if shortage.purchase_order_line_id:
                 po_line = shortage.purchase_order_line
+                retained_bindings = [
+                    event
+                    for event in all_events
+                    if event.event_type == PO_LINKED
+                    and event.metadata.get('kit_line_id') == line.pk
+                    and event.metadata.get('purchase_order_line_id') == po_line.pk
+                ]
+                if retained_bindings and not any(
+                    event_matches_context(event, work_order)
+                    for event in retained_bindings
+                ):
+                    continue
                 orders[po_line.pk] = _order(
                     po_line, line_events, selected if current else None
                 )
@@ -256,6 +321,8 @@ def procurement_context(actor, work_order, *, stock_visible):
             receipts = []
         buckets = dict.fromkeys(('reserved', 'issued', 'used'), Decimal('0'))
         for allocation in line.allocations.all():
+            if allocation.stock_item.part_id != line.selected_part_id:
+                continue
             if allocation.status in {'reserved', 'staged'}:
                 buckets['reserved'] += allocation.quantity
             elif allocation.status == 'issued':
@@ -267,7 +334,7 @@ def procurement_context(actor, work_order, *, stock_visible):
             'key': str(line.key),
             'part_id': line.selected_part_id,
             'required_quantity': str(line.required_quantity),
-            'base_uom': line.selected_part.units,
+            'base_uom': line.selected_part.units if line.selected_part else None,
             'requirement_version': line.version,
             'requirement_revision': requirement_revision(work_order, line),
             'configuration_revision': configuration,
@@ -288,6 +355,27 @@ def procurement_context(actor, work_order, *, stock_visible):
             ),
             'orders': list(orders.values()),
             'receipts': receipts,
+            'receipt_allocations': [
+                event_fact(event)
+                for event in line_events
+                if stock_visible
+                and event.event_type == RECEIPT_ALLOCATED
+                and event.metadata.get('purchase_order_line_id') in orders
+                and event.metadata.get('purchase_order_id')
+                == orders[event.metadata['purchase_order_line_id']]['purchase_order_id']
+            ],
+            'receipt_outcomes': [
+                {
+                    'receipt_id': receipt.pk,
+                    'event_id': receipt.event_id,
+                    'operation_key': receipt.operation_key,
+                    'reservation_state': receipt.reservation_state,
+                    'reservation_code': receipt.reservation_code,
+                    'allocation_ids': receipt.allocation_ids,
+                }
+                for receipt in receipts_by_event.values()
+                if receipt.kit_line_id == line.pk
+            ],
         })
     body['pending_operations'] = (
         list(

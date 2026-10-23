@@ -333,7 +333,7 @@ class ProcurementTests(CloseoutEnvMixin, TestCase):
                     'kit_line_id': self.line.pk, 'purchase_order_id': self.po.pk,
                     'purchase_order_line_id': self.po_line.pk,
                     'source_at': '2026-10-16T14:05:00Z',
-                    'stocks': [{'stock_item_id': StockItem.objects.first().pk, 'quantity_at_receipt': '1', 'batch': 'FIXTURE-BATCH'}]}
+                    'stocks': [{'stock_item': StockItem.objects.first().pk, 'quantity': '1', 'batch': 'FIXTURE-BATCH', 'location': None, 'status': 10, 'status_custom_key': None, 'expiry_date': None}]}
         event = WorkOrderEvent.objects.create(work_order=self.work_order, event_type=RECEIPT_RECORDED, correlation_id=uuid.uuid4(), idempotency_key='receipt-fixture', metadata=metadata)
         self.assertEqual(len(self.context()['lines'][0]['receipts']), 1)
         reader = self.make_scoped_user('po-reader')

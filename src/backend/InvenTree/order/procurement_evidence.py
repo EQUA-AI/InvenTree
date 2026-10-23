@@ -20,6 +20,7 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from rest_framework.exceptions import APIException, NotFound, PermissionDenied
+from tasks.services.procurement import procurement_instant
 
 from ai.core.integrations.email.commands import _mime
 from ai.core.pdf.service import get_pdf_service
@@ -162,7 +163,7 @@ def _context(order, request, actor):
         'tax': None,
         'shipping_cost': None,
         'provenance_kind': request['provenance_kind'],
-        'recorded_at': timezone.now().isoformat(),
+        'recorded_at': procurement_instant(timezone.now()),
         'actor': {'pk': actor.pk, 'username': actor.get_username()},
     }
 
@@ -170,6 +171,7 @@ def _context(order, request, actor):
 @transaction.atomic
 def record_documents(*, order_id, actor, data):
     """Create or replay one exact specimen; no SMTP, Gmail or provider calls."""
+    scope_actor = actor
     actor = require_access(actor, write=True)
     if not isinstance(data, dict):
         raise ValidationError('Recorded evidence payload must be an object')
@@ -207,6 +209,22 @@ def record_documents(*, order_id, actor, data):
     request_hash = _hash(
         json.dumps(data, sort_keys=True, separators=(',', ':')).encode()
     )
+    # Match the Work -> PO lock order used by linking/acknowledgment/receiving.
+    # Only pre-existing exact scoped bindings can acquire a Work document event.
+    from tasks.models import WorkOrder
+    from tasks.services.procurement import PO_LINKED, can_read_procurement
+
+    work_ids = WorkOrder.objects.filter(
+        events__event_type=PO_LINKED, events__metadata__purchase_order_id=order_id
+    ).values_list('pk', flat=True)
+    works = [
+        work
+        for work in WorkOrder.objects
+        .select_for_update()
+        .filter(pk__in=work_ids)
+        .order_by('pk')
+        if can_read_procurement(scope_actor, work)
+    ]
     order = PurchaseOrder.objects.select_for_update().filter(pk=order_id).first()
     if order is None:
         raise NotFound('Purchase order not found')
@@ -273,7 +291,76 @@ def record_documents(*, order_id, actor, data):
     except IntegrityError as exc:
         # A cross-order duplicate key must never leak or overwrite its first result.
         raise EvidenceConflict() from exc
+    record_work_document_references(works, evidence, actor)
     return evidence, True
+
+
+def record_work_document_references(works, evidence, actor):
+    """Append references to retained native bytes; never copy bytes into audit JSON."""
+    from tasks.services.procedure_execution import _command_replay, _record_command
+    from tasks.services.procurement import (
+        EMAIL_RECORDED,
+        PO_LINKED,
+        event_matches_context,
+    )
+    from tasks.services.work_orders import WorkOrderCommandError
+
+    line_ids = {line['pk'] for line in evidence.context['lines']}
+    for work in works:
+        bindings = work.events.filter(
+            event_type=PO_LINKED, metadata__purchase_order_id=evidence.order_id
+        ).order_by('pk')
+        latest = {}
+        for binding in bindings:
+            if (
+                event_matches_context(binding, work)
+                and binding.metadata.get('purchase_order_line_id') in line_ids
+            ):
+                latest[
+                    binding.metadata['kit_line_id'],
+                    binding.metadata['purchase_order_line_id'],
+                ] = binding
+        for binding in latest.values():
+            key = _hash(f'procurement_document:{evidence.pk}:{binding.pk}'.encode())
+            try:
+                replay = _command_replay(
+                    work, 'procurement_record_documents', key, evidence.request_hash
+                )
+            except WorkOrderCommandError as exc:
+                raise EvidenceConflict() from exc
+            if replay:
+                continue
+            metadata = {
+                **{
+                    key: binding.metadata[key]
+                    for key in (
+                        'schema_version',
+                        'machine_id',
+                        'machine_client_id',
+                        'kit_line_id',
+                        'purchase_order_id',
+                        'purchase_order_line_id',
+                    )
+                },
+                'binding_event_id': binding.pk,
+                'source_event_id': binding.metadata.get('source_event_id'),
+                'document_evidence_id': evidence.pk,
+                'document_operation_key': evidence.operation_key,
+                'pdf_sha256': evidence.pdf_sha256,
+                'email_sha256': evidence.email_sha256,
+                'state': 'recorded_not_sent',
+                'supplier_email_sent': False,
+                'source_at': procurement_instant(evidence.created_at),
+            }
+            _record_command(
+                work_order=work,
+                actor=actor,
+                command='procurement_record_documents',
+                event_type=EMAIL_RECORDED,
+                idempotency_key=key,
+                request_hash=evidence.request_hash,
+                metadata=metadata,
+            )
 
 
 def evidence_result(evidence, *, include_bytes=False):
@@ -299,7 +386,7 @@ def evidence_result(evidence, *, include_bytes=False):
         'pdf_sha256': evidence.pdf_sha256,
         'email_sha256': evidence.email_sha256,
         'context': evidence.context,
-        'recorded_at': evidence.created_at.isoformat(),
+        'recorded_at': procurement_instant(evidence.created_at),
     }
     if include_bytes:
         result.update(

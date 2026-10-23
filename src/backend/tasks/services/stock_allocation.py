@@ -9,16 +9,26 @@ kit), so competing reservations serialize and can never over-allocate. Model
 authority.
 """
 
+import uuid
 from decimal import Decimal
 
 from django.db import transaction
 
+from InvenTree.helpers import current_date
 from stock.models import StockItem
+from stock.status_codes import StockStatus
 from tasks.jobkit_models import (
     ACTIVE_ALLOCATION_STATUSES,
     JobKitAllocation,
     JobKitAllocationStatus,
+    JobKitLine,
 )
+from tasks.services.work_orders import (
+    IdempotencyConflict,
+    _canonical_hash,
+    _locked_work_order,
+)
+from tasks.workorder_models import WorkOrderCommand
 
 ALLOCATION_KIND_JOB_KIT = 'job_kit'
 
@@ -35,6 +45,31 @@ class StockOverAllocation(StockAllocationError):  # noqa: N818 - established com
     """The requested quantity exceeds unallocated availability under lock."""
 
     code = 'STOCK_OVER_ALLOCATED'
+
+
+def usable_maintenance_stock(stock_item, actor):
+    """Require accepted condition, release, expiry and native ownership rights.
+
+    Custom statuses inherit their native logical status: only OK is accepted.
+    Native in-stock alone also admits damaged, returned and attention stock.
+    """
+    location = stock_item.location
+    return (
+        stock_item.in_stock
+        and stock_item.status == StockStatus.OK.value
+        and stock_item.part.active
+        and not stock_item.part.virtual
+        and (stock_item.expiry_date is None or stock_item.expiry_date >= current_date())
+        and (
+            location is None
+            or (
+                not location.structural
+                and not location.external
+                and location.check_ownership(actor)
+            )
+        )
+        and stock_item.check_ownership(actor)
+    )
 
 
 def _location_snapshot(stock_item):
@@ -69,6 +104,29 @@ def mutate_stock_allocation(
     if requested_quantity <= 0:
         raise StockAllocationError('Requested quantity must be greater than zero')
 
+    line = JobKitLine.objects.get(pk=line_id)
+    work_order = _locked_work_order(line.kit.work_order_id)
+    request_hash = _canonical_hash(
+        'mutate_stock_allocation',
+        actor,
+        {
+            'stock_item_id': stock_item_id,
+            'line_id': line_id,
+            'quantity': str(requested_quantity.normalize()),
+        },
+    )
+    prior = WorkOrderCommand.objects.filter(
+        work_order=work_order, idempotency_key=idempotency_key
+    ).first()
+    if prior:
+        if (
+            prior.command != 'mutate_stock_allocation'
+            or prior.request_hash != request_hash
+        ):
+            raise IdempotencyConflict('Allocation operation key was reused')
+        return JobKitAllocation.objects.get(pk=int(prior.result_ref))
+
+    line = JobKitLine.objects.select_for_update().get(pk=line_id)
     stock_item = StockItem.objects.select_for_update().get(pk=stock_item_id)
 
     # Idempotent replay: the exact prior command returns its durable row.
@@ -77,6 +135,11 @@ def mutate_stock_allocation(
     ).first()
     if replay is not None:
         return replay
+
+    if stock_item.part_id != line.selected_part_id or not usable_maintenance_stock(
+        stock_item, actor
+    ):
+        raise StockOverAllocation('Stock is not usable for maintenance reservation')
 
     # Merge into the one active reservation for this (line, stock_item), if any.
     active = (
@@ -92,6 +155,8 @@ def mutate_stock_allocation(
         exclude_job_kit={'pk': active.pk} if active is not None else None
     )
     available = Decimal(stock_item.quantity) - committed
+    if active is not None:
+        available -= active.quantity
 
     if requested_quantity > available:
         raise StockOverAllocation(
@@ -102,14 +167,24 @@ def mutate_stock_allocation(
     if active is not None:
         active.quantity = active.quantity + requested_quantity
         active.save(update_fields=['quantity'])
-        return active
-
-    return JobKitAllocation.objects.create(
-        line_id=line_id,
-        stock_item=stock_item,
-        quantity=requested_quantity,
-        status=JobKitAllocationStatus.RESERVED,
-        reserved_by=actor,
+        result = active
+    else:
+        result = JobKitAllocation.objects.create(
+            line_id=line_id,
+            stock_item=stock_item,
+            quantity=requested_quantity,
+            status=JobKitAllocationStatus.RESERVED,
+            reserved_by=actor,
+            idempotency_key=idempotency_key,
+            source_location_snapshot=_location_snapshot(stock_item),
+        )
+    WorkOrderCommand.objects.create(
+        work_order=work_order,
+        command='mutate_stock_allocation',
         idempotency_key=idempotency_key,
-        source_location_snapshot=_location_snapshot(stock_item),
+        request_hash=request_hash,
+        correlation_id=uuid.uuid4(),
+        status='succeeded',
+        result_ref=str(result.pk),
     )
+    return result

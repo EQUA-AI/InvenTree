@@ -127,52 +127,97 @@ export interface ProcurementAckSnapshot
   order_revision: string;
 }
 
-/** Producer contract for B05. This records files, never transport acceptance. */
-export interface ProcurementEmailSnapshot extends ProcurementSnapshot {
+/** Generic Work audit redaction; applies to every procurement event. */
+export interface HiddenProcurementMetadata {
+  hidden: true;
+}
+
+/** Native retained bytes are retrieved through recorded-evidence/, never attachments. */
+export interface ProcurementEmailSnapshot {
+  schema_version: 'r8.1';
+  machine_id: number;
+  machine_client_id: number;
   kit_line_id: number;
   purchase_order_id: number;
   purchase_order_line_id: number;
-  source_event_id: number;
-  source_at: ProcurementInstant;
-  provenance: ProcurementProvenance;
-  pdf: ProcurementEvidence;
-  email_attachment_id: number;
+  binding_event_id: number;
+  source_event_id: number | null;
+  document_evidence_id: number;
+  document_operation_key: string;
+  pdf_sha256: string;
   email_sha256: string;
+  state: 'recorded_not_sent';
+  supplier_email_sent: false;
 }
 
-/** B04 appends binding after validated native linking/approval, never edits selection. */
-export interface ProcurementBindingSnapshot extends ProcurementSnapshot {
+export interface ProcurementBindingSnapshot {
+  schema_version: 'r8.1';
+  machine_id: number;
+  machine_client_id: number;
   kit_line_id: number;
   purchase_order_id: number;
   purchase_order_line_id: number;
-  source_event_id: number;
-  source_at: ProcurementInstant;
-  provenance: ProcurementProvenance;
-  approval: {
-    approval_id: number;
-    approver: ProcurementActor;
-    approved_at: ProcurementInstant;
+  source_event_id: number | null;
+  shortage_id: number;
+  approval_execution: {
+    operation_key: string;
+    approval_id: string;
+    revision: number;
+    review_hash: string;
+    actor_id: number;
+    actor_label: string;
+    result: { effect_ref: string | null; payload: Record<string, unknown> };
   } | null;
-  placed: { at: ProcurementInstant; actor: ProcurementActor } | null;
 }
 
-/** Producer contract for B07: exact returned stock, never a Part-based join. */
-export interface ProcurementReceiptSnapshot extends ProcurementSnapshot {
+/** Exact immutable P3 stock facts, in native base units. */
+export interface ProcurementReceiptStock {
+  stock_item: number;
+  quantity: ProcurementDecimal;
+  batch: string;
+  location: number;
+  status: number;
+  status_custom_key: number | null;
+  expiry_date: string | null;
+}
+
+export interface ProcurementReceiptSnapshot {
+  schema_version: 'r8.1';
+  machine_id: number;
+  machine_client_id: number;
   kit_line_id: number;
   purchase_order_id: number;
   purchase_order_line_id: number;
-  source_at: ProcurementInstant;
-  provenance: ProcurementProvenance;
-  received_quantity_before: ProcurementDecimal;
-  received_quantity_after: ProcurementDecimal;
-  stocks: {
-    stock_item_id: number;
-    quantity_at_receipt: ProcurementDecimal;
-    base_uom: string;
-    batch: string;
-    location_id: number;
-    status_code: number;
-  }[];
+  operation_key: string;
+  po_line: number;
+  kit_line: number;
+  shortage: number;
+  received_before: ProcurementDecimal;
+  received_after: ProcurementDecimal;
+  stocks: ProcurementReceiptStock[];
+}
+
+export interface ProcurementAllocationSnapshot {
+  receipt_id: number;
+  operation_key: string;
+  purchase_order_id: number;
+  purchase_order_line_id: number;
+  kit_line_id: number;
+  allocation_ids: number[];
+  stock_ids: number[];
+}
+
+export interface ProcurementRecordedDocument {
+  pk: number;
+  order_id: number;
+  operation_key: string;
+  state: 'recorded_not_sent';
+  supplier_email_sent: false;
+  attachment_state: 'verified' | 'corrupt';
+  pdf_sha256: string;
+  email_sha256: string;
+  context: Record<string, unknown>;
+  recorded_at: ProcurementInstant;
 }
 
 export interface ProcurementOrderContext {
@@ -199,6 +244,7 @@ export interface ProcurementOrderContext {
   target_date: string | null;
   binding: ProcurementEvent<ProcurementBindingSnapshot> | null;
   recorded_email: ProcurementEvent<ProcurementEmailSnapshot> | null;
+  recorded_document: ProcurementRecordedDocument | null;
   email_status: 'recorded_only' | 'not_recorded';
   acknowledgment: ProcurementEvent<ProcurementAckSnapshot> | null;
   acknowledgment_current: boolean | null;
@@ -207,9 +253,9 @@ export interface ProcurementOrderContext {
 export interface ProcurementLineContext {
   kit_line_id: number;
   key: string;
-  part_id: number;
+  part_id: number | null;
   required_quantity: ProcurementDecimal;
-  base_uom: string;
+  base_uom: string | null;
   requirement_version: number;
   requirement_revision: string;
   configuration_revision: string;
@@ -224,6 +270,15 @@ export interface ProcurementLineContext {
   outstanding_quantity: ProcurementDecimal;
   orders: ProcurementOrderContext[];
   receipts: ProcurementEvent<ProcurementReceiptSnapshot>[];
+  receipt_allocations: ProcurementEvent<ProcurementAllocationSnapshot>[];
+  receipt_outcomes: {
+    receipt_id: number;
+    event_id: number;
+    operation_key: string;
+    reservation_state: 'pending' | 'attention' | 'allocated';
+    reservation_code: string;
+    allocation_ids: number[];
+  }[];
 }
 
 export interface MaintenanceProcurementContext {
