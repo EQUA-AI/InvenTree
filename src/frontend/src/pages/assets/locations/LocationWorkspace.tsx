@@ -255,7 +255,8 @@ export function ScopedMachineList({
       <Collapse
         id={filtersId}
         expanded={!phone || filtersOpen}
-        display={phone && !filtersOpen ? 'none' : undefined}
+        transitionDuration={0}
+        keepMountedMode='display-none'
       >
         <Group
           justify='space-between'
