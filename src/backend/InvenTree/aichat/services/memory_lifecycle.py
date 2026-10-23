@@ -253,7 +253,14 @@ def retry_owner_purge(reference):
 
 
 def owner_purge_residual(reference):
-    """Later facts cannot silently enter an earlier deletion selection."""
+    """Later facts cannot silently enter an earlier deletion selection.
+
+    Thread receipts and the retention audit probe every kind with thread ids,
+    which never contain ':'. As with client erasure, such a reference owes
+    nothing here; anything shaped like an owner purge is still parsed strictly.
+    """
+    if ':' not in str(reference):
+        return 0
     user_id, cutoff, _reason = _parse_purge_reference(reference)
     return MemoryFact.objects.filter(
         owner_id=user_id, created_at__lte=cutoff, lifecycle_state__in=LIVE_STATES

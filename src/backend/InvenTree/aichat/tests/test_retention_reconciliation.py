@@ -1029,3 +1029,7 @@ class GateAndExclusionTests(RetentionEnvMixin, TestCase):
         self.assertEqual(report['errors'], {})
         self.assertTrue(AIPilotStopLatch.objects.filter(pk=latch.pk).exists())
         self.assertTrue(AIQuotaPolicy.objects.filter(pk=policy.pk).exists())
+        # A full run's receipt must still be recorded for the operations report.
+        receipt = retention.last_run()
+        self.assertEqual(receipt['finished_at'], report['finished_at'])
+        self.assertEqual(receipt['errors'], {})

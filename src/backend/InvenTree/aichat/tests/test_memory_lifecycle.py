@@ -131,6 +131,19 @@ class MemoryLifecycleTests(TestCase):
         future.refresh_from_db()
         self.assertEqual(future.lifecycle_state, 'superseded')
 
+    def test_thread_references_owe_nothing_but_malformed_purges_refuse(self):
+        """Thread receipts probe every kind; only owner purge references count."""
+        fact = self.fact()
+        reference = service.purge_reference(self.owner.pk, timezone.now(), 'erasure')
+        self.assertEqual(service.owner_purge_residual(reference), 1)
+        self.assertEqual(service.owner_purge_residual('thread_0123abcd'), 0)
+        with self.assertRaises(ValueError):
+            service.owner_purge_residual(f'{self.owner.pk}:not-a-clock:erasure')
+        with self.assertRaises(ValueError):
+            service.retry_owner_purge('thread_0123abcd')
+        fact.refresh_from_db()
+        self.assertEqual(fact.text, 'PRIVATE_MEMORY_SENTINEL')
+
     def test_opt_out_survives_cleanup_failure_and_has_durable_retry(self):
         """A failing scrub never silently restores permission to learn."""
         self.fact(lifecycle_state='proposed')

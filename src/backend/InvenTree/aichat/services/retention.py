@@ -1382,11 +1382,28 @@ def run_all(*, dry_run: bool = False, families: set[str] | None = None) -> dict:
 
 
 def _write_last_run(report: dict) -> None:
-    """Persist the run receipt for the operations report (best-effort)."""
+    """Persist the run receipt for the operations report (best-effort).
+
+    A setting value holds at most 2000 characters, and a full report for every
+    family no longer fits: PostgreSQL refused the write and the last run was
+    lost. An oversized report is stored as the fields the reports read (times,
+    dry_run, errors) plus the names of the families that ran.
+    """
     try:
         from common.models import InvenTreeSetting
 
-        InvenTreeSetting.set_setting(LAST_RUN_SETTING, json.dumps(report), None)
+        receipt = json.dumps(report)
+        limit = InvenTreeSetting._meta.get_field('value').max_length
+        if len(receipt) > limit:
+            receipt = json.dumps({
+                'started_at': report['started_at'],
+                'finished_at': report['finished_at'],
+                'dry_run': report['dry_run'],
+                'errors': report['errors'],
+                'families': sorted(report['families']),
+                'detail': 'omitted',
+            })
+        InvenTreeSetting.set_setting(LAST_RUN_SETTING, receipt, None)
     except Exception:
         logger.exception('retention_receipt_write_failed')
 
@@ -1550,9 +1567,26 @@ for _family, _model, _lookup in (
     ('turns', 'aichat.chatturn', 'thread_id'),
     ('messages', 'aichat.chatmessage', 'thread_id'),
     ('compaction', 'aichat.chatcompactionevent', 'thread_id'),
-    ('voice', 'voice.voicesession', 'thread_id'),
 ):
     _register_model_derivative(_family, _model, _lookup)
+
+# Sessions are deleted one at a time: a session pinned by an operational
+# receipt (PROTECT) must stay without blocking the thread's other sessions,
+# which one batched delete would do.
+THREAD_DERIVATIVES.register(
+    ThreadDerivative(
+        'voice',
+        ('voice.voicesession',),
+        purge_voice_for_thread,
+        lambda reference: (
+            apps
+            .get_model('voice', 'VoiceSession')
+            .objects.filter(thread_id=reference)
+            .count()
+        ),
+        'thread_voice',
+    )
+)
 
 THREAD_DERIVATIVES.register(
     ThreadDerivative(
