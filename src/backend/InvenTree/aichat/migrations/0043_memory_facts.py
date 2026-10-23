@@ -28,7 +28,7 @@ class Migration(migrations.Migration):
                 (
                     'id',
                     models.UUIDField(
-                        primary_key=True, default=uuid.uuid4, editable=False
+                        primary_key=True, default=uuid.uuid4, editable=False, serialize=False
                     ),
                 ),
                 (
@@ -232,7 +232,7 @@ class Migration(migrations.Migration):
                 (
                     'supersedes',
                     models.ForeignKey(
-                        'self',
+                        'aichat.memoryfact',
                         null=True,
                         blank=True,
                         on_delete=models.SET_NULL,
@@ -460,7 +460,7 @@ class Migration(migrations.Migration):
                 (
                     'id',
                     models.UUIDField(
-                        primary_key=True, default=uuid.uuid4, editable=False
+                        primary_key=True, default=uuid.uuid4, editable=False, serialize=False
                     ),
                 ),
                 ('owner_id', models.PositiveBigIntegerField(db_index=True)),
@@ -628,7 +628,7 @@ class Migration(migrations.Migration):
                 (
                     'id',
                     models.UUIDField(
-                        primary_key=True, default=uuid.uuid4, editable=False
+                        primary_key=True, default=uuid.uuid4, editable=False, serialize=False
                     ),
                 ),
                 ('owner_id', models.PositiveBigIntegerField(db_index=True)),
@@ -685,7 +685,7 @@ class Migration(migrations.Migration):
                 (
                     'id',
                     models.UUIDField(
-                        primary_key=True, default=uuid.uuid4, editable=False
+                        primary_key=True, default=uuid.uuid4, editable=False, serialize=False
                     ),
                 ),
                 (
@@ -753,7 +753,7 @@ class Migration(migrations.Migration):
                 (
                     'id',
                     models.UUIDField(
-                        primary_key=True, default=uuid.uuid4, editable=False
+                        primary_key=True, default=uuid.uuid4, editable=False, serialize=False
                     ),
                 ),
                 (

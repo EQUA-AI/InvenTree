@@ -44,6 +44,10 @@ database, Django adopts the replacement and does not execute its bootstrap SQL
 or replay historical data operations. On fresh PostgreSQL installations, the
 checkpoint creates the same inert compatibility storage without seed records
 or new authority grants. Runtime models and authorization behavior are unchanged.
+The checkpoint also carries the replaced migrations' schema operations as model
+state only, so `makemigrations --check` matches the models and fresh databases
+get the content types and permissions those models declare. This adds nothing
+to apply on a database that already has the checkpoint recorded.
 
 The checkpoint bootstrap is irreversible because removing retained storage
 would destroy historical records. Rolling back the application image leaves
@@ -102,9 +106,9 @@ Migration code does not change traffic, update workers or deploy a revision.
 
 Fresh installs use the normal migration procedure: older upstream squashes
 include non-atomic operations and are intentionally refused by the atomic
-startup runner. Fresh SQLite/MySQL installs skip the unused PostgreSQL-only
-compatibility storage; adopting an existing legacy batch on those engines is
-not certified by this checkpoint.
+startup runner. Fresh SQLite/MySQL installs build the same tables from the
+replaced migrations' schema operations; adopting an existing legacy batch on
+those engines is not certified by this checkpoint.
 
 ## Scope of the local evidence
 

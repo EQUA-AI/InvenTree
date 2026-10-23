@@ -4,12 +4,14 @@ The original operation sequence was lost. This migration preserves its observed
 boundary without claiming to recover historical data operations or merge parents.
 Applied databases adopt the checkpoint after strict catalog validation; fresh
 PostgreSQL databases create the same compatibility structures, with no seed data
-or authority grants. Retained storage is deliberately outside runtime model state.
+or authority grants. The replaced migrations' schema operations are carried as
+model state only, because the merged code's runtime models use these tables.
 """
 
 from django.db import migrations
 
 from legacy_boundary.checkpoint import LEGACY_MIGRATIONS, install_checkpoint
+from legacy_boundary.operations import ReplayedState
 
 
 class Migration(migrations.Migration):
@@ -26,4 +28,7 @@ class Migration(migrations.Migration):
     ]
     # Irreversible: deleting the reconstructed compatibility storage would lose
     # historical records. Application rollback keeps this additive storage.
-    operations = [migrations.RunPython(install_checkpoint)]
+    operations = [
+        migrations.RunPython(install_checkpoint),
+        ReplayedState(LEGACY_MIGRATIONS),
+    ]

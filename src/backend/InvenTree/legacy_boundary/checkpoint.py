@@ -208,7 +208,8 @@ def install_checkpoint(apps, schema_editor):
     Django skips this replacement when all 17 historical records are already
     applied. In that case the preflight and the subsequent verification
     migration validate the existing schema without changing customer data.
-    SQLite/MySQL fresh installs do not acquire unused PostgreSQL-only storage.
+    On SQLite/MySQL, ``ReplayedState`` creates the storage from the replaced
+    migrations' schema operations instead.
     """
     connection = schema_editor.connection
     if connection.vendor != 'postgresql':
