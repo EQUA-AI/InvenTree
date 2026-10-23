@@ -132,6 +132,113 @@ class MaintenanceReceiptTests(TestCase):
         """Read the one durable receipt outcome."""
         return MaintenanceReceipt.objects.get()
 
+    def test_receiving_context_is_read_only_and_recovers_exact_request(self):
+        """Native form GET exposes current version and exact committed bodies."""
+        first = self.api.get(self.url)
+        self.assertEqual(first.status_code, 200, first.data)
+        self.assertEqual(
+            first.data['binding']['requirement_version'], self.line.version
+        )
+        self.assertEqual(first.data['binding']['purchase_order_line'], self.po_line.pk)
+        self.assertFalse(StockItem.objects.exists())
+        self.assertEqual(self.receive(execute=False).status_code, 201)
+        context = self.api.get(self.url)
+        self.assertEqual(context.status_code, 200, context.data)
+        self.assertEqual(context.data['receipts'][0]['request'], self.body)
+        self.assertEqual(context.data['receipts'][0]['reservation_state'], 'pending')
+        self.assertFalse(JobKitAllocation.objects.exists())
+
+    def test_receiving_context_machine_scope_is_required(self):
+        """Purchasing authority cannot expose another machine's receipt."""
+        self.actor.maintenance_scopes = set()
+        response = self.api.get(self.url)
+        self.assertEqual(response.status_code, 403, response.data)
+
+    def test_receiving_context_unrelated_po_is_native(self):
+        """An unrelated PO receives no fabricated maintenance binding."""
+        self.shortage.delete()
+        self.assertEqual(
+            self.api.get(self.url).data,
+            {'maintenance': False, 'binding': None, 'receipts': []},
+        )
+
+    @override_settings(AIMMS_CLOSEOUT_WIZARD_ENABLED=True)
+    def test_closeout_joins_exact_receipt_and_native_goods_plus_freight(self):
+        """Live usage joins only its actual receipt stock and PO line."""
+        from djmoney.money import Money
+
+        from order.models import PurchaseOrderExtraLine
+        from tasks.closeout_models import CloseoutPartUsage
+        from tasks.materials_readout import closeout_material_context
+        from tasks.services.closeout_reconcile import refresh_closeout_reconciliation
+        from tasks.services.job_kit_custody import consume_allocation, issue_allocation
+
+        self.po_line.purchase_price = Money('620', 'USD')
+        self.po_line.save()
+        PurchaseOrderExtraLine.objects.create(
+            order=self.po,
+            reference='Fixture freight',
+            quantity=1,
+            price=Money('45', 'USD'),
+        )
+        self.assertEqual(self.receive().status_code, 201)
+        allocation = JobKitAllocation.objects.get()
+        refresh_closeout_reconciliation(work_order_id=self.work.pk, actor=self.actor)
+        issue_allocation(
+            work_order_id=self.work.pk, allocation_id=allocation.pk, actor=self.actor
+        )
+        consume_allocation(
+            work_order_id=self.work.pk, allocation_id=allocation.pk, actor=self.actor
+        )
+        usage = CloseoutPartUsage.objects.get()
+        context = closeout_material_context(self.actor, self.work)[usage.pk]
+        self.assertEqual(Decimal(context['receipts'][0]['order_total']), Decimal('665'))
+        self.assertEqual(
+            context['receipts'][0]['purchase_order_line_id'], self.po_line.pk
+        )
+        self.assertEqual(context['issued']['by'], self.actor.username)
+        self.assertIsNone(context['fitted_record'])
+        self.assertEqual(usage.state, 'reconciled')
+        self.assertEqual(usage.resolved_by_id, self.actor.pk)
+        self.assertIsNotNone(usage.stock_tracking_id)
+        # A same-Part stock item is not evidence for this PO/receipt.
+        other = StockItem.objects.create(
+            part=self.part, quantity=1, batch='FIXTURE-OTHER'
+        )
+        usage.stock_item = other
+        usage.save(update_fields=['stock_item'])
+        self.assertEqual(
+            closeout_material_context(self.actor, self.work)[usage.pk]['receipts'], []
+        )
+        usage.stock_item_id = allocation.stock_item_id
+        usage.save(update_fields=['stock_item'])
+        # The added serializer context must retain both independent read gates.
+        from types import SimpleNamespace
+
+        from tasks.closeout_serializers import CloseoutPartUsageSerializer
+
+        with patch('tasks.services.procurement.check_user_role', return_value=False):
+            data = CloseoutPartUsageSerializer(
+                usage,
+                context={
+                    'request': SimpleNamespace(user=self.actor),
+                    'work_order': self.work,
+                },
+            ).data
+            self.assertEqual(data['material']['receipts'], [])
+        self.actor.maintenance_scopes = set()
+        data = CloseoutPartUsageSerializer(
+            usage,
+            context={
+                'request': SimpleNamespace(user=self.actor),
+                'work_order': self.work,
+            },
+        ).data
+        self.assertIsNone(data['stock_item'])
+        self.assertIsNone(data['stock_tracking_id'])
+        self.assertIsNone(data['material']['stock_item']['pk'])
+        self.assertEqual(data['material']['receipts'], [])
+
     def test_native_receipt_replay_precedes_complete_po_and_returns_exact_snapshot(
         self,
     ):

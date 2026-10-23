@@ -1,5 +1,18 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## R8 procurement wave 2 — lane B (23 October 2026; ready for human review)
+
+Native receiving exact-request recovery, issue-actor/pending-usage reconciliation
+and Closeout Part/batch/stock/tracking/PO-cost/receipt/fit context are implemented
+in `r8/w2b` on `1778fb6c2`. [Lane B ledger/backlog/contracts/report](../r8-procurement/reports/wave2-b.md):
+SQLite118, PostgreSQL133 + supplemental3 + concurrency5, units15, lane browser11
++ viewport4 + retained S6 regression4 pass. App/fixture tsc, Lingui (40 bytewise
+.po restores) and changed-file prek pass. All 19 final PNGs inspected. PG resources
+removed, owned browser3022 stopped and harness15272 clear. Global migration drift
+and inherited broad-suite failures remain open. Fixture/source evidence only;
+no showcase, existing database/container, Azure, email, Git or deployment/product
+acceptance changes. Lane A/C files and parent dispositions unchanged.
+
 ## R8 backend wave 1 integration — 23 October 2026 (human review; baseline gates open)
 
 P1/P2/P3 are integrated in `r8/integration`; the Work audit conflict uses

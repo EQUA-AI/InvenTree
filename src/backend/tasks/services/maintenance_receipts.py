@@ -104,6 +104,50 @@ def _snapshot(items):
     )
 
 
+def maintenance_receiving_context(*, request, order_id):
+    """Read-only native form context, including exact authorized replay bodies."""
+    from tasks.jobkit_serializers import JobKitSerializer
+
+    linked = list(
+        JobKitShortage.objects.filter(
+            purchase_order_line__order_id=order_id
+        ).select_related('line__kit__work_order__machine', 'purchase_order_line')
+    )
+    if not linked:
+        return {'maintenance': False, 'binding': None, 'receipts': []}
+    if not getattr(settings, 'AIMMS_JOB_KITS_ENABLED', False):
+        raise Http404
+    if len({row.line_id for row in linked}) != 1:
+        raise ReceiptConflict(
+            'Receipt requires one unambiguous maintenance requirement'
+        )
+    shortage = linked[0]
+    work = shortage.line.kit.work_order
+    _authorize(request.user, work)
+    if not check_user_role(
+        request.user, 'purchase_order', 'view'
+    ) or not check_user_role(request.user, 'work_order', 'view'):
+        raise PermissionDenied('Work and purchasing read access required')
+    kit_data = JobKitSerializer(
+        shortage.line.kit, context={'request': request, 'work_order': work}
+    ).data
+    return {
+        'maintenance': True,
+        'binding': {
+            'work_order': work.pk,
+            'reference': work.reference,
+            'kit_line': shortage.line_id,
+            'purchase_order_line': shortage.purchase_order_line_id,
+            'requirement_version': shortage.line.version,
+        },
+        'receipts': [
+            row
+            for row in kit_data['receipts']
+            if row['purchase_order_line'] == shortage.purchase_order_line_id
+        ],
+    }
+
+
 def receive_purchase_order(*, request, order_id, serializer_factory):
     """Wrap the native action; authorize and replay before native validation.
 

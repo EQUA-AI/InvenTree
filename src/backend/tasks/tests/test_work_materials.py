@@ -93,9 +93,9 @@ class WorkMaterialsTests(CloseoutEnvMixin, TestCase):
         )
         (issued,) = self.read().data['requirements'][0]['reservations']
         self.assertEqual(issued['status'], 'issued')
-        # Issue records when, not who: never filled in from the reserver.
+        # Issue retains the actual command actor, independently of reservation.
         self.assertIsNotNone(issued['issued']['at'])
-        self.assertIsNone(issued['issued']['by'])
+        self.assertEqual(issued['issued']['by'], self.actor.username)
         self.assertIsNone(issued['closed'])
 
         consume_allocation(
@@ -305,7 +305,8 @@ class WorkMaterialsTests(CloseoutEnvMixin, TestCase):
             self.assertEqual(
                 # The original consumed line already fulfills its requirement.
                 # Only the seven new lines need another allocation/use.
-                sum(len(r['reservations']) for r in body['requirements']), 8
+                sum(len(r['reservations']) for r in body['requirements']),
+                8,
             )
             self.assertEqual(
                 sum(

@@ -594,10 +594,15 @@ class PurchaseOrderViewSet(
             return Response(evidence_result(evidence, include_bytes=True))
         return Response([evidence_result(row) for row in rows])
 
-    @extend_schema(responses={201: stock_serializers.StockItemSerializer(many=True)})
+    @extend_schema(
+        responses={
+            200: OpenApiTypes.OBJECT,
+            201: stock_serializers.StockItemSerializer(many=True),
+        }
+    )
     @action(
         detail=True,
-        methods=['post'],
+        methods=['get', 'post'],
         serializer_class=serializers.PurchaseOrderReceiveSerializer,
         pagination_class=None,
         filter_backends=[],
@@ -607,7 +612,13 @@ class PurchaseOrderViewSet(
         """API endpoint to receive stock items against a PurchaseOrder."""
         self.get_order()
 
-        from tasks.services.maintenance_receipts import receive_purchase_order
+        from tasks.services.maintenance_receipts import (
+            maintenance_receiving_context,
+            receive_purchase_order,
+        )
+
+        if request.method == 'GET':
+            return Response(maintenance_receiving_context(request=request, order_id=pk))
 
         data = receive_purchase_order(
             request=request, order_id=pk, serializer_factory=self.get_serializer

@@ -24,6 +24,7 @@ import dayjs from 'dayjs';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { openGlobalAIChatAboutWork } from '../../../states/AIChatState';
+import { CloseoutMaterials } from './CloseoutMaterials';
 import { OriginalMedia } from './OriginalMedia';
 import { ContinueInvestigation } from './execution/ContinueInvestigation';
 import { readingStatusLabel } from './execution/routinePresentation';
@@ -150,7 +151,10 @@ export function PreparedCloseout({
       : []),
     ...(partUsage ?? []).map(
       (row) =>
-        `${t`Material usage row`} ${row.id} · ${row.source} · ${row.state} · ${t`Issued`}: ${fact(row.issued_quantity)} · ${t`Used`}: ${fact(row.used_quantity)} · ${fact(row.disposition)}`
+        `${row.material?.part?.name ?? row.candidate_text ?? t`Material usage row`} · ${row.material?.part?.ipn ?? ''} · ${row.source} · ${row.state} · ${t`Issued`}: ${fact(row.issued_quantity)} · ${t`Used`}: ${fact(row.used_quantity)} · ${fact(row.disposition)}
+${t`Batch`}: ${fact(row.material?.stock_item?.batch)} · ${t`Stock`}: ${fact(row.stock_item)} · ${t`Use tracking`}: ${fact(row.stock_tracking_id)}
+${(row.material?.receipts ?? []).map((receipt) => `${receipt.reference} · ${t`PO total`}: ${receipt.currency} ${fact(receipt.order_total)} · ${t`Receipt`}: ${receipt.event_id}`).join('\n')}
+${t`Fit record`}: ${fact(row.material?.fitted_record?.id)}`
     ),
     ...(accepted?.original
       ? [
@@ -285,13 +289,7 @@ export function PreparedCloseout({
           ) : partUsage.length === 0 ? (
             <Text size='sm'>{t`No material usage rows recorded.`}</Text>
           ) : (
-            partUsage.map((row) => (
-              <Text size='sm' key={row.id}>
-                {t`Material usage row`} {row.id} · {row.source} · {row.state} ·{' '}
-                {t`Issued`}: {fact(row.issued_quantity)} · {t`Used`}:{' '}
-                {fact(row.used_quantity)} · {fact(row.disposition)}
-              </Text>
-            ))
+            <CloseoutMaterials rows={partUsage} />
           )}
           {!accepted && (draftDowntime !== '' || draftFollowUp) && (
             <Text

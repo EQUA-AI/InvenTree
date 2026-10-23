@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.s0.json",
+  "files": [
+    "playwright/r8-procurement.tsx",
+    "tests/r8/pui_lane_b.spec.ts"
+  ]
+}
