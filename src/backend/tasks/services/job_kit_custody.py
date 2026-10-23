@@ -62,6 +62,8 @@ def _resolve(work_order_id, allocation_id, actor, permission):
     work_order = _locked_work_order(work_order_id)
     require_permission(actor, permission)
     _require_scope(actor, work_order)
+    if work_order.lifecycle_status in ('completed', 'canceled'):
+        raise JobKitStateError('Terminal Work custody is immutable')
     kit = _locked_kit(work_order_id)
     allocation = _locked_allocation(kit, allocation_id)
     return work_order, kit, allocation
@@ -99,7 +101,8 @@ def issue_allocation(*, work_order_id, allocation_id, actor, correlation_id=None
     )
     allocation.status = JobKitAllocationStatus.ISSUED
     allocation.issued_at = timezone.now()
-    allocation.save(update_fields=['status', 'issued_at'])
+    allocation.issued_by = actor
+    allocation.save(update_fields=['status', 'issued_at', 'issued_by'])
     _bump_kit(kit)
     return allocation
 
@@ -138,6 +141,9 @@ def consume_allocation(*, work_order_id, allocation_id, actor, correlation_id=No
     allocation.status = JobKitAllocationStatus.CONSUMED
     allocation.disposed_at = timezone.now()
     allocation.save(update_fields=['status', 'disposed_at', 'stock_tracking_id'])
+    from tasks.services.closeout_reconcile import sync_pending_custody_usage
+
+    sync_pending_custody_usage(work_order, allocation, actor)
     _bump_kit(kit)
     return allocation
 
@@ -145,13 +151,16 @@ def consume_allocation(*, work_order_id, allocation_id, actor, correlation_id=No
 @transaction.atomic
 def return_allocation(*, work_order_id, allocation_id, actor, correlation_id=None):
     """Return a reusable tool/safety item; no stock is consumed."""
-    _work_order, kit, allocation = _resolve(
+    work_order, kit, allocation = _resolve(
         work_order_id, allocation_id, actor, ISSUE_JOBKIT
     )
     _require_source_state(allocation, _ACTIVE)
     allocation.status = JobKitAllocationStatus.RETURNED
     allocation.disposed_at = timezone.now()
     allocation.save(update_fields=['status', 'disposed_at'])
+    from tasks.services.closeout_reconcile import sync_pending_custody_usage
+
+    sync_pending_custody_usage(work_order, allocation, actor)
     _bump_kit(kit)
     return allocation
 

@@ -484,6 +484,8 @@ export function ApiForm({
     // Optionally pre-process the data before submitting it
     if (props.processFormData) {
       jsonData = props.processFormData(jsonData, form);
+      // A form-specific validation or retention failure may cancel this POST.
+      if (jsonData == null) return;
     }
 
     // Bulk operations (bulk create / update / delete) submit their target

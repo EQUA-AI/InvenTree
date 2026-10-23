@@ -12,12 +12,7 @@ from tasks.closeout_models import (
     CloseoutReadingState,
     PartUsageDisposition,
 )
-from tasks.models import (
-    JobKitAllocation,
-    JobKitAllocationStatus,
-    WorkOrderDeviation,
-    WorkOrderEvent,
-)
+from tasks.models import JobKitAllocation, WorkOrderDeviation, WorkOrderEvent
 from tasks.services.closeout_reconcile import (
     NumericAmbiguityBlocking,
     PartVarianceUnresolved,
@@ -56,6 +51,67 @@ class PartUsageReconciliationTest(CloseoutEnvMixin, TestCase):
         return refresh_closeout_reconciliation(
             work_order_id=self.work_order.pk, actor=self.actor
         )
+
+    def test_pending_usage_reconciles_in_consume_transaction_once(self):
+        """Custody binds pending usage without another take_stock call."""
+        self.refresh()
+        allocation = consume_allocation(
+            work_order_id=self.work_order.pk,
+            allocation_id=self.allocation.pk,
+            actor=self.actor,
+        )
+        row = CloseoutPartUsage.objects.get(allocation=self.allocation)
+        item = StockItem.objects.get(pk=allocation.stock_item_id)
+        remaining = item.quantity
+        tracking_count = item.tracking_info.count()
+        self.assertEqual(row.state, CloseoutPartUsageState.RECONCILED)
+        self.assertEqual(row.resolved_by_id, self.actor.pk)
+        self.assertEqual(row.stock_tracking_id, allocation.stock_tracking_id)
+        self.refresh()
+        item.refresh_from_db()
+        self.assertEqual(item.quantity, remaining)
+        self.assertEqual(item.tracking_info.count(), tracking_count)
+        from assets.record_models import ComponentFit
+
+        self.assertFalse(ComponentFit.objects.filter(usage=row).exists())
+
+    def test_issue_retains_actual_actor_and_historical_unknown(self):
+        """Issue actor is captured at the command, never inferred from reserver."""
+        self.assertIsNone(self.allocation.issued_by_id)
+        allocation = issue_allocation(
+            work_order_id=self.work_order.pk,
+            allocation_id=self.allocation.pk,
+            actor=self.actor,
+        )
+        self.assertEqual(allocation.issued_by_id, self.actor.pk)
+
+    def test_completed_material_mutations_are_refused(self):
+        """No custody/usage edit changes a completed account's material rows."""
+        from tasks.services.job_kits import JobKitStateError
+
+        self.refresh()
+        row = CloseoutPartUsage.objects.get(allocation=self.allocation)
+        self.work_order.lifecycle_status = 'completed'
+        self.work_order.save(update_fields=['lifecycle_status'])
+        before = (row.version, row.state)
+        with self.assertRaises(ReconciliationError):
+            self.refresh()
+        with self.assertRaises(ReconciliationError):
+            resolve_part_usage(
+                work_order_id=self.work_order.pk,
+                row_id=row.pk,
+                actor=self.actor,
+                disposition='returned',
+                reason='fixture',
+            )
+        with self.assertRaises(JobKitStateError):
+            consume_allocation(
+                work_order_id=self.work_order.pk,
+                allocation_id=self.allocation.pk,
+                actor=self.actor,
+            )
+        row.refresh_from_db()
+        self.assertEqual((row.version, row.state), before)
 
     def test_refresh_seeds_rows_from_custody_truth(self):
         counts = self.refresh()
@@ -355,9 +411,7 @@ class CloseoutReadingTest(CloseoutEnvMixin, TestCase):
             resolved.verification_state, CloseoutReadingState.DISPOSITIONED
         )
         self.assertIsNotNone(replacement)
-        self.assertEqual(
-            replacement.verification_state, CloseoutReadingState.PENDING
-        )
+        self.assertEqual(replacement.verification_state, CloseoutReadingState.PENDING)
         self.assertTrue(replacement.required)
 
     def test_deviation_disposition_links_a_real_deviation(self):

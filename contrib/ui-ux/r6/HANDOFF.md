@@ -17,6 +17,30 @@ entry has no reverse Work lookup in wave 1; Work-linked navigation carries exact
 scope. No receiving-form, Closeout, seed/recovery, owner-data, Azure, email-send,
 Git write, issue or PR change. Next: human/coordinator U1–U4 integration review.
 
+## R8 procurement wave 2 — lane B (23 October 2026; ready for human review)
+
+Native receiving exact-request recovery, issue-actor/pending-usage reconciliation
+and Closeout Part/batch/stock/tracking/PO-cost/receipt/fit context are implemented
+in `r8/w2b` on `1778fb6c2`. [Lane B ledger/backlog/contracts/report](../r8-procurement/reports/wave2-b.md):
+SQLite118, PostgreSQL133 + supplemental3 + concurrency5, units15, lane browser11
++ viewport4 + retained S6 regression4 pass. App/fixture tsc, Lingui (40 bytewise
+.po restores) and changed-file prek pass. All 19 final PNGs inspected. PG resources
+removed, owned browser3022 stopped and harness15272 clear. Global migration drift
+and inherited broad-suite failures remain open. Fixture/source evidence only;
+no showcase, existing database/container, Azure, email, Git or deployment/product
+acceptance changes. Lane A/C files and parent dispositions unchanged.
+
+## R8 wave 2 A+B integration — 23 October 2026 (coordinator review)
+
+A and B notes above are retained in lane order. One shared Work/PO/receiving/
+Closeout fixture passes A61 + B11 browser cases; offline backend233 and units26
+pass. App/library/S0–S8/R8 types pass; two other TypeScript projects retain
+baseline-identical errors. Migration graph has one leaf/app and tasks0050→0060;
+global migration drift remains open. Lingui restores all 40 .po files bytewise.
+See [merged results and next gates](../r8-procurement/reports/integration-wave1.md#wave-2-merge).
+Owned browser3024/harness15274 stopped. Next: coordinator lane C merge, then
+integrated real-data/human review; no deployment/product acceptance inferred.
+
 ## R8 backend wave 1 integration — 23 October 2026 (human review; baseline gates open)
 
 P1/P2/P3 are integrated in `r8/integration`; the Work audit conflict uses

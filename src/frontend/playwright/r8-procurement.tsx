@@ -1,3 +1,4 @@
+/** Shared disposable R8 fixtures for Work Parts, native PO, receiving and Closeout. */
 import './aichat-drawer-lingui';
 import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
@@ -7,7 +8,9 @@ import { i18n } from '@lingui/core';
 import { I18nProvider } from '@lingui/react';
 import { Button, Group, Stack, Text, Title } from '@mantine/core';
 import { ModalsProvider } from '@mantine/modals';
-import { QueryClient } from '@tanstack/react-query';
+import { Notifications } from '@mantine/notifications';
+import { QueryClient, useQuery } from '@tanstack/react-query';
+import axios from 'axios';
 import { createRoot } from 'react-dom/client';
 import {
   Link,
@@ -16,22 +19,33 @@ import {
   Routes,
   useLocation
 } from 'react-router-dom';
+import type { CloseoutPartUsageRow } from '../lib/types/Closeout';
 import { api } from '../src/App';
 import { ApiProvider } from '../src/contexts/ApiContext';
+import { useReceiveLineItems } from '../src/forms/PurchaseOrderForms';
 import PurchaseOrderDetail from '../src/pages/purchasing/PurchaseOrderDetail';
+import { PreparedCloseout } from '../src/pages/tasks/workorders/PreparedCloseout';
 import { WorkMaterialsPanel } from '../src/pages/tasks/workorders/WorkMaterialsPanel';
 import { useGlobalStatusState } from '../src/states/GlobalStatusState';
+import { useLocalState } from '../src/states/LocalState';
 import { useGlobalSettingsState } from '../src/states/SettingsStates';
 import { useUserState } from '../src/states/UserState';
 import { FixtureTheme, prepareFixtureTheme } from './FixtureTheme';
 
 const params = new URLSearchParams(window.location.search);
 prepareFixtureTheme(params);
+const surface = params.get('surface');
+const receivingOrCloseout = surface === 'receive' || surface === 'closeout';
+if (receivingOrCloseout) useLocalState.setState({ hostKey: 'r8-w2b-fixture' });
 const client = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } }
 });
 useGlobalStatusState.setState({
   status: {
+    stockitem: {
+      status_class: 'StockStatus',
+      values: { OK: { key: 10, label: 'OK', name: 'OK', color: 'green' } }
+    },
     purchaseorder: {
       status_class: 'PurchaseOrderStatus',
       values: {
@@ -72,31 +86,103 @@ useGlobalSettingsState.setState({
 useUserState.setState({
   is_authed: true,
   authStatus: 'authenticated',
-  user: {
-    pk: Number(params.get('actor') ?? 11),
-    username: 'r8-fixture-lane-a',
-    first_name: 'Fixture',
-    last_name: 'Buyer',
-    email: 'buyer@example.com',
-    is_superuser: false,
-    roles: {
-      work_order: ['view'],
-      part: ['view'],
-      stock: ['view'],
-      purchase_order: readOnly ? ['view'] : ['view', 'change', 'add']
-    },
-    permissions: readOnly
-      ? {}
-      : {
-          jobkit: ['manage'],
-          email: ['view'],
-          approval: ['review'],
-          purchaseorder: ['view', 'change', 'add']
+  user: receivingOrCloseout
+    ? ({
+        pk: 11,
+        username: 'Fixture stores',
+        is_superuser: true,
+        roles: {},
+        permissions: {}
+      } as any)
+    : ({
+        pk: Number(params.get('actor') ?? 11),
+        username: 'r8-fixture-lane-a',
+        first_name: 'Fixture',
+        last_name: 'Buyer',
+        email: 'buyer@example.com',
+        is_superuser: false,
+        roles: {
+          work_order: ['view'],
+          part: ['view'],
+          stock: ['view'],
+          purchase_order: readOnly ? ['view'] : ['view', 'change', 'add']
         },
-    groups: null,
-    profile: { language: 'en' }
-  } as any
+        permissions: readOnly
+          ? {}
+          : {
+              jobkit: ['manage'],
+              email: ['view'],
+              approval: ['review'],
+              purchaseorder: ['view', 'change', 'add']
+            },
+        groups: null,
+        profile: { language: 'en' }
+      } as any)
 });
+const items = [
+  {
+    pk: 91,
+    quantity: 1,
+    received: 0,
+    part_detail: {
+      pk: 71,
+      name: 'Fixture seal/service kit',
+      IPN: 'FIXTURE-SK',
+      units: 'kit'
+    },
+    supplier_part_detail: { SKU: 'FIXTURE-SUPPLIER-SK' }
+  }
+];
+function ReceiveFixture() {
+  const modal = useReceiveLineItems({
+    items: params.get('complete') ? [] : items,
+    orderPk: 81,
+    destinationPk: 42
+  });
+  return (
+    <>
+      <Button onClick={modal.open}>Receive fixture line</Button>
+      {modal.modal}
+    </>
+  );
+}
+function CloseoutFixture() {
+  const query = useQuery({
+    queryKey: ['fixture-materials'],
+    queryFn: async () =>
+      (
+        await axios.get<CloseoutPartUsageRow[]>(
+          '/api/fixture-closeout-materials/'
+        )
+      ).data
+  });
+  return (
+    <PreparedCloseout
+      workOrder={{
+        id: 73,
+        reference: 'FIXTURE-WO-73',
+        title: 'Fixture seal replacement',
+        lifecycle_status: 'verifying',
+        lifecycle_version: 7
+      }}
+      updateStatus='ready'
+      fields={{
+        cause: 'Fixture seal wear',
+        action: 'Fixture replacement recorded',
+        result: 'Fixture verification retained',
+        verification_summary: 'Fixture test result'
+      }}
+      captures={[]}
+      readings={[]}
+      partUsage={query.data}
+      error={query.isError}
+      changed={false}
+      draftDowntime=''
+      draftFollowUp=''
+    />
+  );
+}
+
 function Surface() {
   const location = useLocation();
   return (
@@ -146,15 +232,33 @@ function Surface() {
 }
 createRoot(document.getElementById('root')!).render(
   <I18nProvider i18n={i18n}>
-    <FixtureTheme nativeTheme={false}>
-      <ApiProvider api={api} client={client}>
+    <FixtureTheme nativeTheme={receivingOrCloseout}>
+      <ApiProvider
+        api={receivingOrCloseout ? axios.create() : api}
+        client={client}
+      >
         <ModalsProvider>
+          <Notifications />
           <MemoryRouter
             initialEntries={[
-              params.get('entry') ?? '/maintenance/work-orders/826/parts/'
+              params.get('entry') ??
+                (receivingOrCloseout
+                  ? '/maintenance/work-orders/73?work_panel=closeout'
+                  : '/maintenance/work-orders/826/parts/')
             ]}
           >
-            <Surface />
+            {receivingOrCloseout ? (
+              <Stack p='md'>
+                <Text size='sm'>Representative fixture · R8 lane B</Text>
+                {surface === 'receive' ? (
+                  <ReceiveFixture />
+                ) : (
+                  <CloseoutFixture />
+                )}
+              </Stack>
+            ) : (
+              <Surface />
+            )}
           </MemoryRouter>
         </ModalsProvider>
       </ApiProvider>

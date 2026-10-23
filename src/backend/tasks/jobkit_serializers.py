@@ -202,6 +202,7 @@ class JobKitAllocationSerializer(serializers.ModelSerializer):
             'staged_by',
             'staged_at',
             'issued_at',
+            'issued_by',
             'disposed_at',
             'stock_tracking_id',
             'idempotency_key',

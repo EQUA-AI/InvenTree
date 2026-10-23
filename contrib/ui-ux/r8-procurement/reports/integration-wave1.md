@@ -344,3 +344,46 @@ The pytest-only AI recipient-policy module runs separately from Django discovery
 - U1–U4 UI/B09 implementation, authenticated screenshots, real spare/supplier/batch
   evidence and deployment/product acceptance remain separate. No Figma or frontend
   screen implementation occurred here; no rendered-screen claim is made.
+
+## Wave 2 merge
+
+23 October 2026: lanes A (U1/U2) and B (U3/B09/U4) combined for coordinator review.
+Both handoff notes are retained, A then B. The add/add fixture is one entry:
+default/`entry` retains A's Work/PO routes, buyer/reader/actor controls and theme;
+`surface=receive|closeout` retains B's native forms, stock/status fixtures, theme,
+completed-PO scenario and original receipt-storage namespace. Shared providers
+include both status dictionaries and notifications. Neither lane's specs changed;
+`tsconfig.r8-procurement.json` now checks both. Production contracts are unchanged;
+B's additive receiving GET and live Closeout material context are documented in
+[its report](wave2-b.md). Named approval, recorded-only email and local scope hold.
+
+Evidence: `data/devscratch/r8-int/wave2/`.
+
+| Check | Merged-tree result |
+| --- | --- |
+| All 13 frontend TypeScript projects | 11 pass, including app/library/S0–S8/shared R8 fixture; node-config and broad Playwright fail with diagnostics identical to pre-wave `1778fb6c2` |
+| Lingui extract/compile | Pass; all 40 `.po` files restored bytewise, hashes retained |
+| R8 units | 26/26 pass across procurement, receiving, Materials and Closeout account |
+| Combined offline backend | 233/233 pass, zero skips, 79.595 s; P1 + B wrappers, merged-chain integration, named approval and document evidence |
+| Combined A/B Playwright | 72/72 pass, zero retries, 3.2 min (A61 + B11); browserless3024/harness15274 |
+| Migrations | One leaf per app, conflicts `{}`; tasks `0041 -> 0050 -> 0060`, order0123 retained; 0060 applied in offline run; nullable `issued_by` preserves old writers |
+| Repository formatting | Changed-file prek passes; whitespace/conflict-marker checks clean |
+
+Offline reproduction uses `backend_baseline.py --image r8-int-tests-wave1:local`
+with the exact five labels in `backend/manifest.json`. It uses the lanes' explicit
+private SQLite schema supplement; this is not fresh PostgreSQL or deployment
+acceptance. Browser reproduction uses `AIMMS_HARNESS_PORT=15274` and scratch
+`browser.config.mts`; Vite loads no dotenv/backend proxy. Captures and their hashes
+are retained; eight desktop/phone light/dark captures covering U1–U4 were opened
+and inspected, with no integration layout regression found. Owned container
+`r8-int-browser-3024` was removed and both ports are clear.
+
+Open: inherited global `makemigrations --check --dry-run` still exits 1 for the
+same five apps (no `issued_by` drift); node-config lacks optional bundler types,
+and broad Playwright retains missing `demo-metrics-lingui` and unbuilt node-project
+references. Baseline comparison logs preserve the identical TypeScript errors.
+Wave 1 broader-suite blockers remain. Lane C recovery adapters, removable demo
+seed and end-to-end integration are next for the coordinator; real owner data,
+Mac host, human review, deployment and product acceptance remain open. Worktree
+conflicts are resolved; the index intentionally remains unmerged for coordinator
+staging/commit. No git writes were performed.

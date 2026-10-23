@@ -94,6 +94,8 @@ def _usage_row(row, visible, work_order):
     return {
         'fitted_record': fit_row(fit) if fit else None,
         'id': row.pk,
+        'allocation': row.allocation_id,
+        'stock_tracking_id': row.stock_tracking_id if visible else None,
         'part': _part(row.part),
         'stock_item': _stock(row.stock_item, visible),
         'planned_quantity': _number(row.planned_quantity),
@@ -180,6 +182,7 @@ def material_readout(actor, work_order) -> dict:
                 'lines__allocations__stock_item__location',
                 'lines__allocations__reserved_by',
                 'lines__allocations__staged_by',
+                'lines__allocations__issued_by',
             )
             .first()
         )
@@ -215,9 +218,11 @@ def material_readout(actor, work_order) -> dict:
                         if allocation.staged_at
                         else None
                     ),
-                    # Issue records when, not who.
                     'issued': (
-                        {'by': None, 'at': _when(allocation.issued_at)}
+                        {
+                            'by': _person(allocation.issued_by),
+                            'at': _when(allocation.issued_at),
+                        }
                         if allocation.issued_at
                         else None
                     ),
@@ -303,3 +308,51 @@ def material_readout(actor, work_order) -> dict:
         'unmatched_usage': loose_usage,
         'procurement': procurement_context(actor, work_order, stock_visible=visible),
     }
+
+
+def closeout_material_context(actor, work_order):
+    """Join usage to exact receipt stock/requirement, never guess by Part or PO.
+
+    Costs are whole native PO totals, not an allocation of freight to usage.
+    Live supporting facts stay separate from immutable completed report snapshots.
+    """
+    readout = material_readout(actor, work_order)
+    rows = {row['id']: {**row, 'receipts': []} for row in readout['unmatched_usage']}
+    lines = {line['key']: line for line in readout['procurement'].get('lines', [])}
+    for requirement in readout['requirements']:
+        line = lines.get(requirement['key'], {})
+        orders = {
+            order['purchase_order_line_id']: order for order in line.get('orders', [])
+        }
+        for allocation in requirement['reservations'] or []:
+            for usage in allocation['usage']:
+                receipts = []
+                for event in line.get('receipts', []):
+                    snapshot = event['snapshot']
+                    stocks = [
+                        stock
+                        for stock in snapshot['stocks']
+                        if stock['stock_item'] == (usage['stock_item'] or {}).get('pk')
+                    ]
+                    order = orders.get(snapshot['purchase_order_line_id'])
+                    if not stocks or order is None:
+                        continue
+                    receipts.append({
+                        'event_id': event['event_id'],
+                        'recorded_at': event['recorded_at'],
+                        'actor': event['actor'],
+                        'stocks': stocks,
+                        'purchase_order_id': order['purchase_order_id'],
+                        'purchase_order_line_id': order['purchase_order_line_id'],
+                        'reference': order['reference'],
+                        'goods_total': order['goods_total'],
+                        'charges_total': order['charges_total'],
+                        'order_total': order['order_total'],
+                        'currency': order['currency'],
+                    })
+                rows[usage['id']] = {
+                    **usage,
+                    'issued': allocation['issued'],
+                    'receipts': receipts,
+                }
+    return rows
