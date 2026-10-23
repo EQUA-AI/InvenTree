@@ -1,0 +1,3 @@
+Item,Lane,Status,Scope,Evidence,Remaining
+B04,P2,Ready for review,Named native PO execution and safe linking,reports/P2.md,Human review and merged target verification
+B05,P2,Ready for review,Exact recorded PDF and email without sending,reports/P2.md,Human review and UI integration

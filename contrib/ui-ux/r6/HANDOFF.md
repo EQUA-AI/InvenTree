@@ -654,3 +654,16 @@ Next (owner first): choose the showcase case (D23) for P34; decide whether to ap
 - **2026-10-18 — explicit S1 overlap:** user says “meanwhile start s1”. Started P14 native machine Preview/return, reusing the existing indexed-media viewer with exact source identity and native actions preserved. Final S1 suite26, units68, backend388 and S1/S0 types pass; Biome35/touched Python lint pass. Shared media drift fixture cleanup and production-style/non-superuser browser fixtures corrected; failed evidence retained. Full preservation replay/current hashes in S1 ledger/manifest. P14 and candidate22/23 In progress; S0 not accepted, other S1 tickets Planned. No commit/push/PR, existing DB/service, Azure or OT change.
 
 - **2026-10-21 — design-pass-2 host browser repairs verified:** bounded S8-01 part 2 task: Health history locator scope, explicit missing-batch “Not returned”, current closeout disclosure label, phone Other-channel pagination containment, and measured capture/key-focus helpers. Final full Linux Chromium fixture replays passed S8 **222/222**, S0 **95/95**, S7 **172/172**; two restored S3 trend contracts passed **4/4** across desktop/phone. Default/S0/S7/S8/S3 types, **733 units in 73 files**, all applicable prek checks on **91 changed files**, tracking validation and Lingui extraction/compilation passed; **117 locale files restored bytewise**. Representative screenshots inspected. The first-phase browser was removed and Vite config restored bytewise. On the second-host-replay resumption, prior harness PID 17707 was absent and port 15224 was free; its earlier cleanup blocker is resolved. The current managed runtime and subsequent capture-helper verification are recorded in the report. See `reports/S8-01-part2.md#host-replay-fixes`; evidence is `data/devscratch/r6-s8/S8-01-part2/host-replay/`. Parent S8/R6, deployment and product acceptance remain unchanged; coordinator host review and O22 rescore remain separate. No Git write, external service or Azure access.
+
+
+- **2026-10-23 — R8 backend P2 dedicated worktree:** B04/B05 implemented in
+  `r8-p2` from 270b3b74e: assigned named screen placement, complete native charges,
+  stable approval replay, validated shortage links and exact recorded PDF/MIME
+  evidence without sending. No frontend/showcase/shared-service/Azure/Git writes.
+  Final focused tests 31/31; separately disclosed synthetic Work/RuleSet/policy-key
+  supplement 47/47. Real rendered PDF inspected. See
+  [P2 report](../r8-procurement/reports/P2.md),
+  [execution ledger](../r8-procurement/execution-ledger-p2.md),
+  [lane backlog](../r8-procurement/sprint-backlog-p2.csv) and
+  [contract](../r8-procurement/contracts/p2.md). Ready for review; parent R6/R8,
+  PostgreSQL concurrency, merged UI, real-data and deployment acceptance unchanged.

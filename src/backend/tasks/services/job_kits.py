@@ -761,7 +761,9 @@ def link_po_to_shortage(*, work_order_id, shortage_id, purchase_order_line_id, a
     ``ordered`` requires a real ``PurchaseOrderLineItem``; a stub effect can never
     mark a shortage ordered (FR-JK-013).
     """
-    from order.models import PurchaseOrderLineItem
+    from order.models import PurchaseOrder, PurchaseOrderLineItem
+    from order.status_codes import PurchaseOrderStatus
+    from users.permissions import check_user_permission
 
     work_order = _locked_work_order(work_order_id)
     require_permission(actor, MANAGE_JOBKIT)
@@ -775,10 +777,79 @@ def link_po_to_shortage(*, work_order_id, shortage_id, purchase_order_line_id, a
     )
     if shortage is None:
         raise JobKitLineError('Shortage does not belong to this work order')
-    po_line = PurchaseOrderLineItem.objects.filter(pk=purchase_order_line_id).first()
+    if not (
+        actor.has_perm('order.view_purchaseorder')
+        or check_user_permission(actor, PurchaseOrder, 'view')
+    ):
+        raise JobKitLineError('Purchasing read permission is required')
+    order_id = (
+        PurchaseOrderLineItem.objects
+        .filter(pk=purchase_order_line_id)
+        .values_list('order_id', flat=True)
+        .first()
+    )
+    if order_id is None:
+        raise JobKitLineError('Purchase order line not found')
+    order = PurchaseOrder.objects.select_for_update().get(pk=order_id)
+    po_line = (
+        PurchaseOrderLineItem.objects
+        .select_for_update()
+        .select_related('part__part', 'part__supplier')
+        .filter(pk=purchase_order_line_id)
+        .first()
+    )
     if po_line is None:
         raise JobKitLineError('Purchase order line not found')
 
+    if order.status not in (
+        PurchaseOrderStatus.PLACED.value,
+        PurchaseOrderStatus.COMPLETE.value,
+    ):
+        raise JobKitLineError(
+            'Draft or unplaced purchase orders cannot cover a shortage'
+        )
+    # The shortage/line pair is the stable link identity; replay never emits another effect.
+    if shortage.purchase_order_line_id == po_line.pk and shortage.status == 'ordered':
+        return shortage
+    if (
+        shortage.status not in ('open', 'requested')
+        or shortage.purchase_order_line_id is not None
+    ):
+        raise JobKitLineError(
+            'Shortage already resolved or linked; reconcile before relinking'
+        )
+    supplier_part = po_line.part
+    if order.status != PurchaseOrderStatus.PLACED.value:
+        raise JobKitLineError(
+            'Only an actually placed purchase order can cover a shortage'
+        )
+    if (
+        not supplier_part
+        or supplier_part.part_id
+        != (shortage.line.selected_part_id or shortage.line.requested_part_id)
+        or supplier_part.supplier_id != order.supplier_id
+        or not supplier_part.active
+        or not supplier_part.part.active
+        or not supplier_part.part.purchaseable
+        or not supplier_part.supplier.active
+        or not supplier_part.supplier.is_supplier
+        or po_line.purchase_price is None
+    ):
+        raise JobKitLineError(
+            'Placed line must match the active selected part and supplier with a known price'
+        )
+    remaining = (
+        po_line.quantity - po_line.received
+    ) * supplier_part.pack_quantity_native
+    committed = sum(
+        JobKitShortage.objects
+        .filter(purchase_order_line=po_line, status__in=_OPEN_SHORTAGE_STATES)
+        .exclude(pk=shortage.pk)
+        .values_list('quantity', flat=True),
+        Decimal('0'),
+    )
+    if remaining - committed < shortage.quantity:
+        raise JobKitLineError('Unreceived order quantity does not cover this shortage')
     shortage.purchase_order_line = po_line
     shortage.status = 'ordered'
     shortage.save(update_fields=['purchase_order_line', 'status'])

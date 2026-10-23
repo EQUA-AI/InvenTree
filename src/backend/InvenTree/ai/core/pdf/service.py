@@ -19,6 +19,7 @@ from __future__ import annotations
 import io
 import logging
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -44,18 +45,27 @@ TEMPLATE_MAP: dict[str, str] = {
 def _format_currency(value: Any, symbol: str = "$", decimals: int = 2) -> str:
     """Format a number as currency.  ``{{ 1234.5 | currency }}`` → ``$1,234.50``"""
     try:
-        num = float(value)
+        num = Decimal(str(value))
         return f"{symbol}{num:,.{decimals}f}"
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, ArithmeticError):
         return str(value)
 
 
 def _format_number(value: Any, decimals: int = 2) -> str:
     """Format a number with thousands separator.  ``{{ 10000 | number }}`` → ``10,000.00``"""
     try:
-        num = float(value)
+        num = Decimal(str(value))
         return f"{num:,.{decimals}f}"
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, ArithmeticError):
+        return str(value)
+
+
+def _format_quantity(value: Any) -> str:
+    """Keep the complete native quantity precision, including known zero."""
+    try:
+        result = format(Decimal(str(value)), ",f")
+        return result.rstrip("0").rstrip(".") if "." in result else result
+    except (TypeError, ValueError, ArithmeticError):
         return str(value)
 
 
@@ -80,6 +90,7 @@ class PDFService:
         # Register custom filters
         self.env.filters["currency"] = _format_currency
         self.env.filters["number"] = _format_number
+        self.env.filters["quantity"] = _format_quantity
 
     # ── Core methods ────────────────────────────────────────────────────────
 
