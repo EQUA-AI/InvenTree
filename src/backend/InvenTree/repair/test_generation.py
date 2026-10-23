@@ -559,6 +559,10 @@ class InProcessEvidenceIntegrationTest(TestCase):
             mock.patch.object(
                 generation, '_get_turn_service', return_value=self._real_turn_service()
             ),
+            # The turn-boundary hygiene runs on this thread here; inside the
+            # test's atomic block it would close the test's own connection
+            # (Django's test client disconnects the same call for that reason).
+            mock.patch('ai.core.turn_service.close_old_connections'),
         ):
             expected_roots = repair_services.list_diagnostic_record_roots(user)
             services.run_repair_packet_workflow(

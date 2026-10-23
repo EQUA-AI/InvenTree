@@ -13,7 +13,7 @@ from django.contrib.auth import get_user_model
 from django.core import signing
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from asgiref.sync import async_to_sync
@@ -41,6 +41,8 @@ from InvenTree.restore_hold import (
 from users.models import ApiToken
 
 
+# These services refuse naive timestamps; production runs with USE_TZ on.
+@override_settings(USE_TZ=True)
 class RetentionJournalTests(TestCase):
     """A source deletion can be replayed without trusting rolled-back tombstones."""
 
@@ -490,6 +492,32 @@ class RetentionJournalTests(TestCase):
         self.assertEqual(json.loads(output.getvalue())['status'], 'dry_run')
         self.assertTrue(ChatThread.objects.filter(pk=snapshot['id']).exists())
 
+    def test_pending_thread_memory_choice_survives_restore_before_root_cleanup(self):
+        """Version four carries the choice even before fact tombstones exist."""
+        thread, _ = self.repo.get_or_create(title='Private fixture')
+        with mock.patch(
+            'aichat.services.memory_retention.forget_thread_batch', return_value=False
+        ):
+            self.assertEqual(
+                self.repo.delete(thread.pk, forget_confirmed=True)['status'],
+                'purge_incomplete',
+            )
+        self.assertTrue(ChatThread.objects.filter(pk=thread.pk).exists())
+        self.assertFalse(self.repo._threads().filter(pk=thread.pk).exists())
+        stone = ChatThreadTombstone.objects.get(thread_id=thread.pk)
+        deleted = stone.deleted_at
+        token = export_journal(since=self.since)
+        payload = read_journal(token, since=self.since)
+        self.assertTrue(payload['threads'][0]['forget_confirmed_memories'])
+        ChatThreadTombstone.objects.filter(pk=stone.pk).delete()
+        AIRetentionOutbox.objects.filter(reference=thread.pk).delete()
+        result = replay_journal(token, since=self.since, execute=True)
+        self.assertEqual(result['status'], 'replayed')
+        replayed = ChatThreadTombstone.objects.get(thread_id=thread.pk)
+        self.assertTrue(replayed.forget_confirmed_memories)
+        self.assertEqual(replayed.deleted_at, deleted)
+        self.assertFalse(ChatThread.objects.filter(pk=thread.pk).exists())
+
 
 class RestoreHoldTests(SimpleTestCase):
     """All HTTP mounts and new sockets are blocked before application dispatch."""
@@ -544,29 +572,3 @@ class RestoreHoldTests(SimpleTestCase):
                 {'type': 'lifespan'}, receive, send
             )
         self.assertEqual(application.await_count, 2)
-
-    def test_pending_thread_memory_choice_survives_restore_before_root_cleanup(self):
-        """Version four carries the choice even before fact tombstones exist."""
-        thread, _ = self.repo.get_or_create(title='Private fixture')
-        with mock.patch(
-            'aichat.services.memory_retention.forget_thread_batch', return_value=False
-        ):
-            self.assertEqual(
-                self.repo.delete(thread.pk, forget_confirmed=True)['status'],
-                'purge_incomplete',
-            )
-        self.assertTrue(ChatThread.objects.filter(pk=thread.pk).exists())
-        self.assertFalse(self.repo._threads().filter(pk=thread.pk).exists())
-        stone = ChatThreadTombstone.objects.get(thread_id=thread.pk)
-        deleted = stone.deleted_at
-        token = export_journal(since=self.since)
-        payload = read_journal(token, since=self.since)
-        self.assertTrue(payload['threads'][0]['forget_confirmed_memories'])
-        ChatThreadTombstone.objects.filter(pk=stone.pk).delete()
-        AIRetentionOutbox.objects.filter(reference=thread.pk).delete()
-        result = replay_journal(token, since=self.since, execute=True)
-        self.assertEqual(result['status'], 'replayed')
-        replayed = ChatThreadTombstone.objects.get(thread_id=thread.pk)
-        self.assertTrue(replayed.forget_confirmed_memories)
-        self.assertEqual(replayed.deleted_at, deleted)
-        self.assertFalse(ChatThread.objects.filter(pk=thread.pk).exists())

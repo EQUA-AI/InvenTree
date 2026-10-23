@@ -19,6 +19,7 @@ from voice.models import (
     VoiceUtterance,
     VoiceUtteranceType,
 )
+from aimms_testing import skip_irreversible_rewind
 
 FORBIDDEN_FIELD_FRAGMENTS = (
     'sdp',
@@ -167,6 +168,7 @@ class VoiceMigrationRoundTripTests(TransactionTestCase):
 
     def test_migration_round_trip(self):
         """Migration round trip."""
+        skip_irreversible_rewind(self, [('voice', None)])
         call_command('migrate', 'voice', 'zero', verbosity=0, interactive=False)
         call_command('migrate', 'voice', verbosity=0, interactive=False)
         self.assertEqual(VoiceSession.objects.count(), 0)

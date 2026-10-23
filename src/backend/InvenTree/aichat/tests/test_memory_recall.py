@@ -136,7 +136,9 @@ class MemoryRecallTests(TestCase):
 
     def test_shared_thread_and_revoked_client_are_empty(self):
         """Owner status does not override active sharing or a lost client boundary."""
-        ChatThreadGrant.objects.create(thread=self.thread, grantee=self.other)
+        ChatThreadGrant.objects.create(
+            thread=self.thread, grantee=self.other, granted_by=self.owner
+        )
         self.assertEqual(self.candidates(), [])
         ChatThreadGrant.objects.all().delete()
         ClientScopeGrant.objects.filter(user=self.owner).delete()

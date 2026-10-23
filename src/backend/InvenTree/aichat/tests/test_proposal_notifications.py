@@ -39,7 +39,7 @@ from aichat.services.proposals import (
     _deliver_notification,
     sweep_proposal_notifications,
 )
-from aichat.services.threads import ThreadRepository
+from aichat.services.threads import ThreadNotFound, ThreadRepository
 from aichat.services.voice_bridge import VOICE_PROPOSAL_EXPIRY_SECONDS
 from aichat.tasks import expire_stale_chat_action_proposals
 from InvenTree.tasks import tasks as scheduled_tasks
@@ -144,8 +144,13 @@ class ProposalNotificationSweepTests(TestCase):
             expires_at=timezone.now() + timedelta(minutes=10),
         )
 
+        # Role and target reauthorization are covered elsewhere; this test is
+        # about which rail executes once both have passed.
         with (
             patch.object(proposal_service, '_require_role'),
+            patch.object(
+                proposal_service, '_authorize_and_bind', return_value=(None, None, None)
+            ),
             self.assertRaises(proposal_service.ApprovalOwnsExecution),
         ):
             proposal_service.confirm_proposal(
@@ -346,14 +351,14 @@ class ProposalNotificationSweepTests(TestCase):
 
     def test_deleted_thread_id_is_not_rebound_to_old_proposals(self):
         """Reusing a deleted id must not inject old notices into a new transcript."""
-        warning = _proposal(
+        _proposal(
             self.owner,
             self.thread.pk,
             state=ProposalState.PROPOSED,
             suffix='deleted-thread-warning',
             expires_at=timezone.now() + timedelta(minutes=5),
         )
-        outcome = _proposal(
+        _proposal(
             self.owner,
             self.thread.pk,
             state=ProposalState.EXECUTED,
@@ -362,15 +367,14 @@ class ProposalNotificationSweepTests(TestCase):
         )
         repository = ThreadRepository(self.owner, 'site:test')
         repository.delete(self.thread.pk)
-        replacement, created = repository.get_or_create(
-            self.thread.pk, title='Unrelated replacement transcript'
-        )
-        self.assertTrue(created)
-        self.assertGreater(replacement.created_at, warning.created_at)
-        self.assertGreater(replacement.created_at, outcome.created_at)
+        # A deleted id is never reissued while its deletion receipt exists.
+        with self.assertRaises(ThreadNotFound):
+            repository.get_or_create(
+                self.thread.pk, title='Unrelated replacement transcript'
+            )
 
         self.assertEqual(sweep_proposal_notifications(), {'warned': 0, 'outcomes': 0})
-        self.assertFalse(ChatMessage.objects.filter(thread=replacement).exists())
+        self.assertFalse(ChatMessage.objects.filter(thread_id=self.thread.pk).exists())
 
     def test_repository_database_failure_is_row_local(self):
         """One transient notification write cannot abort all later outcomes."""
@@ -549,8 +553,11 @@ class ProposalNotificationConcurrencyTests(TransactionTestCase):
             try:
                 repository = ThreadRepository(self.owner.pk, 'site:test')
                 repository.delete(self.thread.pk)
-                replacement, created = repository.get_or_create(self.thread.pk)
-                return replacement.pk, replacement.created_at, created
+                try:
+                    repository.get_or_create(self.thread.pk)
+                except ThreadNotFound:
+                    return 'refused'
+                return 'recreated'
             finally:
                 close_old_connections()
 
@@ -571,8 +578,9 @@ class ProposalNotificationConcurrencyTests(TransactionTestCase):
             finally:
                 release_delivery.set()
             self.assertTrue(delivery.result(timeout=5))
-            thread_id, created_at, created = replacement.result(timeout=5)
+            outcome = replacement.result(timeout=5)
 
-        self.assertTrue(created)
-        self.assertGreater(created_at, self.proposal.created_at)
-        self.assertFalse(ChatMessage.objects.filter(thread_id=thread_id).exists())
+        # The delivered notice went to the old transcript and was deleted with it;
+        # the id is never reissued, so no later transcript can inherit it.
+        self.assertEqual(outcome, 'refused')
+        self.assertFalse(ChatMessage.objects.filter(thread_id=self.thread.pk).exists())

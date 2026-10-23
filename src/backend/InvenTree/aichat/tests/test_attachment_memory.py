@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from pydantic import SecretStr
 
@@ -13,6 +13,8 @@ from aichat.models import MemoryFact, MemoryFactClaim, MemoryFactTombstone
 from aichat.services import attachment_memory, memory_lifecycle
 
 
+# These services refuse naive timestamps; production runs with USE_TZ on.
+@override_settings(USE_TZ=True)
 class AttachmentMemoryTests(TestCase):
     """Confirmed knowledge survives source deletion; an unconfirmed claim does not."""
 

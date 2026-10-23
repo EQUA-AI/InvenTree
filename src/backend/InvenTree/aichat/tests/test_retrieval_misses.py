@@ -42,7 +42,15 @@ class RetrievalMissLedgerTests(TestCase):
         )
 
     def _search(self, *, rows=None, **kwargs):
-        with mock.patch('ai.core.config.get_settings', return_value=_settings()):
+        # The ledger is under test here; the native reauthorization of each hit
+        # has its own suite (test_retrieval_authority), so synthetic hits pass.
+        with (
+            mock.patch('ai.core.config.get_settings', return_value=_settings()),
+            mock.patch(
+                'ai.core.integrations.retrieval_authority.controlled_rows',
+                side_effect=lambda rows, *, user: rows,
+            ),
+        ):
             return search_corpus(
                 user=self.user,
                 query=kwargs.pop('query', 'How do I calibrate the flux capacitor?'),
@@ -232,6 +240,9 @@ class RetrievalMissMigrationTests(MigrationRoundTripMixin, TransactionTestCase):
     PostgreSQL the flush's ``TRUNCATE auth_user`` was refused because that
     resurrected table references it.
     """
+
+    # The earliest state this test rewinds to (checked by the mixin).
+    migrate_from = [('aichat', '0011_messagefeedback')]
 
     def test_embedding_stamp_and_ledger_round_trip(self) -> None:
         executor = MigrationExecutor(connection)

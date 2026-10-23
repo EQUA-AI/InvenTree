@@ -7,7 +7,7 @@ from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core import signing
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from pydantic import SecretStr
@@ -23,6 +23,8 @@ from aichat.services.retention_journal import (
 )
 
 
+# These services refuse naive timestamps; production runs with USE_TZ on.
+@override_settings(USE_TZ=True)
 class MemoryJournalTests(TestCase):
     """Isolated row rollback emulates old backups without executing management tools."""
 

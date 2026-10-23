@@ -17,7 +17,7 @@ from pathlib import Path
 
 from django.core.management import call_command
 from django.utils import timezone
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from assets.health_models import HealthSource, MachineSignalBinding
 from assets.ingestion_models import IngestionCheckpoint
@@ -43,6 +43,8 @@ EXPECTED = {
 RECORDED_END = '2025-07-11T23:59:59.999000+00:00'
 
 
+# Production runs with USE_TZ on; this path compares stored aware instants with now().
+@override_settings(USE_TZ=True)
 class EstateBootstrapTests(TestCase):
     """The production bootstrap, run against a database that has never seen it."""
 

@@ -67,9 +67,14 @@ class RecordedFitReconciliationTests(CloseoutEnvMixin, TestCase):
 
         self.installation_slot()
         self.refresh()
+        from stock.models import StockItemTracking
+
         row = CloseoutPartUsage.objects.get(allocation=self.allocation)
         self.assertEqual(row.disposition, PartUsageDisposition.CONSUMED)
-        self.assertIsNone(row.resolved_by_id)
+        # Consumption is attributed to whoever issued the stock, not chosen by
+        # the refresh; neither makes the line a verified installation.
+        issue = StockItemTracking.objects.get(pk=row.stock_tracking_id)
+        self.assertEqual(row.resolved_by_id, issue.user_id)
         self.assertFalse(ComponentFit.objects.exists())
         add_walkup_usage(
             work_order_id=self.work_order.pk,

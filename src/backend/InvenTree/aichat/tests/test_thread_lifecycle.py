@@ -19,7 +19,8 @@ from aichat.models import AIRetentionOutbox, ChatMessage, ChatThread, MessageRol
 from aichat.services import InvalidBoundary, ThreadNotFound, ThreadRepository, retention
 
 
-@override_settings(FEATURE_THREAD_SHARING=True)
+# These services refuse naive timestamps; production runs with USE_TZ on.
+@override_settings(FEATURE_THREAD_SHARING=True, USE_TZ=True)
 class ThreadLifecycleTests(TestCase):
     """Cursors never widen authorization; cleanup receipts survive parent deletion."""
 

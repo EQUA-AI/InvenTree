@@ -45,6 +45,7 @@ class VoiceInboxTests(ApprovalTestBase):
     def setUp(self):
         """Create two local tenants and a provider-free voice session."""
         super().setUp()
+        self.pin_ai_site_policy()
         self.tenant = Client.objects.create(
             name='Voice review tenant', code=f'voice-reviewer-{self.user.pk}'
         )

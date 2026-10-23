@@ -155,12 +155,16 @@ class CompactionModelProbeTest(SimpleTestCase):
         self.assertEqual(kwargs['azure_endpoint'], 'https://example.openai.azure.com')
         self.assertNotIn('test-key', output)
 
-    def test_key_settings_print_key_and_pass_the_api_key(self):
-        """Key mode is unchanged: the SDK receives the key, the line says key."""
+    def test_configured_key_is_never_used_by_the_compaction_probe(self):
+        """Compaction requires keyless, so a configured key is neither sent nor printed."""
+        identity = types.ModuleType('azure.identity')
+        identity.DefaultAzureCredential = object
+        identity.get_bearer_token_provider = lambda cred, *scopes: lambda: 'fake-token'
         completions = _Completions(body=_summary_body())
-        output, _ = self._run(completions, _settings())
-        self.assertIn('client                    = key', output)
+        with mock.patch.dict(sys.modules, {'azure.identity': identity}):
+            output, _ = self._run(completions, _settings())
+        self.assertIn('client                    = keyless', output)
         kwargs = _Client.constructed[0]
-        self.assertEqual(kwargs['api_key'], 'test-key')
-        self.assertNotIn('azure_ad_token_provider', kwargs)
+        self.assertNotIn('api_key', kwargs)
+        self.assertEqual(kwargs['azure_ad_token_provider'](), 'fake-token')
         self.assertNotIn('test-key', output)

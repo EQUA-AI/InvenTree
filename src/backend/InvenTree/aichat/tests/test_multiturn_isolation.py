@@ -71,10 +71,11 @@ class CompactionSurvivalTests(TestCase):
         thread = self._thread_with_backlog(user)
         repository = _repository(user)
         with mock.patch('assets.ai_read.authorized_machine', lambda u, m: object()):
-            for expected in range(3):
+            # Re-sending an identical scope is a no-op, so make three real changes.
+            for expected, machine_id in enumerate((12, 13, 11)):
                 repository.set_scope(
                     thread.pk,
-                    {'mode': 'explicit_assets', 'machine_ids': [11]},
+                    {'mode': 'explicit_assets', 'machine_ids': [machine_id]},
                     expected_version=expected,
                 )
 

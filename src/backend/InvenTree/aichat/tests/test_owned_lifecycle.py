@@ -25,7 +25,8 @@ from aichat.models import AIRetentionOutbox, ChatThread, ChatThreadGrant
 from aichat.services import InvalidBoundary, ThreadRepository, retention
 
 
-@override_settings(FEATURE_THREAD_SHARING=True)
+# These services refuse naive timestamps; production runs with USE_TZ on.
+@override_settings(FEATURE_THREAD_SHARING=True, USE_TZ=True)
 class OwnedLifecycleTests(TestCase):
     """Only owned server-scope conversations enter the lifecycle scan."""
 

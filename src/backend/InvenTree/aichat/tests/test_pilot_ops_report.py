@@ -249,14 +249,20 @@ class PilotOpsReportTests(ReportFixtureMixin, TestCase):
         self.assertIsNone(retention['last_run_age_days'])
         for family in ('threads', 'usage_messages', 'retrieval_misses', 'rejections'):
             self.assertIn(family, retention['backlog'])
-        # M2 PR 3: the outbox kind registry adds a per-kind residual read.
+        # M2 PR 3: the outbox kind registry adds a per-kind residual read. The
+        # registry grows as stores register kinds, so compare against it.
+        from aichat.services.retention import OUTBOX_KINDS
+
         self.assertEqual(
             retention['outbox'],
             {
                 'pending': 0,
                 'failed_permanent': 0,
-                'residual_by_kind': {'upload_dir': 0, 'thread_summary': 0},
+                'residual_by_kind': dict.fromkeys(OUTBOX_KINDS, 0),
             },
+        )
+        self.assertLessEqual(
+            {'upload_dir', 'thread_summary'}, set(retention['outbox']['residual_by_kind'])
         )
         self.assertEqual(retention['last_run_errors'], [])
 

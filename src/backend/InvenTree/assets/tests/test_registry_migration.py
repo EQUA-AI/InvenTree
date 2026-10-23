@@ -5,6 +5,7 @@ from django.db.migrations.executor import MigrationExecutor
 from django.test import TransactionTestCase, tag
 
 from InvenTree.migration_rewind import migrate_for_rehearsal
+from aimms_testing import skip_irreversible_rewind
 
 
 @tag('migration_test')
@@ -15,6 +16,7 @@ class RegistryMigrationTests(TransactionTestCase):
         """Three pre-registry machines receive distinct UUIDs without ID changes."""
         before = [('assets', '0010_remove_assetmachine_customer')]
         after = [('assets', '0011_equipment_registry')]
+        skip_irreversible_rewind(self, before, rehearsal=True)
         executor = MigrationExecutor(connection)
         latest = executor.loader.graph.leaf_nodes()
         try:

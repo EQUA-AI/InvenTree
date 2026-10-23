@@ -1754,14 +1754,19 @@ class ProcessDecisionTests(InvenTreeAPITestCase):
 
         from users.models import RuleSet
 
-        plan = MigrationLoader(connection).graph.forwards_plan((
-            'tasks',
-            '0035_process_decisions',
-        ))
-        self.assertLess(
-            plan.index(('users', '0016_work_order_ruleset_grant')),
-            plan.index(('tasks', '0035_process_decisions')),
+        # legacy_boundary replaces 0035 on fresh databases, which therefore get
+        # no seed group. The order and the seed belong to the recorded history:
+        # 0035 declares users 0019, which follows the legacy all-groups grant.
+        migration = import_module('tasks.migrations.0035_process_decisions')
+        self.assertIn(
+            ('users', '0019_approval_review_role'), migration.Migration.dependencies
         )
+        plan = MigrationLoader(connection).graph.forwards_plan((
+            'users',
+            '0019_approval_review_role',
+        ))
+        self.assertIn(('users', '0016_work_order_ruleset_grant'), plan)
+        migration.expert_group(apps, SimpleNamespace(connection=connection))
         group = Group.objects.get(name='Reliability engineers')
         self.assertFalse(
             RuleSet.objects.filter(

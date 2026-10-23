@@ -5,6 +5,8 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TransactionTestCase, tag
 
+from aimms_testing import skip_irreversible_rewind
+
 
 @tag('migration_test')
 class MailboxMigrationTests(TransactionTestCase):
@@ -24,6 +26,7 @@ class MailboxMigrationTests(TransactionTestCase):
         ]
         latest = executor.loader.graph.leaf_nodes()
         old += [target for target in latest if target[0] != 'aichat']
+        skip_irreversible_rewind(self, old)
         try:
             executor.migrate(old)
             apps = executor.loader.project_state(old).apps

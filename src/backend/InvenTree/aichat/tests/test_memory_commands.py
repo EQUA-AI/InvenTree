@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from pydantic import SecretStr
 
@@ -15,6 +15,8 @@ from aichat.services import memory_lifecycle, proposals
 from aichat.services.memory_eligibility import MemoryEligibility
 
 
+# These services refuse naive timestamps; production runs with USE_TZ on.
+@override_settings(USE_TZ=True)
 class MemoryCommandTests(TestCase):
     """Use the real shared proposal rail and portable fact schema."""
 

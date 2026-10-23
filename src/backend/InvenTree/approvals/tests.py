@@ -8,8 +8,10 @@ Covers spec Sections 18.1-18.5:
 - 18.5: Failure injection tests
 """
 
+import os
 import uuid
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
@@ -92,6 +94,19 @@ class ApprovalTestBase(TestCase):
         self.client.force_authenticate(user=self.user)
         self.client2 = APIClient()
         self.client2.force_authenticate(user=self.user2)
+
+    def pin_ai_site_policy(self, key='approvals-test-site'):
+        """Give the AI boundary a site key for voice sessions.
+
+        Deployments set AIMMS_SINGLE_SITE_POLICY_KEY; without it the principal
+        has no scope and voice sessions are refused. The cached AI settings are
+        rebuilt on both sides of the test so no other test sees this key.
+        """
+        from ai.core.config import get_settings
+
+        self.enterContext(patch.dict(os.environ, {'AIMMS_SINGLE_SITE_POLICY_KEY': key}))
+        get_settings.cache_clear()
+        self.addCleanup(get_settings.cache_clear)
 
     def _create_approval(self, **overrides):
         """Create an approval via the API."""

@@ -49,6 +49,36 @@ def restore_leaf_schema() -> None:
     executor.migrate(executor.loader.graph.leaf_nodes())
 
 
+def skip_irreversible_rewind(test_case, targets, *, rehearsal: bool = False) -> None:
+    """Skip a round trip whose rewind would reverse an irreversible migration.
+
+    ``legacy_boundary.0001`` is irreversible by design (deployments are
+    forward-fix only) and follows the aichat, assets, repair, tasks and users
+    migrations it replaced, so no database can be rolled back below it.
+    Django would spend minutes rendering states before refusing; this reads
+    only the plan, names the blocking migration, and lets the test run again
+    if that rewind ever becomes possible. ``rehearsal`` checks the wider
+    canonical suffix that ``migrate_for_rehearsal`` rewinds.
+    """
+    from django.db.migrations.executor import MigrationExecutor
+
+    from InvenTree.migration_rewind import ordered_rewind_plan
+
+    executor = MigrationExecutor(connection)
+    if rehearsal:
+        try:
+            ordered_rewind_plan(executor, targets)
+        except ValueError as exc:
+            test_case.skipTest(f'Rewinding to {targets} is impossible: {exc}')
+        return
+    for migration, backwards in executor.migration_plan(targets):
+        if backwards and any(not op.reversible for op in migration.operations):
+            test_case.skipTest(
+                f'Rewinding to {targets} must reverse irreversible '
+                f'{migration.app_label}.{migration.name}'
+            )
+
+
 class MigrationRoundTripMixin:
     """Mix into every ``TransactionTestCase`` that calls ``executor.migrate``.
 
@@ -60,6 +90,8 @@ class MigrationRoundTripMixin:
     def setUp(self) -> None:
         """Register the leaf-schema restore before the test's own setup runs."""
         super().setUp()
+        if getattr(self, 'migrate_from', None):
+            skip_irreversible_rewind(self, self.migrate_from)
         self.addCleanup(restore_leaf_schema)
 
 
@@ -68,4 +100,5 @@ __all__ = [
     'MigrationRoundTripMixin',
     'requires_postgres',
     'restore_leaf_schema',
+    'skip_irreversible_rewind',
 ]

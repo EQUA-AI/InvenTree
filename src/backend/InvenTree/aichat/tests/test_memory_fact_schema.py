@@ -3,7 +3,7 @@
 from unittest import skipUnless
 
 from django.contrib.auth import get_user_model
-from django.db import IntegrityError, connection, transaction
+from django.db import DataError, IntegrityError, connection, transaction
 from django.test import SimpleTestCase, TestCase
 
 from ai.core.memory.vocabulary import (
@@ -86,7 +86,8 @@ class MemoryFactSchemaTests(TestCase):
             {'embedding': [0.0] * 3},
         ):
             with self.subTest(change=change):
-                with self.assertRaises((IntegrityError, ValueError)):
+                # pgvector rejects a wrong-size vector as DataError.
+                with self.assertRaises((IntegrityError, DataError, ValueError)):
                     with transaction.atomic():
                         self.fact(**change)
 

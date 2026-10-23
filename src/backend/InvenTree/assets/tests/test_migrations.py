@@ -9,6 +9,7 @@ from common.models import CustomUnit
 from InvenTree.conversion import convert_physical_value, reload_unit_registry
 
 from InvenTree.migration_rewind import migrate_for_rehearsal
+from aimms_testing import skip_irreversible_rewind
 
 
 class RestoringMigrationTestCase(TransactionTestCase):
@@ -17,6 +18,8 @@ class RestoringMigrationTestCase(TransactionTestCase):
     def setUp(self):
         """Restore all leaves before Django flushes the current-model tables."""
         super().setUp()
+        if getattr(self, 'migrate_from', None):
+            skip_irreversible_rewind(self, self.migrate_from, rehearsal=True)
         latest = MigrationExecutor(connection).loader.graph.leaf_nodes()
         self.addCleanup(lambda: MigrationExecutor(connection).migrate(latest))
 

@@ -2,13 +2,15 @@
 
 from datetime import timedelta
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from aichat.models import AIWorkerUsageEvent, MemoryExtractionRun
 from aichat.services.memory_shadow_report import report_window
 
 
+# These services refuse naive timestamps; production runs with USE_TZ on.
+@override_settings(USE_TZ=True)
 class MemoryShadowReportTests(TestCase):
     """No sample, provider uncertainty or dropped detail becomes acceptance."""
 

@@ -205,7 +205,9 @@ class MemoryWorkerTests(TestCase):
         """No startup/import schedule mutation; installation requires execution."""
         output = io.StringIO()
         call_command('configure_memory_worker', stdout=output)
-        self.assertEqual(json.loads(output.getvalue())['status'], 'dry_run')
+        preview = json.loads(output.getvalue())
+        self.assertEqual(preview['heartbeat']['status'], 'dry_run')
+        self.assertEqual(preview['recovery']['status'], 'dry_run')
         self.assertFalse(Schedule.objects.filter(name=worker.HEARTBEAT_NAME).exists())
         worker.configure_heartbeat(execute=True)
         worker.configure_heartbeat(execute=True)

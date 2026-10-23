@@ -40,6 +40,7 @@ class ReviewBindingTests(ApprovalTestBase):
     def setUp(self):
         """Create one revision and an owned voice session."""
         super().setUp()
+        self.pin_ai_site_policy()
         self.approval = self._create_approval_obj(assigned_to_user_id=self.user.pk)
         services.open_approval(self.approval.pk, actor=self.user)
         self.approval.refresh_from_db()

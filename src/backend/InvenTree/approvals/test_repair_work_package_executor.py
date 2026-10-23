@@ -32,7 +32,7 @@ from approvals.executors import (
 )
 from approvals.models import ActionType
 from assets.health_models import AnomalyStatus, SourceType
-from assets.models import AssetMachine, Client
+from assets.models import AssetMachine, Client, ClientScopeGrant
 from repair.models import RepairPacket
 
 
@@ -47,6 +47,11 @@ def _payload_of(result) -> dict:
     return result.result_payload
 
 
+# The executor reloads its actor from the payload's actor_id, so the scope
+# must be a stored grant rather than an attribute on this test's user object.
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.granted_client_scope_resolver'
+)
 class RepairWorkPackageExecutorTest(TestCase):
     """The executor delegates to the canonical command and detects drift."""
 
@@ -59,11 +64,7 @@ class RepairWorkPackageExecutorTest(TestCase):
         self.actor = get_user_model().objects.create_superuser(
             username=f'exec-{suffix}', email=f'{suffix}@example.com', password='pw'
         )
-        self.actor.maintenance_scopes = {
-            MaintenanceScope(
-                customer_id=None, site_key=None, client_id=self.client_tenant.pk
-            )
-        }
+        ClientScopeGrant.objects.create(user=self.actor, client=self.client_tenant)
         self.machine = AssetMachine.objects.create(
             name=f'Clarifier {suffix}', client=self.client_tenant
         )

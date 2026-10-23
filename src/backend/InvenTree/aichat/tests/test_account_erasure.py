@@ -31,8 +31,10 @@ from aichat.services.account_erasure_log import ErasureIdentityConflictError
 from users.models import ApiToken, UserProfile
 
 
+# These services refuse naive timestamps; production runs with USE_TZ on.
 @override_settings(
-    FEATURE_THREAD_SHARING=True, SESSION_ENGINE='django.contrib.sessions.backends.db'
+    FEATURE_THREAD_SHARING=True, SESSION_ENGINE='django.contrib.sessions.backends.db',
+    USE_TZ=True,
 )
 class AccountErasureTests(TestCase):
     """Local identity is scrubbed without deleting protected user references."""

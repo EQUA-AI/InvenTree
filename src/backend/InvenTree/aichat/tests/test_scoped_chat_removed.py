@@ -72,6 +72,9 @@ from django.test import TransactionTestCase, tag  # noqa: E402
 class DropScopedChatMigrationTests(MigrationRoundTripMixin, TransactionTestCase):
     """The destructive S14(c) drop is structurally zero-row-gated."""
 
+    # The earliest state these tests rewind to (checked by the mixin).
+    migrate_from = [('aichat', '0013_retrievalmiss')]
+
     def _executor(self) -> MigrationExecutor:
         connection.close()
         return MigrationExecutor(connection)

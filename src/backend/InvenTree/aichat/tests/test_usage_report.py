@@ -195,5 +195,11 @@ class UsageReportEmptyWorkerSectionTest(TestCase):
                 'output_tokens': 0,
                 'per_deployment': [],
                 'per_purpose': [],
+                'unsettled_reservations': {
+                    'rows': 0,
+                    'attempts': 0,
+                    'input_tokens': 0,
+                    'output_tokens': 0,
+                },
             },
         )
