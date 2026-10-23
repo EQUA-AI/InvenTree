@@ -16,7 +16,7 @@ ROOT = (
     if sys.argv[1:2] == ['--inside']
     else Path(__file__).resolve().parents[3]
 )
-OUT = ROOT / 'data/devscratch/r8-int/postgres'
+OUT = ROOT / os.environ.get('R8_POSTGRES_OUTPUT', 'data/devscratch/r8-int/postgres')
 
 
 def inside():
@@ -99,6 +99,8 @@ def inside():
             '--testrunner=django.test.runner.DiscoverRunner',
         ],
     ]
+    if os.environ.get('R8_POSTGRES_FOCUSED_ONLY') == '1':
+        commands = commands[:3]
     results = []
     for index, args in enumerate(commands):
         with open(f'/evidence/check-{index}.log', 'w', encoding='utf-8') as stream:
@@ -146,7 +148,7 @@ def host():
             if old.is_file():
                 shutil.copy2(old, history / old.name)
     suffix = uuid.uuid4().hex[:10]
-    name = 'r8-int-pg-' + suffix
+    name = os.environ.get('R8_POSTGRES_PREFIX', 'r8-int-pg-') + suffix
     network = name + '-net'
     password = secrets.token_urlsafe(24)
     labels = sys.argv[1:] or [
@@ -279,6 +281,8 @@ def host():
             'HOME=/tmp',
             'PYTHONUSERBASE=/root/.local',
             'LANG=C.UTF-8',
+            'R8_POSTGRES_FOCUSED_ONLY='
+            + os.environ.get('R8_POSTGRES_FOCUSED_ONLY', '0'),
             'INVENTREE_DB_PASSWORD=' + password,
             'python3',
             '/s0/run_postgres.py',

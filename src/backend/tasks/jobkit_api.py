@@ -548,6 +548,10 @@ class JobKitAllocationConsume(_JobKitCustodyCommand):
 
     service = staticmethod(consume_allocation)
 
+    def service_kwargs(self, request):
+        """Read an uncertain native use without applying another stock movement."""
+        return {'reconcile_only': request.headers.get('X-AIMMS-Reconcile-Only') == '1'}
+
 
 class JobKitAllocationReturn(_JobKitCustodyCommand):
     """Return a reusable allocation without consuming stock."""

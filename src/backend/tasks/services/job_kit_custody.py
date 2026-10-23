@@ -25,6 +25,7 @@ from tasks.services.job_kits import (
     JobKitLineError,
     JobKitStateError,
     _locked_kit,
+    _require_stock_scope,
 )
 from tasks.services.work_orders import _locked_work_order, _require_scope
 
@@ -62,8 +63,23 @@ def _resolve(work_order_id, allocation_id, actor, permission):
     work_order = _locked_work_order(work_order_id)
     require_permission(actor, permission)
     _require_scope(actor, work_order)
+    _require_stock_scope(actor, work_order)
     kit = _locked_kit(work_order_id)
     allocation = _locked_allocation(kit, allocation_id)
+    # Procurement allocations retain receipt-time machine/client identity.
+    # Moving shared Work must not transfer custody authority for old receipts.
+    from tasks.receipt_models import MaintenanceReceipt
+    from tasks.services.procurement import event_matches_context
+
+    receipts = MaintenanceReceipt.objects.filter(
+        kit_line_id=allocation.line_id, stocks__stock_item_id=allocation.stock_item_id
+    ).select_related('event')
+    if any(
+        not event_matches_context(receipt.event, work_order) for receipt in receipts
+    ):
+        from tasks.services.work_orders import WorkOrderScopeError
+
+        raise WorkOrderScopeError('Receipt scope changed before custody action')
     return work_order, kit, allocation
 
 
@@ -105,7 +121,9 @@ def issue_allocation(*, work_order_id, allocation_id, actor, correlation_id=None
 
 
 @transaction.atomic
-def consume_allocation(*, work_order_id, allocation_id, actor, correlation_id=None):
+def consume_allocation(
+    *, work_order_id, allocation_id, actor, correlation_id=None, reconcile_only=False
+):
     """Perform a real stock removal for a consumed part/consumable.
 
     Removes the allocated quantity from the exact stock item through the real
@@ -116,6 +134,15 @@ def consume_allocation(*, work_order_id, allocation_id, actor, correlation_id=No
     work_order, kit, allocation = _resolve(
         work_order_id, allocation_id, actor, ISSUE_JOBKIT
     )
+    # Recovery is read-only and explicit. Ordinary duplicate consume retains the
+    # native refusal; an uncertain browser retry never repeats a physical use.
+    if reconcile_only:
+        if (
+            allocation.status != JobKitAllocationStatus.CONSUMED
+            or allocation.stock_tracking_id is None
+        ):
+            raise JobKitCustodyError('Original use is not confirmed by stock tracking')
+        return allocation
     _require_source_state(allocation, _ACTIVE)
 
     stock_item = StockItem.objects.select_for_update().get(pk=allocation.stock_item_id)
