@@ -316,9 +316,11 @@ for (const scheme of ['light', 'dark'])
     const service = page
       .getByRole('tabpanel', { name: 'Verify & Return', exact: true })
       .getByTestId('service-restoration');
-    await expect(service).toContainText(
-      'Service restoration is not established by Work completion.'
-    );
+    await expect(
+      service.getByRole('button', {
+        name: /Information: Work completion, test results and telemetry are separate from test acceptance, operating permission, service capacity and remaining obligations/
+      })
+    ).toBeVisible();
     const gaps = page
       .getByRole('tabpanel', { name: 'Verify & Return', exact: true })
       .getByTestId('not-supplied');

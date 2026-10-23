@@ -9,6 +9,7 @@ import { t } from '@lingui/core/macro';
 import {
   Anchor,
   Button,
+  Group,
   Modal,
   Paper,
   SimpleGrid,
@@ -153,27 +154,10 @@ function ProcurementRow({
             )}
           </Text>
           {line.dependent_step && <Text size='sm'>{line.dependent_step}</Text>}
-          {canEdit && (
-            <Button
-              size='compact-xs'
-              variant='subtle'
-              disabled={stale || context.pending_operations.length > 0}
-              onClick={() => setAction('source')}
-            >
-              {line.source_selection ? t`Revise source` : t`Record source`}
-            </Button>
-          )}
         </Cell>
         <Cell label={labels[1]}>
           <SourceFacts line={line} workId={context.work_order_id} />
-          {canBuy && (
-            <Button
-              size='xs'
-              variant='light'
-              disabled={stale || context.pending_operations.length > 0}
-              onClick={() => setAction('approval')}
-            >{t`Request named approval`}</Button>
-          )}
+
           {canEdit &&
             line.selection_current &&
             !payload &&
@@ -213,14 +197,6 @@ function ProcurementRow({
           ) : (
             <MissingValue reason={t`No native purchase order linked`} />
           )}
-          {canEdit && shortage && line.part_id && (
-            <Button
-              size='compact-xs'
-              variant='subtle'
-              disabled={stale}
-              onClick={() => setAction('link')}
-            >{t`Link placed order`}</Button>
-          )}
         </Cell>
         <Cell label={labels[3]}>
           {line.orders.length ? (
@@ -232,16 +208,7 @@ function ProcurementRow({
                   </Text>
                 )}
                 <DocumentFact order={order} />
-                {canEdit && !order.recorded_document && (
-                  <Anchor
-                    component={Link}
-                    to={orderUrl(
-                      order.purchase_order_id,
-                      context.work_order_id
-                    )}
-                    size='sm'
-                  >{t`Record document`}</Anchor>
-                )}
+
                 <AcknowledgmentFact
                   order={order}
                   workId={context.work_order_id}
@@ -252,14 +219,6 @@ function ProcurementRow({
             <MissingValue
               reason={t`No linked order document or acknowledgment`}
             />
-          )}
-          {canEdit && line.orders.length > 0 && (
-            <Button
-              size='compact-xs'
-              variant='subtle'
-              disabled={stale || context.pending_operations.length > 0}
-              onClick={() => setAction('ack')}
-            >{t`Record acknowledgment`}</Button>
           )}
         </Cell>
         <Cell label={labels[4]}>
@@ -408,6 +367,63 @@ function ProcurementRow({
           )}
         </Cell>
       </SimpleGrid>
+      {canEdit && (
+        <Group
+          gap='xs'
+          mt='sm'
+          className={classes.actions}
+          aria-label={t`Procurement actions`}
+        >
+          {canEdit && (
+            <Button
+              size='xs'
+              variant='default'
+              disabled={stale || context.pending_operations.length > 0}
+              onClick={() => setAction('source')}
+            >
+              {line.source_selection ? t`Revise source` : t`Record source`}
+            </Button>
+          )}
+          {canBuy && (
+            <Button
+              size='xs'
+              variant='light'
+              disabled={stale || context.pending_operations.length > 0}
+              onClick={() => setAction('approval')}
+            >{t`Request named approval`}</Button>
+          )}
+          {canEdit && shortage && line.part_id && (
+            <Button
+              size='xs'
+              variant='default'
+              disabled={stale}
+              onClick={() => setAction('link')}
+            >{t`Link placed order`}</Button>
+          )}
+          {line.orders
+            .filter((order) => !order.recorded_document)
+            .map((order) => (
+              <Button
+                key={order.purchase_order_line_id}
+                component={Link}
+                to={orderUrl(order.purchase_order_id, context.work_order_id)}
+                size='xs'
+                variant='default'
+              >
+                {t`Record document`}
+                {line.orders.length > 1 ? ` · ${order.reference}` : ''}
+              </Button>
+            ))}
+          {canEdit && line.orders.length > 0 && (
+            <Button
+              size='xs'
+              variant='default'
+              disabled={stale || context.pending_operations.length > 0}
+              onClick={() => setAction('ack')}
+            >{t`Record acknowledgment`}</Button>
+          )}
+        </Group>
+      )}
       {details && (
         <details className={classes.details}>
           <summary>{t`Material record`}</summary>

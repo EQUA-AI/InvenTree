@@ -1,5 +1,26 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## R8 production polish — 23 October 2026 (ready for human review)
+
+`r8-polish` from `3f82042d0`: U1 aligned procurement commands, U2 Work/source
+heading, U3 maintenance receiving labels and U4 account/material wording; all
+seven Work tabs use compact facts, normal-case badges and accessible information.
+Missing facts use dashes with reasons. Original keyboard order, native commands,
+permissions, independent authority/acceptance, named approval, recorded-only
+email, replay and Materials read-only boundaries remain. No backend changes.
+
+[Ledger, findings, exact spec inventory and verification](../r8-procurement/reports/polish.md):
+R8 148 pass / 7 intentional duplicate audit skips; native S7/S8 54 pass;
+native R8 smoke 3 pass; 174 units; isolated backend 325, PostgreSQL behavior 200,
+concurrency 5 and email policy 23 pass. App and R8/S1/S4/S6/S7/S8 types and Lingui
+(40 bytewise `.po` restores) pass. Broad browser failures were resolved through
+explicitly recorded focused replays, rather than labelled as a single clean run.
+72 primary before/after PNGs plus 79 supporting PNGs inspected. Own browser/PG/network removed; ports3025/15275 clear. Cleanup
+evidence is in the lane report. Parent migration/tracking gates remain
+open. Fixture/source evidence only; no owner stock/commitment/Closeout, Azure,
+Git-write, issue, PR, deployment or product-acceptance change. Next: human review
+and coordinator authenticated local integration/showcase acceptance.
+
 ## R8 wave 2 lane A — 23 October 2026 (ready for human review)
 
 U1 Work Parts and U2 native PO are implemented in `r8-w2a` from `1778fb6c2`.

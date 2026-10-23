@@ -39,18 +39,22 @@ for (const scheme of ['light', 'dark'] as const) {
         })
     );
     await openCloseout(page, scheme);
-    await expect(page.getByTestId('closeout-questions')).toContainText(
-      'Required account facts are already supplied'
-    );
+    await expect(page.getByTestId('closeout-questions')).toHaveCount(0);
     await expect(page.getByTestId('prepared-closeout')).toContainText(
-      'Narrative code points'
+      values.action
     );
-    await expect(page.getByTestId('prepared-closeout')).toContainText(
-      '“Replaced”'
+    const sourceInfo = page
+      .getByTestId('prepared-closeout')
+      .getByRole('button', { name: /Information: Capture 12.*Replaced/ });
+    await sourceInfo.focus();
+    await expect(page.getByRole('tooltip')).toContainText(
+      `[${start}, ${start + 8}) · Replaced`
     );
-    await expect(page.getByTestId('prepared-closeout')).toContainText(
-      'A story or extraction is not an approved procedure'
-    );
+    await expect(
+      page.getByTestId('prepared-closeout').getByRole('button', {
+        name: /Information: Extracted text needs review/
+      })
+    ).toBeVisible();
     await expect(
       page.getByRole('textbox', { name: 'What did you do?', exact: true })
     ).toBeHidden();
@@ -98,7 +102,15 @@ test('P45 only asks the missing native required fact; rejected value stays missi
   );
   await openCloseout(page);
   const questions = page.getByTestId('closeout-questions');
-  await expect(questions.getByRole('button')).toHaveCount(1);
+  await expect(questions.getByRole('button', { name: /^What / })).toHaveCount(
+    1
+  );
+  await expect(
+    questions.getByRole('button', {
+      name: 'What was the observed result?',
+      exact: true
+    })
+  ).toBeVisible();
   await questions
     .getByRole('button', { name: 'What was the observed result?', exact: true })
     .click();

@@ -4,7 +4,7 @@ import { materials, source } from './procurementFixtures';
 
 const captures = resolve(
   import.meta.dirname,
-  '../../../../data/devscratch/r8-w2a/captures'
+  process.env.AIMMS_CAPTURE_DIR ?? '../../../../data/devscratch/r8-w2a/captures'
 );
 const entry = '/playwright/r8-procurement.html';
 async function fixture(
@@ -244,6 +244,20 @@ for (const scheme of ['light', 'dark']) {
         await expect
           .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
           .toBeLessThanOrEqual(viewport.width);
+        if (
+          viewport.width >= 1200 &&
+          !process.env.AIMMS_CAPTURE_DIR?.includes('/before')
+        ) {
+          const actionRow = panel.locator('[aria-label="Procurement actions"]');
+          await expect(actionRow).toBeVisible();
+          const tops = await actionRow
+            .locator('button, a')
+            .evaluateAll((nodes) =>
+              nodes.map((node) => node.getBoundingClientRect().top)
+            );
+          expect(tops.length).toBeGreaterThan(0);
+          expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1);
+        }
         expect(f.posts).toHaveLength(0);
         expect(f.errors).toEqual([]);
         await page.screenshot({

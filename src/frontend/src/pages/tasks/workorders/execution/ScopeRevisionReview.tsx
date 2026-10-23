@@ -18,6 +18,7 @@ import {
   Text
 } from '@mantine/core';
 import { Link, useSearchParams } from 'react-router-dom';
+import { InfoTooltip } from '../../../../components/items/ValueTooltip';
 import { workPanelParams } from '../workPanelState';
 import {
   ExecutionFact,
@@ -100,13 +101,15 @@ export function ScopeRevisionNotice({
     >
       <Stack gap={6}>
         {full && (
-          <Text size='sm'>
-            {review?.selective_reassessment?.items.some(
-              (row) => row.scope_id === review.current_scope_id
-            )
-              ? t`Recorded component and procedure bindings identify mapped dependencies. Evidence stays with its original binding; reassessment and unavailable evidence are shown below. Obsolete scope is not executable. Changed physical work needs its own applicable authority.`
-              : t`Saved scope records and request revisions remain available for review. The record does not identify which tasks, materials, resources, permissions or tests are affected. Changed physical work needs its own applicable authority; an earlier approval cannot cover it automatically.`}
-          </Text>
+          <InfoTooltip
+            label={
+              review?.selective_reassessment?.items.some(
+                (row) => row.scope_id === review.current_scope_id
+              )
+                ? t`Recorded component and procedure bindings identify mapped dependencies. Evidence stays with its original binding; reassessment and unavailable evidence are shown below. Obsolete scope is not executable. Changed physical work needs its own applicable authority.`
+                : t`Saved scope records and request revisions remain available for review. The record does not identify which tasks, materials, resources, permissions or tests are affected. Changed physical work needs its own applicable authority; an earlier approval cannot cover it automatically.`
+            }
+          />
         )}
         <Anchor
           component={Link}
@@ -360,7 +363,9 @@ export function ScopeRevisionReview({
               fw={600}
               size='sm'
             >{t`Component and procedure reassessment`}</Text>
-            <Text size='sm'>{t`Only dependencies bound to a revised component or procedure need reassessment. Other bound dependencies retain only their recorded native evidence. Missing or unvalidated evidence stays unknown. Superseded scope is not executable; these mappings do not grant physical permission.`}</Text>
+            <InfoTooltip
+              label={t`Only dependencies bound to a revised component or procedure need reassessment. Other bound dependencies retain only their recorded native evidence. Missing or unvalidated evidence stays unknown. Superseded scope is not executable; these mappings do not grant physical permission.`}
+            />
             <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }} spacing='xs'>
               {review.selective_reassessment.items.map((row, index) => (
                 <Paper
@@ -497,7 +502,9 @@ export function ScopeRevisionReview({
           </Accordion.Panel>
         </Accordion.Item>
       </Accordion>
-      <Text size='sm'>{t`Original observations, corrections, material movements and verification attempts remain in their native records. Their validity for changed scope is not inferred.`}</Text>
+      <InfoTooltip
+        label={t`Original observations, corrections, material movements and verification attempts remain in their native records. Their validity for changed scope is not inferred.`}
+      />
       <Group gap='md'>
         <Anchor
           component={Link}

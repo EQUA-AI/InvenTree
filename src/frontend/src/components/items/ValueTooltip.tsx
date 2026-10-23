@@ -6,6 +6,7 @@ import {
   UnstyledButton,
   VisuallyHidden
 } from '@mantine/core';
+import { IconInfoCircle } from '@tabler/icons-react';
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
 import { StatusBadge } from '../../pages/assets/health/StatusBadge';
 import classes from './ValueTooltip.module.css';
@@ -131,5 +132,18 @@ export function FailedValue({
         </StatusBadge>
       </ValueTooltip>
     </Group>
+  );
+}
+
+/** Compact contextual explanation with keyboard and touch access. */
+export function InfoTooltip({ label }: Readonly<{ label: string }>) {
+  return (
+    <ValueTooltip label={label} accessibleLabel={t`Information: ${label}`}>
+      <IconInfoCircle
+        size={16}
+        aria-hidden
+        style={{ verticalAlign: 'middle' }}
+      />
+    </ValueTooltip>
   );
 }

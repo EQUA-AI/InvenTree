@@ -107,12 +107,16 @@ for (const type of ['preventive', 'inspection', 'calibration']) {
         await expect(section).toContainText(
           'Calibration traceability incomplete'
         );
-        await expect(section).toContainText(
-          'As-found/as-left designation and test conditions are not supplied.'
-        );
-        await expect(section).toContainText(
-          'Returned before/after readings and any recorded limits do not establish calibration acceptance.'
-        );
+        await expect(
+          section.getByRole('button', {
+            name: /^Information: As-found\/as-left designation and test conditions are not supplied/
+          })
+        ).toBeVisible();
+        await expect(
+          section.getByRole('button', {
+            name: 'Information: Returned before/after readings and any recorded limits do not establish calibration acceptance.'
+          })
+        ).toBeVisible();
       }
       await expect(
         section.getByRole('link', { name: 'Open native completion' })
@@ -135,7 +139,17 @@ for (const type of ['preventive', 'inspection', 'calibration']) {
       );
       await expect(
         page.getByRole('tabpanel', { name: 'Plan & Safety', exact: true })
-      ).toContainText('not permission to begin physical work');
+      ).toContainText('Review safety and approved scope before work');
+      await page.getByTestId('work-phone-boundary').scrollIntoViewIfNeeded();
+      await expect(page.getByTestId('work-phone-boundary')).toBeInViewport();
+      await page.getByTestId('work-phone-boundary').hover();
+      await expect(
+        page
+          .getByRole('tooltip')
+          .filter({ hasText: 'This record does not authorize work.' })
+      ).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('tooltip')).toHaveCount(0);
       expect(onlyReads(requests)).toBe(true);
     });
   }
@@ -166,12 +180,16 @@ test('P51 missing, disabled and empty sources never become completed work', asyn
     })
   );
   await page.reload();
-  await expect(page.getByTestId('routine-work')).toContainText(
-    'Procedure records are not enabled'
-  );
-  await expect(page.getByTestId('routine-work')).toContainText(
-    'Closeout reading records are not enabled'
-  );
+  await expect(
+    page
+      .getByTestId('routine-work')
+      .getByRole('button', { name: 'Procedure records are not enabled.' })
+  ).toHaveText('—');
+  await expect(
+    page.getByTestId('routine-work').getByRole('button', {
+      name: 'Closeout reading records are not enabled.'
+    })
+  ).toHaveText('—');
   await page.route('**/api/kanban/work-orders/73/overview/', (route) =>
     route.fulfill({
       json: {
@@ -185,12 +203,16 @@ test('P51 missing, disabled and empty sources never become completed work', asyn
     })
   );
   await page.reload();
-  await expect(page.getByTestId('routine-work')).toContainText(
-    'Required tasks and their completion are not established'
-  );
-  await expect(page.getByTestId('routine-work')).toContainText(
-    'does not establish that required measurements were taken'
-  );
+  await expect(
+    page.getByTestId('routine-work').getByRole('button', {
+      name: /No applied procedure returned\. Required tasks and their completion are not established/
+    })
+  ).toHaveText('—');
+  await expect(
+    page.getByTestId('routine-work').getByRole('button', {
+      name: /No closeout readings returned\. This does not establish that required measurements were taken/
+    })
+  ).toHaveText('—');
   await expectNoPageOverflow(page);
 });
 test('P51 selected saved request opens the existing assistant and keeps original Work', async ({
@@ -349,7 +371,11 @@ test('P51 reading append and retest refresh the mounted Work overview', async ({
   await openCloseout(page);
   await page.getByRole('tab', { name: 'Work', exact: true }).click();
   const section = page.getByTestId('routine-work');
-  await expect(section).toContainText('No closeout readings returned');
+  await expect(
+    section.getByRole('button', {
+      name: /No closeout readings returned\. This does not establish/
+    })
+  ).toHaveText('—');
   await expect(page.getByTestId('fixture-fetching')).toHaveText('0');
   expect(overviewReads).toBe(1);
   const tabs = page.getByRole('tablist', {
@@ -424,17 +450,30 @@ for (const source of ['missing', 'disabled', 'empty']) {
     await mockExecutionWork(page, value);
     await openExecutionPanel(page);
     const section = page.getByTestId('routine-work');
-    await expect(section).toContainText(
-      source === 'missing'
-        ? 'Routine records unavailable'
-        : source === 'disabled'
-          ? 'Closeout reading records are not enabled'
-          : 'No closeout readings returned'
-    );
+    if (source === 'missing') {
+      await expect(section).toContainText('Routine records unavailable');
+    } else {
+      await expect(
+        section.getByRole('button', {
+          name:
+            source === 'disabled'
+              ? 'Closeout reading records are not enabled.'
+              : /No closeout readings returned\. This does not establish/
+        })
+      ).toHaveText('—');
+    }
     await expect(section).toContainText('Calibration traceability incomplete');
-    await expect(section).toContainText('As-found/as-left designation');
+    await expect(
+      section.getByRole('button', {
+        name: /^Information: As-found\/as-left designation/
+      })
+    ).toBeVisible();
     await expect(section).not.toContainText('readings are retained');
-    await expect(section).not.toContainText('Returned before/after readings');
+    await expect(
+      section.getByRole('button', {
+        name: /^Information: Returned before\/after readings/
+      })
+    ).toHaveCount(0);
     await expectNoPageOverflow(page);
     await capturePanel(page, info.outputPath(`calibration-${source}.png`));
   });
@@ -531,11 +570,10 @@ for (const scheme of ['light', 'dark'] as const) {
       await expect(reading).toContainText('Reading recorded at:');
       const disposition = reading.getByTestId('reading-disposition');
       const gaps = page.getByTestId('not-supplied');
-      if (
-        (await gaps.getByRole('button').getAttribute('aria-expanded')) ===
-        'false'
-      )
-        await gaps.getByRole('button').click();
+      await gaps
+        .getByRole('button', { name: 'Record coverage' })
+        .scrollIntoViewIfNeeded();
+      await gaps.getByRole('button', { name: 'Record coverage' }).hover();
       await expect(disposition).toContainText(`Disposition reason: ${reason}`);
       await expect(gaps).toContainText('Disposition recorded by: Not recorded');
       await expect(gaps).toContainText('Disposition recorded at: Not recorded');
@@ -549,6 +587,8 @@ for (const scheme of ['light', 'dark'] as const) {
         'Synthetic original technician'
       );
       await expect(disposition).not.toContainText('19 Oct 2026');
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('tooltip')).toHaveCount(0);
     }
     await expectNoPageOverflow(page);
     await capturePanel(page, info.outputPath(`disposition-${scheme}.png`));

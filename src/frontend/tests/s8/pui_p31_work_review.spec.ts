@@ -68,7 +68,7 @@ for (const scheme of ['light', 'dark'] as const) {
     const badge = page
       .getByRole('main')
       .locator('.mantine-Badge-root')
-      .filter({ hasText: 'Lifecycle:' })
+      .filter({ hasText: /^In progress$/i })
       .first();
     await badge.evaluate((node) => {
       node.style.maxWidth = '8em';

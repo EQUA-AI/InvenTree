@@ -226,7 +226,9 @@ test('native record fields remain reachable and each native section has a workfl
   }
   await tabs.getByRole('tab', { name: 'Closeout', exact: true }).click();
   await expect(
-    page.getByText('Standalone completion is not enabled for this work order.')
+    page.getByRole('button', {
+      name: 'Closeout is unavailable for this work order'
+    })
   ).toBeVisible();
   // Only the Parts panel's own read-only material readout, once.
   expect(
@@ -389,7 +391,9 @@ test('packet work keeps qualified evidence safety and completion authority witho
     page.getByText('Retained verification account only', { exact: true })
   ).toBeVisible();
   await expect(
-    page.getByText(/does not establish permission to operate/)
+    page.getByRole('button', {
+      name: /Information: Restoring a lockout point.*Operating permission and observed return require their own records/
+    })
   ).toBeVisible();
   await tabs.getByRole('tab', { name: 'Closeout', exact: true }).click();
   await expect(page.getByTestId('prepared-closeout')).toBeVisible();

@@ -14,6 +14,7 @@ import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { InfoTooltip } from '../../../components/items/ValueTooltip';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { ModelType } from '@lib/enums/ModelType';
@@ -441,15 +442,7 @@ export function WorkMaterialsPanel({
   if (query.isError && (!query.data || denied)) {
     const status = (query.error as { response?: { status?: number } })?.response
       ?.status;
-    if (status === 404)
-      return (
-        <Stack gap='sm'>
-          <Text size='sm' c='dimmed'>
-            {t`Detailed material records are not available on this server; the job's required parts are shown as recorded.`}
-          </Text>
-          {fallback}
-        </Stack>
-      );
+    if (status === 404) return <Stack gap='sm'>{fallback}</Stack>;
     return (
       <Alert
         color='red'
@@ -585,9 +578,9 @@ export function WorkMaterialsPanel({
         </Stack>
       )}
       {!procurementReady && (
-        <Text size='xs' c='dimmed'>
-          {t`Fitted identity requires an exact registry slot and a recorded serial or lot. Material use alone does not establish a fitted item.`}
-        </Text>
+        <InfoTooltip
+          label={t`Fitted identity requires an exact registry slot and a recorded serial or lot. Material use alone does not establish a fitted item.`}
+        />
       )}
     </Stack>
   );

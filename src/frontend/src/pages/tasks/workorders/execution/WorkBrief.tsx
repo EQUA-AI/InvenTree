@@ -11,6 +11,7 @@ import {
   Text
 } from '@mantine/core';
 import { Link, useSearchParams } from 'react-router-dom';
+import { MissingValue } from '../../../../components/items/ValueTooltip';
 import { type WorkPanel, workPanelParams } from '../workPanelState';
 import { ContinueInvestigation } from './ContinueInvestigation';
 import {
@@ -107,11 +108,10 @@ export function WorkBrief({
             </Text>
           </>
         ) : (
-          <Text size='sm'>
-            {routine
-              ? t`No recorded maintenance outcome is supplied. The lifecycle and Board stage do not establish a physical result.`
-              : t`No recorded repair outcome is supplied. The lifecycle and Board stage do not establish a physical result.`}
-          </Text>
+          <MissingValue
+            label={routine ? t`Maintenance outcome` : t`Repair outcome`}
+            reason={t`No outcome recorded`}
+          />
         )}
         {link('closeout', t`View maintenance account and report`)}
       </ExecutionSection>
@@ -128,8 +128,19 @@ export function WorkBrief({
             </Text>
             <Text size='sm'>{brief.next.purpose}</Text>
             <Text size='sm'>
-              {t`Owner`}: {brief.next.owner_name || t`Not recorded`} ·{' '}
-              {t`Checkpoint`}: {recordedTime(brief.next.next_checkpoint)}
+              {t`Owner`}:{' '}
+              {brief.next.owner_name || (
+                <MissingValue label={t`Owner`} reason={t`No value recorded`} />
+              )}{' '}
+              · {t`Checkpoint`}:{' '}
+              {brief.next.next_checkpoint ? (
+                recordedTime(brief.next.next_checkpoint)
+              ) : (
+                <MissingValue
+                  label={t`Checkpoint`}
+                  reason={t`No value recorded`}
+                />
+              )}
             </Text>
             {brief.next.blocked_reason && (
               <Text size='sm'>{brief.next.blocked_reason}</Text>
@@ -193,10 +204,12 @@ export function WorkBrief({
                     </Text>
                   </Stack>
                 ) : (
-                  <Text size='sm'>{t`No saved explanation supplied. Routine inspection, calibration or preventive work does not require an invented fault cause.`}</Text>
+                  <MissingValue
+                    reason={t`No saved explanation supplied. Routine inspection, calibration or preventive work does not require an invented fault cause.`}
+                  />
                 )}
                 {brief.unresolved === null ? (
-                  <Text size='sm'>{t`Saved request queue not supplied`}</Text>
+                  <MissingValue reason={t`Saved request queue not supplied`} />
                 ) : (
                   <Text size='sm'>{t`${brief.unresolved.length} unresolved requests · ${brief.requests!.length} saved requests`}</Text>
                 )}
@@ -215,14 +228,20 @@ export function WorkBrief({
               <ExecutionSection title={t`Prepared work and recorded checks`}>
                 <SimpleGrid cols={{ base: 1, sm: 2 }}>
                   <ExecutionFact label={t`Current approved scope`}>
-                    {brief.scope
-                      ? t`Scope ${brief.scope.id} · revision ${brief.scope.version} · ${brief.scope.approved_by || t`Approver not recorded`} · ${recordedTime(brief.scope.approved_at)}`
-                      : t`Not supplied as one current approved revision`}
+                    {brief.scope ? (
+                      t`Scope ${brief.scope.id} · revision ${brief.scope.version} · ${brief.scope.approved_by || t`Approver not recorded`} · ${recordedTime(brief.scope.approved_at)}`
+                    ) : (
+                      <MissingValue
+                        reason={t`No current approved scope revision`}
+                      />
+                    )}
                   </ExecutionFact>
                   <ExecutionFact label={t`Recorded physical checks`}>
-                    {brief.tests
-                      ? t`${brief.passed!.length} recorded passes · ${brief.failed!.length} failures · ${brief.tests.length} test records; acceptance separate`
-                      : t`Test records not supplied or not enabled`}
+                    {brief.tests ? (
+                      t`${brief.passed!.length} recorded passes · ${brief.failed!.length} failures · ${brief.tests.length} test records; acceptance separate`
+                    ) : (
+                      <MissingValue reason={t`Test records unavailable`} />
+                    )}
                   </ExecutionFact>
                 </SimpleGrid>
                 {work.parts.length > 0 ? (
@@ -236,7 +255,7 @@ export function WorkBrief({
                     </Text>
                   ))
                 ) : (
-                  <Text size='sm'>{t`No material requirements returned in this overview. Reservation, issue and use records remain in Parts.`}</Text>
+                  <Text size='sm'>{t`No material requirements`}</Text>
                 )}
                 {work.parts.length > 3 && (
                   <Text size='sm'>{t`${work.parts.length} material requirements recorded; all records in Parts`}</Text>

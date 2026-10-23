@@ -23,6 +23,10 @@ import {
 import dayjs from 'dayjs';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  InfoTooltip,
+  MissingValue
+} from '../../../components/items/ValueTooltip';
 import { openGlobalAIChatAboutWork } from '../../../states/AIChatState';
 import { CloseoutMaterials } from './CloseoutMaterials';
 import { OriginalMedia } from './OriginalMedia';
@@ -192,8 +196,16 @@ ${t`Fit record`}: ${fact(row.material?.fitted_record?.id)}`
       <Card withBorder data-testid='closeout-account'>
         <Stack gap='sm'>
           <Group justify='space-between'>
-            <Title order={2} size='h4'>{t`Prepared maintenance account`}</Title>
-            <Badge color={accepted ? 'green' : 'gray'}>
+            <Group gap='xs' wrap='nowrap' w={{ base: '100%', sm: 'auto' }}>
+              <Title
+                order={2}
+                size='h4'
+              >{t`Prepared maintenance account`}</Title>
+              <InfoTooltip
+                label={t`Extracted text needs review. A story or extraction is not an approved procedure. This account does not establish operating permission or service return. Elapsed time and recording length are not person-work time. Reconcile materials using the recorded stock controls. The preview exports the displayed account and source references without updating the maintenance record.`}
+              />
+            </Group>
+            <Badge tt='none' color={accepted ? 'green' : 'gray'}>
               {accepted
                 ? t`Completed account`
                 : changed
@@ -201,11 +213,11 @@ ${t`Fit record`}: ${fact(row.material?.fitted_record?.id)}`
                   : t`Prepared draft`}
             </Badge>
           </Group>
-          <Text size='xs' c='dimmed'>
-            {accepted
-              ? `${t`Closeout id`}: ${accepted.id} · ${when(accepted.completed_at)} · ${t`Completed by`} ${fact(accepted.completed_by_name)}`
-              : `${t`Work version`} ${workOrder.lifecycle_version} · ${t`Extraction is not a verified fact`}`}
-          </Text>
+          {accepted && (
+            <Text size='xs' c='dimmed'>
+              {when(accepted.completed_at)} · {fact(accepted.completed_by_name)}
+            </Text>
+          )}
           {accepted && <Text size='sm'>{verification}</Text>}
           {Object.entries(labels).map(([key, label]) => {
             const decision =
@@ -213,62 +225,64 @@ ${t`Fit record`}: ${fact(row.material?.fitted_record?.id)}`
               proposal?.decisions.find((row) => row.field_path === key);
             return (
               <div key={key}>
-                <Text size='xs' c='dimmed'>
-                  {label}
-                </Text>
+                <Group gap='xs' wrap='nowrap'>
+                  <Text size='xs' c='dimmed'>
+                    {label}
+                  </Text>{' '}
+                  {!accountLoading &&
+                    (decision ||
+                      (sourceCapture &&
+                        narrativeExcerpts(
+                          sourceCapture.narrative,
+                          proposal?.fields[key]
+                        ).length > 0)) && (
+                      <InfoTooltip
+                        label={[
+                          ...(sourceCapture
+                            ? narrativeExcerpts(
+                                sourceCapture.narrative,
+                                proposal?.fields[key]
+                              ).map(
+                                (span) =>
+                                  `${t`Capture`} ${sourceCapture.id} · ${t`Revision`} ${sourceCapture.revision} · [${span.start}, ${span.end}) · ${span.text}`
+                              )
+                            : []),
+                          ...(decision
+                            ? [
+                                `${decision.decision} · ${fact(decision.decided_by_name)} · ${when(decision.decided_at)}`
+                              ]
+                            : [])
+                        ].join('\n')}
+                      />
+                    )}
+                </Group>
                 <Text
                   style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
                 >
-                  {accountUnavailable && !accepted
-                    ? t`Account decisions unavailable`
-                    : accountLoading && !accepted
-                      ? t`Loading account decisions…`
-                      : key === 'cause' && !values.cause
-                        ? t`Not established`
-                        : fact(values[key as keyof typeof values])}
+                  {accountUnavailable && !accepted ? (
+                    t`Account decisions unavailable`
+                  ) : accountLoading && !accepted ? (
+                    t`Loading account decisions…`
+                  ) : !values[key as keyof typeof values] ? (
+                    <MissingValue label={label} reason={t`No value recorded`} />
+                  ) : (
+                    fact(values[key as keyof typeof values])
+                  )}
                 </Text>
-                {!accountLoading &&
-                  sourceCapture &&
-                  narrativeExcerpts(
-                    sourceCapture.narrative,
-                    proposal?.fields[key]
-                  ).map((span) => (
-                    <Text
-                      key={`${span.start}-${span.end}`}
-                      size='xs'
-                      c='dimmed'
-                    >
-                      {t`Source`}: {t`Capture`} {sourceCapture.id} ·{' '}
-                      {t`Revision`} {sourceCapture.revision} ·{' '}
-                      {t`Narrative code points`} [{span.start}, {span.end}) · “
-                      {span.text}”
-                    </Text>
-                  ))}
-                {decision && (
-                  <Text size='xs' c='dimmed'>
-                    {t`Saved decision`}: {decision.decision} · {t`Recorded by`}{' '}
-                    {fact(decision.decided_by_name)} ·{' '}
-                    {when(decision.decided_at)}
-                  </Text>
-                )}
               </div>
             );
           })}
           {manualAccepted && (
-            <Text
-              size='xs'
-              c='dimmed'
-            >{t`Per-field decisions are not supplied for this manual account.`}</Text>
+            <InfoTooltip
+              label={t`Per-field decisions are not supplied for this manual account.`}
+            />
           )}
           <Anchor
             component={Link}
             replace
             to='?work_panel=verify'
           >{t`View verification in Verify & Return`}</Anchor>
-          <Text
-            size='sm'
-            c='dimmed'
-          >{t`This account does not establish permission to operate or service return.`}</Text>
+
           <Title order={3} size='h5'>{t`Materials and time`}</Title>
           <Anchor
             component={Link}
@@ -276,14 +290,20 @@ ${t`Fit record`}: ${fact(row.material?.fitted_record?.id)}`
             to='?work_panel=parts'
           >{t`View recorded materials and custody`}</Anchor>
           <Text size='sm'>
-            {t`Person-work time`}: {t`Unavailable — coverage unknown`} ·{' '}
+            {t`Person-work time`}:{' '}
+            <MissingValue reason={t`Person-work coverage unknown`} /> ·{' '}
             {t`Downtime (minutes)`}:{' '}
-            {fact(accepted ? accepted.downtime_minutes : draftDowntime)}
+            {(accepted ? accepted.downtime_minutes : draftDowntime) === '' ||
+            (accepted ? accepted.downtime_minutes : draftDowntime) == null ? (
+              <MissingValue
+                label={t`Downtime`}
+                reason={t`No downtime recorded`}
+              />
+            ) : (
+              fact(accepted ? accepted.downtime_minutes : draftDowntime)
+            )}
           </Text>
-          <Text
-            size='xs'
-            c='dimmed'
-          >{t`Elapsed work time and recording length are not person-work time. Material discrepancies use the native reconciliation controls.`}</Text>
+
           {partUsage === undefined ? (
             <Text size='sm'>{t`Material reconciliation is not available.`}</Text>
           ) : partUsage.length === 0 ? (
@@ -291,12 +311,7 @@ ${t`Fit record`}: ${fact(row.material?.fitted_record?.id)}`
           ) : (
             <CloseoutMaterials rows={partUsage} />
           )}
-          {!accepted && (draftDowntime !== '' || draftFollowUp) && (
-            <Text
-              size='xs'
-              c='dimmed'
-            >{t`Optional time and follow-up edits are an unsaved draft.`}</Text>
-          )}
+
           {reconciliation}
           <Title order={3} size='h5'>{t`Saved readings and attempts`}</Title>
           {readings === undefined ? (
@@ -331,15 +346,19 @@ ${t`Fit record`}: ${fact(row.material?.fitted_record?.id)}`
               </Group>
             ))
           )}
-          <Title order={3} size='h5'>{t`Report preview`}</Title>
-          {accepted && (
-            <Text size='sm' c='dimmed'>
-              {accepted.reports?.length
-                ? t`This is the current account reference. Use the frozen closeout report above for the account and sources at completion.`
-                : t`Completed fields are preserved. Material and reading rows are current supporting records; a complete frozen report snapshot is not supplied by this server.`}
-            </Text>
-          )}
-          <Text size='sm'>{t`The preview exports the displayed account and recorded source references. It does not update the maintenance record.`}</Text>
+          <Group gap='xs'>
+            <Title order={3} size='h5'>{t`Report preview`}</Title>
+            {accepted && (
+              <InfoTooltip
+                label={
+                  accepted.reports?.length
+                    ? t`Use the frozen closeout report for the account and sources at completion.`
+                    : t`Completed fields are preserved. Materials and readings are current supporting records; a frozen report is unavailable.`
+                }
+              />
+            )}
+          </Group>
+
           {loading ? (
             <Text size='sm'>
               {sourcesEnabled
@@ -429,7 +448,7 @@ ${t`Fit record`}: ${fact(row.material?.fitted_record?.id)}`
           {captures === undefined ? (
             <Text>{t`Story sources are not available yet.`}</Text>
           ) : captures.length === 0 ? (
-            <Text>{t`No saved technician story. Add the finding, work and reasoning, failed approaches, practical advice and unresolved follow-up in the existing assistant or native capture below.`}</Text>
+            <Text>{t`No technician story recorded`}</Text>
           ) : (
             captures.map((capture) => (
               <Stack key={capture.id} gap={4}>
@@ -521,10 +540,7 @@ ${t`Fit record`}: ${fact(row.material?.fitted_record?.id)}`
               </Stack>
             ))
           )}
-          <Text
-            size='xs'
-            c='dimmed'
-          >{t`Topic coverage and reviewed reusable lessons are not supplied. A story or extraction is not an approved procedure. Original media and supplied timing are shown with each saved story.`}</Text>
+
           <ContinueInvestigation
             workOrder={workOrder}
             panel='closeout'
@@ -532,10 +548,6 @@ ${t`Fit record`}: ${fact(row.material?.fitted_record?.id)}`
             caption={false}
             variant='light'
           />
-          <Text
-            size='xs'
-            c='dimmed'
-          >{t`Carries this Work to the existing assistant; naming a story there does not save a closeout capture automatically.`}</Text>
         </Stack>
       </Card>
     </Stack>

@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test';
 const endpoint = '**/api/order/po/*/receive/';
 const captureRoot = resolve(
   import.meta.dirname,
-  '../../../../data/devscratch/r8-w2c/captures'
+  process.env.AIMMS_CAPTURE_DIR ?? '../../../../data/devscratch/r8-w2c/captures'
 );
 
 const modes = [

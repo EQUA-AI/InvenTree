@@ -13,7 +13,8 @@ import {
   SimpleGrid,
   Skeleton,
   Stack,
-  Text
+  Text,
+  Title
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -117,6 +118,7 @@ export function PurchaseOrderProcurement({
       className={procurementClasses.context}
     >
       <Stack gap='sm'>
+        <Title order={2} size='h5'>{t`Work / source`}</Title>
         {(work.isError || identity.isError) && (
           <Alert color='orange' p='xs'>
             <Group justify='space-between'>

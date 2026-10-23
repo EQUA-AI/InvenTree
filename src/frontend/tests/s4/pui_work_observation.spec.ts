@@ -410,9 +410,11 @@ test('reader stays read-only and resolved requests cannot accept a manual observ
   await open(page);
   const resolved = page.getByTestId('investigation-request-401');
   await expect(resolved).toContainText('Recorded blocked reason');
-  await expect(resolved).toContainText(
-    'This earlier blocked reason is retained with the resolved request'
-  );
+  await expect(
+    resolved.getByRole('button', {
+      name: /Information: This earlier blocked reason is retained with the resolved request/
+    })
+  ).toBeVisible();
   await expect(resolved).not.toContainText(
     'This decision remains unresolved until addressed'
   );

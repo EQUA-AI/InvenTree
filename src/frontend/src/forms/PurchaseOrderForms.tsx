@@ -784,7 +784,7 @@ function LineItemFormRow({
         fieldName='batch_code'
         fieldDefinition={{
           field_type: 'string',
-          label: t`Batch Code`,
+          label: batchRequired ? t`Batch` : t`Batch Code`,
           required: batchRequired,
           description: batchRequired
             ? undefined
@@ -978,7 +978,9 @@ export function useReceiveLineItems(props: LineItemsForm) {
   const modal = useCreateApiFormModal({
     ...props.formProps,
     url: apiUrl(ApiEndpoints.purchase_order_receive, props.orderPk),
-    title: t`Receive Line Items`,
+    title: receiving.context?.maintenance
+      ? t`Receive stock`
+      : t`Receive Line Items`,
     onOpen: () => {
       recoveredOnMount.current = true;
       setOpened(true);

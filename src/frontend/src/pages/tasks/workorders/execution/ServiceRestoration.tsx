@@ -2,6 +2,7 @@ import type { WorkOrderOverview } from '@lib/types/WorkOrderOverview';
 import { t } from '@lingui/core/macro';
 import { Anchor, Badge, SimpleGrid, Stack, Text } from '@mantine/core';
 import { Link, useSearchParams } from 'react-router-dom';
+import { MissingValue } from '../../../../components/items/ValueTooltip';
 import { workPanelParams } from '../workPanelState';
 import {
   ExecutionFact,
@@ -47,23 +48,35 @@ export function ServiceRestoration({
     <ExecutionSection
       title={t`Service restoration and remaining obligations`}
       testId='service-restoration'
+      info={[
+        t`Work completion, test results and telemetry are separate from test acceptance, operating permission, service capacity and remaining obligations. Review each attributed record and its effective window.`,
+        ...(closeout?.follow_up_required
+          ? [
+              t`Follow-up owner, original trigger, checkpoint and resolution are not supplied. The maintenance update does not resolve this follow-up.`
+            ]
+          : [])
+      ].join(' ')}
     >
       <SimpleGrid cols={{ base: 1, sm: 2 }}>
-        <ExecutionFact label={t`Native Work lifecycle`}>
+        <ExecutionFact label={t`Work status`}>
           {workOrder.lifecycle_status?.replaceAll('_', ' ') || t`Unavailable`}
         </ExecutionFact>
-        <ExecutionFact label={t`Native completion time`}>
+        <ExecutionFact label={t`Completed at`}>
           {recordedTime(workOrder.actual_completed_at)}
         </ExecutionFact>
         <ExecutionFact label={t`Maintenance record`}>
-          {closeout
-            ? t`Updated · Closeout ${closeout.id}`
-            : t`Completed closeout not supplied`}
+          {closeout ? (
+            t`Updated · Closeout ${closeout.id}`
+          ) : (
+            <MissingValue reason={t`No completed maintenance account`} />
+          )}
         </ExecutionFact>
         <ExecutionFact label={t`Saved physical test outcomes`}>
-          {tests
-            ? t`Recorded passes: ${tests.filter((row) => testEvaluation(row) === 'recorded_pass').length} · Current failures: ${tests.filter((row) => testEvaluation(row) === 'failed').length}`
-            : t`Unavailable — test records not supplied`}
+          {tests ? (
+            t`Recorded passes: ${tests.filter((row) => testEvaluation(row) === 'recorded_pass').length} · Current failures: ${tests.filter((row) => testEvaluation(row) === 'failed').length}`
+          ) : (
+            <MissingValue reason={t`Test records unavailable`} />
+          )}
         </ExecutionFact>
       </SimpleGrid>
       {closeout && (
@@ -73,17 +86,23 @@ export function ServiceRestoration({
           {recordedTime(closeout.completed_at)}
         </Text>
       )}
-      <Text
-        size='sm'
-        fw={600}
-      >{t`Service restoration is not established by Work completion.`}</Text>
-      <Badge
-        color='gray'
-        variant='light'
-        styles={{ root: { height: 'auto' }, label: { whiteSpace: 'normal' } }}
-      >
-        {acceptanceBadge}
-      </Badge>
+
+      <ExecutionFact label={t`Test acceptance`}>
+        {['unavailable', 'not_recorded'].includes(acceptance.state) ? (
+          <MissingValue reason={acceptanceBadge} />
+        ) : (
+          <Badge
+            styles={{
+              root: { textTransform: 'none', height: 'auto' },
+              label: { whiteSpace: 'normal' }
+            }}
+            color='gray'
+            variant='light'
+          >
+            {acceptanceBadge}
+          </Badge>
+        )}
+      </ExecutionFact>
       {authority ? (
         <>
           <AuthorityRecords
@@ -95,7 +114,7 @@ export function ServiceRestoration({
               'service_state'
             ]}
           />
-          <Text size='sm'>{t`Full service, required capacity and resilience remain unverified unless explicitly established by the recorded source. Run telemetry alone cannot establish these facts.`}</Text>
+
           {authority.telemetry.length ? (
             <Stack gap='xs'>
               <Text
@@ -117,12 +136,14 @@ export function ServiceRestoration({
               ))}
             </Stack>
           ) : (
-            <Text size='sm'>{t`Duty / standby / run telemetry: Not recorded — no reviewed bound tags supplied.`}</Text>
+            <MissingValue
+              reason={t`Duty / standby / run telemetry: Not recorded — no reviewed bound tags supplied.`}
+            />
           )}
           <AuthorityRecorder value={authority} mode='service' />
         </>
       ) : null}
-      <Text size='sm'>{t`Work completion, a recorded pass or equipment running does not establish accepted tests, operating permission, full service, restored standby capacity or closed obligations.`}</Text>
+
       <Stack gap='xs'>
         <Text
           size='sm'
@@ -139,13 +160,14 @@ export function ServiceRestoration({
                 {t`Source`}: {t`Closeout`} {closeout.id} · {t`Saved at`}:{' '}
                 {recordedTime(closeout.completed_at)}
               </Text>
-              <Text size='xs'>{t`Follow-up owner, original trigger, checkpoint and resolution are not supplied. The maintenance update does not resolve this follow-up.`}</Text>
             </Stack>
           )}
         {unresolved === undefined ? (
-          <Text size='sm'>{t`Saved request queue unavailable; remaining requests are unknown.`}</Text>
+          <MissingValue
+            reason={t`Saved request queue unavailable; remaining requests are unknown.`}
+          />
         ) : unresolved.length === 0 ? (
-          <Text size='sm'>{t`No unresolved investigation requests returned. This does not establish that all obligations are closed.`}</Text>
+          <Text size='sm'>{t`No open investigation requests`}</Text>
         ) : (
           unresolved.map((row) => (
             <Stack key={row.id} gap={2}>
@@ -159,13 +181,26 @@ export function ServiceRestoration({
               </Anchor>
               <Text size='sm'>
                 {row.status.replaceAll('_', ' ')} · {t`Owner`}:{' '}
-                {row.owner_name || t`Not recorded`} · {t`Next checkpoint`}:{' '}
-                {recordedTime(row.next_checkpoint)}
+                {row.owner_name || (
+                  <MissingValue
+                    label={t`Owner`}
+                    reason={t`No value recorded`}
+                  />
+                )}{' '}
+                · {t`Next checkpoint`}:{' '}
+                {row.next_checkpoint ? (
+                  recordedTime(row.next_checkpoint)
+                ) : (
+                  <MissingValue
+                    label={t`Next checkpoint`}
+                    reason={t`No value recorded`}
+                  />
+                )}
               </Text>
               <Text size='xs'>
                 {t`Source`}: {t`Request ${row.id}`} v{row.version} ·{' '}
                 {t`Saved at`}: {recordedTime(row.created_at)} ·{' '}
-                {t`Original trigger: unavailable`}
+                <MissingValue reason={t`Original trigger: unavailable`} />
               </Text>
               {row.blocked_reason && (
                 <Text size='sm'>{row.blocked_reason}</Text>
@@ -173,7 +208,6 @@ export function ServiceRestoration({
             </Stack>
           ))
         )}
-        <Text size='xs'>{t`Service, financial, reporting, quality, permanent-repair and residual obligations are not supplied as an authoritative register. Applicability, accepted owners and deadlines cannot be inferred from this account or request queue.`}</Text>
       </Stack>
       {params.get('work_panel') !== 'verify' && (
         <Anchor

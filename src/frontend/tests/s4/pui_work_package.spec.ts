@@ -216,7 +216,7 @@ for (const scheme of ['light', 'dark'] as const) {
       .click();
     await expect(plan.getByText('Synthetic task version 1')).toBeVisible();
     await expect(
-      plan.getByText(/no physical-authority provider/)
+      plan.getByRole('button', { name: /no physical-authority provider/ })
     ).toBeVisible();
     await expect(
       plan.getByText(
@@ -243,7 +243,9 @@ test('missing package and disabled procedure source do not establish readiness',
 }, info) => {
   await mockExecutionWork(page);
   await openExecutionPanel(page, 'plan');
-  await expect(page.getByText('Prepared package not supplied')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'No work package available' })
+  ).toBeVisible();
   await mockExecutionWork(page, {
     ...workOrder(),
     prepared_package: preparedPackage({
@@ -255,7 +257,9 @@ test('missing package and disabled procedure source do not establish readiness',
   });
   await page.reload();
   await expect(
-    page.getByText('Governed procedure records are not enabled.')
+    page.getByRole('button', {
+      name: 'Governed procedure records are not enabled.'
+    })
   ).toBeVisible();
   await expect(
     page.getByText('No current approved repair scope recorded.')

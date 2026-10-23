@@ -143,7 +143,7 @@ test('each material stage keeps its own record and recorder', async ({
   await expect(line).toContainText('Required 2 ea');
   await expect(line).toContainText('Source: Procedure requirement');
   await expect(line).toContainText('19 Oct 2026,');
-  await expect(line).toContainText('Reserved 2 ea of 2 ea');
+  await expect(line).toContainText('Allocated 2 ea of 2 ea');
   const used = line.locator('[data-reservation="1"]');
   await expect(used).toContainText('planner');
   // Issue records when, not who; use comes with its recorder.
@@ -163,9 +163,9 @@ test('each material stage keeps its own record and recorder', async ({
     'Available stock used for this job'
   );
   await expect(
-    page.getByText(
-      'Fitted identity requires an exact registry slot and a recorded serial or lot. Material use alone does not establish a fitted item.'
-    )
+    page.getByRole('button', {
+      name: 'Information: Fitted identity requires an exact registry slot and a recorded serial or lot. Material use alone does not establish a fitted item.'
+    })
   ).toBeVisible();
   await expect(
     page.getByRole('link', { name: 'Mechanical Seal', exact: true })
@@ -215,7 +215,7 @@ test('a short line names its owner and never says stock covered the job', async 
     }
   ];
   await openParts(page, { body });
-  await expect(requirement(page)).toContainText('Reserved 1 ea of 2 ea');
+  await expect(requirement(page)).toContainText('Allocated 1 ea of 2 ea');
   await expect(requirement(page)).toContainText(
     '1 ea · ordered · purchase order line 31'
   );
@@ -296,9 +296,14 @@ test('a server without the readout keeps the native requirement table', async ({
   page
 }) => {
   await openParts(page, { status: 404 });
+  const parts = page.getByRole('tabpanel', { name: 'Parts', exact: true });
   await expect(
-    page.getByText('Detailed material records are not available on this server')
+    parts.getByRole('heading', { name: 'Parts for this job', exact: true })
   ).toBeVisible();
+  await expect(
+    parts.getByText('No required parts.', { exact: true })
+  ).toBeVisible();
+  await expect(requirement(page)).toHaveCount(0);
 });
 
 test('a failed read shows nothing old and offers retry', async ({ page }) => {

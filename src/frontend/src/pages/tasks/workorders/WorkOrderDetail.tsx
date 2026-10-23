@@ -47,6 +47,10 @@ import {
   useParams,
   useSearchParams
 } from 'react-router-dom';
+import {
+  MissingValue,
+  ValueTooltip
+} from '../../../components/items/ValueTooltip';
 import { WorkTableScroll } from '../../../components/tables/WorkTableScroll';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
@@ -79,7 +83,10 @@ import { WorkAttachmentResource } from './WorkAttachmentResource';
 import { WorkMaterialsPanel } from './WorkMaterialsPanel';
 import { WorkPanelNavigation } from './WorkPanelNavigation';
 import { DiagnoseProjection } from './execution/DiagnoseProjection';
-import { unattributedVerificationLabel } from './execution/ExecutionFacts';
+import {
+  dependencyLabel,
+  unattributedVerificationLabel
+} from './execution/ExecutionFacts';
 import { NotSupplied } from './execution/NotSupplied';
 import { PreparedPackage } from './execution/PreparedPackage';
 import { RoutineLinks } from './execution/RoutineLinks';
@@ -414,11 +421,6 @@ function WorkOrderWorkspace({
                 title={t`Board cards`}
                 icon={<IconLayoutKanban size={18} />}
               >
-                <Text
-                  size='sm'
-                  c='dimmed'
-                  mb='sm'
-                >{t`Operational tasks retain their own recorded status and links.`}</Text>
                 <WorkTableScroll
                   minWidth={640}
                   label={t`Board cards table, scroll for all columns`}
@@ -514,7 +516,7 @@ function WorkOrderWorkspace({
                   role='note'
                   color='gray'
                   title={t`No findings in this overview`}
-                >{t`Recorded findings are not supplied here. This does not establish a cause or mean that all evidence sources have been checked.`}</Alert>
+                >{t`No findings recorded`}</Alert>
               )
             }
           />
@@ -561,7 +563,7 @@ function WorkOrderWorkspace({
               role='note'
               color='gray'
               title={t`No linked repair packet`}
-            >{t`Safety and approved-scope records are not included in this overview. This is not permission to begin physical work.`}</Alert>
+            >{t`Review safety and approved scope before work`}</Alert>
           )}
           <SectionCard
             title={t`Dependencies`}
@@ -636,7 +638,13 @@ function WorkOrderWorkspace({
               captureEnabled={workOrder.closeout_wizard_enabled !== false}
             />
           ) : (
-            <Text c='dimmed'>{t`Standalone completion is not enabled for this work order.`}</Text>
+            <Text c='dimmed'>
+              {
+                <MissingValue
+                  reason={t`Closeout is unavailable for this work order`}
+                />
+              }
+            </Text>
           )}
           <MonitoringContinuity workOrder={workOrder} />
         </Stack>
@@ -933,7 +941,11 @@ function InfoItem({
         {label}
       </Text>
       <Text size='sm' style={{ overflowWrap: 'anywhere' }}>
-        {value || t`Not recorded`}
+        {!value || value === t`Not recorded` ? (
+          <MissingValue label={label} reason={t`No value recorded`} />
+        ) : (
+          value
+        )}
       </Text>
     </Stack>
   );
@@ -965,9 +977,14 @@ function StateBadge({
   label
 }: Readonly<{ value: string; color: string; label?: string }>) {
   return (
-    <Badge variant='dot' color={color}>
-      {label ? `${label}: ${humanize(value)}` : humanize(value)}
-    </Badge>
+    <ValueTooltip
+      label={label ? `${label}: ${humanize(value)}` : humanize(value)}
+      focusable={false}
+    >
+      <Badge variant='dot' color={color} tt='none'>
+        {humanize(value)}
+      </Badge>
+    </ValueTooltip>
   );
 }
 
@@ -1052,7 +1069,12 @@ function PartsTable({ parts }: Readonly<{ parts: WorkOrderPart[] }>) {
                   {part.part_name}
                 </Text>
                 <Text size='xs' c='dimmed'>
-                  {part.part_ipn || t`Not recorded`}
+                  {part.part_ipn || (
+                    <MissingValue
+                      label={t`Part code`}
+                      reason={t`No part code recorded`}
+                    />
+                  )}
                 </Text>
               </Table.Td>
               <Table.Td>{part.quantity}</Table.Td>
@@ -1063,7 +1085,14 @@ function PartsTable({ parts }: Readonly<{ parts: WorkOrderPart[] }>) {
                   color={part.allocation_status === 'full' ? 'green' : 'orange'}
                 />
               </Table.Td>
-              <Table.Td>{part.allocation_note || t`Not recorded`}</Table.Td>
+              <Table.Td>
+                {part.allocation_note || (
+                  <MissingValue
+                    label={t`Notes`}
+                    reason={t`No allocation note recorded`}
+                  />
+                )}
+              </Table.Td>
             </Table.Tr>
           ))}
         </Table.Tbody>
@@ -1106,7 +1135,7 @@ function DependenciesTable({
                 </Anchor>
               </Table.Td>
               <Table.Td>
-                {dependency.dependency_type}
+                {dependencyLabel(dependency.dependency_type)}
                 {dependency.lag_minutes
                   ? ` · ${formatMinutes(dependency.lag_minutes)} lag`
                   : ''}
@@ -1239,7 +1268,16 @@ function EventTimeline({ events }: Readonly<{ events: WorkOrderEvent[] }>) {
             title={
               event.event_type.toUpperCase() === 'COMPLETED'
                 ? t`Maintenance record updated`
-                : humanize(event.event_type)
+                : ((
+                    {
+                      PROC_SOURCE_SELECTED: t`Source selected`,
+                      PROC_PO_LINKED: t`Purchase order linked`,
+                      PROC_PO_EMAIL_RECORDED: t`PDF and email recorded`,
+                      PROC_PO_ACKNOWLEDGED: t`Supplier acknowledgment recorded`,
+                      PROC_RECEIPT_RECORDED: t`Material received`,
+                      PROC_RECEIPT_ALLOCATED: t`Receipt reserved`
+                    } as Record<string, string>
+                  )[event.event_type] ?? humanize(event.event_type))
             }
           >
             <Text size='sm'>

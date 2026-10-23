@@ -14,6 +14,10 @@ import {
   Title
 } from '@mantine/core';
 import { Link, useSearchParams } from 'react-router-dom';
+import {
+  InfoTooltip,
+  MissingValue
+} from '../../../../components/items/ValueTooltip';
 import { workPanelParams } from '../workPanelState';
 import { CalibrationTraceability } from './CalibrationTraceability';
 import { ContinueInvestigation } from './ContinueInvestigation';
@@ -71,20 +75,25 @@ export function RoutineWork({
       )
     : undefined;
   return (
-    <ExecutionSection title={title} testId='routine-work'>
-      <Text size='sm'>{t`Tasks, readings and completion belong to this original Work. Investigate a fault only when needed.`}</Text>
+    <ExecutionSection
+      title={title}
+      testId='routine-work'
+      info={t`Tasks, readings and completion belong to this original Work. Investigate a fault only when needed.`}
+    >
       {!value ? (
-        <Alert
-          role='note'
-          color='gray'
-          title={t`Routine records unavailable`}
-        >{t`This server does not supply the routine task and reading projection. Open Plan & Safety and Verify & Return for the available native records.`}</Alert>
+        <Alert role='note' color='gray' title={t`Routine records unavailable`}>
+          <InfoTooltip
+            label={t`This server does not supply the routine task and reading projection. Open Plan & Safety and Verify & Return for the available native records.`}
+          />
+        </Alert>
       ) : (
         <>
           {value.procedures_state !== 'read' ? (
-            <Text size='sm'>{t`Procedure records are not enabled.`}</Text>
+            <MissingValue reason={t`Procedure records are not enabled.`} />
           ) : value.applications.length === 0 ? (
-            <Text size='sm'>{t`No applied procedure returned. Required tasks and their completion are not established.`}</Text>
+            <MissingValue
+              reason={t`No applied procedure returned. Required tasks and their completion are not established.`}
+            />
           ) : (
             value.applications.map((application) => (
               <Stack key={application.id} gap='xs'>
@@ -173,9 +182,13 @@ export function RoutineWork({
           )}
           <Title order={3} size='h5'>{t`Saved readings`}</Title>
           {value.readings_state !== 'read' ? (
-            <Text size='sm'>{t`Closeout reading records are not enabled.`}</Text>
+            <MissingValue
+              reason={t`Closeout reading records are not enabled.`}
+            />
           ) : value.readings.length === 0 ? (
-            <Text size='sm'>{t`No closeout readings returned. This does not establish that required measurements were taken.`}</Text>
+            <MissingValue
+              reason={t`No closeout readings returned. This does not establish that required measurements were taken.`}
+            />
           ) : (
             groupRoutineReadings(value.readings).map((group) => (
               <Stack key={group.key} gap='xs'>
@@ -246,7 +259,9 @@ export function RoutineWork({
                               {reading.expected_max ?? t`Not recorded`}{' '}
                               {reading.unit || t`Unit not recorded`}
                             </Text>
-                            <Text size='xs'>{t`Limit source: saved reading; engineering provenance not supplied`}</Text>
+                            <InfoTooltip
+                              label={t`Limit source: saved reading; engineering provenance not supplied`}
+                            />
                             <Text size='xs'>
                               {t`Step execution`}:{' '}
                               {reading.step_execution ?? t`Not recorded`}
@@ -321,9 +336,13 @@ export function RoutineWork({
           color='yellow'
           title={t`Calibration traceability incomplete`}
         >
-          <Text size='sm'>{t`As-found/as-left designation and test conditions are not supplied. Reference instrument and certificate facts appear only when explicitly recorded for each reading.`}</Text>
+          <InfoTooltip
+            label={t`As-found/as-left designation and test conditions are not supplied. Reference instrument and certificate facts appear only when explicitly recorded for each reading.`}
+          />
           {value?.readings_state === 'read' && value.readings.length > 0 && (
-            <Text size='sm'>{t`Returned before/after readings and any recorded limits do not establish calibration acceptance.`}</Text>
+            <InfoTooltip
+              label={t`Returned before/after readings and any recorded limits do not establish calibration acceptance.`}
+            />
           )}
         </Alert>
       )}
@@ -332,7 +351,9 @@ export function RoutineWork({
         {link('verify', t`Open readings and test records`)}
         {link('closeout', t`Open native completion`)}
       </Group>
-      <Text size='xs'>{t`Applied instructions and resource references remain in Plan & Safety. Original source documents and qualified physical authority are not established by a software permission or completed task. Native site readiness still applies at completion.`}</Text>
+      <InfoTooltip
+        label={t`Applied instructions and resource references remain in Plan & Safety. Original source documents and qualified physical authority are not established by a software permission or completed task. Native site readiness still applies at completion.`}
+      />
       <Accordion variant='contained'>
         <Accordion.Item value='fault'>
           <Accordion.Control>{t`Fault found during this work`}</Accordion.Control>
@@ -353,7 +374,9 @@ export function RoutineWork({
                 variant='light'
               />
               {link('diagnose', t`Open saved investigation requests`)}
-              <Text size='sm'>{t`Discussion retains this Work as context. A request or evidence is saved only through the existing approved chat proposal. Opening chat does not change the original tasks, evidence or completion.`}</Text>
+              <InfoTooltip
+                label={t`Discussion retains this Work as context. A request or evidence is saved only through the existing approved chat proposal. Opening chat does not change the original tasks, evidence or completion.`}
+              />
               <Text size='sm'>{t`Linked corrective Work is created only by an explicit command. The routine Work retains its tasks, readings and outcome.`}</Text>
             </Stack>
           </Accordion.Panel>

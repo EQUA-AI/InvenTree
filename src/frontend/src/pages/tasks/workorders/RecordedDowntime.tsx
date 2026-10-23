@@ -16,6 +16,10 @@ import {
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../../../App';
+import {
+  InfoTooltip,
+  MissingValue
+} from '../../../components/items/ValueTooltip';
 import { RecordCommandState } from '../../../components/records/RecordCommandState';
 import { useRecordedCommand } from '../../../components/records/useRecordedCommand';
 import { useUserState } from '../../../states/UserState';
@@ -99,9 +103,13 @@ export function RecordedDowntime({
           </Paper>
         ))
       ) : (
-        <Text size='sm'>{t`Machine downtime: not recorded. No confirmed run/stop window is supplied.`}</Text>
+        <MissingValue
+          reason={t`Machine downtime: not recorded. No confirmed run/stop window is supplied.`}
+        />
       )}
-      <Text size='sm'>{t`Service downtime: unavailable — no sourced outage interval or service-impact measure is supplied. Optional account minutes are technician-entered account data, not a verified service outage.`}</Text>
+      <InfoTooltip
+        label={t`Service downtime: unavailable — no sourced outage interval or service-impact measure is supplied. Optional account minutes are technician-entered account data, not a verified service outage.`}
+      />
       {user.hasChangeRole(UserRoles.work_order) && (
         <details>
           <summary>{t`Read telemetry and confirm downtime`}</summary>

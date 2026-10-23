@@ -118,7 +118,7 @@ for (const scheme of ['light', 'dark'] as const) {
     );
     await expectNoPageOverflow(page);
     await panel
-      .getByText('Recorded physical authority', { exact: true })
+      .getByText('Physical authority', { exact: true })
       .scrollIntoViewIfNeeded();
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({
@@ -129,7 +129,7 @@ for (const scheme of ['light', 'dark'] as const) {
       page,
       panel
         .getByRole('heading', {
-          name: 'Recorded physical authority',
+          name: 'Physical authority',
           exact: true
         })
         .locator('..'),

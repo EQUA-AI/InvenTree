@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../App';
+import { InfoTooltip } from '../components/items/ValueTooltip';
 import {
   type ReceiptStockSnapshot,
   isReceiptResponse,
@@ -227,7 +228,7 @@ export function useMaintenanceReceiving(endpoint: string, opened: boolean) {
             ))}
           </Group>
           {!!readback.reservation_code && (
-            <Text size='sm'>{readback.reservation_code}</Text>
+            <InfoTooltip label={readback.reservation_code} />
           )}
         </Stack>
       )}

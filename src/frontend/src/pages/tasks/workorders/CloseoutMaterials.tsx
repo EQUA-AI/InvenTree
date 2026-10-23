@@ -131,6 +131,7 @@ export function CloseoutMaterials({
                 <Badge
                   w='fit-content'
                   maw='100%'
+                  tt='none'
                   variant='light'
                   color={row.state === 'reconciled' ? 'gray' : 'orange'}
                   styles={{

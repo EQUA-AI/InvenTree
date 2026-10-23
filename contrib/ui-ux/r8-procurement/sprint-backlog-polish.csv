@@ -1,0 +1,7 @@
+id,task,status,evidence
+POL-01,Source and fixture audit,Ready for human review,reports/polish.md
+POL-02,U1 action alignment and U2 context,Ready for human review,reports/polish.md
+POL-03,U3 receiving and U4 Closeout wording,Ready for human review,reports/polish.md
+POL-04,All Work tab production wording,Ready for human review,reports/polish.md
+POL-05,R8 Playwright config and regression verification,Ready for human review,reports/polish.md
+POL-06,Before-after screenshot inspection and handoff,Ready for human review,reports/polish.md

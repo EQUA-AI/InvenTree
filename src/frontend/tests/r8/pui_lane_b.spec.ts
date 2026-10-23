@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import { type Page, expect, test } from '@playwright/test';
 const captures = resolve(
   import.meta.dirname,
-  '../../../../data/devscratch/r8-w2b/captures'
+  process.env.AIMMS_CAPTURE_DIR ?? '../../../../data/devscratch/r8-w2b/captures'
 );
 const receivePath = '**/api/order/po/81/receive/';
 const original = {

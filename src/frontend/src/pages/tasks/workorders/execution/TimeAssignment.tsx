@@ -29,6 +29,7 @@ export function TimeAssignment({
     <ExecutionSection
       title={t`Assignment and person-work time`}
       testId='time-assignment'
+      info={t`Elapsed assignment is wall time at the last read. Job timestamps are not person-work intervals or accepted responsibility. Assignment factors and handover acceptance require separate records.`}
     >
       <SimpleGrid cols={{ base: 1, sm: 2 }}>
         {[
@@ -39,10 +40,7 @@ export function TimeAssignment({
               workOrder.assigned_to_username ??
               null
           ],
-          [
-            t`Legacy assignee label`,
-            value?.legacy_assignee ?? workOrder.assignee
-          ],
+          [t`Assignee label`, value?.legacy_assignee ?? workOrder.assignee],
           [
             t`Elapsed since recorded assignment`,
             elapsed(value?.elapsed_assignment_seconds ?? null)
@@ -57,13 +55,13 @@ export function TimeAssignment({
           [t`Assignment recorded by`, value?.assignment_recorded_by, true],
           [t`Recorded assignment reason`, value?.assignment_reason, true],
           [
-            t`Native actual start`,
+            t`Started at`,
             workOrder.actual_started_at
               ? recordedTime(workOrder.actual_started_at)
               : null
           ],
           [
-            t`Native actual completion`,
+            t`Completed at`,
             workOrder.actual_completed_at
               ? recordedTime(workOrder.actual_completed_at)
               : null
@@ -76,7 +74,7 @@ export function TimeAssignment({
             </ExecutionFact>
           ))}
       </SimpleGrid>
-      <Text size='sm'>{t`Elapsed assignment is wall time at the last server read, not labor or accepted responsibility. Actual start and completion are job timestamps, not person-work intervals.`}</Text>
+
       <RecordedWorkTime
         key={workOrder.id}
         workOrder={workOrder}
@@ -99,11 +97,8 @@ export function TimeAssignment({
               {handover.accepted_version}
             </Text>
           )}
-          <Text size='sm'>{t`Assignment factors are not supplied. No assignment score is inferred, and accepted handover is not inferred from person-work time.`}</Text>
         </Stack>
-      ) : (
-        <Text size='sm'>{t`Assignment factors and accepted handover are not inferred from person-work time.`}</Text>
-      )}
+      ) : null}
       {value && (
         <Accordion variant='contained' keepMounted={false}>
           <Accordion.Item value='assignments'>
@@ -111,7 +106,7 @@ export function TimeAssignment({
             <Accordion.Panel>
               <Stack gap='sm'>
                 {value.events.length === 0 && (
-                  <Text size='sm'>{t`No native assignment events returned. Assignment time and rationale remain unknown.`}</Text>
+                  <Text size='sm'>{t`No assignment changes recorded`}</Text>
                 )}
                 {value.events.map((event) => (
                   <Stack gap={2} key={event.id}>

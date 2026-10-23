@@ -229,7 +229,7 @@ for (const scheme of ['light', 'dark'] as const) {
       verify.getByText('Synthetic correction then retest')
     ).toBeVisible();
     await expect(
-      verify.getByText('Historical value: not available')
+      verify.getByRole('button', { name: 'Historical value: not available' })
     ).toHaveCount(3);
     const gaps = verify.getByTestId('not-supplied');
     await gaps.getByRole('button').click();
@@ -238,12 +238,17 @@ for (const scheme of ['light', 'dark'] as const) {
       'operating permission, observed return, required service and standby capacity'
     );
     await expect(gaps).toContainText('authoritative records are not supplied');
-    await expect(verify.getByTestId('service-restoration')).toContainText(
-      'Service restoration is not established by Work completion.'
-    );
+    await page.keyboard.press('Escape');
+    await page.mouse.move(0, 0);
+    await expect(page.getByRole('tooltip')).toHaveCount(0);
+    await expect(
+      verify.getByTestId('service-restoration').getByRole('button', {
+        name: /Information: Work completion, test results and telemetry are separate from test acceptance, operating permission, service capacity and remaining obligations/
+      })
+    ).toBeVisible();
     await expect(
       verify.getByRole('button', {
-        name: /Update|Complete|Approve|Authorize|Release/
+        name: /^(?:Update|Complete|Approve|Authorize|Release)(?:\s|$)/
       })
     ).toHaveCount(0);
     await expectNoPageOverflow(page);
@@ -302,7 +307,9 @@ test('missing projection and disabled records stay unknown', async ({
   await mockExecutionWork(page);
   await openExecutionPanel(page, 'verify');
   await expect(
-    page.getByText(/Physical test criteria and attempts are not supplied/)
+    page.getByRole('button', {
+      name: /Physical test criteria and attempts are not supplied/
+    })
   ).toBeVisible();
   await mockExecutionWork(page, {
     ...workOrder(),
@@ -313,7 +320,9 @@ test('missing projection and disabled records stay unknown', async ({
   });
   await page.reload();
   await expect(
-    page.getByText('Governed test records are not enabled. Not evaluated.')
+    page.getByRole('button', {
+      name: 'Governed test records are not enabled. Not evaluated.'
+    })
   ).toBeVisible();
   await capturePanel(page, info.outputPath('verification-disabled.png'));
 });

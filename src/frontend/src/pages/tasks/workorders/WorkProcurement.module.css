@@ -13,3 +13,21 @@
 .detailContent {
   margin-top: var(--mantine-spacing-sm);
 }
+
+.actions {
+  padding-top: var(--mantine-spacing-xs);
+  border-top: 1px solid var(--mantine-color-default-border);
+  align-items: center;
+}
+.actions > button,
+.actions > a {
+  white-space: normal;
+  height: auto;
+  min-height: 30px;
+}
+@media (max-width: 47.99em) {
+  .actions > button,
+  .actions > a {
+    min-height: 36px;
+  }
+}

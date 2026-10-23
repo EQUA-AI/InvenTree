@@ -1,9 +1,10 @@
 import type { OperationalAuthority } from '@lib/types/OperationalAuthority';
 import { t } from '@lingui/core/macro';
-import { Anchor, Box, Tabs, Text } from '@mantine/core';
+import { Anchor, Box, Tabs, Text, Tooltip } from '@mantine/core';
 import { IconShieldQuestion } from '@tabler/icons-react';
 import { type Ref, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { factTooltipProps } from '../../../components/items/ValueTooltip';
 
 import classes from './workCompanion.module.css';
 import { type WorkPanel, workPanelParams } from './workPanelState';
@@ -66,16 +67,16 @@ export function WorkPanelNavigation({
       Date.parse(record.effective_from) > now
   );
   const label = !physical.length
-    ? t`Physical authority not supplied`
+    ? t`Physical authority not recorded`
     : expired
-      ? t`Physical authority recorded · expired`
+      ? t`Authority expired`
       : notYetEffective
-        ? t`Physical authority recorded · not yet effective`
+        ? t`Authority not yet effective`
         : awaitingVerification
-          ? t`Physical authority recorded · awaiting independent verification`
+          ? t`Authority awaiting verification`
           : outsideWindow
-            ? t`Physical authority recorded · current checks required`
-            : t`Physical authority recorded`;
+            ? t`Authority checks required`
+            : t`Authority recorded`;
   return (
     <Box
       ref={navigationRef}
@@ -84,23 +85,25 @@ export function WorkPanelNavigation({
       data-inline-navigation={inline || undefined}
     >
       {/* Recorded facts are not permission to work; Plan & Safety owns the checks. */}
-      <Anchor
-        replace
-        component={Link}
-        to={`?${workPanelParams(params, 'plan')}`}
-        className={classes.boundary}
-        data-testid='work-phone-boundary'
+      <Tooltip
+        {...factTooltipProps}
+        label={`${reference} · ${label}. ${t`Review Plan & Safety for the effective authority and independent restrictions. This record does not authorize work.`}`}
       >
-        <IconShieldQuestion size={20} aria-hidden />
-        <Box>
-          <Text size='xs' fw={600}>
-            {reference} · {label}
-          </Text>
-          <Text size='xs'>
-            {t`View Plan & Safety. This does not authorize work.`}
-          </Text>
-        </Box>
-      </Anchor>
+        <Anchor
+          replace
+          component={Link}
+          to={`?${workPanelParams(params, 'plan')}`}
+          className={classes.boundary}
+          data-testid='work-phone-boundary'
+        >
+          <IconShieldQuestion size={20} aria-hidden />
+          <Box>
+            <Text size='xs' fw={600}>
+              {physical.length ? label : <>{t`Plan & Safety`} · —</>}
+            </Text>
+          </Box>
+        </Anchor>
+      </Tooltip>
       <Tabs.List aria-label={t`Work workflow`} className={classes.tabList}>
         {panels.map((panel) => (
           <Tabs.Tab key={panel.name} value={panel.name} className={classes.tab}>

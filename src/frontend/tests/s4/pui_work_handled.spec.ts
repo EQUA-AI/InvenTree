@@ -151,9 +151,9 @@ test('recorded AIMMS work lists saved results with counts that match the rows', 
     card.getByRole('link', { name: 'Open RP-901', exact: true })
   ).toHaveAttribute('href', '/repair/packets/901/');
   await expect(
-    card.getByText(
-      'Checked: repair packet preparation, maintenance account drafting, closeout follow-ups.'
-    )
+    card.getByRole('button', {
+      name: 'Information: Checked: repair packet preparation, maintenance account drafting, closeout follow-ups.'
+    })
   ).toBeVisible();
   await expectNoPageOverflow(page);
   await capturePanel(page, testInfo.outputPath('handled-recorded.png'));
@@ -299,9 +299,9 @@ test('a successful empty read names what was checked and what is not enabled', a
     card.getByText('No AIMMS record source applies to this work order.')
   ).toBeVisible();
   await expect(
-    card.getByText(
-      'No AIMMS record source was read. Not enabled on this server: maintenance account drafting, closeout follow-ups.'
-    )
+    card.getByRole('button', {
+      name: 'Information: No AIMMS record source was read. Not enabled on this server: maintenance account drafting, closeout follow-ups.'
+    })
   ).toBeVisible();
   await capturePanel(page, testInfo.outputPath('handled-empty.png'));
 });

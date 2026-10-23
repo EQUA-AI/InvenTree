@@ -16,6 +16,8 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { InfoTooltip } from '../../../../components/items/ValueTooltip';
+import { MissingValue } from '../../../../components/items/ValueTooltip';
 import { AuthorityRecorder, AuthorityRecords } from './OperationalAuthority';
 
 import { ModelType } from '@lib/enums/ModelType';
@@ -199,10 +201,9 @@ function Application({
                 </Stack>
               ))}
             </Stack>
-            <Text
-              size='sm'
-              mt='sm'
-            >{t`Requirements do not establish availability, issue, competence or readiness.`}</Text>
+            <InfoTooltip
+              label={t`Requirements do not establish availability, issue, competence or readiness.`}
+            />
           </Accordion.Panel>
         </Accordion.Item>
         <Accordion.Item value='source'>
@@ -321,7 +322,9 @@ function DeviationEntry({ workOrderId }: Readonly<{ workOrderId: number }>) {
             aria-label={t`Changed condition record`}
             gap='sm'
           >
-            <Text size='sm'>{t`Native manual recovery records a deviation. It does not approve a revised scope or release a restriction.`}</Text>
+            <InfoTooltip
+              label={t`Native manual recovery records a deviation. It does not approve a revised scope or release a restriction.`}
+            />
             <Textarea
               label={t`Changed condition and reason`}
               value={reason}
@@ -369,11 +372,9 @@ export function PreparedPackage({
   const [params] = useSearchParams();
   if (value?.rule !== 'prepared_package.v1')
     return (
-      <Alert
-        role='note'
-        color='gray'
-        title={t`Prepared package not supplied`}
-      >{t`This server does not supply the applied procedure, resources or revision history here. Use the linked native records. Missing information does not establish readiness.`}</Alert>
+      <ExecutionSection title={t`Work package`}>
+        <MissingValue reason={t`No work package available`} />
+      </ExecutionSection>
     );
   const current = value.scopes.filter((scope) => scope.current);
   const effective = effectiveScope(
@@ -403,15 +404,19 @@ export function PreparedPackage({
               : t`No current approved repair scope recorded.`}
           </Text>
         )}
-        <Text size='sm'>{t`A saved scope or applied procedure is a plan record, not proof of physical application or permission to work.`}</Text>
+
         {value.procedures_state === 'not_enabled' ? (
-          <Text size='sm'>{t`Governed procedure records are not enabled.`}</Text>
+          <MissingValue
+            reason={t`Governed procedure records are not enabled.`}
+          />
         ) : value.applications.length ? (
           value.applications.map((application) => (
             <Application key={application.id} application={application} />
           ))
         ) : (
-          <Text size='sm'>{t`No applied procedure recorded. Instructions and acceptance criteria are not established here.`}</Text>
+          <MissingValue
+            reason={t`No applied procedure recorded. Instructions and acceptance criteria are not established here.`}
+          />
         )}
         <Anchor
           component={Link}
@@ -420,28 +425,33 @@ export function PreparedPackage({
           size='sm'
         >{t`Open Parts for this job`}</Anchor>
       </ExecutionSection>
-      <ExecutionSection title={t`Recorded physical authority`}>
+      <ExecutionSection
+        title={t`Physical authority`}
+        info={t`A work package does not authorize physical work. Authority records retain their effective window and verification; independent restrictions and operating permission remain separate.`}
+      >
         {authority?.rule === 'operational_authority.v1' ? (
           <>
             <AuthorityRecords
               value={authority}
               kinds={['isolation', 'permit', 'access_window']}
             />
-            <Text size='sm'>{t`Recorded facts retain their own effective window and independent verification. They do not confirm the safety gate, clear other restrictions or grant operating permission.`}</Text>
+
             <AuthorityRecorder value={authority} mode='physical' />
           </>
         ) : (
-          <Text size='sm'>{t`Not available — no physical-authority provider is connected. Applied isolation, valid job-specific permits, access, operations window and independent restrictions are not established by the package or its safety-gate status.`}</Text>
+          <MissingValue
+            reason={t`Not available — no physical-authority provider is connected. Applied isolation, valid job-specific permits, access, operations window and independent restrictions are not established by the package or its safety-gate status.`}
+          />
         )}
       </ExecutionSection>
       <ExecutionSection title={t`Scope revisions and affected dependencies`}>
         <ScopeRevisionReview value={value} />
       </ExecutionSection>
-      <ExecutionSection title={t`Native deviations`}>
+      <ExecutionSection title={t`Deviations`}>
         {value.procedures_state === 'not_enabled' ? (
-          <Text size='sm'>{t`Deviation records are not enabled.`}</Text>
+          <MissingValue reason={t`Deviation records are not enabled.`} />
         ) : value.deviations.length === 0 ? (
-          <Text size='sm'>{t`No native deviation records returned. This does not establish that conditions are unchanged.`}</Text>
+          <Text size='sm'>{t`No deviations recorded`}</Text>
         ) : (
           value.deviations.map((item) => (
             <Stack gap={4} key={item.id}>

@@ -34,9 +34,9 @@ for (const scheme of ['light', 'dark'] as const) {
       brief.getByText(/Synthetic outgoing technician.*20 Oct 2026/)
     ).toBeVisible();
     await expect(
-      brief.getByText(
-        /Assignment, a read receipt.*do not accept responsibility/
-      )
+      brief.getByRole('button', {
+        name: /Information: Assignment, a read receipt.*do not accept responsibility/
+      })
     ).toBeVisible();
     const request = brief.getByTestId('continuity-request-401');
     await expect(
@@ -70,7 +70,7 @@ for (const scheme of ['light', 'dark'] as const) {
       brief.getByText(/Installed material state: Not recorded/)
     ).toBeVisible();
     await expect(
-      brief.getByText(/No lockout points returned for this Work/)
+      brief.getByText('No lockout points recorded', { exact: true })
     ).toBeVisible();
     await expect(
       brief.getByText(/In progress.*Work version: 4.*Synthetic sibling owner/)
