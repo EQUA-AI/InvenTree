@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 /**
  * AI chat drawer acceptance (mocked API + wholly mocked auth; no backend,
- * no credentials). Mirrors playwright.demo-metrics.config.ts except there is
+ * no credentials). Mirrors playwright.machine-metrics.config.ts except there is
  * deliberately NO webServer and NO globalSetup: it runs against the already
  * running Vite dev server on :5173 (mocked component/app harness pages).
  */

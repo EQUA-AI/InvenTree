@@ -29,7 +29,12 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import type { ReactNode } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import {
+  Link,
+  useNavigate,
+  useParams,
+  useSearchParams
+} from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { ModelType } from '@lib/enums/ModelType';
@@ -49,6 +54,10 @@ import PageTitle from '../../../components/nav/PageTitle';
 import { AttachmentTable } from '../../../tables/general/AttachmentTable';
 
 import { useApi } from '../../../contexts/ApiContext';
+import {
+  machineScopeHref,
+  parseMachineScope
+} from '../../assets/locations/machineMetrics';
 import { InvestigationSection } from '../../maintenance/workorders/components/InvestigationSection';
 import { WorkOrderAlertContext } from '../../maintenance/workorders/components/WorkOrderAlertContext';
 import { WorkOrderProblemPanel } from '../../maintenance/workorders/components/WorkOrderProblemPanel';
@@ -76,6 +85,11 @@ export default function WorkOrderDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const api = useApi();
+  const [searchParams] = useSearchParams();
+  const boardHref = machineScopeHref(
+    '/maintenance/board/',
+    parseMachineScope(searchParams)
+  );
   const workOrderId = Number(id);
 
   const workOrderQuery = useQuery({
@@ -105,7 +119,7 @@ export default function WorkOrderDetail() {
           <Text size='sm'>
             {t`This work order does not exist or is outside your access scope.`}
           </Text>
-          <Anchor component={Link} to='/maintenance/board' size='sm'>
+          <Anchor component={Link} to={boardHref} size='sm'>
             {t`Return to the work-order board`}
           </Anchor>
         </Stack>

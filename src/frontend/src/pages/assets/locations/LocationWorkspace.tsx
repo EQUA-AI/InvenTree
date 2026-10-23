@@ -27,9 +27,9 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useApi } from '../../../contexts/ApiContext';
 import { useUserState } from '../../../states/UserState';
-
 import { LocationBrowser, locationKindLabel } from './LocationBrowser';
 import { LocationEditDialog, MachineMoveDialog } from './LocationDialogs';
+import { MachineMetricsPanel } from './MachineMetricsPanel';
 import {
   type MachineSourceView,
   countSummary,
@@ -56,7 +56,6 @@ export function ScopedMachineList({
   unassigned = false,
   machineId,
   canChange,
-  demoSession,
   search,
   onSearchChange,
   source
@@ -66,7 +65,6 @@ export function ScopedMachineList({
   unassigned?: boolean;
   machineId?: number;
   canChange: boolean;
-  demoSession?: string | null;
   search: string;
   onSearchChange: (value: string) => void;
   source: MachineSourceView;
@@ -78,19 +76,12 @@ export function ScopedMachineList({
   const [selection, setSelection] = useState<number[]>([]);
   const [moving, setMoving] = useState<LocatedMachine[] | null>(null);
 
-  // A different machine population (location, scope, cohort, search) must
+  // A different machine population (location, scope, search) must
   // never keep stale paging or row selection (plan M3/U2).
   useEffect(() => {
     setPage(1);
     setSelection([]);
-  }, [
-    search,
-    location,
-    includeDescendants,
-    unassigned,
-    demoSession,
-    machineId
-  ]);
+  }, [search, location, includeDescendants, unassigned, machineId]);
 
   const query = useQuery<PageResult<LocatedMachine>>({
     queryKey: [
@@ -101,7 +92,6 @@ export function ScopedMachineList({
       includeDescendants,
       unassigned,
       machineId,
-      demoSession ?? null,
       debounced,
       page
     ],
@@ -114,7 +104,6 @@ export function ScopedMachineList({
             include_descendants: includeDescendants,
             unassigned,
             machine: machineId,
-            demo_session: demoSession ?? undefined,
             search: debounced,
             limit: 25,
             offset: (page - 1) * 25
@@ -128,17 +117,15 @@ export function ScopedMachineList({
   const allSelected =
     !!query.data?.results.length &&
     selected.length === query.data.results.length;
-  // Row links hand the active cohort filters AND the source view to the
+  // Row links hand the active location filters AND the source view to the
   // machine page, which returns to this exact list (U2).
   const rowScope = {
-    session: demoSession ?? null,
     location: location ?? null,
     direct: !includeDescendants,
     source
   };
   const placementHref = (locationPk: number) => {
     const linkParams = new URLSearchParams({ location: String(locationPk) });
-    if (demoSession) linkParams.set('demo_session', demoSession);
     if (!includeDescendants) linkParams.set('scope', 'direct');
     return `/machines/index/sites/?${linkParams.toString()}`;
   };
@@ -450,12 +437,6 @@ export function LocationWorkspace({
       ? Number(rawLocation)
       : undefined;
   const direct = params.get('scope') === 'direct';
-  // Explicit synthetic-demo opt-in; absent means the full live scope, which
-  // stays the default. The value rides the URL so navigation keeps filters.
-  const rawDemo = params.get('demo_session');
-  const demoSession =
-    rawDemo && /^[0-9a-f-]{36}$/i.test(rawDemo) ? rawDemo : null;
-
   const [editing, setEditing] = useState<{
     node?: LocationNode;
     parent?: LocationNode;
@@ -472,15 +453,12 @@ export function LocationWorkspace({
     queryFn: async ({ signal }) =>
       (await api.get(`${locationApi}context/`, { signal })).data
   });
-  // Cohort-aware summary (M3): the demo session belongs in both the cache key
-  // and the request so cards and rows always describe the same population.
   const detail = useQuery<LocationNode>({
-    queryKey: ['asset-locations', identity, 'detail', locationId, demoSession],
+    queryKey: ['asset-locations', identity, 'detail', locationId],
     queryFn: async ({ signal }) =>
       (
         await api.get(`${locationApi}${locationId}/`, {
-          signal,
-          params: demoSession ? { demo_session: demoSession } : undefined
+          signal
         })
       ).data,
     enabled: view === 'sites' && !!locationId
@@ -523,7 +501,12 @@ export function LocationWorkspace({
           <Button
             variant='default'
             onClick={() =>
-              queryClient.invalidateQueries({ queryKey: ['asset-locations'] })
+              Promise.all([
+                queryClient.invalidateQueries({
+                  queryKey: ['asset-locations']
+                }),
+                queryClient.invalidateQueries({ queryKey: ['machine-metrics'] })
+              ])
             }
           >{t`Refresh`}</Button>
           {view === 'sites' && !context.isError && context.data?.can_add && (
@@ -548,7 +531,6 @@ export function LocationWorkspace({
             key={view}
             unassigned={view === 'unassigned'}
             canChange={context.data.can_change}
-            demoSession={demoSession}
             search={machineSearch}
             onSearchChange={setMachineSearch}
             source={view === 'all' ? 'machines' : 'unassigned'}
@@ -596,7 +578,7 @@ export function LocationWorkspace({
                             <Anchor
                               key={node.pk}
                               component={Link}
-                              to={`?location=${node.pk}${direct ? '&scope=direct' : ''}${demoSession ? `&demo_session=${demoSession}` : ''}`}
+                              to={`?location=${node.pk}${direct ? '&scope=direct' : ''}`}
                               aria-current={
                                 node.pk === selected.pk ? 'page' : undefined
                               }
@@ -721,19 +703,19 @@ export function LocationWorkspace({
                           {t`Location totals — the machine table search does not change these counts.`}
                         </Text>
                       )}
+                      <MachineMetricsPanel
+                        locationId={selected.pk}
+                        descendants={!direct}
+                      />
+                      <Title order={4}>{t`Machine inventory`}</Title>
                       <ScopedMachineList
                         location={selected.pk}
                         includeDescendants={!direct}
                         canChange={context.data.can_change}
-                        demoSession={demoSession}
                         search={machineSearch}
                         onSearchChange={setMachineSearch}
                         source='sites'
                       />
-                      <Text
-                        size='sm'
-                        c='dimmed'
-                      >{t`Historical performance will appear when validated event and placement history is available. Current placement does not establish past downtime.`}</Text>
                     </>
                   ) : (
                     !locationId && (

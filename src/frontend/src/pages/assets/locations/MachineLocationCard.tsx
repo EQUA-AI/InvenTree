@@ -1,12 +1,11 @@
 import { t } from '@lingui/core/macro';
 import { Anchor, Button, Group, Paper, Stack, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useApi } from '../../../contexts/ApiContext';
 import { useUserState } from '../../../states/UserState';
 import { MachineMoveDialog } from './LocationDialogs';
-
 import {
   type LocatedMachine,
   type LocationContext,
@@ -14,6 +13,7 @@ import {
   locationApi,
   locationPath
 } from './locationTypes';
+import { parseMachineScope } from './machineMetrics';
 
 /**
  * Cached authorized placement read, shared by the details card and the
@@ -34,7 +34,7 @@ function useMachinePlacement(machineId: number) {
   });
 }
 
-/** The machine's real placement; a demo filter never replaces it. */
+/** The machine's current physical placement. */
 function placementText(row: LocatedMachine | undefined) {
   return row?.physical_location
     ? locationPath(row.physical_location)
@@ -61,7 +61,18 @@ export function MachineLocationCard({ machineId }: { machineId: number }) {
   const api = useApi();
   const identity = useUserState((s) => s.authGeneration);
   const [moving, setMoving] = useState(false);
-
+  const [searchParams] = useSearchParams();
+  const locationScope = useMemo(
+    () => parseMachineScope(searchParams),
+    [searchParams]
+  );
+  // The location link hands the location filters to the workspace (which applies
+  // them); `location` stays the machine's own placement, not the URL scope.
+  const locationHref = (locationPk: number) => {
+    const params = new URLSearchParams({ location: String(locationPk) });
+    if (locationScope.direct) params.set('scope', 'direct');
+    return `/machines/index/sites/?${params.toString()}`;
+  };
   const context = useQuery<LocationContext>({
     queryKey: ['asset-locations', identity, 'context'],
     queryFn: async ({ signal }) =>
@@ -86,7 +97,7 @@ export function MachineLocationCard({ machineId }: { machineId: number }) {
           row.physical_location ? (
             <Anchor
               component={Link}
-              to={`/machines/index/sites/?location=${row.physical_location.pk}`}
+              to={locationHref(row.physical_location.pk)}
             >
               {locationPath(row.physical_location)}
             </Anchor>

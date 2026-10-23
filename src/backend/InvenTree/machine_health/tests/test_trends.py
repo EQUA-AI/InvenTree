@@ -217,7 +217,9 @@ class TrendApiTest(HealthEnvMixin, InvenTreeAPITestCase):
 
     def test_another_machines_binding_is_refused(self):
         """Binding ids from elsewhere are not readable through this machine."""
-        other = AssetMachine.objects.create(name='Foreign machine')
+        other = AssetMachine.objects.create(
+            name='Foreign machine', client=self.client_tenant
+        )
         response = self.get(
             f'/api/machine-health/machines/{other.pk}/health/trend/',
             {'binding': self.binding.pk},

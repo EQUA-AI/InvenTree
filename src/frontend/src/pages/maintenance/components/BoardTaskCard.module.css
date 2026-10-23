@@ -1,0 +1,27 @@
+.card {
+  position: relative;
+  min-width: 0;
+}
+
+.primaryLink {
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+
+.collapsedLink::after {
+  position: absolute;
+  inset: 0;
+  content: '';
+  border-radius: var(--mantine-radius-md);
+}
+
+.collapsedLink:focus-visible::after {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 2px;
+}
+
+.actions {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+}

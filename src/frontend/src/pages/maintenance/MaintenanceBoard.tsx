@@ -3,34 +3,37 @@ import {
   ActionIcon,
   Badge,
   Button,
-  Card,
   CloseButton,
+  Collapse,
   Group,
   Loader,
+  Menu,
   Modal,
   MultiSelect,
   NumberInput,
   Paper,
+  SegmentedControl,
   Select,
   SimpleGrid,
   Stack,
   Text,
   TextInput,
-  Textarea,
-  Tooltip
+  Textarea
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
-import { useDebouncedValue, useMediaQuery } from '@mantine/hooks';
+import {
+  useDebouncedValue,
+  useLocalStorage,
+  useMediaQuery,
+  useSessionStorage
+} from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconArrowLeft,
   IconArrowRight,
-  IconArrowsSort,
   IconCircleCheck,
   IconDeviceFloppy,
-  IconExternalLink,
-  IconPencil,
   IconPlus,
   IconTrash,
   IconX
@@ -44,7 +47,7 @@ import {
   useMemo,
   useState
 } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
@@ -58,8 +61,16 @@ import type {
   WorkOrderPart
 } from '@lib/types/Tasks';
 
+import { ReadErrorNotice } from '../../components/common/ReadErrorNotice';
 import { useApi } from '../../contexts/ApiContext';
 import { showApiErrorMessage } from '../../functions/notifications';
+import { useUserState } from '../../states/UserState';
+import {
+  machineScopeHref,
+  parseMachineScope
+} from '../assets/locations/machineMetrics';
+import { useLocationMachines } from '../assets/locations/useMachineMetrics';
+import { BoardTaskCard } from './components/BoardTaskCard';
 import {
   WorkOrderCreateModal,
   type WorkPackageResult
@@ -83,6 +94,7 @@ interface Task {
   id: number;
   /** The job the card belongs to; work-order edits address this, not `id`. */
   workOrderId: number;
+  reference: string | null;
   /** What kind of piece this card tracks: the job itself, a subtask, sourcing. */
   cardKind: string;
   title: string;
@@ -153,12 +165,6 @@ const DEFAULT_TAG_OPTIONS = [
   'Miscellaneous'
 ];
 
-const priorityColors: Record<KanbanPriority, string> = {
-  low: 'teal',
-  medium: 'yellow',
-  high: 'red'
-};
-
 const colorOptions = [
   'gray',
   'blue',
@@ -181,20 +187,6 @@ const slugify = (value: string) => {
   return slug.length > 0 ? slug : `column-${generateId()}`;
 };
 
-const getDueBadgeColor = (dueDate: string) => {
-  const due = dayjs(dueDate);
-
-  if (due.isBefore(dayjs(), 'day')) {
-    return 'red';
-  }
-
-  if (due.diff(dayjs(), 'day') <= 2) {
-    return 'orange';
-  }
-
-  return 'blue';
-};
-
 /**
  * Build a board item from a card and the job it belongs to.
  *
@@ -213,6 +205,7 @@ const convertCardToTask = (
 ): Task => ({
   id: card.id,
   workOrderId: card.work_order,
+  reference: card.work_order_reference ?? workOrder?.reference ?? null,
   cardKind: card.card_kind,
   title: card.title,
   description: card.description ?? '',
@@ -271,6 +264,25 @@ export default function MaintenanceBoard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  const [searchParams] = useSearchParams();
+  const locationScope = useMemo(
+    () => parseMachineScope(searchParams),
+    [searchParams]
+  );
+  const locationMachines = useLocationMachines(
+    locationScope.location ?? undefined,
+    !locationScope.direct,
+    locationScope.location != null
+  );
+  const userId = useUserState((s) => s.user?.pk);
+  const [cardDensity, setCardDensity] = useLocalStorage<
+    'collapsed' | 'expanded'
+  >({
+    key: `maintenance-card-density-${userId ?? 'anonymous'}`,
+    defaultValue: 'expanded',
+    getInitialValueInEffect: false
+  });
+  const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
   // Below Mantine's `sm` breakpoint the size='lg' modals are unusable; go
   // full-screen so forms are reachable on a phone. HTML5 drag between columns
   // does not fire on touch anyway, so the per-card status Select remains the
@@ -297,14 +309,18 @@ export default function MaintenanceBoard() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [tagOptions, setTagOptions] = useState<string[]>(DEFAULT_TAG_OPTIONS);
   const [newTagName, setNewTagName] = useState('');
-  const [filters, setFilters] = useState<Filters>({
-    search: '',
-    column: 'all',
-    priority: 'all',
-    tags: [],
-    assignee: 'all',
-    jobNumber: 'all',
-    serviceQuote: 'all'
+  const [filters, setFilters] = useSessionStorage<Filters>({
+    key: `maintenance-filters-${userId ?? 'anonymous'}-${locationScope.location ?? 'all'}-${locationScope.direct}`,
+    getInitialValueInEffect: false,
+    defaultValue: {
+      search: '',
+      column: 'all',
+      priority: 'all',
+      tags: [],
+      assignee: 'all',
+      jobNumber: 'all',
+      serviceQuote: 'all'
+    }
   });
   const [isReordering, setIsReordering] = useState(false);
   const [pendingColumnOrder, setPendingColumnOrder] =
@@ -435,12 +451,33 @@ export default function MaintenanceBoard() {
     const workOrders = new Map(
       (cardsQuery.data ?? []).map((workOrder) => [workOrder.id, workOrder])
     );
+    let boardCards = boardCardsQuery.data ?? [];
+    if (locationScope.location != null) {
+      if (!locationMachines.data || locationMachines.isError) {
+        setTasks([]);
+        return;
+      }
+      const machines = new Set(
+        locationMachines.data.map((machine) => machine.pk)
+      );
+      boardCards = boardCards.filter((card) =>
+        machines.has(
+          card.machine ?? workOrders.get(card.work_order)?.machine ?? -1
+        )
+      );
+    }
     setTasks(
-      (boardCardsQuery.data ?? []).map((card) =>
+      boardCards.map((card) =>
         convertCardToTask(card, workOrders.get(card.work_order))
       )
     );
-  }, [boardCardsQuery.data, cardsQuery.data]);
+  }, [
+    boardCardsQuery.data,
+    cardsQuery.data,
+    locationScope.location,
+    locationMachines.data,
+    locationMachines.isError
+  ]);
 
   // Board columns are persisted server-side (kanban/columns/). Previously they
   // lived only in useState, so add/reorder/delete never survived a refresh and a
@@ -664,6 +701,13 @@ export default function MaintenanceBoard() {
   const filteredTasks = useMemo(
     () =>
       tasks.filter((task) => {
+        // Apply scope synchronously too: old cards cannot flash during a scope transition.
+        if (
+          locationScope.location != null &&
+          (locationMachines.isError ||
+            !locationMachines.data?.some((m) => m.pk === task.machine))
+        )
+          return false;
         if (columnFilter !== 'all' && task.status !== columnFilter) {
           return false;
         }
@@ -718,6 +762,9 @@ export default function MaintenanceBoard() {
       }),
     [
       tasks,
+      locationScope.location,
+      locationMachines.data,
+      locationMachines.isError,
       columnFilter,
       priorityFilter,
       tagFilter,
@@ -1264,50 +1311,82 @@ export default function MaintenanceBoard() {
 
   return (
     <Stack gap='lg'>
-      <Text>{t`Track maintenance work by stage, keep ownership visible, and open any work order for its full detail.`}</Text>
-      <Group justify='space-between' align='flex-start'>
-        <Group gap='sm'>
+      {locationScope.location != null && (
+        <Text size='sm'>
+          {t`Location ${locationScope.location}`} ·{' '}
+          {locationScope.direct
+            ? t`Direct machines only`
+            : t`Including descendants`}
+        </Text>
+      )}
+      {locationScope.location != null && locationMachines.isPending && (
+        <Loader size='sm' />
+      )}
+      {locationScope.location != null && locationMachines.access.denied && (
+        <ReadErrorNotice
+          error={locationMachines.access.error}
+          retry={() => {
+            void locationMachines.access.retry();
+          }}
+        />
+      )}
+      {locationScope.location != null && locationMachines.isError && (
+        <ReadErrorNotice
+          error={locationMachines.error}
+          retry={() => {
+            void locationMachines.refetch();
+          }}
+        />
+      )}
+      <Group justify='space-between' align='flex-end'>
+        <Stack gap='xs'>
+          <Text
+            size='sm'
+            c='dimmed'
+          >{t`Track maintenance work by stage, keep ownership visible, and open any work order for its full detail.`}</Text>
           <Button
             leftSection={<IconPlus size={16} />}
             onClick={() => setCreateModalOpen(true)}
-          >
-            {t`New work order`}
-          </Button>
-          <Button
-            variant='subtle'
-            leftSection={<IconPlus size={16} />}
-            onClick={openColumnModal}
-            disabled={isReordering}
-          >
-            {t`Add column`}
-          </Button>
-        </Group>
+            style={{ alignSelf: 'flex-start' }}
+          >{t`New work order`}</Button>
+        </Stack>
         <Group gap='sm'>
+          <SegmentedControl
+            aria-label={t`Card view`}
+            value={cardDensity}
+            onChange={(value) =>
+              setCardDensity(value === 'collapsed' ? 'collapsed' : 'expanded')
+            }
+            data={[
+              { value: 'collapsed', label: t`Collapsed cards` },
+              { value: 'expanded', label: t`Expanded cards` }
+            ]}
+          />
           {!isReordering ? (
-            <Button
-              variant='subtle'
-              leftSection={<IconArrowsSort size={16} />}
-              onClick={enterReorderMode}
-              disabled={columns.length < 2}
-            >
-              {t`Edit column order`}
-            </Button>
+            <Menu withinPortal position='bottom-end'>
+              <Menu.Target>
+                <Button variant='default'>{t`Board settings`}</Button>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item onClick={openColumnModal}>{t`Add column`}</Menu.Item>
+                <Menu.Item
+                  onClick={enterReorderMode}
+                  disabled={columns.length < 2}
+                >{t`Edit column order`}</Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
           ) : (
             <>
               <Button
                 variant='default'
                 leftSection={<IconX size={16} />}
                 onClick={cancelReorderMode}
-              >
-                {t`Cancel`}
-              </Button>
+              >{t`Cancel`}</Button>
               <Button
                 leftSection={<IconDeviceFloppy size={16} />}
                 onClick={saveColumnOrder}
                 disabled={!isColumnOrderDirty}
-              >
-                {t`Save order`}
-              </Button>
+              >{t`Save order`}</Button>
             </>
           )}
         </Group>
@@ -1327,20 +1406,7 @@ export default function MaintenanceBoard() {
                   search: event.currentTarget.value
                 }))
               }
-              style={{ flex: 1, minWidth: '220px' }}
-            />
-            <Select
-              size='sm'
-              label={t`Column`}
-              data={columnFilterOptions}
-              value={columnFilter}
-              onChange={(value) =>
-                setFilters((current) => ({
-                  ...current,
-                  column: value ?? 'all'
-                }))
-              }
-              style={{ minWidth: '180px' }}
+              style={{ flex: '1 1 220px', minWidth: 0 }}
             />
             <Select
               size='sm'
@@ -1353,72 +1419,133 @@ export default function MaintenanceBoard() {
                   priority: (value as PriorityFilterValue) ?? 'all'
                 }))
               }
-              style={{ minWidth: '180px' }}
+              style={{ flex: '1 1 180px', minWidth: 0 }}
             />
-            <MultiSelect
-              size='sm'
-              label={t`Tags`}
-              placeholder={t`Filter by tags`}
-              data={tagData}
-              value={tagFilter}
-              onChange={(value) =>
-                setFilters((current) => ({ ...current, tags: value }))
-              }
-              searchable
-              style={{ minWidth: '220px', flex: 1 }}
-            />
-            <Select
-              size='sm'
-              label={t`Employee`}
-              data={assigneeFilterOptions}
-              value={assigneeFilter}
-              onChange={(value) =>
-                setFilters((current) => ({
-                  ...current,
-                  assignee: value ?? 'all'
-                }))
-              }
-              style={{ minWidth: '200px' }}
-              disabled={assigneeFilterOptions.length <= 1}
-            />
-            <Select
-              size='sm'
-              label={t`Job number`}
-              data={jobFilterOptions}
-              value={jobNumberFilter}
-              onChange={(value) =>
-                setFilters((current) => ({
-                  ...current,
-                  jobNumber: value ?? 'all'
-                }))
-              }
-              style={{ minWidth: '200px' }}
-              disabled={jobFilterOptions.length <= 1}
-            />
-            <Select
-              size='sm'
-              label={t`Service quote`}
-              data={serviceQuoteFilterOptions}
-              value={serviceQuoteFilter}
-              onChange={(value) =>
-                setFilters((current) => ({
-                  ...current,
-                  serviceQuote: value ?? 'all'
-                }))
-              }
-              style={{ minWidth: '200px' }}
-              disabled={serviceQuoteFilterOptions.length <= 1}
-            />
-          </Group>
-          <Group justify='flex-end'>
             <Button
-              variant='subtle'
-              onClick={resetFilters}
-              disabled={!filtersActive}
-            >
-              {t`Reset filters`}
-            </Button>
+              variant='default'
+              aria-expanded={moreFiltersOpen}
+              aria-controls='maintenance-more-filters'
+              onClick={() => setMoreFiltersOpen((open) => !open)}
+            >{t`More filters`}</Button>
+            {filtersActive && (
+              <Button
+                variant='subtle'
+                onClick={resetFilters}
+              >{t`Reset filters`}</Button>
+            )}
           </Group>
+          <Collapse expanded={moreFiltersOpen} id='maintenance-more-filters'>
+            <Group gap='sm' align='flex-end'>
+              <Select
+                size='sm'
+                label={t`Column`}
+                data={columnFilterOptions}
+                value={columnFilter}
+                onChange={(value) =>
+                  setFilters((current) => ({
+                    ...current,
+                    column: value ?? 'all'
+                  }))
+                }
+                style={{ flex: '1 1 180px', minWidth: 0 }}
+              />
+              <MultiSelect
+                size='sm'
+                label={t`Tags`}
+                placeholder={t`Filter by tags`}
+                data={tagData}
+                value={tagFilter}
+                onChange={(value) =>
+                  setFilters((current) => ({ ...current, tags: value }))
+                }
+                searchable
+                style={{ flex: '1 1 220px', minWidth: 0 }}
+              />
+              <Select
+                size='sm'
+                label={t`Employee`}
+                data={assigneeFilterOptions}
+                value={assigneeFilter}
+                onChange={(value) =>
+                  setFilters((current) => ({
+                    ...current,
+                    assignee: value ?? 'all'
+                  }))
+                }
+                style={{ flex: '1 1 200px', minWidth: 0 }}
+                disabled={assigneeFilterOptions.length <= 1}
+              />
+              <Select
+                size='sm'
+                label={t`Job number`}
+                data={jobFilterOptions}
+                value={jobNumberFilter}
+                onChange={(value) =>
+                  setFilters((current) => ({
+                    ...current,
+                    jobNumber: value ?? 'all'
+                  }))
+                }
+                style={{ flex: '1 1 200px', minWidth: 0 }}
+                disabled={jobFilterOptions.length <= 1}
+              />
+              <Select
+                size='sm'
+                label={t`Service quote`}
+                data={serviceQuoteFilterOptions}
+                value={serviceQuoteFilter}
+                onChange={(value) =>
+                  setFilters((current) => ({
+                    ...current,
+                    serviceQuote: value ?? 'all'
+                  }))
+                }
+                style={{ flex: '1 1 200px', minWidth: 0 }}
+                disabled={serviceQuoteFilterOptions.length <= 1}
+              />
+            </Group>
+          </Collapse>
+          {filtersActive && (
+            <Group gap='xs'>
+              {filters.search && (
+                <Badge variant='light'>
+                  {t`Search`}: {filters.search}
+                </Badge>
+              )}
+              {filters.priority !== 'all' && (
+                <Badge variant='light'>
+                  {t`Priority`}: {renderPriorityLabel(filters.priority)}
+                </Badge>
+              )}
+              {filters.column !== 'all' && (
+                <Badge variant='light'>
+                  {t`Column`}:{' '}
+                  {columns.find((column) => column.id === filters.column)
+                    ?.label ?? filters.column}
+                </Badge>
+              )}
+              {filters.tags.map((tag) => (
+                <Badge key={tag} variant='light'>
+                  {t`Tags`}: {tag}
+                </Badge>
+              ))}
+              {filters.assignee !== 'all' && (
+                <Badge variant='light'>
+                  {t`Employee`}: {filters.assignee}
+                </Badge>
+              )}
+              {filters.jobNumber !== 'all' && (
+                <Badge variant='light'>
+                  {t`Job number`}: {filters.jobNumber}
+                </Badge>
+              )}
+              {filters.serviceQuote !== 'all' && (
+                <Badge variant='light'>
+                  {t`Service quote`}: {filters.serviceQuote}
+                </Badge>
+              )}
+            </Group>
+          )}
         </Stack>
       </Paper>
 
@@ -1511,15 +1638,24 @@ export default function MaintenanceBoard() {
                         </>
                       )}
                       {!isReordering && columnIndex > 0 && (
-                        <ActionIcon
-                          size='sm'
-                          variant='subtle'
-                          color='red'
-                          aria-label={t`Delete column`}
-                          onClick={() => handleRequestDeleteColumn(column.id)}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
+                        <Menu withinPortal position='bottom-end'>
+                          <Menu.Target>
+                            <Button
+                              size='compact-xs'
+                              variant='subtle'
+                              aria-label={t`Column actions for ${column.label}`}
+                            >{t`Actions`}</Button>
+                          </Menu.Target>
+                          <Menu.Dropdown>
+                            <Menu.Item
+                              color='red'
+                              leftSection={<IconTrash size={16} />}
+                              onClick={() =>
+                                handleRequestDeleteColumn(column.id)
+                              }
+                            >{t`Delete column`}</Menu.Item>
+                          </Menu.Dropdown>
+                        </Menu>
                       )}
                     </Group>
                   </Group>
@@ -1535,220 +1671,35 @@ export default function MaintenanceBoard() {
                         const isStatusUpdating = statusUpdating.has(task.id);
 
                         return (
-                          <Card
+                          <BoardTaskCard
                             key={task.id}
-                            withBorder
-                            shadow='sm'
-                            radius='md'
-                            p='md'
+                            task={task}
+                            density={
+                              cardDensity === 'collapsed'
+                                ? 'collapsed'
+                                : 'expanded'
+                            }
+                            href={machineScopeHref(
+                              `/maintenance/work-orders/${task.workOrderId}/`,
+                              locationScope
+                            )}
+                            columns={columnOptions}
+                            deleting={isDeleting}
+                            updating={isStatusUpdating}
                             draggable={
                               !isReordering && !isDeleting && !isStatusUpdating
                             }
-                            onDragStart={
-                              isReordering
-                                ? undefined
-                                : (event) => handleTaskDragStart(event, task.id)
+                            dragging={draggingTaskId === task.id}
+                            onEdit={() => openEditTaskModal(task)}
+                            onDelete={() => handleDeleteTask(task.id)}
+                            onStatusChange={(value) =>
+                              handleStatusChange(task.id, value)
                             }
-                            onDragEnd={
-                              isReordering ? undefined : handleTaskDragEnd
+                            onDragStart={(event) =>
+                              handleTaskDragStart(event, task.id)
                             }
-                            style={
-                              !isReordering && draggingTaskId === task.id
-                                ? { opacity: 0.4, cursor: 'grabbing' }
-                                : {
-                                    cursor:
-                                      isReordering ||
-                                      isDeleting ||
-                                      isStatusUpdating
-                                        ? 'default'
-                                        : 'grab'
-                                  }
-                            }
-                          >
-                            <Stack gap='sm'>
-                              <Group justify='space-between' align='flex-start'>
-                                <Stack gap={2}>
-                                  <Text fw={600}>{task.title}</Text>
-                                  {task.description && (
-                                    <Text size='sm' c='dimmed' lineClamp={3}>
-                                      {task.description}
-                                    </Text>
-                                  )}
-                                </Stack>
-                                <Group gap='xs'>
-                                  <ActionIcon
-                                    size='sm'
-                                    variant='subtle'
-                                    aria-label={t`Open work order detail`}
-                                    onClick={() =>
-                                      navigate(
-                                        `/maintenance/work-orders/${task.id}/`
-                                      )
-                                    }
-                                    disabled={isDeleting}
-                                  >
-                                    <IconExternalLink size={16} />
-                                  </ActionIcon>
-                                  <ActionIcon
-                                    size='sm'
-                                    variant='subtle'
-                                    aria-label={t`Edit work order`}
-                                    onClick={() => openEditTaskModal(task)}
-                                    disabled={isDeleting}
-                                  >
-                                    <IconPencil size={16} />
-                                  </ActionIcon>
-                                  <ActionIcon
-                                    size='sm'
-                                    variant='subtle'
-                                    color='red'
-                                    aria-label={t`Delete work order`}
-                                    onClick={() => handleDeleteTask(task.id)}
-                                    disabled={isDeleting}
-                                  >
-                                    {isDeleting ? (
-                                      <Loader size='xs' />
-                                    ) : (
-                                      <IconTrash size={16} />
-                                    )}
-                                  </ActionIcon>
-                                </Group>
-                              </Group>
-
-                              <Group gap='xs'>
-                                <Badge
-                                  color={priorityColors[task.priority]}
-                                  variant='light'
-                                >
-                                  {renderPriorityLabel(task.priority)}
-                                </Badge>
-                                {task.assignee && (
-                                  <Badge color='gray' variant='outline'>
-                                    {task.assignee}
-                                  </Badge>
-                                )}
-                                {task.dueDate && (
-                                  <Badge
-                                    color={getDueBadgeColor(task.dueDate)}
-                                    variant='light'
-                                  >
-                                    {dayjs(task.dueDate).format('MMM D')}
-                                  </Badge>
-                                )}
-                              </Group>
-
-                              {task.tags.length > 0 && (
-                                <Group gap='xs'>
-                                  {task.tags.map((tag) => (
-                                    <Badge
-                                      key={tag}
-                                      color='gray'
-                                      variant='outline'
-                                    >
-                                      {tag}
-                                    </Badge>
-                                  ))}
-                                </Group>
-                              )}
-
-                              <Stack gap={2}>
-                                {task.machineName && (
-                                  <Text size='sm'>
-                                    {t`Machine`}: {task.machineName}
-                                  </Text>
-                                )}
-                                {task.company && (
-                                  <Text size='sm'>
-                                    {t`Company`}: {task.company}
-                                  </Text>
-                                )}
-                                {task.companyContactName && (
-                                  <Text size='sm' c='dimmed'>
-                                    {t`Contact`}: {task.companyContactName}
-                                    {task.companyContactPhone
-                                      ? ` • ${task.companyContactPhone}`
-                                      : ''}
-                                  </Text>
-                                )}
-                                {task.jobNumber && (
-                                  <Text size='sm' c='dimmed'>
-                                    {t`Job`}: {task.jobNumber}
-                                  </Text>
-                                )}
-                                {task.serviceQuote && (
-                                  <Text size='sm' c='dimmed'>
-                                    {t`Service quote`}: {task.serviceQuote}
-                                  </Text>
-                                )}
-                              </Stack>
-
-                              {/* Parts & stock allocation badges */}
-                              {task.parts.length > 0 && (
-                                <Stack gap={4}>
-                                  <Text size='xs' fw={500} c='dimmed'>
-                                    {t`Parts`}
-                                  </Text>
-                                  {task.parts.map((p) => {
-                                    const statusColor: Record<string, string> =
-                                      {
-                                        full: 'green',
-                                        partial: 'yellow',
-                                        insufficient: 'red',
-                                        none: 'gray'
-                                      };
-                                    const color =
-                                      statusColor[
-                                        p.allocationStatus ?? 'none'
-                                      ] ?? 'gray';
-                                    return (
-                                      <Group key={p.partId} gap={4}>
-                                        <Text
-                                          size='xs'
-                                          style={{ flex: 1 }}
-                                          lineClamp={1}
-                                        >
-                                          {p.partName}
-                                        </Text>
-                                        <Tooltip
-                                          label={p.allocationNote ?? ''}
-                                          disabled={!p.allocationNote}
-                                        >
-                                          <Badge
-                                            size='xs'
-                                            color={color}
-                                            variant='light'
-                                          >
-                                            {p.allocatedQuantity ?? 0}/
-                                            {p.quantity}
-                                          </Badge>
-                                        </Tooltip>
-                                      </Group>
-                                    );
-                                  })}
-                                </Stack>
-                              )}
-
-                              <Select
-                                size='xs'
-                                label={t`Status`}
-                                data={columnOptions}
-                                value={task.status}
-                                onChange={(value) =>
-                                  value &&
-                                  handleStatusChange(
-                                    task.id,
-                                    value as KanbanStatus
-                                  )
-                                }
-                                disabled={isStatusUpdating || isDeleting}
-                                rightSection={
-                                  isStatusUpdating ? (
-                                    <Loader size='xs' />
-                                  ) : undefined
-                                }
-                              />
-                            </Stack>
-                          </Card>
+                            onDragEnd={handleTaskDragEnd}
+                          />
                         );
                       })}
                     </Stack>

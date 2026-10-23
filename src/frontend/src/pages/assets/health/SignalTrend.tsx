@@ -8,6 +8,7 @@ import { apiUrl } from '@lib/functions/Api';
 import type { SignalTrend } from '@lib/types/MachineHealth';
 
 import { useApi } from '../../../contexts/ApiContext';
+import { trendGeometry } from './trendGeometry';
 
 const WIDTH = 120;
 const HEIGHT = 28;
@@ -46,30 +47,10 @@ export function SignalTrendSparkline({
     }
   });
 
-  const path = useMemo(() => {
-    const samples = (trendQuery.data?.samples ?? [])
-      .map((sample) => Number(sample.value))
-      .filter((value) => Number.isFinite(value));
-
-    if (samples.length < 2) {
-      return null;
-    }
-
-    // Samples arrive newest-first from the historian; draw them left-to-right.
-    const ordered = [...samples].reverse();
-    const min = Math.min(...ordered);
-    const max = Math.max(...ordered);
-    const span = max - min || 1;
-    const step = WIDTH / (ordered.length - 1);
-
-    return ordered
-      .map((value, index) => {
-        const x = index * step;
-        const y = HEIGHT - ((value - min) / span) * HEIGHT;
-        return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-      })
-      .join(' ');
-  }, [trendQuery.data]);
+  const geometry = useMemo(
+    () => trendGeometry(trendQuery.data?.samples ?? [], WIDTH, HEIGHT),
+    [trendQuery.data]
+  );
 
   if (!enabled) {
     return null;
@@ -81,6 +62,16 @@ export function SignalTrendSparkline({
 
   const trend = trendQuery.data;
 
+  if (trendQuery.isError) {
+    return (
+      <Text
+        component='output'
+        size='xs'
+        c='red'
+      >{t`Trend request failed`}</Text>
+    );
+  }
+
   if (!trend?.available) {
     return (
       <Tooltip label={trend?.detail ?? t`No trend data is available.`}>
@@ -91,7 +82,7 @@ export function SignalTrendSparkline({
     );
   }
 
-  if (path === null) {
+  if (geometry === null || geometry.points.length < 2) {
     return (
       <Text size='xs' c='dimmed'>
         {t`Too few samples`}
@@ -99,35 +90,51 @@ export function SignalTrendSparkline({
     );
   }
 
+  const windowText = `${new Date(trend.window_start).toLocaleString()} – ${new Date(trend.window_end).toLocaleString()} (${Intl.DateTimeFormat().resolvedOptions().timeZone})`;
+  const scaleText = `${geometry.min.toLocaleString()}–${geometry.max.toLocaleString()} ${trend.unit}`;
+  const summary = t`Recent trend for ${trend.display_name}: ${scaleText}. ${windowText}. Source: ${trend.source_name}. ${geometry.excluded} excluded readings; ${geometry.uncertain} uncertain, ${geometry.bad} bad.`;
   return (
-    <Tooltip
-      label={t`${trend.samples.length} samples from ${trend.source_name}`}
-    >
-      <Group gap={4} wrap='nowrap'>
-        <Box
-          component='svg'
-          width={WIDTH}
-          height={HEIGHT}
-          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-          role='img'
-          aria-label={t`Recent trend for ${trend.display_name}`}
-        >
-          <path
-            d={path}
-            fill='none'
-            stroke='currentColor'
-            strokeWidth={1.5}
-            strokeLinejoin='round'
-            strokeLinecap='round'
-            opacity={0.75}
-          />
-        </Box>
-        {trend.truncated && (
-          <Text size='xs' c='dimmed'>
-            {t`(trimmed)`}
-          </Text>
+    <Tooltip label={summary} multiline w={320}>
+      <Box tabIndex={0} aria-label={summary}>
+        <Group gap={4} wrap='nowrap'>
+          <Box
+            component='svg'
+            width={WIDTH}
+            height={HEIGHT}
+            viewBox={`-2 -2 ${WIDTH + 4} ${HEIGHT + 4}`}
+            role='img'
+            aria-label={summary}
+          >
+            <path
+              d={geometry.path}
+              fill='none'
+              stroke='currentColor'
+              strokeWidth={1.5}
+              strokeLinejoin='round'
+              strokeLinecap='round'
+            />
+            {geometry.points.map((point, index) => (
+              <circle
+                key={index}
+                cx={point.x}
+                cy={point.y}
+                r={1.5}
+                fill='currentColor'
+              />
+            ))}
+          </Box>
+          {trend.truncated && <Text size='xs' c='dimmed'>{t`(trimmed)`}</Text>}
+        </Group>
+        <Text size='xs' c='dimmed'>
+          {t`Local range`}: {scaleText}
+        </Text>
+        {geometry.excluded > 0 && (
+          <Text
+            size='xs'
+            c='orange'
+          >{t`${geometry.excluded} missing or poor-quality readings`}</Text>
         )}
-      </Group>
+      </Box>
     </Tooltip>
   );
 }

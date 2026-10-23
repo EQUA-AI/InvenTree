@@ -355,6 +355,13 @@ class InvenTreeTaskTests(PluginRegistryMixin, TestCase):
         """Test that a failed task will generate a notification."""
         from common.models import NotificationEntry, NotificationMessage
 
+        # Ensure the plugin registry (notification delivery methods) is
+        # collected against the current test database. In an isolated run the
+        # initial startup collection happens before the test database exists
+        # (registry.plugins is empty), and registry self-reload is disabled in
+        # test mode - same requirement as test_task_check_for_updates below.
+        self.ensurePluginsLoaded(force=True)
+
         # Create a staff user (to ensure notifications are sent)
         user = User.objects.create_user(
             username='i_am_staff', password='staffpass', is_staff=False, is_active=True

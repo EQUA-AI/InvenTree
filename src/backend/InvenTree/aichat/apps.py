@@ -94,8 +94,14 @@ class AIChatConfig(AppConfig):
             try:
                 from common.models import InvenTreeSetting
 
+                # create=False: this lookup must stay read-only. Read-only
+                # commands run checks too, and a default-creating lookup
+                # INSERTs the absent marker instead of merely observing
+                # that it is not armed.
                 floor_armed = str(
-                    InvenTreeSetting.get_setting(ROLLBACK_FLOOR_SETTING, '')
+                    InvenTreeSetting.get_setting(
+                        ROLLBACK_FLOOR_SETTING, '', create=False
+                    )
                 ).lower() in ('1', 'true', 'yes')
             except Exception:
                 # The marker is a DB row; checks also run before migrations

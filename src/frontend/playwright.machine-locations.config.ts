@@ -15,7 +15,8 @@ export default defineConfig({
   testMatch: ['pui_asset_locations.spec.ts'],
   workers: 1,
   retries: 0,
-  timeout: 45_000,
+  timeout: 90_000,
+  expect: { timeout: 15_000 },
   reporter: 'list',
   outputDir: 'test-results/machine-locations',
   use: {

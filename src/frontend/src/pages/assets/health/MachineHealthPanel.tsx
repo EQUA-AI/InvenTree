@@ -1,14 +1,5 @@
 import { t } from '@lingui/core/macro';
-import {
-  Alert,
-  Button,
-  Center,
-  Group,
-  Loader,
-  Stack,
-  Text,
-  Title
-} from '@mantine/core';
+import { Alert, Button, Group, Stack, Text, Title } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconInfoCircle, IconRefresh } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -27,6 +18,7 @@ import { useApi } from '../../../contexts/ApiContext';
 import { showApiErrorMessage } from '../../../functions/notifications';
 import { WorkOrderCreateModal } from '../../maintenance/components/WorkOrderCreateModal';
 import { AnomalyList } from './AnomalyList';
+import { HealthQuerySection } from './HealthQuerySection';
 import { HealthSourceStatusTable } from './HealthSourceStatus';
 import { HealthSummaryPanel } from './HealthSummary';
 import { SignalTable } from './SignalTable';
@@ -93,9 +85,13 @@ export function MachineHealthPanel({
 
   const refreshAll = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['machine-health-summary'] });
+    queryClient.invalidateQueries({ queryKey: ['machine-metrics'] });
     queryClient.invalidateQueries({ queryKey: ['machine-health-signals'] });
     queryClient.invalidateQueries({ queryKey: ['machine-health-anomalies'] });
-  }, [queryClient]);
+    queryClient.invalidateQueries({
+      queryKey: ['machine-health-trend', machineId]
+    });
+  }, [queryClient, machineId]);
 
   const handleAcknowledge = useCallback(
     async (anomaly: MachineAnomaly) => {
@@ -148,34 +144,9 @@ export function MachineHealthPanel({
     [api, machineId]
   );
 
-  const isLoading =
-    summaryQuery.isLoading ||
-    signalsQuery.isLoading ||
-    anomaliesQuery.isLoading;
-
-  if (isLoading) {
-    return (
-      <Center p='xl'>
-        <Loader />
-      </Center>
-    );
-  }
-
-  if (summaryQuery.isError) {
-    return (
-      <Alert color='red' variant='light' title={t`Health data unavailable`}>
-        {t`The health service could not be reached. Work-order creation is unaffected.`}
-      </Alert>
-    );
-  }
-
   const summary = summaryQuery.data;
   const signals = signalsQuery.data ?? [];
   const anomalies = anomaliesQuery.data ?? [];
-
-  if (!summary) {
-    return null;
-  }
 
   return (
     <Stack gap='lg'>
@@ -191,47 +162,65 @@ export function MachineHealthPanel({
         </Button>
       </Group>
 
-      {!summary.configured ? (
-        <Alert
-          color='blue'
-          variant='light'
-          icon={<IconInfoCircle size={16} />}
-          title={t`No health source is configured for this machine`}
-        >
-          <Stack gap='xs'>
-            <Text size='sm'>
-              {t`Map this machine's tags to a health source to see live signals and anomalies here. Until then, its condition is unknown rather than healthy.`}
-            </Text>
-            <Text size='sm'>
-              {t`Creating work orders for this machine works normally in the meantime.`}
-            </Text>
-          </Stack>
-        </Alert>
-      ) : (
-        <HealthSummaryPanel summary={summary} />
-      )}
+      <HealthQuerySection
+        query={summaryQuery}
+        title={t`Health data unavailable`}
+      >
+        {summary &&
+          (!summary.configured ? (
+            <Alert
+              color='blue'
+              variant='light'
+              icon={<IconInfoCircle size={16} />}
+              title={t`No health source is configured for this machine`}
+            >
+              <Stack gap='xs'>
+                <Text size='sm'>
+                  {t`Map this machine's tags to a health source to see live signals and anomalies here. Until then, its condition is unknown rather than healthy.`}
+                </Text>
+                <Text size='sm'>
+                  {t`Creating work orders for this machine works normally in the meantime.`}
+                </Text>
+              </Stack>
+            </Alert>
+          ) : (
+            <HealthSummaryPanel summary={summary} />
+          ))}
+      </HealthQuerySection>
 
       <Stack gap='sm'>
         <Title order={4}>{t`Active anomalies`}</Title>
-        <AnomalyList
-          anomalies={anomalies}
-          acknowledging={acknowledging}
-          analyzing={analyzing}
-          results={results}
-          onAcknowledge={handleAcknowledge}
-          onCreateRepair={setRepairAnomaly}
-          onAnalyze={handleAnalyze}
-        />
+        <HealthQuerySection
+          query={anomaliesQuery}
+          title={t`Anomalies unavailable`}
+        >
+          <AnomalyList
+            anomalies={anomalies}
+            acknowledging={acknowledging}
+            analyzing={analyzing}
+            results={results}
+            onAcknowledge={handleAcknowledge}
+            onCreateRepair={setRepairAnomaly}
+            onAnalyze={handleAnalyze}
+          />
+        </HealthQuerySection>
       </Stack>
 
       <Stack gap='sm'>
         <Title order={4}>{t`Signals`}</Title>
-        <SignalTable signals={signals} machineId={machineId} />
+        <HealthQuerySection query={signalsQuery} title={t`Signals unavailable`}>
+          <SignalTable signals={signals} machineId={machineId} />
+        </HealthQuerySection>
       </Stack>
 
       <Stack gap='sm'>
         <Title order={4}>{t`Source connections`}</Title>
-        <HealthSourceStatusTable sources={summary.sources ?? []} />
+        <HealthQuerySection
+          query={summaryQuery}
+          title={t`Source connections unavailable`}
+        >
+          <HealthSourceStatusTable sources={summary?.sources ?? []} />
+        </HealthQuerySection>
       </Stack>
 
       <WorkOrderCreateModal
