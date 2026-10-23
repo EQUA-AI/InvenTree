@@ -59,6 +59,13 @@ parts notes, attachment comments and part names, and readable signal names.
 Provisional bearing alarm limits and the local `operator` account exist only in
 the coordinator's local copy, not on Azure.
 
+**Update, 23 October: R8 procurement — migrations applied on Azure.** On 23 October
+(about 12:58 UTC) the coordinator applied the four pending migrations on Azure with the
+guarded runner after a fresh read-only backup (`inventree-20261023T1243.dump`, held by
+the owner): aichat `0056`, order `0123`, tasks `0050` and tasks `0060`. Azure now has
+992 and `runmigrations --check` reports nothing to apply; a deploy of IOT-Merge at or
+after `ca2e75502` needs no migration step. Original note:
+
 **Update, 23 October: R8 procurement (when merged).** A build that includes R8
 adds three migrations, all new tables or a nullable column, safe for the
 running old code: `order 0123_purchaseorderdocumentevidence`,
