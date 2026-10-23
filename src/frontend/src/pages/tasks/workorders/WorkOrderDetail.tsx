@@ -299,7 +299,13 @@ function WorkOrderWorkspace({
       const panel = workflow?.querySelector<HTMLElement>(
         `[data-work-panel="${activePanel}"]`
       );
-      if (dockedNavigation) {
+      // The short-viewport CSS fallback can put navigation in normal flow
+      // even when its compact contents fit the measured clearance budget.
+      if (
+        dockedNavigation &&
+        navigationRef.current &&
+        getComputedStyle(navigationRef.current).position === 'fixed'
+      ) {
         panel?.focus({ preventScroll: true });
         panel?.scrollIntoView({ block: 'start' });
       } else {
@@ -588,7 +594,11 @@ function WorkOrderWorkspace({
             <WorkMaterialsPanel
               workOrderId={workOrder.id}
               label={workOrder.reference || t`Work order ${workOrder.id}`}
-              fallback={<PartsTable parts={workOrder.parts} />}
+              fallback={
+                workOrder.parts.length > 0 ? (
+                  <PartsTable parts={workOrder.parts} />
+                ) : null
+              }
             />
           </SectionCard>
         </Stack>

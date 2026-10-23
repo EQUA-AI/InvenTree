@@ -33,12 +33,14 @@ import workClasses from './workCompanion.module.css';
  */
 export default function DictateCloseoutModal({
   opened,
+  locked = false,
   onClose,
   workOrderId,
   workOrderVersion,
   onCommitted
 }: Readonly<{
   opened: boolean;
+  locked?: boolean;
   onClose: () => void;
   workOrderId: number;
   workOrderVersion: number;
@@ -46,6 +48,8 @@ export default function DictateCloseoutModal({
 }>) {
   const voice = useVoiceCapture();
   const api = useApi();
+  const lockedRef = useRef(locked);
+  lockedRef.current = locked;
   const [original, setOriginal] = useState<File | null>(null);
   const [started, setStarted] = useState('');
   const [duration, setDuration] = useState<string | number>('');
@@ -75,7 +79,7 @@ export default function DictateCloseoutModal({
     setUploading(false);
   };
   const upload = async () => {
-    if (!original || !voice.capture) return;
+    if (lockedRef.current || !original || !voice.capture) return;
     const generation = localGeneration.current;
     setUploading(true);
     setMediaError('');
@@ -126,19 +130,28 @@ export default function DictateCloseoutModal({
     : null;
 
   const begin = useCallback(() => {
+    if (lockedRef.current) return;
     discardLocal();
     void voice.create('closeout', workOrderId, workOrderVersion);
   }, [voice, workOrderId, workOrderVersion]);
 
   const submitTranscript = useCallback(() => {
+    if (lockedRef.current) return;
     void voice.addRevision(transcript);
   }, [voice, transcript]);
 
   const acceptAndHandOff = useCallback(async () => {
-    if (!latestRevision || (original && !savedOriginal)) return;
+    if (lockedRef.current || !latestRevision || (original && !savedOriginal))
+      return;
     await voice.acceptRevision(latestRevision);
+    if (lockedRef.current) return;
     await voice.commit();
   }, [voice, latestRevision, original, savedOriginal]);
+
+  useEffect(() => {
+    // Permission/source loss stops local recording without discarding the draft.
+    if (locked && recording.recording) recording.stop();
+  }, [locked, recording.recording]);
 
   useEffect(() => {
     if (state === 'committed') {
@@ -155,7 +168,12 @@ export default function DictateCloseoutModal({
       onClose={async () => {
         if (voice.busy || uploading) return;
         recording.reset();
-        if (state && state !== 'committed' && state !== 'canceled') {
+        if (
+          !lockedRef.current &&
+          state &&
+          state !== 'committed' &&
+          state !== 'canceled'
+        ) {
           await voice.cancel();
         }
         onClose();
@@ -164,7 +182,13 @@ export default function DictateCloseoutModal({
       title={t`Dictate closeout narrative`}
       size='lg'
     >
-      <Stack gap='sm' data-testid='dictate-closeout-modal'>
+      <Stack
+        renderRoot={(props) => <fieldset {...props} disabled={locked} />}
+        gap='sm'
+        style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
+        data-testid='dictate-closeout-modal'
+      >
+        {locked && <Alert color='orange'>{t`Capture locked`}</Alert>}
         {!state && transcript && (
           <Alert color='orange'>{t`Your transcript draft is retained. Start a governed session to review and save it.`}</Alert>
         )}
@@ -318,7 +342,12 @@ export default function DictateCloseoutModal({
         {state === 'accepted' && (
           <Group>
             <Badge color='green'>{t`Accepted`}</Badge>
-            <Button loading={voice.busy} onClick={() => void voice.commit()}>
+            <Button
+              loading={voice.busy}
+              onClick={() => {
+                if (!lockedRef.current) void voice.commit();
+              }}
+            >
               {t`Hand off to closeout`}
             </Button>
           </Group>

@@ -74,9 +74,6 @@ export function WorkRecordUpdate({
       mt='md'
       data-testid='work-record-update'
     >
-      <InfoTooltip
-        label={t`Updates the internal AIMMS maintenance record. Physical return and external-system acknowledgement are separate.`}
-      />
       {state.status === 'confirmed' ? (
         <Alert color='green'>
           {t`Record updated`} ·{' '}
@@ -250,6 +247,9 @@ export function WorkRecordUpdate({
         replace
         to='?work_panel=verify'
       >{t`View Verify & Return`}</Anchor>
+      <InfoTooltip
+        label={t`Updates the internal AIMMS maintenance record. Physical return and external-system acknowledgement are separate.`}
+      />
     </Stack>
   );
 }

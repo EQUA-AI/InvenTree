@@ -11,3 +11,12 @@ Authoritative producer contracts remain [integration-wave1](../reports/integrati
 - Nothing sends email, changes named approval, seeds stock, alters Materials reads, grants machine scope or changes backend code.
 
 Verified by source inspection, isolated backend checks, app/harness types, unit tests, fixture browser runs and inspected screenshots. [The lane report](../reports/polish.md) records exact counts, resolved intermediate failures and inherited migration/tracking gates. Fixture evidence is not authenticated deployment, real showcase or product acceptance.
+
+
+## Fix round 1 — retained authority and refused sources
+
+On `4175a75aa`, normal specialized Closeout command gates were intact; the host permission failures matched new information/missing-value controls. Those remain readable. Retained capture and decision save retries now require their corresponding current specialized permission and readable sources, including after reload. Retained final-update retry uses the same source lock as a new final update. Drafts, command owner/endpoint, payload and idempotency key stay retained. Capture-disabled manual account fields require complete permission. Already-open dictation rechecks capture authority/source availability, disables write controls on loss, and does not start a cancellation write when closed while locked.
+
+A refused detailed Parts read has an explicit unavailable alert. Only actual nonempty overview requirements may supply the native fallback; refusal never establishes zero requirements. Retry only reads. Packet dictation continues to lock final update via the retained Narrative editor after the completed-question card disappears.
+
+The [Fix round 1 ledger](../reports/polish.md#fix-round-1) distinguishes reproduced product gaps, semantic selector failures and the fixture's opaque-origin storage exception. Backend named approval, recorded-only email, replay guarantees, Materials read-only access and machine scope remain unchanged. Local fixture evidence does not replace server enforcement or deployment acceptance.

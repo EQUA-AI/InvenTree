@@ -307,6 +307,11 @@ for (const size of [
       await main.getByRole('tab', { name, exact: true }).click();
       await expect(page.getByTestId('fixture-fetching')).toHaveText('0');
       await textZoom(page, zoom);
+      // Exercise keyboard focus without a stationary pointer opening a tooltip
+      // as text zoom and panel changes move the authority link underneath it.
+      await page.mouse.move(0, 0);
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('tooltip')).toHaveCount(0);
       const expected = await main
         .locator(
           'button, a[href], input, textarea, select, summary, [tabindex]'
@@ -359,10 +364,25 @@ for (const size of [
             focused.focus,
             `${name}: visible focus for ${focused.id}`
           ).toBe(true);
-          expect(
-            focused.reachable,
-            `${name}: keyboard action ${focused.id} covered by fixed UI`
-          ).toBe(true);
+          // Native help can take a transition frame to close after blur.
+          // Retry the hit test; a persistent obstruction must still fail.
+          await expect
+            .poll(
+              () =>
+                page.evaluate(() => {
+                  const node = document.activeElement as HTMLElement;
+                  const r = node.getBoundingClientRect();
+                  const hit = document.elementFromPoint(
+                    r.x + r.width / 2,
+                    r.y + r.height / 2
+                  );
+                  return !!hit && (hit === node || node.contains(hit));
+                }),
+              {
+                message: `${name}: keyboard action ${focused.id} covered by fixed UI`
+              }
+            )
+            .toBe(true);
         }
         if (focused.scroll)
           await visibleScrollFocus(

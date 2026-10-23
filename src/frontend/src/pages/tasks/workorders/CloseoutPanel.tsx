@@ -309,6 +309,22 @@ export function CloseoutPanel({
     captureSave.state != null ||
     dictateOpen ||
     ['pending', 'uncertain', 'confirmed'].includes(update.state.status);
+  // Retained commands still require today's authority and readable sources.
+  // Their own recovery state must not prevent an authorized exact retry.
+  const captureRetryLocked =
+    !(captureSave.state?.intent.command === 'closeout_decisions'
+      ? canReview
+      : canCapture) ||
+    wizardBlocked ||
+    busy ||
+    dictateOpen ||
+    ['pending', 'uncertain', 'confirmed'].includes(update.state.status);
+  const finalUpdateLocked =
+    !canComplete ||
+    wizardBlocked ||
+    busy ||
+    dictateOpen ||
+    captureSave.state != null;
   const effectsQuery = useQuery({
     queryKey: ['closeout-effects', woId],
     enabled:
@@ -622,6 +638,7 @@ export function CloseoutPanel({
       {captureEnabled && (
         <DictateCloseoutModal
           opened={dictateOpen}
+          locked={!canCapture || wizardBlocked}
           onClose={() => setDictateOpen(false)}
           workOrderId={workOrder.id}
           workOrderVersion={workOrder.lifecycle_version}
@@ -788,9 +805,12 @@ export function CloseoutPanel({
           }
           onRetry={
             ['uncertain', 'failed'].includes(captureSave.state.status)
-              ? () => void captureSave.save()
+              ? () => {
+                  if (!captureRetryLocked) void captureSave.save();
+                }
               : undefined
           }
+          retryDisabled={captureRetryLocked}
           onKeep={
             latestReview &&
             !(
@@ -829,7 +849,7 @@ export function CloseoutPanel({
             setFieldValues((current) => ({ ...current, [field]: value }));
           }}
           onSubmit={() => {}}
-          busy={mutationLocked}
+          busy={!canComplete || mutationLocked}
           saving={false}
         />
       )}
@@ -974,7 +994,9 @@ export function CloseoutPanel({
               completedAt={accepted?.completed_at}
               completedId={accepted?.id}
               onSubmit={complete}
-              onReconcile={() => update.execute()}
+              onReconcile={() => {
+                if (!finalUpdateLocked) return update.execute();
+              }}
               onReview={() => {
                 return update
                   .reviewLatest()
@@ -1008,9 +1030,7 @@ export function CloseoutPanel({
                   }
                 });
               }}
-              locked={
-                !canComplete || busy || dictateOpen || captureSave.state != null
-              }
+              locked={finalUpdateLocked}
             />
           </>
         }

@@ -1,5 +1,9 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## R8 polish fix round 1 — 23 October 2026 (ready for human review)
+
+From `4175a75aa`: restore visible Parts 404 refusal; retain actual native requirements without claiming zero; gate retained Closeout retries by current authority and source availability; gate capture-disabled manual fields. Host viewer failures matched information controls rather than a dropped normal command gate. Packet lock spec uses the retained Narrative → Dictate action. D6 fixture storage seeding now checks the fixture origin; application errors remain checked. [Fix-round ledger](../r8-procurement/reports/polish.md#fix-round-1) records attribution and actual checks. Broad replay 312/318; all six discovered keyboard failures resolved and included in the clean 70-case follow-up. Two settled locked-dialog capture replays and two controlled storage-origin checks pass; 174 units, six TypeScript projects, Lingui with 40 bytewise locale restores and final changed-file checks pass. All 65 curated before/after PNGs inspected. Owned browser removed and ports3025/15275 clear. Already-open dictation also locks on permission/source loss. This is fixture evidence; coordinator Mac-host and authenticated local acceptance remain separate. No backend, owner data, Azure or Git writes.
+
 ## R8 production polish — 23 October 2026 (ready for human review)
 
 `r8-polish` from `3f82042d0`: U1 aligned procurement commands, U2 Work/source

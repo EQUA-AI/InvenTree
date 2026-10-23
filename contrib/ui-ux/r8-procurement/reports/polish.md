@@ -148,3 +148,66 @@ Supporting config: `playwright.r8.config.ts`, `playwright/r8-server.mjs`, `tscon
 Implementation, fixture checks and requested screenshot inspection are complete. No unresolved implementation decision needs an owner answer. Next: human review of U1–U4 and the seven Work tabs, then the coordinator's authenticated local integration/real-showcase checks. No PR or issue was created. No deployment, real stock/commitment mutation, owner Closeout mutation, email send or product acceptance is claimed.
 
 Parent migration and tracking gates remain open independently of this presentation-only lane. The own PostgreSQL container/network and browser `r8-w2polish-browser-3025` were removed successfully; ports 3025 and 15275 are clear (`cleanup.json`). The shared R6 handoff and this lane's backlog/contract evidence point here.
+
+
+## Fix round 1
+
+23 October 2026. Base `4175a75aa`; local fixture remediation in `r8-polish`. The earlier verification did not include the S8 permission matrix or S7 packet receipt suite. Its statement that every failed read retained a visible state was too broad: the polish removed the Materials 404 caption. This round records the omitted checks and fixes below; previous test counts are historical evidence, not this round's results.
+
+### Findings and changes
+
+1. **Closeout permission matrix:** the host logs identify enabled *information* buttons, not enabled write commands. The exact failing names are `Information: Extracted text needs review…Reconcile…` and `Saved request queue unavailable; remaining requests are unknown.` The unanchored command regex matched `Extracted`/`Reconcile` within descriptions and `Save` within `Saved`. Commit `4175a75aa` introduced those tooltip presentations; it did not remove the normal Closeout capture/review/reconcile/complete predicates. The command matcher now requires the beginning of an action name and a word boundary, with additional real command names and a nonzero minimum on the viewer Closeout case. Information and missing-value reasons remain accessible to viewers.
+2. **Actual recovery gaps found during that audit:** retained capture/decision retries had no fresh specialized-permission/source gate (inherited from `20a8734ec3`), and retained final-update recovery omitted the source lock (inherited from `5a65c9b852`). New regression cases reproduced all four retry failures before the product fix. `CloseoutPanel` now disables and guards these writes when authority is absent or a required source is unavailable, while retaining drafts and exact original intents. `DraftRecovery.retryDisabled` controls the save retry independently of read-only comparison. The capture-disabled manual account also requires complete permission (its omitted field gate dates to `7bf859efb4`). An already-open dictation session now has the same authority/source lock: its fieldset is disabled, command handlers recheck the current lock, and permission loss invokes local recording stop while retaining draft state. Closing a locked dialog does not issue a new cancellation write. No server permission, endpoint, replay identity or backend behavior changes.
+3. **Parts 404:** `4175a75aa` removed its visible unavailable caption. Restored a short `Detailed parts records not available` alert and read-only Retry. Recorded native fallback requirements remain visible, but an empty overview fallback no longer claims `No required parts.` after a refused detailed read. Tests cover both unknown/empty and explicitly recorded nonempty fallback requirements, and still assert no writes.
+4. **Packet dictation:** `4175a75aa` deliberately hides the duplicate question card after the manual account is complete. The existing Narrative → Dictate control remains available. The spec now uses it, still asserts enabled final update before dictation, disabled update during the modal, enabled update after cancellation, and zero commands. Screenshot animation is disabled for settled dialog evidence.
+5. **Four work runtime errors:** all four host failures are D6 wide-assistant cases whose `page.goto` first failed with `ERR_CONNECTION_REFUSED`. Their inherited `b79e604b00` init script then accessed storage on the navigation-error document. The supplied rerun shows those same four cases passing with the harness running. The fixture now seeds width only on the exact fixture origin, with an explicit assertion that `900` was seeded on the real fixture. It does not suppress application errors or catch storage failures on the real origin. No product runtime stack or product storage change is supported by those logs.
+6. **Additional keyboard regressions from the wider replay:** the new update information control preceded the next meaningful action after confirmation; it now follows View Verify & Return, preserving the original action-first keyboard path. Compact navigation also exposed a pre-existing mismatch between CSS short-viewport inline layout and the docked-focus assumption; focus now checks the rendered navigation position. The keyboard scan parks the mouse before walking focus and retries hit testing through native tooltip close transitions; every focus/name/order and persistent-obstruction assertion remains.
+
+The threat-model boundary remains authenticated, authorized API access: UI locking complements server enforcement and cannot grant permissions. This local mocked-browser report does not establish a backend authorization bypass or production acceptance. Security guidance and the existing threat model were read; no issue, PR or external disclosure was created.
+
+### Verification ledger
+
+Evidence: `data/devscratch/r8-polish/fix-round-1/`. Browserless container `r8-w2polish-browser-3025`, loopback WS3025 and native fixture harness15275, no database or authenticated app.
+
+| Check | Actual result | Evidence |
+| --- | --- | --- |
+| Original failures before changes | Three selected failures reproduced | `browser-before.log` and `browser-before/` |
+| Added recovery regressions before product changes | Four failures reproduced: capture/decisions permission loss and final-update 403/404 source refusal | `browser-gates-before.log` and `browser-gates-before/` |
+| Initial focused replay | 24 passed, desktop and phone | `browser-focused.log` |
+| Complete permission, packet, material and work replay | 312/318 passed; six keyboard issues above identified; no runtime errors | `browser-complete.log`, `browser-complete-counts.json` |
+| First keyboard/permission replay | 47/48 passed; remaining transient tooltip hit-test corrected | `browser-final.log` |
+| Media/permission replay | 69/70 passed; phone close was blocked by a background header tooltip during fixture role updates; pointer/focus setup corrected | `browser-release.log` |
+| Final affected/keyboard/media replay | 70/70 passed; all six broader keyboard failures included | `browser-verified.log` |
+| Settled locked-dialog capture replay | 2/2 passed after clearing background hover before capture | `browser-dialog-final.log` |
+| Controlled storage-origin regression | Two passed; old script reproduces the exact storage exception on refused navigation; guarded script avoids it and still seeds the healthy origin | `storage-origin.log` |
+| Frontend units | 174 passed in 25 files | `units-complete.log` |
+| App, S1, S6, S7, S8 and R8 types | Six projects passed; initial native fieldset typing error corrected using Mantine renderRoot | `types-verified.json`, `verified-tsconfig*.log`; intermediate `types-complete.json` retained |
+| Lingui extract/compile | Both passed; all 40 `.po` files restored bytewise | `lingui-release.log`, `lingui-release.json` |
+| Changed-file prek | Final pass after formatter fixes | `prek-final.log`; intermediate modifying runs retained |
+| Captures | 65 selected PNGs inspected: 7 before and 58 after; desktop light/dark and phone plus seven-tab enlarged-text and short-viewport checks | `capture-manifest.json`, `curated-review/`; PNGs in `data/devscratch/r8-polish/captures/fix-round-1/` |
+| Cleanup | Owned browser removed; WS3025 and harness15275 clear | `cleanup.json` |
+
+Reproduce from `src/frontend`:
+
+```sh
+AIMMS_HARNESS_PORT=15275 \
+AIMMS_BROWSER_WS=ws://127.0.0.1:3025/r8-polish \
+R8_FIX_PHASE=browser-verified \
+node node_modules/@playwright/test/cli.js test \
+  --config ../../data/devscratch/r8-polish/fix-round-1/browser.config.mts --workers=2 \
+  --grep 'open dictation locks|retained .*save is locked|authorized retained final|manual account without|viewer Closeout|Closeout keeps refused|job Parts refuses|packet dictation|an unavailable|final command retains|all visible Work panel|short viewport keyboard|D6 saved|O15 .*original|O15 microphone|dictation locks a ready'
+```
+
+Changed specs this round (no other checked-in specifications edited):
+
+- `tests/s1/pui_work_materials.spec.ts`
+- `tests/s7/pui_packet_receipt.spec.ts`
+- `tests/s8/pui_permission_matrix.spec.ts`
+- `tests/s8/pui_p31_work_review.spec.ts`
+- `tests/s8/pui_p31_work_keyboard.spec.ts`
+
+The broader run remains a recorded 312/318 run; the clean 70-case follow-up includes all six failures, the original reported cases, specialized recovery locks and original-media journeys. It is not described as a single clean 318-case run. All 65 curated images were inspected, including bytewise matches to previously inspected images; the manifest identifies those matches. The two locked-dialog images were recaptured after clearing background hover, and inspected again. No motion or layout defect was found in the final selected evidence.
+
+Product evidence: `CloseoutPanel.tsx:314` (retry locks), `CloseoutPanel.tsx:641` (open-dialog lock), `DictateCloseoutModal.tsx:186` (native disabled fieldset), `DraftRecovery.tsx:94` (independent retry lock), `FinalUpdateAction.tsx:249` (next-action focus order), `WorkOrderDetail.tsx:307` (rendered inline/docked focus), `WorkOrderDetail.tsx:597` (nonempty native fallback), `WorkMaterialsPanel.tsx:448` (visible 404 refusal), all under `src/frontend/src/pages/tasks/workorders/`. `attribution.txt` retains the commit/blame evidence.
+
+Open owner questions: none. Coordinator Mac-host replay and authenticated local acceptance remain separate. No owner fixture decisions are needed; no owner stock, commitment, completed Closeout, Azure data or backend code was touched. No Git writes.

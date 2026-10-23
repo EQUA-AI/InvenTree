@@ -442,7 +442,17 @@ export function WorkMaterialsPanel({
   if (query.isError && (!query.data || denied)) {
     const status = (query.error as { response?: { status?: number } })?.response
       ?.status;
-    if (status === 404) return <Stack gap='sm'>{fallback}</Stack>;
+    if (status === 404)
+      return (
+        <Stack gap='sm'>
+          <Alert color='orange' title={t`Detailed parts records not available`}>
+            <Button size='xs' variant='light' onClick={() => query.refetch()}>
+              {t`Retry`}
+            </Button>
+          </Alert>
+          {fallback}
+        </Stack>
+      );
     return (
       <Alert
         color='red'
