@@ -457,6 +457,7 @@ function ProcurementRow({
           )}
           {action === 'approval' && payload && (
             <NamedApproval
+              workOrderId={context.work_order_id}
               scope={`work:${context.work_order_id}:${line.kit_line_id}:${line.source_selection?.event_id}`}
               payload={payload}
               summary={t`Purchase for Work ${context.work_order_id} · ${requirement?.part?.name ?? line.part_id ?? t`Part`}`}

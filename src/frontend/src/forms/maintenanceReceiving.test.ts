@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   type MaintenanceReceiveRequest,
+  readRetainedReceipt,
   retainReceipt,
   validateMaintenanceReceipt
 } from './maintenanceReceiving';
@@ -78,4 +79,16 @@ describe('native maintenance receipt intent', () => {
       )
     ).toBeNull();
   });
+});
+
+it('blocks malformed legacy receipt storage and preserves its exact original body', () => {
+  expect(readRetainedReceipt(JSON.stringify(body))).toEqual(body);
+  for (const raw of [
+    'null',
+    '{}',
+    '{',
+    JSON.stringify({ ...body, maintenance_requirement_version: 0 }),
+    JSON.stringify({ ...body, items: [] })
+  ])
+    expect(() => readRetainedReceipt(raw)).toThrow();
 });

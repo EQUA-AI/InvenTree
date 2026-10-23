@@ -419,3 +419,86 @@ test('reservation attention requires original actor and never starts a new recei
   expect(posts).toEqual([]);
   await capture(page, 'receiving-attention');
 });
+
+test('late first-submit failure after A to B to A keeps the original native receipt intent', async ({
+  page
+}) => {
+  await common(page);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const posts: any[] = [];
+  await page.route('**/api/order/po/*/receive/', async (route) => {
+    if (route.request().method() === 'POST') {
+      posts.push(route.request().postDataJSON());
+      await gate;
+      return route.fulfill({
+        status: 400,
+        json: { detail: 'Fixture late validation refusal' }
+      });
+    }
+    return route.fulfill({
+      json:
+        route.request().method() === 'OPTIONS'
+          ? {
+              actions: {
+                POST: {
+                  location: {
+                    type: 'related field',
+                    model: 'stocklocation',
+                    api_url: '/api/stock/location/',
+                    label: 'Location',
+                    required: true
+                  },
+                  items: { type: 'list' }
+                }
+              }
+            }
+          : baseContext
+    });
+  });
+  await page.goto(url('receive', 'light', '&scopeSwitch=1'));
+  await page.getByRole('button', { name: 'Receive fixture line' }).click();
+  await page
+    .getByRole('textbox', { name: 'text-field-batch_code' })
+    .fill('FIXTURE-BATCH');
+  await page.getByRole('button', { name: 'Receive', exact: true }).click();
+  await expect.poll(() => posts.length).toBe(1);
+  // The fixture control models parent navigation while the modal's loading overlay is active.
+  await page
+    .getByRole('button', { name: 'Change receiving scope' })
+    .evaluate((button) => (button as HTMLButtonElement).click());
+  await expect(
+    page.getByRole('button', { name: 'Change receiving scope' })
+  ).toHaveAttribute('data-order', '82');
+  await page
+    .getByRole('button', { name: 'Change receiving scope' })
+    .evaluate((button) => (button as HTMLButtonElement).click());
+  await expect(
+    page.getByRole('button', { name: 'Change receiving scope' })
+  ).toHaveAttribute('data-order', '81');
+  const lateResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/order/po/81/receive/') &&
+      response.status() === 400
+  );
+  release();
+  await (await lateResponse).finished();
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      )
+  );
+  await expect(
+    page.getByRole('button', { name: 'Retry original receipt' })
+  ).toBeVisible();
+  const retained = await page.evaluate(() =>
+    localStorage.getItem(
+      'aimms-maintenance-receive:v1:r8-w2b-fixture:11:/api/order/po/81/receive/'
+    )
+  );
+  expect(JSON.parse(retained!)).toEqual(posts[0]);
+  expect(posts).toHaveLength(1);
+});

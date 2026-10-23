@@ -11,6 +11,7 @@ import { ModalsProvider } from '@mantine/modals';
 import { Notifications } from '@mantine/notifications';
 import { QueryClient, useQuery } from '@tanstack/react-query';
 import axios from 'axios';
+import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   Link,
@@ -36,7 +37,9 @@ const params = new URLSearchParams(window.location.search);
 prepareFixtureTheme(params);
 const surface = params.get('surface');
 const receivingOrCloseout = surface === 'receive' || surface === 'closeout';
-if (receivingOrCloseout) useLocalState.setState({ hostKey: 'r8-w2b-fixture' });
+const receivingFixtureHost = 'r8-w2b-fixture';
+if (receivingOrCloseout)
+  useLocalState.setState({ hostKey: receivingFixtureHost });
 const client = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } }
 });
@@ -134,14 +137,23 @@ const items = [
   }
 ];
 function ReceiveFixture() {
+  const [orderPk, setOrderPk] = useState(81);
   const modal = useReceiveLineItems({
     items: params.get('complete') ? [] : items,
-    orderPk: 81,
+    orderPk,
     destinationPk: 42
   });
   return (
     <>
       <Button onClick={modal.open}>Receive fixture line</Button>
+      {params.has('scopeSwitch') && (
+        <Button
+          data-order={orderPk}
+          onClick={() => setOrderPk(orderPk === 81 ? 82 : 81)}
+        >
+          Change receiving scope
+        </Button>
+      )}
       {modal.modal}
     </>
   );

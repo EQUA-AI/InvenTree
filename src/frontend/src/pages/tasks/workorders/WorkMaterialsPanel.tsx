@@ -24,6 +24,7 @@ import { api } from '../../../App';
 import { returnState } from '../../../components/nav/returnPath';
 import { useUserState } from '../../../states/UserState';
 import { FittedItemFact } from '../../assets/FittedIdentity';
+import { AllocationCustody } from './AllocationCustody';
 import { WorkProcurement } from './WorkProcurement';
 import {
   type MaterialReadout,
@@ -177,8 +178,16 @@ function Reservation({
   reservation,
   units,
   linkStock,
-  back
+  back,
+  workOrderId,
+  writable = false,
+  stale = false,
+  consumable = false
 }: Readonly<{
+  workOrderId?: number;
+  writable?: boolean;
+  stale?: boolean;
+  consumable?: boolean;
   reservation: MaterialReservation;
   units?: string;
   linkStock: boolean;
@@ -197,6 +206,15 @@ function Reservation({
         />
       </Group>
       <Stages stages={reservationStages(reservation)} />
+      {workOrderId && linkStock && (
+        <AllocationCustody
+          workOrderId={workOrderId}
+          reservation={reservation}
+          writable={writable}
+          stale={stale}
+          consumable={consumable}
+        />
+      )}
       {reservation.usage.map((usage) => (
         <UsageLine key={usage.id} usage={usage} units={units} />
       ))}
@@ -223,8 +241,14 @@ function Requirement({
   linkParts,
   linkStock,
   back,
-  inList = true
+  inList = true,
+  workOrderId,
+  writable = false,
+  stale = false
 }: Readonly<{
+  workOrderId?: number;
+  writable?: boolean;
+  stale?: boolean;
   requirement: MaterialRequirement;
   linkParts: boolean;
   linkStock: boolean;
@@ -307,7 +331,7 @@ function Requirement({
           ) : (
             <Stack gap='xs'>
               <Text size='xs' c='dimmed'>
-                {t`Reserved ${amount(reserved, units)} of ${amount(requirement.quantity, units)}`}
+                {t`Allocated ${amount(reserved, units)} of ${amount(requirement.quantity, units)}`}
               </Text>
               <Stack
                 gap='xs'
@@ -318,6 +342,12 @@ function Requirement({
                   <li key={reservation.id}>
                     <Reservation
                       reservation={reservation}
+                      workOrderId={workOrderId}
+                      writable={writable}
+                      stale={stale}
+                      consumable={
+                        requirement.fulfillment_mode === 'reserve_consume'
+                      }
                       units={units}
                       linkStock={linkStock}
                       back={back}
@@ -503,6 +533,9 @@ export function WorkMaterialsPanel({
               linkStock={linkStock && readout.stock_visible}
               back={back}
               inList={false}
+              workOrderId={workOrderId}
+              writable={!!readout.custody_writable}
+              stale={query.isError || query.isFetching}
             />
           )}
         />
@@ -519,6 +552,9 @@ export function WorkMaterialsPanel({
           {readout.requirements.map((requirement) => (
             <Requirement
               key={requirement.key}
+              workOrderId={workOrderId}
+              writable={!!readout.custody_writable}
+              stale={query.isError || query.isFetching}
               requirement={requirement}
               linkParts={linkParts}
               linkStock={linkStock && readout.stock_visible}

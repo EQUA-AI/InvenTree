@@ -253,6 +253,7 @@ def material_readout(actor, work_order) -> dict:
                     else None
                 ),
                 'quantity': float(line.required_quantity),
+                'fulfillment_mode': line.fulfillment_mode,
                 'required': line.required,
                 'fit_basis': {
                     'source': line.source,
@@ -302,6 +303,12 @@ def material_readout(actor, work_order) -> dict:
         'work_order': work_order.pk,
         'source': 'job_kit' if kit is not None else 'requirements',
         'kits_enabled': kits_enabled,
+        'custody_writable': bool(
+            kits_enabled
+            and visible
+            and actor.has_perm('tasks.issue_jobkit')
+            and work_order.lifecycle_status not in ('completed', 'canceled')
+        ),
         'stock_visible': visible,
         'component': _component(work_order, actor),
         'requirements': requirements,

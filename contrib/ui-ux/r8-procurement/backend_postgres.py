@@ -16,7 +16,7 @@ ROOT = (
     if sys.argv[1:2] == ['--inside']
     else Path(__file__).resolve().parents[3]
 )
-OUT = ROOT / 'data/devscratch/r8-int/postgres'
+OUT = ROOT / os.environ.get('R8_POSTGRES_OUTPUT', 'data/devscratch/r8-int/postgres')
 
 
 def inside():
@@ -67,7 +67,7 @@ def inside():
         INVENTREE_PLUGINS_ENABLED='false',
         INVENTREE_AUTO_UPDATE='false',
         INVENTREE_EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
-        AIMMS_SINGLE_SITE_POLICY_KEY='r8-fixture-policy',
+        AIMMS_SINGLE_SITE_POLICY_KEY='r8-policy',
     )
     cwd = backend / 'InvenTree'
     commands = [
@@ -99,6 +99,72 @@ def inside():
             '--testrunner=django.test.runner.DiscoverRunner',
         ],
     ]
+    if os.environ.get('R8_POSTGRES_FOCUSED_ONLY') == '1':
+        commands = commands[:3]
+
+    if os.environ.get('R8_POSTGRES_SEED_REHEARSAL') == '1':
+        # Rehearse the CLI only on the just-created private test database.
+        (cwd / 'r8_seed_settings.py').write_text(
+            'from InvenTree.settings import *\n'
+            "DATABASES['default']['NAME'] = 'test_r8_integration'\n"
+        )
+        bootstrap = """
+import json
+from pathlib import Path
+from django.contrib.auth import get_user_model
+from django.db import connection
+from django.forms.models import model_to_dict
+from assets.models import AssetMachine, Client
+from company.models import Company
+from order.models import PurchaseOrder
+from stock.models import StockItem
+from tasks.models import WorkOrder, WorkOrderCloseout
+from users.models import UserProfile
+assert connection.settings_dict['HOST'] == 'r8-pg'
+assert connection.settings_dict['NAME'] == 'test_r8_integration'
+assert not WorkOrder.objects.filter(reference='WO-003826').exists()
+actor = get_user_model().objects.create_user(username='r8-cli-person', first_name='Fixture', last_name='Reviewer')
+UserProfile.objects.get_or_create(user=actor)
+client = Client.objects.create(name='R8 CLI fixture site', code='r8-cli-fixture')
+machine = AssetMachine.objects.create(name='Cedar Creek Pump 08', client=client)
+work = WorkOrder.objects.create(reference='WO-003826', title='Synthetic read-only CLI target', machine=machine, assigned_to=actor)
+Path('/evidence/seed-target-before.json').write_text(json.dumps(model_to_dict(work), sort_keys=True, default=str))
+Path('/evidence/seed-counts-before.json').write_text(json.dumps([StockItem.objects.count(), PurchaseOrder.objects.count(), WorkOrderCloseout.objects.count()]))
+print('Created only disposable CLI prerequisites: synthetic target and existing named person', work.pk)
+"""
+        verify = """
+import json
+from pathlib import Path
+from django.forms.models import model_to_dict
+from order.models import PurchaseOrder
+from stock.models import StockItem
+from tasks.models import WorkOrder, WorkOrderCloseout
+work = WorkOrder.objects.get(reference='WO-003826')
+assert Path('/evidence/seed-target-before.json').read_text() == json.dumps(model_to_dict(work), sort_keys=True, default=str)
+assert json.loads(Path('/evidence/seed-counts-before.json').read_text()) == [StockItem.objects.count(), PurchaseOrder.objects.count(), WorkOrderCloseout.objects.count()]
+assert not WorkOrder.objects.filter(reference='R8-FIXTURE-003826').exists()
+print('SEED_REHEARSAL_OK: target unchanged; no stock, PO or Closeout added; fixture removed')
+"""
+        command = [
+            'seed_r8_procurement',
+            '--settings=r8_seed_settings',
+            '--confirm-db',
+            'test_r8_integration',
+            '--approver',
+            'r8-cli-person',
+        ]
+        rehearsal = [
+            ['shell', '--settings=r8_seed_settings', '-c', bootstrap],
+            [*command, '--dry-run'],
+            command,
+            [*command, '--dry-run'],
+            [*command, '--remove', '--dry-run'],
+            [*command, '--remove'],
+            [*command, '--remove'],
+            ['shell', '--settings=r8_seed_settings', '-c', verify],
+        ]
+        commands[3:3] = rehearsal
+
     results = []
     for index, args in enumerate(commands):
         with open(f'/evidence/check-{index}.log', 'w', encoding='utf-8') as stream:
@@ -146,7 +212,7 @@ def host():
             if old.is_file():
                 shutil.copy2(old, history / old.name)
     suffix = uuid.uuid4().hex[:10]
-    name = 'r8-int-pg-' + suffix
+    name = os.environ.get('R8_POSTGRES_PREFIX', 'r8-int-pg-') + suffix
     network = name + '-net'
     password = secrets.token_urlsafe(24)
     labels = sys.argv[1:] or [
@@ -279,6 +345,10 @@ def host():
             'HOME=/tmp',
             'PYTHONUSERBASE=/root/.local',
             'LANG=C.UTF-8',
+            'R8_POSTGRES_FOCUSED_ONLY='
+            + os.environ.get('R8_POSTGRES_FOCUSED_ONLY', '0'),
+            'R8_POSTGRES_SEED_REHEARSAL='
+            + os.environ.get('R8_POSTGRES_SEED_REHEARSAL', '0'),
             'INVENTREE_DB_PASSWORD=' + password,
             'python3',
             '/s0/run_postgres.py',

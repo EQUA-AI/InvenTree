@@ -41,6 +41,19 @@ See [merged results and next gates](../r8-procurement/reports/integration-wave1.
 Owned browser3024/harness15274 stopped. Next: coordinator lane C merge, then
 integrated real-data/human review; no deployment/product acceptance inferred.
 
+## R8 wave 2 lane C integration — 23 October 2026 (coordinator review)
+
+C's custody recovery is combined with B's issue attribution and pending-usage
+reconciliation. Shared recovery is mounted in native A/B commands, approval,
+receiving and explicit issue/use controls. Offline325, fresh PostgreSQL329,
+concurrency5, email-policy23, units32 and all93 current browser cases are covered
+by passing matrix/focused runs. Standalone private seed dry-run/apply/remove
+passes; no owner seed occurred. See [contracts, evidence and localhost preview/removal](../r8-procurement/reports/integration-wave1.md#lane-c-merge).
+Migration drift, two baseline type projects and the staged-index synthetic-key
+scanner gate remain open; working-file scan is clean. Owned resources removed.
+Next: coordinator stages the resolution and performs human/authenticated review;
+R6 parent deployment/product acceptance stays unchanged.
+
 ## R8 backend wave 1 integration — 23 October 2026 (human review; baseline gates open)
 
 P1/P2/P3 are integrated in `r8/integration`; the Work audit conflict uses

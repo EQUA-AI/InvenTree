@@ -60,6 +60,7 @@ export interface MaterialReservation {
 }
 
 export interface MaterialRequirement {
+  fulfillment_mode?: string;
   key: string;
   part: MaterialPart | null;
   requested_part: MaterialPart | null;
@@ -89,6 +90,7 @@ export interface MaterialRequirement {
 }
 
 export interface MaterialReadout {
+  custody_writable?: boolean;
   procurement?: MaintenanceProcurementContext;
   work_order: number;
   source: 'job_kit' | 'requirements';

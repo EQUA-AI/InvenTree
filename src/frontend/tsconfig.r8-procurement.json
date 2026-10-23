@@ -2,6 +2,8 @@
   "extends": "./tsconfig.s0.json",
   "files": [
     "playwright/r8-procurement.tsx",
+    "playwright/r8-recovery.tsx",
+    "tests/r8/pui_procurement_recovery.spec.ts",
     "tests/r8/pui_lane_b.spec.ts",
     "tests/r8/pui_procurement_a.spec.ts"
   ]

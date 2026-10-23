@@ -10,9 +10,15 @@ const entry = '/playwright/r8-procurement.html';
 async function fixture(
   page: Page,
   state = 'ordered',
-  options: { po?: boolean; role?: string; scheme?: string } = {}
+  options: {
+    po?: boolean;
+    role?: string;
+    scheme?: string;
+    custody?: boolean;
+  } = {}
 ) {
   let failure = 0;
+  let custodyStatus = 'reserved';
   const posts: { path: string; body: any }[] = [];
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -32,7 +38,38 @@ async function fixture(
       return route.fulfill(
         failure
           ? { status: failure, json: { detail: 'Fixture read failure' } }
-          : { json: materials(state) }
+          : {
+              json: (() => {
+                const data = materials(
+                  options.custody && custodyStatus === 'consumed'
+                    ? 'consumed'
+                    : state
+                );
+                if (options.custody) {
+                  data.custody_writable = options.role !== 'reader';
+                  data.requirements[0].fulfillment_mode = 'reserve_consume';
+                  const row = data.requirements[0].reservations![0];
+                  row.status = custodyStatus;
+                  if (custodyStatus === 'issued') {
+                    data.procurement!.lines[0].reserved_quantity = '0';
+                    data.procurement!.lines[0].issued_quantity = '1';
+                  }
+                  if (custodyStatus !== 'reserved')
+                    row.issued = {
+                      by: 'Fixture Buyer',
+                      at: '2026-10-23T09:00:00Z'
+                    };
+                  if (custodyStatus === 'consumed')
+                    row.closed = {
+                      status: 'consumed',
+                      by: 'Fixture Buyer',
+                      at: '2026-10-23T09:01:00Z',
+                      tracking_id: 901
+                    };
+                }
+                return data;
+              })()
+            }
       );
     if (path === '/api/attachment/')
       return route.fulfill({
@@ -149,6 +186,9 @@ async function fixture(
   return {
     posts,
     errors,
+    custodyStatus: (value: string) => {
+      custodyStatus = value;
+    },
     fail: (status: number) => {
       failure = status;
     }
@@ -467,7 +507,9 @@ test('named review follows existing open, reviewed, approve flow then links its 
         });
       if (path.endsWith('/open/')) status = 'in_review';
       if (path.endsWith('/approve/')) status = 'succeeded';
-      return route.fulfill({ json: { id, status } });
+      return route.fulfill({
+        json: { id, status, action_type: 'purchase_order' }
+      });
     }
     if (path === '/api/approvals/') return route.fulfill({ json: [] });
     return route.fulfill({
@@ -584,7 +626,8 @@ test('recorded document submission never sends and replays the exact retained ke
         order_id: 51,
         operation_key: body.operation_key,
         state: 'recorded_not_sent',
-        supplier_email_sent: false
+        supplier_email_sent: false,
+        attachment_state: 'verified'
       }
     });
   });
@@ -875,3 +918,265 @@ test('PO identity read failure is visible while the independently authorized fac
     page.getByText('Recorded · not sent', { exact: true })
   ).toBeVisible();
 });
+
+test('native named approval retains the reviewed decision across lost response and reload', async ({
+  page
+}) => {
+  const f = await fixture(page, 'selected');
+  const id = '12345678-1234-1234-1234-123456789abc';
+  let status = 'pending';
+  const commands: { path: string; body: any }[] = [];
+  await page.route('**/api/approvals/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const method = route.request().method();
+    if (method === 'POST') {
+      const body = route.request().postDataJSON();
+      commands.push({ path, body });
+      if (path === '/api/approvals/')
+        return route.fulfill({
+          status: 201,
+          json: {
+            id,
+            action_type: 'purchase_order',
+            assigned_to_user: 11,
+            status
+          }
+        });
+      if (path.endsWith('/open/')) status = 'in_review';
+      if (path.endsWith('/approve/')) {
+        status = 'succeeded';
+        if (
+          commands.filter((row) => row.path.endsWith('/approve/')).length === 1
+        )
+          return route.abort('failed');
+      }
+      return route.fulfill({
+        json: { id, status, action_type: 'purchase_order' }
+      });
+    }
+    if (path === '/api/approvals/') return route.fulfill({ json: [] });
+    return route.fulfill({
+      json: {
+        id,
+        assigned_to_user: 11,
+        summary: 'Fixture named purchase',
+        action_type: 'purchase_order',
+        status,
+        risk_tier: 2,
+        current_revision_number: 1,
+        review_hash: 'a'.repeat(64),
+        payload: { operation: 'place_purchase_order' },
+        execution_result:
+          status === 'succeeded' ? { order_id: 51, line_ids: [81] } : null,
+        review_sections: [
+          {
+            id: 'goods',
+            label: 'Fixture goods',
+            text: '1 kit · USD 620.00',
+            required: true
+          },
+          {
+            id: 'charges',
+            label: 'Fixture charges',
+            text: 'Freight USD 45.00 · Total USD 665.00',
+            required: true
+          }
+        ]
+      }
+    });
+  });
+  await page.route(
+    '**/api/tasks/work-orders/826/job-kit/shortages/99/link-po/',
+    async (route) => {
+      commands.push({
+        path: new URL(route.request().url()).pathname,
+        body: route.request().postDataJSON()
+      });
+      return route.fulfill({ json: { id: 99, purchase_order_line: 81 } });
+    }
+  );
+  await page
+    .getByRole('button', { name: 'Request named approval', exact: true })
+    .click();
+  await page.getByRole('combobox', { name: 'Named approver' }).click();
+  await page
+    .getByRole('option', { name: 'Fixture Buyer', exact: true })
+    .click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Request named approval', exact: true })
+    .click();
+  await expect(
+    page.getByRole('button', { name: 'Open for review', exact: true })
+  ).toBeVisible();
+  expect(commands[0].body.assigned_to_user_id).toBe(11);
+  expect(commands[0].body.payload.line_items[0].supplier_part_id).toBe(61);
+  expect(commands[0].body.payload.extra_lines).toEqual([
+    { description: 'Freight', quantity: '1', unit_price: '45.00' }
+  ]);
+  expect(commands[0].body.payload.description).toContain(
+    '[Fixture r8-fixture:lane-a]'
+  );
+  await page
+    .getByRole('button', { name: 'Open for review', exact: true })
+    .click();
+  await page
+    .getByRole('checkbox', {
+      name: 'I have reviewed every required section of this request.'
+    })
+    .check();
+  await page
+    .getByRole('button', { name: 'Confirm reviewed', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: 'Prepare approval', exact: true })
+    .click();
+  await page
+    .getByRole('textbox', { name: 'Type the required confirmation phrase' })
+    .fill('approve 12345678');
+  await page
+    .getByRole('button', { name: 'Confirm decision', exact: true })
+    .click();
+  await expect(
+    page.getByRole('button', { name: 'Recover original approval' })
+  ).toBeVisible();
+  await page.reload();
+  await page
+    .getByRole('button', { name: 'Request named approval', exact: true })
+    .click();
+  await expect
+    .poll(() =>
+      page
+        .getByRole('dialog')
+        .evaluate((element) => Number(getComputedStyle(element).opacity))
+    )
+    .toBe(1);
+  await page.screenshot({
+    path: resolve(captures, 'native-approval-recovery.png')
+  });
+  await page.getByRole('button', { name: 'Recover original approval' }).click();
+  const approvals = commands.filter((row) => row.path.endsWith('/approve/'));
+  expect(approvals).toHaveLength(2);
+  expect(approvals[1].body).toEqual(approvals[0].body);
+  await page
+    .getByRole('button', { name: 'Link approved order', exact: true })
+    .click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(
+    commands.find((command) => command.path.endsWith('/confirm-viewed/'))?.body
+  ).toEqual({
+    revision: 1,
+    review_hash: 'a'.repeat(64),
+    sections: ['goods', 'charges']
+  });
+  expect(commands.at(-1)?.body).toEqual({ purchase_order_line_id: 81 });
+  expect(f.errors).toEqual([]);
+});
+
+for (const shape of [
+  { label: 'desktop-light', scheme: 'light', width: 1440, height: 900 },
+  { label: 'desktop-dark', scheme: 'dark', width: 1440, height: 900 },
+  { label: 'phone', scheme: 'light', width: 390, height: 844 }
+]) {
+  test(`mounted material issue and use recover after reload ${shape.label}`, async ({
+    page
+  }) => {
+    await page.setViewportSize(shape);
+    const f = await fixture(page, 'reserved', {
+      custody: true,
+      scheme: shape.scheme
+    });
+    const calls: {
+      action: string;
+      body: unknown;
+      readback: string | undefined;
+    }[] = [];
+    await page.route(
+      '**/api/tasks/work-orders/826/job-kit/allocations/301/*/',
+      async (route) => {
+        const action = new URL(route.request().url()).pathname
+          .split('/')
+          .at(-2)!;
+        const readback = route.request().headers()['x-aimms-reconcile-only'];
+        calls.push({ action, body: route.request().postDataJSON(), readback });
+        f.custodyStatus(action === 'issue' ? 'issued' : 'consumed');
+        if (!readback) return route.abort('failed');
+        return route.fulfill({
+          json: {
+            id: 301,
+            status: action === 'issue' ? 'issued' : 'consumed',
+            issued_by: 11,
+            issued_at: '2026-10-23T09:00:00Z',
+            stock_tracking_id: action === 'consume' ? 901 : null
+          }
+        });
+      }
+    );
+    await page.getByText('Material record', { exact: true }).click();
+    await page
+      .getByRole('button', { name: 'Record issue', exact: true })
+      .click();
+    await page
+      .getByRole('button', { name: 'Confirm issue', exact: true })
+      .scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: resolve(captures, `custody-issue-${shape.label}.png`)
+    });
+    await page
+      .getByRole('button', { name: 'Confirm issue', exact: true })
+      .click();
+    await expect(
+      page.getByRole('button', { name: 'Recover original issue' })
+    ).toBeVisible();
+    await page.reload();
+    await page.getByText('Material record', { exact: true }).click();
+    await page.getByRole('button', { name: 'Recover original issue' }).click();
+    await expect(page.getByText('Issued 1 kit', { exact: true })).toBeVisible();
+    await expect(page.getByText('Reserved 1 kit', { exact: true })).toHaveCount(
+      0
+    );
+    await page
+      .getByRole('button', { name: 'Record material use', exact: true })
+      .click();
+    await page
+      .getByRole('button', { name: 'Confirm material use', exact: true })
+      .scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: resolve(captures, `custody-use-${shape.label}.png`)
+    });
+    await page
+      .getByRole('button', { name: 'Confirm material use', exact: true })
+      .click();
+    await expect(
+      page.getByRole('button', { name: 'Recover original material use' })
+    ).toBeVisible();
+    await page.reload();
+    await page.getByText('Material record', { exact: true }).click();
+    await page
+      .getByRole('button', { name: 'Recover original material use' })
+      .click();
+    await expect(
+      page.getByRole('button', { name: 'Recover original material use' })
+    ).toHaveCount(0);
+    expect(calls.map(({ action, readback }) => [action, readback])).toEqual([
+      ['issue', undefined],
+      ['issue', '1'],
+      ['consume', undefined],
+      ['consume', '1']
+    ]);
+    expect(calls.map((row) => row.body)).toEqual([{}, {}, {}, {}]);
+    await expect(page.getByText('Used 1 kit', { exact: true })).toBeVisible();
+    await expect(page.getByText('Issued 1 kit', { exact: true })).toHaveCount(
+      0
+    );
+    await page.screenshot({
+      path: resolve(captures, `native-use-recovered-${shape.label}.png`)
+    });
+    expect(f.errors).toEqual([]);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth
+      )
+    ).toBe(true);
+  });
+}

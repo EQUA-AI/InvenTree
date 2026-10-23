@@ -54,3 +54,26 @@ export function validateMaintenanceReceipt(
   if (!(request.items[0].location || request.location)) return 'location';
   return null;
 }
+
+/** Existing native receipt storage is untrusted and must never replace a body. */
+export function readRetainedReceipt(
+  raw: string | null
+): MaintenanceReceiveRequest | null {
+  if (raw === null) return null;
+  const request = JSON.parse(raw);
+  if (
+    !request ||
+    typeof request.maintenance_operation_key !== 'string' ||
+    !request.maintenance_operation_key ||
+    !Number.isSafeInteger(request.maintenance_requirement_version) ||
+    request.maintenance_requirement_version < 1 ||
+    !Array.isArray(request.items) ||
+    request.items.length !== 1 ||
+    !request.items[0] ||
+    !Number.isSafeInteger(request.items[0].line_item) ||
+    request.items[0].line_item < 1 ||
+    validateMaintenanceReceipt(request, request.items[0].line_item)
+  )
+    throw new Error('Invalid retained receipt');
+  return request;
+}

@@ -167,6 +167,7 @@ export function OptionsApiForm({
 
   return (
     <ApiForm
+      key={props.formIdentity}
       id={id}
       props={formProps}
       optionsLoading={optionsQuery.isFetching || !optionsQuery.data}

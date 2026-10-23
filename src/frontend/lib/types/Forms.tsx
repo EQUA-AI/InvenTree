@@ -179,6 +179,8 @@ export interface ApiFormProps {
   submitDisabled?: boolean;
   hideErrorNotification?: boolean;
   preserveDraftOnRefresh?: boolean;
+  /** Remount a native form when its authenticated resource boundary changes. */
+  formIdentity?: string;
   submitColor?: string;
   fetchInitialData?: boolean;
   ignorePermissionCheck?: boolean;

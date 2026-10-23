@@ -13,6 +13,7 @@ export function CommandNotice({
             variant='light'
             size='xs'
             loading={command.pending}
+            disabled={command.blocked}
             onClick={() => void command.retry()}
           >{t`Retry original operation`}</Button>
         )}

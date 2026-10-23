@@ -15,13 +15,15 @@ export function NamedApproval({
   payload,
   summary,
   linkEndpoint,
-  onLinked
+  onLinked,
+  workOrderId
 }: Readonly<{
   scope: string;
   payload: Record<string, unknown>;
   summary: string;
   linkEndpoint?: string;
   onLinked?: () => void;
+  workOrderId?: number;
 }>) {
   const actor = useUserState((state) => state.user?.pk);
   const canRequest = useUserState(
@@ -110,6 +112,7 @@ export function NamedApproval({
           ) : (
             <ApprovalInboxPanel
               approvalId={approvalId}
+              workOrderId={workOrderId}
               statuses={[
                 'pending',
                 'in_review',

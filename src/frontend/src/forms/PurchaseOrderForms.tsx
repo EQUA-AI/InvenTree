@@ -991,6 +991,10 @@ export function useReceiveLineItems(props: LineItemsForm) {
     },
     preFormContent: receiving.content,
     submitDisabled: receiving.disabled,
+    formIdentity: receiving.context?.maintenance
+      ? receiving.formIdentity
+      : undefined,
+    hideErrorNotification: receiving.context?.maintenance,
     processFormData: receiving.prepare,
     onFormSuccess: receiving.onSuccess,
     onFormError: receiving.onError,
@@ -1002,7 +1006,9 @@ export function useReceiveLineItems(props: LineItemsForm) {
       location: props.destinationPk
     },
     size: receiving.context?.maintenance ? 'min(1100px, 100%)' : '80%',
-    successMessage: t`Items received`
+    successMessage: receiving.context?.maintenance
+      ? undefined
+      : t`Items received`
   });
   useEffect(() => {
     if (receiving.intent && !opened && !recoveredOnMount.current) {

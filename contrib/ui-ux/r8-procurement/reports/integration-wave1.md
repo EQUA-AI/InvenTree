@@ -387,3 +387,138 @@ seed and end-to-end integration are next for the coordinator; real owner data,
 Mac host, human review, deployment and product acceptance remain open. Worktree
 conflicts are resolved; the index intentionally remains unmerged for coordinator
 staging/commit. No git writes were performed.
+
+## Lane C merge
+
+23 October 2026, on `108cb65d7`: C is integrated with A/B for coordinator review.
+The custody conflict keeps B's terminal-Work mutation guard, actual `issued_by`
+and atomic consume/return → pending-usage reconciliation, plus C's independent
+current stock/machine and retained receipt-context checks. Explicit
+`X-AIMMS-Reconcile-Only: 1` on consume returns only an already consumed allocation
+with stock tracking. It may read a completed Work after reauthorization; ordinary
+duplicate/terminal mutations still return 409. Issue now supports the same safe
+readback header, requiring that exact allocation's original issuing actor/time.
+Neither readback moves stock, transitions custody, bumps versions or repairs use.
+The full-chain tests check issue attribution, immediate pending-row resolution,
+post-completion replay, unchanged tracking/counts and unchanged Closeout hash.
+
+C's shared recovery hook is mounted in A's source/ack/document/approval-creation
+commands, B's native receiving recovery, the named PO screen decision and explicit
+issue/use controls in the existing expanded Material record. A/B's old storage
+namespaces and body formats remain readable; exact immutable transport snapshots,
+actor/host/resource generations and compare-before-delete protect reload,
+A→B→A navigation and cross-tab replacement. The existing screen still requires
+open → confirm reviewed → typed approval confirmation; its revision/hash and
+entered reason/instructions are retained. Failed approval is never placed.
+Receipt success remains the native stock array, independent of reservation.
+Source/document/receipt/approval replay uses the native POST; only issue/use
+recovery adds the readback header. No supplier send or automatic continuation on
+GET was added. A document must also match the exact PO and verified attachment.
+
+Materials adds `custody_writable` (current Job Kit enablement, stock/machine scope,
+issue permission and nonterminal Work) and per-kit requirement `fulfillment_mode`.
+Native APIs reauthorize every command. Use is offered for an issued
+`reserve_consume` allocation, after explicit exact-stock confirmation. The native
+receiving form remounts at authenticated resource-generation changes; late
+responses cannot alter the replacement form or remove its retained request.
+Older readouts without these additive fields expose no new custody controls.
+The expanded quantity caption says allocated, including historical consumed
+fulfillment; current reserved/issued/used facts remain separate. Fit and operating
+return remain independent evidence.
+
+Evidence root: `data/devscratch/r8-int/lane-c/`.
+
+| Check | Result / boundary |
+| --- | --- |
+| Offline R8 + touched R6 | **325/325 pass**, zero skips, 54.189 s; explicit guarded private SQLite supplement; not migration acceptance |
+| Fresh pgvector PostgreSQL chain + regressions | **329/329 pass**, zero skips, 73.699 s; ordinary migrated schema, no supplement |
+| PostgreSQL concurrency / email policy | **5/5** and **23/23 pass**; concurrency uses the documented cascading fixture-cleanup profile |
+| Standalone seed CLI, private PostgreSQL only | Dry-run → create → existing → dry-run removal → removed → absent all exit 0; target serialized fields and stock/PO/Closeout counts unchanged |
+| Migration application / graph | Pass; one leaf/app, conflicts `{}`, tasks0041→0050→0060 and order0123 retained; global drift still fails for the inherited five apps |
+| TypeScript | 11/13 projects pass; app/library/S0–S8/R8 pass; node-config and broad Playwright diagnostics match pre-wave baseline; final combined R8 project rechecked after wiring |
+| Pure R8 units | **32/32 pass** across five modules |
+| A/B/C browser fixtures | **92/92 full matrix**, then **12/12 native receiving** after the final generation guard; **93 current cases covered** (A65/B12/C16), zero retries; focused recovery/capture replays also retained |
+| Lingui | Extract/compile pass; all **40 .po files restored bytewise** |
+| Formatting and secrets | Prek formatting/lint and explicit pinned Ruff pass. Standard prek exits 1 because Gitleaks scans C's original staged synthetic keys; current delivered files scan clean independently |
+
+PostgreSQL exercises the actual API/service chain with synthetic scoped actors;
+browser checks use intercepted native-component fixtures. Authenticated
+browser-to-database and owner-data acceptance remain separate.
+The final PostgreSQL runner exits 1 solely for inherited global migration-state
+drift. The first standalone CLI apply exposed a synthetic prerequisite account
+without a native profile and rolled back. The command now refuses that condition
+before writes; the corrected private account and refusal regression pass. Original
+failed logs and owned-resource cleanup remain in `postgres/history/`. A first
+receiving navigation probe was blocked by the submitting modal's loading overlay;
+the corrected fixture explicitly models parent navigation and verifies the late
+400 cannot clear the original operation. No assertion was relaxed. Captures cover
+native issue/use in light/dark desktop and phone, named recovery, receiving and
+Closeout; actual reviewed files/dimensions/hashes are in the capture manifest.
+Owned PostgreSQL containers/networks and browser3024/harness15274 were removed;
+no existing service/container/database or Azure connection was used.
+
+### Owner localhost preview and removal
+
+Use a **dedicated local PostgreSQL copy named `r8_demo`**, containing the existing
+Cedar Creek Pump 08 / WO-003826 and an existing active, full-name person with a
+native user profile. Keep the normal local credentials configured for that copy,
+with DB host `127.0.0.1`/`localhost`, engine PostgreSQL and DEBUG enabled. The
+command deliberately refuses `aimms_azure_copy`, shared names and remote hosts.
+The owner's database was not seeded by this integration.
+
+In the local backend environment, enable `AIMMS_WORK_ORDERS_ENABLED=true`,
+`AIMMS_JOB_KITS_ENABLED=true` and `AIMMS_CLOSEOUT_WIZARD_ENABLED=true`; restart the
+local app after setting them. Use locmem email for a rehearsal. Apply checked-in
+migrations to **that local copy** before preview: **tasks0050 and tasks0060, and
+order0123 are required**, with their dependencies. Do not generate replacements
+or use the SQLite supplement as a migration repair. From `src/backend/InvenTree`:
+
+```sh
+python manage.py migrate --noinput
+python manage.py showmigrations tasks order
+python manage.py seed_r8_procurement --confirm-db r8_demo --approver '<existing-person>' --dry-run
+python manage.py seed_r8_procurement --confirm-db r8_demo --approver '<existing-person>'
+python manage.py runserver 127.0.0.1:8000
+```
+
+The seed creates two **R8 FIXTURE** suppliers, a representative Part, SupplierParts
+and price breaks (A goods620 + freight45 = USD665; B560 +20 = USD580), one marked
+companion **R8-FIXTURE-003826**, its native backlog card and a draft Job Kit with
+one unfulfilled requirement, a reviewer group
+membership for the existing person and an owned-ID manifest. The real WO-003826
+and its stock, commitments and completed Closeout stay untouched. No PO, source
+selection, stock, receipt, reservation, fitted assertion, document, sent email or
+Closeout is seeded. Promise and technical fit remain unknown. The companion's
+exact fixture tag permits representative provenance; P1 still refuses fixture
+provenance on the real WO-003826.
+
+Start the native frontend from `src/frontend` with
+`node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5173`. It proxies the
+local backend on8000. These example preview ports must be available; otherwise
+choose free ports and update only this preview's proxy in `src/frontend/vite.config.ts`
+to its dedicated backend. Log in using the existing person's normal local credentials
+and open `http://localhost:5173/web/maintenance/work-orders/<work_id>?work_panel=parts`
+using the seed's returned `work_id` (or the configured frontend base instead of
+`web`). The screen initially shows the truthful unsourced requirement. Continue
+through the explicit native evidence, named approval, receiving and custody
+controls only with the intended local fixture evidence. The seed's reviewer role
+does not grant Work/stock execution or machine scope: the normal existing Work,
+Part, Stock, email-evidence and scoped maintenance grants are still required.
+Each PO still needs its assigned named approver; recorded email remains unsent.
+
+To remove **untouched preparation only**, in the same local backend environment:
+
+```sh
+python manage.py seed_r8_procurement --confirm-db r8_demo --approver '<existing-person>' --remove --dry-run
+python manage.py seed_r8_procurement --confirm-db r8_demo --approver '<existing-person>' --remove
+```
+
+Removal is atomic and checks owned IDs/provenance; it refuses stock, POs,
+allocations, events, progression, attachments or changed protected dependencies.
+After a rehearsal creates business evidence, it leaves that evidence intact and
+requires manual review. Repeated untouched removal returns absent.
+
+Open gates: coordinator staging/commit and re-running the staged secret hook,
+inherited global migration and broad-suite failures, the two baseline TypeScript
+projects, Mac host and authenticated owner-data review, deployment and product
+acceptance. No seed/grant/deployment decision for the owner's copy was exercised.
