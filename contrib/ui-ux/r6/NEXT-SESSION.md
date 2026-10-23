@@ -16,7 +16,7 @@ same product code from the `viewer` worktree.
   Details: `contrib/ui-ux/r6/reports/ui-r2.md`.
 - Outdated Playwright specs updated to the new wording by three parallel test
   lanes. Last full Mac run before the final fixes: 2,330 passed, 7 failed; the
-  final targeted re-runs pass except one phone case under follow-up 11.
+  final targeted re-runs all pass.
 - Data (owner-approved): demo-data cleanup, data tidy and readable signal names
   on Azure and the local copy; provisional bearing alarm limits and a local
   `operator` login in the local copy only. Backups and restore scripts:
@@ -25,8 +25,8 @@ same product code from the `viewer` worktree.
 ## Pending
 
 1. Push `IOT-Merge` and `inventTree-aniket` (owner go-ahead).
-2. Follow-up 11 (phone page jump on the machines Criticality filter): merge when
-   it lands, then re-run `tests/s1/pui_machine_explorer.spec.ts` on the Mac.
+2. Done: follow-up 11 fixed the phone Filters scroll reset; on the Mac the
+   explorer spec passes 60/60 (twice) and S0 112/112.
 3. Owner input: real serials, station locations for Maple Grove, Millbrook and
    Pine Hollow, vibration unit, engineering alarm limits (provisional bearing
    limits on Azure only on request), field-verified parts.
