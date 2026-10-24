@@ -1,4 +1,4 @@
-"""Tell somebody when a critical alarm opens.
+"""Deliver machine warning and critical alarms through the normal notifications.
 
 Until now an alarm was visible only to whoever happened to be looking at the
 page it was on. A critical condition on a pump at three in the morning was
@@ -12,10 +12,9 @@ no others: the ``work_order`` role, which is what the health endpoints require,
 and a scope grant on the machine's client, which is what lets them read it.
 Anyone who could open the page is told; nobody who could not is.
 
-Only a critical is sent, and only once per condition: when it opens as one, or
-when a warning is confirmed up to one. A warning is a reading to keep an eye
-on, and with provisional limits on an estate of fourteen-pump stations it would
-be a stream; a critical is a condition to go and look at.
+Each severity is sent once per condition, including standing conditions that
+predate notification delivery. A critical escalation is announced even when
+the warning has already been delivered.
 
 And at most once an hour for any one signal. A reading sitting on its limit
 closes after five minutes inside and opens again at the next breach, each time
@@ -37,12 +36,13 @@ import common.models
 import common.notifications
 import InvenTree.helpers
 import InvenTree.helpers_model
-from assets.health_models import AnomalySeverity
+from assets.health_models import ACTIVE_ANOMALY_STATUSES, AnomalySeverity
 from assets.registry_api import authorized_client_ids
 from users.permissions import check_user_role
 
 logger = structlog.get_logger('inventree')
 
+# Retain the existing category and delivery preferences for machine alarms.
 CATEGORY = 'machine_health.critical_alarm'
 TEMPLATE = 'email/machine_alarm.html'
 #: How long one signal stays quiet after being announced, however many
@@ -69,24 +69,49 @@ def recipients_for(machine):
     return users
 
 
-def notify_critical(anomaly):
-    """Send one notification for a condition that is now critical.
+def notify_alarm(anomaly):
+    """Send a warning or critical condition once at each severity.
 
     Nothing here can fail the evaluation that called it: a notification that
     cannot be sent is logged and the anomaly stands regardless.
     """
-    if anomaly.severity != AnomalySeverity.CRITICAL:
+    if (
+        anomaly.severity not in (AnomalySeverity.WARNING, AnomalySeverity.CRITICAL)
+        or anomaly.status not in ACTIVE_ANOMALY_STATUSES
+    ):
         return
     machine = anomaly.machine
     # One quiet period per signal on a machine: the fingerprint is the signal's
     # identity, the same across every condition it opens.
-    signal = f'{CATEGORY}:{anomaly.fingerprint}'
+    marker = f'{CATEGORY}.{anomaly.severity}'
+    signal = (
+        f'{CATEGORY}:{anomaly.fingerprint}'
+        if anomaly.severity == AnomalySeverity.CRITICAL
+        else f'{marker}:{anomaly.fingerprint}'
+    )
     try:
+        if common.models.NotificationEntry.objects.filter(
+            key=marker, uid=anomaly.pk
+        ).exists():
+            return
+        # A critical delivered before severity tracking was introduced already
+        # reached the bell. A newly delivered warning has its own marker, so it
+        # cannot suppress a subsequent critical escalation.
+        if (
+            anomaly.severity == AnomalySeverity.CRITICAL
+            and common.models.NotificationEntry.objects.filter(
+                key=CATEGORY, uid=anomaly.pk
+            ).exists()
+            and not common.models.NotificationEntry.objects.filter(
+                key=f'{CATEGORY}.{AnomalySeverity.WARNING}', uid=anomaly.pk
+            ).exists()
+        ):
+            return
         if common.models.NotificationEntry.check_recent(
             signal, machine.pk, SIGNAL_QUIET
         ):
             logger.info(
-                'Critical alarm not re-announced within the quiet period',
+                'Machine alarm not re-announced within the quiet period',
                 anomaly=anomaly.pk,
                 machine=machine.pk,
             )
@@ -94,17 +119,24 @@ def notify_critical(anomaly):
         users = recipients_for(machine)
         if not users:
             logger.info(
-                'No recipient for critical alarm',
-                anomaly=anomaly.pk,
-                machine=machine.pk,
+                'No recipient for machine alarm', anomaly=anomaly.pk, machine=machine.pk
             )
             return
-        path = InvenTree.helpers.pui_url(f'/machines/machine/{machine.pk}/health')
-        name = f'Critical alarm: {machine.name}'
+        path = InvenTree.helpers.pui_url(
+            f'/machines/machine/{machine.pk}/health?anomaly={anomaly.pk}'
+        )
+        name = f'{anomaly.get_severity_display()} alarm: {machine.name}'
+        previous_delivery = (
+            common.models.NotificationEntry.objects
+            .filter(key=CATEGORY, uid=anomaly.pk)
+            .values_list('updated', flat=True)
+            .first()
+        )
         common.notifications.trigger_notification(
             anomaly,
             CATEGORY,
             targets=users,
+            check_recent=False,
             context={
                 'name': name,
                 'message': anomaly.title,
@@ -116,9 +148,14 @@ def notify_critical(anomaly):
         )
         # The framework records what it delivered, per anomaly. The signal's
         # quiet period starts only from a delivery that happened.
-        if common.models.NotificationEntry.objects.filter(
-            key=CATEGORY, uid=anomaly.pk
-        ).exists():
+        delivered_at = (
+            common.models.NotificationEntry.objects
+            .filter(key=CATEGORY, uid=anomaly.pk)
+            .values_list('updated', flat=True)
+            .first()
+        )
+        if delivered_at is not None and delivered_at != previous_delivery:
+            common.models.NotificationEntry.notify(marker, anomaly.pk)
             common.models.NotificationEntry.notify(signal, machine.pk)
     except Exception:  # pragma: no cover - transport failure
-        logger.exception('Critical alarm notification failed', anomaly=anomaly.pk)
+        logger.exception('Machine alarm notification failed', anomaly=anomaly.pk)

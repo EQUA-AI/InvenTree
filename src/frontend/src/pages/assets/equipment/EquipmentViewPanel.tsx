@@ -28,7 +28,10 @@ import { type ReactNode, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { openGlobalAIChatAboutWork } from '../../../states/AIChatState';
 import { StatusBadge as Badge } from '../health/common';
+import { partStates } from '../health/mimic/MimicParts';
+import { valueText } from '../health/mimic/format';
 import { useDisplayClock } from '../health/mimic/observedTime';
+import { useStationMimic } from '../health/useStationMimic';
 import { EquipmentViewControls } from './ViewControls';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
@@ -46,7 +49,12 @@ import {
   referenceModeLabel,
   referencePartLabel
 } from './referenceParts';
-import type { TwinMode, TwinPartId, TwinView } from './twinScene.mjs';
+import type {
+  TwinMode,
+  TwinMotorAlarm,
+  TwinPartId,
+  TwinView
+} from './twinScene.mjs';
 
 const MODES: TwinMode[] = ['assembled', 'cutaway', 'exploded'];
 
@@ -126,15 +134,48 @@ type ModelState = {
   positions: UseQueryResult<MachinePositions>;
 };
 
+type ModelProps = Readonly<
+  {
+    machine: { pk: number; name: string };
+    motorAlarm?: TwinMotorAlarm | null;
+  } & ModelState
+>;
+
+/** The model and native schematic share the exact motor verdict and alarm. */
+function MimicModelView({
+  source,
+  ...props
+}: ModelProps & { source: { stationId: number; unit: string } }) {
+  const { ref, query } = useStationMimic(source.stationId, source.unit);
+  const motor =
+    !query.isError && query.data
+      ? partStates(query.data, valueText).find(
+          (state) => state.part.code === 'PS-MOTOR'
+        )
+      : undefined;
+  const motorAlarm =
+    motor && (motor.verdict === 'critical' || motor.verdict === 'warning')
+      ? {
+          severity: motor.verdict,
+          attention: motor.attention,
+          label: motor.verdict === 'critical' ? t`Critical` : t`Warning`
+        }
+      : null;
+  return (
+    <div ref={ref}>
+      <ModelView {...props} motorAlarm={motorAlarm} />
+    </div>
+  );
+}
+
 /**
  * The reference 3D model with reversible exploration controls and a
  * keyboard component list. Camera moves are one-shot requests to the scene.
  *
  * The model is the authored conceptual pump train, not this machine's
- * verified geometry, and says so. No component records are bound yet (P07):
- * a selected position is a place in the model, not a claim about this
- * pump's parts or condition. Nothing animates, so nothing implies the
- * machine is running.
+ * verified geometry, and says so. Selection identifies a reference position;
+ * its inspector uses this machine's records. The motor can carry the native
+ * mimic's alarm emphasis, without any motion implying the pump is running.
  */
 function ModelView({
   machine,
@@ -144,8 +185,9 @@ function ModelView({
   setMode,
   labels,
   setLabels,
-  positions
-}: Readonly<{ machine: { pk: number; name: string } } & ModelState>) {
+  positions,
+  motorAlarm
+}: ModelProps) {
   const scene = useRef<EquipmentSceneHandle>(null);
   const theme = useMantineTheme();
   const phone = useMediaQuery(`(max-width: ${theme.breakpoints.sm})`);
@@ -291,6 +333,7 @@ function ModelView({
                 selected={selected}
                 mode={mode}
                 labels={labels}
+                motorAlarm={motorAlarm}
                 onSelect={setSelected}
                 rotate={!phone || rotate}
                 onOccluded={(parts) =>
@@ -345,9 +388,11 @@ export type EquipmentView = 'model' | 'schematic';
  */
 export function EquipmentViewPanel({
   machine,
-  schematic
+  schematic,
+  mimicSource
 }: Readonly<{
   machine: { pk: number; name: string };
+  mimicSource?: { stationId: number; unit: string };
   /** The native schematic for this pump, unchanged; absent when it has none. */
   schematic?: ReactNode;
 }>) {
@@ -474,6 +519,18 @@ export function EquipmentViewPanel({
               )}
             </div>
           </>
+        ) : mimicSource ? (
+          <MimicModelView
+            source={mimicSource}
+            machine={machine}
+            selected={selected}
+            setSelected={setSelected}
+            mode={mode}
+            setMode={setMode}
+            labels={labels}
+            setLabels={setLabels}
+            positions={positions}
+          />
         ) : (
           <ModelView
             machine={machine}

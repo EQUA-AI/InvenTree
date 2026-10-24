@@ -374,13 +374,18 @@ export function SignalTable({
                   role='row'
                   data-selected={selectedBinding === String(signal.binding_id)}
                   data-details-open={!!detailsOpen[signal.binding_id]}
+                  data-alarm={
+                    signal.state === 'warning' || signal.state === 'critical'
+                  }
                   aria-current={
                     selectedBinding === String(signal.binding_id)
                       ? 'true'
                       : undefined
                   }
                   bg={
-                    selectedBinding === String(signal.binding_id)
+                    selectedBinding === String(signal.binding_id) &&
+                    signal.state !== 'warning' &&
+                    signal.state !== 'critical'
                       ? 'var(--mantine-primary-color-light)'
                       : undefined
                   }
@@ -592,7 +597,13 @@ export function SignalTable({
                 </Table.Tr>
                 {detailsOpen[signal.binding_id] && (
                   // biome-ignore lint/a11y/useSemanticElements: Preserve the native role through phone card CSS.
-                  <Table.Tr role='row' className={classes.details}>
+                  <Table.Tr
+                    role='row'
+                    className={classes.details}
+                    data-alarm={
+                      signal.state === 'warning' || signal.state === 'critical'
+                    }
+                  >
                     {/* biome-ignore lint/a11y/useSemanticElements: Preserve the native role through phone card CSS. */}
                     <Table.Td role='cell' colSpan={7}>
                       <Collapse

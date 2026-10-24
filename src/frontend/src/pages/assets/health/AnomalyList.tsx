@@ -29,8 +29,10 @@ import type {
   PreliminaryResults
 } from '@lib/types/MachineHealth';
 
+import classes from './AlarmFocus.module.css';
 import { AnomalyTimeShift } from './AnomalyTimeShift';
 import { PreliminaryResultsPanel } from './PreliminaryResults';
+import { alarmFocusId } from './alarmFocus';
 import { SeverityBadge, SourceTypeBadge } from './common';
 
 /**
@@ -49,7 +51,8 @@ export function AnomalyList({
   onDismiss,
   acknowledging,
   analyzing,
-  results
+  results,
+  linkedAnomaly = null
 }: Readonly<{
   anomalies: MachineAnomaly[];
   onAcknowledge: (anomaly: MachineAnomaly) => void;
@@ -60,6 +63,7 @@ export function AnomalyList({
   acknowledging: number | null;
   analyzing: number | null;
   results: Record<number, PreliminaryResults>;
+  linkedAnomaly?: string | null;
 }>) {
   const user = useUserState();
   const canChange = user.hasChangeRole(UserRoles.work_order);
@@ -77,7 +81,19 @@ export function AnomalyList({
       {anomalies.map((anomaly) => {
         const visual = alarmStateVisual(anomaly.status, anomaly.severity);
         return (
-          <Card key={anomaly.pk} withBorder p='md'>
+          <Card
+            key={anomaly.pk}
+            id={alarmFocusId(String(anomaly.pk))}
+            data-anomaly={anomaly.pk}
+            tabIndex={linkedAnomaly === String(anomaly.pk) ? -1 : undefined}
+            className={
+              linkedAnomaly === String(anomaly.pk)
+                ? classes.selected
+                : undefined
+            }
+            withBorder
+            p='md'
+          >
             <Stack gap='sm'>
               <Group justify='space-between' align='flex-start' wrap='wrap'>
                 <Stack gap={4}>

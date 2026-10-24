@@ -33,7 +33,7 @@ from assets.health_models import (
     MachineSignalState,
     SignalQuality,
 )
-from machine_health.services.alarm_notifications import notify_critical
+from machine_health.services.alarm_notifications import notify_alarm
 
 THRESHOLD_DETECTOR = 'threshold'
 THRESHOLD_DETECTOR_VERSION = '1'
@@ -162,14 +162,9 @@ def record_anomaly(
         existing.save(update_fields=[*updates, 'updated_at'])
         if bindings:
             existing.bindings.add(*bindings)
-        if (
-            'severity' in updates
-            and severity == AnomalySeverity.CRITICAL
-            and existing.status != AnomalyStatus.SUPPRESSED
-        ):
-            # A warning confirmed up to a critical is the moment to tell
-            # somebody, as much as a critical that opened as one.
-            notify_critical(existing)
+        # Reconcile standing conditions too: deployment or unavailable delivery
+        # must not leave an existing warning absent from the notification bell.
+        notify_alarm(existing)
         return existing, False
 
     try:
@@ -199,7 +194,7 @@ def record_anomaly(
     if bindings:
         anomaly.bindings.add(*bindings)
 
-    notify_critical(anomaly)
+    notify_alarm(anomaly)
     return anomaly, True
 
 

@@ -9,7 +9,7 @@ import {
   useMantineTheme
 } from '@mantine/core';
 import { IconInfoCircle } from '@tabler/icons-react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { StatusBadge } from '../../health/StatusBadge';
 import { MetaText } from '../../health/common';
 
@@ -28,6 +28,7 @@ import {
   syntheticEntry
 } from '../series';
 import { groupByScale, sameScale, unitText } from '../units';
+import classes from './ThermalSections.module.css';
 import { CardGrid, ChartCard, type SectionProps } from './common';
 
 /**
@@ -39,8 +40,16 @@ export function WindingSection({
   series,
   window,
   syncId,
-  onZoom
-}: Readonly<SectionProps>) {
+  onZoom,
+  chartFocus = 0
+}: Readonly<SectionProps & { chartFocus?: number }>) {
+  const chartRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!chartFocus) return;
+    const target = chartRef.current;
+    target?.focus({ preventScroll: true });
+    target?.scrollIntoView({ block: 'start', behavior: 'instant' });
+  }, [chartFocus]);
   const winding = withRole(parameters, 'winding');
   const core = withRole(parameters, 'core');
   const misc = withRole(parameters, 'motor_misc');
@@ -50,18 +59,26 @@ export function WindingSection({
   return (
     <Stack gap='md'>
       {winding.length > 0 && (
-        <SensorGroupCard
-          title={t`Stator winding temperature`}
-          description={t`Every winding RTD on one axis. The highest sensor and the spread between sensors are the two numbers that change first.`}
-          parameters={winding}
-          series={series}
-          window={window}
-          syncId={syncId}
-          hue='indigo'
-          heatmap
-          comparison
-          onZoom={onZoom}
-        />
+        <div
+          id={`winding-chart-${syncId}`}
+          ref={chartRef}
+          tabIndex={-1}
+          className={classes.chartTarget}
+          data-highlighted={chartFocus > 0}
+        >
+          <SensorGroupCard
+            title={t`Stator winding temperature`}
+            description={t`Every winding RTD on one axis. The highest sensor and the spread between sensors are the two numbers that change first.`}
+            parameters={winding}
+            series={series}
+            window={window}
+            syncId={syncId}
+            hue='indigo'
+            heatmap
+            comparison
+            onZoom={onZoom}
+          />
+        </div>
       )}
       <SimpleGrid
         cols={{ base: 1, lg: core.length > 0 && misc.length > 0 ? 2 : 1 }}

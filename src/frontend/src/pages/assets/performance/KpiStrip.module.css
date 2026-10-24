@@ -7,6 +7,9 @@
   min-width: 0;
 }
 .card { min-width: 0; }
+.cardLink { width: 100%; min-width: 0; border-radius: var(--mantine-radius-default); }
+.cardLink .card { height: 100%; }
+.cardLink:hover .card { border-color: var(--mantine-primary-color-filled); }
 .observed { min-width: 0; }
 .observed time { white-space: nowrap; }
 

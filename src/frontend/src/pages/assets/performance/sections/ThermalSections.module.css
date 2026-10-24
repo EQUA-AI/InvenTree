@@ -1,0 +1,9 @@
+.chartTarget {
+  scroll-margin-top: calc(100px + var(--mantine-spacing-md));
+  border-radius: var(--mantine-radius-default);
+}
+
+.chartTarget[data-highlighted='true'] {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 3px;
+}

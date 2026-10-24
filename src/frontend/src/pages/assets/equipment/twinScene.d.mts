@@ -1,8 +1,8 @@
 /**
  * Types for `twinScene.mjs`, the R6 authored reference pump scene
  * (EQUA_AIMMS_Handoff_R6_FINAL_UI_UX/Existing_3D_Reference/twin-scene.mjs).
- * The module is kept as an unchanged copy apart from its removed prototype
- * global (`window.AIMMSTwin`); these declarations describe its API only.
+ * The native adapter adds theme, interaction and mimic alarm support;
+ * these declarations describe its public controller API.
  */
 
 export type TwinPartId =
@@ -18,6 +18,12 @@ export type TwinPartId =
 
 export type TwinMode = 'assembled' | 'cutaway' | 'exploded';
 export type TwinView = 'iso' | 'front' | 'side' | 'top';
+
+export interface TwinMotorAlarm {
+  severity: 'critical' | 'warning';
+  attention?: 'unacknowledged' | 'acknowledged';
+  label?: string;
+}
 
 export interface TwinPart {
   readonly id: TwinPartId;
@@ -61,6 +67,7 @@ export interface TwinOptions {
   selected?: TwinPartId;
   mode?: TwinMode;
   labels?: boolean;
+  motorAlarm?: TwinMotorAlarm | null;
   cameraState?: TwinCameraState;
   hotspots?: boolean;
   onOccluded?: (parts: {id: TwinPartId; number: number; label: string}[]) => void;
@@ -76,6 +83,7 @@ export interface TwinController {
   select(id: TwinPartId): void;
   setMode(mode: TwinMode): void;
   setLabels(value: boolean): void;
+  setMotorAlarm(value: TwinMotorAlarm | null): void;
   setView(view: TwinView): void;
   zoom(factor: number): void;
   focus(id: TwinPartId): void;

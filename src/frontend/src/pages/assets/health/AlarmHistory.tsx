@@ -11,8 +11,8 @@ import {
   useMantineTheme
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { displayInstant } from '../displayClock';
 import monitoring from '../monitoring.module.css';
 import { MetaText, MonitoringLink } from './common';
@@ -21,8 +21,10 @@ import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 import type { MachineAnomaly } from '@lib/types/MachineHealth';
 import { useApi } from '../../../contexts/ApiContext';
+import classes from './AlarmFocus.module.css';
 import { AnomalyTimeShift } from './AnomalyTimeShift';
 import { StatusBadge, alarmStateVisual } from './StatusBadge';
+import { alarmFocusId, focusAlarm } from './alarmFocus';
 import { SeverityBadge } from './common';
 
 /** How many past alarms are shown before the rest are asked for. */
@@ -66,25 +68,57 @@ function haystack(alarm: MachineAnomaly): string {
  * clock, and putting it beside them made an alarm on replayed history look
  * as though it had ended before it began.
  */
-export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
+export function AlarmHistory({
+  machineId,
+  linkedAnomaly = null
+}: Readonly<{ machineId: number; linkedAnomaly?: string | null }>) {
   const api = useApi();
   const theme = useMantineTheme();
   const scheme = useComputedColorScheme('light');
   const [showAll, setShowAll] = useState(false);
   const [search, setSearch] = useState('');
   const [severity, setSeverity] = useState('all');
+  const location = useLocation();
+  const focusedAlarm = useRef<string | null>(null);
   const query = useQuery<MachineAnomaly[]>({
-    queryKey: ['machine-health-anomalies', machineId, 'resolved'],
+    queryKey: [
+      'machine-health-anomalies',
+      machineId,
+      'resolved',
+      linkedAnomaly
+    ],
     queryFn: async () => {
       const response = await api.get(
         apiUrl(ApiEndpoints.machine_health_anomalies, machineId),
-        { params: { status: 'resolved' } }
+        { params: { status: linkedAnomaly ? 'all' : 'resolved' } }
       );
       return response.data?.results ?? [];
     }
   });
 
-  const alarms = query.data ?? [];
+  const alarms = (query.data ?? []).filter(
+    (alarm) =>
+      alarm.status === 'resolved' ||
+      (alarm.status === 'suppressed' && String(alarm.pk) === linkedAnomaly)
+  );
+  useEffect(() => {
+    if (
+      !linkedAnomaly ||
+      !query.data?.some(
+        (alarm) =>
+          String(alarm.pk) === linkedAnomaly &&
+          ['resolved', 'suppressed'].includes(alarm.status)
+      )
+    )
+      return;
+    const focusKey = `${machineId}:${linkedAnomaly}:${location.key}`;
+    if (focusedAlarm.current === focusKey) return;
+    setShowAll(true);
+    const frame = requestAnimationFrame(() => {
+      if (focusAlarm(linkedAnomaly)) focusedAlarm.current = focusKey;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [linkedAnomaly, machineId, location.key, query.data, showAll]);
   if (query.isLoading) {
     return <MetaText>{t`Loading past alarms…`}</MetaText>;
   }
@@ -166,7 +200,17 @@ export function AlarmHistory({ machineId }: Readonly<{ machineId: number }>) {
                 | undefined;
               const visual = alarmStateVisual(alarm.status, alarm.severity);
               return (
-                <Table.Tr key={alarm.pk} data-anomaly={alarm.pk}>
+                <Table.Tr
+                  key={alarm.pk}
+                  id={alarmFocusId(String(alarm.pk))}
+                  data-anomaly={alarm.pk}
+                  tabIndex={linkedAnomaly === String(alarm.pk) ? -1 : undefined}
+                  className={
+                    linkedAnomaly === String(alarm.pk)
+                      ? classes.selected
+                      : undefined
+                  }
+                >
                   <Table.Td>
                     <SeverityBadge severity={alarm.severity} />
                   </Table.Td>

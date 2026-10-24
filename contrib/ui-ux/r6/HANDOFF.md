@@ -1,5 +1,30 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## Backend conclusion and pump warning links — 24 October 2026
+
+Continuing `claude/clever-pasteur-c48da4` from `b2d690bc5`; the clean follow-up
+checkout was already on that base. [Backend report](reports/backend-test-fixes.md)
+distinguishes the historical 4,468-case PostgreSQL green run from fresh final-flush
+checks, SQLite timezone fixture corrections and the still-failing upstream
+migration lane. No checkpoint reversal or upstream skip/CI policy change.
+
+[Pump warning execution ledger](reports/pump-warning-links.md): warning/critical
+bell delivery, exact current/past alarm navigation, native motor alarm emphasis,
+full abnormal rows and winding-card chart navigation. Initial 24 focused browser
+cases, 1,107 units, nine TypeScript projects and 70 backend cases (four expected
+skips) pass; 16 final primary captures inspected. Final complete pump spec20 and
+motor4 pass; full SQLite 4,469 run with 106 skips and zero failures/errors;
+PostgreSQL fork migrations24 run with nine passes and 15 named checkpoint skips.
+Both upstream suspects pass the complete 71-case API/label module run, while
+upstream migration modules14 still error; no full upstream green claim.
+Backend fixture follow-up is committed locally as `ce34a9e3d`; UI local commit
+authorized. Backlog/contract evidence updated without changing parent acceptance.
+All applicable hooks pass; owned harness ports15290–15293 clear and six PostgreSQL
+cleanup records pass. Structural/provider CSV audit preserves all 60 task rows,
+28 contract rows and dispositions; inherited R8 additions still fail the fixed
+R6 tracking validator. Next: human review and upstream migration policy decision.
+Push/PR and deployment acceptance remain separate.
+
 ## Machine metrics review fixes — 23 October 2026 (ready for coordinator review)
 
 Restoring independent Health reads during summary failure, required quantity/note

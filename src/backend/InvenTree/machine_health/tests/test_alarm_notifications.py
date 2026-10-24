@@ -1,13 +1,14 @@
-"""A critical alarm reaches the people who could act on it, and only them."""
+"""Machine alarms reach the people who could act on them, and only them."""
 
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from common.models import InvenTreeUserSetting, NotificationMessage
+from common.models import InvenTreeUserSetting, NotificationEntry, NotificationMessage
 from InvenTree.unit_test import PluginRegistryMixin
 from machine_health.services.alarm_notifications import CATEGORY, recipients_for
 from machine_health.services.anomalies import evaluate_thresholds
@@ -78,16 +79,22 @@ class AlarmNotificationTest(HealthEnvMixin, PluginRegistryMixin, TestCase):
             [user.username for user in recipients_for(self.machine)], ['operator']
         )
 
-    def test_a_critical_is_sent_once_and_a_warning_is_not(self):
-        """Told when it opens as a critical; not again while it stands."""
+    def test_a_warning_and_critical_escalation_are_each_sent_once(self):
+        """Warning delivery cannot suppress its critical escalation."""
         self.set_signal(7.0, observed_at=self.now)
+        [warning] = evaluate_thresholds(self.machine)
+        self.assertEqual(self.messages(), ['operator'])
+        [message] = NotificationMessage.objects.filter(category=CATEGORY)
+        self.assertIn('Warning alarm', message.name)
+        self.assertIn(f'?anomaly={warning.pk}', message.link)
         evaluate_thresholds(self.machine)
-        self.assertEqual(self.messages(), [])
+        self.assertEqual(self.messages(), ['operator'])
 
         self.set_signal(10.0, observed_at=self.now)
         evaluate_thresholds(self.machine)
-        self.assertEqual(self.messages(), ['operator'])
-        [message] = NotificationMessage.objects.filter(category=CATEGORY)
+        self.assertEqual(self.messages(), ['operator', 'operator'])
+        message = NotificationMessage.objects.filter(category=CATEGORY).latest('pk')
+        self.assertIn('Critical alarm', message.name)
         self.assertIn(self.machine.name, message.name)
         self.assertIn('outside configured limits', message.message)
         self.assertIn(f'/machines/machine/{self.machine.pk}/health', message.link)
@@ -95,7 +102,50 @@ class AlarmNotificationTest(HealthEnvMixin, PluginRegistryMixin, TestCase):
         # Still critical on the next evaluation: the same condition, no repeat.
         self.set_signal(10.5, observed_at=self.now)
         evaluate_thresholds(self.machine)
+        self.assertEqual(self.messages(), ['operator', 'operator'])
+
+    def test_standing_alarms_without_delivery_are_reconciled_on_ingest(self):
+        """A condition predating this change needs no new state transition."""
+        for value in (7.0, 10.0):
+            with self.subTest(value=value):
+                self.set_signal(value, observed_at=self.now)
+                with patch('machine_health.services.anomalies.notify_alarm'):
+                    [alarm] = evaluate_thresholds(self.machine)
+                before = len(self.messages())
+                evaluate_thresholds(self.machine)
+                self.assertEqual(len(self.messages()), before + 1)
+                self.assertIn(
+                    f'?anomaly={alarm.pk}',
+                    NotificationMessage.objects.filter(category=CATEGORY).latest('pk').link,
+                )
+
+    def test_a_delivered_condition_does_not_repeat_after_the_quiet_period(self):
+        """Once per condition remains true after the per-signal quiet period."""
+        self.set_signal(7.0, observed_at=self.now)
+        evaluate_thresholds(self.machine)
+        NotificationEntry.objects.update(updated=self.now - timedelta(days=2))
+        evaluate_thresholds(self.machine)
         self.assertEqual(self.messages(), ['operator'])
+
+    def test_legacy_critical_delivery_is_not_announced_again(self):
+        """Previously delivered critical alarms retain their delivery record."""
+        self.set_signal(10.0, observed_at=self.now)
+        with patch('machine_health.services.anomalies.notify_alarm'):
+            [alarm] = evaluate_thresholds(self.machine)
+        NotificationEntry.notify(CATEGORY, alarm.pk)
+        evaluate_thresholds(self.machine)
+        self.assertEqual(self.messages(), [])
+
+    def test_failed_escalation_delivery_is_retried(self):
+        """An old warning delivery is not evidence of a critical delivery."""
+        self.set_signal(7.0, observed_at=self.now)
+        evaluate_thresholds(self.machine)
+        self.set_signal(10.0, observed_at=self.now)
+        with patch('common.notifications.trigger_notification'):
+            evaluate_thresholds(self.machine)
+        self.assertEqual(self.messages(), ['operator'])
+        evaluate_thresholds(self.machine)
+        self.assertEqual(self.messages(), ['operator', 'operator'])
 
     def test_a_critical_that_opens_as_one_is_sent_too(self):
         """Opening straight at critical is the common case, not the escalation."""
@@ -133,6 +183,7 @@ class AlarmNotificationTest(HealthEnvMixin, PluginRegistryMixin, TestCase):
         self.set_signal(7.0, observed_at=self.now)
         [warning] = evaluate_thresholds(self.machine)
         dismiss_anomaly(warning.pk, actor=self.operator, note='Limit under review')
+        NotificationMessage.objects.all().delete()
 
         self.set_signal(10.0, observed_at=self.now + timedelta(minutes=1))
         evaluate_thresholds(self.machine)

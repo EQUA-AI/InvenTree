@@ -284,3 +284,160 @@ test("a pump's native machine page explicitly opens the reference model", async 
   await page.getByRole('tab', { name: 'Details', exact: true }).click();
   await expect(canvases(page)).toHaveCount(0);
 });
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`the native mimic motor alarm drives the 3D motor in ${scheme}`, async ({
+    page
+  }, testInfo) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await mockMachine(page, { parent: 17, sourceKey: 'P1' });
+    let condition = 'critical';
+    let acknowledgement = 'open';
+    const point = () => ({
+      pointer: '/motor/winding-temperature',
+      label: 'Winding temperature',
+      group: 'Electric motor',
+      part_code: 'PS-MOTOR',
+      value: 149.8,
+      unit: 'degC',
+      quality: 'good',
+      observed_at: '2026-10-23T12:00:00Z',
+      age_seconds: 0,
+      unchanged_for_seconds: null,
+      reason: null,
+      condition,
+      thresholds_configured: true
+    });
+    await page.route('**/api/machine-health/station/17/mimic/**', (route) =>
+      route.fulfill({
+        json: {
+          station: 17,
+          name: 'Synthetic station',
+          generated_at: '2026-10-23T12:00:00Z',
+          enabled: true,
+          reporting: true,
+          source: { pk: 1, name: 'Synthetic source' },
+          last_poll_at: null,
+          last_error_code: '',
+          layout: {
+            version: 1,
+            review_status: 'provisional',
+            elements: [],
+            parts: [
+              {
+                id: 'part-inlet',
+                code: 'PS-INLET',
+                label: 'Inlet',
+                x: 0,
+                y: 0
+              },
+              {
+                id: 'part-bearing',
+                code: 'PS-BRG',
+                label: 'Bearing',
+                x: 0,
+                y: 0
+              },
+              {
+                id: 'part-motor',
+                code: 'PS-MOTOR',
+                label: 'Electric motor',
+                x: 430,
+                y: 198
+              }
+            ]
+          },
+          station_points: {},
+          bays: [
+            {
+              key: 'P1',
+              machine: 18,
+              name: 'Synthetic pump',
+              active: true,
+              state: 'running',
+              points: {}
+            }
+          ],
+          selected_unit: 'P1',
+          points: { '/motor/winding-temperature': point() },
+          totals: {},
+          alarms:
+            condition === 'normal'
+              ? []
+              : [
+                  {
+                    ...point(),
+                    anomaly: 91,
+                    machine: 18,
+                    anomaly_status: acknowledgement,
+                    severity: condition
+                  }
+                ],
+          unconfigured_thresholds: 0
+        }
+      })
+    );
+    await page.goto(
+      `/playwright/s0-native.html?surface=machine&scheme=${scheme}&entry=${encodeURIComponent('/machines/machine/18/equipment/?view=model')}`
+    );
+    await expect(ready(page)).toBeVisible();
+    const motor = hotspot(page, 'Electric motor');
+    await expect(motor).toHaveAttribute('data-alarm-severity', 'critical');
+    await expect(motor).toHaveAttribute(
+      'data-alarm-attention',
+      'unacknowledged'
+    );
+    await expect(motor).toHaveAttribute('data-alarm-lit', 'false');
+    await expect(motor).toHaveAttribute('data-alarm-lit', 'true');
+
+    // Reduced motion keeps the actual motor red without blinking.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await expect(motor).toHaveAttribute('data-alarm-lit', 'true');
+    await page.waitForTimeout(600);
+    await expect(motor).toHaveAttribute('data-alarm-lit', 'true');
+    await ready(page).screenshot({
+      path: testInfo.outputPath(`motor-alarm-${scheme}.png`)
+    });
+
+    await page
+      .getByRole('radiogroup', { name: 'Equipment view' })
+      .getByText('Process schematic', { exact: true })
+      .click();
+    const mimicMotor = page.locator(
+      '[data-part="PS-MOTOR"][data-alarm-attention]'
+    );
+    await expect(mimicMotor).toHaveAttribute('data-verdict', 'critical');
+    await expect(mimicMotor).toHaveAttribute(
+      'data-alarm-attention',
+      'unacknowledged'
+    );
+    await expect(mimicMotor).toHaveAccessibleName(/^3\. Electric motor/);
+    await page
+      .getByRole('radiogroup', { name: 'Equipment view' })
+      .getByText('3D model', { exact: true })
+      .click();
+    await expect(ready(page)).toBeVisible();
+    await canvases(page).evaluate((canvas) => {
+      (canvas as HTMLCanvasElement & { alarmMark?: boolean }).alarmMark = true;
+    });
+
+    // Acknowledgement and recovery update the same renderer, preserving the camera.
+    acknowledgement = 'acknowledged';
+    await expect(motor).toHaveAttribute(
+      'data-alarm-attention',
+      'acknowledged',
+      { timeout: 10_000 }
+    );
+    condition = 'normal';
+    await expect(motor).toHaveAttribute('data-alarm-severity', '', {
+      timeout: 10_000
+    });
+    await expect(canvases(page)).toHaveCount(1);
+    expect(
+      await canvases(page).evaluate(
+        (canvas) =>
+          (canvas as HTMLCanvasElement & { alarmMark?: boolean }).alarmMark
+      )
+    ).toBe(true);
+  });
+}

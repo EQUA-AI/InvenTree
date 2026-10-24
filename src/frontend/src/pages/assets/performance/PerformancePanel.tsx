@@ -279,6 +279,7 @@ function PumpPerformance({
   const [qualityOnly, setQualityOnly] = useState(false);
   const [section, setSection] = useState('all');
   const [expanded, setExpanded] = useState<Set<string> | null>(null);
+  const [windingFocus, setWindingFocus] = useState(0);
 
   const parameters = useMemo(
     () => resolveParameters(signalsQuery.data ?? []),
@@ -549,6 +550,13 @@ function PumpPerformance({
         now={now}
         readAt={signalsQuery.dataUpdatedAt || null}
         window={window}
+        windingChartId={`winding-chart-${syncId}`}
+        onWindingChart={() => {
+          setSearch('');
+          setQualityOnly(false);
+          selectSection('winding');
+          setWindingFocus((previous) => previous + 1);
+        }}
       />
       {!comparisonOpen && (
         <ChannelNavigator
@@ -722,6 +730,7 @@ function PumpPerformance({
               window={window}
               syncId={syncId}
               onZoom={range.onZoom}
+              chartFocus={windingFocus}
             />
           </Section>
           <Section

@@ -6,7 +6,7 @@ vi.mock('@lingui/core/macro', () => ({
   t: (parts: TemplateStringsArray, ...args: unknown[]) =>
     parts.reduce((text, part, i) => text + part + (args[i] ?? ''), '')
 }));
-import { type KpiTile, KpiTileCard } from './KpiStrip';
+import { KpiStrip, type KpiTile, KpiTileCard } from './KpiStrip';
 const now = Date.parse('2026-10-22T09:00:00Z');
 const tile: KpiTile = {
   key: 'pumps-running',
@@ -55,4 +55,32 @@ it('preserves missing versus a measured zero and its keyboard-accessible reason'
   );
   expect(absent).toContain('>—</button>');
   expect(absent).not.toContain('0 of 14');
+});
+
+it('links the winding card to its chart without linking unrelated cards or nesting buttons', () => {
+  const markup = renderToStaticMarkup(
+    createElement(
+      MantineProvider,
+      {},
+      createElement(KpiStrip, {
+        tiles: [
+          tile,
+          {
+            ...tile,
+            key: 'winding',
+            label: 'Winding temperature',
+            state: 'critical',
+            stale: true
+          }
+        ],
+        now,
+        onWindingChart: vi.fn(),
+        windingChartId: 'winding-chart-performance-7'
+      })
+    )
+  );
+  expect(markup).toContain('aria-label="Winding temperature"');
+  expect(markup).toContain('aria-controls="winding-chart-performance-7"');
+  expect(markup.match(/<button\b/g)).toHaveLength(1);
+  expect(markup).not.toContain('aria-label="Pumps running"');
 });

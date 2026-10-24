@@ -1,6 +1,6 @@
 import type { MachineSignalLimits } from '@lib/types/MachineHealth';
 import { t } from '@lingui/core/macro';
-import { Box, Group, Paper, Stack, Text } from '@mantine/core';
+import { Box, Group, Paper, Stack, Text, UnstyledButton } from '@mantine/core';
 import {
   MissingValue,
   ValueTooltip
@@ -99,12 +99,16 @@ export function KpiTileCard({
   tile,
   now,
   readAt,
-  window
+  window,
+  onNavigate,
+  chartId
 }: Readonly<{
   tile: KpiTile;
   now: number;
   readAt?: number | null;
   window?: { start: number; end: number; resolutionSeconds?: number };
+  onNavigate?: () => void;
+  chartId?: string;
 }>) {
   const clock = useDisplayClock();
   const stale = tileIsStale(tile, now);
@@ -126,6 +130,7 @@ export function KpiTileCard({
   const stats = tile.series ? seriesStats(tile.series) : null;
   const delta = tile.series ? endpointDelta(tile.series, window) : null;
   const missing = tile.value == null && !tile.valueText;
+  const navigate = !missing && tile.observedAt != null ? onNavigate : undefined;
   const shown =
     tile.valueText ??
     formatValue(
@@ -137,7 +142,7 @@ export function KpiTileCard({
   const configuredText = tile.limits
     ? formatSignalLimits({ limits: tile.limits, unit: tile.unit })
     : null;
-  return (
+  const card = (
     <Paper withBorder p='sm' data-kpi={tile.key} className={classes.card}>
       <Stack gap={6}>
         <Stack gap={4}>
@@ -205,6 +210,7 @@ export function KpiTileCard({
         <Group gap={6} data-kpi-footer>
           {stale && !missing && (
             <ValueTooltip
+              focusable={!navigate}
               label={
                 freshness
                   ? [
@@ -247,17 +253,33 @@ export function KpiTileCard({
       </Stack>
     </Paper>
   );
+  return navigate ? (
+    <UnstyledButton
+      className={classes.cardLink}
+      onClick={navigate}
+      aria-label={tile.label}
+      aria-controls={chartId}
+    >
+      {card}
+    </UnstyledButton>
+  ) : (
+    card
+  );
 }
 export function KpiStrip({
   tiles,
   now,
   readAt,
-  window
+  window,
+  onWindingChart,
+  windingChartId
 }: Readonly<{
   tiles: KpiTile[];
   now: number;
   readAt?: number | null;
   window?: { start: number; end: number; resolutionSeconds?: number };
+  onWindingChart?: () => void;
+  windingChartId?: string;
 }>) {
   if (!tiles.length) return null;
   return (
@@ -269,6 +291,8 @@ export function KpiStrip({
           now={now}
           readAt={readAt}
           window={window}
+          onNavigate={tile.key === 'winding' ? onWindingChart : undefined}
+          chartId={tile.key === 'winding' ? windingChartId : undefined}
         />
       ))}
     </div>

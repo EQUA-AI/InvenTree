@@ -468,7 +468,12 @@ export async function openHealth(
     const rows =
       status === 'resolved'
         ? (options.pastAnomalies ?? []).map((row) => anomaly(row))
-        : (options.anomalies ?? []).map((row) => anomaly(row));
+        : status === 'all'
+          ? [
+              ...(options.anomalies ?? []),
+              ...(options.pastAnomalies ?? [])
+            ].map((row) => anomaly(row))
+          : (options.anomalies ?? []).map((row) => anomaly(row));
     return route.fulfill({
       status: options.anomaliesStatus ?? 200,
       json: { count: rows.length, results: rows }

@@ -263,6 +263,7 @@ export default function MachineDetail() {
                 <EquipmentViewPanel
                   key={machine.pk}
                   machine={machine}
+                  mimicSource={schematic ?? undefined}
                   schematic={
                     schematic ? (
                       <PumpMimic

@@ -32,18 +32,22 @@ import { apiUrl } from '@lib/functions/Api';
 import { getDetailUrl } from '@lib/functions/Navigation';
 import { getBaseUrl } from '@lib/functions/Navigation';
 import { navigateToLink } from '@lib/functions/Navigation';
+import { eventModified } from '@lib/functions/Navigation';
 import { api } from '../../App';
 import { useUserState } from '../../states/UserState';
+import { notificationLink } from './notificationLink';
 
 /**
  * Render a single notification entry in the drawer
  */
 function NotificationEntry({
   notification,
-  onRead
+  onRead,
+  onOpen
 }: Readonly<{
   notification: any;
   onRead: () => void;
+  onOpen: () => void;
 }>) {
   const navigate = useNavigate();
 
@@ -62,6 +66,12 @@ function NotificationEntry({
     }
   }
 
+  const destination = notificationLink(
+    link,
+    window.location.origin,
+    getBaseUrl()
+  );
+
   return (
     <Paper p='xs' shadow='xs'>
       <Group justify='space-between' wrap='nowrap'>
@@ -72,17 +82,18 @@ function NotificationEntry({
         >
           <Stack gap={2}>
             <Anchor
-              href={link ? `/${getBaseUrl()}${link}` : '#'}
+              href={destination?.href ?? '#'}
               underline='hover'
               target='_blank'
               onClick={(event: any) => {
-                if (link) {
+                if (destination) {
                   // Mark the notification as read
                   onRead();
                 }
 
-                if (link.startsWith('/')) {
-                  navigateToLink(link, navigate, event);
+                if (destination?.route) {
+                  if (!eventModified(event)) onOpen();
+                  navigateToLink(destination.route, navigate, event);
                 }
               }}
             >
@@ -222,6 +233,7 @@ export function NotificationDrawer({
                 key={`notification-${notification.pk}`}
                 notification={notification}
                 onRead={() => markAsRead(notification)}
+                onOpen={onClose}
               />
             ))}
           {notificationQuery.isFetching && (

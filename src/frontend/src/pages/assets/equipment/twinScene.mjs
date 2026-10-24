@@ -2,8 +2,9 @@
  * AIMMS reference equipment viewer.
  *
  * Authored conceptual geometry, not OEM CAD, a dimensional drawing, or an
- * assessment of the equipment. No remote assets, physical animation, or live
- * values are used. The renderer runs only after a control or size change.
+ * assessment of the equipment. No remote assets or physical animation are
+ * used. The native mimic can supply a motor alarm; only an unacknowledged
+ * alarm adds a timed redraw, with a static alternative for reduced motion.
  *
  * create(host, { selected, mode, labels, cameraState, onSelect, onReady,
  *                onError, onProject, hotspots = true })
@@ -123,6 +124,7 @@ function bevelBoxGeometry(width, height, depth, bevel = .018) {
 
 function buildPumpModel(accent) {
   const selectionColor = new THREE.Color(accent);
+  let selectedId = 'machine', motorAlarmColor = null, motorAlarmLit = true;
   const root = new THREE.Group();
   root.name = 'Conceptual vertical centrifugal pump';
   const geometries = new Set(), materials = new Set(), textures = new Set();
@@ -485,12 +487,17 @@ function buildPumpModel(accent) {
     root.updateMatrixWorld(true);
   }
   function select(id) {
+    selectedId = id;
     for (const mat of materialCache.values()) {
       const selected = id !== 'machine' && mat.userData.partId === id;
       mat.color.copy(mat.userData.baseColor);
       if (selected) mat.color.lerp(selectionColor, .22);
       mat.emissive.copy(mat.userData.baseEmissive); mat.emissiveIntensity = 1;
       if (selected) { mat.emissive.copy(selectionColor); mat.emissiveIntensity = .095; }
+      if (mat.userData.partId === 'motor' && motorAlarmColor) {
+        mat.color.lerp(motorAlarmColor, motorAlarmLit ? .82 : .24);
+        mat.emissive.copy(motorAlarmColor); mat.emissiveIntensity = motorAlarmLit ? .3 : .035;
+      }
     }
     for (const mesh of pickMeshes) {
       if (!mesh.userData.outline) continue;
@@ -522,7 +529,7 @@ function buildPumpModel(accent) {
     root.clear(); parts.clear(); pickMeshes.length = 0;
   }
   applyMode('assembled');
-  return { root, parts, pickMeshes, markers, materials, geometries, textures, applyMode, select, setAccent(value) { selectionColor.set(value); edgeMaterial.color.copy(selectionColor); }, bounds, dispose };
+  return { root, parts, pickMeshes, markers, materials, geometries, textures, applyMode, select, setMotorAlarm(color, lit) { motorAlarmColor = color; motorAlarmLit = lit; select(selectedId); }, setAccent(value) { selectionColor.set(value); edgeMaterial.color.copy(selectionColor); }, bounds, dispose };
 }
 
 function fallbackElement(stage, message) {
@@ -538,6 +545,7 @@ function create(host, options = {}) {
   let selected = validPart(options.selected || 'machine'), mode = validMode(options.mode), labels = options.labels !== false;
   let destroyed = false, ready = false, contextLost = false, scheduled = 0, width = 0, height = 0, lastProjected = [], failure = null;
   let renderer, controls, resizeObserver, windowResize, model, environmentTarget, scene, camera;
+  let motorAlarm = options.motorAlarm || null, alarmLit = true, alarmTimer = null;
   const cleanupListeners = [];
   const externalGeometries = new Set(), externalMaterials = new Set(), externalTextures = new Set();
   const originalPosition = host.style.position;
@@ -619,13 +627,42 @@ function create(host, options = {}) {
       const click = event => { event.stopPropagation(); choose(marker.id); }; button.addEventListener('click', click); cleanupListeners.push(() => button.removeEventListener('click', click));
       layer.append(button); hotspotNodes.set(marker.id, { button, line });
     }
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const alarmProbe = document.createElement('span');
+    alarmProbe.hidden = true; alarmProbe.style.color = 'var(--aimms-critical, light-dark(var(--mantine-color-red-9), var(--mantine-color-red-5)))'; stage.append(alarmProbe);
+    function applyMotorAlarm() {
+      const node = hotspotNodes.get('motor').button;
+      const active = motorAlarm?.severity === 'critical' || motorAlarm?.severity === 'warning';
+      node.dataset.alarmSeverity = active ? motorAlarm.severity : '';
+      node.dataset.alarmAttention = active ? motorAlarm.attention || '' : '';
+      node.dataset.alarmLit = String(active && alarmLit);
+      const marker = PART_BY_ID.get('motor');
+      node.setAttribute('aria-label', `${marker.number}. Select ${marker.label.toLowerCase()}${active && motorAlarm.label ? ` · ${motorAlarm.label}` : ''}`);
+      const color = active ? new THREE.Color(getComputedStyle(alarmProbe).color) : null;
+      model.setMotorAlarm(color, alarmLit);
+      node.style.borderColor = active ? getComputedStyle(alarmProbe).color : 'var(--mantine-color-text)';
+      node.style.boxShadow = active ? `0 0 0 ${alarmLit ? 4 : 1}px ${getComputedStyle(alarmProbe).color}` : '0 1px 5px #1c355514';
+      invalidate();
+    }
+    function syncMotorAlarm() {
+      if (alarmTimer !== null) clearTimeout(alarmTimer); alarmTimer = null;
+      alarmLit = true; applyMotorAlarm();
+      function blink() {
+        if (destroyed || contextLost || document.hidden) return;
+        alarmLit = !alarmLit; applyMotorAlarm(); alarmTimer = setTimeout(blink, 500);
+      }
+      if (!reducedMotion.matches && !document.hidden && motorAlarm && motorAlarm.attention === 'unacknowledged') alarmTimer = setTimeout(blink, 500);
+    }
+    reducedMotion.addEventListener('change', syncMotorAlarm);
+    document.addEventListener('visibilitychange', syncMotorAlarm);
+    cleanupListeners.push(() => { if (alarmTimer !== null) clearTimeout(alarmTimer); reducedMotion.removeEventListener('change', syncMotorAlarm); document.removeEventListener('visibilitychange', syncMotorAlarm); });
     function setTheme() {
       scene.background.set(surface()); floorMaterial.color.set(surface());
       model.setAccent(getComputedStyle(stage).color); model.select(selected);
       const edge = new THREE.Color(getComputedStyle(stage).getPropertyValue('--mantine-color-default-border').trim());
       const colors = grid.geometry.getAttribute('color');
       for (let i = 0; i < colors.count; i++) colors.setXYZ(i, edge.r, edge.g, edge.b);
-      colors.needsUpdate = true; invalidate();
+      colors.needsUpdate = true; applyMotorAlarm(); invalidate();
     }
     const raycaster = new THREE.Raycaster(), pointer = new THREE.Vector2(), scratch = new THREE.Vector3();
     const cameraDirection = new THREE.Vector3(), screenDirection = new THREE.Vector3();
@@ -753,7 +790,7 @@ function create(host, options = {}) {
       if (orbit) { spherical.phi = THREE.MathUtils.clamp(spherical.phi, controls.minPolarAngle, controls.maxPolarAngle); camera.position.copy(controls.target).add(new THREE.Vector3().setFromSpherical(spherical)); controls.update(); invalidate(); }
     };
     const lost = event => { event.preventDefault(); fail(new Error('The WebGL graphics context was lost.'), 'CONTEXT_LOST'); };
-    const restored = () => { if (destroyed) return; contextLost = false; ready = false; failure = null; makeEnvironment(); stage.querySelector('.aimms-twin-fallback')?.remove(); layer.style.visibility = ''; invalidate(); };
+    const restored = () => { if (destroyed) return; contextLost = false; ready = false; failure = null; makeEnvironment(); stage.querySelector('.aimms-twin-fallback')?.remove(); layer.style.visibility = ''; syncMotorAlarm(); invalidate(); };
     for (const [event, listener] of [['pointerdown', down], ['pointerup', up], ['pointercancel', cancel], ['keydown', keydown], ['webglcontextlost', lost], ['webglcontextrestored', restored]]) {
       canvas.addEventListener(event, listener); cleanupListeners.push(() => canvas.removeEventListener(event, listener));
     }
@@ -767,6 +804,7 @@ function create(host, options = {}) {
       camera.position.fromArray(options.cameraState.position); controls.target.fromArray(options.cameraState.target); controls.update();
     } else { camera.position.set(7, 5.5, 9); controls.target.set(.15, 2.35, -.1); controls.update(); }
     resize();
+    syncMotorAlarm();
 
     function destroy() {
       if (destroyed) return; destroyed = true; ready = false; lastProjected = []; if (scheduled) cancelAnimationFrame(scheduled); scheduled = 0;
@@ -783,6 +821,7 @@ function create(host, options = {}) {
       select(id) { if (destroyed) return; selected = validPart(id); model.select(selected); invalidate(); },
       setMode(nextMode) { if (destroyed) return; const next = validMode(nextMode); if (next === mode) return; mode = next; model.applyMode(mode); fit(camera.position.clone().sub(controls.target)); },
       setLabels(value) { if (destroyed) return; labels = Boolean(value); invalidate(); },
+      setMotorAlarm(value) { if (destroyed) return; motorAlarm = value; syncMotorAlarm(); },
       setView(view) { if (!destroyed) setView(view); },
       zoom(factor) { if (!destroyed) zoom(factor); },
       focus(id) { if (!destroyed) focus(id); },
@@ -802,7 +841,7 @@ function create(host, options = {}) {
     reportError(error);
     return {
       destroy() { if (destroyed) return; destroyed = true; stage.remove(); if (positionChanged && host.style.position === 'relative') host.style.position = originalPosition; },
-      select(id) { selected = validPart(id); }, setMode(value) { mode = validMode(value); }, setLabels(value) { labels = Boolean(value); }, setView() {}, zoom() {}, focus() {}, reset() {},
+      select(id) { selected = validPart(id); }, setMode(value) { mode = validMode(value); }, setLabels(value) { labels = Boolean(value); }, setMotorAlarm() {}, setView() {}, zoom() {}, focus() {}, reset() {},
       getState: emptyState, getProjectedParts: () => [], parts: PARTS,
       metadata: Object.freeze({ conceptual: true, renderer: 'unavailable', version: VERSION, parts: PARTS })
     };

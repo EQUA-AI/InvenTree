@@ -14,7 +14,7 @@ import { notifications } from '@mantine/notifications';
 import { IconInfoCircle } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { RefreshAction } from '../../../components/buttons/RefreshAction';
 import monitoring from '../monitoring.module.css';
 import { recordedTelemetryAsLive } from '../telemetryPresentation';
@@ -50,6 +50,7 @@ import { RetainedHealthEvidence } from './RetainedHealthEvidence';
 import { SignalEvidence } from './SignalEvidence';
 import { SignalTable } from './SignalTable';
 import { SignalTrendChart } from './SignalTrendChart';
+import { focusAlarm } from './alarmFocus';
 import { AlarmNoteModal } from './mimic/AlarmNoteModal';
 
 /**
@@ -83,6 +84,9 @@ export function MachineHealthPanel({
   const inspectId = `${namespace}-inspect`;
   const [params, setParams] = useSearchParams();
   const linkedBinding = params.get('binding');
+  const linkedAnomaly = params.get('anomaly');
+  const location = useLocation();
+  const focusedAlarm = useRef<string | null>(null);
   const queryClient = useQueryClient();
   const [selectedBinding, setSelectedBinding] = useState<string | null>(
     linkedBinding
@@ -221,6 +225,15 @@ export function MachineHealthPanel({
   const summary = summaryQuery.isError ? undefined : summaryQuery.data;
   const signals = signalsQuery.data ?? [];
   const anomalies = anomaliesQuery.data ?? [];
+  useEffect(() => {
+    if (!linkedAnomaly || !anomaliesQuery.data) return;
+    const focusKey = `${machineId}:${linkedAnomaly}:${location.key}`;
+    if (focusedAlarm.current === focusKey) return;
+    const frame = requestAnimationFrame(() => {
+      if (focusAlarm(linkedAnomaly)) focusedAlarm.current = focusKey;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [linkedAnomaly, machineId, location.key, anomaliesQuery.data]);
   const anomalyAssociationKnown =
     !anomaliesQuery.isError &&
     !anomaliesQuery.isPending &&
@@ -344,6 +357,7 @@ export function MachineHealthPanel({
                       onCreateRepair={setRepairAnomaly}
                       onAnalyze={handleAnalyze}
                       onDismiss={setDismissing}
+                      linkedAnomaly={linkedAnomaly}
                     />
                   ) : null}
                 </HealthQuerySection>
@@ -437,7 +451,7 @@ export function MachineHealthPanel({
 
       <Stack gap='sm'>
         <Title order={4}>{t`Past alarms`}</Title>
-        <AlarmHistory machineId={machineId} />
+        <AlarmHistory machineId={machineId} linkedAnomaly={linkedAnomaly} />
       </Stack>
 
       <RetainedHealthEvidence machineId={machineId} />

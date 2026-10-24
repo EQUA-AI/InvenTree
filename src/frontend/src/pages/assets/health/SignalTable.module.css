@@ -52,4 +52,14 @@
 }
 
 .limit { display: block; white-space: nowrap; }
+.table tbody tr[data-alarm='true'],
+.table tbody tr[data-alarm='true'] > td,
+.table tbody tr[data-alarm='true'] > td:first-child {
+ background: var(--mantine-color-red-light);
+ --table-striped-color: var(--mantine-color-red-light);
+ --table-highlight-on-hover-color: var(--mantine-color-red-light-hover);
+}
+.table tbody tr[data-alarm='true']:hover,
+.table tbody tr[data-alarm='true']:hover > td,
+.table tbody tr[data-alarm='true']:hover > td:first-child { background: var(--mantine-color-red-light-hover); }
 @media (min-width: 48em) and (max-width: 89.99em) { .scroller { mask-image: linear-gradient(to right, var(--mantine-color-black) calc(100% - 14px), transparent); } }

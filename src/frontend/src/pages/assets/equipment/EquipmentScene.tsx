@@ -24,6 +24,7 @@ import operations from '../operations.module.css';
 import type {
   TwinController,
   TwinMode,
+  TwinMotorAlarm,
   TwinPartId,
   TwinView
 } from './twinScene.mjs';
@@ -65,6 +66,7 @@ export function EquipmentScene({
   selected,
   mode,
   labels,
+  motorAlarm = null,
   onSelect,
   rotate = true,
   fitViewport = false,
@@ -75,6 +77,7 @@ export function EquipmentScene({
   selected: TwinPartId;
   mode: TwinMode;
   labels: boolean;
+  motorAlarm?: TwinMotorAlarm | null;
   onSelect?: (id: TwinPartId) => void;
   ref?: Ref<EquipmentSceneHandle>;
   rotate?: boolean;
@@ -89,11 +92,25 @@ export function EquipmentScene({
   const [height, setHeight] = useState<string | number>(SCENE_HEIGHT);
   const host = useRef<HTMLDivElement>(null);
   const controller = useRef<TwinController | null>(null);
-  const latest = useRef({ selected, mode, labels, onSelect, onOccluded });
+  const latest = useRef({
+    selected,
+    mode,
+    labels,
+    motorAlarm,
+    onSelect,
+    onOccluded
+  });
   // Kept current after each commit, so the scene's callbacks and a scene
   // created later both see the latest props without rebuilding it.
   useLayoutEffect(() => {
-    latest.current = { selected, mode, labels, onSelect, onOccluded };
+    latest.current = {
+      selected,
+      mode,
+      labels,
+      motorAlarm,
+      onSelect,
+      onOccluded
+    };
   });
   const [phase, setPhase] = useState<Phase>('loading');
   const [attempt, setAttempt] = useState(0);
@@ -171,6 +188,7 @@ export function EquipmentScene({
           selected: initial.selected,
           mode: initial.mode,
           labels: initial.labels,
+          motorAlarm: initial.motorAlarm,
           onSelect: (id) => latest.current.onSelect?.(id),
           onOccluded: (parts) => latest.current.onOccluded?.(parts),
           onReady: () => {
@@ -215,6 +233,9 @@ export function EquipmentScene({
   useEffect(() => {
     controller.current?.setLabels(labels);
   }, [labels]);
+  useEffect(() => {
+    controller.current?.setMotorAlarm(motorAlarm);
+  }, [motorAlarm?.severity, motorAlarm?.attention, motorAlarm?.label, phase]);
 
   useEffect(() => {
     controller.current?.setTheme();
