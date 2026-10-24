@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from pydantic import SecretStr
@@ -22,6 +22,7 @@ from aichat.models import (
 from aichat.services import memory_lifecycle as service
 
 
+@override_settings(USE_TZ=True)
 class MemoryLifecycleTests(TestCase):
     """Use schema-compatible fixtures without enabling semantic execution."""
 

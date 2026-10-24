@@ -13,7 +13,7 @@ from unittest import mock
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db.models import F
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from aimms_testing import requires_postgres
 
@@ -31,6 +31,7 @@ def _seed(*args, scope_key: str = SCOPE_KEY):
     return out.getvalue()
 
 
+@override_settings(USE_TZ=True)
 class SeedAnalysisFixturesTests(TestCase):
     """The declared corpus lands exactly as corpus.yaml says."""
 

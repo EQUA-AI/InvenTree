@@ -5,7 +5,7 @@ from datetime import timezone as dt_timezone
 from unittest import mock
 
 from django.db import DatabaseError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from aichat import tasks
 from aichat.models import (
@@ -152,6 +152,7 @@ class LedgerWriteTest(_ThreadMixin, TestCase):
         self.assertIsNone(row.thread_id)
 
 
+@override_settings(USE_TZ=True)
 class DailyCapTest(_ThreadMixin, TestCase):
     """At the cap the run records budget_deferred and never calls the model."""
 
@@ -264,6 +265,7 @@ class DailyCapTest(_ThreadMixin, TestCase):
         self.assertEqual(self._events()[0].outcome, 'ok')
 
 
+@override_settings(USE_TZ=True)
 class ServiceHelpersTest(TestCase):
     """record_worker_usage / usage_today / cap_for in isolation."""
 

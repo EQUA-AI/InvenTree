@@ -29,9 +29,10 @@ class AtomicStartupMigrationTests(MigrationRoundTripMixin, TransactionTestCase):
 
     def observer(self):
         """Open a separate connection that sees only committed schema."""
-        observer = connection.copy(alias='startup_observer')
-        observer.ensure_connection()
+        observer = connection.copy()
         self.addCleanup(observer.close)
+        observer.ensure_connection()
+        self.assertIsNot(observer.connection, connection.connection)
         return observer
 
     def focus_columns(self, database=connection):

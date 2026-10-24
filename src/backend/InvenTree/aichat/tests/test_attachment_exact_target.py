@@ -73,6 +73,7 @@ class RecordingEmbeddingClient:
 
 
 @override_settings(
+    USE_TZ=True,
     AIMMS_MAINTENANCE_SCOPE_RESOLVER=f'{__name__}._grant_resolver',
     AIMMS_MACHINE_AI_READ_ENABLED=True,
     AIMMS_ATTACHMENT_RAG_ENABLED=True,
