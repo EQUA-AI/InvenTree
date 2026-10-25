@@ -37,6 +37,7 @@ import type {
   DuplicateRepair,
   WorkPackageResult
 } from '../maintenance/components/WorkOrderCreateModal';
+import { duplicateSummary } from '../maintenance/components/duplicateSummary';
 import { formatSignalLimits } from './health/common';
 import { invalidateTestAlarmViews } from './invalidateTestAlarmViews';
 import { formatValue, unitLabel } from './performance/format';
@@ -756,17 +757,7 @@ export function TestAlarmControl({
                                     />
                                   </Anchor>
                                   <Text size='xs'>
-                                    {duplicate.status?.replaceAll('_', ' ') ??
-                                      t`Open`}{' '}
-                                    ·{' '}
-                                    {duplicate.repair_packet_id
-                                      ? t`Repair packet`
-                                      : t`No repair packet`}{' '}
-                                    ·{' '}
-                                    {duplicate.reason ===
-                                    'ANOMALY_ALREADY_LINKED'
-                                      ? t`Source already has owning work`
-                                      : t`Open repair on this machine`}
+                                    {duplicateSummary(duplicate)}
                                   </Text>
                                 </Stack>
                               ))}

@@ -1,5 +1,24 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## Local fix served; final duplicate-review corrections verified
+
+Both branches contain72ec703f0. Local frontend5173 serves the count fix and the
+backend reload preserves the existing sync development configuration; the new
+directory endpoint returns expected401 without credentials. Do not treat the
+sync server's redirecting ASGI health path as a liveness pass. No new migration
+or explicit queue drain occurs. The72ec AMD64 image passes offline identity,
+driver, dependency and tokenizer checks; no registry push or cloud traffic change.
+
+Fable92.1 versus Gemini98.83 closes D1/D2 and the station issue but leaves two
+specific mandatory duplicate-review defects. A shared duplicate summary removes
+the raw codes in both routes, and native foreground variables correct duplicate
+CTA contrast while preserving disabled styles. Actual normal/hover/focus ratios
+are4.8842/5.8654/5.8654 in four cases, with four zero-violation duplicate axe
+reports.239 units, App/S6 types and10 final workflow cases pass. Re-submit the
+exact corrected source and rendered evidence for independent scores; do not
+accept Gemini's broad earlier pass over Fable's concrete findings. The current
+image predates these last corrections. Full deployment/product gates stay open.
+
 ## Owner prioritizes localhost running-count fix
 
 The existing localhost5173 server is verified to serve the new bay-derived

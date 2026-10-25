@@ -46,7 +46,9 @@ import { useRetainedCommand } from '../../../hooks/useRetainedCommand';
 import type { RetainedCommand } from '../../../hooks/useRetainedCommand';
 import { type IntakeDraft, WorkIntakePanel } from './WorkIntakePanel';
 import { WorkOrderAssigneeSelect } from './WorkOrderAssigneeSelect';
+import { type DuplicateRepair, duplicateSummary } from './duplicateSummary';
 import { matchesWorkPackageReceipt } from './workPackageReceipt';
+export type { DuplicateRepair } from './duplicateSummary';
 import {
   type AssignmentWarningCode,
   assignmentWarningCode,
@@ -58,17 +60,6 @@ interface DraftPart {
   partId: number;
   partName: string;
   quantity: number;
-}
-
-export interface DuplicateRepair {
-  reason: string;
-  work_order_id: number;
-  work_order_reference: string;
-  repair_packet_id: number | null;
-  repair_packet_reference?: string;
-  anomaly_id?: number;
-  title?: string;
-  status?: string;
 }
 
 export interface WorkPackageResult {
@@ -960,7 +951,7 @@ export function WorkOrderCreateModal({
                       {duplicate.work_order_reference ||
                         t`Work order ${duplicate.work_order_id}`}
                       {duplicate.title ? ` · ${duplicate.title}` : ''}
-                      {` · ${duplicate.status ?? t`Open`} · ${duplicate.repair_packet_id ? t`Repair packet` : t`No repair packet`} · ${duplicate.reason}`}
+                      {` · ${duplicateSummary(duplicate)}`}
                     </Anchor>
                   ))}
                   <Text size='sm'>
@@ -1014,6 +1005,11 @@ export function WorkOrderCreateModal({
                     duplicates === null ? `${theme.primaryColor}.8` : 'orange.9'
                   }
                   autoContrast
+                  vars={
+                    duplicates === null
+                      ? undefined
+                      : () => ({ root: { '--button-color': '#000000' } })
+                  }
                   disabled={
                     assignmentBlocked ||
                     command.storageFailed ||

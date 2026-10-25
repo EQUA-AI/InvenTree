@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs';
 import { type Page, expect, test } from '@playwright/test';
 import { auditAccessibility, waitForRenderedScope } from '../s0/accessibility';
 import { assertReadableContrast } from '../s0/contrast';
@@ -197,6 +198,7 @@ async function openIntake(
           duplicates: [
             {
               reason: 'OPEN_REPAIR_ON_MACHINE',
+              status: 'in_progress',
               work_order_id: 3826,
               work_order_reference: 'WO-003826',
               repair_packet_id: null
@@ -298,6 +300,14 @@ for (const scheme of ['light', 'dark'] as const) {
       .getByRole('button', { name: 'Create work order', exact: true })
       .click();
     await expect(dialog).toContainText('WO-003826');
+    await expect(dialog).toContainText('Open repair on this machine');
+    await expect(dialog).toContainText('in progress');
+    await expect(dialog).not.toContainText('OPEN_REPAIR_ON_MACHINE');
+    await expect(dialog).not.toContainText('in_progress');
+    const duplicateAlert = dialog
+      .getByRole('alert')
+      .filter({ hasText: 'Open repair on this machine' });
+    expect(await duplicateAlert.textContent()).not.toMatch(/[A-Z]+_[A-Z_]+/);
     await expect(
       dialog.getByRole('button', {
         name: 'Create a second work order',
@@ -316,9 +326,34 @@ for (const scheme of ['light', 'dark'] as const) {
       path: info.outputPath('intake-reviewed-duplicate.png'),
       animations: 'disabled'
     });
-    await dialog
-      .getByRole('button', { name: 'Create a second work order', exact: true })
-      .click();
+    const duplicateAction = dialog.getByRole('button', {
+      name: 'Create a second work order',
+      exact: true
+    });
+    await expect(duplicateAction).toBeEnabled();
+    await duplicateAction.scrollIntoViewIfNeeded();
+    const normal = await assertReadableContrast(duplicateAction);
+    await duplicateAction.hover();
+    const hover = await assertReadableContrast(duplicateAction);
+    await duplicateAction.focus();
+    const focus = await assertReadableContrast(duplicateAction);
+    const contrastPath = info.outputPath(
+      `duplicate-action-contrast-${scheme}.json`
+    );
+    writeFileSync(
+      contrastPath,
+      JSON.stringify({ normal, hover, focus }, null, 2)
+    );
+    await info.attach('duplicate-action-contrast', {
+      path: contrastPath,
+      contentType: 'application/json'
+    });
+    await auditAccessibility(page, dialog, info, `duplicate-create-${scheme}`);
+    await duplicateAction.screenshot({
+      path: info.outputPath(`duplicate-create-action-${scheme}.png`),
+      animations: 'disabled'
+    });
+    await duplicateAction.click();
     await expect(page.getByTestId('destination')).toHaveText(
       '/maintenance/work-orders/73/'
     );
