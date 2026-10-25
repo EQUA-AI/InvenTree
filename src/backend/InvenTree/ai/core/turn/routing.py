@@ -94,6 +94,33 @@ async def _build_route_inner(service: NormalizedTurnService, run: TurnRun) -> No
             allow_llm=run.modality == TurnModality.TEXT,
         )
 
+    from ai.core.focus.commands import is_bare_anaphora, selected_focus_kind
+    from ai.core.turn.targets import machine_candidates
+
+    if (
+        run.injection_canonical is None
+        and run.modality == "text"
+        and getattr(getattr(run.task_intent, "intent", None), "value", None)
+        != "provided_visualization"
+        and (
+            machine_candidates(run.routing_content)
+            or (
+                (getattr(run, "focus_snapshot", None) or getattr(run, "work_focus", None))
+                and (selected_focus_kind(run.content) == "machine" or is_bare_anaphora(run.content))
+            )
+        )
+    ):
+        from ai.core.turn.targets import resolve_target
+
+        run.extras["record_target"] = await service._call_sync(
+            resolve_target,
+            run.actor,
+            run.routing_content,
+            run.focus_snapshot,
+            getattr(run, "work_focus", None),
+            run.analysis_scope,
+        )
+
     # S3 (D5): diagnostic context stays unconditional in shadow — skipping
     # it would silently change grounding-fence seeds and entity chips for
     # turns still answered by the legacy rail. Only an ENFORCED analysis
@@ -114,7 +141,16 @@ async def _build_route_inner(service: NormalizedTurnService, run: TurnRun) -> No
     analysis_turn = (
         intent_enforce and gate_enforce and not intent_held_back and _analysis_override_applies(run)
     )
-    if analysis_turn:
+    from ai.core.turn.targets import identity_requested
+
+    target = (getattr(run, "extras", None) or {}).get("record_target") or {}
+    if (
+        analysis_turn
+        or target.get("error")
+        or (target.get("kind") == "machine" and identity_requested(run.content))
+        or getattr(getattr(run.task_intent, "intent", None), "value", None)
+        == "provided_visualization"
+    ):
         run.diagnostic_context = None
     else:
         run.diagnostic_context = await service._build_diagnostic_context(

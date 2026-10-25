@@ -1,11 +1,12 @@
 import './privacy';
 import { createParser } from '@openuidev/react-lang';
-import { chatLibrary } from './definitions';
+import { chatLibrary, historicalChatLibrary } from './definitions';
 
 const parser = createParser(chatLibrary.toJSONSchema());
+const historicalParser = createParser(historicalChatLibrary.toJSONSchema());
 const literal = String.raw`"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"`;
 const leaf = new RegExp(
-  String.raw`\s*(AnswerSummary|CoverageNotice|AssetSummary|EvidenceList|MetricComparison|TrendPreview|NextSteps)\(\s*(${literal})?\s*\)\s*`,
+  String.raw`\s*(AnswerSummary|CoverageNotice|AssetSummary|EvidenceList|MetricComparison|TrendPreview|ChartSnapshot|NextSteps)\(\s*(${literal})?\s*\)\s*`,
   'y'
 );
 /**
@@ -13,7 +14,11 @@ const leaf = new RegExp(
  * and flat, literal reference calls. Reject expressions, queries, aliases,
  * cycles, unused statements and nested graphs BEFORE the runtime sees them.
  */
-export function validateProgram(program: string): boolean {
+export function validateProgram(
+  program: string,
+  library = 'aimms-chat@1'
+): boolean {
+  if (!['aimms-chat@1', 'aimms-chat@2'].includes(library)) return false;
   if (new TextEncoder().encode(program).length > 65536) return false;
   // Trim once so overlapping trailing whitespace quantifiers cannot turn
   // rejection of a bounded but malformed program into quadratic backtracking.
@@ -29,6 +34,8 @@ export function validateProgram(program: string): boolean {
     leaf.lastIndex = position;
     const match = leaf.exec(body);
     if (!match || ++count > 200) return false;
+    if (library === 'aimms-chat@1' && match[1] === 'ChartSnapshot')
+      return false;
     const noArg = match[1] === 'AnswerSummary' || match[1] === 'CoverageNotice';
     if (noArg === (match[2] !== undefined)) return false;
     if (match[1] === 'AnswerSummary') summaries++;
@@ -45,7 +52,9 @@ export function validateProgram(program: string): boolean {
   }
   if (count < 2 || summaries !== 1) return false;
   try {
-    const result = parser.parse(program);
+    const result = (
+      library === 'aimms-chat@1' ? historicalParser : parser
+    ).parse(program);
     return (
       !!result.root &&
       result.root.typeName === 'AnswerLayout' &&

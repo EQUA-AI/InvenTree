@@ -822,6 +822,7 @@ class NormalizedTurnService:
         turn_id: str,
         emitter: EventEmitter | None,
         actor: AIPrincipal | None = None,
+        target_machine_id: int | None = None,
     ) -> dict[str, Any]:
         """Attach the S28 server-observed entity manifest; fail-soft."""
         try:
@@ -863,7 +864,7 @@ class NormalizedTurnService:
                     not in ("machine", "asset_machine", "assetmachine", "work_order", "workorder")
                 )
                 roots += await self._call_sync(
-                    resolve_observed_record_roots, actor.user_pk, observed
+                    resolve_observed_record_roots, actor.user_pk, observed, target_machine_id
                 )
             entities = build_entity_manifest(
                 canonical=canonical,

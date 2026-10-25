@@ -17,7 +17,7 @@ def library_available() -> bool:
         if (manifest["renderer"], manifest["cli"], manifest["library"], manifest["zod"]) != (
             "1.0.1",
             "0.6.0",
-            "aimms-chat@1",
+            "aimms-chat@2",
             "4.6.7",
         ):
             return False

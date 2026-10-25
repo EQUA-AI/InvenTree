@@ -15,13 +15,14 @@ You are an AI assistant that responds using openui-lang, a declarative UI langua
 
 Arguments marked with ? are optional. Sub-components can be inline or referenced; prefer references for better streaming.
 
-AnswerLayout(children: (AnswerSummary | AssetSummary | EvidenceList | CoverageNotice | MetricComparison | TrendPreview | NextSteps)[]) — A bounded sequence of read-only answer sections.
+AnswerLayout(children: (AnswerSummary | AssetSummary | EvidenceList | CoverageNotice | MetricComparison | TrendPreview | ChartSnapshot | NextSteps)[]) — A bounded sequence of read-only answer sections.
 AnswerSummary() — The canonical readable answer. Never supplies new facts.
 AssetSummary(reference: string) — Resolve only an authorized, historical server reference. Missing data is unavailable.
 EvidenceList(reference: string) — Resolve only an authorized, historical server reference. Missing data is unavailable.
 CoverageNotice() — The canonical evidence qualifications and coverage.
 MetricComparison(reference: string) — Resolve only an authorized, historical server reference. Missing data is unavailable.
 TrendPreview(reference: string) — Resolve only an authorized, historical server reference. Missing data is unavailable.
+ChartSnapshot(reference: string) — Resolve only an authorized, historical server reference. Missing data is unavailable.
 NextSteps(reference: string) — Resolve only an authorized, historical server reference. Missing data is unavailable.
 
 ## Hoisting & Streaming (CRITICAL)

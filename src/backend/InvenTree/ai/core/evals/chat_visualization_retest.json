@@ -1,0 +1,116 @@
+[
+  {
+    "id": "GENERAL",
+    "prompt": "What is the difference between preventive maintenance and corrective maintenance?",
+    "previous_status": "PASS",
+    "expected": "preserve the independently verified recorded scope and ordinary-answer behavior"
+  },
+  {
+    "id": "MACHINE-24",
+    "prompt": "What model, serial number, and recorded location are saved for Aeration Blower No. 2 (machine ID 24)? Cite the supporting record.",
+    "previous_status": "PASS",
+    "expected": "authorized exact machine identity and persisted AssetSummary"
+  },
+  {
+    "id": "PART-SEARCH",
+    "prompt": "Search the parts catalog for bearing. List the matching part names and internal part numbers. Do not create or change any records.",
+    "previous_status": "FAIL",
+    "expected": "parts.read selected; matching native names/IPNs; no machine substitution"
+  },
+  {
+    "id": "ACTIVE-MACHINE-COUNT",
+    "prompt": "How many active machines are currently recorded in the machine inventory? Use recorded data and state the scope of the count. Do not change any records.",
+    "previous_status": "PASS",
+    "expected": "preserve the independently verified recorded scope and ordinary-answer behavior"
+  },
+  {
+    "id": "PART-954",
+    "prompt": "What are the recorded name and internal part number for part ID 954? Please look up the existing record without changing it.",
+    "previous_status": "FAIL",
+    "expected": "parts.read selected; matching native names/IPNs; no machine substitution"
+  },
+  {
+    "id": "READY-NEGATION",
+    "prompt": "Reply with READY only. Do not query, create, modify, approve, or send any business records.",
+    "previous_status": "PASS",
+    "expected": "READY only; no business queries or effects"
+  },
+  {
+    "id": "SITE-NO-MATCH",
+    "prompt": "QA-20261025-CedarCreek: Read-only inventory check. List only machines explicitly recorded at the \"Cedar Creek Houston Regional Site\" location and their related parts. Give record IDs and cite the supporting records. If this location or its machine/part records are unavailable, say so clearly; do not substitute machines from another site and do not create or modify anything.",
+    "previous_status": "PASS",
+    "expected": "honest no-match; no substituted site or fabricated parts"
+  },
+  {
+    "id": "SELECTED-FOCUS-CARD",
+    "prompt": "Show the selected machine's recorded model, serial number, and location in a read-only asset summary card. Use the existing machine record.",
+    "previous_status": "PASS",
+    "expected": "authorized exact machine identity and persisted AssetSummary"
+  },
+  {
+    "id": "EXPLICIT-MACHINE-CARD",
+    "prompt": "For Aeration Blower No. 2, machine ID 24, show the saved model, serial number, and location as a read-only asset card.",
+    "previous_status": "PASS",
+    "expected": "authorized exact machine identity and persisted AssetSummary"
+  },
+  {
+    "id": "MACHINE-PAGE-CARD",
+    "prompt": "Show the recorded identity for this machine, Aeration Blower No. 2 (ID 24), in a read-only asset summary card.",
+    "previous_status": "FAIL",
+    "expected": "authorized exact machine identity and persisted AssetSummary"
+  },
+  {
+    "id": "TREND-12",
+    "prompt": "Show the monthly trend of recorded work orders over the last 12 months, with a chart and a supporting data table. State the date interval, scope, timezone, and data age. Use only saved records; do not change anything.",
+    "previous_status": "BLOCKED_LIVE_ANALYSIS_ROUTE",
+    "expected": "validated authorized monthly dataset and actual line chart with table; exact requested interval"
+  },
+  {
+    "id": "TREND-6",
+    "prompt": "Show the monthly recorded work-order trend for the past 6 months, with the supporting table and exact interval.",
+    "previous_status": "BLOCKED_LIVE_ANALYSIS_ROUTE",
+    "expected": "validated authorized monthly dataset and actual line chart with table; exact requested interval"
+  },
+  {
+    "id": "TREND-LIMIT",
+    "prompt": "Show the monthly recorded work-order trend for the past 37 months.",
+    "previous_status": "BLOCKED_LIVE_ANALYSIS_ROUTE",
+    "expected": "typed 1-36 month limitation; no fabricated chart"
+  },
+  {
+    "id": "SYNTHETIC-LINE",
+    "prompt": "Visualization QA using synthetic test data, not operational records: render a line chart for Jan=4, Feb=0, Mar=7, Apr=9. Label the axes Month and Test count and show the values alongside it. Please display the visualization in the chat, not just code or instructions. Do not query or modify business records.",
+    "previous_status": "NO_GRAPH_GENERATED",
+    "expected": "actual requested graphic and supporting table; supplied values preserved and explicitly labeled"
+  },
+  {
+    "id": "SYNTHETIC-BAR",
+    "prompt": "Visualization QA using synthetic data only: display a bar chart comparing Pump A=4, Pump B=7, Pump C=9. Mark it Synthetic test data and include the values. Render the chart in this chat rather than giving source code. Do not query or change any records.",
+    "previous_status": "UNSUPPORTED_OPENUI_TYPE_NO_GRAPH",
+    "expected": "actual requested graphic and supporting table; supplied values preserved and explicitly labeled"
+  },
+  {
+    "id": "SYNTHETIC-PIE",
+    "prompt": "Visualization QA using synthetic data only: display a pie chart for Planned=6, Corrective=3, Inspection=1, with category labels and percentages. Mark it Synthetic test data. I want the rendered graphic in the chat, not a code sample. Do not query or change records.",
+    "previous_status": "UNSUPPORTED_OPENUI_TYPE_NO_GRAPH",
+    "expected": "actual requested graphic and supporting table; supplied values preserved and explicitly labeled"
+  },
+  {
+    "id": "RECORDED-MACHINE-TREND",
+    "prompt": "For machine ID 24, plot the recorded monthly work-order counts for the last 12 months as an actual line chart with a supporting data table. State the interval, timezone and source. Use saved records only. If this chat cannot display a real graph, say so rather than substituting ASCII art or source code. Do not modify anything.",
+    "previous_status": "BLOCKED_LIVE_ANALYSIS_ROUTE",
+    "expected": "validated authorized monthly dataset and actual line chart with table; exact requested interval"
+  },
+  {
+    "id": "RECORDED-METRIC-COMPARISON",
+    "prompt": "For machine ID 24, show a visual comparison of open and completed work-order counts using existing recorded data. Include the exact counts, scope and coverage. Display the supported visual summary in chat; do not change any records.",
+    "previous_status": "ASSET_LINKS_GENERATED_BUT_REQUESTED_METRIC_VISUAL_NOT_GENERATED",
+    "expected": "complete machine-filtered lifecycle counts and status graphic; related entity links only"
+  },
+  {
+    "id": "ASSET-CARD-CONTROL",
+    "prompt": "For Aeration Blower No. 2, machine ID 24, show the saved model, serial number, and location as a read-only asset card.",
+    "previous_status": "PASS",
+    "expected": "authorized exact machine identity and persisted AssetSummary"
+  }
+]

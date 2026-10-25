@@ -12,11 +12,12 @@ type LeafName =
   | 'CoverageNotice'
   | 'MetricComparison'
   | 'TrendPreview'
+  | 'ChartSnapshot'
   | 'NextSteps';
 type Renderers = {
   [Name in LeafName]: (reference?: string) => ReactNode;
 };
-export function createChatLibrary(renderers: Renderers) {
+export function createChatLibrary(renderers: Renderers, version: 1 | 2 = 2) {
   const summary = defineComponent({
     name: 'AnswerSummary',
     description: 'The canonical readable answer. Never supplies new facts.',
@@ -43,6 +44,7 @@ export function createChatLibrary(renderers: Renderers) {
   const evidence = referenced('EvidenceList');
   const metrics = referenced('MetricComparison');
   const trend = referenced('TrendPreview');
+  const chart = referenced('ChartSnapshot');
   const next = referenced('NextSteps');
   const layout = defineComponent({
     name: 'AnswerLayout',
@@ -57,6 +59,7 @@ export function createChatLibrary(renderers: Renderers) {
             coverage.ref,
             metrics.ref,
             trend.ref,
+            ...(version === 2 ? [chart.ref] : []),
             next.ref
           ])
         )
@@ -66,7 +69,7 @@ export function createChatLibrary(renderers: Renderers) {
     component: ({ props, renderNode }) => renderNode(props.children)
   });
   return createLibrary({
-    id: 'aimms-chat@1',
+    id: `aimms-chat@${version}`,
     root: 'AnswerLayout',
     components: [
       layout,
@@ -76,6 +79,7 @@ export function createChatLibrary(renderers: Renderers) {
       coverage,
       metrics,
       trend,
+      ...(version === 2 ? [chart] : []),
       next
     ]
   });
@@ -88,8 +92,22 @@ export const chatLibrary = createChatLibrary({
   CoverageNotice: empty,
   MetricComparison: empty,
   TrendPreview: empty,
+  ChartSnapshot: empty,
   NextSteps: empty
 });
+export const historicalChatLibrary = createChatLibrary(
+  {
+    AnswerSummary: empty,
+    AssetSummary: empty,
+    EvidenceList: empty,
+    CoverageNotice: empty,
+    MetricComparison: empty,
+    TrendPreview: empty,
+    ChartSnapshot: empty,
+    NextSteps: empty
+  },
+  1
+);
 export const promptOptions = {
   toolCalls: false,
   bindings: false,

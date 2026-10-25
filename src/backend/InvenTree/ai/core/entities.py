@@ -51,7 +51,9 @@ class ObservedRecordRoot:
     display_name: str
 
 
-def resolve_observed_record_roots(user_pk: Any, observed: Any) -> tuple[ObservedRecordRoot, ...]:
+def resolve_observed_record_roots(
+    user_pk: Any, observed: Any, target_machine_id: int | None = None
+) -> tuple[ObservedRecordRoot, ...]:
     """Resolve bounded tool observations independently of voice diagnosis.
 
     Typed IDs are candidates, not grants. Reuse the focus readers' current
@@ -68,12 +70,19 @@ def resolve_observed_record_roots(user_pk: Any, observed: Any) -> tuple[Observed
         return ()
     kinds = {"assetmachine": "machine", "workorder": "work_order"}
     roots = []
-    for model, pk in sorted(observed)[:MAX_ENTITIES]:
+    candidates = sorted(observed)
+    if target_machine_id is not None:
+        candidates = [
+            item for item in candidates if item[0] != "assetmachine" or item[1] == target_machine_id
+        ]
+    for model, pk in candidates[: MAX_ENTITIES * 2]:
         if model not in kinds or type(pk) is not int or pk <= 0:
             continue
         try:
             target = resolve_focus_candidate(user, FocusCandidate(kind=kinds[model], id=pk))
         except FocusRejected:
+            continue
+        if target_machine_id is not None and target.machine_id != target_machine_id:
             continue
         roots.append(ObservedRecordRoot(model, pk, target.label))
         if len(roots) >= MAX_ENTITIES:

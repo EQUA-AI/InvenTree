@@ -12,6 +12,7 @@ import {
 } from 'react';
 import { EntityChips } from '../EntityChips';
 import { EvidenceChips } from '../EvidenceChips';
+import { ChartSnapshot } from './ChartSnapshot';
 import type { RichMessageProps } from './RichMessage';
 import { TrendSnapshot } from './TrendSnapshot';
 import { createChatLibrary } from './definitions';
@@ -109,19 +110,50 @@ function Trend({ reference }: { reference?: string }) {
   const data = message.presentationData?.find(
     (entry) => entry.source_key === ref?.source_key
   );
-  return data ? <TrendSnapshot data={data} /> : <Unavailable />;
+  return data?.kind === 'trend_dataset' ? (
+    <TrendSnapshot data={data} />
+  ) : (
+    <Unavailable />
+  );
+}
+function Chart({ reference }: { reference?: string }) {
+  const { message } = useAnswer();
+  const ref = message.presentation?.references.find(
+    (entry) => entry.ref_id === reference && entry.kind === 'chart_dataset'
+  );
+  const data = message.presentationData?.find(
+    (entry) => entry.source_key === ref?.source_key
+  );
+  return data?.kind === 'chart_dataset' ? (
+    <ChartSnapshot data={data} />
+  ) : (
+    <Unavailable />
+  );
 }
 // Definitions and render functions are stable; historical renders do not fetch
 // fresh data. No generic action, form, Query/Mutation or toolProvider is exposed.
-const library = createChatLibrary({
+const renderers = {
   AnswerSummary: () => <Summary />,
   CoverageNotice: () => <Qualifications />,
-  AssetSummary: (reference) => <Entity reference={reference} />,
-  EvidenceList: (reference) => <Evidence reference={reference} />,
-  MetricComparison: (reference) => <CoverageMetrics reference={reference} />,
-  TrendPreview: (reference) => <Trend reference={reference} />,
-  NextSteps: (reference) => <Entity reference={reference} />
-});
+  AssetSummary: (reference: string | undefined) => (
+    <Entity reference={reference} />
+  ),
+  EvidenceList: (reference: string | undefined) => (
+    <Evidence reference={reference} />
+  ),
+  MetricComparison: (reference: string | undefined) => (
+    <CoverageMetrics reference={reference} />
+  ),
+  TrendPreview: (reference: string | undefined) => (
+    <Trend reference={reference} />
+  ),
+  ChartSnapshot: (reference: string | undefined) => (
+    <Chart reference={reference} />
+  ),
+  NextSteps: (reference: string | undefined) => <Entity reference={reference} />
+};
+const library = createChatLibrary(renderers, 2);
+const historicalLibrary = createChatLibrary(renderers, 1);
 class RenderBoundary extends Component<
   { fallback: ReactNode; children: ReactNode },
   { failed: boolean }
@@ -141,7 +173,9 @@ function ValidatedMessage(props: RichMessageProps & { fallback: ReactNode }) {
     [props.message.presentation]
   );
   const valid = useMemo(
-    () => presentation && validateProgram(presentation.program),
+    () =>
+      presentation &&
+      validateProgram(presentation.program, presentation.library),
     [presentation]
   );
   if (!valid || !presentation || failed) return props.fallback;
@@ -149,7 +183,11 @@ function ValidatedMessage(props: RichMessageProps & { fallback: ReactNode }) {
     <Context.Provider value={props}>
       <Stack gap='xs' data-testid='openui-answer'>
         <Renderer
-          library={library}
+          library={
+            presentation.library === 'aimms-chat@1'
+              ? historicalLibrary
+              : library
+          }
           response={presentation.program}
           isStreaming={false}
           publishObservability={false}

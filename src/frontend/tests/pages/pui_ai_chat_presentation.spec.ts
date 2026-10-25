@@ -96,7 +96,9 @@ test('G01/G05: reload preserves the historical snapshot, gaps and accessible val
   await page.screenshot({ path: info.outputPath('rich-answer-desktop.png') });
 });
 for (const [name, override] of Object.entries({
-  unsupported: { presentation: { ...presentation(), library: 'aimms-chat@2' } },
+  unsupported: {
+    presentation: { ...presentation(), library: 'aimms-chat@99' }
+  },
   malformed: {
     presentation: presentation(
       'root = AnswerLayout([AnswerSummary(), Unknown()])'

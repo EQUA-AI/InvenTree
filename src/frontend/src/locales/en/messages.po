@@ -19093,3 +19093,31 @@ msgstr "How can I help?"
 #: src/components/nav/AIChatDrawer.tsx:1426
 msgid "Ask about assets, maintenance or inventory. Review sources and approvals before acting."
 msgstr "Ask about assets, maintenance or inventory. Review sources and approvals before acting."
+
+#: src/components/aichat/genui/ChartSnapshot.tsx:53
+msgid "Synthetic / user-provided data"
+msgstr "Synthetic / user-provided data"
+
+#: src/components/aichat/genui/ChartSnapshot.tsx:54
+msgid "Recorded data"
+msgstr "Recorded data"
+
+#: src/components/aichat/genui/ChartSnapshot.tsx:66
+msgid "Chart of the values in the supporting table."
+msgstr "Chart of the values in the supporting table."
+
+#: src/components/aichat/genui/ChartSnapshot.tsx:198
+msgid "Chart values"
+msgstr "Chart values"
+
+#: src/components/aichat/genui/ChartSnapshot.tsx:203
+msgid "Supporting data"
+msgstr "Supporting data"
+
+#: src/components/aichat/genui/ChartSnapshot.tsx:210
+msgid "Percentage"
+msgstr "Percentage"
+
+#: src/components/aichat/genui/ChartSnapshot.tsx:245
+msgid "Complete population"
+msgstr "Complete population"

@@ -900,6 +900,9 @@ def _write_intent(text: str) -> str | None:
     only on evidence: a noun context (R1), a nominal compound (the positional
     mask), or an interrogative clause that is not a request form (R3).
     """
+    from ai.core.presentation.requests import effect_text
+
+    text = effect_text(text)
     clauses = _clause_spans(text)
     masked = _mask_noun_phrases(text, clauses)
     negated = _negated_action_starts(text)
@@ -2080,6 +2083,8 @@ def _carried_scores(query: str, context: Mapping[str, Any] | None) -> dict[str, 
 #: needs both. Only ANALYSIS_INTENTS appear here — everything else keeps
 #: lexical selection.
 _INTENT_PACKS: dict[str, tuple[str, ...]] = {
+    "part_lookup": ("parts.read",),
+    "status_comparison": ("analytics.read", "maintenance.read"),
     "fleet_aggregate": ("analytics.read", "maintenance.read"),
     "trend_analysis": ("analytics.read", "maintenance.read"),
     "record_retrieval": ("maintenance.read", "machines.read"),
@@ -2299,6 +2304,19 @@ def select_capabilities(
         # 0 here, so the budget trim below evicts them before anything the
         # sentence named; authorization is re-derived per turn as usual.
         sticky = _sticky_packs(context, exclude=pack_ids)
+        if task_intent == "part_lookup":
+            sticky = tuple(
+                pack
+                for pack in sticky
+                if pack
+                in {
+                    "parts.read",
+                    "stock.read",
+                    "bom.read",
+                    "documents.read",
+                    "analytics.read",
+                }
+            )
         if sticky:
             pack_ids = (*pack_ids, *sticky)
             signals.append("sticky_packs")

@@ -1,4 +1,8 @@
-import type { PresentationTrendV1 } from '@lib/types/AimmsWire.generated';
+import type {
+  PresentationChartV2,
+  PresentationTrendV1
+} from '@lib/types/AimmsWire.generated';
+export type PresentationDataset = PresentationTrendV1 | PresentationChartV2;
 
 const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -7,7 +11,7 @@ const time = (value: unknown): value is string =>
   /^\d{4}-\d\d-\d\d(?:T.*)?$/.test(value) &&
   Number.isFinite(Date.parse(value));
 /** Whole-snapshot validation: no coercion, zero-fill or silent truncation. */
-export function normalizePresentationData(raw: unknown): PresentationTrendV1[] {
+export function normalizePresentationData(raw: unknown): PresentationDataset[] {
   try {
     if (
       !Array.isArray(raw) ||
@@ -17,6 +21,11 @@ export function normalizePresentationData(raw: unknown): PresentationTrendV1[] {
       return [];
     const seen = new Set<string>();
     for (const data of raw) {
+      if (record(data) && data.kind === 'chart_dataset') {
+        if (!validChart(data) || seen.has(data.source_key as string)) return [];
+        seen.add(data.source_key as string);
+        continue;
+      }
       if (
         !record(data) ||
         Object.keys(data).sort().join(',') !==
@@ -67,8 +76,96 @@ export function normalizePresentationData(raw: unknown): PresentationTrendV1[] {
         previous = current;
       }
     }
-    return structuredClone(raw) as PresentationTrendV1[];
+    return structuredClone(raw) as PresentationDataset[];
   } catch {
     return [];
   }
+}
+
+function validChart(data: Record<string, unknown>): boolean {
+  const keys = [
+    'kind',
+    'source_key',
+    'origin',
+    'chart_type',
+    'title',
+    'unit',
+    'x_label',
+    'y_label',
+    'source',
+    'source_revision',
+    'as_of',
+    'scope_label',
+    'definition',
+    'population_count',
+    'complete_population',
+    'points'
+  ];
+  if (
+    Object.keys(data).sort().join(',') !== keys.sort().join(',') ||
+    !time(data.as_of)
+  )
+    return false;
+  for (const [key, max] of Object.entries({
+    source_key: 256,
+    title: 120,
+    unit: 32,
+    x_label: 64,
+    y_label: 64,
+    source_revision: 128,
+    scope_label: 512,
+    definition: 512
+  })) {
+    const value = data[key];
+    if (typeof value !== 'string' || !value.trim() || value.length > max)
+      return false;
+  }
+  if (
+    !['line', 'bar', 'pie'].includes(String(data.chart_type)) ||
+    !Array.isArray(data.points) ||
+    data.points.length < 1 ||
+    data.points.length > 64
+  )
+    return false;
+  const labels = new Set<string>();
+  let sum = 0;
+  for (const point of data.points) {
+    if (
+      !record(point) ||
+      Object.keys(point).sort().join(',') !== 'label,value' ||
+      typeof point.label !== 'string' ||
+      !point.label.trim() ||
+      point.label.length > 80 ||
+      labels.has(point.label)
+    )
+      return false;
+    labels.add(point.label);
+    const value = point.value;
+    if (
+      value !== null &&
+      (typeof value !== 'number' ||
+        !Number.isFinite(value) ||
+        Math.abs(value) > 1e12)
+    )
+      return false;
+    if (
+      data.origin === 'recorded' &&
+      (!Number.isSafeInteger(value) || (value as number) < 0)
+    )
+      return false;
+    if (data.chart_type === 'pie' && (value === null || (value as number) < 0))
+      return false;
+    sum += (value as number | null) ?? 0;
+  }
+  if (data.chart_type === 'pie' && sum <= 0) return false;
+  return data.origin === 'recorded'
+    ? data.source === 'work_orders' &&
+        data.complete_population === true &&
+        Number.isSafeInteger(data.population_count) &&
+        (data.population_count as number) >= 0 &&
+        sum === data.population_count
+    : data.origin === 'user_supplied' &&
+        data.source === 'user_supplied' &&
+        data.population_count === null &&
+        data.complete_population === null;
 }

@@ -1201,6 +1201,42 @@ as the specified torque for a tightening sequence.
         # reject it, demanding max_completion_tokens instead.
         modality = "voice" if is_voice else "text"
         run_input = self._run_input(query, context)
+        if (context or {}).get("task_intent") == "part_lookup":
+            hint = (
+                "This turn concerns the parts catalog. Resolve an explicit part ID with get_part. "
+                "A part ID is never a machine ID. Use search_parts for a catalog keyword search. "
+                "A prior machine focus does not replace this question's part target."
+            )
+            if isinstance(run_input, str):
+                run_input = [
+                    ChatMessage(role=Role.SYSTEM, contents=[TextContent(text=hint)]),
+                    ChatMessage(role=Role.USER, contents=[TextContent(text=run_input)]),
+                ]
+            else:
+                run_input = [
+                    ChatMessage(role=Role.SYSTEM, contents=[TextContent(text=hint)]),
+                    *run_input,
+                ]
+        target = (context or {}).get("record_target") or {}
+        if target.get("kind") == "machine":
+            hint = (
+                "Server-resolved record target for this turn: "
+                + json.dumps(target)
+                + ". For its identity, call get_machine_overview with this exact machine_id. "
+                "Do not search the combined name/ID sentence. For its work orders, use search_work_orders "
+                f"with machine_id={target['id']} and omit query unless a reference/title search was requested. "
+                "This target is a filter, never a grant."
+            )
+            if isinstance(run_input, str):
+                run_input = [
+                    ChatMessage(role=Role.SYSTEM, contents=[TextContent(text=hint)]),
+                    ChatMessage(role=Role.USER, contents=[TextContent(text=run_input)]),
+                ]
+            else:
+                run_input = [
+                    ChatMessage(role=Role.SYSTEM, contents=[TextContent(text=hint)]),
+                    *run_input,
+                ]
         if not clarify:
             # P02/P33: the verified Work focus rides every tool-bearing run,
             # enforced selection or not; the clarify agent has no tools to

@@ -551,14 +551,14 @@ export type WorkFocusState =
 
 export interface PresentationReferenceV1 {
   ref_id: string;
-  kind: 'entity' | 'evidence' | 'metric_dataset' | 'trend_dataset';
+  kind: 'entity' | 'evidence' | 'metric_dataset' | 'trend_dataset' | 'chart_dataset';
   source_key: string;
 }
 
 export interface AssistantPresentationV1 {
   schema_version: 1;
   format: 'openui-lang';
-  library: 'aimms-chat@1';
+  library: 'aimms-chat@1' | 'aimms-chat@2';
   program: string;
   references: PresentationReferenceV1[];
 }
@@ -578,6 +578,30 @@ export interface PresentationTrendV1 {
   as_of: string;
   timezone: string;
   samples: PresentationSampleV1[];
+}
+
+export interface PresentationChartPointV2 {
+  label: string;
+  value: number | null;
+}
+
+export interface PresentationChartV2 {
+  kind: 'chart_dataset';
+  source_key: string;
+  origin: 'recorded' | 'user_supplied';
+  chart_type: 'line' | 'bar' | 'pie';
+  title: string;
+  unit: string;
+  x_label: string;
+  y_label: string;
+  source: 'work_orders' | 'user_supplied';
+  source_revision: string;
+  as_of: string;
+  scope_label: string;
+  definition: string;
+  population_count: number | null;
+  complete_population: boolean | null;
+  points: PresentationChartPointV2[];
 }
 
 export type QuotaErrorCode =

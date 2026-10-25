@@ -20,7 +20,7 @@ const versions = {
   renderer: '1.0.1',
   cli: '0.6.0',
   zod: '4.6.7',
-  library: 'aimms-chat@1'
+  library: 'aimms-chat@2'
 };
 for (const [name, expected] of [
   ['@openuidev/react-lang', versions.renderer],
