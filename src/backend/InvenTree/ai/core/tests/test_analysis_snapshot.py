@@ -63,8 +63,24 @@ class TestPlans:
 
     def test_default_trend_window_is_rolling_and_half_open(self) -> None:
         start, end = default_trend_window(datetime.date(2026, 8, 29))
-        assert start == "2025-08-01"
+        assert start == "2025-09-01"
         assert end == "2026-09-01"
+
+    def test_requested_month_count_and_year_boundary(self):
+        assert build_trend_plan("monthly work orders over the last 6 months")["window_months"] == 6
+        assert default_trend_window(datetime.date(2026, 1, 31), months=6) == (
+            "2025-08-01",
+            "2026-02-01",
+        )
+        assert default_trend_window(datetime.date(2024, 2, 29), months=12) == (
+            "2023-03-01",
+            "2024-03-01",
+        )
+
+    def test_large_month_count_is_a_bounded_limitation(self):
+        plan = build_trend_plan("work orders over the last " + "9" * 5000 + " months")
+        with pytest.raises(ValueError, match="between 1 and 36"):
+            default_trend_window(datetime.date(2026, 1, 1), months=plan["window_months"])
 
 
 class TestSnapshotPrimitives:
@@ -227,7 +243,7 @@ def fake_analytics(monkeypatch):
 
 
 def _run() -> SimpleNamespace:
-    return SimpleNamespace(query_plan=None)
+    return SimpleNamespace(query_plan=None, extras={})
 
 
 class TestRetrieveAggregate:

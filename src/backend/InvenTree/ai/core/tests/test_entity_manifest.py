@@ -138,7 +138,7 @@ class TestTurnSeam:
                 service.process(
                     actor=_principal(),
                     thread_id="thread_entities",
-                    content="Tell me about the pump",
+                    content="Show recorded pump details",
                     modality="text",
                     trusted_context=_context(),
                     modality_metadata={},

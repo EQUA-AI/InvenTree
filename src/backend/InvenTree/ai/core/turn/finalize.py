@@ -133,6 +133,7 @@ async def enrich_canonical(
         thread_id=run.thread.pk,
         turn_id=run.turn.pk,
         emitter=run.emitter,
+        actor=run.actor,
     )
     canonical = await service._attach_media_evidence(
         canonical,

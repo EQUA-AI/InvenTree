@@ -119,6 +119,27 @@ def _apply_answer(env):
     return asyncio.run(commands.apply_question_answer(env.service, env.run))
 
 
+def test_selected_machine_without_focus_clarifies(env):
+    env.run.content = "Show the selected machine's model and serial in an asset summary card."
+    result = _maybe_handle(env)
+    assert result["workflow_used"] == "focus_clarify"
+
+
+def test_selected_machine_rechecks_current_authority(env, monkeypatch):
+    env.run.content = "Show the selected machine's model and serial in an asset summary card."
+    env.repository.set_focus(env.thread.pk, {"kind": "machine", "id": 3}, expected_focus_version=0)
+    env.thread.refresh_from_db()
+    env.run.focus_snapshot = {
+        "focus": env.thread.conversation_focus,
+        "version": env.thread.focus_version,
+    }
+    assert _maybe_handle(env) is None
+    monkeypatch.setattr(focus_resolution, "read_machine", lambda *_args: None)
+    result = _maybe_handle(env)
+    assert result["workflow_used"] == "focus_clarify"
+    assert "no longer available" in result["message"]
+
+
 def test_unique_switch_sets_focus_and_reads_back(env) -> None:
     env.run.content = "talk about machine 3"
     canonical = _maybe_handle(env)

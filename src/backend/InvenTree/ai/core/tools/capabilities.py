@@ -856,6 +856,38 @@ _WORKORDER_REF_RE = re.compile(r"\b(?:wo|rp)-[a-z0-9][a-z0-9-]*\b", re.IGNORECAS
 _DEFAULT_READ_PACKS = ("parts.read", "stock.read")
 
 
+_NEGATED_ACTION_RE = re.compile(
+    r"\b(?:do\s+not|don['’]t|never|without|avoid)\s+(?:ever\s+)?(?P<verb>[a-z]+)\b",  # noqa: RUF001 - curly apostrophes are valid user input.
+    re.IGNORECASE,
+)
+_NEGATED_COORDINATE_RE = re.compile(
+    r"(?:[ \t]+(?:(?:any|the|existing|business|saved|new)[ \t]+){0,2}"
+    r"(?:parts?|records?|orders?|anything|stock|items?|data|it|them)"
+    r"[ \t]*(?:,[ \t]*)?(?:and|or|nor)[ \t]+"
+    r"|[ \t]*(?:,[ \t]*(?:(?:and|or|nor)[ \t]+)?|[ \t]+(?:and|or|nor)[ \t]+))"
+    r"(?P<verb>[a-z]+)\b",
+    re.IGNORECASE,
+)
+
+
+def _negated_action_starts(text: str) -> frozenset[int]:
+    """Recognize explicit prohibitions and their immediate coordinated verbs.
+
+    Keep this local: a prohibition cannot hide a later positive instruction,
+    a contrast, or an infinitive ("do not forget to create ..."). Include
+    non-effect verbs so "do not query, create, modify, or send" has the same
+    meaning as "do not create". Ambiguous grammar remains specialist-bound.
+    """
+    starts: set[int] = set()
+    for head in _NEGATED_ACTION_RE.finditer(text):
+        starts.add(head.start("verb"))
+        end = head.end()
+        while coordinate := _NEGATED_COORDINATE_RE.match(text, end):
+            starts.add(coordinate.start("verb"))
+            end = coordinate.end()
+    return frozenset(starts)
+
+
 def _write_intent(text: str) -> str | None:
     """Return the write verb routing this query to a specialist, else ``None``.
 
@@ -870,6 +902,7 @@ def _write_intent(text: str) -> str | None:
     """
     clauses = _clause_spans(text)
     masked = _mask_noun_phrases(text, clauses)
+    negated = _negated_action_starts(text)
 
     matches = list(_WRITE_PATTERN.finditer(masked))
     # Light verbs match the unmasked text: "put a purchase order in" masks its
@@ -924,6 +957,8 @@ def _write_intent(text: str) -> str | None:
         return not tail.strip() or _PROTECT_TAIL_RE.match(tail) is not None
 
     def protected(match: re.Match, *, noun_context: bool = True) -> bool:
+        if match.start() in negated:
+            return True
         if noun_context and _noun_context_before(masked, match.start()):  # R1
             # Exception: "any chance of cancelling po-100" -- 'of' after a
             # request head does not make a gerund nominal.

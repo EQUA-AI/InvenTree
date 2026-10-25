@@ -23,12 +23,23 @@ django.setup()
 import httpx
 import pytest
 import uvicorn
+from agent_framework import AIFunction, FunctionInvocationContext
 from ai.core import app as ai_app
 from ai.core import config
-from ai.core.auth import AIBoundaryAuthMiddleware, AIBoundaryPolicy, sign_interactive_subject
+from ai.core.auth import (
+    AIBoundaryAuthMiddleware,
+    AIBoundaryPolicy,
+    principal_context,
+    sign_interactive_subject,
+)
 from ai.core.streaming import InMemoryEventEmitter
-from ai.core.tests.focus_test_db import ensure_island_tables
+from ai.core.tests.focus_test_db import ensure_island_tables, grant_work_view
+from ai.core.tests.test_capability_invocation_guard import _principal
+from ai.core.tools.capture_ledger import bind_tool_captures
+from ai.core.tools.inventree.read.machines import get_machine_overview
+from ai.core.tools.invocation_guard import CapabilityInvocationMiddleware, bind_capability_run
 from ai.core.turn.finalize import _attach_presentation, complete
+from ai.core.turn_service import NormalizedTurnService
 from aichat.models import ChatMessage
 from aichat.services.threads import ThreadRepository
 from aichat.tests.memory_scope_fixtures import fixture_client_resolver
@@ -51,6 +62,7 @@ def local_server(monkeypatch):
         for index in range(3)
     ]
     owner, reader, stranger = users
+    grant_work_view(owner)
     client = Client.objects.create(
         code=f"presentation-{suffix}", name=f"Presentation fixture {suffix}"
     )
@@ -102,7 +114,6 @@ def local_server(monkeypatch):
         "spoken_summary": "Recorded inspection answer.",
         "reasoning_provenance": None,
         "route": None,
-        "entities": [{"model": "assetmachine", "pk": machine.pk, "label": machine.name}],
         "events": capture.events,
     }
 
@@ -118,10 +129,47 @@ def local_server(monkeypatch):
             extras={},
             task_intent=None,
         )
+        # The release SDK invokes the real authorized reader; its actual
+        # result passes through invocation middleware into the ledger.
+        # No injected diagnostic roots or hand-built entities/presentation.
+        token = principal_context.set(_principal(str(owner.pk)))
+        try:
+            ledger = bind_tool_captures()
+            function = AIFunction(name="get_machine_overview", func=get_machine_overview)
+            invocation = FunctionInvocationContext(
+                function=function,
+                arguments=function.input_model.model_validate({"machine_id": machine.pk}),
+            )
+
+            async def dispatch(context):
+                context.result = await context.function.invoke(arguments=context.arguments)
+
+            with bind_capability_run(
+                workflow="wf8", modality="text", selected_tools=[get_machine_overview]
+            ):
+                await CapabilityInvocationMiddleware().process(invocation, dispatch)
+            assert ("assetmachine", machine.pk) in ledger.observed_entity_refs()
+            service = NormalizedTurnService(workflow_factory=lambda: None)
+            await service._attach_entity_manifest(
+                canonical,
+                diagnostic_context=None,
+                thread_id=thread.pk,
+                turn_id=begin.turn.pk,
+                emitter=emitter,
+                actor=_principal(str(owner.pk)),
+            )
+            assert canonical["entities"][0]["pk"] == machine.pk
+        finally:
+            principal_context.reset(token)
         await _attach_presentation(run, canonical)
         return await complete(Service(), run, canonical)
 
-    finalized, _, _ = asyncio.run(persist())
+    with override_settings(
+        AIMMS_MACHINE_AI_READ_ENABLED=True,
+        AIMMS_RECORDED_TELEMETRY_AS_LIVE=False,
+        AIMMS_MAINTENANCE_SCOPE_RESOLVER=fixture_client_resolver,
+    ):
+        finalized, _, _ = asyncio.run(persist())
     with override_settings(
         FEATURE_THREAD_SHARING=True, AIMMS_MAINTENANCE_SCOPE_RESOLVER=fixture_client_resolver
     ):
@@ -225,6 +273,20 @@ def test_revoked_client_access_does_not_preserve_a_shared_snapshot(local_server)
     response = env.http.get(f"/threads/{env.thread.pk}", headers=env.headers(env.reader))
     assert response.status_code == 404
     assert "Recorded inspection" not in response.text and "presentation" not in response.text
+
+
+def test_observed_entity_candidates_require_current_actor_access(local_server):
+    from ai.core.entities import resolve_observed_record_roots
+
+    env = local_server
+    observed = frozenset({("assetmachine", env.machine.pk)})
+    with override_settings(AIMMS_MACHINE_AI_READ_ENABLED=True):
+        assert len(resolve_observed_record_roots(env.owner.pk, observed)) == 1
+        assert resolve_observed_record_roots(env.stranger.pk, observed) == ()
+        ClientScopeGrant.objects.filter(user=env.owner).delete()
+        assert resolve_observed_record_roots(env.owner.pk, observed) == ()
+    with override_settings(AIMMS_MACHINE_AI_READ_ENABLED=False):
+        assert resolve_observed_record_roots(env.reader.pk, observed) == ()
 
 
 def test_export_and_deletion_keep_the_existing_ledger_contract(local_server):

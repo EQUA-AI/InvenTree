@@ -14,6 +14,7 @@ either dead-end or navigate somewhere wrong, and both are worse than no chip.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 MAX_ENTITIES = 12
@@ -39,6 +40,45 @@ SERVER_MODEL_MAP = {
 #: fleet — and a dozen unrelated machine chips under every answer is noise
 #: that teaches users to ignore the feature (found live, 2026-08-08).
 _MAX_UNOBSERVED_ROOTS = 3
+
+
+@dataclass(frozen=True)
+class ObservedRecordRoot:
+    """A tool-observed identity freshly resolved under the turn actor."""
+
+    entity_type: str
+    entity_id: int
+    display_name: str
+
+
+def resolve_observed_record_roots(user_pk: Any, observed: Any) -> tuple[ObservedRecordRoot, ...]:
+    """Resolve bounded tool observations independently of voice diagnosis.
+
+    Typed IDs are candidates, not grants. Reuse the focus readers' current
+    authorization and server labels; prose, generic PKs and browser hints
+    never enter this path. Unsupported kinds retain the diagnostic/evidence
+    path rather than acquiring a new authorization policy here.
+    """
+    from ai.core.focus.contract import FocusCandidate, FocusRejected
+    from ai.core.focus.resolution import resolve_focus_candidate
+    from django.contrib.auth import get_user_model
+
+    user = get_user_model().objects.filter(pk=user_pk, is_active=True).first()
+    if user is None:
+        return ()
+    kinds = {"assetmachine": "machine", "workorder": "work_order"}
+    roots = []
+    for model, pk in sorted(observed)[:MAX_ENTITIES]:
+        if model not in kinds or type(pk) is not int or pk <= 0:
+            continue
+        try:
+            target = resolve_focus_candidate(user, FocusCandidate(kind=kinds[model], id=pk))
+        except FocusRejected:
+            continue
+        roots.append(ObservedRecordRoot(model, pk, target.label))
+        if len(roots) >= MAX_ENTITIES:
+            break
+    return tuple(roots)
 
 
 def build_entity_manifest(
