@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { auditAccessibility } from '../s0/accessibility';
+import { assertReadableContrast } from '../s0/contrast';
 import { nativeBaseline } from '../s0/guards';
 import { closeoutWork, containment, openCloseout } from './closeoutFixtures';
 
@@ -104,6 +106,22 @@ test('uncertain timeout and refresh reconcile the exact original operation', asy
   await expect(
     page.getByRole('button', { name: 'Update maintenance record', exact: true })
   ).toHaveCount(0);
+  const uncertainAlert = page
+    .getByTestId('work-record-update')
+    .locator('.mantine-Alert-message');
+  const contrast = await assertReadableContrast(
+    uncertainAlert.locator('p').first()
+  );
+  await info.attach('uncertain-governance-contrast', {
+    body: JSON.stringify(contrast),
+    contentType: 'application/json'
+  });
+  await auditAccessibility(
+    page,
+    page.getByTestId('work-record-update'),
+    info,
+    'uncertain-governance-alert'
+  );
   await containment(page);
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
@@ -286,6 +304,22 @@ test('stale version retains the original draft and requires latest-record review
   ).toHaveCount(0);
   await expect(page.getByTestId('work-record-update')).toContainText(
     'Retained draft version: 7'
+  );
+  const contrast = await assertReadableContrast(
+    page
+      .getByTestId('work-record-update')
+      .locator('.mantine-Alert-message p')
+      .first()
+  );
+  await info.attach('stale-governance-contrast', {
+    body: JSON.stringify(contrast),
+    contentType: 'application/json'
+  });
+  await auditAccessibility(
+    page,
+    page.getByTestId('work-record-update'),
+    info,
+    'stale-governance-alert'
   );
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({

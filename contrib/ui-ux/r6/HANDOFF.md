@@ -2,6 +2,17 @@
 
 ## Real local rehearsal and Azure follow-through — in progress
 
+Final review at8a9426cef scores Fable94.5 and leaves one mandatory contrast
+gap in seven sibling governance alerts. A native theme default now fixes message
+and title contrast for the implicit/light Alert variant only; filled, outline
+and other explicit variants retain their native styles. The two scattered
+overrides are removed. Twelve actual browser cases pass in36s, covering
+uncertain/stale updates and packet/non-packet light/dark desktop/phone states;
+1197 units and App/S6 types pass. Final independent delta re-score is pending.
+This production correction supersedes the8a image described below: a matching
+clean image is required before any eventual release. No extra test event, data
+change, approval or Azure promotion is performed for a theme-only correction.
+
 Current application/image freeze is8a9426cef3c30511c580001d9a2015260e249427.
 The final AMD64 production build and isolated network-disabled identity,
 native-driver, pip and tokenizer checks pass. Host Vite also builds in16.36s.

@@ -147,10 +147,7 @@ export function CloseoutPreparation({
           {t`Complete the required preparation and execution steps before submitting the final service report.`}
         </Text>
         {packetId ? (
-          <Alert
-            color='orange'
-            styles={{ message: { color: 'var(--mantine-color-text)' } }}
-          >
+          <Alert color='orange'>
             {t`The linked Repair Packet owns these transitions. Continue through its native safety and execution workflow.`}
             <Anchor
               component={Link}

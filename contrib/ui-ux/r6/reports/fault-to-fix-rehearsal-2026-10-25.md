@@ -40,6 +40,24 @@ remain fail-closed; user titles do not establish approved trades.
 
 ### Final bounded release checkpoint
 
+Fable's completed8a review scores94.5: M3/M4/M5 and real-capture G1 are closed,
+but seven sibling yellow/orange governance alerts keep the same measured-failing
+native defaults. This concrete M6 finding is mandatory, not optional polish.
+The native theme now sets theme-text message/title colours only for implicit or
+explicit light Alert variants, preserving filled/outline/other variants and
+severity icons/backgrounds. Remove the two scattered per-instance overrides.
+This root correction covers unavailable readiness, warnings, uncertain/stale
+results, denied permission, Work-version conflicts and non-packet blockers.
+
+Twelve browser cases pass in36.0s with genuine schemes and desktop/phone
+measurements, including uncertain dark, stale light, non-packet conflicts and
+packet ownership/blockers.1197 units and App/S6 types pass. Additional direct
+uncertain/stale contrast receipts are retained. A new scoped independent score
+is required;94.5 is not rounded up and the old Gemini pass cannot override it.
+The8a production image below is historical after this final source correction;
+the corrected candidate requires its own identity/build checks before release.
+No local real-data mutation or cloud operation is repeated for a theme change.
+
 Final production source is8a9426cef3c30511c580001d9a2015260e249427. The host
 Vite build passes in16.36s and the clean native AMD64 production image builds.
 Its local OCI index is477fe684df3c74e558855d42503f8fa762b1a42b8f84a6138d63eb76e1c5f07f;

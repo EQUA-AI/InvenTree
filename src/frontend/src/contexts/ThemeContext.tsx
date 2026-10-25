@@ -2,6 +2,7 @@ import type { UserTheme } from '@lib/types/Core';
 import { msg } from '@lingui/core/macro';
 import { Trans } from '@lingui/react';
 import {
+  Alert,
   type CSSVariablesResolver,
   MantineProvider,
   type MantineThemeOverride,
@@ -60,6 +61,17 @@ export function createInvenTreeTheme(
     white: userTheme.whiteColor,
     black: userTheme.blackColor,
     defaultRadius: userTheme.radius,
+    components: {
+      Alert: Alert.extend({
+        styles: (_theme, props) =>
+          !props.variant || props.variant === 'light'
+            ? {
+                message: { color: 'var(--mantine-color-text)' },
+                title: { color: 'var(--mantine-color-text)' }
+              }
+            : {}
+      })
+    },
     breakpoints: {
       xs: '30em',
       sm: '48em',

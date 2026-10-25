@@ -15,6 +15,56 @@ import {
 nativeBaseline();
 
 for (const scheme of ['light', 'dark'] as const) {
+  test(`non-packet readiness conflicts and blockers are readable (${scheme})`, async ({
+    page
+  }, info) => {
+    const fixture = await closeoutWork(page, { captures: [] });
+    fixture.setOverview({ lifecycle_status: 'draft' });
+    const message = 'Assign a technician before execution';
+    await page.route('**/api/tasks/work-orders/73/readiness/**', (route) =>
+      route.fulfill({
+        json: {
+          ready: false,
+          lifecycle_version: 8,
+          blockers: [{ code: 'ASSIGNEE_REQUIRED', message }],
+          warnings: []
+        }
+      })
+    );
+    await openCloseout(page, scheme);
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-mantine-color-scheme',
+      scheme
+    );
+    const preparation = page.getByTestId('closeout-preparation');
+    const conflict = preparation
+      .locator('.mantine-Alert-message')
+      .filter({ hasText: 'This Work changed in another session.' });
+    const blocker = preparation
+      .locator('.mantine-Alert-message')
+      .filter({ hasText: message });
+    await expect(conflict).toBeVisible();
+    await expect(blocker).toBeVisible();
+    const contrast = {
+      scheme,
+      conflict: await assertReadableContrast(conflict),
+      blocker: await assertReadableContrast(blocker)
+    };
+    await info.attach(`non-packet-contrast-${scheme}`, {
+      body: JSON.stringify(contrast),
+      contentType: 'application/json'
+    });
+    await auditAccessibility(
+      page,
+      preparation,
+      info,
+      `non-packet-governance-${scheme}`
+    );
+    await preparation.screenshot({
+      path: info.outputPath(`non-packet-governance-${scheme}.png`)
+    });
+  });
+
   test(`packet ownership and governed closeout blockers are readable (${scheme})`, async ({
     page
   }, info) => {
