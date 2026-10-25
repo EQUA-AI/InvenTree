@@ -10,6 +10,7 @@ import {
   openExecutionPanel,
   workOrder
 } from '../s4/workExecutionFixtures';
+import { mockPump08Staff } from './staffFixtures';
 
 nativeBaseline();
 
@@ -37,6 +38,7 @@ async function openIntake(
 ) {
   const creates: Record<string, any>[] = [];
   const drafts: Record<string, unknown>[] = [];
+  await mockPump08Staff(page);
   await mockExecutionWork(page, {
     ...workOrder(),
     title: fields.title,
@@ -179,10 +181,7 @@ async function openIntake(
   await page.route('**/api/maintenance/work-packages/assignees/?*', (route) =>
     route.fulfill({
       json: {
-        results: [
-          { id: 27, name: 'Avery Patel', username: 'cc.avery.patel' },
-          { id: 29, name: 'Daniel Chen', username: 'cc.daniel.chen' }
-        ]
+        results: [{ id: 27, name: 'Avery Patel' }]
       }
     })
   );
@@ -240,8 +239,9 @@ async function openIntake(
     exact: true
   });
   await signal.fill('Motor Winding Temperature 6');
-  await signal.press('ArrowDown');
-  await signal.press('Enter');
+  await page
+    .getByRole('option', { name: /Motor Winding Temperature 6/ })
+    .click();
   await expect(signal).toHaveValue('Motor Winding Temperature 6');
   await dialog.getByRole('checkbox').check();
   await dialog

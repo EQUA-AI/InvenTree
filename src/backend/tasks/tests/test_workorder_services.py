@@ -129,16 +129,29 @@ class WorkOrderServiceTest(TestCase):
         self.assertFalse(work_order.events.exists())
 
     def test_assign_preserves_legacy_assignee_text(self):
+        from django.contrib.auth.models import Permission
+        from django.test import override_settings
+
         work_order = self.make_card(assignee='Legacy Technician')
         technician = get_user_model().objects.create_user(username='typed-technician')
-
-        assign_work_order(
-            work_order_id=work_order.pk,
-            assigned_to=technician,
-            actor=self.actor,
-            expected_version=1,
-            idempotency_key='assign-technician',
+        technician.user_permissions.add(
+            Permission.objects.get(
+                content_type__app_label='tasks', codename='execute_workorder'
+            )
         )
+
+        with override_settings(
+            AIMMS_MAINTENANCE_SCOPE_RESOLVER=lambda _actor: (
+                self.actor.maintenance_scopes
+            )
+        ):
+            assign_work_order(
+                work_order_id=work_order.pk,
+                assigned_to=technician,
+                actor=self.actor,
+                expected_version=1,
+                idempotency_key='assign-technician',
+            )
 
         work_order.refresh_from_db()
         self.assertEqual(work_order.assigned_to, technician)

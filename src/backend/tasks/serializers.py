@@ -218,6 +218,8 @@ class WorkOrderBoardSerializer(serializers.ModelSerializer):
             'assigned_to',
             'assigned_to_username',
             'assigned_to_name',
+            'required_trades',
+            'trade_requirements_confirmed',
             'scheduled_start',
             'scheduled_end',
             'estimated_minutes',
@@ -250,6 +252,8 @@ class WorkOrderBoardSerializer(serializers.ModelSerializer):
             'updated_at',
             'reference',
             'assigned_to',
+            'required_trades',
+            'trade_requirements_confirmed',
             'lifecycle_status',
             'lifecycle_version',
             'actual_started_at',
@@ -463,6 +467,18 @@ class KanbanCardSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ('id', 'created_at', 'updated_at')
 
+    def validate(self, attrs):
+        """Typed identity changes must use the scoped, audited assignment rail."""
+        attrs = super().validate(attrs)
+        if 'assigned_to' in attrs:
+            selected = attrs['assigned_to']
+            previous = self.instance.assigned_to_id if self.instance else None
+            if getattr(selected, 'pk', None) != previous:
+                raise serializers.ValidationError({
+                    'assigned_to': 'Use the staff assignment command to change the assigned user.'
+                })
+        return attrs
+
     def update(self, instance, validated_data):
         """Apply a board edit, refusing to move the card to another job.
 
@@ -512,6 +528,8 @@ class WorkOrderSummarySerializer(serializers.ModelSerializer):
             'machine_name',
             'assigned_to',
             'assigned_to_name',
+            'required_trades',
+            'trade_requirements_confirmed',
             'scheduled_start',
             'scheduled_end',
             'estimated_minutes',

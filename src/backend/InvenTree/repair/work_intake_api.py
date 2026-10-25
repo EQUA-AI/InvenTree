@@ -91,7 +91,12 @@ class WorkIntakeAssignees(WorkIntake):
         machine = get_object_or_404(scoped_machines(request.user), pk=machine_id)
         try:
             result = assignable_staff(
-                request.user, machine, request.query_params.get('search', '')[:100]
+                request.user,
+                machine,
+                request.query_params.get('search', '')[:100],
+                exact_username=serializers.BooleanField().run_validation(
+                    request.query_params.get('exact_username', False)
+                ),
             )
         except PermissionDenied as exc:
             return Response({'detail': str(exc)}, status=403)

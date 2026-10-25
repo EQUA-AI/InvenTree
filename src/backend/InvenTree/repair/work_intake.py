@@ -18,6 +18,9 @@ DRAFT_SALT = 'repair.work-intake.v1'
 
 def assignment_candidate(actor, machine, user_id):
     """Resolve a currently active owner inside the machine's maintenance scope."""
+    from users.staff_directory import require_directory
+
+    require_directory(actor)
     require_permission(actor, ASSIGN_WORKORDER)
     candidate = get_user_model().objects.filter(pk=user_id, is_active=True).first()
     if (
@@ -29,29 +32,30 @@ def assignment_candidate(actor, machine, user_id):
     return candidate
 
 
-def assignable_staff(actor, machine, search=''):
+def assignable_staff(actor, machine, search='', *, exact_username=False):
     """Project a bounded directory without email, role or credential disclosure."""
-    require_permission(actor, ASSIGN_WORKORDER)
-    from django.db.models import Q
+    from tasks.models import WorkOrder
+    from tasks.services.staff_assignment import eligible_people
 
-    candidates = get_user_model().objects.filter(is_active=True)
-    if search:
-        candidates = candidates.filter(
-            Q(first_name__icontains=search)
-            | Q(last_name__icontains=search)
-            | Q(username__icontains=search)
-        )
+    require_permission(actor, ASSIGN_WORKORDER)
+    candidates = eligible_people(actor, WorkOrder(machine=machine))
+    search = search.casefold()
     results = []
-    for candidate in candidates.order_by('first_name', 'last_name', 'username')[:200]:
-        if (
-            candidate.has_perm(EXECUTE_WORKORDER)
-            and scoped_machines(candidate).filter(pk=machine.pk).exists()
+    for candidate in sorted(
+        candidates,
+        key=lambda person: (person.first_name, person.last_name, person.username),
+    ):
+        if exact_username and candidate.username.casefold() != search:
+            continue
+        if search and not any(
+            search in field.casefold()
+            for field in (candidate.first_name, candidate.last_name, candidate.username)
         ):
-            results.append({
-                'id': candidate.pk,
-                'name': candidate.get_full_name().strip() or candidate.get_username(),
-                'username': candidate.get_username(),
-            })
+            continue
+        results.append({
+            'id': candidate.pk,
+            'name': candidate.get_full_name().strip() or candidate.get_username(),
+        })
         if len(results) == 50:
             break
     return results

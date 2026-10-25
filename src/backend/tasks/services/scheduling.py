@@ -227,6 +227,7 @@ def create_work_order(
     title: str,
     machine_id: int,
     correlation_id: uuid.UUID | None = None,
+    allow_assignment_override: bool = False,
     **planning: Any,
 ) -> CommandResult:
     """Create a work order and record its CREATED event.
@@ -428,12 +429,84 @@ def create_work_order(
     correlation_id = _new_correlation(correlation_id)
 
     with transaction.atomic():
+        assignment = {}
+        if any(
+            key in planning for key in ('assigned_to', 'required_trades', 'auto_assign')
+        ):
+            from tasks.permissions import PLAN_WORKORDER, require_permission
+            from tasks.services.staff_assignment import (
+                auto_assignment,
+                validate_assignment,
+            )
+            from users.staff_directory import validate_trade_codes
+
+            require_permission(actor, PLAN_WORKORDER)
+            try:
+                trades = validate_trade_codes(planning.get('required_trades', []))
+            except ValueError as exc:
+                raise WorkOrderCommandError(str(exc)) from exc
+            confirmed = planning.get('trade_requirements_confirmed', False)
+            if not isinstance(confirmed, bool) or not isinstance(
+                planning.get('auto_assign', False), bool
+            ):
+                raise WorkOrderCommandError(
+                    'Assignment confirmation and auto_assign must be booleans.'
+                )
+            fields['required_trades'] = trades
+            fields['trade_requirements_confirmed'] = confirmed
+            candidate = WorkOrder(title=title, machine=machine, **fields)
+            if planning.get('auto_assign'):
+                if planning.get('assigned_to') is not None:
+                    raise WorkOrderCommandError(
+                        'Choose automatic assignment or an explicit user, not both.'
+                    )
+                assignment = auto_assignment(
+                    actor,
+                    candidate,
+                    required_trades=trades,
+                    requirements_confirmed=confirmed,
+                )
+                selected = assignment['assigned_to']
+            else:
+                selected = planning.get('assigned_to')
+                if selected is not None and (
+                    isinstance(selected, bool) or not isinstance(selected, int)
+                ):
+                    raise WorkOrderCommandError(
+                        'assigned_to must be a user ID or null.'
+                    )
+                assignment = validate_assignment(
+                    actor,
+                    candidate,
+                    selected,
+                    required_trades=trades,
+                    requirements_confirmed=confirmed,
+                    override_reason=planning.get('override_reason', ''),
+                    allow_override=allow_assignment_override,
+                )
+            fields['assigned_to_id'] = selected
+            assignment['assigned_to'] = selected
         work_order = WorkOrder(title=title, machine=machine, **fields)
         _require_scope(actor, work_order)
         work_order.save()
         if recurrence:
             recurrence[1].work_order = work_order
             recurrence[1].save(update_fields=['work_order', 'updated_at'])
+        result_metadata = {'assignment': assignment} if assignment else {}
+        if recurrence:
+            result_metadata.update(
+                outcome='linked_created',
+                closure_acceptance=acceptance_state(recurrence[0]),
+                recurrence_of=recurrence[0].pk,
+                occurrence_id=recurrence[1].pk,
+            )
+        elif routine_source:
+            result_metadata.update(
+                outcome='linked_created',
+                origin_kind='routine_finding',
+                routine_work_id=routine_source.pk,
+                prior_version=planning['prior_version'],
+            )
         return _append_result(
             work_order=work_order,
             actor=actor,
@@ -445,26 +518,16 @@ def create_work_order(
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
             request_hash=request_hash,
-            result_metadata={
-                'outcome': 'linked_created',
-                'closure_acceptance': acceptance_state(recurrence[0]),
-                'recurrence_of': recurrence[0].pk,
-                'occurrence_id': recurrence[1].pk,
-            }
-            if recurrence
-            else {
-                'outcome': 'linked_created',
-                'origin_kind': 'routine_finding',
-                'routine_work_id': routine_source.pk,
-                'prior_version': planning['prior_version'],
-            }
-            if routine_source
-            else None,
+            result_metadata=result_metadata or None,
         )
 
 
 def _result_for(work_order, command, correlation_id, idempotency_key):
     """Build a CommandResult for a replayed create without a new event."""
+    event = work_order.events.filter(idempotency_key=idempotency_key).first()
+    if event is None:
+        raise WorkOrderCommandError('Stored create audit event is unavailable.')
+    metadata = event.metadata.get('result_metadata', {})
     return CommandResult(
         work_order_id=work_order.pk,
         event_id=0,
@@ -473,7 +536,7 @@ def _result_for(work_order, command, correlation_id, idempotency_key):
         lifecycle_version=work_order.lifecycle_version,
         correlation_id=correlation_id,
         idempotency_key=idempotency_key,
-        metadata={'replayed': True},
+        metadata={**metadata, 'replayed': True},
     )
 
 

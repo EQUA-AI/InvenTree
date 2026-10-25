@@ -7,14 +7,18 @@ IOT-Merge, and deployment. This supersedes the earlier no-push/deployment
 restriction for this release, not the safety or release checks. Fresh fetch finds
 new remote IOT-Merge commit1a5c32404: scoped staff directory and trade-aware
 assignment. Preserve it; do not overwrite either branch or force-push. Four
-textual conflicts and overlapping native assignment contracts need integration,
-plus a tasks merge migration for the two independently named0061 heads.
+textual conflicts are resolved with native assignment/trade/replay safeguards
+and a tasks0062 merge migration for the two independently named0061 heads.
 The already-applied Azure client-scope migration is not rewritten or replayed.
 
 Both independent frontend reviewers receive complete integration sources;
 their earlier UI scores do not accept the changed merged candidate. Azure
-registry management read is currently denied; data-plane access and the intended
-app/session/worker release gates are not yet established. No new image or
+registry management read is denied, but scoped repository pull/push and app
+read/write are verified.151 PG,199 SQLite and128 final focused SQLite tests pass
+(five/three expected SQLite skips), plus215 frontend units and27 final browser
+checks. Actual axe reports cover desktop/phone creation and trigger modals;
+build/types pass. Final independent scoring, target/session and worker alignment
+remain open. No new image or
 deployment is claimed. See [release execution](reports/release-2026-10-25.md).
 
 ## Azure migration completed — 25 October 2026, 15:32 UTC

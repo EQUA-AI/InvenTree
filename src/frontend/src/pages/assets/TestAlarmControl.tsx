@@ -29,7 +29,10 @@ import { useLocalState } from '../../states/LocalState';
 import { useUserState } from '../../states/UserState';
 import type { IntakeFields } from '../maintenance/components/WorkIntakePanel';
 import { WorkOrderAssigneeSelect } from '../maintenance/components/WorkOrderAssigneeSelect';
-import { WorkOrderCreateModal } from '../maintenance/components/WorkOrderCreateModal';
+import {
+  WorkOrderCreateModal,
+  showWorkPackageWarnings
+} from '../maintenance/components/WorkOrderCreateModal';
 import type {
   DuplicateRepair,
   WorkPackageResult
@@ -364,6 +367,7 @@ export function TestAlarmControl({
       setReceipt(data);
       await invalidateTestAlarmViews(queryClient);
       if (data.work_order) {
+        showWorkPackageWarnings(data.work_order.warnings);
         setOpened(false);
         await queryClient.invalidateQueries({ queryKey: ['work-orders'] });
         navigate(`/maintenance/work-orders/${data.work_order.work_order_id}/`);
@@ -685,6 +689,7 @@ export function TestAlarmControl({
                             <Text size='xs'>
                               {plan.data.scenario.limitations}
                             </Text>
+                            <Text size='sm'>{t`Trade requirements are not recorded for this prepared exercise. Staff suitability needs human review.`}</Text>
                             <Text size='xs'>
                               {t`Type`}:{' '}
                               {planValueLabel(

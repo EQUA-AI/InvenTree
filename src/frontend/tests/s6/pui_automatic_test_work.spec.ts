@@ -8,6 +8,7 @@ import {
   mockExecutionWork,
   workOrder
 } from '../s4/workExecutionFixtures';
+import { mockPump08Staff } from './staffFixtures';
 
 nativeBaseline();
 
@@ -24,6 +25,7 @@ async function openAutomaticWork(
   const posts: Record<string, any>[] = [];
   const legacyCreates: string[] = [];
   let planReads = 0;
+  await mockPump08Staff(page);
   await mockExecutionWork(page, {
     ...workOrder(),
     title: 'Pump 08 | High Motor Winding Temperature',
@@ -60,7 +62,7 @@ async function openAutomaticWork(
   await page.route('**/api/maintenance/work-packages/assignees/?*', (route) =>
     route.fulfill({
       json: {
-        results: [{ id: 27, name: 'Avery Patel', username: 'cc.avery.patel' }]
+        results: [{ id: 27, name: 'Avery Patel' }]
       }
     })
   );
@@ -209,8 +211,9 @@ async function openAutomaticWork(
     exact: true
   });
   await signal.fill('Motor Winding Temperature 6');
-  await signal.press('ArrowDown');
-  await signal.press('Enter');
+  await page
+    .getByRole('option', { name: /Motor Winding Temperature 6/ })
+    .click();
   await expect(signal).toHaveValue('Motor Winding Temperature 6');
   return { dialog, posts, legacyCreates };
 }
@@ -222,7 +225,7 @@ async function reviewAutomaticWork(page: Page) {
   });
   await expect(
     dialog.getByRole('combobox', { name: 'Assigned staff', exact: true })
-  ).toHaveValue('Avery Patel · cc.avery.patel');
+  ).toHaveValue(/Avery Patel.*#27/);
   const submit = dialog.getByRole('button', {
     name: 'Trigger and create work order',
     exact: true

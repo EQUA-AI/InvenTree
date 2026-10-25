@@ -16,7 +16,7 @@ from InvenTree.serializers import (
     OptionalField,
 )
 
-from .models import ApiToken, Owner, RuleSet, UserProfile
+from .models import ApiToken, Owner, RuleSet, Trade, UserProfile
 from .permissions import check_user_role, prefetch_rule_sets
 from .ruleset import RULESET_CHOICES, RULESET_PERMISSIONS, RuleSetEnum
 
@@ -60,6 +60,8 @@ class RuleSetSerializer(InvenTreeModelSerializer):
             'can_view_closeout_audit',
             'can_plan_workorder',
             'can_assign_workorder',
+            'can_view_staff_directory',
+            'can_override_assignment_trade_mismatch',
             'can_transition_workorder',
             'can_execute_workorder',
             'can_record_operating_authority',
@@ -191,6 +193,7 @@ class BriefUserProfileSerializer(InvenTreeModelSerializer):
         fields = [
             'displayname',
             'position',
+            'trades',
             'status',
             'location',
             'active',
@@ -199,6 +202,40 @@ class BriefUserProfileSerializer(InvenTreeModelSerializer):
             'organisation',
             'primary_group',
         ]
+
+    def to_representation(self, instance):
+        """Do not leak occupational data through legacy profile projections."""
+        from users.staff_directory import DIRECTORY_PERMISSION, visible_people
+
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        actor = getattr(request, 'user', None)
+        permitted = (
+            actor is not None and actor.is_active and actor.pk == instance.user_id
+        )
+        if (
+            not permitted
+            and actor is not None
+            and actor.is_active
+            and actor.has_perm(DIRECTORY_PERMISSION)
+        ):
+            if '_staff_directory_ids' not in self.context:
+                from tasks.scope import ScopeError, scope_for_actor
+
+                try:
+                    scope_for_actor(actor)
+                except ScopeError:
+                    # Withhold scoped enrichment, not unrelated account operations.
+                    self.context['_staff_directory_ids'] = set()
+                else:
+                    self.context['_staff_directory_ids'] = {
+                        p.pk for p in visible_people(actor)
+                    }
+            permitted = instance.user_id in self.context['_staff_directory_ids']
+        if not permitted:
+            data.pop('position', None)
+            data.pop('trades', None)
+        return data
 
 
 class UserProfileSerializer(BriefUserProfileSerializer):
@@ -213,6 +250,54 @@ class UserProfileSerializer(BriefUserProfileSerializer):
             'widgets',
             *BriefUserProfileSerializer.Meta.fields,
         ]
+        read_only_fields = ['position', 'trades']
+
+    def validate(self, attrs):
+        """Occupational records are managed only through the admin endpoint."""
+        if {'position', 'trades'} & self.initial_data.keys():
+            raise PermissionDenied(
+                _('Job titles and trades are administrator-managed.')
+            )
+        return super().validate(attrs)
+
+
+class TradeSerializer(InvenTreeModelSerializer):
+    """Administrator-managed trade catalogue."""
+
+    class Meta:
+        """Expose the compact catalogue contract."""
+
+        model = Trade
+        fields = ['pk', 'code', 'name', 'active']
+
+    def validate_code(self, value):
+        """Stable codes are referenced by historical work requirements."""
+        if self.instance is not None and value != self.instance.code:
+            raise serializers.ValidationError(_('Trade codes cannot be changed.'))
+        return value
+
+
+class OccupationalProfileSerializer(serializers.ModelSerializer):
+    """Only administrator-managed occupational information is writable here."""
+
+    class Meta:
+        """Keep unrelated profile and account fields out of this endpoint."""
+
+        model = UserProfile
+        fields = ['position', 'trades']
+
+    trades = serializers.PrimaryKeyRelatedField(
+        queryset=Trade.objects.filter(active=True), many=True, required=False
+    )
+
+    def to_internal_value(self, data):
+        """Do not make broader profile writes look like successful edits."""
+        unknown = set(data) - set(self.Meta.fields)
+        if unknown:
+            raise serializers.ValidationError({
+                key: _('Unsupported occupational field.') for key in unknown
+            })
+        return super().to_internal_value(data)
 
 
 class UserSerializer(InvenTreeModelSerializer):

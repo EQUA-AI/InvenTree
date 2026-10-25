@@ -181,7 +181,9 @@ class UserDetail(RetrieveUpdateDestroyAPI):
     - Otherwise authenticated users have read-only access
     """
 
-    queryset = User.objects.all()
+    queryset = User.objects.select_related('profile').prefetch_related(
+        'groups', 'profile__trades'
+    )
     serializer_class = ExtendedUserSerializer
     permission_classes = [InvenTree.permissions.StaffRolePermissionOrReadOnly]
 
@@ -278,7 +280,9 @@ class UserList(ListCreateAPI):
     - Otherwise authenticated users have read-only access
     """
 
-    queryset = User.objects.all().prefetch_related('groups')
+    queryset = User.objects.select_related('profile').prefetch_related(
+        'groups', 'profile__trades'
+    )
     serializer_class = UserCreateSerializer
 
     # User must have the right role, AND be a staff user, else read-only
@@ -520,7 +524,28 @@ class UserProfileDetail(RetrieveUpdateAPI):
         return self.request.user.profile
 
 
+from users.staff_api import (
+    OccupationalProfileDetail,
+    StaffAssignment,
+    StaffDirectory,
+    TradeDetail,
+    TradeList,
+)
+
 user_urls = [
+    path('staff-directory/', StaffDirectory.as_view(), name='api-staff-directory'),
+    path(
+        'staff-directory/assignment/',
+        StaffAssignment.as_view(),
+        name='api-staff-assignment',
+    ),
+    path('trades/', TradeList.as_view(), name='api-staff-trade-list'),
+    path('trades/<int:pk>/', TradeDetail.as_view(), name='api-staff-trade-detail'),
+    path(
+        '<int:pk>/occupational-profile/',
+        OccupationalProfileDetail.as_view(),
+        name='api-user-occupational-profile',
+    ),
     # Legacy endpoints (to avoid breaking existing API clients)
     # TODO @matmair - remove these legacy endpoints in the next breaking release
     path(

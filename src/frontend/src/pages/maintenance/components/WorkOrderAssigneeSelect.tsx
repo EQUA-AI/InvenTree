@@ -1,126 +1,106 @@
+import type { StaffMember } from '@lib/types/Staff';
 import { t } from '@lingui/core/macro';
-import { Select, Stack, Text } from '@mantine/core';
-import { useDebouncedValue } from '@mantine/hooks';
+import { Stack, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
+import { StaffPicker } from '../../../components/staff/StaffPicker';
+import { useStaffAccess } from '../../../components/staff/useStaffDirectory';
 import { useApi } from '../../../contexts/ApiContext';
-import { useUserState } from '../../../states/UserState';
-
-interface Staff {
-  id: number;
-  name: string;
-  username: string;
-}
 
 export function WorkOrderAssigneeSelect({
   machineId,
   value,
   onChange,
+  onStaffChange,
+  requiredTrades = [],
+  confirmed = false,
   suggestedUsername,
   disabled
 }: Readonly<{
   machineId: number | null;
   value: string | null;
   onChange: (value: string | null) => void;
+  onStaffChange?: (staff: StaffMember | undefined) => void;
+  requiredTrades?: string[];
+  confirmed?: boolean;
   suggestedUsername: string | null;
   disabled: boolean;
 }>) {
   const api = useApi();
-  const generation = useUserState((state) => state.authGeneration);
+  const access = useStaffAccess();
   const suggestedApplied = useRef<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [debouncedSearch] = useDebouncedValue(search, 250);
-  const [selected, setSelected] = useState<Staff | null>(null);
-  const staff = useQuery<Staff[]>({
-    queryKey: ['work-intake-assignees', machineId, generation, debouncedSearch],
-    enabled: machineId !== null,
-    queryFn: async () =>
+  const suggestionKey = `${machineId}:${suggestedUsername}`;
+  const suggested = useQuery<{ id: number }[]>({
+    queryKey: [
+      'work-intake-owner',
+      ...access.cacheKey,
+      machineId,
+      suggestedUsername
+    ],
+    enabled:
+      access.directory &&
+      access.assign &&
+      machineId !== null &&
+      Boolean(suggestedUsername) &&
+      !disabled,
+    queryFn: async ({ signal }) =>
       (
         await api.get('/api/maintenance/work-packages/assignees/', {
-          params: { machine_id: machineId, search: debouncedSearch }
+          signal,
+          params: {
+            machine_id: machineId,
+            search: suggestedUsername,
+            exact_username: true
+          }
         })
       ).data.results,
     retry: false,
-    staleTime: 0
+    staleTime: 0,
+    gcTime: 0
   });
-  const suggested = useQuery<Staff[]>({
-    queryKey: ['work-intake-owner', machineId, generation, suggestedUsername],
-    enabled: machineId !== null && Boolean(suggestedUsername),
-    queryFn: async () =>
-      (
-        await api.get('/api/maintenance/work-packages/assignees/', {
-          params: { machine_id: machineId, search: suggestedUsername }
-        })
-      ).data.results,
-    retry: false,
-    staleTime: 0
-  });
-  const options = useMemo(() => {
-    const rows = new Map(
-      (staff.data ?? []).map((person) => [person.id, person])
-    );
-    if (selected && String(selected.id) === value)
-      rows.set(selected.id, selected);
-    return [...rows.values()].map((person) => ({
-      value: String(person.id),
-      label: `${person.name} · ${person.username}`
-    }));
-  }, [staff.data, selected, value]);
   useEffect(() => {
     if (
       !suggestedUsername ||
       !suggested.data ||
       disabled ||
-      suggestedApplied.current === suggestedUsername
+      suggestedApplied.current === suggestionKey
     )
       return;
-    const candidates = suggested.data.filter(
-      (person) => person.username === suggestedUsername
-    );
+    const candidates = suggested.data;
     if (candidates.length === 1) {
-      suggestedApplied.current = suggestedUsername;
-      if (value) return;
-      setSelected(candidates[0]);
-      onChange(String(candidates[0].id));
+      suggestedApplied.current = suggestionKey;
+      if (!value) onChange(String(candidates[0].id));
     }
-  }, [suggestedUsername, suggested.data, onChange, disabled, value]);
+  }, [
+    suggestedUsername,
+    suggested.data,
+    suggestionKey,
+    onChange,
+    disabled,
+    value
+  ]);
   return (
     <Stack gap={3} style={{ flex: 1, minWidth: 0 }}>
-      <Select
-        label={t`Assigned staff`}
-        placeholder={
-          staff.isPending
-            ? t`Loading eligible staff…`
-            : t`Select an active owner`
-        }
-        data={options}
-        value={value}
-        onChange={(next) => {
-          suggestedApplied.current = suggestedUsername;
-          setSelected(
-            staff.data?.find((person) => String(person.id) === next) ?? null
-          );
-          onChange(next);
-        }}
-        searchable
-        searchValue={search}
-        onSearchChange={(next) => setSearch(next.slice(0, 100))}
-        filter={({ options: rows }) => rows}
-        clearable
-        disabled={disabled || !machineId}
-        nothingFoundMessage={t`No eligible staff found`}
-        error={
-          staff.isError
-            ? t`Staff directory unavailable or assignment not permitted.`
-            : undefined
-        }
-      />
+      {machineId !== null && (
+        <StaffPicker
+          scope={{ machineId }}
+          value={value === null ? null : Number(value)}
+          onChange={(next) => {
+            suggestedApplied.current = suggestionKey;
+            onChange(next === null ? null : String(next));
+          }}
+          onStaffChange={onStaffChange}
+          requiredTrades={requiredTrades}
+          confirmed={confirmed}
+          disabled={disabled || !access.assign}
+          label={t`Assigned staff`}
+          placeholder={t`Select an active owner`}
+        />
+      )}
       <Text size='xs'>{t`Assignment proposes a handover for acceptance. Qualifications and physical work authority remain separate.`}</Text>
       {suggestedUsername &&
         suggested.isSuccess &&
-        !suggested.data?.some(
-          (person) => person.username === suggestedUsername
-        ) && (
+        suggested.data?.length !== 1 && (
           <Text
             size='xs'
             c='orange'

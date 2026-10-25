@@ -11,6 +11,10 @@ export enum ApiEndpoints {
 
   // User API endpoints
   user_list = 'user/',
+  user_trades = 'user/trades/',
+  user_occupational_profile = 'user/:id/occupational-profile/',
+  staff_directory = 'user/staff-directory/',
+  staff_assignment = 'user/staff-directory/assignment/',
   user_set_password = 'user/:id/set-password/',
   user_tokens = 'user/tokens/',
   user_simple_login = 'email/generate/',

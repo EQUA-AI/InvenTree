@@ -185,6 +185,8 @@ def _extended_work_order_intent(content: str) -> WorkOrderIntent | None:
         ),
         ("work_order.resume", r"resume\s+" + target + r"(?:\s+because\s+(?P<reason>.+))?"),
         ("work_order.delete", r"delete\s+" + target + r"(?:\s+because\s+(?P<reason>.+))?"),
+        ("work_order.assign", r"(?P<automatic>automatically\s+assign|auto[- ]assign)\s+" + target),
+        ("work_order.assign", r"assign\s+" + target + r"\s+(?P<automatic>automatically)"),
         ("work_order.assign", r"assign\s+" + target + r"\s+to\s+(?P<assignee>.+)"),
         ("work_order.resize", r"resize\s+" + target + r"\s+to\s+(?P<minutes>\d+)\s+minutes"),
         (
@@ -234,6 +236,8 @@ def _extended_work_order_intent(content: str) -> WorkOrderIntent | None:
                 params["passed"] = values["passed"].lower() == "true"
         if "assignee" in values:
             params["assignee_name"] = values["assignee"]
+        if "automatic" in values:
+            params["auto_assign"] = True
         if "minutes" in values:
             params["estimated_minutes"] = int(values["minutes"])
         if "start" in values:

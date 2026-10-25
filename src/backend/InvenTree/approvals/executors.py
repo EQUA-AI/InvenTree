@@ -780,9 +780,18 @@ class RepairWorkPackageExecutor(ApprovalExecutor):
 
     def check_preconditions(self, payload: dict, baseline_context: dict) -> DriftReport:
         """Re-read live state at approve time and report what moved."""
+        from aichat.services.proposals import ProposalError
+        from aichat.services.staff_assignment import validate_approval_assignment
         from assets.models import AssetMachine
         from repair.work_packages import find_duplicate_repairs
 
+        try:
+            validate_approval_assignment(payload)
+        except ProposalError as exc:
+            return DriftReport(
+                has_drift=True,
+                failed=[{'check': 'staff_assignment', 'reason': str(exc)}],
+            )
         machine = AssetMachine.objects.filter(
             pk=payload.get('machine_id') or payload.get('machine')
         ).first()
@@ -858,6 +867,13 @@ class RepairWorkPackageExecutor(ApprovalExecutor):
 
     def execute(self, payload: dict, idempotency_key: str) -> EffectResult:
         """Create the work package through the canonical command."""
+        from django.core.exceptions import PermissionDenied
+        from django.http import Http404
+
+        from tasks.services.work_orders import WorkOrderCommandError
+
+        from aichat.services.proposals import ProposalError
+        from aichat.services.staff_assignment import validate_approval_assignment
         from repair.work_packages import (
             DuplicateRepairConflict,
             WorkPackageError,
@@ -867,6 +883,7 @@ class RepairWorkPackageExecutor(ApprovalExecutor):
         actor = self._actor_for(payload)
 
         try:
+            validate_approval_assignment(payload)
             result = create_repair_work_package(
                 actor=actor, draft=payload, idempotency_key=idempotency_key
             )
@@ -876,7 +893,13 @@ class RepairWorkPackageExecutor(ApprovalExecutor):
                 error_message=str(exc),
                 result_payload={'duplicates': exc.duplicates},
             )
-        except WorkPackageError as exc:
+        except (
+            WorkPackageError,
+            ProposalError,
+            WorkOrderCommandError,
+            PermissionDenied,
+            Http404,
+        ) as exc:
             return EffectResult(success=False, error_message=str(exc))
 
         return EffectResult(

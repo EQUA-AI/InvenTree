@@ -850,7 +850,10 @@ class RepairWorkPackageCreate(APIView):
 
         try:
             result = create_repair_work_package(
-                actor=request.user, draft=data, idempotency_key=idempotency_key
+                actor=request.user,
+                draft=data,
+                idempotency_key=idempotency_key,
+                allow_assignment_override=True,
             )
         except DuplicateRepairConflict as exc:
             # 409, not 400: the request is well-formed, the world disagrees.

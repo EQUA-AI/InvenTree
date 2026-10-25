@@ -1012,6 +1012,10 @@ class WorkOrderCreateCommand(_CommandView):
                 'work_order_type',
                 'assignee',
                 'due_date',
+                'assigned_to',
+                'required_trades',
+                'trade_requirements_confirmed',
+                'override_reason',
             )
             if key in data
         }
@@ -1022,6 +1026,7 @@ class WorkOrderCreateCommand(_CommandView):
                 idempotency_key=_idempotency_key(request),
                 title=data.get('title', ''),
                 machine_id=machine_id,
+                allow_assignment_override=True,
                 **allowed,
             )
         except scheduling.WorkOrderCommandError as exc:

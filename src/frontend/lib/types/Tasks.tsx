@@ -38,6 +38,8 @@ export interface WorkOrder {
   assigned_to: number | null;
   assigned_to_username: string | null;
   assigned_to_name: string | null;
+  required_trades?: string[];
+  trade_requirements_confirmed?: boolean;
   scheduled_start: string | null;
   scheduled_end: string | null;
   estimated_minutes: number | null;
@@ -111,6 +113,9 @@ export interface BoardCard {
   machine_name: string | null;
   tags: string[];
   effective_assignee: number | null;
+  assigned_to_name?: string | null;
+  required_trades?: string[];
+  trade_requirements_confirmed?: boolean;
   effective_start: string | null;
   effective_end: string | null;
 }

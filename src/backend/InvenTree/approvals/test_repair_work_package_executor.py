@@ -112,6 +112,25 @@ class RepairWorkPackageExecutorTest(TestCase):
         self.assertEqual(
             _payload_of(first)['work_order_id'], _payload_of(second)['work_order_id']
         )
+
+    def test_revoked_creation_permission_is_a_failed_effect(self):
+        """Revoked authority is reported without a write or an executor crash."""
+        self.actor.is_superuser = False
+        self.actor.save(update_fields=['is_superuser'])
+        before = WorkOrder.objects.count()
+        result = self.executor.execute(self._payload(), uuid.uuid4().hex)
+        self.assertFalse(result.success)
+        self.assertEqual(WorkOrder.objects.count(), before)
+
+    def test_changed_replay_is_a_failed_effect(self):
+        """An idempotency conflict cannot escape the approval effect boundary."""
+        key = uuid.uuid4().hex
+        first = self.executor.execute(self._payload(), key)
+        self.assertTrue(first.success)
+        before = WorkOrder.objects.count()
+        changed = self.executor.execute(self._payload(title='Changed scope'), key)
+        self.assertFalse(changed.success)
+        self.assertEqual(WorkOrder.objects.count(), before)
         self.assertEqual(WorkOrder.objects.filter(machine=self.machine).count(), 1)
 
     def test_duplicate_open_repair_fails_the_effect_with_its_links(self):

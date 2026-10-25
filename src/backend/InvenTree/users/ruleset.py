@@ -72,6 +72,11 @@ RULESET_CUSTOM_PERMISSIONS = {
         'can_send_emails': ('users_ruleset', 'send_email'),
     },
     RuleSetEnum.WORK_ORDER: {
+        'can_view_staff_directory': ('users_ruleset', 'view_staff_directory'),
+        'can_override_assignment_trade_mismatch': (
+            'tasks_workorder',
+            'override_assignment_trade_mismatch',
+        ),
         'can_review_approvals': ('approvals_approval', 'review'),
         'can_publish_notifications': (
             'common_notificationmessage',
@@ -127,6 +132,7 @@ def get_ruleset_models() -> dict:
             'auth_permission',
             'users_apitoken',
             'users_ruleset',
+            'users_trade',
             'report_labeltemplate',
             'report_reportasset',
             'report_reportsnippet',

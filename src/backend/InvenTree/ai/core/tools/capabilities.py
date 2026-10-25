@@ -170,6 +170,20 @@ _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
         ("get_last_action_status",),
         ("last action", "action status", "receipt", "did that complete", "was that applied"),
     ),
+    "staff.read": (
+        ToolEffect.READ,
+        ("search_staff_candidates",),
+        (
+            "staff",
+            "assignee",
+            "assign",
+            "assignment",
+            "technician",
+            "qualified",
+            "job title",
+            "trades",
+        ),
+    ),
     "procurement.read": (
         ToolEffect.READ,
         (
@@ -518,8 +532,9 @@ _ADJACENT_PACKS: dict[str, frozenset[str]] = {
     # makes maintenance the primary, and without this edge the pack the user
     # named was unreachable. Worst stack: 9 + 5 + manuals 1 + SQL 1 = 16
     # <= MAX_INITIAL_TOOLS.
-    "maintenance.read": frozenset({"machines.read", "manuals.read"}),
-    "machines.read": frozenset({"maintenance.read", "manuals.read"}),
+    "maintenance.read": frozenset({"machines.read", "manuals.read", "staff.read"}),
+    "machines.read": frozenset({"maintenance.read", "manuals.read", "staff.read"}),
+    "staff.read": frozenset({"maintenance.read", "machines.read"}),
     "manuals.read": frozenset({"machines.read"}),
     # Evidence questions almost always name the job or the asset ("what did
     # the tech photograph on WO-104"), so evidence-primary pulls both

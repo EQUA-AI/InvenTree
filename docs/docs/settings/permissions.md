@@ -40,6 +40,31 @@ Within each role, there are four levels of available permissions:
 | **Add** | The *add* permission allows the user to add / create database records associated with the particular role |
 | **Delete** | The *delete* permission allows the user to delete / remove database records associated with the particular role |
 
+## Personnel directory and assignment
+
+The Work Orders role includes two independently grantable named permissions:
+
+| Permission | Purpose |
+| ---------- | ------- |
+| **Can view staff directory** | Read names, job titles, and approved trades within authorized maintenance scopes |
+| **Can override assignment trade mismatch** | Confirm a manual assignment mismatch with a mandatory, auditable reason |
+
+Both are disabled by default for ordinary groups. Grant them explicitly to the
+appropriate administrator, supervisor, lead, or manager groups; a group's name
+or a user's job title never confers access. Directory viewing does not grant
+user administration. Editing titles and approved trades requires administrator
+user-management authority.
+
+Assigning work still requires **Can assign work orders**. Eligible personnel
+must be active, hold execution authority, and belong to the target maintenance
+scope. A trade override cannot bypass those checks.
+
+Interactive AI uses the requesting user's permissions and scope. A future
+monitoring integration must have an explicitly provisioned, scoped service
+account with directory and work-order creation/assignment permissions; there
+is no unrestricted anonymous AI directory access. Existing approval rules are
+not bypassed by automatic personnel selection.
+
 ## Dangerous User Flags
 
 In addition to the above permissions, there are two special flags that can be assigned to a user:

@@ -32,6 +32,8 @@ export interface WorkOrderSummary {
   machine_name: string | null;
   assigned_to: number | null;
   assigned_to_name: string | null;
+  required_trades?: string[];
+  trade_requirements_confirmed?: boolean;
   scheduled_start: string | null;
   scheduled_end: string | null;
   estimated_minutes: number | null;

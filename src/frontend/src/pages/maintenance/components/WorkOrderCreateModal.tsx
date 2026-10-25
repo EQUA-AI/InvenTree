@@ -22,6 +22,7 @@ import {
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { useDebouncedValue, useMediaQuery } from '@mantine/hooks';
+import { notifications } from '@mantine/notifications';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -31,6 +32,13 @@ import { Link } from 'react-router-dom';
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
 
+import type { StaffMember } from '@lib/types/Staff';
+import { TradeRequirementsFields } from '../../../components/staff/TradeRequirementsFields';
+import {
+  assignmentReview,
+  personnelPlanning
+} from '../../../components/staff/staffAssignment';
+import { useStaffAccess } from '../../../components/staff/useStaffDirectory';
 import { useApi } from '../../../contexts/ApiContext';
 import { showApiErrorMessage } from '../../../functions/notifications';
 import { useRetainedCommand } from '../../../hooks/useRetainedCommand';
@@ -69,6 +77,22 @@ export interface WorkPackageResult {
   assigned_to_id: number | null;
   idempotency_key: string;
   lifecycle_version: number;
+}
+
+export function showWorkPackageWarnings(warnings: readonly string[] = []) {
+  if (!warnings.length) return;
+  notifications.show({
+    title: t`Work order created — review required`,
+    message: warnings
+      .map((warning) =>
+        warning.includes('ASSIGNMENT_REQUIREMENTS_UNKNOWN')
+          ? t`Trade requirements have not been confirmed. Review staff suitability before work starts.`
+          : warning
+      )
+      .join('\n'),
+    color: 'orange',
+    autoClose: false
+  });
 }
 
 export interface WorkOrderCreateModalProps {
@@ -125,6 +149,10 @@ interface FormValues {
   criticality: string;
   assignee: string;
   assignedTo: string | null;
+  requiredTrades: string[];
+  tradeRequirementsConfirmed: boolean;
+  assignmentOverrideReason: string;
+  assignmentOverrideConfirmed: boolean;
   dueDate: Date | null;
   estimatedMinutes: number | string;
   createPacket: boolean;
@@ -170,6 +198,10 @@ export function WorkOrderCreateModal({
   onCreated
 }: Readonly<WorkOrderCreateModalProps>) {
   const api = useApi();
+  const staffAccess = useStaffAccess();
+  const [selectedStaff, setSelectedStaff] = useState<StaffMember>();
+  const [serverAssignmentMismatch, setServerAssignmentMismatch] =
+    useState(false);
 
   // Below Mantine's `sm` breakpoint a size='lg' modal is unusable; go
   // full-screen so the form stays reachable on a phone.
@@ -218,12 +250,50 @@ export function WorkOrderCreateModal({
       criticality: initialCriticality ?? 'medium',
       assignee: '',
       assignedTo: null,
+      requiredTrades: [],
+      tradeRequirementsConfirmed: false,
+      assignmentOverrideReason: '',
+      assignmentOverrideConfirmed: false,
       dueDate: null,
       estimatedMinutes: '',
       createPacket: true
     },
     validate: VALIDATION
   });
+  const assignmentMismatch =
+    serverAssignmentMismatch ||
+    assignmentReview(
+      selectedStaff,
+      form.values.requiredTrades,
+      form.values.tradeRequirementsConfirmed
+    ) === 'mismatch';
+  const assignmentBlocked =
+    form.values.assignedTo != null &&
+    (!staffAccess.directory ||
+      !staffAccess.assign ||
+      !selectedStaff ||
+      (assignmentMismatch &&
+        !(
+          staffAccess.override &&
+          form.values.assignmentOverrideConfirmed &&
+          form.values.assignmentOverrideReason.trim()
+        )));
+  const assignmentReviewKey = JSON.stringify([
+    form.values.assignedTo,
+    form.values.requiredTrades,
+    form.values.tradeRequirementsConfirmed
+  ]);
+  useEffect(() => {
+    setServerAssignmentMismatch(false);
+    form.setFieldValue('assignmentOverrideConfirmed', false);
+    form.setFieldValue('assignmentOverrideReason', '');
+  }, [assignmentReviewKey]);
+  const selectedMachine = form.values.machine;
+  useEffect(() => {
+    form.setFieldValue('assignedTo', null);
+    form.setFieldValue('tradeRequirementsConfirmed', false);
+    setSelectedStaff(undefined);
+  }, [selectedMachine]);
 
   const machinesQuery = useQuery<
     { pk: number; name: string; location: string }[],
@@ -302,6 +372,9 @@ export function WorkOrderCreateModal({
         faultSummary: draft.fields.work_scope,
         symptom: draft.fields.symptom,
         productionImpact: draft.fields.production_impact,
+        tradeRequirementsConfirmed: false,
+        assignmentOverrideReason: '',
+        assignmentOverrideConfirmed: false,
         ...(draft.prepared
           ? {
               workOrderType: draft.prepared.work_order_type,
@@ -310,7 +383,8 @@ export function WorkOrderCreateModal({
               createPacket: true,
               dueDate: null,
               estimatedMinutes: '',
-              assignedTo: null
+              assignedTo: null,
+              requiredTrades: []
             }
           : {})
       }));
@@ -396,6 +470,7 @@ export function WorkOrderCreateModal({
   const handleClose = useCallback(() => {
     if (command.busy) return;
     form.reset();
+    setSelectedStaff(undefined);
     setParts([]);
     setPartSearch('');
     setPartResults([]);
@@ -413,6 +488,7 @@ export function WorkOrderCreateModal({
       matchesWorkPackageReceipt
     );
     if (result) {
+      showWorkPackageWarnings(result.warnings);
       setIdempotencyKey(newIdempotencyKey());
       onCreated?.(result);
       form.reset();
@@ -436,6 +512,7 @@ export function WorkOrderCreateModal({
         );
       return;
     }
+    if (assignmentBlocked) return;
     setSaving(true);
 
     const draft = {
@@ -464,8 +541,18 @@ export function WorkOrderCreateModal({
       duplicate_override: duplicates !== null,
       duplicate_override_reason: overrideReason.trim(),
       planning: {
-        assignee: values.assignee.trim(),
-        assigned_to_id: values.assignedTo ? Number(values.assignedTo) : null,
+        ...personnelPlanning({
+          canAssign: staffAccess.directory && staffAccess.assign,
+          canPlan: staffAccess.directory && staffAccess.plan,
+          assignedTo: values.assignedTo ? Number(values.assignedTo) : null,
+          ownerKey: 'assigned_to_id',
+          requiredTrades: values.requiredTrades,
+          confirmed: values.tradeRequirementsConfirmed,
+          legacyAssignee: values.assignee,
+          ...(assignmentMismatch && values.assignmentOverrideConfirmed
+            ? { overrideReason: values.assignmentOverrideReason }
+            : {})
+        }),
         due_date: values.dueDate
           ? dayjs(values.dueDate).format('YYYY-MM-DD')
           : null,
@@ -482,10 +569,16 @@ export function WorkOrderCreateModal({
         body: draft
       });
     } catch (error: any) {
+      if (error?.response?.data?.code === 'ASSIGNMENT_TRADE_MISMATCH') {
+        setServerAssignmentMismatch(true);
+      }
       // 409 is not a malformed request: this machine already has open repair
       // work. Show what exists and make proceeding a deliberate, stated choice
       // rather than a retry the user does not realise is a second work order.
-      if (error?.response?.status === 409) {
+      if (
+        error?.response?.status === 409 &&
+        Array.isArray(error.response.data?.duplicates)
+      ) {
         setDuplicates(error.response.data?.duplicates ?? []);
         setSaving(false);
         return;
@@ -664,6 +757,15 @@ export function WorkOrderCreateModal({
               {...form.getInputProps('productionImpact')}
             />
 
+            <TradeRequirementsFields
+              value={form.values.requiredTrades}
+              confirmed={form.values.tradeRequirementsConfirmed}
+              onChange={(value) => form.setFieldValue('requiredTrades', value)}
+              onConfirm={(value) =>
+                form.setFieldValue('tradeRequirementsConfirmed', value)
+              }
+              disabled={saving || !staffAccess.plan}
+            />
             <Stack gap={3} style={{ flex: 1, minWidth: 0 }}>
               <WorkOrderAssigneeSelect
                 machineId={
@@ -671,8 +773,13 @@ export function WorkOrderCreateModal({
                 }
                 value={form.values.assignedTo}
                 onChange={setAssignedTo}
+                onStaffChange={setSelectedStaff}
+                requiredTrades={form.values.requiredTrades}
+                confirmed={form.values.tradeRequirementsConfirmed}
                 suggestedUsername={suggestedOwner}
-                disabled={command.busy || Boolean(command.intent)}
+                disabled={
+                  command.busy || Boolean(command.intent) || !staffAccess.assign
+                }
               />
               {form.errors.assignedTo && (
                 <Text size='xs' c='red' role='alert'>
@@ -680,6 +787,32 @@ export function WorkOrderCreateModal({
                 </Text>
               )}
             </Stack>
+            {assignmentMismatch && (
+              <Alert
+                color='orange'
+                title={t`Trade mismatch — human review required`}
+              >
+                <Stack gap='sm'>
+                  {staffAccess.override ? (
+                    <>
+                      <Textarea
+                        label={t`Override reason`}
+                        required
+                        {...form.getInputProps('assignmentOverrideReason')}
+                      />
+                      <Checkbox
+                        label={t`I explicitly authorize this trade mismatch override`}
+                        {...form.getInputProps('assignmentOverrideConfirmed', {
+                          type: 'checkbox'
+                        })}
+                      />
+                    </>
+                  ) : (
+                    <Text size='sm'>{t`You do not have permission to override a trade mismatch. Create the work unassigned or select a qualified person.`}</Text>
+                  )}
+                </Stack>
+              </Alert>
+            )}
             <SimpleGrid cols={{ base: 1, sm: 2 }} spacing='md'>
               <DateInput
                 label={t`Due date`}
@@ -856,6 +989,7 @@ export function WorkOrderCreateModal({
                   loading={saving}
                   color={duplicates === null ? undefined : 'orange'}
                   disabled={
+                    assignmentBlocked ||
                     command.storageFailed ||
                     Boolean(machineId && anomalyId && !sourceReady) ||
                     (duplicates !== null && !overrideReason.trim()) ||

@@ -198,17 +198,19 @@ def _tool_permission_map() -> dict[Any, tuple[str, str]]:
 
 
 def _native_tool_map() -> dict[Any, tuple[str, str]]:
-    """Map email tools to their AIMMS-native ``(ruleset, permission)``.
+    """Map named-permission tools to their ``(ruleset, permission)``.
 
     Kept separate from ``_tool_permission_map`` because these pairs are resolved
-    by named Django permissions rather than CRUD ``check_user_role``. Only email
-    belongs here: its ruleset manages mailbox capabilities, not a local model. Kanban
+    by named Django permissions rather than CRUD ``check_user_role``. Email and
+    the occupational directory use dedicated grants, not general user CRUD. Kanban
     used to live here and does not -- its cards are work orders, governed by the
     WORK_ORDER ruleset, so it is mapped in ``_tool_permission_map`` instead.
     """
     from ai.core.integrations.email import tools as et
+    from ai.core.integrations.staff_tools import search_staff_candidates
 
     return {
+        search_staff_candidates: ("staff_directory", "view"),
         et.list_emails: ("email", "view"),
         et.list_mailboxes: ("email", "view"),
         et.get_email_details: ("email", "view"),
@@ -236,6 +238,7 @@ def _all_pairs() -> frozenset[tuple[str, str]]:
 # migration creates those groups, so only superusers ever passed, and kanban
 # cards are InvenTree work orders with a real ruleset of their own.
 _AIMMS_NATIVE_PERMISSIONS: dict[tuple[str, str], str] = {
+    ("staff_directory", "view"): "users.view_staff_directory",
     ("ai_memory", "write"): "aichat.write_memory",
     ("email", "view"): "users.view_email",
     ("email", "send"): "users.send_email",

@@ -27,6 +27,9 @@ from aichat.services.scope_strings import scope_strings as _scope_strings
 
 def _payload(proposal: ChatActionProposal) -> dict:
     """Payload."""
+    from aichat.services.staff_assignment import visible_personnel_fields
+
+    preview, receipt = visible_personnel_fields(proposal, proposal.owner)
     return {
         'id': str(proposal.id),
         'action_type': proposal.action_type,
@@ -38,14 +41,14 @@ def _payload(proposal: ChatActionProposal) -> dict:
         else None,
         'target_version': proposal.target_version,
         'intent': proposal.intent,
-        'preview': proposal.preview,
+        'preview': preview,
         'preview_hash': proposal.preview_hash,
         'reason': proposal.reason,
         'expires_at': proposal.expires_at.isoformat(),
         'confirmed_at': (
             proposal.confirmed_at.isoformat() if proposal.confirmed_at else None
         ),
-        'receipt': proposal.receipt,
+        'receipt': receipt,
         'failure_code': proposal.failure_code or None,
         'created_at': proposal.created_at.isoformat(),
     }

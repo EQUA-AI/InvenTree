@@ -12,6 +12,7 @@ import {} from '../../components/items/ActionDropdown';
 import InstanceDetail from '../../components/nav/InstanceDetail';
 import { PageDetail } from '../../components/nav/PageDetail';
 import { PanelGroup } from '../../components/panels/PanelGroup';
+import { StaffTradeLabels } from '../../components/staff/StaffTradeLabels';
 import {} from '../../hooks/UseForm';
 import { useInstance } from '../../hooks/UseInstance';
 import { useGlobalSettingsState } from '../../states/SettingsStates';
@@ -35,6 +36,7 @@ export default function UserDetail() {
     if (instanceQuery.isFetching) {
       return <Skeleton />;
     }
+    const profile = instance.profile ?? {};
 
     const tl: DetailsField[] = [
       {
@@ -114,23 +116,29 @@ export default function UserDetail() {
         label: t`Display Name`,
         icon: 'user',
         copy: true,
-        hidden: !instance.displayname
+        hidden: !profile.displayname
       },
       {
         type: 'text',
         name: 'position',
-        label: t`Position`,
+        label: t`Job title`,
         icon: 'info',
-        hidden: !instance.position
+        hidden: !profile.position
       },
-
+      {
+        type: 'text',
+        name: 'trades',
+        label: t`Approved trades`,
+        hidden: !profile.trades?.length,
+        value_formatter: () => <StaffTradeLabels trades={profile.trades} />
+      },
       {
         type: 'text',
         name: 'contact',
         label: t`Contact`,
         icon: 'email',
         copy: true,
-        hidden: !instance.contact
+        hidden: !profile.contact
       },
       {
         type: 'text',
@@ -138,14 +146,14 @@ export default function UserDetail() {
         label: t`Organisation`,
         icon: 'info',
         copy: true,
-        hidden: !instance.organisation
+        hidden: !profile.organisation
       },
       {
         type: 'text',
         name: 'status',
         label: t`Status`,
         icon: 'note',
-        hidden: !instance.status
+        hidden: !profile.status
       },
       {
         type: 'text',
@@ -153,17 +161,18 @@ export default function UserDetail() {
         label: t`Location`,
         icon: 'location',
         copy: true,
-        hidden: !instance.location
+        hidden: !profile.location
       }
     ];
 
     const hasProfile =
-      instance.displayname ||
-      instance.position ||
-      instance.contact ||
-      instance.organisation ||
-      instance.status ||
-      instance.location;
+      profile.displayname ||
+      profile.position ||
+      profile.trades?.length ||
+      profile.contact ||
+      profile.organisation ||
+      profile.status ||
+      profile.location;
 
     return (
       <ItemDetailsGrid
@@ -171,7 +180,7 @@ export default function UserDetail() {
           { fields: tl, item: instance, title: t`User Information` },
           { fields: tr, item: instance, title: t`User Permissions` },
           ...(hasProfile && settings.isSet('DISPLAY_PROFILE_INFO')
-            ? [{ fields: br, item: instance, title: t`User Profile` }]
+            ? [{ fields: br, item: profile, title: t`User Profile` }]
             : [])
         ]}
       />

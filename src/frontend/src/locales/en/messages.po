@@ -32324,3 +32324,254 @@ msgstr "The linked source event or work ownership cannot be verified. Reload the
 #: src/pages/tasks/workorders/execution/ExerciseVerificationPanel.tsx:39
 msgid "Verification remains blocked. Reload the current source and procedure records and ask an authorized maintainer to review them."
 msgstr "Verification remains blocked. Reload the current source and procedure records and ask an authorized maintainer to review them."
+
+#: ../../../src/frontend/src/components/staff/OccupationalProfileEditor.tsx:112
+msgid "Administrator-managed assignment suitability, not verified licensing or certification."
+msgstr "Administrator-managed assignment suitability, not verified licensing or certification."
+
+#: ../../../src/frontend/src/components/staff/TradeRequirementsFields.tsx:26
+msgid "Approved assignment suitability, not a license or safety certification."
+msgstr "Approved assignment suitability, not a license or safety certification."
+
+#: ../../../src/frontend/src/components/staff/OccupationalProfileEditor.tsx:111
+#: ../../../src/frontend/src/pages/core/UserDetail.tsx:131
+#: ../../../src/frontend/src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:88
+#: ../../../src/frontend/src/tables/settings/UserTable.tsx:292
+msgid "Approved trades"
+msgstr "Approved trades"
+
+#: ../../../src/frontend/src/components/staff/StaffAssignmentModal.tsx:168
+msgid "Assign board card"
+msgstr "Assign board card"
+
+#: ../../../src/frontend/src/components/staff/StaffAssignmentModal.tsx:168
+#: ../../../src/frontend/src/pages/maintenance/MaintenanceBoard.tsx:1928
+#: ../../../src/frontend/src/pages/tasks/workorders/execution/TimeAssignment.tsx:62
+#: ../../../src/frontend/src/pages/tasks/workorders/WorkOrderDetail.tsx:752
+msgid "Assign work order"
+msgstr "Assign work order"
+
+#: ../../../src/frontend/src/components/staff/StaffAssignmentModal.tsx:225
+msgid "Assignment reason"
+msgstr "Assignment reason"
+
+#: ../../../src/frontend/src/pages/tasks/workorders/WorkOrderDetail.tsx:758
+msgid "Assignment review required"
+msgstr "Assignment review required"
+
+#: ../../../src/frontend/src/components/staff/TradeRequirementsFields.tsx:72
+msgid "Assignment review required until the work requirements are confirmed."
+msgstr "Assignment review required until the work requirements are confirmed."
+
+#: ../../../src/frontend/src/components/staff/StaffAssignmentModal.tsx:158
+msgid "Assignment was not saved. Review permissions, staff eligibility and the current work-order version."
+msgstr "Assignment was not saved. Review permissions, staff eligibility and the current work-order version."
+
+#: ../../../src/frontend/src/components/items/RoleTable.tsx:226
+msgid "Can override assignment trade mismatches"
+msgstr "Can override assignment trade mismatches"
+
+#: ../../../src/frontend/src/components/items/RoleTable.tsx:222
+msgid "Can view staff directory"
+msgstr "Can view staff directory"
+
+#: ../../../src/frontend/src/components/staff/StaffPicker.tsx:69
+msgid "Clear assignee"
+msgstr "Clear assignee"
+
+#: ../../../src/frontend/src/components/staff/StaffAssignmentModal.tsx:175
+msgid "Clear this selection to inherit the work-order assignee. Trade requirements apply to the whole work order."
+msgstr "Clear this selection to inherit the work-order assignee. Trade requirements apply to the whole work order."
+
+#: ../../../src/frontend/src/components/staff/StaffAssignmentModal.tsx:246
+#: ../../../src/frontend/src/pages/maintenance/components/WorkOrderCreateModal.tsx:775
+msgid "I explicitly authorize this trade mismatch override"
+msgstr "I explicitly authorize this trade mismatch override"
+
+#: ../../../src/frontend/src/components/staff/TradeRequirementsFields.tsx:63
+msgid "I have reviewed and confirmed these trade requirements"
+msgstr "I have reviewed and confirmed these trade requirements"
+
+#: ../../../src/frontend/src/components/staff/StaffAssignmentModal.tsx:212
+msgid "Inherit work-order assignee"
+msgstr "Inherit work-order assignee"
+
+#: ../../../src/frontend/src/pages/maintenance/components/BoardTaskCard.tsx:244
+#: ../../../src/frontend/src/pages/maintenance/MaintenanceBoard.tsx:1919
+#: ../../../src/frontend/src/pages/tasks/workorders/WorkOrderDetail.tsx:1115
+msgid "Inherited from work order"
+msgstr "Inherited from work order"
+
+#: ../../../src/frontend/src/components/staff/OccupationalProfileEditor.tsx:105
+#: ../../../src/frontend/src/pages/core/UserDetail.tsx:124
+#: ../../../src/frontend/src/pages/Index/Settings/AccountSettings/AccountDetailPanel.tsx:86
+#: ../../../src/frontend/src/tables/settings/UserTable.tsx:287
+msgid "Job title"
+msgstr "Job title"
+
+#: ../../../src/frontend/src/components/staff/OccupationalProfileEditor.tsx:55
+msgid "Job title must be 255 characters or fewer."
+msgstr "Job title must be 255 characters or fewer."
+
+#: ../../../src/frontend/src/components/staff/StaffPicker.tsx:94
+#: ../../../src/frontend/src/components/staff/StaffSummaryPopover.tsx:51
+msgid "Job title not provided"
+msgstr "Job title not provided"
+
+#: ../../../src/frontend/src/components/staff/StaffAssignmentModal.tsx:189
+msgid "Legacy assignment text (not a verified identity)"
+msgstr "Legacy assignment text (not a verified identity)"
+
+#: ../../../src/frontend/src/components/staff/StaffPicker.tsx:129
+msgid "Load more staff"
+msgstr "Load more staff"
+
+#: ../../../src/frontend/src/components/staff/OccupationalProfileEditor.tsx:139
+#: ../../../src/frontend/src/components/staff/TradeRequirementsFields.tsx:53
+msgid "Load more trades"
+msgstr "Load more trades"
+
+#: ../../../src/frontend/src/components/staff/StaffPicker.tsx:113
+msgid "Loading staff…"
+msgstr "Loading staff…"
+
+#: ../../../src/frontend/src/components/staff/StaffPicker.tsx:114
+msgid "No staff found in this scope"
+msgstr "No staff found in this scope"
+
+#: ../../../src/frontend/src/components/staff/OccupationalProfileEditor.tsx:71
+msgid "Occupational profile could not be loaded."
+msgstr "Occupational profile could not be loaded."
+
+#: ../../../src/frontend/src/components/staff/OccupationalProfileEditor.tsx:96
+msgid "Occupational profile was not saved. Check your permissions and try again."
+msgstr "Occupational profile was not saved. Check your permissions and try again."
+
+#: ../../../src/frontend/src/components/staff/StaffAssignmentModal.tsx:279
+msgid "Override and save assignment"
+msgstr "Override and save assignment"
+
+#: ../../../src/frontend/src/pages/maintenance/MaintenanceBoard.tsx:1934
+msgid "Override card assignment"
+msgstr "Override card assignment"
+
+#: ../../../src/frontend/src/components/staff/StaffAssignmentModal.tsx:240
+#: ../../../src/frontend/src/pages/maintenance/components/WorkOrderCreateModal.tsx:770
+msgid "Override reason"
+msgstr "Override reason"
+
+#: ../../../src/frontend/src/components/staff/StaffAssignmentModal.tsx:76
+msgid "Record why the assignment is changing."
+msgstr "Record why the assignment is changing."
+
+#: ../../../src/frontend/src/components/staff/TradeRequirementsFields.tsx:25
+msgid "Required trades"
+msgstr "Required trades"
+
+#: ../../../src/frontend/src/components/staff/StaffPicker.tsx:140
+msgid "Retry staff lookup"
+msgstr "Retry staff lookup"
+
+#: ../../../src/frontend/src/components/staff/OccupationalProfileEditor.tsx:146
+#: ../../../src/frontend/src/components/staff/TradeRequirementsFields.tsx:60
+msgid "Retry trade catalogue"
+msgstr "Retry trade catalogue"
+
+#: ../../../src/frontend/src/components/staff/StaffAssignmentModal.tsx:279
+msgid "Save assignment"
+msgstr "Save assignment"
+
+#: ../../../src/frontend/src/components/staff/OccupationalProfileEditor.tsx:158
+msgid "Save occupational profile"
+msgstr "Save occupational profile"
+
+#: ../../../src/frontend/src/components/staff/StaffSummaryPopover.tsx:20
+msgid "Staff #{userId}"
+msgstr "Staff #{userId}"
+
+#: ../../../src/frontend/src/components/staff/StaffPicker.tsx:100
+msgid "Staff #{value} — details unavailable"
+msgstr "Staff #{value} — details unavailable"
+
+#: ../../../src/frontend/src/components/staff/StaffSummaryPopover.tsx:44
+msgid "Staff details"
+msgstr "Staff details"
+
+#: ../../../src/frontend/src/components/staff/StaffSummaryPopover.tsx:58
+msgid "Staff details are not available in this scope."
+msgstr "Staff details are not available in this scope."
+
+#: ../../../src/frontend/src/components/staff/StaffSummaryPopover.tsx:57
+msgid "Staff details could not be loaded."
+msgstr "Staff details could not be loaded."
+
+#: ../../../src/frontend/src/components/staff/StaffSummaryPopover.tsx:36
+msgid "Staff details: {fallback}"
+msgstr "Staff details: {fallback}"
+
+#: ../../../src/frontend/src/components/staff/StaffPicker.tsx:59
+msgid "Staff directory access is required to select personnel."
+msgstr "Staff directory access is required to select personnel."
+
+#: ../../../src/frontend/src/components/staff/StaffPicker.tsx:150
+msgid "The selected staff member could not be verified. Reload or select another person; their identity has not been changed."
+msgstr "The selected staff member could not be verified. Reload or select another person; their identity has not been changed."
+
+#: ../../../src/frontend/src/components/staff/StaffPicker.tsx:118
+msgid "The staff directory could not be loaded. This is not an empty candidate list."
+msgstr "The staff directory could not be loaded. This is not an empty candidate list."
+
+#: ../../../src/frontend/src/components/staff/StaffAssignmentModal.tsx:265
+msgid "The work order changed. Close and reopen this dialog to review the latest assignment before trying again."
+msgstr "The work order changed. Close and reopen this dialog to review the latest assignment before trying again."
+
+#: ../../../src/frontend/src/components/staff/StaffAssignmentModal.tsx:236
+msgid "This person does not cover all required trades. An override cannot bypass scope, inactive-account or work-execution restrictions."
+msgstr "This person does not cover all required trades. An override cannot bypass scope, inactive-account or work-execution restrictions."
+
+#: ../../../src/frontend/src/components/staff/StaffPicker.tsx:156
+msgid "This person does not cover every required trade. Assignment requires an authorized human override and a recorded reason."
+msgstr "This person does not cover every required trade. Assignment requires an authorized human override and a recorded reason."
+
+#: ../../../src/frontend/src/components/staff/OccupationalProfileEditor.tsx:127
+#: ../../../src/frontend/src/components/staff/StaffTradeLabels.tsx:39
+msgid "Trade #{id}"
+msgstr "Trade #{id}"
+
+#: ../../../src/frontend/src/components/staff/OccupationalProfileEditor.tsx:132
+#: ../../../src/frontend/src/components/staff/TradeRequirementsFields.tsx:46
+msgid "Trade catalogue unavailable"
+msgstr "Trade catalogue unavailable"
+
+#: ../../../src/frontend/src/components/staff/StaffAssignmentModal.tsx:233
+#: ../../../src/frontend/src/pages/maintenance/components/WorkOrderCreateModal.tsx:764
+msgid "Trade mismatch — human review required"
+msgstr "Trade mismatch — human review required"
+
+#: ../../../src/frontend/src/components/staff/StaffPicker.tsx:153
+msgid "Trade requirements are unknown or unconfirmed. This assignment requires human review."
+msgstr "Trade requirements are unknown or unconfirmed. This assignment requires human review."
+
+#: ../../../src/frontend/src/components/staff/StaffAssignmentModal.tsx:254
+msgid "You do not have permission to override a trade mismatch."
+msgstr "You do not have permission to override a trade mismatch."
+
+#: ../../../src/frontend/src/pages/maintenance/components/WorkOrderCreateModal.tsx:782
+msgid "You do not have permission to override a trade mismatch. Create the work unassigned or select a qualified person."
+msgstr "You do not have permission to override a trade mismatch. Create the work unassigned or select a qualified person."
+
+#: ../../../src/frontend/src/components/staff/TradeRequirementsFields.tsx:26
+msgid "Recorded assignment requirements, not a license or safety certification."
+msgstr "Recorded assignment requirements, not a license or safety certification."
+
+#: ../../../src/frontend/src/pages/assets/TestAlarmControl.tsx:692
+msgid "Trade requirements are not recorded for this prepared exercise. Staff suitability needs human review."
+msgstr "Trade requirements are not recorded for this prepared exercise. Staff suitability needs human review."
+
+#: ../../../src/frontend/src/pages/maintenance/components/WorkOrderCreateModal.tsx:89
+msgid "Trade requirements have not been confirmed. Review staff suitability before work starts."
+msgstr "Trade requirements have not been confirmed. Review staff suitability before work starts."
+
+#: ../../../src/frontend/src/pages/maintenance/components/WorkOrderCreateModal.tsx:85
+msgid "Work order created — review required"
+msgstr "Work order created — review required"

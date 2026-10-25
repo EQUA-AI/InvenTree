@@ -69,6 +69,10 @@ import type {
 import PageTitle from '../../../components/nav/PageTitle';
 import { openGlobalAIChat } from '../../../states/AIChatState';
 
+import { StaffAssignmentModal } from '../../../components/staff/StaffAssignmentModal';
+import { StaffSummaryPopover } from '../../../components/staff/StaffSummaryPopover';
+import { resolveCardAssignment } from '../../../components/staff/staffAssignment';
+import { useStaffAccess } from '../../../components/staff/useStaffDirectory';
 import { useApi } from '../../../contexts/ApiContext';
 import { openGlobalAIChatAboutWork } from '../../../states/AIChatState';
 import { useUserState } from '../../../states/UserState';
@@ -243,6 +247,8 @@ function WorkOrderWorkspace({
   workOrder
 }: Readonly<{ workOrder: WorkOrderOverview }>) {
   const navigate = useNavigate();
+  const staffAccess = useStaffAccess();
+  const [assigning, setAssigning] = useState(false);
   const location = useLocation();
   const directEntry = useRef(location.key === 'default');
   const [params, setParams] = useSearchParams();
@@ -444,7 +450,10 @@ function WorkOrderWorkspace({
                   minWidth={640}
                   label={t`Board cards table, scroll for all columns`}
                 >
-                  <CardsTable cards={workOrder.cards ?? []} />
+                  <CardsTable
+                    cards={workOrder.cards ?? []}
+                    workOrder={workOrder}
+                  />
                 </WorkTableScroll>
               </SectionCard>
             </Stack>
@@ -501,6 +510,11 @@ function WorkOrderWorkspace({
                     <TimeAssignment
                       workOrder={workOrder}
                       onRecoveryNeeded={showTimeRecovery}
+                      onAssign={
+                        staffAccess.directory && staffAccess.assign
+                          ? () => setAssigning(true)
+                          : undefined
+                      }
                     />
                   </Accordion.Panel>
                 </Accordion.Item>
@@ -717,7 +731,35 @@ function WorkOrderWorkspace({
                 label={t`Type`}
                 value={humanize(workOrder.work_order_type)}
               />
-              <InfoItem label={t`Assignee`} value={assigneeLabel(workOrder)} />
+              <InfoItem
+                label={t`Assignee`}
+                value={
+                  <Stack gap='xs'>
+                    <StaffSummaryPopover
+                      userId={workOrder.assigned_to}
+                      label={
+                        workOrder.assigned_to != null
+                          ? workOrder.assigned_to_name
+                          : workOrder.assignee
+                      }
+                      scope={{ workOrderId: workOrder.id }}
+                    />
+                    {staffAccess.directory && staffAccess.assign && (
+                      <Button
+                        size='compact-sm'
+                        variant='light'
+                        onClick={() => setAssigning(true)}
+                      >{t`Assign work order`}</Button>
+                    )}
+                    {!workOrder.trade_requirements_confirmed && (
+                      <Text
+                        size='xs'
+                        c='dimmed'
+                      >{t`Assignment review required`}</Text>
+                    )}
+                  </Stack>
+                }
+              />
               <InfoItem
                 label={t`Estimated effort`}
                 value={formatMinutes(workOrder.estimated_minutes)}
@@ -918,6 +960,12 @@ function WorkOrderWorkspace({
         ))}
       </Tabs>
       {recordDetails}
+      {assigning && (
+        <StaffAssignmentModal
+          workOrder={workOrder}
+          onClose={() => setAssigning(false)}
+        />
+      )}
     </Stack>
   );
 }
@@ -955,19 +1003,23 @@ function ContextControlLabel({
 function InfoItem({
   label,
   value
-}: Readonly<{ label: string; value: string | null }>) {
+}: Readonly<{ label: string; value: ReactNode }>) {
   return (
     <Stack gap={0}>
       <Text size='xs' c='dimmed'>
         {label}
       </Text>
-      <Text size='sm' style={{ overflowWrap: 'anywhere' }}>
-        {!value || value === t`Not recorded` ? (
-          <MissingValue label={label} reason={t`No value recorded`} />
-        ) : (
-          value
-        )}
-      </Text>
+      {typeof value === 'string' || value == null ? (
+        <Text size='sm' style={{ overflowWrap: 'anywhere' }}>
+          {!value || value === t`Not recorded` ? (
+            <MissingValue label={label} reason={t`No value recorded`} />
+          ) : (
+            value
+          )}
+        </Text>
+      ) : (
+        value
+      )}
     </Stack>
   );
 }
@@ -1016,7 +1068,10 @@ function StateBadge({
  * down shows each piece and the column it currently sits in, which is the whole
  * reason cards and work orders are separate.
  */
-function CardsTable({ cards }: Readonly<{ cards: BoardCard[] }>) {
+function CardsTable({
+  cards,
+  workOrder
+}: Readonly<{ cards: BoardCard[]; workOrder: WorkOrderOverview }>) {
   if (cards.length === 0) {
     return (
       <Text size='sm' c='dimmed'>
@@ -1032,6 +1087,7 @@ function CardsTable({ cards }: Readonly<{ cards: BoardCard[] }>) {
           <Table.Th>{t`Card`}</Table.Th>
           <Table.Th>{t`Kind`}</Table.Th>
           <Table.Th>{t`Column`}</Table.Th>
+          <Table.Th>{t`Assignee`}</Table.Th>
           <Table.Th>{t`Scheduled`}</Table.Th>
         </Table.Tr>
       </Table.Thead>
@@ -1048,6 +1104,16 @@ function CardsTable({ cards }: Readonly<{ cards: BoardCard[] }>) {
             </Table.Td>
             <Table.Td>
               <Badge variant='light'>{humanize(card.status)}</Badge>
+            </Table.Td>
+            <Table.Td>
+              <StaffSummaryPopover
+                userId={resolveCardAssignment(card, workOrder).userId}
+                label={resolveCardAssignment(card, workOrder).label}
+                scope={{ workOrderId: workOrder.id, kanbanCardId: card.id }}
+              />
+              {card.assigned_to == null && (
+                <Text size='xs' c='dimmed'>{t`Inherited from work order`}</Text>
+              )}
             </Table.Td>
             <Table.Td>
               <Text size='sm' c={card.effective_start ? undefined : 'dimmed'}>
@@ -1326,10 +1392,6 @@ function displayReference(
   workOrder: Pick<WorkOrderSummary, 'id' | 'reference' | 'title'>
 ) {
   return `${workOrder.reference || t`Work order ${workOrder.id}`} · ${workOrder.title}`;
-}
-
-function assigneeLabel(workOrder: WorkOrderOverview): string {
-  return workOrder.assigned_to_name || workOrder.assignee || t`Not recorded`;
 }
 
 function humanize(value: string): string {

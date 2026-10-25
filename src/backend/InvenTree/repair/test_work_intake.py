@@ -19,11 +19,7 @@ from django.utils import timezone
 
 from rest_framework.test import APIClient
 from tasks.models import WorkOrder, WorkOrderCommand
-from tasks.services.work_orders import (
-    CommandConflict,
-    IdempotencyConflict,
-    assign_work_order,
-)
+from tasks.services.work_orders import IdempotencyConflict, assign_work_order
 
 from assets.health_models import MachineAnomaly, MachineSignalState
 from assets.models import Client, ClientScopeGrant
@@ -125,17 +121,72 @@ class WorkIntakeTest(HealthEnvMixin, TestCase):
         self.assertEqual(result.anomaly_id, self.source.pk)
         self.assertEqual(result.machine_id, self.machine.pk)
 
-    def test_packet_ownership_still_blocks_later_generic_assignment(self):
-        """Verify packet ownership still blocks later generic assignment."""
+    def test_packet_owner_change_uses_scoped_audited_assignment(self):
+        """Personnel reassignment preserves the packet and requires fresh acceptance."""
         result = self.create()
-        with self.assertRaises(CommandConflict):
-            assign_work_order(
-                work_order_id=result.work_order_id,
-                assigned_to=self.actor,
-                actor=self.actor,
-                expected_version=result.lifecycle_version,
-                idempotency_key=uuid.uuid4().hex,
+        assign_work_order(
+            work_order_id=result.work_order_id,
+            assigned_to=self.actor,
+            actor=self.actor,
+            expected_version=result.lifecycle_version,
+            idempotency_key=uuid.uuid4().hex,
+        )
+        work = WorkOrder.objects.get(pk=result.work_order_id)
+        self.assertEqual(work.assigned_to_id, self.actor.pk)
+        self.assertEqual(work.repair_packet.pk, result.repair_packet_id)
+        handovers = list(work.handovers.order_by('pk'))
+        self.assertEqual(len(handovers), 2)
+        self.assertIsNotNone(handovers[0].withdrawn_at)
+        self.assertIsNone(handovers[1].accepted_at)
+
+    def test_staff_directory_identity_keeps_native_handover(self):
+        """The new directory contract retains the existing ownership acceptance gate."""
+        result = self.create(self.draft(planning={'assigned_to': self.owner.pk}))
+        work = WorkOrder.objects.get(pk=result.work_order_id)
+        self.assertEqual(work.assigned_to_id, self.owner.pk)
+        self.assertIsNone(work.handovers.get().accepted_at)
+        self.assertEqual(work.lifecycle_version, 2)
+
+    def test_conflicting_assignment_contracts_write_nothing(self):
+        """Two identity spellings cannot select different people in one command."""
+        before = self.counts()
+        with self.assertRaises(WorkPackageError):
+            self.create(
+                self.draft(
+                    planning={
+                        'assigned_to_id': self.owner.pk,
+                        'assigned_to': self.actor.pk,
+                    }
+                )
             )
+        self.assertEqual(self.counts(), before)
+
+    def test_legacy_typed_owner_cannot_bypass_trade_validation(self):
+        """The alarm intake alias cannot evade the scoped staff qualification gate."""
+        from tasks.services.staff_assignment import AssignmentError
+
+        before = self.counts()
+        with self.assertRaises(AssignmentError):
+            self.create(
+                self.draft(
+                    planning={
+                        'assigned_to_id': self.owner.pk,
+                        'required_trades': ['electrical'],
+                        'trade_requirements_confirmed': True,
+                    }
+                )
+            )
+        self.assertEqual(self.counts(), before)
+        self.source.refresh_from_db()
+        self.assertIsNone(self.source.work_order_id)
+
+    def test_assignment_warning_survives_compound_replay(self):
+        """A retry retains unknown qualification evidence instead of claiming success."""
+        key = uuid.uuid4().hex
+        first = self.create(key=key)
+        replay = self.create(key=key)
+        self.assertIn('ASSIGNMENT_REQUIREMENTS_UNKNOWN', first.warnings[0])
+        self.assertEqual(replay.warnings, first.warnings)
 
     def test_replay_has_no_secondary_writes_or_new_snapshots(self):
         """Verify replay has no secondary writes or new snapshots."""
@@ -266,7 +317,52 @@ class WorkIntakeTest(HealthEnvMixin, TestCase):
         rows = assignable_staff(self.actor, self.machine)
         self.assertNotIn(self.owner.pk, [row['id'] for row in rows])
         for row in rows:
-            self.assertEqual(set(row), {'id', 'name', 'username'})
+            self.assertEqual(set(row), {'id', 'name'})
+
+    def test_prepared_owner_lookup_returns_only_verified_identity(self):
+        """Exact username resolution remains server-side and never exposes usernames."""
+        rows = assignable_staff(
+            self.actor, self.machine, self.owner.username, exact_username=True
+        )
+        self.assertEqual(rows, [{'id': self.owner.pk, 'name': 'Avery Patel'}])
+
+    def test_assignee_compatibility_api_requires_directory_grant(self):
+        """An assignment permission cannot substitute for the separate directory grant."""
+        planner = get_user_model().objects.create_user(
+            username='directory-denied-planner'
+        )
+        group = Group.objects.create(name='Directory denied assignment planners')
+        role = group.rule_sets.get(name='work_order')
+        role.can_view = True
+        role.can_assign_workorder = True
+        role.save()
+        planner.groups.add(group)
+        with self.assertRaises(PermissionDenied):
+            assignable_staff(planner, self.machine)
+
+    def test_typed_owner_trade_override_is_explicit_and_audited(self):
+        """A supervisor can override a mismatch without accepting responsibility."""
+        result = create_repair_work_package(
+            actor=self.actor,
+            draft=self.draft(
+                planning={
+                    'assigned_to_id': self.owner.pk,
+                    'required_trades': ['electrical'],
+                    'trade_requirements_confirmed': True,
+                    'override_reason': 'Reviewed supervised exercise assignment',
+                }
+            ),
+            idempotency_key=uuid.uuid4().hex,
+            allow_assignment_override=True,
+        )
+        work = WorkOrder.objects.get(pk=result.work_order_id)
+        self.assertEqual(work.required_trades, ['electrical'])
+        self.assertIsNone(work.handovers.get().accepted_at)
+        decision = work.events.get(event_type='ASSIGNED').metadata['result_metadata']
+        self.assertEqual(decision['code'], 'ASSIGNMENT_MANUAL_OVERRIDE')
+        self.assertEqual(
+            decision['override_reason'], 'Reviewed supervised exercise assignment'
+        )
 
     def test_no_provider_is_truthful_and_writes_nothing(self):
         """Verify no provider is truthful and writes nothing."""

@@ -255,6 +255,40 @@ def validate_draft(payload) -> dict:
             valid_date = None
         if valid_date is None:
             raise WorkPackageError('due_date must be a valid ISO date.')
+    occupational = {}
+    if 'assigned_to' in planning:
+        occupational['assigned_to'] = _positive_int(planning, 'assigned_to')
+    if 'required_trades' in planning:
+        codes = planning['required_trades']
+        if (
+            not isinstance(codes, list)
+            or len(codes) > 20
+            or any(not isinstance(code, str) for code in codes)
+            or len(codes) != len(set(codes))
+        ):
+            raise WorkPackageError(
+                'required_trades must be a unique list of at most 20 trade codes.'
+            )
+        occupational['required_trades'] = codes
+    for flag in ('trade_requirements_confirmed', 'auto_assign'):
+        if flag in planning:
+            if not isinstance(planning[flag], bool):
+                raise WorkPackageError(f'{flag} must be a boolean.')
+            occupational[flag] = planning[flag]
+    if 'override_reason' in planning:
+        occupational['override_reason'] = _text(planning, 'override_reason', limit=1000)
+    assigned_to_id = _positive_int(planning, 'assigned_to_id')
+    if assigned_to_id is not None and occupational.get('assigned_to') not in (
+        None,
+        assigned_to_id,
+    ):
+        raise WorkPackageError('The assigned staff identities must agree.')
+    if occupational.get('auto_assign') and (
+        assigned_to_id is not None or occupational.get('assigned_to') is not None
+    ):
+        raise WorkPackageError(
+            'Choose automatic assignment or an explicit user, not both.'
+        )
 
     source = payload.get('source') or {}
     if not isinstance(source, dict):
@@ -298,7 +332,8 @@ def validate_draft(payload) -> dict:
         'parts': _validate_parts(payload.get('parts')),
         'planning': {
             'assignee': _text(planning, 'assignee', limit=255),
-            'assigned_to_id': _positive_int(planning, 'assigned_to_id'),
+            'assigned_to_id': assigned_to_id,
+            **occupational,
             'due_date': due_date,
             'estimated_minutes': _positive_int(planning, 'estimated_minutes'),
         },
@@ -479,7 +514,12 @@ def find_duplicate_repairs(machine, *, anomaly_id=None, exclude_work_order_id=No
 
 @transaction.atomic
 def create_repair_work_package(
-    *, actor, draft, idempotency_key: str, correlation_id: uuid.UUID | None = None
+    *,
+    actor,
+    draft,
+    idempotency_key: str,
+    correlation_id: uuid.UUID | None = None,
+    allow_assignment_override: bool = False,
 ) -> WorkPackageResult:
     """Atomically create one machine-linked work order and optional repair packet.
 
@@ -523,7 +563,19 @@ def create_repair_work_package(
             )
         work_order = WorkOrder.objects.get(pk=prior_package.work_order_id)
         work_orders._require_scope(actor, work_order)
-        return _creation_receipt(work_order, draft, idempotency_key, replayed=True)
+        package_event = work_order.events.filter(pk=prior_package.result_ref).first()
+        prior_metadata = (
+            (package_event.metadata.get('result_metadata') or {})
+            if package_event
+            else {}
+        )
+        return _creation_receipt(
+            work_order,
+            draft,
+            idempotency_key,
+            replayed=True,
+            warnings=prior_metadata.get('warnings', []),
+        )
     from .work_intake import reviewed_ai_draft
 
     ai_review = reviewed_ai_draft(actor, draft)
@@ -567,12 +619,13 @@ def create_repair_work_package(
 
     planning = draft['planning']
     assignee = None
-    if planning['assigned_to_id'] is not None:
+    selected_id = planning['assigned_to_id'] or planning.get('assigned_to')
+    if selected_id is not None:
         from .work_intake import assignment_candidate
 
-        assignee = assignment_candidate(actor, machine, planning['assigned_to_id'])
+        assignee = assignment_candidate(actor, machine, selected_id)
     if is_replay_of is not None and (
-        planning['assigned_to_id'] is not None or draft['source']['ai_draft_token']
+        selected_id is not None or draft['source']['ai_draft_token']
     ):
         raise scheduling.IdempotencyConflict(
             'This legacy request cannot be changed to include typed assignment or an AI draft.'
@@ -590,7 +643,20 @@ def create_repair_work_package(
         if assignee is not None
         else planning['assignee'],
         due_date=planning['due_date'],
+        allow_assignment_override=allow_assignment_override,
+        **{
+            key: planning[key]
+            for key in (
+                'assigned_to',
+                'required_trades',
+                'trade_requirements_confirmed',
+                'auto_assign',
+                'override_reason',
+            )
+            if key in planning and assignee is None
+        },
     )
+    assignment = (command.metadata or {}).get('assignment', {})
     replayed = bool(command.metadata.get('replayed'))
 
     work_order = WorkOrder.objects.get(pk=command.work_order_id)
@@ -605,7 +671,7 @@ def create_repair_work_package(
             ],
         )
     if assignee is not None:
-        work_orders.assign_work_order(
+        assignment_result = work_orders.assign_work_order(
             work_order_id=work_order.pk,
             assigned_to=assignee,
             actor=actor,
@@ -613,8 +679,15 @@ def create_repair_work_package(
             idempotency_key=f'package-assign-{uuid.uuid5(uuid.NAMESPACE_URL, idempotency_key)}',
             correlation_id=command.correlation_id,
             reason='Typed assignment reviewed during work-package creation.',
+            required_trades=planning.get('required_trades'),
+            trade_requirements_confirmed=planning.get('trade_requirements_confirmed'),
+            override_reason=planning.get('override_reason', ''),
+            allow_override=allow_assignment_override,
         )
+        assignment = assignment_result.metadata or {}
         work_order.refresh_from_db()
+    if assignment.get('code') not in (None, 'ASSIGNMENT_QUALIFIED'):
+        warnings.append(f'Assignment review required: {assignment["code"]}')
 
     # Scope flows from the asset's client via ``scope_for_work_order``; no field
     # sync is needed. ``estimated_minutes`` is planning metadata the create
@@ -695,6 +768,8 @@ def create_repair_work_package(
             'repair_packet_id': packet.pk if packet else None,
             'origin': draft['origin'],
             'ai_review': ai_review,
+            'warnings': warnings,
+            'assignment': assignment,
         },
     )
     return _creation_receipt(work_order, draft, idempotency_key, warnings=warnings)
