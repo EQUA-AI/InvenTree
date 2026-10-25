@@ -40,6 +40,14 @@ remain fail-closed; user titles do not establish approved trades.
 
 ### Final bounded release checkpoint
 
+Fable's final65f review independently passes97.1/100 with zero mandatory UI
+defects. It verifies the19+6 delta files,80 source identities,16 distinct actual
+axe scans and every measured contrast node; same-content screenshots/copies
+remain corroboration, not extra independent measurements. M6 is closed. Gemini's
+current final re-score is pending; no dual pass is inferred from an older score.
+Optional UI polish is deferred. Broader human, worker, mail-audit, external SMTP,
+SAP and Azure product acceptance remain separate and unclaimed.
+
 Fable's completed8a review scores94.5: M3/M4/M5 and real-capture G1 are closed,
 but seven sibling yellow/orange governance alerts keep the same measured-failing
 native defaults. This concrete M6 finding is mandatory, not optional polish.
@@ -58,7 +66,30 @@ The8a production image below is historical after this final source correction;
 the corrected candidate requires its own identity/build checks before release.
 No local real-data mutation or cloud operation is repeated for a theme change.
 
-Final production source is8a9426cef3c30511c580001d9a2015260e249427. The host
+The clean corrected source65f6dcd54cf3fa07add60b0164dfc1b410d3e545 is atomically
+pushed to both inventTree-aniket and IOT-Merge. Its host production build passes
+in17.07s; localhost5173 serves Alert.extend from the corrected native theme.
+The first two M6 test invocations omitted AIMMS_AXE_SOURCE: direct contrast
+assertions and screenshots passed, but auditAccessibility deliberately returned
+without running axe. Their34 saved JSON files contain native-state records,
+not axe evidence; in-memory body attachments are not independent saved receipts.
+Both reviewers
+are explicitly corrected before final acceptance. A fresh invocation supplies
+the local axe source and passes12/12 in34.7s, with16 actual independent scoped
+axe reports, zero violations and measured visible text in every report. Raw
+attachment copies are not counted as extra scans. The16 scans measure102 text
+contrast nodes with a minimum5.33:1; direct contrast assertions also pass. All
+raw measured reports and four fresh audited captures are supplied in a six-file
+addon after the19-file source/capture delta. No evidence is omitted or labelled
+as a completed audit merely because its helper was called.
+
+SMTP capture and native notification events are confirmed, but the mail log
+also contains two254-character field overflow warnings while persisting email
+audit records. Delivery is observed; complete email-audit persistence and a
+healthy running worker are not claimed. This retained backend follow-up is not
+silently fixed with a migration, fabricated audit record or unrelated queue drain.
+
+Previous production source was8a9426cef3c30511c580001d9a2015260e249427. The host
 Vite build passes in16.36s and the clean native AMD64 production image builds.
 Its local OCI index is477fe684df3c74e558855d42503f8fa762b1a42b8f84a6138d63eb76e1c5f07f;
 the AMD64 platform manifest is434bb1ba35ff2b598fb3d0292ada169ba76a03930d5b7b0373face3e6c3f642c.
@@ -262,3 +293,39 @@ changed. The corrected image must match a clean reviewed application commit.
 Evidence stays private and ignored under data/devscratch/fault-to-fix-20261025/.
 Do not attach database backups, credentials, sessions, upload tokens or private
 environment files to specialist reviews. Parent P17/D23 remain in progress.
+
+## Owner-authorized Azure handoff
+
+The owner now explicitly prefers finishing local fixes and pushing both branches,
+then leaving Azure deployment to another owner/developer if access still blocks
+it. Do not keep retrying uploads or promote an unverified revision to meet an
+estimate. No owned build or registry upload is left running. No Azure image,
+revision, worker or ordinary traffic is changed by this local finish.
+
+- Confirm the intended target first: readable aimms-experimental in EpconChat
+  is observed, not a confirmation that it replaces the older aimms-dev target.
+- Build the clean reviewed65f source, not superseded8a/ef48 images. Check matching
+  frontend/backend identities, immutable registry digest and runtime health.
+  The corrected host build is verified; a corrected Docker image is not yet built.
+- Supply authorized metadata access for the intended worker. Inventory digest,
+  command/args, queues, environment names, mounts, heartbeat, failures and backlog
+  without exposing values. Preserve invoke worker and INVENTREE_AUTO_UPDATE=False; do not
+  introduce a second migration owner. Align to the reviewed immutable web digest
+  and verify a bounded representative task plus a fresh heartbeat.
+- Supply an approved operator session valid for the candidate and normal host.
+  Use contrib/container/AIMMS-release-checks.md and the GET-only authenticated
+  checker before and after any authorized traffic promotion. Public alive/ready
+  on the old build is not this check.
+- Inspect static mounts before staging: init.sh copies SPA files into the static
+  root, so a supposedly zero-traffic revision must not overwrite shared live SPA
+  assets. Preserve the current live revision for rollback.
+- No new migration or local-to-Azure data copy is needed by these UI fixes.
+  External SMTP remains separate from local Mailpit; a sender address alone is
+  not credentials or proof of external delivery. SAP/physical release remain
+  unverified and independent of software-exercise recovery.
+
+Actual Work3859/packet36 remains Draft after safe exercise cleanup. An authorized
+independent human must publish procedure3/revision3 and complete its three
+governed checks through the native workflow before final report submission,
+independent approval and Work completion can be accepted. The fixture contract
+passes; no human approval or maintenance fact is invented on the owner's behalf.

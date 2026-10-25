@@ -2,7 +2,16 @@
 
 ## Real local rehearsal and Azure follow-through — in progress
 
-Final review at8a9426cef scores Fable94.5 and leaves one mandatory contrast
+Fable's final independent65f review passes97.1/100 with zero mandatory UI
+defects, verifying all16 genuine measured axe scans and the complete80-source
+candidate. Gemini's final independent re-score is still pending: do not invent
+a dual pass. The owner explicitly authorizes leaving Azure to another developer
+if access blocks it. Local code is already pushed to both branches; no image
+upload or Azure operation remains running. Use the execution ledger's Azure
+handoff rather than restarting blind upload/deployment attempts.
+
+Current production freeze is65f6dcd54cf3fa07add60b0164dfc1b410d3e545 on both
+origin branches. Final review at8a9426cef scores Fable94.5 and leaves one contrast
 gap in seven sibling governance alerts. A native theme default now fixes message
 and title contrast for the implicit/light Alert variant only; filled, outline
 and other explicit variants retain their native styles. The two scattered
@@ -13,7 +22,7 @@ This production correction supersedes the8a image described below: a matching
 clean image is required before any eventual release. No extra test event, data
 change, approval or Azure promotion is performed for a theme-only correction.
 
-Current application/image freeze is8a9426cef3c30511c580001d9a2015260e249427.
+Previous application/image freeze was8a9426cef3c30511c580001d9a2015260e249427.
 The final AMD64 production build and isolated network-disabled identity,
 native-driver, pip and tokenizer checks pass. Host Vite also builds in16.36s.
 The ef48 image is historical and must not be promoted as the current fix.
