@@ -87,16 +87,19 @@ def build_aggregate_plan(text: str) -> dict[str, Any]:
     }
 
 
-def default_trend_window(today: datetime.date) -> tuple[str, str]:
-    """The last twelve full months plus the current one, half-open.
+def default_trend_window(today: datetime.date, *, months: int = 12) -> tuple[str, str]:
+    """Twelve calendar months including the partial current month, half-open.
 
     A trend question with no explicit window must still be bounded (the
     36-bucket cap refuses open-ended history); "the last year" is the
     domain default and is always echoed in the answer's filters.
     """
     end_exclusive = (today.replace(day=1) + datetime.timedelta(days=32)).replace(day=1)
-    start_year = today.year - 1
-    start = today.replace(year=start_year, month=today.month, day=1)
+    if not 1 <= months <= 36:
+        raise ValueError("trend month window must be between 1 and 36")
+    first_month = today.year * 12 + today.month - months
+    year, month = divmod(first_month, 12)
+    start = today.replace(year=year, month=month + 1, day=1)
     return start.isoformat(), end_exclusive.isoformat()
 
 
@@ -114,7 +117,7 @@ def build_trend_plan(text: str) -> dict[str, Any]:
     else:
         population = "work_orders"
         date_field = _date_field(content)
-    return {
+    plan = {
         "plan_version": 1,
         "intent": "trend_analysis",
         "population_type": population,
@@ -122,6 +125,12 @@ def build_trend_plan(text: str) -> dict[str, Any]:
         "date_field": date_field,
         "population_requirement": "complete",
     }
+    window = re.search(r"\b(?:last|past)\s+(\d+)\s+months?\b", content, re.IGNORECASE)
+    if window is not None:
+        # Longer numbers are necessarily outside the 36-month limit. Do
+        # not parse arbitrary-length integers supplied in turn content.
+        plan["window_months"] = int(window[1]) if len(window[1]) <= 2 else 37
+    return plan
 
 
 __all__ = ["build_aggregate_plan", "build_trend_plan", "default_trend_window"]

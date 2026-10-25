@@ -821,11 +821,12 @@ class NormalizedTurnService:
         thread_id: str,
         turn_id: str,
         emitter: EventEmitter | None,
+        actor: AIPrincipal | None = None,
     ) -> dict[str, Any]:
         """Attach the S28 server-observed entity manifest; fail-soft."""
         try:
             from ai.core.config import get_settings
-            from ai.core.entities import build_entity_manifest
+            from ai.core.entities import build_entity_manifest, resolve_observed_record_roots
 
             if not get_settings().feature_entity_manifest:
                 return canonical
@@ -847,12 +848,27 @@ class NormalizedTurnService:
             from ai.core.tools.capture_ledger import current_tool_captures
 
             ledger = current_tool_captures()
+            observed = (
+                ledger.observed_entity_refs() if ledger is not None and ledger.captures else None
+            )
+            roots = tuple(getattr(diagnostic_context, "record_roots", ()) or ())
+            if actor is not None and observed:
+                # Fresh resolution also replaces diagnostic roots of these
+                # kinds: a revoked observation must not fall back to a root
+                # authorized earlier in this turn or retain an old label.
+                roots = tuple(
+                    root
+                    for root in roots
+                    if getattr(root, "entity_type", "")
+                    not in ("machine", "asset_machine", "assetmachine", "work_order", "workorder")
+                )
+                roots += await self._call_sync(
+                    resolve_observed_record_roots, actor.user_pk, observed
+                )
             entities = build_entity_manifest(
                 canonical=canonical,
-                record_roots=getattr(diagnostic_context, "record_roots", ()),
-                observed_entities=ledger.observed_entity_refs()
-                if ledger is not None and ledger.captures
-                else None,
+                record_roots=roots,
+                observed_entities=observed,
             )
             if not entities:
                 return canonical

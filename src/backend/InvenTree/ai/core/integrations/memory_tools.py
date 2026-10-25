@@ -1,6 +1,6 @@
 """Prepare owner memory actions; model tools never confirm or mutate facts."""
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from ai.core.maf_compat import ai_function
 from ai.core.tools.read_only import guard_write_tool
@@ -10,7 +10,9 @@ from asgiref.sync import sync_to_async
 @ai_function
 @guard_write_tool
 async def propose_memory_action(
-    action: Literal["remember", "update", "forget", "forget_all"],
+    action: Annotated[
+        Literal["remember", "update", "forget", "forget_all"], "The memory action to review."
+    ],
     request_key: str,
     memory_fact_id: str | None = None,
     expected_version: int | None = None,

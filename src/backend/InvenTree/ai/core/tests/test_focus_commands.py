@@ -163,3 +163,22 @@ def test_continuity_never_rewrites_explicit_or_unfocused_turns() -> None:
         commands.continuity_content("what is its status?", {"focus": {}, "version": 0})
         == "what is its status?"
     )
+
+
+def test_selected_machine_request_carries_the_recorded_identity():
+    text = (
+        "Show the selected machine's recorded model, serial number, and location "
+        "in a read-only asset summary card. Use the existing machine record."
+    )
+    assert commands.selected_focus_kind(text) == "machine"
+    assert commands.continuity_content(text, _snapshot()) == (
+        text + " — Influent Pump Station No. 1 (machine 3)"
+    )
+    assert commands.continuity_content(text, None) == text
+    assert commands.selected_focus_kind(text + " Compare with machine 7.") is None
+    assert commands.continuity_content(text + " Compare with machine 7.", _snapshot()) == (
+        text + " Compare with machine 7."
+    )
+    assert commands.continuity_content("Show the selected work order's status.", _snapshot()) == (
+        "Show the selected work order's status."
+    )

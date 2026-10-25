@@ -300,6 +300,29 @@ def is_bare_anaphora(text: str) -> bool:
     return True
 
 
+_SELECTED_FOCUS_RE = re.compile(
+    r"\bselected\s+(?P<kind>machine|asset|equipment|work\s*order|task|card)\b", re.I
+)
+
+
+def selected_focus_kind(content: str) -> str | None:
+    """An explicit reference to the selected kind, with no competing typed ID.
+
+    This is distinct from short pronoun anaphora: a detailed request for the
+    selected machine's model/serial/location still needs its recorded binding.
+    Explicit numeric references always keep their original routing input.
+    """
+    matches = list(_SELECTED_FOCUS_RE.finditer(content))
+    if len(matches) != 1 or _ID_RE.search(content):
+        return None
+    kind = matches[0].group("kind").lower()
+    if kind in ("machine", "asset", "equipment"):
+        return KIND_MACHINE
+    if kind in ("task", "card"):
+        return KIND_KANBAN_CARD
+    return KIND_WORK_ORDER
+
+
 def continuity_content(content: str, focus_snapshot: dict[str, Any] | None) -> str:
     """Reference continuity: bind a bare anaphor to the recorded focus.
 
@@ -312,10 +335,11 @@ def continuity_content(content: str, focus_snapshot: dict[str, Any] | None) -> s
     """
     from ai.core.focus.contract import focus_from_stored
 
-    if not is_bare_anaphora(content) or not isinstance(focus_snapshot, dict):
+    reference_kind = selected_focus_kind(content)
+    if not (is_bare_anaphora(content) or reference_kind) or not isinstance(focus_snapshot, dict):
         return content
     target = focus_from_stored(focus_snapshot.get("focus"))
-    if target is None:
+    if target is None or (reference_kind is not None and target.kind != reference_kind):
         return content
     phrase = KIND_PHRASES.get(target.kind, target.kind)
     return f"{content} — {target.label} ({phrase} {target.id})"
@@ -411,10 +435,18 @@ async def maybe_handle(service: NormalizedTurnService, run: TurnRun) -> dict[str
     command = parse_focus_command(run.content)
     if command is not None:
         return await _handle_switch(service, run, command)
-    if is_bare_anaphora(run.content):
+    reference_kind = selected_focus_kind(run.content)
+    if is_bare_anaphora(run.content) or reference_kind is not None:
         work_focus = getattr(run, "work_focus", None)
         if not _snapshot_has_target(run):
-            if isinstance(work_focus, dict):
+            if isinstance(work_focus, dict) and (
+                reference_kind is None
+                or (reference_kind == KIND_MACHINE and work_focus.get("machine_id") is not None)
+                or (
+                    reference_kind == KIND_WORK_ORDER
+                    and work_focus.get("work_order_id") is not None
+                )
+            ):
                 # The receipt was verified under begin_turn's row lock. A
                 # per-turn Work target is explicit even when the conversation
                 # has no persistent target; never guess from transcript text.
@@ -431,6 +463,18 @@ async def maybe_handle(service: NormalizedTurnService, run: TurnRun) -> dict[str
             )
             service._abandon_pending_question(thread_id=run.thread.pk)
             return _focus_canonical(service, run, message=message, workflow="focus_clarify")
+        if reference_kind is not None:
+            from ai.core.focus.contract import focus_from_stored
+
+            target = focus_from_stored(run.focus_snapshot["focus"])
+            if target is None or target.kind != reference_kind:
+                service._abandon_pending_question(thread_id=run.thread.pk)
+                return _focus_canonical(
+                    service,
+                    run,
+                    message="Select a matching conversation target before asking about it.",
+                    workflow="focus_clarify",
+                )
         if isinstance(work_focus, dict) and not _focus_matches_work(run):
             # Both snapshots are independently authorized, but their recorded
             # subjects disagree. Do not silently reinterpret a pronoun against

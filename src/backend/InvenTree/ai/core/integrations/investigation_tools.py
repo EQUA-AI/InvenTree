@@ -3,7 +3,7 @@
 import hashlib
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from ai.core.maf_compat import ai_function
 from ai.core.tools.read_only import guard_write_tool
@@ -25,7 +25,10 @@ def bind_investigation_source(thread_id: str, turn_id: str):
 @ai_function
 @guard_write_tool
 async def propose_investigation_artifact(
-    kind: Literal["observation", "reading_set", "photo", "report", "laboratory", "check_result"],
+    kind: Annotated[
+        Literal["observation", "reading_set", "photo", "report", "laboratory", "check_result"],
+        "The kind of technician evidence to review.",
+    ],
     payload: dict[str, Any],
     request_key: str,
     file_id: str | None = None,

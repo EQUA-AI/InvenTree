@@ -422,12 +422,23 @@ def _retrieve_trend(
     bucket = plan["bucket"]
 
     # An unbounded trend would refuse on the bucket cap; the domain default
-    # is the last twelve full months, always echoed in the filters.
+    # is twelve calendar months including the partial current month. An
+    # explicit supported month count overrides that default; the recorded
+    # analysis-scope window remains authoritative when present.
     if not narrowing.get("date_from") and not narrowing.get("date_to"):
         tz, _tzname = plant_timezone()
         today = _datetime.datetime.now(tz).date()
-        narrowing["date_from"], narrowing["date_to"] = default_trend_window(today)
-        plan["window_default"] = "last_12_months"
+        months = plan.get("window_months", 12)
+        try:
+            narrowing["date_from"], narrowing["date_to"] = default_trend_window(
+                today, months=months
+            )
+        except ValueError as exc:
+            raise _vocabulary_incomplete(
+                AnalyticsRequestError("bucket_range_exceeded", "Use a window of 1 to 36 months.")
+            ) from exc
+        plan["window_default"] = f"last_{months}_months"
+        plan["window_includes_current_month"] = True
 
     if population == "maintenance_records":
 

@@ -1,5 +1,16 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## AI/OpenUI live-result fixes — 25 October 2026
+
+The reproducible SDK-schema, negative-action selection, ordinary-chat entity
+manifest and detailed selected-machine binding defects are repaired on EQUA.
+The twelve-month trend path now has real scoped ORM/evidence/persistence coverage.
+[Repair and verification ledger](reports/chat-openui-live-fixes-20261025.md):
+2,266 backend passes with 15 baseline-identical classifier failures explicitly
+retained; 224 frontend units and 30 browser checks pass. Local source qualification
+only; release rollout, the approved site/account/provider matrix and human/device
+acceptance remain open. Existing Azure/default analysis gates are unchanged.
+
 ## Chat drawer and OpenUI — 25 October 2026
 
 OpenUI generation is enabled by default on the synchronized EQUA baseline. The
