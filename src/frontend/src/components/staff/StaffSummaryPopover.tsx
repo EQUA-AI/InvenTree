@@ -1,6 +1,7 @@
 import type { StaffScope } from '@lib/types/Staff';
 import { t } from '@lingui/core/macro';
 import { Button, Loader, Popover, Stack, Text } from '@mantine/core';
+import { IconInfoCircle } from '@tabler/icons-react';
 import { useState } from 'react';
 import { useStaffAccess, useStaffMember } from './useStaffDirectory';
 
@@ -32,7 +33,14 @@ export function StaffSummaryPopover({
         <Button
           variant='subtle'
           size='compact-sm'
-          style={{ whiteSpace: 'normal', height: 'auto', textAlign: 'left' }}
+          justify='flex-start'
+          rightSection={<IconInfoCircle size={14} />}
+          style={{
+            whiteSpace: 'normal',
+            height: 'auto',
+            textAlign: 'left',
+            alignSelf: 'flex-start'
+          }}
           aria-label={t`Staff details: ${fallback}`}
           aria-expanded={opened}
           aria-haspopup='dialog'

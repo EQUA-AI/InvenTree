@@ -241,7 +241,7 @@ export function BoardTaskCard({
               scope={{ workOrderId: task.workOrderId, kanbanCardId: task.id }}
             />
             {task.assignmentInherited && (
-              <Text size='xs' c='dimmed'>{t`Inherited from work order`}</Text>
+              <Text size='xs'>{t`Inherited from work order`}</Text>
             )}
           </Stack>
         ) : (

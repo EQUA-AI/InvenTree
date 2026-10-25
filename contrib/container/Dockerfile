@@ -13,10 +13,6 @@
 FROM python:3.14.7-slim-trixie@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6 AS inventree_base
 
 # Build arguments for this image
-ARG commit_tag=""
-ARG commit_hash=""
-ARG commit_date=""
-
 ARG data_dir="data"
 ARG NODE_VERSION=24.21.0
 
@@ -64,9 +60,7 @@ LABEL org.opencontainers.image.vendor="inventree" \
       org.opencontainers.image.url="https://inventree.org" \
       org.opencontainers.image.documentation="https://docs.inventree.org" \
       org.opencontainers.image.source="https://github.com/inventree/InvenTree" \
-      org.opencontainers.image.revision=${commit_hash} \
-      org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.version=${commit_tag}
+      org.opencontainers.image.licenses="MIT"
 
 # Install basic system level packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -110,17 +104,7 @@ RUN chmod +x init.sh
 ENTRYPOINT ["/bin/bash", "./init.sh"]
 
 # Multi-stage build to compile project requirements
-FROM inventree_base AS builder_stage
-
-# ACR's classic Docker builder does not inherit ARG values from the parent stage.
-ARG commit_hash=""
-
-ARG NODE_VERSION=24.21.0
-ENV INVENTREE_FRONTEND_FROZEN_LOCKFILE=True
-
-# Copy source files
-COPY src ${INVENTREE_HOME}/src
-COPY tasks.py ${INVENTREE_HOME}/tasks.py
+FROM inventree_base AS backend_dependencies
 
 # Install backend build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -131,11 +115,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Build and install python dependencies
-RUN pip install --user --require-hashes -r base_requirements.txt --no-cache-dir && \
+RUN /usr/bin/mariadb_config --cc_version && \
+    MARIADB_CONFIG=/usr/bin/mariadb_config pip install --user --require-hashes -r base_requirements.txt --no-cache-dir && \
     pip install --user --require-hashes -r requirements.txt --no-cache-dir && \
     python -m pip check && \
     pip cache purge && \
     rm -rf /root/.cache/pip
+
+FROM backend_dependencies AS builder_stage
+
+ARG NODE_VERSION=24.21.0
+ENV INVENTREE_FRONTEND_FROZEN_LOCKFILE=True
+
+COPY src ${INVENTREE_HOME}/src
+COPY tasks.py ${INVENTREE_HOME}/tasks.py
 
 # Bake the tokenizer vocabulary into the image (no runtime egress).
 RUN mkdir -p "$TIKTOKEN_CACHE_DIR" \
@@ -152,6 +145,7 @@ RUN npm install -g n --ignore-scripts
 RUN n "${NODE_VERSION}"
 RUN npm install -g yarn --ignore-scripts && \
     yarn config set network-timeout 600000 -g
+ARG commit_hash=""
 RUN cd "${INVENTREE_HOME}" && INVENTREE_COMMIT_HASH="${commit_hash}" invoke int.frontend-compile --extract && \
     python -c 'import json, sys; from pathlib import Path; expected = sys.argv[1]; data = json.loads(Path("src/backend/InvenTree/web/static/web/build-info.json").read_text()); assert not expected or data == {"commit": expected, "dirty": False, "ui_contract": 1}, "Frontend build identity does not match commit_hash"' "${commit_hash}"
 
@@ -162,6 +156,10 @@ FROM inventree_base AS production
 
 ARG commit_hash=""
 ARG commit_date=""
+ARG commit_tag=""
+
+LABEL org.opencontainers.image.revision=${commit_hash} \
+      org.opencontainers.image.version=${commit_tag}
 
 ENV INVENTREE_DEBUG=False
 
@@ -208,6 +206,12 @@ RUN pip-licenses --format=json --with-license-file --no-license-path > "${INVENT
 CMD ["sh", "-c", "exec gunicorn -k uvicorn.workers.UvicornWorker -c ./gunicorn.conf.py InvenTree.asgi:application -b 0.0.0.0:8000 --chdir ${INVENTREE_BACKEND_DIR}/InvenTree"]
 
 FROM builder_stage AS dev
+
+ARG commit_hash=""
+ARG commit_tag=""
+
+LABEL org.opencontainers.image.revision=${commit_hash} \
+      org.opencontainers.image.version=${commit_tag}
 
 ENV PATH=/root/.local/bin:$PATH
 

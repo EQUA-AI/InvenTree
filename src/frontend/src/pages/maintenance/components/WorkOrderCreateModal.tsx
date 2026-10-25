@@ -17,7 +17,8 @@ import {
   Switch,
   Text,
   TextInput,
-  Textarea
+  Textarea,
+  useMantineTheme
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
@@ -46,6 +47,11 @@ import type { RetainedCommand } from '../../../hooks/useRetainedCommand';
 import { type IntakeDraft, WorkIntakePanel } from './WorkIntakePanel';
 import { WorkOrderAssigneeSelect } from './WorkOrderAssigneeSelect';
 import { matchesWorkPackageReceipt } from './workPackageReceipt';
+import {
+  type AssignmentWarningCode,
+  assignmentWarningCode,
+  assignmentWarningNeedsReview
+} from './workPackageWarnings';
 
 /** One requested part line in the draft. */
 interface DraftPart {
@@ -81,16 +87,31 @@ export interface WorkPackageResult {
 
 export function showWorkPackageWarnings(warnings: readonly string[] = []) {
   if (!warnings.length) return;
+  const messages: Record<AssignmentWarningCode, string> = {
+    ASSIGNMENT_UNASSIGNED: t`No owner is assigned. Assign authorized staff before work starts.`,
+    ASSIGNMENT_QUALIFIED: t`The assigned staff member matches the recorded trade requirements. This is not a safety certification.`,
+    ASSIGNMENT_REQUIREMENTS_UNKNOWN: t`Trade requirements have not been confirmed. Review staff suitability before work starts.`,
+    ASSIGNMENT_MANUAL_OVERRIDE: t`Authorized trade mismatch override recorded with its reason. This does not authorize work to start.`,
+    ASSIGNMENT_PERSON_UNAVAILABLE: t`The selected staff member is unavailable. Review the owner before work starts.`,
+    ASSIGNMENT_REQUIREMENTS_INVALID: t`The recorded trade requirements are invalid. Review and confirm them before work starts.`,
+    ASSIGNMENT_TRADE_MISMATCH: t`The selected staff member does not cover every required trade. Review the assignment or obtain an authorized override.`,
+    ASSIGNMENT_AMBIGUOUS: t`Several staff members match the recorded requirements. Review and select an owner.`,
+    ASSIGNMENT_NO_QUALIFIED_MATCH: t`No staff member matches all recorded trade requirements. Review the requirements and assignment.`,
+    ASSIGNMENT_REVIEW_REQUIRED: t`The assignment needs human review before work starts.`
+  };
+  const codes = warnings.map(assignmentWarningCode);
+  const needsReview = codes.some(assignmentWarningNeedsReview);
   notifications.show({
-    title: t`Work order created — review required`,
+    title: needsReview
+      ? t`Work order created — review required`
+      : t`Work order created — assignment recorded`,
     message: warnings
-      .map((warning) =>
-        warning.includes('ASSIGNMENT_REQUIREMENTS_UNKNOWN')
-          ? t`Trade requirements have not been confirmed. Review staff suitability before work starts.`
-          : warning
-      )
+      .map((warning, index) => {
+        const code = codes[index];
+        return code ? messages[code] : warning;
+      })
       .join('\n'),
-    color: 'orange',
+    color: needsReview ? 'orange' : 'blue',
     autoClose: false
   });
 }
@@ -198,6 +219,7 @@ export function WorkOrderCreateModal({
   onCreated
 }: Readonly<WorkOrderCreateModalProps>) {
   const api = useApi();
+  const theme = useMantineTheme();
   const staffAccess = useStaffAccess();
   const [selectedStaff, setSelectedStaff] = useState<StaffMember>();
   const [serverAssignmentMismatch, setServerAssignmentMismatch] =
@@ -962,6 +984,7 @@ export function WorkOrderCreateModal({
             <Switch
               label={t`Create a repair packet`}
               description={t`Adds the fault-to-fix aggregate: diagnosis, required parts and safety gates. Creating it plans the repair; it does not start it.`}
+              styles={{ description: { color: 'var(--mantine-color-text)' } }}
               checked={form.values.createPacket}
               onChange={(event) => {
                 setPacketChoiceTouched(true);
@@ -987,7 +1010,10 @@ export function WorkOrderCreateModal({
                 <Button
                   type='submit'
                   loading={saving}
-                  color={duplicates === null ? undefined : 'orange'}
+                  color={
+                    duplicates === null ? `${theme.primaryColor}.8` : 'orange.9'
+                  }
+                  autoContrast
                   disabled={
                     assignmentBlocked ||
                     command.storageFailed ||

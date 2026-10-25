@@ -15,7 +15,8 @@ export default defineConfig({
     's6/pui_service_report_workflow.spec.ts',
     's6/pui_pump08_intake.spec.ts',
     's6/pui_automatic_test_work.spec.ts',
-    'mimic/pui_mimic.spec.ts'
+    'mimic/pui_mimic.spec.ts',
+    'mimic/pui_mimic_layout.spec.ts'
   ],
   outputDir: resolve(tmpdir(), `aimms-test-alarm${harnessSuffix}`),
   use: {
@@ -42,6 +43,7 @@ export default defineConfig({
     { name: 'desktop', use: devices['Desktop Chrome'] },
     {
       name: 'phone',
+      testIgnore: '**/mimic/pui_mimic_layout.spec.ts',
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 390, height: 844 }

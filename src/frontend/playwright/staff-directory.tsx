@@ -3,6 +3,8 @@ import { i18n } from '@lingui/core';
 import { I18nProvider } from '@lingui/react';
 import { Button, MantineProvider, Stack, Text } from '@mantine/core';
 import '@mantine/core/styles.css';
+import '@mantine/notifications/styles.css';
+import { Notifications } from '@mantine/notifications';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { useState } from 'react';
@@ -48,7 +50,7 @@ function Fixture() {
   if (mode === 'assignment' && !workOrder.data)
     return <Text>Loading work order</Text>;
   return (
-    <Stack p='md'>
+    <Stack p='md' mih='100vh'>
       <Button
         onClick={() => {
           useUserState.getState().setUser({
@@ -106,6 +108,7 @@ function Fixture() {
 createRoot(document.getElementById('root')!).render(
   <I18nProvider i18n={i18n}>
     <MantineProvider>
+      <Notifications />
       <ApiProvider api={axios.create()} client={queryClient}>
         <MemoryRouter>
           <Fixture />

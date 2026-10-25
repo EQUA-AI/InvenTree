@@ -5,7 +5,8 @@ import {
   knownNoActiveAlarms,
   missingContributors,
   operatingState,
-  readingSeverity
+  readingSeverity,
+  stationRunningSummary
 } from './mimicVisuals';
 import type { MimicAlarm, MimicData, MimicPoint } from './types';
 
@@ -71,6 +72,74 @@ const data = (extra: Partial<MimicPoint> = {}): MimicData => ({
 });
 
 describe('source-driven mimic emphasis', () => {
+  it('counts the same running bay states as the drawing and preserves a conflicting station counter', () => {
+    const source = data();
+    source.layout.elements.push({
+      id: 'pumps-running',
+      view: 'station',
+      pointer: '/pc',
+      role: 'value',
+      label: 'Pumps running',
+      x: 0,
+      y: 0
+    });
+    source.station_points['/pc'] = point({ pointer: '/pc', value: 1 });
+    expect(stationRunningSummary(source)).toMatchObject({
+      running: 1,
+      known: 1,
+      total: 1,
+      reported: 1,
+      disagreement: false
+    });
+    source.bays[0].state = 'idle';
+    expect(stationRunningSummary(source)).toMatchObject({
+      running: 0,
+      known: 1,
+      reported: 1,
+      disagreement: true
+    });
+    expect(source.station_points['/pc'].value).toBe(1);
+    expect(source.bays[0].state).toBe('idle');
+  });
+
+  it.each(['unknown', 'stale', 'not_bound'])(
+    'does not turn %s bays into a zero-running assertion',
+    (state) => {
+      const source = data();
+      source.bays[0].state = state;
+      expect(stationRunningSummary(source)).toMatchObject({
+        running: 0,
+        known: 0,
+        unknown: 1,
+        disagreement: false
+      });
+    }
+  );
+
+  it.each([{ enabled: false }, { reporting: false }, { read_failed: true }])(
+    'keeps unavailable source statuses out of the confirmed count: %j',
+    (extra) => {
+      expect(stationRunningSummary({ ...data(), ...extra })).toMatchObject({
+        running: 0,
+        known: 0,
+        unknown: 1,
+        reported: null
+      });
+    }
+  );
+
+  it('retains partial coverage instead of treating an unknown bay as idle', () => {
+    const source = data();
+    source.bays.push({ ...source.bays[0], key: 'P8', state: 'unknown' });
+    expect(stationRunningSummary(source)).toMatchObject({
+      running: 1,
+      known: 1,
+      total: 2,
+      unknown: 1,
+      disagreement: false
+    });
+  });
+
   it('requires running and an actual positive current discharge reading for motion', () => {
     const source = data();
     expect(hasDischargeFlow(source, source.bays[0])).toBe(true);

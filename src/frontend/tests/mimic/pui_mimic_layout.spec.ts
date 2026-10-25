@@ -128,6 +128,83 @@ for (const size of sizes) {
         );
       });
 
+      test('running count exposes a conflicting source counter without inventing a running pump', async ({
+        page
+      }, info) => {
+        await page.route(
+          '**/api/machine-health/station/17/mimic/**',
+          (route) => {
+            const data = fixture(null);
+            data.station_points['/pc'].value = 1;
+            data.station_points['/st'].value = 'R';
+            return route.fulfill({ json: data });
+          }
+        );
+        await page.goto(mimicEntry(`/?scheme=${scheme}`));
+        await expect(
+          page.locator(
+            '[data-station-metric="pumps-running"] [data-reading-value]'
+          )
+        ).toHaveText('0 of 14');
+        await expect(page.locator('[data-count-mismatch]')).toHaveText(
+          'Count mismatch — station counter reports 1. Check source status readings.'
+        );
+        await expect(
+          page.locator('g[data-operating-state="running"]')
+        ).toHaveCount(0);
+        await expect(
+          page.locator('g[data-operating-state="idle"]')
+        ).toHaveCount(14);
+        await contained(page, size.name === 'phone');
+        await page.screenshot({
+          path: info.outputPath(
+            `station-count-mismatch-${size.name}-${scheme}.png`
+          ),
+          fullPage: true,
+          animations: 'disabled'
+        });
+      });
+
+      test('running count and the identified running pump use the same state', async ({
+        page
+      }, info) => {
+        await page.route(
+          '**/api/machine-health/station/17/mimic/**',
+          (route) => {
+            const data = fixture(null);
+            data.station_points['/pc'].value = 1;
+            const runningBay = data.bays.find((bay) => bay.key === 'P5')!;
+            runningBay.state = 'running';
+            runningBay.points['/pd/P5/st'].value = 'R';
+            return route.fulfill({ json: data });
+          }
+        );
+        await page.goto(mimicEntry(`/?scheme=${scheme}`));
+        await expect(
+          page.locator(
+            '[data-station-metric="pumps-running"] [data-reading-value]'
+          )
+        ).toHaveText('1 of 14');
+        await expect(
+          page.locator('g[data-operating-state="running"]')
+        ).toHaveCount(1);
+        await expect(page.locator('g[data-bay="P5"]')).toHaveAttribute(
+          'data-operating-state',
+          'running'
+        );
+        await expect(
+          page.locator('g[data-bay="P5"] [data-running-icon]')
+        ).toHaveCount(1);
+        await expect(page.locator('[data-count-mismatch]')).toHaveCount(0);
+        await page.screenshot({
+          path: info.outputPath(
+            `station-count-running-${size.name}-${scheme}.png`
+          ),
+          fullPage: true,
+          animations: 'disabled'
+        });
+      });
+
       test('station readings and fourteen selectable pumps stay readable and separate', async ({
         page
       }) => {

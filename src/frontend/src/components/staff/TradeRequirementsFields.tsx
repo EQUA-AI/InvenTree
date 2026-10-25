@@ -24,6 +24,7 @@ export function TradeRequirementsFields({
       <MultiSelect
         label={t`Required trades`}
         description={t`Recorded assignment requirements, not a license or safety certification.`}
+        styles={{ description: { color: 'var(--mantine-color-text)' } }}
         data={[
           ...catalogue
             .filter((trade) => trade.active || value.includes(trade.code))
@@ -66,10 +67,7 @@ export function TradeRequirementsFields({
         onChange={(event) => onConfirm(event.currentTarget.checked)}
       />
       {!confirmed && (
-        <Text
-          size='xs'
-          c='dimmed'
-        >{t`Assignment review required until the work requirements are confirmed.`}</Text>
+        <Text size='xs'>{t`Assignment review required until the work requirements are confirmed.`}</Text>
       )}
     </Stack>
   );

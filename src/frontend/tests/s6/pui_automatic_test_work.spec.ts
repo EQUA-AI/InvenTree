@@ -210,6 +210,7 @@ async function openAutomaticWork(
     name: 'Configured test signal',
     exact: true
   });
+  await signal.click();
   await signal.fill('Motor Winding Temperature 6');
   await page
     .getByRole('option', { name: /Motor Winding Temperature 6/ })

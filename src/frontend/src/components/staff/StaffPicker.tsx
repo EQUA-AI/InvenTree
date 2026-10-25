@@ -53,10 +53,7 @@ export function StaffPicker({
   const review = assignmentReview(person, requiredTrades, confirmed);
   if (!access.directory) {
     return (
-      <Text
-        size='sm'
-        c='dimmed'
-      >{t`Staff directory access is required to select personnel.`}</Text>
+      <Text size='sm'>{t`Staff directory access is required to select personnel.`}</Text>
     );
   }
   return (
@@ -92,7 +89,7 @@ export function StaffPicker({
         data={[
           ...Array.from(people.values()).map((staff) => ({
             value: String(staff.user_id),
-            label: `${staff.display_name} — ${staff.job_title || t`Job title not provided`} (#${staff.user_id})`
+            label: `${staff.display_name} (#${staff.user_id}) — ${staff.job_title || t`Job title not provided`}`
           })),
           ...(value != null && !people.has(value)
             ? [

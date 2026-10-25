@@ -1,5 +1,41 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## Integrated branches pushed; Azure schema aligned — 25 October 2026
+
+Both origin branches inventTree-aniket and IOT-Merge point to4774fcca25dc90a510f404ea082d4928a987c13d
+after a normal atomic push. No history is overwritten. The Azure database and
+local aimms_azure_copy now both include tasks0061_staff_assignment_requirements,
+tasks0062_merge_procedure_scope_staff_assignment and users0027_staff_directory;
+independent read-only postflight finds zero pending Azure migrations. Private
+full pre-change backups and complete archive readback are retained; no restore
+test or local-to-Azure data copy is claimed. Existing compared records remain
+unchanged, and directory grants remain default-off.
+
+The merged frontend scores Gemini98.75 but Fable87.2: the dual95+ gate fails.
+Concrete Fable findings take precedence over the conflicting broad pass:
+low-contrast helper text, vacuous creation-modal contrast evidence and raw or
+misleading assignment warnings. A focused remediation fixes scoped helper
+colours and warning copy and strengthens visible-text contrast verification.
+New independent scoring is required; earlier scores do not accept the changes.
+
+The first AMD64 production image build fails because MariaDB's source package
+selects /usr/local/bin/mariadb_config instead of Debian's /usr/bin utility.
+The follow-up explicitly selects and verifies the installed binary; a successful
+production rebuild is still required. No image push, revision or traffic change
+has occurred. Operator-session and worker-access checks remain blocking for live
+promotion. See the release report for exact backups, receipts and limitations.
+
+Focused remediation now passes18 staff browser cases and235 frontend units.
+Creation axe evidence measures actual visible text after correcting the fixture's
+short body; the create action also gains palette-aware contrast. The owner adds
+a station count/drawing mismatch: read-only local station93 really reports
+/pc=1 and /st=R with all14 individual status values I. The mimic now derives its
+running count from the exact displayed bay states, labels this provenance and
+discloses disagreement with the preserved source counter. No pump or telemetry
+state is invented, changed or actuated; missing statuses remain uncertain.
+Responsive running/disagreement regressions and new independent review are in
+progress while cached production dependencies build separately.
+
 ## Commit, branch integration and deployment authorized — 25 October 2026
 
 Owner now requests committing all changes, pushing inventTree-aniket and

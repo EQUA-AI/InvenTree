@@ -38,7 +38,8 @@ import {
   knownNoActiveAlarms,
   missingContributors,
   operatingState,
-  readingSeverity
+  readingSeverity,
+  stationRunningSummary
 } from './mimicVisuals';
 import visual from './mimicVisuals.module.css';
 import { formatInstant, useDisplayClock } from './observedTime';
@@ -68,6 +69,7 @@ export function StationSchematic({
     clock
   );
   const bays = [...data.bays].sort(byBayNumber);
+  const pumpCount = stationRunningSummary(data);
   const power = data.layout.elements.find(
     (element) => element.view === 'unit' && element.id === 'pump-power'
   );
@@ -200,19 +202,52 @@ export function StationSchematic({
                   size='xl'
                   fw={650}
                   className={`${classes.reading} ${visual.value}`}
-                  data-severity={readingSeverity(point)}
+                  data-severity={
+                    element.id === 'pumps-running'
+                      ? null
+                      : readingSeverity(point)
+                  }
                   data-reading-value
                 >
-                  {reading ? (
-                    <ValueTooltip label={detail}>
-                      {element.id === 'pumps-running'
-                        ? `${reading} ${t`of`} ${bays.length}`
-                        : reading}
-                    </ValueTooltip>
+                  {element.id === 'pumps-running' ? (
+                    pumpCount.known > 0 ? (
+                      <ValueTooltip
+                        label={t`Calculated from the same current bay statuses shown in the schematic; the separate station counter is retained in station readings.`}
+                      >
+                        {pumpCount.unknown > 0
+                          ? t`${pumpCount.running} confirmed of ${pumpCount.total}`
+                          : t`${pumpCount.running} of ${pumpCount.total}`}
+                      </ValueTooltip>
+                    ) : (
+                      <MissingValue
+                        label={label}
+                        reason={t`No current pump status is available; the station counter does not identify a running pump.`}
+                      />
+                    )
+                  ) : reading ? (
+                    <ValueTooltip label={detail}>{reading}</ValueTooltip>
                   ) : (
                     <UnavailableReading point={point} label={label} />
                   )}
                 </Text>
+                {element.id === 'pumps-running' && (
+                  <>
+                    <Text size='xs'>{t`From displayed bay statuses`}</Text>
+                    {pumpCount.unknown > 0 && (
+                      <Text size='xs'>{t`${pumpCount.unknown} bays without a current status`}</Text>
+                    )}
+                    {pumpCount.disagreement && (
+                      <Text
+                        size='xs'
+                        fw={600}
+                        component='output'
+                        data-count-mismatch
+                      >
+                        {t`Count mismatch — station counter reports ${numberText(pumpCount.reported!)}. Check source status readings.`}
+                      </Text>
+                    )}
+                  </>
+                )}
               </Paper>
             );
           })}

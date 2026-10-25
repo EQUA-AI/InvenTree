@@ -1,5 +1,6 @@
 import { type Page, expect, test } from '@playwright/test';
 import { auditAccessibility } from '../s0/accessibility';
+import { assertReadableContrast } from '../s0/contrast';
 
 const plumber = {
   user_id: 12,
@@ -110,6 +111,12 @@ for (const viewport of [
       exact: true
     });
     await expect(submit).toBeEnabled();
+    const tradeHelper = page.getByText(
+      'Recorded assignment requirements, not a license or safety certification.',
+      { exact: true }
+    );
+    await tradeHelper.scrollIntoViewIfNeeded();
+    await assertReadableContrast(tradeHelper);
     await auditAccessibility(
       page,
       dialog,
@@ -125,6 +132,17 @@ for (const viewport of [
       animations: 'disabled'
     });
     await submit.scrollIntoViewIfNeeded();
+    const packetHelper = page.getByText(
+      'Adds the fault-to-fix aggregate: diagnosis, required parts and safety gates. Creating it plans the repair; it does not start it.',
+      { exact: true }
+    );
+    await assertReadableContrast(packetHelper);
+    await auditAccessibility(
+      page,
+      dialog,
+      info,
+      `integrated-create-actions-${viewport.width}`
+    );
     await page.screenshot({
       path: info.outputPath('integrated-create-actions.png'),
       fullPage: true,
@@ -498,7 +516,7 @@ test('creation trade override is a human-confirmed action and uses the compound 
         idempotency_key: body.idempotency_key,
         lifecycle_version: 2,
         replayed: false,
-        warnings: []
+        warnings: ['Assignment review required: ASSIGNMENT_MANUAL_OVERRIDE']
       }
     });
   });
@@ -539,6 +557,76 @@ test('creation trade override is a human-confirmed action and uses the compound 
     assigned_to_id: 21,
     override_reason: 'Supervised exception'
   });
+  await expect(
+    page.getByText('Work order created — assignment recorded', { exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      'Authorized trade mismatch override recorded with its reason. This does not authorize work to start.',
+      { exact: true }
+    )
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      /ASSIGNMENT_MANUAL_OVERRIDE|Work order created — review required/
+    )
+  ).toHaveCount(0);
+});
+
+test('confirmed trades without an owner show a readable persistent assignment warning', async ({
+  page
+}) => {
+  await mockApi(page);
+  await page.route('**/api/maintenance/work-packages/create/', (route) => {
+    const body = route.request().postDataJSON();
+    return route.fulfill({
+      json: {
+        work_order_id: 40,
+        work_order_reference: 'WO-40',
+        repair_packet_id: 7,
+        repair_packet_reference: 'RP-7',
+        machine_id: body.machine_id,
+        anomaly_id: null,
+        assigned_to_id: null,
+        idempotency_key: body.idempotency_key,
+        lifecycle_version: 2,
+        replayed: false,
+        warnings: ['Assignment review required: ASSIGNMENT_UNASSIGNED']
+      }
+    });
+  });
+  await page.goto('/playwright/staff-directory.html?mode=create');
+  await page
+    .getByRole('textbox', { name: 'Title', exact: true })
+    .fill('Plan pipe repair');
+  await page
+    .getByRole('combobox', { name: 'Required trades', exact: true })
+    .click();
+  await page.getByRole('option', { name: 'Plumbing', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await page
+    .getByRole('checkbox', {
+      name: 'I have reviewed and confirmed these trade requirements'
+    })
+    .check();
+  await page
+    .getByRole('button', { name: 'Create work order', exact: true })
+    .click();
+  await expect(
+    page.getByText('Work order created — review required', { exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      'No owner is assigned. Assign authorized staff before work starts.',
+      { exact: true }
+    )
+  ).toBeVisible();
+  await expect(
+    page.getByText('ASSIGNMENT_UNASSIGNED', { exact: false })
+  ).toHaveCount(0);
+  await expect(
+    page.getByText('Saved successfully', { exact: true })
+  ).toBeVisible();
 });
 
 test('a denied staff refresh does not retain a previously cached occupational title', async ({

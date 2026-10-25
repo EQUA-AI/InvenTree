@@ -12,6 +12,41 @@ export function operatingState(data: MimicData, bay?: Bay): string {
     : state;
 }
 
+export function stationRunningSummary(data: MimicData) {
+  const states = data.bays.map((bay) => operatingState(data, bay));
+  const running = states.filter((state) => state === 'running').length;
+  const known = states.filter((state) =>
+    ['running', 'idle', 'fault'].includes(state)
+  ).length;
+  const total = states.length;
+  const countElement = data.layout.elements.find(
+    (element) => element.id === 'pumps-running'
+  );
+  const counter = countElement
+    ? data.station_points[countElement.pointer]
+    : undefined;
+  const reported =
+    data.enabled &&
+    data.reporting !== false &&
+    !data.read_failed &&
+    usable(counter) &&
+    !failedReading(counter) &&
+    counter.quality === 'good' &&
+    typeof counter.value === 'number' &&
+    Number.isFinite(counter.value)
+      ? counter.value
+      : null;
+  return {
+    running,
+    total,
+    known,
+    unknown: total - known,
+    reported,
+    disagreement:
+      total > 0 && known === total && reported !== null && reported !== running
+  };
+}
+
 /** Motion requires a current positive discharge reading as well as Running. */
 export function hasDischargeFlow(data: MimicData, bay?: Bay): boolean {
   if (!bay || operatingState(data, bay) !== 'running' || !data.enabled)

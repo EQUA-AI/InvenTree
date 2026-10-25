@@ -32575,3 +32575,71 @@ msgstr "Trade requirements have not been confirmed. Review staff suitability bef
 #: ../../../src/frontend/src/pages/maintenance/components/WorkOrderCreateModal.tsx:85
 msgid "Work order created — review required"
 msgstr "Work order created — review required"
+
+#: ../../../src/frontend/src/pages/maintenance/components/WorkOrderCreateModal.tsx:93
+msgid "Authorized trade mismatch override recorded with its reason. This does not authorize work to start."
+msgstr "Authorized trade mismatch override recorded with its reason. This does not authorize work to start."
+
+#: ../../../src/frontend/src/pages/maintenance/components/WorkOrderCreateModal.tsx:90
+msgid "No owner is assigned. Assign authorized staff before work starts."
+msgstr "No owner is assigned. Assign authorized staff before work starts."
+
+#: ../../../src/frontend/src/pages/maintenance/components/WorkOrderCreateModal.tsx:98
+msgid "No staff member matches all recorded trade requirements. Review the requirements and assignment."
+msgstr "No staff member matches all recorded trade requirements. Review the requirements and assignment."
+
+#: ../../../src/frontend/src/pages/maintenance/components/WorkOrderCreateModal.tsx:97
+msgid "Several staff members match the recorded requirements. Review and select an owner."
+msgstr "Several staff members match the recorded requirements. Review and select an owner."
+
+#: ../../../src/frontend/src/pages/maintenance/components/WorkOrderCreateModal.tsx:91
+msgid "The assigned staff member matches the recorded trade requirements. This is not a safety certification."
+msgstr "The assigned staff member matches the recorded trade requirements. This is not a safety certification."
+
+#: ../../../src/frontend/src/pages/maintenance/components/WorkOrderCreateModal.tsx:99
+msgid "The assignment needs human review before work starts."
+msgstr "The assignment needs human review before work starts."
+
+#: ../../../src/frontend/src/pages/maintenance/components/WorkOrderCreateModal.tsx:95
+msgid "The recorded trade requirements are invalid. Review and confirm them before work starts."
+msgstr "The recorded trade requirements are invalid. Review and confirm them before work starts."
+
+#: ../../../src/frontend/src/pages/maintenance/components/WorkOrderCreateModal.tsx:96
+msgid "The selected staff member does not cover every required trade. Review the assignment or obtain an authorized override."
+msgstr "The selected staff member does not cover every required trade. Review the assignment or obtain an authorized override."
+
+#: ../../../src/frontend/src/pages/maintenance/components/WorkOrderCreateModal.tsx:94
+msgid "The selected staff member is unavailable. Review the owner before work starts."
+msgstr "The selected staff member is unavailable. Review the owner before work starts."
+
+#: ../../../src/frontend/src/pages/maintenance/components/WorkOrderCreateModal.tsx:106
+msgid "Work order created — assignment recorded"
+msgstr "Work order created — assignment recorded"
+
+#. placeholder {0}: pumpCount.unknown
+#: ../../../src/frontend/src/pages/assets/health/mimic/StationSchematic.tsx:237
+msgid "{0} bays without a current status"
+msgstr "{0} bays without a current status"
+
+#. placeholder {0}: pumpCount.running
+#. placeholder {1}: pumpCount.total
+#: ../../../src/frontend/src/pages/assets/health/mimic/StationSchematic.tsx:218
+msgid "{0} confirmed of {1}"
+msgstr "{0} confirmed of {1}"
+
+#: ../../../src/frontend/src/pages/assets/health/mimic/StationSchematic.tsx:215
+msgid "Calculated from the same current bay statuses shown in the schematic; the separate station counter is retained in station readings."
+msgstr "Calculated from the same current bay statuses shown in the schematic; the separate station counter is retained in station readings."
+
+#. placeholder {0}: numberText(pumpCount.reported!)
+#: ../../../src/frontend/src/pages/assets/health/mimic/StationSchematic.tsx:246
+msgid "Count mismatch — station counter reports {0}. Check source status readings."
+msgstr "Count mismatch — station counter reports {0}. Check source status readings."
+
+#: ../../../src/frontend/src/pages/assets/health/mimic/StationSchematic.tsx:235
+msgid "From displayed bay statuses"
+msgstr "From displayed bay statuses"
+
+#: ../../../src/frontend/src/pages/assets/health/mimic/StationSchematic.tsx:224
+msgid "No current pump status is available; the station counter does not identify a running pump."
+msgstr "No current pump status is available; the station counter does not identify a running pump."
