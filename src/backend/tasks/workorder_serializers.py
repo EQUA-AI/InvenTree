@@ -28,6 +28,8 @@ class WorkOrderSerializer(serializers.ModelSerializer):
             'machine',
             'customer',
             'assigned_to',
+            'required_trades',
+            'trade_requirements_confirmed',
             'requested_by',
             'scheduled_start',
             'scheduled_end',
@@ -55,6 +57,8 @@ class WorkOrderSerializer(serializers.ModelSerializer):
             'reference',
             'lifecycle_status',
             'assigned_to',
+            'required_trades',
+            'trade_requirements_confirmed',
             'requested_by',
             'actual_started_at',
             'actual_completed_at',
@@ -110,7 +114,7 @@ class AssignCommandSerializer(BaseCommandSerializer):
     """Validate typed assignment intent."""
 
     assigned_to = serializers.PrimaryKeyRelatedField(
-        queryset=get_user_model().objects.all()
+        queryset=get_user_model().objects.all(), allow_null=True
     )
 
 

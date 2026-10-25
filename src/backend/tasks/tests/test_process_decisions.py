@@ -53,6 +53,9 @@ class ProcessDecisionTests(InvenTreeAPITestCase):
         self.assignRole('work_order.add')
         self.user.user_permissions.add(
             Permission.objects.get(
+                content_type__app_label='users', codename='view_staff_directory'
+            ),
+            Permission.objects.get(
                 content_type__app_label='tasks', codename='execute_workorder'
             ),
             Permission.objects.get(
@@ -984,6 +987,10 @@ class ProcessDecisionTests(InvenTreeAPITestCase):
             'accepted',
         )
         other = get_user_model().objects.create_user(username='other-incoming')
+        other.groups.add(self.group)
+        other.user_permissions.add(Permission.objects.get(
+            content_type__app_label='tasks', codename='execute_workorder'
+        ))
         assign_work_order(
             work_order_id=self.work.pk,
             assigned_to=other,
@@ -1780,6 +1787,10 @@ class ProcessDecisionTests(InvenTreeAPITestCase):
             continuity(self.work, self.user)['accepted_handover']['responsible_owner']
         )
         replacement = get_user_model().objects.create_user(username='replacement-owner')
+        replacement.groups.add(self.group)
+        replacement.user_permissions.add(Permission.objects.get(
+            content_type__app_label='tasks', codename='execute_workorder'
+        ))
         assign_work_order(
             work_order_id=self.work.pk,
             assigned_to=replacement,

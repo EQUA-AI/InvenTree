@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from ai.core.integrations.staff_tools import search_staff_candidates
 from ai.core.maf_compat import ai_function
 from ai.core.tools.inventree.read.builds import (
     get_build_order,
@@ -412,6 +413,7 @@ INVENTORY_READ_TOOLS = [
     get_open_repairs_for_machine,
     get_work_order_history,
     get_work_order_closeout,
+    search_staff_candidates,
     list_database_tables,
     query_database,
 ]

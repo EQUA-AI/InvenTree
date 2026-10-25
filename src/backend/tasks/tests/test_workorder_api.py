@@ -392,6 +392,8 @@ class WorkOrderAPITest(TestCase):
                 'assigned_to',
                 'assigned_to_username',
                 'assigned_to_name',
+                'required_trades',
+                'trade_requirements_confirmed',
                 'scheduled_start',
                 'scheduled_end',
                 'estimated_minutes',

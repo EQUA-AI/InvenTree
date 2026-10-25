@@ -215,6 +215,7 @@ class RuleSet(models.Model):
         permissions = [
             ('view_email', 'Can read emails and attachments'),
             ('send_email', 'Can send emails'),
+            ('view_staff_directory', 'Can view staff names and job titles'),
         ]
 
     @property
@@ -288,6 +289,16 @@ class RuleSet(models.Model):
 
     can_assign_workorder = models.BooleanField(
         verbose_name=_('Can assign work orders'), default=False
+    )
+
+    can_view_staff_directory = models.BooleanField(
+        verbose_name=_('Can view staff directory'), default=False, db_default=False
+    )
+
+    can_override_assignment_trade_mismatch = models.BooleanField(
+        verbose_name=_('Can override assignment trade mismatch'),
+        default=False,
+        db_default=False,
     )
 
     can_transition_workorder = models.BooleanField(
@@ -617,6 +628,23 @@ def create_missing_rule_sets(sender, instance, **kwargs):
     update_group_roles(instance)
 
 
+class Trade(models.Model):
+    """An administrator-approved personnel trade, not a licence or certification."""
+
+    code = models.SlugField(max_length=64, unique=True)
+    name = models.CharField(max_length=100)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        """Stable ordering for trade pickers."""
+
+        ordering = ['name', 'pk']
+
+    def __str__(self):
+        """Display the trade label."""
+        return self.name
+
+
 class UserProfile(InvenTree.models.MetadataMixin):
     """Model to store additional user profile information."""
 
@@ -674,6 +702,9 @@ class UserProfile(InvenTree.models.MetadataMixin):
         null=True,
         verbose_name=_('Position'),
         help_text=_('Main job title or position'),
+    )
+    trades = models.ManyToManyField(
+        Trade, blank=True, related_name='profiles', verbose_name=_('Approved trades')
     )
     status = models.CharField(
         max_length=2000,

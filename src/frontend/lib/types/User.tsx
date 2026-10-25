@@ -7,6 +7,7 @@ export interface UserProfile {
   widgets: any;
   displayname: string | null;
   position: string | null;
+  trades?: number[];
   status: string | null;
   location: string | null;
   active: boolean;

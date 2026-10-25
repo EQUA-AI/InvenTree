@@ -34,6 +34,8 @@ export interface RuleSet {
   can_view_closeout_audit: boolean;
   can_plan_workorder: boolean;
   can_assign_workorder: boolean;
+  can_view_staff_directory: boolean;
+  can_override_assignment_trade_mismatch: boolean;
   can_transition_workorder: boolean;
   can_execute_workorder: boolean;
   can_record_operating_authority: boolean;
@@ -64,6 +66,8 @@ type NamedPermissionField =
   | 'can_view_closeout_audit'
   | 'can_plan_workorder'
   | 'can_assign_workorder'
+  | 'can_view_staff_directory'
+  | 'can_override_assignment_trade_mismatch'
   | 'can_transition_workorder'
   | 'can_execute_workorder'
   | 'can_record_operating_authority'
@@ -92,6 +96,8 @@ const NAMED_PERMISSION_FIELDS: NamedPermissionField[] = [
   'can_view_closeout_audit',
   'can_plan_workorder',
   'can_assign_workorder',
+  'can_view_staff_directory',
+  'can_override_assignment_trade_mismatch',
   'can_transition_workorder',
   'can_execute_workorder',
   'can_record_operating_authority',
@@ -210,6 +216,14 @@ export function RoleTable({
         {
           field: 'can_assign_workorder',
           label: t`Can assign work orders`
+        },
+        {
+          field: 'can_view_staff_directory',
+          label: t`Can view staff directory`
+        },
+        {
+          field: 'can_override_assignment_trade_mismatch',
+          label: t`Can override assignment trade mismatches`
         },
         {
           field: 'can_transition_workorder',

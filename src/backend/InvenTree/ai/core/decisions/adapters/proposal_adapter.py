@@ -86,7 +86,7 @@ class ProposalAdapter:
                 "auditory_review_id",
             },
             "procedure.complete": {"application_id", "step_key", "value", "passed"},
-            "work_order.assign": {"assignee_name"},
+            "work_order.assign": {"assignee_name", "auto_assign"},
             "work_order.resize": {"estimated_minutes"},
             "work_order.schedule": {"scheduled_start", "scheduled_end"},
             "work_order.update": {"fields"},
@@ -104,7 +104,12 @@ class ProposalAdapter:
             raise proposals.ProposalError(
                 "Only title, description and priority can be updated by voice."
             )
-        if intent.action == "work_order.assign":
+        if intent.action == "work_order.assign" and params.get("auto_assign"):
+            if params.get("assignee_name") or params["auto_assign"] is not True:
+                raise proposals.ProposalError(
+                    "Choose an exact assignee or automatic assignment, not both."
+                )
+        elif intent.action == "work_order.assign":
             from django.contrib.auth import get_user_model
             from django.db.models import Q, Value
             from django.db.models.functions import Concat
@@ -113,9 +118,24 @@ class ProposalAdapter:
             if name.lower() == "unassigned":
                 params["assigned_to"] = None
             else:
+                from users.staff_directory import directory_rows
+
+                permitted_ids = []
+                offset = 0
+                while True:
+                    page = directory_rows(
+                        owner,
+                        work_order_id=rows[0].pk,
+                        limit=100,
+                        offset=offset,
+                    )
+                    permitted_ids.extend(row["user_id"] for row in page["results"])
+                    offset += len(page["results"])
+                    if offset >= page["count"] or not page["results"]:
+                        break
                 users = list(
                     get_user_model()
-                    .objects.filter(is_active=True)
+                    .objects.filter(is_active=True, pk__in=permitted_ids)
                     .annotate(display_name=Concat("first_name", Value(" "), "last_name"))
                     .filter(Q(username__iexact=name) | Q(display_name__iexact=name))[:2]
                 )
@@ -216,7 +236,7 @@ class ProposalAdapter:
                 owner, proposal.action_type, proposal.target_work_order_id, proposal.intent
             )
             current_hash = proposals.compute_preview_hash(
-                proposals._preview(target, proposal.action_type, proposal.intent)
+                proposals._preview(target, proposal.action_type, proposal.intent, owner=owner)
             )
             if version != decision.revision or current_hash != decision.preview_hash:
                 raise proposals.ProposalPreviewChanged(

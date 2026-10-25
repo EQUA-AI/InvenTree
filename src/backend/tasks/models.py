@@ -177,6 +177,8 @@ class WorkOrder(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
         on_delete=models.PROTECT,
         related_name='+',
     )
+    required_trades = models.JSONField(default=list, blank=True, db_default=[])
+    trade_requirements_confirmed = models.BooleanField(default=False, db_default=False)
 
     # ``parent`` and ``card_kind`` used to live here, so a subtask or a
     # procurement task was a second work order with its own WO- number for what
@@ -244,6 +246,10 @@ class WorkOrder(InvenTree.models.InvenTreeAttachmentMixin, models.Model):
         permissions = [
             ('plan_workorder', 'Can plan work orders'),
             ('assign_workorder', 'Can assign work orders'),
+            (
+                'override_assignment_trade_mismatch',
+                'Can override assignment trade mismatch',
+            ),
             ('transition_workorder', 'Can transition work orders'),
             ('execute_workorder', 'Can execute work orders'),
             ('complete_workorder', 'Can complete work orders'),

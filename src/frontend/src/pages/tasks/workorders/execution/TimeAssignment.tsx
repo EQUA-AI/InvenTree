@@ -1,7 +1,8 @@
 import type { TimeAssignment as Projection } from '@lib/types/WorkExecution';
 import type { WorkOrderOverview } from '@lib/types/WorkOrderOverview';
 import { t } from '@lingui/core/macro';
-import { Accordion, SimpleGrid, Stack, Text } from '@mantine/core';
+import { Accordion, Button, SimpleGrid, Stack, Text } from '@mantine/core';
+import { StaffSummaryPopover } from '../../../../components/staff/StaffSummaryPopover';
 import {
   ExecutionFact,
   ExecutionSection,
@@ -16,8 +17,13 @@ function elapsed(value: number | null): string | null {
 
 export function TimeAssignment({
   workOrder,
-  onRecoveryNeeded
-}: Readonly<{ workOrder: WorkOrderOverview; onRecoveryNeeded?: () => void }>) {
+  onRecoveryNeeded,
+  onAssign
+}: Readonly<{
+  workOrder: WorkOrderOverview;
+  onRecoveryNeeded?: () => void;
+  onAssign?: () => void;
+}>) {
   const supplied = workOrder.time_assignment?.rule === 'time_assignment.v1';
   const value: Projection | undefined = supplied
     ? workOrder.time_assignment
@@ -32,14 +38,33 @@ export function TimeAssignment({
       info={t`Elapsed assignment is wall time at the last read. Job timestamps are not person-work intervals or accepted responsibility. Assignment factors and handover acceptance require separate records.`}
     >
       <SimpleGrid cols={{ base: 1, sm: 2 }}>
+        {(workOrder.assigned_to != null ||
+          value?.assigned_to ||
+          workOrder.assigned_to_name ||
+          workOrder.assigned_to_username ||
+          onAssign) && (
+          <ExecutionFact label={t`Recorded assignee`}>
+            <Stack gap='xs'>
+              <StaffSummaryPopover
+                userId={workOrder.assigned_to}
+                label={
+                  value?.assigned_to ??
+                  workOrder.assigned_to_name ??
+                  workOrder.assigned_to_username
+                }
+                scope={{ workOrderId: workOrder.id }}
+              />
+              {onAssign && (
+                <Button
+                  size='compact-sm'
+                  variant='light'
+                  onClick={onAssign}
+                >{t`Assign work order`}</Button>
+              )}
+            </Stack>
+          </ExecutionFact>
+        )}
         {[
-          [
-            t`Recorded assignee`,
-            value?.assigned_to ??
-              workOrder.assigned_to_name ??
-              workOrder.assigned_to_username ??
-              null
-          ],
           [t`Assignee label`, value?.legacy_assignee ?? workOrder.assignee],
           [
             t`Elapsed since recorded assignment`,

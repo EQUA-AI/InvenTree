@@ -418,6 +418,7 @@ def _preview_resize(work_order, intent: dict[str, Any]) -> dict[str, Any]:
 def _preview_update(work_order, intent: dict[str, Any]) -> dict[str, Any]:
     from tasks.services.scheduling import _PLAN_FIELDS
 
+    _require_nonpersonnel_update(intent)
     fields = {
         key: value
         for key, value in (intent.get('fields') or {}).items()
@@ -431,23 +432,12 @@ def _preview_update(work_order, intent: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _preview_assign(work_order, intent: dict[str, Any]) -> dict[str, Any]:
-    from django.contrib.auth import get_user_model
+def _preview_assign(
+    work_order, intent: dict[str, Any], *, owner=None
+) -> dict[str, Any]:
+    from aichat.services.staff_assignment import assignment_preview
 
-    def name(pk):
-        if pk is None:
-            return 'Unassigned'
-        user = get_user_model().objects.filter(pk=pk, is_active=True).first()
-        if user is None:
-            raise ProposalError('The assignee is unavailable; request a fresh preview.')
-        return user.get_full_name().strip() or user.get_username()
-
-    return {
-        'current_assigned_to_id': work_order.assigned_to_id,
-        'proposed_assigned_to_id': intent.get('assigned_to'),
-        'current_assigned_to_name': name(work_order.assigned_to_id),
-        'proposed_assigned_to_name': name(intent.get('assigned_to')),
-    }
+    return assignment_preview(owner, work_order, intent)
 
 
 def _preview_delete(work_order, intent: dict[str, Any]) -> dict[str, Any]:
@@ -493,16 +483,38 @@ def _preview_transition(work_order, intent: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _preview_create(work_order, intent: dict[str, Any]) -> dict[str, Any]:
+def _preview_create(
+    work_order, intent: dict[str, Any], *, owner=None
+) -> dict[str, Any]:
+    from aichat.services.staff_assignment import (
+        prepare_repair_intent,
+        repair_assignment_preview,
+    )
+
+    intent = prepare_repair_intent({'planning': intent}, actor=owner)['planning']
+
     return {
         'proposed_title': intent.get('title', ''),
         'machine_id': intent.get('machine_id'),
         'work_order_type': intent.get('work_order_type'),
         'priority': intent.get('priority'),
+        'assignment_planning': {
+            key: intent[key]
+            for key in (
+                'assigned_to',
+                'required_trades',
+                'trade_requirements_confirmed',
+                'auto_assign',
+            )
+            if key in intent
+        },
+        **repair_assignment_preview(),
     }
 
 
-def _preview_repair_work_package(work_order, intent: dict[str, Any]) -> dict[str, Any]:
+def _preview_repair_work_package(
+    work_order, intent: dict[str, Any], *, owner=None
+) -> dict[str, Any]:
     """Build the repair work-package preview from server state, not model claims.
 
     The model supplies a draft; everything shown to the approver is re-derived
@@ -510,11 +522,15 @@ def _preview_repair_work_package(work_order, intent: dict[str, Any]) -> dict[str
     all come from the database, so a model cannot describe the package as
     something other than what confirming it would create.
     """
+    from aichat.services.staff_assignment import (
+        prepare_repair_intent,
+        repair_assignment_preview,
+    )
     from assets.models import AssetMachine
     from part.models import Part
     from repair.work_packages import find_duplicate_repairs, validate_draft
 
-    draft = validate_draft(intent)
+    draft = validate_draft(prepare_repair_intent(intent, actor=owner))
     machine = AssetMachine.objects.filter(pk=draft['machine_id']).first()
 
     part_names = dict(
@@ -547,6 +563,7 @@ def _preview_repair_work_package(work_order, intent: dict[str, Any]) -> dict[str
             for line in draft['parts']
         ],
         'planning': draft['planning'],
+        **repair_assignment_preview(),
         'origin': draft['origin'],
         'source': draft['source'],
         # Shown before approval so an approver is never surprised by a second
@@ -652,7 +669,9 @@ _PREVIEW_BUILDERS = {
 }
 
 
-def _preview(work_order, action_type: str, intent: dict[str, Any]) -> dict[str, Any]:
+def _preview(
+    work_order, action_type: str, intent: dict[str, Any], *, owner=None
+) -> dict[str, Any]:
     """Build the confirmation preview from authoritative state, not model claims.
 
     ``work_order`` is ``None`` for creating actions (create / optimize), which
@@ -686,7 +705,14 @@ def _preview(work_order, action_type: str, intent: dict[str, Any]) -> dict[str, 
 
         builder = preview
     if builder is not None:
-        base.update(builder(work_order, intent or {}))
+        if action_type in (
+            ProposalAction.WORK_ORDER_ASSIGN,
+            ProposalAction.REPAIR_WORK_PACKAGE_CREATE,
+            ProposalAction.WORK_ORDER_CREATE,
+        ):
+            base.update(builder(work_order, intent or {}, owner=owner))
+        else:
+            base.update(builder(work_order, intent or {}))
     return base
 
 
@@ -827,10 +853,29 @@ def create_proposal(
         thread_id=thread_id,
         source_turn_id=source_turn_id,
     )
+    if action_type == ProposalAction.WORK_ORDER_ASSIGN:
+        from aichat.services.staff_assignment import prepare_assignment
+
+        intent = prepare_assignment(owner, work_order, intent)
+    elif action_type == ProposalAction.REPAIR_WORK_PACKAGE_CREATE:
+        from aichat.services.staff_assignment import prepare_repair_intent
+
+        intent = prepare_repair_intent(intent, actor=owner)
+    elif action_type == ProposalAction.WORK_ORDER_CREATE:
+        from aichat.services.staff_assignment import prepare_repair_intent
+
+        intent = prepare_repair_intent({'planning': intent}, actor=owner)['planning']
+    elif action_type == ProposalAction.WORK_ORDER_CREATE_CHILD and any(
+        key in intent
+        for key in ('assignee', 'assigned_to', 'auto_assign', 'required_trades')
+    ):
+        raise ProposalError(
+            'Create the task first, then use its governed personnel assignment action.'
+        )
     normalized_reason = (reason or '').strip()[:2000]
     # Build the preview first: it validates intent shape (e.g. datetimes) and
     # raises a mappable ProposalError before any row is written.
-    preview = _preview(work_order, action_type, intent)
+    preview = _preview(work_order, action_type, intent, owner=owner)
     try:
         with transaction.atomic():
             proposal = ChatActionProposal.objects.create(
@@ -920,6 +965,7 @@ def _bridge_to_approval(proposal: ChatActionProposal, owner) -> None:
     # The command re-checks permission and scope for this actor; naming them here
     # records who asked, it does not widen what they may do.
     payload['actor_id'] = owner.pk
+    payload['_staff_proposal_id'] = str(proposal.pk)
 
     warnings = executor.validate(payload)
     if warnings:
@@ -1116,11 +1162,31 @@ def _create_planning(intent: dict[str, Any]) -> dict[str, Any]:
             'description',
             'priority',
             'work_order_type',
-            'assignee',
+            'assigned_to',
+            'required_trades',
+            'trade_requirements_confirmed',
+            'auto_assign',
             'due_date',
         )
         if key in intent
     }
+
+
+def _require_nonpersonnel_update(intent):
+    """Personnel writes must not bypass the canonical assignment policy."""
+    if set(intent.get('fields') or {}) & {
+        'assignee',
+        'assigned_to',
+        'assigned_to_id',
+        'required_trades',
+        'trade_requirements_confirmed',
+        'auto_assign',
+        'override_reason',
+        'allow_override',
+    }:
+        raise ProposalError(
+            'Use the governed personnel assignment action to change an assignee.'
+        )
 
 
 def _as_uuid(value: str) -> uuid.UUID | None:
@@ -1344,6 +1410,7 @@ def _dispatch_command(
             )
         )
     if action == ProposalAction.WORK_ORDER_UPDATE:
+        _require_nonpersonnel_update(intent)
         return _command_receipt(
             scheduling.update_work_order_plan(
                 work_order_id=wo_id,
@@ -1355,10 +1422,16 @@ def _dispatch_command(
             )
         )
     if action == ProposalAction.WORK_ORDER_ASSIGN:
-        return _command_receipt(
+        receipt = _command_receipt(
             wo_commands.assign_work_order(
                 work_order_id=wo_id,
                 assigned_to=intent.get('assigned_to'),
+                required_trades=intent.get('required_trades', []),
+                trade_requirements_confirmed=intent.get(
+                    'trade_requirements_confirmed', False
+                ),
+                override_reason='',
+                allow_override=False,
                 actor=owner,
                 expected_version=version,
                 idempotency_key=idem,
@@ -1366,6 +1439,17 @@ def _dispatch_command(
                 correlation_id=correlation,
             )
         )
+        receipt['assignment'] = {
+            key: proposal.preview.get(key)
+            for key in (
+                'proposed_assigned_to_id',
+                'proposed_assigned_to_name',
+                'proposed_job_title',
+                'assignment_code',
+                'assignment_rationale',
+            )
+        }
+        return receipt
     if action == ProposalAction.WORK_ORDER_DELETE:
         return _deletion_receipt(
             scheduling.delete_work_order(
@@ -1401,7 +1485,10 @@ def _dispatch_command(
             )
         )
     if action == ProposalAction.WORK_ORDER_CREATE:
-        return _command_receipt(
+        from aichat.services.staff_assignment import prepare_repair_intent
+
+        intent = prepare_repair_intent({'planning': intent}, actor=owner)['planning']
+        receipt = _command_receipt(
             scheduling.create_work_order(
                 actor=owner,
                 idempotency_key=idem,
@@ -1411,16 +1498,37 @@ def _dispatch_command(
                 **_create_planning(intent),
             )
         )
+        receipt.update(
+            assignment_code=proposal.preview.get('assignment_code'),
+            assignment_rationale=proposal.preview.get('assignment_rationale'),
+        )
+        return receipt
     if action == ProposalAction.REPAIR_WORK_PACKAGE_CREATE:
+        from aichat.services.staff_assignment import prepare_repair_intent
         from repair.work_packages import create_repair_work_package
 
         result = create_repair_work_package(
-            actor=owner, draft=intent, idempotency_key=idem, correlation_id=correlation
+            actor=owner,
+            draft=prepare_repair_intent(intent, actor=owner),
+            idempotency_key=idem,
+            correlation_id=correlation,
         )
-        return {'command': 'create_repair_work_package', **result.as_dict()}
+        return {
+            'command': 'create_repair_work_package',
+            **result.as_dict(),
+            'assignment_code': proposal.preview.get('assignment_code'),
+            'assignment_rationale': proposal.preview.get('assignment_rationale'),
+        }
     if action == ProposalAction.WORK_ORDER_CREATE_CHILD:
         from tasks.models import KanbanCard
 
+        if any(
+            key in intent
+            for key in ('assignee', 'assigned_to', 'auto_assign', 'required_trades')
+        ):
+            raise ProposalError(
+                'Use the governed personnel assignment action for this task.'
+            )
         return _created_card_receipt(
             scheduling.create_child(
                 parent_id=wo_id,
@@ -1628,9 +1736,15 @@ def confirm_proposal(
                 thread_id=proposal.thread_id,
                 source_turn_id=proposal.source_turn_id,
             )
+            if proposal.action_type in (
+                ProposalAction.WORK_ORDER_ASSIGN,
+                ProposalAction.REPAIR_WORK_PACKAGE_CREATE,
+                ProposalAction.WORK_ORDER_CREATE,
+            ):
+                expected_preview_hash = expected_preview_hash or proposal.preview_hash
             if expected_preview_hash is not None:
                 current_hash = compute_preview_hash(
-                    _preview(target, proposal.action_type, proposal.intent)
+                    _preview(target, proposal.action_type, proposal.intent, owner=owner)
                 )
                 if (
                     version != proposal.target_version

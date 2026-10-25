@@ -63,6 +63,10 @@ import type {
 } from '@lib/types/Tasks';
 
 import { ReadErrorNotice } from '../../components/common/ReadErrorNotice';
+import { StaffAssignmentModal } from '../../components/staff/StaffAssignmentModal';
+import { StaffSummaryPopover } from '../../components/staff/StaffSummaryPopover';
+import { resolveCardAssignment } from '../../components/staff/staffAssignment';
+import { useStaffAccess } from '../../components/staff/useStaffDirectory';
 import { useApi } from '../../contexts/ApiContext';
 import { showApiErrorMessage } from '../../functions/notifications';
 import { openGlobalAIChat } from '../../states/AIChatState';
@@ -106,6 +110,9 @@ interface Task {
   priority: KanbanPriority;
   dueDate: string | null;
   assignee: string;
+  assignedTo: number | null;
+  cardAssignedTo: number | null;
+  assignmentInherited: boolean;
   machine: number | null;
   machineName: string | null;
   tags: string[];
@@ -216,7 +223,10 @@ const convertCardToTask = (
     workOrder?.priority ??
     'medium') as KanbanPriority,
   dueDate: workOrder?.due_date ?? null,
-  assignee: card.assignee || (workOrder?.assignee ?? ''),
+  assignee: resolveCardAssignment(card, workOrder).label,
+  assignedTo: resolveCardAssignment(card, workOrder).userId,
+  cardAssignedTo: card.assigned_to,
+  assignmentInherited: resolveCardAssignment(card, workOrder).inherited,
   machine: card.machine ?? workOrder?.machine ?? null,
   machineName: card.machine_name ?? workOrder?.machine_name ?? null,
   tags: card.tags ?? workOrder?.tags ?? [],
@@ -243,7 +253,6 @@ const formValuesToPayload = (values: TaskFormValues) => ({
   status: values.status,
   priority: values.priority,
   due_date: values.dueDate ? dayjs(values.dueDate).format('YYYY-MM-DD') : null,
-  assignee: values.assignee,
   machine: values.machine ? Number(values.machine) : null,
   tags: values.tags,
   company: values.company,
@@ -265,6 +274,11 @@ export default function MaintenanceBoard() {
   const api = useApi();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const staffAccess = useStaffAccess();
+  const [assignmentTarget, setAssignmentTarget] = useState<{
+    task: Task;
+    card: boolean;
+  } | null>(null);
 
   const [searchParams] = useSearchParams();
   const locationScope = useMemo(
@@ -448,6 +462,10 @@ export default function MaintenanceBoard() {
       }
     }
   });
+
+  const assignmentWorkOrder = cardsQuery.data?.find(
+    (workOrder) => workOrder.id === assignmentTarget?.task.workOrderId
+  );
 
   useEffect(() => {
     const workOrders = new Map(
@@ -1354,6 +1372,22 @@ export default function MaintenanceBoard() {
             onClick={() => setCreateModalOpen(true)}
             style={{ alignSelf: 'flex-start' }}
           >{t`New work order`}</Button>
+          {assignmentTarget && assignmentWorkOrder && (
+            <StaffAssignmentModal
+              key={`${assignmentWorkOrder.id}-${assignmentTarget.card ? assignmentTarget.task.id : 'job'}`}
+              workOrder={assignmentWorkOrder}
+              cardId={
+                assignmentTarget.card ? assignmentTarget.task.id : undefined
+              }
+              cardAssignedTo={
+                boardCardsQuery.data?.find(
+                  (card) => card.id === assignmentTarget.task.id
+                )?.assigned_to ?? null
+              }
+              onClose={() => setAssignmentTarget(null)}
+              onSaved={closeTaskModal}
+            />
+          )}
         </Stack>
         <Group gap='sm'>
           <SegmentedControl
@@ -1860,13 +1894,42 @@ export default function MaintenanceBoard() {
                 {...taskForm.getInputProps('priority')}
               />
             </Group>
+            {editingTask && (
+              <Stack gap='xs'>
+                <Text size='sm' fw={500}>{t`Assignee`}</Text>
+                <StaffSummaryPopover
+                  userId={editingTask.assignedTo}
+                  label={editingTask.assignee}
+                  scope={{
+                    workOrderId: editingTask.workOrderId,
+                    kanbanCardId: editingTask.id
+                  }}
+                />
+                {editingTask.assignmentInherited && (
+                  <Text
+                    size='xs'
+                    c='dimmed'
+                  >{t`Inherited from work order`}</Text>
+                )}
+                {staffAccess.directory && staffAccess.assign && (
+                  <Group>
+                    <Button
+                      variant='light'
+                      onClick={() =>
+                        setAssignmentTarget({ task: editingTask, card: false })
+                      }
+                    >{t`Assign work order`}</Button>
+                    <Button
+                      variant='light'
+                      onClick={() =>
+                        setAssignmentTarget({ task: editingTask, card: true })
+                      }
+                    >{t`Override card assignment`}</Button>
+                  </Group>
+                )}
+              </Stack>
+            )}
             <Group align='flex-end' gap='md'>
-              <TextInput
-                label={t`Assignee`}
-                placeholder={t`Who owns this work?`}
-                style={{ flex: 1 }}
-                {...taskForm.getInputProps('assignee')}
-              />
               <DateInput
                 label={t`Due date`}
                 placeholder={t`Pick a date`}

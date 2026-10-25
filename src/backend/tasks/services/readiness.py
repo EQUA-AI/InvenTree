@@ -117,6 +117,9 @@ def _scope_check(context):
 
 
 def _packet_ownership_check(context):
+    if context.action == 'assign':
+        # Personnel changes do not transfer packet lifecycle or safety authority.
+        return []
     if is_packet_finalization(context.packet_finalization, context.work_order):
         return []
     if hasattr(context.work_order, 'repair_packet'):

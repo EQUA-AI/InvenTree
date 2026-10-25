@@ -90,6 +90,7 @@ INSTALLED_APPS = [
     "aichat.apps.AIChatConfig",
     "voice.apps.VoiceConfig",
     "users.apps.UsersConfig",
+    "legacy_boundary.apps.LegacyBoundaryConfig",
     "machine.apps.MachineConfig",
     "data_exporter.apps.DataExporterConfig",
     "importer.apps.ImporterConfig",

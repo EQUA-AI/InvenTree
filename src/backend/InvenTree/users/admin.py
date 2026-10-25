@@ -8,7 +8,7 @@ from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import Group
 from django.utils.translation import gettext_lazy as _
 
-from users.models import ApiToken, Owner, RuleSet
+from users.models import ApiToken, Owner, RuleSet, Trade, UserProfile
 from users.ruleset import RULESET_CHOICES
 
 User = get_user_model()
@@ -123,6 +123,45 @@ class InvenTreeGroupAdminForm(forms.ModelForm):
         return instance
 
 
+class OccupationalProfileInline(admin.StackedInline):
+    """Administrator-owned occupational information on the account page."""
+
+    model = UserProfile
+    fields = ('position', 'trades')
+    filter_horizontal = ('trades',)
+    can_delete = False
+    extra = 0
+
+    def has_change_permission(self, request, obj=None):
+        """Match the occupational API's existing administrator authority."""
+        from users.permissions import check_user_role
+
+        return request.user.is_superuser or (
+            request.user.is_staff and check_user_role(request.user, 'admin', 'change')
+        )
+
+    def has_add_permission(self, request, obj=None):
+        """Profiles are provisioned by the user lifecycle, not this form."""
+        return False
+
+
+@admin.register(Trade)
+class TradeAdmin(admin.ModelAdmin):
+    """Maintain the small trade catalogue without deleting historical tags."""
+
+    list_display = ('code', 'name', 'active')
+    search_fields = ('code', 'name')
+    list_filter = ('active',)
+
+    def get_readonly_fields(self, request, obj=None):
+        """Work requirements reference stable trade codes."""
+        return ('code',) if obj else ()
+
+    def has_delete_permission(self, request, obj=None):
+        """Deactivate rather than delete approved occupational records."""
+        return False
+
+
 class InvenTreeUserAdmin(UserAdmin):
     """Custom admin page for the User model.
 
@@ -130,11 +169,19 @@ class InvenTreeUserAdmin(UserAdmin):
     - Hides the "permissions" view as this is handled by RuleSets
     """
 
+    inlines = (OccupationalProfileInline,)
+
+    @admin.display(description=_('Job title'), ordering='profile__position')
+    def job_title(self, obj):
+        """Use the same title as the work-order staff directory."""
+        return obj.profile.position or ''
+
     list_display = (
         'username',
         'email',
         'first_name',
         'last_name',
+        'job_title',
         'is_staff',
         'last_login',
     )  # display last connection for each user in user admin panel.

@@ -20,6 +20,7 @@ import {
   MissingValue,
   ValueTooltip
 } from '../../../components/items/ValueTooltip';
+import { StaffSummaryPopover } from '../../../components/staff/StaffSummaryPopover';
 import classes from './BoardTaskCard.module.css';
 
 interface CardData {
@@ -31,6 +32,9 @@ interface CardData {
   priority: KanbanPriority;
   dueDate: string | null;
   assignee: string;
+  assignedTo?: number | null;
+  workOrderId?: number;
+  assignmentInherited?: boolean;
   machineName: string | null;
   tags: string[];
   company: string;
@@ -211,11 +215,24 @@ export function BoardTaskCard({
             <Loader size='xs' aria-label={t`Updating work order`} />
           )}
         </Group>
-        <Text size='xs' c='dimmed'>
-          {task.assignee || (
-            <MissingValue label={t`Assignee`} reason={t`Unassigned`} />
-          )}
-        </Text>
+        {task.workOrderId != null ? (
+          <Stack gap={0}>
+            <StaffSummaryPopover
+              userId={task.assignedTo ?? null}
+              label={task.assignee}
+              scope={{ workOrderId: task.workOrderId, kanbanCardId: task.id }}
+            />
+            {task.assignmentInherited && (
+              <Text size='xs' c='dimmed'>{t`Inherited from work order`}</Text>
+            )}
+          </Stack>
+        ) : (
+          <Text size='xs' c='dimmed'>
+            {task.assignee || (
+              <MissingValue label={t`Assignee`} reason={t`Unassigned`} />
+            )}
+          </Text>
+        )}
         {!collapsed && (
           <>
             {task.description && (

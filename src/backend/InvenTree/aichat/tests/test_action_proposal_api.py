@@ -352,9 +352,33 @@ class SchedulingProposalTests(ProposalRailTestCase):
         self.work_order.refresh_from_db()
         self.assertEqual(self.work_order.priority, WorkOrder.PRIORITY_HIGH)
 
+    @override_settings(
+        AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.granted_client_scope_resolver'
+    )
     def test_assign_action_reassigns_through_the_rail(self):
         """An assign proposal dispatches the canonical assign command."""
+        from django.contrib.auth.models import Group
+
+        from assets.models import ClientScopeGrant
+        from users.models import Trade
+
         other = get_user_model().objects.create_user(username='tech-2', password='pw')
+        group = Group.objects.create(name='Proposal qualified technicians')
+        role = group.rule_sets.get(name='work_order')
+        role.can_view = True
+        role.can_execute_workorder = True
+        role.save()
+        other.groups.add(group)
+        trade, _ = Trade.objects.get_or_create(
+            code='plumbing', defaults={'name': 'Plumbing'}
+        )
+        other.profile.trades.add(trade)
+        ClientScopeGrant.objects.create(user=other, client=self.client_tenant)
+        ClientScopeGrant.objects.create(user=self.actor, client=self.client_tenant)
+        self.work_order.customer = None
+        self.work_order.required_trades = [trade.code]
+        self.work_order.trade_requirements_confirmed = True
+        self.work_order.save()
         proposal = self._create(
             action='work_order.assign',
             key='assign-1',

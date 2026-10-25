@@ -13,7 +13,13 @@ FIELDS = {
         "resulting_status",
     ),
     "work_order.resume": ("current_status", "resulting_status"),
-    "work_order.assign": ("current_assigned_to_name", "proposed_assigned_to_name"),
+    "work_order.assign": (
+        "current_assigned_to_name",
+        "proposed_assigned_to_name",
+        "proposed_job_title",
+        "required_trades",
+        "assignment_rationale",
+    ),
     "work_order.schedule": ("current_start", "current_end", "proposed_start", "proposed_end"),
     "work_order.resize": (
         "current_estimated_minutes",

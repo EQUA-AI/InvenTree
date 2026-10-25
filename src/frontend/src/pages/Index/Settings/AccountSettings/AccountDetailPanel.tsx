@@ -12,6 +12,7 @@ import type { ApiFormFieldSet } from '@lib/types/Forms';
 import { useNavigate } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { ActionDropdown } from '../../../../components/items/ActionDropdown';
+import { StaffTradeLabels } from '../../../../components/staff/StaffTradeLabels';
 import { useEditApiFormModal } from '../../../../hooks/UseForm';
 import { useUserState } from '../../../../states/UserState';
 
@@ -40,7 +41,6 @@ export function AccountDetailPanel() {
   const profileFields: ApiFormFieldSet = useMemo(() => {
     return {
       displayname: {},
-      position: {},
       status: {},
       location: {},
       active: {},
@@ -83,7 +83,11 @@ export function AccountDetailPanel() {
   const profileDetailFields = useMemo(
     () => [
       { label: t`Display Name`, value: user?.profile?.displayname },
-      { label: t`Position`, value: user?.profile?.position },
+      { label: t`Job title`, value: user?.profile?.position },
+      {
+        label: t`Approved trades`,
+        value: <StaffTradeLabels trades={user?.profile?.trades} />
+      },
       { label: t`Status`, value: user?.profile?.status },
       { label: t`Location`, value: user?.profile?.location },
       { label: t`Contact`, value: user?.profile?.contact },

@@ -215,6 +215,28 @@ def validate_draft(payload) -> dict:
     planning = payload.get('planning') or {}
     if not isinstance(planning, dict):
         raise WorkPackageError('planning must be an object.')
+    occupational = {}
+    if 'assigned_to' in planning:
+        occupational['assigned_to'] = _positive_int(planning, 'assigned_to')
+    if 'required_trades' in planning:
+        codes = planning['required_trades']
+        if (
+            not isinstance(codes, list)
+            or len(codes) > 20
+            or any(not isinstance(code, str) for code in codes)
+            or len(codes) != len(set(codes))
+        ):
+            raise WorkPackageError(
+                'required_trades must be a unique list of at most 20 trade codes.'
+            )
+        occupational['required_trades'] = codes
+    for flag in ('trade_requirements_confirmed', 'auto_assign'):
+        if flag in planning:
+            if not isinstance(planning[flag], bool):
+                raise WorkPackageError(f'{flag} must be a boolean.')
+            occupational[flag] = planning[flag]
+    if 'override_reason' in planning:
+        occupational['override_reason'] = _text(planning, 'override_reason', limit=1000)
 
     source = payload.get('source') or {}
     if not isinstance(source, dict):
@@ -254,6 +276,7 @@ def validate_draft(payload) -> dict:
         'parts': _validate_parts(payload.get('parts')),
         'planning': {
             'assignee': _text(planning, 'assignee', limit=255),
+            **occupational,
             'due_date': planning.get('due_date') or None,
             'estimated_minutes': _positive_int(planning, 'estimated_minutes'),
         },
@@ -393,7 +416,12 @@ def find_duplicate_repairs(machine, *, anomaly_id=None, exclude_work_order_id=No
 
 @transaction.atomic
 def create_repair_work_package(
-    *, actor, draft, idempotency_key: str, correlation_id: uuid.UUID | None = None
+    *,
+    actor,
+    draft,
+    idempotency_key: str,
+    correlation_id: uuid.UUID | None = None,
+    allow_assignment_override: bool = False,
 ) -> WorkPackageResult:
     """Atomically create one machine-linked work order and optional repair packet.
 
@@ -462,7 +490,22 @@ def create_repair_work_package(
         work_order_type=draft['work_order_type'],
         assignee=planning['assignee'],
         due_date=planning['due_date'],
+        allow_assignment_override=allow_assignment_override,
+        **{
+            key: planning[key]
+            for key in (
+                'assigned_to',
+                'required_trades',
+                'trade_requirements_confirmed',
+                'auto_assign',
+                'override_reason',
+            )
+            if key in planning
+        },
     )
+    assignment = (command.metadata or {}).get('assignment', {})
+    if assignment.get('code') not in (None, 'ASSIGNMENT_QUALIFIED'):
+        warnings.append(f'Assignment review required: {assignment["code"]}')
     replayed = bool(command.metadata.get('replayed'))
 
     work_order = WorkOrder.objects.get(pk=command.work_order_id)

@@ -10,6 +10,45 @@ The various user settings described below can be configured for an individual us
 
 The *Account Settings* screen shows configuration options for your user account, including linking [third party logins](./SSO.md) and [multi factor authentication](./MFA.md):
 
+#### Job titles and approved trades
+
+Job titles are stored in the existing user profile's **Position** field and
+displayed as **Job title** in personnel assignment controls. Administrators
+manage the title and approved trades in the Admin Center user details or database
+admin. Users can view their own occupational information, but cannot edit their
+own title or approve their own trades. Other account and profile preferences
+remain editable as before.
+
+Approved trades describe administrator-approved assignment suitability. They
+are not a certification, licence, safety-training record, or authorization to
+start work. A person can have more than one approved trade.
+
+Users granted **Can view staff directory** can search personnel within their
+authorized maintenance scope when choosing a work-order assignee. Assignment
+choices display names and titles; the small personnel popup shows only the
+name and title. It does not expose personal contact information or account
+privileges.
+
+Work-order trade requirements must be confirmed before automatic assignment
+can select a person. Automatic selection requires exactly one active,
+appropriately scoped person who can execute work and covers all required
+trades. Missing requirements, no qualified match, or several matching people
+leave the work unassigned for review. A job title by itself is not sufficient
+proof of suitability.
+
+An authorized supervisor may override a manual trade-mismatch warning only
+with the separate override permission and a recorded reason. This cannot
+override account inactivity, maintenance scope, or execution permissions.
+AI tools cannot grant themselves a manual override. Normal work-order
+approvals and repair-packet safety checks still apply.
+
+Existing free-text assignees and job titles are preserved. Deployment does not
+infer qualifications from old titles or automatically reassign existing work.
+Administrators must populate approved trades and explicitly grant directory
+permissions to the intended groups before using the new assignment controls.
+Adding an unattended anomaly-to-work-order monitoring runner is a separate
+deployment feature; this directory does not enable one.
+
 {{ image("settings/user_account.png", "User Account Settings") }}
 
 ### Display Settings

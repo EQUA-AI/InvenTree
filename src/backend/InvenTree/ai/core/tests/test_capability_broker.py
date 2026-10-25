@@ -82,10 +82,10 @@ def test_catalog_covers_every_workflow_toolset_once_in_canonical_order():
     # purchase-order write tools. R2 added search_attachment_docs; R3 added
     # search_evidence_media; S8a added list_document_sources; R5 retired
     # search_part_documents (59 -> 58, catalog 95 -> 94).
-    # Combined catalog: board-task reads plus investigation proposals.
-    assert len(wf8_tools) == 65
-    assert len(catalog) == 101
-    assert tuple(entry.tool for entry in catalog[:65]) == wf8_tools
+    # Preserve investigation tools and add the permissioned staff read.
+    assert len(wf8_tools) == 66
+    assert len(catalog) == 102
+    assert tuple(entry.tool for entry in catalog[:66]) == wf8_tools
     assert len({entry.tool_id for entry in catalog}) == len(catalog)
 
 
@@ -119,6 +119,7 @@ def test_catalog_has_expected_stable_pack_shapes():
         "documents.read": 2,
         "procurement.read": 5,
         "action_status.read": 1,
+        "staff.read": 1,
         "sales.read": 4,
         "build.read": 3,
         "analytics.read": 2,
@@ -328,8 +329,8 @@ def test_contract_manifest_is_stable_and_complete():
 
     assert first == second
     assert manifest_json() == manifest_json()
-    # Combined catalog includes every tool from both parent lines.
-    assert len(first) == 101
+    # Combined catalog includes investigation and personnel tools.
+    assert len(first) == 102
     assert all(record["module"] for record in first)
     assert all(record["qualname"] for record in first)
     assert all(len(record["contract_digest"]) == 64 for record in first)

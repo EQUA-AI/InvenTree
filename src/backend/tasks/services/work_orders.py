@@ -391,9 +391,33 @@ def assign_work_order(
     idempotency_key: str,
     reason: str = '',
     correlation_id: uuid.UUID | None = None,
+    required_trades: list[str] | None = None,
+    trade_requirements_confirmed: bool | None = None,
+    override_reason: str = '',
+    allow_override: bool = False,
+    kanban_card_id: int | None = None,
 ) -> CommandResult:
     """Assign a typed user while preserving legacy free-text ``assignee``."""
+    from django.contrib.auth.models import User
+
+    from repair.models import RepairPacket
+    from tasks.models import KanbanCard, KanbanColumn
+    from tasks.permissions import PLAN_WORKORDER
+    from tasks.services.staff_assignment import validate_assignment
+    from users.staff_directory import require_directory
+
+    # Packet services lock the packet before its work order. Match that order.
+    packet = (
+        RepairPacket.objects
+        .select_for_update()
+        .filter(work_order_id=work_order_id)
+        .first()
+    )
     work_order = _locked_work_order(work_order_id)
+    require_directory(actor)
+    current_actor = User.objects.get(pk=actor.pk)
+    require_permission(current_actor, ASSIGN_WORKORDER)
+    _require_scope(actor, work_order)
     assigned_to_id = getattr(assigned_to, 'pk', assigned_to)
     payload = {
         'work_order_id': work_order.pk,
@@ -401,14 +425,72 @@ def assign_work_order(
         'expected_version': expected_version,
         'reason': reason,
     }
+    if (
+        required_trades is not None
+        or trade_requirements_confirmed is not None
+        or override_reason
+        or kanban_card_id
+    ):
+        payload.update(
+            required_trades=required_trades,
+            trade_requirements_confirmed=trade_requirements_confirmed,
+            override_reason=override_reason,
+            kanban_card_id=kanban_card_id,
+        )
     request_hash = _canonical_hash('assign', actor, payload)
     replay = _replay_or_none(work_order, idempotency_key, request_hash)
     if replay:
         return replay
     _require_version(work_order, expected_version)
-    require_permission(actor, ASSIGN_WORKORDER)
-    _require_scope(actor, work_order)
-    _require_no_packet(work_order)
+    if work_order.lifecycle_status in {
+        WorkOrderLifecycle.COMPLETED,
+        WorkOrderLifecycle.CANCELED,
+    }:
+        raise IllegalTransition('A terminal work order cannot be reassigned.')
+    terminal_column = KanbanColumn.terminal_key()
+    if terminal_column and work_order.status == terminal_column:
+        raise IllegalTransition('A finished work order cannot be reassigned.')
+    if packet is not None and packet.status in {'closed', 'canceled'}:
+        raise IllegalTransition('A terminal repair packet cannot be reassigned.')
+    if required_trades is not None or trade_requirements_confirmed is not None:
+        require_permission(current_actor, PLAN_WORKORDER)
+    trades = (
+        required_trades if required_trades is not None else work_order.required_trades
+    )
+    confirmed = (
+        trade_requirements_confirmed
+        if trade_requirements_confirmed is not None
+        else work_order.trade_requirements_confirmed
+    )
+    card = None
+    if kanban_card_id is not None:
+        card = (
+            KanbanCard.objects
+            .select_for_update()
+            .filter(pk=kanban_card_id, work_order=work_order)
+            .first()
+        )
+        if card is None:
+            raise WorkOrderCommandError(
+                'Board task does not belong to this work order.'
+            )
+        if terminal_column and card.status == terminal_column:
+            raise IllegalTransition('A finished board task cannot be reassigned.')
+    effective_user_id = (
+        assigned_to_id or work_order.assigned_to_id
+        if card is not None
+        else assigned_to_id
+    )
+    decision = validate_assignment(
+        actor,
+        work_order,
+        effective_user_id,
+        required_trades=trades,
+        requirements_confirmed=confirmed,
+        override_reason=override_reason,
+        allow_override=allow_override,
+    )
+    trades = sorted(trades)
     readiness = evaluate_work_order_readiness(
         work_order, action='assign', actor=actor, expected_version=expected_version
     )
@@ -418,68 +500,88 @@ def assign_work_order(
     from django.contrib.auth import get_user_model
 
     from tasks.models import WorkHandover
-
-    incoming = (
-        get_user_model().objects.filter(pk=assigned_to_id, is_active=True).first()
-    )
-    if assigned_to_id is not None and incoming is None:
-        raise WorkOrderCommandError('Incoming owner must be active.')
-    pending = work_order.handovers.order_by('-pk').first()
-    assignment_changed = work_order.assigned_to_id != assigned_to_id
-    old_assignee_id = work_order.assigned_to_id
-    responsible_owner_id = (
-        (
-            pending.incoming_owner_id
-            if pending.accepted_at
-            else pending.previous_owner_id
-        )
-        if pending
-        else old_assignee_id
-    )
-    if pending is None and responsible_owner_id is None:
-        last_assignment = (
-            work_order.events.filter(event_type='ASSIGNED').order_by('-pk').first()
-        )
-        if last_assignment:
-            responsible_owner_id = (
-                last_assignment.metadata.get('result_metadata') or {}
-            ).get('responsible_owner_id')
-    work_order.assigned_to_id = assigned_to_id
-    work_order.lifecycle_version += 1
-    work_order.save(update_fields=['assigned_to', 'lifecycle_version', 'updated_at'])
     from tasks.work_execution.common import person
 
-    responsible = get_user_model().objects.filter(pk=responsible_owner_id).first()
-    # A deleted actor's historical id cannot be resurrected as a live FK or owner.
-    responsible_owner_id = responsible.pk if responsible else None
-    disposition = 'unchanged'
-    if assignment_changed:
-        if pending and pending.accepted_at is None and pending.withdrawn_at is None:
-            pending.withdrawn_at = timezone.now()
-            pending.save(update_fields=['withdrawn_at'])
-        disposition = (
-            'released'
-            if assigned_to_id is None
-            else 'restored'
-            if assigned_to_id == responsible_owner_id
-            else 'proposed'
+    responsibility_metadata = {}
+    if card is None:
+        incoming = (
+            get_user_model().objects.filter(pk=assigned_to_id, is_active=True).first()
         )
-    if assignment_changed and disposition == 'proposed':
-        WorkHandover.objects.create(
-            work_order=work_order,
-            previous_owner_id=responsible_owner_id,
-            incoming_owner_id=assigned_to_id,
-            proposed_by=actor,
-            proposed_version=work_order.lifecycle_version,
-            previous_owner_name=person(responsible) or '',
-            incoming_owner_name=person(incoming) or '',
-            proposed_by_name=person(actor) or '',
+        if assigned_to_id is not None and incoming is None:
+            raise WorkOrderCommandError('Incoming owner must be active.')
+        pending = work_order.handovers.order_by('-pk').first()
+        assignment_changed = work_order.assigned_to_id != assigned_to_id
+        old_assignee_id = work_order.assigned_to_id
+        responsible_owner_id = (
+            (
+                pending.incoming_owner_id
+                if pending.accepted_at
+                else pending.previous_owner_id
+            )
+            if pending
+            else old_assignee_id
         )
+        if pending is None and responsible_owner_id is None:
+            last_assignment = (
+                work_order.events.filter(event_type='ASSIGNED').order_by('-pk').first()
+            )
+            if last_assignment:
+                responsible_owner_id = (
+                    last_assignment.metadata.get('result_metadata') or {}
+                ).get('responsible_owner_id')
+        work_order.assigned_to_id = assigned_to_id
+    else:
+        old_assignee_id = card.assigned_to_id
+        card.assigned_to_id = assigned_to_id
+        card.save(update_fields=['assigned_to', 'updated_at'])
+    work_order.required_trades = trades
+    work_order.trade_requirements_confirmed = confirmed
+    work_order.lifecycle_version += 1
+    work_order.save(
+        update_fields=[
+            'assigned_to',
+            'required_trades',
+            'trade_requirements_confirmed',
+            'lifecycle_version',
+            'updated_at',
+        ]
+    )
+    if card is None:
+        responsible = get_user_model().objects.filter(pk=responsible_owner_id).first()
+        responsible_owner_id = responsible.pk if responsible else None
+        disposition = 'unchanged'
+        if assignment_changed:
+            if pending and pending.accepted_at is None and pending.withdrawn_at is None:
+                pending.withdrawn_at = timezone.now()
+                pending.save(update_fields=['withdrawn_at'])
+            disposition = (
+                'released'
+                if assigned_to_id is None
+                else 'restored'
+                if assigned_to_id == responsible_owner_id
+                else 'proposed'
+            )
+        if assignment_changed and disposition == 'proposed':
+            WorkHandover.objects.create(
+                work_order=work_order,
+                previous_owner_id=responsible_owner_id,
+                incoming_owner_id=assigned_to_id,
+                proposed_by=actor,
+                proposed_version=work_order.lifecycle_version,
+                previous_owner_name=person(responsible) or '',
+                incoming_owner_name=person(incoming) or '',
+                proposed_by_name=person(actor) or '',
+            )
+        responsibility_metadata = {
+            'responsibility_disposition': disposition,
+            'responsible_owner_id': responsible_owner_id,
+            'responsible_owner_name': person(responsible),
+        }
     return _append_result(
         work_order=work_order,
         actor=actor,
         command='assign',
-        event_type='ASSIGNED',
+        event_type='CARD_ASSIGNED' if card is not None else 'ASSIGNED',
         from_status=work_order.lifecycle_status,
         to_status=work_order.lifecycle_status,
         reason=reason,
@@ -489,9 +591,12 @@ def assign_work_order(
         result_metadata={
             'previous_assigned_to_id': old_assignee_id,
             'assigned_to_id': assigned_to_id,
-            'responsibility_disposition': disposition,
-            'responsible_owner_id': responsible_owner_id,
-            'responsible_owner_name': person(responsible),
+            'kanban_card_id': kanban_card_id,
+            'effective_assigned_to_id': effective_user_id,
+            'required_trades': trades,
+            'trade_requirements_confirmed': confirmed,
+            **decision,
+            **responsibility_metadata,
         },
     )
 

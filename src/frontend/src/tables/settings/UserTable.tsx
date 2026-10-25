@@ -36,6 +36,8 @@ import {
   TransferList,
   type TransferListItem
 } from '../../components/items/TransferList';
+import { OccupationalProfileEditor } from '../../components/staff/OccupationalProfileEditor';
+import { StaffTradeLabels } from '../../components/staff/StaffTradeLabels';
 import { BooleanColumn } from '../../components/tables/ColumnRenderers';
 import { InvenTreeTable } from '../../components/tables/InvenTreeTable';
 import { showApiErrorMessage } from '../../functions/notifications';
@@ -58,6 +60,7 @@ export interface UserDetailI {
   is_active: boolean;
   is_staff: boolean;
   is_superuser: boolean;
+  profile?: { position?: string | null; trades?: number[] };
 }
 
 export function UserDrawer({
@@ -210,6 +213,13 @@ export function UserDrawer({
               }}
               id={`user-detail-drawer-${id}`}
             />
+            <OccupationalProfileEditor
+              userId={Number(id)}
+              onSaved={() => {
+                refreshInstance();
+                refreshTable();
+              }}
+            />
           </Accordion.Panel>
         </Accordion.Item>
 
@@ -271,6 +281,18 @@ export function UserTable({
       {
         accessor: 'email',
         sortable: true
+      },
+      {
+        accessor: 'profile.position',
+        title: t`Job title`,
+        render: (record: UserDetailI) => record.profile?.position || '-'
+      },
+      {
+        accessor: 'profile.trades',
+        title: t`Approved trades`,
+        render: (record: UserDetailI) => (
+          <StaffTradeLabels trades={record.profile?.trades} />
+        )
       },
       {
         accessor: 'groups',

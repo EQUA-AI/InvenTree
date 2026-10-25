@@ -32,7 +32,7 @@ from approvals.executors import (
 )
 from approvals.models import ActionType
 from assets.health_models import AnomalyStatus, SourceType
-from assets.models import AssetMachine, Client
+from assets.models import AssetMachine, Client, ClientScopeGrant
 from repair.models import RepairPacket
 
 
@@ -47,6 +47,9 @@ def _payload_of(result) -> dict:
     return result.result_payload
 
 
+@override_settings(
+    AIMMS_MAINTENANCE_SCOPE_RESOLVER='tasks.scope.granted_client_scope_resolver'
+)
 class RepairWorkPackageExecutorTest(TestCase):
     """The executor delegates to the canonical command and detects drift."""
 
@@ -59,6 +62,7 @@ class RepairWorkPackageExecutorTest(TestCase):
         self.actor = get_user_model().objects.create_superuser(
             username=f'exec-{suffix}', email=f'{suffix}@example.com', password='pw'
         )
+        ClientScopeGrant.objects.create(user=self.actor, client=self.client_tenant)
         self.actor.maintenance_scopes = {
             MaintenanceScope(
                 customer_id=None, site_key=None, client_id=self.client_tenant.pk
