@@ -51,7 +51,7 @@ describe('terminal read-only presentation boundary', () => {
       null,
       [],
       { ...valid, schema_version: true },
-      { ...valid, library: 'aimms-chat@2' },
+      { ...valid, library: 'aimms-chat@99' },
       { ...valid, program: '机'.repeat(22000) },
       { ...valid, references: [...valid.references, ...valid.references] },
       { ...valid, extra: 'private' },

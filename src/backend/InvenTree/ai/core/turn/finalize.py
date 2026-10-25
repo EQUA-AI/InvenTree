@@ -134,6 +134,11 @@ async def enrich_canonical(
         turn_id=run.turn.pk,
         emitter=run.emitter,
         actor=run.actor,
+        **(
+            {"target_machine_id": run.extras["record_target"]["id"]}
+            if (run.extras.get("record_target") or {}).get("kind") == "machine"
+            else {}
+        ),
     )
     canonical = await service._attach_media_evidence(
         canonical,
@@ -157,8 +162,15 @@ async def _attach_presentation(run: TurnRun, canonical: CanonicalTurn) -> Canoni
         return canonical
     try:
         if (canonical.get("evidence_gate") or {}).get("verdict") == "pass":
-            datasets = normalize_datasets(run.extras.get("presentation_trend_candidate"))
+            datasets = normalize_datasets([
+                *(run.extras.get("presentation_trend_candidate") or []),
+                *(run.extras.get("presentation_chart_candidate") or []),
+            ])
             if datasets:
+                canonical["presentation_data"] = datasets
+        elif canonical.get("workflow_used") == "chat_presentation":
+            datasets = normalize_datasets(canonical.pop("presentation_data", []))
+            if datasets and all(item.get("origin") == "user_supplied" for item in datasets):
                 canonical["presentation_data"] = datasets
         presentation = build_presentation(canonical)
         if presentation is None:

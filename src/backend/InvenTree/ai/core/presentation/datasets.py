@@ -55,12 +55,95 @@ class PresentationTrendV1(BaseModel):
         return self
 
 
+class PresentationChartPointV2(BaseModel):
+    """An explicit category value; null is a gap, never zero."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    label: str = Field(min_length=1, max_length=80)
+    value: float | int | None
+
+    @field_validator("value")
+    @classmethod
+    def bounded_value(cls, value):
+        if value is not None and (
+            isinstance(value, bool) or not math.isfinite(value) or abs(value) > 1e12
+        ):
+            raise ValueError("invalid chart value")
+        return value
+
+    @field_validator("label")
+    @classmethod
+    def nonempty_label(cls, value):
+        if not value.strip():
+            raise ValueError("empty category")
+        return value
+
+
+class PresentationChartV2(BaseModel):
+    """A bounded chart snapshot with explicit recorded/provided provenance."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["chart_dataset"] = "chart_dataset"
+    source_key: str = Field(min_length=1, max_length=256)
+    origin: Literal["recorded", "user_supplied"]
+    chart_type: Literal["line", "bar", "pie"]
+    title: str = Field(min_length=1, max_length=120)
+    unit: str = Field(min_length=1, max_length=32)
+    x_label: str = Field(min_length=1, max_length=64)
+    y_label: str = Field(min_length=1, max_length=64)
+    source: Literal["work_orders", "user_supplied"]
+    source_revision: str = Field(min_length=1, max_length=128)
+    as_of: str = Field(min_length=1, max_length=64)
+    scope_label: str = Field(min_length=1, max_length=512)
+    definition: str = Field(min_length=1, max_length=512)
+    population_count: int | None
+    complete_population: bool | None
+    points: list[PresentationChartPointV2] = Field(min_length=1, max_length=64)
+
+    @model_validator(mode="after")
+    def verified_shape(self):
+        datetime.fromisoformat(self.as_of)
+        if len({point.label for point in self.points}) != len(self.points):
+            raise ValueError("duplicate categories")
+        if self.origin == "recorded":
+            if (
+                self.source != "work_orders"
+                or self.complete_population is not True
+                or type(self.population_count) is not int
+                or self.population_count < 0
+                or any(type(point.value) is not int or point.value < 0 for point in self.points)
+                or sum(point.value for point in self.points) != self.population_count
+            ):
+                raise ValueError("recorded chart requires a complete reconciled population")
+        elif (
+            self.source != "user_supplied"
+            or self.population_count is not None
+            or self.complete_population is not None
+        ):
+            raise ValueError("provided values cannot claim recorded coverage")
+        if self.chart_type == "pie" and (
+            any(point.value is None or point.value < 0 for point in self.points)
+            or sum(point.value for point in self.points) <= 0
+        ):
+            raise ValueError("pie values must be nonnegative with a positive total")
+        return self
+
+
 def normalize_datasets(raw: Any) -> list[dict[str, Any]]:
     """Fail closed as a whole; never truncate qualifications or observations."""
     if not isinstance(raw, list) or len(raw) > 4:
         return []
     try:
-        datasets = [PresentationTrendV1.model_validate(item).model_dump() for item in raw]
+        datasets = [
+            (
+                PresentationChartV2
+                if isinstance(item, dict) and item.get("kind") == "chart_dataset"
+                else PresentationTrendV1
+            )
+            .model_validate(item)
+            .model_dump()
+            for item in raw
+        ]
         if (
             len({item["source_key"] for item in datasets}) != len(datasets)
             or len(json.dumps(datasets).encode()) > 65536

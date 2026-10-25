@@ -20,6 +20,7 @@ export default defineConfig({
     'pui_ai_chat_submission.spec.ts',
     'pui_ai_chat_picker_recovery.spec.ts',
     'pui_ai_chat_presentation.spec.ts',
+    'pui_ai_chat_visualization.spec.ts',
     'pui_ai_chat_workspace.spec.ts',
     'pui_ai_chat_overlay_matrix.spec.ts'
   ],

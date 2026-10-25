@@ -146,6 +146,50 @@ def current_turn_scope() -> TurnScopeContext | None:
         return None
 
 
+def bind_target_scope(
+    scope: TurnScopeContext | None, *, machine_id: int, thread_pk: Any, turn_pk: Any
+) -> TurnScopeContext:
+    """Narrow THIS turn to a previously authorized target; never mutate the thread.
+
+    The caller has checked the target against the recorded explicit scope.
+    A named target is a query predicate regardless of the rollout of the
+    optional conversation-scope feature.
+    """
+    from dataclasses import replace
+
+    digest = hashlib.sha256(
+        f"{getattr(scope, 'scope_hash', '')}|machine:{machine_id}".encode()
+    ).hexdigest()
+    if scope is None:
+        scope = TurnScopeContext(
+            mode=MODE_EXPLICIT,
+            machine_ids=frozenset({machine_id}),
+            machine_serials=frozenset(),
+            date_from=None,
+            date_to=None,
+            source_classes=frozenset(),
+            scope_hash=digest,
+            scope_version=0,
+            snapshot_id=_snapshot_id(digest, 0, turn_pk),
+            thread_pk=thread_pk,
+            display_label="Requested machine",
+            shadow=False,
+            enforce=True,
+        )
+    else:
+        scope = replace(
+            scope,
+            mode=MODE_EXPLICIT,
+            machine_ids=frozenset({machine_id}),
+            scope_hash=digest,
+            snapshot_id=_snapshot_id(digest, scope.scope_version, turn_pk),
+            enforce=True,
+            shadow=False,
+        )
+    turn_scope_context.set(scope)
+    return scope
+
+
 def scope_miss_for_machine(machine_id: Any) -> dict[str, Any] | None:
     """The typed out-of-analysis-scope miss for one record, or None.
 

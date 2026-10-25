@@ -258,7 +258,13 @@ def _vocabulary_incomplete(exc: Exception) -> AnalysisRetrievalIncomplete:
 
 
 def _retrieve_aggregate(
-    user: Any, store: EvidenceStore, *, scope: TurnScopeContext | None, query: str, run: Any
+    user: Any,
+    store: EvidenceStore,
+    *,
+    scope: TurnScopeContext | None,
+    query: str,
+    run: Any,
+    status_only: bool = False,
 ) -> dict[str, Any]:
     """fleet_aggregate: profile + one grouped count over the population."""
     from ai.core.analysis.plans import build_aggregate_plan
@@ -272,6 +278,10 @@ def _retrieve_aggregate(
 
     as_of = timezone.now().isoformat()
     plan = build_aggregate_plan(query)
+    if status_only:
+        plan.update(
+            intent="status_comparison", grouping="lifecycle_status", date_field="created_at"
+        )
     narrowing = _scope_narrowing(scope)
     grouping = plan["grouping"]
     date_field = plan["date_field"]
@@ -395,7 +405,58 @@ def _retrieve_aggregate(
         "excluded_null_date_count": None,
         "incomplete_reason": None,
     })
+    if status_only:
+        run.extras["presentation_chart_candidate"] = _status_chart(result, manifest, as_of)
     return result
+
+
+def _status_chart(result: dict, manifest: Any, as_of: str) -> list[dict]:
+    """Exactly reconcile complete server-counted groups before proposing a visual."""
+    from ai.core.presentation.datasets import normalize_datasets
+
+    if result.get("complete_population") is not True or result.get("groups_truncated"):
+        return []
+    counts = {row["key"]: row["group_count"] for row in result["groups"]}
+    from tasks.models import WorkOrderLifecycle
+
+    if set(counts) - set(WorkOrderLifecycle.values):
+        from tasks.ai_analytics import AnalyticsRequestError
+
+        raise _vocabulary_incomplete(
+            AnalyticsRequestError(
+                "grouping_unavailable", "Stored lifecycle statuses are not recognized."
+            )
+        )
+    completed, canceled = counts.get("completed", 0), counts.get("canceled", 0)
+    population = result["population_count"]
+    filters = result.get("applied_filters") or {}
+    scope_label = "; ".join(f"{key}: {value}" for key, value in filters.items())
+    if "from" not in filters and "to" not in filters:
+        scope_label += "; all recorded dates"
+    return normalize_datasets([
+        {
+            "kind": "chart_dataset",
+            "source_key": "analysis:status",
+            "origin": "recorded",
+            "chart_type": "bar",
+            "title": "Recorded work-order status",
+            "unit": "work orders",
+            "x_label": "Status",
+            "y_label": "Work orders",
+            "source": "work_orders",
+            "source_revision": manifest.operand_hash,
+            "as_of": as_of,
+            "scope_label": scope_label,
+            "definition": "Open includes draft, planned, ready, in progress, on hold and verifying. Completed and canceled are separate. Counts cover the complete authorized filtered population.",
+            "population_count": population,
+            "complete_population": True,
+            "points": [
+                {"label": "Open", "value": population - completed - canceled},
+                {"label": "Completed", "value": completed},
+                {"label": "Canceled", "value": canceled},
+            ],
+        }
+    ])
 
 
 def _retrieve_trend(
@@ -933,7 +994,7 @@ def _no_data_reason(intent: str, store: EvidenceStore, retrieval_failed: bool) -
     if retrieval_failed:
         return "retrieval_failure"
     coverage = store.coverage_meta() or {}
-    if intent in ("record_retrieval", "fleet_aggregate", "trend_analysis"):
+    if intent in ("record_retrieval", "fleet_aggregate", "trend_analysis", "status_comparison"):
         if int(coverage.get("population_count") or 0) == 0 and coverage.get("complete_population"):
             return "complete_population_no_matches"
         if not coverage.get("complete_population") and not store.facts:
@@ -1033,7 +1094,7 @@ async def run_analysis(
                 await service._call_sync(_retrieve_manual, user, store, query=run.routing_content)
             elif intent == "source_inventory":
                 await service._call_sync(_retrieve_inventory, user, store)
-            elif intent == "fleet_aggregate":
+            elif intent in ("fleet_aggregate", "status_comparison"):
                 await service._call_sync(
                     _retrieve_aggregate,
                     user,
@@ -1041,6 +1102,7 @@ async def run_analysis(
                     scope=scope,
                     query=run.routing_content,
                     run=run,
+                    **({"status_only": True} if intent == "status_comparison" else {}),
                 )
             elif intent == "trend_analysis":
                 await service._call_sync(

@@ -2,11 +2,9 @@ import type {
   ComponentFocusReference,
   EvidenceFocusReference
 } from '@lib/types/AimmsWire.generated';
-import type {
-  AssistantPresentationV1,
-  PresentationTrendV1
-} from '@lib/types/AimmsWire.generated';
+import type { AssistantPresentationV1 } from '@lib/types/AimmsWire.generated';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { PresentationDataset } from '../components/aichat/genui/datasets';
 import { normalizePresentationData } from '../components/aichat/genui/datasets';
 import { normalizePresentation } from '../components/aichat/genui/presentation';
 
@@ -445,7 +443,7 @@ export interface ChatMessage {
    */
   workFocus?: ChatWorkFocus;
   presentation?: AssistantPresentationV1;
-  presentationData?: PresentationTrendV1[];
+  presentationData?: PresentationDataset[];
 }
 
 /** S46: one tool call's lifecycle as shown in the activity strip. */

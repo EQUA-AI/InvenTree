@@ -36,6 +36,9 @@ class TaskIntent(StrEnum):
     RECORD_RETRIEVAL = "record_retrieval"
     FLEET_AGGREGATE = "fleet_aggregate"
     TREND_ANALYSIS = "trend_analysis"
+    STATUS_COMPARISON = "status_comparison"
+    PROVIDED_VISUALIZATION = "provided_visualization"
+    PART_LOOKUP = "part_lookup"
     MANUAL_WO_COMPARISON = "manual_wo_comparison"
     SAFETY_LOOKUP = "safety_lookup"
     PART_ADVICE = "part_advice"
@@ -55,6 +58,7 @@ class EffectIntent(StrEnum):
 #: are deliberately excluded: they route through their own policies (S4 and
 #: the advisory path), not the evidence-analysis executor.
 ANALYSIS_INTENTS = frozenset({
+    TaskIntent.STATUS_COMPARISON,
     TaskIntent.SOURCE_INVENTORY,
     TaskIntent.MANUAL_FACT,
     TaskIntent.RECORD_RETRIEVAL,
@@ -71,6 +75,7 @@ ANALYSIS_INTENTS = frozenset({
 #: rail; owner decision 2026-08-29: a user-visible refusal of an analysis
 #: question must be structurally unrepresentable).
 ANALYSIS_ROUTED_INTENTS = frozenset({
+    TaskIntent.STATUS_COMPARISON,
     TaskIntent.RECORD_RETRIEVAL,
     TaskIntent.MANUAL_FACT,
     TaskIntent.SOURCE_INVENTORY,
@@ -488,6 +493,25 @@ def classify_rules(text: str) -> IntentDecision | None:
     if _PART_ADVICE.search(content):
         return _rules_decision(TaskIntent.PART_ADVICE, "part_advice_rules")
 
+    from ai.core.presentation.requests import chart_requested, status_comparison_requested
+    from ai.core.tools.capabilities import _write_intent
+
+    if chart_requested(content) and _write_intent(content.casefold()) is not None:
+        return IntentDecision(
+            intent=TaskIntent.GOVERNED_ACTION,
+            effect=EffectIntent.EFFECT_REQUEST,
+            confidence=0.9,
+            reason_codes=("chart_business_effect_rules",),
+            source="rules",
+        )
+    if chart_requested(content):
+        if re.search(r"\b(?:synthetic|user[- ]provided|supplied)\b", content, re.I):
+            return _rules_decision(
+                TaskIntent.PROVIDED_VISUALIZATION, "provided_visualization_rules"
+            )
+        if status_comparison_requested(content):
+            return _rules_decision(TaskIntent.STATUS_COMPARISON, "status_comparison_rules")
+
     presentation = _PRESENTATION_ARTIFACT.search(content) is not None
     if not presentation and VoiceComplexityRouter._is_effect_intent(content):
         return IntentDecision(
@@ -500,6 +524,18 @@ def classify_rules(text: str) -> IntentDecision | None:
 
     has_records = _record_noun(content)
     has_docs = _doc_noun(content)
+
+    if (
+        re.search(r"\bparts?\b", content, re.I)
+        and not re.search(
+            r"\b(?:machines?|work[ -]?orders?|maintenance|repair|manuals?)\b", content, re.I
+        )
+        and _write_intent(content.casefold()) is None
+        and re.search(
+            r"\b(?:search|look\s*up|recorded|catalog|id|internal part number)\b", content, re.I
+        )
+    ):
+        return _rules_decision(TaskIntent.PART_LOOKUP, "part_lookup_rules")
 
     if (
         not has_records

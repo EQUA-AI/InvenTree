@@ -56,12 +56,16 @@ def build_presentation(canonical: dict[str, Any]) -> dict[str, Any] | None:
     for dataset in canonical.get("presentation_data") or []:
         if dataset.get("kind") == "trend_dataset":
             add("TrendPreview", "trend_dataset", dataset["source_key"])
+        elif dataset.get("kind") == "chart_dataset":
+            add("ChartSnapshot", "chart_dataset", dataset["source_key"])
     if len(calls) == 1:
         return None  # Plain prose gains nothing from loading the renderer.
     envelope = normalize_presentation({
         "schema_version": 1,
         "format": "openui-lang",
-        "library": "aimms-chat@1",
+        "library": "aimms-chat@2"
+        if any(ref["kind"] == "chart_dataset" for ref in references)
+        else "aimms-chat@1",
         "program": f"root = AnswerLayout([{', '.join(calls)}])",
         "references": references,
     })

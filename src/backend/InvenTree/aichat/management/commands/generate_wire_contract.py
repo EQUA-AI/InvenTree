@@ -416,12 +416,16 @@ class Command(BaseCommand):
             )
         )
         from ai.core.presentation.datasets import (
+            PresentationChartPointV2,
+            PresentationChartV2,
             PresentationSampleV1,
             PresentationTrendV1,
         )
 
         sections.append(_emit_model_interface(PresentationSampleV1))
         sections.append(_emit_model_interface(PresentationTrendV1))
+        sections.append(_emit_model_interface(PresentationChartPointV2))
+        sections.append(_emit_model_interface(PresentationChartV2))
         from ai.core.quota.wire import (
             QUOTA_ERROR_CODES,
             QuotaPreflightPayload,

@@ -2,9 +2,9 @@
   "renderer": "1.0.1",
   "cli": "0.6.0",
   "zod": "4.6.7",
-  "library": "aimms-chat@1",
+  "library": "aimms-chat@2",
   "artifacts": {
-    "chat-library.txt": "80a9d378328219119b8e3949d87f96c955d75c3177fb58789f5a960f50dfb3db",
-    "chat-library.spec.json": "8316a9eba20a344a3c4610561107e2b1847f269d78541cf89f68a2f03282c4af"
+    "chat-library.txt": "739e509b20ae2b7d029f729c361d93ab3918b74ee3f4e5e8a2df8aec6a6925d0",
+    "chat-library.spec.json": "94ff36350a8c2ce44b75e0fbec8f494beebe2959623817ef5632fe5aa1118556"
   }
 }

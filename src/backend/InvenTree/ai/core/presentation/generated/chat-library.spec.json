@@ -2,7 +2,7 @@
   "root": "AnswerLayout",
   "components": {
     "AnswerLayout": {
-      "signature": "AnswerLayout(children: (AnswerSummary | AssetSummary | EvidenceList | CoverageNotice | MetricComparison | TrendPreview | NextSteps)[])",
+      "signature": "AnswerLayout(children: (AnswerSummary | AssetSummary | EvidenceList | CoverageNotice | MetricComparison | TrendPreview | ChartSnapshot | NextSteps)[])",
       "description": "A bounded sequence of read-only answer sections."
     },
     "AnswerSummary": {
@@ -27,6 +27,10 @@
     },
     "TrendPreview": {
       "signature": "TrendPreview(reference: string)",
+      "description": "Resolve only an authorized, historical server reference. Missing data is unavailable."
+    },
+    "ChartSnapshot": {
+      "signature": "ChartSnapshot(reference: string)",
       "description": "Resolve only an authorized, historical server reference. Missing data is unavailable."
     },
     "NextSteps": {
@@ -59,6 +63,9 @@
       "TrendPreview": {
         "$ref": "#/$defs/TrendPreview"
       },
+      "ChartSnapshot": {
+        "$ref": "#/$defs/ChartSnapshot"
+      },
       "NextSteps": {
         "$ref": "#/$defs/NextSteps"
       }
@@ -71,6 +78,7 @@
       "CoverageNotice",
       "MetricComparison",
       "TrendPreview",
+      "ChartSnapshot",
       "NextSteps"
     ],
     "additionalProperties": false,
@@ -101,6 +109,9 @@
                 },
                 {
                   "$ref": "#/$defs/TrendPreview"
+                },
+                {
+                  "$ref": "#/$defs/ChartSnapshot"
                 },
                 {
                   "$ref": "#/$defs/NextSteps"
@@ -187,6 +198,21 @@
         "additionalProperties": false,
         "description": "Resolve only an authorized, historical server reference. Missing data is unavailable."
       },
+      "ChartSnapshot": {
+        "type": "object",
+        "properties": {
+          "reference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "reference"
+        ],
+        "additionalProperties": false,
+        "description": "Resolve only an authorized, historical server reference. Missing data is unavailable."
+      },
       "NextSteps": {
         "type": "object",
         "properties": {
@@ -204,5 +230,5 @@
       }
     }
   },
-  "id": "aimms-chat@1"
+  "id": "aimms-chat@2"
 }

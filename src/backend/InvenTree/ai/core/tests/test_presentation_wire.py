@@ -40,10 +40,26 @@ def test_valid_envelope_round_trips_json_without_altering_payload() -> None:
     assert payload == _valid_envelope()
 
 
-def test_reference_kinds_are_exactly_the_four_supported_kinds() -> None:
-    assert wire.REFERENCE_KINDS == ("entity", "evidence", "metric_dataset", "trend_dataset")
+def test_reference_kinds_preserve_historical_and_add_version_two_charts() -> None:
+    assert wire.REFERENCE_KINDS == (
+        "entity",
+        "evidence",
+        "metric_dataset",
+        "trend_dataset",
+        "chart_dataset",
+    )
     envelope = wire.validate_presentation(_valid_envelope())
-    assert [ref.kind for ref in envelope.references] == list(wire.REFERENCE_KINDS)
+    assert [ref.kind for ref in envelope.references] == list(wire.REFERENCE_KINDS[:4])
+    payload = _valid_envelope()
+    payload["library"] = "aimms-chat@2"
+    payload["references"].append({
+        "ref_id": "chart",
+        "kind": "chart_dataset",
+        "source_key": "provided:series",
+    })
+    assert wire.validate_presentation(payload).references[-1].kind == "chart_dataset"
+    payload["library"] = "aimms-chat@1"
+    assert _capture(payload) is not None
 
 
 # ---- slice 2: strict envelope fields and bounded limits ---------------------
@@ -87,7 +103,7 @@ def test_format_and_library_must_be_exact_supported_values() -> None:
         assert exc is not None, f"format {bad_format!r} must be rejected"
         assert isinstance(exc, wire.PresentationValidationError)
         assert exc.reason == "unsupported_format"
-    for bad_library in ("aimms-chat@2", "aimms-chat", "AIMMS-CHAT@1", ""):
+    for bad_library in ("aimms-chat@99", "aimms-chat", "AIMMS-CHAT@1", ""):
         exc = _capture(_with(library=bad_library))
         assert exc is not None, f"library {bad_library!r} must be rejected"
         assert isinstance(exc, wire.PresentationValidationError)
@@ -275,7 +291,7 @@ def test_presentation_diagnostic_returns_safe_fixed_codes() -> None:
     assert wire.presentation_diagnostic(_valid_envelope()) == "valid"
     assert wire.presentation_diagnostic(_with(schema_version=2)) == "unsupported_schema_version"
     assert wire.presentation_diagnostic(_with(format="openui")) == "unsupported_format"
-    assert wire.presentation_diagnostic(_with(library="aimms-chat@2")) == "unsupported_library"
+    assert wire.presentation_diagnostic(_with(library="aimms-chat@99")) == "unsupported_library"
     assert wire.presentation_diagnostic("not json") == "unsupported_input_type"
     assert wire.presentation_diagnostic({"bogus": 1}) == "invalid_envelope"
 
@@ -431,7 +447,7 @@ def test_model_instances_are_revalidated_not_trusted() -> None:
     assert wire.normalize_presentation(constructed) is None
 
     bad_library = wire.validate_presentation(_valid_envelope())
-    bad_library.library = "aimms-chat@2"
+    bad_library.library = "aimms-chat@99"
     exc3 = _capture(bad_library)
     assert exc3 is not None
     assert isinstance(exc3, wire.PresentationValidationError)
@@ -495,7 +511,7 @@ def test_direct_model_entry_revalidates_mutated_top_instance() -> None:
     for key, value in (
         ("schema_version", 2),
         ("format", "openui"),
-        ("library", "aimms-chat@2"),
+        ("library", "aimms-chat@99"),
         ("program", "a" * (wire.MAX_PROGRAM_BYTES + 1)),
         ("program", ""),
     ):

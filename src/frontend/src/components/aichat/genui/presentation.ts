@@ -4,7 +4,8 @@ const kinds = new Set([
   'entity',
   'evidence',
   'metric_dataset',
-  'trend_dataset'
+  'trend_dataset',
+  'chart_dataset'
 ]);
 const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -19,7 +20,7 @@ export function normalizePresentation(
         'format,library,program,references,schema_version' ||
       raw.schema_version !== 1 ||
       raw.format !== 'openui-lang' ||
-      raw.library !== 'aimms-chat@1' ||
+      !['aimms-chat@1', 'aimms-chat@2'].includes(String(raw.library)) ||
       typeof raw.program !== 'string' ||
       !raw.program.trim() ||
       new TextEncoder().encode(raw.program).length > 65536 ||
@@ -38,6 +39,7 @@ export function normalizePresentation(
         seen.has(ref.ref_id) ||
         typeof ref.kind !== 'string' ||
         !kinds.has(ref.kind) ||
+        (raw.library === 'aimms-chat@1' && ref.kind === 'chart_dataset') ||
         typeof ref.source_key !== 'string' ||
         !ref.source_key.trim() ||
         ref.source_key.length > 256

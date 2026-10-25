@@ -129,6 +129,81 @@ async def build_canonical(service: NormalizedTurnService, run: TurnRun) -> dict[
         # M1 PR H (plan §9.4 Q73): a topological question with no published
         # graph gets the deterministic sentence, never model prose.
         return topology
+    target = run.extras.get("record_target") or {}
+    if target.get("error"):
+        return await _presentation_reply(service, run, target["error"])
+    if target.get("kind") == "machine" and pinned_workflow is None and run.modality == "text":
+        from ai.core.turn.targets import identity_message, identity_requested, read_identity
+
+        if identity_requested(run.content):
+            identity = await service._call_sync(read_identity, run.actor, target["id"])
+            if identity is None:
+                return await _presentation_reply(
+                    service, run, "The requested machine is unavailable to you."
+                )
+            message = identity_message(identity)
+            canonical = await _presentation_reply(service, run, message)
+            canonical["entities"] = [
+                {
+                    "model": "assetmachine",
+                    "pk": identity["machine_id"],
+                    "label": identity["name"],
+                    "source": "record_root",
+                }
+            ]
+            return canonical
+    if (
+        pinned_workflow is None
+        and run.modality == "text"
+        and getattr(getattr(run.task_intent, "intent", None), "value", None)
+        == "provided_visualization"
+    ):
+        from ai.core.analysis.scope_context import turn_scope_context
+        from ai.core.presentation.provided import provided_visualization
+        from ai.core.tools.capture_ledger import bind_tool_captures
+
+        bind_tool_captures()
+        turn_scope_context.set(None)
+
+        message, datasets = provided_visualization(run.content, turn_id=str(run.turn.pk))
+        canonical = await _presentation_reply(service, run, message)
+        if datasets:
+            canonical["presentation_data"] = datasets
+        return canonical
+    if pinned_workflow is None and run.modality == "text":
+        import re
+
+        from ai.core.tools.capabilities import _write_intent
+
+        if (
+            re.search(
+                r"\b(?:charts?|graphs?|plots?|visuali[sz]ations?|visual comparison)\b",
+                run.content,
+                re.I,
+            )
+            and _write_intent(run.content.casefold()) is None
+        ):
+            intent = getattr(getattr(run.task_intent, "intent", None), "value", None)
+            if intent in {"trend_analysis", "status_comparison"} and route_mode != "analysis":
+                return await _presentation_reply(
+                    service,
+                    run,
+                    "Recorded chart generation is currently unavailable in this session. No graphical chart or verified aggregate dataset was generated. You can still request individual work-order records.",
+                )
+            if intent not in {"trend_analysis", "status_comparison"}:
+                return await _presentation_reply(
+                    service,
+                    run,
+                    "This visualization is not supported in this chat. Supported graphics are recorded work-order line trends, recorded work-order status comparisons, and line, bar or pie charts from explicit supplied values. No graphical chart was generated.",
+                )
+            if intent == "trend_analysis" and re.search(
+                r"\b(?:bar|pie|radar|area)\s+(?:chart|graph|plot)\b", run.content, re.I
+            ):
+                return await _presentation_reply(
+                    service,
+                    run,
+                    "Recorded time trends currently support a line chart and supporting table. No substitute graphic was generated. Request a line chart for the recorded trend.",
+                )
     if pinned_workflow is None and route_mode == "analysis":
         # S3/S10: the analysis rail. Reachable only under the routing enforce
         # flag. The evidence gate (AIMMS_EVIDENCE_GATE_MODE) decides what runs:
@@ -202,6 +277,32 @@ async def build_canonical(service: NormalizedTurnService, run: TurnRun) -> dict[
             }
         return canonical
     return await _run_legacy_workflow(service, run)
+
+
+async def _presentation_reply(service, run, message):
+    """An explicit read-only result; never delegate unsupported graphics to prose."""
+    response = _canonical_response_for_legacy(message, speakable=False)
+    await service._emit_canonical_events(
+        emitter=run.emitter,
+        thread_id=run.thread.pk,
+        run_id=str(run.turn.pk),
+        workflow_id="chat_presentation",
+        workflow_name="CHAT_PRESENTATION",
+        message=message,
+        response_state="complete",
+    )
+    return {
+        "thread_id": run.thread.pk,
+        "turn_id": run.turn.pk,
+        "message": message,
+        "agent": "chat_presentation",
+        "workflow_used": "chat_presentation",
+        "response_state": "complete",
+        "canonical_response": response.model_dump(mode="json"),
+        "spoken_summary": response.spoken_summary,
+        "reasoning_provenance": None,
+        "route": run.route.to_dict() if run.route else None,
+    }
 
 
 def _equipment_names(run: TurnRun) -> list[str]:
@@ -404,6 +505,13 @@ async def _bind_turn_capture_and_scope(service: NormalizedTurnService, run: Turn
     scope_context = bind_turn_scope(
         run.analysis_scope, thread_pk=run.thread.pk, turn_pk=run.turn.pk
     )
+    target = run.extras.get("record_target") or {}
+    if target.get("kind") == "machine":
+        from ai.core.analysis.scope_context import bind_target_scope
+
+        scope_context = bind_target_scope(
+            scope_context, machine_id=target["id"], thread_pk=run.thread.pk, turn_pk=run.turn.pk
+        )
     if scope_context is not None and scope_context.active:
         try:
             actor_user = await service._call_sync(service._rehydrate_user_for_grounding, run.actor)
@@ -418,6 +526,19 @@ async def _bind_turn_capture_and_scope(service: NormalizedTurnService, run: Turn
                 turn_pk=run.turn.pk,
                 serials=serials,
             )
+            if target.get("kind") == "machine":
+                from dataclasses import replace
+
+                from ai.core.analysis.scope_context import bind_target_scope, turn_scope_context
+
+                scope_context = bind_target_scope(
+                    scope_context,
+                    machine_id=target["id"],
+                    thread_pk=run.thread.pk,
+                    turn_pk=run.turn.pk,
+                )
+                scope_context = replace(scope_context, machine_serials=serials)
+                turn_scope_context.set(scope_context)
         except Exception:  # pragma: no cover - scope carry must fail soft
             logger.warning("scope serial resolution failed", exc_info=False)
     return capture_ledger, scope_context
@@ -431,6 +552,8 @@ def _assemble_workflow_context(
     workflow_context: WorkflowContext = dict(run.trusted)
     workflow_context["modality"] = run.modality
     workflow_context["thread_id"] = run.thread.pk
+    if run.extras.get("record_target"):
+        workflow_context["record_target"] = run.extras["record_target"]
     if run.focus_snapshot is not None and not getattr(run, "focus_unavailable", False):
         # Reference continuity: the recorded focus projection (the ORIGINAL
         # snapshot on replay) is what "it"/"this"/"that job" bind to. Read

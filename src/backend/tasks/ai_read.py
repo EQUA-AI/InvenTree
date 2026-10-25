@@ -146,6 +146,7 @@ def work_orders_page(
     user,
     *,
     query: str | None = None,
+    machine_id: int | None = None,
     limit: int = 10,
     scope_machine_ids=None,
     scope_date_from: str | None = None,
@@ -195,6 +196,11 @@ def work_orders_page(
 
     rows = WorkOrder.objects.filter(predicate).select_related('machine', 'assigned_to')
     applied_filters: dict[str, Any] = {'date_field': date_field}
+    if machine_id is not None:
+        if type(machine_id) is not int or machine_id <= 0:
+            raise ValueError('machine_id must be a positive integer')
+        rows = rows.filter(machine_id=machine_id)
+        applied_filters['machine_id'] = machine_id
     if query:
         from django.db.models import Q
 

@@ -50,7 +50,9 @@ def _resolve(work_order_id: int):
 
 
 @ai_function
-async def search_work_orders(query: str | None = None, limit: int = 10) -> dict[str, Any]:
+async def search_work_orders(
+    query: str | None = None, limit: int = 10, machine_id: int | None = None
+) -> dict[str, Any]:
     """
     Find maintenance work orders you are authorized to see, by reference, title or machine name.
 
@@ -61,6 +63,7 @@ async def search_work_orders(query: str | None = None, limit: int = 10) -> dict[
       query: Optional text matched against the work-order reference, title or
              machine name. Omit to list your most recent work orders.
       limit: Maximum rows to return (default 10, max 25).
+      machine_id: Exact machine ID to filter, after current authorization and turn scope.
 
     Returns:
       Dictionary with 'work_orders' (the returned page; each row has
@@ -103,7 +106,9 @@ async def search_work_orders(query: str | None = None, limit: int = 10) -> dict[
         user = _current_user()
         if user is None:
             return empty, []
-        result = ai_read.work_orders_page(user, query=query, limit=limit, **scope_kwargs)
+        result = ai_read.work_orders_page(
+            user, query=query, limit=limit, machine_id=machine_id, **scope_kwargs
+        )
         if scope_kwargs:
             # Shadow evidence for the S5 rollout soak (content-free).
             from aichat.services.retrieval_misses import record_search

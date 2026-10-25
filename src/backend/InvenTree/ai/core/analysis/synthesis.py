@@ -34,6 +34,7 @@ FACET_PLANS: dict[str, tuple[str, ...]] = {
     "manual_fact": ("passage_fact", "applicability", "limitations"),
     "source_inventory": ("availability", "coverage", "limitations"),
     "fleet_aggregate": ("profile", "aggregate", "limitations"),
+    "status_comparison": ("profile", "aggregate", "limitations"),
     "trend_analysis": ("timeline", "limitations"),
     "manual_wo_comparison": ("comparison", "limitations"),
 }
@@ -199,7 +200,7 @@ def deterministic_claims(
             )
         )
 
-    elif intent == "fleet_aggregate":
+    elif intent in ("fleet_aggregate", "status_comparison"):
         profile_facts = [fact for fact in store.facts.values() if fact.kind == "dataset_profile"]
         group_row_facts = [fact for fact in store.facts.values() if fact.kind == "group_row"]
         group_calcs = [

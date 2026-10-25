@@ -33,16 +33,25 @@ import json
 from collections.abc import Mapping
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator, model_validator
 
 SCHEMA_VERSION = 1
 FORMAT_OPENUI_LANG = "openui-lang"
 LIBRARY_AIMMS_CHAT_1 = "aimms-chat@1"
+LIBRARY_AIMMS_CHAT_2 = "aimms-chat@2"
 
 #: Supported reference kinds, ordered (byte-deterministic wire contract).
-REFERENCE_KINDS: tuple[str, ...] = ("entity", "evidence", "metric_dataset", "trend_dataset")
+REFERENCE_KINDS: tuple[str, ...] = (
+    "entity",
+    "evidence",
+    "metric_dataset",
+    "trend_dataset",
+    "chart_dataset",
+)
 
-PresentationReferenceKind = Literal["entity", "evidence", "metric_dataset", "trend_dataset"]
+PresentationReferenceKind = Literal[
+    "entity", "evidence", "metric_dataset", "trend_dataset", "chart_dataset"
+]
 
 MAX_REFERENCE_COUNT = 100
 MAX_PROGRAM_BYTES = 64 * 1024
@@ -108,9 +117,17 @@ class AssistantPresentationV1(BaseModel):
 
     schema_version: Literal[1]
     format: Literal["openui-lang"]
-    library: Literal["aimms-chat@1"]
+    library: Literal["aimms-chat@1", "aimms-chat@2"]
     program: str
     references: list[PresentationReferenceV1]
+
+    @model_validator(mode="after")
+    def versioned_references(self):
+        if self.library == LIBRARY_AIMMS_CHAT_1 and any(
+            ref.kind == "chart_dataset" for ref in self.references
+        ):
+            raise ValueError("chart snapshots require library version 2")
+        return self
 
     @field_validator("schema_version", mode="before")
     @classmethod
@@ -168,7 +185,7 @@ def _check_shape(payload: Mapping) -> None:
         code = "unsupported_format" if isinstance(fmt, str) else "invalid_envelope"
         raise PresentationValidationError(code)
     lib = payload.get("library")
-    if lib != LIBRARY_AIMMS_CHAT_1:
+    if lib not in (LIBRARY_AIMMS_CHAT_1, LIBRARY_AIMMS_CHAT_2):
         code = "unsupported_library" if isinstance(lib, str) else "invalid_envelope"
         raise PresentationValidationError(code)
     if not isinstance(payload.get("references"), list):

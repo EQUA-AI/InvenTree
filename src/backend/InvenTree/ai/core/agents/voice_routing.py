@@ -535,6 +535,14 @@ class VoiceComplexityRouter:
     @classmethod
     def _is_effect_intent(cls, content: str) -> bool:
         """Match effect syntax while excluding common informational phrases."""
+        from ai.core.presentation.requests import chart_requested, effect_text
+
+        if chart_requested(content):
+            from ai.core.tools.capabilities import _write_intent
+
+            return _write_intent(content.casefold()) is not None
+
+        content = effect_text(content)
         # A bare request for a starting point is not a command to start an
         # asset or job. Remove only that clause, so another explicit action
         # in the same turn still takes the governed path.
