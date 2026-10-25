@@ -29,6 +29,7 @@ import { useSearchParams } from 'react-router-dom';
 import { openGlobalAIChatAboutWork } from '../../../states/AIChatState';
 import { StatusBadge as Badge } from '../health/common';
 import { partStates } from '../health/mimic/MimicParts';
+import { TestAlarmNotice } from '../health/mimic/TestAlarmNotice';
 import { valueText } from '../health/mimic/format';
 import { useDisplayClock } from '../health/mimic/observedTime';
 import { useStationMimic } from '../health/useStationMimic';
@@ -163,6 +164,15 @@ function MimicModelView({
       : null;
   return (
     <div ref={ref}>
+      {!query.isError && query.data && (
+        <TestAlarmNotice
+          alarms={query.data.alarms.filter(
+            (alarm) =>
+              alarm.machine ===
+              query.data?.bays.find((bay) => bay.key === source.unit)?.machine
+          )}
+        />
+      )}
       <ModelView {...props} motorAlarm={motorAlarm} />
     </div>
   );

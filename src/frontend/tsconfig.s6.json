@@ -2,6 +2,10 @@
   "extends": "./tsconfig.s0.json",
   "files": [
     "playwright.s6.config.ts",
+    "playwright.test-alarm.config.ts",
+    "tests/s3/pui_test_alarm.spec.ts",
+    "tests/s6/pui_service_report_workflow.spec.ts",
+    "tests/s6/pui_pump08_intake.spec.ts",
     "tests/s1/workListFixtures.ts",
     "tests/s6/closeoutFixtures.ts",
     "tests/s6/pui_accepted_media.spec.ts",

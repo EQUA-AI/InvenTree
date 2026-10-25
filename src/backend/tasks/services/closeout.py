@@ -295,6 +295,10 @@ def complete_work_order(
     if capture_id is not None:
         capture = _validated_capture(work_order, capture_id, closeout)
 
+    from tasks.services.service_reports import require_approved_report
+
+    require_approved_report(work_order, closeout, capture_id)
+
     now = timezone.now()
     previous_closeout = WorkOrderCloseout.objects.filter(work_order=work_order).first()
     if (
@@ -405,7 +409,7 @@ def complete_work_order(
     # Closeout is the *only* path that moves work into the board's terminal
     # (done) column (§5.8), so the board can never show open work that is
     # actually closed out. Done in the same transaction as completion.
-    from tasks.models import KanbanColumn
+    from tasks.models import KanbanCard, KanbanColumn
 
     terminal_key = KanbanColumn.terminal_key()
     if terminal_key and work_order.status != terminal_key:
@@ -413,6 +417,10 @@ def complete_work_order(
         save_fields.append('status')
 
     work_order.save(update_fields=save_fields)
+    if terminal_key:
+        work_order.cards.filter(card_kind=KanbanCard.KIND_WORK_ORDER).exclude(
+            status=terminal_key
+        ).update(status=terminal_key, updated_at=now)
 
     from tasks.services.accepted_reports import freeze_report
 

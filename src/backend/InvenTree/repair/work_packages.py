@@ -17,14 +17,16 @@ exists; proceeding anyway requires an explicit, attributed override.
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
+from django.utils.dateparse import parse_date
 
-from tasks.models import WorkOrder, WorkOrderType
-from tasks.services import scheduling
+from tasks.models import WorkOrder, WorkOrderCommand, WorkOrderType
+from tasks.services import scheduling, work_orders
 
 from assets.models import AssetMachine
 from part.models import Part
@@ -75,6 +77,12 @@ class UnknownPart(WorkPackageError):  # noqa: N818 - matches sibling error names
     code = 'UNKNOWN_PART'
 
 
+class InvalidAnomalySource(WorkPackageError):  # noqa: N818
+    """A requested source cannot be owned by this work package."""
+
+    code = 'INVALID_ANOMALY_SOURCE'
+
+
 class DuplicateRepairConflict(WorkPackageError):  # noqa: N818 - matches sibling error names
     """Open repair work already exists for this machine.
 
@@ -100,6 +108,11 @@ class WorkPackageResult:
     repair_packet_reference: str
     replayed: bool
     warnings: list[str] = field(default_factory=list)
+    machine_id: int | None = None
+    anomaly_id: int | None = None
+    assigned_to_id: int | None = None
+    idempotency_key: str = ''
+    lifecycle_version: int | None = None
 
     def as_dict(self) -> dict:
         """Serialize for an API response."""
@@ -110,6 +123,11 @@ class WorkPackageResult:
             'repair_packet_reference': self.repair_packet_reference,
             'replayed': self.replayed,
             'warnings': list(self.warnings),
+            'machine_id': self.machine_id,
+            'anomaly_id': self.anomaly_id,
+            'assigned_to_id': self.assigned_to_id,
+            'idempotency_key': self.idempotency_key,
+            'lifecycle_version': self.lifecycle_version,
         }
 
 
@@ -141,6 +159,20 @@ def _positive_int(payload, key):
     return value
 
 
+def _identifier_list(source, key):
+    values = source.get(key) or []
+    if (
+        not isinstance(values, list)
+        or len(values) > 100
+        or any(
+            isinstance(value, (dict, list, bool)) or not isinstance(value, (str, int))
+            for value in values
+        )
+    ):
+        raise WorkPackageError(f'{key} must be a bounded identifier list.')
+    return values
+
+
 def _validate_parts(raw):
     """Normalize the requested part lines without touching the database."""
     if raw is None:
@@ -170,7 +202,7 @@ def _validate_parts(raw):
             raise WorkPackageError(
                 f'Quantity for part {part_id} is not a number.'
             ) from exc
-        if quantity <= 0:
+        if not quantity.is_finite() or quantity <= 0:
             raise WorkPackageError(f'Quantity for part {part_id} must be positive.')
 
         lines.append({
@@ -215,10 +247,22 @@ def validate_draft(payload) -> dict:
     planning = payload.get('planning') or {}
     if not isinstance(planning, dict):
         raise WorkPackageError('planning must be an object.')
+    due_date = planning.get('due_date') or None
+    if due_date is not None:
+        try:
+            valid_date = parse_date(due_date) if isinstance(due_date, str) else None
+        except ValueError:
+            valid_date = None
+        if valid_date is None:
+            raise WorkPackageError('due_date must be a valid ISO date.')
 
     source = payload.get('source') or {}
     if not isinstance(source, dict):
         raise WorkPackageError('source must be an object.')
+    if payload.get('duplicate_override') and not _text(
+        payload, 'duplicate_override_reason'
+    ):
+        raise WorkPackageError('A reason is required to create a separate repair.')
 
     create_packet = payload.get('create_repair_packet')
     work_order_type = _choice(
@@ -254,14 +298,16 @@ def validate_draft(payload) -> dict:
         'parts': _validate_parts(payload.get('parts')),
         'planning': {
             'assignee': _text(planning, 'assignee', limit=255),
-            'due_date': planning.get('due_date') or None,
+            'assigned_to_id': _positive_int(planning, 'assigned_to_id'),
+            'due_date': due_date,
             'estimated_minutes': _positive_int(planning, 'estimated_minutes'),
         },
         'source': {
-            'anomaly_id': source.get('anomaly_id'),
+            'anomaly_id': _positive_int(source, 'anomaly_id'),
+            'ai_draft_token': _text(source, 'ai_draft_token', limit=24000),
             'thread_id': _text(source, 'thread_id', limit=128),
-            'source_turn_ids': list(source.get('source_turn_ids') or []),
-            'evidence_snapshot_ids': list(source.get('evidence_snapshot_ids') or []),
+            'source_turn_ids': _identifier_list(source, 'source_turn_ids'),
+            'evidence_snapshot_ids': _identifier_list(source, 'evidence_snapshot_ids'),
         },
     }
 
@@ -273,9 +319,8 @@ def _packet_reference(packet) -> str:
 def _link_anomaly(anomaly_id, *, machine, work_order, packet, actor) -> str:
     """Link the originating health anomaly and capture its evidence.
 
-    Cross-machine evidence is refused: an anomaly from another asset can never
-    justify this repair, so the mismatch is reported as a warning and the link is
-    not made rather than silently attaching foreign telemetry.
+    Missing, cross-machine or already-owned evidence rolls back the whole
+    aggregate. A successful intake must actually own its requested source.
 
     Returns a warning string, or '' when there was nothing to do.
     """
@@ -287,14 +332,28 @@ def _link_anomaly(anomaly_id, *, machine, work_order, packet, actor) -> str:
     from assets.health_models import MachineAnomaly, SnapshotReason
     from machine_health.services.snapshots import capture_anomaly_evidence
 
-    anomaly = MachineAnomaly.objects.filter(pk=anomaly_id).first()
-    if anomaly is None:
-        return f'Anomaly {anomaly_id} no longer exists; it was not linked.'
-
-    if anomaly.machine_id != machine.pk:
-        return (
-            f'Anomaly {anomaly_id} belongs to a different machine; it was not linked.'
+    anomaly = MachineAnomaly.objects.select_for_update().filter(pk=anomaly_id).first()
+    if anomaly is None or anomaly.machine_id != machine.pk:
+        raise InvalidAnomalySource('The source anomaly is not on this machine.')
+    if (
+        anomaly.detector == 'test_alarm_ui'
+        and anomaly.metrics.get('synthetic') is True
+        and not anomaly.is_active
+    ):
+        raise InvalidAnomalySource(
+            'This test event has ended. Trigger a new reviewed exercise instead.'
         )
+    if anomaly.work_order_id not in (None, work_order.pk) or (
+        anomaly.repair_packet_id is not None
+        and anomaly.repair_packet_id != getattr(packet, 'pk', None)
+    ):
+        raise InvalidAnomalySource(
+            'This event already belongs to another work package. Open its owning work instead.'
+        )
+    if anomaly.work_order_id == work_order.pk and anomaly.repair_packet_id == getattr(
+        packet, 'pk', None
+    ):
+        return ''
 
     updates = {'work_order': work_order}
     if packet is not None:
@@ -368,6 +427,8 @@ def find_duplicate_repairs(machine, *, anomaly_id=None, exclude_work_order_id=No
                 'reason': 'ANOMALY_ALREADY_LINKED',
                 'work_order_id': linked.work_order_id,
                 'work_order_reference': linked.work_order.reference or '',
+                'title': linked.work_order.title,
+                'status': linked.work_order.lifecycle_status,
                 'repair_packet_id': linked.repair_packet_id,
                 'anomaly_id': linked.pk,
             })
@@ -384,8 +445,33 @@ def find_duplicate_repairs(machine, *, anomaly_id=None, exclude_work_order_id=No
             'reason': 'OPEN_REPAIR_ON_MACHINE',
             'work_order_id': packet.work_order_id,
             'work_order_reference': packet.work_order.reference or '',
+            'title': packet.work_order.title,
+            'status': packet.work_order.lifecycle_status,
             'repair_packet_id': packet.pk,
             'repair_packet_reference': packet.reference,
+        })
+
+    packet_work_ids = {row['work_order_id'] for row in candidates}
+    for work in (
+        WorkOrder.objects
+        .filter(
+            machine=machine,
+            work_order_type=WorkOrderType.CORRECTIVE,
+            repair_packet__isnull=True,
+        )
+        .exclude(lifecycle_status__in=['completed', 'canceled'])
+        .exclude(status=WorkOrder.STATUS_DONE)
+        .exclude(pk__in=packet_work_ids)
+        .exclude(pk=exclude_work_order_id)
+    ):
+        candidates.append({
+            'reason': 'OPEN_REPAIR_ON_MACHINE',
+            'work_order_id': work.pk,
+            'work_order_reference': work.reference or '',
+            'title': work.title,
+            'status': work.lifecycle_status,
+            'repair_packet_id': None,
+            'repair_packet_reference': '',
         })
 
     return candidates
@@ -405,6 +491,14 @@ def create_repair_work_package(
     ledger; a replay returns the existing aggregate and reports ``replayed``.
     """
     draft = validate_draft(draft)
+    if (
+        not isinstance(idempotency_key, str)
+        or not idempotency_key.strip()
+        or len(idempotency_key) > 128
+    ):
+        raise WorkPackageError(
+            'Use a non-empty idempotency key of at most 128 characters.'
+        )
     warnings: list[str] = []
 
     machine = AssetMachine.objects.filter(pk=draft['machine_id']).first()
@@ -414,7 +508,25 @@ def create_repair_work_package(
     # the current creation boundary before returning duplicate repair links or
     # looking up any other draft metadata. The canonical create command repeats
     # this check under its locks immediately before a write or replay.
-    machine = scheduling._authorize_creation(actor, machine.pk)
+    machine = scheduling._authorize_creation(actor, machine.pk, lock=True)
+    package_key = (
+        'wp2:' + hashlib.sha256(f'{actor.pk}:{idempotency_key}'.encode()).hexdigest()
+    )
+    package_digest = work_orders._canonical_hash('work_package.v2', actor, draft)
+    prior_package = WorkOrderCommand.objects.filter(
+        command='create_work_package', idempotency_key=package_key
+    ).first()
+    if prior_package is not None:
+        if prior_package.request_hash != package_digest:
+            raise scheduling.IdempotencyConflict(
+                'This request key was already used for a different work package.'
+            )
+        work_order = WorkOrder.objects.get(pk=prior_package.work_order_id)
+        work_orders._require_scope(actor, work_order)
+        return _creation_receipt(work_order, draft, idempotency_key, replayed=True)
+    from .work_intake import reviewed_ai_draft
+
+    ai_review = reviewed_ai_draft(actor, draft)
 
     if draft['parts']:
         known = set(
@@ -445,12 +557,26 @@ def create_repair_work_package(
                 'This machine already has open repair work.', duplicates=duplicates
             )
         if duplicates:
+            from tasks.permissions import ASSIGN_WORKORDER, require_permission
+
+            require_permission(actor, ASSIGN_WORKORDER)
             warnings.append(
                 f'Created alongside {len(duplicates)} existing open repair(s): '
                 f'{draft["duplicate_override_reason"] or "no reason given"}'
             )
 
     planning = draft['planning']
+    assignee = None
+    if planning['assigned_to_id'] is not None:
+        from .work_intake import assignment_candidate
+
+        assignee = assignment_candidate(actor, machine, planning['assigned_to_id'])
+    if is_replay_of is not None and (
+        planning['assigned_to_id'] is not None or draft['source']['ai_draft_token']
+    ):
+        raise scheduling.IdempotencyConflict(
+            'This legacy request cannot be changed to include typed assignment or an AI draft.'
+        )
     command = scheduling.create_work_order(
         actor=actor,
         idempotency_key=idempotency_key,
@@ -460,12 +586,35 @@ def create_repair_work_package(
         description=draft['description'] or draft['fault']['summary'],
         priority=draft['priority'],
         work_order_type=draft['work_order_type'],
-        assignee=planning['assignee'],
+        assignee=(assignee.get_full_name().strip() or assignee.get_username())
+        if assignee is not None
+        else planning['assignee'],
         due_date=planning['due_date'],
     )
     replayed = bool(command.metadata.get('replayed'))
 
     work_order = WorkOrder.objects.get(pk=command.work_order_id)
+    if replayed:
+        return _creation_receipt(
+            work_order,
+            draft,
+            idempotency_key,
+            replayed=True,
+            warnings=[
+                'Legacy receipt returned read-only; full package content was not recorded.'
+            ],
+        )
+    if assignee is not None:
+        work_orders.assign_work_order(
+            work_order_id=work_order.pk,
+            assigned_to=assignee,
+            actor=actor,
+            expected_version=work_order.lifecycle_version,
+            idempotency_key=f'package-assign-{uuid.uuid5(uuid.NAMESPACE_URL, idempotency_key)}',
+            correlation_id=command.correlation_id,
+            reason='Typed assignment reviewed during work-package creation.',
+        )
+        work_order.refresh_from_db()
 
     # Scope flows from the asset's client via ``scope_for_work_order``; no field
     # sync is needed. ``estimated_minutes`` is planning metadata the create
@@ -522,11 +671,55 @@ def create_repair_work_package(
     if anomaly_warning:
         warnings.append(anomaly_warning)
 
+    from tasks.work_execution.exercise_verification import exercise_source
+
+    exercise_profile = (
+        'P08-MOTOR-COOL-RTS-EX' if exercise_source(work_order) is not None else None
+    )
+    work_orders._append_result(
+        work_order=work_order,
+        actor=actor,
+        command='create_work_package',
+        event_type='WORK_PACKAGE_CREATED',
+        from_status=work_order.lifecycle_status,
+        to_status=work_order.lifecycle_status,
+        reason=draft['duplicate_override_reason'],
+        correlation_id=command.correlation_id,
+        idempotency_key=package_key,
+        request_hash=package_digest,
+        result_metadata={
+            'hash_version': 2,
+            'exercise_profile': exercise_profile,
+            'source_anomaly_id': draft['source']['anomaly_id'],
+            'assigned_to_id': work_order.assigned_to_id,
+            'repair_packet_id': packet.pk if packet else None,
+            'origin': draft['origin'],
+            'ai_review': ai_review,
+        },
+    )
+    return _creation_receipt(work_order, draft, idempotency_key, warnings=warnings)
+
+
+def _creation_receipt(
+    work_order, draft, idempotency_key, *, replayed=False, warnings=None
+):
+    packet = getattr(work_order, 'repair_packet', None)
+    anomaly_id = draft['source']['anomaly_id']
+    if (
+        anomaly_id is not None
+        and not work_order.anomalies.filter(pk=anomaly_id).exists()
+    ):
+        anomaly_id = None
     return WorkPackageResult(
         work_order_id=work_order.pk,
         work_order_reference=work_order.reference or '',
         repair_packet_id=packet.pk if packet else None,
         repair_packet_reference=_packet_reference(packet),
         replayed=replayed,
-        warnings=warnings,
+        warnings=warnings or [],
+        machine_id=work_order.machine_id,
+        anomaly_id=anomaly_id,
+        assigned_to_id=work_order.assigned_to_id,
+        idempotency_key=idempotency_key,
+        lifecycle_version=work_order.lifecycle_version,
     )

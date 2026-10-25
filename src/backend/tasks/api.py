@@ -45,7 +45,9 @@ from .closeout_api import (
     CloseoutReadingList,
     CloseoutVerify,
 )
+from .closeout_pdf_api import WorkAcceptedReportPDF, WorkCloseoutPDF
 from .dashboard_metrics import OPEN
+from .exercise_verification_api import ExerciseEvidence, ExerciseVerification
 from .investigation_api import WorkInvestigationRequests
 from .jobkit_api import (
     JobKitAllocationConsume,
@@ -117,6 +119,7 @@ from .serializers import (
     WorkOrderPartSerializer,
     WorkOrderTableSerializer,
 )
+from .service_report_api import WorkServiceReport
 from .services import schedule_planner, scheduling
 from .services.conflicts import detect_conflicts
 from .services.work_orders import CommandConflict
@@ -1747,6 +1750,16 @@ tasks_api_urls = [
                 name='work-order-procedure-list',
             ),
             path(
+                '<int:pk>/exercise-verification/',
+                ExerciseVerification.as_view(),
+                name='work-order-exercise-verification',
+            ),
+            path(
+                '<int:pk>/exercise-verification/evidence/',
+                ExerciseEvidence.as_view(),
+                name='work-order-exercise-evidence',
+            ),
+            path(
                 '<int:pk>/procedures/apply/',
                 ProcedureApply.as_view(),
                 name='work-order-procedure-apply',
@@ -1880,6 +1893,12 @@ tasks_api_urls = [
                 name='work-order-job-kit-substitution-decide',
             ),
             path('<int:pk>/capture-media/', WorkCaptureMediaUpload.as_view()),
+            path('<int:pk>/closeout/service-report/', WorkServiceReport.as_view()),
+            path('<int:pk>/closeout/report.pdf', WorkCloseoutPDF.as_view()),
+            path(
+                '<int:pk>/closeout/reports/<int:report_id>/pdf/',
+                WorkAcceptedReportPDF.as_view(),
+            ),
             path('<int:pk>/capture-media/<int:media_id>/', WorkCaptureMedia.as_view()),
             path(
                 '<int:pk>/closeout/reports/<int:report_id>/',

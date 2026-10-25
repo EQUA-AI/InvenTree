@@ -24,6 +24,7 @@ class ProcedureSerializer(serializers.ModelSerializer):
             'name',
             'description',
             'customer',
+            'client',
             'active',
             'current_revision',
             'created_by',
@@ -37,6 +38,16 @@ class ProcedureSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         )
+
+    def validate(self, attrs):
+        """Reject ambiguous ownership; never infer authority from applicability."""
+        customer = attrs.get('customer', getattr(self.instance, 'customer', None))
+        client = attrs.get('client', getattr(self.instance, 'client', None))
+        if bool(customer) == bool(client):
+            raise serializers.ValidationError(
+                'Select one explicit customer or plant client.'
+            )
+        return attrs
 
 
 class ProcedureRevisionSerializer(serializers.ModelSerializer):

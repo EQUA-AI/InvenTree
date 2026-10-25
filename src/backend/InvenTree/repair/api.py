@@ -49,6 +49,7 @@ from .serializers import (
     SafetyEvidenceProofSerializer,
     SafetyGateTemplateSerializer,
 )
+from .work_intake_api import WorkIntake, WorkIntakeAssignees, WorkIntakeDraft
 from .work_packages import (
     DuplicateRepairConflict,
     WorkPackageError,
@@ -811,8 +812,22 @@ class RepairWorkPackageCreate(APIView):
 
     def post(self, request):
         """Validate the draft and execute the atomic create command."""
-        data = dict(request.data or {})
-        idempotency_key = data.pop('idempotency_key', None) or uuid.uuid4().hex
+        data = dict(object_data(request.data))
+        idempotency_key = data.pop('idempotency_key', None)
+        if idempotency_key is None:
+            idempotency_key = uuid.uuid4().hex
+        if (
+            not isinstance(idempotency_key, str)
+            or not idempotency_key.strip()
+            or len(idempotency_key) > 128
+        ):
+            return Response(
+                {
+                    'code': 'WORK_PACKAGE_INVALID',
+                    'detail': 'Use a non-empty idempotency key of at most 128 characters.',
+                },
+                status=400,
+            )
         machine_id = data.get('machine_id', data.get('machine'))
         if isinstance(machine_id, int) and not isinstance(machine_id, bool):
             machine = get_object_or_404(scoped_machines(request.user), pk=machine_id)
@@ -866,11 +881,22 @@ maintenance_api_urls = [
     path(
         'work-packages/',
         include([
+            path('intake/', WorkIntake.as_view(), name='maintenance-work-intake'),
+            path(
+                'intake/draft/',
+                WorkIntakeDraft.as_view(),
+                name='maintenance-work-intake-draft',
+            ),
+            path(
+                'assignees/',
+                WorkIntakeAssignees.as_view(),
+                name='maintenance-work-intake-assignees',
+            ),
             path(
                 'create/',
                 RepairWorkPackageCreate.as_view(),
                 name='maintenance-work-package-create',
-            )
+            ),
         ]),
     )
 ]

@@ -74,7 +74,12 @@ export function useMachineSignals(machineId: number, live: boolean) {
   return useQuery<MachineSignal[]>({
     // Shared with the Health tab so the two never disagree about a value.
     queryKey: ['machine-health-signals', machineId],
-    refetchInterval: live ? LIVE_SIGNALS_INTERVAL_MS : false,
+    refetchInterval: (query) =>
+      live
+        ? LIVE_SIGNALS_INTERVAL_MS
+        : query.state.data?.some((signal) => signal.test_alarms?.length)
+          ? LIVE_SERIES_INTERVAL_MS
+          : false,
     refetchIntervalInBackground: false,
     queryFn: async () => {
       const response = await api.get(

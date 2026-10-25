@@ -54,6 +54,7 @@ def _settings(**overrides) -> Settings:
         (ModelPurpose.SUMMARIZATION, "text", STANDARD),
         (ModelPurpose.EXTRACTION, "text", STANDARD),
         (ModelPurpose.MEDIA_CAPTION, "text", STANDARD),
+        (ModelPurpose.WORK_INTAKE, "text", STANDARD),
     ],
 )
 @pytest.mark.parametrize("enforce", [False, True])

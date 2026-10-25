@@ -89,7 +89,7 @@ export function HealthSummaryPanel({
         <Group gap='sm' align='center' wrap='nowrap' style={{ maxWidth: 640 }}>
           <ValueTooltip
             label={`${assessedText}. ${criticalText}. ${coverageReason}`}
-            accessibleLabel={`${healthStateVisual(summary.state).label} · ${assessedText}. ${criticalText}. ${coverageReason}`}
+            accessibleLabel={`${summary.synthetic_active_count ? `${t`TEST`} · ` : ''}${healthStateVisual(summary.state).label} · ${assessedText}. ${criticalText}. ${coverageReason}`}
           >
             <HealthStateBadge
               state={summary.state}
@@ -103,6 +103,13 @@ export function HealthSummaryPanel({
               }
             />
           </ValueTooltip>
+          {(summary.synthetic_active_count ?? 0) > 0 && (
+            <StatusBadge
+              tone='critical'
+              color='red.9'
+              data-testid='health-summary-test'
+            >{t`TEST`}</StatusBadge>
+          )}
           {signals === null && (
             <FailedValue
               reason={t`Signal coverage unavailable: signal read failed`}

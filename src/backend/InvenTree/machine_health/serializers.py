@@ -31,6 +31,16 @@ class TelemetryPresentationSerializer(serializers.Serializer):
     display_shift_seconds = serializers.IntegerField(read_only=True)
 
 
+class SignalTestAlarmSerializer(serializers.Serializer):
+    """A synthetic condition, never a replacement signal observation."""
+
+    anomaly_id = serializers.IntegerField(read_only=True)
+    status = serializers.ChoiceField(choices=['open', 'acknowledged'], read_only=True)
+    test_value = serializers.FloatField(read_only=True)
+    unit = serializers.CharField(read_only=True)
+    triggered_at = InvenTreeIsoDateTimeField(read_only=True)
+
+
 class MachineSignalSerializer(TelemetryPresentationSerializer):
     """One mapped signal with its current value, freshness and limits."""
 
@@ -54,6 +64,7 @@ class MachineSignalSerializer(TelemetryPresentationSerializer):
     freshness_threshold_seconds = serializers.IntegerField(read_only=True)
     state = serializers.CharField(read_only=True)
     limits = serializers.JSONField(read_only=True)
+    test_alarms = SignalTestAlarmSerializer(many=True, read_only=True)
 
 
 class HealthSourceStatusSerializer(TelemetryPresentationSerializer):
@@ -86,6 +97,7 @@ class MachineHealthSummarySerializer(TelemetryPresentationSerializer):
     last_observed_at = InvenTreeIsoDateTimeField(read_only=True, allow_null=True)
     anomaly_counts = serializers.JSONField(read_only=True)
     active_anomaly_count = serializers.IntegerField(read_only=True)
+    synthetic_active_count = serializers.IntegerField(read_only=True, default=0)
     sources = HealthSourceStatusSerializer(many=True, read_only=True)
 
 

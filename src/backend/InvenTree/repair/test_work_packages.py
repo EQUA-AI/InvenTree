@@ -195,7 +195,7 @@ class CreateWorkPackageTest(TestCase):
         self.assertTrue(second.replayed)
         self.assertEqual(WorkOrder.objects.filter(machine=self.machine).count(), 1)
         self.assertEqual(RepairPacket.objects.filter(machine=self.machine).count(), 1)
-        self.assertIn('already existed', ' '.join(second.warnings))
+        self.assertEqual(second.warnings, [])
 
     def test_unknown_machine_creates_nothing(self):
         """An unknown machine fails before any write."""

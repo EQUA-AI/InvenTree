@@ -321,19 +321,46 @@ def station_mimic(station, *, unit=None, now=None):
     # detector's own fingerprint, from the same function that wrote it. An
     # alarm with no anomaly behind it is a breach the poller has not evaluated
     # yet, and says so with a null.
+    from machine_health.services.test_alarms import DETECTOR, mimic_test_alarms
+
+    conditions = list(
+        MachineAnomaly.objects.filter(
+            machine__in=[station.pk, *(pump.pk for pump in pumps)],
+            detector__in=[THRESHOLD_DETECTOR, DETECTOR],
+            status__in=STANDING_STATUSES,
+        ).values(
+            'fingerprint',
+            'pk',
+            'status',
+            'severity',
+            'machine_id',
+            'detector',
+            'metrics',
+            'title',
+            'first_observed_at',
+        )
+    )
     tracked = {
         row['fingerprint']: row
-        for row in MachineAnomaly.objects.filter(
-            machine__in=[station.pk, *(pump.pk for pump in pumps)],
-            detector=THRESHOLD_DETECTOR,
-            status__in=STANDING_STATUSES,
-        ).values('fingerprint', 'pk', 'status', 'severity', 'machine_id')
+        for row in conditions
+        if row['detector'] == THRESHOLD_DETECTOR
     }
     # The worst active alarm on each machine, for the drawing: a bay with a
     # critical on it is drawn as one, whatever its status code says. Dismissed
     # ones do not light it; that is what dismissing is for.
+    test_alarms = mimic_test_alarms(dictionary, points, bindings, conditions)
     worst = {}
-    for row in tracked.values():
+    for row in [
+        *tracked.values(),
+        *[
+            {
+                'machine_id': alarm['machine'],
+                'status': alarm['anomaly_status'],
+                'severity': alarm['severity'],
+            }
+            for alarm in test_alarms
+        ],
+    ]:
         if row['status'] == AnomalyStatus.SUPPRESSED:
             continue
         if worst.get(row['machine_id']) != 'critical':
@@ -362,6 +389,7 @@ def station_mimic(station, *, unit=None, now=None):
             'anomaly_status': anomaly['status'] if anomaly else None,
             'severity': anomaly['severity'] if anomaly else None,
         })
+    alarms.extend(test_alarms)
     return {
         'station': station.pk,
         'name': station.name,

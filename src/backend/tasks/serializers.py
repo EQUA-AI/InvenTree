@@ -165,6 +165,27 @@ class WorkOrderBoardSerializer(serializers.ModelSerializer):
         source='assigned_to.username', read_only=True, default=None
     )
     assigned_to_name = serializers.SerializerMethodField()
+    machine_condition = serializers.SerializerMethodField()
+
+    def get_machine_condition(self, instance):
+        """Share one scoped equipment-condition read across the board's jobs."""
+        from machine_health.services.summary import health_conditions
+
+        if not self._machine_authorized(instance):
+            return None
+        if 'board_conditions' not in self.context:
+            instances = (
+                self.parent.instance
+                if isinstance(self.parent, serializers.ListSerializer)
+                else [instance]
+            )
+            machines = {
+                row.machine_id: row.machine
+                for row in instances
+                if self._machine_authorized(row)
+            }
+            self.context['board_conditions'] = health_conditions(machines.values())
+        return self.context['board_conditions'].get(instance.machine_id)
 
     class Meta:
         """Serializer configuration for WorkOrder."""
@@ -193,6 +214,7 @@ class WorkOrderBoardSerializer(serializers.ModelSerializer):
             'machine',
             'machine_name',
             'machine_location',
+            'machine_condition',
             'assigned_to',
             'assigned_to_username',
             'assigned_to_name',
@@ -234,12 +256,12 @@ class WorkOrderBoardSerializer(serializers.ModelSerializer):
             'actual_completed_at',
         )
 
-    def get_machine_location(self, obj) -> str | None:
-        """Shared Work identity does not authorize its machine's live location."""
+    def _machine_authorized(self, obj) -> bool:
+        """Reuse the native machine gate across this response's projections."""
         from tasks.scope import work_machine_authorized
 
         if obj.machine is None:
-            return None
+            return False
         request = self.context.get('request')
         # Machine scope is its exact client identity (scope_for_machine). Cache
         # only on this response serializer; future scope dimensions must also
@@ -247,12 +269,16 @@ class WorkOrderBoardSerializer(serializers.ModelSerializer):
         if not hasattr(self, '_location_machine_authority'):
             self._location_machine_authority = {}
         actor = getattr(request, 'user', None)
+        if actor is None:
+            return False
         key = (getattr(actor, 'pk', None), obj.machine.client_id)
         if key not in self._location_machine_authority:
             self._location_machine_authority[key] = work_machine_authorized(actor, obj)
-        if not self._location_machine_authority[key]:
-            return None
-        return obj.machine.location
+        return self._location_machine_authority[key]
+
+    def get_machine_location(self, obj) -> str | None:
+        """Shared Work identity does not authorize its machine's live location."""
+        return obj.machine.location if self._machine_authorized(obj) else None
 
     def get_assigned_to_name(self, obj) -> str | None:
         """Return the assignee's display name, falling back to the username."""

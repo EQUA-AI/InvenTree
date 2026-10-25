@@ -292,6 +292,7 @@ export function UnitMimic({
       />
       <div ref={list}>
         <ReadingSections
+          exercises={data.alarms}
           sections={sections}
           display={display}
           open={open}

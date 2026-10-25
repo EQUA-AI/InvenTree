@@ -189,6 +189,7 @@ class AlarmNotificationTest(HealthEnvMixin, PluginRegistryMixin, TestCase):
         evaluate_thresholds(self.machine)
         self.assertEqual(self.messages(), [])
 
+    @override_settings(DEFAULT_FROM_EMAIL='configured-notifications@example.test')
     def test_the_email_carries_the_machine_and_the_evidence(self):
         """Rendered and sent through the ordinary mail backend."""
         from allauth.account.models import EmailAddress
@@ -201,9 +202,84 @@ class AlarmNotificationTest(HealthEnvMixin, PluginRegistryMixin, TestCase):
         evaluate_thresholds(self.machine)
 
         [message] = mail.outbox
+        self.assertEqual(message.from_email, 'configured-notifications@example.test')
         self.assertEqual(message.to, ['operator@example.com'])
         self.assertIn('Critical alarm', message.subject)
         self.assertIn(self.machine.name, message.subject)
         [(html, _)] = message.alternatives
         self.assertIn('read 10.0 mm/s', html)
         self.assertIn(f'/machines/machine/{self.machine.pk}/health', html)
+
+    @override_settings(DEFAULT_FROM_EMAIL='configured-notifications@example.test',
+                       AIMMS_TEST_ALARMS_ENABLED=True,
+                       AIMMS_WORK_ORDERS_ENABLED=True,
+                       AIMMS_CLOSEOUT_WIZARD_ENABLED=True,
+                       AIMMS_CLOSEOUT_EFFECTS_ENABLED=True,
+                       AIMMS_CLOSEOUT_VERIFY_POLICY='supervisor')
+    def test_test_exercise_emails_and_notifies_on_raise_and_verified_recovery(self):
+        """Real local mail rendering and bell delivery, never a live SMTP dispatch."""
+        import uuid
+
+        from allauth.account.models import EmailAddress
+
+        from assets.health_models import MachineSignalState
+        from machine_health.services.test_alarms import trigger_test_alarm
+        from tasks.models import WorkOrder
+        from tasks.services.closeout import complete_work_order
+        from tasks.services.service_reports import latest_report, service_report_command
+        from tasks.tests.closeout_fixtures import VALID_CLOSEOUT
+
+        self.set_signal(3.2, observed_at=self.now)
+        before = list(MachineSignalState.objects.values())
+        EmailAddress.objects.create(user=self.operator, email='operator@example.com',
+                                    primary=True, verified=True)
+        mail.outbox.clear()
+        with self.captureOnCommitCallbacks(execute=True):
+            anomaly = trigger_test_alarm(
+                machine=self.machine, actor=self.operator, binding_id=self.binding.pk,
+                component_id=None, idempotency_key=uuid.uuid4(),
+            )
+        self.assertEqual(self.messages(), ['operator'])
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].from_email, 'configured-notifications@example.test')
+        self.assertIn('TEST', mail.outbox[0].subject)
+        self.assertIn('Synthetic exercise', mail.outbox[0].alternatives[0][0])
+        work = WorkOrder.objects.create(title='Synthetic service exercise', machine=self.machine,
+                                       assigned_to=self.operator,
+                                       lifecycle_status='verifying')
+        anomaly.work_order = work
+        anomaly.save(update_fields=['work_order'])
+        reviewer = get_user_model().objects.create_superuser(
+            'exercise-reviewer', 'reviewer@example.com', 'pw'
+        )
+        SCOPES[reviewer.username] = self.client_tenant.pk
+        service_report_command(work_order_id=work.pk, actor=self.operator,
+                               action='submit', account=VALID_CLOSEOUT,
+                               expected_version=work.lifecycle_version,
+                               idempotency_key='exercise-submit')
+        work.refresh_from_db()
+        report_id = latest_report(work).pk
+        service_report_command(work_order_id=work.pk, actor=reviewer,
+                               action='approve', report_id=report_id,
+                               expected_version=work.lifecycle_version,
+                               idempotency_key='exercise-approve')
+        work.refresh_from_db()
+        complete_work_order(work_order_id=work.pk, actor=self.operator,
+                            closeout=VALID_CLOSEOUT, expected_version=work.lifecycle_version,
+                            idempotency_key='exercise-complete')
+        work.refresh_from_db()
+        with self.captureOnCommitCallbacks(execute=True):
+            service_report_command(work_order_id=work.pk, actor=reviewer,
+                                   action='return', report_id=report_id,
+                                   expected_version=work.lifecycle_version,
+                                   idempotency_key='exercise-return')
+        anomaly.refresh_from_db()
+        self.assertEqual(anomaly.status, 'resolved')
+        self.assertEqual(NotificationMessage.objects.filter(
+            category='tasks.test_alarm_recovered', user=self.operator
+        ).count(), 1)
+        recovery = [message for message in mail.outbox if 'TEST alarm cleared' in message.subject]
+        self.assertTrue(recovery)
+        self.assertEqual(recovery[0].from_email, 'configured-notifications@example.test')
+        self.assertIn('Actual telemetry and unrelated alarms are unchanged', recovery[0].alternatives[0][0])
+        self.assertEqual(list(MachineSignalState.objects.values()), before)

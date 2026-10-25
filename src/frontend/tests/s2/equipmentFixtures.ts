@@ -24,6 +24,7 @@ export function positionsFixture(overrides: Record<string, unknown> = {}) {
     unit: 'degC',
     value,
     observed_at: '2026-10-19T12:00:00Z',
+    age_seconds: 30,
     quality: 'good',
     stale: false,
     state

@@ -62,6 +62,7 @@ export interface MachineHealthSummary {
   last_observed_at: string | null;
   anomaly_counts: Record<AnomalySeverity, number>;
   active_anomaly_count: number;
+  synthetic_active_count?: number;
   sources: HealthSourceStatus[];
 }
 
@@ -75,6 +76,7 @@ export interface MachineSignalLimits {
 }
 
 export interface MachineSignal {
+  test_alarms?: SignalTestAlarm[];
   recorded_telemetry_as_live?: boolean;
   active?: boolean;
   critical_designation?: CriticalDesignation | null;
@@ -97,6 +99,14 @@ export interface MachineSignal {
   /** 'unknown' whenever the row is stale: a stale value has no verdict. */
   state: HealthState;
   limits: MachineSignalLimits;
+}
+
+export interface SignalTestAlarm {
+  anomaly_id: number;
+  status: 'open' | 'acknowledged';
+  test_value: number;
+  unit: string;
+  triggered_at: string;
 }
 
 export interface AnomalySignalRef {

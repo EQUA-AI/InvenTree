@@ -1,4 +1,4 @@
-import type { HealthState } from '@lib/types/MachineHealth';
+import type { HealthState, SignalTestAlarm } from '@lib/types/MachineHealth';
 import type { FitProjection } from '@lib/types/RecordedFacts';
 
 import type { TwinPartId } from './twinScene.mjs';
@@ -31,9 +31,11 @@ export interface PositionSignal {
   unit: string;
   value: number | string | null;
   observed_at: string | null;
+  age_seconds?: number | null;
   quality: string;
   stale: boolean;
   state: HealthState;
+  test_alarms?: SignalTestAlarm[];
 }
 
 export interface PositionWorkRow {

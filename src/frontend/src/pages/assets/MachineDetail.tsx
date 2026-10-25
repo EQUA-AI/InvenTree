@@ -38,6 +38,7 @@ import { WorkOrderCreateModal } from '../maintenance/components/WorkOrderCreateM
 import FaultHistoryPanel from './FaultHistoryPanel';
 import { InstalledPartsPanel } from './InstalledPartsPanel';
 import { StartRepairModal } from './StartRepairModal';
+import { TestAlarmControl } from './TestAlarmControl';
 import { EquipmentViewPanel } from './equipment/EquipmentViewPanel';
 import { MachineHealthPanel } from './health/MachineHealthPanel';
 import PumpMimic from './health/PumpMimic';
@@ -375,6 +376,12 @@ export default function MachineDetail() {
                 hash={machine?.barcode_hash}
                 perm={user.hasChangeRole(UserRoles.work_order)}
               />,
+              user.isSuperuser() && machine?.pk && (
+                <TestAlarmControl
+                  key={`test-alarm-${machine.pk}-${user.user?.pk}-${user.authGeneration}`}
+                  machine={machine}
+                />
+              ),
               // S14 B5: opens the main chat drawer with this machine preloaded
               // as a VISIBLE routing hint — never authority. Every tool call
               // re-authorizes server-side; a denied or out-of-scope machine is

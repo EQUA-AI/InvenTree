@@ -18,6 +18,7 @@ import {
 import operational from '../health/OperationalTokens.module.css';
 import { StatusBadge } from '../health/StatusBadge';
 import { MetaText } from '../health/common';
+import { usePerformanceTestAlarms } from './PerformanceTestAlarms';
 import { hasLimits } from './evaluation';
 import { limitLines } from './limitLines';
 
@@ -126,6 +127,9 @@ function SensorGroupCardBody({
 }: Readonly<SensorGroupCardProps>) {
   const theme = useMantineTheme();
   const scheme = useComputedColorScheme('light');
+  const tests = usePerformanceTestAlarms(
+    parameters.map((parameter) => parameter.signal.binding_id)
+  );
   const resolutionSeconds = resolutionForSeries(
     parameters.map((p) => series.get(p.signal.binding_id)),
     window.resolutionSeconds
@@ -318,6 +322,9 @@ function SensorGroupCardBody({
 
   const dotValues = [
     ...readable.map((point) => point.value as number),
+    ...tests
+      .filter((alarm) => !alarm.unitMismatch)
+      .map((alarm) => alarm.test_value),
     ...referenceLines.map((line) => line.y)
   ];
   const dotMin = dotValues.length ? Math.min(...dotValues) : 0;
@@ -378,6 +385,23 @@ function SensorGroupCardBody({
               </ValueTooltip>
             )}
           </Stack>
+          {tests.length > 0 && (
+            <StatusBadge
+              multiline
+              tone='critical'
+              color='red.9'
+              size='sm'
+              maw='100%'
+            >
+              {t`TEST alarm — Critical`}:{' '}
+              {tests
+                .map(
+                  (alarm) =>
+                    `${parameters.find((parameter) => parameter.signal.binding_id === alarm.binding_id)?.label ?? alarm.label}: ${formatValue(alarm.test_value, decimals, alarm.unit)}`
+                )
+                .join(' · ')}
+            </StatusBadge>
+          )}
           {summary && (
             <Group gap='xs' wrap='wrap'>
               <StatusBadge
@@ -391,23 +415,25 @@ function SensorGroupCardBody({
               </StatusBadge>
 
               {summary.configured > 0 ? (
-                <StatusBadge
-                  multiline
-                  variant={summary.over > 0 ? 'filled' : 'outline'}
-                  color={
-                    summary.over > 0
-                      ? summary.worst === 'critical'
-                        ? 'red.9'
-                        : 'yellow.6'
-                      : 'green'
-                  }
-                  tone={summary.over > 0 ? summary.worst : 'normal'}
-                  size='sm'
-                >
-                  {summary.over > 0
-                    ? t`${summary.over} of ${summary.configured} ${breachWord} ${summary.worst} (${breachedBounds.map((line) => line.label).join(' · ') || t`breach boundary not supplied`})`
-                    : t`${summary.configured} within limits`}
-                </StatusBadge>
+                (summary.over > 0 || !tests.length) && (
+                  <StatusBadge
+                    multiline
+                    variant={summary.over > 0 ? 'filled' : 'outline'}
+                    color={
+                      summary.over > 0
+                        ? summary.worst === 'critical'
+                          ? 'red.9'
+                          : 'yellow.6'
+                        : 'green'
+                    }
+                    tone={summary.over > 0 ? summary.worst : 'normal'}
+                    size='sm'
+                  >
+                    {summary.over > 0
+                      ? t`${summary.over} of ${summary.configured} ${breachWord} ${summary.worst} (${breachedBounds.map((line) => line.label).join(' · ') || t`breach boundary not supplied`})`
+                      : t`${summary.configured} within limits`}
+                  </StatusBadge>
+                )
               ) : (
                 <StatusBadge
                   tone='neutral'
@@ -503,12 +529,42 @@ function SensorGroupCardBody({
                         value: point.value as number,
                         position: index
                       }))
-                    }
+                    },
+                    ...tests
+                      .filter(
+                        (alarm) =>
+                          !alarm.unitMismatch &&
+                          readable.some(
+                            (point) =>
+                              parameters.find(
+                                (parameter) =>
+                                  parameter.signal.binding_id ===
+                                  alarm.binding_id
+                              )?.label === point.sensor
+                          )
+                      )
+                      .map((alarm) => ({
+                        name: t`TEST ${alarm.label}`,
+                        color: scheme === 'dark' ? 'red.3' : 'red.9',
+                        data: [
+                          {
+                            value: alarm.test_value,
+                            position: readable.findIndex(
+                              (point) =>
+                                parameters.find(
+                                  (parameter) =>
+                                    parameter.signal.binding_id ===
+                                    alarm.binding_id
+                                )?.label === point.sensor
+                            )
+                          }
+                        ]
+                      }))
                   ]}
                   dataKey={{ x: 'value', y: 'position' }}
                   xAxisLabel={unitLabel(unit)}
                   styles={{ axisLabel: { fill: 'var(--mantine-color-text)' } }}
-                  withLegend={false}
+                  withLegend={tests.some((alarm) => !alarm.unitMismatch)}
                   scatterChartProps={{
                     margin: { top: 12, right: 24, bottom: 24, left: 8 }
                   }}

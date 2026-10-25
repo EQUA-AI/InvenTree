@@ -1,0 +1,9 @@
+{% extends "email/email.html" %}
+{% block title %}{{ name }}{% endblock title %}
+{% block body %}
+<tr><td>
+<p>{{ message }}</p>
+<p><a href="{{ report_link }}">View the service report and verified closeout</a></p>
+<p><a href="{{ link }}">View equipment and its current condition</a></p>
+</td></tr>
+{% endblock body %}

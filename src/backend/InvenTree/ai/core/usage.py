@@ -28,7 +28,10 @@ Accounting status by source (S12 keeps this list honest — the spec's bar is
   executed turn whose ledger stayed empty settles at the configured
   worst case (``ai/core/quota/reservation.py``), so these rails can never
   exceed the reservation envelope.
-- OUT OF USER QUOTA by design: closeout extraction (closeout wizard REST
+- OUT OF USER QUOTA by design: work-order form drafting (explicit deployment
+  opt-in, authenticated creation scope, 2 requests/minute/user, 20-second request
+  with no retries and at most 2000 output tokens; provider usage/provenance logged
+  and signed into the human-reviewed intake), closeout extraction (closeout wizard REST
   path, no turn ledger bound) and index-build embeddings
   (``controlled_document_indexing`` runs in django-q workers,
   operator-triggered).

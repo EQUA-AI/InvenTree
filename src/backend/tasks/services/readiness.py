@@ -289,6 +289,41 @@ def _required_steps_check(context):
 READINESS_CHECKS.append(_required_steps_check)
 
 
+def _controlled_exercise_check(context):
+    """Only the explicitly bound Pump08 case requires three genuine exercise passes."""
+    if context.action != 'complete':
+        return []
+    from repair.pump08_exercise import PROCEDURE_CODE
+    from tasks.work_execution.exercise_verification import project
+
+    if not context.work_order.events.filter(
+        event_type='WORK_PACKAGE_CREATED',
+        metadata__result_metadata__exercise_profile=PROCEDURE_CODE,
+    ).exists():
+        return []
+    if not getattr(settings, 'AIMMS_PROCEDURES_ENABLED', False):
+        return [
+            _blocker(
+                context,
+                'EXERCISE_VERIFICATION_INCOMPLETE',
+                'Governed procedures are disabled. The controlled exercise cannot bypass its three required checks.',
+            )
+        ]
+    result = project(context.work_order, context.actor)
+    if result.get('applicable') and not result.get('approved'):
+        return [
+            _blocker(
+                context,
+                'EXERCISE_VERIFICATION_INCOMPLETE',
+                'The controlled exercise requires three current passed checks with valid prepared evidence. Physical authority remains separate.',
+            )
+        ]
+    return []
+
+
+READINESS_CHECKS.append(_controlled_exercise_check)
+
+
 def _closeout_wizard_enabled() -> bool:
     return bool(getattr(settings, 'AIMMS_CLOSEOUT_WIZARD_ENABLED', False))
 

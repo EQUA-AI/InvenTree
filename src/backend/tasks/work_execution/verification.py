@@ -81,9 +81,13 @@ def project(work_order, actor=None) -> dict:
         else []
     )
     packet = packet_of(work_order)
+    from .exercise_verification import exercise_source
+
+    exercise_available = bool(enabled and exercise_source(work_order) is not None)
     return {
         'rule': 'verification_return.v1',
         'procedures_state': 'read' if enabled else 'not_enabled',
+        'exercise_verification_available': exercise_available,
         'tests': [
             {
                 'id': execution.pk,

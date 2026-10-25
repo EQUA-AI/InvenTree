@@ -23,6 +23,8 @@ import hashlib
 import json
 from collections import defaultdict
 
+from django.utils import timezone
+
 from tasks.dashboard_metrics import OPEN
 from tasks.models import WorkOrder
 from tasks.scope import ScopeError, work_order_scope_filter
@@ -115,6 +117,7 @@ def machine_positions(actor, machine, *, now=None) -> dict:
     from machine_health.services.summary import signal_rows
     from part.management.commands.load_pump_catalogue import NAMESPACE
 
+    now = now or timezone.now()
     families = sorted({family for family in POSITION_FAMILIES.values() if family})
     ipns = {CATALOGUE_PREFIX + family: family for family in families}
     # The family's name comes from the loader-owned catalogue Part only: IPNs
@@ -155,21 +158,30 @@ def machine_positions(actor, machine, *, now=None) -> dict:
     )
     signals = defaultdict(list)
     if component_of_binding:
+        from machine_health.services.test_alarms import signal_test_alarms
+
+        annotations = signal_test_alarms(machine)
         for row in signal_rows(machine, now=now):
             component_id = component_of_binding.get(row['binding_id'])
             if component_id is not None:
                 signals[component_id].append({
-                    key: row[key]
-                    for key in (
-                        'binding_id',
-                        'display_name',
-                        'unit',
-                        'value',
-                        'observed_at',
-                        'quality',
-                        'stale',
-                        'state',
-                    )
+                    **{
+                        key: row[key]
+                        for key in (
+                            'binding_id',
+                            'display_name',
+                            'unit',
+                            'value',
+                            'observed_at',
+                            'quality',
+                            'stale',
+                            'state',
+                        )
+                    },
+                    'test_alarms': annotations.get(row['binding_id'], []),
+                    'age_seconds': (now - row['observed_at']).total_seconds()
+                    if row['observed_at']
+                    else None,
                 })
 
     try:

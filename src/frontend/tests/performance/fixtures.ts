@@ -1,3 +1,4 @@
+import type { SignalTestAlarm } from '@lib/types/MachineHealth';
 import type { Page, Route } from '@playwright/test';
 
 /**
@@ -23,6 +24,13 @@ export interface SignalSpec {
   freshnessSeconds?: number;
   state?: string;
   quality?: string;
+}
+
+interface TestAlarmSpec {
+  key: string;
+  status: SignalTestAlarm['status'];
+  unit?: string;
+  triggeredAt?: string;
 }
 
 export const SIGNALS: SignalSpec[] = [
@@ -154,11 +162,16 @@ export function signalRows(specs: readonly SignalSpec[] = SIGNALS) {
 /** Build a series response for whatever the panel asked for. */
 export function seriesFor(
   url: URL,
-  options: { fail?: boolean } = {},
+  options: {
+    fail?: boolean;
+    historyLagMs?: number;
+    seriesOverrides?: Record<string, number>;
+  } = {},
   specs: readonly SignalSpec[] = SIGNALS
 ) {
   const from = Date.parse(url.searchParams.get('from') ?? '');
-  const to = Date.parse(url.searchParams.get('to') ?? '');
+  const to =
+    Date.parse(url.searchParams.get('to') ?? '') - (options.historyLagMs ?? 0);
   const points = Number(url.searchParams.get('points') ?? 240);
   const ids = (url.searchParams.get('bindings') ?? '')
     .split(',')
@@ -185,7 +198,9 @@ export function seriesFor(
           samples: []
         };
       }
-      const base = typeof row.value === 'number' ? row.value : null;
+      const base =
+        options.seriesOverrides?.[row.external_key] ??
+        (typeof row.value === 'number' ? row.value : null);
       const samples = Array.from({ length: count }, (_, i) => {
         const t = Math.round(from + i * step);
         if (row.value === 'R') {
@@ -258,14 +273,23 @@ export function seriesFor(
 
 export async function mount(
   page: Page,
-  options: { fail?: boolean; signalOverrides?: Record<string, number> } = {}
+  options: {
+    fail?: boolean;
+    specs?: readonly SignalSpec[];
+    signalOverrides?: Record<string, number>;
+    historyLagMs?: number;
+    seriesOverrides?: Record<string, number>;
+    testAlarm?: TestAlarmSpec;
+    testAlarms?: TestAlarmSpec[];
+    scheme?: 'light' | 'dark';
+  } = {}
 ) {
   await page.clock.setFixedTime(new Date(NOW));
   const requests: URL[] = [];
   await page.route(
     `**/api/machine-health/machines/${MACHINE}/health/signals/**`,
     (route: Route) => {
-      const rows = signalRows();
+      const rows = signalRows(options.specs ?? SIGNALS);
       // Let a test place a reading exactly on a limit, which is the one value
       // the server and the page have to agree about.
       for (const [key, value] of Object.entries(
@@ -287,7 +311,31 @@ export async function mount(
                   : 'normal';
         }
       }
-      return route.fulfill({ json: { count: rows.length, results: rows } });
+      return route.fulfill({
+        json: {
+          count: rows.length,
+          results: rows.map((row) => ({
+            ...row,
+            test_alarms: (
+              options.testAlarms ??
+              (options.testAlarm ? [options.testAlarm] : [])
+            ).flatMap((alarm, index) =>
+              alarm.key === row.external_key
+                ? [
+                    {
+                      anomaly_id: 901 + index,
+                      status: alarm.status,
+                      test_value: 159.5,
+                      unit: alarm.unit ?? row.unit,
+                      triggered_at:
+                        alarm.triggeredAt ?? new Date(NOW - 60000).toISOString()
+                    }
+                  ]
+                : []
+            )
+          }))
+        }
+      });
     }
   );
   await page.route(
@@ -306,9 +354,11 @@ export async function mount(
     (route: Route) => {
       const url = new URL(route.request().url());
       requests.push(url);
-      return route.fulfill({ json: seriesFor(url, options) });
+      return route.fulfill({
+        json: seriesFor(url, options, options.specs ?? SIGNALS)
+      });
     }
   );
-  await page.goto('/');
+  await page.goto(options.scheme ? `/?scheme=${options.scheme}` : '/');
   return requests;
 }

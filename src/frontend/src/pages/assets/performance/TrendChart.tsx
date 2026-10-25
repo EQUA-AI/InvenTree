@@ -12,6 +12,7 @@ import {
   Stack,
   Text,
   Tooltip,
+  getThemeColor,
   useComputedColorScheme,
   useMantineTheme
 } from '@mantine/core';
@@ -28,11 +29,20 @@ import { ReferenceArea } from 'recharts';
 import operational from '../health/OperationalTokens.module.css';
 import { MetaText } from '../health/common';
 import { useDisplayClock } from '../health/mimic/observedTime';
+import {
+  PerformanceTestNotice,
+  usePerformanceTestAlarms
+} from './PerformanceTestAlarms';
 import { ThresholdKey } from './ThresholdKey';
 import { presentationTicks } from './axisPresentation';
 import { thresholdBands } from './thresholdBands';
 
 import { useHistoryReadFailures } from './HistoryReadContext';
+import {
+  exerciseRows,
+  toggleExerciseSeries,
+  visibleExerciseSeries
+} from './exerciseValues';
 import {
   formatInstant,
   formatTick,
@@ -48,6 +58,7 @@ import { type ChartRow, axisDomain } from './series';
  * how to print its values. Units differ per line, so the tooltip asks each.
  */
 export interface TrendSeries {
+  measuredKey?: string;
   bindingIds?: readonly number[];
   externalKeys?: readonly string[];
   key: string;
@@ -60,9 +71,12 @@ export interface TrendSeries {
   stepped?: boolean;
   strokeWidth?: number;
   endLabel?: boolean;
+  synthetic?: boolean;
+  endLabelText?: string;
 }
 
 export interface ReferenceLine {
+  synthetic?: boolean;
   yAxisId?: 'left' | 'right';
   direction?: 'low' | 'high';
   severity?: 'warning' | 'critical';
@@ -73,6 +87,7 @@ export interface ReferenceLine {
 
 export interface TrendChartProps {
   rows: ChartRow[];
+  measuredRows?: ChartRow[];
   series: TrendSeries[];
   windowStart: number;
   windowEnd: number;
@@ -133,6 +148,8 @@ export function ChartTitleProvider({
  * shares a crosshair makes the charts re-synchronise each other without end.)
  */
 export function TrendChart(props: Readonly<TrendChartProps>) {
+  const bindingIds = props.series.flatMap((line) => line.bindingIds ?? []);
+  const tests = usePerformanceTestAlarms(bindingIds);
   const failures = useHistoryReadFailures();
   const failed = props.series.filter(
     (line) =>
@@ -152,6 +169,7 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
         : undefined)
   };
   const [fullscreen, setFullscreen] = useState(false);
+  const { ref: fullscreenControls, height: controlsHeight } = useElementSize();
   const [hidden, setHidden] = useState<Set<string>>(new Set());
 
   // A chart given no title of its own is named by the card it sits in.
@@ -164,59 +182,137 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
   const scheme = useComputedColorScheme('light');
   const series = useMemo(
     () =>
-      props.series.map((s) => ({
+      [
+        ...props.series,
+        ...tests.flatMap((alarm) => {
+          const measured = props.series.find(
+            (line) =>
+              line.bindingIds?.length === 1 &&
+              line.bindingIds[0] === alarm.binding_id &&
+              unitLabel(line.unit) === unitLabel(alarm.unit)
+          );
+          if (
+            !measured ||
+            alarm.unitMismatch ||
+            Date.parse(alarm.triggered_at) > props.windowEnd
+          )
+            return [];
+          const coincident = tests.filter(
+            (entry) =>
+              !entry.unitMismatch &&
+              entry.test_value === alarm.test_value &&
+              props.series.some(
+                (line) =>
+                  line.bindingIds?.length === 1 &&
+                  line.bindingIds[0] === entry.binding_id &&
+                  line.yAxisId === measured.yAxisId &&
+                  unitLabel(line.unit) === unitLabel(alarm.unit)
+              )
+          );
+          return [
+            {
+              ...measured,
+              key: `test-${alarm.anomaly_id}-${measured.key}`,
+              measuredKey: measured.key,
+              bindingIds: [],
+              label: t`TEST ${measured.label}: ${formatValue(alarm.test_value, 1, alarm.unit)}`,
+              color: scheme === 'dark' ? 'red.3' : 'red.9',
+              synthetic: true,
+              stepped: true,
+              strokeWidth: 2.5,
+              endLabel: coincident[0]?.anomaly_id === alarm.anomaly_id,
+              endLabelText:
+                coincident.length > 1
+                  ? t`TEST ${coincident.length} channels: ${formatValue(alarm.test_value, 1, alarm.unit)}`
+                  : undefined
+            }
+          ];
+        })
+      ].map((s) => ({
         ...s,
         color: legibleColor(s.color, theme, scheme)
       })),
-    [props.series, theme, scheme]
+    [props.series, theme, scheme, tests, props.windowEnd]
+  );
+  const visible = useMemo(
+    () => visibleExerciseSeries(series, hidden),
+    [series, hidden]
   );
   const referenceLines = useMemo(
     () =>
-      props.referenceLines?.map((line) => ({
+      (props.referenceLines ?? []).map((line) => ({
         ...line,
         color:
           line.severity === 'warning'
             ? 'var(--aimms-warning)'
-            : legibleColor(line.color, theme, scheme)
+            : getThemeColor(legibleColor(line.color, theme, scheme), theme)
       })),
     [props.referenceLines, theme, scheme]
   );
-
-  const visible = useMemo(
-    () => series.filter((s) => !hidden.has(s.key)),
-    [series, hidden]
+  const rows = useMemo(
+    () =>
+      exerciseRows(
+        props.rows,
+        visible
+          .filter((line) => line.synthetic)
+          .flatMap((line) => {
+            const alarm = tests.find((entry) =>
+              line.key.startsWith(`test-${entry.anomaly_id}-`)
+            );
+            return alarm
+              ? [
+                  {
+                    key: line.key,
+                    value: alarm.test_value,
+                    since: Date.parse(alarm.triggered_at)
+                  }
+                ]
+              : [];
+          }),
+        props.windowStart,
+        props.windowEnd
+      ),
+    [props.rows, visible, tests, props.windowStart, props.windowEnd]
   );
 
   const toggle = (key: string) =>
-    setHidden((current) => {
-      const next = new Set(current);
-      if (next.has(key)) {
-        next.delete(key);
-      } else if (next.size < series.length - 1) {
-        // Never hide the last line: an empty chart says nothing.
-        next.add(key);
-      }
-      return next;
-    });
+    setHidden((current) => toggleExerciseSeries(series, current, key));
 
   // The chips are the show/hide control as well as the key to the colours, so
   // the maximised view gets them too - the same node, and the same state,
   // because `hidden` lives here.
   const chips =
-    props.toggleable && series.length > 1 ? (
+    (props.toggleable || tests.length > 0) && series.length > 1 ? (
       <Group gap={4} wrap='wrap'>
-        {series.map((s) => (
-          <Chip
-            key={s.key}
-            size='xs'
-            variant='outline'
-            color={s.color}
-            checked={!hidden.has(s.key)}
-            onChange={() => toggle(s.key)}
-          >
-            {s.label}
-          </Chip>
-        ))}
+        {series.map((line) => {
+          const checked = visible.some((entry) => entry.key === line.key);
+          const lastVisible =
+            checked &&
+            !visibleExerciseSeries(series, new Set([...hidden, line.key]))
+              .length;
+          const explanation = t`At least one line must remain visible.`;
+          return (
+            <Tooltip
+              key={line.key}
+              label={explanation}
+              disabled={!lastVisible}
+              events={{ hover: true, focus: true, touch: true }}
+            >
+              <Box>
+                <Chip
+                  size='xs'
+                  variant='outline'
+                  color={line.color}
+                  checked={checked}
+                  aria-description={lastVisible ? explanation : undefined}
+                  onChange={() => toggle(line.key)}
+                >
+                  {line.label}
+                </Chip>
+              </Box>
+            </Tooltip>
+          );
+        })}
       </Group>
     ) : null;
 
@@ -248,12 +344,30 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
       className={operational.warning}
     >
       {header}
+      <PerformanceTestNotice
+        bindingIds={bindingIds}
+        afterHistory={tests.some(
+          (alarm) =>
+            !alarm.unitMismatch &&
+            Date.parse(alarm.triggered_at) > props.windowEnd
+        )}
+        historyAvailable={props.rows.some((row) =>
+          visible.some(
+            (line) =>
+              typeof row[line.key] === 'number' &&
+              Number.isFinite(row[line.key])
+          )
+        )}
+      />
       {failureText &&
         props.rows.some((row) =>
           visible.some((line) => typeof row[line.key] === 'number')
         ) && <MetaText size='xs'>{failureText}</MetaText>}
       <ChartBody
         {...chartProps}
+        rows={rows}
+        measuredRows={props.rows}
+        toggleable={props.toggleable || tests.length > 0}
         series={visible}
         referenceLines={referenceLines}
       />
@@ -264,16 +378,36 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
         title={props.title ?? cardTitle ?? t`Trend`}
       >
         <Stack gap={6}>
-          {chips}
-          {failureText &&
-            props.rows.some((row) =>
-              visible.some((line) => typeof row[line.key] === 'number')
-            ) && <MetaText size='xs'>{failureText}</MetaText>}
+          <Stack gap={6} ref={fullscreenControls}>
+            {chips}
+            <PerformanceTestNotice
+              bindingIds={bindingIds}
+              afterHistory={tests.some(
+                (alarm) =>
+                  !alarm.unitMismatch &&
+                  Date.parse(alarm.triggered_at) > props.windowEnd
+              )}
+              historyAvailable={props.rows.some((row) =>
+                visible.some(
+                  (line) =>
+                    typeof row[line.key] === 'number' &&
+                    Number.isFinite(row[line.key])
+                )
+              )}
+            />
+            {failureText &&
+              props.rows.some((row) =>
+                visible.some((line) => typeof row[line.key] === 'number')
+              ) && <MetaText size='xs'>{failureText}</MetaText>}
+          </Stack>
           <ChartBody
             {...chartProps}
+            rows={rows}
+            measuredRows={props.rows}
+            toggleable={props.toggleable || tests.length > 0}
             series={visible}
             referenceLines={referenceLines}
-            height={Math.max(420, window.innerHeight - 200)}
+            height={Math.max(240, window.innerHeight - controlsHeight - 140)}
           />
         </Stack>
       </Modal>
@@ -283,6 +417,7 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
 
 function ChartBody({
   rows,
+  measuredRows,
   series,
   windowStart,
   windowEnd,
@@ -305,6 +440,7 @@ function ChartBody({
   } | null>(null);
   const [dragging, setDragging] = useState(false);
   const displayClock = useDisplayClock();
+  const theme = useMantineTheme();
   const [includeLimits, setIncludeLimits] = useState(false);
 
   const plotted = useMemo(
@@ -391,12 +527,14 @@ function ChartBody({
           if (v > max) max = v;
         }
       }
-      if (include) {
-        for (const line of referenceLines ?? []) {
-          if (lineAxis(line) === which && Number.isFinite(line.y)) {
-            min = Math.min(min, line.y);
-            max = Math.max(max, line.y);
-          }
+      for (const line of referenceLines ?? []) {
+        if (
+          (include || line.synthetic) &&
+          lineAxis(line) === which &&
+          Number.isFinite(line.y)
+        ) {
+          min = Math.min(min, line.y);
+          max = Math.max(max, line.y);
         }
       }
       const widthFor = (labels: string[]) =>
@@ -560,13 +698,39 @@ function ChartBody({
         strokeWidth={1.5}
         lineProps={(item) => {
           const original = byKey.get(item.name);
-          const last = rows.findLastIndex(
+          const sourceRows = original?.synthetic
+            ? rows
+            : (measuredRows ?? rows);
+          const last = sourceRows.findLastIndex(
             (row) =>
               typeof row[item.name] === 'number' &&
               Number.isFinite(row[item.name])
           );
           return {
+            data: sourceRows,
             strokeWidth: original?.strokeWidth ?? 1.5,
+            strokeDasharray: original?.synthetic ? '6 4' : undefined,
+            dot: original?.synthetic
+              ? (props: any) => {
+                  const first = sourceRows.findIndex(
+                    (row) =>
+                      typeof row[item.name] === 'number' &&
+                      Number.isFinite(row[item.name])
+                  );
+                  return (props.index === first || props.index === last) &&
+                    Number.isFinite(Number(props.cx)) &&
+                    Number.isFinite(Number(props.cy)) ? (
+                    <circle
+                      cx={props.cx}
+                      cy={props.cy}
+                      r={3}
+                      fill={getThemeColor(original.color, theme)}
+                    />
+                  ) : (
+                    <g />
+                  );
+                }
+              : false,
             label: original?.endLabel
               ? (props: any) =>
                   props.index === last ? (
@@ -574,10 +738,14 @@ function ChartBody({
                       x={Number(props.x) - 4}
                       y={Number(props.y) - 8}
                       textAnchor='end'
-                      fill='var(--mantine-color-text)'
+                      fill={
+                        original.synthetic
+                          ? getThemeColor(original.color, theme)
+                          : 'var(--mantine-color-text)'
+                      }
                       fontSize={11}
                     >
-                      {original.label}
+                      {original.endLabelText ?? original.label}
                     </text>
                   ) : (
                     <g />
@@ -626,10 +794,12 @@ function ChartBody({
         referenceLines={referenceLines?.map((line) => ({
           y: line.y,
           yAxisId: line.yAxisId === 'right' && withRight ? 'right' : 0,
+          labelPosition: line.synthetic ? 'insideTopRight' : undefined,
           label: {
             value: line.label,
-            fill: 'var(--mantine-color-text)'
+            fill: line.synthetic ? line.color : 'var(--mantine-color-text)'
           },
+          strokeDasharray: line.synthetic ? '6 4' : undefined,
           color: line.color
         }))}
         lineChartProps={{
@@ -637,7 +807,7 @@ function ChartBody({
           syncMethod: 'value',
           // Both sides keep their margin: zeroed on the right, the last tick
           // label of a two-axis chart lost its final character.
-          margin: { top: 8, right: 12, bottom: 0, left: 0 },
+          margin: { top: 8, right: 12, bottom: 0, left: 12 },
           onMouseDown: (state: unknown) => {
             const at = instantOf(state);
             if (!onZoom || at === null) return;
@@ -701,7 +871,7 @@ function ChartBody({
       </LineChart>
       {(['left', 'right'] as const).map((side) => {
         const own = (referenceLines ?? []).filter(
-          (line) => lineAxis(line) === side
+          (line) => lineAxis(line) === side && !line.synthetic
         );
         return own.length ? (
           <ThresholdKey

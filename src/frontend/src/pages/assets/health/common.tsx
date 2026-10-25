@@ -513,13 +513,13 @@ export function formatSignalLimits(
     [t`Critical`, signal.limits.critical_min, signal.limits.critical_max]
   ] as const) {
     if (label === t`Normal`) {
-      if (min !== null) parts.push(t`Normal minimum ${min}${unit}`);
-      if (max !== null) parts.push(t`Normal maximum ${max}${unit}`);
-    } else if (min !== null && max !== null) {
+      if (min != null) parts.push(t`Normal minimum ${min}${unit}`);
+      if (max != null) parts.push(t`Normal maximum ${max}${unit}`);
+    } else if (min != null && max != null) {
       parts.push(t`${label} below ${min}${unit} or above ${max}${unit}`);
-    } else if (min !== null) {
+    } else if (min != null) {
       parts.push(t`${label} below ${min}${unit}`);
-    } else if (max !== null) {
+    } else if (max != null) {
       parts.push(t`${label} above ${max}${unit}`);
     }
   }

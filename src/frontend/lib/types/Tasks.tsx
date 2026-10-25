@@ -18,6 +18,11 @@ export interface WorkOrderPart {
   updated_at: string;
 }
 
+export interface MachineCondition {
+  state: import('./MachineHealth').HealthState;
+  synthetic_active_count: number;
+}
+
 export interface WorkOrder {
   id: number;
   title: string;
@@ -28,6 +33,7 @@ export interface WorkOrder {
   assignee: string;
   machine: number | null;
   machine_name: string | null;
+  machine_condition?: MachineCondition | null;
   machine_location: string | null;
   assigned_to: number | null;
   assigned_to_username: string | null;

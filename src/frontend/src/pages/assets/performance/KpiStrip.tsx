@@ -12,6 +12,8 @@ import { useDisplayClock } from '../health/mimic/observedTime';
 import { relativeAge } from '../health/relativeTime';
 import monitoring from '../monitoring.module.css';
 import classes from './KpiStrip.module.css';
+import { usePerformanceTestAlarms } from './PerformanceTestAlarms';
+import { effectiveTest } from './exerciseValues';
 import { tileIsStale } from './liveState';
 import { endpointDelta, performanceSparkline } from './sparkline';
 
@@ -28,13 +30,15 @@ import {
   freshnessFacts
 } from '../health/common';
 import { formatDuration, formatInstant, formatValue } from './format';
-import { seriesStats } from './series';
+import { seriesStats, usable } from './series';
 
 /**
  * One tile's worth of fact. Built by the panel from a signal and its series;
  * this file only draws.
  */
 export interface KpiTile {
+  bindingIds?: number[];
+  valueBindingId?: number;
   key: string;
   label: string;
   value: number | null;
@@ -67,12 +71,42 @@ export interface KpiTile {
 
 export function Sparkline({
   entry,
-  window
+  window,
+  exercise
 }: Readonly<{
   entry: SeriesEntry;
   window?: { start: number; end: number; resolutionSeconds?: number };
+  exercise?: { test_value: number; triggered_at: string };
 }>) {
-  const path = performanceSparkline(entry, window);
+  const path = performanceSparkline(
+    entry,
+    window,
+    96,
+    24,
+    exercise?.test_value
+  );
+  const start = window?.start ?? entry.samples[0]?.t;
+  const end = window?.end ?? entry.samples.at(-1)?.t;
+  const since = exercise ? Date.parse(exercise.triggered_at) : Number.NaN;
+  const testX =
+    start != null && end != null && end > start
+      ? (96 * (Math.max(start, since) - start)) / (end - start)
+      : Number.NaN;
+  const values = entry.samples
+    .filter(
+      (sample) =>
+        usable(sample) &&
+        (!window || (sample.t >= window.start && sample.t <= window.end))
+    )
+    .map((sample) => sample.v as number);
+  if (exercise) values.push(exercise.test_value);
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  const testY = exercise
+    ? high === low
+      ? 12
+      : 23 - ((exercise.test_value - low) / (high - low)) * 22
+    : Number.NaN;
   if (!path) return null;
   return (
     <Box
@@ -82,7 +116,11 @@ export function Sparkline({
       viewBox='0 0 96 24'
       preserveAspectRatio='none'
       role='img'
-      aria-label={t`Trend over the selected window`}
+      aria-label={
+        exercise
+          ? t`Measured trend with a synthetic TEST value ${exercise.test_value}`
+          : t`Trend over the selected window`
+      }
       style={{ display: 'block' }}
     >
       <path
@@ -92,6 +130,17 @@ export function Sparkline({
         strokeWidth={1.5}
         vectorEffect='non-scaling-stroke'
       />
+      {exercise && Number.isFinite(testX) && testX <= 96 && (
+        <path
+          data-kpi-test-trace
+          d={`M${testX},${testY} L96,${testY}`}
+          fill='none'
+          stroke='light-dark(var(--mantine-color-red-9), var(--mantine-color-red-3))'
+          strokeDasharray='3 2'
+          strokeWidth={2}
+          vectorEffect='non-scaling-stroke'
+        />
+      )}
     </Box>
   );
 }
@@ -111,6 +160,9 @@ export function KpiTileCard({
   chartId?: string;
 }>) {
   const clock = useDisplayClock();
+  const tests = usePerformanceTestAlarms(tile.bindingIds ?? []);
+  const exercise = effectiveTest(tests, tile.unit);
+  const showSeries = !exercise || exercise.binding_id === tile.valueBindingId;
   const stale = tileIsStale(tile, now);
   const freshness = freshnessFacts(
     tile.observedAt,
@@ -128,11 +180,14 @@ export function KpiTileCard({
       )
     : undefined;
   const stats = tile.series ? seriesStats(tile.series) : null;
-  const delta = tile.series ? endpointDelta(tile.series, window) : null;
-  const missing = tile.value == null && !tile.valueText;
+  const delta =
+    showSeries && tile.series ? endpointDelta(tile.series, window) : null;
+  const missing = !exercise && tile.value == null && !tile.valueText;
   const navigate = !missing && tile.observedAt != null ? onNavigate : undefined;
   const shown =
-    tile.valueText ??
+    (exercise
+      ? formatValue(exercise.test_value, tile.decimals)
+      : tile.valueText) ??
     formatValue(
       tile.value,
       tile.decimals,
@@ -143,7 +198,15 @@ export function KpiTileCard({
     ? formatSignalLimits({ limits: tile.limits, unit: tile.unit })
     : null;
   const card = (
-    <Paper withBorder p='sm' data-kpi={tile.key} className={classes.card}>
+    <Paper
+      withBorder
+      p='sm'
+      data-kpi={tile.key}
+      className={classes.card}
+      style={
+        tests.length ? { borderColor: 'var(--mantine-color-red-7)' } : undefined
+      }
+    >
       <Stack gap={6}>
         <Stack gap={4}>
           <MetaText size='xs' fw={500}>
@@ -175,6 +238,11 @@ export function KpiTileCard({
               <Group gap={4} align='baseline'>
                 <Text
                   data-kpi-value
+                  c={
+                    exercise
+                      ? 'light-dark(var(--mantine-color-red-9), var(--mantine-color-red-3))'
+                      : undefined
+                  }
                   fz={shown.length > 7 ? 20 : 24}
                   fw={stale ? 400 : 600}
                   lh={1.1}
@@ -198,7 +266,19 @@ export function KpiTileCard({
                   </MetaText>
                 )}
               </Group>
-              {tile.series && <Sparkline entry={tile.series} window={window} />}
+              {exercise && (
+                <Text
+                  size='xs'
+                  data-kpi-measured
+                >{t`Measured ${exercise.label}: ${typeof exercise.measured_value === 'number' && !exercise.measured_stale && exercise.measured_quality === 'good' ? formatValue(exercise.measured_value, tile.decimals, exercise.measured_unit) : '—'}`}</Text>
+              )}
+              {showSeries && tile.series && (
+                <Sparkline
+                  entry={tile.series}
+                  window={window}
+                  exercise={exercise}
+                />
+              )}
               {delta && (
                 <MetaText size='xs' data-kpi-delta>
                   {`Δ ${delta.change > 0 ? '+' : ''}${formatValue(delta.change, 1, delta.percent ? '%' : tile.unit)} / ${formatDuration(delta.seconds)}`}
@@ -241,9 +321,19 @@ export function KpiTileCard({
               />
             </div>
           )}
-          {!stale && !missing && tile.state !== 'unconfigured' && (
-            <HealthStateBadge state={tile.state} size='sm' />
+          {tests.length > 0 && (
+            <StatusBadge
+              tone='critical'
+              color='red.9'
+              size='sm'
+            >{t`TEST alarm — Critical`}</StatusBadge>
           )}
+          {(!tests.length || tile.state !== 'normal') &&
+            !stale &&
+            !missing &&
+            tile.state !== 'unconfigured' && (
+              <HealthStateBadge state={tile.state} size='sm' />
+            )}
           {!missing && tile.quality && tile.quality !== 'good' && (
             <StatusBadge tone='neutral' color='gray'>
               {tile.quality === 'bad' ? t`Bad quality` : t`Uncertain quality`}
@@ -257,7 +347,11 @@ export function KpiTileCard({
     <UnstyledButton
       className={classes.cardLink}
       onClick={navigate}
-      aria-label={tile.label}
+      aria-label={
+        exercise
+          ? `${tile.label} · ${t`TEST`} ${formatValue(exercise.test_value, tile.decimals, tile.unit)} · ${t`Measured`}: ${typeof exercise.measured_value === 'number' && !exercise.measured_stale && exercise.measured_quality === 'good' ? formatValue(exercise.measured_value, tile.decimals, exercise.measured_unit) : '—'}`
+          : tile.label
+      }
       aria-controls={chartId}
     >
       {card}
@@ -291,8 +385,12 @@ export function KpiStrip({
           now={now}
           readAt={readAt}
           window={window}
-          onNavigate={tile.key === 'winding' ? onWindingChart : undefined}
-          chartId={tile.key === 'winding' ? windingChartId : undefined}
+          onNavigate={
+            ['winding', 'core'].includes(tile.key) ? onWindingChart : undefined
+          }
+          chartId={
+            ['winding', 'core'].includes(tile.key) ? windingChartId : undefined
+          }
         />
       ))}
     </div>

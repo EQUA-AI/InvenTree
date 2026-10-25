@@ -41,6 +41,8 @@ function tileFor(
   return {
     key,
     label: label ?? parameter.label,
+    bindingIds: [signal.binding_id],
+    valueBindingId: signal.binding_id,
     value: numeric(signal),
     unit: signal.unit,
     decimals: parameter.definition.decimals,
@@ -124,6 +126,8 @@ function highestTile(
     key,
     label,
     value: numeric(top.signal),
+    bindingIds: family.map((parameter) => parameter.signal.binding_id),
+    valueBindingId: top.signal.binding_id,
     unit: top.signal.unit,
     decimals: top.definition.decimals,
     observedAt: instant(top.signal),
@@ -254,6 +258,11 @@ export function buildKpiTiles(
   const winding = withRole(parameters, 'winding');
   if (winding.length > 0) {
     add(highestTile('winding', t`Winding temperature`, winding, series, ''));
+  } else {
+    const core = withRole(parameters, 'core');
+    if (core.length > 0) {
+      add(highestTile('core', t`Stator core temperature`, core, series, ''));
+    }
   }
 
   const status = withRole(parameters, 'status')[0];
@@ -261,5 +270,22 @@ export function buildKpiTiles(
   add(single('flow', 'DISCHARGE_FLOW'));
   add(single('frequency', 'FREQUENCY'));
 
-  return tiles.slice(0, MAX_TILES);
+  const visible = tiles.slice(0, MAX_TILES);
+  for (const parameter of parameters) {
+    if (
+      parameter.signal.test_alarms?.some((alarm) =>
+        ['open', 'acknowledged'].includes(alarm.status)
+      ) &&
+      !visible.some(
+        (tile) =>
+          tile.bindingIds?.includes(parameter.signal.binding_id) &&
+          unitLabel(tile.unit) === unitLabel(parameter.signal.unit)
+      )
+    ) {
+      visible.push(
+        tileFor(`test-${parameter.signal.binding_id}`, parameter, series)
+      );
+    }
+  }
+  return visible;
 }

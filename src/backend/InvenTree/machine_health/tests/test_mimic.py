@@ -29,6 +29,29 @@ class MimicTests(InvenTreeAPITestCase):
     is_staff = False
     roles = ['work_order.view']
 
+    def test_synthetic_alarm_is_separate_from_actual_mimic_points(self):
+        from assets.health_models import MachineAnomaly
+        from machine_health.services.test_alarms import DETECTOR
+
+        point, binding = self.add_point('/pd/P1/motor_temperature', 30, unit='degC')
+        before = station_mimic(self.station, unit='P1')
+        anomaly = MachineAnomaly.objects.create(
+            machine=self.pump, detector=DETECTOR, fingerprint='test-mimic-synthetic',
+            title='TEST motor temperature', severity='critical', status='open',
+            first_observed_at=timezone.now(), last_observed_at=timezone.now(),
+            metrics={'synthetic': True, 'binding_id': binding.pk, 'test_value': 99},
+        )
+        during = station_mimic(self.station, unit='P1')
+        self.assertEqual(during['points'][point.path]['value'], before['points'][point.path]['value'])
+        [test_alarm] = [alarm for alarm in during['alarms'] if alarm.get('synthetic')]
+        self.assertEqual(test_alarm['value'], 99)
+        self.assertEqual(test_alarm['anomaly'], anomaly.pk)
+        self.assertEqual(next(bay for bay in during['bays'] if bay['key'] == 'P1')['alarm'], 'critical')
+        anomaly.status = 'resolved'
+        anomaly.save(update_fields=['status'])
+        after = station_mimic(self.station, unit='P1')
+        self.assertFalse(any(alarm.get('synthetic') for alarm in after['alarms']))
+
     @classmethod
     def setUpTestData(cls):
         """Use sparse registered bay keys and a same-Client source."""

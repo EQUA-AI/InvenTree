@@ -8,6 +8,7 @@ anyway is possible but must be deliberate and attributed.
 import uuid
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.test import TestCase, override_settings
 
 from tasks.models import WorkOrder
@@ -20,6 +21,7 @@ from machine_health.services.anomalies import fingerprint_for, record_anomaly
 from .models import PacketStatus, RepairPacket, RepairPacketHealthEvidence
 from .work_packages import (
     DuplicateRepairConflict,
+    InvalidAnomalySource,
     create_repair_work_package,
     find_duplicate_repairs,
 )
@@ -241,7 +243,7 @@ class AnomalyEvidenceLinkTest(TestCase):
         with self.assertRaisesMessage(ValueError, 'immutable'):
             link.save()
 
-    def test_cross_machine_anomaly_is_refused_with_a_warning(self):
+    def test_cross_machine_anomaly_rolls_back_the_package(self):
         """Another asset's telemetry can never justify this repair."""
         other = AssetMachine.objects.create(name=f'Other {uuid.uuid4().hex[:6]}')
         foreign, _ = record_anomaly(
@@ -251,14 +253,15 @@ class AnomalyEvidenceLinkTest(TestCase):
             severity=AnomalySeverity.WARNING,
         )
 
-        result = create_repair_work_package(
-            actor=self.actor,
-            draft=_draft(self.machine.pk, source={'anomaly_id': foreign.pk}),
-            idempotency_key=uuid.uuid4().hex,
-        )
-
-        self.assertTrue(
-            any('different machine' in warning for warning in result.warnings)
+        before = (WorkOrder.objects.count(), RepairPacket.objects.count())
+        with self.assertRaises(InvalidAnomalySource):
+            create_repair_work_package(
+                actor=self.actor,
+                draft=_draft(self.machine.pk, source={'anomaly_id': foreign.pk}),
+                idempotency_key=uuid.uuid4().hex,
+            )
+        self.assertEqual(
+            before, (WorkOrder.objects.count(), RepairPacket.objects.count())
         )
         foreign.refresh_from_db()
         self.assertIsNone(foreign.work_order_id)
@@ -300,6 +303,9 @@ class DuplicateApiTest(InvenTreeAPITestCase):
 
     def test_override_is_accepted(self):
         """An explicit override creates the second repair."""
+        self.user.user_permissions.add(
+            Permission.objects.get(codename='assign_workorder')
+        )
         response = self.post(
             self.url,
             {
@@ -312,3 +318,18 @@ class DuplicateApiTest(InvenTreeAPITestCase):
         )
 
         self.assertNotEqual(response.data['work_order_id'], self.first['work_order_id'])
+
+    def test_override_requires_native_assignment_authority(self):
+        """Creating alongside existing repair work is a separate planning authority."""
+        before = WorkOrder.objects.count()
+        self.post(
+            self.url,
+            {
+                'machine_id': self.machine.pk,
+                'title': 'Unpermitted second repair',
+                'duplicate_override': True,
+                'duplicate_override_reason': 'A reason alone is not authority',
+            },
+            expected_code=403,
+        )
+        self.assertEqual(WorkOrder.objects.count(), before)

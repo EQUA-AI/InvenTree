@@ -126,6 +126,8 @@ def notify_alarm(anomaly):
             f'/machines/machine/{machine.pk}/health?anomaly={anomaly.pk}'
         )
         name = f'{anomaly.get_severity_display()} alarm: {machine.name}'
+        if anomaly.metrics.get('synthetic'):
+            name = f'TEST — {name}'
         previous_delivery = (
             common.models.NotificationEntry.objects
             .filter(key=CATEGORY, uid=anomaly.pk)

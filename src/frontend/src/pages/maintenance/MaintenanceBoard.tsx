@@ -108,6 +108,8 @@ interface Task {
   assignee: string;
   machine: number | null;
   machineName: string | null;
+  machineCondition?: WorkOrder['machine_condition'];
+  lifecycleStatus?: string;
   tags: string[];
   company: string;
   companyContactName: string;
@@ -219,6 +221,9 @@ const convertCardToTask = (
   assignee: card.assignee || (workOrder?.assignee ?? ''),
   machine: card.machine ?? workOrder?.machine ?? null,
   machineName: card.machine_name ?? workOrder?.machine_name ?? null,
+  machineCondition: workOrder?.machine_condition,
+  lifecycleStatus:
+    workOrder?.lifecycle_status ?? card.lifecycle_status ?? undefined,
   tags: card.tags ?? workOrder?.tags ?? [],
   company: workOrder?.company ?? '',
   companyContactName: workOrder?.company_contact_name ?? '',
@@ -922,6 +927,8 @@ export default function MaintenanceBoard() {
                 dueDate: workOrder.due_date,
                 machine: workOrder.machine ?? null,
                 machineName: workOrder.machine_name ?? null,
+                machineCondition: workOrder.machine_condition,
+                lifecycleStatus: workOrder.lifecycle_status,
                 tags: workOrder.tags ?? []
               }
             : task

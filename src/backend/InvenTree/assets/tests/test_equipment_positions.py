@@ -168,6 +168,31 @@ class EquipmentPositionsTests(TestCase):
         body = response.json()
         return body, {p['id']: p for p in body['positions']}
 
+    def test_exercise_values_are_separate_and_restore_without_changing_position_readings(self):
+        from assets.health_models import MachineAnomaly
+        from machine_health.services.test_alarms import DETECTOR
+
+        before = list(MachineSignalState.objects.values())
+        anomaly = MachineAnomaly.objects.create(
+            machine=self.pump, detector=DETECTOR, fingerprint='position-test',
+            title='TEST bearing temperature', severity='critical', status='open',
+            first_observed_at=timezone.now(), last_observed_at=timezone.now(),
+            metrics={'synthetic': True, 'binding_id': self.bearing_signal.pk, 'test_value': 121, 'unit': 'degC'},
+        )
+        anomaly.bindings.add(self.bearing_signal)
+        _, positions = self.read()
+        position = positions['bearing']
+        [signal] = position['signals']
+        self.assertEqual(signal['value'], 95)
+        self.assertEqual(signal['state'], 'warning')
+        self.assertEqual(signal['test_alarms'][0]['test_value'], 121)
+        anomaly.status = 'resolved'
+        anomaly.save(update_fields=['status'])
+        _, positions = self.read()
+        position = positions['bearing']
+        self.assertEqual(position['signals'][0]['test_alarms'], [])
+        self.assertEqual(list(MachineSignalState.objects.values()), before)
+
     def test_every_reference_position_is_listed_by_its_rule(self):
         """Nine positions in model order; four have no family at all."""
         body, positions = self.read()
@@ -219,6 +244,16 @@ class EquipmentPositionsTests(TestCase):
             [s['display_name'] for s in positions['motor']['signals']],
             ['Pump1 Winding Temp'],
         )
+
+    def test_signal_age_uses_the_same_resolved_clock_as_its_condition(self):
+        from assets.equipment_positions import machine_positions
+
+        now = timezone.now()
+        body = machine_positions(self.reader, self.pump, now=now)
+        bearing = next(position for position in body['positions'] if position['id'] == 'bearing')['signals'][0]
+        expected = (now - bearing['observed_at']).total_seconds()
+        self.assertEqual(bearing['age_seconds'], expected)
+        self.assertGreaterEqual(bearing['age_seconds'], 30)
 
     def test_work_is_attributed_by_slot_code_and_the_rest_is_parent_context(self):
         """Only open, active, in-scope work on this pump's slot is the bearing's."""

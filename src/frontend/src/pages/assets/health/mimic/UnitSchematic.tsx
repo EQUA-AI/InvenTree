@@ -107,6 +107,12 @@ export function UnitSchematic({
         {elements.map((element) => {
           const pointer = expandPointer(element.pointer, unit);
           const point = data.points[pointer];
+          const exercise = data.alarms.find(
+            (alarm) =>
+              alarm.synthetic &&
+              ['open', 'acknowledged'].includes(alarm.anomaly_status ?? '') &&
+              alarm.pointer === pointer
+          );
           const label = elementLabel(element);
           const shown = usable(point) && !failedReading(point);
           const reason =
@@ -128,9 +134,16 @@ export function UnitSchematic({
               <dd
                 className={`${classes.metricValue} ${visual.value}`}
                 data-value
-                data-severity={readingSeverity(point)}
+                data-severity={exercise ? 'critical' : readingSeverity(point)}
               >
-                {shown ? (
+                {exercise ? (
+                  <span data-mimic-test-value>
+                    {t`TEST`} {display(exercise)}
+                    <small style={{ display: 'block' }}>
+                      {t`Measured`}: {shown ? display(point) : '—'}
+                    </small>
+                  </span>
+                ) : shown ? (
                   <ValueTooltip
                     label={detail}
                     focusable={false}

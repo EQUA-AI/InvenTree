@@ -22,7 +22,12 @@ from tasks.permissions import (
     REVIEW_PROCEDURE,
     require_permission,
 )
-from tasks.scope import MaintenanceScope, ScopeError, scope_for_actor
+from tasks.scope import (
+    MaintenanceScope,
+    ScopeError,
+    scope_for_actor,
+    scope_for_procedure,
+)
 
 
 class ProcedurePublishError(Exception):
@@ -61,9 +66,7 @@ def _advance_version(revision):
 
 
 def _procedure_scope(procedure):
-    if procedure.customer_id is None:
-        raise ScopeError('Procedure customer scope is unresolved')
-    return MaintenanceScope(customer_id=procedure.customer_id, site_key=None)
+    return scope_for_procedure(procedure)
 
 
 def _require_scope(actor, procedure):
@@ -201,7 +204,7 @@ def _blocker(code, message):
 def review_blockers(revision, reviewer=None):
     """Return stable-coded, currently computable publication blockers."""
     blockers = []
-    if revision.procedure.customer_id is None:
+    if revision.procedure.customer_id is None and revision.procedure.client_id is None:
         blockers.append(_blocker('SCOPE_UNRESOLVED', 'Procedure scope is unresolved'))
     steps = list(revision.steps.order_by('sequence', 'pk'))
     if not any(step.required for step in steps):
@@ -383,7 +386,10 @@ def request_review(revision, actor, expected_content_version=None):
         'revision_number': revision.revision,
         'content_version': revision.content_version,
         'content_hash': content_hash,
-        'scope': {'customer_id': scope.customer_id},
+        'scope': {
+            'customer_id': scope.customer_id,
+            **({'client_id': scope.client_id} if scope.client_id is not None else {}),
+        },
         'reviewed_snapshot': snapshot,
         'requested_by_id': actor.pk,
     }
@@ -407,13 +413,17 @@ def _expected_scope(procedure: Procedure, payload_scope: dict) -> MaintenanceSco
     if not isinstance(payload_scope, dict):
         raise ProcedurePublishError('Procedure publication scope is missing')
 
-    customer_id = payload_scope.get('customer_id')
-    site_key = payload_scope.get('site_key')
-    if procedure.customer_id is None:
-        raise ProcedurePublishError('Procedure customer scope is unresolved')
-    if customer_id != procedure.customer_id or site_key is not None:
+    try:
+        expected = scope_for_procedure(procedure)
+    except ScopeError as exc:
+        raise ProcedurePublishError(str(exc)) from exc
+    if (
+        payload_scope.get('customer_id') != expected.customer_id
+        or payload_scope.get('client_id') != expected.client_id
+        or payload_scope.get('site_key') is not None
+    ):
         raise ProcedurePublishError('Approval scope does not match procedure scope')
-    return MaintenanceScope(customer_id=customer_id, site_key=None)
+    return expected
 
 
 def validate_publish_preconditions(

@@ -90,7 +90,7 @@ export function AlarmTable({
               );
               return (
                 <Table.Tr
-                  key={`${alarm.machine ?? ''}:${alarm.pointer}`}
+                  key={`${alarm.machine ?? ''}:${alarm.pointer}:${alarm.synthetic ? 'test' : 'measured'}:${alarm.anomaly ?? 'untracked'}`}
                   data-point={alarm.pointer}
                   data-anomaly={alarm.anomaly ?? undefined}
                 >
@@ -120,9 +120,13 @@ export function AlarmTable({
                     className={visual.value}
                     data-severity={readingSeverity(alarm)}
                   >
-                    {alarm.value === null ||
-                    alarm.reason ||
-                    failedReading(alarm) ? (
+                    {alarm.synthetic ? (
+                      <Text size='sm'>
+                        {t`Test value`}: {display(alarm)}
+                      </Text>
+                    ) : alarm.value === null ||
+                      alarm.reason ||
+                      failedReading(alarm) ? (
                       <UnavailableReading
                         point={alarm}
                         label={alarm.label}

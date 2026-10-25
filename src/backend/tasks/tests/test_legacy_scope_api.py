@@ -74,6 +74,27 @@ class LegacyWorkScopeAPITest(TestCase):
         """Return one legacy work resource URL."""
         return f'/api/kanban/work-orders/{work_order.pk}/{suffix}'
 
+    def test_shared_board_work_does_not_grant_its_machine_condition(self):
+        from django.utils import timezone
+        from assets.health_models import MachineAnomaly
+
+        self.customer_owned.machine = self.foreign_machine
+        self.customer_owned.save(update_fields=['machine'])
+        MachineAnomaly.objects.create(
+            machine=self.foreign_machine, detector='test_alarm_ui', fingerprint='foreign-board-test',
+            title='TEST foreign condition', severity='critical', status='open',
+            first_observed_at=timezone.now(), last_observed_at=timezone.now(), metrics={'synthetic': True},
+        )
+        response = self.api.get('/api/kanban/work-orders/')
+        self.assertEqual(response.status_code, 200, response.data)
+        shared = next(row for row in response.data if row['id'] == self.customer_owned.pk)
+        self.assertIsNone(shared['machine_condition'])
+        ClientScopeGrant.objects.create(user=self.actor, client=self.foreign_machine.client)
+        response = self.api.get('/api/kanban/work-orders/')
+        shared = next(row for row in response.data if row['id'] == self.customer_owned.pk)
+        self.assertEqual(shared['machine_condition']['state'], 'critical')
+        self.assertEqual(shared['machine_condition']['synthetic_active_count'], 1)
+
     def step(self, work_order):
         """Create a saved Work-owned step without granting procedure catalog access."""
         from tasks.procedure_models import (

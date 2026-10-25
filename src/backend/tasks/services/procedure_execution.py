@@ -79,6 +79,11 @@ def _application_snapshot(revision):
     snapshot['scope'] = {
         'customer_id': revision.procedure.customer_id,
         'site_key': None,
+        **(
+            {'client_id': revision.procedure.client_id}
+            if revision.procedure.client_id is not None
+            else {}
+        ),
     }
     snapshot['applicability'] = [
         {
@@ -251,6 +256,8 @@ def _derived_result(snapshot, value, asserted_passed):
             number = Decimal(str(raw))
         except (InvalidOperation, TypeError, ValueError) as exc:
             raise StepValidationError('A valid numeric value is required') from exc
+        if not number.is_finite():
+            raise StepValidationError('A finite numeric value is required')
         minimum = snapshot.get('min_value')
         maximum = snapshot.get('max_value')
         passed = (minimum is None or number >= Decimal(minimum)) and (
@@ -310,7 +317,16 @@ def apply_procedure_revision(
         .select_related('procedure')
         .get(pk=revision_id)
     )
-    if revision.procedure.customer_id != work_order.customer_id:
+    if revision.procedure.client_id is not None:
+        if (
+            work_order.customer_id is not None
+            or work_order.machine_id is None
+            or revision.procedure.client_id != work_order.machine.client_id
+        ):
+            raise ProcedureExecutionError(
+                'Procedure and work-order client scopes do not match'
+            )
+    elif revision.procedure.customer_id != work_order.customer_id:
         raise ProcedureExecutionError('Procedure and work-order scopes do not match')
     if (
         revision.status != ProcedureRevisionStatus.PUBLISHED

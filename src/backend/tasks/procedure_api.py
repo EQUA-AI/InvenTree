@@ -13,7 +13,7 @@ from rest_framework.views import APIView
 
 from approvals.models import ActionType, Approval
 
-from .models import ProcedureRevision, ProcedureRevisionStatus
+from .models import Procedure, ProcedureRevision, ProcedureRevisionStatus
 from .permissions import AUTHOR_PROCEDURE, PUBLISH_PROCEDURE, require_permission
 from .procedure_serializers import (
     ArchiveProcedureRevisionSerializer,
@@ -30,7 +30,7 @@ from .procedure_serializers import (
     ReorderStepsSerializer,
     RequestReviewSerializer,
 )
-from .scope import ScopeError, scope_for_actor, scoped_procedures
+from .scope import ScopeError, scope_for_actor, scope_for_procedure, scoped_procedures
 from .services.procedures import (
     ProcedureCommandError,
     ProcedureImmutableError,
@@ -112,10 +112,8 @@ class ProcedureList(ProcedureEnabledMixin, APIView):
         serializer.is_valid(raise_exception=True)
         try:
             require_permission(request.user, AUTHOR_PROCEDURE)
-            customer = serializer.validated_data.get('customer')
-            if customer is None or customer.pk not in {
-                scope.customer_id for scope in scope_for_actor(request.user)
-            }:
+            candidate = Procedure(**serializer.validated_data)
+            if scope_for_procedure(candidate) not in scope_for_actor(request.user):
                 raise ScopeError('Procedure scope is unresolved or unauthorized')
             procedure = serializer.save(created_by=request.user)
         except ScopeError as exc:
@@ -147,12 +145,11 @@ class ProcedureDetail(ProcedureEnabledMixin, APIView):
         serializer.is_valid(raise_exception=True)
         try:
             require_permission(request.user, AUTHOR_PROCEDURE)
-            candidate_customer = serializer.validated_data.get(
-                'customer', procedure.customer
+            candidate = Procedure(
+                customer=serializer.validated_data.get('customer', procedure.customer),
+                client=serializer.validated_data.get('client', procedure.client),
             )
-            if candidate_customer.pk not in {
-                scope.customer_id for scope in scope_for_actor(request.user)
-            }:
+            if scope_for_procedure(candidate) not in scope_for_actor(request.user):
                 raise ScopeError('Procedure scope is unauthorized')
             serializer.save()
         except ScopeError as exc:

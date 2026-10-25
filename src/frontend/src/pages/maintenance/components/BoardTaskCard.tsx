@@ -1,4 +1,8 @@
-import type { AllocationStatus, KanbanPriority } from '@lib/types/Tasks';
+import type {
+  AllocationStatus,
+  KanbanPriority,
+  MachineCondition
+} from '@lib/types/Tasks';
 import { t } from '@lingui/core/macro';
 import {
   ActionIcon,
@@ -20,6 +24,7 @@ import {
   MissingValue,
   ValueTooltip
 } from '../../../components/items/ValueTooltip';
+import { HealthStateBadge } from '../../assets/health/common';
 import classes from './BoardTaskCard.module.css';
 
 interface CardData {
@@ -32,6 +37,8 @@ interface CardData {
   dueDate: string | null;
   assignee: string;
   machineName: string | null;
+  machineCondition?: MachineCondition | null;
+  lifecycleStatus?: string;
   tags: string[];
   company: string;
   companyContactName: string;
@@ -189,6 +196,17 @@ export function BoardTaskCard({
           </Text>
         )}
         <Group gap={6}>
+          {task.lifecycleStatus === 'completed' && (
+            <Badge color='blue' variant='outline'>{t`Completed`}</Badge>
+          )}
+          {task.machineCondition && (
+            <Group gap={4} data-testid='board-machine-condition'>
+              <HealthStateBadge state={task.machineCondition.state} size='sm' />
+              {task.machineCondition.synthetic_active_count > 0 && (
+                <Badge color='red' variant='outline'>{t`TEST`}</Badge>
+              )}
+            </Group>
+          )}
           <Badge
             variant='light'
             color={

@@ -59,6 +59,7 @@ from .services.preliminary import analyze_anomaly
 from .services.series import MAX_SERIES_TARGETS, SeriesError, read_series
 from .services.summary import health_summary, signal_rows
 from .services.trends import TrendError, read_trend, read_trends
+from .test_alarm_api import MachineTestAlarm
 
 #: Anomaly lists are bounded; the blade shows the active set, not a history dump.
 MAX_ANOMALY_PAGE = 200
@@ -109,6 +110,11 @@ class MachineHealthSignals(_MachineHealthView):
         """Return every active binding for the machine."""
         machine = _machine(request, pk)
         rows = signal_rows(machine)
+        from machine_health.services.test_alarms import signal_test_alarms
+
+        tests = signal_test_alarms(machine)
+        for row in rows:
+            row['test_alarms'] = tests.get(row['binding_id'], [])
         return Response({
             'recorded_telemetry_as_live': recorded_telemetry_as_live(),
             'count': len(rows),
@@ -677,6 +683,7 @@ machine_health_api_urls = [
         'machines/<int:pk>/health/',
         include([
             path('', MachineHealthSummary.as_view(), name='machine-health-summary'),
+            path('test-alarm/', MachineTestAlarm.as_view(), name='machine-test-alarm'),
             path(
                 'signals/',
                 MachineHealthSignals.as_view(),

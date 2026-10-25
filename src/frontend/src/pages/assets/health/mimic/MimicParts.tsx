@@ -11,7 +11,7 @@ import { type Display, summarize } from './MimicReadings';
 import classes from './UnitMimic.module.css';
 import { numberText, reasonLabel, usable } from './format';
 import { alarmAttention } from './mimicVisuals';
-import type { LayoutPart, MimicData, MimicPoint } from './types';
+import type { LayoutPart, MimicAlarm, MimicData, MimicPoint } from './types';
 
 /** Values belong beside a part's name; full sensor names stay in its tooltip. */
 export function compactReadings(
@@ -62,6 +62,7 @@ export type PartState = {
   unavailable: number;
   verdict: ReturnType<typeof summarize>['verdict'];
   attention?: 'unacknowledged' | 'acknowledged';
+  tests: MimicAlarm[];
 };
 
 /**
@@ -78,14 +79,26 @@ export function partStates(data: MimicData, display: Display): PartState[] {
       (point) => point.part_code === part.code
     );
     const summary = summarize(points, display);
+    const tests = data.alarms.filter(
+      (alarm) =>
+        alarm.synthetic &&
+        ['open', 'acknowledged'].includes(alarm.anomaly_status ?? '') &&
+        points.some((point) => point.pointer === alarm.pointer)
+    );
+    const testAlarm = tests[0];
     return {
       part,
       number: index + 1,
       name: points.find((point) => point.group)?.group ?? part.label,
       points,
-      lines: summary.lines,
+      lines: [
+        ...tests.map((alarm) => t`TEST ${display(alarm)}`),
+        ...summary.lines
+      ],
+      tests,
       unavailable: summary.unavailable,
-      verdict: summary.verdict,
+      verdict:
+        testAlarm?.severity === 'critical' ? 'critical' : summary.verdict,
       attention: alarmAttention(
         data.alarms,
         undefined,
@@ -370,9 +383,11 @@ export function MimicParts({
             data-active={lit || undefined}
             accessibleLabel={[
               `${state.number}. ${state.name}`,
-              summary ||
-                retained ||
-                (failures.length ? t`Read failed` : `— · ${missing}`),
+              ...state.tests.map((alarm) => t`TEST ${display(alarm)}`),
+              (state.tests.length ? `${t`Measured`}: ` : '') +
+                (summary ||
+                  retained ||
+                  (failures.length ? t`Read failed` : `— · ${missing}`)),
               failures.length
                 ? retained
                   ? t`Bad quality`
@@ -417,7 +432,30 @@ export function MimicParts({
               </Text>
             </span>
             <span className={classes.calloutSummary} data-part-summary>
-              {summary || retained || (failures.length ? t`Read failed` : '—')}
+              {state.tests.length > 0 && (
+                <Text
+                  component='span'
+                  fw={700}
+                  c='light-dark(var(--mantine-color-red-9), var(--mantine-color-red-3))'
+                  data-part-test
+                >
+                  {state.tests
+                    .map((alarm) => t`TEST ${display(alarm)}`)
+                    .join(' · ')}
+                  <br />
+                </Text>
+              )}
+              <Text
+                component='span'
+                fw={400}
+                c={state.tests.length ? 'var(--mantine-color-text)' : undefined}
+                data-part-measured
+              >
+                {state.tests.length ? `${t`Measured`}: ` : ''}
+                {summary ||
+                  retained ||
+                  (failures.length ? t`Read failed` : '—')}
+              </Text>
             </span>
             {!!failures.length && (
               <StatusBadge tone='failed' color='red' size='sm'>

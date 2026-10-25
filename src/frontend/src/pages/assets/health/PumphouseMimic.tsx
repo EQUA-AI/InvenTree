@@ -17,6 +17,7 @@ import { RefreshAction } from '../../../components/buttons/RefreshAction';
 import operations from '../operations.module.css';
 import { recordedTelemetryAsLive } from '../telemetryPresentation';
 import { MimicMotion } from './mimic/MimicMotion';
+import { TestAlarmNotice } from './mimic/TestAlarmNotice';
 import {
   DisplayClockContext,
   formatInstant,
@@ -157,6 +158,7 @@ export default function PumphouseMimic({ stationId }: { stationId: number }) {
                     : t`Polling is disabled for this station. Live values are unavailable.`}
                 </Alert>
               )}
+              <TestAlarmNotice alarms={data.alarms} />
               {data.last_error_code && (
                 <Alert color='red'>
                   {t`Last station polling error`}: {data.last_error_code}

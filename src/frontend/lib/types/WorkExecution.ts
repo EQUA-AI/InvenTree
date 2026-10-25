@@ -500,6 +500,7 @@ export interface VerificationTest {
 export interface VerificationReturn {
   rule: 'verification_return.v1';
   procedures_state: 'read' | 'not_enabled';
+  exercise_verification_available?: boolean;
   tests: VerificationTest[];
   attempt_history:
     | 'outcomes_only_previous_values_not_retained'

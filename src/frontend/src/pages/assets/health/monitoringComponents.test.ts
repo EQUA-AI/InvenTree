@@ -1,4 +1,7 @@
-import type { SeriesResponse } from '@lib/types/MachineHealth';
+import type {
+  MachineSignalLimits,
+  SeriesResponse
+} from '@lib/types/MachineHealth';
 import {
   DEFAULT_THEME,
   MantineProvider,
@@ -22,13 +25,57 @@ import { HealthSummaryPanel } from './HealthSummary';
 import { SourcePollStatus } from './SourcePollStatus';
 import { SourcePollingBadge } from './SourcePollingBadge';
 import { StatusBadge, type StatusTone } from './StatusBadge';
-import { HealthStateBadge } from './common';
+import { HealthStateBadge, formatSignalLimits } from './common';
 import { FreshnessText, freshnessFacts } from './common';
 import { DisplayClockContext, displayClock } from './mimic/observedTime';
 const render = (child: ReturnType<typeof createElement>) =>
   renderToStaticMarkup(createElement(MantineProvider, {}, child));
 const text = (html: string) =>
   html.replace(/<style[^>]*>[\s\S]*?<\/style>/g, '').replace(/<[^>]*>/g, '');
+describe('signal bounds with absent lower limits', () => {
+  it('does not invent lower bounds for a partial payload', () => {
+    expect(
+      formatSignalLimits({
+        limits: {
+          normal_max: 124.9,
+          warn_max: 125,
+          critical_max: 145
+        } as MachineSignalLimits,
+        unit: '°C'
+      })
+    ).toBe(
+      'Normal maximum 124.9 °C · Warning above 125 °C · Critical above 145 °C'
+    );
+  });
+
+  it('retains an actual zero bound', () => {
+    expect(
+      formatSignalLimits({
+        limits: { normal_min: 0, warn_min: 0 } as MachineSignalLimits,
+        unit: '°C'
+      })
+    ).toBe('Normal minimum 0 °C · Warning below 0 °C');
+  });
+
+  it('returns no bounds when every field is absent or null', () => {
+    expect(
+      formatSignalLimits({ limits: {} as MachineSignalLimits, unit: '°C' })
+    ).toBeNull();
+    expect(
+      formatSignalLimits({
+        limits: {
+          normal_min: null,
+          normal_max: null,
+          warn_min: null,
+          warn_max: null,
+          critical_min: null,
+          critical_max: null
+        },
+        unit: '°C'
+      })
+    ).toBeNull();
+  });
+});
 it('snapshots every tone against the native Badge output', () => {
   const tones: StatusTone[] = [
     'critical',

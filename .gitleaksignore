@@ -36,3 +36,5 @@ d362990f6b4e8f290f5582e795eff98ede3c5be0:src/backend/tasks/tests/test_r8_accepta
 097fd3da4450d7a609e2f76a3dd2a117034c4da6:src/frontend/playwright/r8-procurement.tsx:generic-api-key:26
 ba2c4593c65ced4dc2954a3c46b8e974665a0d0c:src/backend/InvenTree/order/r8_fixture_checks.py:generic-api-key:57
 ba2c4593c65ced4dc2954a3c46b8e974665a0d0c:src/backend/InvenTree/order/test_procurement_evidence.py:generic-api-key:76
+src/backend/InvenTree/repair/intake_scenarios.py:generic-api-key:31
+src/backend/InvenTree/machine_health/services/test_alarm_work.py:generic-api-key:39

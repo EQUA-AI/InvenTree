@@ -30,7 +30,7 @@ import {
   usable,
   valueText
 } from './format';
-import type { MimicPoint } from './types';
+import type { MimicAlarm, MimicPoint } from './types';
 
 export type ReadingSection = {
   key: string;
@@ -145,8 +145,13 @@ export function conditionText(point: MimicPoint): string {
 
 export function PointTable({
   points,
-  display = valueText
-}: Readonly<{ points: MimicPoint[]; display?: Display }>) {
+  display = valueText,
+  exercises = []
+}: Readonly<{
+  points: MimicPoint[];
+  display?: Display;
+  exercises?: MimicAlarm[];
+}>) {
   const clock = useDisplayClock();
   return (
     <Table.ScrollContainer minWidth={650}>
@@ -162,6 +167,12 @@ export function PointTable({
         </Table.Thead>
         <Table.Tbody>
           {points.map((point) => {
+            const exercise = exercises.find(
+              (alarm) =>
+                alarm.synthetic &&
+                ['open', 'acknowledged'].includes(alarm.anomaly_status ?? '') &&
+                alarm.pointer === point.pointer
+            );
             const shown =
               point.value !== null && !point.reason && !failedReading(point);
             const value = display(point);
@@ -199,10 +210,19 @@ export function PointTable({
                 </Table.Td>
                 <Table.Td
                   className={visual.value}
-                  data-severity={readingSeverity(point)}
+                  data-severity={exercise ? 'critical' : readingSeverity(point)}
                   ta={typeof point.value === 'number' ? 'right' : 'left'}
                 >
-                  {shown ? (
+                  {exercise ? (
+                    <Stack gap={2}>
+                      <Text size='sm' fw={700}>
+                        {t`TEST`} {display(exercise)}
+                      </Text>
+                      <Text size='xs'>
+                        {t`Measured`}: {shown ? value : '—'}
+                      </Text>
+                    </Stack>
+                  ) : shown ? (
                     valueDetail ? (
                       <ValueTooltip
                         focusable={false}
@@ -272,13 +292,15 @@ export function ReadingSections({
   sections,
   display = valueText,
   open: held,
-  onOpen
+  onOpen,
+  exercises = []
 }: Readonly<{
   sections: ReadingSection[];
   display?: Display;
   /** Which sections are open, when the page above decides that. */
   open?: string[];
   onOpen?: (keys: string[]) => void;
+  exercises?: MimicAlarm[];
 }>) {
   const [own, setOwn] = useState<string[]>([]);
   const open = held ?? own;
@@ -361,7 +383,11 @@ export function ReadingSections({
             </Tooltip>
             <Accordion.Panel>
               {open.includes(section.key) && (
-                <PointTable points={section.points} display={display} />
+                <PointTable
+                  points={section.points}
+                  display={display}
+                  exercises={exercises}
+                />
               )}
             </Accordion.Panel>
           </Accordion.Item>

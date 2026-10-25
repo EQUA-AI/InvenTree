@@ -3,11 +3,11 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, it, vi } from 'vitest';
 import { unconfiguredCount } from './MimicAlarmCoverage';
-import { compactReadings } from './MimicParts';
+import { compactReadings, partStates } from './MimicParts';
 import { ReadingSections, summarize } from './MimicReadings';
 import { failedReading } from './MimicValue';
 import { valueText } from './format';
-import type { MimicPoint } from './types';
+import type { MimicData, MimicPoint } from './types';
 
 vi.mock('@lingui/core/macro', () => ({
   t: (parts: TemplateStringsArray, ...values: unknown[]) =>
@@ -31,6 +31,33 @@ const point = (
   condition: 'unknown',
   thresholds_configured: false,
   ...extra
+});
+
+it('test highlighting leaves actual motor measurements intact and clears independently', () => {
+  const reading = point(30, {
+    pointer: '/motor',
+    part_code: 'PS-MOTOR',
+    condition: 'normal',
+    thresholds_configured: true
+  });
+  const data = {
+    layout: { parts: [{ code: 'PS-MOTOR', label: 'Motor' }] },
+    points: { '/motor': reading },
+    alarms: [
+      {
+        ...reading,
+        synthetic: true,
+        value: 99,
+        severity: 'critical',
+        anomaly: 12,
+        anomaly_status: 'open'
+      }
+    ]
+  } as unknown as MimicData;
+  expect(partStates(data, valueText)[0].verdict).toBe('critical');
+  expect(partStates(data, valueText)[0].points[0].value).toBe(30);
+  data.alarms = [];
+  expect(partStates(data, valueText)[0].verdict).toBe('normal');
 });
 
 it('collapses equal readings and formats the engineering unit', () => {

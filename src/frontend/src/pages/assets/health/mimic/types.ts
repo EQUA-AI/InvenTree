@@ -24,6 +24,7 @@ export type MimicPoint = {
  * the pump or station the reading belongs to, where the alarm lives.
  */
 export type MimicAlarm = MimicPoint & {
+  synthetic?: boolean;
   machine?: number;
   anomaly: number | null;
   /** `suppressed` is an alarm somebody dismissed as wrong, with a reason. */

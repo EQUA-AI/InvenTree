@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.utils import timezone
 
 from assets.health_models import (
@@ -227,13 +227,20 @@ def health_conditions(machines, *, now=None) -> dict:
 
     active_values = [status.value for status in ACTIVE_ANOMALY_STATUSES]
     severities = defaultdict(list)
+    synthetic_counts = defaultdict(int)
     for row in (
         MachineAnomaly.objects
         .filter(machine_id__in=ids, status__in=active_values)
         .values('machine_id', 'severity')
-        .annotate(total=Count('pk'))
+        .annotate(
+            total=Count('pk'),
+            synthetic=Count(
+                'pk', filter=Q(detector='test_alarm_ui', metrics__synthetic=True)
+            ),
+        )
     ):
         severities[row['machine_id']].append((row['severity'], row['total']))
+        synthetic_counts[row['machine_id']] += row['synthetic']
 
     conditions = {}
     for machine in machines:
@@ -247,6 +254,7 @@ def health_conditions(machines, *, now=None) -> dict:
             station, machine_bindings[0].source if machine_bindings else None, now=now
         )
         conditions[machine.pk] = {
+            'synthetic_active_count': synthetic_counts[machine.pk],
             **presentation_metadata(shift),
             **_condition(
                 _binding_rows(

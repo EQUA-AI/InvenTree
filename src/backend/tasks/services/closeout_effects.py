@@ -105,9 +105,23 @@ def _execute_memory_draft(effect: CloseoutEffect) -> str:
     return f'draft:{draft.pk}'
 
 
+def _execute_sap_writeback(effect):
+    from tasks.services.service_reports import execute_sap_writeback
+
+    return execute_sap_writeback(effect)
+
+
+def _execute_test_recovery(effect):
+    from tasks.services.service_reports import execute_test_recovery_notification
+
+    return execute_test_recovery_notification(effect)
+
+
 EFFECT_EXECUTORS = {
     'notification': _execute_notification,
     'memory_draft': _execute_memory_draft,
+    'sap_writeback': _execute_sap_writeback,
+    'test_recovery': _execute_test_recovery,
 }
 
 

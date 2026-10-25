@@ -1,0 +1,11 @@
+{% extends "email/email.html" %}
+{% block title %}{{ name }}{% endblock title %}
+{% block body %}
+  <tr><td>
+    <h2>Synthetic test exercise ended</h2>
+    <p>The administrator ended the synthetic exercise for {{ work_order.reference }}.</p>
+    <p>This is not a repair completion or operating authorization. The Work status, actual telemetry and unrelated alarms are unchanged.</p>
+    <p>Resolved synthetic alarm identifiers: {{ resolved|join:", " }}</p>
+    <p><a href="{{ link }}">View equipment</a></p>
+  </td></tr>
+{% endblock body %}

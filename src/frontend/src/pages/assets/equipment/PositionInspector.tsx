@@ -33,7 +33,7 @@ import {
   HealthStateBadge,
   qualityLabel
 } from '../health/common';
-import { formatValue } from '../performance/format';
+import { formatInstant, formatValue, unitLabel } from '../performance/format';
 import type {
   MachinePositions,
   PositionComponent,
@@ -124,6 +124,12 @@ function readingText(signal: PositionSignal): string {
 }
 
 function Reading({ signal }: Readonly<{ signal: PositionSignal }>) {
+  const exercise = signal.test_alarms?.find(
+    (alarm) =>
+      ['open', 'acknowledged'].includes(alarm.status) &&
+      Number.isFinite(alarm.test_value) &&
+      unitLabel(alarm.unit) === unitLabel(signal.unit)
+  );
   return (
     <Group
       justify='space-between'
@@ -138,12 +144,37 @@ function Reading({ signal }: Readonly<{ signal: PositionSignal }>) {
         </Text>
         {/* The value leads; its observation time follows, as on Health. */}
         <Text size='sm' fw={600}>
-          {readingText(signal)}
+          {exercise ? (
+            <Text
+              component='span'
+              c='light-dark(var(--mantine-color-red-9), var(--mantine-color-red-3))'
+              data-position-test-value
+            >
+              {t`TEST`} {formatValue(exercise.test_value, 2, exercise.unit)}
+            </Text>
+          ) : (
+            readingText(signal)
+          )}
         </Text>
+        {exercise && (
+          <>
+            <Text size='xs'>
+              {t`Measured`}:{' '}
+              {signal.quality === 'good' && !signal.stale
+                ? readingText(signal)
+                : '—'}
+            </Text>
+            <Text size='xs' data-position-test-context>
+              {exercise.status === 'acknowledged' ? t`Acknowledged` : t`Open`}
+              {' · '}
+              {formatInstant(Date.parse(exercise.triggered_at))}
+            </Text>
+          </>
+        )}
         <FreshnessLabel
           point={{
             observed_at: signal.observed_at,
-            age_seconds: null,
+            age_seconds: signal.age_seconds ?? null,
             reason: signal.stale ? 'stale' : null
           }}
         />
@@ -157,7 +188,14 @@ function Reading({ signal }: Readonly<{ signal: PositionSignal }>) {
           </Text>
         )}
       </Stack>
-      <HealthStateBadge state={signal.state} size='xs' />
+      <Stack gap={4} align='flex-end'>
+        {exercise && (
+          <Badge color='red.9' size='xs'>{t`TEST alarm — Critical`}</Badge>
+        )}
+        {(!exercise || signal.state !== 'normal') && (
+          <HealthStateBadge state={signal.state} size='xs' />
+        )}
+      </Stack>
     </Group>
   );
 }

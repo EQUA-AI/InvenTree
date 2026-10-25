@@ -31,6 +31,7 @@ import {
   unconfiguredCount
 } from './mimic/MimicAlarmCoverage';
 import { MimicMotion, MimicMotionControl } from './mimic/MimicMotion';
+import { TestAlarmNotice } from './mimic/TestAlarmNotice';
 import { UnitMimic, UnitMimicHeader } from './mimic/UnitMimic';
 import { displayFor, pollErrorLabel } from './mimic/format';
 import { knownNoActiveAlarms } from './mimic/mimicVisuals';
@@ -273,6 +274,7 @@ export default function PumpMimic({
                 )}
               </Alert>
             )}
+            {!query.isError && data && <TestAlarmNotice alarms={alarms} />}
             {!query.isError && data && !data.enabled && (
               <Alert
                 color='gray'

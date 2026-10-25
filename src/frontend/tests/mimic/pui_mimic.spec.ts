@@ -902,16 +902,44 @@ test('a repair is raised from the alarm row, against the anomaly', async ({
     route.fulfill({ json: [{ pk: 1, name: 'Fixture station / Pump 1' }] })
   );
   await page.route('**/api/part/**', (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/maintenance/work-packages/intake/?*', (route) =>
+    route.fulfill({
+      json: {
+        context: {
+          machine: { id: 1, name: 'Fixture station / Pump 1' },
+          source: {
+            anomaly_id: 44,
+            title: '/w1 outside configured limits',
+            parameter: '/w1',
+            synthetic: false,
+            work_order_id: null
+          }
+        },
+        provider: { available: false, reason: 'provider_not_configured' },
+        can_create: true,
+        prepared_scenario: null
+      }
+    })
+  );
+  await page.route('**/api/maintenance/work-packages/assignees/?*', (route) =>
+    route.fulfill({ json: { results: [] } })
+  );
   await page.route('**/api/maintenance/work-packages/create/', (route) => {
-    posted.push(route.request().postDataJSON());
+    const body = route.request().postDataJSON();
+    posted.push(body);
     return route.fulfill({
       json: {
         work_order_id: 7,
         work_order_reference: 'WO-7',
-        repair_packet_id: null,
-        repair_packet_reference: '',
+        repair_packet_id: 28,
+        repair_packet_reference: 'RP-28',
         replayed: false,
-        warnings: []
+        warnings: [],
+        machine_id: body.machine_id,
+        anomaly_id: body.source.anomaly_id,
+        assigned_to_id: body.planning.assigned_to_id,
+        idempotency_key: body.idempotency_key,
+        lifecycle_version: 1
       }
     });
   });
@@ -923,9 +951,9 @@ test('a repair is raised from the alarm row, against the anomaly', async ({
     .click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('New work order');
-  await expect(dialog.getByLabel('Title')).toHaveValue(
-    '/w1 outside configured limits'
-  );
+  await expect(
+    dialog.getByRole('textbox', { name: 'Title', exact: true })
+  ).toHaveValue('/w1 outside configured limits');
   await dialog
     .getByRole('button', { name: 'Create work order', exact: true })
     .click();

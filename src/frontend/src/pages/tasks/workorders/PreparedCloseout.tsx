@@ -29,6 +29,10 @@ import {
 } from '../../../components/items/ValueTooltip';
 import { openGlobalAIChatAboutWork } from '../../../states/AIChatState';
 import { CloseoutMaterials } from './CloseoutMaterials';
+import {
+  CloseoutReportDocument,
+  ReportPDFButton
+} from './CloseoutReportDocument';
 import { OriginalMedia } from './OriginalMedia';
 import { ContinueInvestigation } from './execution/ContinueInvestigation';
 import { readingStatusLabel } from './execution/routinePresentation';
@@ -54,6 +58,7 @@ export function PreparedCloseout({
   partUsage,
   draftDowntime,
   draftFollowUp,
+  draftFollowUpRequired = false,
   sourcesEnabled = true,
   accountLoading = false,
   accountUnavailable = false,
@@ -75,6 +80,7 @@ export function PreparedCloseout({
   partUsage?: CloseoutPartUsageRow[];
   draftDowntime: number | '';
   draftFollowUp: string;
+  draftFollowUpRequired?: boolean;
   sourcesEnabled?: boolean;
   accountLoading?: boolean;
   accountUnavailable?: boolean;
@@ -85,6 +91,18 @@ export function PreparedCloseout({
 }>) {
   captures = captures?.map((row) => displayCloseout(row).record);
   const values = accepted ?? fields;
+  const documentAccount = {
+    ...values,
+    downtime_minutes: accepted
+      ? accepted.downtime_minutes
+      : draftDowntime === ''
+        ? null
+        : draftDowntime,
+    follow_up: accepted ? accepted.follow_up : draftFollowUp,
+    follow_up_required: accepted
+      ? accepted.follow_up_required
+      : draftFollowUpRequired
+  };
   const verification = accepted?.verified_at
     ? `${t`Verified by`} ${fact(accepted.verified_by_name)} · ${when(accepted.verified_at)}`
     : t`Acceptance: Not recorded`;
@@ -368,6 +386,12 @@ ${t`Fit record`}: ${fact(row.material?.fitted_record?.id)}`
           ) : (
             <details>
               <summary>{t`Read report`}</summary>
+              <CloseoutReportDocument
+                reference={workOrder.reference}
+                title={workOrder.title}
+                account={documentAccount}
+                status={accepted ? t`Completed account` : t`Prepared draft`}
+              />
               <Text
                 component='pre'
                 size='sm'
@@ -381,6 +405,16 @@ ${t`Fit record`}: ${fact(row.material?.fitted_record?.id)}`
               </Text>
             </details>
           )}
+          <ReportPDFButton
+            workId={workOrder.id}
+            version={workOrder.lifecycle_version}
+            source={accepted?.reports?.length ? 'frozen' : 'draft'}
+            reportId={accepted?.reports?.[0]?.id}
+            account={documentAccount}
+            disabled={
+              error || loading || (!!accepted && !accepted.reports?.length)
+            }
+          />
           <Button
             variant='default'
             onClick={download}

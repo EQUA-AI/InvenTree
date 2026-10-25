@@ -1,5 +1,227 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## Owner-authorized local commit and migration audit — 25 October 2026
+
+Owner now authorizes committing the complete current test-alarm/work-order and
+closeout changeset on `inventTree-aniket`. This supersedes the earlier no-commit
+restriction only; no push, PR, deployment or Azure database write is authorized.
+Local PostgreSQL confirms tasks0061_procedure_client_scope is applied, no graph
+nodes are pending, and makemigrations --check --dry-run finds no model drift.
+The new migration adds optional Procedure client ownership and scope constraints;
+it does not copy local data or rewrite existing procedure ownership.
+
+Azure application metadata is readable, but the current account cannot execute
+the read-only database inspection: Microsoft.App/managedEnvironments/read is
+denied for epcon-ai-env. Therefore Azure applied migration state is unverified,
+not “nothing pending.” Check/apply tasks0061 with its matching deployment only
+after appropriate access and explicit deployment approval. No Azure migration
+has been run. Local UI verification is not full live-demo or physical acceptance.
+
+## Azure alarm-email sender — 25 October 2026 (credentials pending)
+
+Owner supplies an Azure-managed no-reply sender and the native InvenTree email
+configuration reference. The prepared SMTP profile uses smtp.azurecomm.net:587,
+STARTTLS and the requested INVENTREE_EMAIL_SENDER without hardcoding transport
+or recipients in alarm services. See [the setup/runbook](demo/azure-alarm-email.md).
+Current standalone viewer remains on isolated Mailpit; effective SMTP username
+and password are absent. Do not enable external delivery or drain queued mail
+without actual credentials and an approved verification inbox. Native sender
+regression checks pass2/2; exact profile/blank-credential checks and hooks pass.
+Certificate-verified Azure TLS1.3 negotiation succeeds without authentication or
+any message. No active configuration switch, worker start, queue drain or Azure
+mutation; real delivery still needs ACS SMTP credentials and an approved inbox.
+
+## Automatic test-alarm work creation — 25 October 2026 (local UI gate complete)
+
+Automatic trigger-to-work creation is implemented and available on localhost5173.
+A pre-reviewed prepared scope and eligible typed owner feed one atomic, replay-safe
+command that creates the labelled synthetic alarm and native planned work package,
+then opens the actual returned Work. The exact Pump08 winding-six target follows
+the supplied October25 specification; other parameters use generic investigation.
+Prepared-document automation is not live AI inference or physical service release.
+
+Final independent Fable95.00 and Gemini99.00 both pass, without rounding or
+averaging. Each verifies77 complete source identities,19 attachments and all eight
+original axe4.10.3 report hashes. Scoped audits pass8/8 with zero violations;
+four verification-panel reports retain one manual-review contrast rule each.
+Final App/S6 types, build42.28s and hooks pass;49 units, earlier20 focused
+copy/governance and12 contrast repeats,84 SQLite(two PG-only skips) and15
+PostgreSQL(including five threaded races) remain green. No redundant full-suite
+run. Optional component/matcher polish and audit-helper opt-in cleanup are deferred.
+
+Actual local case15 / WO-003856 / packet33 / actual Avery27 is verified; only15
+is safely ended and Work remains draft. Ten prior-data hashes, WO-003826 and
+actual44.000003814697266 remain unchanged at reconciliation. The exact44 script
+assertion stopped fresh active-chart capture: no full new live governed closeout
+is claimed. Local trigger/end email is captured; end required processing only its
+queued mail task, not proof of a running worker or external delivery.
+
+Remaining demo prerequisites: configured live AI if inference is required,
+reliable mail-worker delivery, independent human procedure publication/physical
+authority and a full live multi-actor closeout rehearsal. Two final limit crops
+are misframed; correct retained counterparts and unchanged bound assertions
+support the line, not those two images. These limits and optional backlog are in
+[the execution ledger](reports/pump08-ai-work-intake.md). Earlier stage scores
+below are historical, not current acceptance. Parent P17/D23 product acceptance
+is unchanged; only the local commit is now authorized, not Azure/SAP mutation,
+push, deployment or PR.
+
+## Pump08 AI work intake — 25 October 2026 (in progress)
+
+Owner requests real AI-assisted form filling and native work-package creation
+from the selected test alarm, actual typed personnel assignment, and a traceable
+Pump08 motor-winding exercise based on three supplied scenario documents.
+The October25 final specification takes precedence over the October24 packs.
+See [the execution ledger](reports/pump08-ai-work-intake.md) and
+[operator runbook](demo/pump08-motor-winding.md). Native reviewed intake, typed
+assignment and three governed exercise checks are implemented. Local tasks0061
+is applied and backend restarted; no new live work order, procedure, alarm,
+physical result or release is claimed. SQLite176 (3 locking skips), PostgreSQL176,
+193 policy/flag cases,1137 units, five types and22 rendered browser cases pass;
+an additional72 native browser regressions pass. Gemini's current-scope UI score
+is97.85; Fable's final score is82.8 and fails the required dual-review gate.
+Targeted TEST-badge contrast and cancel/reopen-readiness remediation plus the
+reviewer's focused re-score criteria remain; do not average the scores. Each
+receives25 task attachments in
+batches4+20+1, including the verified native timestamp-serialization correction.
+Final timestamp-inclusive SQLite176/PostgreSQL176 and targeted hooks pass;
+the local backend is restarted. Owner asks to accelerate: no repeated full-suite
+runs or optional polish; finish only concrete blockers and targeted re-score.
+The live AI provider is unconfigured; no real inference is claimed.
+Retain human review, scoped/idempotent native commands and independent safety
+gates. Existing WO-003826 and source telemetry must remain unchanged. No Azure,
+Git publication or parent/product acceptance change.
+
+## Final test-exercise review — 25 October 2026 (local gate complete)
+
+Final Fable95.15 and Gemini98.15 independently pass without rounding or averaging.
+Both verify132 complete source identities, the6-file final-polish batch and61
+cumulative attachments. Final Performance21/native28,1126 units, five types,
+build17.65s and hooks pass; backend SQLite177/PostgreSQL177 and equipment8 remain
+unchanged green. Actual approved submitted and frozen revision1 PDFs are
+downloaded read-only. Alarm13/WO-003855 stay resolved/completed/verified, normal
+measured state restored; all telemetry/bindings/prior alarms/Work hashes match.
+Nonblocking summary/PDF/heatmap polish is in the review ledger. See
+[execution](reports/test-alarm-exercise-values.md) and
+[independent review](reports/frontend-independent-review.md). No new alarm,
+owner-data mutation, migration, Azure/SAP/Git publication, Safari/human/product
+acceptance or parent acceptance change.
+
+## Final test-exercise review remediation — 24 October 2026 (in progress)
+
+Fable's85.35 review identifies valid native-machine scope, accessible-name and
+measured/test clarity gaps; Gemini's96.45 earlier-delta score does not waive them.
+Scoped fixes and regressions now pass SQLite177, PostgreSQL177, Performance21, native28,
+equipment8,1126 units/122 files, five types, build, hooks and local migration
+check. Both independent re-scores remain pending. Fresh settled desktop/phone restored/report captures and explicit
+baseline/final hashes pass. Alarm13/WO-003855 remain resolved/completed/verified;
+owner alarms and all telemetry/limits are unchanged. See
+[execution](reports/test-alarm-exercise-values.md) and
+[review](reports/frontend-independent-review.md). No Azure/SAP/Git publication
+or parent acceptance change.
+
+## Independent frontend review — 24 October 2026 (in progress)
+
+Initial Fable76 and Gemini88.85 assessments prompted verified fixes:16 Performance
+browser cases;22 native desktop/phone cases;1118 units;four types;44 SQLite
+backend cases;production build;fresh local report previews pass. The owner now
+requires all-parameter selection, visible critical TEST values throughout the
+mimic/charts/KPIs/board, and an actual local end-to-end exercise. See the
+[new execution ledger](reports/test-alarm-exercise-values.md) and
+[review ledger](reports/frontend-independent-review.md). Both agents received
+the updated91-file snapshot for specialist recommendations. One owner-authorized
+local exercise13 now completes through WO-003855: critical159.5°C across the
+affected views, native report submission, independent approval, completion and
+verified equipment return; all affected views restore to measured values. All
+signal/binding/prior-alarm/prior-Work hashes are unchanged. Local trigger and
+recovery mail is captured; reviewer sessions are removed and its account disabled.
+SQLite124 plus equipment54, PostgreSQL147, Performance16, native browser24,
+equipment8 and final inspector4 replay pass;1121 units, five types, production
+build, hooks and fresh desktop/phone submitted-report captures pass. The final
+completion/inspector/target64-case backend replay passes; migration drift is
+absent. Independent95+ re-scores are pending.
+Tests9/10/12 remain owner-suppressed;
+test11 is resolved. No migration, Azure, SAP or Git publication.
+
+## Performance labels and test overlays — 24 October 2026
+
+The owner's newer Pump07 test9 remains active. Unreadable labels were missing
+English catalogue entries, not failed parameter mappings. Missing-only catalogue
+refresh preserves prior English bytes and all non-English catalogues. Performance
+now reads exact-binding synthetic annotations without changing measurements:
+red labelled TEST notices and dashed chart values, scoped family/KPI emphasis,
+independent real exceptions and recovery. See the
+[execution report](reports/performance-test-alarm-fixes.md) for final checks and
+desktop/phone localhost evidence. No alarm cleanup, migration, Azure, SAP or Git
+publication; human and Safari acceptance remain separate.
+
+## Owner-requested localhost test reset — 24 October 2026
+
+The newer UI test7 was already ended through the audited command at16:21 UTC;
+Work3850 remains draft/version2. Inspection of the remaining Cedar Creek alarms
+proved they were **legacy development tests**, not genuine plant breaches: their
+`metrics.test_alarm` dictionaries retain the displaced rows. Native
+`test_alarm --clear --yes` cleared alarm4 on Pump07 and alarms5/6 on Pump08,
+restoring nine saved rows exactly after checking no newer measurements existed.
+All other signal rows and Work3850 are unchanged. Pump08 winding5/6 are normal
+at43.6/44.0°C; the station mimic has no breaches. See the local-reset evidence in
+[the execution report](reports/test-alarm-closeout.md). This supersedes the earlier
+classification of the two Pump08 threshold conditions as real. No thresholds,
+historical source data, unrelated seeded alarms, Azure or SAP were changed.
+
+## Closeout usability and PDF follow-up — 24 October 2026 (ready for human review)
+
+The owner's test Work is draft, unassigned and Repair-Packet-owned; native safety
+cannot be skipped to complete it. Closeout now shows the owning packet link and
+readiness steps, a direct manual account editor, explicit submission blockers,
+and restoration of a submitted account. Own confirmed report/approval commands
+rebase the completion token without losing local fields. An audited administrator
+"End test exercise" action resolves only linked synthetic conditions with reason
+and confirmation, never completes Work or clears real alarms. The two threshold
+conditions were initially treated as real; their legacy-test provenance is
+established above. Polished report previews and real
+server-generated PDF downloads retain draft/submitted/frozen provenance.
+
+SQLite159 and PostgreSQL159, frontend1108 units, nine TypeScript projects and
+final focused browser40/40 pass. Local backend is restarted; no migration pending.
+Desktop and phone localhost controls/PDF verified without ending the owner's
+test; native phone full-app prompt is respected. Six live regions and the PDF
+first page are inspected; fixture captures and hook receipts are retained in the
+[execution report](reports/test-alarm-closeout.md). No Azure or Git publication.
+
+## Test alarm / Closeout workflow — 24 October 2026 (ready for human review)
+
+Owner-authorized localhost rollout now serves this working tree at
+`http://localhost:5173/web/` (Vite) and `http://localhost:8000/web/` (built SPA).
+The owner's missing controls were traced to port5173 still serving the older
+viewer checkout; that process is replaced with this working tree and local API
+proxy. Live Mac browser checks verify trigger selection/confirmation, report
+preview and native motor attention on5173. Existing Pump08 critical alarms are
+acknowledged, so emphasis stays red without blinking; no open test exists.
+Unacknowledged tests blink unless motion is paused/reduced; fresh Mac fixture
+regressions8/8 verify both phases plus acknowledgement and recovery. No alarm
+state is changed to manufacture animation. See the report's port5173 evidence.
+Existing local PostgreSQL is backed up and retained;
+guarded migration check reports nothing to apply. Test alarms, native supervisor
+verification and closeout effects are enabled locally. Emails are captured only
+in Mailpit at `http://localhost:8029/`, not delivered externally. Authenticated
+Mac Chromium checks pass for Pump08 motor selection, confirmed trigger readiness,
+report read and preview; both live captures inspected. No alarm raised or Work
+changed by these checks. Full operator write journey and SAP remain separate.
+
+Work on `inventTree-aniket`: scoped station/pump/component test alarms, retained
+service-report submission and independent approval, native completion and
+verification, test-only recovery, notifications and equipment return. See the
+[execution ledger and contract evidence](reports/test-alarm-closeout.md).
+SQLite190 and PostgreSQL174 pass; 1108 frontend units and all nine TypeScript
+projects pass. All 78 selected browser cases have passing evidence across the
+broad run and corrective replay; final trigger4 and report8 pass. All 16 final
+desktop/phone light/dark primary captures inspected. Applicable hooks pass;
+source/capture manifest retained with local evidence. Parent acceptance unchanged.
+No SAP connector found; no simulated provider success, live telemetry override,
+Azure changes, commit, push, PR or Azure/product acceptance. Next: human review,
+real SAP adapter and authorized operator write-journey checks on localhost.
+
 ## Backend conclusion and pump warning links — 24 October 2026
 
 Continuing `claude/clever-pasteur-c48da4` from `b2d690bc5`; the clean follow-up

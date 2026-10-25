@@ -109,14 +109,32 @@ def scoped_procedures(actor):
     from .models import Procedure
 
     try:
+        scopes = scope_for_actor(actor)
         customer_ids = {
             scope.customer_id
-            for scope in scope_for_actor(actor)
+            for scope in scopes
             if scope.site_key is None and scope.customer_id is not None
         }
     except ScopeError:
         return Procedure.objects.none()
-    return Procedure.objects.filter(customer_id__in=customer_ids)
+    client_ids = {
+        scope.client_id
+        for scope in scopes
+        if scope.site_key is None and scope.client_id is not None
+    }
+    return Procedure.objects.filter(
+        Q(customer_id__in=customer_ids, client__isnull=True)
+        | Q(client_id__in=client_ids, customer__isnull=True)
+    )
+
+
+def scope_for_procedure(procedure) -> MaintenanceScope:
+    """Require explicit customer OR client ownership, never machine-name inference."""
+    if bool(procedure.customer_id) == bool(procedure.client_id):
+        raise ScopeError('Procedure requires one explicit customer or client scope')
+    return MaintenanceScope(
+        customer_id=procedure.customer_id, client_id=procedure.client_id, site_key=None
+    )
 
 
 def scope_for_work_order(work_order) -> MaintenanceScope:

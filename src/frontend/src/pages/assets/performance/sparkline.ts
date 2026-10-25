@@ -33,7 +33,8 @@ export function performanceSparkline(
   entry: SeriesEntry,
   window?: { start: number; end: number; resolutionSeconds?: number },
   width = 96,
-  height = 24
+  height = 24,
+  testValue?: number
 ): string | null {
   const samples = [...entry.samples]
     .filter(
@@ -44,6 +45,8 @@ export function performanceSparkline(
     .sort((a, b) => a.t - b.t);
   const values = samples.filter(usable).map((s) => s.v as number);
   if (values.length < 2) return null;
+  if (testValue !== undefined && Number.isFinite(testValue))
+    values.push(testValue);
   const start = window?.start ?? samples[0].t;
   const end = window?.end ?? samples.at(-1)!.t;
   if (!(end > start)) return null;

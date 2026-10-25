@@ -36,11 +36,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { InfoTooltip } from '../../../components/items/ValueTooltip';
 import { WorkTableScroll } from '../../../components/tables/WorkTableScroll';
+import { CloseoutPreparation } from './CloseoutPreparation';
 import { CloseoutReconciliation } from './CloseoutReconciliation';
 import DictateCloseoutModal from './DictateCloseoutModal';
 import { DraftRecovery } from './DraftRecovery';
 import { WorkRecordUpdate } from './FinalUpdateAction';
 import { PreparedCloseout } from './PreparedCloseout';
+import { ServiceReportWorkflow } from './ServiceReportWorkflow';
 import {
   fieldDecisions,
   reviewedAccountValues,
@@ -74,13 +76,6 @@ export type { CloseoutWorkOrder } from '@lib/types/Closeout';
 
 const ACTIVE_CAPTURE_STATES = ['open', 'extracting', 'proposed', 'reviewed'];
 const REQUIRED_FIELDS = ['action', 'result', 'verification_summary'] as const;
-
-const FIELD_LABELS: Record<string, string> = {
-  cause: 'Cause',
-  action: 'Action taken',
-  result: 'Result',
-  verification_summary: 'Verification summary'
-};
 
 function newIdempotencyKey(): string {
   return `co-${crypto.randomUUID()}`;
@@ -624,7 +619,7 @@ export function CloseoutPanel({
   );
   const captureInProgress = capture != null && capture.status !== 'reviewed';
   const hasCaptureDraft =
-    !!narrative.trim() || !!voiceReason.trim() || changedFields;
+    !!narrative.trim() || !!voiceReason.trim() || (!!capture && changedFields);
   useEffect(() => {
     // A ready, saved account is direct; unfinished capture work is visible.
     // Once opened, native panel retention also preserves this disclosure state.
@@ -635,6 +630,15 @@ export function CloseoutPanel({
   return (
     <Stack gap='md'>
       <Title order={2} size='h4'>{t`Closeout`}</Title>
+      <CloseoutPreparation
+        workOrder={workOrder}
+        packetId={packetId}
+        locked={mutationLocked}
+        onChanged={() => {
+          setDraftBase(null);
+          invalidate();
+        }}
+      />
       {captureEnabled && (
         <DictateCloseoutModal
           opened={dictateOpen}
@@ -838,22 +842,79 @@ export function CloseoutPanel({
           )}
         </Alert>
       )}
-      {!captureEnabled && !accepted && (
-        <ReviewStep
-          capture={null}
-          proposal={null}
-          captureAvailable={false}
-          effectiveFieldValue={effectiveFieldValue}
-          setFieldValue={(field, value) => {
-            setDraftBase(base());
-            setFieldValues((current) => ({ ...current, [field]: value }));
+      {!accepted &&
+        (!captureEnabled ||
+          (!capture && !wizardBlocked && !(captureEditing && step === 1))) && (
+          <ReviewStep
+            capture={null}
+            proposal={null}
+            captureAvailable={false}
+            effectiveFieldValue={effectiveFieldValue}
+            setFieldValue={(field, value) => {
+              setDraftBase(base());
+              setFieldValues((current) => ({ ...current, [field]: value }));
+            }}
+            onSubmit={() => {}}
+            busy={!(canCapture || canComplete) || mutationLocked}
+            saving={false}
+          />
+        )}
+      {captureEnabled && (
+        <ServiceReportWorkflow
+          key={`${user?.pk}-${workOrder.id}`}
+          workOrder={workOrder}
+          locked={
+            mutationLocked &&
+            !(
+              workOrder.lifecycle_status === 'completed' &&
+              update.state.status === 'confirmed' &&
+              !wizardBlocked &&
+              !busy
+            )
+          }
+          ready={accountReady}
+          captureId={capture?.status === 'reviewed' ? capture.id : null}
+          account={{
+            action: effectiveFieldValue('action'),
+            result: effectiveFieldValue('result'),
+            verification_summary: effectiveFieldValue('verification_summary'),
+            cause: effectiveFieldValue('cause'),
+            follow_up: followUpRequired ? followUp : '',
+            follow_up_required: followUpRequired,
+            downtime_minutes: downtime === '' ? null : downtime
           }}
-          onSubmit={() => {}}
-          busy={!canComplete || mutationLocked}
-          saving={false}
+          onRestoreAccount={
+            capture
+              ? undefined
+              : (restored) => {
+                  setFieldValues(
+                    Object.fromEntries(
+                      ['cause', ...REQUIRED_FIELDS].map((field) => [
+                        field,
+                        String(restored[field] ?? '')
+                      ])
+                    )
+                  );
+                  setDowntime(
+                    typeof restored.downtime_minutes === 'number'
+                      ? restored.downtime_minutes
+                      : restored.downtime_minutes
+                        ? Number(restored.downtime_minutes)
+                        : ''
+                  );
+                  setFollowUpRequired(restored.follow_up_required === true);
+                  setFollowUp(String(restored.follow_up ?? ''));
+                  setDraftBase(null);
+                }
+          }
+          onChanged={() => {
+            setDraftBase(null);
+            invalidate();
+          }}
         />
       )}
       <PreparedCloseout
+        draftFollowUpRequired={followUpRequired}
         workOrder={workOrder}
         updateStatus={update.state.status}
         sourcesEnabled={captureEnabled}
@@ -1312,6 +1373,12 @@ function ReviewStep({
   saving: boolean;
 }>) {
   const resultFocus = useActionFocus(busy || saving);
+  const fieldLabels: Record<string, string> = {
+    cause: t`Cause`,
+    action: t`Action taken`,
+    result: t`Result`,
+    verification_summary: t`Verification summary`
+  };
   const fields = ['cause', ...REQUIRED_FIELDS];
   return (
     <Stack
@@ -1338,7 +1405,7 @@ function ReviewStep({
           <Card withBorder key={field} padding='sm'>
             <Group justify='space-between' mb='xs'>
               <Text fw={600} size='sm'>
-                {FIELD_LABELS[field] ?? field}
+                {fieldLabels[field] ?? field}
                 {required ? ' *' : ''}
               </Text>
               {proposed ? (
@@ -1372,7 +1439,7 @@ function ReviewStep({
               }
               autosize
               minRows={2}
-              aria-label={FIELD_LABELS[field] ?? field}
+              aria-label={fieldLabels[field] ?? field}
             />
           </Card>
         );

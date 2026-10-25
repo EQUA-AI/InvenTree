@@ -1,4 +1,4 @@
-import { t } from '@lingui/core/macro';
+import { plural, t } from '@lingui/core/macro';
 import {
   Accordion,
   Alert,
@@ -38,6 +38,11 @@ import { useUserState } from '../../../states/UserState';
 import { ChannelNavigator } from './ChannelNavigator';
 import { ComparisonWorkbench } from './ComparisonWorkbench';
 import { KpiStrip } from './KpiStrip';
+import {
+  PerformanceTestAlarmProvider,
+  PerformanceTestNotice,
+  usePerformanceTestAlarms
+} from './PerformanceTestAlarms';
 import type { WindowInfo } from './SensorGroupCard';
 import { StationPerformance } from './StationPerformance';
 import { LiveIndicator, TimeRangeControl } from './TimeRangeControl';
@@ -423,394 +428,397 @@ function PumpPerformance({
     unavailable.length + failedCount === coveredCount + failedCount;
 
   return (
-    <HistoryReadStack
-      response={response}
-      gap='xs'
-      className={monitoring.scope}
-      data-testid='pump-performance'
-      aria-label={t`Performance`}
-    >
-      <Group justify='space-between' align='flex-start' wrap='wrap' gap='md'>
-        <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-          <TimeRangeControl
-            preset={range.preset}
-            onPreset={range.onPreset}
-            onCustom={range.onCustom}
-            zoomed={range.zoom}
-            onClearZoom={range.onClearZoom}
-            live={range.live}
-            onLive={range.onLive}
-            onRefresh={() => {
-              signalsQuery.refetch();
-              if (!invalidLink) seriesQuery.refetch();
-            }}
-            refreshing={seriesQuery.isFetching}
-            dataRange={dataRange.data}
-            status={(controls) => (
-              <LiveIndicator
-                controls={controls}
-                tiles={tiles}
-                live={range.live}
-                fetching={seriesQuery.isFetching}
-                failed={seriesQuery.isError || signalsQuery.isError}
-                newestAt={newestAt}
-                updatedAt={seriesQuery.dataUpdatedAt || null}
-                response={response}
-                freshnessSeconds={freshness}
-                now={now}
-              />
-            )}
-          />
-          <WindowStatus
-            showClock={false}
-            response={response}
-            updating={seriesQuery.isPlaceholderData}
-            now={now}
-          />
-        </Stack>
-        <Button
-          className={monitoring.link}
-          variant='subtle'
-          size='xs'
-          aria-expanded={investigationOpen}
-          onClick={() => setInvestigationOpen((value) => !value)}
-        >{t`Investigate this period`}</Button>
-      </Group>
+    <PerformanceTestAlarmProvider signals={signalsQuery.data ?? []}>
+      <HistoryReadStack
+        response={response}
+        gap='xs'
+        className={monitoring.scope}
+        data-testid='pump-performance'
+        aria-label={t`Performance`}
+      >
+        <Group justify='space-between' align='flex-start' wrap='wrap' gap='md'>
+          <Stack gap={4} miw={{ base: '100%', sm: 0 }} style={{ flex: 1 }}>
+            <TimeRangeControl
+              preset={range.preset}
+              onPreset={range.onPreset}
+              onCustom={range.onCustom}
+              zoomed={range.zoom}
+              onClearZoom={range.onClearZoom}
+              live={range.live}
+              onLive={range.onLive}
+              onRefresh={() => {
+                signalsQuery.refetch();
+                if (!invalidLink) seriesQuery.refetch();
+              }}
+              refreshing={seriesQuery.isFetching}
+              dataRange={dataRange.data}
+              status={(controls) => (
+                <LiveIndicator
+                  controls={controls}
+                  tiles={tiles}
+                  live={range.live}
+                  fetching={seriesQuery.isFetching}
+                  failed={seriesQuery.isError || signalsQuery.isError}
+                  newestAt={newestAt}
+                  updatedAt={seriesQuery.dataUpdatedAt || null}
+                  response={response}
+                  freshnessSeconds={freshness}
+                  now={now}
+                />
+              )}
+            />
+            <WindowStatus
+              showClock={false}
+              response={response}
+              updating={seriesQuery.isPlaceholderData}
+              now={now}
+            />
+          </Stack>
+          <Button
+            className={monitoring.link}
+            variant='subtle'
+            size='xs'
+            aria-expanded={investigationOpen}
+            onClick={() => setInvestigationOpen((value) => !value)}
+          >{t`Investigate this period`}</Button>
+        </Group>
 
-      {invalidLink && (
-        <Alert
-          color='yellow'
-          title={
-            linked.clockUnknown
+        {invalidLink && (
+          <Alert
+            color='yellow'
+            title={
+              linked.clockUnknown
+                ? asLive
+                  ? t`Time range unavailable`
+                  : t`Recorded clock unknown`
+                : t`Invalid investigation window`
+            }
+          >
+            {linked.clockUnknown
               ? asLive
-                ? t`Time range unavailable`
-                : t`Recorded clock unknown`
-              : t`Invalid investigation window`
-          }
-        >
-          {linked.clockUnknown
-            ? asLive
-              ? t`The time reference for this link is unavailable or still loading. No source window is read until it is known. Retry the source extent or choose a new range.`
-              : t`The recorded-to-display clock offset is unavailable or still loading. No history read is made until the clock is known. Retry the source extent or choose a display-clock range.`
-            : asLive
-              ? t`The linked window must have valid increasing timestamps and be no longer than 30 days. No source window has been requested from this link.`
-              : t`The linked window must have valid increasing timestamps and be no longer than 24 h. No history has been requested from this link.`}
-          {linked.clockUnknown && (
+                ? t`The time reference for this link is unavailable or still loading. No source window is read until it is known. Retry the source extent or choose a new range.`
+                : t`The recorded-to-display clock offset is unavailable or still loading. No history read is made until the clock is known. Retry the source extent or choose a display-clock range.`
+              : asLive
+                ? t`The linked window must have valid increasing timestamps and be no longer than 30 days. No source window has been requested from this link.`
+                : t`The linked window must have valid increasing timestamps and be no longer than 24 h. No history has been requested from this link.`}
+            {linked.clockUnknown && (
+              <Button
+                className={monitoring.link}
+                size='xs'
+                variant='subtle'
+                onClick={() => dataRange.refetch()}
+              >{t`Retry source extent`}</Button>
+            )}
             <Button
               className={monitoring.link}
               size='xs'
               variant='subtle'
-              onClick={() => dataRange.refetch()}
-            >{t`Retry source extent`}</Button>
-          )}
-          <Button
-            className={monitoring.link}
-            size='xs'
-            variant='subtle'
-            onClick={() =>
-              setParams(
-                (previous) => {
-                  const next = new URLSearchParams(previous);
-                  next.delete('history_from');
-                  next.delete('history_to');
-                  next.delete('history_clock');
-                  return next;
-                },
-                { replace: true }
-              )
+              onClick={() =>
+                setParams(
+                  (previous) => {
+                    const next = new URLSearchParams(previous);
+                    next.delete('history_from');
+                    next.delete('history_to');
+                    next.delete('history_clock');
+                    return next;
+                  },
+                  { replace: true }
+                )
+              }
+            >{t`Use current range controls`}</Button>
+          </Alert>
+        )}
+        <LinkedEvidence machineId={machine.pk} />
+        <PerformanceTestNotice primary />
+        <UnusualStrip
+          parameters={parameters}
+          response={response}
+          onPoor={() => {
+            setQualityOnly(true);
+            setSearch('');
+            setSection('all');
+            setExpanded(
+              new Set([
+                'electrical',
+                'operation',
+                'winding',
+                'vibration',
+                'cooling',
+                'bearing',
+                'other'
+              ])
+            );
+          }}
+          qualityFiltered={qualityOnly}
+          onClear={() => setQualityOnly(false)}
+        />
+        <KpiStrip
+          tiles={tiles}
+          now={now}
+          readAt={signalsQuery.dataUpdatedAt || null}
+          window={window}
+          windingChartId={`winding-chart-${syncId}`}
+          onWindingChart={() => {
+            setSearch('');
+            setQualityOnly(false);
+            selectSection('winding');
+            setWindingFocus((previous) => previous + 1);
+          }}
+        />
+        {!comparisonOpen && (
+          <ChannelNavigator
+            parameters={
+              qualityOnly
+                ? parameters.filter((p) => p.signal.quality !== 'good')
+                : parameters
             }
-          >{t`Use current range controls`}</Button>
-        </Alert>
-      )}
-      <LinkedEvidence machineId={machine.pk} />
-      <UnusualStrip
-        parameters={parameters}
-        response={response}
-        onPoor={() => {
-          setQualityOnly(true);
-          setSearch('');
-          setSection('all');
-          setExpanded(
-            new Set([
-              'electrical',
-              'operation',
-              'winding',
-              'vibration',
-              'cooling',
-              'bearing',
-              'other'
-            ])
-          );
-        }}
-        qualityFiltered={qualityOnly}
-        onClear={() => setQualityOnly(false)}
-      />
-      <KpiStrip
-        tiles={tiles}
-        now={now}
-        readAt={signalsQuery.dataUpdatedAt || null}
-        window={window}
-        windingChartId={`winding-chart-${syncId}`}
-        onWindingChart={() => {
-          setSearch('');
-          setQualityOnly(false);
-          selectSection('winding');
-          setWindingFocus((previous) => previous + 1);
-        }}
-      />
-      {!comparisonOpen && (
-        <ChannelNavigator
-          parameters={
-            qualityOnly
-              ? parameters.filter((p) => p.signal.quality !== 'good')
-              : parameters
-          }
-          search={search}
-          onSearch={(value) => {
-            setSearch(value);
-            setQualityOnly(false);
-            setSection('all');
+            search={search}
+            onSearch={(value) => {
+              setSearch(value);
+              setQualityOnly(false);
+              setSection('all');
+            }}
+            collapsed={comparisonOpen}
+            section={section}
+            onSection={selectSection}
+            onShowAll={() => {
+              setSearch('');
+              setSection('all');
+              setExpanded(
+                new Set([
+                  'electrical',
+                  'operation',
+                  'winding',
+                  'vibration',
+                  'cooling',
+                  'bearing',
+                  'other'
+                ])
+              );
+            }}
+          />
+        )}
+        <Accordion
+          transitionDuration={0}
+          value={comparisonOpen ? 'comparison' : null}
+          onChange={(value) => {
+            setComparisonOpen(value === 'comparison');
+            if (value) setComparisonMounted(true);
           }}
-          collapsed={comparisonOpen}
-          section={section}
-          onSection={selectSection}
-          onShowAll={() => {
-            setSearch('');
-            setSection('all');
-            setExpanded(
-              new Set([
-                'electrical',
-                'operation',
-                'winding',
-                'vibration',
-                'cooling',
-                'bearing',
-                'other'
-              ])
-            );
-          }}
-        />
-      )}
-      <Accordion
-        transitionDuration={0}
-        value={comparisonOpen ? 'comparison' : null}
-        onChange={(value) => {
-          setComparisonOpen(value === 'comparison');
-          if (value) setComparisonMounted(true);
-        }}
-        keepMounted
-        keepMountedMode='display-none'
-      >
-        <Accordion.Item value='comparison'>
-          <Accordion.Control>{t`Comparisons and saved views`}</Accordion.Control>
-          <Accordion.Panel>
-            {comparisonMounted && (
-              <ComparisonWorkbench
-                machineId={machine.pk}
-                assetType={machine.asset_type}
-                parameters={parameters}
-                response={seriesQuery.isError ? undefined : response}
-                window={range.window}
-                search={search}
-                section={section}
-                onView={(view) => {
-                  setQualityOnly(false);
-                  setSearch(view.search);
-                  selectSection(view.section);
-                }}
-              />
-            )}
-          </Accordion.Panel>
-        </Accordion.Item>
-      </Accordion>
-      {comparisonOpen && (
-        <ChannelNavigator
-          parameters={
-            qualityOnly
-              ? parameters.filter((p) => p.signal.quality !== 'good')
-              : parameters
-          }
-          search={search}
-          onSearch={(value) => {
-            setSearch(value);
-            setQualityOnly(false);
-            setSection('all');
-          }}
-          collapsed={comparisonOpen}
-          section={section}
-          onSection={selectSection}
-          onShowAll={() => {
-            setSearch('');
-            setSection('all');
-            setExpanded(
-              new Set([
-                'electrical',
-                'operation',
-                'winding',
-                'vibration',
-                'cooling',
-                'bearing',
-                'other'
-              ])
-            );
-          }}
-        />
-      )}
-
-      {seriesQuery.isError && (
-        <Alert
-          color='red'
-          classNames={{ label: monitoring.error }}
-          variant='outline'
-          title={t`Could not read history for this window`}
+          keepMounted
+          keepMountedMode='display-none'
         >
-          {t`The history request failed. Latest signal observations are shown separately; the requested history window is unavailable.`}
-        </Alert>
-      )}
-      {failedAll && !seriesQuery.isError && (
-        <Alert
-          color='yellow'
-          variant='outline'
-          icon={<IconAlertTriangle size={16} />}
-          title={t`The source could not serve this window`}
-        >
-          {(failedCount > 0
-            ? t`History read failed for some requested targets; coverage is unknown.`
-            : unavailable[0]?.detail) ??
-            t`No history is available for this window.`}
-        </Alert>
-      )}
+          <Accordion.Item value='comparison'>
+            <Accordion.Control>{t`Comparisons and saved views`}</Accordion.Control>
+            <Accordion.Panel>
+              {comparisonMounted && (
+                <ComparisonWorkbench
+                  machineId={machine.pk}
+                  assetType={machine.asset_type}
+                  parameters={parameters}
+                  response={seriesQuery.isError ? undefined : response}
+                  window={range.window}
+                  search={search}
+                  section={section}
+                  onView={(view) => {
+                    setQualityOnly(false);
+                    setSearch(view.search);
+                    selectSection(view.section);
+                  }}
+                />
+              )}
+            </Accordion.Panel>
+          </Accordion.Item>
+        </Accordion>
+        {comparisonOpen && (
+          <ChannelNavigator
+            parameters={
+              qualityOnly
+                ? parameters.filter((p) => p.signal.quality !== 'good')
+                : parameters
+            }
+            search={search}
+            onSearch={(value) => {
+              setSearch(value);
+              setQualityOnly(false);
+              setSection('all');
+            }}
+            collapsed={comparisonOpen}
+            section={section}
+            onSection={selectSection}
+            onShowAll={() => {
+              setSearch('');
+              setSection('all');
+              setExpanded(
+                new Set([
+                  'electrical',
+                  'operation',
+                  'winding',
+                  'vibration',
+                  'cooling',
+                  'bearing',
+                  'other'
+                ])
+              );
+            }}
+          />
+        )}
 
-      <div style={{ position: 'relative' }}>
-        <LoadingOverlay
-          visible={
-            seriesQuery.isLoading || (seriesQuery.isFetching && !response)
-          }
-          zIndex={5}
-          overlayProps={{ blur: 1 }}
-        />
-        <Stack gap='xl'>
-          <Section
-            title={categoryLabel('electrical')}
-            visible={visible('electrical')}
-            open={isOpen('electrical')}
-            onToggle={() => toggleSection('electrical')}
+        {seriesQuery.isError && (
+          <Alert
+            color='red'
+            classNames={{ label: monitoring.error }}
+            variant='outline'
+            title={t`Could not read history for this window`}
           >
-            <ElectricalSection
-              parameters={displayParameters}
-              series={series}
-              window={window}
-              syncId={syncId}
-              onZoom={range.onZoom}
-            />
-          </Section>
-          <Section
-            title={t`Speed, operation and hydraulics`}
-            visible={visible('operation')}
-            open={isOpen('operation')}
-            onToggle={() => toggleSection('operation')}
+            {t`The history request failed. Latest signal observations are shown separately; the requested history window is unavailable.`}
+          </Alert>
+        )}
+        {failedAll && !seriesQuery.isError && (
+          <Alert
+            color='yellow'
+            variant='outline'
+            icon={<IconAlertTriangle size={16} />}
+            title={t`The source could not serve this window`}
           >
-            <OperationSection
-              parameters={displayParameters}
-              series={series}
-              window={window}
-              syncId={syncId}
-              onZoom={range.onZoom}
-            />
-          </Section>
-          <Section
-            title={categoryLabel('winding')}
-            visible={visible('winding')}
-            open={isOpen('winding')}
-            onToggle={() => toggleSection('winding')}
-          >
-            <WindingSection
-              parameters={displayParameters}
-              series={series}
-              window={window}
-              syncId={syncId}
-              onZoom={range.onZoom}
-              chartFocus={windingFocus}
-            />
-          </Section>
-          <Section
-            title={categoryLabel('vibration')}
-            visible={visible('vibration')}
-            open={isOpen('vibration')}
-            onToggle={() => toggleSection('vibration')}
-          >
-            <VibrationSection
-              parameters={displayParameters}
-              series={series}
-              window={window}
-              syncId={syncId}
-              onZoom={range.onZoom}
-            />
-          </Section>
-          <Section
-            title={categoryLabel('cooling')}
-            visible={visible('cooling')}
-            open={isOpen('cooling')}
-            onToggle={() => toggleSection('cooling')}
-          >
-            <CoolingSection
-              parameters={displayParameters}
-              series={series}
-              window={window}
-              syncId={syncId}
-              onZoom={range.onZoom}
-            />
-          </Section>
-          <Section
-            title={categoryLabel('bearing')}
-            visible={visible('bearing')}
-            open={isOpen('bearing')}
-            onToggle={() => toggleSection('bearing')}
-          >
-            <BearingSection
-              parameters={displayParameters}
-              series={series}
-              window={window}
-              syncId={syncId}
-              onZoom={range.onZoom}
-            />
-          </Section>
-          {inCategory(allParameters, 'other').length > 0 && (
+            {(failedCount > 0
+              ? t`History read failed for some requested targets; coverage is unknown.`
+              : unavailable[0]?.detail) ??
+              t`No history is available for this window.`}
+          </Alert>
+        )}
+
+        <div style={{ position: 'relative' }}>
+          <LoadingOverlay
+            visible={
+              seriesQuery.isLoading || (seriesQuery.isFetching && !response)
+            }
+            zIndex={5}
+            overlayProps={{ blur: 1 }}
+          />
+          <Stack gap='xl'>
             <Section
-              title={categoryLabel('other')}
-              visible={visible('other')}
-              open={isOpen('other')}
-              onToggle={() => toggleSection('other')}
+              title={categoryLabel('electrical')}
+              visible={visible('electrical')}
+              open={isOpen('electrical')}
+              onToggle={() => toggleSection('electrical')}
             >
-              <OtherSection
-                parameters={inCategory(displayParameters, 'other')}
+              <ElectricalSection
+                parameters={displayParameters}
                 series={series}
                 window={window}
+                syncId={syncId}
+                onZoom={range.onZoom}
               />
             </Section>
-          )}
-        </Stack>
-      </div>
+            <Section
+              title={t`Speed, operation and hydraulics`}
+              visible={visible('operation')}
+              open={isOpen('operation')}
+              onToggle={() => toggleSection('operation')}
+            >
+              <OperationSection
+                parameters={displayParameters}
+                series={series}
+                window={window}
+                syncId={syncId}
+                onZoom={range.onZoom}
+              />
+            </Section>
+            <Section
+              title={categoryLabel('winding')}
+              visible={visible('winding')}
+              open={isOpen('winding')}
+              onToggle={() => toggleSection('winding')}
+            >
+              <WindingSection
+                parameters={displayParameters}
+                series={series}
+                window={window}
+                syncId={syncId}
+                onZoom={range.onZoom}
+                chartFocus={windingFocus}
+              />
+            </Section>
+            <Section
+              title={categoryLabel('vibration')}
+              visible={visible('vibration')}
+              open={isOpen('vibration')}
+              onToggle={() => toggleSection('vibration')}
+            >
+              <VibrationSection
+                parameters={displayParameters}
+                series={series}
+                window={window}
+                syncId={syncId}
+                onZoom={range.onZoom}
+              />
+            </Section>
+            <Section
+              title={categoryLabel('cooling')}
+              visible={visible('cooling')}
+              open={isOpen('cooling')}
+              onToggle={() => toggleSection('cooling')}
+            >
+              <CoolingSection
+                parameters={displayParameters}
+                series={series}
+                window={window}
+                syncId={syncId}
+                onZoom={range.onZoom}
+              />
+            </Section>
+            <Section
+              title={categoryLabel('bearing')}
+              visible={visible('bearing')}
+              open={isOpen('bearing')}
+              onToggle={() => toggleSection('bearing')}
+            >
+              <BearingSection
+                parameters={displayParameters}
+                series={series}
+                window={window}
+                syncId={syncId}
+                onZoom={range.onZoom}
+              />
+            </Section>
+            {inCategory(allParameters, 'other').length > 0 && (
+              <Section
+                title={categoryLabel('other')}
+                visible={visible('other')}
+                open={isOpen('other')}
+                onToggle={() => toggleSection('other')}
+              >
+                <OtherSection
+                  parameters={inCategory(displayParameters, 'other')}
+                  series={series}
+                  window={window}
+                />
+              </Section>
+            )}
+          </Stack>
+        </div>
 
-      <HistoryProvenance
-        compact
-        response={response}
-        loading={seriesQuery.isFetching && !response}
-        updating={seriesQuery.isPlaceholderData}
-        failed={seriesQuery.isError}
-        extent={dataRange.data}
-        onRetry={() => seriesQuery.refetch()}
-      />
-
-      {investigationOpen && (
-        <InvestigationSlices
-          initial={resolveWindow(range.window, now)}
-          onRead={(span) => {
-            range.onCustom(span.from, span.to);
-          }}
+        <HistoryProvenance
+          compact
+          response={response}
+          loading={seriesQuery.isFetching && !response}
+          updating={seriesQuery.isPlaceholderData}
+          failed={seriesQuery.isError}
+          extent={dataRange.data}
+          onRetry={() => seriesQuery.refetch()}
         />
-      )}
-    </HistoryReadStack>
+
+        {investigationOpen && (
+          <InvestigationSlices
+            initial={resolveWindow(range.window, now)}
+            onRead={(span) => {
+              range.onCustom(span.from, span.to);
+            }}
+          />
+        )}
+      </HistoryReadStack>
+    </PerformanceTestAlarmProvider>
   );
 }
 
@@ -876,6 +884,7 @@ function UnusualStrip({
   parameters: ReturnType<typeof resolveParameters>;
   response: ReturnType<typeof useMachineSeries>['data'];
 }>) {
+  const tests = usePerformanceTestAlarms();
   const stale = parameters.filter((p) => p.signal.stale);
   const poor = parameters.filter((p) => p.signal.quality !== 'good');
   const evaluation = evaluatePerformance(parameters.map((p) => p.signal));
@@ -894,6 +903,14 @@ function UnusualStrip({
         >
           <Text component='span' size='sm' fw={600}>{t`Exceptions`}</Text>
         </ValueTooltip>
+        {tests.length > 0 && (
+          <StatusBadge multiline tone='critical' color='red.9'>
+            {plural(tests.length, {
+              one: '# TEST exercise alarm',
+              other: '# TEST exercise alarms'
+            })}
+          </StatusBadge>
+        )}
         {critical.length > 0 && (
           <StatusBadge multiline tone='critical' color='red.9' variant='filled'>
             {t`${critical.length} critical: ${critical
@@ -964,7 +981,7 @@ function UnusualStrip({
             {t`${unavailable.length} without history in this window`}
           </StatusBadge>
         )}
-        {evaluation.verdict.kind === 'calm' && (
+        {evaluation.verdict.kind === 'calm' && !tests.length && (
           <StatusBadge
             multiline
             tone='neutral'

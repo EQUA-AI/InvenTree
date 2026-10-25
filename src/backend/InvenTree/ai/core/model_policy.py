@@ -37,6 +37,7 @@ class ModelPurpose(StrEnum):
     SUMMARIZATION = "summarization"
     EXTRACTION = "extraction"
     MEDIA_CAPTION = "media_caption"
+    WORK_INTAKE = "work_intake"
 
 
 #: Purposes that never resolve to the fast tier (D-10 / CR-2). The workers
@@ -84,7 +85,7 @@ def _legacy_choice(settings, purpose: ModelPurpose, modality: str) -> str:
         # construction; the S38 "fast or standard" line routed compaction to
         # the 50K-TPM tier on the workers, where no tiering flag is set (CR-2).
         return _summarization_choice(settings)
-    if purpose is ModelPurpose.MEDIA_CAPTION:
+    if purpose in {ModelPurpose.MEDIA_CAPTION, ModelPurpose.WORK_INTAKE}:
         # New in R3; vision needs the full tier, so legacy == policy.
         return standard
     raise ValueError(f"unknown model purpose: {purpose}")  # pragma: no cover
@@ -111,7 +112,7 @@ def _policy_choice(settings, purpose: ModelPurpose, modality: str) -> str:
         return _closeout_override() or fast
     if purpose in _OVERRIDE_PURPOSES:
         return _summarization_choice(settings)
-    if purpose is ModelPurpose.MEDIA_CAPTION:
+    if purpose in {ModelPurpose.MEDIA_CAPTION, ModelPurpose.WORK_INTAKE}:
         return standard
     raise ValueError(f"unknown model purpose: {purpose}")  # pragma: no cover
 

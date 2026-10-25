@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>{{ work.reference }} — Service report</title>
+    <style>
+      @page { size: A4; margin: 20mm 18mm; @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 9pt sans-serif; color: #526172; } }
+      body { font-family: sans-serif; color: #172638; font-size: 10pt; line-height: 1.55; }
+      header { border-bottom: 3pt solid #2454a4; padding-bottom: 14pt; margin-bottom: 20pt; }
+      .brand { font-size: 9pt; letter-spacing: 2pt; color: #2454a4; font-weight: bold; }
+      h1 { margin: 6pt 0; font-size: 23pt; }
+      h2 { font-size: 14pt; margin-top: 22pt; }
+      .status { font-size: 9pt; border: 1pt solid #748398; padding: 5pt 9pt; display: inline-block; }
+      .reference { font-size: 12pt; font-weight: bold; }
+      .notice { border-left: 3pt solid #a45b16; background: #fff4e7; padding: 9pt 12pt; margin: 16pt 0; }
+      section { border-bottom: 1pt solid #dce2e8; padding: 10pt 0; break-inside: avoid; }
+      .label { font-size: 9pt; color: #526172; margin-bottom: 4pt; font-weight: bold; }
+      .value, pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+      pre { font: 9pt sans-serif; }
+      .hash { font: 8pt monospace; overflow-wrap: anywhere; color: #526172; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand">EQUA AIMMS · MAINTENANCE</div>
+      <h1>Service report</h1>
+      <span class="status">{{ status }}</span>
+    </header>
+    <div class="reference">{{ work.reference }} · {{ work.title }}</div>
+    <p>Equipment: {{ work.machine_name|default:"Not recorded in this snapshot" }}</p>
+    <div class="notice">This document records the maintenance account. A preview or download does not submit, approve or complete Work, establish physical operating authority, or change real telemetry.</div>
+    {% for row in rows %}
+      <section>
+        <div class="label">{{ row.label }}</div>
+        <div class="value">{{ row.value }}</div>
+      </section>
+    {% endfor %}
+    {% if text %}
+      <h2>Retained account and source record</h2>
+      <pre>{{ text }}</pre>
+    {% endif %}
+    {% if content_hash %}
+      <h2>Snapshot identity</h2>
+      <p class="hash">{{ content_hash }}</p>
+      <p>The snapshot hash identifies the retained source document, not the derived PDF bytes. Use the verifiable JSON export for exact canonical bytes.</p>
+    {% endif %}
+  </body>
+</html>

@@ -16,6 +16,10 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useApi } from '../../../contexts/ApiContext';
 import { useLocalState } from '../../../states/LocalState';
 import { useUserState } from '../../../states/UserState';
+import {
+  CloseoutReportDocument,
+  ReportPDFButton
+} from './CloseoutReportDocument';
 import { recordedTime } from './execution/ExecutionFacts';
 import { workPanelParams } from './workPanelState';
 
@@ -188,6 +192,24 @@ export function AcceptedReport({
             ) : (
               <details>
                 <summary>{t`Read frozen report`}</summary>
+                <CloseoutReportDocument
+                  reference={String(
+                    (query.data?.document.work as Record<string, unknown>)
+                      ?.reference ?? ''
+                  )}
+                  title={String(
+                    (query.data?.document.work as Record<string, unknown>)
+                      ?.title ?? ''
+                  )}
+                  account={
+                    (query.data?.document.closeout ?? {}) as Record<
+                      string,
+                      unknown
+                    >
+                  }
+                  status={t`Frozen completion`}
+                  contentHash={selected.content_hash}
+                />
                 <Text
                   component='pre'
                   size='sm'
@@ -202,6 +224,12 @@ export function AcceptedReport({
               </details>
             )}
             <Group>
+              <ReportPDFButton
+                workId={workId}
+                source='frozen'
+                reportId={selected.id}
+                disabled={!query.data || query.isError || query.isFetching}
+              />
               <Button
                 variant='default'
                 disabled={!query.data || query.isError}

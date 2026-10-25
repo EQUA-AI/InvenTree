@@ -69,6 +69,9 @@ class Procedure(models.Model):
     customer = models.ForeignKey(
         'company.Company', null=True, blank=True, on_delete=models.PROTECT
     )
+    client = models.ForeignKey(
+        'assets.Client', null=True, blank=True, on_delete=models.PROTECT
+    )
     active = models.BooleanField(default=True, db_index=True)
     current_revision = models.ForeignKey(
         'tasks.ProcedureRevision',
@@ -87,7 +90,16 @@ class Procedure(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=['customer', 'code'], name='tasks_procedure_scope_code_uniq'
-            )
+            ),
+            models.UniqueConstraint(
+                fields=['client', 'code'],
+                condition=Q(client__isnull=False),
+                name='tasks_procedure_client_code_uniq',
+            ),
+            models.CheckConstraint(
+                condition=Q(client__isnull=True) | Q(customer__isnull=True),
+                name='tasks_procedure_unmixed_scope',
+            ),
         ]
 
         # Enforced by the procedure services via require_permission; declared

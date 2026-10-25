@@ -22,6 +22,7 @@ import {
   executionBadgeStyles,
   recordedTime
 } from './ExecutionFacts';
+import { ExerciseVerificationPanel } from './ExerciseVerificationPanel';
 import { AuthorityRecorder, AuthorityRecords } from './OperationalAuthority';
 import { StepCriteria } from './PreparedPackage';
 import { ServiceRestoration } from './ServiceRestoration';
@@ -156,7 +157,16 @@ export function VerificationReturn({
   const supplied = value?.rule === 'verification_return.v1';
   return (
     <Stack gap='md' data-testid='verification-return'>
-      <ExecutionSection title={t`Physical verification`}>
+      {value?.exercise_verification_available && (
+        <ExerciseVerificationPanel workOrder={workOrder} />
+      )}
+      <ExecutionSection
+        title={
+          value?.exercise_verification_available
+            ? t`Native exercise records and attempt history`
+            : t`Physical verification`
+        }
+      >
         {!supplied ? (
           <MissingValue
             reason={t`Physical test criteria and attempts are not supplied by this server. Not evaluated.`}
@@ -169,6 +179,19 @@ export function VerificationReturn({
           <MissingValue
             reason={t`No procedure test records returned. Applicable criteria and physical verification are not established.`}
           />
+        ) : value.exercise_verification_available ? (
+          <Accordion variant='contained'>
+            <Accordion.Item value='exercise-attempts'>
+              <Accordion.Control>{t`Read native procedure records and retained attempts`}</Accordion.Control>
+              <Accordion.Panel>
+                <Stack gap='md'>
+                  {value.tests.map((test) => (
+                    <TestResult key={test.id} test={test} />
+                  ))}
+                </Stack>
+              </Accordion.Panel>
+            </Accordion.Item>
+          </Accordion>
         ) : (
           value.tests.map((test) => <TestResult key={test.id} test={test} />)
         )}
