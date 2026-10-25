@@ -45,6 +45,19 @@ export type Display = (point: MimicPoint) => string;
 
 type Verdict = 'critical' | 'warning' | 'normal' | 'unknown' | null;
 
+export function activeTestAlarms(
+  points: MimicPoint[],
+  alarms: MimicAlarm[]
+): MimicAlarm[] {
+  const pointers = new Set(points.map((point) => point.pointer));
+  return alarms.filter(
+    (alarm) =>
+      alarm.synthetic &&
+      ['open', 'acknowledged'].includes(alarm.anomaly_status ?? '') &&
+      pointers.has(alarm.pointer)
+  );
+}
+
 /**
  * What a group of readings amounts to, without opening it.
  *
@@ -153,6 +166,7 @@ export function PointTable({
   exercises?: MimicAlarm[];
 }>) {
   const clock = useDisplayClock();
+  const active = activeTestAlarms(points, exercises);
   return (
     <Table.ScrollContainer minWidth={650}>
       <Table striped className={visual.surface}>
@@ -167,11 +181,8 @@ export function PointTable({
         </Table.Thead>
         <Table.Tbody>
           {points.map((point) => {
-            const exercise = exercises.find(
-              (alarm) =>
-                alarm.synthetic &&
-                ['open', 'acknowledged'].includes(alarm.anomaly_status ?? '') &&
-                alarm.pointer === point.pointer
+            const exercise = active.find(
+              (alarm) => alarm.pointer === point.pointer
             );
             const shown =
               point.value !== null && !point.reason && !failedReading(point);
@@ -195,6 +206,19 @@ export function PointTable({
                   ]
                 : [])
             ].join(' · ');
+            const condition =
+              !point.thresholds_configured || point.reason ? (
+                point.reason ? (
+                  <UnavailableReading
+                    point={{ ...point, value: null }}
+                    label={t`Condition`}
+                  />
+                ) : (
+                  <MissingValue reason={conditionText(point)} />
+                )
+              ) : (
+                conditionText(point)
+              );
             return (
               <Table.Tr key={point.pointer} data-point={point.pointer}>
                 <Table.Td>
@@ -258,17 +282,18 @@ export function PointTable({
                   <Timestamp value={point.observed_at} clock={clock} />
                 </Table.Td>
                 <Table.Td>
-                  {!point.thresholds_configured || point.reason ? (
-                    point.reason ? (
-                      <UnavailableReading
-                        point={{ ...point, value: null }}
-                        label={t`Condition`}
-                      />
-                    ) : (
-                      <MissingValue reason={conditionText(point)} />
-                    )
+                  {exercise ? (
+                    <Stack gap={4}>
+                      <StatusBadge
+                        tone='critical'
+                        color='red.9'
+                      >{t`TEST alarm — Critical`}</StatusBadge>
+                      <Text size='xs'>
+                        {t`Measured condition`}: {condition}
+                      </Text>
+                    </Stack>
                   ) : (
-                    conditionText(point)
+                    condition
                   )}
                 </Table.Td>
               </Table.Tr>
@@ -309,13 +334,14 @@ export function ReadingSections({
   return (
     <Accordion
       multiple
-      value={open}
-      onChange={setOpen}
+      value={open.map(encodeURIComponent)}
+      onChange={(values) => setOpen(values.map(decodeURIComponent))}
       variant='separated'
       chevronPosition='left'
     >
       {sections.map((section) => {
         const summary = summarize(section.points, display);
+        const tests = activeTestAlarms(section.points, exercises);
         const detail =
           summary.lines.join(' · ') ||
           [
@@ -328,7 +354,7 @@ export function ReadingSections({
         return (
           <Accordion.Item
             key={section.key}
-            value={section.key}
+            value={encodeURIComponent(section.key)}
             data-section={section.key}
           >
             <Tooltip
@@ -361,6 +387,13 @@ export function ReadingSections({
                     </Group>
                   </Stack>
                   <Group gap='xs' wrap='wrap'>
+                    {tests.length > 0 && (
+                      <StatusBadge
+                        tone='critical'
+                        color='red.9'
+                        data-testid='reading-section-test-alarm'
+                      >{t`TEST alarm — Critical`}</StatusBadge>
+                    )}
                     {section.key === 'station' ? (
                       <Text size='xs'>{section.points.length}</Text>
                     ) : section.points.length > 0 &&
@@ -374,9 +407,9 @@ export function ReadingSections({
                         reason={detail || t`Reason not supplied`}
                         focusable={false}
                       />
-                    ) : (
+                    ) : tests.length === 0 ? (
                       <VerdictBadge verdict={summary.verdict} />
-                    )}
+                    ) : null}
                   </Group>
                 </Group>
               </Accordion.Control>

@@ -1,5 +1,38 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## Real local rehearsal and Azure follow-through — in progress
+
+Actual exercise16 createsWork3857/packet34 from one of58 mapped channels;
+TEST159.5 C appears critical in motor/station mimics, Performance, KPI, graph
+and board. A real one-page PDF and editable manual account are verified. Safe
+end restores all those displays and retains the event; Work stays Draft because
+governed human publication/three-check completion is not fabricated. Draft
+procedure3/revision3 is prepared. Ten prior-domain table comparisons match the
+fresh backup; exact trigger/end Mailpit captures and notifications are retained.
+
+Real observation catches a misleading Normal section badge and an inaccessible
+solid critical notice. Matching active TEST badges now propagate to collapsed
+groups and condition cells with explicitly separate measured conditions. New
+axe checks also require safe Accordion IDs without changing raw navigation keys.
+1197 units, App/S6 types and124 native PG tests pass; affected mimic34/34 and
+8 measured axe reports pass after fixture/ARIA corrections. No migration or
+production staff-assignment change is needed. New independent review and a new
+clean application/image freeze are required for these source corrections.
+
+Azure at19:47 still servesfac03cbf onrevision119; public health is ready but
+worker read remains forbidden and operator-cookie/target confirmation are absent.
+No traffic changes. Do not deploy the superseded387816b5 artifact as this fix.
+
+Owner now requests selectable-param alarm creation, real critical-state and
+recovery checks, manual report/PDF/submission/independent approval, notifications
+and Azure release prerequisites. Preserve the reviewed387816b5 application
+freeze unless an actual regression requires a focused correction. A fresh
+private local backup/readback is verified; the missing governed Pump08 procedure
+may be prepared as a draft but requires independent publication, not invented
+human sign-off. No current closeout, external email or cloud promotion is yet
+claimed. Registry retry follows a transient layer-commit timeout. See the
+[current execution ledger](reports/fault-to-fix-rehearsal-2026-10-25.md).
+
 ## Localhost ready — final application freeze387816b5
 
 The running-count fix is available at http://localhost:5173/; refresh the station

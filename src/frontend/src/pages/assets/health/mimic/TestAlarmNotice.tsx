@@ -14,7 +14,9 @@ export function TestAlarmNotice({
   ) ? (
     <Alert
       color={scheme === 'dark' ? 'red.3' : 'red.9'}
+      variant='outline'
       title={t`Synthetic test alarm active`}
+      data-testid='mimic-test-alarm-notice'
     >
       <Stack gap={4}>
         {t`Alarm highlighting includes a test exercise. Actual measurements and operational authority are unchanged.`}

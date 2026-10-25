@@ -1,8 +1,89 @@
 import { type Locator, type Page, expect, test } from '@playwright/test';
+import { auditAccessibility } from '../s0/accessibility';
 import { nativeBaseline } from '../s0/guards';
 import { mimicEntry } from './navigation';
 
 nativeBaseline();
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`synthetic motor section stays critical until its exercise ends (${scheme})`, async ({
+    page
+  }, info) => {
+    let active = true;
+    await page.addInitScript((colorScheme) => {
+      localStorage.setItem('mantine-color-scheme', colorScheme);
+    }, scheme);
+    await page.route('**/api/machine-health/station/17/mimic/**', (route) => {
+      const data = withParts(
+        new URL(route.request().url()).searchParams.get('unit'),
+        61
+      );
+      return route.fulfill({
+        json: {
+          ...data,
+          alarms: active
+            ? [
+                {
+                  ...data.points['/w1'],
+                  synthetic: true,
+                  value: 159.5,
+                  severity: 'critical',
+                  anomaly: 16,
+                  machine: 1,
+                  anomaly_status: 'open'
+                }
+              ]
+            : []
+        }
+      });
+    });
+    await page.goto(mimicEntry('/?pump=P1'));
+    const section = page.locator('[data-section="Drive motor"]');
+    const control = section.getByRole('button').first();
+    await expect(section.getByTestId('reading-section-test-alarm')).toHaveText(
+      'TEST alarm — Critical'
+    );
+    await expect(control).not.toContainText('Normal');
+    await control.click();
+    await expect(section.locator('tr[data-point="/w1"]')).toContainText(
+      'TEST alarm — Critical'
+    );
+    await expect(section.locator('tr[data-point="/w1"]')).toContainText(
+      'Measured condition: Normal'
+    );
+    await expect(section.locator('tr[data-point="/w1"]')).toContainText(
+      '61 °C'
+    );
+    const notice = page.getByTestId('mimic-test-alarm-notice');
+    await expect(notice).toContainText('TEST 159.5');
+    await auditAccessibility(page, notice, info, `mimic-test-notice-${scheme}`);
+    await auditAccessibility(
+      page,
+      section,
+      info,
+      `mimic-test-section-${scheme}`
+    );
+    await section.screenshot({
+      path: info.outputPath(`critical-motor-section-${scheme}.png`)
+    });
+    await notice.screenshot({
+      path: info.outputPath(`critical-test-notice-${scheme}.png`)
+    });
+    active = false;
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await expect(section.getByTestId('reading-section-test-alarm')).toHaveCount(
+      0
+    );
+    await expect(control).toContainText('Normal');
+    await expect(notice).toHaveCount(0);
+    await expect(section.locator('tr[data-point="/w1"]')).toContainText(
+      '61 °C'
+    );
+    await section.screenshot({
+      path: info.outputPath(`restored-motor-section-${scheme}.png`)
+    });
+  });
+}
 
 async function keyboardFocus(page: Page, target: Locator) {
   await page.keyboard.press('Tab');
@@ -890,6 +971,11 @@ test('a repair is raised from the alarm row, against the anomaly', async ({
   page
 }) => {
   const posted: any[] = [];
+  for (const endpoint of ['trades', 'staff-directory']) {
+    await page.route(`**/api/user/${endpoint}/**`, (route) =>
+      route.fulfill({ json: { count: 0, results: [] } })
+    );
+  }
   await page.route('**/api/machine-health/station/17/mimic/**', (route) =>
     route.fulfill({
       json: alarmed(

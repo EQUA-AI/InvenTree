@@ -4,10 +4,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, it, vi } from 'vitest';
 import { unconfiguredCount } from './MimicAlarmCoverage';
 import { compactReadings, partStates } from './MimicParts';
-import { ReadingSections, summarize } from './MimicReadings';
+import { ReadingSections, activeTestAlarms, summarize } from './MimicReadings';
 import { failedReading } from './MimicValue';
 import { valueText } from './format';
-import type { MimicData, MimicPoint } from './types';
+import type { MimicAlarm, MimicData, MimicPoint } from './types';
 
 vi.mock('@lingui/core/macro', () => ({
   t: (parts: TemplateStringsArray, ...values: unknown[]) =>
@@ -58,6 +58,72 @@ it('test highlighting leaves actual motor measurements intact and clears indepen
   expect(partStates(data, valueText)[0].points[0].value).toBe(30);
   data.alarms = [];
   expect(partStates(data, valueText)[0].verdict).toBe('normal');
+});
+
+it('limits section test status to active synthetic alarms on its own pointers', () => {
+  const reading = point(30, {
+    pointer: '/motor',
+    condition: 'normal',
+    thresholds_configured: true
+  });
+  const alarm: MimicAlarm = {
+    ...reading,
+    synthetic: true,
+    value: 159.5,
+    severity: 'critical',
+    anomaly: 16,
+    anomaly_status: 'open'
+  };
+  expect(activeTestAlarms([reading], [alarm])).toEqual([alarm]);
+  expect(
+    activeTestAlarms([reading], [{ ...alarm, anomaly_status: 'acknowledged' }])
+  ).toHaveLength(1);
+  for (const excluded of [
+    { ...alarm, anomaly_status: 'suppressed' as const },
+    { ...alarm, anomaly_status: null },
+    { ...alarm, synthetic: false },
+    { ...alarm, pointer: '/other' }
+  ]) {
+    expect(activeTestAlarms([reading], [excluded])).toEqual([]);
+  }
+  expect(reading.value).toBe(30);
+  expect(summarize([reading]).verdict).toBe('normal');
+});
+
+it('replaces the misleading normal section badge only while its test is active', () => {
+  const reading = point(30, {
+    pointer: '/motor',
+    condition: 'normal',
+    thresholds_configured: true
+  });
+  const alarm: MimicAlarm = {
+    ...reading,
+    synthetic: true,
+    value: 159.5,
+    severity: 'critical',
+    anomaly: 16,
+    anomaly_status: 'open'
+  };
+  const markup = (exercises: MimicAlarm[]) =>
+    renderToStaticMarkup(
+      createElement(
+        MantineProvider,
+        null,
+        createElement(ReadingSections, {
+          sections: [
+            { key: 'Motor sensors', title: 'Motor', points: [reading] }
+          ],
+          exercises
+        })
+      )
+    );
+  expect(markup([alarm])).toContain('TEST alarm — Critical');
+  expect(markup([alarm])).not.toContain('>Normal<');
+  expect(markup([alarm])).toMatch(/aria-controls="[^"\s]*Motor%20sensors"/);
+  expect(markup([])).toContain('Normal');
+  expect(markup([{ ...alarm, anomaly_status: 'suppressed' }])).toContain(
+    'Normal'
+  );
 });
 
 it('collapses equal readings and formats the engineering unit', () => {

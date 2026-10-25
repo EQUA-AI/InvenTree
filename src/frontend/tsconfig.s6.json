@@ -7,6 +7,7 @@
     "playwright/staff-directory.tsx",
     "tests/pages/pui_staff_directory.spec.ts",
     "tests/mimic/pui_mimic_layout.spec.ts",
+    "tests/mimic/pui_mimic.spec.ts",
     "tests/s3/pui_test_alarm.spec.ts",
     "tests/s6/pui_service_report_workflow.spec.ts",
     "tests/s6/pui_pump08_intake.spec.ts",

@@ -32643,3 +32643,7 @@ msgstr "From displayed bay statuses"
 #: ../../../src/frontend/src/pages/assets/health/mimic/StationSchematic.tsx:224
 msgid "No current pump status is available; the station counter does not identify a running pump."
 msgstr "No current pump status is available; the station counter does not identify a running pump."
+
+#: ../../../src/frontend/src/pages/assets/health/mimic/MimicReadings.tsx
+msgid "Measured condition"
+msgstr "Measured condition"
