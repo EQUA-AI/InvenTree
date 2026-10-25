@@ -12,9 +12,80 @@ browser cases and49 units, final App/S6 types and build42.28s pass. Human-owned
 live closeout/inference/delivery prerequisites remain; no product sign-off.
 Earlier scores do not accept this changed candidate.
 This is not full AI/demo or physical acceptance.
-Branch `inventTree-aniket`; existing uncommitted test-alarm/closeout work is
-preserved. Owner now authorizes its local commit, superseding the earlier
-no-commit restriction. No push, PR, deployment or Azure mutation is authorized.
+Feature changes are committed as `c2c2ae885` on `inventTree-aniket`.
+Owner subsequently authorizes and completes only the single Azure migration
+documented below. Owner now also authorizes committing the audit notes, merging
+both branch histories, pushing inventTree-aniket and IOT-Merge, and deployment.
+The newly fetched staff-directory work must be integrated and reverified before
+release. No deployment or full live-demo acceptance is claimed by that approval.
+See [release execution](release-2026-10-25.md).
+
+## Authorized Azure migration applied — 25 October 2026
+
+Owner explicitly requests applying the verified missing migration. Fresh
+read-only preflight at15:15 UTC confirms only
+`tasks.0061_procedure_client_scope` is pending, with consistent history and a
+passing native lineage guard. The shared database is not cloned or overwritten.
+
+- A full custom-format backup completes using PostgreSQL15.19. It is142093603
+  bytes, mode0600, SHA256
+  `51d286aa6f94fa9b0954f26310dd56e04ccf4321efc35aa7bc0402914336f14f`.
+  Its catalogue includes the migration and Procedure tables; a complete offline
+  pg_restore readback to a null file succeeds. This is archive validation, not
+  a rehearsed database restore. The initial monitoring wrapper times out, but
+  the dump client completes with exit0 and is verified before any migration.
+- At15:31:48 UTC the native guarded runner applies tasks0061 and commits its
+  atomic PostgreSQL transaction. The shared advisory migration lock and
+  five-second DDL lock timeout remain in force. The native log reports
+  `Applying tasks.0061_procedure_client_scope... OK` and a committed step.
+- Direct post-commit checks validate the nullable client field, its foreign key,
+  the partial unique client/code index and the unmixed client/customer check.
+  Both existing Procedure rows and the hash of all their pre-existing fields
+  remain unchanged. Their new client fields stay null; no ownership is inferred.
+- At15:32:36 UTC a fresh, independent read-only connection confirms zero pending
+  migrations on local PostgreSQL and Azure. Histories agree; all compared column
+  definitions match. Native history/lineage checks pass with no conflicts or
+  unknown ancestry. This does not claim every application record or index was
+  compared.
+- No local data, alarms, work orders or procedures are copied into Azure. No
+  application code deployment, push, PR, email switch or product/physical
+  acceptance is performed. The audit-note changes are not committed.
+
+Private backup:
+`data/devscratch/azure-migration-apply/20261025T151726Z/azure-before-0061.dump`.
+Sanitized before/backup/apply/after receipts:
+`data/devscratch/azure-migration-apply/20261025T151726Z/receipt.json`.
+Both stay ignored; the supplied credential file is never printed or committed.
+Earlier missing-migration/access-blocked sections below are historical and are
+superseded by this completed, owner-authorized schema operation.
+
+## Verified local-to-Azure comparison — 25 October 2026, 15:05 UTC
+
+The supplied password in ignored `data/azure-db.env` successfully authenticates
+to `epconchat-pg-dev.postgres.database.azure.com`, database `inventree`, PG15.19.
+Credentials are read privately, transferred only through process stdin and never
+printed or included in audit evidence. Both databases are inspected with
+read-only transactions; Azure TLS verifies the certificate and hostname.
+
+- Local PostgreSQL has zero pending migrations and tasks0061 is applied.
+- Azure has exactly one forward migration pending:
+  `tasks.0061_procedure_client_scope`.
+- Direct Azure SQL and the native migration recorder agree through an isolated
+  database alias. The history remains stable across the audit. Native history
+  consistency and lineage guard pass, with no migration conflicts or unknown
+  ancestry; seven historical upstream aliases are recognized by the guard.
+- The only migration-history difference is tasks0061. The only missing compared
+  column is `tasks_procedure.client_id`; both new named scope constraints are
+  also absent in Azure. All other compared column definitions match. This is
+  not a claim that every index, constraint or application record was compared.
+- Apply the committed schema migration with its matching approved deployment;
+  do not copy the local database, alarms, work orders or test data. No migration,
+  database write, data copy or deployment is performed by this verification.
+
+Sanitized receipt: `data/devscratch/azure-migration-audit/2026-10-25.json`.
+The earlier permission/credential-blocked findings below are historical and
+superseded by this successful direct database audit. Product acceptance and
+human-owned live-demo prerequisites are unchanged.
 
 ## Local commit and Azure migration audit — 25 October 2026
 

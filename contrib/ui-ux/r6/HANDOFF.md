@@ -1,5 +1,58 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## Commit, branch integration and deployment authorized — 25 October 2026
+
+Owner now requests committing all changes, pushing inventTree-aniket and
+IOT-Merge, and deployment. This supersedes the earlier no-push/deployment
+restriction for this release, not the safety or release checks. Fresh fetch finds
+new remote IOT-Merge commit1a5c32404: scoped staff directory and trade-aware
+assignment. Preserve it; do not overwrite either branch or force-push. Four
+textual conflicts and overlapping native assignment contracts need integration,
+plus a tasks merge migration for the two independently named0061 heads.
+The already-applied Azure client-scope migration is not rewritten or replayed.
+
+Both independent frontend reviewers receive complete integration sources;
+their earlier UI scores do not accept the changed merged candidate. Azure
+registry management read is currently denied; data-plane access and the intended
+app/session/worker release gates are not yet established. No new image or
+deployment is claimed. See [release execution](reports/release-2026-10-25.md).
+
+## Azure migration completed — 25 October 2026, 15:32 UTC
+
+Owner explicitly approves applying the single missing tasks0061 migration.
+The native guarded PostgreSQL runner commits tasks0061_procedure_client_scope
+to Azure inventree on epconchat-pg-dev at15:31 UTC, with its shared advisory
+lock, five-second lock timeout and atomic transaction. Fresh independent
+read-only verification at15:32 finds zero pending migrations on both databases,
+matching migration histories and matching compared column definitions.
+The nullable Procedure client foreign key, partial unique client/code index and
+unmixed-scope check all validate. Both existing Procedure rows and their prior
+fields remain unchanged; no client ownership is inferred.
+
+A private full pre-migration backup is142093603 bytes, mode0600; its catalogue
+and complete payload readback pass. No actual restore is rehearsed. The backup
+and sanitized receipts remain ignored under
+data/devscratch/azure-migration-apply/20261025T151726Z/. Credentials are never
+printed. No local data is copied into Azure, and no application code deployment,
+push or PR occurs. Audit notes remain uncommitted; product/demo/physical
+acceptance is unchanged. This single migration approval supersedes the earlier
+no-Azure-write restriction only for the recorded operation. See the
+[execution ledger](reports/pump08-ai-work-intake.md).
+
+## Pre-migration Azure comparison — 25 October 2026, 15:05 UTC
+
+The password supplied in ignored data/azure-db.env works. Direct, certificate-
+verified TLS and read-only transactions compare local PostgreSQL with Azure
+inventree on epconchat-pg-dev. Exactly one migration is pending in Azure:
+tasks0061_procedure_client_scope. It is applied locally; Azure lacks the
+tasks_procedure.client_id column and both named scope constraints. All other
+compared column metadata matches. Native migration history and lineage checks
+pass, with no conflicts or unknown ancestry. No database migration, data copy,
+deployment or push is performed. Feature code remains committed as c2c2ae885.
+This verification supersedes the earlier access-blocked audit below, not the
+remaining live-demo or physical acceptance prerequisites. See the updated
+[execution ledger](reports/pump08-ai-work-intake.md).
+
 ## Owner-authorized local commit and migration audit — 25 October 2026
 
 Owner now authorizes committing the complete current test-alarm/work-order and
