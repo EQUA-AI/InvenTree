@@ -1,5 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
-import { auditAccessibility } from '../s0/accessibility';
+import { auditAccessibility, waitForRenderedScope } from '../s0/accessibility';
 import { assertReadableContrast } from '../s0/contrast';
 import { nativeBaseline } from '../s0/guards';
 import { openHealth } from '../s3/healthFixtures';
@@ -228,6 +228,7 @@ async function openIntake(
     name: 'Trigger test alarm',
     exact: true
   });
+  await waitForRenderedScope(page, dialog);
   await dialog
     .getByRole('switch', {
       name: 'Create work order automatically',

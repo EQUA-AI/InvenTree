@@ -6,14 +6,7 @@ import {
   expect
 } from '@playwright/test';
 
-export async function auditAccessibility(
-  page: Page,
-  scope: Locator,
-  info: TestInfo,
-  name: string
-) {
-  const source = process.env.AIMMS_AXE_SOURCE;
-  if (!source) return;
+export async function waitForRenderedScope(page: Page, scope: Locator) {
   await expect(scope).toBeVisible();
   await expect
     .poll(() =>
@@ -34,6 +27,17 @@ export async function auditAccessibility(
   await page.evaluate(async () => {
     await document.fonts.ready;
   });
+}
+
+export async function auditAccessibility(
+  page: Page,
+  scope: Locator,
+  info: TestInfo,
+  name: string
+) {
+  const source = process.env.AIMMS_AXE_SOURCE;
+  if (!source) return;
+  await waitForRenderedScope(page, scope);
   await page.addScriptTag({ path: source });
   const result = await scope.evaluate(async (node) => {
     const browser = window as unknown as {

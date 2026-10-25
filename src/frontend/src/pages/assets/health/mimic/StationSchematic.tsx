@@ -1,5 +1,5 @@
 import { t } from '@lingui/core/macro';
-import { Box, Group, Paper, Text, Title } from '@mantine/core';
+import { Alert, Box, Group, Paper, Text, Title } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { IconInfoCircle } from '@tabler/icons-react';
 import {
@@ -231,22 +231,7 @@ export function StationSchematic({
                   )}
                 </Text>
                 {element.id === 'pumps-running' && (
-                  <>
-                    <Text size='xs'>{t`From displayed bay statuses`}</Text>
-                    {pumpCount.unknown > 0 && (
-                      <Text size='xs'>{t`${pumpCount.unknown} bays without a current status`}</Text>
-                    )}
-                    {pumpCount.disagreement && (
-                      <Text
-                        size='xs'
-                        fw={600}
-                        component='output'
-                        data-count-mismatch
-                      >
-                        {t`Count mismatch — station counter reports ${numberText(pumpCount.reported!)}. Check source status readings.`}
-                      </Text>
-                    )}
-                  </>
+                  <Text size='xs'>{t`Calculated total`}</Text>
                 )}
               </Paper>
             );
@@ -312,6 +297,22 @@ export function StationSchematic({
           );
         })}
       </div>
+      {(pumpCount.disagreement || pumpCount.unknown > 0) && (
+        <Alert
+          mt='xs'
+          color='orange'
+          styles={{ message: { color: 'var(--mantine-color-text)' } }}
+        >
+          {pumpCount.disagreement && (
+            <Text size='sm' data-count-mismatch>
+              {t`Count mismatch — station counter reports ${numberText(pumpCount.reported!)}. Check source status readings.`}
+            </Text>
+          )}
+          {pumpCount.unknown > 0 && (
+            <Text size='sm'>{t`${pumpCount.unknown} bays without a current status`}</Text>
+          )}
+        </Alert>
+      )}
       {!!bays.length && (
         <Box
           component='section'

@@ -1,5 +1,21 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## Owner prioritizes localhost running-count fix
+
+The existing localhost5173 server is verified to serve the new bay-derived
+running count and explicit source-counter mismatch. The local read-only source
+observation is station93: counter1 but14 individual Idle statuses; do not invent
+a running pump or modify those readings. A full-width warning keeps phone KPI
+cards usable. No database migration or backend restart is needed for this fix.
+The new native readiness helper yields10/10 automatic/prepared/refusal browser
+passes, with18 staff cases and235 units already passing. Final responsive
+captures and dual independent scores remain required before full UI acceptance.
+
+An AMD64 image for3229281ac builds successfully with the explicit build-only
+heap budget. It predates the final local warning-layout adjustment, so it is
+not represented as the latest deployable UI. No image push or Azure revision
+change occurs. Operator-session and worker-access release gates remain open.
+
 ## Integrated branches pushed; Azure schema aligned — 25 October 2026
 
 Both origin branches inventTree-aniket and IOT-Merge point to4774fcca25dc90a510f404ea082d4928a987c13d
