@@ -37,7 +37,11 @@ def audit_deleted_threads(*, sample: int = 20, record: bool = False) -> dict:
         'protected_grants': lambda ref: ChatThreadGrant.objects.filter(
             thread_id=ref
         ).count(),
-        **{name: kind.probe for name, kind in retention.OUTBOX_KINDS.items()},
+        **{
+            name: kind.probe
+            for name, kind in retention.OUTBOX_KINDS.items()
+            if kind.thread_scoped
+        },
     }
     for name, probe in probes.items():
         total = 0
@@ -48,7 +52,12 @@ def audit_deleted_threads(*, sample: int = 20, record: bool = False) -> dict:
                 errors[name] = errors.get(name, 0) + 1
         residual[name] = None if name in errors else total
     missing = retention.THREAD_DERIVATIVES.uncovered_models()
-    outstanding = AIRetentionOutbox.objects.exclude(state='done')
+    foreign_kinds = [
+        name for name, kind in retention.OUTBOX_KINDS.items() if not kind.thread_scoped
+    ]
+    outstanding = AIRetentionOutbox.objects.exclude(state='done').exclude(
+        kind__in=foreign_kinds
+    )
     outbox = {
         'sample_outstanding': outstanding.filter(reference__in=references).count(),
         'sample_pending': outstanding.filter(

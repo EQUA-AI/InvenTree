@@ -21,17 +21,22 @@ import {
   Button,
   Group,
   Loader,
-  Modal,
   SegmentedControl,
   Stack,
   Text,
   TextInput
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
+import {
+  startTargetConversation,
+  useAIChatState
+} from '../../states/AIChatState';
 import { useThreadFocusState } from '../../states/ThreadFocusState';
+import { useUserState } from '../../states/UserState';
 import { voiceController } from '../../states/VoiceSessionState';
+import { AssistantModal } from './AssistantModal';
 import {
   type ConversationFocus,
   type ConversationFocusKind,
@@ -63,10 +68,7 @@ function failureMessage(code: string | null | undefined): string {
     case 'focus_version_conflict':
       return t`The conversation focus changed elsewhere — nothing was applied. Try again.`;
     case 'focus_out_of_analysis_scope':
-      // Actionable refusal: the user's existing explicit controls are the
-      // keep-scope / change-scope / new-conversation paths. Never auto-expand
-      // the scope and never navigate on the user's behalf.
-      return t`That target is outside the current analysis scope — keep the current scope, change the scope, or start a new conversation.`;
+      return t`That target is outside the current analysis scope. The current target and scope have been kept.`;
     case 'focus_decision_not_set_aside':
       // Fail closed, single attempt: a failed set-aside never consumes an
       // approval and is never retried automatically.
@@ -111,23 +113,79 @@ export function ConversationFocusControl() {
   const unavailable = useThreadFocusState((state) => state.unavailable);
   const status = useThreadFocusState((state) => state.status);
   const error = useThreadFocusState((state) => state.error);
-  const shared = useThreadFocusState((state) => state.binding?.shared ?? false);
+  const binding = useThreadFocusState((state) => state.binding);
+  const shared = binding?.shared ?? false;
   const [pickerOpen, setPickerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const inFlight = useRef<symbol | null>(null);
+  const [failure, setFailure] = useState<{
+    code: string;
+    candidate: ConversationFocus | null;
+  } | null>(null);
+  const [recoveryError, setRecoveryError] = useState(false);
+  const restoreFocus = useRef<(() => void) | null>(null);
   const resolving = status === 'loading' || status === 'updating' || busy;
   const chip = focusChipState(focus, unavailable);
 
-  const commit = async (ref: ConversationFocusRef | null) => {
-    setBusy(true);
-    setActionError(null);
-    const result = await commitFocusChange(ref);
+  useEffect(() => {
+    inFlight.current = null;
     setBusy(false);
-    if (result.ok) {
-      setPickerOpen(false);
+    setPickerOpen(false);
+    setFailure(null);
+    setRecoveryError(false);
+  }, [binding]);
+
+  useLayoutEffect(() => {
+    if (pickerOpen || !restoreFocus.current) return;
+    const restore = restoreFocus.current;
+    restoreFocus.current = null;
+    const frame = requestAnimationFrame(restore);
+    return () => cancelAnimationFrame(frame);
+  }, [pickerOpen]);
+
+  const commit = async (candidate: ConversationFocus | null) => {
+    const current = useThreadFocusState.getState();
+    if (
+      inFlight.current !== null ||
+      current.binding !== binding ||
+      !binding ||
+      binding.shared ||
+      current.status === 'loading' ||
+      current.status === 'updating'
+    )
       return;
+    const operation = Symbol();
+    inFlight.current = operation;
+    // C01: an actual explicit user admission — a picker selection or Clear,
+    // including a candidate the server later refuses — immediately supersedes
+    // the pending page intent so an older entry hint can never be reapplied
+    // behind the user's newer choice. The entry preflight (applyFocusToThread)
+    // is NOT explicit admission and keeps its own compare-and-consume path.
+    useAIChatState.getState().clearHint();
+    setBusy(true);
+    setFailure(null);
+    setRecoveryError(false);
+    try {
+      const result = await commitFocusChange(focusRefOf(candidate));
+      if (useThreadFocusState.getState().binding !== binding) return;
+      if (result.ok) setPickerOpen(false);
+      else setFailure({ code: result.code ?? 'error', candidate });
+    } catch {
+      if (useThreadFocusState.getState().binding === binding)
+        setFailure({ code: 'error', candidate });
+    } finally {
+      if (inFlight.current === operation) {
+        inFlight.current = null;
+        setBusy(false);
+      }
     }
-    setActionError(failureMessage(result.code));
+  };
+
+  const keepCurrent = () => {
+    if (resolving) return;
+    setFailure(null);
+    setRecoveryError(false);
+    setPickerOpen(false);
   };
 
   return (
@@ -137,6 +195,10 @@ export function ConversationFocusControl() {
         color={focus ? 'teal' : 'gray'}
         leftSection={resolving ? <Loader size={10} /> : undefined}
         aria-label={t`Talking about`}
+        styles={{
+          label: { whiteSpace: 'normal', overflowWrap: 'anywhere' },
+          root: { height: 'auto', minHeight: 24, maxWidth: '100%' }
+        }}
       >
         <Trans>Talking about</Trans>:{' '}
         {chip === 'target' && focus ? (
@@ -161,8 +223,38 @@ export function ConversationFocusControl() {
             data-testid='conversation-focus-change'
             aria-label={t`Change what we are talking about`}
             disabled={resolving}
-            onClick={() => {
-              setActionError(null);
+            onClick={(event) => {
+              // Capture before the parent becomes inert; Mantine's later
+              // focus capture otherwise observes the document body.
+              const target = event.currentTarget;
+              const binding = useThreadFocusState.getState().binding;
+              restoreFocus.current = () => {
+                if (
+                  target.isConnected &&
+                  !target.disabled &&
+                  !target.closest('[inert]') &&
+                  useThreadFocusState.getState().binding === binding
+                ) {
+                  // The reactivated parent trap also queues initial focus.
+                  // Give it the same target until the user leaves this control.
+                  const autofocus = target.getAttribute('data-autofocus');
+                  target.setAttribute('data-autofocus', 'true');
+                  target.addEventListener(
+                    'blur',
+                    () => {
+                      if (autofocus === null) {
+                        target.removeAttribute('data-autofocus');
+                      } else {
+                        target.setAttribute('data-autofocus', autofocus);
+                      }
+                    },
+                    { once: true }
+                  );
+                  target.focus({ preventScroll: true });
+                }
+              };
+              setFailure(null);
+              setRecoveryError(false);
               setPickerOpen(true);
             }}
           >
@@ -188,15 +280,41 @@ export function ConversationFocusControl() {
           {focusSecondary(focus)}
         </Text>
       )}
-      {(actionError ?? (status === 'error' ? failureMessage(error) : null)) && (
-        <Text size='xs' c='red' data-testid='conversation-focus-error'>
-          {actionError ?? failureMessage(error)}
+      {!pickerOpen && (failure || status === 'error') && (
+        <Text
+          size='xs'
+          c='red'
+          role='alert'
+          data-testid='conversation-focus-error'
+        >
+          {failureMessage(failure?.code ?? error)}
         </Text>
       )}
       <ConversationFocusPicker
         opened={pickerOpen}
-        onClose={() => setPickerOpen(false)}
+        returnFocus={false}
+        onClose={keepCurrent}
         onCommit={commit}
+        busy={resolving}
+        failure={failure ? failureMessage(failure.code) : null}
+        failedTarget={failure?.candidate}
+        onRetry={failure ? () => void commit(failure.candidate) : undefined}
+        recoveryError={recoveryError}
+        onStartConversation={
+          failure?.code === 'focus_out_of_analysis_scope' && failure.candidate
+            ? () => {
+                const candidate = failure.candidate;
+                if (
+                  !candidate ||
+                  resolving ||
+                  useThreadFocusState.getState().binding !== binding
+                )
+                  return;
+                if (startTargetConversation(candidate)) keepCurrent();
+                else setRecoveryError(true);
+              }
+            : undefined
+        }
       />
     </Group>
   );
@@ -209,17 +327,33 @@ export function ConversationFocusControl() {
 export function ConversationFocusPicker({
   opened,
   onClose,
-  onCommit
+  onCommit,
+  busy = false,
+  failure,
+  failedTarget,
+  onRetry,
+  onStartConversation,
+  recoveryError = false,
+  returnFocus = true
 }: {
   opened: boolean;
   onClose: () => void;
-  onCommit: (ref: ConversationFocusRef | null) => Promise<void>;
+  onCommit: (candidate: ConversationFocus) => Promise<void>;
+  busy?: boolean;
+  failure?: string | null;
+  failedTarget?: ConversationFocus | null;
+  onRetry?: () => void;
+  onStartConversation?: () => void;
+  recoveryError?: boolean;
+  returnFocus?: boolean;
 }) {
   const host = useThreadFocusState((state) => state.binding?.host ?? '');
+  const userId = useUserState((state) => state.userId());
+  const generation = useAIChatState((state) => state.sessionGeneration);
   const [kind, setKind] = useState<ConversationFocusKind>('machine');
   const [query, setQuery] = useState('');
   const candidates = useQuery({
-    queryKey: ['focus-candidates', host, kind, query],
+    queryKey: ['focus-candidates', host, userId, generation, kind, query],
     enabled: opened && host !== '',
     queryFn: async () => {
       const result = await searchFocusCandidates(host, kind, query, 10);
@@ -231,14 +365,86 @@ export function ConversationFocusPicker({
   });
 
   return (
-    <Modal
+    <AssistantModal
       opened={opened}
       onClose={onClose}
+      closeOnEscape={!busy}
+      closeOnClickOutside={!busy}
+      closeButtonProps={{
+        disabled: busy,
+        'aria-label': t`Close target picker`
+      }}
+      returnFocus={returnFocus}
       title={t`What are we talking about?`}
       data-testid='conversation-focus-picker'
     >
       <Stack gap='sm'>
+        {busy && (
+          <Text
+            component='output'
+            aria-live='polite'
+            size='sm'
+            data-testid='conversation-focus-pending'
+          >
+            <Trans>Confirming target…</Trans>
+          </Text>
+        )}
+        {failure && (
+          <Stack gap='xs'>
+            <Text
+              role='alert'
+              size='sm'
+              c='red'
+              data-testid='conversation-focus-error'
+            >
+              {failure}
+            </Text>
+            {failedTarget && (
+              <Text size='sm'>
+                {failedTarget.label} ({focusSecondary(failedTarget)})
+              </Text>
+            )}
+            <Group gap='xs'>
+              <Button variant='default' disabled={busy} onClick={onClose}>
+                <Trans>Keep current target</Trans>
+              </Button>
+              {onRetry && (
+                <Button variant='light' disabled={busy} onClick={onRetry}>
+                  <Trans>Retry selection</Trans>
+                </Button>
+              )}
+            </Group>
+            {onStartConversation && (
+              <>
+                <Button
+                  variant='light'
+                  h='auto'
+                  py='xs'
+                  styles={{ label: { whiteSpace: 'normal' } }}
+                  disabled={busy}
+                  onClick={onStartConversation}
+                >
+                  <Trans>Start a new conversation for this target</Trans>
+                </Button>
+                <Text size='xs' c='dimmed'>
+                  <Trans>
+                    The target will be confirmed before your first message.
+                  </Trans>
+                </Text>
+              </>
+            )}
+            {recoveryError && (
+              <Text role='alert' size='sm' c='red'>
+                <Trans>
+                  Could not start a new conversation. Finish the current chat or
+                  voice activity and try again.
+                </Trans>
+              </Text>
+            )}
+          </Stack>
+        )}
         <SegmentedControl
+          disabled={busy}
           value={kind}
           aria-label={t`Target kind`}
           data-testid='conversation-focus-kind'
@@ -249,21 +455,38 @@ export function ConversationFocusPicker({
           }))}
         />
         <TextInput
+          disabled={busy}
           aria-label={t`Search targets`}
           data-testid='conversation-focus-search'
           placeholder={t`Search by name or reference...`}
           value={query}
           onChange={(event) => setQuery(event.currentTarget.value)}
         />
-        {candidates.isPending && opened ? (
+        {candidates.isFetching && opened ? (
           <Group>
             <Loader size='sm' />
-            <Trans>Loading targets…</Trans>
+            <Text component='output' aria-live='polite'>
+              <Trans>Loading targets…</Trans>
+            </Text>
           </Group>
         ) : candidates.isError ? (
-          <Text size='sm' c='red' data-testid='conversation-focus-error'>
-            <Trans>Could not load targets — try again.</Trans>
-          </Text>
+          <Stack gap='xs'>
+            <Text
+              role='alert'
+              size='sm'
+              c='red'
+              data-testid='conversation-focus-search-error'
+            >
+              <Trans>Could not load targets — try again.</Trans>
+            </Text>
+            <Button
+              variant='light'
+              disabled={busy}
+              onClick={() => void candidates.refetch()}
+            >
+              <Trans>Retry search</Trans>
+            </Button>
+          </Stack>
         ) : (candidates.data?.candidates.length ?? 0) === 0 ? (
           <Text size='sm' c='dimmed'>
             <Trans>No matching targets.</Trans>
@@ -275,11 +498,10 @@ export function ConversationFocusPicker({
                 key={`${candidate.kind}-${candidate.id}`}
                 variant='light'
                 justify='flex-start'
+                disabled={busy}
                 data-testid='conversation-focus-option'
                 aria-label={`${candidate.label} (${focusSecondary(candidate)})`}
-                onClick={() =>
-                  void onCommit({ kind: candidate.kind, id: candidate.id })
-                }
+                onClick={() => void onCommit(candidate)}
               >
                 <Stack gap={0} align='flex-start'>
                   <Text size='sm'>{candidate.label}</Text>
@@ -297,6 +519,6 @@ export function ConversationFocusPicker({
           </Text>
         )}
       </Stack>
-    </Modal>
+    </AssistantModal>
   );
 }

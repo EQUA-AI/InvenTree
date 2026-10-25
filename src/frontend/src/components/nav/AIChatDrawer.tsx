@@ -5,63 +5,41 @@ import {
   Badge,
   Box,
   Button,
-  CopyButton,
   Group,
-  Loader,
-  Menu,
   Paper,
-  ScrollArea,
-  Stack,
   Tabs,
   Text,
-  TextInput,
-  Textarea,
   Tooltip,
-  Transition,
-  UnstyledButton,
-  useComputedColorScheme,
   useMantineTheme
 } from '@mantine/core';
-import {
-  useLocalStorage,
-  useMediaQuery,
-  useViewportSize
-} from '@mantine/hooks';
+import { useLocalStorage } from '@mantine/hooks';
 import { showNotification } from '@mantine/notifications';
-import {
-  IconArrowDown,
-  IconBrain,
-  IconCheck,
-  IconChevronDown,
-  IconCopy,
-  IconEye,
-  IconFileExport,
-  IconGripVertical,
-  IconMessagePlus,
-  IconMessages,
-  IconPaperclip,
-  IconPencil,
-  IconPlayerStop,
-  IconRefresh,
-  IconRobot,
-  IconSearch,
-  IconSend,
-  IconShare2,
-  IconSparkles,
-  IconThumbDown,
-  IconThumbUp,
-  IconTrash,
-  IconUser,
-  IconX
-} from '@tabler/icons-react';
+import { IconArrowDown, IconSparkles, IconX } from '@tabler/icons-react';
 import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
-  useState
+  useState,
+  useSyncExternalStore
 } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
+import { VoiceDock } from '../ai/voice/VoiceDock';
+import { AssistantHeader } from '../aichat/AssistantHeader';
+import { AssistantMessageRenderer as ChatMessageItem } from '../aichat/AssistantMessageRenderer';
+import workspaceStyles from '../aichat/AssistantWorkspace.module.css';
+import { ChatComposer } from '../aichat/ChatComposer';
+import { ChatTranscript } from '../aichat/ChatTranscript';
+import {
+  ConversationHistory as ThreadHistoryPanel,
+  ConversationBrowser as ThreadSelector
+} from '../aichat/ConversationBrowser';
+import { ConversationContextBar } from '../aichat/ConversationContextBar';
+import {
+  ASSISTANT_MIN_WIDTH,
+  useAssistantGeometry
+} from '../aichat/useAssistantGeometry';
 
 import { Boundary } from '@lib/components/Boundary';
 import { useQuery } from '@tanstack/react-query';
@@ -71,22 +49,24 @@ import {
   chatIndexKey,
   chatInvalidationKey
 } from '../../functions/chatThreadCache';
-import type {
-  OwnedDeletionPage,
-  OwnedDeletionPlan
-} from '../../functions/ownedThreadDeletion';
-import type { TranscriptExportCounts } from '../../functions/transcriptExport';
 import {
-  type ChatMessage,
-  type ChatThread,
   type QuestionPayload,
   type QuestionResolution,
-  type UploadedFile,
   useAIChat
 } from '../../hooks/UseAIChat';
 import { useChatProposals } from '../../hooks/useChatProposals';
 import { useVoiceLiveSession } from '../../hooks/useVoiceLiveSession';
-import { useAIChatState } from '../../states/AIChatState';
+import {
+  type AIChatTargetHint,
+  registerTargetConversationStarter,
+  useAIChatState
+} from '../../states/AIChatState';
+import {
+  type ChatDraftBinding,
+  type ChatDraftScope,
+  bindChatDrafts,
+  subscribeChatDrafts
+} from '../../states/ChatDraftState';
 import { useEvidenceViewerState } from '../../states/EvidenceViewerState';
 import { useLocalState } from '../../states/LocalState';
 import { useThreadFocusState } from '../../states/ThreadFocusState';
@@ -107,53 +87,21 @@ import {
   suggestionKinds
 } from './chatComposer';
 
-/**
- * Test marker for the real scroll viewport. Spread into `viewportProps`
- * (the spread bypasses excess-attribute typing; `style` anchors the
- * weak-type check).
- */
-const VIEWPORT_MARKERS = {
-  'data-testid': 'ai-chat-messages-viewport',
-  style: {}
-};
 import { ApprovalInboxPanel } from '../ai/ApprovalInboxPanel';
 import { ChatActionProposalList } from '../ai/ChatActionProposals';
 import { MailboxPanel } from '../ai/MailboxPanel';
-import { QuestionCard } from '../ai/QuestionCard';
 import { VoiceDecisionCard } from '../ai/VoiceDecisionCard';
-import { VoiceTranscript } from '../ai/VoiceTranscript';
 import {
   VoiceActiveStrip,
   VoiceComposerControl
 } from '../ai/voice/VoiceComposerControl';
-import { VoiceExperienceControls } from '../ai/voice/VoiceExperienceControls';
 import { VOICE_SHORTCUT } from '../ai/voice/voiceShortcuts';
 import { voiceStartBlockReason } from '../ai/voice/voiceStartEligibility';
-import { AnalysisContextLine } from '../aichat/ActiveScopeBanner';
-import {
-  AssistantSurface,
-  clampAssistantWidth
-} from '../aichat/AssistantSurface';
-import { CitationList } from '../aichat/CitationList';
-import { ClaimEvidence } from '../aichat/ClaimEvidence';
-import { ContextUsedDisclosure } from '../aichat/ContextUsedDisclosure';
-import {
-  ConversationFocusControl,
-  commitFocusChange
-} from '../aichat/ConversationFocusControl';
-import { DeleteOwnedThreadsModal } from '../aichat/DeleteOwnedThreadsModal';
-import { EntityChips } from '../aichat/EntityChips';
-import { EvidenceChips } from '../aichat/EvidenceChips';
-import { ExportThreadsModal } from '../aichat/ExportThreadsModal';
+import { AssistantSurface } from '../aichat/AssistantSurface';
+import { ChatAttachmentQueue } from '../aichat/ChatAttachmentQueue';
+import { commitFocusChange } from '../aichat/ConversationFocusControl';
 import { LegacyChatStorageNotice } from '../aichat/LegacyChatStorageNotice';
-import { MarkdownMessage } from '../aichat/MarkdownMessage';
-import { RetrievalCoverage } from '../aichat/RetrievalCoverage';
-import {
-  type ThreadAction,
-  ThreadActionsModal
-} from '../aichat/ThreadActionsModal';
 import { ThreadMemoryModal } from '../aichat/ThreadMemoryModal';
-import { WorkFocusChip } from '../aichat/WorkFocusChip';
 import {
   type ContextPreflight,
   type ContextTargetHint,
@@ -163,506 +111,10 @@ import {
   isFreshSessionTurn
 } from '../aichat/contextPreflight';
 import type { ConversationFocusRef } from '../aichat/conversationFocus';
-import type { EvidenceAnalysisAttachment } from '../aichat/evidenceAnalysis';
-import { composeAnswerMarkdown } from '../aichat/evidenceFormat';
 import { hintIsRedundant } from '../aichat/scopeContext';
-import type { ThreadDeleteResult } from '../aichat/threadDeletion';
 import { type ChatWorkFocus, focusReturnPath } from '../aichat/workFocus';
-import RiskRadarDrawerBadge from '../riskradar/RiskRadarDrawerBadge';
 
 type AIChatDrawerTab = 'chat' | 'approvals' | 'history' | 'mail';
-
-function formatToolDuration(durationMs?: number): string | null {
-  if (durationMs === undefined || !Number.isFinite(durationMs)) return null;
-  if (durationMs < 1000) return `${Math.round(durationMs)} ms`;
-  return `${(durationMs / 1000).toFixed(1)} s`;
-}
-
-function formatRelativeTimeFromISOString(iso: string): string {
-  const date = new Date(iso);
-
-  if (!Number.isFinite(date.getTime())) {
-    return t`Unknown`;
-  }
-
-  const now = new Date();
-  const diff = now.getTime() - date.getTime();
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-
-  if (minutes < 1) return t`Just now`;
-  if (minutes < 60) return t`${minutes}m ago`;
-  if (hours < 24) return t`${hours}h ago`;
-  return t`${days}d ago`;
-}
-
-/**
- * Conversation history with server-side search and resume (S20 A8).
- *
- * Search runs over the durable aichat ledger inside the caller's own
- * owner/scope boundary — the server can only ever return the viewer's
- * threads. Clicking a row resumes that thread in the chat tab.
- */
-function ThreadHistoryPanel({
-  threads,
-  activeThreadId,
-  searchThreads,
-  onResume,
-  hasMoreThreads,
-  loadingMoreThreads,
-  onLoadMore
-}: Readonly<{
-  threads: { id: string; title: string; updatedAt: Date }[];
-  activeThreadId: string | null;
-  searchThreads: (
-    query: string,
-    cursor?: string | null
-  ) => Promise<{ threads: ChatThread[]; nextCursor: string | null }>;
-  onResume: (threadId: string) => void;
-  hasMoreThreads: boolean;
-  loadingMoreThreads: boolean;
-  onLoadMore: () => void;
-}>) {
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<
-    { id: string; title: string; updatedAt: Date }[] | null
-  >(null);
-  const [searching, setSearching] = useState(false);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [searchError, setSearchError] = useState(false);
-  const queryRef = useRef(query);
-  const searchVersionRef = useRef(0);
-  queryRef.current = query;
-
-  useEffect(() => {
-    const version = ++searchVersionRef.current;
-    const term = query.trim();
-    setResults(null);
-    setNextCursor(null);
-    setSearchError(false);
-    if (!term) {
-      setSearching(false);
-      return;
-    }
-    setSearching(true);
-    let live = true;
-    const handle = setTimeout(() => {
-      searchThreads(term)
-        .then((page) => {
-          if (live && version === searchVersionRef.current) {
-            setResults(page.threads);
-            setNextCursor(page.nextCursor);
-          }
-        })
-        .catch(() => {
-          if (live) setSearchError(true);
-        })
-        .finally(() => {
-          if (live) setSearching(false);
-        });
-    }, 300);
-    return () => {
-      live = false;
-      clearTimeout(handle);
-    };
-  }, [query, searchThreads]);
-
-  const loadMoreSearch = async () => {
-    if (!nextCursor || searching) return;
-    const version = searchVersionRef.current;
-    const term = query;
-    setSearching(true);
-    setSearchError(false);
-    try {
-      const page = await searchThreads(term, nextCursor);
-      if (version !== searchVersionRef.current || queryRef.current !== term)
-        return;
-      setResults((prev) => {
-        const ids = new Set((prev ?? []).map((thread) => thread.id));
-        return [
-          ...(prev ?? []),
-          ...page.threads.filter((thread) => !ids.has(thread.id))
-        ];
-      });
-      setNextCursor(page.nextCursor);
-    } catch {
-      if (version === searchVersionRef.current) setSearchError(true);
-    } finally {
-      if (version === searchVersionRef.current) setSearching(false);
-    }
-  };
-
-  const rows = query.trim() ? (results ?? []) : threads;
-
-  return (
-    <Stack gap='xs' data-testid='ai-chat-thread-history'>
-      <TextInput
-        placeholder={t`Search conversations...`}
-        value={query}
-        onChange={(event) => setQuery(event.currentTarget.value)}
-        leftSection={<IconSearch size={14} />}
-        rightSection={searching ? <Loader size='xs' /> : undefined}
-        aria-label={t`Search conversation history`}
-        data-testid='search-ai-chat-history'
-      />
-      {searchError && (
-        <Alert color='red'>{t`Conversation search failed. Edit the search or retry loading more results.`}</Alert>
-      )}
-      {!searching && !searchError && rows.length === 0 && (
-        <Text size='sm' c='dimmed' ta='center' py='md'>
-          {results !== null
-            ? t`No conversations match`
-            : t`No conversations yet`}
-        </Text>
-      )}
-      {rows.map((thread) => (
-        <UnstyledButton
-          key={thread.id}
-          onClick={() => onResume(thread.id)}
-          data-testid='ai-chat-history-row'
-        >
-          <Paper
-            p='xs'
-            radius='md'
-            withBorder
-            style={{
-              borderColor:
-                thread.id === activeThreadId
-                  ? 'var(--mantine-color-blue-4)'
-                  : undefined
-            }}
-          >
-            <Group justify='space-between' wrap='nowrap'>
-              <Text size='sm' truncate style={{ flex: 1 }}>
-                {thread.title || t`Chat`}
-              </Text>
-              <Text size='xs' c='dimmed' style={{ whiteSpace: 'nowrap' }}>
-                {formatRelativeTimeFromISOString(
-                  thread.updatedAt.toISOString()
-                )}
-              </Text>
-            </Group>
-          </Paper>
-        </UnstyledButton>
-      ))}
-      {(query.trim() ? Boolean(nextCursor) : hasMoreThreads) && (
-        <Button
-          variant='subtle'
-          loading={query.trim() ? searching : loadingMoreThreads}
-          onClick={() => {
-            if (query.trim()) void loadMoreSearch();
-            else onLoadMore();
-          }}
-        >{t`Load more conversations`}</Button>
-      )}
-    </Stack>
-  );
-}
-
-/**
- * Thread selector dropdown component
- */
-function ThreadSelector({
-  threads,
-  sharedThreads = [],
-  activeThreadId,
-  onSelectThread,
-  onNewThread,
-  onDeleteThread,
-  onPrepareDeletion,
-  onExport,
-  onDeletePage,
-  bulkDeletionDisabled,
-  onRenameThread,
-  onShareThread,
-  onInspectMemory,
-  disabled = false
-}: Readonly<{
-  threads: ChatThread[];
-  sharedThreads?: ChatThread[];
-  activeThreadId: string;
-  onSelectThread: (threadId: string) => void;
-  onNewThread: () => void;
-  onDeleteThread: (threadId: string) => Promise<ThreadDeleteResult>;
-  bulkDeletionDisabled: boolean;
-  onPrepareDeletion: () => Promise<OwnedDeletionPlan>;
-  onExport: (signal: AbortSignal) => Promise<TranscriptExportCounts>;
-  onDeletePage: (
-    plan: OwnedDeletionPlan,
-    cursor: string | null
-  ) => Promise<OwnedDeletionPage>;
-  onRenameThread: (threadId: string, title: string) => Promise<boolean>;
-  onShareThread?: (
-    threadId: string,
-    username: string,
-    revoke: boolean
-  ) => Promise<{ ok: boolean }>;
-  /**
-   * M2 PR 9 (GR-16): "What this chat remembers" — offered on owned,
-   * persisted rows only; shared rows never get the affordance.
-   */
-  onInspectMemory?: (threadId: string) => void;
-  disabled?: boolean;
-}>) {
-  const theme = useMantineTheme();
-  const [action, setAction] = useState<ThreadAction | null>(null);
-  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
-  const activeThread =
-    threads.find((t) => t.id === activeThreadId) ??
-    sharedThreads.find((t) => t.id === activeThreadId);
-
-  // Format relative time
-  const formatTime = (date: Date) => {
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-
-    if (minutes < 1) return t`Just now`;
-    if (minutes < 60) return t`${minutes}m ago`;
-    if (hours < 24) return t`${hours}h ago`;
-    return t`${days}d ago`;
-  };
-
-  return (
-    <>
-      {/* Keep the menu inside the mobile dialog's non-inert subtree. */}
-      <Menu
-        shadow='md'
-        width={280}
-        position='bottom-start'
-        withinPortal={false}
-      >
-        <Menu.Target>
-          <UnstyledButton
-            aria-label={t`Select conversation`}
-            data-testid='select-ai-chat-thread'
-            disabled={disabled}
-            px='sm'
-            py={6}
-            style={{
-              borderRadius: 'var(--mantine-radius-md)',
-              border: '1px solid var(--mantine-color-gray-3)',
-              background: 'var(--mantine-color-body)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              maxWidth: 200,
-              transition: 'border-color 0.2s ease'
-            }}
-          >
-            <IconMessages size={16} style={{ flexShrink: 0 }} />
-            <Text size='sm' truncate style={{ flex: 1 }}>
-              {activeThread?.title || t`New Chat`}
-            </Text>
-            <IconChevronDown
-              size={14}
-              style={{ flexShrink: 0, opacity: 0.5 }}
-            />
-          </UnstyledButton>
-        </Menu.Target>
-
-        <Menu.Dropdown>
-          <Menu.Label>{t`Conversations`}</Menu.Label>
-          <Menu.Item
-            component={Link}
-            to='/memory/'
-            leftSection={<IconBrain size={16} />}
-          >{t`What AIMMS remembers`}</Menu.Item>
-
-          {/* New chat option */}
-          <Menu.Item
-            aria-label={t`New conversation`}
-            data-testid='new-ai-chat-thread'
-            leftSection={<IconMessagePlus size={16} />}
-            onClick={onNewThread}
-            color='blue'
-          >
-            {t`New conversation`}
-          </Menu.Item>
-
-          <Menu.Item
-            aria-label={t`Export my conversations`}
-            data-testid='export-owned-ai-chat-threads'
-            disabled={disabled}
-            leftSection={<IconFileExport size={16} />}
-            onClick={() => setExportOpen(true)}
-          >{t`Export my saved conversations`}</Menu.Item>
-          <Menu.Item
-            aria-label={t`Delete my conversations`}
-            data-testid='delete-owned-ai-chat-threads'
-            color='red'
-            disabled={disabled || bulkDeletionDisabled}
-            leftSection={<IconTrash size={16} />}
-            onClick={() => setDeleteAllOpen(true)}
-          >{t`Delete my saved conversations`}</Menu.Item>
-
-          {threads.length > 0 && <Menu.Divider />}
-
-          {/* Thread list */}
-          <ScrollArea.Autosize mah={300}>
-            {threads.map((thread) => (
-              <Box
-                key={thread.id}
-                px='sm'
-                py={6}
-                style={{
-                  backgroundColor:
-                    thread.id === activeThreadId
-                      ? theme.colors.blue[0]
-                      : undefined
-                }}
-              >
-                <Group justify='space-between' wrap='nowrap' gap={8}>
-                  <Menu.Item
-                    onClick={() => onSelectThread(thread.id)}
-                    style={{ flex: 1, minWidth: 0, textAlign: 'left' }}
-                  >
-                    <Box>
-                      <Text
-                        size='sm'
-                        truncate
-                        fw={thread.id === activeThreadId ? 600 : 400}
-                      >
-                        {thread.title}
-                      </Text>
-                      <Text size='xs' c='dimmed'>
-                        {formatTime(thread.updatedAt)}
-                      </Text>
-                    </Box>
-                  </Menu.Item>
-                  <Group gap={2} wrap='nowrap'>
-                    <ActionIcon
-                      aria-label={t`Rename conversation`}
-                      data-testid={`rename-ai-chat-thread-${thread.id}`}
-                      size='xs'
-                      variant='subtle'
-                      color='gray'
-                      disabled={disabled}
-                      onClick={() => setAction({ kind: 'rename', thread })}
-                    >
-                      <IconPencil size={12} />
-                    </ActionIcon>
-                    {onInspectMemory &&
-                      thread.isPersisted &&
-                      !thread.shared && (
-                        <ActionIcon
-                          aria-label={t`Conversation memory`}
-                          data-testid={`memory-ai-chat-thread-${thread.id}`}
-                          title={t`What this chat remembers`}
-                          size='xs'
-                          variant='subtle'
-                          color='gray'
-                          disabled={disabled}
-                          onClick={() => onInspectMemory(thread.id)}
-                        >
-                          <IconBrain size={12} />
-                        </ActionIcon>
-                      )}
-                    {onShareThread && (
-                      <ActionIcon
-                        aria-label={t`Share conversation`}
-                        data-testid={`share-ai-chat-thread-${thread.id}`}
-                        size='xs'
-                        variant='subtle'
-                        color='gray'
-                        disabled={disabled}
-                        onClick={() => setAction({ kind: 'share', thread })}
-                      >
-                        <IconShare2 size={12} />
-                      </ActionIcon>
-                    )}
-                    <ActionIcon
-                      aria-label={t`Delete conversation`}
-                      data-testid={`delete-ai-chat-thread-${thread.id}`}
-                      size='xs'
-                      variant='subtle'
-                      color='red'
-                      disabled={disabled}
-                      onClick={() => setAction({ kind: 'delete', thread })}
-                    >
-                      <IconTrash size={12} />
-                    </ActionIcon>
-                  </Group>
-                </Group>
-              </Box>
-            ))}
-          </ScrollArea.Autosize>
-
-          {sharedThreads.length > 0 && (
-            <>
-              <Menu.Divider />
-              <Menu.Label>{t`Shared with me`}</Menu.Label>
-              <ScrollArea.Autosize mah={160}>
-                {sharedThreads.map((thread) => (
-                  <Menu.Item
-                    key={thread.id}
-                    data-testid={`shared-thread-${thread.id}`}
-                    onClick={() => onSelectThread(thread.id)}
-                    rightSection={
-                      <IconEye size={12} style={{ opacity: 0.6 }} />
-                    }
-                    style={{
-                      backgroundColor:
-                        thread.id === activeThreadId
-                          ? theme.colors.blue[0]
-                          : undefined
-                    }}
-                  >
-                    <Box>
-                      <Text
-                        size='sm'
-                        truncate
-                        fw={thread.id === activeThreadId ? 600 : 400}
-                      >
-                        {thread.title}
-                      </Text>
-                      <Text size='xs' c='dimmed'>
-                        {t`Read-only`}
-                      </Text>
-                    </Box>
-                  </Menu.Item>
-                ))}
-              </ScrollArea.Autosize>
-            </>
-          )}
-
-          {threads.length === 0 && sharedThreads.length === 0 && (
-            <Text size='xs' c='dimmed' ta='center' py='sm'>
-              {t`No previous conversations`}
-            </Text>
-          )}
-        </Menu.Dropdown>
-      </Menu>
-      {exportOpen && (
-        <ExportThreadsModal
-          onExport={onExport}
-          onClose={() => setExportOpen(false)}
-        />
-      )}
-      {deleteAllOpen && (
-        <DeleteOwnedThreadsModal
-          onPrepare={onPrepareDeletion}
-          onDeletePage={onDeletePage}
-          onClose={() => setDeleteAllOpen(false)}
-        />
-      )}
-      {action && (
-        <ThreadActionsModal
-          key={`${action.kind}:${action.thread.id}`}
-          action={action}
-          onClose={() => setAction(null)}
-          onDelete={onDeleteThread}
-          onRename={onRenameThread}
-          onShare={onShareThread}
-        />
-      )}
-    </>
-  );
-}
 
 /**
  * AI Chat toggle button component - displays in the header
@@ -711,8 +163,8 @@ export function AIChatButton({
         variant='subtle'
         size='lg'
         radius='xl'
-        aria-label={t`Open assistant`}
         data-testid='open-ai-chat'
+        aria-label={t`Open AI chat`}
         aria-expanded={opened}
         aria-controls='ai-chat-drawer'
         onMouseEnter={showTooltip}
@@ -732,544 +184,6 @@ export function AIChatButton({
         <IconSparkles size={20} />
       </ActionIcon>
     </Tooltip>
-  );
-}
-
-/**
- * Animated typing indicator - 3 bouncing dots
- */
-function TypingIndicator() {
-  return (
-    <Group gap={4} align='center'>
-      {[0, 1, 2].map((i) => (
-        <Box
-          key={i}
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: '50%',
-            backgroundColor: 'var(--mantine-color-blue-5)',
-            animation: `copilotBounce 1.4s ease-in-out ${i * 0.16}s infinite`
-          }}
-        />
-      ))}
-      <style>{`
-        @keyframes copilotBounce {
-          0%, 80%, 100% { transform: translateY(0); }
-          40% { transform: translateY(-6px); }
-        }
-      `}</style>
-    </Group>
-  );
-}
-
-/**
- * Message action buttons (copy, thumbs up/down)
- */
-function MessageActions({
-  content,
-  messageId,
-  threadId,
-  evidenceAnalysis,
-  onRegenerate
-}: Readonly<{
-  content: string;
-  messageId: string;
-  threadId: string | null;
-  evidenceAnalysis?: EvidenceAnalysisAttachment;
-  onRegenerate?: () => void;
-}>) {
-  const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
-  // S11 (Q28): copy/export carry scope + as-of + coverage + citations,
-  // composed from the persisted manifest ONLY — live copy, reload copy and
-  // export are one function over one payload. The feedback SHA-256 below
-  // deliberately keeps hashing the RAW content (content-addressed ledger).
-  const exportable = evidenceAnalysis
-    ? composeAnswerMarkdown(content, evidenceAnalysis)
-    : content;
-
-  const download = () => {
-    const blob = new Blob([exportable], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `aimms-answer-${(threadId ?? 'thread').slice(0, 15)}-${messageId.slice(0, 12)}.md`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // Persist the verdict to the durable ledger. Freshly streamed messages
-  // carry client-generated ids that never exist server-side, so the exact
-  // rated content's SHA-256 rides along and the server attributes by content
-  // when the id is unknown. Toggling a thumb off retracts the verdict —
-  // "no verdict" is a legitimate latest state.
-  const rate = (rating: 'up' | 'down') => {
-    const next = feedback === rating ? null : rating;
-    setFeedback(next);
-    if (!threadId) {
-      return;
-    }
-    void (async () => {
-      try {
-        const bytes = new TextEncoder().encode(content);
-        const digest = await crypto.subtle.digest('SHA-256', bytes);
-        const contentSha256 = Array.from(new Uint8Array(digest))
-          .map((byte) => byte.toString(16).padStart(2, '0'))
-          .join('');
-        await api.post('/api/aichat/feedback/', {
-          thread_id: threadId,
-          message_id: messageId,
-          rating: next ?? 'none',
-          content_sha256: contentSha256
-        });
-      } catch {
-        // The optimistic state stays; the ledger simply missed one verdict.
-        console.debug('feedback not recorded');
-      }
-    })();
-  };
-
-  return (
-    <Group
-      gap={8}
-      mt='xs'
-      style={{
-        opacity: 0.6,
-        transition: 'opacity 0.2s ease'
-      }}
-      className='message-actions'
-    >
-      <CopyButton value={exportable}>
-        {({ copied, copy }) => (
-          <Tooltip label={copied ? t`Copied!` : t`Copy`} withArrow>
-            <ActionIcon
-              aria-label={t`Copy message`}
-              data-testid='copy-ai-chat-message'
-              size='xs'
-              variant='subtle'
-              color={copied ? 'teal' : 'gray'}
-              onClick={copy}
-            >
-              {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
-            </ActionIcon>
-          </Tooltip>
-        )}
-      </CopyButton>
-      <Tooltip label={t`Good response`} withArrow>
-        <ActionIcon
-          aria-label={t`Rate response helpful`}
-          data-testid='rate-ai-chat-message-good'
-          size='xs'
-          variant='subtle'
-          color={feedback === 'up' ? 'blue' : 'gray'}
-          onClick={() => rate('up')}
-        >
-          <IconThumbUp size={14} />
-        </ActionIcon>
-      </Tooltip>
-      <Tooltip label={t`Bad response`} withArrow>
-        <ActionIcon
-          aria-label={t`Rate response unhelpful`}
-          data-testid='rate-ai-chat-message-bad'
-          size='xs'
-          variant='subtle'
-          color={feedback === 'down' ? 'red' : 'gray'}
-          onClick={() => rate('down')}
-        >
-          <IconThumbDown size={14} />
-        </ActionIcon>
-      </Tooltip>
-      {evidenceAnalysis && (
-        <Tooltip label={t`Export as Markdown`} withArrow>
-          <ActionIcon
-            aria-label={t`Export message`}
-            data-testid='export-ai-chat-message'
-            size='xs'
-            variant='subtle'
-            color='gray'
-            onClick={download}
-          >
-            <IconFileExport size={14} />
-          </ActionIcon>
-        </Tooltip>
-      )}
-      {onRegenerate && (
-        <Tooltip label={t`Regenerate`} withArrow>
-          <ActionIcon
-            aria-label={t`Regenerate response`}
-            data-testid='regenerate-ai-chat-message'
-            size='xs'
-            variant='subtle'
-            color='gray'
-            onClick={onRegenerate}
-          >
-            <IconRefresh size={14} />
-          </ActionIcon>
-        </Tooltip>
-      )}
-      <style>{`
-        .message-actions:hover { opacity: 1 !important; }
-      `}</style>
-    </Group>
-  );
-}
-
-/**
- * Single chat message component - CopilotKit style
- */
-/** S11 (§8.8): the six DISTINCT no-data states; the client never converts
- *  an empty result into "no records exist" on its own. */
-function noDataReasonLabel(
-  reason: NonNullable<EvidenceAnalysisAttachment['no_data_reason']>,
-  populationCount: number | null
-): string {
-  switch (reason) {
-    case 'complete_population_no_matches':
-      return populationCount != null
-        ? t`No matching records among the ${populationCount} evaluated.`
-        : t`No matching records in the fully evaluated population.`;
-    case 'outside_active_selection':
-      return t`This falls outside the active scope selection.`;
-    case 'unauthorized_or_unavailable':
-      return t`Source not available.`;
-    case 'retrieval_failure':
-      return t`The search could not be completed.`;
-    case 'unresolved_applicability':
-      return t`Could not determine which documents apply.`;
-    case 'incomplete_coverage':
-      return t`Coverage was incomplete; no conclusion was drawn.`;
-  }
-}
-
-/** S11: the CLOSED progress-stage enum, mapped client-side to localized
- *  strings — server free text can never paint here. */
-function progressStageLabel(stage: string): string {
-  switch (stage) {
-    case 'confirming_scope':
-      return t`Confirming scope`;
-    case 'reviewing_records':
-      return t`Reviewing records`;
-    case 'validating_evidence':
-      return t`Validating evidence`;
-    default:
-      return t`Working`;
-  }
-}
-
-function ChatMessageItem({
-  message,
-  threadId,
-  aiHost,
-  questionArmed,
-  questionAnsweredLocally,
-  questionResolution,
-  onQuestionAnswer,
-  onRegenerate
-}: Readonly<{
-  message: ChatMessage;
-  threadId: string | null;
-  aiHost: string;
-  questionArmed?: boolean;
-  questionAnsweredLocally?: boolean;
-  questionResolution?: QuestionResolution;
-  onQuestionAnswer?: (text: string) => void;
-  onRegenerate?: () => void;
-}>) {
-  const theme = useMantineTheme();
-  const colorScheme = useComputedColorScheme('light');
-  const isUser = message.role === 'user';
-
-  return (
-    <Transition mounted transition='fade' duration={200}>
-      {(styles) => (
-        <Box
-          style={{
-            ...styles,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: isUser ? 'flex-end' : 'flex-start',
-            marginBottom: 'var(--mantine-spacing-md)'
-          }}
-        >
-          {/* Avatar and label for assistant */}
-          {!isUser && (
-            <Group gap='xs' mb={4}>
-              <Box
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: '50%',
-                  background: `linear-gradient(135deg, ${theme.colors.blue[5]}, ${theme.colors.violet[5]})`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <IconRobot size={16} color='white' />
-              </Box>
-              <Text size='xs' c='dimmed' fw={500}>
-                {t`AI Assistant`}
-              </Text>
-            </Group>
-          )}
-
-          {/* Message bubble (U1: theme-aware colors — no hardcoded
-            light-only grays; Work messages use the native contrast tokens) */}
-          <Paper
-            p='sm'
-            radius='lg'
-            style={{
-              backgroundColor: isUser
-                ? message.workFocus
-                  ? 'var(--aimms-work-action-bg, var(--mantine-color-blue-8))'
-                  : theme.colors.blue[6]
-                : colorScheme === 'dark'
-                  ? theme.colors.dark[6]
-                  : theme.colors.gray[0],
-              color: isUser
-                ? message.workFocus
-                  ? 'var(--aimms-work-action-text, #ffffff)'
-                  : 'white'
-                : undefined,
-              maxWidth: '85%',
-              borderTopRightRadius: isUser ? 4 : undefined,
-              borderTopLeftRadius: !isUser ? 4 : undefined,
-              boxShadow: isUser
-                ? '0 2px 8px rgba(59, 130, 246, 0.25)'
-                : '0 1px 3px rgba(0, 0, 0, 0.08)'
-            }}
-          >
-            {!isUser && (message.toolActivity?.length ?? 0) > 0 && (
-              <Group gap={6} mb={6} wrap='wrap'>
-                {message.toolActivity?.map((activity) => {
-                  const duration = formatToolDuration(activity.durationMs);
-                  return (
-                    <Tooltip
-                      key={activity.id}
-                      label={
-                        duration
-                          ? `${activity.name} completed in ${duration}`
-                          : activity.name
-                      }
-                      disabled={!duration}
-                    >
-                      <Badge
-                        size='xs'
-                        variant='light'
-                        color={
-                          activity.status === 'running'
-                            ? 'blue'
-                            : activity.status === 'ok'
-                              ? 'teal'
-                              : activity.status === 'denied'
-                                ? 'yellow'
-                                : 'red'
-                        }
-                        leftSection={
-                          activity.status === 'running' ? (
-                            <Loader size={8} />
-                          ) : undefined
-                        }
-                      >
-                        {activity.name}
-                        {duration ? ` (${duration})` : ''}
-                      </Badge>
-                    </Tooltip>
-                  );
-                })}
-              </Group>
-            )}
-            {message.content ? (
-              isUser ? (
-                <Text
-                  size='sm'
-                  style={{
-                    whiteSpace: 'pre-wrap',
-                    lineHeight: 1.6,
-                    wordBreak: 'break-word'
-                  }}
-                >
-                  {message.content}
-                </Text>
-              ) : message.question ? null : (
-                <MarkdownMessage content={message.content} />
-              )
-            ) : message.isStreaming && message.progressStage ? (
-              /* S11: buffered execution shows only the safe generated
-                 stages (plus cancel); no provisional text ever streams. */
-              <Group gap={6} wrap='nowrap'>
-                <Loader size='xs' />
-                <Text
-                  size='xs'
-                  c='dimmed'
-                  aria-live='polite'
-                  data-testid='analysis-progress'
-                >
-                  {progressStageLabel(message.progressStage)}
-                </Text>
-              </Group>
-            ) : (
-              message.isStreaming && !message.question && <TypingIndicator />
-            )}
-            {/* Structured question card (S22/S23): message-anchored so the
-                frozen card survives reload; the singleton governs armedness. */}
-            {!isUser && message.question && (
-              <QuestionCard
-                payload={message.question}
-                armed={!!questionArmed}
-                answeredExternally={!!questionAnsweredLocally}
-                resolution={questionResolution}
-                onAnswer={(text) => onQuestionAnswer?.(text)}
-              />
-            )}
-            {/* P02/P33: the Work order this exchange was about — from the
-                acknowledgement on the question, from the saved turn on the
-                answer, so it survives reload. */}
-            {!message.isStreaming && message.workFocus && (
-              <WorkFocusChip focus={message.workFocus} />
-            )}
-            {/* Server-observed entity chips (S28): navigate to the records
-                this turn was actually about. */}
-            {!isUser && !message.isStreaming && message.entities && (
-              <EntityChips entities={message.entities} />
-            )}
-            {/* R4: server-verified media evidence (photos / video segments). */}
-            {!isUser && !message.isStreaming && message.mediaEvidence && (
-              <EvidenceChips items={message.mediaEvidence} />
-            )}
-            {/* M2 PR 9 (GR-16): the content-free Context used record —
-                ids and counts only, collapsed by default. */}
-            {!isUser && !message.isStreaming && message.contextUsed && (
-              <ContextUsedDisclosure record={message.contextUsed} />
-            )}
-            {/* S11: the v2 evidence-analysis block — partial banner,
-                distinct no-data state, coverage, and claim-level evidence.
-                Confidence is NEVER rendered here, even if redundantly sent. */}
-            {!isUser && !message.isStreaming && message.evidenceAnalysis && (
-              <Stack gap={6} mt={8}>
-                {message.evidenceAnalysis.response_state === 'partial' && (
-                  <Alert
-                    color='yellow'
-                    variant='light'
-                    p='xs'
-                    data-testid='analysis-partial'
-                  >
-                    <Text size='xs'>
-                      {t`Partial answer — some checks did not finish.`}
-                      {message.evidenceAnalysis.incomplete_reasons.length
-                        ? ` (${message.evidenceAnalysis.incomplete_reasons
-                            .map((reason) => reason.facet)
-                            .join(', ')})`
-                        : ''}
-                    </Text>
-                  </Alert>
-                )}
-                {message.evidenceAnalysis.no_data_reason && (
-                  <Text
-                    size='xs'
-                    c='dimmed'
-                    data-testid={`no-data-${message.evidenceAnalysis.no_data_reason}`}
-                  >
-                    {noDataReasonLabel(
-                      message.evidenceAnalysis.no_data_reason,
-                      message.evidenceAnalysis.coverage?.population_count ??
-                        null
-                    )}
-                  </Text>
-                )}
-                {message.evidenceAnalysis.coverage && (
-                  <RetrievalCoverage
-                    coverage={message.evidenceAnalysis.coverage}
-                  />
-                )}
-                {threadId && (
-                  <ClaimEvidence
-                    attachment={message.evidenceAnalysis}
-                    host={aiHost}
-                    threadId={threadId}
-                    messageId={message.id}
-                  />
-                )}
-              </Stack>
-            )}
-            {/* Diagnosis-rail provenance (S10): a cited answer shows its
-                sources; an uncited one is visibly flagged, never implied.
-                v1 only — a v2 attachment supersedes it entirely. */}
-            {!isUser &&
-              !message.isStreaming &&
-              !message.evidenceAnalysis &&
-              message.evidence !== undefined && (
-                <Stack gap={4} mt={8}>
-                  {message.confidence && (
-                    <Badge
-                      size='sm'
-                      variant='outline'
-                      color='gray'
-                      w='fit-content'
-                    >
-                      {t`Declared confidence: ${message.confidence}`}
-                    </Badge>
-                  )}
-                  {message.evidence.length > 0 ? (
-                    <CitationList
-                      citations={message.evidence.map((entry, index) => ({
-                        // v1 adapter: ordinals ARE array order here (the
-                        // diagnosis rail has no server manifest).
-                        ordinal: index + 1,
-                        sourceType: entry.source_type,
-                        available: true,
-                        asOf: entry.as_of,
-                        sourceTitle: entry.locator?.field ?? entry.source_type,
-                        sourceId: entry.source_id,
-                        sourceRevision: entry.source_revision
-                      }))}
-                    />
-                  ) : (
-                    <Text size='xs' c='orange' data-testid='diagnosis-uncited'>
-                      {t`No cited sources — not grounded in machine data.`}
-                    </Text>
-                  )}
-                </Stack>
-              )}
-          </Paper>
-
-          {/* Avatar for user */}
-          {isUser && (
-            <Group gap='xs' mt={4} style={{ flexDirection: 'row-reverse' }}>
-              <Box
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: '50%',
-                  backgroundColor: theme.colors.gray[3],
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <IconUser size={16} color={theme.colors.gray[7]} />
-              </Box>
-              <Text size='xs' c='dimmed' fw={500}>
-                {t`You`}
-              </Text>
-            </Group>
-          )}
-
-          {/* Action buttons for assistant messages */}
-          {!isUser && !message.isStreaming && message.content && (
-            <Box ml={36}>
-              <MessageActions
-                content={message.content}
-                messageId={message.id}
-                threadId={threadId}
-                evidenceAnalysis={message.evidenceAnalysis}
-                onRegenerate={onRegenerate}
-              />
-            </Box>
-          )}
-        </Box>
-      )}
-    </Transition>
   );
 }
 
@@ -1498,8 +412,6 @@ function AIChatSessionDrawer({
   const voiceFullscreen = useVoiceSurfaceState((state) => state.fullscreen);
   const evidenceOpen = useEvidenceViewerState((state) => state.item !== null);
   const consentOpen = useVoiceSurfaceState((state) => state.consent);
-  const narrow = useMediaQuery('(max-width: 48em)');
-  const viewport = useViewportSize();
   const location = useLocation();
   useEffect(() => {
     if (!opened) {
@@ -1569,11 +481,16 @@ function AIChatSessionDrawer({
     other: t`Current page`
   };
 
-  const [inputValue, setInputValue] = useState('');
-  const [attachedFiles, setAttachedFiles] = useState<UploadedFile[]>([]);
   // M2 PR 9: the thread whose memory modal is open (owner-only surface).
   const [memoryThreadId, setMemoryThreadId] = useState<string | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const [isPreparingSend, setIsPreparingSend] = useState(false);
+  const sendPreparationRef = useRef<symbol | null>(null);
+  const [sendNotice, setSendNotice] = useState<{
+    binding: ChatDraftBinding;
+    revision: number;
+    message: string;
+    kind?: 'scope';
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const earlierScrollRef = useRef<{
@@ -1587,97 +504,50 @@ function AIChatSessionDrawer({
   const composerVersionRef = useRef(0);
   activeThreadIdRef.current = activeThreadId;
 
+  // C06: the RAM-only draft binding. The scope (host/user/session generation)
+  // is fixed for this mount — the parent remounts this subtree whenever the
+  // identity or generation changes — while the thread follows the selection.
+  const draftScope = useMemo<ChatDraftScope>(() => {
+    const draftUser = useUserState.getState();
+    return {
+      host: useLocalState.getState().getHost(),
+      userId: draftUser.isLoggedIn() ? draftUser.userId() : undefined,
+      sessionGeneration: useAIChatState.getState().sessionGeneration
+    };
+  }, []);
+  const draftBinding = useMemo<ChatDraftBinding>(
+    () => bindChatDrafts({ ...draftScope, threadId: activeThreadId }),
+    [draftScope, activeThreadId]
+  );
+  const draftBindingRef = useRef<ChatDraftBinding>(draftBinding);
+  draftBindingRef.current = draftBinding;
+  useSyncExternalStore(subscribeChatDrafts, () => draftBinding.read().revision);
+  const { text: inputValue, files: attachedFiles } = draftBinding.read();
+  const attachments = draftBinding.readAttachments();
+  const isUploading = attachments.some(
+    (item) => item.status === 'queued' || item.status === 'uploading'
+  );
+  const hasUnresolvedAttachments = attachments.some(
+    (item) => item.status !== 'ready'
+  );
+  const setInputValue = useCallback((text: string) => {
+    draftBindingRef.current.writeText(text);
+  }, []);
+
   useEffect(() => {
     if (previousThreadIdRef.current !== activeThreadId) {
       composerVersionRef.current += 1;
-      setInputValue('');
-      setAttachedFiles([]);
-      setIsUploading(false);
+      sendPreparationRef.current = null;
+      setIsPreparingSend(false);
       setIsApplyingScope(false);
       setMemoryThreadId(null);
       previousThreadIdRef.current = activeThreadId;
     }
   }, [activeThreadId]);
 
-  // Resizable drawer width (persisted in localStorage)
-  const MIN_WIDTH = 340;
-  const MAX_WIDTH = 900;
-  const DEFAULT_WIDTH = 440;
-  const [drawerWidth, setDrawerWidth] = useLocalStorage<number>({
-    key: 'ai-chat-drawer-width',
-    defaultValue: DEFAULT_WIDTH
-  });
-  const isResizing = useRef(false);
-  const resizeStartX = useRef(0);
-  const resizeStartWidth = useRef(DEFAULT_WIDTH);
-  // U1: never let the panel exceed the viewport.
-  const clampDrawerWidth = useCallback(
-    (width: number) => clampAssistantWidth(width, window.innerWidth),
-    []
-  );
-  const renderedDrawerWidth = clampAssistantWidth(
-    drawerWidth,
-    viewport.width || window.innerWidth
-  );
-
-  // Mouse handlers for resize drag
-  const handleResizeMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      isResizing.current = true;
-      resizeStartX.current = e.clientX;
-      resizeStartWidth.current = renderedDrawerWidth;
-      document.body.style.cursor = 'col-resize';
-      document.body.style.userSelect = 'none';
-    },
-    [renderedDrawerWidth]
-  );
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing.current) return;
-      // Dragging left = wider (since panel is on the right)
-      const delta = resizeStartX.current - e.clientX;
-      setDrawerWidth(clampDrawerWidth(resizeStartWidth.current + delta));
-    };
-
-    const handleMouseUp = () => {
-      if (isResizing.current) {
-        isResizing.current = false;
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-      }
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [setDrawerWidth, clampDrawerWidth]);
-
-  // U1: keyboard resizing alternative to the mouse-only drag handle.
-  const handleResizeKeyDown = useCallback(
-    (event: React.KeyboardEvent) => {
-      const step = 24;
-      if (event.key === 'ArrowLeft') {
-        event.preventDefault();
-        setDrawerWidth(clampDrawerWidth(renderedDrawerWidth + step));
-      } else if (event.key === 'ArrowRight') {
-        event.preventDefault();
-        setDrawerWidth(clampDrawerWidth(renderedDrawerWidth - step));
-      } else if (event.key === 'Home') {
-        event.preventDefault();
-        setDrawerWidth(clampDrawerWidth(MIN_WIDTH));
-      } else if (event.key === 'End') {
-        event.preventDefault();
-        setDrawerWidth(clampDrawerWidth(MAX_WIDTH));
-      }
-    },
-    [setDrawerWidth, clampDrawerWidth, renderedDrawerWidth]
-  );
+  const geometry = useAssistantGeometry(opened);
+  const drawerWidth = geometry.width;
+  const narrow = geometry.narrow;
 
   // Empty-state suggestion prompts (U1): real buttons, translated label AND
   // message text, machine-relevant prompts while a machine hint is active.
@@ -1844,18 +714,13 @@ function AIChatSessionDrawer({
       inputRef.current?.focus();
   }, [opened, isApplyingScope, isLoading, isSyncing]);
 
-  const scopeSendInFlight = useRef<symbol | null>(null);
-  const [scopeLaunchError, setScopeLaunchError] = useState(false);
-
   // P02/P33: why a Work-focused send was held back, if it was.
   const [workFocusLaunchError, setWorkFocusLaunchError] = useState<
     'unsupported' | 'refused' | null
   >(null);
 
   useEffect(() => {
-    scopeSendInFlight.current = null;
     setIsApplyingScope(false);
-    setScopeLaunchError(false);
     setWorkFocusLaunchError(null);
   }, [routingHint, pendingTargetHint, workFocusHint]);
 
@@ -1870,8 +735,7 @@ function AIChatSessionDrawer({
       try {
         return await setThreadScope(scope);
       } finally {
-        // A typed entry owns the busy state through its focus acknowledgement.
-        if (!scopeSendInFlight.current) setIsApplyingScope(false);
+        setIsApplyingScope(false);
       }
     },
     [setThreadScope]
@@ -1879,14 +743,14 @@ function AIChatSessionDrawer({
   // Plan C: the focus half of the entry commit — one owner focus PUT with
   // the exact server ack (its version becomes the turn's capture stamp).
   const applyFocusToThread = useCallback(async (ref: ConversationFocusRef) => {
-    let version: number | undefined;
-    const result = await commitFocusChange(ref, (acknowledgedVersion) => {
-      version = acknowledgedVersion;
+    let acknowledgedVersion: number | undefined;
+    const result = await commitFocusChange(ref, (version) => {
+      acknowledgedVersion = version;
     });
     return {
       ok: result.ok,
       code: result.code,
-      version
+      version: acknowledgedVersion ?? useThreadFocusState.getState().version
     };
   }, []);
   const fetchScopeForPreflight = useCallback(
@@ -1969,38 +833,48 @@ function AIChatSessionDrawer({
 
   // Handle sending a message
   const handleSendMessage = useCallback(
-    async (messageText?: string) => {
-      const text = messageText || inputValue;
+    async (messageText?: string): Promise<boolean> => {
+      const binding = draftBindingRef.current;
+      const snapshot = binding.read();
+      const workAtEntry = workFocusHint;
+      const threadAtEntry = activeThreadIdRef.current;
+      const sessionAtEntry = useAIChatState.getState().sessionGeneration;
+      const fromComposer = messageText === undefined;
+      const text = fromComposer ? snapshot.text : messageText;
+      if (!text.trim()) return false;
+      if (binding.readAttachments().some((item) => item.status !== 'ready')) {
+        setSendNotice({
+          binding,
+          revision: snapshot.revision,
+          message: t`Finish uploading or remove failed attachments before sending.`
+        });
+        return false;
+      }
       if (
-        !text.trim() ||
         isLoading ||
         isSyncing ||
         isApplyingScope ||
-        scopeSendInFlight.current
+        sendPreparationRef.current !== null
       )
-        return;
+        return false;
+      // Reserve synchronously, before preflight can yield to another Enter,
+      // click or suggested follow-up. A stale finally cannot unlock a new send.
+      const preparation = Symbol();
+      sendPreparationRef.current = preparation;
+      setIsPreparingSend(true);
+      setSendNotice(null);
       const version = composerVersionRef.current;
-      const fileIds = attachedFiles.map((f) => f.file_id);
-      // RV08: capture the pending hint identity, its owning thread and the
-      // session before the await so the consume below can fence them.
-      const pendingAtEntry = useAIChatState.getState();
-      const routingAtEntry = pendingAtEntry.routingHint;
-      const hintAtEntry = pendingAtEntry.targetHint;
-      const threadAtEntry = activeThreadIdRef.current;
-      const sessionAtEntry = pendingAtEntry.sessionGeneration;
-      const workAtEntry = pendingAtEntry.workFocusHint;
-      // Capture admission and focus before the first await: React's busy
-      // state alone cannot exclude two activations in the same render.
-      const scopeAttempt =
-        routingAtEntry || hintAtEntry || workAtEntry
-          ? Symbol('context-send')
-          : null;
-      if (scopeAttempt) {
-        scopeSendInFlight.current = scopeAttempt;
-        scopeSendFocus.current = document.activeElement;
-        setIsApplyingScope(true);
-      }
       try {
+        // C06: immutable text/files plus the draft revision and identity BEFORE
+        // any await — only the exact submitted revision may ever be consumed.
+        // Suggestions and question answers are their own messages. They never
+        // implicitly submit or consume an unrelated typed draft or its files.
+        const submittedFiles = fromComposer ? snapshot.files : [];
+        const fileIds = submittedFiles.map((f) => f.file_id);
+        const submittedRevision = snapshot.revision;
+        // C01: capture the pending target-intent token BEFORE any await so a
+        // late completion can only ever consume THIS send's own intent.
+        const intentToken = useAIChatState.getState().targetIntentToken;
         // S2 + plan 3.1: the machine hint is now a SCOPE SEED, never message
         // text — the shared preflight commits it as the thread's explicit
         // assets scope before the first send. An explicit selection that
@@ -2009,60 +883,52 @@ function AIChatSessionDrawer({
         // attachments are preserved and the typed text always goes out
         // byte-identical when the send proceeds.
         const outcome = await contextPreflight({
-          threadId: threadAtEntry,
+          threadId: activeThreadIdRef.current,
           entry: 'typed'
         });
-        // A late acknowledgement or refusal belongs only to its original entry.
-        const pendingAfterPreflight = useAIChatState.getState();
-        if (
-          version !== composerVersionRef.current ||
-          activeThreadIdRef.current !== threadAtEntry ||
-          pendingAfterPreflight.sessionGeneration !== sessionAtEntry ||
-          pendingAfterPreflight.routingHint !== routingAtEntry ||
-          pendingAfterPreflight.targetHint !== hintAtEntry ||
-          pendingAfterPreflight.workFocusHint !== workAtEntry
-        )
-          return;
         if (!outcome.ok) {
           if (
-            routingAtEntry &&
+            routingHint &&
             outcome.code !== 'context_changed' &&
             outcome.code !== 'in-flight'
           ) {
-            setScopeLaunchError(true);
-            setInputValue(text);
+            setSendNotice({
+              binding,
+              revision: snapshot.revision,
+              kind: 'scope',
+              message: t`No message was sent. Your draft and attachments are kept. Retry sending, or remove the machine selection before sending without that context.`
+            });
           }
-          return;
+          return false;
         }
-        setScopeLaunchError(false);
+        if (version !== composerVersionRef.current) return false;
         let workTurnFocus:
           | { receipt: string; workFocus: ChatWorkFocus }
           | undefined;
-        if (workFocusHint) {
+        if (workAtEntry) {
           // P02/P33: the server must acknowledge this exact Work at the version
           // the page showed before anything is sent. Every failure keeps the
           // draft and attachments and sends nothing; removing the Work is the
           // user's explicit choice to ask without it.
           if (
             !workFocusCapable ||
-            (!!(workFocusHint.component || workFocusHint.evidence) &&
+            (!!(workAtEntry.component || workAtEntry.evidence) &&
               !referenceFocusCapable) ||
-            (workFocusHint.requestId !== undefined && !requestFocusCapable) ||
+            (workAtEntry.requestId !== undefined && !requestFocusCapable) ||
             activeThreadShared
           ) {
             setWorkFocusLaunchError('unsupported');
-            setInputValue(text);
-            return;
+            return false;
           }
           let acknowledged: Awaited<ReturnType<typeof acknowledgeWorkFocus>>;
           try {
             acknowledged = await acknowledgeWorkFocus(
-              workFocusHint.workOrderId,
-              workFocusHint.lifecycleVersion,
-              workFocusHint.requestId,
-              workFocusHint.requestVersion,
-              workFocusHint.component,
-              workFocusHint.evidence
+              workAtEntry.workOrderId,
+              workAtEntry.lifecycleVersion,
+              workAtEntry.requestId,
+              workAtEntry.requestVersion,
+              workAtEntry.component,
+              workAtEntry.evidence
             );
           } catch {
             acknowledged = { ok: false, code: 'error' };
@@ -2070,13 +936,12 @@ function AIChatSessionDrawer({
           // Closing, switching or a new launch during the request voids it.
           if (
             version !== composerVersionRef.current ||
-            useAIChatState.getState().workFocusHint !== workFocusHint
+            useAIChatState.getState().workFocusHint !== workAtEntry
           )
-            return;
+            return false;
           if (!acknowledged.ok) {
             setWorkFocusLaunchError('refused');
-            setInputValue(text);
-            return;
+            return false;
           }
           setWorkFocusLaunchError(null);
           const identity = acknowledged.acknowledgement.focus;
@@ -2084,68 +949,104 @@ function AIChatSessionDrawer({
             receipt: acknowledged.acknowledgement.receipt,
             workFocus: {
               identity,
-              label: workFocusHint.label,
-              returnPath: focusReturnPath(identity, workFocusHint.returnPath)
+              label: workAtEntry.label,
+              returnPath: focusReturnPath(identity, workAtEntry.returnPath)
             }
           };
         }
-        if (version !== composerVersionRef.current) return;
-        // Closing or switching during the scope request cancels this send intent.
-        // The hint is bound to one thread and is cleared by those transitions.
-        const pendingNow = useAIChatState.getState();
         if (
-          pendingNow.sessionGeneration !== sessionAtEntry ||
           activeThreadIdRef.current !== threadAtEntry ||
-          pendingNow.workFocusHint !== workAtEntry ||
-          ((routingAtEntry || hintAtEntry) &&
-            (pendingNow.routingHint !== routingAtEntry ||
-              pendingNow.targetHint !== hintAtEntry))
+          useAIChatState.getState().sessionGeneration !== sessionAtEntry ||
+          useAIChatState.getState().workFocusHint !== workAtEntry
         )
-          return;
-        sendMessage(
+          return false;
+        // Closing, switching or a NEWER intent during the awaited preflight
+        // cancels this prepared send: the newer intent and the draft survive.
+        const currentToken = useAIChatState.getState().targetIntentToken;
+        if (currentToken?.generation !== intentToken?.generation) return false;
+        // C06: a draft edit (or a dropped/reset binding) during the awaited
+        // preflight cancels this prepared send — the newer draft survives.
+        if (!binding.isCurrent()) return false;
+        if (binding.read().revision !== submittedRevision) {
+          setSendNotice({
+            binding,
+            revision: binding.read().revision,
+            message: t`Your draft changed while the target was being confirmed. Send it again when you are ready.`
+          });
+          return false;
+        }
+        let admitted = false;
+        void sendMessage(
           text,
           fileIds.length > 0 ? fileIds : undefined,
           workTurnFocus
             ? { ...workTurnFocus, focusVersion: outcome.focusVersion }
-            : outcome.focusVersion
-        );
-        if (workFocusHint && workFocusHint.requestId === undefined)
-          clearWorkFocus();
-        // RV08: one acknowledged typed entry consumes the pending hint at its
-        // acknowledging owner — routing and target together, refused for a
-        // differently bound thread — so no later send can re-apply it.
-        if (
-          (routingAtEntry || hintAtEntry) &&
-          activeThreadIdRef.current === threadAtEntry &&
-          pendingNow.sessionGeneration === sessionAtEntry
-        ) {
-          useAIChatState.getState().consumeHint(threadAtEntry);
+            : outcome.focusVersion,
+          () => {
+            admitted = true;
+            if (workAtEntry && workAtEntry.requestId === undefined)
+              clearWorkFocus();
+            // C01: compare-and-consume — a successful typed entry consumes exactly
+            // its own pending machine/task/work-order intent, once.
+            if (intentToken) useAIChatState.getState().clearHint(intentToken);
+            // C06: consume only the matching submitted revision.
+            if (fromComposer) binding.consume(submittedRevision);
+          }
+        ).catch(() => {
+          if (
+            !admitted &&
+            binding.isCurrent() &&
+            draftBindingRef.current === binding
+          ) {
+            setSendNotice({
+              binding,
+              revision: binding.read().revision,
+              message: t`The message was not sent. Your draft has been kept.`
+            });
+          }
+        });
+        if (!admitted) {
+          setSendNotice({
+            binding,
+            revision: binding.read().revision,
+            message: t`The message was not sent. Your draft has been kept.`
+          });
         }
-        setInputValue('');
-        setAttachedFiles([]);
+        return admitted;
       } finally {
-        if (scopeAttempt && scopeSendInFlight.current === scopeAttempt) {
-          scopeSendInFlight.current = null;
-          if (version === composerVersionRef.current) setIsApplyingScope(false);
+        if (sendPreparationRef.current === preparation) {
+          sendPreparationRef.current = null;
+          setIsPreparingSend(false);
         }
       }
     },
     [
-      inputValue,
       isLoading,
       isSyncing,
       isApplyingScope,
       contextPreflight,
       sendMessage,
-      attachedFiles,
       activeThreadShared,
+      routingHint,
       workFocusHint,
-      requestFocusCapable,
       workFocusCapable,
       referenceFocusCapable,
+      requestFocusCapable,
       acknowledgeWorkFocus,
       clearWorkFocus
     ]
+  );
+
+  const uploadAttachment = useCallback(
+    async (binding: ChatDraftBinding, id: string) => {
+      const attempt = binding.startUpload(id);
+      if (!attempt) return;
+      const result = await uploadFile(attempt.file, () =>
+        binding.isUploadCurrent(attempt)
+      );
+      binding.finishUpload(attempt, result);
+    },
+    [uploadFile]
   );
 
   // Handle file selection
@@ -2154,48 +1055,68 @@ function AIChatSessionDrawer({
       const files = event.target.files;
       if (!files || files.length === 0) return;
 
-      setIsUploading(true);
-      const uploadThreadId = activeThreadId;
-      const version = composerVersionRef.current;
-      try {
-        for (const file of Array.from(files)) {
-          if (
-            version !== composerVersionRef.current ||
-            activeThreadIdRef.current !== uploadThreadId
-          )
-            break;
-          const result = await uploadFile(file);
-          if (
-            result &&
-            version === composerVersionRef.current &&
-            activeThreadIdRef.current === uploadThreadId
-          ) {
-            setAttachedFiles((prev) => [...prev, result]);
-          }
-        }
-      } finally {
-        if (version === composerVersionRef.current) setIsUploading(false);
-        // Reset file input so the same file can be selected again
-        if (version === composerVersionRef.current && fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
+      const binding = draftBindingRef.current;
+      // All selections become visible before the first network await. File
+      // attempt identity is independent of text edits and current selection.
+      const ids = binding.queueAttachments(Array.from(files));
+      event.currentTarget.value = '';
+      for (const id of ids) {
+        await uploadAttachment(binding, id);
       }
     },
-    [activeThreadId, uploadFile]
+    [uploadAttachment]
   );
 
   // Remove an attached file
-  const removeAttachedFile = useCallback((fileId: string) => {
-    setAttachedFiles((prev) => prev.filter((f) => f.file_id !== fileId));
+  const removeAttachedFile = useCallback((id: string) => {
+    draftBindingRef.current.removeAttachment(id);
   }, []);
 
-  // Actual selection changes clear the composer in the effect above. A switch
-  // refused during an active turn must not silently discard attachments.
+  // Selecting a thread reads its own RAM draft. A switch refused during an
+  // active turn must not discard the current draft or its attachment queue.
   const handleSwitchThread = useCallback(
     (threadId: string) => {
       switchThread(threadId);
     },
     [switchThread]
+  );
+
+  const targetConversationStarterRef = useRef(
+    (_target: AIChatTargetHint): boolean => false
+  );
+  targetConversationStarterRef.current = (target) => {
+    const user = useUserState.getState();
+    if (
+      draftScope.host !== useLocalState.getState().getHost() ||
+      draftScope.userId !== (user.isLoggedIn() ? user.userId() : undefined) ||
+      draftScope.sessionGeneration !==
+        useAIChatState.getState().sessionGeneration ||
+      !draftBindingRef.current.isCurrent() ||
+      isLoading ||
+      isSyncing ||
+      isApplyingScope ||
+      sendPreparationRef.current !== null ||
+      activeThreadDeletionPending ||
+      useVoiceSessionState.getState().session !== null
+    )
+      return false;
+    const previous = activeThreadIdRef.current;
+    const next = createNewThread();
+    if (next === previous) return false;
+    // Preserve the old thread's draft. The new conversation gets its own
+    // pending candidate, confirmed by the existing preflight before any send.
+    // In particular, a refused target never widens the old analysis scope.
+    useAIChatState.getState().openWithTargetHint(target);
+    useAIChatState.getState().bindHint(next);
+    useVoiceSurfaceState.getState().closeFullscreen();
+    return true;
+  };
+  useEffect(
+    () =>
+      registerTargetConversationStarter((target) =>
+        targetConversationStarterRef.current(target)
+      ),
+    []
   );
 
   const handleNewThread = useCallback(() => {
@@ -2206,36 +1127,39 @@ function AIChatSessionDrawer({
   // owned thread — the composer is disabled on shared transcripts, so the
   // ask could never be sent there.
   useEffect(() => {
-    if (!opened || (!routingHint && !targetHint && !workFocusHint)) return;
+    // C01: every contextual Ask (machine/task/work-order) prepares the owned
+    // conversation retaining its intended canonical target; only a machine
+    // target seeds the analysis scope (openWithTargetHint keeps that rule).
+    const intendedTarget = pendingTargetHint;
+    if (!opened || (!intendedTarget && !workFocusHint)) return;
     if (activeThreadShared) {
-      // Capture the FULL pending target BEFORE createNewThread(), whose
-      // synchronous clearHint would otherwise empty this snapshot.
-      const pending = useAIChatState.getState().targetHint;
       const id = createNewThread();
-      // Restore the exact launch contract after creating the owned thread.
-      if (workFocusHint) {
-        useAIChatState.getState().openWithWorkFocus(workFocusHint);
-      } else if (pending) {
-        useAIChatState.getState().openWithTargetHint(pending);
-      } else if (routingHint) {
-        useAIChatState.getState().openWithHint(routingHint);
-      }
+      // createNewThread can synchronously clear the hints — re-open with the
+      // target captured above so the prepared conversation keeps it.
+      if (workFocusHint)
+        useAIChatState
+          .getState()
+          .openWithWorkFocus(workFocusHint, returnFocusTarget);
+      else if (intendedTarget)
+        useAIChatState.getState().openWithTargetHint(intendedTarget);
       useAIChatState.getState().bindHint(id);
     } else {
       useAIChatState.getState().bindHint(activeThreadId);
     }
   }, [
     opened,
-    routingHint,
-    targetHint,
+    pendingTargetHint,
     workFocusHint,
+    returnFocusTarget,
     activeThreadShared,
     activeThreadId,
     createNewThread
   ]);
 
   const handleClearChat = useCallback(() => {
-    setAttachedFiles([]);
+    // C06: explicit Clear drops this thread's private draft and ready
+    // references (and kills older bindings) — sibling drafts survive.
+    draftBindingRef.current.clear();
     clearChat();
   }, [clearChat]);
 
@@ -2271,7 +1195,7 @@ function AIChatSessionDrawer({
   const startBlockedReason = voiceStartBlockReason({
     sharedThread: activeThreadShared,
     deletionPending: activeThreadDeletionPending,
-    applyingScope: isApplyingScope,
+    applyingScope: isApplyingScope || isPreparingSend,
     turnInFlight: isLoading,
     syncing: isSyncing
   });
@@ -2308,28 +1232,27 @@ function AIChatSessionDrawer({
       <AssistantSurface
         opened={opened}
         returnFocusTarget={returnFocusTarget}
-        modal={Boolean(narrow)}
-        suspended={
-          consentOpen ||
-          voiceFullscreen ||
-          evidenceOpen ||
-          memoryThreadId !== null
-        }
-        width={renderedDrawerWidth}
+        modal={geometry.modal}
+        suspended={consentOpen || voiceFullscreen || evidenceOpen}
+        width={drawerWidth}
+        height={geometry.viewportHeight}
+        top={geometry.viewportTop}
+        left={geometry.viewportLeft}
         title={t`AI Assistant`}
         onClose={handleClose}
-        resizeHandle={
+      >
+        {!geometry.modal && (
           <Box
-            // biome-ignore lint/a11y/useSemanticElements: focusable window splitter — a real <hr> can't be dragged or keyboard-resized; this keeps the geometry and the ARIA separator values
-            onMouseDown={handleResizeMouseDown}
+            className={workspaceStyles.separator}
             role='separator'
             aria-orientation='vertical'
             aria-label={t`Resize chat panel`}
-            aria-valuenow={renderedDrawerWidth}
-            aria-valuemin={clampDrawerWidth(MIN_WIDTH)}
-            aria-valuemax={clampDrawerWidth(MAX_WIDTH)}
+            aria-valuenow={drawerWidth}
+            aria-valuemin={ASSISTANT_MIN_WIDTH}
+            aria-valuemax={geometry.maximum}
             tabIndex={0}
-            onKeyDown={handleResizeKeyDown}
+            onPointerDown={geometry.onPointerDown}
+            onKeyDown={geometry.onKeyDown}
             style={{
               position: 'absolute',
               top: 0,
@@ -2337,166 +1260,23 @@ function AIChatSessionDrawer({
               width: 6,
               height: '100%',
               cursor: 'col-resize',
-              zIndex: 1000,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'background 0.15s ease'
+              touchAction: 'none',
+              zIndex: 1
             }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--mantine-color-blue-1)';
-            }}
-            onMouseLeave={(e) => {
-              if (!isResizing.current) {
-                e.currentTarget.style.background = '';
-              }
-            }}
-          >
-            <IconGripVertical
-              size={12}
-              style={{ opacity: 0.4, pointerEvents: 'none' }}
-            />
-          </Box>
-        }
-      >
+          />
+        )}
         <Boundary label='AIChatDrawer'>
-          {/* Header */}
-          <Box
-            p='md'
-            style={{
-              borderBottom: '1px solid var(--mantine-color-gray-2)',
-              background: 'var(--mantine-color-body)'
-            }}
-          >
-            <Group justify='space-between' wrap='nowrap'>
-              <Group gap='sm'>
-                <Box
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: '50%',
-                    background: `linear-gradient(135deg, ${theme.colors.blue[5]}, ${theme.colors.violet[5]})`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                >
-                  <IconSparkles size={20} color='white' />
-                </Box>
-                <Box>
-                  <Text fw={600} size='md'>
-                    {t`AI Assistant`}
-                  </Text>
-                  <Text size='xs' c='dimmed'>
-                    {t`Powered by AIMMS AI`}
-                  </Text>
-                </Box>
-              </Group>
-              <Group gap='xs'>
-                {/* Sync button */}
-                <Tooltip
-                  label={isSyncing ? t`Syncing...` : t`Sync conversations`}
-                  withArrow
-                >
-                  <ActionIcon
-                    aria-label={t`Sync conversations`}
-                    data-testid='sync-ai-chat-threads'
-                    variant='subtle'
-                    color='gray'
-                    radius='xl'
-                    onClick={() => syncThreads()}
-                    loading={isSyncing}
-                    disabled={isSyncing}
-                  >
-                    <IconRefresh
-                      size={18}
-                      style={{
-                        animation: isSyncing
-                          ? 'spin 1s linear infinite'
-                          : 'none'
-                      }}
-                    />
-                  </ActionIcon>
-                </Tooltip>
-                {hasMessages && (
-                  <Tooltip label={t`New conversation`} withArrow>
-                    <ActionIcon
-                      variant='subtle'
-                      color='gray'
-                      radius='xl'
-                      onClick={handleClearChat}
-                      aria-label={t`New conversation`}
-                      data-testid='new-ai-chat-thread'
-                      disabled={isLoading}
-                    >
-                      <IconMessagePlus size={18} />
-                    </ActionIcon>
-                  </Tooltip>
-                )}
-                <Tooltip label={t`Close`} withArrow>
-                  <ActionIcon
-                    aria-label={t`Close assistant`}
-                    data-testid='close-ai-chat'
-                    variant='subtle'
-                    color='gray'
-                    radius='xl'
-                    onClick={handleClose}
-                  >
-                    <IconX size={18} />
-                  </ActionIcon>
-                </Tooltip>
-              </Group>
-            </Group>
-
-            {/* Sync indicator */}
-            {isSyncing && (
-              <Text size='xs' c='dimmed' ta='center' mt='xs'>
-                {t`Syncing conversations with server...`}
-              </Text>
-            )}
-
-            {/* Drawer tab strip (Chat / Approvals / History) */}
-            <Box mt='sm'>
-              <Group justify='space-between' wrap='wrap'>
-                <Tabs
-                  value={activeTab}
-                  onChange={(v) =>
-                    setActiveTab((v as AIChatDrawerTab) || 'chat')
-                  }
-                  variant='pills'
-                >
-                  <Tabs.List>
-                    <Tabs.Tab value='chat'>{t`Chat`}</Tabs.Tab>
-                    <Tabs.Tab value='approvals' aria-label={t`Approvals`}>
-                      <Group gap={6} wrap='nowrap'>
-                        <Text size='sm'>{t`Approvals`}</Text>
-                        {/* C1: an attention DOT — never a numeric aggregate
-                          (the server count is partial and can be
-                          unavailable). */}
-                        {needsAttention && (
-                          <Badge
-                            size='xs'
-                            variant='filled'
-                            color='red'
-                            aria-label={t`Actions need review`}
-                            data-testid='approvals-attention-indicator'
-                          >
-                            {'\u2022'}
-                          </Badge>
-                        )}
-                      </Group>
-                    </Tabs.Tab>
-                    <Tabs.Tab value='history'>{t`History`}</Tabs.Tab>
-                    <Tabs.Tab value='mail'>{t`Mail`}</Tabs.Tab>
-                  </Tabs.List>
-                </Tabs>
-                <RiskRadarDrawerBadge />
-              </Group>
-            </Box>
-
-            {/* Thread selector */}
-            {activeTab === 'chat' && (
-              <Box mt='sm'>
+          <AssistantHeader
+            syncing={isSyncing}
+            busy={isLoading || isPreparingSend || activeThreadDeletionPending}
+            expanded={geometry.expanded}
+            canExpand={!narrow}
+            onSync={() => void syncThreads()}
+            onNew={handleNewThread}
+            onClose={handleClose}
+            onExpand={geometry.toggleExpanded}
+            conversation={
+              activeTab === 'chat' ? (
                 <ThreadSelector
                   threads={threads}
                   sharedThreads={sharedThreads}
@@ -2528,9 +1308,58 @@ function AIChatSessionDrawer({
                     voice.transport === 'connecting'
                   }
                 />
-              </Box>
-            )}
-          </Box>
+              ) : null
+            }
+            navigation={
+              <Tabs
+                value={activeTab}
+                onChange={(v) => setActiveTab((v as AIChatDrawerTab) || 'chat')}
+                variant='pills'
+                styles={{
+                  list: { flexWrap: 'nowrap', overflowX: 'auto' },
+                  tab: { padding: '8px 10px', minHeight: 40 }
+                }}
+              >
+                <Tabs.List>
+                  <Tabs.Tab value='chat'>{t`Chat`}</Tabs.Tab>
+                  <Tabs.Tab value='approvals'>
+                    <Group gap={6} wrap='nowrap'>
+                      <Text size='sm'>{t`Approvals`}</Text>
+                      {/* C1: an attention DOT — never a numeric aggregate
+                          (the server count is partial and can be
+                          unavailable). */}
+                      {needsAttention && (
+                        <Badge
+                          size='xs'
+                          variant='filled'
+                          color='red'
+                          aria-label={t`Actions need review`}
+                          data-testid='approvals-attention-indicator'
+                        >
+                          {'\u2022'}
+                        </Badge>
+                      )}
+                    </Group>
+                  </Tabs.Tab>
+                  <Tabs.Tab value='history'>{t`History`}</Tabs.Tab>
+                  <Tabs.Tab value='mail'>{t`Mail`}</Tabs.Tab>
+                </Tabs.List>
+              </Tabs>
+            }
+          />
+          {activeTab === 'chat' && (
+            <ConversationContextBar
+              scope={activeScope}
+              pending={
+                (hintThreadId === null || hintThreadId === activeThreadId) &&
+                !(hintRedundant && pendingTargetHint?.kind === 'machine')
+                  ? pendingTargetHint
+                  : undefined
+              }
+              routingHint={hintRedundant ? undefined : routingHint}
+              dismiss={() => clearRoutingHint()}
+            />
+          )}
 
           {/* M2 PR 9: "What this chat remembers" — the only place the
             summary body renders (GR-16). */}
@@ -2549,14 +1378,17 @@ function AIChatSessionDrawer({
             </Box>
           )}
           {/* Main content area */}
-          <ScrollArea
-            style={{ flex: 1 }}
-            offsetScrollbars
-            scrollbarSize={6}
+          <ChatTranscript
             viewportRef={scrollAreaRef}
-            mih='min(10rem, 30dvh)'
-            data-testid='ai-chat-messages'
-            viewportProps={{ ...VIEWPORT_MARKERS }}
+            active={
+              opened &&
+              activeTab === 'chat' &&
+              !voiceFullscreen &&
+              !evidenceOpen &&
+              !consentOpen
+            }
+            busy={isLoading}
+            threadId={activeThreadId}
           >
             {activeTab === 'chat' && (
               <Box p='md'>
@@ -2609,10 +1441,10 @@ function AIChatSessionDrawer({
                       <IconSparkles size={32} color={theme.colors.blue[5]} />
                     </Box>
                     <Text size='lg' fw={600} mb='xs'>
-                      {t`Hi! 👋 How can I help?`}
+                      {t`How can I help?`}
                     </Text>
                     <Text size='sm' c='dimmed' maw={280} mx='auto' mb='lg'>
-                      {t`I can help you search for parts, create orders, and automate tasks in AIMMS.`}
+                      {t`Ask about assets, maintenance or inventory. Review sources and approvals before acting.`}
                     </Text>
 
                     {/* U1: semantic suggestion buttons (translated label AND
@@ -2625,8 +1457,13 @@ function AIChatSessionDrawer({
                           variant='light'
                           radius='xl'
                           data-testid='ai-chat-suggestion'
-                          aria-disabled={isSyncing}
-                          disabled={isSyncing}
+                          disabled={
+                            isSyncing ||
+                            isPreparingSend ||
+                            hasUnresolvedAttachments ||
+                            activeThreadShared ||
+                            activeThreadDeletionPending
+                          }
                           onClick={() => handleSendMessage(suggestion.message)}
                         >
                           {suggestion.label}
@@ -2672,8 +1509,8 @@ function AIChatSessionDrawer({
 
                 {/* Error message */}
                 {error && (
-                  <Paper p='sm' radius='md' bg='red.0' mb='md'>
-                    <Text size='xs' c='red.7'>
+                  <Paper p='sm' radius='md' withBorder mb='md'>
+                    <Text size='sm' c='red' role='alert'>
                       {error}
                     </Text>
                     {/* S1: a scope-version conflict keeps the bounced turn
@@ -2773,14 +1610,19 @@ function AIChatSessionDrawer({
                 }}
               />
             )}
-          </ScrollArea>
+          </ChatTranscript>
 
-          {/* Input area - CopilotKit style (Chat tab only) */}
+          {/* Composer and context remain reachable independently of the transcript. */}
           {activeTab === 'chat' && (
             <Box
-              p='md'
+              p='sm'
+              data-testid='ai-chat-composer-region'
               style={{
-                borderTop: '1px solid var(--mantine-color-gray-2)',
+                flexShrink: 1,
+                minHeight: 100,
+                maxHeight: '55%',
+                overflowY: 'auto',
+                borderTop: '1px solid var(--mantine-color-default-border)',
                 background: 'var(--mantine-color-body)'
               }}
             >
@@ -2798,36 +1640,43 @@ function AIChatSessionDrawer({
                 >{t`Jump to latest`}</Button>
               )}
 
-              {/* Attached file chips */}
-              {attachedFiles.length > 0 && (
-                <Group gap='xs' mb='xs' wrap='wrap'>
-                  {attachedFiles.map((f) => (
-                    <Badge
-                      key={f.file_id}
-                      variant='light'
-                      color='blue'
-                      size='sm'
-                      rightSection={
-                        <ActionIcon
-                          aria-label={t`Remove attachment ${f.filename}`}
-                          data-testid={`remove-ai-chat-attachment-${f.file_id}`}
-                          disabled={isApplyingScope}
-                          size='xs'
-                          variant='transparent'
-                          color='blue'
-                          onClick={() => removeAttachedFile(f.file_id)}
-                        >
-                          <IconX size={12} />
-                        </ActionIcon>
-                      }
+              <ChatAttachmentQueue
+                attachments={attachments}
+                disabled={
+                  isLoading ||
+                  isSyncing ||
+                  activeThreadShared ||
+                  activeThreadDeletionPending
+                }
+                onRetry={(id) =>
+                  void uploadAttachment(draftBindingRef.current, id)
+                }
+                onRemove={removeAttachedFile}
+              />
+              {sendNotice?.binding === draftBinding &&
+                sendNotice.revision === draftBinding.read().revision &&
+                (sendNotice.kind === 'scope' ? (
+                  routingHint && (
+                    <Alert
+                      color='red'
+                      title={t`Machine context not confirmed`}
+                      data-testid='ai-chat-send-notice'
                     >
-                      {f.filename.length > 20
-                        ? `${f.filename.slice(0, 17)}...`
-                        : f.filename}
-                    </Badge>
-                  ))}
-                </Group>
-              )}
+                      <Text size='sm'>{sendNotice.message}</Text>
+                    </Alert>
+                  )
+                ) : (
+                  <Text
+                    component='output'
+                    aria-live='polite'
+                    size='xs'
+                    c='red'
+                    mb='xs'
+                    data-testid='ai-chat-send-notice'
+                  >
+                    {sendNotice.message}
+                  </Text>
+                ))}
 
               {/* Hidden file input */}
               <input
@@ -2941,197 +1790,67 @@ function AIChatSessionDrawer({
                   </Text>
                 </Alert>
               )}
-              {routingHint && (!hintRedundant || scopeLaunchError) && (
-                <Group gap='xs' mb={4} data-testid='ai-chat-routing-hint'>
-                  <Badge
-                    variant='light'
-                    color='blue'
-                    rightSection={
-                      <ActionIcon
-                        size='xs'
-                        variant='transparent'
-                        color='blue'
-                        aria-label={t`Remove machine context`}
-                        data-testid='dismiss-routing-hint'
-                        onClick={clearRoutingHint}
-                      >
-                        <IconX size={10} />
-                      </ActionIcon>
-                    }
-                  >
-                    {t`Asking about`}: {routingHint.machineName}
-                  </Badge>
-                </Group>
-              )}
-              {routingHint && scopeLaunchError && (
-                <Alert color='red' title={t`Machine context not confirmed`}>
-                  <Text size='sm'>
-                    {t`No message was sent. Your draft and attachments are kept. Retry sending, or remove the machine selection before sending without that context.`}
-                  </Text>
-                </Alert>
-              )}
-              {/* C2: the truthful, read-only analysis context — reports
-                server-confirmed scope only, with no menu attached. */}
-              <AnalysisContextLine scope={activeScope} />
-              {/* Plan C: the editable Talking about chip — server-confirmed
-                focus only, separate from the analysis scope above. */}
-              <ConversationFocusControl />
-              {(workFocusHint || messages.at(-1)?.workFocus) && (
-                <Text size='xs' mb={4} data-testid='ai-chat-physical-boundary'>
-                  {t`Physical authority not supplied. Chat does not authorize work.`}
-                </Text>
-              )}
-
-              <Paper
-                radius='xl'
-                p='xs'
-                withBorder
-                data-testid='ai-chat-composer'
-                data-voice-surface
-                style={{
-                  borderColor: 'var(--mantine-color-gray-3)',
-                  transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
-                }}
-              >
-                <Group gap='xs' align='flex-end' wrap='wrap'>
-                  <Tooltip label={t`Attach file`} withArrow>
-                    <ActionIcon
-                      aria-label={t`Attach file`}
-                      data-testid='attach-ai-chat-file'
-                      size='lg'
-                      radius='xl'
-                      variant='subtle'
-                      color='gray'
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={
-                        isLoading ||
-                        isApplyingScope ||
-                        isUploading ||
-                        isSyncing ||
-                        activeThreadShared ||
-                        activeThreadDeletionPending
-                      }
-                      loading={isUploading}
-                    >
-                      <IconPaperclip size={18} />
-                    </ActionIcon>
-                  </Tooltip>
-                  <Textarea
-                    ref={inputRef}
-                    data-autofocus
-                    aria-label={t`Message`}
-                    placeholder={
-                      activeThreadShared
-                        ? t`Shared conversation — read-only`
-                        : pendingQuestion
-                          ? t`Answer the question above, or ask something else...`
-                          : attachedFiles.length > 0
-                            ? t`Add a message about attached files...`
-                            : t`Type a message...`
-                    }
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.currentTarget.value)}
-                    onKeyDown={handleKeyDown}
-                    autosize
-                    minRows={1}
-                    maxRows={4}
-                    disabled={
-                      isLoading ||
-                      isApplyingScope ||
-                      isSyncing ||
-                      activeThreadShared ||
-                      activeThreadDeletionPending
-                    }
-                    styles={{
-                      input: {
-                        border: 'none',
-                        background: 'transparent',
-                        padding: '8px 12px',
-                        fontSize: '14px',
-                        '&:focus': {
-                          outline: 'none'
-                        }
-                      },
-                      wrapper: {
-                        flex: 1
-                      }
-                    }}
-                    style={{ flex: '1 1 100%', minWidth: 0, order: -1 }}
-                  />
-                  {/* C3: the mic START action sits inside the composer,
-                    adjacent to text entry — one shared eligibility path. */}
-                  <VoiceComposerControl {...voiceControlProps} />
-                  <Group gap={4}>
-                    {isLoading ? (
-                      <Tooltip label={t`Stop generating`} withArrow>
-                        <ActionIcon
-                          aria-label={t`Stop generating`}
-                          data-testid='cancel-ai-chat-turn'
-                          size={44}
-                          radius='xl'
-                          variant='filled'
-                          color='red'
-                          onClick={cancelRequest}
-                        >
-                          <IconPlayerStop size={18} />
-                        </ActionIcon>
-                      </Tooltip>
-                    ) : (
-                      <>
-                        <ActionIcon
-                          aria-label={t`Send message`}
-                          data-testid='send-ai-chat-message'
-                          size={44}
-                          radius='xl'
-                          variant='filled'
-                          color='blue'
-                          onClick={() => handleSendMessage()}
-                          disabled={
-                            !inputValue.trim() ||
-                            isSyncing ||
-                            activeThreadShared ||
-                            activeThreadDeletionPending ||
-                            isApplyingScope
-                          }
-                          style={{
-                            transition: 'transform 0.2s ease',
-                            transform: inputValue.trim()
-                              ? 'scale(1)'
-                              : 'scale(0.95)'
-                          }}
-                        >
-                          <IconSend size={18} />
-                        </ActionIcon>
-                      </>
-                    )}
-                  </Group>
-                </Group>
-              </Paper>
-
-              {/* C3: transcript review stays visible outside the one-line
-                input row. */}
-              <VoiceTranscript
-                partial={voice.partial}
-                listening={voice.state === 'listening'}
-                pendingConfirm={voice.pendingConfirm}
-                holdPrompt={voice.holdPrompt}
+              <ChatComposer
+                maxRows={
+                  geometry.viewportHeight < 400
+                    ? 1
+                    : geometry.viewportHeight < 600
+                      ? voiceActive
+                        ? 2
+                        : 3
+                      : 6
+                }
+                inputRef={inputRef}
+                value={inputValue}
+                onChange={setInputValue}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  activeThreadShared
+                    ? t`Shared conversation — read-only`
+                    : pendingQuestion
+                      ? t`Answer the question above, or ask something else...`
+                      : attachedFiles.length > 0
+                        ? t`Add a message about attached files...`
+                        : t`Type a message...`
+                }
+                disabled={
+                  isLoading ||
+                  (Boolean(workFocusHint) && isPreparingSend) ||
+                  isSyncing ||
+                  activeThreadShared ||
+                  activeThreadDeletionPending
+                }
+                attachDisabled={
+                  isLoading ||
+                  (Boolean(workFocusHint) && isPreparingSend) ||
+                  isUploading ||
+                  isSyncing ||
+                  activeThreadShared ||
+                  activeThreadDeletionPending
+                }
+                uploading={isUploading}
+                loading={isLoading}
+                sendDisabled={
+                  !inputValue.trim() ||
+                  hasUnresolvedAttachments ||
+                  isPreparingSend ||
+                  isSyncing ||
+                  activeThreadShared ||
+                  activeThreadDeletionPending ||
+                  isApplyingScope
+                }
+                onAttach={() => fileInputRef.current?.click()}
+                onSend={() => void handleSendMessage()}
+                onCancel={cancelRequest}
+                voice={<VoiceComposerControl {...voiceControlProps} />}
               />
-              {/* C3: the active-session strip, next to the composer on Chat
-                (other tabs get it below the header). */}
+
               {voiceActive && !voiceFullscreen && (
-                <Box mt='xs'>
-                  <VoiceActiveStrip {...voiceControlProps} />
-                </Box>
+                <VoiceDock {...voiceControlProps} />
               )}
-              {voice.session && !voiceFullscreen && <VoiceExperienceControls />}
               {/* U1: a friendly page label — never the raw URL path. */}
               <Text size='xs' c='dimmed' data-testid='assistant-page-context'>
                 {pageContextLabels[pageContextKind(location.pathname)]}
-              </Text>
-
-              {/* Footer text */}
-              <Text size='xs' c='dimmed' ta='center' mt='xs'>
-                {t`AI may make mistakes. Verify important information.`}
               </Text>
             </Box>
           )}

@@ -54,6 +54,7 @@ describe('chat session boundary', () => {
     const { predicate } = mocks.removeQueries.mock.calls[0][0];
     for (const key of [
       'chat-action-proposals',
+      'focus-candidates',
       'ai-evidence-set',
       'voice-capability',
       'voice-operation',

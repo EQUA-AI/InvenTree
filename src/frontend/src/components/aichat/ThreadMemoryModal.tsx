@@ -1,3 +1,4 @@
+import { AssistantModal } from './AssistantModal';
 /**
  * "What this chat remembers" (M2 PR 9; plan 8.6 items 3-4, GR-16).
  *
@@ -18,7 +19,6 @@ import {
   Group,
   List,
   Loader,
-  Modal,
   Stack,
   Text
 } from '@mantine/core';
@@ -118,7 +118,7 @@ function MemoryItemRow({
             size='compact-xs'
             variant='subtle'
             color='orange'
-            aria-label={`memory-item-wrong-${item.id}`}
+            data-testid={`memory-item-wrong-${item.id}`}
             disabled={busy}
             onClick={() => onCorrect(item.id, 'wrong')}
           >
@@ -128,7 +128,7 @@ function MemoryItemRow({
             size='compact-xs'
             variant='subtle'
             color='red'
-            aria-label={`memory-item-forget-${item.id}`}
+            data-testid={`memory-item-forget-${item.id}`}
             disabled={busy}
             onClick={() => onCorrect(item.id, 'forget')}
           >
@@ -265,15 +265,17 @@ export function ThreadMemoryModal({
   );
 
   return (
-    <Modal
+    <AssistantModal
       opened={opened}
       onClose={onClose}
       title={t`What this chat remembers`}
       size='lg'
       zIndex={3000}
-      aria-label='thread-memory-modal'
       data-testid='thread-memory-modal'
-      closeButtonProps={{ 'aria-label': 'thread-memory-close' }}
+      closeButtonProps={{
+        'aria-label': t`Close memory inspection`,
+        ...{ 'data-testid': 'thread-memory-close' }
+      }}
     >
       <Stack gap='sm'>
         {opened && threadId && (
@@ -328,6 +330,6 @@ export function ThreadMemoryModal({
           />
         )}
       </Stack>
-    </Modal>
+    </AssistantModal>
   );
 }

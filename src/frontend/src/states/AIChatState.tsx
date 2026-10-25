@@ -5,6 +5,7 @@ import type {
 import { create } from 'zustand';
 import { queryClient } from '../App';
 import { clearChatIndices } from '../functions/chatThreadCache';
+import { clearChatDrafts } from './ChatDraftState';
 
 /**
  * A machine hint carried into the AI chat drawer (S14 B5, repurposed S2).
@@ -80,6 +81,32 @@ function activeLauncher(): HTMLElement | null {
     : null;
 }
 
+// The mounted chat owner alone creates threads. Both the drawer and the
+// hands-free picker use this transient command; no second chat hook is mounted.
+type TargetConversationStarter = (target: AIChatTargetHint) => boolean;
+let targetConversationStarter: TargetConversationStarter | null = null;
+export function registerTargetConversationStarter(
+  starter: TargetConversationStarter
+): () => void {
+  targetConversationStarter = starter;
+  return () => {
+    if (targetConversationStarter === starter) targetConversationStarter = null;
+  };
+}
+export function startTargetConversation(target: AIChatTargetHint): boolean {
+  return targetConversationStarter?.(target) ?? false;
+}
+
+/**
+ * C01: the generation token of a pending contextual target intent. Every
+ * intent-establishing event (contextual Ask, explicit selection) advances
+ * the generation, so two intents are never confused even when their labels
+ * and canonical ids are identical.
+ */
+export interface AIChatIntentToken {
+  generation: number;
+}
+
 interface AIChatStateProps {
   isOpen: boolean;
   /** Ephemeral UI launcher; never serialized or sent as assistant context. */
@@ -93,13 +120,6 @@ interface AIChatStateProps {
   workFocusHint?: AIChatWorkFocusHint;
   hintThreadId: string | null;
   bindHint: (threadId: string) => void;
-  /**
-   * RV08: synchronously consume the pending hint — routing and target
-   * together — at its acknowledging send boundary. The first acknowledging
-   * thread consumes an unbound pending hint; a differently bound owner is
-   * refused. Consumption is exactly once: nothing survives to re-apply on a
-   * later send, another thread or another account.
-   */
   consumeHint: (threadId: string) => void;
   open: () => void;
   openWithHint: (hint: AIChatRoutingHint) => void;
@@ -110,7 +130,19 @@ interface AIChatStateProps {
     target?: HTMLElement | null
   ) => void;
   close: () => void;
-  clearHint: () => void;
+  /** C01: monotonic generation of the currently pending target intent. */
+  intentGeneration: number;
+  /** C01: token of the currently pending target intent (null when none). */
+  targetIntentToken: AIChatIntentToken | null;
+  /**
+   * C01 intent consumption. Explicit Clear calls `clearHint()` with no
+   * argument: unconditional, it supersedes every pending intent and every
+   * outstanding completion token. A send completion passes the token it
+   * captured at entry: compare-and-consume — only the token matching the
+   * currently pending intent clears it, exactly once; a stale or empty
+   * token never clears a newer intent, even one with identical labels/ids.
+   */
+  clearHint: (token?: AIChatIntentToken | null) => void;
   clearWorkFocus: () => void;
   advanceRequestFocus: (
     workOrderId: number,
@@ -131,11 +163,17 @@ export const useAIChatState = create<AIChatStateProps>()((set) => ({
   returnFocusTarget: null,
   sessionGeneration: 0,
   resetSession: (clearIndex = true) => {
+    targetConversationStarter = null;
     if (clearIndex) clearChatIndices();
+    // C06: drafts and ready references are session-private — drop them here
+    // too, invalidating every older binding before the generation advances,
+    // so a late callback can never recreate cleared state.
+    clearChatDrafts();
     // Drawer tabs share the application query cache. Remove their old account
     // data as well as the component state; a remount alone would reuse it.
     const privateQueries = new Set([
       'chat-action-proposals',
+      'focus-candidates',
       'ai-evidence-set',
       'voice-capability',
       'ai-evidence-source',
@@ -163,13 +201,16 @@ export const useAIChatState = create<AIChatStateProps>()((set) => ({
       targetHint: undefined,
       workFocusHint: undefined,
       hintThreadId: null,
-      chatOpenIntent: null
+      chatOpenIntent: null,
+      targetIntentToken: null
     }));
   },
   routingHint: undefined,
   targetHint: undefined,
   workFocusHint: undefined,
   hintThreadId: null,
+  intentGeneration: 0,
+  targetIntentToken: null,
   bindHint: (threadId) =>
     set((state) =>
       (state.routingHint || state.targetHint || state.workFocusHint) &&
@@ -184,6 +225,7 @@ export const useAIChatState = create<AIChatStateProps>()((set) => ({
         ? {
             routingHint: undefined,
             targetHint: undefined,
+            targetIntentToken: null,
             // An investigation request can remain as a per-turn Work focus.
             hintThreadId: state.workFocusHint ? state.hintThreadId : null
           }
@@ -195,17 +237,19 @@ export const useAIChatState = create<AIChatStateProps>()((set) => ({
       returnFocusTarget: activeLauncher()
     }),
   openWithHint: (hint: AIChatRoutingHint) =>
-    set({
+    set((state) => ({
       isOpen: true,
       returnFocusTarget: activeLauncher(),
       routingHint: hint,
       targetHint: machineTargetHint(hint),
       workFocusHint: undefined,
       hintThreadId: null,
-      chatOpenIntent: 'chat'
-    }),
+      chatOpenIntent: 'chat',
+      intentGeneration: state.intentGeneration + 1,
+      targetIntentToken: { generation: state.intentGeneration + 1 }
+    })),
   openWithTargetHint: (hint: AIChatTargetHint) =>
-    set({
+    set((state) => ({
       isOpen: true,
       returnFocusTarget: activeLauncher(),
       targetHint: hint,
@@ -216,18 +260,22 @@ export const useAIChatState = create<AIChatStateProps>()((set) => ({
           ? { machineId: hint.id, machineName: hint.label }
           : undefined,
       hintThreadId: null,
-      chatOpenIntent: 'chat'
-    }),
+      chatOpenIntent: 'chat',
+      intentGeneration: state.intentGeneration + 1,
+      targetIntentToken: { generation: state.intentGeneration + 1 }
+    })),
   openWithWorkFocus: (hint: AIChatWorkFocusHint, target?: HTMLElement | null) =>
-    set({
+    set((state) => ({
       isOpen: true,
       returnFocusTarget: target ?? activeLauncher(),
       routingHint: undefined,
       targetHint: undefined,
       workFocusHint: hint,
       hintThreadId: null,
-      chatOpenIntent: 'chat'
-    }),
+      chatOpenIntent: 'chat',
+      intentGeneration: state.intentGeneration + 1,
+      targetIntentToken: null
+    })),
   close: () =>
     set({
       isOpen: false,
@@ -236,14 +284,28 @@ export const useAIChatState = create<AIChatStateProps>()((set) => ({
       targetHint: undefined,
       workFocusHint: undefined,
       hintThreadId: null,
-      chatOpenIntent: null
+      chatOpenIntent: null,
+      targetIntentToken: null
     }),
-  clearHint: () =>
-    set({
-      routingHint: undefined,
-      targetHint: undefined,
-      workFocusHint: undefined,
-      hintThreadId: null
+  clearHint: (token) =>
+    set((state) => {
+      const cleared = {
+        routingHint: undefined,
+        targetHint: undefined,
+        workFocusHint: undefined,
+        hintThreadId: null,
+        targetIntentToken: null
+      };
+      // No token: explicit Clear — unconditional supersede.
+      if (token === undefined) return cleared;
+      // Completion consumption: compare-and-consume, exactly once. A stale
+      // or empty token never clears a newer pending intent.
+      const pending = state.targetIntentToken;
+      return pending !== null &&
+        token !== null &&
+        pending.generation === token.generation
+        ? cleared
+        : {};
     }),
   clearWorkFocus: () =>
     set((state) => ({

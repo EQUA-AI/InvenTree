@@ -140,7 +140,50 @@ async def enrich_canonical(
         turn_id=run.turn.pk,
         emitter=run.emitter,
     )
-    return await _attach_context_used(run, canonical)
+    canonical = await _attach_context_used(run, canonical)
+    return await _attach_presentation(run, canonical)
+
+
+async def _attach_presentation(run: TurnRun, canonical: CanonicalTurn) -> CanonicalTurn:
+    """Optional final attachment after the existing evidence/proposal gates."""
+    from ai.core.config import get_settings
+    from ai.core.presentation.builder import build_presentation
+    from ai.core.presentation.datasets import normalize_datasets
+    from ai.core.presentation.library import library_available
+    from ai.core.streaming import AGUIEvent, EventType
+
+    if not getattr(get_settings(), "feature_chat_presentation", False) or not library_available():
+        return canonical
+    try:
+        if (canonical.get("evidence_gate") or {}).get("verdict") == "pass":
+            datasets = normalize_datasets(run.extras.get("presentation_trend_candidate"))
+            if datasets:
+                canonical["presentation_data"] = datasets
+        presentation = build_presentation(canonical)
+        if presentation is None:
+            canonical.pop("presentation_data", None)
+            return canonical
+        canonical["presentation"] = presentation
+        if run.emitter is not None:
+            await run.emitter.emit(
+                AGUIEvent(
+                    event_type=EventType.STATE_DELTA,
+                    thread_id=str(run.thread.pk),
+                    run_id=str(run.turn.pk),
+                    data={
+                        "kind": "presentation",
+                        "presentation": presentation,
+                        "presentation_data": canonical.get("presentation_data", []),
+                    },
+                )
+            )
+    except Exception:
+        # Never log the program, labels or answer. Optional rendering cannot
+        # fail an otherwise valid answer or trigger another business turn.
+        canonical.pop("presentation", None)
+        canonical.pop("presentation_data", None)
+        logger.warning("presentation attachment unavailable", exc_info=False)
+    return canonical
 
 
 def _context_used_is_informative(record: dict[str, Any]) -> bool:
@@ -261,6 +304,14 @@ async def persist_terminal(
             "response_state": state,
             "events": canonical["events"],
             "spoken_summary": str(canonical.get("spoken_summary") or ""),
+            **(
+                {"presentation": canonical["presentation"]} if canonical.get("presentation") else {}
+            ),
+            **(
+                {"presentation_data": canonical["presentation_data"]}
+                if canonical.get("presentation_data")
+                else {}
+            ),
             # D0 (M1 entry baseline): content-free route facts for the battery
             # runner's layer-2 assertion — the intent enum value and whether
             # the classifier received a thread summary. Always written (null /

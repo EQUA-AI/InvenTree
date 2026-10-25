@@ -103,7 +103,7 @@ const markdownComponents: Components = {
     </Box>
   ),
   p: ({ children }) => (
-    <Text component='p' size='sm' my={4} lh={1.6}>
+    <Text component='p' fz='inherit' my={6} lh={1.6}>
       {children}
     </Text>
   ),
@@ -113,8 +113,8 @@ const markdownComponents: Components = {
       my='xs'
       p='xs'
       style={{
-        backgroundColor: 'var(--mantine-color-gray-1)',
-        border: '1px solid var(--mantine-color-gray-3)',
+        backgroundColor: 'var(--mantine-color-default-hover)',
+        border: '1px solid var(--mantine-color-default-border)',
         borderRadius: 'var(--mantine-radius-sm)',
         overflowX: 'auto',
         whiteSpace: 'pre'
@@ -156,7 +156,7 @@ export function MarkdownMessage({
   return (
     <Box
       style={{
-        fontSize: 'var(--mantine-font-size-sm)',
+        fontSize: 15,
         lineHeight: 1.6,
         overflowWrap: 'anywhere'
       }}

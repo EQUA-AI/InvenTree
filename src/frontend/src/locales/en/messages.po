@@ -32647,3 +32647,245 @@ msgstr "No current pump status is available; the station counter does not identi
 #: ../../../src/frontend/src/pages/assets/health/mimic/MimicReadings.tsx
 msgid "Measured condition"
 msgstr "Measured condition"
+
+#: src/components/ai/QuestionCard.tsx:195
+msgid "Preparing answer…"
+msgstr "Preparing answer…"
+
+#: src/components/ai/QuestionCard.tsx:196
+msgid "The answer was not sent. You can try again."
+msgstr "The answer was not sent. You can try again."
+
+#: src/components/ai/voice/VoiceDock.tsx:43
+#: src/components/ai/voice/VoiceDock.tsx:54
+msgid "Voice options"
+msgstr "Voice options"
+
+#. placeholder {0}: s.queued
+#: src/components/ai/voice/VoiceDock.tsx:44
+msgid "{0} waiting"
+msgstr "{0} waiting"
+
+#: src/components/aichat/AssistantHeader.tsx:83
+#: src/components/aichat/AssistantHeader.tsx:86
+msgid "Restore chat width"
+msgstr "Restore chat width"
+
+#: src/components/aichat/AssistantHeader.tsx:83
+#: src/components/aichat/AssistantHeader.tsx:86
+msgid "Expand chat"
+msgstr "Expand chat"
+
+#: src/components/aichat/AssistantHeader.tsx:104
+msgid "Close chat"
+msgstr "Close chat"
+
+#: src/components/aichat/AssistantMessageRenderer.tsx:54
+msgid "Working…"
+msgstr "Working…"
+
+#: src/components/aichat/AssistantMessageRenderer.tsx:140
+msgid "Copy answer"
+msgstr "Copy answer"
+
+#: src/components/aichat/AssistantMessageRenderer.tsx:182
+msgid "Export answer as Markdown"
+msgstr "Export answer as Markdown"
+
+#: src/components/aichat/AssistantMessageRenderer.tsx:197
+msgid "Regenerate answer"
+msgstr "Regenerate answer"
+
+#: src/components/aichat/AssistantMessageRenderer.tsx:377
+msgid "Your message"
+msgstr "Your message"
+
+#: src/components/aichat/AssistantMessageRenderer.tsx:377
+msgid "Assistant response"
+msgstr "Assistant response"
+
+#: src/components/aichat/ChatAttachmentQueue.tsx:37
+msgid "Upload failed"
+msgstr "Upload failed"
+
+#: src/components/aichat/ChatAttachmentQueue.tsx:39
+msgid "Queued"
+msgstr "Queued"
+
+#: src/components/aichat/ChatAttachmentQueue.tsx:40
+msgid "Uploading"
+msgstr "Uploading"
+
+#: src/components/aichat/ChatAttachmentQueue.tsx:75
+#: src/components/aichat/ChatAttachmentQueue.tsx:85
+msgid "Remove {name}"
+msgstr "Remove {name}"
+
+#: src/components/aichat/ChatTranscript.tsx:29
+msgid "Response finished. Review the conversation for the answer or any errors."
+msgstr "Response finished. Review the conversation for the answer or any errors."
+
+#: src/components/aichat/ChatTranscript.tsx:53
+msgid "Conversation transcript"
+msgstr "Conversation transcript"
+
+#: src/components/aichat/ChatTranscript.tsx:54
+msgid "Assistant workspace"
+msgstr "Assistant workspace"
+
+#: src/components/aichat/ConversationBrowser.tsx:169
+msgid "Search conversations"
+msgstr "Search conversations"
+
+#: src/components/aichat/ConversationBrowser.tsx:303
+msgid "Choose a conversation"
+msgstr "Choose a conversation"
+
+#. placeholder {0}: thread.title
+#: src/components/aichat/ConversationBrowser.tsx:403
+msgid "Rename {0}"
+msgstr "Rename {0}"
+
+#. placeholder {0}: thread.title
+#: src/components/aichat/ConversationBrowser.tsx:418
+msgid "Inspect memory for {0}"
+msgstr "Inspect memory for {0}"
+
+#. placeholder {0}: thread.title
+#: src/components/aichat/ConversationBrowser.tsx:433
+msgid "Share {0}"
+msgstr "Share {0}"
+
+#. placeholder {0}: thread.title
+#: src/components/aichat/ConversationBrowser.tsx:446
+msgid "Delete {0}"
+msgstr "Delete {0}"
+
+#: src/components/aichat/ConversationContextBar.tsx:48
+msgid "Confirming on send"
+msgstr "Confirming on send"
+
+#: src/components/aichat/ConversationContextBar.tsx:55
+msgid "Dismiss pending target"
+msgstr "Dismiss pending target"
+
+#: src/components/aichat/ConversationFocusControl.tsx:71
+msgid "That target is outside the current analysis scope. The current target and scope have been kept."
+msgstr "That target is outside the current analysis scope. The current target and scope have been kept."
+
+#: src/components/aichat/ConversationFocusControl.tsx:372
+msgid "Close target picker"
+msgstr "Close target picker"
+
+#: src/components/aichat/ConversationFocusControl.tsx:386
+msgid "Confirming target…"
+msgstr "Confirming target…"
+
+#: src/components/aichat/ConversationFocusControl.tsx:406
+msgid "Keep current target"
+msgstr "Keep current target"
+
+#: src/components/aichat/ConversationFocusControl.tsx:410
+msgid "Retry selection"
+msgstr "Retry selection"
+
+#: src/components/aichat/ConversationFocusControl.tsx:424
+msgid "Start a new conversation for this target"
+msgstr "Start a new conversation for this target"
+
+#: src/components/aichat/ConversationFocusControl.tsx:427
+msgid "The target will be confirmed before your first message."
+msgstr "The target will be confirmed before your first message."
+
+#: src/components/aichat/ConversationFocusControl.tsx:435
+msgid "Could not start a new conversation. Finish the current chat or voice activity and try again."
+msgstr "Could not start a new conversation. Finish the current chat or voice activity and try again."
+
+#: src/components/aichat/ConversationFocusControl.tsx:484
+msgid "Retry search"
+msgstr "Retry search"
+
+#: src/components/aichat/ThreadMemoryModal.tsx:276
+msgid "Close memory inspection"
+msgstr "Close memory inspection"
+
+#: src/components/aichat/genui/OpenUIMessage.tsx:28
+msgid "Referenced data is unavailable."
+msgstr "Referenced data is unavailable."
+
+#: src/components/aichat/genui/OpenUIMessage.tsx:71
+msgid "Retrieval snapshot"
+msgstr "Retrieval snapshot"
+
+#: src/components/aichat/genui/OpenUIMessage.tsx:73
+msgid "Source: recorded evidence coverage"
+msgstr "Source: recorded evidence coverage"
+
+#: src/components/aichat/genui/OpenUIMessage.tsx:77
+msgid "Counts describe the recorded search, not current equipment condition."
+msgstr "Counts describe the recorded search, not current equipment condition."
+
+#: src/components/aichat/genui/OpenUIMessage.tsx:80
+msgid "Measure"
+msgstr "Measure"
+
+#: src/components/aichat/genui/OpenUIMessage.tsx:86
+msgid "Population size"
+msgstr "Population size"
+
+#: src/components/aichat/genui/OpenUIMessage.tsx:90
+msgid "Entries returned"
+msgstr "Entries returned"
+
+#: src/components/aichat/genui/TrendSnapshot.tsx:20
+msgid "Missing"
+msgstr "Missing"
+
+#: src/components/aichat/genui/TrendSnapshot.tsx:25
+msgid "Recorded trend"
+msgstr "Recorded trend"
+
+#: src/components/aichat/genui/TrendSnapshot.tsx:38
+msgid "Historical observations; values and quality are listed in the table."
+msgstr "Historical observations; values and quality are listed in the table."
+
+#: src/components/aichat/genui/TrendSnapshot.tsx:75
+msgid "No observations of sufficient quality to plot."
+msgstr "No observations of sufficient quality to plot."
+
+#: src/components/aichat/genui/TrendSnapshot.tsx:80
+msgid "Gaps and uncertain observations are excluded from the line. The table preserves every observation."
+msgstr "Gaps and uncertain observations are excluded from the line. The table preserves every observation."
+
+#: src/components/aichat/genui/TrendSnapshot.tsx:85
+msgid "Historical observation values"
+msgstr "Historical observation values"
+
+#: src/components/aichat/genui/TrendSnapshot.tsx:109
+msgid "Snapshot revision"
+msgstr "Snapshot revision"
+
+#: src/components/nav/AIChatDrawer.tsx:166
+msgid "Open AI chat"
+msgstr "Open AI chat"
+
+#: src/components/nav/AIChatDrawer.tsx:844
+msgid "Finish uploading or remove failed attachments before sending."
+msgstr "Finish uploading or remove failed attachments before sending."
+
+#: src/components/nav/AIChatDrawer.tsx:955
+msgid "Your draft changed while the target was being confirmed. Send it again when you are ready."
+msgstr "Your draft changed while the target was being confirmed. Send it again when you are ready."
+
+#: src/components/nav/AIChatDrawer.tsx:985
+#: src/components/nav/AIChatDrawer.tsx:993
+msgid "The message was not sent. Your draft has been kept."
+msgstr "The message was not sent. Your draft has been kept."
+
+#: src/components/nav/AIChatDrawer.tsx:1423
+msgid "How can I help?"
+msgstr "How can I help?"
+
+#: src/components/nav/AIChatDrawer.tsx:1426
+msgid "Ask about assets, maintenance or inventory. Review sources and approvals before acting."
+msgstr "Ask about assets, maintenance or inventory. Review sources and approvals before acting."

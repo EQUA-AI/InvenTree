@@ -71,6 +71,7 @@ export interface FoundationObservations {
 }
 
 export interface FoundationOptions {
+  capabilities?: Record<string, boolean>;
   /** Override the `messages` array in the thread-detail GET response (reload fidelity). */
   threadDetailMessages?: unknown[];
   /** Evidence-set member pages by set id; unknown ids 404 (S11). */
@@ -414,7 +415,11 @@ export async function mockChatFoundation(
         ],
         sync_token: null,
         has_more: false,
-        capabilities: { thread_scope: true, thread_focus: true }
+        capabilities: {
+          thread_scope: true,
+          thread_focus: true,
+          ...options.capabilities
+        }
       }
     });
   });

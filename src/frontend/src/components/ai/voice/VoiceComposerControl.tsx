@@ -10,7 +10,7 @@
  * capture. The full `VoiceSessionControl` stays for the hands-free surface.
  */
 import { t } from '@lingui/core/macro';
-import { ActionIcon, Badge, Button, Group, Text, Tooltip } from '@mantine/core';
+import { ActionIcon, Button, Group, Text, Tooltip } from '@mantine/core';
 import { IconMicrophone } from '@tabler/icons-react';
 import type { VoiceClientState, VoiceError } from '../../../../lib/types/Voice';
 import {
@@ -277,8 +277,15 @@ export function VoiceActiveStrip(props: Readonly<VoiceComposerControlProps>) {
       data-voice-surface
       wrap='wrap'
     >
-      <Badge data-testid='voice-state-badge'>{labels[props.state]}</Badge>
-      <Text size='sm' data-testid='voice-mic-status'>
+      <Text
+        size='xs'
+        data-testid='voice-mic-status'
+        style={{ flex: 1, minWidth: 72 }}
+      >
+        <Text span fw={600} data-testid='voice-state-badge'>
+          {labels[props.state]}
+        </Text>
+        {' · '}
         {split.mic === 'listening'
           ? t`Microphone listening`
           : split.mic === 'muted'
@@ -287,14 +294,8 @@ export function VoiceActiveStrip(props: Readonly<VoiceComposerControlProps>) {
               ? t`Microphone waiting for push to talk`
               : t`Microphone paused`}
       </Text>
-      <Text size='sm'>
-        {split.playback === 'playing'
-          ? t`Audio playing`
-          : split.playback === 'pending'
-            ? t`Waiting for audio`
-            : t`Audio stopped`}
-      </Text>
       <Button
+        size='compact-sm'
         mih={44}
         variant='default'
         onClick={props.onToggleMute}
@@ -303,8 +304,17 @@ export function VoiceActiveStrip(props: Readonly<VoiceComposerControlProps>) {
       >
         {props.muted ? t`Unmute` : t`Mute`}
       </Button>
+      <Button
+        size='compact-sm'
+        mih={44}
+        color='red'
+        variant='light'
+        onClick={props.onEnd}
+        data-testid='voice-end'
+        aria-keyshortcuts={VOICE_SHORTCUT.aria}
+      >{t`End voice`}</Button>
       {props.state === 'confirming' && (
-        <>
+        <Group gap='xs'>
           <Button
             mih={44}
             color='orange'
@@ -317,22 +327,8 @@ export function VoiceActiveStrip(props: Readonly<VoiceComposerControlProps>) {
             onClick={props.onDiscardTranscript}
             data-testid='voice-discard-transcript'
           >{t`Discard transcript`}</Button>
-        </>
+        </Group>
       )}
-      <Button
-        mih={44}
-        variant='default'
-        onClick={props.onCancel}
-        data-testid='voice-stop-speaking'
-      >{t`Stop speaking`}</Button>
-      <Button
-        mih={44}
-        color='red'
-        onClick={props.onEnd}
-        data-testid='voice-end'
-        aria-keyshortcuts={VOICE_SHORTCUT.aria}
-      >{t`End voice`}</Button>
-      {props.webrtcPreview && <Badge variant='outline'>{t`Preview`}</Badge>}
       {errorText && (
         <Text
           component='output'

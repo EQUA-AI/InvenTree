@@ -1,0 +1,24 @@
+.control {
+  min-width: 36px;
+  min-height: 36px;
+}
+.composer:focus-within {
+  border-color: var(--mantine-primary-color-filled);
+  box-shadow: 0 0 0 1px var(--mantine-primary-color-filled);
+}
+.separator:focus-visible,
+.transcriptViewport:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: -2px;
+}
+@media (pointer: coarse) {
+  .control,
+  .modal button,
+  .voiceDock button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .control { transition: none; }
+}

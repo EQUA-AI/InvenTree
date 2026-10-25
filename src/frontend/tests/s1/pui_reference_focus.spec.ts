@@ -472,22 +472,30 @@ test('a component-focused question keeps its uploaded file and signed focus', as
 }) => {
   const observed = await focused(page);
   const composer = await equipment(page);
-  await page.route('**/api/ai/upload', (route) =>
-    route.fulfill({
+  await page.route('**/api/ai/upload', (route) => {
+    const threadId = route
+      .request()
+      .postData()
+      ?.match(/name="thread_id"\r\n\r\n([^\r]+)/)?.[1];
+    expect(threadId).toBeTruthy();
+    return route.fulfill({
       json: {
         file_id: 'synthetic-thread/report.pdf',
         filename: 'report.pdf',
         extension: '.pdf',
-        size: 42
+        size: 42,
+        thread_id: threadId
       }
-    })
-  );
+    });
+  });
   await page.locator('input[type=file]').setInputFiles({
     name: 'report.pdf',
     mimeType: 'application/pdf',
     buffer: Buffer.from('%PDF-1.4 synthetic reference upload')
   });
-  await expect(page.getByText('report.pdf', { exact: true })).toBeVisible();
+  await expect(
+    page.getByTestId('remove-ai-chat-attachment-synthetic-thread/report.pdf')
+  ).toBeVisible();
   await composer.fill('Read this file about the selected reference position.');
   await page.getByTestId('send-ai-chat-message').click();
   await expect.poll(() => observed.sends.length).toBe(1);

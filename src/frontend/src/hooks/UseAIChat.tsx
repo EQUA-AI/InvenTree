@@ -2,7 +2,13 @@ import type {
   ComponentFocusReference,
   EvidenceFocusReference
 } from '@lib/types/AimmsWire.generated';
+import type {
+  AssistantPresentationV1,
+  PresentationTrendV1
+} from '@lib/types/AimmsWire.generated';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { normalizePresentationData } from '../components/aichat/genui/datasets';
+import { normalizePresentation } from '../components/aichat/genui/presentation';
 
 import { api, queryClient } from '../App';
 import { createFocusRefreshGate } from '../components/aichat/conversationFocus';
@@ -35,6 +41,7 @@ import {
   saveTranscriptDownload
 } from '../functions/transcriptExport';
 import { useAIChatState } from '../states/AIChatState';
+import { retireChatDrafts } from '../states/ChatDraftState';
 import { useLocalState } from '../states/LocalState';
 import { useThreadFocusState } from '../states/ThreadFocusState';
 import { useUserState } from '../states/UserState';
@@ -437,6 +444,8 @@ export interface ChatMessage {
    * ids. Display and navigation only; the Work page checks access again.
    */
   workFocus?: ChatWorkFocus;
+  presentation?: AssistantPresentationV1;
+  presentationData?: PresentationTrendV1[];
 }
 
 /** S46: one tool call's lifecycle as shown in the activity strip. */
@@ -587,6 +596,8 @@ interface ServerMessage {
   /** P02/P33: how that Work stands now for the owner (re-checked on read). */
   work_focus_state?: unknown;
   work_focus_reference_states?: unknown;
+  presentation?: unknown;
+  presentation_data?: unknown;
   response_state?: string;
 }
 
@@ -745,7 +756,9 @@ async function fetchServerThread(
             m.work_focus,
             m.work_focus_state,
             m.work_focus_reference_states
-          ) ?? undefined
+          ) ?? undefined,
+        presentation: normalizePresentation(m.presentation) ?? undefined,
+        presentationData: normalizePresentationData(m.presentation_data)
       })
     );
 
@@ -2042,6 +2055,18 @@ export function useAIChat(config: AIChatConfig = {}) {
       publish = true
     ) => {
       if (!sessionIsCurrent()) return;
+      // C06: the deleted thread's private drafts and ready references die
+      // with it (single, purge-incomplete and bulk uncertain receipts alike)
+      // after the current-session guard — sibling drafts stay untouched.
+      const draftUser = useUserState.getState();
+      retireChatDrafts(
+        {
+          host: useLocalState.getState().getHost(),
+          userId: draftUser.isLoggedIn() ? draftUser.userId() : undefined,
+          sessionGeneration: useAIChatState.getState().sessionGeneration
+        },
+        threadId
+      );
       // Publish after the metadata update so another tab reopens against the
       // deletion receipt, including the row needed for an incomplete-purge retry.
       const next =
@@ -2330,7 +2355,13 @@ export function useAIChat(config: AIChatConfig = {}) {
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === messageId
-            ? { ...msg, content: '', isStreaming: true }
+            ? {
+                ...msg,
+                content: '',
+                isStreaming: true,
+                presentation: undefined,
+                presentationData: undefined
+              }
             : msg
         )
       );
@@ -2604,7 +2635,8 @@ export function useAIChat(config: AIChatConfig = {}) {
             receipt: string;
             workFocus: ChatWorkFocus;
             focusVersion?: number | null;
-          }
+          },
+      onAdmitted?: () => void
     ) => {
       if (
         !sessionIsCurrent() ||
@@ -2644,6 +2676,33 @@ export function useAIChat(config: AIChatConfig = {}) {
       const turnSelectionVersion = selectionVersionRef.current;
       let turnAborted = false;
       let turnDone = false;
+      const attachTurnPresentation = (raw: unknown) => {
+        if (
+          turnDone ||
+          turnAborted ||
+          !sessionIsCurrent() ||
+          turnSelectionVersion !== selectionVersionRef.current ||
+          activeThreadIdRef.current !== turnThreadId
+        )
+          return;
+        if (!raw || typeof raw !== 'object') return;
+        const attachment = raw as {
+          presentation?: unknown;
+          presentation_data?: unknown;
+        };
+        const presentation = normalizePresentation(attachment.presentation);
+        const presentationData = normalizePresentationData(
+          attachment.presentation_data
+        );
+        if (presentation)
+          setMessages((previous) =>
+            previous.map((message) =>
+              message.id === assistantMessage.id
+                ? { ...message, presentation, presentationData }
+                : message
+            )
+          );
+      };
       const focusRefresh = createFocusRefreshGate(
         () =>
           !turnDone &&
@@ -2733,6 +2792,8 @@ export function useAIChat(config: AIChatConfig = {}) {
         const streamingEndpoint = mergedConfig.streaming
           ? `${chatEndpoint.replace(/\/$/, '')}/stream`
           : chatEndpoint;
+
+        onAdmitted?.();
 
         if (mergedConfig.streaming) {
           // Streaming response handling with AG-UI protocol
@@ -2885,6 +2946,7 @@ export function useAIChat(config: AIChatConfig = {}) {
                           attachContextUsed(assistantMessage.id, record);
                         }
                       },
+                      onPresentation: attachTurnPresentation,
                       onThreadFocus: (value) => {
                         // aimms.threadFocus: consume only the refresh
                         // signal; the recorded snapshot never rebinds.
@@ -3370,6 +3432,17 @@ export function useAIChat(config: AIChatConfig = {}) {
                                 attachContextUsed(assistantMessage.id, record);
                               }
                             }
+                            if (gateEvent.kind === 'presentation') {
+                              const attachment = event as unknown as {
+                                presentation?: unknown;
+                                threadId?: string;
+                              };
+                              if (
+                                !attachment.threadId ||
+                                attachment.threadId === turnThreadId
+                              )
+                                attachTurnPresentation(event);
+                            }
                             break;
                           }
 
@@ -3723,13 +3796,21 @@ export function useAIChat(config: AIChatConfig = {}) {
    * Upload a file and return its metadata
    */
   const uploadFile = useCallback(
-    async (file: File): Promise<UploadedFile | null> => {
+    async (
+      file: File,
+      isDraftUploadCurrent?: () => boolean
+    ): Promise<UploadedFile | null> => {
       const version = selectionVersionRef.current;
       const currentSelection = () =>
         sessionIsCurrent() &&
         version === selectionVersionRef.current &&
         activeThreadIdRef.current === activeThreadId;
-      if (!currentSelection()) return null;
+      // The optional draft token lets an upload finish for its originating
+      // draft while another thread is viewed. Session retirement still wins.
+      const currentUpload = () =>
+        sessionIsCurrent() &&
+        (isDraftUploadCurrent ? isDraftUploadCurrent() : currentSelection());
+      if (!currentUpload()) return null;
       try {
         const formData = new FormData();
         formData.append('file', file);
@@ -3750,10 +3831,11 @@ export function useAIChat(config: AIChatConfig = {}) {
         }
 
         const uploaded = (await response.json()) as UploadedFile;
-        return currentSelection() ? uploaded : null;
+        return currentUpload() ? uploaded : null;
       } catch (err) {
-        console.error('File upload failed:', err);
-        if (currentSelection())
+        // Draft-owned uploads expose per-file Retry/Remove locally. Do not
+        // leak an old draft's error into the currently selected conversation.
+        if (!isDraftUploadCurrent && currentSelection())
           setError(err instanceof Error ? err.message : 'File upload failed');
         return null;
       }

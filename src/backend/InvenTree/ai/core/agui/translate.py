@@ -41,6 +41,7 @@ CUSTOM_CHANNELS = (
     # Conversation-focus echo: the turn's RECORDED binding + version and the
     # refresh flag (see ``ai.core.turn_service.FOCUS_ECHO_CHANNEL``).
     "aimms.threadFocus",
+    "aimms.presentation",
 )
 
 #: Classic base-envelope keys that are NOT part of a record's payload.
@@ -319,6 +320,17 @@ class SpecTranslator:
                 # M1 PR G: ids and counts only, one object shape everywhere.
                 forwarded = {key: value for key, value in payload.items() if key != "kind"}
                 return [self._custom("aimms.contextUsed", forwarded, record)]
+            if kind == "presentation":
+                return [
+                    self._custom(
+                        "aimms.presentation",
+                        {
+                            "presentation": payload.get("presentation"),
+                            "presentation_data": payload.get("presentation_data", []),
+                        },
+                        record,
+                    )
+                ]
             return [self._custom("aimms.stateDelta", payload, record)]
         if event_type == EventType.MESSAGES_SNAPSHOT:
             messages = []

@@ -1,0 +1,10 @@
+{
+  "renderer": "1.0.1",
+  "cli": "0.6.0",
+  "zod": "4.6.7",
+  "library": "aimms-chat@1",
+  "artifacts": {
+    "chat-library.txt": "80a9d378328219119b8e3949d87f96c955d75c3177fb58789f5a960f50dfb3db",
+    "chat-library.spec.json": "8316a9eba20a344a3c4610561107e2b1847f269d78541cf89f68a2f03282c4af"
+  }
+}

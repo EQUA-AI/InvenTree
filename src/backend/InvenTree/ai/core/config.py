@@ -672,6 +672,13 @@ class Settings(BaseSettings):
         default=True,
         validation_alias=AliasChoices("FEATURE_MEDIA_EVIDENCE", "AIMMS_FEATURE_MEDIA_EVIDENCE"),
     )
+    # Independent generation/advertisement kill switch. Text remains canonical.
+    feature_chat_presentation: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "FEATURE_CHAT_PRESENTATION", "AIMMS_FEATURE_CHAT_PRESENTATION"
+        ),
+    )
     # S27: cite-or-downgrade for manuals-grounded wf8 answers. shadow logs a
     # content-free would_downgrade line and persists the assessment; enforce
     # replaces confirmed-ungrounded answers with the downgrade template.

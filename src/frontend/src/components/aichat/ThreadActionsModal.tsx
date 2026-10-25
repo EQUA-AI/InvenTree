@@ -4,12 +4,12 @@ import {
   Button,
   Checkbox,
   Group,
-  Modal,
   Stack,
   Text,
   TextInput
 } from '@mantine/core';
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
+import { AssistantModal } from './AssistantModal';
 
 import type { ChatThread } from '../../hooks/UseAIChat';
 import { type ThreadDeleteResult, threadDeletionCopy } from './threadDeletion';
@@ -45,6 +45,11 @@ export function ThreadActionsModal({
   );
   const [forgetConfirmed, setForgetConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const running = useRef(false);
+  const content = useRef<HTMLFormElement>(null);
+  useLayoutEffect(() => {
+    if (busy) content.current?.focus({ preventScroll: true });
+  }, [busy]);
   const [error, setError] = useState<string | null>(null);
   const [incomplete, setIncomplete] = useState(
     Boolean(action.thread.deletionPending)
@@ -55,7 +60,9 @@ export function ThreadActionsModal({
   );
 
   const submit = async (revoke = false) => {
-    if (busy || (action.kind !== 'delete' && !value.trim())) return;
+    if (running.current || (action.kind !== 'delete' && !value.trim())) return;
+    running.current = true;
+    content.current?.focus({ preventScroll: true });
     setBusy(true);
     setError(null);
     try {
@@ -78,15 +85,16 @@ export function ThreadActionsModal({
     } catch {
       setError(t`The change could not be completed. Please try again.`);
     } finally {
+      running.current = false;
       setBusy(false);
     }
   };
 
   return (
-    <Modal
+    <AssistantModal
       opened
       onClose={() => {
-        if (!busy) onClose();
+        if (!running.current) onClose();
       }}
       title={
         action.kind === 'delete'
@@ -100,6 +108,8 @@ export function ThreadActionsModal({
       withCloseButton={!busy}
     >
       <form
+        ref={content}
+        tabIndex={-1}
         onSubmit={(event) => {
           event.preventDefault();
           void submit();
@@ -176,6 +186,6 @@ export function ThreadActionsModal({
           </Group>
         </Stack>
       </form>
-    </Modal>
+    </AssistantModal>
   );
 }

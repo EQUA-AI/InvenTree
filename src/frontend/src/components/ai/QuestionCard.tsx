@@ -10,8 +10,9 @@ import {
   UnstyledButton
 } from '@mantine/core';
 import { IconArrowUp, IconHelpCircle } from '@tabler/icons-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useVoiceDecisionState } from '../../states/VoiceDecisionState';
+import { shouldSendOnEnter } from '../nav/chatComposer';
 
 import type {
   QuestionPayload,
@@ -41,20 +42,35 @@ export function QuestionCard({
   resolution?: QuestionResolution;
   /** Answered from this client by a typed message rather than a click. */
   answeredExternally?: boolean;
-  onAnswer: (text: string) => void;
+  /** True only after the shared send path has locally admitted this answer. */
+  onAnswer: (text: string) => Promise<boolean>;
 }>) {
   const [answered, setAnswered] = useState(false);
   const [otherText, setOtherText] = useState('');
+  const [pending, setPending] = useState(false);
+  const pendingRef = useRef(false);
+  const [notSent, setNotSent] = useState(false);
 
   const decisionArmed = useVoiceDecisionState(
     (state) => state.decision?.state === 'presented'
   );
   const active = armed && !answered && !decisionArmed;
 
-  const submit = (text: string) => {
-    if (!active || !text.trim()) return;
-    setAnswered(true);
-    onAnswer(text.trim());
+  const submit = async (text: string) => {
+    if (!active || pendingRef.current || !text.trim()) return;
+    pendingRef.current = true;
+    setPending(true);
+    setNotSent(false);
+    try {
+      const admitted = await onAnswer(text.trim());
+      if (admitted) setAnswered(true);
+      else setNotSent(true);
+    } catch {
+      setNotSent(true);
+    } finally {
+      pendingRef.current = false;
+      setPending(false);
+    }
   };
 
   const selectedId = resolution?.selected_option_id;
@@ -80,8 +96,8 @@ export function QuestionCard({
             return (
               <UnstyledButton
                 key={option.id}
-                onClick={() => submit(option.label)}
-                disabled={!active}
+                onClick={() => void submit(option.label)}
+                disabled={!active || pending}
                 data-testid={`question-option-${option.id}`}
               >
                 <Paper
@@ -129,17 +145,29 @@ export function QuestionCard({
               style={{ flex: 1 }}
               placeholder={t`Other...`}
               value={otherText}
+              disabled={pending}
               onChange={(event) => setOtherText(event.currentTarget.value)}
               onKeyDown={(event) => {
-                if (event.key === 'Enter') submit(otherText);
+                if (
+                  shouldSendOnEnter({
+                    key: event.key,
+                    shiftKey: event.shiftKey,
+                    isComposing: event.nativeEvent.isComposing,
+                    keyCode: event.nativeEvent.keyCode
+                  })
+                ) {
+                  event.preventDefault();
+                  void submit(otherText);
+                }
               }}
               aria-label='question-other-input'
             />
             <ActionIcon
               size='sm'
               variant='light'
-              onClick={() => submit(otherText)}
-              disabled={!otherText.trim()}
+              onClick={() => void submit(otherText)}
+              loading={pending}
+              disabled={pending || !otherText.trim()}
               aria-label='question-other-send'
             >
               <IconArrowUp size={14} />
@@ -154,6 +182,18 @@ export function QuestionCard({
                 : answered || answeredExternally
                   ? t`Answered in chat`
                   : t`No longer active — just type your answer`}
+          </Text>
+        )}
+        {active && (pending || notSent) && (
+          <Text
+            component='output'
+            aria-live='polite'
+            size='xs'
+            c={notSent ? 'red' : 'dimmed'}
+          >
+            {pending
+              ? t`Preparing answer…`
+              : t`The answer was not sent. You can try again.`}
           </Text>
         )}
       </Stack>

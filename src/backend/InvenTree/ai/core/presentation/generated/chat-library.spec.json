@@ -1,0 +1,208 @@
+{
+  "root": "AnswerLayout",
+  "components": {
+    "AnswerLayout": {
+      "signature": "AnswerLayout(children: (AnswerSummary | AssetSummary | EvidenceList | CoverageNotice | MetricComparison | TrendPreview | NextSteps)[])",
+      "description": "A bounded sequence of read-only answer sections."
+    },
+    "AnswerSummary": {
+      "signature": "AnswerSummary()",
+      "description": "The canonical readable answer. Never supplies new facts."
+    },
+    "AssetSummary": {
+      "signature": "AssetSummary(reference: string)",
+      "description": "Resolve only an authorized, historical server reference. Missing data is unavailable."
+    },
+    "EvidenceList": {
+      "signature": "EvidenceList(reference: string)",
+      "description": "Resolve only an authorized, historical server reference. Missing data is unavailable."
+    },
+    "CoverageNotice": {
+      "signature": "CoverageNotice()",
+      "description": "The canonical evidence qualifications and coverage."
+    },
+    "MetricComparison": {
+      "signature": "MetricComparison(reference: string)",
+      "description": "Resolve only an authorized, historical server reference. Missing data is unavailable."
+    },
+    "TrendPreview": {
+      "signature": "TrendPreview(reference: string)",
+      "description": "Resolve only an authorized, historical server reference. Missing data is unavailable."
+    },
+    "NextSteps": {
+      "signature": "NextSteps(reference: string)",
+      "description": "Resolve only an authorized, historical server reference. Missing data is unavailable."
+    }
+  },
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "AnswerLayout": {
+        "$ref": "#/$defs/AnswerLayout"
+      },
+      "AnswerSummary": {
+        "$ref": "#/$defs/AnswerSummary"
+      },
+      "AssetSummary": {
+        "$ref": "#/$defs/AssetSummary"
+      },
+      "EvidenceList": {
+        "$ref": "#/$defs/EvidenceList"
+      },
+      "CoverageNotice": {
+        "$ref": "#/$defs/CoverageNotice"
+      },
+      "MetricComparison": {
+        "$ref": "#/$defs/MetricComparison"
+      },
+      "TrendPreview": {
+        "$ref": "#/$defs/TrendPreview"
+      },
+      "NextSteps": {
+        "$ref": "#/$defs/NextSteps"
+      }
+    },
+    "required": [
+      "AnswerLayout",
+      "AnswerSummary",
+      "AssetSummary",
+      "EvidenceList",
+      "CoverageNotice",
+      "MetricComparison",
+      "TrendPreview",
+      "NextSteps"
+    ],
+    "additionalProperties": false,
+    "$defs": {
+      "AnswerLayout": {
+        "type": "object",
+        "properties": {
+          "children": {
+            "minItems": 1,
+            "maxItems": 199,
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AnswerSummary"
+                },
+                {
+                  "$ref": "#/$defs/AssetSummary"
+                },
+                {
+                  "$ref": "#/$defs/EvidenceList"
+                },
+                {
+                  "$ref": "#/$defs/CoverageNotice"
+                },
+                {
+                  "$ref": "#/$defs/MetricComparison"
+                },
+                {
+                  "$ref": "#/$defs/TrendPreview"
+                },
+                {
+                  "$ref": "#/$defs/NextSteps"
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "children"
+        ],
+        "additionalProperties": false,
+        "description": "A bounded sequence of read-only answer sections."
+      },
+      "AnswerSummary": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "description": "The canonical readable answer. Never supplies new facts."
+      },
+      "AssetSummary": {
+        "type": "object",
+        "properties": {
+          "reference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "reference"
+        ],
+        "additionalProperties": false,
+        "description": "Resolve only an authorized, historical server reference. Missing data is unavailable."
+      },
+      "EvidenceList": {
+        "type": "object",
+        "properties": {
+          "reference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "reference"
+        ],
+        "additionalProperties": false,
+        "description": "Resolve only an authorized, historical server reference. Missing data is unavailable."
+      },
+      "CoverageNotice": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "description": "The canonical evidence qualifications and coverage."
+      },
+      "MetricComparison": {
+        "type": "object",
+        "properties": {
+          "reference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "reference"
+        ],
+        "additionalProperties": false,
+        "description": "Resolve only an authorized, historical server reference. Missing data is unavailable."
+      },
+      "TrendPreview": {
+        "type": "object",
+        "properties": {
+          "reference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "reference"
+        ],
+        "additionalProperties": false,
+        "description": "Resolve only an authorized, historical server reference. Missing data is unavailable."
+      },
+      "NextSteps": {
+        "type": "object",
+        "properties": {
+          "reference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "reference"
+        ],
+        "additionalProperties": false,
+        "description": "Resolve only an authorized, historical server reference. Missing data is unavailable."
+      }
+    }
+  },
+  "id": "aimms-chat@1"
+}
