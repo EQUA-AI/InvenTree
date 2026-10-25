@@ -316,6 +316,8 @@ def test_custom_channels_are_frozen_and_generated() -> None:
         "aimms.analysisProgress",
         # M1 PR G (§9.11): the Context used record.
         "aimms.contextUsed",
+        "aimms.threadFocus",
+        "aimms.presentation",
     )
 
 

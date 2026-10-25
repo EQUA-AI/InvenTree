@@ -30,6 +30,8 @@ class CanonicalTurn(TypedDict):
     entities: NotRequired[list[dict[str, Any]]]
     question: NotRequired[dict[str, Any]]
     question_resolution: NotRequired[dict[str, Any]]
+    presentation: NotRequired[dict[str, Any]]
+    presentation_data: NotRequired[list[dict[str, Any]]]
     kind: NotRequired[str]
 
 

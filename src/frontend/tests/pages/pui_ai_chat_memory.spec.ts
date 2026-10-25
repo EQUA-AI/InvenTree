@@ -254,7 +254,7 @@ async function mockMemoryRoutes(page: Page): Promise<MemoryObservations> {
 async function openMemoryModal(page: Page) {
   await page.getByTestId('select-ai-chat-thread').click();
   await page.getByTestId(`memory-ai-chat-thread-${threadId}`).click();
-  await expect(page.getByLabel('thread-memory-modal')).toHaveCount(1);
+  await expect(page.getByTestId('thread-memory-modal')).toHaveCount(1);
   const modal = page.getByRole('dialog', { name: 'What this chat remembers' });
   await expect(modal).toBeVisible();
   return modal;
@@ -335,20 +335,20 @@ test('memory modal fetches the body and renders it as a summary, not verified da
   await expect(modal.getByTestId('memory-item-mf1')).toContainText(
     'Pump 7 runs at 1450 rpm'
   );
-  await expect(page.getByLabel('memory-item-wrong-mf1')).toBeVisible();
-  await expect(page.getByLabel('memory-item-forget-mf1')).toBeVisible();
-  await expect(page.getByLabel('memory-item-wrong-oq1')).toBeVisible();
-  await expect(page.getByLabel('memory-item-forget-co1')).toBeVisible();
+  await expect(page.getByTestId('memory-item-wrong-mf1')).toBeVisible();
+  await expect(page.getByTestId('memory-item-forget-mf1')).toBeVisible();
+  await expect(page.getByTestId('memory-item-wrong-oq1')).toBeVisible();
+  await expect(page.getByTestId('memory-item-forget-co1')).toBeVisible();
 
   // Inactive items: muted with a lifecycle badge and NO verbs.
   await expect(modal.getByTestId('memory-item-mf2')).toContainText(
     'superseded'
   );
-  await expect(page.getByLabel('memory-item-wrong-mf2')).toHaveCount(0);
-  await expect(page.getByLabel('memory-item-forget-mf2')).toHaveCount(0);
+  await expect(page.getByTestId('memory-item-wrong-mf2')).toHaveCount(0);
+  await expect(page.getByTestId('memory-item-forget-mf2')).toHaveCount(0);
   await expect(modal.getByTestId('memory-item-oq2')).toContainText('forgotten');
-  await expect(page.getByLabel('memory-item-wrong-oq2')).toHaveCount(0);
-  await expect(page.getByLabel('memory-item-forget-oq2')).toHaveCount(0);
+  await expect(page.getByTestId('memory-item-wrong-oq2')).toHaveCount(0);
+  await expect(page.getByTestId('memory-item-forget-oq2')).toHaveCount(0);
 
   await expect(
     modal.getByTestId('memory-section-pending_proposals')
@@ -375,7 +375,7 @@ test('forget PUTs a credentialed correction without an idempotency key and refet
   await openChat(page);
   const modal = await openMemoryModal(page);
   await expect.poll(() => memory.memoryReads.length).toBe(1);
-  await expect(page.getByLabel('memory-item-forget-mf1')).toBeVisible();
+  await expect(page.getByTestId('memory-item-forget-mf1')).toBeVisible();
 
   // After the write the server reports mf1 as forgotten.
   memory.serve = {
@@ -386,7 +386,7 @@ test('forget PUTs a credentialed correction without an idempotency key and refet
     exclusions_count: 2
   };
 
-  await page.getByLabel('memory-item-forget-mf1').click();
+  await page.getByTestId('memory-item-forget-mf1').click();
 
   await expect.poll(() => memory.corrections.length).toBe(1);
   const correction = memory.corrections[0];
@@ -401,15 +401,15 @@ test('forget PUTs a credentialed correction without an idempotency key and refet
 
   // Refetch: the forgotten item loses its verbs; the count updates.
   await expect.poll(() => memory.memoryReads.length).toBe(2);
-  await expect(page.getByLabel('memory-item-forget-mf1')).toHaveCount(0);
-  await expect(page.getByLabel('memory-item-wrong-mf1')).toHaveCount(0);
+  await expect(page.getByTestId('memory-item-forget-mf1')).toHaveCount(0);
+  await expect(page.getByTestId('memory-item-wrong-mf1')).toHaveCount(0);
   await expect(modal.getByTestId('memory-item-mf1')).toContainText('forgotten');
   await expect(modal.getByTestId('thread-memory-exclusions')).toHaveText(
     '2 forgotten'
   );
 
   // "This is wrong" carries the other action code on the same route.
-  await page.getByLabel('memory-item-wrong-oq1').click();
+  await page.getByTestId('memory-item-wrong-oq1').click();
   await expect.poll(() => memory.corrections.length).toBe(2);
   expect(memory.corrections[1].body).toEqual({
     item_id: 'oq1',
@@ -431,7 +431,7 @@ test('a 409 on a correction refetches and asks to try again', async ({
   await expect.poll(() => memory.memoryReads.length).toBe(1);
 
   memory.correctionStatus = 409;
-  await page.getByLabel('memory-item-forget-mf1').click();
+  await page.getByTestId('memory-item-forget-mf1').click();
   await expect.poll(() => memory.corrections.length).toBe(1);
   await expect.poll(() => memory.memoryReads.length).toBe(2);
   await expect(page.getByTestId('thread-memory-notice')).toContainText(
@@ -440,7 +440,7 @@ test('a 409 on a correction refetches and asks to try again', async ({
   // The server's detail string never paints.
   await expect(page.getByText('memory_version_conflict')).toHaveCount(0);
   // The body is still there for a second attempt.
-  await expect(page.getByLabel('memory-item-forget-mf1')).toBeVisible();
+  await expect(page.getByTestId('memory-item-forget-mf1')).toBeVisible();
 });
 
 test('closing the modal during an in-flight correction never repaints; a re-open for another thread starts empty', async ({
@@ -461,10 +461,10 @@ test('closing the modal during an in-flight correction never repaints; a re-open
   // Hold the PUT, then close the modal while it is still in flight.
   const correction = gate();
   memory.correctionGate = correction;
-  await page.getByLabel('memory-item-forget-mf1').click();
+  await page.getByTestId('memory-item-forget-mf1').click();
   await expect.poll(() => memory.corrections.length).toBe(1);
   // The modal's own close button (the drawer also listens for Escape).
-  await page.getByLabel('thread-memory-close').click();
+  await page.getByTestId('thread-memory-close').click();
   await expect(modal).toBeHidden();
 
   // If anything refetched for the closed modal, this is what it would get.

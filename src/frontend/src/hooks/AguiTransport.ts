@@ -73,6 +73,7 @@ export interface AguiTurnCallbacks {
    * normalizer is the one place the shape is decided.
    */
   onContextUsed?(value: unknown): void;
+  onPresentation?(value: unknown): void;
   onProposalsRefresh(): void;
   /**
    * `aimms.threadFocus` CUSTOM: the turn's RECORDED pre-change focus echo.
@@ -197,6 +198,9 @@ function dispatchCustom(
     case 'aimms.contextUsed':
       // M2 PR 9: raw pass-through; normalized (allow-listed) hook-side.
       callbacks.onContextUsed?.(value ?? {});
+      break;
+    case 'aimms.presentation':
+      callbacks.onPresentation?.(value);
       break;
     case 'aimms.threadFocus':
       // The echoed snapshot is never applied to the chip; only its

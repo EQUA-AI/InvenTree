@@ -18746,3 +18746,366 @@ msgstr ""
 msgid "{0} request(s) waiting to send. They go in order once the current request finishes."
 msgstr ""
 
+#: src/components/ai/QuestionCard.tsx:195
+msgid "Preparing answer…"
+msgstr ""
+
+#: src/components/ai/QuestionCard.tsx:196
+msgid "The answer was not sent. You can try again."
+msgstr ""
+
+#: src/components/ai/voice/VoiceDock.tsx:43
+#: src/components/ai/voice/VoiceDock.tsx:54
+msgid "Voice options"
+msgstr ""
+
+#. placeholder {0}: s.queued
+#: src/components/ai/voice/VoiceDock.tsx:44
+msgid "{0} waiting"
+msgstr ""
+
+#: src/components/aichat/AssistantHeader.tsx:83
+#: src/components/aichat/AssistantHeader.tsx:86
+msgid "Restore chat width"
+msgstr ""
+
+#: src/components/aichat/AssistantHeader.tsx:83
+#: src/components/aichat/AssistantHeader.tsx:86
+msgid "Expand chat"
+msgstr ""
+
+#: src/components/aichat/AssistantHeader.tsx:104
+msgid "Close chat"
+msgstr ""
+
+#: src/components/aichat/AssistantMessageRenderer.tsx:54
+msgid "Working…"
+msgstr ""
+
+#: src/components/aichat/AssistantMessageRenderer.tsx:140
+msgid "Copy answer"
+msgstr ""
+
+#: src/components/aichat/AssistantMessageRenderer.tsx:182
+msgid "Export answer as Markdown"
+msgstr ""
+
+#: src/components/aichat/AssistantMessageRenderer.tsx:197
+msgid "Regenerate answer"
+msgstr ""
+
+#: src/components/aichat/AssistantMessageRenderer.tsx:377
+msgid "Your message"
+msgstr ""
+
+#: src/components/aichat/AssistantMessageRenderer.tsx:377
+msgid "Assistant response"
+msgstr ""
+
+#: src/components/aichat/ChatAttachmentQueue.tsx:37
+msgid "Upload failed"
+msgstr ""
+
+#: src/components/aichat/ChatAttachmentQueue.tsx:39
+msgid "Queued"
+msgstr ""
+
+#: src/components/aichat/ChatAttachmentQueue.tsx:40
+msgid "Uploading"
+msgstr ""
+
+#: src/components/aichat/ChatAttachmentQueue.tsx:75
+#: src/components/aichat/ChatAttachmentQueue.tsx:85
+msgid "Remove {name}"
+msgstr ""
+
+#: src/components/aichat/ChatTranscript.tsx:29
+msgid "Response finished. Review the conversation for the answer or any errors."
+msgstr ""
+
+#: src/components/aichat/ChatTranscript.tsx:53
+msgid "Conversation transcript"
+msgstr ""
+
+#: src/components/aichat/ChatTranscript.tsx:54
+msgid "Assistant workspace"
+msgstr ""
+
+#: src/components/aichat/ConversationBrowser.tsx:169
+msgid "Search conversations"
+msgstr ""
+
+#: src/components/aichat/ConversationBrowser.tsx:303
+msgid "Choose a conversation"
+msgstr ""
+
+#. placeholder {0}: thread.title
+#: src/components/aichat/ConversationBrowser.tsx:403
+msgid "Rename {0}"
+msgstr ""
+
+#. placeholder {0}: thread.title
+#: src/components/aichat/ConversationBrowser.tsx:418
+msgid "Inspect memory for {0}"
+msgstr ""
+
+#. placeholder {0}: thread.title
+#: src/components/aichat/ConversationBrowser.tsx:433
+msgid "Share {0}"
+msgstr ""
+
+#. placeholder {0}: thread.title
+#: src/components/aichat/ConversationBrowser.tsx:446
+msgid "Delete {0}"
+msgstr ""
+
+#: src/components/aichat/ConversationContextBar.tsx:48
+msgid "Confirming on send"
+msgstr ""
+
+#: src/components/aichat/ConversationContextBar.tsx:55
+msgid "Dismiss pending target"
+msgstr ""
+
+#. placeholder {0}: focus.identity.machine_id ?? '?'
+#. placeholder {0}: focus.machine_id
+#. placeholder {0}: work.machine
+#: src/components/aichat/ConversationFocusControl.tsx:59
+#: src/components/aichat/WorkFocusChip.tsx:37
+#: src/pages/maintenance/WorkListPanel.tsx:519
+msgid "Machine {0}"
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:69
+msgid "The conversation focus changed elsewhere — nothing was applied. Try again."
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:71
+msgid "That target is outside the current analysis scope. The current target and scope have been kept."
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:75
+msgid "A pending decision could not be set aside — the focus was not changed. Review the pending decision first."
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:77
+msgid "Shared conversations are read-only — the focus cannot be changed."
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:80
+msgid "The conversation changed before the selection was confirmed — nothing was applied."
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:82
+msgid "That target is not available — the focus was not changed."
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:194
+#: src/components/aichat/ConversationFocusControl.tsx:200
+msgid "Talking about"
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:207
+msgid "Reference no longer available"
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:211
+msgid "nothing yet"
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:221
+msgid "Change what we are talking about"
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:266
+msgid "Clear what we are talking about"
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:372
+msgid "Close target picker"
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:375
+msgid "What are we talking about?"
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:386
+msgid "Confirming target…"
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:406
+msgid "Keep current target"
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:410
+msgid "Retry selection"
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:424
+msgid "Start a new conversation for this target"
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:427
+msgid "The target will be confirmed before your first message."
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:435
+msgid "Could not start a new conversation. Finish the current chat or voice activity and try again."
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:446
+msgid "Target kind"
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:456
+msgid "Search targets"
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:458
+msgid "Search by name or reference..."
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:466
+msgid "Loading targets…"
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:477
+msgid "Could not load targets — try again."
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:484
+msgid "Retry search"
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:489
+msgid "No matching targets."
+msgstr ""
+
+#: src/components/aichat/ConversationFocusControl.tsx:515
+msgid "More matches exist — refine the search."
+msgstr ""
+
+#: src/components/aichat/MediaEvidenceModal.tsx:221
+msgid "Loading document"
+msgstr ""
+
+#: src/components/aichat/MediaEvidenceModal.tsx:227
+msgid "Markdown preview unavailable. Open the original to read the authorized source."
+msgstr ""
+
+#: src/components/aichat/MediaEvidenceModal.tsx:232
+msgid "Markdown document preview"
+msgstr ""
+
+#: src/components/aichat/ThreadMemoryModal.tsx:276
+msgid "Close memory inspection"
+msgstr ""
+
+#: src/components/aichat/genui/OpenUIMessage.tsx:28
+msgid "Referenced data is unavailable."
+msgstr ""
+
+#: src/components/aichat/genui/OpenUIMessage.tsx:71
+msgid "Retrieval snapshot"
+msgstr ""
+
+#: src/components/aichat/genui/OpenUIMessage.tsx:73
+msgid "Source: recorded evidence coverage"
+msgstr ""
+
+#: src/components/aichat/genui/OpenUIMessage.tsx:74
+#: src/pages/assets/health/SignalTable.tsx:87
+#: src/pages/assets/health/Timestamp.tsx:52
+#: src/pages/assets/health/mimic/FreshnessLabel.tsx:25
+#: src/pages/assets/performance/KpiStrip.tsx:218
+msgid "Observation time unavailable"
+msgstr ""
+
+#: src/components/aichat/genui/OpenUIMessage.tsx:77
+msgid "Counts describe the recorded search, not current equipment condition."
+msgstr ""
+
+#: src/components/aichat/genui/OpenUIMessage.tsx:80
+msgid "Measure"
+msgstr ""
+
+#: src/components/aichat/genui/OpenUIMessage.tsx:86
+msgid "Population size"
+msgstr ""
+
+#: src/components/aichat/genui/OpenUIMessage.tsx:90
+msgid "Entries returned"
+msgstr ""
+
+#: src/components/aichat/genui/TrendSnapshot.tsx:20
+msgid "Missing"
+msgstr ""
+
+#: src/components/aichat/genui/TrendSnapshot.tsx:25
+msgid "Recorded trend"
+msgstr ""
+
+#: src/components/aichat/genui/TrendSnapshot.tsx:38
+msgid "Historical observations; values and quality are listed in the table."
+msgstr ""
+
+#: src/components/aichat/genui/TrendSnapshot.tsx:75
+msgid "No observations of sufficient quality to plot."
+msgstr ""
+
+#: src/components/aichat/genui/TrendSnapshot.tsx:80
+msgid "Gaps and uncertain observations are excluded from the line. The table preserves every observation."
+msgstr ""
+
+#: src/components/aichat/genui/TrendSnapshot.tsx:85
+msgid "Historical observation values"
+msgstr ""
+
+#: src/components/aichat/genui/TrendSnapshot.tsx:109
+msgid "Snapshot revision"
+msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:166
+msgid "Open AI chat"
+msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:392
+msgid "The conversation focus changed — the last words were not sent."
+msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:794
+msgid "Could not confirm the machine context — voice did not start."
+msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:795
+msgid "Could not confirm the target — voice did not start."
+msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:797
+msgid "Could not confirm the machine context — nothing was sent."
+msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:798
+msgid "Could not confirm the target — nothing was sent."
+msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:844
+msgid "Finish uploading or remove failed attachments before sending."
+msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:955
+msgid "Your draft changed while the target was being confirmed. Send it again when you are ready."
+msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:985
+#: src/components/nav/AIChatDrawer.tsx:993
+msgid "The message was not sent. Your draft has been kept."
+msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:1423
+msgid "How can I help?"
+msgstr ""
+
+#: src/components/nav/AIChatDrawer.tsx:1426
+msgid "Ask about assets, maintenance or inventory. Review sources and approvals before acting."
+msgstr ""

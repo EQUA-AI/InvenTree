@@ -66,7 +66,8 @@ export type AimmsCustomChannel =
   | 'aimms.evidenceAnalysis'
   | 'aimms.analysisProgress'
   | 'aimms.contextUsed'
-  | 'aimms.threadFocus';
+  | 'aimms.threadFocus'
+  | 'aimms.presentation';
 
 // --- Proposal rail (aichat.models) ---
 
@@ -545,6 +546,39 @@ export type WorkFocusState =
   | 'unavailable';
 
 // --- Quota / admission (ai.core.quota.wire) ---
+
+// --- Optional read-only presentation (ai.core.presentation.wire) ---
+
+export interface PresentationReferenceV1 {
+  ref_id: string;
+  kind: 'entity' | 'evidence' | 'metric_dataset' | 'trend_dataset';
+  source_key: string;
+}
+
+export interface AssistantPresentationV1 {
+  schema_version: 1;
+  format: 'openui-lang';
+  library: 'aimms-chat@1';
+  program: string;
+  references: PresentationReferenceV1[];
+}
+
+export interface PresentationSampleV1 {
+  observed_at: string;
+  value: number | null;
+  quality: 'good' | 'uncertain' | 'bad' | 'missing';
+}
+
+export interface PresentationTrendV1 {
+  source_key: string;
+  kind: 'trend_dataset';
+  unit: string;
+  source: string;
+  source_revision: string;
+  as_of: string;
+  timezone: string;
+  samples: PresentationSampleV1[];
+}
 
 export type QuotaErrorCode =
   | 'token_budget_exhausted'

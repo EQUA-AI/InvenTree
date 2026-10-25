@@ -1,6 +1,7 @@
 import { t } from '@lingui/core/macro';
-import { Alert, Button, Group, Modal, Stack, Text } from '@mantine/core';
-import { useEffect, useRef, useState } from 'react';
+import { Alert, Button, Group, Stack, Text } from '@mantine/core';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { AssistantModal } from './AssistantModal';
 
 import type {
   OwnedDeletionPage,
@@ -22,6 +23,7 @@ export function DeleteOwnedThreadsModal({
 }>) {
   const alive = useRef(true);
   const running = useRef(false);
+  const content = useRef<HTMLDivElement>(null);
   const plan = useRef<OwnedDeletionPlan | null>(null);
   const cursor = useRef<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -34,9 +36,21 @@ export function DeleteOwnedThreadsModal({
     };
   }, []);
 
+  // While busy, every modal control is disabled, so focus left on the
+  // activating control is dropped to <body> once the browser blurs the
+  // disabled control, and the trap's zero-tabbable Tab guard cannot bring it
+  // back. Hand focus onto the trapped dialog content at the busy transition,
+  // before paint, even while a disabled control still holds focus inside;
+  // submit() hands over before the controls are disabled at all.
+  useLayoutEffect(() => {
+    if (!busy) return;
+    content.current?.focus({ preventScroll: true });
+  }, [busy]);
+
   const submit = async () => {
     if (running.current) return;
     running.current = true;
+    content.current?.focus({ preventScroll: true });
     setBusy(true);
     setError(false);
     try {
@@ -61,7 +75,7 @@ export function DeleteOwnedThreadsModal({
   const complete = receipt?.status === 'deleted';
   const started = Boolean(receipt || error);
   return (
-    <Modal
+    <AssistantModal
       opened
       title={t`Delete my saved conversations?`}
       onClose={() => {
@@ -70,8 +84,13 @@ export function DeleteOwnedThreadsModal({
       closeOnClickOutside={!busy}
       closeOnEscape={!busy}
       withCloseButton={!busy}
+      overlayProps={{
+        onPointerDown: (event) => {
+          if (running.current) event.preventDefault();
+        }
+      }}
     >
-      <Stack>
+      <Stack ref={content} tabIndex={-1}>
         <Text size='sm'>{t`Delete all saved conversations you own in your current workspace, including conversations not loaded in this list, their messages and associated uploads? Shared access to these conversations will be removed. This cannot be undone.`}</Text>
         <Text size='sm'>{t`Conversations shared with you, unsaved drafts and conversations created after deletion starts are kept. This does not erase your account or operational records.`}</Text>
         <Text size='sm'>{t`For a large history, use Continue deletion until completion is shown. Keep this dialog open to retain the same retry selection.`}</Text>
@@ -123,6 +142,6 @@ export function DeleteOwnedThreadsModal({
           )}
         </Group>
       </Stack>
-    </Modal>
+    </AssistantModal>
   );
 }

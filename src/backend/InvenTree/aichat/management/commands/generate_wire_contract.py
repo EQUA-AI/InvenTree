@@ -106,6 +106,10 @@ def _emit_model_interface(
 class Command(BaseCommand):
     """Emit (or verify) the generated TypeScript wire contract."""
 
+    # This emits definitions; it neither reads business rows nor needs the
+    # admin/template/session stack configured in an isolated build image.
+    requires_system_checks = []
+
     help = 'Generate src/frontend/lib/types/AimmsWire.generated.ts from backend definitions'
 
     def add_arguments(self, parser) -> None:
@@ -397,6 +401,27 @@ class Command(BaseCommand):
         )
 
         sections.append('// --- Quota / admission (ai.core.quota.wire) ---\n')
+        from ai.core.presentation.wire import (
+            AssistantPresentationV1,
+            PresentationReferenceV1,
+        )
+
+        sections.append(
+            '// --- Optional read-only presentation (ai.core.presentation.wire) ---\n'
+        )
+        sections.append(_emit_model_interface(PresentationReferenceV1))
+        sections.append(
+            _emit_model_interface(
+                AssistantPresentationV1, overrides={'schema_version': '1'}
+            )
+        )
+        from ai.core.presentation.datasets import (
+            PresentationSampleV1,
+            PresentationTrendV1,
+        )
+
+        sections.append(_emit_model_interface(PresentationSampleV1))
+        sections.append(_emit_model_interface(PresentationTrendV1))
         from ai.core.quota.wire import (
             QUOTA_ERROR_CODES,
             QuotaPreflightPayload,

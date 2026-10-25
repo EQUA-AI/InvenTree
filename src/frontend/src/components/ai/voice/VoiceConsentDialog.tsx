@@ -4,7 +4,6 @@ import {
   Button,
   Checkbox,
   Group,
-  Modal,
   NativeSelect,
   Stack,
   Switch,
@@ -18,6 +17,7 @@ import {
   useVoiceSurfaceState,
   voiceController
 } from '../../../states/VoiceSessionState';
+import { AssistantModal } from '../../aichat/AssistantModal';
 import { type ConsentGateOutcome, consentSubmitGate } from './voiceFeedback';
 import { voiceHeaders, voiceUrl } from './voiceHttp';
 
@@ -124,7 +124,7 @@ export function VoiceConsentDialog() {
     setSubmitIssue(gate.ok ? null : gate);
   };
   return (
-    <Modal
+    <AssistantModal
       opened={opened}
       onClose={closeConsent}
       title={t`Start a voice session`}
@@ -222,6 +222,6 @@ export function VoiceConsentDialog() {
           </Group>
         </Stack>
       </form>
-    </Modal>
+    </AssistantModal>
   );
 }

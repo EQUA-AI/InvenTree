@@ -1,10 +1,11 @@
 import { t } from '@lingui/core/macro';
-import { Button, Group, Modal, Stack, Text } from '@mantine/core';
+import { Button, Group, Stack, Text } from '@mantine/core';
 import {
   useVoiceSessionState,
   useVoiceSurfaceState,
   voiceController
 } from '../../../states/VoiceSessionState';
+import { AssistantModal } from '../../aichat/AssistantModal';
 import { ConversationFocusControl } from '../../aichat/ConversationFocusControl';
 import { VoiceDecisionCard } from '../VoiceDecisionCard';
 import { VoiceSessionControl } from '../VoiceSessionControl';
@@ -16,7 +17,7 @@ import './voiceSurface.css';
 export function VoiceHandsFreeSurface() {
   const surface = useVoiceSurfaceState();
   return (
-    <Modal
+    <AssistantModal
       opened={surface.fullscreen}
       onClose={surface.closeFullscreen}
       fullScreen
@@ -25,7 +26,7 @@ export function VoiceHandsFreeSurface() {
       closeButtonProps={{ size: 44, 'aria-label': t`Minimize voice` }}
     >
       <VoiceHandsFreeContent />
-    </Modal>
+    </AssistantModal>
   );
 }
 

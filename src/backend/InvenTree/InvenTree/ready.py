@@ -131,6 +131,7 @@ def isGeneratingSchema():
 
     # Additional set of commands which should not trigger schema generation
     excluded_commands = [
+        'generate_wire_contract',
         'compilemessages',
         'createsuperuser',
         'clean_settings',
@@ -209,6 +210,7 @@ def isInMainThread():
 def readOnlyCommands():
     """Return a list of read-only management commands which should not trigger database writes."""
     return [
+        'generate_wire_contract',
         'audit_role_permissions',
         'help',
         'check',

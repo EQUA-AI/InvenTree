@@ -23,6 +23,7 @@ import { api, queryClient } from '../src/App';
 import { VoiceConsentDialog } from '../src/components/ai/voice/VoiceConsentDialog';
 import { VoiceGlobalIndicator } from '../src/components/ai/voice/VoiceGlobalIndicator';
 import { VoiceHandsFreeSurface } from '../src/components/ai/voice/VoiceHandsFreeSurface';
+import { GlobalEvidenceViewer } from '../src/components/aichat/MediaEvidenceModal';
 import { AIChatButton, AIChatDrawer } from '../src/components/nav/AIChatDrawer';
 import { ApiProvider } from '../src/contexts/ApiContext';
 import { openGlobalAIChat, useAIChatState } from '../src/states/AIChatState';
@@ -93,6 +94,7 @@ function DrawerFixture() {
         onClose={() => useAIChatState.getState().close()}
       />
       <VoiceGlobalIndicator />
+      <GlobalEvidenceViewer />
       <VoiceConsentDialog />
       <VoiceHandsFreeSurface />
     </Stack>

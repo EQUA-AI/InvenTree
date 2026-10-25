@@ -893,6 +893,9 @@ class OutboxKind:
     name: str
     handler: Callable[[str], None]
     probe: Callable[[str], int]
+    # Owner/client erasure references are a different namespace from thread
+    # ids. A thread receipt must neither execute nor probe those obligations.
+    thread_scoped: bool = True
 
 
 OUTBOX_KINDS: dict[str, OutboxKind] = {}
@@ -1132,7 +1135,15 @@ def thread_purge_receipt(thread_id: str) -> dict[str, str]:
                 needs_retry = True
             if needs_retry:
                 enqueue_outbox(entry.outbox_kind, thread_id)
-    rows = AIRetentionOutbox.objects.filter(reference=thread_id).exclude(state='done')
+    foreign_kinds = [
+        name for name, kind in OUTBOX_KINDS.items() if not kind.thread_scoped
+    ]
+    rows = (
+        AIRetentionOutbox.objects
+        .filter(reference=thread_id)
+        .exclude(state='done')
+        .exclude(kind__in=foreign_kinds)
+    )
     for row in rows.order_by('pk')[:100]:
         kind = OUTBOX_KINDS.get(row.kind)
         if kind is None:
@@ -1149,6 +1160,8 @@ def thread_purge_receipt(thread_id: str) -> dict[str, str]:
         )
     residual = bool(THREAD_DERIVATIVES.uncovered_models())
     for kind in OUTBOX_KINDS.values():
+        if not kind.thread_scoped:
+            continue
         try:
             residual |= checked_residual(kind.probe, thread_id) != 0
         except Exception:
@@ -1606,7 +1619,10 @@ from aichat.services.memory_lifecycle import owner_purge_residual, retry_owner_p
 
 register_outbox_kind(
     OutboxKind(
-        'memory_owner_purge', handler=retry_owner_purge, probe=owner_purge_residual
+        'memory_owner_purge',
+        handler=retry_owner_purge,
+        probe=owner_purge_residual,
+        thread_scoped=False,
     )
 )
 
@@ -1647,5 +1663,6 @@ register_outbox_kind(
         client_memory_erasure.KIND,
         handler=client_memory_erasure.retry,
         probe=client_memory_erasure.residual,
+        thread_scoped=False,
     )
 )

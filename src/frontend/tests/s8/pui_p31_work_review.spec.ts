@@ -287,7 +287,9 @@ test('D9 drawer scroll keeps the resize handle fixed and supports enlarged compo
     exact: true
   });
   const before = await resize.boundingBox();
-  const body = page.getByTestId('ai-chat-scroll-content');
+  // The redesigned workspace scrolls the composer/context separately from
+  // its transcript and header. Enlarged Work details must stay reachable.
+  const body = page.getByTestId('ai-chat-composer-region');
   await page.getByTestId('ai-chat-work-focus').locator('summary').click();
   await textZoom(page, true);
   const message = page.getByRole('textbox', { name: 'Message', exact: true });

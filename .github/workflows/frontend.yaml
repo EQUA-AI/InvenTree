@@ -127,6 +127,8 @@ jobs:
         run: cd src/frontend && yarn tsc --noEmit
       - name: Unit tests (pure modules)
         run: cd src/frontend && yarn test:unit
+      - name: Presentation library artifact drift
+        run: cd src/frontend && yarn presentation:check
       - name: Release gate regression tests
         run: python -m unittest discover -s .github/scripts -p test_aimms_release_smoke.py
 

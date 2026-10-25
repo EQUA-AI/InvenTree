@@ -1,6 +1,7 @@
 import { t } from '@lingui/core/macro';
-import { Alert, Button, Group, Modal, Stack, Text } from '@mantine/core';
+import { Alert, Button, Group, Stack, Text } from '@mantine/core';
 import { useEffect, useRef, useState } from 'react';
+import { AssistantModal } from './AssistantModal';
 
 import {
   type TranscriptExportCounts,
@@ -55,7 +56,11 @@ export function ExportThreadsModal({
     }
   };
   return (
-    <Modal opened title={t`Export my saved conversations`} onClose={close}>
+    <AssistantModal
+      opened
+      title={t`Export my saved conversations`}
+      onClose={close}
+    >
       <Stack>
         <Text size='sm'>{t`Download a JSON file containing the titles, stored summaries and messages of conversations you own in your current workspace, including those not loaded in this list.`}</Text>
         <Text size='sm'>{t`Shared-with-me conversations, unsaved drafts, attachments, voice recordings, evidence, operational records and account data are excluded.`}</Text>
@@ -82,6 +87,6 @@ export function ExportThreadsModal({
           >{t`Download JSON`}</Button>
         </Group>
       </Stack>
-    </Modal>
+    </AssistantModal>
   );
 }

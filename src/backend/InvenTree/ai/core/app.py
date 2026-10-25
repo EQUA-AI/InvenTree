@@ -1107,6 +1107,7 @@ async def list_threads(
             "work_focus": True,
             "component_evidence_focus": True,
             "investigation_request_focus": True,
+            "chat_presentation": bool(getattr(get_settings(), "feature_chat_presentation", False)),
             # S10: evidence-set expansion endpoints exist while the gate is
             # not "off" (rows only exist once the executor writes them).
             "evidence_sets": getattr(get_settings(), "evidence_gate_mode", "off") != "off",
@@ -1229,6 +1230,24 @@ def _history_focus_question_projection(question: Any, actor: Any) -> Any:
     return question
 
 
+def _presentation_projection(raw: Any, *, shared: bool) -> dict[str, Any] | None:
+    from ai.core.presentation.builder import project_presentation
+
+    if not getattr(get_settings(), "feature_chat_presentation", False):
+        return None
+    return project_presentation(raw, shared=shared)
+
+
+def _presentation_data_projection(
+    metadata: dict[str, Any], *, shared: bool
+) -> list[dict[str, Any]]:
+    from ai.core.presentation.datasets import normalize_datasets
+
+    if not _presentation_projection(metadata.get("presentation"), shared=shared):
+        return []
+    return normalize_datasets(metadata.get("presentation_data"))
+
+
 @app.get("/threads/{thread_id}")
 async def get_thread(
     thread_id: str,
@@ -1300,6 +1319,12 @@ async def get_thread(
                     # S28: server-observed entity chips survive reload.
                     "entities": message.metadata.get("entities"),
                     "media_evidence": message.metadata.get("media_evidence"),
+                    "presentation": _presentation_projection(
+                        message.metadata.get("presentation"), shared=shared
+                    ),
+                    "presentation_data": _presentation_data_projection(
+                        message.metadata, shared=shared
+                    ),
                     # S10/S11: the consolidated evidence attachment reloads
                     # with the SAME object shape the live wires delivered.
                     "evidence_analysis": message.metadata.get("evidence_analysis"),

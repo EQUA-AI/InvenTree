@@ -1,5 +1,17 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## Chat drawer and OpenUI — 25 October 2026
+
+OpenUI generation is enabled by default on the synchronized EQUA baseline. The
+chat redesign, private drafts, attachment queue and read-only presentation layer
+are integrated with the newer Work/reference/investigation and authorization
+flows. See [the integration and verification ledger](reports/chat-openui.md).
+Automated localhost qualification is complete, including the combined Work
+journeys and optimized production fixture; exact results and intermediate
+corrections are recorded there. Parent deployment and human/device/provider
+acceptance remain open.
+
+
 ## Machine metrics review fixes — 23 October 2026 (ready for coordinator review)
 
 Restoring independent Health reads during summary failure, required quantity/note

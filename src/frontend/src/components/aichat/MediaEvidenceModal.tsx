@@ -8,7 +8,6 @@ import {
   Button,
   Group,
   Loader,
-  Modal,
   Stack,
   Text
 } from '@mantine/core';
@@ -20,8 +19,8 @@ import { useApi } from '../../contexts/ApiContext';
 import { generateUrl } from '../../functions/urls';
 import { useAIChatState } from '../../states/AIChatState';
 import { useEvidenceViewerState } from '../../states/EvidenceViewerState';
+import { AssistantModal } from './AssistantModal';
 import { MarkdownMessage } from './MarkdownMessage';
-import { isolateDialog } from './dialogBackground';
 import {
   type MediaPreviewItem,
   evidenceKey,
@@ -58,7 +57,6 @@ export function MediaEvidenceModal({
   const [page, setPage] = useState(item?.page_index ?? 0);
   const [zoom, setZoom] = useState(100);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [modalElement, setModalElement] = useState<HTMLDivElement | null>(null);
   const initialSeek = useRef<number | null>(null);
   const source = useQuery({
     queryKey: [
@@ -114,15 +112,6 @@ export function MediaEvidenceModal({
     }
   });
   useEffect(() => {
-    if (!item || !modalElement) return;
-    // Mantine can share one portal among several dialogs; isolate this modal's
-    // root (including its overlay), not the entire shared portal container.
-    const root = modalElement.closest<HTMLElement>(
-      '[data-testid="media-evidence-modal"]'
-    );
-    return isolateDialog(root ?? modalElement);
-  }, [item, modalElement]);
-  useEffect(() => {
     const video = videoRef.current;
     return () => {
       if (video) {
@@ -158,8 +147,7 @@ export function MediaEvidenceModal({
   const exactPage = validDocumentPage(item.page_index, metadata?.page_count);
   const unavailable = failed || source.isError;
   return (
-    <Modal
-      ref={setModalElement}
+    <AssistantModal
       opened
       onClose={onClose}
       returnFocus={false}
@@ -369,6 +357,6 @@ export function MediaEvidenceModal({
           >{t`Open related record`}</Anchor>
         )}
       </Stack>
-    </Modal>
+    </AssistantModal>
   );
 }

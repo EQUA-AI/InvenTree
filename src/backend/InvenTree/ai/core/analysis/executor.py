@@ -552,6 +552,11 @@ def _retrieve_trend(
         "excluded_null_date_count": int(result.get("null_date_count") or 0),
         "incomplete_reason": None,
     })
+    from ai.core.presentation.datasets import trend_candidate
+
+    run.extras["presentation_trend_candidate"] = trend_candidate(
+        result, as_of=as_of, source_revision=manifest.operand_hash
+    )
     return result
 
 
