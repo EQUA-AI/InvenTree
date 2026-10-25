@@ -10,9 +10,6 @@ for (const scheme of ['light', 'dark'] as const) {
     page
   }, info) => {
     let active = true;
-    await page.addInitScript((colorScheme) => {
-      localStorage.setItem('mantine-color-scheme', colorScheme);
-    }, scheme);
     await page.route('**/api/machine-health/station/17/mimic/**', (route) => {
       const data = withParts(
         new URL(route.request().url()).searchParams.get('unit'),
@@ -37,7 +34,11 @@ for (const scheme of ['light', 'dark'] as const) {
         }
       });
     });
-    await page.goto(mimicEntry('/?pump=P1'));
+    await page.goto(mimicEntry(`/?pump=P1&scheme=${scheme}`));
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-mantine-color-scheme',
+      scheme
+    );
     const section = page.locator('[data-section="Drive motor"]');
     const control = section.getByRole('button').first();
     await expect(section.getByTestId('reading-section-test-alarm')).toHaveText(

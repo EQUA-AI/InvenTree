@@ -2,6 +2,15 @@
 
 ## Real local rehearsal and Azure follow-through — in progress
 
+Current application/image freeze isef48d76cb42156c5f0933675bd6d5c76ef8c7a79.
+It builds forAMD64 and passes isolated offline identity/driver/pip/tokenizer
+checks. Publishing is in progress, not traffic promotion. A subsequent test-only
+correction verifies actual HTML light/dark schemes:4 cases and8 measured axe
+reports pass; the earlier34-case run alone was not genuine dark-theme evidence.
+Fourteen additional creation/manual-report/PDF fixture cases pass. Production
+source is unchanged by this verification checkpoint; no second rebuild is needed
+solely for tests/docs. Both current independent re-scores remain required.
+
 Actual exercise16 createsWork3857/packet34 from one of58 mapped channels;
 TEST159.5 C appears critical in motor/station mimics, Performance, KPI, graph
 and board. A real one-page PDF and editable manual account are verified. Safe

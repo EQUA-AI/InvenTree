@@ -117,6 +117,28 @@ unchanged row identities; no unrelated backlog or validator rewrite is made.
 
 ## Azure release boundary
 
+Application/image freeze isef48d76cb42156c5f0933675bd6d5c76ef8c7a79. Later
+verification-only changes do not alter production frontend, backend, locale or
+container source. The AMD64 image builds and passes network-disabled smoke:
+frontend/backend identities match, dirty=false/ui_contract=1, all native database
+drivers import, pip consistency passes and tokenizer cache works offline. No
+build heap override leaks into the runtime. A single-platform registry upload
+is running; a published digest is not yet claimed.
+
+Post-freeze verification catches that the initial new test's localStorage key
+does not control the harness theme. Its first34/34 invocation is not accepted as
+dark-theme proof. A test-only correction supplies the harness's actual scheme
+query and asserts the rendered HTML scheme. The native component/shared
+createInvenTreeTheme fixture then passes4/4 in18.2s across genuine light/dark
+desktop/phone with8 fresh zero-violation measured axe reports. A full ThemeContext
+probe passes the visual assertions but requests additional unmocked app-startup
+APIs; its guard failure is retained, not weakened. Current scope uses the existing
+shared-theme factory fixture, not a claim of full authenticated app startup.
+
+Fourteen additional automatic/prepared/refusal and manual report/PDF browser
+cases pass in56.5s, including submission then independent fixture approval. These
+are fixture interactions, not the unperformed human approval of Work3857.
+
 Fresh19:47 UTC read-only metadata still routes100 percent to revision0000119
 of aimms-experimental, image214a6a8a; public liveness and AI-ready are200 with
 alive/ready. Public frontend build identity isfac03cbf27ca3a32dbaef561677d21439ffbd0c3,
